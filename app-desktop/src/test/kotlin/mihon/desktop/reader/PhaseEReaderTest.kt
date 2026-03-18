@@ -190,6 +190,41 @@ class PhaseEReaderTest {
         assertEquals(listOf(4), state.getGroup(3))    // spread, shown alone
     }
 
+    @Test
+    fun `matchedPair is not stolen by default sequential pairing of preceding page`() {
+        // Regression: 7 pages, spreadPages={3}, matchedPairs={(5,6)}.
+        // Without the guard, default pairing consumes page 5 into [4,5],
+        // leaving page 6 stranded alone.
+        // With the guard, page 4 is shown alone so that (5,6) can pair correctly.
+        // Expected: [0], [1,2], [3], [4], [5,6]
+        val state = DualPageState(
+            totalPages = 7,
+            spreadPages = setOf(3),
+            matchedPairs = setOf(5 to 6),
+        )
+        assertEquals(5, state.groupCount)
+        assertEquals(listOf(0), state.getGroup(0))
+        assertEquals(listOf(1, 2), state.getGroup(1))
+        assertEquals(listOf(3), state.getGroup(2))   // spread, shown alone
+        assertEquals(listOf(4), state.getGroup(3))   // alone (page 5 reserved for matched pair)
+        assertEquals(listOf(5, 6), state.getGroup(4)) // matched pair preserved
+    }
+
+    @Test
+    fun `matchedPair guard does not affect default pairing when no reservation needed`() {
+        // 7 pages, spreadPages={3}, no matchedPairs → default: [0],[1,2],[3],[4,5],[6]
+        val state = DualPageState(
+            totalPages = 7,
+            spreadPages = setOf(3),
+        )
+        assertEquals(5, state.groupCount)
+        assertEquals(listOf(0), state.getGroup(0))
+        assertEquals(listOf(1, 2), state.getGroup(1))
+        assertEquals(listOf(3), state.getGroup(2))
+        assertEquals(listOf(4, 5), state.getGroup(3)) // default pair, no reservation
+        assertEquals(listOf(6), state.getGroup(4))
+    }
+
     // ── 3. DesktopReaderScreen instantiation with isDualPage ───────────────
 
     @Test

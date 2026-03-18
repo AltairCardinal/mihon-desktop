@@ -116,6 +116,11 @@ class DualPageState(
          * 1. Page in [singles] (spreadPages ∪ forcedSinglePages) → show alone.
          * 2. Page is the first of a [matched] pair and the second is not single → force pair.
          * 3. Two consecutive non-single pages → pair them (default).
+         *    Guard: if page i+1 is itself the start of a matched pair with i+2, do NOT
+         *    consume i+1 here — show page i alone so that (i+1, i+2) can be matched in
+         *    the next iteration via Priority 2.  This handles the common case where a
+         *    full-spread page (shown alone) shifts the default pairing and the following
+         *    page belongs to a detected matched pair.
          * 4. Otherwise → show alone (last page, or next page is single).
          *
          * Page 0 (cover) is always shown alone regardless of the above rules.
@@ -143,11 +148,14 @@ class DualPageState(
                         i += 2
                     }
                     // Priority 3: default sequential pairing
-                    i + 1 < total && (i + 1) !in singles -> {
+                    // Guard: don't steal i+1 if it's already matched with i+2 — show i alone
+                    // instead so that the (i+1, i+2) matched pair survives the next iteration.
+                    i + 1 < total && (i + 1) !in singles &&
+                        !(matched[i + 1] == i + 2 && i + 2 < total && (i + 2) !in singles) -> {
                         result.add(listOf(i, i + 1))
                         i += 2
                     }
-                    // Fallback: last page, or next page is single → show alone
+                    // Fallback: last page, next page is single, or i+1 is reserved for i+2
                     else -> {
                         result.add(listOf(i))
                         i++
