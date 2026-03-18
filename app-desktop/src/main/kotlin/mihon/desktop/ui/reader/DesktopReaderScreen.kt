@@ -1,23 +1,9 @@
 package mihon.desktop.ui.reader
 
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.focusable
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Settings
@@ -30,32 +16,25 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import coil3.compose.AsyncImagePainter
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -64,13 +43,10 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.onPointerEvent
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import coil3.compose.rememberAsyncImagePainter
 import eu.kanade.tachiyomi.source.model.SChapter
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
@@ -79,10 +55,10 @@ import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.reader.DualPageState
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.ReaderChapterRef
-import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.reader.ReaderKeyboardAction
 import mihon.desktop.reader.ReaderNavigator
 import mihon.desktop.reader.ReaderPageAction
+import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.reader.ZoomState
 import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
@@ -446,9 +422,14 @@ data class DesktopReaderScreen(
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Private viewer composables
+// Local helper composables (screen-internal, not part of the viewer API)
 // ──────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Dispatcher that routes to [DualPagePagerViewer] or [SinglePagePagerViewer]
+ * based on [isDualPage].  Kept here (not extracted) because it owns no logic —
+ * it is just a two-branch if.
+ */
 @Composable
 private fun ZoomablePagerViewer(
     pageUrls: List<String>,
@@ -480,275 +461,17 @@ private fun ZoomablePagerViewer(
     }
 }
 
-/**
- * Standard single-page pager. Each swipe shows one manga page.
- *
- * RTL is handled entirely by [LocalLayoutDirection] — no URL reversal needed.
- * This avoids index-inversion math that would create feedback loops between
- * the two LaunchedEffects when the reading direction changes mid-session.
- */
-@Composable
-private fun SinglePagePagerViewer(
-    pageUrls: List<String>,
-    currentPage: Int,
-    isRtl: Boolean,
-    zoomState: ZoomState,
-    onPageChange: (Int) -> Unit,
-    onZoomChange: (ZoomState) -> Unit,
-) {
-    val pagerState = rememberPagerState(
-        initialPage = currentPage.coerceIn(0, pageUrls.size - 1),
-        pageCount = { pageUrls.size },
-    )
-
-    // External navigation (slider / keyboard) → jump pager
-    LaunchedEffect(currentPage) {
-        if (pagerState.currentPage != currentPage) {
-            pagerState.scrollToPage(currentPage.coerceIn(0, pageUrls.size - 1))
-        }
-    }
-
-    // Pager swipe → update logical page counter
-    LaunchedEffect(pagerState.currentPage) {
-        onPageChange(pagerState.currentPage)
-    }
-
-    CompositionLocalProvider(
-        LocalLayoutDirection provides if (isRtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
-    ) {
-        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
-            ZoomablePageBox(
-                url = pageUrls[page],
-                pageLabel = "Page ${page + 1}",
-                zoomState = zoomState,
-                onZoomChange = onZoomChange,
-            )
-        }
-    }
-}
-
-/**
- * Dual-page pager. The first page (cover) is shown alone; subsequent pages are
- * shown in pairs side-by-side, matching Android's double-page spread mode.
- *
- * Layout:
- *   Pager slot 0 → [page 0]          (cover)
- *   Pager slot 1 → [page 1 | page 2]
- *   Pager slot 2 → [page 3 | page 4]
- *   …
- *
- * RTL is handled by [LocalLayoutDirection] — no URL reversal, no inverted
- * index math. This eliminates the feedback loop that caused flickering when
- * switching between LTR and RTL mid-session.
- */
-@Composable
-private fun DualPagePagerViewer(
-    pageUrls: List<String>,
-    currentPage: Int,
-    isRtl: Boolean,
-    zoomState: ZoomState,
-    onPageChange: (Int) -> Unit,
-    onZoomChange: (ZoomState) -> Unit,
-) {
-    // Accumulates page indices whose images are wider than tall.
-    // Reset whenever the page list changes (new chapter).
-    var spreadPages by remember(pageUrls) { mutableStateOf(emptySet<Int>()) }
-
-    // Rebuild the group structure whenever spreads are discovered.
-    val dualState = remember(pageUrls.size, spreadPages) {
-        DualPageState(pageUrls.size, spreadPages)
-    }
-
-    // Map the current logical page to a group index using the latest grouping.
-    val safeCurrentPage = currentPage.coerceIn(0, (pageUrls.size - 1).coerceAtLeast(0))
-    val initialGroupIndex = dualState.groupIndexForPage(safeCurrentPage)
-        .coerceIn(0, (dualState.groupCount - 1).coerceAtLeast(0))
-
-    // Re-create the pager whenever spread detection changes the group layout.
-    // initialGroupIndex is recomputed above using the NEW dualState, so the
-    // pager opens at the correct position after a spread is discovered.
-    key(spreadPages) {
-        val pagerState = rememberPagerState(
-            initialPage = initialGroupIndex,
-            pageCount = { dualState.groupCount },
-        )
-
-        // Pager swipe → update logical page counter (first page of the new group)
-        LaunchedEffect(pagerState.currentPage) {
-            val firstPage = dualState.firstPageInGroup(pagerState.currentPage)
-            onPageChange(firstPage.coerceIn(0, pageUrls.size - 1))
-        }
-
-        // External navigation (slider / keyboard) → jump pager
-        LaunchedEffect(currentPage) {
-            val targetGroup = dualState.groupIndexForPage(currentPage.coerceIn(0, pageUrls.size - 1))
-            if (pagerState.currentPage != targetGroup) {
-                pagerState.scrollToPage(targetGroup.coerceIn(0, dualState.groupCount - 1))
-            }
-        }
-
-        // Called by each ZoomablePageBox once Coil has decoded the image dimensions.
-        val onSpreadDetected: (Int) -> Unit = { pageIndex ->
-            if (pageIndex !in spreadPages) {
-                spreadPages = spreadPages + pageIndex
-            }
-        }
-
-        CompositionLocalProvider(
-            LocalLayoutDirection provides if (isRtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
-        ) {
-            HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { groupIndex ->
-                val group = dualState.getGroup(groupIndex)
-                if (group.size == 1) {
-                    // Single-page slot: cover, detected spread, or last odd page
-                    ZoomablePageBox(
-                        url = pageUrls[group[0]],
-                        pageLabel = "Page ${group[0] + 1}",
-                        zoomState = zoomState,
-                        onZoomChange = onZoomChange,
-                        onSpreadDetected = { onSpreadDetected(group[0]) },
-                    )
-                } else {
-                    // Two-page spread — pages are glued at the centre spine.
-                    // group[0] is the "first" page in reading order (left in LTR, right in RTL).
-                    // CenterEnd / CenterStart are layout-direction-aware, so RTL works without
-                    // any extra logic: both images automatically stick toward the visual centre.
-                    Row(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalArrangement = Arrangement.spacedBy(0.dp),
-                    ) {
-                        ZoomablePageBox(
-                            url = pageUrls[group[0]],
-                            pageLabel = "Page ${group[0] + 1}",
-                            zoomState = zoomState,
-                            onZoomChange = onZoomChange,
-                            modifier = Modifier.weight(1f).fillMaxHeight(),
-                            imageAlignment = Alignment.CenterEnd,
-                            onSpreadDetected = { onSpreadDetected(group[0]) },
-                        )
-                        ZoomablePageBox(
-                            url = pageUrls[group[1]],
-                            pageLabel = "Page ${group[1] + 1}",
-                            zoomState = zoomState,
-                            onZoomChange = onZoomChange,
-                            modifier = Modifier.weight(1f).fillMaxHeight(),
-                            imageAlignment = Alignment.CenterStart,
-                            onSpreadDetected = { onSpreadDetected(group[1]) },
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ZoomablePageBox(
-    url: String,
-    pageLabel: String,
-    zoomState: ZoomState,
-    onZoomChange: (ZoomState) -> Unit,
-    modifier: Modifier = Modifier.fillMaxSize(),
-    /**
-     * Where to place the image within its box when it doesn't fill the full area
-     * (e.g. portrait page in a landscape half-screen slot).
-     *
-     * Single-page viewer → [Alignment.Center] (default, centred on screen).
-     * Dual-page left slot → [Alignment.CenterEnd]  (image sticks to centre spine).
-     * Dual-page right slot → [Alignment.CenterStart] (image sticks to centre spine).
-     *
-     * [CenterStart] / [CenterEnd] are layout-direction-aware, so RTL spreads are
-     * handled automatically without any extra logic.
-     */
-    imageAlignment: Alignment = Alignment.Center,
-    /**
-     * Called once when Coil finishes decoding the image and its dimensions show
-     * width > height (landscape / double-page spread).  Only used in dual-page
-     * mode; null in single-page mode.
-     */
-    onSpreadDetected: (() -> Unit)? = null,
-) {
-    // Always read the latest zoom state inside gesture lambdas
-    val latestZoom by rememberUpdatedState(zoomState)
-
-    // Reuse the same painter for both dimension detection and rendering
-    val painter = rememberAsyncImagePainter(url)
-    val painterState by painter.state.collectAsState()
-
-    // Detect spread pages: if the decoded image is wider than tall, notify the parent
-    if (onSpreadDetected != null) {
-        LaunchedEffect(painterState) {
-            val s = painterState
-            if (s is AsyncImagePainter.State.Success) {
-                val img = s.result.image
-                if (img.width > img.height) {
-                    onSpreadDetected()
-                }
-            }
-        }
-    }
-
-    Box(
-        modifier = modifier
-            // detectTransformGestures handles:
-            //   • macOS trackpad two-finger pinch → zoom
-            //   • Single-finger drag while zoomed → pan
-            //   • Mouse drag while zoomed → pan
-            .pointerInput(Unit) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    val current = latestZoom
-                    val newScale = (current.scale * zoom).coerceIn(1f, ZoomState.MAX_SCALE)
-                    val scaled = if (newScale <= 1f) ZoomState() else current.copy(scale = newScale)
-                    // Only pan when zoomed in
-                    onZoomChange(scaled.pan(pan.x, pan.y))
-                }
-            }
-            .pointerInput(Unit) {
-                detectTapGestures(onDoubleTap = { onZoomChange(ZoomState()) })
-            },
-        contentAlignment = imageAlignment,
-    ) {
-        Image(
-            painter = painter,
-            contentDescription = pageLabel,
-            alignment = imageAlignment,
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer(
-                    scaleX = zoomState.scale,
-                    scaleY = zoomState.scale,
-                    translationX = zoomState.offsetX,
-                    translationY = zoomState.offsetY,
-                ),
-            contentScale = ContentScale.Fit,
-        )
-    }
-}
-
-@Composable
-private fun WebtoonViewer(pageUrls: List<String>) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        items(pageUrls) { url ->
-            Image(
-                painter = rememberAsyncImagePainter(url),
-                contentDescription = null,
-                modifier = Modifier.fillMaxWidth(),
-                contentScale = ContentScale.FillWidth,
-            )
-        }
-    }
-}
-
 @Composable
 private fun LoadingState() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator(color = Color.White)
-            Text("Loading pages…", color = Color.White, modifier = Modifier.padding(top = 12.dp),
-                style = MaterialTheme.typography.bodySmall)
+            Text(
+                "Loading pages…",
+                color = Color.White,
+                modifier = Modifier.padding(top = 12.dp),
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
     }
 }
@@ -758,8 +481,12 @@ private fun ErrorState(message: String, onBack: () -> Unit) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
             Text("Failed to load pages", color = Color.White, style = MaterialTheme.typography.titleMedium)
-            Text(message, color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 8.dp))
+            Text(
+                message,
+                color = Color.White.copy(alpha = 0.7f),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 8.dp),
+            )
             Button(onClick = onBack, modifier = Modifier.padding(top = 16.dp)) { Text("Go Back") }
         }
     }
@@ -771,47 +498,6 @@ private fun EmptyState(onBack: () -> Unit) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text("No pages available", color = Color.White)
             Button(onClick = onBack, modifier = Modifier.padding(top = 16.dp)) { Text("Go Back") }
-        }
-    }
-}
-
-@Composable
-private fun ReaderBottomBar(
-    currentPage: Int,
-    totalPages: Int,
-    onPageChange: (Int) -> Unit,
-    isRtl: Boolean = false,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.7f))
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "${currentPage + 1} / $totalPages",
-                color = Color.White,
-                style = MaterialTheme.typography.bodySmall,
-            )
-            if (totalPages > 1) {
-                // Wrap in RTL layout direction so the Slider renders its thumb and
-                // filled-track from the right edge (page 0 = right, last page = left).
-                // The value is kept as-is (currentPage); LayoutDirection handles the mirror.
-                CompositionLocalProvider(
-                    LocalLayoutDirection provides if (isRtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
-                ) {
-                    Slider(
-                        value = currentPage.toFloat(),
-                        onValueChange = { onPageChange(it.toInt().coerceIn(0, totalPages - 1)) },
-                        valueRange = 0f..(totalPages - 1).toFloat(),
-                        modifier = Modifier.weight(1f).padding(horizontal = 16.dp),
-                    )
-                }
-            }
         }
     }
 }
