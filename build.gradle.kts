@@ -11,6 +11,7 @@ plugins {
     alias(libs.plugins.google.services) apply false
     alias(libs.plugins.moko) apply false
     alias(libs.plugins.sqldelight) apply false
+    alias(libs.plugins.compose.multiplatform) apply false
 }
 
 tasks.register<Delete>("clean") {

@@ -6,7 +6,7 @@ dependencyResolutionManagement {
         create("androidx") {
             from(files("../gradle/androidx.versions.toml"))
         }
-        create("compose") {
+        create("androidCompose") {
             from(files("../gradle/compose.versions.toml"))
         }
         create("kotlinx") {

@@ -1,14 +1,61 @@
+import org.gradle.api.tasks.testing.Test
+import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
+
 plugins {
     id("mihon.library")
-    kotlin("android")
+    kotlin("multiplatform")
     kotlin("plugin.serialization")
 }
 
-android {
-    namespace = "eu.kanade.tachiyomi.core.common"
-}
-
 kotlin {
+    androidTarget()
+    jvm()
+
+    applyDefaultHierarchyTemplate()
+
+    sourceSets {
+        commonMain {
+            dependencies {
+                implementation(project.dependencies.platform(kotlinx.coroutines.bom))
+                api(libs.rxjava)
+                api(libs.okhttp.core)
+                api(libs.okhttp.logging)
+                api(libs.okhttp.brotli)
+                api(libs.okhttp.dnsoverhttps)
+                api(libs.okio)
+                api(kotlinx.coroutines.core)
+                api(kotlinx.serialization.json)
+                api(kotlinx.serialization.json.okio)
+                implementation(libs.jsoup)
+                implementation(libs.natural.comparator)
+            }
+        }
+        androidMain {
+            dependencies {
+                api(libs.logcat)
+                implementation(projects.i18n)
+                implementation(libs.image.decoder)
+                implementation(libs.unifile)
+                implementation(libs.libarchive)
+                api(libs.preferencektx)
+                implementation(libs.bundles.js.engine)
+            }
+        }
+        jvmMain {
+            dependencies {
+                implementation(projects.i18n)
+            }
+        }
+        jvmTest {
+            dependencies {
+                implementation(libs.bundles.test)
+                implementation(kotlinx.coroutines.test)
+                runtimeOnly(libs.junit.platform.launcher)
+            }
+        }
+    }
+
+    @OptIn(ExperimentalKotlinGradlePluginApi::class)
     compilerOptions {
         freeCompilerArgs.addAll(
             "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
@@ -17,38 +64,10 @@ kotlin {
     }
 }
 
-dependencies {
-    implementation(projects.i18n)
+android {
+    namespace = "eu.kanade.tachiyomi.core.common"
+}
 
-    api(libs.logcat)
-
-    api(libs.rxjava)
-
-    api(libs.okhttp.core)
-    api(libs.okhttp.logging)
-    api(libs.okhttp.brotli)
-    api(libs.okhttp.dnsoverhttps)
-    api(libs.okio)
-
-    implementation(libs.image.decoder)
-
-    implementation(libs.unifile)
-    implementation(libs.libarchive)
-
-    api(kotlinx.coroutines.core)
-    api(kotlinx.serialization.json)
-    api(kotlinx.serialization.json.okio)
-
-    api(libs.preferencektx)
-
-    implementation(libs.jsoup)
-
-    // Sort
-    implementation(libs.natural.comparator)
-
-    // JavaScript engine
-    implementation(libs.bundles.js.engine)
-
-    testImplementation(libs.bundles.test)
-    testRuntimeOnly(libs.junit.platform.launcher)
+tasks.withType<Test> {
+    useJUnitPlatform()
 }

@@ -1,7 +1,60 @@
+import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
+
 plugins {
     id("mihon.library")
-    kotlin("android")
+    kotlin("multiplatform")
     kotlin("plugin.serialization")
+}
+
+kotlin {
+    androidTarget()
+    jvm()
+
+    applyDefaultHierarchyTemplate()
+
+    sourceSets {
+        commonMain {
+            dependencies {
+                implementation(projects.sourceApi)
+                implementation(projects.core.common)
+
+                implementation(project.dependencies.platform(kotlinx.coroutines.bom))
+                implementation(kotlinx.bundles.coroutines)
+                implementation(kotlinx.bundles.serialization)
+            }
+        }
+        androidMain {
+            dependencies {
+                implementation(libs.unifile)
+                api(libs.sqldelight.android.paging)
+            }
+        }
+        jvmMain {
+            dependencies {
+                implementation(project.dependencies.platform(kotlinx.coroutines.bom))
+                implementation(kotlinx.coroutines.core)
+            }
+        }
+        val androidUnitTest by getting {
+            dependencies {
+                implementation(libs.bundles.test)
+                implementation(kotlinx.coroutines.test)
+                runtimeOnly(libs.junit.platform.launcher)
+            }
+        }
+        jvmTest {
+            dependencies {
+                implementation(libs.bundles.test)
+                implementation(kotlinx.coroutines.test)
+                runtimeOnly(libs.junit.platform.launcher)
+            }
+        }
+    }
+
+    @OptIn(ExperimentalKotlinGradlePluginApi::class)
+    compilerOptions {
+        freeCompilerArgs.add("-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi")
+    }
 }
 
 android {
@@ -11,29 +64,4 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
     }
-}
-
-kotlin {
-    compilerOptions {
-        freeCompilerArgs.add("-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi")
-    }
-}
-
-dependencies {
-    implementation(projects.sourceApi)
-    implementation(projects.core.common)
-
-    implementation(platform(kotlinx.coroutines.bom))
-    implementation(kotlinx.bundles.coroutines)
-    implementation(kotlinx.bundles.serialization)
-
-    implementation(libs.unifile)
-
-    api(libs.sqldelight.android.paging)
-
-    compileOnly(compose.runtime.annotation)
-
-    testImplementation(libs.bundles.test)
-    testImplementation(kotlinx.coroutines.test)
-    testRuntimeOnly(libs.junit.platform.launcher)
 }

@@ -41,6 +41,7 @@ import tachiyomi.data.category.CategoryRepositoryImpl
 import tachiyomi.data.chapter.ChapterRepositoryImpl
 import tachiyomi.data.history.HistoryRepositoryImpl
 import tachiyomi.data.manga.MangaRepositoryImpl
+import tachiyomi.data.release.AndroidPlatformInfo
 import tachiyomi.data.release.ReleaseServiceImpl
 import tachiyomi.data.source.SourceRepositoryImpl
 import tachiyomi.data.source.StubSourceRepositoryImpl
@@ -87,6 +88,7 @@ import tachiyomi.domain.release.interactor.GetApplicationRelease
 import tachiyomi.domain.release.service.ReleaseService
 import tachiyomi.domain.source.interactor.GetRemoteManga
 import tachiyomi.domain.source.interactor.GetSourcesWithNonLibraryManga
+import tachiyomi.domain.source.repository.AndroidSourceRepository
 import tachiyomi.domain.source.repository.SourceRepository
 import tachiyomi.domain.source.repository.StubSourceRepository
 import tachiyomi.domain.track.interactor.DeleteTrack
@@ -142,7 +144,9 @@ class DomainModule : InjektModule {
             )
         }
 
-        addSingletonFactory<ReleaseService> { ReleaseServiceImpl(get(), get()) }
+        addSingletonFactory<ReleaseService> {
+            ReleaseServiceImpl(get<eu.kanade.tachiyomi.network.NetworkHelper>().client, get(), AndroidPlatformInfo())
+        }
         addFactory { GetApplicationRelease(get(), get()) }
 
         addSingletonFactory<TrackRepository> { TrackRepositoryImpl(get()) }
@@ -183,6 +187,7 @@ class DomainModule : InjektModule {
         addFactory { GetUpdates(get()) }
 
         addSingletonFactory<SourceRepository> { SourceRepositoryImpl(get(), get()) }
+        addSingletonFactory<AndroidSourceRepository> { get<SourceRepository>() as AndroidSourceRepository }
         addSingletonFactory<StubSourceRepository> { StubSourceRepositoryImpl(get()) }
         addFactory { GetEnabledSources(get(), get()) }
         addFactory { GetLanguagesWithSources(get(), get()) }

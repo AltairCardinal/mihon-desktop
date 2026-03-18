@@ -29,7 +29,7 @@ import tachiyomi.i18n.MR
 @SuppressLint("ViewConstructor")
 class PagerTransitionHolder(
     readerThemedContext: Context,
-    val viewer: PagerViewer,
+    val viewer: ViewerWithPager,
     val transition: ChapterTransition,
 ) : LinearLayout(readerThemedContext), ViewPagerAdapter.PositionableView {
 

@@ -27,6 +27,8 @@ fun ReaderBottomBar(
     onClickCropBorder: () -> Unit,
     onClickSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    isDualPageMode: Boolean = false,
+    onClickAdjustPairing: () -> Unit = {},
 ) {
     Row(
         modifier = modifier
@@ -46,6 +48,15 @@ fun ReaderBottomBar(
                 imageVector = orientation.icon,
                 contentDescription = stringResource(MR.strings.rotation_type),
             )
+        }
+
+        if (isDualPageMode) {
+            IconButton(onClick = onClickAdjustPairing) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_adjust_pairing_24dp),
+                    contentDescription = stringResource(MR.strings.action_adjust_page_pairing),
+                )
+            }
         }
 
         IconButton(onClick = onClickCropBorder) {

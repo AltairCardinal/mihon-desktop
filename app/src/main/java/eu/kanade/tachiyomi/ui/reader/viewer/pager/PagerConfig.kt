@@ -20,7 +20,7 @@ import uy.kohesive.injekt.api.get
  * Configuration used by pager viewers.
  */
 class PagerConfig(
-    private val viewer: PagerViewer,
+    private val viewer: Any,
     scope: CoroutineScope,
     readerPreferences: ReaderPreferences = Injekt.get(),
 ) : ViewerConfig(readerPreferences, scope) {
@@ -113,7 +113,7 @@ class PagerConfig(
             // Auto
             1 -> when (viewer) {
                 is L2RPagerViewer -> ReaderPageImageView.ZoomStartPosition.LEFT
-                is R2LPagerViewer -> ReaderPageImageView.ZoomStartPosition.RIGHT
+                is R2LPagerViewer, is DualPageR2LPagerViewer -> ReaderPageImageView.ZoomStartPosition.RIGHT
                 else -> ReaderPageImageView.ZoomStartPosition.CENTER
             }
             // Left

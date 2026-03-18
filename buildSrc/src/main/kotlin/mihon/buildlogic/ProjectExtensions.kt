@@ -2,7 +2,7 @@ package mihon.buildlogic
 
 import com.android.build.api.dsl.CommonExtension
 import org.gradle.accessors.dm.LibrariesForAndroidx
-import org.gradle.accessors.dm.LibrariesForCompose
+import org.gradle.accessors.dm.LibrariesForAndroidCompose
 import org.gradle.accessors.dm.LibrariesForKotlinx
 import org.gradle.accessors.dm.LibrariesForLibs
 import org.gradle.api.Project
@@ -18,7 +18,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import java.io.File
 
 val Project.androidx get() = the<LibrariesForAndroidx>()
-val Project.compose get() = the<LibrariesForCompose>()
+val Project.androidCompose get() = the<LibrariesForAndroidCompose>()
 val Project.kotlinx get() = the<LibrariesForKotlinx>()
 val Project.libs get() = the<LibrariesForLibs>()
 
@@ -67,7 +67,7 @@ internal fun Project.configureCompose(commonExtension: CommonExtension<*, *, *, 
         }
 
         dependencies {
-            "implementation"(platform(compose.bom))
+            "implementation"(platform(androidCompose.bom))
         }
     }
 

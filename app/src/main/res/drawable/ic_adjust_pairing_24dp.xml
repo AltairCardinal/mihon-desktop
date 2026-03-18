@@ -1,0 +1,28 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Page shift / adjust icon: two pages with a shift arrow -->
+    <!-- Back page (shifted) -->
+    <path
+        android:fillColor="#000"
+        android:pathData="M5,6 L14,6 L14,8 L5,8 Z" />
+    <path
+        android:fillColor="#000"
+        android:pathData="M5,6 L5,18 L7,18 L7,8 L14,8 L14,6 Z" />
+    <!-- Front page -->
+    <path
+        android:fillColor="#000"
+        android:pathData="M7,9 L7,20 L18,20 L18,9 Z M8,10 L17,10 L17,19 L8,19 Z" />
+    <!-- Shift arrow pointing right -->
+    <path
+        android:fillColor="#000"
+        android:pathData="M19,13 L22,13 L20,11 L20,12 L19,12 Z" />
+    <path
+        android:fillColor="#000"
+        android:pathData="M19,15 L22,15 L22,13 L20,13 L20,14 L19,14 Z" />
+    <path
+        android:fillColor="#000"
+        android:pathData="M20,15 L22,15 L20,17 Z" />
+</vector>

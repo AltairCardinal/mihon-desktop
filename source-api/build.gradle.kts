@@ -8,19 +8,22 @@ plugins {
 
 kotlin {
     androidTarget()
+    jvm()
+
+    applyDefaultHierarchyTemplate()
+
     sourceSets {
-        val commonMain by getting {
+        commonMain {
             dependencies {
                 api(kotlinx.serialization.json)
                 api(libs.injekt)
                 api(libs.rxjava)
                 api(libs.jsoup)
 
-                implementation(project.dependencies.platform(compose.bom))
-                implementation(compose.runtime)
+                // compose.runtime removed - @Stable annotation not needed for cross-platform
             }
         }
-        val androidMain by getting {
+        androidMain {
             dependencies {
                 implementation(projects.core.common)
                 api(libs.preferencektx)
@@ -28,6 +31,13 @@ kotlin {
                 // Workaround for https://youtrack.jetbrains.com/issue/KT-57605
                 implementation(kotlinx.coroutines.android)
                 implementation(project.dependencies.platform(kotlinx.coroutines.bom))
+            }
+        }
+        jvmMain {
+            dependencies {
+                implementation(projects.core.common)
+                implementation(project.dependencies.platform(kotlinx.coroutines.bom))
+                implementation(kotlinx.coroutines.core)
             }
         }
     }

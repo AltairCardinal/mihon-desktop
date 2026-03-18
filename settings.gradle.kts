@@ -23,7 +23,7 @@ dependencyResolutionManagement {
         create("androidx") {
             from(files("gradle/androidx.versions.toml"))
         }
-        create("compose") {
+        create("androidCompose") {
             from(files("gradle/compose.versions.toml"))
         }
     }
@@ -51,3 +51,4 @@ include(":presentation-widget")
 include(":source-api")
 include(":source-local")
 include(":telemetry")
+include(":app-desktop")

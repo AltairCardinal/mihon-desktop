@@ -29,9 +29,9 @@ import kotlin.math.min
  * Implementation of a [Viewer] to display pages with a [ViewPager].
  */
 @Suppress("LeakingThis")
-abstract class PagerViewer(val activity: ReaderActivity) : Viewer {
+abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, ViewerWithPager {
 
-    val downloadManager: DownloadManager by injectLazy()
+    override val downloadManager: DownloadManager by injectLazy()
 
     private val scope = MainScope()
 
@@ -39,7 +39,7 @@ abstract class PagerViewer(val activity: ReaderActivity) : Viewer {
      * View pager used by this viewer. It's abstract to implement L2R, R2L and vertical pagers on
      * top of this class.
      */
-    val pager = createPager()
+    override val pager = createPager()
 
     /**
      * Configuration used by the pager, like allow taps, scale mode on images, page transitions...
