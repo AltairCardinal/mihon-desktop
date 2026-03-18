@@ -103,11 +103,55 @@ class EdgePixelMatcher(
      * single double-page spread.
      *
      * Either signal is sufficient:
-     * - Colour continuity across the inner edges ([bestEdgeScore] < [threshold])
+     * - Colour continuity with actual content ([hasContentEdgeMatch])
      * - Both inner edges are a white gutter ([isWhiteGutterPair])
      */
     internal fun isSpreadPair(imgA: BufferedImage, imgB: BufferedImage): Boolean =
-        bestEdgeScore(imgA, imgB) < threshold || isWhiteGutterPair(imgA, imgB)
+        isWhiteGutterPair(imgA, imgB) || hasContentEdgeMatch(imgA, imgB)
+
+    /**
+     * Returns true if the inner edges of two pages share continuous artwork
+     * whose colour distance is below [threshold].
+     *
+     * **White-margin guard**: if both matched edge columns are predominantly
+     * bright/white, the low distance is meaningless (it's just margin ≈ margin)
+     * and the match is rejected.  Without this guard, every pair of pages with
+     * standard white margins would false-positive because white ≈ white → 0.
+     */
+    private fun hasContentEdgeMatch(imgA: BufferedImage, imgB: BufferedImage): Boolean {
+        // Orientation 1: A is left page → check A.right vs B.left
+        val aRight = sampleEdge(imgA, Side.RIGHT, samplePoints)
+        val bLeft  = sampleEdge(imgB, Side.LEFT,  samplePoints)
+        if (computeEdgeDistance(aRight, bLeft) < threshold &&
+            !(isEdgeBright(aRight) && isEdgeBright(bLeft))
+        ) return true
+
+        // Orientation 2: A is right page → check A.left vs B.right
+        val aLeft  = sampleEdge(imgA, Side.LEFT,  samplePoints)
+        val bRight = sampleEdge(imgB, Side.RIGHT, samplePoints)
+        if (computeEdgeDistance(aLeft, bRight) < threshold &&
+            !(isEdgeBright(aLeft) && isEdgeBright(bRight))
+        ) return true
+
+        return false
+    }
+
+    /**
+     * Returns true if the majority (≥ 80%) of pixels in [pixels] are bright/white.
+     * Used to reject meaningless colour-continuity matches caused by white page
+     * margins on both edges.
+     */
+    private fun isEdgeBright(pixels: IntArray): Boolean {
+        if (pixels.isEmpty()) return false
+        var bright = 0
+        for (p in pixels) {
+            val r = (p shr 16) and 0xFF
+            val g = (p shr 8) and 0xFF
+            val b = p and 0xFF
+            if (minOf(r, g, b) > gutterBrightnessThreshold) bright++
+        }
+        return bright.toDouble() / pixels.size >= 0.80
+    }
 
     /**
      * Returns true when both pages have a predominantly-white strip on their

@@ -334,4 +334,24 @@ class EdgePixelMatcherTest {
             "Genuine scan-spread pair with asymmetric gutters must be detected",
         )
     }
+
+    // ── isSpreadPair — white-margin colour-continuity guard ──────────────────
+
+    @Test
+    fun `isSpreadPair rejects white-margin pages even though bestEdgeScore is zero`() {
+        // Two pages with symmetric white margins: bestEdgeScore ≈ 0 because
+        // the sampled edge column (2px from border) falls inside the white margin.
+        // The white-margin guard in hasContentEdgeMatch must reject this.
+        val pageA = pageWithSymmetricMargins(marginWidth = 25)
+        val pageB = pageWithSymmetricMargins(marginWidth = 25)
+        // Pre-condition: bestEdgeScore is indeed very low
+        val score = matcher.bestEdgeScore(pageA, pageB)
+        assertTrue(score < 5.0, "Pre-condition: bestEdgeScore should be near 0 for white margins, was $score")
+        // But isSpreadPair must still reject this pair
+        assertFalse(
+            matcher.isSpreadPair(pageA, pageB),
+            "Pages with symmetric white margins must not be detected as spread pair " +
+                "(white ≈ white is not meaningful content continuity)",
+        )
+    }
 }
