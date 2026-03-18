@@ -7,33 +7,54 @@ import kotlinx.coroutines.withContext
 
 /**
  * Detects pairs of adjacent manga pages that are two halves of the same
- * physical double-page spread by comparing their edge pixel colours.
+ * physical double-page spread.
  *
- * When a manga spread is scanned as two separate portrait images, the inner
- * edges (near the binding spine) of those two images share continuous artwork.
- * This class detects such continuity by sampling a vertical column of pixels
- * from each page's inner edge and computing the average colour distance.
+ * Two complementary signals are used (either is sufficient for a match):
+ *
+ * 1. **Colour continuity** — the inner edges share continuous artwork.
+ *    Sampled via [sampleEdge] + [computeEdgeDistance].
+ *
+ * 2. **White gutter** — the inner edges of both pages are predominantly
+ *    white/light.  Scanned spreads that have been digitally cleaned often
+ *    have the binding area replaced with a plain white margin rather than
+ *    continuous artwork, so colour continuity alone misses them.
+ *    Detected via [hasWhiteGutter] + [isWhiteGutterPair].
  *
  * ──────────────────────────────────────────────────────────
  * Android migration note
  * ──────────────────────────────────────────────────────────
- * The core algorithm ([computeEdgeDistance], [sampleEdge]) operates on
- * [IntArray] (ARGB pixel values) and is pure Kotlin.  Only the image-loading
- * layer ([loadImage]) uses [java.awt.image.BufferedImage].  On Android,
- * replace [loadImage] with Coil/Glide bitmap loading and adapt [sampleEdge]
- * to use `android.graphics.Bitmap.getPixel()`.
+ * [computeEdgeDistance] and [sampleEdge] operate on [IntArray] (ARGB) and
+ * are pure Kotlin.  [hasWhiteGutter] uses [BufferedImage.getRGB].
+ * On Android, replace [loadImage] with Coil/Glide bitmap loading and
+ * adapt the pixel-access calls to `android.graphics.Bitmap.getPixel()`.
  */
 class EdgePixelMatcher(
-    /** Number of evenly-spaced sample points along each edge. */
+    /** Number of evenly-spaced sample points along each edge column. */
     private val samplePoints: Int = 50,
     /**
-     * Maximum average colour distance (0–765) below which two edges are
-     * considered a match.  Lower = stricter matching.
+     * Maximum average colour distance (0–765) below which two edge columns
+     * are considered matching.
      *
-     * Each sample computes `|rA−rB| + |gA−gB| + |bA−bB|` (range 0–765).
-     * The threshold is applied to the mean of all samples.
+     * Each sample contributes `|rA−rB| + |gA−gB| + |bA−bB|` (0–765).
      */
     private val threshold: Double = 30.0,
+    /**
+     * Band width (columns) checked by the white-gutter detector.
+     * A larger band makes detection more robust against JPEG noise but
+     * slightly more expensive.
+     */
+    private val gutterBandWidth: Int = 20,
+    /**
+     * Minimum per-channel brightness (0–255) for a pixel to be counted as
+     * "white" in the gutter detector.  Slightly below 255 to tolerate
+     * scan noise and JPEG compression.
+     */
+    private val gutterBrightnessThreshold: Int = 220,
+    /**
+     * Fraction of sampled pixels that must exceed [gutterBrightnessThreshold]
+     * for an edge to be classified as a white gutter.
+     */
+    private val gutterCoverageThreshold: Double = 0.85,
 ) {
 
     enum class Side { LEFT, RIGHT }
@@ -42,13 +63,13 @@ class EdgePixelMatcher(
      * Scans all adjacent page pairs and returns the indices of pages that
      * should be displayed together as a dual-page spread.
      *
-     * @param pageUrls Ordered list of page image URLs (local file:// or remote http(s)://).
+     * @param pageUrls Ordered list of page image URLs.
      * @return Set of (smallerIndex, largerIndex) pairs that should be matched.
      */
     suspend fun findMatchedPairs(pageUrls: List<String>): Set<Pair<Int, Int>> =
         withContext(Dispatchers.IO) {
             val result = mutableSetOf<Pair<Int, Int>>()
-            if (pageUrls.size < 3) return@withContext result // need at least cover + 2 pages
+            if (pageUrls.size < 3) return@withContext result // need cover + ≥2 pages
 
             // Skip page 0 (cover).  Scan pairs (1,2), (2,3), (3,4), …
             var i = 1
@@ -56,13 +77,10 @@ class EdgePixelMatcher(
                 try {
                     val imgA = loadImage(pageUrls[i])
                     val imgB = loadImage(pageUrls[i + 1])
-                    if (imgA != null && imgB != null) {
-                        val score = bestEdgeScore(imgA, imgB)
-                        if (score < threshold) {
-                            result.add(i to i + 1)
-                            i += 2 // skip past the matched pair
-                            continue
-                        }
+                    if (imgA != null && imgB != null && isSpreadPair(imgA, imgB)) {
+                        result.add(i to i + 1)
+                        i += 2 // skip past the matched pair
+                        continue
                     }
                 } catch (_: Exception) {
                     // Image load failure — skip this pair
@@ -73,7 +91,73 @@ class EdgePixelMatcher(
         }
 
     /**
-     * Computes the best (lowest) edge distance between two images,
+     * Returns true if [imgA] and [imgB] appear to be the two halves of a
+     * single double-page spread.
+     *
+     * Either signal is sufficient:
+     * - Colour continuity across the inner edges ([bestEdgeScore] < [threshold])
+     * - Both inner edges are a white gutter ([isWhiteGutterPair])
+     */
+    internal fun isSpreadPair(imgA: BufferedImage, imgB: BufferedImage): Boolean =
+        bestEdgeScore(imgA, imgB) < threshold || isWhiteGutterPair(imgA, imgB)
+
+    /**
+     * Returns true when both pages have a predominantly-white strip on their
+     * facing inner edges, indicating a cleaned-up scan binding gutter.
+     *
+     * Tests both orientations (A-left/B-right is checked for RTL sources):
+     * - Orientation 1: A is the left page (white right gutter), B is the right page (white left gutter)
+     * - Orientation 2: B is the left page (white right gutter), A is the right page (white left gutter)
+     */
+    internal fun isWhiteGutterPair(imgA: BufferedImage, imgB: BufferedImage): Boolean {
+        val aRightWhite = hasWhiteGutter(imgA, Side.RIGHT)
+        val bLeftWhite = hasWhiteGutter(imgB, Side.LEFT)
+        if (aRightWhite && bLeftWhite) return true
+
+        val aLeftWhite = hasWhiteGutter(imgA, Side.LEFT)
+        val bRightWhite = hasWhiteGutter(imgB, Side.RIGHT)
+        return aLeftWhite && bRightWhite
+    }
+
+    /**
+     * Returns true if a band of [gutterBandWidth] columns along [side] of
+     * [img] is predominantly white/light.
+     *
+     * Samples [samplePoints] rows for every column in the band and counts
+     * pixels whose average channel value exceeds [gutterBrightnessThreshold].
+     * Triggers when the bright fraction ≥ [gutterCoverageThreshold].
+     */
+    internal fun hasWhiteGutter(
+        img: BufferedImage,
+        side: Side,
+        bandWidth: Int = gutterBandWidth,
+    ): Boolean {
+        val effectiveBand = bandWidth.coerceAtMost(img.width)
+        val xRange = when (side) {
+            Side.LEFT -> 0 until effectiveBand
+            Side.RIGHT -> (img.width - effectiveBand) until img.width
+        }
+        val step = img.height.toDouble() / samplePoints.coerceAtLeast(1)
+        var brightCount = 0
+        var totalCount = 0
+        for (x in xRange) {
+            for (i in 0 until samplePoints) {
+                val y = (i * step).toInt().coerceIn(0, img.height - 1)
+                val rgb = img.getRGB(x, y)
+                val r = (rgb shr 16) and 0xFF
+                val g = (rgb shr 8) and 0xFF
+                val b = rgb and 0xFF
+                // Use minimum channel to avoid counting desaturated-but-dark pixels as white
+                val minChannel = minOf(r, g, b)
+                if (minChannel > gutterBrightnessThreshold) brightCount++
+                totalCount++
+            }
+        }
+        return totalCount > 0 && (brightCount.toDouble() / totalCount) >= gutterCoverageThreshold
+    }
+
+    /**
+     * Computes the best (lowest) colour-distance between two images by
      * testing both orientations:
      *   - A.right vs B.left  (A is left page, B is right page)
      *   - A.left  vs B.right (B is left page, A is right page)
@@ -95,8 +179,8 @@ class EdgePixelMatcher(
     /**
      * Samples a vertical column of pixels near the specified edge.
      *
-     * The sample column is offset 2px from the true edge to avoid JPEG
-     * compression artefacts that often appear on the outermost pixel row.
+     * Offset 2 px from the true edge to avoid JPEG compression artefacts
+     * on the outermost pixel row.
      *
      * @return Array of ARGB [Int] values, one per sample point.
      */
@@ -118,10 +202,10 @@ class EdgePixelMatcher(
 
     /**
      * Computes the mean per-channel absolute colour distance between two
-     * pixel arrays.  Both arrays should have the same length; if they differ,
-     * the shorter length is used.
+     * pixel arrays.
      *
-     * @return Average distance in range [0, 765] where 0 = identical.
+     * @return Average distance in range [0, 765] where 0 = identical,
+     *         or [Double.MAX_VALUE] for empty arrays.
      */
     internal fun computeEdgeDistance(pixelsA: IntArray, pixelsB: IntArray): Double {
         val len = minOf(pixelsA.size, pixelsB.size)
@@ -138,18 +222,10 @@ class EdgePixelMatcher(
         return totalDist.toDouble() / len
     }
 
-    /**
-     * Loads an image from a URL string.
-     *
-     * Supports both `file://` (local downloaded pages) and `http(s)://`
-     * (remote source pages) via [ImageIO].
-     */
-    private fun loadImage(urlString: String): BufferedImage? {
-        return try {
-            val url = java.net.URI(urlString).toURL()
-            ImageIO.read(url)
-        } catch (_: Exception) {
-            null
-        }
+    private fun loadImage(urlString: String): BufferedImage? = try {
+        val url = java.net.URI(urlString).toURL()
+        ImageIO.read(url)
+    } catch (_: Exception) {
+        null
     }
 }

@@ -2,6 +2,7 @@ package mihon.desktop.reader
 
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import java.awt.Color
 import java.awt.image.BufferedImage
@@ -10,14 +11,14 @@ import java.awt.image.BufferedImage
  * Unit tests for [EdgePixelMatcher].
  *
  * Uses synthetic [BufferedImage] instances with known pixel colours
- * to validate the edge sampling and distance computation without any
- * network or file system access.
+ * to validate the edge sampling, distance computation, and white-gutter
+ * detection without any network or file system access.
  */
 class EdgePixelMatcherTest {
 
     private val matcher = EdgePixelMatcher(samplePoints = 10, threshold = 30.0)
 
-    // ── Helper ──────────────────────────────────────────────────────────────
+    // ── Helpers ─────────────────────────────────────────────────────────────
 
     /** Creates a solid-colour image. */
     private fun solidImage(width: Int, height: Int, color: Color): BufferedImage {
@@ -30,37 +31,64 @@ class EdgePixelMatcherTest {
     }
 
     /**
-     * Creates an image with a distinct right-edge colour.
-     * The bulk of the image is [bodyColor], but the rightmost 5 columns
-     * are [edgeColor].
+     * Creates an image with a distinct right-edge colour band.
+     * The bulk is [bodyColor]; the rightmost [edgeWidth] columns are [edgeColor].
      */
     private fun imageWithRightEdge(
         width: Int,
         height: Int,
         bodyColor: Color,
         edgeColor: Color,
+        edgeWidth: Int = 5,
     ): BufferedImage {
         val img = solidImage(width, height, bodyColor)
         val g = img.createGraphics()
         g.color = edgeColor
-        g.fillRect(width - 5, 0, 5, height)
+        g.fillRect(width - edgeWidth, 0, edgeWidth, height)
         g.dispose()
         return img
     }
 
     /**
-     * Creates an image with a distinct left-edge colour.
+     * Creates an image with a distinct left-edge colour band.
      */
     private fun imageWithLeftEdge(
         width: Int,
         height: Int,
         bodyColor: Color,
         edgeColor: Color,
+        edgeWidth: Int = 5,
     ): BufferedImage {
         val img = solidImage(width, height, bodyColor)
         val g = img.createGraphics()
         g.color = edgeColor
-        g.fillRect(0, 0, 5, height)
+        g.fillRect(0, 0, edgeWidth, height)
+        g.dispose()
+        return img
+    }
+
+    /**
+     * Simulates a scanned spread half: dark manga content with a wide white
+     * gutter on the inner side.
+     *
+     * @param whiteOnRight  true → white gutter on right (left page of spread)
+     *                      false → white gutter on left (right page of spread)
+     */
+    private fun spreadHalfImage(
+        width: Int = 200,
+        height: Int = 300,
+        whiteOnRight: Boolean,
+        gutterWidth: Int = 25,
+    ): BufferedImage {
+        // Dark grey body (typical manga ink-on-paper tone)
+        val img = solidImage(width, height, Color(60, 60, 60))
+        val g = img.createGraphics()
+        g.color = Color.WHITE
+        if (whiteOnRight) {
+            g.fillRect(width - gutterWidth, 0, gutterWidth, height)
+        } else {
+            g.fillRect(0, 0, gutterWidth, height)
+        }
         g.dispose()
         return img
     }
@@ -161,5 +189,99 @@ class EdgePixelMatcherTest {
         val imgB = solidImage(80, 300, Color.GRAY)
         val score = matcher.bestEdgeScore(imgA, imgB)
         assertEquals(0.0, score)
+    }
+
+    // ── hasWhiteGutter ───────────────────────────────────────────────────────
+
+    @Test
+    fun `white right edge detected as white gutter`() {
+        val img = spreadHalfImage(whiteOnRight = true, gutterWidth = 25)
+        assertTrue(
+            matcher.hasWhiteGutter(img, EdgePixelMatcher.Side.RIGHT),
+            "Right gutter should be white",
+        )
+    }
+
+    @Test
+    fun `white left edge detected as white gutter`() {
+        val img = spreadHalfImage(whiteOnRight = false, gutterWidth = 25)
+        assertTrue(
+            matcher.hasWhiteGutter(img, EdgePixelMatcher.Side.LEFT),
+            "Left gutter should be white",
+        )
+    }
+
+    @Test
+    fun `dark edge not classified as white gutter`() {
+        val img = solidImage(200, 300, Color(60, 60, 60))
+        assertFalse(
+            matcher.hasWhiteGutter(img, EdgePixelMatcher.Side.RIGHT),
+            "Dark right edge should not be a white gutter",
+        )
+        assertFalse(
+            matcher.hasWhiteGutter(img, EdgePixelMatcher.Side.LEFT),
+            "Dark left edge should not be a white gutter",
+        )
+    }
+
+    @Test
+    fun `spread-half page has white gutter only on inner side`() {
+        // Left half of spread: white on right, content on left
+        val leftHalf = spreadHalfImage(whiteOnRight = true, gutterWidth = 25)
+        assertTrue(matcher.hasWhiteGutter(leftHalf, EdgePixelMatcher.Side.RIGHT))
+        assertFalse(matcher.hasWhiteGutter(leftHalf, EdgePixelMatcher.Side.LEFT))
+    }
+
+    // ── isWhiteGutterPair ────────────────────────────────────────────────────
+
+    @Test
+    fun `scanned spread pair detected via white gutter`() {
+        val leftHalf = spreadHalfImage(whiteOnRight = true, gutterWidth = 25)
+        val rightHalf = spreadHalfImage(whiteOnRight = false, gutterWidth = 25)
+        assertTrue(
+            matcher.isWhiteGutterPair(leftHalf, rightHalf),
+            "Left+right spread halves should be a white gutter pair",
+        )
+    }
+
+    @Test
+    fun `reversed order also detected via white gutter`() {
+        // isWhiteGutterPair tests both orientations
+        val leftHalf = spreadHalfImage(whiteOnRight = true, gutterWidth = 25)
+        val rightHalf = spreadHalfImage(whiteOnRight = false, gutterWidth = 25)
+        assertTrue(matcher.isWhiteGutterPair(rightHalf, leftHalf))
+    }
+
+    @Test
+    fun `two dark pages not detected as white gutter pair`() {
+        val pageA = solidImage(200, 300, Color(60, 60, 60))
+        val pageB = solidImage(200, 300, Color(40, 40, 40))
+        assertFalse(matcher.isWhiteGutterPair(pageA, pageB))
+    }
+
+    // ── isSpreadPair ─────────────────────────────────────────────────────────
+
+    @Test
+    fun `isSpreadPair true when edge colours match`() {
+        val pageA = imageWithRightEdge(100, 200, Color.WHITE, Color.RED)
+        val pageB = imageWithLeftEdge(100, 200, Color.WHITE, Color.RED)
+        assertTrue(matcher.isSpreadPair(pageA, pageB))
+    }
+
+    @Test
+    fun `isSpreadPair true when white gutter detected even if colours differ`() {
+        // Pages have different content colours but matching white gutters — typical
+        // for cleaned-up scans where the gutter is pure white regardless of content.
+        val leftHalf = spreadHalfImage(width = 200, height = 300, whiteOnRight = true)
+        val rightHalf = spreadHalfImage(width = 200, height = 300, whiteOnRight = false)
+        assertTrue(matcher.isSpreadPair(leftHalf, rightHalf))
+    }
+
+    @Test
+    fun `isSpreadPair false when neither signal fires`() {
+        // Dark pages with different content — no colour match, no white gutters
+        val pageA = imageWithRightEdge(100, 200, Color(30, 30, 30), Color.RED)
+        val pageB = imageWithLeftEdge(100, 200, Color(220, 220, 220), Color.BLUE)
+        assertFalse(matcher.isSpreadPair(pageA, pageB))
     }
 }
