@@ -77,10 +77,18 @@ class EdgePixelMatcher(
                 try {
                     val imgA = loadImage(pageUrls[i])
                     val imgB = loadImage(pageUrls[i + 1])
-                    if (imgA != null && imgB != null && isSpreadPair(imgA, imgB)) {
-                        result.add(i to i + 1)
-                        i += 2 // skip past the matched pair
-                        continue
+                    if (imgA != null && imgB != null) {
+                        // Landscape images are full-spread pages already handled by spreadPages;
+                        // they cannot be halves of a scan spread — skip to avoid false positives.
+                        if (imgA.width >= imgA.height || imgB.width >= imgB.height) {
+                            i++
+                            continue
+                        }
+                        if (isSpreadPair(imgA, imgB)) {
+                            result.add(i to i + 1)
+                            i += 2 // skip past the matched pair
+                            continue
+                        }
                     }
                 } catch (_: Exception) {
                     // Image load failure — skip this pair
@@ -103,20 +111,34 @@ class EdgePixelMatcher(
 
     /**
      * Returns true when both pages have a predominantly-white strip on their
-     * facing inner edges, indicating a cleaned-up scan binding gutter.
+     * facing inner edges only, indicating a cleaned-up scan binding gutter.
      *
-     * Tests both orientations (A-left/B-right is checked for RTL sources):
-     * - Orientation 1: A is the left page (white right gutter), B is the right page (white left gutter)
-     * - Orientation 2: B is the left page (white right gutter), A is the right page (white left gutter)
+     * **Asymmetry requirement**: the inner edge must be white AND the outer edge
+     * must NOT be white.  This distinguishes a genuine binding gutter (one-sided)
+     * from a normal page with symmetric margins (both sides white), which would
+     * otherwise produce false positives.
+     *
+     * Orientation 1 — LTR scan spread:
+     *   A = left physical page:  RIGHT edge is binding gutter (white), LEFT edge has content
+     *   B = right physical page: LEFT edge is binding gutter (white), RIGHT edge has content
+     *
+     * Orientation 2 — RTL scan spread (typical Japanese manga):
+     *   A = right physical page: LEFT edge is binding gutter (white), RIGHT edge has content
+     *   B = left physical page:  RIGHT edge is binding gutter (white), LEFT edge has content
      */
     internal fun isWhiteGutterPair(imgA: BufferedImage, imgB: BufferedImage): Boolean {
-        val aRightWhite = hasWhiteGutter(imgA, Side.RIGHT)
-        val bLeftWhite = hasWhiteGutter(imgB, Side.LEFT)
-        if (aRightWhite && bLeftWhite) return true
+        val aLeft  = hasWhiteGutter(imgA, Side.LEFT)
+        val aRight = hasWhiteGutter(imgA, Side.RIGHT)
+        val bLeft  = hasWhiteGutter(imgB, Side.LEFT)
+        val bRight = hasWhiteGutter(imgB, Side.RIGHT)
 
-        val aLeftWhite = hasWhiteGutter(imgA, Side.LEFT)
-        val bRightWhite = hasWhiteGutter(imgB, Side.RIGHT)
-        return aLeftWhite && bRightWhite
+        // Orientation 1 (LTR): A.right gutter (white), A.left NOT white; B.left gutter (white), B.right NOT white
+        if (aRight && !aLeft && bLeft && !bRight) return true
+
+        // Orientation 2 (RTL): A.left gutter (white), A.right NOT white; B.right gutter (white), B.left NOT white
+        if (aLeft && !aRight && bRight && !bLeft) return true
+
+        return false
     }
 
     /**

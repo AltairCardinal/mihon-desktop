@@ -284,4 +284,54 @@ class EdgePixelMatcherTest {
         val pageB = imageWithLeftEdge(100, 200, Color(220, 220, 220), Color.BLUE)
         assertFalse(matcher.isSpreadPair(pageA, pageB))
     }
+
+    // ── isWhiteGutterPair — asymmetry fix (regression guard) ─────────────────
+
+    /**
+     * Creates a page with wide white margins on BOTH left and right sides,
+     * simulating a standalone manga page with symmetric page margins.
+     * Such a page is NOT a scan-spread half and must not trigger the gutter detector.
+     */
+    private fun pageWithSymmetricMargins(
+        width: Int = 200,
+        height: Int = 300,
+        marginWidth: Int = 25,
+    ): BufferedImage {
+        val img = solidImage(width, height, Color(60, 60, 60))
+        val g = img.createGraphics()
+        g.color = Color.WHITE
+        g.fillRect(0, 0, marginWidth, height)            // left margin
+        g.fillRect(width - marginWidth, 0, marginWidth, height) // right margin
+        g.dispose()
+        return img
+    }
+
+    @Test
+    fun `symmetric white margins on both sides do NOT trigger isWhiteGutterPair`() {
+        // Regression: before the asymmetry fix, two pages with white on both left
+        // and right edges would produce a false positive because Orientation 2
+        // (A.left white AND B.right white) was satisfied even though both sides are white.
+        val pageA = pageWithSymmetricMargins()
+        val pageB = pageWithSymmetricMargins()
+        // Verify the setup: both edges of each page ARE white (pre-condition for the regression)
+        assertTrue(matcher.hasWhiteGutter(pageA, EdgePixelMatcher.Side.LEFT), "setup: pageA left should be white")
+        assertTrue(matcher.hasWhiteGutter(pageA, EdgePixelMatcher.Side.RIGHT), "setup: pageA right should be white")
+        // After the asymmetry fix, symmetric margins must NOT be a gutter pair
+        assertFalse(
+            matcher.isWhiteGutterPair(pageA, pageB),
+            "Pages with symmetric white margins on both sides must not be detected as a gutter pair",
+        )
+    }
+
+    @Test
+    fun `asymmetric gutter (one side white, other dark) still detected`() {
+        // Confirm the fix doesn't break legitimate detection:
+        // spreadHalfImage has white on ONE side only → asymmetric → should still match
+        val leftPage  = spreadHalfImage(whiteOnRight = true,  gutterWidth = 25)  // white RIGHT only
+        val rightPage = spreadHalfImage(whiteOnRight = false, gutterWidth = 25)  // white LEFT only
+        assertTrue(
+            matcher.isWhiteGutterPair(leftPage, rightPage),
+            "Genuine scan-spread pair with asymmetric gutters must be detected",
+        )
+    }
 }
