@@ -11,37 +11,61 @@ package mihon.desktop.reader
  *
  * If [totalPages] is even the last group has a single page.
  *
- * When [spreadPages] is non-empty, any page whose image is wider than it is
- * tall is treated as a "double-page spread" and shown alone in its own slot.
- * Adjacent non-spread pages are still paired normally.
+ * Three mechanisms control which pages are shown alone vs. paired:
+ *
+ * 1. **[spreadPages]** — pages whose image is wider than tall (landscape).
+ *    Detected automatically by [ZoomablePageBox] after Coil decodes each image.
+ *
+ * 2. **[forcedSinglePages]** — pages the user has manually forced to display
+ *    alone via the "Adjust Spread" button. This shifts all subsequent pairings.
+ *
+ * 3. **[matchedPairs]** — page pairs detected by edge-pixel matching as being
+ *    two halves of the same physical spread scan. These pairs are given priority
+ *    during grouping so they always appear together.
+ *
+ * Priority order in [buildGroups]:
+ *   forcedSinglePages/spreadPages (show alone) > matchedPairs (force pair) > default sequential pairing
+ *
+ * ──────────────────────────────────────────────────────────
+ * Android migration note
+ * ──────────────────────────────────────────────────────────
+ * This class is pure Kotlin with zero platform dependencies. Copy it as-is
+ * to the Android shared/domain layer.
  */
 class DualPageState(
     val totalPages: Int,
     val spreadPages: Set<Int> = emptySet(),
+    val forcedSinglePages: Set<Int> = emptySet(),
+    val matchedPairs: Set<Pair<Int, Int>> = emptySet(),
 ) {
 
     /**
      * Number of pager "slots" (i.e. how many swipes the user has to make).
      *
-     * When there are no detected spreads the classic formula is used:
+     * When there are no detected spreads, forced singles, or matched pairs,
+     * the classic formula is used:
      *   1 slot for the cover + ceil((totalPages - 1) / 2) for the rest.
      *
-     * When spreads are present the groups are built dynamically.
+     * Otherwise, groups are built dynamically.
      */
     val groupCount: Int
 
     private val groups: List<List<Int>>
 
     init {
+        val allSingles = spreadPages + forcedSinglePages
         if (totalPages <= 0) {
             groupCount = 0
             groups = emptyList()
-        } else if (spreadPages.isEmpty()) {
+        } else if (allSingles.isEmpty() && matchedPairs.isEmpty()) {
             // Fast path: original formula, no dynamic allocation
             groupCount = 1 + totalPages / 2
             groups = emptyList() // sentinel: use formula in getGroup / groupIndexForPage
         } else {
-            groups = buildGroups(totalPages, spreadPages)
+            val matchedMap = matchedPairs
+                .filter { (a, b) -> a >= 0 && b >= 0 && a < totalPages && b < totalPages }
+                .associate { (a, b) -> minOf(a, b) to maxOf(a, b) }
+            groups = buildGroups(totalPages, allSingles, matchedMap)
             groupCount = groups.size
         }
     }
@@ -87,12 +111,20 @@ class DualPageState(
 
     companion object {
         /**
-         * Builds groups dynamically, respecting spread pages:
-         *  - Page 0 (cover) always alone.
-         *  - Spread pages always alone.
-         *  - Two consecutive non-spread pages are paired.
+         * Builds groups dynamically with three-tier priority:
+         *
+         * 1. Page in [singles] (spreadPages ∪ forcedSinglePages) → show alone.
+         * 2. Page is the first of a [matched] pair and the second is not single → force pair.
+         * 3. Two consecutive non-single pages → pair them (default).
+         * 4. Otherwise → show alone (last page, or next page is single).
+         *
+         * Page 0 (cover) is always shown alone regardless of the above rules.
          */
-        private fun buildGroups(total: Int, spreads: Set<Int>): List<List<Int>> {
+        private fun buildGroups(
+            total: Int,
+            singles: Set<Int>,
+            matched: Map<Int, Int>,
+        ): List<List<Int>> {
             val result = mutableListOf<List<Int>>()
             var i = 0
             // Cover always shown alone
@@ -100,18 +132,23 @@ class DualPageState(
             i++
             while (i < total) {
                 when {
-                    i in spreads -> {
-                        // Wide (landscape) page: show alone
+                    // Priority 1: page forced/detected as single → show alone
+                    i in singles -> {
                         result.add(listOf(i))
                         i++
                     }
-                    i + 1 < total && (i + 1) !in spreads -> {
-                        // Two consecutive non-spread pages: pair them
+                    // Priority 2: matched pair detected by edge-pixel scanning
+                    matched[i] == i + 1 && i + 1 < total && (i + 1) !in singles -> {
                         result.add(listOf(i, i + 1))
                         i += 2
                     }
+                    // Priority 3: default sequential pairing
+                    i + 1 < total && (i + 1) !in singles -> {
+                        result.add(listOf(i, i + 1))
+                        i += 2
+                    }
+                    // Fallback: last page, or next page is single → show alone
                     else -> {
-                        // Last page, or next page is a spread → show alone
                         result.add(listOf(i))
                         i++
                     }

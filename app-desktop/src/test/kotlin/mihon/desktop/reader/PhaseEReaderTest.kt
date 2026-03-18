@@ -93,6 +93,103 @@ class PhaseEReaderTest {
         assertEquals(5, state.firstPageInGroup(3))
     }
 
+    // ── 2b. DualPageState — forcedSinglePages ───────────────────────────────
+
+    @Test
+    fun `forcedSinglePages makes specified page display alone`() {
+        // 6 pages, force page 3 single: [0], [1,2], [3], [4,5]
+        val state = DualPageState(totalPages = 6, forcedSinglePages = setOf(3))
+        assertEquals(4, state.groupCount)
+        assertEquals(listOf(0), state.getGroup(0))
+        assertEquals(listOf(1, 2), state.getGroup(1))
+        assertEquals(listOf(3), state.getGroup(2))
+        assertEquals(listOf(4, 5), state.getGroup(3))
+    }
+
+    @Test
+    fun `forcedSinglePages shifts subsequent pairings`() {
+        // 10 pages, force page 1 single: [0], [1], [2,3], [4,5], [6,7], [8,9]
+        val state = DualPageState(totalPages = 10, forcedSinglePages = setOf(1))
+        assertEquals(6, state.groupCount)
+        assertEquals(listOf(0), state.getGroup(0))
+        assertEquals(listOf(1), state.getGroup(1))
+        assertEquals(listOf(2, 3), state.getGroup(2))
+        assertEquals(listOf(4, 5), state.getGroup(3))
+        assertEquals(listOf(6, 7), state.getGroup(4))
+        assertEquals(listOf(8, 9), state.getGroup(5))
+    }
+
+    @Test
+    fun `spreadPages and forcedSinglePages merge correctly`() {
+        // 8 pages, spread={2}, forced={5}: [0], [1], [2], [3,4], [5], [6,7]
+        val state = DualPageState(
+            totalPages = 8,
+            spreadPages = setOf(2),
+            forcedSinglePages = setOf(5),
+        )
+        assertEquals(6, state.groupCount)
+        assertEquals(listOf(0), state.getGroup(0))
+        assertEquals(listOf(1), state.getGroup(1))   // alone because next is spread
+        assertEquals(listOf(2), state.getGroup(2))    // spread
+        assertEquals(listOf(3, 4), state.getGroup(3))
+        assertEquals(listOf(5), state.getGroup(4))    // forced single
+        assertEquals(listOf(6, 7), state.getGroup(5))
+    }
+
+    // ── 2c. DualPageState — matchedPairs ────────────────────────────────────
+
+    @Test
+    fun `matchedPairs forces specific pages to pair together`() {
+        // 7 pages, matched pair (2,3): [0], [1], [2,3], [4,5], [6]
+        // Without matchedPairs default would be: [0], [1,2], [3,4], [5,6]
+        // With matchedPairs=(2,3) we need to force 2+3 together.
+        // Since matched only changes pairing when it conflicts with default,
+        // and default already pairs [1,2], we need a case where it matters.
+        //
+        // Better example: 8 pages, forced page 1 single + matched (4,5):
+        // [0], [1], [2,3], [4,5], [6,7]
+        val state = DualPageState(
+            totalPages = 8,
+            forcedSinglePages = setOf(1),
+            matchedPairs = setOf(4 to 5),
+        )
+        assertEquals(5, state.groupCount)
+        assertEquals(listOf(0), state.getGroup(0))
+        assertEquals(listOf(1), state.getGroup(1))    // forced single
+        assertEquals(listOf(2, 3), state.getGroup(2))
+        assertEquals(listOf(4, 5), state.getGroup(3)) // matched pair
+        assertEquals(listOf(6, 7), state.getGroup(4))
+    }
+
+    @Test
+    fun `forcedSinglePages takes priority over matchedPairs`() {
+        // Page 3 is in both forcedSingle and matchedPair (3,4).
+        // forcedSingle wins → page 3 shown alone.
+        // 8 pages: [0], [1,2], [3], [4,5], [6,7]
+        val state = DualPageState(
+            totalPages = 8,
+            forcedSinglePages = setOf(3),
+            matchedPairs = setOf(3 to 4),
+        )
+        assertEquals(5, state.groupCount)
+        assertEquals(listOf(3), state.getGroup(2))    // forced single, not paired with 4
+        assertEquals(listOf(4, 5), state.getGroup(3)) // 4 pairs with 5 instead
+    }
+
+    @Test
+    fun `matchedPairs second page in singles prevents pairing`() {
+        // matchedPair (3,4) but page 4 is a spread → pair broken.
+        // 8 pages: [0], [1,2], [3], [4], [5,6], [7]
+        val state = DualPageState(
+            totalPages = 8,
+            spreadPages = setOf(4),
+            matchedPairs = setOf(3 to 4),
+        )
+        assertEquals(6, state.groupCount)
+        assertEquals(listOf(3), state.getGroup(2))    // alone (next page is single)
+        assertEquals(listOf(4), state.getGroup(3))    // spread, shown alone
+    }
+
     // ── 3. DesktopReaderScreen instantiation with isDualPage ───────────────
 
     @Test

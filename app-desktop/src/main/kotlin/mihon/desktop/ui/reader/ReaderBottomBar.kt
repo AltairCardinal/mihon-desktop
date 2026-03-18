@@ -6,6 +6,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -19,30 +24,35 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 
 /**
- * Semi-transparent bottom bar with a page counter and a progress slider.
+ * Semi-transparent bottom bar with a page counter, an optional "Adjust Spread"
+ * button, and a progress slider.
+ *
+ * Layout when [isDualPage] is true:
+ * ```
+ * [page counter] [adjust button] ────[Slider]────
+ * ```
+ *
+ * Layout when [isDualPage] is false (button hidden):
+ * ```
+ * [page counter] ────[Slider]────
+ * ```
  *
  * ──────────────────────────────────────────────────────────
  * RTL design note
  * ──────────────────────────────────────────────────────────
  * The [Slider] is wrapped in [CompositionLocalProvider]([LocalLayoutDirection])
  * instead of inverting the value.  This lets Material3's Slider mirror its own
- * thumb position and filled-track direction automatically, so:
- *   - LTR: page 0 → thumb on left  (unread = right side)
- *   - RTL: page 0 → thumb on right (unread = left side)
+ * thumb position and filled-track direction automatically.
  *
- * The slider value is always the raw [currentPage] index — no inversion math.
- *
- * ──────────────────────────────────────────────────────────
- * Android migration note
- * ──────────────────────────────────────────────────────────
- * This composable has no desktop-specific code.  Move it to a shared Compose
- * Multiplatform module and use it on Android unchanged.
- *
- * @param currentPage   0-based index of the page currently being viewed.
- * @param totalPages    Total number of pages in the chapter.
- * @param onPageChange  Called when the user drags the slider to a new position.
- * @param isRtl         When true, the slider renders right-to-left (RTL reading mode).
- * @param modifier      Applied to the outer [Column]; use to position the bar.
+ * @param currentPage      0-based index of the page currently being viewed.
+ * @param totalPages       Total number of pages in the chapter.
+ * @param onPageChange     Called when the user drags the slider to a new position.
+ * @param isRtl            When true, the slider renders right-to-left.
+ * @param isDualPage       When true, the "Adjust Spread" button is shown.
+ * @param onAdjustSpread   Called when the user presses the "Adjust Spread" button.
+ *                         The button forces the current page to display alone,
+ *                         shifting all subsequent dual-page pairings.
+ * @param modifier         Applied to the outer [Column]; use to position the bar.
  */
 @Composable
 internal fun ReaderBottomBar(
@@ -50,6 +60,8 @@ internal fun ReaderBottomBar(
     totalPages: Int,
     onPageChange: (Int) -> Unit,
     isRtl: Boolean = false,
+    isDualPage: Boolean = false,
+    onAdjustSpread: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -68,6 +80,22 @@ internal fun ReaderBottomBar(
                 color = Color.White,
                 style = MaterialTheme.typography.bodySmall,
             )
+
+            // "Adjust Spread" button — shifts dual-page pairing offset by
+            // forcing the current page to display alone.
+            if (isDualPage && onAdjustSpread != null) {
+                IconButton(
+                    onClick = onAdjustSpread,
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                        contentDescription = "Adjust Spread",
+                        tint = Color.White,
+                    )
+                }
+            }
+
             if (totalPages > 1) {
                 // Wrap in the appropriate layout direction so Material3 Slider mirrors
                 // itself: thumb and filled-track start from the right edge in RTL mode.

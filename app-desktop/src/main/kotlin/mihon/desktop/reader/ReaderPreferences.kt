@@ -31,8 +31,17 @@ class ReaderPreferences {
             prefs.flush()
         }
 
+    /** Whether automatic edge-pixel spread matching is enabled. */
+    var isAutoSpreadMatching: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_SPREAD, false)
+        set(value) {
+            prefs.putBoolean(KEY_AUTO_SPREAD, value)
+            prefs.flush()
+        }
+
     private companion object {
         const val KEY_READING_MODE = "readingMode"
         const val KEY_DUAL_PAGE = "isDualPage"
+        const val KEY_AUTO_SPREAD = "autoSpreadMatching"
     }
 }

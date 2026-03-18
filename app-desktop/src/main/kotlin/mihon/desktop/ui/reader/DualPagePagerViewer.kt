@@ -26,57 +26,23 @@ import mihon.desktop.reader.ZoomState
  * Dual-page spread pager.  Shows two manga pages side-by-side per pager slot,
  * with the cover page (index 0) always displayed alone.
  *
- * ──────────────────────────────────────────────────────────
- * Layout
- * ──────────────────────────────────────────────────────────
- * Pager slot 0 → [ page 0 ]             (cover — always solo)
- * Pager slot 1 → [ page 1 | page 2 ]    (first spread)
- * Pager slot 2 → [ page 3 | page 4 ]
- * …
+ * Three mechanisms control page grouping (highest priority first):
+ * 1. **Forced singles** ([forcedSinglePages]) — user manually forced via "Adjust Spread" button
+ * 2. **Spread detection** (width > height) — detected by [ZoomablePageBox] after Coil decode
+ * 3. **Matched pairs** ([matchedPairs]) — detected by edge-pixel scanning
+ * 4. **Default** — sequential pairing [1,2], [3,4], etc.
  *
- * Landscape images (width > height) are treated as "double-page spread" scans
- * and shown alone in their own slot via [DualPageState.spreadPages].
- *
- * ──────────────────────────────────────────────────────────
- * Spread detection
- * ──────────────────────────────────────────────────────────
- * Each [ZoomablePageBox] reports back once Coil has decoded the image
- * dimensions.  If width > height the page index is added to [spreadPages].
- * Adding a spread index rebuilds [DualPageState] and re-keys the pager, so the
- * correct grouping is reflected immediately.  The new [initialGroupIndex] is
- * computed from the *updated* [DualPageState] so the pager lands on the same
- * logical page after recreation.
- *
- * ──────────────────────────────────────────────────────────
- * RTL design note
- * ──────────────────────────────────────────────────────────
- * RTL is handled entirely by [LocalLayoutDirection] — no URL reversal and no
- * inverted index math.  [Alignment.CenterEnd] / [Alignment.CenterStart] are
- * layout-direction-aware, so the spine alignment is automatically correct for
- * both LTR and RTL without extra logic.
- *
- * ──────────────────────────────────────────────────────────
- * Android migration guide
- * ──────────────────────────────────────────────────────────
- * All dependencies are either Compose Multiplatform APIs or pure-Kotlin classes:
- *  • [DualPageState]   — pure Kotlin, no Android dependency (copy as-is)
- *  • [ZoomablePageBox] — Compose Multiplatform (copy as-is)
- *  • [ZoomState]       — pure Kotlin data class (copy as-is)
- *  • [HorizontalPager] — `androidx.compose.foundation.pager` (same on Android)
- *
- * Steps to migrate:
- *  1. Copy [DualPageState] to the Android shared/domain layer.
- *  2. Copy [ZoomablePageBox] to the Android reader package.
- *  3. Copy this file to the Android reader package; adjust the package declaration.
- *  4. Replace any desktop-only DI or preference calls that live *above* this
- *     composable (they are all in [DesktopReaderScreen], not here).
- *
- * @param pageUrls      Ordered list of page image URLs in logical reading order.
- * @param currentPage   Currently-visible page index (logical, 0-based).
- * @param isRtl         When true, the pager renders right-to-left.
- * @param zoomState     Zoom/pan state shared across all pages in a group.
- * @param onPageChange  Called with the first logical page of the visible group.
- * @param onZoomChange  Called when the user changes the zoom/pan state.
+ * @param pageUrls            Ordered list of page image URLs in logical reading order.
+ * @param currentPage         Currently-visible page index (logical, 0-based).
+ * @param isRtl               When true, the pager renders right-to-left.
+ * @param zoomState           Zoom/pan state shared across all pages in a group.
+ * @param forcedSinglePages   Pages manually forced to display alone (from "Adjust Spread" button).
+ * @param matchedPairs        Page pairs detected by edge-pixel matching.
+ * @param onPageChange        Called with the first logical page of the visible group.
+ * @param onZoomChange        Called when the user changes the zoom/pan state.
+ * @param onSpreadPagesChanged Called when the set of detected spread pages changes,
+ *                             so the parent can maintain a consistent DualPageState
+ *                             for keyboard navigation.
  */
 @Composable
 internal fun DualPagePagerViewer(
@@ -84,16 +50,25 @@ internal fun DualPagePagerViewer(
     currentPage: Int,
     isRtl: Boolean,
     zoomState: ZoomState,
+    forcedSinglePages: Set<Int> = emptySet(),
+    matchedPairs: Set<Pair<Int, Int>> = emptySet(),
     onPageChange: (Int) -> Unit,
     onZoomChange: (ZoomState) -> Unit,
+    onSpreadPagesChanged: ((Set<Int>) -> Unit)? = null,
 ) {
     // Accumulates page indices whose decoded image is wider than tall (spread scans).
     // Reset to empty whenever the chapter changes (new pageUrls reference).
     var spreadPages by remember(pageUrls) { mutableStateOf(emptySet<Int>()) }
 
-    // Rebuild the group structure whenever new spreads are discovered.
-    val dualState = remember(pageUrls.size, spreadPages) {
-        DualPageState(pageUrls.size, spreadPages)
+    // Notify parent whenever spread detection changes, so keyboard navigation
+    // can build the same DualPageState as the viewer.
+    LaunchedEffect(spreadPages) {
+        onSpreadPagesChanged?.invoke(spreadPages)
+    }
+
+    // Rebuild the group structure whenever any input changes.
+    val dualState = remember(pageUrls.size, spreadPages, forcedSinglePages, matchedPairs) {
+        DualPageState(pageUrls.size, spreadPages, forcedSinglePages, matchedPairs)
     }
 
     // Map the current logical page to a group index using the latest grouping.
@@ -101,10 +76,10 @@ internal fun DualPagePagerViewer(
     val initialGroupIndex = dualState.groupIndexForPage(safeCurrentPage)
         .coerceIn(0, (dualState.groupCount - 1).coerceAtLeast(0))
 
-    // Re-create the pager whenever spread detection changes the group layout.
+    // Re-create the pager whenever the group layout changes.
     // initialGroupIndex is recomputed above with the NEW dualState, so the pager
     // opens at the correct position even after a spread page is discovered.
-    key(spreadPages) {
+    key(spreadPages, forcedSinglePages, matchedPairs) {
         val pagerState = rememberPagerState(
             initialPage = initialGroupIndex,
             pageCount = { dualState.groupCount },
@@ -148,12 +123,6 @@ internal fun DualPagePagerViewer(
                     )
                 } else {
                     // Two-page spread — pages are glued at the centre spine with no gap.
-                    //
-                    // group[0] = "first" page in reading order (left in LTR, right in RTL).
-                    // CenterEnd / CenterStart are layout-direction-aware:
-                    //   LTR: group[0] → CenterEnd  (sticks to right/spine)
-                    //        group[1] → CenterStart (sticks to left/spine)
-                    //   RTL: automatically swapped by LocalLayoutDirection — no extra logic.
                     Row(
                         modifier = Modifier.fillMaxSize(),
                         horizontalArrangement = Arrangement.spacedBy(0.dp),

@@ -37,9 +37,11 @@ import mihon.desktop.reader.ZoomState
 fun ReaderSettingsPanel(
     currentMode: ReadingMode,
     isDualPage: Boolean,
+    isAutoSpreadMatching: Boolean,
     zoomState: ZoomState,
     onModeChange: (ReadingMode) -> Unit,
     onDualPageChange: (Boolean) -> Unit,
+    onAutoSpreadMatchingChange: (Boolean) -> Unit,
     onZoomChange: (ZoomState) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -89,6 +91,26 @@ fun ReaderSettingsPanel(
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(start = 4.dp),
                         )
+                    }
+
+                    // Auto spread matching — only enabled when dual page is on
+                    if (isDualPage) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 24.dp), // indent under dual-page toggle
+                        ) {
+                            Checkbox(
+                                checked = isAutoSpreadMatching,
+                                onCheckedChange = onAutoSpreadMatchingChange,
+                            )
+                            Text(
+                                text = "Auto Spread Matching",
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(start = 4.dp),
+                            )
+                        }
                     }
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                 }

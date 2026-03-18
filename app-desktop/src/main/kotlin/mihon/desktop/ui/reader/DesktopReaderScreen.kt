@@ -53,6 +53,7 @@ import kotlinx.coroutines.launch
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.reader.DualPageState
+import mihon.desktop.reader.EdgePixelMatcher
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.reader.ReaderKeyboardAction
@@ -112,7 +113,18 @@ data class DesktopReaderScreen(
             )
         }
         var dualPageMode by remember { mutableStateOf(readerPrefs.isDualPage) }
+        var autoSpreadMatching by remember { mutableStateOf(readerPrefs.isAutoSpreadMatching) }
         var showSettings by remember { mutableStateOf(false) }
+
+        // ── Dual-page state lifted here so keyboard handler and viewer stay in sync ──
+        // Pages forced to display alone by the user (via "Adjust Spread" button).
+        // Reset when the chapter changes.
+        var forcedSinglePages by remember(resolvedUrls) { mutableStateOf(emptySet<Int>()) }
+        // Pages detected as spread images (width > height) by ZoomablePageBox after decode.
+        // Lifted from DualPagePagerViewer so keyboard handler can use the same grouping.
+        var spreadPages by remember(resolvedUrls) { mutableStateOf(emptySet<Int>()) }
+        // Page pairs detected by edge-pixel scanning (auto spread matching).
+        var matchedPairs by remember(resolvedUrls) { mutableStateOf(emptySet<Pair<Int, Int>>()) }
 
         val latestPage by rememberUpdatedState(currentPage)
         val latestUrls by rememberUpdatedState(resolvedUrls)
@@ -120,6 +132,15 @@ data class DesktopReaderScreen(
         // Re-request keyboard focus when settings dialog closes
         LaunchedEffect(showSettings) {
             if (!showSettings) focusRequester.requestFocus()
+        }
+
+        // Async edge-pixel scan — runs when auto spread matching is toggled or the chapter changes.
+        LaunchedEffect(resolvedUrls, autoSpreadMatching, dualPageMode) {
+            matchedPairs = if (autoSpreadMatching && dualPageMode && resolvedUrls.size > 1) {
+                EdgePixelMatcher().findMatchedPairs(resolvedUrls)
+            } else {
+                emptySet()
+            }
         }
 
         // Reset zoom/pan whenever the user navigates to a different page
@@ -197,6 +218,7 @@ data class DesktopReaderScreen(
             ReaderSettingsPanel(
                 currentMode = readingMode,
                 isDualPage = dualPageMode,
+                isAutoSpreadMatching = autoSpreadMatching,
                 zoomState = zoomState,
                 onModeChange = {
                     readingMode = it
@@ -206,6 +228,12 @@ data class DesktopReaderScreen(
                 onDualPageChange = {
                     dualPageMode = it
                     readerPrefs.isDualPage = it
+                    // Clear forced singles when toggling dual page mode off
+                    if (!it) forcedSinglePages = emptySet()
+                },
+                onAutoSpreadMatchingChange = {
+                    autoSpreadMatching = it
+                    readerPrefs.isAutoSpreadMatching = it
                 },
                 onZoomChange = { zoomState = it },
                 onDismiss = { showSettings = false },
@@ -310,7 +338,7 @@ data class DesktopReaderScreen(
                             when (action) {
                                 is ReaderPageAction.GoToPage -> {
                                     val target = if (dualPageMode && resolvedUrls.isNotEmpty()) {
-                                        val ds = DualPageState(resolvedUrls.size)
+                                        val ds = DualPageState(resolvedUrls.size, spreadPages, forcedSinglePages, matchedPairs)
                                         val curGroup = ds.groupIndexForPage(
                                             currentPage.coerceIn(0, resolvedUrls.size - 1),
                                         )
@@ -373,8 +401,11 @@ data class DesktopReaderScreen(
                                 isRtl = false,
                                 isDualPage = dualPageMode,
                                 zoomState = zoomState,
+                                forcedSinglePages = forcedSinglePages,
+                                matchedPairs = matchedPairs,
                                 onPageChange = { currentPage = it },
                                 onZoomChange = { zoomState = it },
+                                onSpreadPagesChanged = { spreadPages = it },
                             )
                             ReadingMode.RTL -> ZoomablePagerViewer(
                                 pageUrls = resolvedUrls,
@@ -382,17 +413,31 @@ data class DesktopReaderScreen(
                                 isRtl = true,
                                 isDualPage = dualPageMode,
                                 zoomState = zoomState,
+                                forcedSinglePages = forcedSinglePages,
+                                matchedPairs = matchedPairs,
                                 onPageChange = { currentPage = it },
                                 onZoomChange = { zoomState = it },
+                                onSpreadPagesChanged = { spreadPages = it },
                             )
                         }
 
-                        // Chapter-end navigation hint at the bottom
+                        // Bottom bar: page counter + adjust spread button + progress slider
                         ReaderBottomBar(
                             currentPage = currentPage,
                             totalPages = resolvedUrls.size,
                             onPageChange = { currentPage = it },
                             isRtl = readingMode == ReadingMode.RTL,
+                            isDualPage = dualPageMode,
+                            onAdjustSpread = {
+                                // Force the first page of the current group to display alone,
+                                // shifting all subsequent dual-page pairings by one.
+                                if (currentPage !in forcedSinglePages) {
+                                    forcedSinglePages = forcedSinglePages + currentPage
+                                } else {
+                                    // Second press on the same page undoes the forced-single.
+                                    forcedSinglePages = forcedSinglePages - currentPage
+                                }
+                            },
                             modifier = Modifier.align(Alignment.BottomCenter),
                         )
                     }
@@ -437,8 +482,11 @@ private fun ZoomablePagerViewer(
     isRtl: Boolean,
     isDualPage: Boolean,
     zoomState: ZoomState,
+    forcedSinglePages: Set<Int> = emptySet(),
+    matchedPairs: Set<Pair<Int, Int>> = emptySet(),
     onPageChange: (Int) -> Unit,
     onZoomChange: (ZoomState) -> Unit,
+    onSpreadPagesChanged: ((Set<Int>) -> Unit)? = null,
 ) {
     if (isDualPage && pageUrls.size > 1) {
         DualPagePagerViewer(
@@ -446,8 +494,11 @@ private fun ZoomablePagerViewer(
             currentPage = currentPage,
             isRtl = isRtl,
             zoomState = zoomState,
+            forcedSinglePages = forcedSinglePages,
+            matchedPairs = matchedPairs,
             onPageChange = onPageChange,
             onZoomChange = onZoomChange,
+            onSpreadPagesChanged = onSpreadPagesChanged,
         )
     } else {
         SinglePagePagerViewer(
