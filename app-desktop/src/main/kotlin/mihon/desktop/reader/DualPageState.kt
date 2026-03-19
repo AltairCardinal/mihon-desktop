@@ -32,6 +32,17 @@ package mihon.desktop.reader
  * This class is pure Kotlin with zero platform dependencies. Copy it as-is
  * to the Android shared/domain layer.
  */
+/**
+ * Where a non-landscape single page should sit relative to reading direction.
+ * Direction-agnostic: the viewer maps LEADING/TRAILING to physical position
+ * based on its own LayoutDirection.
+ *
+ * - LEADING  = reading-start side (first child in Row — physical RIGHT in RTL, LEFT in LTR)
+ * - TRAILING = reading-end side   (second child in Row — physical LEFT in RTL, RIGHT in LTR)
+ * - CENTER   = full-width centred (landscape spread)
+ */
+enum class SinglePageSide { LEADING, TRAILING, CENTER }
+
 class DualPageState(
     val totalPages: Int,
     val spreadPages: Set<Int> = emptySet(),
@@ -65,7 +76,7 @@ class DualPageState(
             val matchedMap = matchedPairs
                 .filter { (a, b) -> a >= 0 && b >= 0 && a < totalPages && b < totalPages }
                 .associate { (a, b) -> minOf(a, b) to maxOf(a, b) }
-            groups = buildGroups(totalPages, allSingles, matchedMap)
+            groups = buildGroups(totalPages, allSingles, spreadPages, matchedMap)
             groupCount = groups.size
         }
     }
@@ -100,6 +111,19 @@ class DualPageState(
         }
     }
 
+    /**
+     * For a single-page group, returns where the page should sit:
+     * - CENTER   for landscape spreads (shown full-width)
+     * - TRAILING if there is a next group (page connects forward)
+     * - LEADING  if this is the last group (page connects backward)
+     */
+    fun singlePageSide(groupIndex: Int): SinglePageSide {
+        val group = getGroup(groupIndex)
+        if (group.size != 1) return SinglePageSide.CENTER
+        if (group[0] in spreadPages) return SinglePageSide.CENTER
+        return if (groupIndex < groupCount - 1) SinglePageSide.TRAILING else SinglePageSide.LEADING
+    }
+
     /** Returns the first logical page index for a given group. */
     fun firstPageInGroup(groupIndex: Int): Int {
         return if (groups.isEmpty()) {
@@ -110,6 +134,20 @@ class DualPageState(
     }
 
     companion object {
+        /**
+         * Counts consecutive non-single pages starting from [from].
+         * Stops at the first single page or end of chapter.
+         */
+        private fun countRunAfter(from: Int, total: Int, singles: Set<Int>): Int {
+            var count = 0
+            var j = from
+            while (j < total && j !in singles) {
+                count++
+                j++
+            }
+            return count
+        }
+
         /**
          * Builds groups dynamically with three-tier priority:
          *
@@ -124,10 +162,18 @@ class DualPageState(
          * 4. Otherwise → show alone (last page, or next page is single).
          *
          * Page 0 (cover) is always shown alone regardless of the above rules.
+         *
+         * **Smart parity reset after landscape spreads**: A landscape spread page
+         * occupies 2 physical pages in the printed book.  To keep subsequent pairing
+         * aligned, we count how many consecutive non-single pages follow the spread
+         * until the next anchor (another spread/single or end of chapter).
+         * - **Odd run** → insert a solo page after the spread to absorb the extra page.
+         * - **Even run** → pair them all directly, no reset needed.
          */
         private fun buildGroups(
             total: Int,
             singles: Set<Int>,
+            spreads: Set<Int>,
             matched: Map<Int, Int>,
         ): List<List<Int>> {
             val result = mutableListOf<List<Int>>()
@@ -140,7 +186,16 @@ class DualPageState(
                     // Priority 1: page forced/detected as single → show alone
                     i in singles -> {
                         result.add(listOf(i))
+                        val wasSpread = i in spreads
                         i++
+                        // Smart parity reset: only when the run ahead is odd.
+                        if (wasSpread && i < total && i !in singles) {
+                            val run = countRunAfter(i, total, singles)
+                            if (run % 2 == 1) {
+                                result.add(listOf(i))
+                                i++
+                            }
+                        }
                     }
                     // Priority 2: matched pair detected by edge-pixel scanning
                     matched[i] == i + 1 && i + 1 < total && (i + 1) !in singles -> {

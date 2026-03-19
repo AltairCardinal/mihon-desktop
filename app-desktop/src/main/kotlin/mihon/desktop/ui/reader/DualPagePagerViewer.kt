@@ -1,9 +1,11 @@
 package mihon.desktop.ui.reader
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
@@ -20,7 +22,9 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import mihon.desktop.reader.DualPageState
+import mihon.desktop.reader.SinglePageSide
 import mihon.desktop.reader.ZoomState
+
 
 /**
  * Dual-page spread pager.  Shows two manga pages side-by-side per pager slot,
@@ -113,14 +117,51 @@ internal fun DualPagePagerViewer(
                 val group = dualState.getGroup(groupIndex)
 
                 if (group.size == 1) {
-                    // Single-page slot: cover page, a detected spread, or the last odd page.
-                    ZoomablePageBox(
-                        url = pageUrls[group[0]],
-                        pageLabel = "Page ${group[0] + 1}",
-                        zoomState = zoomState,
-                        onZoomChange = onZoomChange,
-                        onSpreadDetected = { onSpreadDetected(group[0]) },
-                    )
+                    val pageIndex = group[0]
+                    when (dualState.singlePageSide(groupIndex)) {
+                        SinglePageSide.CENTER -> {
+                            // Landscape spread: full-width, centred.
+                            ZoomablePageBox(
+                                url = pageUrls[pageIndex],
+                                pageLabel = "Page ${pageIndex + 1}",
+                                zoomState = zoomState,
+                                onZoomChange = onZoomChange,
+                                onSpreadDetected = { onSpreadDetected(pageIndex) },
+                            )
+                        }
+                        SinglePageSide.TRAILING -> {
+                            // Page connects forward → reading-end side.
+                            // Alignment.CenterEnd is direction-aware:
+                            //   LTR → physical RIGHT,  RTL → physical LEFT.
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterEnd) {
+                                ZoomablePageBox(
+                                    url = pageUrls[pageIndex],
+                                    pageLabel = "Page ${pageIndex + 1}",
+                                    zoomState = zoomState,
+                                    onZoomChange = onZoomChange,
+                                    modifier = Modifier.fillMaxWidth(0.5f).fillMaxHeight(),
+                                    imageAlignment = Alignment.CenterStart,
+                                    onSpreadDetected = { onSpreadDetected(pageIndex) },
+                                )
+                            }
+                        }
+                        SinglePageSide.LEADING -> {
+                            // Page connects backward → reading-start side.
+                            // Alignment.CenterStart is direction-aware:
+                            //   LTR → physical LEFT,  RTL → physical RIGHT.
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+                                ZoomablePageBox(
+                                    url = pageUrls[pageIndex],
+                                    pageLabel = "Page ${pageIndex + 1}",
+                                    zoomState = zoomState,
+                                    onZoomChange = onZoomChange,
+                                    modifier = Modifier.fillMaxWidth(0.5f).fillMaxHeight(),
+                                    imageAlignment = Alignment.CenterEnd,
+                                    onSpreadDetected = { onSpreadDetected(pageIndex) },
+                                )
+                            }
+                        }
+                    }
                 } else {
                     // Two-page spread — pages are glued at the centre spine with no gap.
                     Row(

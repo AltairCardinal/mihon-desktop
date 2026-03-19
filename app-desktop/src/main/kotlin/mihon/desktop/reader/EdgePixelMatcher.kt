@@ -57,6 +57,17 @@ class EdgePixelMatcher(
     private val gutterCoverageThreshold: Double = 0.85,
 ) {
 
+    companion object {
+        /** Maximum per-channel value for a pixel to be counted as "dark". */
+        private const val DARK_THRESHOLD = 50
+
+        /**
+         * Minimum luminance variance for an edge to contain meaningful detail.
+         * Below this, the edge is considered a flat/uniform colour strip.
+         */
+        private const val MIN_EDGE_VARIANCE = 100.0
+    }
+
     enum class Side { LEFT, RIGHT }
 
     /**
@@ -80,7 +91,7 @@ class EdgePixelMatcher(
                     if (imgA != null && imgB != null) {
                         // Landscape images are full-spread pages already handled by spreadPages;
                         // they cannot be halves of a scan spread — skip to avoid false positives.
-                        if (imgA.width >= imgA.height || imgB.width >= imgB.height) {
+                        if (imgA.width > imgA.height || imgB.width > imgB.height) {
                             i++
                             continue
                         }
@@ -102,12 +113,18 @@ class EdgePixelMatcher(
      * Returns true if [imgA] and [imgB] appear to be the two halves of a
      * single double-page spread.
      *
-     * Either signal is sufficient:
-     * - Colour continuity with actual content ([hasContentEdgeMatch])
-     * - Both inner edges are a white gutter ([isWhiteGutterPair])
+     * Only **colour continuity with actual content** is used ([hasContentEdgeMatch]).
+     *
+     * White-gutter detection ([isWhiteGutterPair]) was removed because it cannot
+     * distinguish between "one spread image split into two halves" and "two
+     * independent pages that both have binding-side whitespace" — the latter is
+     * the normal case for virtually every adjacent pair in scanned manga, causing
+     * pervasive false positives.  Verified with Chainsaw Man Vol.1 Ch.1 pages
+     * 4–5 (0-indexed) where both pages have asymmetric white binding edges yet
+     * are clearly two separate story pages.
      */
     internal fun isSpreadPair(imgA: BufferedImage, imgB: BufferedImage): Boolean =
-        isWhiteGutterPair(imgA, imgB) || hasContentEdgeMatch(imgA, imgB)
+        hasContentEdgeMatch(imgA, imgB)
 
     /**
      * Returns true if the inner edges of two pages share continuous artwork
@@ -122,24 +139,42 @@ class EdgePixelMatcher(
         // Orientation 1: A is left page → check A.right vs B.left
         val aRight = sampleEdge(imgA, Side.RIGHT, samplePoints)
         val bLeft  = sampleEdge(imgB, Side.LEFT,  samplePoints)
-        if (computeEdgeDistance(aRight, bLeft) < threshold &&
-            !(isEdgeBright(aRight) && isEdgeBright(bLeft))
-        ) return true
+        if (hasContentContinuity(aRight, bLeft)) return true
 
         // Orientation 2: A is right page → check A.left vs B.right
         val aLeft  = sampleEdge(imgA, Side.LEFT,  samplePoints)
         val bRight = sampleEdge(imgB, Side.RIGHT, samplePoints)
-        if (computeEdgeDistance(aLeft, bRight) < threshold &&
-            !(isEdgeBright(aLeft) && isEdgeBright(bRight))
-        ) return true
+        if (hasContentContinuity(aLeft, bRight)) return true
 
         return false
     }
 
     /**
+     * Returns true if two edge columns show meaningful content continuity.
+     *
+     * Three guards prevent false positives from uniform edge colours:
+     * 1. **Bright guard** — both edges are predominantly white (page margins)
+     * 2. **Dark guard** — both edges are predominantly dark (manga ink)
+     * 3. **Variance guard** — both edges are flat/uniform (no actual detail)
+     *
+     * Only when all guards pass AND the colour distance is below [threshold]
+     * do we consider the edges to have genuine artwork continuity.
+     */
+    private fun hasContentContinuity(edgeA: IntArray, edgeB: IntArray): Boolean {
+        if (computeEdgeDistance(edgeA, edgeB) >= threshold) return false
+        // Guard 1: white ≈ white is meaningless
+        if (isEdgeBright(edgeA) && isEdgeBright(edgeB)) return false
+        // Guard 2: dark ≈ dark is meaningless
+        if (isEdgeDark(edgeA) && isEdgeDark(edgeB)) return false
+        // Guard 3: uniform ≈ uniform is meaningless (no content detail)
+        if (pixelVariance(edgeA) < MIN_EDGE_VARIANCE &&
+            pixelVariance(edgeB) < MIN_EDGE_VARIANCE
+        ) return false
+        return true
+    }
+
+    /**
      * Returns true if the majority (≥ 80%) of pixels in [pixels] are bright/white.
-     * Used to reject meaningless colour-continuity matches caused by white page
-     * margins on both edges.
      */
     private fun isEdgeBright(pixels: IntArray): Boolean {
         if (pixels.isEmpty()) return false
@@ -151,6 +186,43 @@ class EdgePixelMatcher(
             if (minOf(r, g, b) > gutterBrightnessThreshold) bright++
         }
         return bright.toDouble() / pixels.size >= 0.80
+    }
+
+    /**
+     * Returns true if the majority (≥ 80%) of pixels in [pixels] are dark.
+     * Mirrors [isEdgeBright] for the opposite end of the spectrum.
+     */
+    private fun isEdgeDark(pixels: IntArray): Boolean {
+        if (pixels.isEmpty()) return false
+        var dark = 0
+        for (p in pixels) {
+            val r = (p shr 16) and 0xFF
+            val g = (p shr 8) and 0xFF
+            val b = p and 0xFF
+            if (maxOf(r, g, b) < DARK_THRESHOLD) dark++
+        }
+        return dark.toDouble() / pixels.size >= 0.80
+    }
+
+    /**
+     * Computes the luminance variance of a pixel array.
+     * High variance indicates detailed content; low variance indicates
+     * a uniform colour strip (white margin, dark ink, solid background).
+     */
+    private fun pixelVariance(pixels: IntArray): Double {
+        if (pixels.isEmpty()) return 0.0
+        var sum = 0.0
+        var sumSq = 0.0
+        for (p in pixels) {
+            val r = (p shr 16) and 0xFF
+            val g = (p shr 8) and 0xFF
+            val b = p and 0xFF
+            val lum = 0.299 * r + 0.587 * g + 0.114 * b
+            sum += lum
+            sumSq += lum * lum
+        }
+        val mean = sum / pixels.size
+        return sumSq / pixels.size - mean * mean
     }
 
     /**

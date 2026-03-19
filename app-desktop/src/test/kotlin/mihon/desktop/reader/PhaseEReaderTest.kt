@@ -121,7 +121,9 @@ class PhaseEReaderTest {
 
     @Test
     fun `spreadPages and forcedSinglePages merge correctly`() {
-        // 8 pages, spread={2}, forced={5}: [0], [1], [2], [3,4], [5], [6,7]
+        // 8 pages, spread={2}, forced={5}:
+        // After spread page 2, run ahead = pages 3,4 (until forced-single 5) = 2 = even → no reset.
+        // [0], [1], [2], [3,4], [5], [6,7]
         val state = DualPageState(
             totalPages = 8,
             spreadPages = setOf(2),
@@ -129,10 +131,10 @@ class PhaseEReaderTest {
         )
         assertEquals(6, state.groupCount)
         assertEquals(listOf(0), state.getGroup(0))
-        assertEquals(listOf(1), state.getGroup(1))   // alone because next is spread
-        assertEquals(listOf(2), state.getGroup(2))    // spread
-        assertEquals(listOf(3, 4), state.getGroup(3))
-        assertEquals(listOf(5), state.getGroup(4))    // forced single
+        assertEquals(listOf(1), state.getGroup(1))     // alone because next is spread
+        assertEquals(listOf(2), state.getGroup(2))      // spread
+        assertEquals(listOf(3, 4), state.getGroup(3))   // even run → no reset, pair normally
+        assertEquals(listOf(5), state.getGroup(4))       // forced single
         assertEquals(listOf(6, 7), state.getGroup(5))
     }
 
@@ -179,7 +181,8 @@ class PhaseEReaderTest {
     @Test
     fun `matchedPairs second page in singles prevents pairing`() {
         // matchedPair (3,4) but page 4 is a spread → pair broken.
-        // 8 pages: [0], [1,2], [3], [4], [5,6], [7]
+        // After spread page 4, run ahead = pages 5,6,7 = 3 = odd → parity reset.
+        // 8 pages: [0], [1,2], [3], [4], [5], [6,7]
         val state = DualPageState(
             totalPages = 8,
             spreadPages = setOf(4),
@@ -188,6 +191,8 @@ class PhaseEReaderTest {
         assertEquals(6, state.groupCount)
         assertEquals(listOf(3), state.getGroup(2))    // alone (next page is single)
         assertEquals(listOf(4), state.getGroup(3))    // spread, shown alone
+        assertEquals(listOf(5), state.getGroup(4))    // parity reset (odd run=3)
+        assertEquals(listOf(6, 7), state.getGroup(5)) // normal pair
     }
 
     @Test
@@ -212,7 +217,9 @@ class PhaseEReaderTest {
 
     @Test
     fun `matchedPair guard does not affect default pairing when no reservation needed`() {
-        // 7 pages, spreadPages={3}, no matchedPairs → default: [0],[1,2],[3],[4,5],[6]
+        // 7 pages, spreadPages={3}, no matchedPairs:
+        // After spread 3, run = pages 4,5,6 = 3 = odd → parity reset page 4.
+        // [0],[1,2],[3],[4],[5,6]
         val state = DualPageState(
             totalPages = 7,
             spreadPages = setOf(3),
@@ -220,9 +227,120 @@ class PhaseEReaderTest {
         assertEquals(5, state.groupCount)
         assertEquals(listOf(0), state.getGroup(0))
         assertEquals(listOf(1, 2), state.getGroup(1))
-        assertEquals(listOf(3), state.getGroup(2))
-        assertEquals(listOf(4, 5), state.getGroup(3)) // default pair, no reservation
-        assertEquals(listOf(6), state.getGroup(4))
+        assertEquals(listOf(3), state.getGroup(2))     // spread
+        assertEquals(listOf(4), state.getGroup(3))      // parity reset (odd run=3)
+        assertEquals(listOf(5, 6), state.getGroup(4))
+    }
+
+    @Test
+    fun `smart parity reset - Chainsaw Man scenario`() {
+        // 10 pages, spreads={1,3}:
+        // After spread 1, run=1 (page 2, until spread 3) = odd → reset page 2.
+        // After spread 3, run=6 (pages 4..9) = even → NO reset, pair normally.
+        // [0],[1],[2],[3],[4,5],[6,7],[8,9]
+        val state = DualPageState(
+            totalPages = 10,
+            spreadPages = setOf(1, 3),
+        )
+        assertEquals(7, state.groupCount)
+        assertEquals(listOf(0), state.getGroup(0))    // cover
+        assertEquals(listOf(1), state.getGroup(1))    // spread
+        assertEquals(listOf(2), state.getGroup(2))    // parity reset (odd run=1)
+        assertEquals(listOf(3), state.getGroup(3))    // spread
+        assertEquals(listOf(4, 5), state.getGroup(4)) // even run=6 → no reset, pair
+        assertEquals(listOf(6, 7), state.getGroup(5))
+        assertEquals(listOf(8, 9), state.getGroup(6))
+    }
+
+    @Test
+    fun `smart parity reset - even run between two spreads`() {
+        // 9 pages, spreads={3,6}: pages between spreads = {4,5} = 2 = even → no reset
+        // [0],[1,2],[3],[4,5],[6],[7,8]
+        val state = DualPageState(
+            totalPages = 9,
+            spreadPages = setOf(3, 6),
+        )
+        assertEquals(6, state.groupCount)
+        assertEquals(listOf(0), state.getGroup(0))
+        assertEquals(listOf(1, 2), state.getGroup(1))
+        assertEquals(listOf(3), state.getGroup(2))    // spread
+        assertEquals(listOf(4, 5), state.getGroup(3)) // even run → pair
+        assertEquals(listOf(6), state.getGroup(4))    // spread
+        assertEquals(listOf(7, 8), state.getGroup(5)) // even run → pair
+    }
+
+    @Test
+    fun `smart parity reset - odd run after spread`() {
+        // 8 pages, spreads={3}: pages after spread = {4,5,6,7} = 4 = even → no reset
+        // [0],[1,2],[3],[4,5],[6,7]
+        val state = DualPageState(
+            totalPages = 8,
+            spreadPages = setOf(3),
+        )
+        assertEquals(5, state.groupCount)
+        assertEquals(listOf(0), state.getGroup(0))
+        assertEquals(listOf(1, 2), state.getGroup(1))
+        assertEquals(listOf(3), state.getGroup(2))    // spread
+        assertEquals(listOf(4, 5), state.getGroup(3)) // even run=4 → no reset
+        assertEquals(listOf(6, 7), state.getGroup(4))
+    }
+
+    @Test
+    fun `parity reset does not apply to forcedSinglePages`() {
+        // forcedSinglePages do not represent physical double-page spreads,
+        // so the next page should NOT be forced alone.
+        // 7 pages, forced={2}: [0],[1],[2],[3,4],[5,6]
+        // Page 1 alone because next (2) is forced single.
+        // Page 2 forced single — no parity reset.
+        // Pages 3,4 pair; 5,6 pair.
+        val state = DualPageState(
+            totalPages = 7,
+            forcedSinglePages = setOf(2),
+        )
+        assertEquals(5, state.groupCount)
+        assertEquals(listOf(0), state.getGroup(0))
+        assertEquals(listOf(1), state.getGroup(1))     // alone because next is forced single
+        assertEquals(listOf(2), state.getGroup(2))      // forced single, NO parity reset
+        assertEquals(listOf(3, 4), state.getGroup(3))
+        assertEquals(listOf(5, 6), state.getGroup(4))
+    }
+
+    // ── 2d. DualPageState — singlePageSide ──────────────────────────────────
+
+    @Test
+    fun `singlePageSide - cover page is TRAILING (connects forward)`() {
+        val state = DualPageState(totalPages = 6)
+        assertEquals(SinglePageSide.TRAILING, state.singlePageSide(0))
+    }
+
+    @Test
+    fun `singlePageSide - landscape spread is CENTER`() {
+        val state = DualPageState(totalPages = 6, spreadPages = setOf(3))
+        val spreadGroupIndex = state.groupIndexForPage(3)
+        assertEquals(SinglePageSide.CENTER, state.singlePageSide(spreadGroupIndex))
+    }
+
+    @Test
+    fun `singlePageSide - parity reset page after spread is TRAILING`() {
+        // 7 pages, spread={3}, run=3 (odd) → parity reset page 4
+        // [0],[1,2],[3],[4],[5,6]  — page 4 has a next group → TRAILING
+        val state = DualPageState(totalPages = 7, spreadPages = setOf(3))
+        val resetGroupIndex = state.groupIndexForPage(4)
+        assertEquals(SinglePageSide.TRAILING, state.singlePageSide(resetGroupIndex))
+    }
+
+    @Test
+    fun `singlePageSide - last single page is LEADING (connects backward)`() {
+        // 6 pages: [0],[1,2],[3,4],[5] — page 5 is last group → LEADING
+        val state = DualPageState(totalPages = 6)
+        assertEquals(SinglePageSide.LEADING, state.singlePageSide(state.groupCount - 1))
+    }
+
+    @Test
+    fun `singlePageSide - dual group returns CENTER`() {
+        // Group with 2 pages → CENTER (not applicable, but safe fallback)
+        val state = DualPageState(totalPages = 6)
+        assertEquals(SinglePageSide.CENTER, state.singlePageSide(1)) // group [1,2]
     }
 
     // ── 3. DesktopReaderScreen instantiation with isDualPage ───────────────

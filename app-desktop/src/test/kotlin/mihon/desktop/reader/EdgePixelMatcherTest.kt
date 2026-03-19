@@ -263,18 +263,35 @@ class EdgePixelMatcherTest {
 
     @Test
     fun `isSpreadPair true when edge colours match`() {
-        val pageA = imageWithRightEdge(100, 200, Color.WHITE, Color.RED)
-        val pageB = imageWithLeftEdge(100, 200, Color.WHITE, Color.RED)
+        // Create pages with matching gradient edges (enough variance to pass the guard).
+        val width = 100
+        val height = 200
+        val pageA = solidImage(width, height, Color.WHITE)
+        val pageB = solidImage(width, height, Color.WHITE)
+        val gA = pageA.createGraphics()
+        val gB = pageB.createGraphics()
+        for (y in 0 until height) {
+            val v = (y * 255 / height).coerceIn(0, 255)
+            val c = Color(v, 50, 200 - v * 200 / 255)
+            gA.color = c
+            gA.fillRect(width - 5, y, 5, 1)
+            gB.color = c
+            gB.fillRect(0, y, 5, 1)
+        }
+        gA.dispose()
+        gB.dispose()
         assertTrue(matcher.isSpreadPair(pageA, pageB))
     }
 
     @Test
-    fun `isSpreadPair true when white gutter detected even if colours differ`() {
-        // Pages have different content colours but matching white gutters — typical
-        // for cleaned-up scans where the gutter is pure white regardless of content.
-        val leftHalf = spreadHalfImage(width = 200, height = 300, whiteOnRight = true)
-        val rightHalf = spreadHalfImage(width = 200, height = 300, whiteOnRight = false)
-        assertTrue(matcher.isSpreadPair(leftHalf, rightHalf))
+    fun `isSpreadPair false for white-gutter-only pair without content continuity`() {
+        // White gutter detection was removed from isSpreadPair because it produces
+        // pervasive false positives for scanned manga (virtually every adjacent pair
+        // has white binding-side edges).  Only content continuity matters now.
+        // Use different body colours so the outer edges do NOT accidentally match.
+        val leftHalf = imageWithRightEdge(200, 300, Color(60, 60, 60), Color.WHITE, edgeWidth = 25)
+        val rightHalf = imageWithLeftEdge(200, 300, Color(150, 30, 30), Color.WHITE, edgeWidth = 25)
+        assertFalse(matcher.isSpreadPair(leftHalf, rightHalf))
     }
 
     @Test
@@ -336,6 +353,82 @@ class EdgePixelMatcherTest {
     }
 
     // ── isSpreadPair — white-margin colour-continuity guard ──────────────────
+
+    @Test
+    fun `asymmetric binding-side white edges do NOT trigger isSpreadPair`() {
+        // Simulate the Chainsaw Man Ch.1 pages 4-5 (0-indexed) scenario:
+        // Page A: white RIGHT edge (binding side), dark LEFT edge → typical left physical page
+        // Page B: white LEFT edge (binding side), dark RIGHT edge → typical right physical page
+        // These are independent story pages, not halves of one spread.
+        // Use different body colours so outer edges don't accidentally match via hasContentEdgeMatch.
+        val pageA = imageWithRightEdge(200, 300, Color(60, 60, 60), Color.WHITE, edgeWidth = 25)
+        val pageB = imageWithLeftEdge(200, 300, Color(150, 30, 30), Color.WHITE, edgeWidth = 25)
+        // isWhiteGutterPair still detects them (it's a standalone method)
+        assertTrue(matcher.isWhiteGutterPair(pageA, pageB), "Pre-condition: gutter pair detected")
+        // But isSpreadPair must NOT match because it only uses content continuity now
+        assertFalse(
+            matcher.isSpreadPair(pageA, pageB),
+            "Adjacent pages with binding-side white edges must not be paired " +
+                "(binding whitespace ≠ scan spread)",
+        )
+    }
+
+    // ── isSpreadPair — dark-edge and low-variance guards ─────────────────────
+
+    @Test
+    fun `isSpreadPair rejects two pages with uniform dark edges`() {
+        // Both pages have solid dark content — edge distance ≈ 0 but both edges
+        // are uniformly dark → dark guard rejects (dark ≈ dark is meaningless).
+        val pageA = solidImage(200, 300, Color(20, 20, 20))
+        val pageB = solidImage(200, 300, Color(20, 20, 20))
+        val score = matcher.bestEdgeScore(pageA, pageB)
+        assertTrue(score < 5.0, "Pre-condition: bestEdgeScore near 0 for uniform dark, was $score")
+        assertFalse(
+            matcher.isSpreadPair(pageA, pageB),
+            "Uniform dark edges must not be detected as spread pair (dark ≈ dark is meaningless)",
+        )
+    }
+
+    @Test
+    fun `isSpreadPair rejects two pages with low-variance uniform colour`() {
+        // Both pages have a uniform mid-grey — not bright, not dark, but zero variance.
+        // The variance guard should reject this.
+        val pageA = solidImage(200, 300, Color(128, 128, 128))
+        val pageB = solidImage(200, 300, Color(128, 128, 128))
+        val score = matcher.bestEdgeScore(pageA, pageB)
+        assertTrue(score < 5.0, "Pre-condition: bestEdgeScore near 0 for uniform grey, was $score")
+        assertFalse(
+            matcher.isSpreadPair(pageA, pageB),
+            "Uniform low-variance edges must not be detected as spread pair",
+        )
+    }
+
+    @Test
+    fun `isSpreadPair accepts pages with detailed content continuity`() {
+        // Create pages with a gradient edge that has high variance AND matches.
+        // Page A has a vertical gradient on the right edge, page B has the same on the left.
+        val width = 200
+        val height = 300
+        val pageA = solidImage(width, height, Color.WHITE)
+        val pageB = solidImage(width, height, Color.WHITE)
+        val gA = pageA.createGraphics()
+        val gB = pageB.createGraphics()
+        // Paint matching gradient strips with wide luminance range (high variance).
+        for (y in 0 until height) {
+            val intensity = (y * 255 / height).coerceIn(0, 255)
+            val c = Color(intensity, intensity / 2, 255 - intensity)
+            gA.color = c
+            gA.fillRect(width - 5, y, 5, 1) // right edge of A
+            gB.color = c
+            gB.fillRect(0, y, 5, 1) // left edge of B
+        }
+        gA.dispose()
+        gB.dispose()
+        assertTrue(
+            matcher.isSpreadPair(pageA, pageB),
+            "Pages with high-variance matching edge content should be detected as spread pair",
+        )
+    }
 
     @Test
     fun `isSpreadPair rejects white-margin pages even though bestEdgeScore is zero`() {
