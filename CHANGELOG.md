@@ -14,6 +14,56 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ### Improved
 - Rework internals for better performance ([@Lolle2000la](https://github.com/Lolle2000la)) ([#2955](https://github.com/mihonapp/mihon/pull/2955))
 
+## [desktop-0.2.0] - 2026-03-18
+Desktop 版专属版本，基于 Mihon v0.19.4。
+
+### Added
+- **自动跨页匹配（Auto Spread Matching）**：设置面板新增开关，开启后异步扫描相邻页边缘像素，自动将内容连续的两页识别为跨页对并强制配对
+  - `EdgePixelMatcher`：基于边缘像素色差均值的匹配算法，低于阈值判定为跨页
+  - 白边装订检测（`isWhiteGutterPair`）：对内侧边缘取 20 列多行采样，80% 以上纯白像素判定为扫描版装订白边，与色差信号互补触发
+- **调整跨页匹配按钮**：双页模式底部栏新增 MenuBook 图标按钮，点击后强制当前页单独显示并重新配对后续页面；再次点击撤销
+
+### Improved
+- **DualPageState 优先级体系**：三级配对优先级 — 强制单页/扫描宽页 > 边缘匹配对 > 默认顺序配对
+- **键盘导航一致性**：`spreadPages`、`forcedSinglePages`、`matchedPairs` 统一提升至 `DesktopReaderScreen` 层，键盘跳页与查看器分组始终同步
+- **阅读器组件拆分**：将 820 行的 `DesktopReaderScreen` 拆分为独立组件文件，每个文件附 Android 迁移说明
+  - `ZoomablePageBox.kt`：页面图片、缩放/平移/双击重置、跨页检测
+  - `SinglePagePagerViewer.kt`：单页翻页器，RTL 通过 `LocalLayoutDirection` 实现
+  - `DualPagePagerViewer.kt`：双页铺显示，懒惰跨页检测，`key(spreadPages)` 重建 Pager
+  - `WebtoonViewer.kt`：垂直滚动 LazyColumn
+  - `ReaderBottomBar.kt`：进度滑块，RTL 方向感知
+
+### Fixed
+- 键盘导航中 `DualPageState` 缺少 spread/forced/matched 状态导致跳页与查看器分组不一致
+- `isWhiteGutterPair` 误判对称白边为扫描跨页（双侧同为白边时应拒绝匹配）
+- `bestEdgeScore` 白边距色差=0 导致的第二条误判路径
+
+---
+
+## [desktop-0.1.0] - 2026-03-18
+Desktop 版首次发布，基于 Mihon v0.19.4。
+
+### Added
+- **多平台架构（KMP）**：将 `domain`、`data`、`core-common`、`core-metadata`、`source-api`、`presentation-core` 模块转为 Kotlin Multiplatform，提取平台无关接口至 `commonMain`，添加 JVM 实现（`JvmDatabaseHandler`、`DesktopPreferenceStore`、`DesktopStorageFolderProvider`）；Android 构建完全不受影响
+- **书库（Library）**：漫画网格展示、分类管理（创建/重命名/删除/排序）、搜索过滤、多种排序模式
+- **漫画详情**：章节列表（含已下载/已读状态）、添加/移除书库、下载单章/全部章节
+- **阅读器**：
+  - 三种模式：单页翻页（LTR/RTL）、双页铺、Webtoon 纵向滚动
+  - 缩放：Ctrl+滚轮、触控板双指捏合、Ctrl+=/- 快捷键；双击重置
+  - 键盘导航：方向键、Home/End、数字键跳页、PgUp/PgDn
+  - 横版跨页检测：图片宽>高时自动全宽显示（双页模式）
+  - 阅读进度持久化，重新打开章节时恢复位置
+  - 章节间导航（上/下一章）
+  - 底部进度条（RTL 模式下填充方向正确）
+  - 阅读模式与双页偏好持久化
+- **下载管理器**：下载队列 UI、暂停/继续/取消、`_tmp` 目录生命周期管理、错误处理与重试
+- **浏览与搜索**：内置 MangaDex 源、扩展加载（`~/.mihon/extensions/*.jar`）、源列表、热门/最新/搜索
+- **更新标签页**：库内漫画更新检查，批量下载新章节
+- **历史标签页**：阅读历史记录
+- **设置**：外观（主题）、书库、阅读器（默认模式/RTL/双页）、关于
+
+---
+
 ## [desktop-0.3.0] - 2026-03-19
 Desktop 版专属版本，基于 Mihon v0.19.4。
 
