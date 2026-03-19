@@ -14,6 +14,32 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ### Improved
 - Rework internals for better performance ([@Lolle2000la](https://github.com/Lolle2000la)) ([#2955](https://github.com/mihonapp/mihon/pull/2955))
 
+## [desktop-0.3.0] - 2026-03-19
+Desktop 版专属版本，基于 Mihon v0.19.4。
+
+### Added
+- **双页模式单页智能定位**：封面页、跨页后奇偶重置页不再居中，而是根据阅读方向放置于正确侧
+  - RTL（从右到左）：单页显示在左半屏，与后续双页右侧连续
+  - LTR（从左到右）：单页显示在右半屏，与后续双页左侧连续
+  - 末尾孤页显示在阅读起始侧，与前一页连续
+  - 实现完全与 RTL/LTR 方向解耦，使用 `Alignment.CenterEnd/CenterStart` 自动适配方向
+
+### Improved
+- **跨页边缘匹配三重守卫算法**（`EdgePixelMatcher`）：大幅减少假阳性配对
+  - 新增暗边守卫：双侧超过 80% 像素为纯黑（max channel < 50）时拒绝匹配，消除黑边误判
+  - 新增低方差守卫：双侧边缘亮度方差 < 100 时拒绝匹配，消除纯色边误判
+  - 修复方形图误判：`width > height`（严格大于）替换 `>=`，800×800 等正方形封面不再被识别为跨页
+- **智能奇偶重置**（`DualPageState`）：跨页后不再无条件插入落单页
+  - 统计跨页后连续普通页数量：奇数才插入重置页，偶数直接配对
+  - 修复两个跨页之间偶数页组被错误落单的问题（如 Chainsaw Man Ch.1 pages 45+46, 48–53）
+
+### Fixed
+- pages 10+11 被错误配对，导致 page 10 单独显示
+- 方形封面（800×800）被误判为横版跨页
+- 两个横版跨页之间的普通页组被错误分割为单页
+- 单页在 RTL 模式下显示在错误的一侧（右侧而非左侧）
+- 部署时旧版 JAR 残留导致新代码不生效（部署脚本改为先 `rm -rf` 再 `cp -a`）
+
 ## [v0.19.4] - 2026-02-25
 ### Added
 - Automatically remove downloads on Suwayomi after reading, configurable via extension settings ([@cpiber](https://github.com/cpiber)) ([#2673](https://github.com/mihonapp/mihon/pull/2673))
