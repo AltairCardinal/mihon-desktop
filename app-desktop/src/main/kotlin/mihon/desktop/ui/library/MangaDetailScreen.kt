@@ -16,15 +16,23 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DownloadDone
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -59,11 +67,19 @@ import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.reader.ReaderNavigator
 import mihon.desktop.ui.reader.DesktopReaderScreen
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.chapter.model.ChapterUpdate
+import tachiyomi.domain.chapter.repository.ChapterRepository
+import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.SManga
 import tachiyomi.domain.manga.interactor.GetMangaWithChapters
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.model.MangaUpdate
+import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.awt.Desktop
+import java.net.URI
 
 data class MangaDetailScreen(val mangaId: Long) : Screen {
 
@@ -76,17 +92,55 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         val progressTracker = remember { Injekt.get<ReaderProgressTracker>() }
         val downloadManager = remember { Injekt.get<DesktopDownloadManager>() }
         val updateChecker = remember { Injekt.get<LibraryUpdateChecker>() }
+        val chapterRepository = remember { Injekt.get<ChapterRepository>() }
+        val mangaRepository = remember { Injekt.get<MangaRepository>() }
+        val scope = rememberCoroutineScope()
+
         var manga by remember { mutableStateOf<Manga?>(null) }
         var chapters by remember { mutableStateOf<List<Chapter>>(emptyList()) }
-        val scope = rememberCoroutineScope()
         var isUpdating by remember { mutableStateOf(false) }
         var deleteConfirmChapter by remember { mutableStateOf<Chapter?>(null) }
+        var markAllReadConfirm by remember { mutableStateOf(false) }
+
+        // Migration state
+        var showMigrateSourcePicker by remember { mutableStateOf(false) }
+        var migrateSearchResults by remember { mutableStateOf<List<SManga>?>(null) }
+        var migrateTargetSourceId by remember { mutableStateOf<Long?>(null) }
+        var migrateSearching by remember { mutableStateOf(false) }
+        var migrateConfirmItem by remember { mutableStateOf<SManga?>(null) }
+
+        // Chapter filter/sort state
+        var showFilterMenu by remember { mutableStateOf(false) }
+        var filterShowRead by remember { mutableStateOf(true) }
+        var filterShowUnread by remember { mutableStateOf(true) }
+        var filterShowBookmarked by remember { mutableStateOf(false) }
+        var chapterSortMode by remember { mutableStateOf(ChapterSortMode.BY_SOURCE_ORDER) }
+        var chapterSortAscending by remember { mutableStateOf(false) }
 
         LaunchedEffect(mangaId) {
             getMangaWithChapters.subscribe(mangaId).collect { (m, ch) ->
                 manga = m
-                chapters = ch.sortedByDescending { it.sourceOrder }
+                chapters = ch
             }
+        }
+
+        // Apply chapter filter + sort
+        val displayedChapters = remember(
+            chapters, filterShowRead, filterShowUnread, filterShowBookmarked,
+            chapterSortMode, chapterSortAscending,
+        ) {
+            val filtered = chapters.filter { ch ->
+                val readOk = (filterShowRead && ch.read) || (filterShowUnread && !ch.read)
+                val bookmarkOk = if (filterShowBookmarked) ch.bookmark else true
+                readOk && bookmarkOk
+            }
+            val comparator: Comparator<Chapter> = when (chapterSortMode) {
+                ChapterSortMode.BY_SOURCE_ORDER -> compareBy { it.sourceOrder }
+                ChapterSortMode.BY_CHAPTER_NUMBER -> compareBy { it.chapterNumber }
+                ChapterSortMode.BY_DATE_UPLOAD -> compareBy { it.dateUpload }
+            }
+            if (chapterSortAscending) filtered.sortedWith(comparator)
+            else filtered.sortedWith(comparator.reversed())
         }
 
         Scaffold(
@@ -99,6 +153,84 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         }
                     },
                     actions = {
+                        // Open in browser + Copy link
+                        manga?.let { m ->
+                            val source = sourceManager.getCatalogueSources().find { it.id == m.source }
+                            if (source is eu.kanade.tachiyomi.source.online.HttpSource) {
+                                val mangaUrl = source.getMangaUrl(
+                                    eu.kanade.tachiyomi.source.model.SManga.create().apply { url = m.url },
+                                )
+                                IconButton(onClick = {
+                                    try { Desktop.getDesktop().browse(URI(mangaUrl)) } catch (_: Exception) { }
+                                }) {
+                                    Icon(Icons.Default.OpenInBrowser, contentDescription = "Open in browser")
+                                }
+                                IconButton(onClick = {
+                                    try {
+                                        val sel = java.awt.datatransfer.StringSelection(mangaUrl)
+                                        java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(sel, sel)
+                                    } catch (_: Exception) { }
+                                }) {
+                                    Icon(Icons.Default.Link, contentDescription = "Copy link")
+                                }
+                            }
+                        }
+
+                        // Mark all as read
+                        TextButton(onClick = { markAllReadConfirm = true }) { Text("Mark all read") }
+
+                        // Chapter filter/sort
+                        Box {
+                            IconButton(onClick = { showFilterMenu = true }) {
+                                Icon(Icons.Default.FilterList, contentDescription = "Filter chapters")
+                            }
+                            DropdownMenu(expanded = showFilterMenu, onDismissRequest = { showFilterMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("── Filter ──") },
+                                    onClick = {},
+                                    enabled = false,
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(if (filterShowRead) "✓ Show Read" else "  Show Read") },
+                                    onClick = { filterShowRead = !filterShowRead },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(if (filterShowUnread) "✓ Show Unread" else "  Show Unread") },
+                                    onClick = { filterShowUnread = !filterShowUnread },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(if (filterShowBookmarked) "✓ Bookmarked only" else "  Bookmarked only") },
+                                    onClick = { filterShowBookmarked = !filterShowBookmarked },
+                                )
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text("── Sort ──") },
+                                    onClick = {},
+                                    enabled = false,
+                                )
+                                ChapterSortMode.entries.forEach { mode ->
+                                    val label = when (mode) {
+                                        ChapterSortMode.BY_SOURCE_ORDER -> "Source order"
+                                        ChapterSortMode.BY_CHAPTER_NUMBER -> "Chapter number"
+                                        ChapterSortMode.BY_DATE_UPLOAD -> "Upload date"
+                                    }
+                                    val arrow = if (mode == chapterSortMode) (if (chapterSortAscending) " ↑" else " ↓") else ""
+                                    DropdownMenuItem(
+                                        text = { Text("$label$arrow") },
+                                        onClick = {
+                                            if (mode == chapterSortMode) {
+                                                chapterSortAscending = !chapterSortAscending
+                                            } else {
+                                                chapterSortMode = mode
+                                                chapterSortAscending = false
+                                            }
+                                            showFilterMenu = false
+                                        },
+                                    )
+                                }
+                            }
+                        }
+
                         if (isUpdating) {
                             CircularProgressIndicator(
                                 modifier = Modifier.padding(horizontal = 12.dp),
@@ -118,11 +250,16 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                 Icon(Icons.Default.Refresh, contentDescription = "Check for updates")
                             }
                         }
+
+                        // Migrate to another source
+                        IconButton(onClick = { showMigrateSourcePicker = true }) {
+                            Icon(Icons.Default.SwapHoriz, contentDescription = "Migrate source")
+                        }
                     },
                 )
             },
         ) { padding ->
-            // Delete downloaded chapter confirmation dialog
+            // Delete confirmation dialog
             deleteConfirmChapter?.let { ch ->
                 AlertDialog(
                     onDismissRequest = { deleteConfirmChapter = null },
@@ -144,35 +281,183 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 )
             }
 
+            // Mark all read confirmation
+            if (markAllReadConfirm) {
+                AlertDialog(
+                    onDismissRequest = { markAllReadConfirm = false },
+                    title = { Text("Mark all as read?") },
+                    text = { Text("Mark all ${chapters.size} chapters as read?") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            scope.launch {
+                                val updates = chapters.map { ch -> ChapterUpdate(id = ch.id, read = true) }
+                                chapterRepository.updateAll(updates)
+                            }
+                            markAllReadConfirm = false
+                        }) { Text("Mark all read") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { markAllReadConfirm = false }) { Text("Cancel") }
+                    },
+                )
+            }
+
+            // ── Migration: source picker ──────────────────────────────────
+            if (showMigrateSourcePicker) {
+                val availableSources = remember {
+                    sourceManager.getCatalogueSources().filter { it.id != manga?.source }
+                }
+                AlertDialog(
+                    onDismissRequest = { showMigrateSourcePicker = false },
+                    title = { Text("Migrate to source") },
+                    text = {
+                        if (availableSources.isEmpty()) {
+                            Text("No other sources installed.")
+                        } else {
+                            LazyColumn {
+                                items(availableSources) { src ->
+                                    DropdownMenuItem(
+                                        text = { Text("${src.name} (${src.lang})") },
+                                        onClick = {
+                                            showMigrateSourcePicker = false
+                                            migrateTargetSourceId = src.id
+                                            migrateSearchResults = null
+                                            scope.launch {
+                                                migrateSearching = true
+                                                runCatching {
+                                                    val query = manga?.title ?: return@runCatching
+                                                    val results = src.getSearchManga(1, query, FilterList())
+                                                    migrateSearchResults = results.mangas
+                                                }
+                                                migrateSearching = false
+                                            }
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showMigrateSourcePicker = false }) { Text("Cancel") }
+                    },
+                )
+            }
+
+            // ── Migration: search results ─────────────────────────────────
+            val searchResults = migrateSearchResults
+            if (searchResults != null) {
+                AlertDialog(
+                    onDismissRequest = {
+                        migrateSearchResults = null
+                        migrateTargetSourceId = null
+                    },
+                    title = {
+                        if (migrateSearching) Text("Searching\u2026")
+                        else Text("Select match (${searchResults.size} results)")
+                    },
+                    text = {
+                        if (migrateSearching) {
+                            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator()
+                            }
+                        } else if (searchResults.isEmpty()) {
+                            Text("No results found. Try migrating manually.")
+                        } else {
+                            LazyColumn {
+                                items(searchResults) { result: SManga ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Text(result.title, style = MaterialTheme.typography.bodyMedium)
+                                                if (!result.author.isNullOrBlank()) {
+                                                    Text(
+                                                        result.author ?: "",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        onClick = { migrateConfirmItem = result },
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            migrateSearchResults = null
+                            migrateTargetSourceId = null
+                        }) { Text("Cancel") }
+                    },
+                )
+            }
+
+            // ── Migration: confirm ────────────────────────────────────────
+            val confirmItem = migrateConfirmItem
+            if (confirmItem != null) {
+                AlertDialog(
+                    onDismissRequest = { migrateConfirmItem = null },
+                    title = { Text("Confirm migration") },
+                    text = { Text("Migrate to \"${confirmItem.title}\"? This will update the manga URL and source.") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            val targetSourceId = migrateTargetSourceId ?: return@TextButton
+                            scope.launch {
+                                mangaRepository.update(
+                                    MangaUpdate(
+                                        id = mangaId,
+                                        source = targetSourceId,
+                                        url = confirmItem.url,
+                                        title = confirmItem.title.takeIf { it.isNotBlank() } ?: manga?.title,
+                                        thumbnailUrl = confirmItem.thumbnail_url,
+                                    ),
+                                )
+                            }
+                            migrateConfirmItem = null
+                            migrateSearchResults = null
+                            migrateTargetSourceId = null
+                        }) { Text("Migrate") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { migrateConfirmItem = null }) { Text("Cancel") }
+                    },
+                )
+            }
+
             if (manga == null) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
                 return@Scaffold
             }
+
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentPadding = PaddingValues(bottom = 16.dp),
             ) {
                 item { MangaHeader(manga = manga!!) }
                 item {
-                    Text(
-                        text = "Chapters (${chapters.size})",
-                        style = MaterialTheme.typography.titleMedium,
+                    Row(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    )
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "Chapters (${displayedChapters.size}${if (displayedChapters.size != chapters.size) "/${chapters.size}" else ""})",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                     HorizontalDivider()
                 }
-                items(chapters, key = { it.id }) { chapter ->
+                items(displayedChapters, key = { it.id }) { chapter ->
                     val chapterRefs = remember(chapters) {
-                        chapters.map { ReaderChapterRef(id = it.id, url = it.url, name = it.name) }
+                        chapters.sortedBy { it.sourceOrder }
+                            .map { ReaderChapterRef(id = it.id, url = it.url, name = it.name) }
                     }
-                    // Observe queue reactively so button updates when status changes
                     val downloadQueue by downloadManager.queue.collectAsState()
                     val queuedItem = downloadQueue.find { it.chapterId == chapter.id }
                     val downloadStatus = when {
-                        // Check queue FIRST — active downloads must take priority over disk state
-                        // (the disk may already have some pages written while still downloading)
                         queuedItem != null -> when (queuedItem.status) {
                             mihon.desktop.download.DownloadStatus.DOWNLOADING -> ChapterDownloadStatus.DOWNLOADING
                             else -> ChapterDownloadStatus.QUEUED
@@ -196,6 +481,11 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                             )
                         },
                         onDeleteDownload = { deleteConfirmChapter = chapter },
+                        onToggleBookmark = {
+                            scope.launch {
+                                chapterRepository.update(ChapterUpdate(id = chapter.id, bookmark = !chapter.bookmark))
+                            }
+                        },
                         onRead = {
                             scope.launch {
                                 val idx = ReaderNavigator.indexForId(chapterRefs, chapter.id)
@@ -274,6 +564,7 @@ private fun ChapterRow(
     downloadStatus: ChapterDownloadStatus,
     onDownload: () -> Unit,
     onDeleteDownload: () -> Unit,
+    onToggleBookmark: () -> Unit,
     onRead: () -> Unit,
 ) {
     ListItem(
@@ -289,9 +580,18 @@ private fun ChapterRow(
         },
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // Bookmark toggle
+                IconButton(onClick = onToggleBookmark) {
+                    Icon(
+                        if (chapter.bookmark) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                        contentDescription = if (chapter.bookmark) "Remove bookmark" else "Add bookmark",
+                        tint = if (chapter.bookmark) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
                 when (downloadStatus) {
                     ChapterDownloadStatus.DOWNLOADED ->
-                        // Tap the downloaded icon to delete
                         IconButton(onClick = onDeleteDownload) {
                             Icon(
                                 Icons.Default.DownloadDone,
@@ -299,19 +599,8 @@ private fun ChapterRow(
                                 tint = MaterialTheme.colorScheme.primary,
                             )
                         }
-                    // Android: both QUEUE and DOWNLOADING show CircularProgressIndicator
-                    // QUEUE → indeterminate spinner (no progress value)
-                    // DOWNLOADING → indeterminate spinner (progress tracked in download queue screen)
-                    ChapterDownloadStatus.QUEUED ->
-                        CircularProgressIndicator(
-                            modifier = Modifier.padding(8.dp),
-                            strokeWidth = 2.dp,
-                        )
-                    ChapterDownloadStatus.DOWNLOADING ->
-                        CircularProgressIndicator(
-                            modifier = Modifier.padding(8.dp),
-                            strokeWidth = 2.dp,
-                        )
+                    ChapterDownloadStatus.QUEUED, ChapterDownloadStatus.DOWNLOADING ->
+                        CircularProgressIndicator(modifier = Modifier.padding(8.dp), strokeWidth = 2.dp)
                     ChapterDownloadStatus.NOT_DOWNLOADED ->
                         IconButton(onClick = onDownload) {
                             Icon(Icons.Default.CloudDownload, contentDescription = "Download")

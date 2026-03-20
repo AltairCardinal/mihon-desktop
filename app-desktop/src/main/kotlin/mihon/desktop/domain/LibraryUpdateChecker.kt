@@ -49,15 +49,18 @@ class LibraryUpdateChecker(
             )
         }
 
-        if (toAdd.isNotEmpty()) {
+        val inserted = if (toAdd.isNotEmpty()) {
             chapterRepository.addAll(toAdd)
+        } else {
+            emptyList()
         }
 
-        return UpdateResult(newChapterCount = toAdd.size)
+        return UpdateResult(newChapterCount = inserted.size, newChapters = inserted)
     }
 
     data class UpdateResult(
         val newChapterCount: Int,
+        val newChapters: List<tachiyomi.domain.chapter.model.Chapter> = emptyList(),
         val error: String? = null,
     )
 }

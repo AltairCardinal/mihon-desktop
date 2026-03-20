@@ -109,4 +109,35 @@ class LibraryUpdateCheckerTest {
         assertEquals(0L, byUrl["/ch/1"]?.sourceOrder)
         assertEquals(1L, byUrl["/ch/2"]?.sourceOrder)
     }
+
+    @Test
+    fun `result includes inserted chapter models with correct URLs`() = runBlocking<Unit> {
+        val chapterRepo = FakeChapterRepository()
+        val source = StubSource(listOf(
+            sChapter("/ch/1", "Ch 1"),
+            sChapter("/ch/2", "Ch 2"),
+        ))
+
+        val checker = LibraryUpdateChecker(chapterRepo)
+        val result = checker.checkForUpdates(manga(), source)
+
+        assertEquals(2, result.newChapters.size)
+        val urls = result.newChapters.map { it.url }.toSet()
+        assert("/ch/1" in urls) { "Expected /ch/1 in newChapters" }
+        assert("/ch/2" in urls) { "Expected /ch/2 in newChapters" }
+    }
+
+    @Test
+    fun `result newChapters is empty when no new chapters`() = runBlocking<Unit> {
+        val chapterRepo = FakeChapterRepository()
+        chapterRepo.addAll(listOf(
+            Chapter.create().copy(mangaId = 1L, url = "/ch/1", name = "Ch 1"),
+        ))
+        val source = StubSource(listOf(sChapter("/ch/1")))
+
+        val checker = LibraryUpdateChecker(chapterRepo)
+        val result = checker.checkForUpdates(manga(), source)
+
+        assertEquals(0, result.newChapters.size)
+    }
 }
