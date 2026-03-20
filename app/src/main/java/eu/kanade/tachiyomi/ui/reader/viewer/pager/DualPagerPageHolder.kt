@@ -249,14 +249,15 @@ class DualPagerPageHolder(
         // Combined height that fits both images side-by-side within screen bounds
         val combinedH = min(
             screenH.toFloat(),
-            screenW.toFloat() * h1.toFloat() * h2.toFloat() / (w1.toFloat() * h2.toFloat() + w2.toFloat() * h1.toFloat()),
+            screenW.toFloat() * h1.toFloat() * h2.toFloat() /
+                (w1.toFloat() * h2.toFloat() + w2.toFloat() * h1.toFloat()),
         )
         val dw1 = (combinedH * w1 / h1).toInt()
         val dw2 = (combinedH * w2 / h2).toInt()
-        val combinedH_i = combinedH.toInt()
+        val combinedHi = combinedH.toInt()
 
         // Centre the combined pair vertically
-        val topPad = ((screenH - combinedH_i) / 2).coerceAtLeast(0)
+        val topPad = ((screenH - combinedHi) / 2).coerceAtLeast(0)
 
         pageContainer.setPadding(0, topPad, 0, 0)
 
@@ -265,7 +266,7 @@ class DualPagerPageHolder(
             val lp = it.layoutParams as? LinearLayout.LayoutParams
                 ?: LinearLayout.LayoutParams(0, 0)
             lp.width = dw1
-            lp.height = combinedH_i
+            lp.height = combinedHi
             it.layoutParams = lp
         }
         // Left page (displayed on the left side of the container in R2L)
@@ -273,7 +274,7 @@ class DualPagerPageHolder(
             val lp = it.layoutParams as? LinearLayout.LayoutParams
                 ?: LinearLayout.LayoutParams(0, 0)
             lp.width = dw2
-            lp.height = combinedH_i
+            lp.height = combinedHi
             it.layoutParams = lp
         }
     }
@@ -392,7 +393,5 @@ class DualPagerPageHolder(
     private inner class SinglePageSubHolder(
         context: Context,
         val page: ReaderPage,
-    ) : ReaderPageImageView(context) {
-
-    }
+    ) : ReaderPageImageView(context)
 }

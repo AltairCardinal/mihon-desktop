@@ -177,15 +177,25 @@ class DualPageR2LPagerViewer(override val activity: ReaderActivity) : Viewer, Vi
         val ctrlPressed = event.metaState.and(KeyEvent.META_CTRL_ON) > 0
         when (event.keyCode) {
             KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                if (!config.volumeKeysEnabled || activity.viewModel.state.value.menuVisible) return false
-                else if (isUp) { if (!config.volumeKeysInverted) moveDown() else moveUp() }
+                if (!config.volumeKeysEnabled || activity.viewModel.state.value.menuVisible) {
+                    return false
+                } else if (isUp) {
+                    if (!config.volumeKeysInverted) moveDown() else moveUp()
+                }
             }
             KeyEvent.KEYCODE_VOLUME_UP -> {
-                if (!config.volumeKeysEnabled || activity.viewModel.state.value.menuVisible) return false
-                else if (isUp) { if (!config.volumeKeysInverted) moveUp() else moveDown() }
+                if (!config.volumeKeysEnabled || activity.viewModel.state.value.menuVisible) {
+                    return false
+                } else if (isUp) {
+                    if (!config.volumeKeysInverted) moveUp() else moveDown()
+                }
             }
-            KeyEvent.KEYCODE_DPAD_RIGHT -> if (isUp) { if (ctrlPressed) moveToNext() else moveRight() }
-            KeyEvent.KEYCODE_DPAD_LEFT -> if (isUp) { if (ctrlPressed) moveToPrevious() else moveLeft() }
+            KeyEvent.KEYCODE_DPAD_RIGHT -> if (isUp) {
+                if (ctrlPressed) moveToNext() else moveRight()
+            }
+            KeyEvent.KEYCODE_DPAD_LEFT -> if (isUp) {
+                if (ctrlPressed) moveToPrevious() else moveLeft()
+            }
             KeyEvent.KEYCODE_DPAD_DOWN -> if (isUp) moveDown()
             KeyEvent.KEYCODE_DPAD_UP -> if (isUp) moveUp()
             KeyEvent.KEYCODE_PAGE_DOWN -> if (isUp) moveDown()
@@ -200,8 +210,11 @@ class DualPageR2LPagerViewer(override val activity: ReaderActivity) : Viewer, Vi
         if (event.source and InputDevice.SOURCE_CLASS_POINTER != 0) {
             when (event.action) {
                 MotionEvent.ACTION_SCROLL -> {
-                    if (event.getAxisValue(MotionEvent.AXIS_VSCROLL) < 0.0f) moveDown()
-                    else moveUp()
+                    if (event.getAxisValue(MotionEvent.AXIS_VSCROLL) < 0.0f) {
+                        moveDown()
+                    } else {
+                        moveUp()
+                    }
                     return true
                 }
             }
