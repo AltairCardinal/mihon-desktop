@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CoroutineScope
 import mihon.desktop.reader.DualPageState
 import mihon.desktop.reader.SinglePageSide
 import mihon.desktop.reader.ZoomState
@@ -54,6 +55,10 @@ internal fun DualPagePagerViewer(
     currentPage: Int,
     isRtl: Boolean,
     zoomState: ZoomState,
+    cropBorders: Boolean = false,
+    contextMenuScope: CoroutineScope? = null,
+    mangaTitle: String = "",
+    chapterTitle: String = "",
     forcedSinglePages: Set<Int> = emptySet(),
     matchedPairs: Set<Pair<Int, Int>> = emptySet(),
     onPageChange: (Int) -> Unit,
@@ -126,6 +131,11 @@ internal fun DualPagePagerViewer(
                                 pageLabel = "Page ${pageIndex + 1}",
                                 zoomState = zoomState,
                                 onZoomChange = onZoomChange,
+                                cropBorders = cropBorders,
+                                contextMenuScope = contextMenuScope,
+                                mangaTitle = mangaTitle,
+                                chapterTitle = chapterTitle,
+                                pageIndex = pageIndex,
                                 onSpreadDetected = { onSpreadDetected(pageIndex) },
                             )
                         }
@@ -139,6 +149,11 @@ internal fun DualPagePagerViewer(
                                     pageLabel = "Page ${pageIndex + 1}",
                                     zoomState = zoomState,
                                     onZoomChange = onZoomChange,
+                                    cropBorders = cropBorders,
+                                    contextMenuScope = contextMenuScope,
+                                    mangaTitle = mangaTitle,
+                                    chapterTitle = chapterTitle,
+                                    pageIndex = pageIndex,
                                     modifier = Modifier.fillMaxWidth(0.5f).fillMaxHeight(),
                                     imageAlignment = Alignment.CenterStart,
                                     onSpreadDetected = { onSpreadDetected(pageIndex) },
@@ -155,6 +170,11 @@ internal fun DualPagePagerViewer(
                                     pageLabel = "Page ${pageIndex + 1}",
                                     zoomState = zoomState,
                                     onZoomChange = onZoomChange,
+                                    cropBorders = cropBorders,
+                                    contextMenuScope = contextMenuScope,
+                                    mangaTitle = mangaTitle,
+                                    chapterTitle = chapterTitle,
+                                    pageIndex = pageIndex,
                                     modifier = Modifier.fillMaxWidth(0.5f).fillMaxHeight(),
                                     imageAlignment = Alignment.CenterEnd,
                                     onSpreadDetected = { onSpreadDetected(pageIndex) },
@@ -173,6 +193,11 @@ internal fun DualPagePagerViewer(
                             pageLabel = "Page ${group[0] + 1}",
                             zoomState = zoomState,
                             onZoomChange = onZoomChange,
+                            cropBorders = cropBorders,
+                            contextMenuScope = contextMenuScope,
+                            mangaTitle = mangaTitle,
+                            chapterTitle = chapterTitle,
+                            pageIndex = group[0],
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight(),
@@ -184,6 +209,11 @@ internal fun DualPagePagerViewer(
                             pageLabel = "Page ${group[1] + 1}",
                             zoomState = zoomState,
                             onZoomChange = onZoomChange,
+                            cropBorders = cropBorders,
+                            contextMenuScope = contextMenuScope,
+                            mangaTitle = mangaTitle,
+                            chapterTitle = chapterTitle,
+                            pageIndex = group[1],
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight(),

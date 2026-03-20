@@ -1,5 +1,6 @@
 package mihon.desktop.ui.reader
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -54,12 +55,15 @@ import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.reader.DualPageState
 import mihon.desktop.reader.EdgePixelMatcher
+import mihon.desktop.reader.ReaderBackgroundTheme
+import mihon.desktop.reader.ReaderColorFilter
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.reader.ReaderKeyboardAction
 import mihon.desktop.reader.ReaderNavigator
 import mihon.desktop.reader.ReaderPageAction
 import mihon.desktop.reader.ReaderPreferences
+import mihon.desktop.reader.WebtoonSidePadding
 import mihon.desktop.reader.ZoomState
 import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
@@ -114,7 +118,14 @@ data class DesktopReaderScreen(
         }
         var dualPageMode by remember { mutableStateOf(readerPrefs.isDualPage) }
         var autoSpreadMatching by remember { mutableStateOf(readerPrefs.isAutoSpreadMatching) }
+        var backgroundTheme by remember { mutableStateOf(readerPrefs.backgroundTheme) }
+        var cropBordersPager by remember { mutableStateOf(readerPrefs.cropBordersPager) }
+        var cropBordersWebtoon by remember { mutableStateOf(readerPrefs.cropBordersWebtoon) }
+        var webtoonSidePadding by remember { mutableStateOf(readerPrefs.webtoonSidePadding) }
+        var colorFilter by remember { mutableStateOf(readerPrefs.loadColorFilter()) }
         var showSettings by remember { mutableStateOf(false) }
+        // Chapter transition overlay: null = hidden, true = end-of-chapter, false = start-of-chapter
+        var showTransition by remember { mutableStateOf<Boolean?>(null) }
 
         // ── Dual-page state lifted here so keyboard handler and viewer stay in sync ──
         // Pages forced to display alone by the user (via "Adjust Spread" button).
@@ -129,9 +140,9 @@ data class DesktopReaderScreen(
         val latestPage by rememberUpdatedState(currentPage)
         val latestUrls by rememberUpdatedState(resolvedUrls)
 
-        // Re-request keyboard focus when settings dialog closes
-        LaunchedEffect(showSettings) {
-            if (!showSettings) focusRequester.requestFocus()
+        // Re-request keyboard focus when settings dialog or transition overlay closes
+        LaunchedEffect(showSettings, showTransition) {
+            if (!showSettings && showTransition == null) focusRequester.requestFocus()
         }
 
         // Async edge-pixel scan — runs when auto spread matching is toggled or the chapter changes.
@@ -219,6 +230,11 @@ data class DesktopReaderScreen(
                 currentMode = readingMode,
                 isDualPage = dualPageMode,
                 isAutoSpreadMatching = autoSpreadMatching,
+                backgroundTheme = backgroundTheme,
+                cropBordersPager = cropBordersPager,
+                cropBordersWebtoon = cropBordersWebtoon,
+                webtoonSidePadding = webtoonSidePadding,
+                colorFilter = colorFilter,
                 zoomState = zoomState,
                 onModeChange = {
                     readingMode = it
@@ -235,9 +251,37 @@ data class DesktopReaderScreen(
                     autoSpreadMatching = it
                     readerPrefs.isAutoSpreadMatching = it
                 },
+                onBackgroundThemeChange = {
+                    backgroundTheme = it
+                    readerPrefs.backgroundTheme = it
+                },
+                onCropBordersPagerChange = {
+                    cropBordersPager = it
+                    readerPrefs.cropBordersPager = it
+                },
+                onCropBordersWebtoonChange = {
+                    cropBordersWebtoon = it
+                    readerPrefs.cropBordersWebtoon = it
+                },
+                onWebtoonSidePaddingChange = {
+                    webtoonSidePadding = it
+                    readerPrefs.webtoonSidePadding = it
+                },
+                onColorFilterChange = {
+                    colorFilter = it
+                    readerPrefs.saveColorFilter(it)
+                },
                 onZoomChange = { zoomState = it },
                 onDismiss = { showSettings = false },
             )
+        }
+
+        // Resolve background colour from theme setting (AUTOMATIC follows Material surface)
+        val bgColor = when (backgroundTheme) {
+            ReaderBackgroundTheme.BLACK -> Color.Black
+            ReaderBackgroundTheme.GRAY -> Color(0xFF444444)
+            ReaderBackgroundTheme.WHITE -> Color.White
+            ReaderBackgroundTheme.AUTOMATIC -> Color.Black // desktop defaults to black
         }
 
         Scaffold(
@@ -285,7 +329,7 @@ data class DesktopReaderScreen(
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black.copy(alpha = 0.8f)),
                 )
             },
-            containerColor = Color.Black,
+            containerColor = bgColor,
         ) { scaffoldPadding ->
             Box(
                 modifier = Modifier
@@ -368,19 +412,13 @@ data class DesktopReaderScreen(
                                     true
                                 }
                                 is ReaderPageAction.NoPrevPage -> {
-                                    readerNav?.previousRead?.let { prev ->
-                                        navigator.replace(
-                                            copyForChapter(prev, ReaderNavigator.indexForId(chapters, prev.id)),
-                                        )
-                                    }
+                                    // Show transition at chapter start
+                                    showTransition = false
                                     true
                                 }
                                 is ReaderPageAction.NoNextPage -> {
-                                    readerNav?.nextToRead?.let { next ->
-                                        navigator.replace(
-                                            copyForChapter(next, ReaderNavigator.indexForId(chapters, next.id)),
-                                        )
-                                    }
+                                    // Show transition at chapter end
+                                    showTransition = true
                                     true
                                 }
                                 null -> false
@@ -394,12 +432,20 @@ data class DesktopReaderScreen(
                     resolvedUrls.isEmpty() -> EmptyState(onBack = { navigator.pop() })
                     else -> {
                         when (readingMode) {
-                            ReadingMode.WEBTOON -> WebtoonViewer(resolvedUrls)
+                            ReadingMode.WEBTOON -> WebtoonViewer(
+                                pageUrls = resolvedUrls,
+                                cropBorders = cropBordersWebtoon,
+                                sidePadding = webtoonSidePadding,
+                            )
                             ReadingMode.LTR -> ZoomablePagerViewer(
                                 pageUrls = resolvedUrls,
                                 currentPage = currentPage,
                                 isRtl = false,
                                 isDualPage = dualPageMode,
+                                cropBorders = cropBordersPager,
+                                contextMenuScope = scope,
+                                mangaTitle = mangaTitle,
+                                chapterTitle = chapterTitle,
                                 zoomState = zoomState,
                                 forcedSinglePages = forcedSinglePages,
                                 matchedPairs = matchedPairs,
@@ -412,6 +458,10 @@ data class DesktopReaderScreen(
                                 currentPage = currentPage,
                                 isRtl = true,
                                 isDualPage = dualPageMode,
+                                cropBorders = cropBordersPager,
+                                contextMenuScope = scope,
+                                mangaTitle = mangaTitle,
+                                chapterTitle = chapterTitle,
                                 zoomState = zoomState,
                                 forcedSinglePages = forcedSinglePages,
                                 matchedPairs = matchedPairs,
@@ -419,6 +469,61 @@ data class DesktopReaderScreen(
                                 onZoomChange = { zoomState = it },
                                 onSpreadPagesChanged = { spreadPages = it },
                             )
+                        }
+
+                        // Chapter transition overlay — rendered above pages, hidden during normal reading
+                        val transition = showTransition
+                        if (transition != null) {
+                            val adjChapter = if (transition) readerNav?.nextToRead else readerNav?.previousRead
+                            ChapterTransitionPage(
+                                currentChapterTitle = chapterTitle,
+                                adjacentChapterTitle = adjChapter?.name,
+                                isEnd = transition,
+                                onNavigate = {
+                                    showTransition = null
+                                    if (adjChapter != null) {
+                                        navigator.replace(
+                                            copyForChapter(adjChapter, ReaderNavigator.indexForId(chapters, adjChapter.id)),
+                                        )
+                                    } else {
+                                        navigator.pop()
+                                    }
+                                },
+                                onDismiss = { showTransition = null },
+                            )
+                        }
+
+                        // Colour filter / brightness overlay — rendered above pages, below bottom bar
+                        if (colorFilter.isEffective) {
+                            val overlayColor = if (colorFilter.enabled && colorFilter.alpha > 0) {
+                                Color(
+                                    red = colorFilter.r / 255f,
+                                    green = colorFilter.g / 255f,
+                                    blue = colorFilter.b / 255f,
+                                    alpha = colorFilter.alpha / 255f,
+                                )
+                            } else Color.Transparent
+                            val brightnessColor = when {
+                                colorFilter.brightness > 0f ->
+                                    Color.White.copy(alpha = colorFilter.brightness)
+                                colorFilter.brightness < 0f ->
+                                    Color.Black.copy(alpha = -colorFilter.brightness)
+                                else -> Color.Transparent
+                            }
+                            if (overlayColor != Color.Transparent) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(overlayColor),
+                                )
+                            }
+                            if (brightnessColor != Color.Transparent) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(brightnessColor),
+                                )
+                            }
                         }
 
                         // Bottom bar: page counter + adjust spread button + progress slider
@@ -481,6 +586,10 @@ private fun ZoomablePagerViewer(
     currentPage: Int,
     isRtl: Boolean,
     isDualPage: Boolean,
+    cropBorders: Boolean = false,
+    contextMenuScope: kotlinx.coroutines.CoroutineScope? = null,
+    mangaTitle: String = "",
+    chapterTitle: String = "",
     zoomState: ZoomState,
     forcedSinglePages: Set<Int> = emptySet(),
     matchedPairs: Set<Pair<Int, Int>> = emptySet(),
@@ -493,6 +602,10 @@ private fun ZoomablePagerViewer(
             pageUrls = pageUrls,
             currentPage = currentPage,
             isRtl = isRtl,
+            cropBorders = cropBorders,
+            contextMenuScope = contextMenuScope,
+            mangaTitle = mangaTitle,
+            chapterTitle = chapterTitle,
             zoomState = zoomState,
             forcedSinglePages = forcedSinglePages,
             matchedPairs = matchedPairs,
@@ -505,6 +618,10 @@ private fun ZoomablePagerViewer(
             pageUrls = pageUrls,
             currentPage = currentPage,
             isRtl = isRtl,
+            cropBorders = cropBorders,
+            contextMenuScope = contextMenuScope,
+            mangaTitle = mangaTitle,
+            chapterTitle = chapterTitle,
             zoomState = zoomState,
             onPageChange = onPageChange,
             onZoomChange = onZoomChange,

@@ -9,6 +9,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
+import kotlinx.coroutines.CoroutineScope
 import mihon.desktop.reader.ZoomState
 
 /**
@@ -46,6 +47,10 @@ internal fun SinglePagePagerViewer(
     currentPage: Int,
     isRtl: Boolean,
     zoomState: ZoomState,
+    cropBorders: Boolean = false,
+    contextMenuScope: CoroutineScope? = null,
+    mangaTitle: String = "",
+    chapterTitle: String = "",
     onPageChange: (Int) -> Unit,
     onZoomChange: (ZoomState) -> Unit,
 ) {
@@ -75,6 +80,11 @@ internal fun SinglePagePagerViewer(
                 pageLabel = "Page ${page + 1}",
                 zoomState = zoomState,
                 onZoomChange = onZoomChange,
+                cropBorders = cropBorders,
+                contextMenuScope = contextMenuScope,
+                mangaTitle = mangaTitle,
+                chapterTitle = chapterTitle,
+                pageIndex = page,
                 // No spread detection in single-page mode (null = zero overhead).
                 onSpreadDetected = null,
             )
