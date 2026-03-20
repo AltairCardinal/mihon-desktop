@@ -8,7 +8,9 @@ import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.source.DesktopSourceManager
 import eu.kanade.tachiyomi.network.NetworkHelper
 import mihon.desktop.platform.DesktopNetworkHelper
+import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.settings.DesktopAppPreferences
+import mihon.desktop.settings.LibraryCategoryPrefs
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.storage.DesktopStorageFolderProvider
@@ -21,6 +23,7 @@ import tachiyomi.data.UpdateStrategyColumnAdapter
 import mihon.desktop.domain.AddMangaToLibrary
 import mihon.desktop.domain.DesktopCategoryManager
 import mihon.desktop.domain.LibraryUpdateChecker
+import mihon.desktop.domain.LibraryUpdateScheduler
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.reader.ReaderPreferences
 import tachiyomi.data.category.CategoryRepositoryImpl
@@ -50,6 +53,7 @@ import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
+import uy.kohesive.injekt.api.get
 import java.io.File
 
 /**
@@ -64,12 +68,19 @@ fun initDesktopDI() {
     val preferenceStore = DesktopPreferenceStore()
     Injekt.addSingleton<PreferenceStore>(preferenceStore)
     Injekt.addSingleton(DesktopAppPreferences(preferenceStore))
+    Injekt.addSingleton(LibraryCategoryPrefs(preferenceStore))
 
     // Storage
     Injekt.addSingleton<FolderProvider>(DesktopStorageFolderProvider())
 
-    // Network
-    val networkHelper = DesktopNetworkHelper(cacheDir = File(appDir, "cache/network"))
+    // Network (apply DoH if configured)
+    val dohProvider = preferenceStore.getObjectFromString(
+        key = "doh_provider",
+        defaultValue = mihon.desktop.settings.DohProvider.OFF,
+        serializer = { it.name },
+        deserializer = { mihon.desktop.settings.DohProvider.valueOf(it) },
+    ).get()
+    val networkHelper = DesktopNetworkHelper(cacheDir = File(appDir, "cache/network"), dohProvider = dohProvider)
     Injekt.addSingleton(networkHelper)
     Injekt.addSingleton(networkHelper.client)
     Injekt.addSingleton(NetworkHelper(networkHelper.client))
@@ -128,12 +139,19 @@ fun initDesktopDI() {
     Injekt.addSingleton(updateChapter)
     Injekt.addSingleton(upsertHistory)
     Injekt.addSingleton(AddMangaToLibrary(networkToLocalManga, mangaRepository, chapterRepository))
-    Injekt.addSingleton(ReaderProgressTracker(updateChapter, upsertHistory))
     Injekt.addSingleton(ReaderPreferences())
 
     // Phase B — library management
     Injekt.addSingleton(DesktopCategoryManager(categoryRepository))
     Injekt.addSingleton(LibraryUpdateChecker(chapterRepository))
+    Injekt.addSingleton(
+        LibraryUpdateScheduler(
+            appPreferences = Injekt.get<DesktopAppPreferences>(),
+            updateChecker = Injekt.get<LibraryUpdateChecker>(),
+            getLibraryManga = Injekt.get<GetLibraryManga>(),
+            sourceManager = Injekt.get<SourceManager>(),
+        ),
+    )
 
     // Phase D — history + updates tabs
     Injekt.addSingleton(GetHistory(historyRepository))
@@ -142,11 +160,28 @@ fun initDesktopDI() {
 
     // Phase C — downloads
     val downloadsDir = File(appDir, "downloads")
+    val downloadPreferences = DesktopDownloadPreferences(preferenceStore)
     val downloadProvider = mihon.desktop.download.DesktopDownloadProvider(downloadsDir)
-    val downloadManager = mihon.desktop.download.DesktopDownloadManager(downloadProvider)
+    val downloadManager = mihon.desktop.download.DesktopDownloadManager(
+        provider = downloadProvider,
+        downloadPreferences = downloadPreferences,
+    )
     downloadManager.start()
+    Injekt.addSingleton(downloadPreferences)
     Injekt.addSingleton(downloadProvider)
     Injekt.addSingleton(downloadManager)
+
+    // ReaderProgressTracker needs appPreferences, downloadPreferences, downloadManager
+    val appPreferences = Injekt.get<DesktopAppPreferences>()
+    Injekt.addSingleton(
+        ReaderProgressTracker(
+            updateChapter = updateChapter,
+            upsertHistory = upsertHistory,
+            appPreferences = appPreferences,
+            downloadPreferences = downloadPreferences,
+            downloadManager = downloadManager,
+        ),
+    )
 }
 
 /**

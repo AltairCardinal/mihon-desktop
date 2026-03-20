@@ -4,19 +4,24 @@ import eu.kanade.tachiyomi.network.DesktopCookieJar
 import eu.kanade.tachiyomi.network.interceptor.IgnoreGzipInterceptor
 import eu.kanade.tachiyomi.network.interceptor.UncaughtExceptionInterceptor
 import eu.kanade.tachiyomi.network.interceptor.UserAgentInterceptor
+import mihon.desktop.settings.DohProvider
 import okhttp3.Cache
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.brotli.BrotliInterceptor
+import okhttp3.dnsoverhttps.DnsOverHttps
 import java.io.File
 import java.util.concurrent.TimeUnit
 
 class DesktopNetworkHelper(
     cacheDir: File = File(System.getProperty("user.home"), ".mihon/cache/network"),
+    dohProvider: DohProvider = DohProvider.OFF,
 ) {
 
     val cookieJar = DesktopCookieJar()
 
-    val client: OkHttpClient = OkHttpClient.Builder()
+    /** Base client without DoH — used to bootstrap DnsOverHttps. */
+    private val baseClient: OkHttpClient = OkHttpClient.Builder()
         .cookieJar(cookieJar)
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -33,7 +38,22 @@ class DesktopNetworkHelper(
         .addNetworkInterceptor(BrotliInterceptor)
         .build()
 
-    private fun defaultUserAgentProvider(): String {
-        return "Mihon Desktop/1.0"
+    val client: OkHttpClient = if (dohProvider == DohProvider.OFF) {
+        baseClient
+    } else {
+        val dohUrl = when (dohProvider) {
+            DohProvider.GOOGLE -> "https://dns.google/dns-query"
+            DohProvider.CLOUDFLARE -> "https://cloudflare-dns.com/dns-query"
+            DohProvider.ADGUARD -> "https://dns.adguard.com/dns-query"
+            DohProvider.OFF -> error("unreachable")
+        }
+        val dns = DnsOverHttps.Builder()
+            .client(baseClient)
+            .url(dohUrl.toHttpUrl())
+            .includeIPv6(false)
+            .build()
+        baseClient.newBuilder().dns(dns).build()
     }
+
+    private fun defaultUserAgentProvider(): String = "Mihon Desktop/1.0"
 }

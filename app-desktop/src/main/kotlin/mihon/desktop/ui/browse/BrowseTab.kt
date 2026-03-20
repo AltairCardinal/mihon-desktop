@@ -1,20 +1,39 @@
 package mihon.desktop.ui.browse
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.Divider
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
@@ -57,18 +76,119 @@ object BrowseTab : Tab {
     }
 }
 
-/** Root screen of the Browse tab — lists installed/built-in sources. */
+/** Root screen of the Browse tab — lists installed/built-in sources with language filter. */
 class BrowseSourceListScreen : Screen {
 
+    @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
     @Composable
     override fun Content() {
+        val navigator = LocalNavigator.currentOrThrow
         val sourceManager = remember { Injekt.get<SourceManager>() }
-        val sources = remember { sourceManager.getCatalogueSources() }
+        val allSources = remember { sourceManager.getCatalogueSources() }
 
-        if (sources.isEmpty()) {
-            EmptySources()
-        } else {
-            SourceList(sources)
+        var selectedLang by remember { mutableStateOf<String?>(null) }
+        var pinnedIds by remember { mutableStateOf(emptySet<Long>()) }
+
+        val languages = remember(allSources) {
+            allSources.map { it.lang }.distinct().sorted()
+        }
+
+        val displayedSources = remember(allSources, selectedLang, pinnedIds) {
+            val filtered = if (selectedLang == null) allSources else allSources.filter { it.lang == selectedLang }
+            val pinned = filtered.filter { it.id in pinnedIds }
+            val rest = filtered.filter { it.id !in pinnedIds }
+            pinned + rest
+        }
+
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("Browse") },
+                    actions = {
+                        IconButton(onClick = { navigator.push(GlobalSearchScreen()) }) {
+                            Icon(Icons.Default.Search, contentDescription = "Global search")
+                        }
+                    },
+                )
+            },
+        ) { padding ->
+            Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                // Language filter chips
+                if (languages.isNotEmpty()) {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        item {
+                            FilterChip(
+                                selected = selectedLang == null,
+                                onClick = { selectedLang = null },
+                                label = { Text("All") },
+                            )
+                        }
+                        items(languages) { lang ->
+                            FilterChip(
+                                selected = selectedLang == lang,
+                                onClick = { selectedLang = if (selectedLang == lang) null else lang },
+                                label = { Text(lang.uppercase()) },
+                            )
+                        }
+                    }
+                    Divider()
+                }
+
+                if (displayedSources.isEmpty()) {
+                    EmptySources()
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(vertical = 4.dp),
+                    ) {
+                        items(displayedSources, key = { it.id }) { source ->
+                            val isPinned = source.id in pinnedIds
+                            ListItem(
+                                headlineContent = { Text(source.name) },
+                                supportingContent = { Text(source.lang.uppercase()) },
+                                trailingContent = {
+                                    IconButton(onClick = {
+                                        pinnedIds = if (isPinned) {
+                                            pinnedIds - source.id
+                                        } else {
+                                            pinnedIds + source.id
+                                        }
+                                    }) {
+                                        Icon(
+                                            if (isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+                                            contentDescription = if (isPinned) "Unpin" else "Pin",
+                                            tint = if (isPinned) {
+                                                MaterialTheme.colorScheme.primary
+                                            } else {
+                                                MaterialTheme.colorScheme.outline
+                                            },
+                                        )
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .combinedClickable(
+                                        onClick = {
+                                            navigator.push(SourceBrowseScreen(sourceId = source.id))
+                                        },
+                                        onLongClick = {
+                                            pinnedIds = if (isPinned) {
+                                                pinnedIds - source.id
+                                            } else {
+                                                pinnedIds + source.id
+                                            }
+                                        },
+                                    ),
+                            )
+                            Divider(modifier = Modifier.padding(horizontal = 16.dp))
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -79,9 +199,7 @@ private fun EmptySources() {
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
-        androidx.compose.foundation.layout.Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = "No sources installed",
                 style = MaterialTheme.typography.titleMedium,
@@ -93,27 +211,6 @@ private fun EmptySources() {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
             )
-        }
-    }
-}
-
-@Composable
-private fun SourceList(sources: List<CatalogueSource>) {
-    // LocalNavigator here belongs to the nested Navigator — not the TabNavigator.
-    val navigator = LocalNavigator.currentOrThrow
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(vertical = 8.dp),
-    ) {
-        items(sources, key = { it.id }) { source ->
-            ListItem(
-                headlineContent = { Text(source.name) },
-                supportingContent = { Text(source.lang.uppercase()) },
-                modifier = Modifier.clickable {
-                    navigator.push(SourceBrowseScreen(sourceId = source.id))
-                },
-            )
-            Divider(modifier = Modifier.padding(horizontal = 16.dp))
         }
     }
 }

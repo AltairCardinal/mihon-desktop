@@ -11,14 +11,14 @@ import java.util.ServiceLoader
  * Each JAR should contain Source implementations discoverable via ServiceLoader
  * (META-INF/services/eu.kanade.tachiyomi.source.Source).
  */
-class DesktopExtensionLoader(
+open class DesktopExtensionLoader(
     val extensionsDirectory: File = File(System.getProperty("user.home"), ".mihon/extensions"),
 ) {
 
     /**
      * Loads all Source implementations from JAR files in the extensions directory.
      */
-    fun loadExtensions(): List<LoadedExtension> {
+    open fun loadExtensions(): List<LoadedExtension> {
         if (!extensionsDirectory.exists() || !extensionsDirectory.isDirectory) {
             return emptyList()
         }

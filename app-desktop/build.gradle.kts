@@ -6,6 +6,7 @@ plugins {
 }
 
 pluginManager.apply("org.jetbrains.kotlin.plugin.compose")
+pluginManager.apply("org.jetbrains.kotlin.plugin.serialization")
 
 kotlin {
     jvm()
@@ -36,6 +37,7 @@ kotlin {
                 implementation(libs.okhttp.core)
                 implementation(libs.okhttp.logging)
                 implementation(libs.okhttp.brotli)
+                implementation(libs.okhttp.dnsoverhttps)
 
                 // Database
                 implementation(libs.sqldelight.jvm.driver)
@@ -45,6 +47,7 @@ kotlin {
 
                 // Serialization
                 implementation(kotlinx.serialization.json)
+                implementation(kotlinx.serialization.protobuf)
 
                 // Navigation
                 implementation(libs.bundles.voyager)

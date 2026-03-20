@@ -32,6 +32,7 @@ import java.io.File
 class DesktopDownloadManager(
     private val provider: DesktopDownloadProvider,
     private val networkHelper: NetworkHelper? = null, // null = inject lazily at runtime
+    private val downloadPreferences: DesktopDownloadPreferences? = null, // null = inject lazily
     /** Injectable scope for testing. Production uses Dispatchers.IO. */
     private val workerScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {
@@ -252,6 +253,21 @@ class DesktopDownloadManager(
 
             // All pages downloaded — rename _tmp to final directory
             val renamed = provider.renameTmpToFinal(item.sourceId, item.mangaTitle, item.chapterName)
+
+            // Optionally package pages into a CBZ archive
+            if (renamed) {
+                val prefs = downloadPreferences ?: runCatching { Injekt.get<DesktopDownloadPreferences>() }.getOrNull()
+                if (prefs?.downloadAsCbz?.get() == true) {
+                    val finalDir = provider.chapterDownloadDir(item.sourceId, item.mangaTitle, item.chapterName)
+                    val cbzFile = CbzCreator.defaultOutputFile(finalDir)
+                    val packed = CbzCreator.create(finalDir, cbzFile)
+                    if (packed) {
+                        // Remove individual image files — CBZ replaces them
+                        finalDir.deleteRecursively()
+                    }
+                }
+            }
+
             renamed
         } catch (_: Exception) {
             // _tmp directory remains on disk but won't be counted as "downloaded"

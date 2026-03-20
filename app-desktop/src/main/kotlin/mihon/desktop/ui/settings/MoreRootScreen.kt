@@ -8,9 +8,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.SaveAlt
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -50,6 +54,33 @@ class MoreRootScreen : Screen {
             ) {
                 item {
                     SettingsEntry(
+                        icon = Icons.Default.Settings,
+                        title = "General",
+                        subtitle = "Incognito mode, page turn animation",
+                        onClick = { navigator.push(GeneralSettingsScreen()) },
+                    )
+                    HorizontalDivider()
+                }
+                item {
+                    SettingsEntry(
+                        icon = Icons.Default.Tune,
+                        title = "Download settings",
+                        subtitle = "CBZ format, auto-download, delete after read",
+                        onClick = { navigator.push(DownloadSettingsScreen()) },
+                    )
+                    HorizontalDivider()
+                }
+                item {
+                    SettingsEntry(
+                        icon = Icons.Default.SaveAlt,
+                        title = "Backup and Restore",
+                        subtitle = "Create or restore .tachibk backups",
+                        onClick = { navigator.push(BackupSettingsScreen()) },
+                    )
+                    HorizontalDivider()
+                }
+                item {
+                    SettingsEntry(
                         icon = Icons.Default.CloudDownload,
                         title = "Downloads",
                         subtitle = if (activeDownloads > 0) "$activeDownloads in queue" else "Download queue",
@@ -81,6 +112,15 @@ class MoreRootScreen : Screen {
                         title = "Library",
                         subtitle = "Grid columns, update settings",
                         onClick = { navigator.push(LibrarySettingsScreen()) },
+                    )
+                    HorizontalDivider()
+                }
+                item {
+                    SettingsEntry(
+                        icon = Icons.Default.Extension,
+                        title = "Extensions",
+                        subtitle = "Manage installed source extensions",
+                        onClick = { navigator.push(mihon.desktop.ui.extension.ExtensionListScreen()) },
                     )
                     HorizontalDivider()
                 }
