@@ -74,24 +74,24 @@ class LocalMangaBrowseScreen : Screen {
         var isLoading by remember { mutableStateOf(false) }
 
         fun pickDirectory() {
-            scope.launch(Dispatchers.IO) {
-                val chooser = JFileChooser().apply {
-                    fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-                    dialogTitle = "Select manga root directory"
-                }
-                val result = chooser.showOpenDialog(null)
-                if (result == JFileChooser.APPROVE_OPTION) {
-                    val dir = chooser.selectedFile
-                    withContext(Dispatchers.Main) {
-                        rootDir = dir
-                        isLoading = true
-                        mangaList.clear()
-                    }
-                    val found = LocalSourceReader.discoverManga(dir)
-                    withContext(Dispatchers.Main) {
-                        mangaList.addAll(found)
-                        isLoading = false
-                    }
+            // JFileChooser must run on the AWT EDT. In Compose Desktop, click handlers
+            // are called on the Main thread (= EDT), so we call showOpenDialog() directly
+            // here — modal dialogs pump their own events and don't block the EDT.
+            val chooser = JFileChooser().apply {
+                fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+                dialogTitle = "Select manga root directory"
+            }
+            val result = chooser.showOpenDialog(null)
+            if (result == JFileChooser.APPROVE_OPTION) {
+                val dir = chooser.selectedFile
+                rootDir = dir
+                isLoading = true
+                mangaList.clear()
+                // Disk scan on IO thread; state updates back on scope (Main)
+                scope.launch {
+                    val found = withContext(Dispatchers.IO) { LocalSourceReader.discoverManga(dir) }
+                    mangaList.addAll(found)
+                    isLoading = false
                 }
             }
         }
@@ -206,13 +206,10 @@ data class LocalChapterScreen(
         var isLoading by remember { mutableStateOf(true) }
 
         LaunchedEffect(mangaDirPath) {
-            withContext(Dispatchers.IO) {
-                val found = LocalSourceReader.discoverChapters(mangaDir)
-                withContext(Dispatchers.Main) {
-                    chapters.addAll(found)
-                    isLoading = false
-                }
-            }
+            // LaunchedEffect runs on Main; IO work is dispatched to IO thread.
+            val found = withContext(Dispatchers.IO) { LocalSourceReader.discoverChapters(mangaDir) }
+            chapters.addAll(found)
+            isLoading = false
         }
 
         Scaffold(
@@ -253,18 +250,18 @@ data class LocalChapterScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    scope.launch(Dispatchers.IO) {
-                                        val pages = LocalSourceReader.readChapter(chapter)
-                                        val pageUrls = resolvePageUrls(chapter, pages)
-                                        withContext(Dispatchers.Main) {
-                                            navigator.push(
-                                                DesktopReaderScreen(
-                                                    chapterTitle = chapter.name,
-                                                    mangaTitle = mangaName,
-                                                    pageUrls = pageUrls,
-                                                ),
-                                            )
+                                    scope.launch {
+                                        val pageUrls = withContext(Dispatchers.IO) {
+                                            val pages = LocalSourceReader.readChapter(chapter)
+                                            resolvePageUrls(chapter, pages)
                                         }
+                                        navigator.push(
+                                            DesktopReaderScreen(
+                                                chapterTitle = chapter.name,
+                                                mangaTitle = mangaName,
+                                                pageUrls = pageUrls,
+                                            ),
+                                        )
                                     }
                                 },
                         )
