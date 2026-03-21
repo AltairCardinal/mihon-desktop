@@ -2,6 +2,7 @@ package mihon.desktop.source
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -273,6 +274,74 @@ class LocalSourceReaderTest {
         val pages = LocalSourceReader.readRarArchive(fakeRar)
         assertEquals(1, pages.size)
         assertNotNull(pages[0].archiveEntry)
+    }
+
+    // ─── resolveCover ──────────────────────────────────────────────────────────
+
+    @Test
+    fun `resolveCover returns cover jpg from directory manga`() {
+        val mangaDir = File(root, "Manga").also { it.mkdirs() }
+        val coverFile = File(mangaDir, "cover.jpg").also { it.writeBytes(ByteArray(10)) }
+
+        val result = LocalSourceReader.resolveCover(LocalMangaEntry("Manga", mangaDir))
+
+        assertEquals(coverFile, result)
+    }
+
+    @Test
+    fun `resolveCover returns null when no cover file in directory`() {
+        val mangaDir = File(root, "Manga").also { it.mkdirs() }
+        File(mangaDir, "001.jpg").writeBytes(ByteArray(10))
+
+        assertNull(LocalSourceReader.resolveCover(LocalMangaEntry("Manga", mangaDir)))
+    }
+
+    @Test
+    fun `resolveCover returns sidecar image for archive manga`() {
+        val cbzFile = File(root, "OnePiece.cbz").also { createZip(it, listOf("001.jpg")) }
+        val sidecar = File(root, "OnePiece.jpg").also { it.writeBytes(ByteArray(10)) }
+
+        val result = LocalSourceReader.resolveCover(LocalMangaEntry("OnePiece", cbzFile))
+
+        assertEquals(sidecar, result)
+    }
+
+    @Test
+    fun `resolveCover extracts first image from zip when no sidecar`() {
+        val cbzFile = File(root, "OnePiece.cbz").also { createZip(it, listOf("001.jpg", "002.jpg")) }
+
+        val result = LocalSourceReader.resolveCover(LocalMangaEntry("OnePiece", cbzFile))
+
+        assertNotNull(result)
+        assertTrue(result!!.exists())
+        assertTrue(result.length() > 0)
+    }
+
+    @Test
+    fun `resolveCover returns null for empty zip with no sidecar`() {
+        val emptyZip = File(root, "Empty.cbz").also { createZip(it, emptyList()) }
+
+        assertNull(LocalSourceReader.resolveCover(LocalMangaEntry("Empty", emptyZip)))
+    }
+
+    @Test
+    fun `discoverManga populates coverFile for directory manga with cover`() {
+        val mangaDir = File(root, "Manga").also { it.mkdirs() }
+        File(mangaDir, "cover.jpg").writeBytes(ByteArray(10))
+
+        val result = LocalSourceReader.discoverManga(root)
+
+        assertNotNull(result.single().coverFile)
+    }
+
+    @Test
+    fun `discoverManga populates coverFile for archive manga via sidecar`() {
+        createZip(File(root, "OnePiece.cbz"), listOf("001.jpg"))
+        File(root, "OnePiece.jpg").writeBytes(ByteArray(10))
+
+        val result = LocalSourceReader.discoverManga(root)
+
+        assertNotNull(result.single().coverFile)
     }
 
     // ─── LocalPage data class ──────────────────────────────────────────────────

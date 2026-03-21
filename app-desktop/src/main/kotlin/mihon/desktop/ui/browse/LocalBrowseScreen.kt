@@ -2,6 +2,10 @@ package mihon.desktop.ui.browse
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -183,7 +187,22 @@ class LocalMangaBrowseScreen : Screen {
                             ListItem(
                                 headlineContent = { Text(entry.name) },
                                 leadingContent = {
-                                    Icon(Icons.Default.Folder, contentDescription = null)
+                                    if (entry.coverFile != null) {
+                                        AsyncImage(
+                                            model = entry.coverFile,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .size(48.dp)
+                                                .clip(RoundedCornerShape(4.dp)),
+                                        )
+                                    } else {
+                                        Icon(
+                                            Icons.Default.Folder,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(48.dp),
+                                        )
+                                    }
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()

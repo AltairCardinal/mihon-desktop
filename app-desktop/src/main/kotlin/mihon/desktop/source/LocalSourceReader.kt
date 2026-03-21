@@ -1,9 +1,11 @@
 package mihon.desktop.source
 
+import net.sf.sevenzipjbinding.ISequentialOutStream
 import net.sf.sevenzipjbinding.PropID
 import net.sf.sevenzipjbinding.SevenZip
 import net.sf.sevenzipjbinding.impl.RandomAccessFileInStream
 import java.io.File
+import java.io.FileOutputStream
 import java.io.RandomAccessFile
 import java.util.zip.ZipFile
 
@@ -14,8 +16,17 @@ data class LocalPage(
     val archiveEntry: String? = null,
 )
 
-/** A manga discovered in a local root directory. */
-data class LocalMangaEntry(val name: String, val directory: File)
+/**
+ * A manga discovered in a local root directory.
+ *
+ * [directory] points to either a directory (multi-chapter) or an archive file
+ * (single-chapter). [coverFile] is the resolved cover image, or null if unavailable.
+ */
+data class LocalMangaEntry(
+    val name: String,
+    val directory: File,
+    val coverFile: File? = null,
+)
 
 /** A chapter discovered inside a manga directory — either a sub-directory or an archive file. */
 data class LocalChapterEntry(val name: String, val file: File)
@@ -92,6 +103,7 @@ object LocalSourceReader {
      *
      * Each subdirectory is a multi-chapter manga; each archive file is treated as a
      * single-chapter manga (the archive is both the manga container and its one chapter).
+     * Cover images are resolved eagerly (runs on IO thread via discoverManga callers).
      * Results are sorted in natural order.
      */
     fun discoverManga(rootDir: File): List<LocalMangaEntry> =
@@ -100,9 +112,105 @@ object LocalSourceReader {
             ?.sortedWith(Comparator { a, b -> naturalOrder.compare(a.name, b.name) })
             ?.map { f ->
                 val name = if (f.isFile) f.nameWithoutExtension else f.name
-                LocalMangaEntry(name = name, directory = f)
+                val entry = LocalMangaEntry(name = name, directory = f)
+                entry.copy(coverFile = resolveCover(entry))
             }
             ?: emptyList()
+
+    // ── Cover resolution ──────────────────────────────────────────────────────
+
+    private val COVER_NAMES = setOf("cover", "folder", "thumbnail")
+
+    /**
+     * Resolves the cover image for [entry].
+     *
+     * - **Directory manga**: looks for a file named `cover`/`folder`/`thumbnail`
+     *   (any image extension) inside the manga directory.
+     * - **Archive manga**: prefers a sidecar file with the same base name as the
+     *   archive (e.g. `OnePiece.jpg` next to `OnePiece.cbz`); falls back to
+     *   extracting the first image from the archive into the system temp directory.
+     *
+     * Returns `null` if no cover can be resolved.
+     */
+    fun resolveCover(entry: LocalMangaEntry): File? =
+        if (entry.directory.isDirectory) resolveDirectoryCover(entry.directory)
+        else resolveArchiveCover(entry.directory)
+
+    private fun resolveDirectoryCover(dir: File): File? =
+        dir.listFiles()?.firstOrNull { f ->
+            f.isFile &&
+                f.nameWithoutExtension.lowercase() in COVER_NAMES &&
+                f.extension.lowercase() in IMAGE_EXTENSIONS
+        }
+
+    private fun resolveArchiveCover(archive: File): File? {
+        // 1. Sidecar: same base name, any image extension
+        val sidecar = IMAGE_EXTENSIONS.map { ext ->
+            File(archive.parent, "${archive.nameWithoutExtension}.$ext")
+        }.firstOrNull { it.exists() }
+        if (sidecar != null) return sidecar
+
+        // 2. Extract first image from the archive to temp dir
+        return extractFirstImage(archive)
+    }
+
+    private fun extractFirstImage(archive: File): File? =
+        when (archive.extension.lowercase()) {
+            in ZIP_EXTENSIONS -> extractFirstImageFromZip(archive)
+            in RAR_EXTENSIONS -> extractFirstImageFromRar(archive)
+            else -> null
+        }
+
+    private fun extractFirstImageFromZip(archive: File): File? =
+        try {
+            ZipFile(archive).use { zip ->
+                val entry = zip.entries().asSequence()
+                    .filter { !it.isDirectory && it.name.substringAfterLast('.').lowercase() in IMAGE_EXTENSIONS }
+                    .sortedWith(Comparator { a, b -> naturalOrder.compare(a.name, b.name) })
+                    .firstOrNull() ?: return null
+                val ext = entry.name.substringAfterLast('.')
+                val cache = coverCacheFile(archive, ext)
+                if (!cache.exists()) {
+                    zip.getInputStream(entry).use { input ->
+                        FileOutputStream(cache).use { output -> input.copyTo(output) }
+                    }
+                }
+                cache
+            }
+        } catch (_: Exception) { null }
+
+    private fun extractFirstImageFromRar(archive: File): File? {
+        val raf = try { RandomAccessFile(archive, "r") } catch (_: Exception) { return null }
+        val inArchive = try {
+            SevenZip.openInArchive(null, RandomAccessFileInStream(raf))
+        } catch (_: Exception) { raf.close(); return null }
+        if (inArchive == null) { raf.close(); return null }
+        return try {
+            val item = inArchive.getSimpleInterface().archiveItems
+                .filter { !it.isFolder && (it.path ?: "").substringAfterLast('.').lowercase() in IMAGE_EXTENSIONS }
+                .sortedWith(Comparator { a, b -> naturalOrder.compare(a.path ?: "", b.path ?: "") })
+                .firstOrNull() ?: return null
+            val ext = (item.path ?: return null).substringAfterLast('.')
+            val cache = coverCacheFile(archive, ext)
+            if (!cache.exists()) {
+                FileOutputStream(cache).use { out ->
+                    item.extractSlow(object : ISequentialOutStream {
+                        override fun write(data: ByteArray): Int { out.write(data); return data.size }
+                    })
+                }
+            }
+            cache
+        } catch (_: Exception) { null } finally {
+            try { inArchive.close() } catch (_: Exception) {}
+            try { raf.close() } catch (_: Exception) {}
+        }
+    }
+
+    private fun coverCacheFile(archive: File, ext: String): File =
+        File(
+            System.getProperty("java.io.tmpdir"),
+            "mihon_cover_${archive.nameWithoutExtension}_${archive.lastModified()}.$ext",
+        )
 
     /**
      * Returns chapters inside [mangaDir].
