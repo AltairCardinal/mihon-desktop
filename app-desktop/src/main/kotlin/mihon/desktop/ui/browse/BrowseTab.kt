@@ -16,10 +16,12 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -137,6 +139,19 @@ class BrowseSourceListScreen : Screen {
                     }
                     Divider()
                 }
+
+                // ── Local Source entry (always shown first) ──────────────────
+                ListItem(
+                    headlineContent = { Text("Local source") },
+                    supportingContent = { Text("Read manga from local files") },
+                    leadingContent = {
+                        Icon(Icons.Default.Folder, contentDescription = null)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { navigator.push(LocalMangaBrowseScreen()) },
+                )
+                HorizontalDivider()
 
                 if (displayedSources.isEmpty()) {
                     EmptySources()
