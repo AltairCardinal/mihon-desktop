@@ -43,6 +43,22 @@ package mihon.desktop.reader
  */
 enum class SinglePageSide { LEADING, TRAILING, CENTER }
 
+/**
+ * Returns true when a single-page group should occupy the physical RIGHT half of
+ * the screen, false for the physical LEFT half.
+ *
+ * The invariant is direction-independent: TRAILING (cover page, connects forward)
+ * is always on the physical RIGHT; LEADING (last page, connects backward) is always
+ * on the physical LEFT — in both LTR and RTL reading modes.
+ *
+ * The [isRtl] parameter is accepted for self-documenting call sites but does not
+ * change the result.  Callers must map the returned value to a direction-aware
+ * Compose Alignment, swapping CenterStart ↔ CenterEnd when [isRtl] is true.
+ */
+internal fun singlePageBoxOnRight(side: SinglePageSide, isRtl: Boolean): Boolean {
+    return side == SinglePageSide.TRAILING || side == SinglePageSide.CENTER
+}
+
 class DualPageState(
     val totalPages: Int,
     val spreadPages: Set<Int> = emptySet(),

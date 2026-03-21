@@ -140,10 +140,11 @@ internal fun DualPagePagerViewer(
                             )
                         }
                         SinglePageSide.TRAILING -> {
-                            // Page connects forward → reading-end side.
-                            // Alignment.CenterEnd is direction-aware:
-                            //   LTR → physical RIGHT,  RTL → physical LEFT.
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterEnd) {
+                            // Cover page: always on physical RIGHT (in both LTR and RTL).
+                            // In RTL context CenterEnd = physical LEFT, so we swap to CenterStart.
+                            val boxAlign = if (isRtl) Alignment.CenterStart else Alignment.CenterEnd
+                            val imgAlign = if (isRtl) Alignment.CenterEnd else Alignment.CenterStart
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = boxAlign) {
                                 ZoomablePageBox(
                                     url = pageUrls[pageIndex],
                                     pageLabel = "Page ${pageIndex + 1}",
@@ -155,16 +156,17 @@ internal fun DualPagePagerViewer(
                                     chapterTitle = chapterTitle,
                                     pageIndex = pageIndex,
                                     modifier = Modifier.fillMaxWidth(0.5f).fillMaxHeight(),
-                                    imageAlignment = Alignment.CenterStart,
+                                    imageAlignment = imgAlign,
                                     onSpreadDetected = { onSpreadDetected(pageIndex) },
                                 )
                             }
                         }
                         SinglePageSide.LEADING -> {
-                            // Page connects backward → reading-start side.
-                            // Alignment.CenterStart is direction-aware:
-                            //   LTR → physical LEFT,  RTL → physical RIGHT.
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+                            // Last page: always on physical LEFT (in both LTR and RTL).
+                            // In RTL context CenterStart = physical RIGHT, so we swap to CenterEnd.
+                            val boxAlign = if (isRtl) Alignment.CenterEnd else Alignment.CenterStart
+                            val imgAlign = if (isRtl) Alignment.CenterStart else Alignment.CenterEnd
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = boxAlign) {
                                 ZoomablePageBox(
                                     url = pageUrls[pageIndex],
                                     pageLabel = "Page ${pageIndex + 1}",
@@ -176,7 +178,7 @@ internal fun DualPagePagerViewer(
                                     chapterTitle = chapterTitle,
                                     pageIndex = pageIndex,
                                     modifier = Modifier.fillMaxWidth(0.5f).fillMaxHeight(),
-                                    imageAlignment = Alignment.CenterEnd,
+                                    imageAlignment = imgAlign,
                                     onSpreadDetected = { onSpreadDetected(pageIndex) },
                                 )
                             }
