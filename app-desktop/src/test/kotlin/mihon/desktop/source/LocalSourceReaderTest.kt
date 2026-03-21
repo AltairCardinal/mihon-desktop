@@ -178,6 +178,37 @@ class LocalSourceReaderTest {
         assertEquals("001.jpg", pages[0].archiveEntry)
     }
 
+    // ─── RAR / CBR support ─────────────────────────────────────────────────────
+
+    @Test
+    fun `discoverChapters includes cbr files as chapters`() {
+        val mangaDir = File(root, "Manga").also { it.mkdirs() }
+        File(mangaDir, "ch01.cbr").createNewFile()
+        File(mangaDir, "ch02.cbz").createNewFile()
+
+        val names = LocalSourceReader.discoverChapters(mangaDir).map { it.name }
+        assertTrue("ch01" in names, "cbr should be discovered")
+        assertTrue("ch02" in names, "cbz should be discovered")
+    }
+
+    @Test
+    fun `discoverChapters includes rar files as chapters`() {
+        val mangaDir = File(root, "Manga").also { it.mkdirs() }
+        File(mangaDir, "ch01.rar").createNewFile()
+
+        val names = LocalSourceReader.discoverChapters(mangaDir).map { it.name }
+        assertTrue("ch01" in names, "rar should be discovered")
+    }
+
+    @Test
+    fun `readZipArchive works for cbz (regression)`() {
+        val cbzFile = File(root, "chapter.cbz")
+        createZip(cbzFile, listOf("001.jpg", "002.jpg"))
+
+        val pages = LocalSourceReader.readArchive(cbzFile)
+        assertEquals(2, pages.size)
+    }
+
     // ─── LocalPage data class ──────────────────────────────────────────────────
 
     @Test

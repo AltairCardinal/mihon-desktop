@@ -1,5 +1,7 @@
 package mihon.desktop.source
 
+import com.github.junrar.Archive
+import com.github.junrar.rarfile.FileHeader
 import java.io.File
 import java.util.zip.ZipFile
 
@@ -20,7 +22,9 @@ private val IMAGE_EXTENSIONS = setOf(
     "jpg", "jpeg", "png", "gif", "webp", "avif", "jxl", "heif", "heic", "bmp",
 )
 
-private val ARCHIVE_EXTENSIONS = setOf("zip", "cbz")
+private val ZIP_EXTENSIONS = setOf("zip", "cbz")
+private val RAR_EXTENSIONS = setOf("rar", "cbr")
+private val ARCHIVE_EXTENSIONS = ZIP_EXTENSIONS + RAR_EXTENSIONS
 
 /**
  * Utilities for discovering and reading locally-stored manga.
@@ -32,7 +36,8 @@ private val ARCHIVE_EXTENSIONS = setOf("zip", "cbz")
  *     Chapter 1/       ← directory chapter
  *       001.jpg
  *       002.jpg
- *     Chapter 2.cbz    ← archive chapter
+ *     Chapter 2.cbz    ← zip/cbz archive chapter
+ *     Chapter 3.cbr    ← rar/cbr archive chapter
  *     cover.jpg
  * ```
  */
@@ -95,23 +100,20 @@ object LocalSourceReader {
      *
      * A chapter can be:
      * - a subdirectory containing image files
-     * - a `.cbz` or `.zip` archive file
+     * - a `.cbz` / `.zip` archive
+     * - a `.cbr` / `.rar` archive
      *
      * Results are sorted in natural order.
      */
-    fun discoverChapters(mangaDir: File): List<LocalChapterEntry> {
-        val entries = mangaDir.listFiles()
-            ?.filter { f ->
-                f.isDirectory || f.extension.lowercase() in ARCHIVE_EXTENSIONS
-            }
+    fun discoverChapters(mangaDir: File): List<LocalChapterEntry> =
+        mangaDir.listFiles()
+            ?.filter { f -> f.isDirectory || f.extension.lowercase() in ARCHIVE_EXTENSIONS }
             ?.sortedWith(Comparator { a, b -> naturalOrder.compare(a.name, b.name) })
             ?.map { f ->
                 val name = if (f.isFile) f.nameWithoutExtension else f.name
                 LocalChapterEntry(name = name, file = f)
             }
             ?: emptyList()
-        return entries
-    }
 
     // ── Page reading ──────────────────────────────────────────────────────────
 
@@ -128,7 +130,7 @@ object LocalSourceReader {
     /**
      * Returns all image entries in a zip/cbz [archive] as pages, sorted by entry name.
      */
-    fun readArchive(archive: File): List<LocalPage> {
+    fun readZipArchive(archive: File): List<LocalPage> {
         if (!archive.exists()) return emptyList()
         return ZipFile(archive).use { zip ->
             zip.entries().asSequence()
@@ -140,8 +142,42 @@ object LocalSourceReader {
     }
 
     /**
-     * Reads pages from a [chapter] entry, dispatching to [readDirectory] or [readArchive]
-     * depending on the file type.
+     * Returns all image entries in a rar/cbr [archive] as pages, sorted by entry name.
+     *
+     * Uses junrar (supports RAR4; RAR5 solid archives are not supported).
+     */
+    fun readRarArchive(archive: File): List<LocalPage> {
+        if (!archive.exists()) return emptyList()
+        return try {
+            Archive(archive).use { rar ->
+                rar.fileHeaders
+                    .filter { header: FileHeader ->
+                        !header.isDirectory &&
+                            header.fileName.substringAfterLast('.').lowercase() in IMAGE_EXTENSIONS
+                    }
+                    .sortedWith(Comparator { a, b -> naturalOrder.compare(a.fileName, b.fileName) })
+                    .map { header: FileHeader ->
+                        LocalPage(name = header.fileName, archiveEntry = header.fileName)
+                    }
+            }
+        } catch (_: Exception) {
+            // RAR5 or encrypted archives fall here — return empty rather than crash
+            emptyList()
+        }
+    }
+
+    /**
+     * Dispatches to the appropriate reader based on file type.
+     */
+    fun readArchive(archive: File): List<LocalPage> =
+        when (archive.extension.lowercase()) {
+            in ZIP_EXTENSIONS -> readZipArchive(archive)
+            in RAR_EXTENSIONS -> readRarArchive(archive)
+            else -> emptyList()
+        }
+
+    /**
+     * Reads pages from a [chapter] entry, dispatching by chapter file type.
      */
     fun readChapter(chapter: LocalChapterEntry): List<LocalPage> =
         if (chapter.file.isDirectory) readDirectory(chapter.file)

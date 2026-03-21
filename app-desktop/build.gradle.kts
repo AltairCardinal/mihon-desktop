@@ -57,6 +57,9 @@ kotlin {
                 implementation(libs.coil.core)
                 implementation(libs.coil.compose)
                 implementation(libs.coil.network.okhttp)
+
+                // RAR/CBR archive support for local manga source
+                implementation("com.github.junrar:junrar:7.5.5")
             }
         }
         val jvmTest by getting {

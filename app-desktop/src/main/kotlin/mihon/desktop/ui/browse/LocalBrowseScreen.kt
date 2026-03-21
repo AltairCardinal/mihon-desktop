@@ -51,6 +51,7 @@ import mihon.desktop.source.LocalMangaEntry
 import mihon.desktop.source.LocalPage
 import mihon.desktop.source.LocalSourceReader
 import mihon.desktop.ui.reader.DesktopReaderScreen
+import com.github.junrar.Archive
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipFile
@@ -285,23 +286,39 @@ private fun resolvePageUrls(chapter: LocalChapterEntry, pages: List<LocalPage>):
         // Directory pages — use file:// URIs directly
         pages.map { page -> page.file!!.toURI().toString() }
     } else {
-        // Archive pages — extract to a temp directory
+        // Archive pages — extract to a per-chapter temp directory
         val tempDir = File(
             System.getProperty("java.io.tmpdir"),
             "mihon_local_${chapter.file.nameWithoutExtension}_${chapter.file.lastModified()}",
         ).also { it.mkdirs() }
 
-        ZipFile(chapter.file).use { zip ->
-            for (page in pages) {
-                val destFile = File(tempDir, page.name)
-                if (!destFile.exists()) {
-                    val entry = zip.getEntry(page.archiveEntry!!) ?: continue
-                    zip.getInputStream(entry).use { input ->
-                        FileOutputStream(destFile).use { output -> input.copyTo(output) }
+        val ext = chapter.file.extension.lowercase()
+        when {
+            ext == "rar" || ext == "cbr" -> {
+                Archive(chapter.file).use { rar ->
+                    for (page in pages) {
+                        val destFile = File(tempDir, File(page.name).name)
+                        if (!destFile.exists()) {
+                            val header = rar.fileHeaders.find { it.fileName == page.archiveEntry } ?: continue
+                            FileOutputStream(destFile).use { out -> rar.getInputStream(header).use { it.copyTo(out) } }
+                        }
+                    }
+                }
+            }
+            else -> {
+                ZipFile(chapter.file).use { zip ->
+                    for (page in pages) {
+                        val destFile = File(tempDir, File(page.name).name)
+                        if (!destFile.exists()) {
+                            val entry = zip.getEntry(page.archiveEntry!!) ?: continue
+                            zip.getInputStream(entry).use { input ->
+                                FileOutputStream(destFile).use { output -> input.copyTo(output) }
+                            }
+                        }
                     }
                 }
             }
         }
-        pages.map { page -> File(tempDir, page.name).toURI().toString() }
+        pages.map { page -> File(tempDir, File(page.name).name).toURI().toString() }
     }
 }
