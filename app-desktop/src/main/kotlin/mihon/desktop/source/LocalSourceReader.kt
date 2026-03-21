@@ -1,8 +1,10 @@
 package mihon.desktop.source
 
-import com.github.junrar.Archive
-import com.github.junrar.rarfile.FileHeader
+import net.sf.sevenzipjbinding.PropID
+import net.sf.sevenzipjbinding.SevenZip
+import net.sf.sevenzipjbinding.impl.RandomAccessFileInStream
 import java.io.File
+import java.io.RandomAccessFile
 import java.util.zip.ZipFile
 
 /** A single page in a local chapter, backed either by a file or a zip entry. */
@@ -144,25 +146,38 @@ object LocalSourceReader {
     /**
      * Returns all image entries in a rar/cbr [archive] as pages, sorted by entry name.
      *
-     * Uses junrar (supports RAR4; RAR5 solid archives are not supported).
+     * Uses sevenzipjbinding (7-Zip JNI) which supports RAR4, RAR5, and other formats.
+     * Format detection is by content (magic bytes), not file extension.
      */
     fun readRarArchive(archive: File): List<LocalPage> {
         if (!archive.exists()) return emptyList()
-        return try {
-            Archive(archive).use { rar ->
-                rar.fileHeaders
-                    .filter { header: FileHeader ->
-                        !header.isDirectory &&
-                            header.fileName.substringAfterLast('.').lowercase() in IMAGE_EXTENSIONS
-                    }
-                    .sortedWith(Comparator { a, b -> naturalOrder.compare(a.fileName, b.fileName) })
-                    .map { header: FileHeader ->
-                        LocalPage(name = header.fileName, archiveEntry = header.fileName)
-                    }
-            }
+        val raf = try { RandomAccessFile(archive, "r") } catch (_: Exception) { return emptyList() }
+        // openInArchive returns null when the format cannot be detected
+        val inArchive = try {
+            SevenZip.openInArchive(null, RandomAccessFileInStream(raf))
         } catch (_: Exception) {
-            // RAR5 or encrypted archives fall here — return empty rather than crash
+            raf.close()
+            return emptyList()
+        }
+        if (inArchive == null) {
+            raf.close()
+            return emptyList()
+        }
+        return try {
+            val result = mutableListOf<LocalPage>()
+            for (i in 0 until inArchive.numberOfItems) {
+                val isFolder = inArchive.getProperty(i, PropID.IS_FOLDER) as? Boolean ?: false
+                if (isFolder) continue
+                val path = inArchive.getStringProperty(i, PropID.PATH) ?: continue
+                if (path.substringAfterLast('.').lowercase() !in IMAGE_EXTENSIONS) continue
+                result += LocalPage(name = path, archiveEntry = path)
+            }
+            result.sortedWith(Comparator { a, b -> naturalOrder.compare(a.name, b.name) })
+        } catch (_: Exception) {
             emptyList()
+        } finally {
+            try { inArchive.close() } catch (_: Exception) {}
+            try { raf.close() } catch (_: Exception) {}
         }
     }
 

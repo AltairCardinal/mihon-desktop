@@ -51,9 +51,12 @@ import mihon.desktop.source.LocalMangaEntry
 import mihon.desktop.source.LocalPage
 import mihon.desktop.source.LocalSourceReader
 import mihon.desktop.ui.reader.DesktopReaderScreen
-import com.github.junrar.Archive
+import net.sf.sevenzipjbinding.ISequentialOutStream
+import net.sf.sevenzipjbinding.SevenZip
+import net.sf.sevenzipjbinding.impl.RandomAccessFileInStream
 import java.io.File
 import java.io.FileOutputStream
+import java.io.RandomAccessFile
 import java.util.zip.ZipFile
 import javax.swing.JFileChooser
 
@@ -295,14 +298,31 @@ private fun resolvePageUrls(chapter: LocalChapterEntry, pages: List<LocalPage>):
         val ext = chapter.file.extension.lowercase()
         when {
             ext == "rar" || ext == "cbr" -> {
-                Archive(chapter.file).use { rar ->
-                    for (page in pages) {
-                        val destFile = File(tempDir, File(page.name).name)
-                        if (!destFile.exists()) {
-                            val header = rar.fileHeaders.find { it.fileName == page.archiveEntry } ?: continue
-                            FileOutputStream(destFile).use { out -> rar.getInputStream(header).use { it.copyTo(out) } }
+                val raf = RandomAccessFile(chapter.file, "r")
+                val inArchive = SevenZip.openInArchive(null, RandomAccessFileInStream(raf))
+                try {
+                    if (inArchive != null) {
+                        val simpleIface = inArchive.getSimpleInterface()
+                        for (item in simpleIface.archiveItems) {
+                            if (item.isFolder) continue
+                            val itemPath = item.path ?: continue
+                            val matchPage = pages.find { it.archiveEntry == itemPath } ?: continue
+                            val destFile = File(tempDir, File(matchPage.name).name)
+                            if (!destFile.exists()) {
+                                FileOutputStream(destFile).use { out ->
+                                    item.extractSlow(object : ISequentialOutStream {
+                                        override fun write(data: ByteArray): Int {
+                                            out.write(data)
+                                            return data.size
+                                        }
+                                    })
+                                }
+                            }
                         }
                     }
+                } finally {
+                    try { inArchive?.close() } catch (_: Exception) {}
+                    try { raf.close() } catch (_: Exception) {}
                 }
             }
             else -> {

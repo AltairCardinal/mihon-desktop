@@ -58,8 +58,10 @@ kotlin {
                 implementation(libs.coil.compose)
                 implementation(libs.coil.network.okhttp)
 
-                // RAR/CBR archive support for local manga source
-                implementation("com.github.junrar:junrar:7.5.5")
+                // RAR/CBR archive support (RAR4 + RAR5) via 7-Zip JNI bindings
+                // sevenzipjbinding = Java API; sevenzipjbinding-all-platforms = native libs
+                implementation("net.sf.sevenzipjbinding:sevenzipjbinding:16.02-2.01")
+                implementation("net.sf.sevenzipjbinding:sevenzipjbinding-all-platforms:16.02-2.01")
             }
         }
         val jvmTest by getting {

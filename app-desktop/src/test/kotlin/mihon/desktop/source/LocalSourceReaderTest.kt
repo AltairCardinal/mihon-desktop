@@ -1,6 +1,7 @@
 package mihon.desktop.source
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -207,6 +208,36 @@ class LocalSourceReaderTest {
 
         val pages = LocalSourceReader.readArchive(cbzFile)
         assertEquals(2, pages.size)
+    }
+
+    // ─── RAR5 / auto-format detection ─────────────────────────────────────────
+
+    /**
+     * sevenzipjbinding opens archives by content (null format = auto-detect),
+     * so a ZIP file named .rar should be readable as a zip, not fail silently.
+     * This test is RED with junrar (returns empty) and GREEN with sevenzipjbinding.
+     */
+    @Test
+    fun `readRarArchive auto-detects format from content not extension`() {
+        val fakeRar = File(root, "chapter.rar")
+        createZip(fakeRar, listOf("001.jpg", "002.jpg", "notes.xml"))
+
+        val pages = LocalSourceReader.readRarArchive(fakeRar)
+
+        // sevenzipjbinding detects ZIP content → reads images; junrar returns []
+        assertEquals(2, pages.size, "Should read images from auto-detected archive format")
+        assertTrue(pages.any { it.name.endsWith("001.jpg") })
+        assertTrue(pages.any { it.name.endsWith("002.jpg") })
+    }
+
+    @Test
+    fun `readRarArchive sets archiveEntry on pages from auto-detected archive`() {
+        val fakeRar = File(root, "ch.cbr")
+        createZip(fakeRar, listOf("001.jpg"))
+
+        val pages = LocalSourceReader.readRarArchive(fakeRar)
+        assertEquals(1, pages.size)
+        assertNotNull(pages[0].archiveEntry)
     }
 
     // ─── LocalPage data class ──────────────────────────────────────────────────
