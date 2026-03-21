@@ -54,6 +54,7 @@ import mihon.desktop.ui.reader.DesktopReaderScreen
 import net.sf.sevenzipjbinding.ISequentialOutStream
 import net.sf.sevenzipjbinding.SevenZip
 import net.sf.sevenzipjbinding.impl.RandomAccessFileInStream
+import java.awt.FileDialog
 import java.io.File
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
@@ -78,25 +79,38 @@ class LocalMangaBrowseScreen : Screen {
         var isLoading by remember { mutableStateOf(false) }
 
         fun pickDirectory() {
-            // JFileChooser must run on the AWT EDT. In Compose Desktop, click handlers
-            // are called on the Main thread (= EDT), so we call showOpenDialog() directly
-            // here — modal dialogs pump their own events and don't block the EDT.
-            val chooser = JFileChooser().apply {
-                fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-                dialogTitle = "Select manga root directory"
-            }
-            val result = chooser.showOpenDialog(null)
-            if (result == JFileChooser.APPROVE_OPTION) {
-                val dir = chooser.selectedFile
-                rootDir = dir
-                isLoading = true
-                mangaList.clear()
-                // Disk scan on IO thread; state updates back on scope (Main)
-                scope.launch {
-                    val found = withContext(Dispatchers.IO) { LocalSourceReader.discoverManga(dir) }
-                    mangaList.addAll(found)
-                    isLoading = false
+            // Use the native macOS folder picker — it handles empty directories and
+            // parent-navigation correctly. Fall back to JFileChooser on other platforms.
+            val dir = if (System.getProperty("os.name").lowercase().contains("mac")) {
+                System.setProperty("apple.awt.fileDialogForDirectories", "true")
+                try {
+                    val dialog = FileDialog(null as java.awt.Frame?, "选择漫画根目录", FileDialog.LOAD)
+                    dialog.isVisible = true
+                    val d = dialog.directory ?: return
+                    val f = dialog.file ?: return
+                    File(d, f)
+                } finally {
+                    System.setProperty("apple.awt.fileDialogForDirectories", "false")
                 }
+            } else {
+                val chooser = JFileChooser().apply {
+                    fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+                    dialogTitle = "Select manga root directory"
+                }
+                if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+                    chooser.selectedFile
+                } else {
+                    return
+                }
+            }
+            rootDir = dir
+            isLoading = true
+            mangaList.clear()
+            // Disk scan on IO thread; state updates back on scope (Main)
+            scope.launch {
+                val found = withContext(Dispatchers.IO) { LocalSourceReader.discoverManga(dir) }
+                mangaList.addAll(found)
+                isLoading = false
             }
         }
 
