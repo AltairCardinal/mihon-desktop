@@ -65,6 +65,41 @@ class LocalSourceReaderTest {
         assertEquals(listOf("Alpha", "Middle", "Zorro"), names)
     }
 
+    @Test
+    fun `discoverManga includes archive files in root as single-chapter manga`() {
+        createZip(File(root, "OnePiece.cbz"), listOf("001.jpg"))
+        createZip(File(root, "Naruto.zip"), listOf("001.jpg"))
+        File(root, "readme.txt").createNewFile()  // excluded
+
+        val result = LocalSourceReader.discoverManga(root)
+
+        assertEquals(2, result.size)
+        val names = result.map { it.name }.toSet()
+        assertTrue("OnePiece" in names, "cbz should appear as manga")
+        assertTrue("Naruto" in names, "zip should appear as manga")
+    }
+
+    @Test
+    fun `discoverManga mixes directories and archives sorted together`() {
+        File(root, "Batman").mkdirs()
+        createZip(File(root, "Akira.cbz"), listOf("001.jpg"))
+
+        val names = LocalSourceReader.discoverManga(root).map { it.name }
+
+        assertEquals(listOf("Akira", "Batman"), names)
+    }
+
+    @Test
+    fun `discoverChapters returns single chapter when manga is an archive file`() {
+        val cbzFile = File(root, "OnePiece.cbz").also { createZip(it, listOf("001.jpg")) }
+
+        val chapters = LocalSourceReader.discoverChapters(cbzFile)
+
+        assertEquals(1, chapters.size)
+        assertEquals("OnePiece", chapters[0].name)
+        assertEquals(cbzFile, chapters[0].file)
+    }
+
     // ─── discoverChapters ──────────────────────────────────────────────────────
 
     @Test

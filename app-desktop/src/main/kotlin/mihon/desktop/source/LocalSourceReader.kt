@@ -88,27 +88,41 @@ object LocalSourceReader {
     // ── Discovery ─────────────────────────────────────────────────────────────
 
     /**
-     * Returns all subdirectories of [rootDir] as manga entries, sorted alphabetically.
+     * Returns manga entries in [rootDir].
+     *
+     * Each subdirectory is a multi-chapter manga; each archive file is treated as a
+     * single-chapter manga (the archive is both the manga container and its one chapter).
+     * Results are sorted in natural order.
      */
     fun discoverManga(rootDir: File): List<LocalMangaEntry> =
         rootDir.listFiles()
-            ?.filter { it.isDirectory }
+            ?.filter { it.isDirectory || it.extension.lowercase() in ARCHIVE_EXTENSIONS }
             ?.sortedWith(Comparator { a, b -> naturalOrder.compare(a.name, b.name) })
-            ?.map { LocalMangaEntry(name = it.name, directory = it) }
+            ?.map { f ->
+                val name = if (f.isFile) f.nameWithoutExtension else f.name
+                LocalMangaEntry(name = name, directory = f)
+            }
             ?: emptyList()
 
     /**
      * Returns chapters inside [mangaDir].
      *
-     * A chapter can be:
-     * - a subdirectory containing image files
-     * - a `.cbz` / `.zip` archive
-     * - a `.cbr` / `.rar` archive
+     * If [mangaDir] is itself an archive file (single-chapter manga discovered at the
+     * root level), it is returned as the one and only chapter.
+     *
+     * Otherwise chapters are the contents of the directory:
+     * - subdirectories containing image files
+     * - `.cbz` / `.zip` archives
+     * - `.cbr` / `.rar` archives
      *
      * Results are sorted in natural order.
      */
-    fun discoverChapters(mangaDir: File): List<LocalChapterEntry> =
-        mangaDir.listFiles()
+    fun discoverChapters(mangaDir: File): List<LocalChapterEntry> {
+        // Single-archive manga — the file itself is the sole chapter
+        if (mangaDir.isFile && mangaDir.extension.lowercase() in ARCHIVE_EXTENSIONS) {
+            return listOf(LocalChapterEntry(name = mangaDir.nameWithoutExtension, file = mangaDir))
+        }
+        return mangaDir.listFiles()
             ?.filter { f -> f.isDirectory || f.extension.lowercase() in ARCHIVE_EXTENSIONS }
             ?.sortedWith(Comparator { a, b -> naturalOrder.compare(a.name, b.name) })
             ?.map { f ->
@@ -116,6 +130,7 @@ object LocalSourceReader {
                 LocalChapterEntry(name = name, file = f)
             }
             ?: emptyList()
+    }
 
     // ── Page reading ──────────────────────────────────────────────────────────
 
