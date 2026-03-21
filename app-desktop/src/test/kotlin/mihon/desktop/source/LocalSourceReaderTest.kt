@@ -38,8 +38,8 @@ class LocalSourceReaderTest {
 
     @Test
     fun `discoverManga returns subdirectories as manga entries`() {
-        File(root, "MangaA").mkdirs()
-        File(root, "MangaB").mkdirs()
+        createZip(File(File(root, "MangaA").also { it.mkdirs() }, "ch.cbz"), listOf("001.jpg"))
+        createZip(File(File(root, "MangaB").also { it.mkdirs() }, "ch.cbz"), listOf("001.jpg"))
         File(root, "not_a_manga.txt").createNewFile()
 
         val result = LocalSourceReader.discoverManga(root)
@@ -58,12 +58,34 @@ class LocalSourceReaderTest {
 
     @Test
     fun `discoverManga is sorted alphabetically`() {
-        File(root, "Zorro").mkdirs()
-        File(root, "Alpha").mkdirs()
-        File(root, "Middle").mkdirs()
+        for (name in listOf("Zorro", "Alpha", "Middle")) {
+            createZip(File(File(root, name).also { it.mkdirs() }, "ch.cbz"), listOf("001.jpg"))
+        }
 
         val names = LocalSourceReader.discoverManga(root).map { it.name }
         assertEquals(listOf("Alpha", "Middle", "Zorro"), names)
+    }
+
+    @Test
+    fun `discoverManga excludes empty directories`() {
+        File(root, "EmptyDir").mkdirs()
+        val validDir = File(root, "ValidManga").also { it.mkdirs() }
+        createZip(File(validDir, "ch01.cbz"), listOf("001.jpg"))
+
+        val names = LocalSourceReader.discoverManga(root).map { it.name }
+
+        assertTrue("ValidManga" in names)
+        assertTrue("EmptyDir" !in names, "Empty directory should be excluded")
+    }
+
+    @Test
+    fun `discoverManga excludes directories with only non-manga files`() {
+        val justImages = File(root, "JustImages").also { it.mkdirs() }
+        File(justImages, "photo.jpg").writeBytes(ByteArray(10))  // loose image, not a chapter
+
+        val result = LocalSourceReader.discoverManga(root)
+
+        assertTrue(result.isEmpty(), "Directory with only loose images but no chapter structure should be excluded")
     }
 
     @Test
@@ -82,7 +104,8 @@ class LocalSourceReaderTest {
 
     @Test
     fun `discoverManga mixes directories and archives sorted together`() {
-        File(root, "Batman").mkdirs()
+        val batmanDir = File(root, "Batman").also { it.mkdirs() }
+        createZip(File(batmanDir, "ch.cbz"), listOf("001.jpg"))
         createZip(File(root, "Akira.cbz"), listOf("001.jpg"))
 
         val names = LocalSourceReader.discoverManga(root).map { it.name }
@@ -328,6 +351,7 @@ class LocalSourceReaderTest {
     fun `discoverManga populates coverFile for directory manga with cover`() {
         val mangaDir = File(root, "Manga").also { it.mkdirs() }
         File(mangaDir, "cover.jpg").writeBytes(ByteArray(10))
+        createZip(File(mangaDir, "ch.cbz"), listOf("001.jpg"))  // need a chapter to show up
 
         val result = LocalSourceReader.discoverManga(root)
 

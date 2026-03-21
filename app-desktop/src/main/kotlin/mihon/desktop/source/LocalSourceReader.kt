@@ -108,7 +108,13 @@ object LocalSourceReader {
      */
     fun discoverManga(rootDir: File): List<LocalMangaEntry> =
         rootDir.listFiles()
-            ?.filter { it.isDirectory || it.extension.lowercase() in ARCHIVE_EXTENSIONS }
+            ?.filter { f ->
+                when {
+                    f.extension.lowercase() in ARCHIVE_EXTENSIONS -> true
+                    f.isDirectory -> discoverChapters(f).isNotEmpty()
+                    else -> false
+                }
+            }
             ?.sortedWith(Comparator { a, b -> naturalOrder.compare(a.name, b.name) })
             ?.map { f ->
                 val name = if (f.isFile) f.nameWithoutExtension else f.name
