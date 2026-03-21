@@ -111,7 +111,7 @@ object LocalSourceReader {
             ?.filter { f ->
                 when {
                     f.extension.lowercase() in ARCHIVE_EXTENSIONS -> true
-                    f.isDirectory -> discoverChapters(f).isNotEmpty()
+                    f.isDirectory -> discoverChapters(f).any { chapterHasContent(it) }
                     else -> false
                 }
             }
@@ -122,6 +122,23 @@ object LocalSourceReader {
                 entry.copy(coverFile = resolveCover(entry))
             }
             ?: emptyList()
+
+    // ── Content validation ────────────────────────────────────────────────────
+
+    /**
+     * Returns true if [chapter] contains at least one readable image.
+     *
+     * For directory chapters: checks for image files directly inside.
+     * For archive chapters: a non-empty file is accepted as a proxy
+     * (actual image validation happens lazily when the chapter is opened).
+     */
+    private fun chapterHasContent(chapter: LocalChapterEntry): Boolean =
+        if (chapter.file.isDirectory) {
+            chapter.file.listFiles()
+                ?.any { it.isFile && it.extension.lowercase() in IMAGE_EXTENSIONS } == true
+        } else {
+            chapter.file.length() > 0
+        }
 
     // ── Cover resolution ──────────────────────────────────────────────────────
 

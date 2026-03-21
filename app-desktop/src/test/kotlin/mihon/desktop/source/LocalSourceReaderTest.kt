@@ -89,6 +89,28 @@ class LocalSourceReaderTest {
     }
 
     @Test
+    fun `discoverManga excludes directories whose chapter subdirs contain no images`() {
+        // MangaDir has a subdirectory "Chapter 1" but it's empty — not actually readable
+        val mangaDir = File(root, "FakeManga").also { it.mkdirs() }
+        File(mangaDir, "Chapter 1").mkdirs()  // chapter dir exists but has no images
+
+        val result = LocalSourceReader.discoverManga(root)
+
+        assertTrue(result.isEmpty(), "Manga with chapter dirs that contain no images should be excluded")
+    }
+
+    @Test
+    fun `discoverManga includes directories whose chapter subdirs have images`() {
+        val mangaDir = File(root, "RealManga").also { it.mkdirs() }
+        val chapterDir = File(mangaDir, "Chapter 1").also { it.mkdirs() }
+        File(chapterDir, "001.jpg").writeBytes(ByteArray(10))
+
+        val names = LocalSourceReader.discoverManga(root).map { it.name }
+
+        assertTrue("RealManga" in names)
+    }
+
+    @Test
     fun `discoverManga includes archive files in root as single-chapter manga`() {
         createZip(File(root, "OnePiece.cbz"), listOf("001.jpg"))
         createZip(File(root, "Naruto.zip"), listOf("001.jpg"))
