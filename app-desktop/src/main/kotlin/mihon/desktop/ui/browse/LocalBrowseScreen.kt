@@ -50,11 +50,14 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.LocalChapterEntry
 import mihon.desktop.source.LocalMangaEntry
 import mihon.desktop.source.LocalPage
 import mihon.desktop.source.LocalSourceReader
 import mihon.desktop.ui.reader.DesktopReaderScreen
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import net.sf.sevenzipjbinding.ISequentialOutStream
 import net.sf.sevenzipjbinding.SevenZip
 import net.sf.sevenzipjbinding.impl.RandomAccessFileInStream
@@ -77,10 +80,25 @@ class LocalMangaBrowseScreen : Screen {
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val scope = rememberCoroutineScope()
+        val prefs = remember { Injekt.get<DesktopAppPreferences>() }
 
-        var rootDir by remember { mutableStateOf<File?>(null) }
+        // Restore last-used directory from preferences so the selection survives navigation
+        val savedPath = remember { prefs.localSourceRootDir.get() }
+        var rootDir by remember {
+            mutableStateOf(if (savedPath.isNotEmpty()) File(savedPath) else null)
+        }
         val mangaList = remember { mutableStateListOf<LocalMangaEntry>() }
-        var isLoading by remember { mutableStateOf(false) }
+        var isLoading by remember { mutableStateOf(rootDir != null) }
+
+        // Scan whenever rootDir changes (includes restoration on first composition)
+        LaunchedEffect(rootDir) {
+            val dir = rootDir ?: return@LaunchedEffect
+            isLoading = true
+            mangaList.clear()
+            val found = withContext(Dispatchers.IO) { LocalSourceReader.discoverManga(dir) }
+            mangaList.addAll(found)
+            isLoading = false
+        }
 
         fun pickDirectory() {
             // Use the native macOS folder picker — it handles empty directories and
@@ -107,15 +125,9 @@ class LocalMangaBrowseScreen : Screen {
                     return
                 }
             }
+            // Persist the selection — LaunchedEffect(rootDir) will trigger the scan
+            prefs.localSourceRootDir.set(dir.absolutePath)
             rootDir = dir
-            isLoading = true
-            mangaList.clear()
-            // Disk scan on IO thread; state updates back on scope (Main)
-            scope.launch {
-                val found = withContext(Dispatchers.IO) { LocalSourceReader.discoverManga(dir) }
-                mangaList.addAll(found)
-                isLoading = false
-            }
         }
 
         Scaffold(

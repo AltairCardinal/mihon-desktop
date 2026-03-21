@@ -80,4 +80,9 @@ class DesktopAppPreferences(private val store: PreferenceStore) {
             deserializer = { DohProvider.valueOf(it) },
         )
     }
+
+    /** Last directory selected in the local manga source browser. Empty = none selected. */
+    val localSourceRootDir: Preference<String> by lazy {
+        store.getString(key = "local_source_root_dir", defaultValue = "")
+    }
 }
