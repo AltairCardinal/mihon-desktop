@@ -54,6 +54,7 @@ import cafe.adriel.voyager.navigator.tab.TabOptions
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.LibraryUpdateChecker
+import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.ui.reader.DesktopReaderScreen
@@ -103,6 +104,7 @@ class UpdatesRootScreen : Screen {
         val downloadManager = remember { Injekt.get<DesktopDownloadManager>() }
         val updateChecker = remember { Injekt.get<LibraryUpdateChecker>() }
         val sourceManager = remember { Injekt.get<SourceManager>() }
+        val progressTracker = remember { Injekt.get<ReaderProgressTracker>() }
         val scope = rememberCoroutineScope()
 
         var updateItems by remember { mutableStateOf<List<UpdatesWithRelations>>(emptyList()) }
@@ -234,6 +236,7 @@ class UpdatesRootScreen : Screen {
                                         chapterUrl = item.chapterUrl,
                                         chapterId = item.chapterId,
                                         initialPage = item.lastPageRead.toInt().coerceAtLeast(0),
+                                        progressTracker = progressTracker,
                                     ),
                                 )
                             },

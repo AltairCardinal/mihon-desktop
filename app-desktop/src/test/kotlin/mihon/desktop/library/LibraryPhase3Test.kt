@@ -121,6 +121,24 @@ class LibraryPhase3Test {
         assertTrue(filtered.all { it.bookmark })
     }
 
+    // ── Downloaded badge ──────────────────────────────────────────────────────
+
+    @Test
+    fun `manga id in downloadedMangaIds resolves as downloaded`() {
+        val downloadedIds = setOf(1L, 3L, 5L)
+        assertTrue(1L in downloadedIds)
+        assertTrue(3L in downloadedIds)
+        assertFalse(2L in downloadedIds)
+        assertFalse(4L in downloadedIds)
+    }
+
+    @Test
+    fun `empty downloadedMangaIds means no manga shows downloaded badge`() {
+        val downloadedIds = emptySet<Long>()
+        assertFalse(1L in downloadedIds)
+        assertFalse(99L in downloadedIds)
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun makeChapter(

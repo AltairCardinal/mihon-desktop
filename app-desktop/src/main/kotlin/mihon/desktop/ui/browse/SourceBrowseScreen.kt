@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,19 +14,31 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SearchBarDefaults
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -47,6 +60,8 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
 import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.model.Filter
+import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.launch
@@ -75,16 +90,26 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
         var searchActive by remember { mutableStateOf(false) }
         var isSearchMode by remember { mutableStateOf(false) }
 
-        fun loadPage(page: Int, query: String = "") {
+        // Browse mode (Popular / Latest tabs)
+        var browseMode by remember { mutableStateOf(BrowseMode.POPULAR) }
+        val modes = remember(source) { availableBrowseModes(source?.supportsLatest == true) }
+
+        // Filter state
+        var showFilterDialog by remember { mutableStateOf(false) }
+        var activeFilters by remember { mutableStateOf(source?.getFilterList() ?: FilterList()) }
+        val hasFilters = remember(source) { source?.getFilterList()?.isNotEmpty() == true }
+
+        fun loadPage(page: Int, query: String = "", mode: BrowseMode = browseMode) {
             if (source == null || isLoading) return
             isLoading = true
             errorMessage = null
             scope.launch {
                 try {
-                    val result: MangasPage = if (query.isBlank()) {
-                        source.getPopularManga(page)
-                    } else {
-                        source.getSearchManga(page, query, source.getFilterList())
+                    val result: MangasPage = when {
+                        query.isNotBlank() -> source.getSearchManga(page, query, activeFilters)
+                        hasActiveFilters(activeFilters) -> source.getSearchManga(page, "", activeFilters)
+                        mode == BrowseMode.LATEST -> source.getLatestUpdates(page)
+                        else -> source.getPopularManga(page)
                     }
                     if (page == 1) mangas.clear()
                     mangas.addAll(result.mangas)
@@ -101,6 +126,25 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
         // Initial load
         LaunchedEffect(Unit) { loadPage(1) }
 
+        // Filter dialog
+        if (showFilterDialog) {
+            FilterDialog(
+                filters = activeFilters,
+                onApply = { updatedFilters ->
+                    activeFilters = updatedFilters
+                    showFilterDialog = false
+                    isSearchMode = hasActiveFilters(updatedFilters)
+                    loadPage(1, query = searchQuery.ifBlank { "" }, mode = browseMode)
+                },
+                onReset = {
+                    activeFilters = source?.getFilterList() ?: FilterList()
+                    showFilterDialog = false
+                    loadPage(1)
+                },
+                onDismiss = { showFilterDialog = false },
+            )
+        }
+
         Scaffold(
             topBar = {
                 TopAppBar(
@@ -111,6 +155,17 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
                         }
                     },
                     actions = {
+                        // Filter button – only when source has filters and not in Latest mode
+                        if (hasFilters && !isSearchMode && browseMode != BrowseMode.LATEST) {
+                            val filtersActive = hasActiveFilters(activeFilters)
+                            IconButton(onClick = { showFilterDialog = true }) {
+                                Icon(
+                                    Icons.Default.FilterList,
+                                    contentDescription = "Filters",
+                                    tint = if (filtersActive) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+                                )
+                            }
+                        }
                         IconButton(onClick = { searchActive = true }) {
                             Icon(Icons.Default.Search, "Search")
                         }
@@ -143,6 +198,31 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                         content = {},
                     )
+                }
+
+                // Popular / Latest tabs (only when source supports latest)
+                if (modes.size > 1 && !isSearchMode) {
+                    PrimaryTabRow(selectedTabIndex = modes.indexOf(browseMode)) {
+                        modes.forEach { mode ->
+                            Tab(
+                                selected = browseMode == mode,
+                                onClick = {
+                                    if (browseMode != mode) {
+                                        browseMode = mode
+                                        loadPage(1, mode = mode)
+                                    }
+                                },
+                                text = {
+                                    Text(
+                                        when (mode) {
+                                            BrowseMode.POPULAR -> "Popular"
+                                            BrowseMode.LATEST -> "Latest"
+                                        },
+                                    )
+                                },
+                            )
+                        }
+                    }
                 }
 
                 when {
@@ -212,6 +292,109 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
             }
         }
     }
+}
+
+@Composable
+private fun FilterDialog(
+    filters: FilterList,
+    onApply: (FilterList) -> Unit,
+    onReset: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    // Create local mutable copies of filter state
+    val localFilters = remember(filters) {
+        filters.map { filter ->
+            when (filter) {
+                is Filter.CheckBox -> object : Filter.CheckBox(filter.name, filter.state) {}
+                is Filter.Text -> object : Filter.Text(filter.name) {}.also { it.state = filter.state }
+                is Filter.Select<*> -> filter  // use as-is; selects are immutable value types
+                else -> filter
+            }
+        }.let { FilterList(it) }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Filter") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+                localFilters.forEach { filter ->
+                    when (filter) {
+                        is Filter.CheckBox -> {
+                            var checked by remember { mutableStateOf(filter.state) }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    checked = !checked
+                                    filter.state = checked
+                                },
+                            ) {
+                                Checkbox(checked = checked, onCheckedChange = { v ->
+                                    checked = v
+                                    filter.state = v
+                                })
+                                Text(filter.name, style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                        is Filter.Text -> {
+                            var text by remember { mutableStateOf(filter.state) }
+                            OutlinedTextField(
+                                value = text,
+                                onValueChange = { v -> text = v; filter.state = v },
+                                label = { Text(filter.name) },
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                singleLine = true,
+                            )
+                        }
+                        is Filter.Select<*> -> {
+                            @Suppress("UNCHECKED_CAST")
+                            val select = filter as Filter.Select<Any>
+                            var selectedIndex by remember { mutableStateOf(select.state) }
+                            Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                                Text(
+                                    select.name,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(bottom = 4.dp),
+                                )
+                                select.values.forEachIndexed { index, value ->
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth().clickable {
+                                            selectedIndex = index
+                                            select.state = index
+                                        },
+                                    ) {
+                                        RadioButton(
+                                            selected = selectedIndex == index,
+                                            onClick = { selectedIndex = index; select.state = index },
+                                        )
+                                        Text(value.toString(), style = MaterialTheme.typography.bodySmall)
+                                    }
+                                }
+                            }
+                        }
+                        is Filter.Header -> {
+                            Text(
+                                filter.name,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
+                            )
+                        }
+                        is Filter.Separator -> HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                        else -> { /* Sort and Group not yet supported */ }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onApply(localFilters) }) { Text("Apply") }
+        },
+        dismissButton = {
+            TextButton(onClick = onReset) { Text("Reset", color = MaterialTheme.colorScheme.error) }
+        },
+    )
 }
 
 @Composable

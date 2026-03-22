@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.foundation.shape.CircleShape
@@ -189,8 +190,8 @@ class LibraryRootScreen : Screen {
             }
         }
 
-        val downloadedMangaIds = remember(allItems, filterDownloaded) {
-            if (!filterDownloaded || downloadProvider == null) emptySet()
+        val downloadedMangaIds = remember(allItems) {
+            if (downloadProvider == null) emptySet()
             else allItems.filter { downloadProvider.hasMangaDownloads(it.manga.source, it.manga.title) }.map { it.id }.toSet()
         }
 
@@ -420,6 +421,7 @@ class LibraryRootScreen : Screen {
                                 items = displayedItems,
                                 minCardWidth = 120.dp,
                                 selectionState = selectionState,
+                                downloadedMangaIds = downloadedMangaIds,
                                 onContextMenu = { item -> contextMenuManga = item },
                                 onItemClick = { item ->
                                     if (selectionState.isInSelectionMode) {
@@ -464,6 +466,7 @@ class LibraryRootScreen : Screen {
                                 minCardWidth = 160.dp,
                                 comfortable = true,
                                 selectionState = selectionState,
+                                downloadedMangaIds = downloadedMangaIds,
                                 onContextMenu = { item -> contextMenuManga = item },
                                 onItemClick = { item ->
                                     if (selectionState.isInSelectionMode) {
@@ -722,6 +725,7 @@ private fun LibraryGrid(
     minCardWidth: androidx.compose.ui.unit.Dp,
     comfortable: Boolean = false,
     selectionState: LibrarySelectionState,
+    downloadedMangaIds: Set<Long> = emptySet(),
     onContextMenu: (LibraryManga) -> Unit,
     onItemClick: (LibraryManga) -> Unit,
     onItemLongClick: (LibraryManga) -> Unit,
@@ -739,6 +743,7 @@ private fun LibraryGrid(
                 item = item,
                 comfortable = comfortable,
                 isSelected = selectionState.isSelected(item.manga.id),
+                isDownloaded = item.id in downloadedMangaIds,
                 onClick = { onItemClick(item) },
                 onLongClick = { onItemLongClick(item) },
                 onContinueReading = { onContinueReading(item) },
@@ -834,6 +839,7 @@ private fun MangaCoverCard(
     item: LibraryManga,
     comfortable: Boolean,
     isSelected: Boolean,
+    isDownloaded: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onContinueReading: () -> Unit,
@@ -910,6 +916,23 @@ private fun MangaCoverCard(
                         Text(
                             text = item.unreadCount.toString(),
                             style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                }
+
+                // Downloaded badge
+                if (isDownloaded) {
+                    Badge(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(4.dp),
+                        containerColor = MaterialTheme.colorScheme.tertiary,
+                    ) {
+                        Icon(
+                            Icons.Default.Download,
+                            contentDescription = "Downloaded",
+                            tint = MaterialTheme.colorScheme.onTertiary,
+                            modifier = Modifier.size(10.dp),
                         )
                     }
                 }
