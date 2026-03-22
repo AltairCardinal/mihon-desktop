@@ -8,8 +8,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -299,26 +297,6 @@ data class DesktopReaderScreen(
                         }
                     },
                     actions = {
-                        // Previous chapter (older)
-                        readerNav?.previousRead?.let { prev ->
-                            IconButton(onClick = {
-                                navigator.replace(
-                                    copyForChapter(prev, ReaderNavigator.indexForId(chapters, prev.id)),
-                                )
-                            }) {
-                                Icon(Icons.Default.SkipPrevious, contentDescription = "Previous Chapter", tint = Color.White)
-                            }
-                        }
-                        // Next chapter (newer)
-                        readerNav?.nextToRead?.let { next ->
-                            IconButton(onClick = {
-                                navigator.replace(
-                                    copyForChapter(next, ReaderNavigator.indexForId(chapters, next.id)),
-                                )
-                            }) {
-                                Icon(Icons.Default.SkipNext, contentDescription = "Next Chapter", tint = Color.White)
-                            }
-                        }
                         // Settings gear — opens reading mode / dual-page / zoom panel
                         IconButton(onClick = { showSettings = true }) {
                             Icon(Icons.Default.Settings, contentDescription = "Reader Settings", tint = Color.White)
@@ -494,20 +472,33 @@ data class DesktopReaderScreen(
                             }
                         }
 
-                        // Bottom bar: page counter + adjust spread button + progress slider
+                        // Bottom bar: prev/next chapter buttons + page counter + slider
                         ReaderBottomBar(
                             currentPage = currentPage,
                             totalPages = resolvedUrls.size,
                             onPageChange = { currentPage = it },
                             isRtl = readingMode == ReadingMode.RTL,
                             isDualPage = dualPageMode,
+                            hasPrevChapter = readerNav?.previousRead != null,
+                            hasNextChapter = readerNav?.nextToRead != null,
+                            onPrevChapter = {
+                                readerNav?.previousRead?.let { prev ->
+                                    navigator.replace(
+                                        copyForChapter(prev, ReaderNavigator.indexForId(chapters, prev.id)),
+                                    )
+                                }
+                            },
+                            onNextChapter = {
+                                readerNav?.nextToRead?.let { next ->
+                                    navigator.replace(
+                                        copyForChapter(next, ReaderNavigator.indexForId(chapters, next.id)),
+                                    )
+                                }
+                            },
                             onAdjustSpread = {
-                                // Force the first page of the current group to display alone,
-                                // shifting all subsequent dual-page pairings by one.
                                 if (currentPage !in forcedSinglePages) {
                                     forcedSinglePages = forcedSinglePages + currentPage
                                 } else {
-                                    // Second press on the same page undoes the forced-single.
                                     forcedSinglePages = forcedSinglePages - currentPage
                                 }
                             },

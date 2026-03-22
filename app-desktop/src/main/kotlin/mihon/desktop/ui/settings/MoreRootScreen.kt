@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Extension
@@ -121,6 +122,15 @@ class MoreRootScreen : Screen {
                         title = "Extensions",
                         subtitle = "Manage installed source extensions",
                         onClick = { navigator.push(mihon.desktop.ui.extension.ExtensionListScreen()) },
+                    )
+                    HorizontalDivider()
+                }
+                item {
+                    SettingsEntry(
+                        icon = Icons.Default.BarChart,
+                        title = "Statistics",
+                        subtitle = "Reading stats: titles, chapters",
+                        onClick = { navigator.push(mihon.desktop.ui.more.StatsScreen()) },
                     )
                     HorizontalDivider()
                 }

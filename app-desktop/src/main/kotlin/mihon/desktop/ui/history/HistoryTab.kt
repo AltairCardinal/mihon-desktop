@@ -1,5 +1,6 @@
 package mihon.desktop.ui.history
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
@@ -63,7 +65,45 @@ import tachiyomi.domain.manga.interactor.GetManga
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
 import java.util.Locale
+
+/** A date-labelled group of history items. */
+data class HistorySection(val dateLabel: String, val items: List<HistoryWithRelations>)
+
+/**
+ * Groups [items] by calendar day of [HistoryWithRelations.readAt].
+ * Items with null readAt are excluded.  Order within each group is preserved.
+ * Day labels: "Today", "Yesterday", or "MMM dd, yyyy".
+ */
+internal fun groupHistoryByDate(items: List<HistoryWithRelations>): List<HistorySection> {
+    val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.ENGLISH)
+    val today = startOfDay(Calendar.getInstance().time)
+    val yesterday = startOfDay(Date(today.time - 86_400_000L))
+
+    return items
+        .filter { it.readAt != null }
+        .groupByTo(linkedMapOf()) { startOfDay(it.readAt!!) }
+        .map { (dayStart, groupItems) ->
+            val label = when (dayStart) {
+                today -> "Today"
+                yesterday -> "Yesterday"
+                else -> dateFormat.format(dayStart)
+            }
+            HistorySection(dateLabel = label, items = groupItems)
+        }
+}
+
+private fun startOfDay(date: Date): Date {
+    val cal = Calendar.getInstance()
+    cal.time = date
+    cal.set(Calendar.HOUR_OF_DAY, 0)
+    cal.set(Calendar.MINUTE, 0)
+    cal.set(Calendar.SECOND, 0)
+    cal.set(Calendar.MILLISECOND, 0)
+    return cal.time
+}
 
 object HistoryTab : Tab {
 
@@ -181,41 +221,60 @@ class HistoryRootScreen : Screen {
                     }
                 }
             } else {
+                val sections = remember(historyItems) { groupHistoryByDate(historyItems) }
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    items(historyItems, key = { it.id }) { item ->
-                        HistoryItem(
-                            item = item,
-                            onRead = {
-                                scope.launch {
-                                    val chapter = getChapter.await(item.chapterId) ?: return@launch
-                                    val manga = getManga.await(item.mangaId) ?: return@launch
-                                    navigator.push(
-                                        DesktopReaderScreen(
-                                            chapterTitle = chapter.name,
-                                            mangaTitle = manga.title,
-                                            isWebtoon = false,
-                                            sourceId = manga.source,
-                                            chapterUrl = chapter.url,
-                                            chapterId = chapter.id,
-                                            initialPage = chapter.lastPageRead.toInt().coerceAtLeast(0),
-                                            progressTracker = progressTracker,
-                                        ),
-                                    )
-                                }
-                            },
-                            onRemove = {
-                                scope.launch { removeHistory.await(item) }
-                            },
-                        )
+                    sections.forEach { section ->
+                        stickyHeader(key = "header_${section.dateLabel}") {
+                            HistoryDateHeader(section.dateLabel)
+                        }
+                        items(section.items, key = { it.id }) { item ->
+                            HistoryItem(
+                                item = item,
+                                onRead = {
+                                    scope.launch {
+                                        val chapter = getChapter.await(item.chapterId) ?: return@launch
+                                        val manga = getManga.await(item.mangaId) ?: return@launch
+                                        navigator.push(
+                                            DesktopReaderScreen(
+                                                chapterTitle = chapter.name,
+                                                mangaTitle = manga.title,
+                                                isWebtoon = false,
+                                                sourceId = manga.source,
+                                                chapterUrl = chapter.url,
+                                                chapterId = chapter.id,
+                                                initialPage = chapter.lastPageRead.toInt().coerceAtLeast(0),
+                                                progressTracker = progressTracker,
+                                            ),
+                                        )
+                                    }
+                                },
+                                onRemove = {
+                                    scope.launch { removeHistory.await(item) }
+                                },
+                            )
+                        }
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun HistoryDateHeader(label: String) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(vertical = 6.dp, horizontal = 4.dp),
+    )
 }
 
 @Composable

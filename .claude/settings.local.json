@@ -1,0 +1,51 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/enforce-build-script.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"\\\\.kt$\")",
+      "Bash(./gradlew :app:testReleaseUnitTest --tests \"eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPagePairingTest\")",
+      "Read(//Library/Java/JavaVirtualMachines/**)",
+      "Read(//usr/local/opt/**)",
+      "Read(//Users/altair/.sdkman/candidates/**)",
+      "Read(//Users/altair/Library/**)",
+      "Read(//System/Library/**)",
+      "Bash(/usr/bin/java -version)",
+      "Bash(JAVA_HOME=/usr java -version)",
+      "Read(//Users/altair/.github/**)",
+      "Read(//Volumes/File/OpenClaw/workspace/mihon/.github/**)",
+      "Read(//Users/altair/.gradle/**)",
+      "Read(//Users/altair/.gradle/wrapper/**)",
+      "Bash(echo $HOME)",
+      "Bash(PATH=/usr/bin:$PATH /usr/bin/java -version)",
+      "Bash(./gradlew spotlessApply)",
+      "Bash(/usr/libexec/java_home -V)",
+      "Bash(brew list:*)",
+      "Bash(grep -r \"class.*Pager.*:\" /Volumes/File/OpenClaw/workspace/mihon/.claude/worktrees/pensive-vaughan/app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/*.kt)",
+      "Bash(ls /Volumes/File/OpenClaw/workspace/mihon/.claude/worktrees/pensive-vaughan/gradle/*.versions.toml)",
+      "WebSearch",
+      "Bash(done)",
+      "Bash(java -version)",
+      "Bash(find /Volumes/File/OpenClaw/workspace/mihon/.claude/worktrees/pensive-vaughan/domain/src/main -name *.kt)",
+      "Bash(find /Volumes/File/OpenClaw/workspace/mihon/.claude/worktrees/pensive-vaughan/domain/src/androidMain -name *.kt)",
+      "Bash(find /Volumes/File/OpenClaw/workspace/mihon/.claude/worktrees/pensive-vaughan/domain/src/test -name *.kt)",
+      "Bash(find /Volumes/File/OpenClaw/workspace/mihon/.claude/worktrees/pensive-vaughan/domain/src/commonMain -name *.kt)",
+      "Bash(find /Volumes/File/OpenClaw/workspace/mihon/.claude/worktrees/pensive-vaughan/domain/src/main/java -name *.kt)",
+      "Bash(DATA=/Volumes/File/OpenClaw/workspace/mihon/.claude/worktrees/pensive-vaughan/data/src)",
+      "Bash(cp -R \"$DATA/main/sqldelight/tachiyomi\" \"$DATA/commonMain/sqldelight/\")",
+      "Bash(find /Volumes/File/OpenClaw/workspace/mihon/.claude/worktrees/pensive-vaughan/data/src/main/java -name *.kt)",
+      "Bash(grep -r \"listFiles\\\\|delete.*tmp\\\\|cleanup\" /Volumes/File/OpenClaw/workspace/mihon/.claude/worktrees/pensive-vaughan/app/src/main/java/eu/kanade/tachiyomi/di --include=*.kt)"
+    ]
+  }
+}
