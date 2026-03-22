@@ -208,38 +208,43 @@ internal fun DualPagePagerViewer(
                     modifier = Modifier.fillMaxSize(),
                     horizontalArrangement = Arrangement.spacedBy(0.dp),
                 ) {
-                    ZoomablePageBox(
-                        url = pageUrls[leftPage],
-                        pageLabel = "Page ${leftPage + 1}",
-                        zoomState = zoomState,
-                        onZoomChange = onZoomChange,
-                        cropBorders = cropBorders,
-                        contextMenuScope = contextMenuScope,
-                        mangaTitle = mangaTitle,
-                        chapterTitle = chapterTitle,
-                        pageIndex = leftPage,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
-                        imageAlignment = Alignment.CenterEnd,
-                        onSpreadDetected = { onSpreadDetected(leftPage) },
-                    )
-                    ZoomablePageBox(
-                        url = pageUrls[rightPage],
-                        pageLabel = "Page ${rightPage + 1}",
-                        zoomState = zoomState,
-                        onZoomChange = onZoomChange,
-                        cropBorders = cropBorders,
-                        contextMenuScope = contextMenuScope,
-                        mangaTitle = mangaTitle,
-                        chapterTitle = chapterTitle,
-                        pageIndex = rightPage,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
-                        imageAlignment = Alignment.CenterStart,
-                        onSpreadDetected = { onSpreadDetected(rightPage) },
-                    )
+                    // weight(1f) MUST be on Row's direct child.  ZoomablePageBox
+                    // is wrapped by ContextMenuArea which inserts an extra Box,
+                    // so weight on ZoomablePageBox's modifier would be silently
+                    // ignored.  Wrapping in an explicit Box keeps weight visible
+                    // to the Row's measure policy.
+                    Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                        ZoomablePageBox(
+                            url = pageUrls[leftPage],
+                            pageLabel = "Page ${leftPage + 1}",
+                            zoomState = zoomState,
+                            onZoomChange = onZoomChange,
+                            cropBorders = cropBorders,
+                            contextMenuScope = contextMenuScope,
+                            mangaTitle = mangaTitle,
+                            chapterTitle = chapterTitle,
+                            pageIndex = leftPage,
+                            modifier = Modifier.fillMaxSize(),
+                            imageAlignment = Alignment.CenterEnd,
+                            onSpreadDetected = { onSpreadDetected(leftPage) },
+                        )
+                    }
+                    Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                        ZoomablePageBox(
+                            url = pageUrls[rightPage],
+                            pageLabel = "Page ${rightPage + 1}",
+                            zoomState = zoomState,
+                            onZoomChange = onZoomChange,
+                            cropBorders = cropBorders,
+                            contextMenuScope = contextMenuScope,
+                            mangaTitle = mangaTitle,
+                            chapterTitle = chapterTitle,
+                            pageIndex = rightPage,
+                            modifier = Modifier.fillMaxSize(),
+                            imageAlignment = Alignment.CenterStart,
+                            onSpreadDetected = { onSpreadDetected(rightPage) },
+                        )
+                    }
                 }
             }
         }

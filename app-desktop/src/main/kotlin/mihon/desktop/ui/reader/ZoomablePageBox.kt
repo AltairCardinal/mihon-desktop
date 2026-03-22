@@ -62,8 +62,8 @@ import javax.imageio.ImageIO
  *   - [Alignment.Center] → default; single-page viewer.
  *   - [Alignment.CenterEnd] → left page in a dual-page spread (sticks to spine).
  *   - [Alignment.CenterStart] → right page in a dual-page spread (sticks to spine).
- *   These values are [LocalLayoutDirection]-aware, so RTL mode works without
- *   any extra logic.
+ *   The viewer always runs in LTR layout direction (RTL scroll is handled
+ *   by reversing pager indices), so these values use physical semantics.
  * @param onSpreadDetected
  *   Called once after Coil decodes the image and its width > height
  *   (landscape / double-page spread image).  Pass `null` to skip detection.
