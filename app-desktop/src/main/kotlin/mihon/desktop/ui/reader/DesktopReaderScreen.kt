@@ -124,8 +124,6 @@ data class DesktopReaderScreen(
         var webtoonSidePadding by remember { mutableStateOf(readerPrefs.webtoonSidePadding) }
         var colorFilter by remember { mutableStateOf(readerPrefs.loadColorFilter()) }
         var showSettings by remember { mutableStateOf(false) }
-        // Chapter transition overlay: null = hidden, true = end-of-chapter, false = start-of-chapter
-        var showTransition by remember { mutableStateOf<Boolean?>(null) }
 
         // ── Dual-page state lifted here so keyboard handler and viewer stay in sync ──
         // Pages forced to display alone by the user (via "Adjust Spread" button).
@@ -140,9 +138,9 @@ data class DesktopReaderScreen(
         val latestPage by rememberUpdatedState(currentPage)
         val latestUrls by rememberUpdatedState(resolvedUrls)
 
-        // Re-request keyboard focus when settings dialog or transition overlay closes
-        LaunchedEffect(showSettings, showTransition) {
-            if (!showSettings && showTransition == null) focusRequester.requestFocus()
+        // Re-request keyboard focus when settings dialog closes
+        LaunchedEffect(showSettings) {
+            if (!showSettings) focusRequester.requestFocus()
         }
 
         // Async edge-pixel scan — runs when auto spread matching is toggled or the chapter changes.
@@ -411,16 +409,8 @@ data class DesktopReaderScreen(
                                     currentPage = target
                                     true
                                 }
-                                is ReaderPageAction.NoPrevPage -> {
-                                    // Show transition at chapter start
-                                    showTransition = false
-                                    true
-                                }
-                                is ReaderPageAction.NoNextPage -> {
-                                    // Show transition at chapter end
-                                    showTransition = true
-                                    true
-                                }
+                                is ReaderPageAction.NoPrevPage -> false
+                                is ReaderPageAction.NoNextPage -> false
                                 null -> false
                             }
                         }
@@ -468,28 +458,6 @@ data class DesktopReaderScreen(
                                 onPageChange = { currentPage = it },
                                 onZoomChange = { zoomState = it },
                                 onSpreadPagesChanged = { spreadPages = it },
-                            )
-                        }
-
-                        // Chapter transition overlay — rendered above pages, hidden during normal reading
-                        val transition = showTransition
-                        if (transition != null) {
-                            val adjChapter = if (transition) readerNav?.nextToRead else readerNav?.previousRead
-                            ChapterTransitionPage(
-                                currentChapterTitle = chapterTitle,
-                                adjacentChapterTitle = adjChapter?.name,
-                                isEnd = transition,
-                                onNavigate = {
-                                    showTransition = null
-                                    if (adjChapter != null) {
-                                        navigator.replace(
-                                            copyForChapter(adjChapter, ReaderNavigator.indexForId(chapters, adjChapter.id)),
-                                        )
-                                    } else {
-                                        navigator.pop()
-                                    }
-                                },
-                                onDismiss = { showTransition = null },
                             )
                         }
 
