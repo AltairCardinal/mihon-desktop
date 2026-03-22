@@ -110,7 +110,7 @@ object LocalSourceReader {
         rootDir.listFiles()
             ?.filter { f ->
                 when {
-                    f.extension.lowercase() in ARCHIVE_EXTENSIONS -> true
+                    f.extension.lowercase() in ARCHIVE_EXTENSIONS -> archiveHasImages(f)
                     f.isDirectory -> discoverChapters(f).any { chapterHasContent(it) }
                     else -> false
                 }
@@ -123,22 +123,111 @@ object LocalSourceReader {
             }
             ?: emptyList()
 
+    /**
+     * Recursively discovers manga in [rootDir] up to [maxDepth] directory levels.
+     *
+     * BFS traversal: at each directory, checks if it qualifies as a manga
+     * (has chapters with actual image content). If yes, adds it to results and
+     * **stops recursing** into it. If no, recurses into its subdirectories.
+     *
+     * Archive files at any level are always treated as single-chapter manga.
+     *
+     * Cover resolution is **not** performed here (returns `coverFile = null`)
+     * so the caller can display the list immediately and resolve covers async.
+     *
+     * Results are sorted in natural order.
+     */
+    fun discoverMangaRecursive(rootDir: File, maxDepth: Int = 3): List<LocalMangaEntry> {
+        val result = mutableListOf<LocalMangaEntry>()
+        // BFS queue: (directory, currentDepth)
+        val queue = ArrayDeque<Pair<File, Int>>()
+        queue.add(rootDir to 0)
+
+        while (queue.isNotEmpty()) {
+            val (dir, depth) = queue.removeFirst()
+            val children = dir.listFiles() ?: continue
+
+            // Collect archive files at this level as single-chapter manga
+            // Only add archives that actually contain image files
+            children
+                .filter { it.isFile && it.extension.lowercase() in ARCHIVE_EXTENSIONS && archiveHasImages(it) }
+                .forEach { f ->
+                    result += LocalMangaEntry(
+                        name = f.nameWithoutExtension,
+                        directory = f,
+                    )
+                }
+
+            // Process subdirectories
+            for (child in children) {
+                if (!child.isDirectory) continue
+                val isManga = discoverChapters(child).any { chapterHasContent(it) }
+                if (isManga) {
+                    result += LocalMangaEntry(name = child.name, directory = child)
+                    // Do NOT recurse into manga directories
+                } else if (depth + 1 < maxDepth) {
+                    queue.add(child to depth + 1)
+                }
+            }
+        }
+
+        return result.sortedWith(Comparator { a, b -> naturalOrder.compare(a.name, b.name) })
+    }
+
     // ── Content validation ────────────────────────────────────────────────────
 
     /**
      * Returns true if [chapter] contains at least one readable image.
      *
      * For directory chapters: checks for image files directly inside.
-     * For archive chapters: a non-empty file is accepted as a proxy
-     * (actual image validation happens lazily when the chapter is opened).
+     * For ZIP/CBZ archives: peeks at the central directory for image entries.
+     * For RAR/CBR archives: checks via sevenzipjbinding (auto-detect format).
      */
     private fun chapterHasContent(chapter: LocalChapterEntry): Boolean =
         if (chapter.file.isDirectory) {
             chapter.file.listFiles()
                 ?.any { it.isFile && it.extension.lowercase() in IMAGE_EXTENSIONS } == true
         } else {
-            chapter.file.length() > 0
+            archiveHasImages(chapter.file)
         }
+
+    private fun archiveHasImages(archive: File): Boolean {
+        if (archive.length() == 0L) return false
+        return when (archive.extension.lowercase()) {
+            in ZIP_EXTENSIONS -> zipHasImages(archive)
+            in RAR_EXTENSIONS -> rarHasImages(archive)
+            else -> false
+        }
+    }
+
+    private fun zipHasImages(archive: File): Boolean =
+        try {
+            ZipFile(archive).use { zip ->
+                zip.entries().asSequence().any { entry ->
+                    !entry.isDirectory &&
+                        entry.name.substringAfterLast('.').lowercase() in IMAGE_EXTENSIONS
+                }
+            }
+        } catch (_: Exception) { false }
+
+    private fun rarHasImages(archive: File): Boolean {
+        val raf = try { RandomAccessFile(archive, "r") } catch (_: Exception) { return false }
+        val inArchive = try {
+            SevenZip.openInArchive(null, RandomAccessFileInStream(raf))
+        } catch (_: Exception) { raf.close(); return false }
+        if (inArchive == null) { raf.close(); return false }
+        return try {
+            (0 until inArchive.numberOfItems).any { i ->
+                val isFolder = inArchive.getProperty(i, PropID.IS_FOLDER) as? Boolean ?: false
+                if (isFolder) return@any false
+                val path = inArchive.getStringProperty(i, PropID.PATH) ?: return@any false
+                path.substringAfterLast('.').lowercase() in IMAGE_EXTENSIONS
+            }
+        } catch (_: Exception) { false } finally {
+            try { inArchive.close() } catch (_: Exception) {}
+            try { raf.close() } catch (_: Exception) {}
+        }
+    }
 
     // ── Cover resolution ──────────────────────────────────────────────────────
 

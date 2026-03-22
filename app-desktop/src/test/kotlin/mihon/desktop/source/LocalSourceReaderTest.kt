@@ -100,6 +100,48 @@ class LocalSourceReaderTest {
     }
 
     @Test
+    fun `discoverManga excludes directories whose archive chapters contain no images`() {
+        // Simulates a game download directory: contains a zip but it has no images inside
+        val gameDir = File(root, "tetris_codex_gpt5.4_1").also { it.mkdirs() }
+        createZip(File(gameDir, "game_data.zip"), listOf("readme.txt", "data.bin"))
+
+        val result = LocalSourceReader.discoverManga(root)
+
+        assertTrue(result.isEmpty(), "Directory whose archive chapters contain no images should be excluded")
+    }
+
+    @Test
+    fun `discoverManga includes directories whose archive chapters contain images`() {
+        val mangaDir = File(root, "RealManga").also { it.mkdirs() }
+        createZip(File(mangaDir, "Chapter1.cbz"), listOf("001.jpg", "002.jpg"))
+
+        val result = LocalSourceReader.discoverManga(root)
+
+        assertEquals(1, result.size)
+        assertEquals("RealManga", result[0].name)
+    }
+
+    @Test
+    fun `discoverManga excludes root-level archive containing no images`() {
+        // A zip at root that has no image content should NOT appear as manga
+        createZip(File(root, "game_data.zip"), listOf("readme.txt", "data.bin"))
+
+        val result = LocalSourceReader.discoverManga(root)
+
+        assertTrue(result.isEmpty(), "Root-level archive with no images should be excluded")
+    }
+
+    @Test
+    fun `discoverManga includes root-level archive containing images`() {
+        createZip(File(root, "OnePiece.cbz"), listOf("001.jpg", "002.jpg"))
+
+        val result = LocalSourceReader.discoverManga(root)
+
+        assertEquals(1, result.size)
+        assertEquals("OnePiece", result[0].name)
+    }
+
+    @Test
     fun `discoverManga includes directories whose chapter subdirs have images`() {
         val mangaDir = File(root, "RealManga").also { it.mkdirs() }
         val chapterDir = File(mangaDir, "Chapter 1").also { it.mkdirs() }

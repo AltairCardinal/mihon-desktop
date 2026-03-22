@@ -85,4 +85,9 @@ class DesktopAppPreferences(private val store: PreferenceStore) {
     val localSourceRootDir: Preference<String> by lazy {
         store.getString(key = "local_source_root_dir", defaultValue = "")
     }
+
+    /** Maximum directory depth for recursive local source scanning. */
+    val localSourceMaxDepth: Preference<Int> by lazy {
+        store.getInt(key = "local_source_max_depth", defaultValue = 3)
+    }
 }

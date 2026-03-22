@@ -57,4 +57,18 @@ class DesktopAppPreferencesTest {
         p.defaultRtl.set(true)
         assertEquals(true, p.defaultRtl.get())
     }
+
+    // ─── local source max depth ──────────────────────────────────────────────────
+
+    @Test
+    fun `default local source max depth is 3`() {
+        assertEquals(3, prefs().localSourceMaxDepth.get())
+    }
+
+    @Test
+    fun `local source max depth round-trips 5`() {
+        val p = prefs()
+        p.localSourceMaxDepth.set(5)
+        assertEquals(5, p.localSourceMaxDepth.get())
+    }
 }

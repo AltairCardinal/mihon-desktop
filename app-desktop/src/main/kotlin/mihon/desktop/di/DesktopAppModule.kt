@@ -2,6 +2,9 @@ package mihon.desktop.di
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.cash.sqldelight.db.SqlDriver
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.serialization.json.Json
 import mihon.desktop.extension.DesktopExtensionLoader
 import mihon.desktop.extension.DesktopExtensionManager
@@ -10,6 +13,7 @@ import eu.kanade.tachiyomi.network.NetworkHelper
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.settings.DesktopAppPreferences
+import mihon.desktop.source.LocalSourceScanService
 import mihon.desktop.settings.LibraryCategoryPrefs
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.core.common.preference.PreferenceStore
@@ -170,6 +174,14 @@ fun initDesktopDI() {
     Injekt.addSingleton(downloadPreferences)
     Injekt.addSingleton(downloadProvider)
     Injekt.addSingleton(downloadManager)
+
+    // Local source scan service (background scanning + file watching)
+    Injekt.addSingleton(
+        LocalSourceScanService(
+            prefs = Injekt.get<DesktopAppPreferences>(),
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        ),
+    )
 
     // ReaderProgressTracker needs appPreferences, downloadPreferences, downloadManager
     val appPreferences = Injekt.get<DesktopAppPreferences>()

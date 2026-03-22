@@ -1,16 +1,13 @@
 package mihon.desktop.ui.browse
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.layout.ContentScale
-import coil3.compose.AsyncImage
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -18,16 +15,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -35,6 +39,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -43,24 +48,30 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import coil3.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.LocalChapterEntry
-import mihon.desktop.source.LocalMangaEntry
 import mihon.desktop.source.LocalPage
 import mihon.desktop.source.LocalSourceReader
+import mihon.desktop.source.LocalSourceScanService
 import mihon.desktop.ui.reader.DesktopReaderScreen
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 import net.sf.sevenzipjbinding.ISequentialOutStream
 import net.sf.sevenzipjbinding.SevenZip
 import net.sf.sevenzipjbinding.impl.RandomAccessFileInStream
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.awt.FileDialog
 import java.io.File
 import java.io.FileOutputStream
@@ -69,9 +80,11 @@ import java.util.zip.ZipFile
 import javax.swing.JFileChooser
 
 /**
- * Browse screen for local manga (zip/cbz archives and directories).
+ * Browse screen for local manga.
  *
- * Shows a directory picker; after selection displays manga found in the root.
+ * Consumes [LocalSourceScanService] StateFlows for the manga list and scan state.
+ * The scan service runs in the background from application startup, so the list
+ * is available immediately when the user navigates here.
  */
 class LocalMangaBrowseScreen : Screen {
 
@@ -81,28 +94,13 @@ class LocalMangaBrowseScreen : Screen {
         val navigator = LocalNavigator.currentOrThrow
         val scope = rememberCoroutineScope()
         val prefs = remember { Injekt.get<DesktopAppPreferences>() }
+        val scanService = remember { Injekt.get<LocalSourceScanService>() }
 
-        // Restore last-used directory from preferences so the selection survives navigation
-        val savedPath = remember { prefs.localSourceRootDir.get() }
-        var rootDir by remember {
-            mutableStateOf(if (savedPath.isNotEmpty()) File(savedPath) else null)
-        }
-        val mangaList = remember { mutableStateListOf<LocalMangaEntry>() }
-        var isLoading by remember { mutableStateOf(rootDir != null) }
-
-        // Scan whenever rootDir changes (includes restoration on first composition)
-        LaunchedEffect(rootDir) {
-            val dir = rootDir ?: return@LaunchedEffect
-            isLoading = true
-            mangaList.clear()
-            val found = withContext(Dispatchers.IO) { LocalSourceReader.discoverManga(dir) }
-            mangaList.addAll(found)
-            isLoading = false
-        }
+        val mangaList by scanService.mangaList.collectAsState()
+        val scanState by scanService.scanState.collectAsState()
+        val rootDir = remember { prefs.localSourceRootDir.get() }
 
         fun pickDirectory() {
-            // Use the native macOS folder picker — it handles empty directories and
-            // parent-navigation correctly. Fall back to JFileChooser on other platforms.
             val dir = if (System.getProperty("os.name").lowercase().contains("mac")) {
                 System.setProperty("apple.awt.fileDialogForDirectories", "true")
                 try {
@@ -125,9 +123,7 @@ class LocalMangaBrowseScreen : Screen {
                     return
                 }
             }
-            // Persist the selection — LaunchedEffect(rootDir) will trigger the scan
             prefs.localSourceRootDir.set(dir.absolutePath)
-            rootDir = dir
         }
 
         Scaffold(
@@ -143,6 +139,9 @@ class LocalMangaBrowseScreen : Screen {
                         IconButton(onClick = { pickDirectory() }) {
                             Icon(Icons.Default.FolderOpen, contentDescription = "Pick directory")
                         }
+                        IconButton(onClick = { navigator.push(LocalSourceSettingsScreen()) }) {
+                            Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        }
                     },
                 )
             },
@@ -150,8 +149,13 @@ class LocalMangaBrowseScreen : Screen {
             Column(
                 modifier = Modifier.fillMaxSize().padding(padding),
             ) {
-                if (rootDir == null) {
-                    // Initial empty state
+                // Progress indicator while scanning (non-blocking)
+                if (scanState is LocalSourceScanService.ScanState.Scanning) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+
+                if (rootDir.isEmpty()) {
+                    // No directory configured — prompt user
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -173,11 +177,7 @@ class LocalMangaBrowseScreen : Screen {
                             }
                         }
                     }
-                } else if (isLoading) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
-                } else if (mangaList.isEmpty()) {
+                } else if (mangaList.isEmpty() && scanState !is LocalSourceScanService.ScanState.Scanning) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
@@ -187,51 +187,110 @@ class LocalMangaBrowseScreen : Screen {
                             )
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                "in ${rootDir!!.absolutePath}",
+                                "in $rootDir",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
                 } else {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(minSize = 120.dp),
+                        contentPadding = PaddingValues(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
                         items(mangaList, key = { it.directory.absolutePath }) { entry ->
-                            ListItem(
-                                headlineContent = { Text(entry.name) },
-                                leadingContent = {
-                                    if (entry.coverFile != null) {
-                                        AsyncImage(
-                                            model = entry.coverFile,
-                                            contentDescription = null,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier
-                                                .size(48.dp)
-                                                .clip(RoundedCornerShape(4.dp)),
-                                        )
+                            LocalMangaCard(
+                                name = entry.name,
+                                coverFile = entry.coverFile,
+                                onClick = {
+                                    if (entry.directory.isFile) {
+                                        scope.launch {
+                                            val chapter = LocalChapterEntry(
+                                                name = entry.name,
+                                                file = entry.directory,
+                                            )
+                                            val pageUrls = withContext(Dispatchers.IO) {
+                                                val pages = LocalSourceReader.readChapter(chapter)
+                                                resolvePageUrls(chapter, pages)
+                                            }
+                                            navigator.push(
+                                                DesktopReaderScreen(
+                                                    chapterTitle = entry.name,
+                                                    mangaTitle = entry.name,
+                                                    pageUrls = pageUrls,
+                                                ),
+                                            )
+                                        }
                                     } else {
-                                        Icon(
-                                            Icons.Default.Folder,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(48.dp),
-                                        )
-                                    }
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
                                         navigator.push(
                                             LocalChapterScreen(
                                                 mangaDirPath = entry.directory.absolutePath,
                                                 mangaName = entry.name,
                                             ),
                                         )
-                                    },
+                                    }
+                                },
                             )
-                            HorizontalDivider()
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun LocalMangaCard(name: String, coverFile: File?, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+    ) {
+        Box {
+            if (coverFile != null) {
+                AsyncImage(
+                    model = coverFile,
+                    contentDescription = name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxWidth().aspectRatio(0.7f),
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(0.7f)
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Default.Folder,
+                        contentDescription = null,
+                        modifier = Modifier.size(48.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            // Gradient overlay so the title is readable over the cover
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(0.7f)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f)),
+                            startY = 0.5f,
+                        ),
+                    ),
+            )
+            Text(
+                text = name,
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.align(Alignment.BottomStart).padding(6.dp),
+            )
         }
     }
 }
@@ -255,7 +314,6 @@ data class LocalChapterScreen(
         var isLoading by remember { mutableStateOf(true) }
 
         LaunchedEffect(mangaDirPath) {
-            // LaunchedEffect runs on Main; IO work is dispatched to IO thread.
             val found = withContext(Dispatchers.IO) { LocalSourceReader.discoverChapters(mangaDir) }
             chapters.addAll(found)
             isLoading = false
@@ -331,10 +389,8 @@ private fun resolvePageUrls(chapter: LocalChapterEntry, pages: List<LocalPage>):
     if (pages.isEmpty()) return emptyList()
 
     return if (chapter.file.isDirectory) {
-        // Directory pages — use file:// URIs directly
         pages.map { page -> page.file!!.toURI().toString() }
     } else {
-        // Archive pages — extract to a per-chapter temp directory
         val tempDir = File(
             System.getProperty("java.io.tmpdir"),
             "mihon_local_${chapter.file.nameWithoutExtension}_${chapter.file.lastModified()}",

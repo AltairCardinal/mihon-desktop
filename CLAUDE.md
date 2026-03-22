@@ -54,6 +54,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 验收清单必须可执行——用户能在 5 分钟内逐条验证
 - 功能边界必须说清楚（如：仅 QUEUED 状态可取消，DOWNLOADING 不行）
 
+## Desktop 构建与部署
+
+每次完成 desktop 迭代必须使用构建脚本，**不直接调用 gradle**：
+
+```bash
+./scripts/build-desktop.sh           # 默认：仅更新 git hash
+./scripts/build-desktop.sh feature   # 递增功能批次号（7.0 → 7.1）
+./scripts/build-desktop.sh stage     # 递增阶段号，重置功能批次（7.x → 8.0）
+```
+
+版本格式：`0.STAGE.FEATURE.GIT_HASH`（例如 `0.7.0.92dab15`）
+
+脚本会自动：运行测试 → 构建 → 部署到 `/Applications/Mihon Desktop.app`。
+
+完成后必须向用户报告版本号（例如："已部署 Mihon Desktop **0.7.1.abc1234**"）。
+
+版本号单一来源：`app-desktop/src/main/kotlin/mihon/desktop/AppVersion.kt`
+
+---
+
 ## Commands
 
 ```bash

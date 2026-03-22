@@ -1,4 +1,5 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import java.io.ByteArrayOutputStream
 
 plugins {
     kotlin("multiplatform")
@@ -8,12 +9,42 @@ plugins {
 pluginManager.apply("org.jetbrains.kotlin.plugin.compose")
 pluginManager.apply("org.jetbrains.kotlin.plugin.serialization")
 
+// Generate BuildInfo.kt with git commit hash at compile time
+val gitHash: String by lazy {
+    val stdout = ByteArrayOutputStream()
+    exec {
+        commandLine("git", "rev-parse", "--short=7", "HEAD")
+        standardOutput = stdout
+    }
+    stdout.toString().trim()
+}
+
+val generateBuildInfo = tasks.register("generateBuildInfo") {
+    val outputDir = layout.buildDirectory.dir("generated/src/main/kotlin")
+    outputs.dir(outputDir)
+    // Always re-run so the hash stays fresh
+    outputs.upToDateWhen { false }
+    doLast {
+        val file = outputDir.get().file("mihon/desktop/BuildInfo.kt").asFile
+        file.parentFile.mkdirs()
+        file.writeText(
+            """
+            |package mihon.desktop
+            |
+            |object BuildInfo {
+            |    const val GIT_HASH = "$gitHash"
+            |}
+            """.trimMargin(),
+        )
+    }
+}
+
 kotlin {
     jvm()
 
     sourceSets {
         val jvmMain by getting {
-            kotlin.srcDirs("src/main/kotlin")
+            kotlin.srcDirs("src/main/kotlin", layout.buildDirectory.dir("generated/src/main/kotlin"))
             resources.srcDirs("src/main/resources")
             dependencies {
                 implementation(compose.desktop.currentOs)
@@ -62,6 +93,9 @@ kotlin {
                 // sevenzipjbinding = Java API; sevenzipjbinding-all-platforms = native libs
                 implementation("net.sf.sevenzipjbinding:sevenzipjbinding:16.02-2.01")
                 implementation("net.sf.sevenzipjbinding:sevenzipjbinding-all-platforms:16.02-2.01")
+
+                // File system watching (FSEvents on macOS, inotify on Linux)
+                implementation("io.methvin:directory-watcher:0.18.0")
             }
         }
         val jvmTest by getting {
@@ -76,6 +110,9 @@ kotlin {
         }
     }
 }
+
+tasks.named("compileKotlinJvm") { dependsOn(generateBuildInfo) }
+tasks.named("compileTestKotlinJvm") { dependsOn(generateBuildInfo) }
 
 tasks.withType<Test> {
     useJUnitPlatform()

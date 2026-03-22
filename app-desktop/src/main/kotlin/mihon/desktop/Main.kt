@@ -8,6 +8,7 @@ import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.transitions.SlideTransition
 import mihon.desktop.di.initDesktopDI
 import mihon.desktop.domain.LibraryUpdateScheduler
+import mihon.desktop.source.LocalSourceScanService
 import mihon.desktop.ui.home.HomeScreen
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -16,10 +17,11 @@ import mihon.desktop.ui.theme.DesktopTheme
 fun main() {
     initDesktopDI()
     Injekt.get<LibraryUpdateScheduler>().start()
+    Injekt.get<LocalSourceScanService>().start()
     application {
         Window(
             onCloseRequest = ::exitApplication,
-            title = "Mihon Desktop",
+            title = "Mihon Desktop $APP_VERSION",
             state = rememberWindowState(width = 1024.dp, height = 768.dp),
         ) {
             DesktopTheme {
