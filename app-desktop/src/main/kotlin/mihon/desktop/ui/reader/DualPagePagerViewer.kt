@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -18,8 +17,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
 import mihon.desktop.reader.DualPageState
@@ -36,6 +33,20 @@ import mihon.desktop.reader.ZoomState
  * 2. **Spread detection** (width > height) — detected by [ZoomablePageBox] after Coil decode
  * 3. **Matched pairs** ([matchedPairs]) — detected by edge-pixel scanning
  * 4. **Default** — sequential pairing [1,2], [3,4], etc.
+ *
+ * ──────────────────────────────────────────────────────────
+ * RTL design note
+ * ──────────────────────────────────────────────────────────
+ * RTL scroll is implemented by **reversing the pager index mapping**, NOT by
+ * using `reverseLayout` or `CompositionLocalProvider(RTL)`.  Both of those
+ * approaches inject an RTL LayoutDirection into the content subtree, which
+ * flips all direction-aware Alignment values (CenterEnd ↔ CenterStart) and
+ * breaks image positioning.
+ *
+ * Instead, the pager always runs in LTR.  For RTL mode:
+ *   pagerIndex 0  →  last group  (rightmost position = manga start)
+ *   pagerIndex N  →  first group (leftmost position = manga end)
+ * Swiping RIGHT decreases pagerIndex → later group → forward in manga.
  *
  * @param pageUrls            Ordered list of page image URLs in logical reading order.
  * @param currentPage         Currently-visible page index (logical, 0-based).
@@ -80,31 +91,38 @@ internal fun DualPagePagerViewer(
         DualPageState(pageUrls.size, spreadPages, forcedSinglePages, matchedPairs)
     }
 
-    // Map the current logical page to a group index using the latest grouping.
+    // Helper: convert between group index and pager index.
+    // In RTL the pager index is reversed so that group 0 is at the rightmost position.
+    val maxPagerIndex = (dualState.groupCount - 1).coerceAtLeast(0)
+    fun groupToPager(groupIdx: Int): Int = if (isRtl) maxPagerIndex - groupIdx else groupIdx
+    fun pagerToGroup(pagerIdx: Int): Int = if (isRtl) maxPagerIndex - pagerIdx else pagerIdx
+
+    // Map the current logical page to a pager index using the latest grouping.
     val safeCurrentPage = currentPage.coerceIn(0, (pageUrls.size - 1).coerceAtLeast(0))
     val initialGroupIndex = dualState.groupIndexForPage(safeCurrentPage)
-        .coerceIn(0, (dualState.groupCount - 1).coerceAtLeast(0))
+        .coerceIn(0, maxPagerIndex)
+    val initialPagerIndex = groupToPager(initialGroupIndex)
 
     // Re-create the pager whenever the group layout changes.
-    // initialGroupIndex is recomputed above with the NEW dualState, so the pager
-    // opens at the correct position even after a spread page is discovered.
     key(spreadPages, forcedSinglePages, matchedPairs) {
         val pagerState = rememberPagerState(
-            initialPage = initialGroupIndex,
+            initialPage = initialPagerIndex,
             pageCount = { dualState.groupCount },
         )
 
         // Pager swipe → report the first logical page of the new group to the parent.
         LaunchedEffect(pagerState.currentPage) {
-            val firstPage = dualState.firstPageInGroup(pagerState.currentPage)
+            val groupIndex = pagerToGroup(pagerState.currentPage)
+            val firstPage = dualState.firstPageInGroup(groupIndex)
             onPageChange(firstPage.coerceIn(0, pageUrls.size - 1))
         }
 
         // External navigation (slider / keyboard) → jump pager to the correct group.
         LaunchedEffect(currentPage) {
             val targetGroup = dualState.groupIndexForPage(currentPage.coerceIn(0, pageUrls.size - 1))
-            if (pagerState.currentPage != targetGroup) {
-                pagerState.scrollToPage(targetGroup.coerceIn(0, dualState.groupCount - 1))
+            val targetPager = groupToPager(targetGroup)
+            if (pagerState.currentPage != targetPager) {
+                pagerState.scrollToPage(targetPager.coerceIn(0, maxPagerIndex))
             }
         }
 
@@ -115,28 +133,36 @@ internal fun DualPagePagerViewer(
             }
         }
 
-        // RTL scroll direction is handled by reverseLayout, which internally sets
-        // the content's LayoutDirection to RTL. We immediately reset it to LTR
-        // inside each page slot so that all Alignment values (CenterEnd, CenterStart)
-        // remain in physical/LTR semantics.  Page order for RTL is handled by the
-        // manual leftPage/rightPage swap below.
+        // The pager always runs in LTR.  All Alignment values use LTR/physical
+        // semantics: CenterEnd = physical RIGHT, CenterStart = physical LEFT.
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
-            reverseLayout = isRtl,
-        ) { groupIndex ->
-            // Force LTR inside each page slot — reverseLayout already handles scroll
-            // direction; we don't want it to also flip alignment semantics.
-            CompositionLocalProvider(
-                LocalLayoutDirection provides LayoutDirection.Ltr,
-            ) {
-                val group = dualState.getGroup(groupIndex)
+        ) { pagerIndex ->
+            val groupIndex = pagerToGroup(pagerIndex)
+            val group = dualState.getGroup(groupIndex)
 
-                if (group.size == 1) {
-                    val pageIndex = group[0]
-                    when (dualState.singlePageSide(groupIndex)) {
-                        SinglePageSide.CENTER -> {
-                            // Landscape spread: full-width, centred.
+            if (group.size == 1) {
+                val pageIndex = group[0]
+                when (dualState.singlePageSide(groupIndex)) {
+                    SinglePageSide.CENTER -> {
+                        // Landscape spread: full-width, centred.
+                        ZoomablePageBox(
+                            url = pageUrls[pageIndex],
+                            pageLabel = "Page ${pageIndex + 1}",
+                            zoomState = zoomState,
+                            onZoomChange = onZoomChange,
+                            cropBorders = cropBorders,
+                            contextMenuScope = contextMenuScope,
+                            mangaTitle = mangaTitle,
+                            chapterTitle = chapterTitle,
+                            pageIndex = pageIndex,
+                            onSpreadDetected = { onSpreadDetected(pageIndex) },
+                        )
+                    }
+                    SinglePageSide.TRAILING -> {
+                        // Cover page: physical RIGHT half.
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterEnd) {
                             ZoomablePageBox(
                                 url = pageUrls[pageIndex],
                                 pageLabel = "Page ${pageIndex + 1}",
@@ -147,92 +173,75 @@ internal fun DualPagePagerViewer(
                                 mangaTitle = mangaTitle,
                                 chapterTitle = chapterTitle,
                                 pageIndex = pageIndex,
+                                modifier = Modifier.fillMaxWidth(0.5f).fillMaxHeight(),
+                                imageAlignment = Alignment.CenterStart,
                                 onSpreadDetected = { onSpreadDetected(pageIndex) },
                             )
                         }
-                        SinglePageSide.TRAILING -> {
-                            // Cover page: physical RIGHT half.
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterEnd) {
-                                ZoomablePageBox(
-                                    url = pageUrls[pageIndex],
-                                    pageLabel = "Page ${pageIndex + 1}",
-                                    zoomState = zoomState,
-                                    onZoomChange = onZoomChange,
-                                    cropBorders = cropBorders,
-                                    contextMenuScope = contextMenuScope,
-                                    mangaTitle = mangaTitle,
-                                    chapterTitle = chapterTitle,
-                                    pageIndex = pageIndex,
-                                    modifier = Modifier.fillMaxWidth(0.5f).fillMaxHeight(),
-                                    imageAlignment = Alignment.CenterStart,
-                                    onSpreadDetected = { onSpreadDetected(pageIndex) },
-                                )
-                            }
-                        }
-                        SinglePageSide.LEADING -> {
-                            // Last standalone page: physical LEFT half.
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
-                                ZoomablePageBox(
-                                    url = pageUrls[pageIndex],
-                                    pageLabel = "Page ${pageIndex + 1}",
-                                    zoomState = zoomState,
-                                    onZoomChange = onZoomChange,
-                                    cropBorders = cropBorders,
-                                    contextMenuScope = contextMenuScope,
-                                    mangaTitle = mangaTitle,
-                                    chapterTitle = chapterTitle,
-                                    pageIndex = pageIndex,
-                                    modifier = Modifier.fillMaxWidth(0.5f).fillMaxHeight(),
-                                    imageAlignment = Alignment.CenterEnd,
-                                    onSpreadDetected = { onSpreadDetected(pageIndex) },
-                                )
-                            }
-                        }
                     }
-                } else {
-                    // Two-page spread — pages glued at the centre spine.
-                    // In RTL, swap page order so lower-index page is on the physical RIGHT.
-                    val leftPage = if (isRtl) group[1] else group[0]
-                    val rightPage = if (isRtl) group[0] else group[1]
-                    Row(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalArrangement = Arrangement.spacedBy(0.dp),
-                    ) {
-                        ZoomablePageBox(
-                            url = pageUrls[leftPage],
-                            pageLabel = "Page ${leftPage + 1}",
-                            zoomState = zoomState,
-                            onZoomChange = onZoomChange,
-                            cropBorders = cropBorders,
-                            contextMenuScope = contextMenuScope,
-                            mangaTitle = mangaTitle,
-                            chapterTitle = chapterTitle,
-                            pageIndex = leftPage,
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight(),
-                            imageAlignment = Alignment.CenterEnd,
-                            onSpreadDetected = { onSpreadDetected(leftPage) },
-                        )
-                        ZoomablePageBox(
-                            url = pageUrls[rightPage],
-                            pageLabel = "Page ${rightPage + 1}",
-                            zoomState = zoomState,
-                            onZoomChange = onZoomChange,
-                            cropBorders = cropBorders,
-                            contextMenuScope = contextMenuScope,
-                            mangaTitle = mangaTitle,
-                            chapterTitle = chapterTitle,
-                            pageIndex = rightPage,
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight(),
-                            imageAlignment = Alignment.CenterStart,
-                            onSpreadDetected = { onSpreadDetected(rightPage) },
-                        )
+                    SinglePageSide.LEADING -> {
+                        // Last standalone page: physical LEFT half.
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+                            ZoomablePageBox(
+                                url = pageUrls[pageIndex],
+                                pageLabel = "Page ${pageIndex + 1}",
+                                zoomState = zoomState,
+                                onZoomChange = onZoomChange,
+                                cropBorders = cropBorders,
+                                contextMenuScope = contextMenuScope,
+                                mangaTitle = mangaTitle,
+                                chapterTitle = chapterTitle,
+                                pageIndex = pageIndex,
+                                modifier = Modifier.fillMaxWidth(0.5f).fillMaxHeight(),
+                                imageAlignment = Alignment.CenterEnd,
+                                onSpreadDetected = { onSpreadDetected(pageIndex) },
+                            )
+                        }
                     }
                 }
+            } else {
+                // Two-page spread — pages glued at the centre spine.
+                // In RTL, swap page order so lower-index page is on the physical RIGHT.
+                val leftPage = if (isRtl) group[1] else group[0]
+                val rightPage = if (isRtl) group[0] else group[1]
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.spacedBy(0.dp),
+                ) {
+                    ZoomablePageBox(
+                        url = pageUrls[leftPage],
+                        pageLabel = "Page ${leftPage + 1}",
+                        zoomState = zoomState,
+                        onZoomChange = onZoomChange,
+                        cropBorders = cropBorders,
+                        contextMenuScope = contextMenuScope,
+                        mangaTitle = mangaTitle,
+                        chapterTitle = chapterTitle,
+                        pageIndex = leftPage,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        imageAlignment = Alignment.CenterEnd,
+                        onSpreadDetected = { onSpreadDetected(leftPage) },
+                    )
+                    ZoomablePageBox(
+                        url = pageUrls[rightPage],
+                        pageLabel = "Page ${rightPage + 1}",
+                        zoomState = zoomState,
+                        onZoomChange = onZoomChange,
+                        cropBorders = cropBorders,
+                        contextMenuScope = contextMenuScope,
+                        mangaTitle = mangaTitle,
+                        chapterTitle = chapterTitle,
+                        pageIndex = rightPage,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        imageAlignment = Alignment.CenterStart,
+                        onSpreadDetected = { onSpreadDetected(rightPage) },
+                    )
+                }
             }
-            }
+        }
     }
 }

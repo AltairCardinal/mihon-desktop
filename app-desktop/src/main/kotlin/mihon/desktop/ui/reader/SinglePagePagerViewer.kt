@@ -15,13 +15,14 @@ import mihon.desktop.reader.ZoomState
  * ──────────────────────────────────────────────────────────
  * RTL design note
  * ──────────────────────────────────────────────────────────
- * Right-to-left mode is handled by [HorizontalPager]'s `reverseLayout` parameter.
- * The page URLs are **never reversed** — the pager reverses its scroll direction
- * automatically when `reverseLayout = true`.
+ * RTL scroll is implemented by reversing the pager index mapping, NOT by
+ * using `reverseLayout` or `CompositionLocalProvider(RTL)`.  Both of those
+ * inject an RTL LayoutDirection into the content, which can flip alignment.
  *
- * We do NOT use `CompositionLocalProvider(LocalLayoutDirection = RTL)` because
- * that flips ALL direction-aware Alignment values in the subtree, causing
- * cascading layout inversions that break image positioning.
+ * The pager always runs in LTR.  For RTL mode:
+ *   pagerIndex 0  →  last page  (rightmost = manga start)
+ *   pagerIndex N  →  first page (leftmost = manga end)
+ * Swiping RIGHT decreases pagerIndex → later page → forward in manga.
  *
  * ──────────────────────────────────────────────────────────
  * Android migration note
@@ -51,28 +52,35 @@ internal fun SinglePagePagerViewer(
     onPageChange: (Int) -> Unit,
     onZoomChange: (ZoomState) -> Unit,
 ) {
+    val maxPageIndex = (pageUrls.size - 1).coerceAtLeast(0)
+
+    // Index mapping: pager always runs LTR; RTL reverses the mapping.
+    fun pageToPager(page: Int): Int = if (isRtl) maxPageIndex - page else page
+    fun pagerToPage(pagerIdx: Int): Int = if (isRtl) maxPageIndex - pagerIdx else pagerIdx
+
     val pagerState = rememberPagerState(
-        initialPage = currentPage.coerceIn(0, pageUrls.size - 1),
+        initialPage = pageToPager(currentPage.coerceIn(0, maxPageIndex)),
         pageCount = { pageUrls.size },
     )
 
     // External navigation (slider / keyboard) → jump pager to the new page.
     LaunchedEffect(currentPage) {
-        if (pagerState.currentPage != currentPage) {
-            pagerState.scrollToPage(currentPage.coerceIn(0, pageUrls.size - 1))
+        val target = pageToPager(currentPage.coerceIn(0, maxPageIndex))
+        if (pagerState.currentPage != target) {
+            pagerState.scrollToPage(target)
         }
     }
 
     // Pager swipe → update logical page counter in the parent.
     LaunchedEffect(pagerState.currentPage) {
-        onPageChange(pagerState.currentPage)
+        onPageChange(pagerToPage(pagerState.currentPage))
     }
 
     HorizontalPager(
         state = pagerState,
         modifier = Modifier.fillMaxSize(),
-        reverseLayout = isRtl,
-    ) { page ->
+    ) { pagerIndex ->
+        val page = pagerToPage(pagerIndex)
         ZoomablePageBox(
             url = pageUrls[page],
             pageLabel = "Page ${page + 1}",
