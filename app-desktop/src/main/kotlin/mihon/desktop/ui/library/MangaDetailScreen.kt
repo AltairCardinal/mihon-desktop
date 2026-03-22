@@ -18,18 +18,26 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.foundation.background
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.BottomAppBar
+import androidx.compose.material3.Checkbox
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -107,6 +115,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         var isUpdating by remember { mutableStateOf(false) }
         var deleteConfirmChapter by remember { mutableStateOf<Chapter?>(null) }
         var markAllReadConfirm by remember { mutableStateOf(false) }
+        val selectionState = remember { ChapterSelectionState() }
 
         // Migration state
         var showMigrateSourcePicker by remember { mutableStateOf(false) }
@@ -190,6 +199,16 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         // Mark all as read
                         TextButton(onClick = { markAllReadConfirm = true }) { Text("Mark all read") }
 
+                        // Select all chapters / close selection mode
+                        if (selectionState.isActive) {
+                            IconButton(onClick = { selectionState.selectAll(displayedChapters.map { it.id }) }) {
+                                Icon(Icons.Default.SelectAll, contentDescription = "Select all")
+                            }
+                            IconButton(onClick = { selectionState.clear() }) {
+                                Icon(Icons.Default.Close, contentDescription = "Clear selection")
+                            }
+                        }
+
                         // Chapter filter/sort
                         Box {
                             IconButton(onClick = { showFilterMenu = true }) {
@@ -272,6 +291,52 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         }
                     },
                 )
+            },
+            bottomBar = {
+                if (selectionState.isActive) {
+                    ChapterSelectionBar(
+                        selectedCount = selectionState.selectedIds.size,
+                        onDownload = {
+                            val m = manga ?: return@ChapterSelectionBar
+                            chapters.filter { it.id in selectionState.selectedIds }.forEach { ch ->
+                                downloadManager.enqueue(
+                                    DownloadItem(
+                                        sourceId = m.source,
+                                        mangaTitle = m.title,
+                                        chapterName = ch.name,
+                                        chapterId = ch.id,
+                                        chapterUrl = ch.url,
+                                    ),
+                                )
+                            }
+                            selectionState.clear()
+                        },
+                        onMarkRead = {
+                            scope.launch {
+                                chapters.filter { it.id in selectionState.selectedIds }.forEach { ch ->
+                                    chapterRepository.update(ChapterUpdate(id = ch.id, read = true, lastPageRead = 0L))
+                                }
+                                selectionState.clear()
+                            }
+                        },
+                        onMarkUnread = {
+                            scope.launch {
+                                chapters.filter { it.id in selectionState.selectedIds }.forEach { ch ->
+                                    chapterRepository.update(ChapterUpdate(id = ch.id, read = false, lastPageRead = 0L))
+                                }
+                                selectionState.clear()
+                            }
+                        },
+                        onDeleteDownload = {
+                            val m = manga ?: return@ChapterSelectionBar
+                            chapters.filter { it.id in selectionState.selectedIds }.forEach { ch ->
+                                downloadManager.deleteDownload(m.source, m.title, ch.name)
+                            }
+                            selectionState.clear()
+                        },
+                        onClose = { selectionState.clear() },
+                    )
+                }
             },
         ) { padding ->
             // Delete confirmation dialog
@@ -485,10 +550,13 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         progress = queuedItem?.progress ?: 0,
                         totalPages = queuedItem?.pageUrls?.size ?: 0,
                     )
+                    val isSelected = chapter.id in selectionState.selectedIds
                     ChapterRow(
                         chapter = chapter,
                         downloadStatus = downloadStatus,
                         downloadProgress = downloadProgress,
+                        isSelected = isSelected,
+                        onSelect = { selectionState.toggle(chapter.id) },
                         onDownload = {
                             downloadManager.enqueue(
                                 DownloadItem(
@@ -584,6 +652,8 @@ private fun ChapterRow(
     chapter: Chapter,
     downloadStatus: ChapterDownloadStatus,
     downloadProgress: Float?,
+    isSelected: Boolean = false,
+    onSelect: () -> Unit = {},
     onDownload: () -> Unit,
     onDeleteDownload: () -> Unit,
     onCancelDownload: () -> Unit,
@@ -591,6 +661,13 @@ private fun ChapterRow(
     onRead: () -> Unit,
 ) {
     ListItem(
+        modifier = if (isSelected) Modifier.background(MaterialTheme.colorScheme.secondaryContainer) else Modifier,
+        leadingContent = {
+            Checkbox(
+                checked = isSelected,
+                onCheckedChange = { onSelect() },
+            )
+        },
         headlineContent = {
             Text(
                 text = chapter.name,
@@ -632,15 +709,17 @@ private fun ChapterRow(
                             Icon(Icons.Default.CloudDownload, contentDescription = "Download")
                         }
                 }
-                TextButton(onClick = onRead) {
-                    if (chapter.read) {
-                        Icon(
-                            Icons.Default.CheckCircle,
-                            contentDescription = "Read",
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                    } else {
-                        Text("Read")
+                if (!isSelected) {
+                    TextButton(onClick = onRead) {
+                        if (chapter.read) {
+                            Icon(
+                                Icons.Default.CheckCircle,
+                                contentDescription = "Read",
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        } else {
+                            Text("Read")
+                        }
                     }
                 }
             }
@@ -719,6 +798,45 @@ private fun ChapterDownloadingIndicator(
                 text = { Text("Cancel") },
                 onClick = { onCancel(); showMenu = false },
             )
+        }
+    }
+}
+
+/**
+ * Batch action bar that appears at the bottom when chapters are selected.
+ * Mirrors the SelectionActionBar pattern from LibraryTab.
+ */
+@Composable
+private fun ChapterSelectionBar(
+    selectedCount: Int,
+    onDownload: () -> Unit,
+    onMarkRead: () -> Unit,
+    onMarkUnread: () -> Unit,
+    onDeleteDownload: () -> Unit,
+    onClose: () -> Unit,
+) {
+    BottomAppBar(
+        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+    ) {
+        IconButton(onClick = onClose) {
+            Icon(Icons.Default.Close, contentDescription = "Clear selection")
+        }
+        Text(
+            text = "$selectedCount selected",
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.weight(1f),
+        )
+        IconButton(onClick = onDownload) {
+            Icon(Icons.Default.CloudDownload, contentDescription = "Download selected")
+        }
+        IconButton(onClick = onMarkRead) {
+            Icon(Icons.Default.DoneAll, contentDescription = "Mark selected as read")
+        }
+        IconButton(onClick = onMarkUnread) {
+            Icon(Icons.Default.RadioButtonUnchecked, contentDescription = "Mark selected as unread")
+        }
+        IconButton(onClick = onDeleteDownload) {
+            Icon(Icons.Default.Delete, contentDescription = "Delete downloaded", tint = MaterialTheme.colorScheme.error)
         }
     }
 }

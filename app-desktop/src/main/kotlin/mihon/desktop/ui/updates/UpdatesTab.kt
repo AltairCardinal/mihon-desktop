@@ -15,6 +15,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.Refresh
@@ -105,6 +107,7 @@ class UpdatesRootScreen : Screen {
 
         var updateItems by remember { mutableStateOf<List<UpdatesWithRelations>>(emptyList()) }
         var isRefreshing by remember { mutableStateOf(false) }
+        var showMarkAllReadDialog by remember { mutableStateOf(false) }
 
         LaunchedEffect(Unit) {
             val since = Instant.now().minus(14, ChronoUnit.DAYS)
@@ -115,6 +118,27 @@ class UpdatesRootScreen : Screen {
                 bookmarked = null,
                 hideExcludedScanlators = false,
             ).collect { updateItems = it }
+        }
+
+        if (showMarkAllReadDialog) {
+            AlertDialog(
+                onDismissRequest = { showMarkAllReadDialog = false },
+                title = { Text("Mark all as read?") },
+                text = { Text("This will mark all ${updateItems.count { !it.read }} unread updates as read.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        scope.launch {
+                            updateItems.filter { !it.read }.forEach { item ->
+                                updateChapter.await(ChapterUpdate(id = item.chapterId, read = true))
+                            }
+                            showMarkAllReadDialog = false
+                        }
+                    }) { Text("Mark all read") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showMarkAllReadDialog = false }) { Text("Cancel") }
+                },
+            )
         }
 
         Column(Modifier.fillMaxSize()) {
@@ -128,6 +152,20 @@ class UpdatesRootScreen : Screen {
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
+                // Mark all as read — only shown when unread items exist
+                val hasUnread = updateItems.any { !it.read }
+                if (hasUnread) {
+                    TooltipBox(
+                        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                        tooltip = { Text("Mark all as read") },
+                        state = rememberTooltipState(),
+                    ) {
+                        IconButton(onClick = { showMarkAllReadDialog = true }) {
+                            Icon(Icons.Default.DoneAll, contentDescription = "Mark all as read")
+                        }
+                    }
+                }
+
                 if (isRefreshing) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(24.dp).padding(end = 8.dp),
