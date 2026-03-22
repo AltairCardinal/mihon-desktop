@@ -11,10 +11,9 @@ import org.junit.jupiter.api.Test
  *  - TRAILING (cover, or any page with a next group) → always physical RIGHT
  *  - LEADING  (last page, connects backward)         → always physical LEFT
  *
- * This must hold for both LTR and RTL reading directions.  RTL wraps the pager
- * in [CompositionLocalProvider(LocalLayoutDirection = RTL)], so direction-aware
- * alignments (CenterEnd/CenterStart) flip physical meaning.  The viewer must
- * compensate by swapping the alignment when isRtl = true.
+ * This must hold for both LTR and RTL reading directions.  RTL is handled via
+ * HorizontalPager(reverseLayout = true), which reverses scroll direction WITHOUT
+ * flipping layout semantics.  All Alignment values remain in LTR coordinate space.
  */
 class DualPageViewerAlignmentTest {
 

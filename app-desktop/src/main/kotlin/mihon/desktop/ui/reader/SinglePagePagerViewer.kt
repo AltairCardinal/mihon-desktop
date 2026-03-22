@@ -4,11 +4,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.LayoutDirection
 import kotlinx.coroutines.CoroutineScope
 import mihon.desktop.reader.ZoomState
 
@@ -18,13 +15,13 @@ import mihon.desktop.reader.ZoomState
  * ──────────────────────────────────────────────────────────
  * RTL design note
  * ──────────────────────────────────────────────────────────
- * Right-to-left mode is handled entirely by wrapping the [HorizontalPager] in
- * [CompositionLocalProvider]([LocalLayoutDirection] = [LayoutDirection.Rtl]).
- * The page URLs are **never reversed** — the pager mirrors itself automatically
- * when the layout direction is RTL.
+ * Right-to-left mode is handled by [HorizontalPager]'s `reverseLayout` parameter.
+ * The page URLs are **never reversed** — the pager reverses its scroll direction
+ * automatically when `reverseLayout = true`.
  *
- * This avoids index-inversion math that would create feedback loops between the
- * two [LaunchedEffect]s when the reading direction changes mid-session.
+ * We do NOT use `CompositionLocalProvider(LocalLayoutDirection = RTL)` because
+ * that flips ALL direction-aware Alignment values in the subtree, causing
+ * cascading layout inversions that break image positioning.
  *
  * ──────────────────────────────────────────────────────────
  * Android migration note
@@ -71,23 +68,23 @@ internal fun SinglePagePagerViewer(
         onPageChange(pagerState.currentPage)
     }
 
-    CompositionLocalProvider(
-        LocalLayoutDirection provides if (isRtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
-    ) {
-        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
-            ZoomablePageBox(
-                url = pageUrls[page],
-                pageLabel = "Page ${page + 1}",
-                zoomState = zoomState,
-                onZoomChange = onZoomChange,
-                cropBorders = cropBorders,
-                contextMenuScope = contextMenuScope,
-                mangaTitle = mangaTitle,
-                chapterTitle = chapterTitle,
-                pageIndex = page,
-                // No spread detection in single-page mode (null = zero overhead).
-                onSpreadDetected = null,
-            )
-        }
+    HorizontalPager(
+        state = pagerState,
+        modifier = Modifier.fillMaxSize(),
+        reverseLayout = isRtl,
+    ) { page ->
+        ZoomablePageBox(
+            url = pageUrls[page],
+            pageLabel = "Page ${page + 1}",
+            zoomState = zoomState,
+            onZoomChange = onZoomChange,
+            cropBorders = cropBorders,
+            contextMenuScope = contextMenuScope,
+            mangaTitle = mangaTitle,
+            chapterTitle = chapterTitle,
+            pageIndex = page,
+            // No spread detection in single-page mode (null = zero overhead).
+            onSpreadDetected = null,
+        )
     }
 }
