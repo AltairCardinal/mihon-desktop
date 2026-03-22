@@ -33,17 +33,21 @@ object LibrarySearchFilter {
      * - [unread]: keep only manga with `unreadCount > 0`
      * - [started]: keep only manga with `readCount > 0`
      * - [completed]: keep only manga with status [Manga.COMPLETED]
+     * - [downloaded]: keep only manga whose id is in [downloadedMangaIds]
      */
     fun applyFilters(
         items: List<LibraryManga>,
         unread: Boolean = false,
         started: Boolean = false,
         completed: Boolean = false,
+        downloaded: Boolean = false,
+        downloadedMangaIds: Set<Long> = emptySet(),
     ): List<LibraryManga> {
         var result = items
         if (unread) result = result.filter { it.unreadCount > 0 }
         if (started) result = result.filter { it.hasStarted }
         if (completed) result = result.filter { it.manga.status == SManga.COMPLETED.toLong() }
+        if (downloaded) result = result.filter { it.id in downloadedMangaIds }
         return result
     }
 
@@ -77,13 +81,15 @@ object LibrarySearchFilter {
         unread: Boolean = false,
         started: Boolean = false,
         completed: Boolean = false,
+        downloaded: Boolean = false,
+        downloadedMangaIds: Set<Long> = emptySet(),
         sortMode: SortMode = SortMode.TITLE,
         ascending: Boolean = true,
     ): List<LibraryManga> {
         var result = items
         if (categoryId != null) result = applyCategory(result, categoryId)
         result = applySearch(result, searchQuery)
-        result = applyFilters(result, unread = unread, started = started, completed = completed)
+        result = applyFilters(result, unread = unread, started = started, completed = completed, downloaded = downloaded, downloadedMangaIds = downloadedMangaIds)
         result = applySort(result, sortMode, ascending)
         return result
     }

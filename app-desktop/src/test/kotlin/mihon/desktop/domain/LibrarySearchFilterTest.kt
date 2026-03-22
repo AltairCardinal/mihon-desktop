@@ -185,6 +185,35 @@ class LibrarySearchFilterTest {
         assertEquals(1L, result[0].id)
     }
 
+    // ── Downloaded filter ────────────────────────────────────────────────────
+
+    @Test
+    fun `filter downloaded keeps only manga whose id is in the downloaded set`() {
+        val items = listOf(
+            libraryManga(id = 1),
+            libraryManga(id = 2),
+            libraryManga(id = 3),
+        )
+        val result = LibrarySearchFilter.applyFilters(items, downloaded = true, downloadedMangaIds = setOf(2L))
+        assertEquals(1, result.size)
+        assertEquals(2L, result[0].id)
+    }
+
+    @Test
+    fun `filter downloaded false returns all items regardless of downloaded set`() {
+        val items = listOf(libraryManga(id = 1), libraryManga(id = 2))
+        val result = LibrarySearchFilter.applyFilters(items, downloaded = false, downloadedMangaIds = setOf(1L))
+        assertEquals(2, result.size)
+    }
+
+    @Test
+    fun `apply passes downloadedMangaIds to downloaded filter`() {
+        val items = listOf(libraryManga(id = 10), libraryManga(id = 20))
+        val result = LibrarySearchFilter.apply(items, downloaded = true, downloadedMangaIds = setOf(10L))
+        assertEquals(1, result.size)
+        assertEquals(10L, result[0].id)
+    }
+
     // ── Combined pipeline ────────────────────────────────────────────────────
 
     @Test

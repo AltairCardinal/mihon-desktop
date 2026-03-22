@@ -144,6 +144,7 @@ class LibraryRootScreen : Screen {
         val chapterRepository = remember { Injekt.get<ChapterRepository>() }
         val progressTracker = remember { Injekt.get<mihon.desktop.domain.ReaderProgressTracker>() }
         val downloadManager = remember { runCatching { Injekt.get<DesktopDownloadManager>() }.getOrNull() }
+        val downloadProvider = remember { runCatching { Injekt.get<mihon.desktop.download.DesktopDownloadProvider>() }.getOrNull() }
         val downloadPrefs = remember { runCatching { Injekt.get<DesktopDownloadPreferences>() }.getOrNull() }
         val categoryPrefs = remember { runCatching { Injekt.get<LibraryCategoryPrefs>() }.getOrNull() }
         val scope = rememberCoroutineScope()
@@ -159,6 +160,7 @@ class LibraryRootScreen : Screen {
         var filterUnread by remember { mutableStateOf(false) }
         var filterStarted by remember { mutableStateOf(false) }
         var filterCompleted by remember { mutableStateOf(false) }
+        var filterDownloaded by remember { mutableStateOf(false) }
         var selectedCategoryIndex by remember { mutableIntStateOf(0) }
         var isUpdating by remember { mutableStateOf(false) }
         var updateStatusText by remember { mutableStateOf<String?>(null) }
@@ -187,9 +189,15 @@ class LibraryRootScreen : Screen {
             }
         }
 
+        val downloadedMangaIds = remember(allItems, filterDownloaded) {
+            if (!filterDownloaded || downloadProvider == null) emptySet()
+            else allItems.filter { downloadProvider.hasMangaDownloads(it.manga.source, it.manga.title) }.map { it.id }.toSet()
+        }
+
         val displayedItems = remember(
             allItems, searchQuery, sortMode, sortAscending,
-            filterUnread, filterStarted, filterCompleted, selectedCategoryIndex, categoryTabs,
+            filterUnread, filterStarted, filterCompleted, filterDownloaded, downloadedMangaIds,
+            selectedCategoryIndex, categoryTabs,
         ) {
             val selectedCategory = categoryTabs.getOrNull(selectedCategoryIndex)
             LibrarySearchFilter.apply(
@@ -199,6 +207,8 @@ class LibraryRootScreen : Screen {
                 unread = filterUnread,
                 started = filterStarted,
                 completed = filterCompleted,
+                downloaded = filterDownloaded,
+                downloadedMangaIds = downloadedMangaIds,
                 sortMode = sortMode,
                 ascending = sortAscending,
             )
@@ -323,7 +333,8 @@ class LibraryRootScreen : Screen {
                     filterUnread = filterUnread,
                     filterStarted = filterStarted,
                     filterCompleted = filterCompleted,
-                    onFilterChange = { u, s, c -> filterUnread = u; filterStarted = s; filterCompleted = c },
+                    filterDownloaded = filterDownloaded,
+                    onFilterChange = { u, s, c, d -> filterUnread = u; filterStarted = s; filterCompleted = c; filterDownloaded = d },
                     isUpdating = isUpdating,
                     displayMode = displayMode,
                     onDisplayModeChange = {
@@ -524,7 +535,8 @@ private fun LibraryToolbar(
     filterUnread: Boolean,
     filterStarted: Boolean,
     filterCompleted: Boolean,
-    onFilterChange: (unread: Boolean, started: Boolean, completed: Boolean) -> Unit,
+    filterDownloaded: Boolean,
+    onFilterChange: (unread: Boolean, started: Boolean, completed: Boolean, downloaded: Boolean) -> Unit,
     isUpdating: Boolean,
     displayMode: LibraryDisplayMode,
     onDisplayModeChange: (LibraryDisplayMode) -> Unit,
@@ -611,15 +623,19 @@ private fun LibraryToolbar(
                 DropdownMenu(expanded = showFilterMenu, onDismissRequest = { showFilterMenu = false }) {
                     DropdownMenuItem(
                         text = { Text(if (filterUnread) "✓ Unread" else "  Unread") },
-                        onClick = { onFilterChange(!filterUnread, filterStarted, filterCompleted) },
+                        onClick = { onFilterChange(!filterUnread, filterStarted, filterCompleted, filterDownloaded) },
                     )
                     DropdownMenuItem(
                         text = { Text(if (filterStarted) "✓ Started" else "  Started") },
-                        onClick = { onFilterChange(filterUnread, !filterStarted, filterCompleted) },
+                        onClick = { onFilterChange(filterUnread, !filterStarted, filterCompleted, filterDownloaded) },
                     )
                     DropdownMenuItem(
                         text = { Text(if (filterCompleted) "✓ Completed" else "  Completed") },
-                        onClick = { onFilterChange(filterUnread, filterStarted, !filterCompleted) },
+                        onClick = { onFilterChange(filterUnread, filterStarted, !filterCompleted, filterDownloaded) },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(if (filterDownloaded) "✓ Downloaded" else "  Downloaded") },
+                        onClick = { onFilterChange(filterUnread, filterStarted, filterCompleted, !filterDownloaded) },
                     )
                 }
             }
@@ -641,6 +657,7 @@ private fun LibraryToolbar(
             if (filterUnread) add("Unread")
             if (filterStarted) add("Started")
             if (filterCompleted) add("Completed")
+            if (filterDownloaded) add("Downloaded")
         }
         if (activeFilters.isNotEmpty()) {
             Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -649,9 +666,10 @@ private fun LibraryToolbar(
                         selected = true,
                         onClick = {
                             when (label) {
-                                "Unread" -> onFilterChange(false, filterStarted, filterCompleted)
-                                "Started" -> onFilterChange(filterUnread, false, filterCompleted)
-                                "Completed" -> onFilterChange(filterUnread, filterStarted, false)
+                                "Unread" -> onFilterChange(false, filterStarted, filterCompleted, filterDownloaded)
+                                "Started" -> onFilterChange(filterUnread, false, filterCompleted, filterDownloaded)
+                                "Completed" -> onFilterChange(filterUnread, filterStarted, false, filterDownloaded)
+                                "Downloaded" -> onFilterChange(filterUnread, filterStarted, filterCompleted, false)
                             }
                         },
                         label = { Text(label) },

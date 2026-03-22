@@ -114,6 +114,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         var filterShowRead by remember { mutableStateOf(true) }
         var filterShowUnread by remember { mutableStateOf(true) }
         var filterShowBookmarked by remember { mutableStateOf(false) }
+        var filterShowDownloaded by remember { mutableStateOf(false) }
         var chapterSortMode by remember { mutableStateOf(ChapterSortMode.BY_SOURCE_ORDER) }
         var chapterSortAscending by remember { mutableStateOf(false) }
 
@@ -126,13 +127,17 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
 
         // Apply chapter filter + sort
         val displayedChapters = remember(
-            chapters, filterShowRead, filterShowUnread, filterShowBookmarked,
+            chapters, filterShowRead, filterShowUnread, filterShowBookmarked, filterShowDownloaded,
             chapterSortMode, chapterSortAscending,
         ) {
             val filtered = chapters.filter { ch ->
                 val readOk = (filterShowRead && ch.read) || (filterShowUnread && !ch.read)
                 val bookmarkOk = if (filterShowBookmarked) ch.bookmark else true
-                readOk && bookmarkOk
+                val downloadedOk = if (filterShowDownloaded) {
+                    val m = manga
+                    m != null && downloadManager.isDownloaded(m.source, m.title, ch.name)
+                } else true
+                readOk && bookmarkOk && downloadedOk
             }
             val comparator: Comparator<Chapter> = when (chapterSortMode) {
                 ChapterSortMode.BY_SOURCE_ORDER -> compareBy { it.sourceOrder }
@@ -201,6 +206,10 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                 DropdownMenuItem(
                                     text = { Text(if (filterShowBookmarked) "✓ Bookmarked only" else "  Bookmarked only") },
                                     onClick = { filterShowBookmarked = !filterShowBookmarked },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(if (filterShowDownloaded) "✓ Downloaded only" else "  Downloaded only") },
+                                    onClick = { filterShowDownloaded = !filterShowDownloaded },
                                 )
                                 HorizontalDivider()
                                 DropdownMenuItem(

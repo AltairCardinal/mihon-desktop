@@ -57,6 +57,20 @@ class DesktopDownloadProvider(
             ?: emptyList()
     }
 
+    /**
+     * Returns true if the manga has at least one fully-downloaded chapter.
+     * Temporary (`_tmp`) directories are excluded — same rule as [isChapterDownloaded].
+     */
+    fun hasMangaDownloads(sourceId: Long, mangaTitle: String): Boolean {
+        val mangaDir = File(baseDir, "${sanitize(sourceId.toString())}/${sanitize(mangaTitle)}")
+        if (!mangaDir.isDirectory) return false
+        return mangaDir.listFiles()?.any { chapterDir ->
+            chapterDir.isDirectory &&
+                !chapterDir.name.endsWith(TMP_DIR_SUFFIX) &&
+                chapterDir.listFiles()?.any { f -> f.isImageFile() } == true
+        } == true
+    }
+
     /** Deletes the chapter download directory and all its contents. */
     fun deleteChapterDownload(sourceId: Long, mangaTitle: String, chapterName: String) {
         val dir = chapterDownloadDir(sourceId, mangaTitle, chapterName)

@@ -74,6 +74,36 @@ class DownloadProviderTest {
         assertTrue(pages.isEmpty())
     }
 
+    // ── hasMangaDownloads ─────────────────────────────────────────────────────
+
+    @Test
+    fun `hasMangaDownloads returns false when manga dir does not exist`() {
+        assertFalse(provider().hasMangaDownloads(sourceId = 1L, mangaTitle = "Ghost"))
+    }
+
+    @Test
+    fun `hasMangaDownloads returns false when manga dir exists but has no chapter subdirs`() {
+        val mangaDir = File(tempDir, "1/My Manga")
+        mangaDir.mkdirs()
+        assertFalse(provider().hasMangaDownloads(sourceId = 1L, mangaTitle = "My Manga"))
+    }
+
+    @Test
+    fun `hasMangaDownloads returns false when only tmp dirs exist`() {
+        val tmpDir = provider().chapterTmpDir(1L, "My Manga", "Ch 1")
+        tmpDir.mkdirs()
+        File(tmpDir, "001.jpg").writeBytes(ByteArray(10))
+        assertFalse(provider().hasMangaDownloads(sourceId = 1L, mangaTitle = "My Manga"))
+    }
+
+    @Test
+    fun `hasMangaDownloads returns true when a chapter dir with images exists`() {
+        val chDir = provider().chapterDownloadDir(1L, "My Manga", "Ch 1")
+        chDir.mkdirs()
+        File(chDir, "001.jpg").writeBytes(ByteArray(10))
+        assertTrue(provider().hasMangaDownloads(sourceId = 1L, mangaTitle = "My Manga"))
+    }
+
     @Test
     fun `sanitize removes illegal filename chars`() {
         val dir = provider().chapterDownloadDir(1L, "Manga: The?Series*", "Ch 1/Part 2")
