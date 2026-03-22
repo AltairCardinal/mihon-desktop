@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import mihon.desktop.reader.DualPageState
 import mihon.desktop.reader.SinglePageSide
 import mihon.desktop.reader.ZoomState
@@ -133,6 +134,17 @@ internal fun DualPagePagerViewer(
             }
         }
 
+        // Tap-zone navigation: same pager-index arithmetic as SinglePagePagerViewer.
+        val scope = androidx.compose.runtime.rememberCoroutineScope()
+        val onTapLeft: () -> Unit = {
+            val prev = pagerState.currentPage - 1
+            if (prev >= 0) scope.launch { pagerState.animateScrollToPage(prev) }
+        }
+        val onTapRight: () -> Unit = {
+            val next = pagerState.currentPage + 1
+            if (next < dualState.groupCount) scope.launch { pagerState.animateScrollToPage(next) }
+        }
+
         // The pager always runs in LTR.  All Alignment values use LTR/physical
         // semantics: CenterEnd = physical RIGHT, CenterStart = physical LEFT.
         HorizontalPager(
@@ -158,6 +170,8 @@ internal fun DualPagePagerViewer(
                             chapterTitle = chapterTitle,
                             pageIndex = pageIndex,
                             onSpreadDetected = { onSpreadDetected(pageIndex) },
+                            onTapLeft = onTapLeft,
+                            onTapRight = onTapRight,
                         )
                     }
                     SinglePageSide.TRAILING -> {
@@ -178,6 +192,8 @@ internal fun DualPagePagerViewer(
                                 modifier = Modifier.fillMaxWidth(0.5f).fillMaxHeight(),
                                 imageAlignment = imgAlign,
                                 onSpreadDetected = { onSpreadDetected(pageIndex) },
+                                onTapLeft = onTapLeft,
+                                onTapRight = onTapRight,
                             )
                         }
                     }
@@ -199,6 +215,8 @@ internal fun DualPagePagerViewer(
                                 modifier = Modifier.fillMaxWidth(0.5f).fillMaxHeight(),
                                 imageAlignment = imgAlign,
                                 onSpreadDetected = { onSpreadDetected(pageIndex) },
+                                onTapLeft = onTapLeft,
+                                onTapRight = onTapRight,
                             )
                         }
                     }
@@ -231,6 +249,8 @@ internal fun DualPagePagerViewer(
                             modifier = Modifier.fillMaxSize(),
                             imageAlignment = Alignment.CenterEnd,
                             onSpreadDetected = { onSpreadDetected(leftPage) },
+                            onTapLeft = onTapLeft,
+                            onTapRight = onTapRight,
                         )
                     }
                     Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
@@ -247,6 +267,8 @@ internal fun DualPagePagerViewer(
                             modifier = Modifier.fillMaxSize(),
                             imageAlignment = Alignment.CenterStart,
                             onSpreadDetected = { onSpreadDetected(rightPage) },
+                            onTapLeft = onTapLeft,
+                            onTapRight = onTapRight,
                         )
                     }
                 }

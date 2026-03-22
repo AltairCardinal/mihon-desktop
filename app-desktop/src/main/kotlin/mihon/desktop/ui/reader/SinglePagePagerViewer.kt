@@ -5,8 +5,10 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import mihon.desktop.reader.ZoomState
 
 /**
@@ -62,6 +64,7 @@ internal fun SinglePagePagerViewer(
         initialPage = pageToPager(currentPage.coerceIn(0, maxPageIndex)),
         pageCount = { pageUrls.size },
     )
+    val scope = rememberCoroutineScope()
 
     // External navigation (slider / keyboard) → jump pager to the new page.
     LaunchedEffect(currentPage) {
@@ -74,6 +77,19 @@ internal fun SinglePagePagerViewer(
     // Pager swipe → update logical page counter in the parent.
     LaunchedEffect(pagerState.currentPage) {
         onPageChange(pagerToPage(pagerState.currentPage))
+    }
+
+    // Tap-zone navigation: left tap decreases pager index, right tap increases it.
+    // Works for both LTR and RTL because the index reversal is already baked into
+    // pageToPager/pagerToPage — physically tapping left always moves the pager
+    // leftward, which maps to the correct reading direction in both modes.
+    val onTapLeft: () -> Unit = {
+        val prev = pagerState.currentPage - 1
+        if (prev >= 0) scope.launch { pagerState.animateScrollToPage(prev) }
+    }
+    val onTapRight: () -> Unit = {
+        val next = pagerState.currentPage + 1
+        if (next < pageUrls.size) scope.launch { pagerState.animateScrollToPage(next) }
     }
 
     HorizontalPager(
@@ -93,6 +109,8 @@ internal fun SinglePagePagerViewer(
             pageIndex = page,
             // No spread detection in single-page mode (null = zero overhead).
             onSpreadDetected = null,
+            onTapLeft = onTapLeft,
+            onTapRight = onTapRight,
         )
     }
 }

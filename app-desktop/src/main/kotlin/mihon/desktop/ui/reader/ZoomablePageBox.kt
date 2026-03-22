@@ -83,6 +83,8 @@ internal fun ZoomablePageBox(
     modifier: Modifier = Modifier.fillMaxSize(),
     imageAlignment: Alignment = Alignment.Center,
     onSpreadDetected: (() -> Unit)? = null,
+    onTapLeft: (() -> Unit)? = null,
+    onTapRight: (() -> Unit)? = null,
 ) {
     val latestZoom by rememberUpdatedState(zoomState)
 
@@ -127,7 +129,19 @@ internal fun ZoomablePageBox(
                     }
                 }
                 .pointerInput(Unit) {
-                    detectTapGestures(onDoubleTap = { onZoomChange(ZoomState()) })
+                    detectTapGestures(
+                        onTap = { offset ->
+                            // Only trigger tap navigation when at default zoom (not zoomed in)
+                            if (latestZoom.scale <= 1f) {
+                                when (tapZoneFor(offset.x, size.width.toFloat())) {
+                                    TapZone.LEFT -> onTapLeft?.invoke()
+                                    TapZone.RIGHT -> onTapRight?.invoke()
+                                    TapZone.CENTER -> {}
+                                }
+                            }
+                        },
+                        onDoubleTap = { onZoomChange(ZoomState()) },
+                    )
                 },
             contentAlignment = imageAlignment,
         ) {
