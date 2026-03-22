@@ -89,6 +89,11 @@ data class DesktopReaderScreen(
     @Transient val progressTracker: ReaderProgressTracker? = null,
 ) : Screen {
 
+    // Voyager 默认 key = 类名，两个不同章节的 DesktopReaderScreen 会被视为同一个 screen，
+    // navigator.replace() 不会重建 composition，LaunchedEffect(Unit) 不会重新触发。
+    // 用 chapterId + chapterUrl 区分，确保每次切换章节都创建全新 composition。
+    override val key: String get() = "DesktopReaderScreen-$chapterId-$chapterUrl"
+
     @OptIn(ExperimentalComposeUiApi::class)
     @Composable
     override fun Content() {
@@ -523,11 +528,11 @@ data class DesktopReaderScreen(
             }
         }
 
-        // Yield one frame before requesting focus so the Box is fully in the focus tree.
+        // Yield a frame before requesting focus so the Box is fully in the focus tree.
         // Without this delay, requestFocus() can silently fail in Compose Desktop when
         // the screen is freshly composed after navigator.replace() (e.g. chapter switch).
         LaunchedEffect(Unit) {
-            kotlinx.coroutines.delay(1)
+            kotlinx.coroutines.delay(100)
             focusRequester.requestFocus()
         }
     }
