@@ -1,7 +1,9 @@
 package mihon.desktop.ui.library
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size as layoutSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -19,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.FilterList
@@ -27,9 +30,11 @@ import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -50,6 +55,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -475,9 +481,14 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                             ChapterDownloadStatus.DOWNLOADED
                         else -> ChapterDownloadStatus.NOT_DOWNLOADED
                     }
+                    val downloadProgress = downloadProgressFraction(
+                        progress = queuedItem?.progress ?: 0,
+                        totalPages = queuedItem?.pageUrls?.size ?: 0,
+                    )
                     ChapterRow(
                         chapter = chapter,
                         downloadStatus = downloadStatus,
+                        downloadProgress = downloadProgress,
                         onDownload = {
                             downloadManager.enqueue(
                                 DownloadItem(
@@ -490,6 +501,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                             )
                         },
                         onDeleteDownload = { deleteConfirmChapter = chapter },
+                        onCancelDownload = { downloadManager.cancel(chapter.id) },
                         onToggleBookmark = {
                             scope.launch {
                                 chapterRepository.update(ChapterUpdate(id = chapter.id, bookmark = !chapter.bookmark))
@@ -571,8 +583,10 @@ private enum class ChapterDownloadStatus { NOT_DOWNLOADED, QUEUED, DOWNLOADING, 
 private fun ChapterRow(
     chapter: Chapter,
     downloadStatus: ChapterDownloadStatus,
+    downloadProgress: Float?,
     onDownload: () -> Unit,
     onDeleteDownload: () -> Unit,
+    onCancelDownload: () -> Unit,
     onToggleBookmark: () -> Unit,
     onRead: () -> Unit,
 ) {
@@ -609,7 +623,10 @@ private fun ChapterRow(
                             )
                         }
                     ChapterDownloadStatus.QUEUED, ChapterDownloadStatus.DOWNLOADING ->
-                        CircularProgressIndicator(modifier = Modifier.padding(8.dp), strokeWidth = 2.dp)
+                        ChapterDownloadingIndicator(
+                            downloadProgress = downloadProgress,
+                            onCancel = onCancelDownload,
+                        )
                     ChapterDownloadStatus.NOT_DOWNLOADED ->
                         IconButton(onClick = onDownload) {
                             Icon(Icons.Default.CloudDownload, contentDescription = "Download")
@@ -631,4 +648,77 @@ private fun ChapterRow(
         supportingContent = chapter.scanlator?.let { { Text(it, style = MaterialTheme.typography.bodySmall) } },
     )
     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+}
+
+/**
+ * Returns the download progress as a fraction [0.0, 1.0], or null for indeterminate state.
+ *
+ * Returns null when:
+ * - totalPages is 0 (page list not yet resolved)
+ * - progress is 0 (download just started, no pages fetched yet)
+ */
+internal fun downloadProgressFraction(progress: Int, totalPages: Int): Float? {
+    if (totalPages == 0 || progress == 0) return null
+    return (progress.toFloat() / totalPages).coerceIn(0f, 1f)
+}
+
+/**
+ * Matches Android's ChapterDownloadIndicator for QUEUE and DOWNLOADING states:
+ * - null progress → indeterminate circular indicator
+ * - non-null → determinate circular indicator with animation
+ * - ArrowDownward icon in center
+ * - Click shows context menu with Cancel option
+ */
+@Composable
+private fun ChapterDownloadingIndicator(
+    downloadProgress: Float?,
+    onCancel: () -> Unit,
+) {
+    var showMenu by remember { mutableStateOf(false) }
+    val indicatorSize = 36.dp
+    val strokeWidth = 3.dp
+    val strokeColor = MaterialTheme.colorScheme.onSurfaceVariant
+
+    Box(
+        modifier = Modifier
+            .clickable { showMenu = true }
+            .layoutSize(indicatorSize),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (downloadProgress == null) {
+            CircularProgressIndicator(
+                modifier = Modifier.matchParentSize(),
+                color = strokeColor,
+                strokeWidth = strokeWidth,
+                trackColor = androidx.compose.ui.graphics.Color.Transparent,
+                strokeCap = StrokeCap.Butt,
+            )
+        } else {
+            val animatedProgress by animateFloatAsState(
+                targetValue = downloadProgress,
+                animationSpec = ProgressIndicatorDefaults.ProgressAnimationSpec,
+                label = "download_progress",
+            )
+            CircularProgressIndicator(
+                progress = { animatedProgress },
+                modifier = Modifier.matchParentSize(),
+                color = strokeColor,
+                strokeWidth = strokeWidth,
+                trackColor = androidx.compose.ui.graphics.Color.Transparent,
+                strokeCap = StrokeCap.Butt,
+            )
+        }
+        Icon(
+            imageVector = Icons.Default.ArrowDownward,
+            contentDescription = "Downloading",
+            modifier = Modifier.layoutSize(16.dp),
+            tint = strokeColor,
+        )
+        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+            DropdownMenuItem(
+                text = { Text("Cancel") },
+                onClick = { onCancel(); showMenu = false },
+            )
+        }
+    }
 }
