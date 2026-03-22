@@ -11,6 +11,7 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.FilledIconButton
+
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -91,8 +92,8 @@ internal fun ReaderBottomBar(
     val rightEnabled = if (nav.leftIsPrev) nav.nextEnabled else nav.prevEnabled
     val leftClick = if (nav.leftIsPrev) onPrevChapter else onNextChapter
     val rightClick = if (nav.leftIsPrev) onNextChapter else onPrevChapter
-    val leftIcon = if (nav.leftIsPrev) Icons.Default.SkipPrevious else Icons.Default.SkipNext
-    val rightIcon = if (nav.leftIsPrev) Icons.Default.SkipNext else Icons.Default.SkipPrevious
+    // Icons are fixed regardless of RTL — SkipPrevious always on the left, SkipNext on the right.
+    // In RTL mode only the functions swap, not the visual icons.
 
     Row(
         modifier = modifier
@@ -114,7 +115,7 @@ internal fun ReaderBottomBar(
                 disabledContentColor = Color.White.copy(alpha = 0.3f),
             ),
         ) {
-            Icon(leftIcon, contentDescription = if (nav.leftIsPrev) "Previous Chapter" else "Next Chapter")
+            Icon(Icons.Default.SkipPrevious, contentDescription = "Previous Chapter")
         }
 
         // Centre: page counter + optional Adjust Spread + slider
@@ -168,7 +169,7 @@ internal fun ReaderBottomBar(
                 disabledContentColor = Color.White.copy(alpha = 0.3f),
             ),
         ) {
-            Icon(rightIcon, contentDescription = if (nav.leftIsPrev) "Next Chapter" else "Previous Chapter")
+            Icon(Icons.Default.SkipNext, contentDescription = "Next Chapter")
         }
     }
 }
