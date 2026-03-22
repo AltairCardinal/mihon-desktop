@@ -387,8 +387,22 @@ data class DesktopReaderScreen(
                                     currentPage = target
                                     true
                                 }
-                                is ReaderPageAction.NoPrevPage -> false
-                                is ReaderPageAction.NoNextPage -> false
+                                is ReaderPageAction.NoPrevPage -> {
+                                    readerNav?.previousRead?.let { prev ->
+                                        navigator.replace(
+                                            copyForChapter(prev, ReaderNavigator.indexForId(chapters, prev.id)),
+                                        )
+                                    }
+                                    true
+                                }
+                                is ReaderPageAction.NoNextPage -> {
+                                    readerNav?.nextToRead?.let { next ->
+                                        navigator.replace(
+                                            copyForChapter(next, ReaderNavigator.indexForId(chapters, next.id)),
+                                        )
+                                    }
+                                    true
+                                }
                                 null -> false
                             }
                         }
@@ -509,7 +523,13 @@ data class DesktopReaderScreen(
             }
         }
 
-        LaunchedEffect(Unit) { focusRequester.requestFocus() }
+        // Yield one frame before requesting focus so the Box is fully in the focus tree.
+        // Without this delay, requestFocus() can silently fail in Compose Desktop when
+        // the screen is freshly composed after navigator.replace() (e.g. chapter switch).
+        LaunchedEffect(Unit) {
+            kotlinx.coroutines.delay(1)
+            focusRequester.requestFocus()
+        }
     }
 
     /** Creates a replacement screen for a sibling chapter, preserving context. */
