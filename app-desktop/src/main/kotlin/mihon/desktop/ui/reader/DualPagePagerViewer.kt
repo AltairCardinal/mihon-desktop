@@ -161,8 +161,10 @@ internal fun DualPagePagerViewer(
                         )
                     }
                     SinglePageSide.TRAILING -> {
-                        // Cover page: physical RIGHT half.
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterEnd) {
+                        // LTR: physical RIGHT half; RTL: physical LEFT half (cover on reader's entry side).
+                        val boxAlign = if (isRtl) Alignment.CenterStart else Alignment.CenterEnd
+                        val imgAlign = if (isRtl) Alignment.CenterEnd else Alignment.CenterStart
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = boxAlign) {
                             ZoomablePageBox(
                                 url = pageUrls[pageIndex],
                                 pageLabel = "Page ${pageIndex + 1}",
@@ -174,14 +176,16 @@ internal fun DualPagePagerViewer(
                                 chapterTitle = chapterTitle,
                                 pageIndex = pageIndex,
                                 modifier = Modifier.fillMaxWidth(0.5f).fillMaxHeight(),
-                                imageAlignment = Alignment.CenterStart,
+                                imageAlignment = imgAlign,
                                 onSpreadDetected = { onSpreadDetected(pageIndex) },
                             )
                         }
                     }
                     SinglePageSide.LEADING -> {
-                        // Last standalone page: physical LEFT half.
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+                        // LTR: physical LEFT half; RTL: physical RIGHT half.
+                        val boxAlign = if (isRtl) Alignment.CenterEnd else Alignment.CenterStart
+                        val imgAlign = if (isRtl) Alignment.CenterStart else Alignment.CenterEnd
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = boxAlign) {
                             ZoomablePageBox(
                                 url = pageUrls[pageIndex],
                                 pageLabel = "Page ${pageIndex + 1}",
@@ -193,7 +197,7 @@ internal fun DualPagePagerViewer(
                                 chapterTitle = chapterTitle,
                                 pageIndex = pageIndex,
                                 modifier = Modifier.fillMaxWidth(0.5f).fillMaxHeight(),
-                                imageAlignment = Alignment.CenterEnd,
+                                imageAlignment = imgAlign,
                                 onSpreadDetected = { onSpreadDetected(pageIndex) },
                             )
                         }

@@ -7,17 +7,17 @@ import org.junit.jupiter.api.Test
 /**
  * Verifies the physical-side contract for single-page groups in dual-page mode.
  *
- * The invariant:
- *  - TRAILING (cover, or any page with a next group) → always physical RIGHT
- *  - LEADING  (last page, connects backward)         → always physical LEFT
+ * The invariant (RTL-aware):
+ *  - LTR: TRAILING → physical RIGHT,  LEADING → physical LEFT
+ *  - RTL: TRAILING → physical LEFT,   LEADING → physical RIGHT
  *
- * This must hold for both LTR and RTL reading directions.  RTL is handled via
- * HorizontalPager(reverseLayout = true), which reverses scroll direction WITHOUT
- * flipping layout semantics.  All Alignment values remain in LTR coordinate space.
+ * In RTL manga reading direction the cover (TRAILING) should appear on the
+ * LEFT half (the side the reader's eye enters first), mirroring the physical
+ * layout of a right-to-left bound book.
  */
 class DualPageViewerAlignmentTest {
 
-    // ── TRAILING: always physical RIGHT ─────────────────────────────────────
+    // ── LTR: TRAILING on RIGHT, LEADING on LEFT ──────────────────────────────
 
     @Test
     fun `TRAILING single page is on physical right in LTR`() {
@@ -28,16 +28,6 @@ class DualPageViewerAlignmentTest {
     }
 
     @Test
-    fun `TRAILING single page is on physical right in RTL`() {
-        assertTrue(
-            singlePageBoxOnRight(SinglePageSide.TRAILING, isRtl = true),
-            "Cover page must be on physical RIGHT in RTL dual-page mode (not left)",
-        )
-    }
-
-    // ── LEADING: always physical LEFT ────────────────────────────────────────
-
-    @Test
     fun `LEADING single page is on physical left in LTR`() {
         assertFalse(
             singlePageBoxOnRight(SinglePageSide.LEADING, isRtl = false),
@@ -45,27 +35,37 @@ class DualPageViewerAlignmentTest {
         )
     }
 
+    // ── RTL: TRAILING on LEFT, LEADING on RIGHT (mirrored) ───────────────────
+
     @Test
-    fun `LEADING single page is on physical left in RTL`() {
+    fun `TRAILING single page is on physical left in RTL`() {
         assertFalse(
-            singlePageBoxOnRight(SinglePageSide.LEADING, isRtl = true),
-            "Last standalone page must be on physical LEFT in RTL dual-page mode",
+            singlePageBoxOnRight(SinglePageSide.TRAILING, isRtl = true),
+            "Cover page must be on physical LEFT in RTL dual-page mode",
         )
     }
 
-    // ── LTR and RTL produce the same physical position ───────────────────────
+    @Test
+    fun `LEADING single page is on physical right in RTL`() {
+        assertTrue(
+            singlePageBoxOnRight(SinglePageSide.LEADING, isRtl = true),
+            "Last standalone page must be on physical RIGHT in RTL dual-page mode",
+        )
+    }
+
+    // ── LTR and RTL produce opposite physical positions ───────────────────────
 
     @Test
-    fun `TRAILING physical side is the same in LTR and RTL`() {
+    fun `TRAILING physical side is opposite in LTR vs RTL`() {
         val ltr = singlePageBoxOnRight(SinglePageSide.TRAILING, isRtl = false)
         val rtl = singlePageBoxOnRight(SinglePageSide.TRAILING, isRtl = true)
-        assertTrue(ltr == rtl, "TRAILING physical side must be identical in LTR and RTL")
+        assertTrue(ltr != rtl, "TRAILING physical side must be mirrored in RTL vs LTR")
     }
 
     @Test
-    fun `LEADING physical side is the same in LTR and RTL`() {
+    fun `LEADING physical side is opposite in LTR vs RTL`() {
         val ltr = singlePageBoxOnRight(SinglePageSide.LEADING, isRtl = false)
         val rtl = singlePageBoxOnRight(SinglePageSide.LEADING, isRtl = true)
-        assertTrue(ltr == rtl, "LEADING physical side must be identical in LTR and RTL")
+        assertTrue(ltr != rtl, "LEADING physical side must be mirrored in RTL vs LTR")
     }
 }

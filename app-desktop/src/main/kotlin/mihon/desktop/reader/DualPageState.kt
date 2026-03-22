@@ -47,16 +47,19 @@ enum class SinglePageSide { LEADING, TRAILING, CENTER }
  * Returns true when a single-page group should occupy the physical RIGHT half of
  * the screen, false for the physical LEFT half.
  *
- * The invariant is direction-independent: TRAILING (cover page, connects forward)
- * is always on the physical RIGHT; LEADING (last page, connects backward) is always
- * on the physical LEFT — in both LTR and RTL reading modes.
+ * Direction-aware:
+ *  - LTR: TRAILING (cover) → RIGHT,  LEADING (last page) → LEFT
+ *  - RTL: TRAILING (cover) → LEFT,   LEADING (last page) → RIGHT
  *
- * The [isRtl] parameter is accepted for self-documenting call sites but does not
- * change the result.  Callers must map the returned value to a direction-aware
- * Compose Alignment, swapping CenterStart ↔ CenterEnd when [isRtl] is true.
+ * In RTL the cover appears on the physical LEFT so the reader's eye enters from
+ * the correct side of a right-to-left bound book.
  */
 internal fun singlePageBoxOnRight(side: SinglePageSide, isRtl: Boolean): Boolean {
-    return side == SinglePageSide.TRAILING || side == SinglePageSide.CENTER
+    return when (side) {
+        SinglePageSide.TRAILING -> !isRtl
+        SinglePageSide.LEADING -> isRtl
+        SinglePageSide.CENTER -> true
+    }
 }
 
 class DualPageState(
