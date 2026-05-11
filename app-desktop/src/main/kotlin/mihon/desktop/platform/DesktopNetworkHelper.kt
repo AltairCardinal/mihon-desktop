@@ -4,6 +4,8 @@ import eu.kanade.tachiyomi.network.DesktopCookieJar
 import eu.kanade.tachiyomi.network.interceptor.IgnoreGzipInterceptor
 import eu.kanade.tachiyomi.network.interceptor.UncaughtExceptionInterceptor
 import eu.kanade.tachiyomi.network.interceptor.UserAgentInterceptor
+import mihon.desktop.network.CloudflareChallengeManager
+import mihon.desktop.network.DesktopCloudflareInterceptor
 import mihon.desktop.settings.DohProvider
 import okhttp3.Cache
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -16,9 +18,12 @@ import java.util.concurrent.TimeUnit
 class DesktopNetworkHelper(
     cacheDir: File = File(System.getProperty("user.home"), ".mihon/cache/network"),
     dohProvider: DohProvider = DohProvider.OFF,
+    challengeManager: CloudflareChallengeManager? = null,
 ) {
 
-    val cookieJar = DesktopCookieJar()
+    val cookieJar = DesktopCookieJar(
+        storageFile = File(System.getProperty("user.home"), ".mihon/cookies.json"),
+    )
 
     /** Base client without DoH — used to bootstrap DnsOverHttps. */
     private val baseClient: OkHttpClient = OkHttpClient.Builder()
@@ -34,6 +39,11 @@ class DesktopNetworkHelper(
         )
         .addInterceptor(UncaughtExceptionInterceptor())
         .addInterceptor(UserAgentInterceptor(::defaultUserAgentProvider))
+        .apply {
+            challengeManager?.let {
+                addInterceptor(DesktopCloudflareInterceptor(cookieJar, it))
+            }
+        }
         .addNetworkInterceptor(IgnoreGzipInterceptor())
         .addNetworkInterceptor(BrotliInterceptor)
         .build()

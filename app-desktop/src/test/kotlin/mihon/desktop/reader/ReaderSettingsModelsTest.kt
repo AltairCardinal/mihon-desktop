@@ -95,4 +95,33 @@ class ReaderSettingsModelsTest {
     fun `WebtoonSidePadding default is NONE`() {
         assertEquals(WebtoonSidePadding.NONE, WebtoonSidePadding.DEFAULT)
     }
+
+    // ── ScaleType ────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `ScaleType has five values`() {
+        assertEquals(5, ScaleType.entries.size)
+    }
+
+    @Test
+    fun `ScaleType entries are FIT_SCREEN FIT_WIDTH FIT_HEIGHT ORIGINAL_SIZE SMART_FIT`() {
+        val names = ScaleType.entries.map { it.name }
+        assertTrue("FIT_SCREEN" in names)
+        assertTrue("FIT_WIDTH" in names)
+        assertTrue("FIT_HEIGHT" in names)
+        assertTrue("ORIGINAL_SIZE" in names)
+        assertTrue("SMART_FIT" in names)
+    }
+
+    @Test
+    fun `ScaleType default is FIT_SCREEN`() {
+        assertEquals(ScaleType.FIT_SCREEN, ScaleType.DEFAULT)
+    }
+
+    @Test
+    fun `ScaleType displayName is human-readable`() {
+        assertEquals("Fit Screen", ScaleType.FIT_SCREEN.displayName)
+        assertEquals("Fit Width", ScaleType.FIT_WIDTH.displayName)
+        assertEquals("Smart Fit", ScaleType.SMART_FIT.displayName)
+    }
 }

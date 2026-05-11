@@ -75,4 +75,67 @@ class DesktopCookieJarTest {
 
         assertTrue(jar.loadForRequest(url).isEmpty())
     }
+
+    // --- Cloudflare bypass support ---
+
+    @Test
+    fun `get returns cookies for url`() {
+        val url = "https://example.com/path".toHttpUrl()
+        val cookie = Cookie.Builder().name("cf_clearance").value("abc").domain("example.com").build()
+        jar.saveFromResponse(url, listOf(cookie))
+
+        val result = jar.get(url)
+        assertEquals(1, result.size)
+        assertEquals("cf_clearance", result[0].name)
+    }
+
+    @Test
+    fun `remove deletes specified cookies by name`() {
+        val url = "https://example.com/".toHttpUrl()
+        val cf = Cookie.Builder().name("cf_clearance").value("old").domain("example.com").build()
+        val session = Cookie.Builder().name("session").value("keep").domain("example.com").build()
+        jar.saveFromResponse(url, listOf(cf, session))
+
+        jar.remove(url, listOf("cf_clearance"))
+
+        val remaining = jar.loadForRequest(url)
+        assertEquals(1, remaining.size)
+        assertEquals("session", remaining[0].name)
+    }
+
+    @Test
+    fun `remove with empty list does nothing`() {
+        val url = "https://example.com/".toHttpUrl()
+        val cookie = Cookie.Builder().name("k").value("v").domain("example.com").build()
+        jar.saveFromResponse(url, listOf(cookie))
+
+        jar.remove(url, emptyList())
+
+        assertEquals(1, jar.loadForRequest(url).size)
+    }
+
+    @Test
+    fun `addManual inserts cookie for domain`() {
+        val url = "https://example.com/".toHttpUrl()
+
+        jar.addManual(url, "cf_clearance", "new_value_123")
+
+        val cookies = jar.loadForRequest(url)
+        assertEquals(1, cookies.size)
+        assertEquals("cf_clearance", cookies[0].name)
+        assertEquals("new_value_123", cookies[0].value)
+    }
+
+    @Test
+    fun `addManual overwrites existing cookie with same name`() {
+        val url = "https://example.com/".toHttpUrl()
+        val old = Cookie.Builder().name("cf_clearance").value("old").domain("example.com").build()
+        jar.saveFromResponse(url, listOf(old))
+
+        jar.addManual(url, "cf_clearance", "new")
+
+        val cookies = jar.get(url)
+        assertEquals(1, cookies.size)
+        assertEquals("new", cookies[0].value)
+    }
 }

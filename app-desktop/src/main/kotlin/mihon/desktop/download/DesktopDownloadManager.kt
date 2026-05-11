@@ -2,6 +2,8 @@ package mihon.desktop.download
 
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.model.SChapter
+import mihon.desktop.extension.SourceCallResult
+import mihon.desktop.extension.safeSourceCall
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -14,6 +16,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import okhttp3.Request
 import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
@@ -102,6 +106,21 @@ class DesktopDownloadManager(
         }
     }
 
+    /**
+     * Move a queue item from [from] index to [to] index.
+     * DOWNLOADING items are included in the index space so drag handles
+     * feel contiguous. Does nothing if indices are equal or out of bounds.
+     */
+    fun reorderItem(from: Int, to: Int) {
+        if (from == to) return
+        _queue.update { items ->
+            if (from !in items.indices || to !in items.indices) return@update items
+            val mutable = items.toMutableList()
+            mutable.add(to, mutable.removeAt(from))
+            mutable
+        }
+    }
+
     /** Sort the queue by a key selector, keeping DOWNLOADING items first. */
     fun <R : Comparable<R>> sortQueue(selector: (DownloadItem) -> R) {
         _queue.update { items ->
@@ -158,18 +177,31 @@ class DesktopDownloadManager(
                 .collect { drainQueue() }
         }
 
-    /** Process every QUEUED item until none remain. */
+    /** Process every QUEUED item until none remain, respecting parallel download limit. */
     private suspend fun drainQueue() {
+        val limit = (downloadPreferences ?: runCatching { Injekt.get<DesktopDownloadPreferences>() }.getOrNull())
+            ?.parallelDownloadLimit?.get()?.coerceIn(1, 5) ?: 1
+        val semaphore = Semaphore(limit)
+        val jobs = mutableListOf<Job>()
+
         while (true) {
             val item = _queue.value.firstOrNull { it.status == DownloadStatus.QUEUED } ?: break
             setStatus(item.chapterId, DownloadStatus.DOWNLOADING)
-            val success = downloadChapter(item)
-            if (success) {
-                _queue.value = _queue.value.filterNot { it.chapterId == item.chapterId }
-            } else {
-                setStatus(item.chapterId, DownloadStatus.ERROR)
+            val job = workerScope.launch {
+                semaphore.withPermit {
+                    val success = downloadChapter(item)
+                    if (success) {
+                        _queue.value = _queue.value.filterNot { it.chapterId == item.chapterId }
+                    } else {
+                        setStatus(item.chapterId, DownloadStatus.ERROR)
+                    }
+                }
             }
+            jobs.add(job)
         }
+
+        // Wait for all in-flight downloads to complete
+        jobs.forEach { it.join() }
     }
 
     /**
@@ -193,7 +225,11 @@ class DesktopDownloadManager(
                         url = item.chapterUrl
                         name = item.chapterName
                     }
-                    source.getPageList(sChapter).mapNotNull { it.imageUrl }
+                    val pagesResult = safeSourceCall { source.getPageList(sChapter) }
+                    when (pagesResult) {
+                        is SourceCallResult.Success -> pagesResult.value.mapNotNull { it.imageUrl }
+                        is SourceCallResult.Timeout, is SourceCallResult.Error -> return false
+                    }
                 }
                 else -> return false
             }

@@ -81,6 +81,16 @@ class DesktopAppPreferences(private val store: PreferenceStore) {
         )
     }
 
+    /** Category IDs to include in library updates (comma-separated). Empty = all. */
+    val updateCategoryIncludes: Preference<String> by lazy {
+        store.getString(key = "update_category_includes", defaultValue = "")
+    }
+
+    /** Category IDs to exclude from library updates (comma-separated). */
+    val updateCategoryExcludes: Preference<String> by lazy {
+        store.getString(key = "update_category_excludes", defaultValue = "")
+    }
+
     /** Last directory selected in the local manga source browser. Empty = none selected. */
     val localSourceRootDir: Preference<String> by lazy {
         store.getString(key = "local_source_root_dir", defaultValue = "")
@@ -89,5 +99,20 @@ class DesktopAppPreferences(private val store: PreferenceStore) {
     /** Maximum directory depth for recursive local source scanning. */
     val localSourceMaxDepth: Preference<Int> by lazy {
         store.getInt(key = "local_source_max_depth", defaultValue = 3)
+    }
+
+    /** Auto-backup interval (stored as enum name). */
+    val autoBackupInterval: Preference<String> by lazy {
+        store.getString(key = "auto_backup_interval", defaultValue = "OFF")
+    }
+
+    /** Maximum number of auto-backup files to keep. */
+    val autoBackupMaxFiles: Preference<Int> by lazy {
+        store.getInt(key = "auto_backup_max_files", defaultValue = 2)
+    }
+
+    /** Directory for auto-backup files. Empty = ~/MihonDesktopBackups. */
+    val autoBackupDir: Preference<String> by lazy {
+        store.getString(key = "auto_backup_dir", defaultValue = "")
     }
 }

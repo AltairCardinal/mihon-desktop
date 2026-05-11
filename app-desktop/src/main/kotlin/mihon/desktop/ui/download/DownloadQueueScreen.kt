@@ -10,10 +10,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -37,6 +39,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,9 +48,12 @@ import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import kotlinx.coroutines.launch
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.download.DownloadStatus
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -60,6 +66,7 @@ class DownloadQueueScreen : Screen {
         val manager = remember { Injekt.get<DesktopDownloadManager>() }
         val queue by manager.queue.collectAsState()
         val isPaused by manager.isPaused.collectAsState()
+        val scope = rememberCoroutineScope()
 
         // Group downloads by manga title (mirrors Android's by-source grouping)
         val grouped = remember(queue) { queue.groupBy { it.mangaTitle } }
@@ -69,6 +76,19 @@ class DownloadQueueScreen : Screen {
         var showOverflowMenu by remember { mutableStateOf(false) }
 
         val hasErrors = queue.any { it.status == DownloadStatus.ERROR }
+
+        val lazyListState = rememberLazyListState()
+        val reorderableLazyListState = rememberReorderableLazyListState(lazyListState) { from, to ->
+            // Keys for chapter items are Long chapterId; header keys are strings
+            val fromId = from.key as? Long ?: return@rememberReorderableLazyListState
+            val toId = to.key as? Long ?: return@rememberReorderableLazyListState
+            val currentQueue = queue
+            val fromIdx = currentQueue.indexOfFirst { it.chapterId == fromId }
+            val toIdx = currentQueue.indexOfFirst { it.chapterId == toId }
+            if (fromIdx >= 0 && toIdx >= 0) {
+                scope.launch { manager.reorderItem(fromIdx, toIdx) }
+            }
+        }
 
         Scaffold(
             topBar = {
@@ -217,12 +237,13 @@ class DownloadQueueScreen : Screen {
                     }
 
                     LazyColumn(
+                        state = lazyListState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         grouped.forEach { (mangaTitle, chapterItems) ->
-                            // Manga title group header
+                            // Manga title group header (non-draggable, string key)
                             item(key = "hdr_$mangaTitle") {
                                 Text(
                                     text = mangaTitle,
@@ -237,7 +258,21 @@ class DownloadQueueScreen : Screen {
                             }
 
                             items(chapterItems, key = { it.chapterId }) { item ->
-                                DownloadItemCard(item = item, manager = manager)
+                                ReorderableItem(reorderableLazyListState, key = item.chapterId) { isDragging ->
+                                    DownloadItemCard(
+                                        item = item,
+                                        manager = manager,
+                                        isDragging = isDragging,
+                                        dragHandle = {
+                                            Icon(
+                                                imageVector = Icons.Default.DragHandle,
+                                                contentDescription = "Drag to reorder",
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.draggableHandle(),
+                                            )
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
@@ -248,7 +283,12 @@ class DownloadQueueScreen : Screen {
 }
 
 @Composable
-private fun DownloadItemCard(item: DownloadItem, manager: DesktopDownloadManager) {
+private fun DownloadItemCard(
+    item: DownloadItem,
+    manager: DesktopDownloadManager,
+    isDragging: Boolean = false,
+    dragHandle: (@Composable () -> Unit)? = null,
+) {
     val statusLabel = when (item.status) {
         DownloadStatus.QUEUED -> "Waiting\u2026"
         DownloadStatus.DOWNLOADING ->
@@ -268,10 +308,14 @@ private fun DownloadItemCard(item: DownloadItem, manager: DesktopDownloadManager
         DownloadStatus.ERROR -> MaterialTheme.colorScheme.error
         DownloadStatus.CANCELLED -> MaterialTheme.colorScheme.onSurfaceVariant
     }
-    val cardColors = if (item.status == DownloadStatus.ERROR) {
-        CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f))
-    } else {
-        CardDefaults.cardColors()
+    val cardColors = when {
+        isDragging -> CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        )
+        item.status == DownloadStatus.ERROR -> CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f),
+        )
+        else -> CardDefaults.cardColors()
     }
 
     Card(modifier = Modifier.fillMaxWidth(), colors = cardColors) {
@@ -280,6 +324,11 @@ private fun DownloadItemCard(item: DownloadItem, manager: DesktopDownloadManager
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // Drag handle (only for QUEUED items — active downloads can't be moved)
+                if (dragHandle != null && item.status == DownloadStatus.QUEUED) {
+                    dragHandle()
+                }
+
                 Column(modifier = Modifier.weight(1f)) {
                     Text(text = item.chapterName, style = MaterialTheme.typography.bodyMedium)
                     Text(

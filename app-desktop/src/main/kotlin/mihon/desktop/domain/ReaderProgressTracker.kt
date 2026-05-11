@@ -32,6 +32,7 @@ class ReaderProgressTracker(
         totalPages: Int,
         manga: Manga? = null,
         chapterName: String? = null,
+        mangaId: Long = 0L,
         readAt: Date = Date(),
         sessionReadDuration: Long = 0L,
     ) {

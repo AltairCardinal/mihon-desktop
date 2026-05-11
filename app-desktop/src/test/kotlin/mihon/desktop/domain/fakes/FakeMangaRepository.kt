@@ -11,6 +11,7 @@ import tachiyomi.domain.manga.repository.MangaRepository
 class FakeMangaRepository : MangaRepository {
 
     private val store = mutableMapOf<Long, Manga>()
+    private val mangaCategoryMap = mutableMapOf<Long, List<Long>>()
     private var nextId = 1L
     val updates = mutableListOf<MangaUpdate>()
 
@@ -60,7 +61,11 @@ class FakeMangaRepository : MangaRepository {
     override suspend fun getDuplicateLibraryManga(id: Long, title: String): List<MangaWithChapterCount> = emptyList()
     override suspend fun getUpcomingManga(statuses: Set<Long>): Flow<List<Manga>> = flowOf(emptyList())
     override suspend fun resetViewerFlags(): Boolean = true
-    override suspend fun setMangaCategories(mangaId: Long, categoryIds: List<Long>) = Unit
+    override suspend fun setMangaCategories(mangaId: Long, categoryIds: List<Long>) {
+        mangaCategoryMap[mangaId] = categoryIds
+    }
+
+    fun getMangaCategoryIds(mangaId: Long): List<Long> = mangaCategoryMap[mangaId] ?: emptyList()
     override suspend fun updateAll(mangaUpdates: List<MangaUpdate>): Boolean {
         mangaUpdates.forEach { update(it) }
         return true

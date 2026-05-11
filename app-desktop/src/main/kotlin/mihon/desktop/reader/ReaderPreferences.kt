@@ -1,5 +1,8 @@
 package mihon.desktop.reader
 
+import mihon.desktop.ui.reader.NavigationMode
+import mihon.desktop.ui.reader.WebtoonAutoScrollSpeed
+
 /**
  * Persists reader settings across sessions using java.util.prefs.Preferences.
  * Data is stored per-user in the OS preference store (~/.java/.userPrefs on Linux,
@@ -23,11 +26,31 @@ class ReaderPreferences {
             prefs.flush()
         }
 
+    /** Tap navigation layout mode for pager viewers. */
+    var navigationMode: NavigationMode
+        get() = try {
+            NavigationMode.valueOf(prefs.get(KEY_NAVIGATION_MODE, NavigationMode.RightAndLeft.name))
+        } catch (_: Exception) {
+            NavigationMode.RightAndLeft
+        }
+        set(value) {
+            prefs.put(KEY_NAVIGATION_MODE, value.name)
+            prefs.flush()
+        }
+
     /** Whether dual-page mode was last enabled. */
     var isDualPage: Boolean
         get() = prefs.getBoolean(KEY_DUAL_PAGE, false)
         set(value) {
             prefs.putBoolean(KEY_DUAL_PAGE, value)
+            prefs.flush()
+        }
+
+    /** Whether wide (landscape) pages are automatically split into two half-pages in dual-page mode. */
+    var autoSplitPages: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_SPLIT_PAGES, false)
+        set(value) {
+            prefs.putBoolean(KEY_AUTO_SPLIT_PAGES, value)
             prefs.flush()
         }
 
@@ -71,11 +94,51 @@ class ReaderPreferences {
             prefs.flush()
         }
 
+    /** Whether webtoon auto-scroll is enabled. */
+    var webtoonAutoScroll: Boolean
+        get() = prefs.getBoolean(KEY_WEBTOON_AUTO_SCROLL, false)
+        set(value) {
+            prefs.putBoolean(KEY_WEBTOON_AUTO_SCROLL, value)
+            prefs.flush()
+        }
+
+    /** Auto-scroll speed preset for webtoon mode. */
+    var webtoonAutoScrollSpeed: WebtoonAutoScrollSpeed
+        get() = try {
+            WebtoonAutoScrollSpeed.valueOf(prefs.get(KEY_WEBTOON_AUTO_SCROLL_SPEED, WebtoonAutoScrollSpeed.Normal.name))
+        } catch (_: Exception) {
+            WebtoonAutoScrollSpeed.Normal
+        }
+        set(value) {
+            prefs.put(KEY_WEBTOON_AUTO_SCROLL_SPEED, value.name)
+            prefs.flush()
+        }
+
     /** Whether to automatically crop white borders from page images (webtoon mode). */
     var cropBordersWebtoon: Boolean
         get() = prefs.getBoolean(KEY_CROP_BORDERS_WEBTOON, false)
         set(value) {
             prefs.putBoolean(KEY_CROP_BORDERS_WEBTOON, value)
+            prefs.flush()
+        }
+
+    /** Whether to skip already-read chapters when navigating prev/next. */
+    var skipReadChapters: Boolean
+        get() = prefs.getBoolean(KEY_SKIP_READ_CHAPTERS, false)
+        set(value) {
+            prefs.putBoolean(KEY_SKIP_READ_CHAPTERS, value)
+            prefs.flush()
+        }
+
+    /** Image scale type for pager viewers. */
+    var scaleType: ScaleType
+        get() = try {
+            ScaleType.valueOf(prefs.get(KEY_SCALE_TYPE, ScaleType.DEFAULT.name))
+        } catch (_: Exception) {
+            ScaleType.DEFAULT
+        }
+        set(value) {
+            prefs.put(KEY_SCALE_TYPE, value.name)
             prefs.flush()
         }
 
@@ -148,8 +211,12 @@ class ReaderPreferences {
     }
 
     private companion object {
+        const val KEY_NAVIGATION_MODE = "navigationMode"
+        const val KEY_WEBTOON_AUTO_SCROLL = "webtoonAutoScroll"
+        const val KEY_WEBTOON_AUTO_SCROLL_SPEED = "webtoonAutoScrollSpeed"
         const val KEY_READING_MODE = "readingMode"
         const val KEY_DUAL_PAGE = "isDualPage"
+        const val KEY_AUTO_SPLIT_PAGES = "autoSplitPages"
         const val KEY_AUTO_SPREAD = "autoSpreadMatching"
         const val KEY_BG_THEME = "backgroundTheme"
         const val KEY_WEBTOON_SIDE_PADDING = "webtoonSidePadding"
@@ -160,6 +227,8 @@ class ReaderPreferences {
         const val KEY_COLOR_FILTER_R = "colorFilterR"
         const val KEY_COLOR_FILTER_G = "colorFilterG"
         const val KEY_COLOR_FILTER_B = "colorFilterB"
+        const val KEY_SKIP_READ_CHAPTERS = "skipReadChapters"
+        const val KEY_SCALE_TYPE = "scaleType"
         const val KEY_COLOR_FILTER_ALPHA = "colorFilterAlpha"
     }
 }

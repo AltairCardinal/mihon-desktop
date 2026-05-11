@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -17,10 +18,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import mihon.desktop.reader.DualPageState
+import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.SinglePageSide
 import mihon.desktop.reader.ZoomState
 
@@ -60,6 +63,7 @@ import mihon.desktop.reader.ZoomState
  * @param onSpreadPagesChanged Called when the set of detected spread pages changes,
  *                             so the parent can maintain a consistent DualPageState
  *                             for keyboard navigation.
+ * @param onTapCenter         Called when the user taps the center zone.
  */
 @Composable
 internal fun DualPagePagerViewer(
@@ -67,15 +71,21 @@ internal fun DualPagePagerViewer(
     currentPage: Int,
     isRtl: Boolean,
     zoomState: ZoomState,
+    autoSplitPages: Boolean = false,
     cropBorders: Boolean = false,
     contextMenuScope: CoroutineScope? = null,
     mangaTitle: String = "",
     chapterTitle: String = "",
     forcedSinglePages: Set<Int> = emptySet(),
     matchedPairs: Set<Pair<Int, Int>> = emptySet(),
+    scaleType: ScaleType = ScaleType.FIT_SCREEN,
+    navigationMode: NavigationMode = NavigationMode.RightAndLeft,
     onPageChange: (Int) -> Unit,
     onZoomChange: (ZoomState) -> Unit,
     onSpreadPagesChanged: ((Set<Int>) -> Unit)? = null,
+    onTapCenter: (() -> Unit)? = null,
+    onPrevChapter: (() -> Unit)? = null,
+    onNextChapter: (() -> Unit)? = null,
 ) {
     // Accumulates page indices whose decoded image is wider than tall (spread scans).
     // Reset to empty whenever the chapter changes (new pageUrls reference).
@@ -134,15 +144,27 @@ internal fun DualPagePagerViewer(
             }
         }
 
-        // Tap-zone navigation: same pager-index arithmetic as SinglePagePagerViewer.
+        // Tap-zone navigation: same RTL-aware logic as SinglePagePagerViewer.
         val scope = androidx.compose.runtime.rememberCoroutineScope()
         val onTapLeft: () -> Unit = {
-            val prev = pagerState.currentPage - 1
-            if (prev >= 0) scope.launch { pagerState.animateScrollToPage(prev) }
+            when (val action = tapLeftAction(pagerState.currentPage)) {
+                is PageNavAction.ScrollTo -> scope.launch { pagerState.animateScrollToPage(action.pagerIndex) }
+                else -> when (chapterNavForTapLeft(pagerState.currentPage, isRtl)) {
+                    PageNavAction.PrevChapter -> onPrevChapter?.invoke()
+                    PageNavAction.NextChapter -> onNextChapter?.invoke()
+                    else -> Unit
+                }
+            }
         }
         val onTapRight: () -> Unit = {
-            val next = pagerState.currentPage + 1
-            if (next < dualState.groupCount) scope.launch { pagerState.animateScrollToPage(next) }
+            when (val action = tapRightAction(pagerState.currentPage, dualState.groupCount)) {
+                is PageNavAction.ScrollTo -> scope.launch { pagerState.animateScrollToPage(action.pagerIndex) }
+                else -> when (chapterNavForTapRight(pagerState.currentPage, dualState.groupCount, isRtl)) {
+                    PageNavAction.NextChapter -> onNextChapter?.invoke()
+                    PageNavAction.PrevChapter -> onPrevChapter?.invoke()
+                    else -> Unit
+                }
+            }
         }
 
         // The pager always runs in LTR.  All Alignment values use LTR/physical
@@ -158,7 +180,73 @@ internal fun DualPagePagerViewer(
                 val pageIndex = group[0]
                 when (dualState.singlePageSide(groupIndex)) {
                     SinglePageSide.CENTER -> {
-                        // Landscape spread: full-width, centred.
+                        if (autoSplitPages) {
+                            // Split the wide image into left/right halves.
+                            val leftHalf = if (isRtl) PageSplitHalf.RIGHT else PageSplitHalf.LEFT
+                            val rightHalf = if (isRtl) PageSplitHalf.LEFT else PageSplitHalf.RIGHT
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .pointerInput(zoomState.scale, navigationMode) {
+                                        detectTapGestures { offset ->
+                                            if (zoomState.scale <= 1f) {
+                                                when (tapNavRegion(offset.x, offset.y, size.width.toFloat(), size.height.toFloat(), navigationMode)) {
+                                                    TapNavRegion.PREV -> onTapLeft()
+                                                    TapNavRegion.NEXT -> onTapRight()
+                                                    TapNavRegion.MENU -> onTapCenter?.invoke()
+                                                }
+                                            }
+                                        }
+                                    },
+                                horizontalArrangement = Arrangement.spacedBy(0.dp),
+                            ) {
+                                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                                    ZoomablePageBox(
+                                        url = pageUrls[pageIndex],
+                                        pageLabel = "Page ${pageIndex + 1} (L)",
+                                        zoomState = zoomState,
+                                        onZoomChange = onZoomChange,
+                                        splitHalf = leftHalf,
+                                        modifier = Modifier.fillMaxSize(),
+                                        imageAlignment = Alignment.CenterEnd,
+                                    )
+                                }
+                                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                                    ZoomablePageBox(
+                                        url = pageUrls[pageIndex],
+                                        pageLabel = "Page ${pageIndex + 1} (R)",
+                                        zoomState = zoomState,
+                                        onZoomChange = onZoomChange,
+                                        splitHalf = rightHalf,
+                                        modifier = Modifier.fillMaxSize(),
+                                        imageAlignment = Alignment.CenterStart,
+                                    )
+                                }
+                            }
+                        } else {
+                            // Landscape spread: full-width, centred.
+                            ZoomablePageBox(
+                                url = pageUrls[pageIndex],
+                                pageLabel = "Page ${pageIndex + 1}",
+                                zoomState = zoomState,
+                                onZoomChange = onZoomChange,
+                                cropBorders = cropBorders,
+                                contextMenuScope = contextMenuScope,
+                                mangaTitle = mangaTitle,
+                                chapterTitle = chapterTitle,
+                                pageIndex = pageIndex,
+                                onSpreadDetected = { onSpreadDetected(pageIndex) },
+                                navigationMode = navigationMode,
+                                onTapLeft = onTapLeft,
+                                onTapRight = onTapRight,
+                                onTapCenter = onTapCenter,
+                            )
+                        }
+                    }
+                    SinglePageSide.TRAILING -> {
+                        // LTR: physical RIGHT half; RTL: physical LEFT half (cover on reader's entry side).
+                        // Touch area is full screen, but image is aligned to one side.
+                        val imgAlign = if (isRtl) Alignment.CenterEnd else Alignment.CenterStart
                         ZoomablePageBox(
                             url = pageUrls[pageIndex],
                             pageLabel = "Page ${pageIndex + 1}",
@@ -169,56 +257,37 @@ internal fun DualPagePagerViewer(
                             mangaTitle = mangaTitle,
                             chapterTitle = chapterTitle,
                             pageIndex = pageIndex,
+                            modifier = Modifier.fillMaxSize(),
+                            imageAlignment = imgAlign,
                             onSpreadDetected = { onSpreadDetected(pageIndex) },
+                            navigationMode = navigationMode,
                             onTapLeft = onTapLeft,
                             onTapRight = onTapRight,
+                            onTapCenter = onTapCenter,
                         )
-                    }
-                    SinglePageSide.TRAILING -> {
-                        // LTR: physical RIGHT half; RTL: physical LEFT half (cover on reader's entry side).
-                        val boxAlign = if (isRtl) Alignment.CenterStart else Alignment.CenterEnd
-                        val imgAlign = if (isRtl) Alignment.CenterEnd else Alignment.CenterStart
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = boxAlign) {
-                            ZoomablePageBox(
-                                url = pageUrls[pageIndex],
-                                pageLabel = "Page ${pageIndex + 1}",
-                                zoomState = zoomState,
-                                onZoomChange = onZoomChange,
-                                cropBorders = cropBorders,
-                                contextMenuScope = contextMenuScope,
-                                mangaTitle = mangaTitle,
-                                chapterTitle = chapterTitle,
-                                pageIndex = pageIndex,
-                                modifier = Modifier.fillMaxWidth(0.5f).fillMaxHeight(),
-                                imageAlignment = imgAlign,
-                                onSpreadDetected = { onSpreadDetected(pageIndex) },
-                                onTapLeft = onTapLeft,
-                                onTapRight = onTapRight,
-                            )
-                        }
                     }
                     SinglePageSide.LEADING -> {
                         // LTR: physical LEFT half; RTL: physical RIGHT half.
-                        val boxAlign = if (isRtl) Alignment.CenterEnd else Alignment.CenterStart
+                        // Touch area is full screen, but image is aligned to one side.
                         val imgAlign = if (isRtl) Alignment.CenterStart else Alignment.CenterEnd
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = boxAlign) {
-                            ZoomablePageBox(
-                                url = pageUrls[pageIndex],
-                                pageLabel = "Page ${pageIndex + 1}",
-                                zoomState = zoomState,
-                                onZoomChange = onZoomChange,
-                                cropBorders = cropBorders,
-                                contextMenuScope = contextMenuScope,
-                                mangaTitle = mangaTitle,
-                                chapterTitle = chapterTitle,
-                                pageIndex = pageIndex,
-                                modifier = Modifier.fillMaxWidth(0.5f).fillMaxHeight(),
-                                imageAlignment = imgAlign,
-                                onSpreadDetected = { onSpreadDetected(pageIndex) },
-                                onTapLeft = onTapLeft,
-                                onTapRight = onTapRight,
-                            )
-                        }
+                        ZoomablePageBox(
+                            url = pageUrls[pageIndex],
+                            pageLabel = "Page ${pageIndex + 1}",
+                            zoomState = zoomState,
+                            onZoomChange = onZoomChange,
+                            cropBorders = cropBorders,
+                            contextMenuScope = contextMenuScope,
+                            mangaTitle = mangaTitle,
+                            chapterTitle = chapterTitle,
+                            pageIndex = pageIndex,
+                            modifier = Modifier.fillMaxSize(),
+                            imageAlignment = imgAlign,
+                            onSpreadDetected = { onSpreadDetected(pageIndex) },
+                            navigationMode = navigationMode,
+                            onTapLeft = onTapLeft,
+                            onTapRight = onTapRight,
+                            onTapCenter = onTapCenter,
+                        )
                     }
                 }
             } else {
@@ -227,7 +296,19 @@ internal fun DualPagePagerViewer(
                 val leftPage = if (isRtl) group[1] else group[0]
                 val rightPage = if (isRtl) group[0] else group[1]
                 Row(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(zoomState.scale, navigationMode) {
+                            detectTapGestures { offset ->
+                                if (zoomState.scale <= 1f) {
+                                    when (tapNavRegion(offset.x, offset.y, size.width.toFloat(), size.height.toFloat(), navigationMode)) {
+                                        TapNavRegion.PREV -> onTapLeft()
+                                        TapNavRegion.NEXT -> onTapRight()
+                                        TapNavRegion.MENU -> onTapCenter?.invoke()
+                                    }
+                                }
+                            }
+                        },
                     horizontalArrangement = Arrangement.spacedBy(0.dp),
                 ) {
                     // weight(1f) MUST be on Row's direct child.  ZoomablePageBox
@@ -249,8 +330,6 @@ internal fun DualPagePagerViewer(
                             modifier = Modifier.fillMaxSize(),
                             imageAlignment = Alignment.CenterEnd,
                             onSpreadDetected = { onSpreadDetected(leftPage) },
-                            onTapLeft = onTapLeft,
-                            onTapRight = onTapRight,
                         )
                     }
                     Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
@@ -267,8 +346,6 @@ internal fun DualPagePagerViewer(
                             modifier = Modifier.fillMaxSize(),
                             imageAlignment = Alignment.CenterStart,
                             onSpreadDetected = { onSpreadDetected(rightPage) },
-                            onTapLeft = onTapLeft,
-                            onTapRight = onTapRight,
                         )
                     }
                 }

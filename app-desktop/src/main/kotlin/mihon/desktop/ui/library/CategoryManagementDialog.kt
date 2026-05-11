@@ -8,9 +8,11 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -31,6 +33,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.DesktopCategoryManager
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import tachiyomi.domain.category.model.Category
 
 @Composable
@@ -49,6 +53,20 @@ fun CategoryManagementDialog(
     }
 
     LaunchedEffect(Unit) { refresh() }
+
+    val lazyListState = rememberLazyListState()
+    val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
+        val fromId = from.key as? Long ?: return@rememberReorderableLazyListState
+        val toIdx = categories.indexOfFirst { it.id == (to.key as? Long) }
+        if (toIdx >= 0) {
+            // Optimistic update for smooth UI, then persist
+            categories = categories.toMutableList().also { list ->
+                val fromIdx = list.indexOfFirst { it.id == fromId }
+                if (fromIdx >= 0) list.add(toIdx, list.removeAt(fromIdx))
+            }
+            scope.launch { categoryManager.reorder(fromId, toIdx) }
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -82,49 +100,60 @@ fun CategoryManagementDialog(
                     }
                 }
 
-                // Category list
+                // Category list with drag-to-reorder
                 LazyColumn(
+                    state = lazyListState,
                     modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp).padding(top = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     items(categories, key = { it.id }) { cat ->
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            if (editingId == cat.id) {
-                                OutlinedTextField(
-                                    value = editingName,
-                                    onValueChange = { editingName = it },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(1f),
+                        ReorderableItem(reorderableState, key = cat.id) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                // Drag handle
+                                Icon(
+                                    imageVector = Icons.Default.DragHandle,
+                                    contentDescription = "Drag to reorder",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.draggableHandle(),
                                 )
-                                TextButton(onClick = {
-                                    scope.launch {
-                                        categoryManager.rename(cat.id, editingName)
-                                        editingId = null
-                                        refresh()
+
+                                if (editingId == cat.id) {
+                                    OutlinedTextField(
+                                        value = editingName,
+                                        onValueChange = { editingName = it },
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    TextButton(onClick = {
+                                        scope.launch {
+                                            categoryManager.rename(cat.id, editingName)
+                                            editingId = null
+                                            refresh()
+                                        }
+                                    }) { Text("Save") }
+                                } else {
+                                    Text(
+                                        cat.name,
+                                        modifier = Modifier.weight(1f),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                    IconButton(onClick = {
+                                        editingId = cat.id
+                                        editingName = cat.name
+                                    }) {
+                                        Icon(Icons.Default.Edit, contentDescription = "Rename")
                                     }
-                                }) { Text("Save") }
-                            } else {
-                                Text(
-                                    cat.name,
-                                    modifier = Modifier.weight(1f),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                )
-                                IconButton(onClick = {
-                                    editingId = cat.id
-                                    editingName = cat.name
-                                }) {
-                                    Icon(Icons.Default.Edit, contentDescription = "Rename")
-                                }
-                                IconButton(onClick = {
-                                    scope.launch {
-                                        categoryManager.delete(cat.id)
-                                        refresh()
+                                    IconButton(onClick = {
+                                        scope.launch {
+                                            categoryManager.delete(cat.id)
+                                            refresh()
+                                        }
+                                    }) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Delete")
                                     }
-                                }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete")
                                 }
                             }
                         }

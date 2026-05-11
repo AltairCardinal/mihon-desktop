@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Note
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
@@ -34,6 +35,7 @@ import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomAppBar
@@ -60,14 +62,17 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
@@ -77,9 +82,14 @@ import mihon.desktop.domain.LibraryUpdateChecker
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DownloadItem
+import mihon.desktop.reader.ReadingMode
+import mihon.desktop.reader.readingModeFromViewerFlags
 import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.reader.ReaderNavigator
 import mihon.desktop.ui.reader.DesktopReaderScreen
+import mihon.desktop.domain.GetAvailableScanlators
+import mihon.desktop.domain.GetExcludedScanlators
+import mihon.desktop.domain.SetExcludedScanlators
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.repository.ChapterRepository
@@ -92,8 +102,12 @@ import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import mihon.desktop.domain.DesktopMangaCoverManager
 import java.awt.Desktop
 import java.net.URI
+import javax.swing.JFileChooser
+import javax.swing.SwingUtilities
+import javax.swing.filechooser.FileNameExtensionFilter
 
 data class MangaDetailScreen(val mangaId: Long) : Screen {
 
@@ -108,36 +122,50 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         val updateChecker = remember { Injekt.get<LibraryUpdateChecker>() }
         val chapterRepository = remember { Injekt.get<ChapterRepository>() }
         val mangaRepository = remember { Injekt.get<MangaRepository>() }
+        val getExcludedScanlators = remember { Injekt.get<GetExcludedScanlators>() }
+        val setExcludedScanlators = remember { Injekt.get<SetExcludedScanlators>() }
+        val getAvailableScanlators = remember { Injekt.get<GetAvailableScanlators>() }
         val scope = rememberCoroutineScope()
 
-        var manga by remember { mutableStateOf<Manga?>(null) }
-        var chapters by remember { mutableStateOf<List<Chapter>>(emptyList()) }
-        var isUpdating by remember { mutableStateOf(false) }
-        var deleteConfirmChapter by remember { mutableStateOf<Chapter?>(null) }
-        var markAllReadConfirm by remember { mutableStateOf(false) }
+        val model = rememberScreenModel { MangaDetailScreenModel(mangaId) }
+        val state by model.state.collectAsState()
         val selectionState = remember { ChapterSelectionState() }
 
-        // Migration state
-        var showMigrateSourcePicker by remember { mutableStateOf(false) }
-        var migrateSearchResults by remember { mutableStateOf<List<SManga>?>(null) }
-        var migrateTargetSourceId by remember { mutableStateOf<Long?>(null) }
-        var migrateSearching by remember { mutableStateOf(false) }
-        var migrateConfirmItem by remember { mutableStateOf<SManga?>(null) }
-
-        // Chapter filter/sort state
-        var showFilterMenu by remember { mutableStateOf(false) }
-        var filterShowRead by remember { mutableStateOf(true) }
-        var filterShowUnread by remember { mutableStateOf(true) }
-        var filterShowBookmarked by remember { mutableStateOf(false) }
-        var filterShowDownloaded by remember { mutableStateOf(false) }
-        var chapterSortMode by remember { mutableStateOf(ChapterSortMode.BY_SOURCE_ORDER) }
-        var chapterSortAscending by remember { mutableStateOf(false) }
+        // Read aliases — immutable vals at all read sites, writes go through model
+        val manga = state.manga
+        val chapters = state.chapters
+        val isUpdating = state.isUpdating
+        val deleteConfirmChapter = state.deleteConfirmChapter
+        val markAllReadConfirm = state.markAllReadConfirm
+        val showMigrateSourcePicker = state.showMigrateSourcePicker
+        val migrateSearchResults = state.migrateSearchResults
+        val migrateTargetSourceId = state.migrateTargetSourceId
+        val migrateSearching = state.migrateSearching
+        val migrateConfirmItem = state.migrateConfirmItem
+        val showNotesDialog = state.showNotesDialog
+        val showFilterMenu = state.showFilterMenu
+        val filterShowRead = state.filterShowRead
+        val filterShowUnread = state.filterShowUnread
+        val filterShowBookmarked = state.filterShowBookmarked
+        val filterShowDownloaded = state.filterShowDownloaded
+        val chapterSortMode = state.chapterSortMode
+        val chapterSortAscending = state.chapterSortAscending
+        val availableScanlators = state.availableScanlators
+        val excludedScanlators = state.excludedScanlators
 
         LaunchedEffect(mangaId) {
-            getMangaWithChapters.subscribe(mangaId).collect { (m, ch) ->
-                manga = m
-                chapters = ch
+            getMangaWithChapters.subscribe(mangaId, applyScanlatorFilter = true).collect { (m, ch) ->
+                model.setManga(m)
+                model.setChapters(ch)
             }
+        }
+
+        LaunchedEffect(mangaId) {
+            getAvailableScanlators.subscribe(mangaId).collect { model.setAvailableScanlators(it) }
+        }
+
+        LaunchedEffect(mangaId) {
+            getExcludedScanlators.subscribe(mangaId).collect { model.setExcludedScanlators(it) }
         }
 
         // Apply chapter filter + sort
@@ -197,7 +225,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         }
 
                         // Mark all as read
-                        TextButton(onClick = { markAllReadConfirm = true }) { Text("Mark all read") }
+                        TextButton(onClick = { model.setMarkAllReadConfirm(true) }) { Text("Mark all read") }
 
                         // Select all chapters / close selection mode
                         if (selectionState.isActive) {
@@ -211,10 +239,10 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
 
                         // Chapter filter/sort
                         Box {
-                            IconButton(onClick = { showFilterMenu = true }) {
+                            IconButton(onClick = { model.toggleFilterMenu() }) {
                                 Icon(Icons.Default.FilterList, contentDescription = "Filter chapters")
                             }
-                            DropdownMenu(expanded = showFilterMenu, onDismissRequest = { showFilterMenu = false }) {
+                            DropdownMenu(expanded = showFilterMenu, onDismissRequest = { model.toggleFilterMenu() }) {
                                 DropdownMenuItem(
                                     text = { Text("── Filter ──") },
                                     onClick = {},
@@ -222,20 +250,44 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                 )
                                 DropdownMenuItem(
                                     text = { Text(if (filterShowRead) "✓ Show Read" else "  Show Read") },
-                                    onClick = { filterShowRead = !filterShowRead },
+                                    onClick = { model.setFilterShowRead(!filterShowRead) },
                                 )
                                 DropdownMenuItem(
                                     text = { Text(if (filterShowUnread) "✓ Show Unread" else "  Show Unread") },
-                                    onClick = { filterShowUnread = !filterShowUnread },
+                                    onClick = { model.setFilterShowUnread(!filterShowUnread) },
                                 )
                                 DropdownMenuItem(
                                     text = { Text(if (filterShowBookmarked) "✓ Bookmarked only" else "  Bookmarked only") },
-                                    onClick = { filterShowBookmarked = !filterShowBookmarked },
+                                    onClick = { model.setFilterShowBookmarked(!filterShowBookmarked) },
                                 )
                                 DropdownMenuItem(
                                     text = { Text(if (filterShowDownloaded) "✓ Downloaded only" else "  Downloaded only") },
-                                    onClick = { filterShowDownloaded = !filterShowDownloaded },
+                                    onClick = { model.setFilterShowDownloaded(!filterShowDownloaded) },
                                 )
+                                if (availableScanlators.isNotEmpty()) {
+                                    HorizontalDivider()
+                                    DropdownMenuItem(
+                                        text = { Text("── Scanlators ──") },
+                                        onClick = {},
+                                        enabled = false,
+                                    )
+                                    availableScanlators.sorted().forEach { scanlator ->
+                                        val isExcluded = scanlator in excludedScanlators
+                                        DropdownMenuItem(
+                                            text = { Text(if (!isExcluded) "✓ $scanlator" else "  $scanlator") },
+                                            onClick = {
+                                                scope.launch {
+                                                    val newExcluded = if (isExcluded) {
+                                                        excludedScanlators - scanlator
+                                                    } else {
+                                                        excludedScanlators + scanlator
+                                                    }
+                                                    setExcludedScanlators.await(mangaId, newExcluded)
+                                                }
+                                            },
+                                        )
+                                    }
+                                }
                                 HorizontalDivider()
                                 DropdownMenuItem(
                                     text = { Text("── Sort ──") },
@@ -252,13 +304,8 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                     DropdownMenuItem(
                                         text = { Text("$label$arrow") },
                                         onClick = {
-                                            if (mode == chapterSortMode) {
-                                                chapterSortAscending = !chapterSortAscending
-                                            } else {
-                                                chapterSortMode = mode
-                                                chapterSortAscending = false
-                                            }
-                                            showFilterMenu = false
+                                            model.toggleSort(mode)
+                                            model.toggleFilterMenu()
                                         },
                                     )
                                 }
@@ -274,11 +321,11 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                             IconButton(onClick = {
                                 val m = manga ?: return@IconButton
                                 scope.launch {
-                                    isUpdating = true
+                                    model.setIsUpdating(true)
                                     val source = sourceManager.getCatalogueSources()
                                         .find { it.id == m.source }
                                     if (source != null) updateChecker.checkForUpdates(m, source)
-                                    isUpdating = false
+                                    model.setIsUpdating(false)
                                 }
                             }) {
                                 Icon(Icons.Default.Refresh, contentDescription = "Check for updates")
@@ -286,8 +333,13 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         }
 
                         // Migrate to another source
-                        IconButton(onClick = { showMigrateSourcePicker = true }) {
+                        IconButton(onClick = { model.setShowMigrateSourcePicker(true) }) {
                             Icon(Icons.Default.SwapHoriz, contentDescription = "Migrate source")
+                        }
+
+                        // Notes
+                        IconButton(onClick = { model.setShowNotesDialog(true) }) {
+                            Icon(Icons.Default.Note, contentDescription = "Notes")
                         }
                     },
                 )
@@ -342,7 +394,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
             // Delete confirmation dialog
             deleteConfirmChapter?.let { ch ->
                 AlertDialog(
-                    onDismissRequest = { deleteConfirmChapter = null },
+                    onDismissRequest = { model.setDeleteConfirmChapter(null) },
                     title = { Text("Delete download?") },
                     text = { Text("Delete local files for \"${ch.name}\"? You can re-download it later.") },
                     confirmButton = {
@@ -352,11 +404,11 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                 mangaTitle = manga?.title ?: "",
                                 chapterName = ch.name,
                             )
-                            deleteConfirmChapter = null
+                            model.setDeleteConfirmChapter(null)
                         }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
                     },
                     dismissButton = {
-                        TextButton(onClick = { deleteConfirmChapter = null }) { Text("Cancel") }
+                        TextButton(onClick = { model.setDeleteConfirmChapter(null) }) { Text("Cancel") }
                     },
                 )
             }
@@ -364,7 +416,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
             // Mark all read confirmation
             if (markAllReadConfirm) {
                 AlertDialog(
-                    onDismissRequest = { markAllReadConfirm = false },
+                    onDismissRequest = { model.setMarkAllReadConfirm(false) },
                     title = { Text("Mark all as read?") },
                     text = { Text("Mark all ${chapters.size} chapters as read?") },
                     confirmButton = {
@@ -373,11 +425,11 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                 val updates = chapters.map { ch -> ChapterUpdate(id = ch.id, read = true) }
                                 chapterRepository.updateAll(updates)
                             }
-                            markAllReadConfirm = false
+                            model.setMarkAllReadConfirm(false)
                         }) { Text("Mark all read") }
                     },
                     dismissButton = {
-                        TextButton(onClick = { markAllReadConfirm = false }) { Text("Cancel") }
+                        TextButton(onClick = { model.setMarkAllReadConfirm(false) }) { Text("Cancel") }
                     },
                 )
             }
@@ -388,7 +440,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                     sourceManager.getCatalogueSources().filter { it.id != manga?.source }
                 }
                 AlertDialog(
-                    onDismissRequest = { showMigrateSourcePicker = false },
+                    onDismissRequest = { model.setShowMigrateSourcePicker(false) },
                     title = { Text("Migrate to source") },
                     text = {
                         if (availableSources.isEmpty()) {
@@ -399,17 +451,17 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                     DropdownMenuItem(
                                         text = { Text("${src.name} (${src.lang})") },
                                         onClick = {
-                                            showMigrateSourcePicker = false
-                                            migrateTargetSourceId = src.id
-                                            migrateSearchResults = null
+                                            model.setShowMigrateSourcePicker(false)
+                                            model.setMigrateTargetSourceId(src.id)
+                                            model.setMigrateSearchResults(null)
                                             scope.launch {
-                                                migrateSearching = true
+                                                model.setMigrateSearching(true)
                                                 runCatching {
                                                     val query = manga?.title ?: return@runCatching
                                                     val results = src.getSearchManga(1, query, FilterList())
-                                                    migrateSearchResults = results.mangas
+                                                    model.setMigrateSearchResults(results.mangas)
                                                 }
-                                                migrateSearching = false
+                                                model.setMigrateSearching(false)
                                             }
                                         },
                                     )
@@ -418,7 +470,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         }
                     },
                     confirmButton = {
-                        TextButton(onClick = { showMigrateSourcePicker = false }) { Text("Cancel") }
+                        TextButton(onClick = { model.setShowMigrateSourcePicker(false) }) { Text("Cancel") }
                     },
                 )
             }
@@ -428,8 +480,8 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
             if (searchResults != null) {
                 AlertDialog(
                     onDismissRequest = {
-                        migrateSearchResults = null
-                        migrateTargetSourceId = null
+                        model.setMigrateSearchResults(null)
+                        model.setMigrateTargetSourceId(null)
                     },
                     title = {
                         if (migrateSearching) Text("Searching\u2026")
@@ -458,7 +510,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                                 }
                                             }
                                         },
-                                        onClick = { migrateConfirmItem = result },
+                                        onClick = { model.setMigrateConfirmItem(result) },
                                     )
                                 }
                             }
@@ -466,8 +518,8 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                     },
                     confirmButton = {
                         TextButton(onClick = {
-                            migrateSearchResults = null
-                            migrateTargetSourceId = null
+                            model.setMigrateSearchResults(null)
+                            model.setMigrateTargetSourceId(null)
                         }) { Text("Cancel") }
                     },
                 )
@@ -477,7 +529,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
             val confirmItem = migrateConfirmItem
             if (confirmItem != null) {
                 AlertDialog(
-                    onDismissRequest = { migrateConfirmItem = null },
+                    onDismissRequest = { model.setMigrateConfirmItem(null) },
                     title = { Text("Confirm migration") },
                     text = { Text("Migrate to \"${confirmItem.title}\"? This will update the manga URL and source.") },
                     confirmButton = {
@@ -494,14 +546,23 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                     ),
                                 )
                             }
-                            migrateConfirmItem = null
-                            migrateSearchResults = null
-                            migrateTargetSourceId = null
+                            model.setMigrateConfirmItem(null)
+                            model.setMigrateSearchResults(null)
+                            model.setMigrateTargetSourceId(null)
                         }) { Text("Migrate") }
                     },
                     dismissButton = {
-                        TextButton(onClick = { migrateConfirmItem = null }) { Text("Cancel") }
+                        TextButton(onClick = { model.setMigrateConfirmItem(null) }) { Text("Cancel") }
                     },
+                )
+            }
+
+            // Notes dialog
+            val notedManga = manga
+            if (showNotesDialog && notedManga != null) {
+                MangaNotesDialog(
+                    manga = notedManga,
+                    onDismiss = { model.setShowNotesDialog(false) },
                 )
             }
 
@@ -517,6 +578,65 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 contentPadding = PaddingValues(bottom = 16.dp),
             ) {
                 item { MangaHeader(manga = manga!!) }
+
+                // Per-manga reading mode selector
+                item {
+                    val currentFlags = manga!!.viewerFlags
+                    val currentOverride = readingModeFromViewerFlags(currentFlags)
+                    var expanded by remember { mutableStateOf(false) }
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text("Reading mode:", style = MaterialTheme.typography.bodyMedium)
+                        Box {
+                            TextButton(onClick = { expanded = true }) {
+                                Text(currentOverride?.displayName ?: "Default")
+                            }
+                            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Default") },
+                                    onClick = {
+                                        expanded = false
+                                        scope.launch {
+                                            mangaRepository.update(MangaUpdate(id = mangaId, viewerFlags = 0L))
+                                        }
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(ReadingMode.LTR.displayName) },
+                                    onClick = {
+                                        expanded = false
+                                        scope.launch {
+                                            mangaRepository.update(MangaUpdate(id = mangaId, viewerFlags = 1L))
+                                        }
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(ReadingMode.RTL.displayName) },
+                                    onClick = {
+                                        expanded = false
+                                        scope.launch {
+                                            mangaRepository.update(MangaUpdate(id = mangaId, viewerFlags = 2L))
+                                        }
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(ReadingMode.WEBTOON.displayName) },
+                                    onClick = {
+                                        expanded = false
+                                        scope.launch {
+                                            mangaRepository.update(MangaUpdate(id = mangaId, viewerFlags = 5L))
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    HorizontalDivider()
+                }
+
                 item {
                     Row(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -533,7 +653,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 items(displayedChapters, key = { it.id }) { chapter ->
                     val chapterRefs = remember(chapters) {
                         chapters.sortedBy { it.sourceOrder }
-                            .map { ReaderChapterRef(id = it.id, url = it.url, name = it.name) }
+                            .map { ReaderChapterRef(id = it.id, url = it.url, name = it.name, isRead = it.read) }
                     }
                     val downloadQueue by downloadManager.queue.collectAsState()
                     val queuedItem = downloadQueue.find { it.chapterId == chapter.id }
@@ -568,7 +688,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                 ),
                             )
                         },
-                        onDeleteDownload = { deleteConfirmChapter = chapter },
+                        onDeleteDownload = { model.setDeleteConfirmChapter(chapter) },
                         onCancelDownload = { downloadManager.cancel(chapter.id) },
                         onToggleBookmark = {
                             scope.launch {
@@ -590,6 +710,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                         chapters = chapterRefs,
                                         currentChapterIndex = idx,
                                         initialPage = chapter.lastPageRead.toInt().coerceAtLeast(0),
+                                        mangaViewerFlags = manga?.viewerFlags ?: 0L,
                                         progressTracker = progressTracker,
                                     ),
                                 )
@@ -604,20 +725,75 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
 
 @Composable
 private fun MangaHeader(manga: Manga) {
+    val coverManager = remember { Injekt.get<DesktopMangaCoverManager>() }
+    var coverVersion by remember { mutableStateOf(0) }
+    val coverModel by produceState<String?>(initialValue = manga.thumbnailUrl, coverVersion) {
+        value = coverManager.resolveModel(manga.id, manga.thumbnailUrl)
+    }
+    var showCoverMenu by remember { mutableStateOf(false) }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        AsyncImage(
-            model = manga.thumbnailUrl,
-            contentDescription = manga.title,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .width(120.dp)
-                .aspectRatio(0.7f),
-        )
+        Box {
+            AsyncImage(
+                model = coverModel,
+                contentDescription = manga.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .width(120.dp)
+                    .aspectRatio(0.7f),
+            )
+            // Edit cover button overlay
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd),
+            ) {
+                IconButton(
+                    onClick = { showCoverMenu = true },
+                ) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = "Edit cover",
+                        tint = Color.White,
+                    )
+                }
+                DropdownMenu(
+                    expanded = showCoverMenu,
+                    onDismissRequest = { showCoverMenu = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Edit cover") },
+                        onClick = {
+                            showCoverMenu = false
+                            SwingUtilities.invokeLater {
+                                val chooser = JFileChooser()
+                                chooser.fileFilter = FileNameExtensionFilter(
+                                    "Image files",
+                                    "jpg", "jpeg", "png", "webp", "gif",
+                                )
+                                if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+                                    coverManager.setCustomCover(manga.id, chooser.selectedFile)
+                                    coverVersion++
+                                }
+                            }
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete cover") },
+                        onClick = {
+                            showCoverMenu = false
+                            coverManager.deleteCustomCover(manga.id)
+                            coverVersion++
+                        },
+                        enabled = coverManager.customCoverExists(manga.id),
+                    )
+                }
+            }
+        }
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = manga.title,

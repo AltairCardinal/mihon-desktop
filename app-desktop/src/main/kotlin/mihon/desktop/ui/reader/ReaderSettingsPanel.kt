@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import mihon.desktop.reader.ReaderBackgroundTheme
 import mihon.desktop.reader.ReaderColorFilter
 import mihon.desktop.reader.ReadingMode
+import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.WebtoonSidePadding
 import mihon.desktop.reader.ZoomState
 
@@ -63,21 +64,33 @@ import mihon.desktop.reader.ZoomState
 fun ReaderSettingsPanel(
     currentMode: ReadingMode,
     isDualPage: Boolean,
+    autoSplitPages: Boolean,
     isAutoSpreadMatching: Boolean,
     backgroundTheme: ReaderBackgroundTheme,
+    navigationMode: NavigationMode,
     cropBordersPager: Boolean,
     cropBordersWebtoon: Boolean,
     webtoonSidePadding: WebtoonSidePadding,
+    webtoonAutoScroll: Boolean,
+    webtoonAutoScrollSpeed: WebtoonAutoScrollSpeed,
     colorFilter: ReaderColorFilter,
+    scaleType: ScaleType = ScaleType.FIT_SCREEN,
+    skipReadChapters: Boolean = false,
     zoomState: ZoomState,
     onModeChange: (ReadingMode) -> Unit,
     onDualPageChange: (Boolean) -> Unit,
+    onAutoSplitPagesChange: (Boolean) -> Unit,
     onAutoSpreadMatchingChange: (Boolean) -> Unit,
     onBackgroundThemeChange: (ReaderBackgroundTheme) -> Unit,
+    onNavigationModeChange: (NavigationMode) -> Unit,
     onCropBordersPagerChange: (Boolean) -> Unit,
     onCropBordersWebtoonChange: (Boolean) -> Unit,
     onWebtoonSidePaddingChange: (WebtoonSidePadding) -> Unit,
+    onWebtoonAutoScrollChange: (Boolean) -> Unit,
+    onWebtoonAutoScrollSpeedChange: (WebtoonAutoScrollSpeed) -> Unit,
     onColorFilterChange: (ReaderColorFilter) -> Unit,
+    onScaleTypeChange: (ScaleType) -> Unit = {},
+    onSkipReadChaptersChange: (Boolean) -> Unit = {},
     onZoomChange: (ZoomState) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -110,22 +123,34 @@ fun ReaderSettingsPanel(
                         0 -> GeneralTab(
                             currentMode = currentMode,
                             isDualPage = isDualPage,
+                            autoSplitPages = autoSplitPages,
                             isAutoSpreadMatching = isAutoSpreadMatching,
                             backgroundTheme = backgroundTheme,
+                            navigationMode = navigationMode,
+                            skipReadChapters = skipReadChapters,
                             zoomState = zoomState,
                             onModeChange = onModeChange,
                             onDualPageChange = onDualPageChange,
+                            onAutoSplitPagesChange = onAutoSplitPagesChange,
                             onAutoSpreadMatchingChange = onAutoSpreadMatchingChange,
                             onBackgroundThemeChange = onBackgroundThemeChange,
+                            onNavigationModeChange = onNavigationModeChange,
+                            onSkipReadChaptersChange = onSkipReadChaptersChange,
                             onZoomChange = onZoomChange,
                         )
                         1 -> DisplayTab(
                             cropBordersPager = cropBordersPager,
                             cropBordersWebtoon = cropBordersWebtoon,
                             webtoonSidePadding = webtoonSidePadding,
+                            webtoonAutoScroll = webtoonAutoScroll,
+                            webtoonAutoScrollSpeed = webtoonAutoScrollSpeed,
+                            scaleType = scaleType,
                             onCropBordersPagerChange = onCropBordersPagerChange,
                             onCropBordersWebtoonChange = onCropBordersWebtoonChange,
                             onWebtoonSidePaddingChange = onWebtoonSidePaddingChange,
+                            onWebtoonAutoScrollChange = onWebtoonAutoScrollChange,
+                            onWebtoonAutoScrollSpeedChange = onWebtoonAutoScrollSpeedChange,
+                            onScaleTypeChange = onScaleTypeChange,
                         )
                         2 -> FilterTab(
                             colorFilter = colorFilter,
@@ -147,13 +172,19 @@ fun ReaderSettingsPanel(
 private fun GeneralTab(
     currentMode: ReadingMode,
     isDualPage: Boolean,
+    autoSplitPages: Boolean,
     isAutoSpreadMatching: Boolean,
     backgroundTheme: ReaderBackgroundTheme,
+    navigationMode: NavigationMode,
+    skipReadChapters: Boolean = false,
     zoomState: ZoomState,
     onModeChange: (ReadingMode) -> Unit,
     onDualPageChange: (Boolean) -> Unit,
+    onAutoSplitPagesChange: (Boolean) -> Unit,
     onAutoSpreadMatchingChange: (Boolean) -> Unit,
     onBackgroundThemeChange: (ReaderBackgroundTheme) -> Unit,
+    onNavigationModeChange: (NavigationMode) -> Unit,
+    onSkipReadChaptersChange: (Boolean) -> Unit = {},
     onZoomChange: (ZoomState) -> Unit,
 ) {
     // Reading mode
@@ -169,9 +200,14 @@ private fun GeneralTab(
 
     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-    // Dual-page (pager modes only)
+    // Pager settings (non-Webtoon modes only)
     if (currentMode != ReadingMode.WEBTOON) {
         SettingsSection("Pager") {
+            CheckboxRow(
+                label = "Split Wide Pages",
+                checked = autoSplitPages,
+                onCheckedChange = onAutoSplitPagesChange,
+            )
             CheckboxRow(
                 label = "Dual Page (side-by-side)",
                 checked = isDualPage,
@@ -188,6 +224,31 @@ private fun GeneralTab(
         }
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
     }
+
+    // Navigation mode (pager only)
+    if (currentMode != ReadingMode.WEBTOON) {
+        SettingsSection("Tap Navigation") {
+            NavigationMode.entries.forEach { mode ->
+                RadioRow(
+                    label = mode.displayName,
+                    selected = navigationMode == mode,
+                    onClick = { onNavigationModeChange(mode) },
+                )
+            }
+        }
+        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+    }
+
+    // Skip read chapters
+    SettingsSection("Chapter Navigation") {
+        SwitchRow(
+            label = "Skip read chapters",
+            checked = skipReadChapters,
+            onCheckedChange = onSkipReadChaptersChange,
+        )
+    }
+
+    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
     // Background theme
     SettingsSection("Background") {
@@ -234,10 +295,28 @@ private fun DisplayTab(
     cropBordersPager: Boolean,
     cropBordersWebtoon: Boolean,
     webtoonSidePadding: WebtoonSidePadding,
+    webtoonAutoScroll: Boolean,
+    webtoonAutoScrollSpeed: WebtoonAutoScrollSpeed,
+    scaleType: ScaleType = ScaleType.FIT_SCREEN,
     onCropBordersPagerChange: (Boolean) -> Unit,
     onCropBordersWebtoonChange: (Boolean) -> Unit,
     onWebtoonSidePaddingChange: (WebtoonSidePadding) -> Unit,
+    onWebtoonAutoScrollChange: (Boolean) -> Unit,
+    onWebtoonAutoScrollSpeedChange: (WebtoonAutoScrollSpeed) -> Unit,
+    onScaleTypeChange: (ScaleType) -> Unit = {},
 ) {
+    SettingsSection("Scale Type") {
+        ScaleType.entries.forEach { type ->
+            RadioRow(
+                label = type.displayName,
+                selected = scaleType == type,
+                onClick = { onScaleTypeChange(type) },
+            )
+        }
+    }
+
+    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
     SettingsSection("Crop Borders") {
         SwitchRow(
             label = "Pager (LTR / RTL / Dual)",
@@ -260,6 +339,25 @@ private fun DisplayTab(
                 selected = webtoonSidePadding == padding,
                 onClick = { onWebtoonSidePaddingChange(padding) },
             )
+        }
+    }
+
+    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+    SettingsSection("Webtoon Auto-Scroll") {
+        SwitchRow(
+            label = "Enable auto-scroll",
+            checked = webtoonAutoScroll,
+            onCheckedChange = onWebtoonAutoScrollChange,
+        )
+        if (webtoonAutoScroll) {
+            WebtoonAutoScrollSpeed.entries.forEach { speed ->
+                RadioRow(
+                    label = speed.displayName,
+                    selected = webtoonAutoScrollSpeed == speed,
+                    onClick = { onWebtoonAutoScrollSpeedChange(speed) },
+                )
+            }
         }
     }
 }

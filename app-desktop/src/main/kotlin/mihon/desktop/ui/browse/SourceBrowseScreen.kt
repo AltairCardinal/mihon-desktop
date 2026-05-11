@@ -60,6 +60,8 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
 import eu.kanade.tachiyomi.source.CatalogueSource
+import mihon.desktop.extension.SourceCallResult
+import mihon.desktop.extension.safeSourceCall
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -104,22 +106,26 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
             isLoading = true
             errorMessage = null
             scope.launch {
-                try {
-                    val result: MangasPage = when {
+                val callResult = safeSourceCall {
+                    when {
                         query.isNotBlank() -> source.getSearchManga(page, query, activeFilters)
                         hasActiveFilters(activeFilters) -> source.getSearchManga(page, "", activeFilters)
                         mode == BrowseMode.LATEST -> source.getLatestUpdates(page)
                         else -> source.getPopularManga(page)
                     }
-                    if (page == 1) mangas.clear()
-                    mangas.addAll(result.mangas)
-                    hasNextPage = result.hasNextPage
-                    currentPage = page
-                } catch (e: Exception) {
-                    errorMessage = e.message ?: "Failed to load manga"
-                } finally {
-                    isLoading = false
                 }
+                when (callResult) {
+                    is SourceCallResult.Success -> {
+                        val result = callResult.value
+                        if (page == 1) mangas.clear()
+                        mangas.addAll(result.mangas)
+                        hasNextPage = result.hasNextPage
+                        currentPage = page
+                    }
+                    is SourceCallResult.Timeout -> errorMessage = "Source timed out"
+                    is SourceCallResult.Error -> errorMessage = callResult.message
+                }
+                isLoading = false
             }
         }
 

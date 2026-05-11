@@ -34,12 +34,15 @@ import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.SortByAlpha
 import androidx.compose.material3.Badge
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomAppBar
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -79,6 +82,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.collectAsState
+import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -91,9 +96,13 @@ import kotlinx.coroutines.launch
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.download.DownloadItem
+import mihon.desktop.domain.batchSetCategories
 import mihon.desktop.domain.DesktopCategoryManager
+import tachiyomi.domain.category.interactor.SetMangaCategories
+import tachiyomi.domain.category.repository.CategoryRepository
 import mihon.desktop.settings.LibraryCategoryPrefs
 import mihon.desktop.domain.LibrarySearchFilter
+import mihon.desktop.ui.library.pickRandomMangaId
 import mihon.desktop.domain.LibraryUpdateChecker
 import mihon.desktop.domain.SortMode
 import mihon.desktop.reader.ReaderChapterRef
@@ -148,34 +157,36 @@ class LibraryRootScreen : Screen {
         val downloadProvider = remember { runCatching { Injekt.get<mihon.desktop.download.DesktopDownloadProvider>() }.getOrNull() }
         val downloadPrefs = remember { runCatching { Injekt.get<DesktopDownloadPreferences>() }.getOrNull() }
         val categoryPrefs = remember { runCatching { Injekt.get<LibraryCategoryPrefs>() }.getOrNull() }
+        val setMangaCategories = remember { Injekt.get<SetMangaCategories>() }
+        val categoryRepository = remember { Injekt.get<CategoryRepository>() }
         val scope = rememberCoroutineScope()
         val navigator = LocalNavigator.currentOrThrow
 
-        var allItems by remember { mutableStateOf<List<LibraryManga>>(emptyList()) }
-        var categories by remember { mutableStateOf<List<Category>>(emptyList()) }
-
-        // UI state
-        var searchQuery by remember { mutableStateOf("") }
-        var sortMode by remember { mutableStateOf(SortMode.TITLE) }
-        var sortAscending by remember { mutableStateOf(true) }
-        var filterUnread by remember { mutableStateOf(false) }
-        var filterStarted by remember { mutableStateOf(false) }
-        var filterCompleted by remember { mutableStateOf(false) }
-        var filterDownloaded by remember { mutableStateOf(false) }
-        var selectedCategoryIndex by remember { mutableIntStateOf(0) }
-        var isUpdating by remember { mutableStateOf(false) }
-        var updateStatusText by remember { mutableStateOf<String?>(null) }
-        var showCategoryDialog by remember { mutableStateOf(false) }
-        var displayMode by remember { mutableStateOf(LibraryDisplayMode.DEFAULT) }
-        // Context menu for right-click on manga card
-        var contextMenuManga by remember { mutableStateOf<LibraryManga?>(null) }
-
-        // Batch selection
+        val model = rememberScreenModel { LibraryScreenModel() }
+        val state by model.state.collectAsState()
         val selectionState = remember { LibrarySelectionState() }
 
+        // Read aliases — immutable vals at all read sites, writes go through model
+        val allItems = state.allItems
+        val categories = state.categories
+        val searchQuery = state.searchQuery
+        val sortMode = state.sortMode
+        val sortAscending = state.sortAscending
+        val filterUnread = state.filterUnread
+        val filterStarted = state.filterStarted
+        val filterCompleted = state.filterCompleted
+        val filterDownloaded = state.filterDownloaded
+        val selectedCategoryIndex = state.selectedCategoryIndex
+        val isUpdating = state.isUpdating
+        val updateStatusText = state.updateStatusText
+        val showCategoryDialog = state.showCategoryDialog
+        val displayMode = state.displayMode
+        val contextMenuManga = state.contextMenuManga
+        val showBatchCategoryDialog = state.showBatchCategoryDialog
+
         LaunchedEffect(Unit) {
-            launch { getLibraryManga.subscribe().collect { allItems = it } }
-            launch { categories = categoryManager.getAll() }
+            launch { getLibraryManga.subscribe().collect { model.setAllItems(it) } }
+            launch { model.setCategories(categoryManager.getAll()) }
         }
 
         val categoryTabs = remember(categories) { listOf(null) + categories }
@@ -184,9 +195,9 @@ class LibraryRootScreen : Screen {
         LaunchedEffect(selectedCategoryIndex, categoryTabs) {
             val cat = categoryTabs.getOrNull(selectedCategoryIndex)
             categoryPrefs?.let { prefs ->
-                sortMode = prefs.getSortMode(cat?.id)
-                sortAscending = prefs.getSortAscending(cat?.id)
-                displayMode = prefs.getDisplayMode(cat?.id)
+                model.setSortMode(prefs.getSortMode(cat?.id))
+                model.setSortAscending(prefs.getSortAscending(cat?.id))
+                model.setDisplayMode(prefs.getDisplayMode(cat?.id))
             }
         }
 
@@ -219,8 +230,8 @@ class LibraryRootScreen : Screen {
             CategoryManagementDialog(
                 categoryManager = categoryManager,
                 onDismiss = {
-                    showCategoryDialog = false
-                    scope.launch { categories = categoryManager.getAll() }
+                    model.setShowCategoryDialog(false)
+                    scope.launch { model.setCategories(categoryManager.getAll()) }
                 },
             )
         }
@@ -230,9 +241,9 @@ class LibraryRootScreen : Screen {
         if (ctxManga != null) {
             MangaContextMenu(
                 expanded = true,
-                onDismiss = { contextMenuManga = null },
+                onDismiss = { model.setContextMenuManga(null) },
                 onMarkAllRead = {
-                    contextMenuManga = null
+                    model.setContextMenuManga(null)
                     scope.launch {
                         val updates = chapterRepository.getChapterByMangaId(ctxManga.manga.id)
                             .map { tachiyomi.domain.chapter.model.ChapterUpdate(id = it.id, read = true) }
@@ -240,7 +251,7 @@ class LibraryRootScreen : Screen {
                     }
                 },
                 onMarkAllUnread = {
-                    contextMenuManga = null
+                    model.setContextMenuManga(null)
                     scope.launch {
                         val updates = chapterRepository.getChapterByMangaId(ctxManga.manga.id)
                             .map { tachiyomi.domain.chapter.model.ChapterUpdate(id = it.id, read = false) }
@@ -248,13 +259,13 @@ class LibraryRootScreen : Screen {
                     }
                 },
                 onRemoveFromLibrary = {
-                    contextMenuManga = null
+                    model.setContextMenuManga(null)
                     scope.launch {
                         mangaRepository.update(MangaUpdate(id = ctxManga.manga.id, favorite = false))
                     }
                 },
                 onDownload = {
-                    contextMenuManga = null
+                    model.setContextMenuManga(null)
                     if (downloadManager != null) {
                         scope.launch {
                             val chapters = chapterRepository.getChapterByMangaId(ctxManga.manga.id)
@@ -275,6 +286,27 @@ class LibraryRootScreen : Screen {
             )
         }
 
+        // Batch category assignment dialog
+        if (showBatchCategoryDialog) {
+            BatchCategoryDialog(
+                categories = categories,
+                selectedMangaIds = selectionState.selectedIds.toList(),
+                categoryRepository = categoryRepository,
+                onConfirm = { selectedCategoryIds ->
+                    scope.launch {
+                        batchSetCategories(
+                            selectionState.selectedIds.toList(),
+                            selectedCategoryIds,
+                            setMangaCategories,
+                        )
+                        model.setShowBatchCategoryDialog(false)
+                        selectionState.clear()
+                    }
+                },
+                onDismiss = { model.setShowBatchCategoryDialog(false) },
+            )
+        }
+
         Scaffold(
             // ── Selection action bar ───────────────────────────────────────
             bottomBar = {
@@ -283,6 +315,7 @@ class LibraryRootScreen : Screen {
                         selectedCount = selectionState.selectedIds.size,
                         onClose = { selectionState.clear() },
                         onSelectAll = { selectionState.selectAll(displayedItems.map { it.manga.id }) },
+                        onSetCategories = { model.setShowBatchCategoryDialog(true) },
                         onMarkRead = {
                             scope.launch {
                                 selectionState.selectedIds.forEach { mangaId ->
@@ -322,11 +355,11 @@ class LibraryRootScreen : Screen {
             Column(Modifier.fillMaxSize().padding(scaffoldPadding)) {
                 LibraryToolbar(
                     searchQuery = searchQuery,
-                    onSearchChange = { searchQuery = it },
+                    onSearchChange = { model.setSearchQuery(it) },
                     sortMode = sortMode,
                     sortAscending = sortAscending,
                     onSortChange = { mode, asc ->
-                        sortMode = mode; sortAscending = asc
+                        model.setSortModeAndDirection(mode, asc)
                         val cat = categoryTabs.getOrNull(selectedCategoryIndex)
                         categoryPrefs?.setSortMode(cat?.id, mode)
                         categoryPrefs?.setSortAscending(cat?.id, asc)
@@ -335,19 +368,23 @@ class LibraryRootScreen : Screen {
                     filterStarted = filterStarted,
                     filterCompleted = filterCompleted,
                     filterDownloaded = filterDownloaded,
-                    onFilterChange = { u, s, c, d -> filterUnread = u; filterStarted = s; filterCompleted = c; filterDownloaded = d },
+                    onFilterChange = { u, s, c, d -> model.setFilters(u, s, c, d) },
                     isUpdating = isUpdating,
                     displayMode = displayMode,
                     onDisplayModeChange = {
-                        displayMode = it
+                        model.setDisplayMode(it)
                         val cat = categoryTabs.getOrNull(selectedCategoryIndex)
                         categoryPrefs?.setDisplayMode(cat?.id, it)
                     },
-                    onManageCategories = { showCategoryDialog = true },
+                    onManageCategories = { model.setShowCategoryDialog(true) },
+                    onRandomManga = {
+                        val randomId = pickRandomMangaId(displayedItems.map { it.manga.id })
+                        if (randomId != null) navigator.push(MangaDetailScreen(randomId))
+                    },
                     onRefresh = {
                         scope.launch {
-                            isUpdating = true
-                            updateStatusText = "Checking for updates..."
+                            model.setIsUpdating(true)
+                            model.setUpdateStatusText("Checking for updates...")
                             var totalNew = 0
                             val autoDownload = downloadPrefs?.autoDownloadNewChapters?.get() == true
                             for (item in allItems) {
@@ -369,12 +406,10 @@ class LibraryRootScreen : Screen {
                                     }
                                 }
                             }
-                            updateStatusText = if (totalNew > 0) {
-                                "$totalNew new chapter(s) found"
-                            } else {
-                                "Library is up to date"
-                            }
-                            isUpdating = false
+                            model.setUpdateStatusText(
+                                if (totalNew > 0) "$totalNew new chapter(s) found" else "Library is up to date",
+                            )
+                            model.setIsUpdating(false)
                         }
                     },
                 )
@@ -388,7 +423,7 @@ class LibraryRootScreen : Screen {
                         categoryTabs.forEachIndexed { index, cat ->
                             Tab(
                                 selected = index == selectedCategoryIndex,
-                                onClick = { selectedCategoryIndex = index },
+                                onClick = { model.setSelectedCategoryIndex(index) },
                                 text = { Text(cat?.name ?: "All") },
                             )
                         }
@@ -422,7 +457,7 @@ class LibraryRootScreen : Screen {
                                 minCardWidth = 120.dp,
                                 selectionState = selectionState,
                                 downloadedMangaIds = downloadedMangaIds,
-                                onContextMenu = { item -> contextMenuManga = item },
+                                onContextMenu = { item -> model.setContextMenuManga(item) },
                                 onItemClick = { item ->
                                     if (selectionState.isInSelectionMode) {
                                         selectionState.toggle(item.manga.id)
@@ -440,7 +475,7 @@ class LibraryRootScreen : Screen {
                                             ?: chapters.maxByOrNull { it.sourceOrder }
                                             ?: return@launch
                                         val chapterRefs = chapters.sortedBy { it.sourceOrder }
-                                            .map { ReaderChapterRef(id = it.id, url = it.url, name = it.name) }
+                                            .map { ReaderChapterRef(id = it.id, url = it.url, name = it.name, isRead = it.read) }
                                         val idx = ReaderNavigator.indexForId(chapterRefs, firstUnread.id)
                                         navigator.push(
                                             DesktopReaderScreen(
@@ -467,7 +502,7 @@ class LibraryRootScreen : Screen {
                                 comfortable = true,
                                 selectionState = selectionState,
                                 downloadedMangaIds = downloadedMangaIds,
-                                onContextMenu = { item -> contextMenuManga = item },
+                                onContextMenu = { item -> model.setContextMenuManga(item) },
                                 onItemClick = { item ->
                                     if (selectionState.isInSelectionMode) {
                                         selectionState.toggle(item.manga.id)
@@ -485,7 +520,7 @@ class LibraryRootScreen : Screen {
                                             ?: chapters.maxByOrNull { it.sourceOrder }
                                             ?: return@launch
                                         val chapterRefs = chapters.sortedBy { it.sourceOrder }
-                                            .map { ReaderChapterRef(id = it.id, url = it.url, name = it.name) }
+                                            .map { ReaderChapterRef(id = it.id, url = it.url, name = it.name, isRead = it.read) }
                                         val idx = ReaderNavigator.indexForId(chapterRefs, firstUnread.id)
                                         navigator.push(
                                             DesktopReaderScreen(
@@ -509,7 +544,7 @@ class LibraryRootScreen : Screen {
                             LibraryList(
                                 items = displayedItems,
                                 selectionState = selectionState,
-                                onContextMenu = { item -> contextMenuManga = item },
+                                onContextMenu = { item -> model.setContextMenuManga(item) },
                                 onItemClick = { item ->
                                     if (selectionState.isInSelectionMode) {
                                         selectionState.toggle(item.manga.id)
@@ -544,6 +579,7 @@ private fun LibraryToolbar(
     displayMode: LibraryDisplayMode,
     onDisplayModeChange: (LibraryDisplayMode) -> Unit,
     onManageCategories: () -> Unit,
+    onRandomManga: () -> Unit,
     onRefresh: () -> Unit,
 ) {
     var showSortMenu by remember { mutableStateOf(false) }
@@ -643,6 +679,10 @@ private fun LibraryToolbar(
                 }
             }
 
+            IconButton(onClick = onRandomManga) {
+                Icon(Icons.Default.Shuffle, contentDescription = "Random manga")
+            }
+
             IconButton(onClick = onManageCategories) {
                 Icon(Icons.Default.CreateNewFolder, contentDescription = "Manage categories")
             }
@@ -690,6 +730,7 @@ private fun SelectionActionBar(
     selectedCount: Int,
     onClose: () -> Unit,
     onSelectAll: () -> Unit,
+    onSetCategories: () -> Unit,
     onMarkRead: () -> Unit,
     onMarkUnread: () -> Unit,
     onRemoveFromLibrary: () -> Unit,
@@ -708,6 +749,7 @@ private fun SelectionActionBar(
         IconButton(onClick = onSelectAll) {
             Icon(Icons.Default.SelectAll, contentDescription = "Select all")
         }
+        TextButton(onClick = onSetCategories) { Text("Categories") }
         TextButton(onClick = onMarkRead) { Text("Mark read") }
         TextButton(onClick = onMarkUnread) { Text("Mark unread") }
         TextButton(onClick = onRemoveFromLibrary) {
@@ -1041,4 +1083,65 @@ private fun MangaContextMenu(
             onClick = onRemoveFromLibrary,
         )
     }
+}
+
+// ── Batch category assignment dialog ─────────────────────────────────────────
+
+@Composable
+private fun BatchCategoryDialog(
+    categories: List<Category>,
+    selectedMangaIds: List<Long>,
+    categoryRepository: CategoryRepository,
+    onConfirm: (List<Long>) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    // Load current categories for the first selected manga as initial state
+    var checkedIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var loaded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(selectedMangaIds) {
+        if (selectedMangaIds.isNotEmpty()) {
+            val firstMangaCats = categoryRepository.getCategoriesByMangaId(selectedMangaIds.first())
+            checkedIds = firstMangaCats.map { it.id }.toSet()
+        }
+        loaded = true
+    }
+
+    if (!loaded) return
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Set categories") },
+        text = {
+            if (categories.isEmpty()) {
+                Text("No categories. Create categories first.")
+            } else {
+                Column {
+                    categories.forEach { cat ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { checkedIds = if (cat.id in checkedIds) checkedIds - cat.id else checkedIds + cat.id }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(
+                                checked = cat.id in checkedIds,
+                                onCheckedChange = { checked ->
+                                    checkedIds = if (checked) checkedIds + cat.id else checkedIds - cat.id
+                                },
+                            )
+                            Text(cat.name, modifier = Modifier.padding(start = 8.dp))
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(checkedIds.toList()) }) { Text("OK") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }

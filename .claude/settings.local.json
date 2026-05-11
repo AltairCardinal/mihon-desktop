@@ -1,17 +1,4 @@
 {
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash .claude/hooks/enforce-build-script.sh"
-          }
-        ]
-      }
-    ]
-  },
   "permissions": {
     "allow": [
       "Bash(grep -E \"\\\\.kt$\")",
@@ -45,7 +32,33 @@
       "Bash(DATA=/Volumes/File/OpenClaw/workspace/mihon/.claude/worktrees/pensive-vaughan/data/src)",
       "Bash(cp -R \"$DATA/main/sqldelight/tachiyomi\" \"$DATA/commonMain/sqldelight/\")",
       "Bash(find /Volumes/File/OpenClaw/workspace/mihon/.claude/worktrees/pensive-vaughan/data/src/main/java -name *.kt)",
-      "Bash(grep -r \"listFiles\\\\|delete.*tmp\\\\|cleanup\" /Volumes/File/OpenClaw/workspace/mihon/.claude/worktrees/pensive-vaughan/app/src/main/java/eu/kanade/tachiyomi/di --include=*.kt)"
+      "Bash(grep -r \"listFiles\\\\|delete.*tmp\\\\|cleanup\" /Volumes/File/OpenClaw/workspace/mihon/.claude/worktrees/pensive-vaughan/app/src/main/java/eu/kanade/tachiyomi/di --include=*.kt)",
+      "Bash(./gradlew :app-desktop:test)",
+      "Bash(./gradlew :app-desktop:jvmTest --tests \"*.KeiyoushiChineseCompatibilityTest\" --info)",
+      "Bash(tee /tmp/keiyoushi-test.log)",
+      "Read(//private/tmp/**)",
+      "Bash(./gradlew --stop)",
+      "Bash(pkill -f \"GradleDaemon\")",
+      "Bash(rm -f /Users/altair/.gradle/daemon/8.14.4/registry.bin.lock)",
+      "Bash(./gradlew :app-desktop:jvmTest --tests \"*.KeiyoushiChineseCompatibilityTest\" --no-daemon)",
+      "Bash(tee /tmp/keiyoushi-test2.log)",
+      "Bash(find /Volumes/File/OpenClaw/workspace/mihon/.claude/worktrees/pensive-vaughan/app-desktop/build -name *.xml -newer /tmp/keiyoushi-test.log)",
+      "Bash(find /Volumes/File/OpenClaw/workspace/mihon/.claude/worktrees/pensive-vaughan/app-desktop/build -name TEST-*.xml)",
+      "Bash(ls /tmp/keiyoushi-zh-test*)",
+      "Bash(find /tmp -name *keiyoushi* -type d)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/enforce-build-script.sh"
+          }
+        ]
+      }
     ]
   }
 }

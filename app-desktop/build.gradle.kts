@@ -96,6 +96,15 @@ kotlin {
 
                 // File system watching (FSEvents on macOS, inotify on Linux)
                 implementation("io.methvin:directory-watcher:0.18.0")
+
+                // Drag-and-drop reordering for LazyColumn (mirrors Android's ItemTouchHelper pattern)
+                implementation(libs.reorderable)
+
+                // JavaScript engine (Rhino) for extensions that use JS evaluation
+                implementation(libs.rhino)
+
+                // DEX to JVM bytecode conversion (for loading Android extension APKs on desktop)
+                implementation(libs.dex.tools)
             }
         }
         val jvmTest by getting {

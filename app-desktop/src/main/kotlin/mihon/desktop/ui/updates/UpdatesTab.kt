@@ -14,18 +14,22 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
@@ -58,17 +62,20 @@ import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.ui.reader.DesktopReaderScreen
+import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.updates.interactor.GetUpdates
 import tachiyomi.domain.updates.model.UpdatesWithRelations
+import tachiyomi.domain.updates.service.UpdatesPreferences
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.text.SimpleDateFormat
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
-import java.util.Date
 import java.util.Locale
 
 object UpdatesTab : Tab {
@@ -105,21 +112,46 @@ class UpdatesRootScreen : Screen {
         val updateChecker = remember { Injekt.get<LibraryUpdateChecker>() }
         val sourceManager = remember { Injekt.get<SourceManager>() }
         val progressTracker = remember { Injekt.get<ReaderProgressTracker>() }
+        val updatesPreferences = remember { Injekt.get<UpdatesPreferences>() }
         val scope = rememberCoroutineScope()
 
         var updateItems by remember { mutableStateOf<List<UpdatesWithRelations>>(emptyList()) }
         var isRefreshing by remember { mutableStateOf(false) }
         var showMarkAllReadDialog by remember { mutableStateOf(false) }
+        var showFilterDialog by remember { mutableStateOf(false) }
 
-        LaunchedEffect(Unit) {
+        // Filter state — backed by preferences
+        var filterUnread by remember { mutableStateOf(updatesPreferences.filterUnread().get()) }
+        var filterDownloaded by remember { mutableStateOf(updatesPreferences.filterDownloaded().get()) }
+        var filterStarted by remember { mutableStateOf(updatesPreferences.filterStarted().get()) }
+        var filterBookmarked by remember { mutableStateOf(updatesPreferences.filterBookmarked().get()) }
+        var filterExcludedScanlators by remember { mutableStateOf(updatesPreferences.filterExcludedScanlators().get()) }
+
+        val hasActiveFilters = hasActiveUpdatesFilters(
+            filterUnread, filterDownloaded, filterStarted, filterBookmarked, filterExcludedScanlators,
+        )
+
+        // Re-subscribe whenever SQL-level filters change
+        LaunchedEffect(filterUnread, filterStarted, filterBookmarked, filterExcludedScanlators) {
             val since = Instant.now().minus(14, ChronoUnit.DAYS)
             getUpdates.subscribe(
                 instant = since,
-                unread = null,
-                started = null,
-                bookmarked = null,
-                hideExcludedScanlators = false,
-            ).collect { updateItems = it }
+                unread = filterUnread.toBooleanOrNull(),
+                started = filterStarted.toBooleanOrNull(),
+                bookmarked = filterBookmarked.toBooleanOrNull(),
+                hideExcludedScanlators = filterExcludedScanlators,
+            ).collect { raw ->
+                updateItems = raw.applyDownloadedFilter(filterDownloaded) {
+                    downloadManager.isDownloaded(it.sourceId, it.mangaTitle, it.chapterName)
+                }
+            }
+        }
+
+        // Re-apply downloaded (client-side) filter when its state changes
+        LaunchedEffect(filterDownloaded) {
+            updateItems = updateItems.applyDownloadedFilter(filterDownloaded) {
+                downloadManager.isDownloaded(it.sourceId, it.mangaTitle, it.chapterName)
+            }
         }
 
         if (showMarkAllReadDialog) {
@@ -143,6 +175,33 @@ class UpdatesRootScreen : Screen {
             )
         }
 
+        if (showFilterDialog) {
+            UpdatesFilterDialog(
+                filterUnread = filterUnread,
+                filterDownloaded = filterDownloaded,
+                filterStarted = filterStarted,
+                filterBookmarked = filterBookmarked,
+                filterExcludedScanlators = filterExcludedScanlators,
+                onToggleUnread = {
+                    filterUnread = filterUnread.next().also { updatesPreferences.filterUnread().set(it) }
+                },
+                onToggleDownloaded = {
+                    filterDownloaded = filterDownloaded.next().also { updatesPreferences.filterDownloaded().set(it) }
+                },
+                onToggleStarted = {
+                    filterStarted = filterStarted.next().also { updatesPreferences.filterStarted().set(it) }
+                },
+                onToggleBookmarked = {
+                    filterBookmarked = filterBookmarked.next().also { updatesPreferences.filterBookmarked().set(it) }
+                },
+                onToggleExcludedScanlators = {
+                    filterExcludedScanlators = !filterExcludedScanlators
+                    updatesPreferences.filterExcludedScanlators().set(filterExcludedScanlators)
+                },
+                onDismiss = { showFilterDialog = false },
+            )
+        }
+
         Column(Modifier.fillMaxSize()) {
             // Header row with title + refresh button
             Row(
@@ -154,6 +213,30 @@ class UpdatesRootScreen : Screen {
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
+                // Filter button
+                TooltipBox(
+                    positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                    tooltip = { Text("Filter") },
+                    state = rememberTooltipState(),
+                ) {
+                    IconButton(onClick = { showFilterDialog = true }) {
+                        Icon(
+                            Icons.Default.FilterList,
+                            contentDescription = "Filter",
+                            tint = if (hasActiveFilters) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+                // Upcoming calendar
+                TooltipBox(
+                    positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                    tooltip = { Text("Upcoming") },
+                    state = rememberTooltipState(),
+                ) {
+                    IconButton(onClick = { navigator.push(UpcomingScreen()) }) {
+                        Icon(Icons.Default.CalendarMonth, contentDescription = "Upcoming")
+                    }
+                }
                 // Mark all as read — only shown when unread items exist
                 val hasUnread = updateItems.any { !it.read }
                 if (hasUnread) {
@@ -198,7 +281,9 @@ class UpdatesRootScreen : Screen {
                 }
             }
 
-            if (updateItems.isEmpty()) {
+            val listItems = remember(updateItems) { buildUpdatesListItems(updateItems) }
+
+            if (listItems.isEmpty()) {
                 Box(
                     Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
@@ -223,45 +308,140 @@ class UpdatesRootScreen : Screen {
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    items(updateItems, key = { it.chapterId }) { item ->
-                        UpdateItem(
-                            item = item,
-                            onRead = {
-                                navigator.push(
-                                    DesktopReaderScreen(
-                                        chapterTitle = item.chapterName,
-                                        mangaTitle = item.mangaTitle,
-                                        isWebtoon = false,
-                                        sourceId = item.sourceId,
-                                        chapterUrl = item.chapterUrl,
-                                        chapterId = item.chapterId,
-                                        initialPage = item.lastPageRead.toInt().coerceAtLeast(0),
-                                        progressTracker = progressTracker,
-                                    ),
-                                )
-                            },
-                            onDownload = {
-                                downloadManager.enqueue(
-                                    DownloadItem(
-                                        sourceId = item.sourceId,
-                                        mangaTitle = item.mangaTitle,
-                                        chapterName = item.chapterName,
-                                        chapterId = item.chapterId,
-                                        chapterUrl = item.chapterUrl,
-                                    ),
-                                )
-                            },
-                            onMarkRead = {
-                                scope.launch {
-                                    updateChapter.await(ChapterUpdate(id = item.chapterId, read = true))
-                                }
-                            },
-                        )
+                    items(
+                        items = listItems,
+                        key = { item ->
+                            when (item) {
+                                is UpdatesListItem.Header -> "header-${item.label}"
+                                is UpdatesListItem.Entry -> item.update.chapterId
+                            }
+                        },
+                        contentType = { item ->
+                            when (item) {
+                                is UpdatesListItem.Header -> "header"
+                                is UpdatesListItem.Entry -> "entry"
+                            }
+                        },
+                    ) { item ->
+                        when (item) {
+                            is UpdatesListItem.Header -> UpdatesDateHeader(item.label)
+                            is UpdatesListItem.Entry -> UpdateItem(
+                                item = item.update,
+                                onRead = {
+                                    navigator.push(
+                                        DesktopReaderScreen(
+                                            chapterTitle = item.update.chapterName,
+                                            mangaTitle = item.update.mangaTitle,
+                                            isWebtoon = false,
+                                            sourceId = item.update.sourceId,
+                                            chapterUrl = item.update.chapterUrl,
+                                            chapterId = item.update.chapterId,
+                                            initialPage = item.update.lastPageRead.toInt().coerceAtLeast(0),
+                                            progressTracker = progressTracker,
+                                        ),
+                                    )
+                                },
+                                onDownload = {
+                                    downloadManager.enqueue(
+                                        DownloadItem(
+                                            sourceId = item.update.sourceId,
+                                            mangaTitle = item.update.mangaTitle,
+                                            chapterName = item.update.chapterName,
+                                            chapterId = item.update.chapterId,
+                                            chapterUrl = item.update.chapterUrl,
+                                        ),
+                                    )
+                                },
+                                onMarkRead = {
+                                    scope.launch {
+                                        updateChapter.await(ChapterUpdate(id = item.update.chapterId, read = true))
+                                    }
+                                },
+                            )
+                        }
                     }
                 }
             }
         }
     }
+}
+
+// ── Filter dialog ──────────────────────────────────────────────────────────────
+
+@Composable
+private fun UpdatesFilterDialog(
+    filterUnread: TriState,
+    filterDownloaded: TriState,
+    filterStarted: TriState,
+    filterBookmarked: TriState,
+    filterExcludedScanlators: Boolean,
+    onToggleUnread: () -> Unit,
+    onToggleDownloaded: () -> Unit,
+    onToggleStarted: () -> Unit,
+    onToggleBookmarked: () -> Unit,
+    onToggleExcludedScanlators: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Filter") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                TriStateFilterRow("Unread", filterUnread, onToggleUnread)
+                TriStateFilterRow("Downloaded", filterDownloaded, onToggleDownloaded)
+                TriStateFilterRow("Started", filterStarted, onToggleStarted)
+                TriStateFilterRow("Bookmarked", filterBookmarked, onToggleBookmarked)
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onToggleExcludedScanlators)
+                        .padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Hide excluded scanlators", style = MaterialTheme.typography.bodyMedium)
+                    Switch(checked = filterExcludedScanlators, onCheckedChange = { onToggleExcludedScanlators() })
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        },
+    )
+}
+
+@Composable
+private fun TriStateFilterRow(label: String, state: TriState, onToggle: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggle)
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+        Text(
+            text = when (state) {
+                TriState.DISABLED -> "—"
+                TriState.ENABLED_IS -> "✓"
+                TriState.ENABLED_NOT -> "✗"
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = when (state) {
+                TriState.DISABLED -> MaterialTheme.colorScheme.onSurfaceVariant
+                TriState.ENABLED_IS -> MaterialTheme.colorScheme.primary
+                TriState.ENABLED_NOT -> MaterialTheme.colorScheme.error
+            },
+        )
+    }
+}
+
+private fun TriState.toBooleanOrNull(): Boolean? = when (this) {
+    TriState.DISABLED -> null
+    TriState.ENABLED_IS -> true
+    TriState.ENABLED_NOT -> false
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -272,7 +452,7 @@ private fun UpdateItem(
     onDownload: () -> Unit,
     onMarkRead: () -> Unit,
 ) {
-    val dateFormat = remember { SimpleDateFormat("MMM dd", Locale.getDefault()) }
+    val zone = remember { ZoneId.systemDefault() }
 
     Card(
         modifier = Modifier
@@ -326,7 +506,7 @@ private fun UpdateItem(
 
             // Date
             Text(
-                text = dateFormat.format(Date(item.dateFetch)),
+                text = formatUpdateTime(item.dateFetch, zone),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -366,4 +546,44 @@ private fun UpdateItem(
             }
         }
     }
+}
+
+// ── Date-grouped list items ────────────────────────────────────────────────────
+
+private sealed interface UpdatesListItem {
+    data class Header(val label: String) : UpdatesListItem
+    data class Entry(val update: UpdatesWithRelations) : UpdatesListItem
+}
+
+private val UpdatesHeaderFormatter = DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault())
+
+private fun buildUpdatesListItems(items: List<UpdatesWithRelations>): List<UpdatesListItem> {
+    val today = LocalDate.now()
+    val yesterday = today.minusDays(1)
+    val grouped = items.groupBy { item ->
+        Instant.ofEpochMilli(item.dateFetch).atZone(ZoneId.systemDefault()).toLocalDate()
+    }
+    return buildList {
+        grouped.entries.sortedByDescending { it.key }.forEach { (date, updates) ->
+            val label = when (date) {
+                today -> "Today"
+                yesterday -> "Yesterday"
+                else -> date.format(UpdatesHeaderFormatter)
+            }
+            add(UpdatesListItem.Header(label))
+            updates.forEach { add(UpdatesListItem.Entry(it)) }
+        }
+    }
+}
+
+@Composable
+private fun UpdatesDateHeader(label: String) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 6.dp),
+    )
 }

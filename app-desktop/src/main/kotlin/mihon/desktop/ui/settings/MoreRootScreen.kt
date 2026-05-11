@@ -7,9 +7,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.MenuBook
@@ -127,10 +129,37 @@ class MoreRootScreen : Screen {
                 }
                 item {
                     SettingsEntry(
+                        icon = Icons.Default.Extension,
+                        title = "Extension Repos",
+                        subtitle = "Add or remove extension repositories",
+                        onClick = { navigator.push(ExtensionRepoScreen()) },
+                    )
+                    HorizontalDivider()
+                }
+                item {
+                    SettingsEntry(
+                        icon = Icons.Default.SwapHoriz,
+                        title = "Migrate Manga",
+                        subtitle = "Move manga to a different source",
+                        onClick = { navigator.push(mihon.desktop.ui.migration.MigrationSourceScreen()) },
+                    )
+                    HorizontalDivider()
+                }
+                item {
+                    SettingsEntry(
                         icon = Icons.Default.BarChart,
                         title = "Statistics",
                         subtitle = "Reading stats: titles, chapters",
                         onClick = { navigator.push(mihon.desktop.ui.more.StatsScreen()) },
+                    )
+                    HorizontalDivider()
+                }
+                item {
+                    SettingsEntry(
+                        icon = Icons.Default.Build,
+                        title = "Advanced",
+                        subtitle = "Clear cookies, network cache",
+                        onClick = { navigator.push(AdvancedSettingsScreen()) },
                     )
                     HorizontalDivider()
                 }

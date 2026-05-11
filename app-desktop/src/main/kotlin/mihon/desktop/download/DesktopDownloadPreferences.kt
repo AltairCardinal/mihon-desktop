@@ -15,4 +15,7 @@ class DesktopDownloadPreferences(private val preferenceStore: PreferenceStore) {
 
     /** When true, downloaded chapter files are deleted after the chapter is marked as read. */
     val deleteAfterRead by lazy { preferenceStore.getBoolean("delete_after_read", false) }
+
+    /** Maximum number of chapters to download in parallel (1–5). */
+    val parallelDownloadLimit by lazy { preferenceStore.getInt("parallel_download_limit", 1) }
 }

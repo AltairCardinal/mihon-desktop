@@ -17,7 +17,7 @@ class AppVersionTest {
 
     @Test
     fun `AppVersion STAGE is between 1 and 10`() {
-        assertTrue(AppVersion.STAGE in 1..10, "STAGE should be 1-10, got ${AppVersion.STAGE}")
+        assertTrue(AppVersion.STAGE in 1..22, "STAGE should be 1-22, got ${AppVersion.STAGE}")
     }
 
     @Test

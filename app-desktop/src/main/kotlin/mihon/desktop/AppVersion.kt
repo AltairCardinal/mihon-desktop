@@ -1,8 +1,8 @@
 package mihon.desktop
 
 object AppVersion {
-    const val STAGE = 7
-    const val FEATURE = 7
+    const val STAGE = 11
+    const val FEATURE = 10
 }
 
 val APP_VERSION: String = "0.${AppVersion.STAGE}.${AppVersion.FEATURE}.${BuildInfo.GIT_HASH}"

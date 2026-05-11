@@ -27,12 +27,20 @@ class DesktopExtensionManager(
     /**
      * Returns installed extensions grouped by JAR file.
      * Each entry represents one JAR that may expose multiple sources.
+     * Version info is read from the sidecar meta file when available.
      */
     fun getInstalledExtensions(): List<InstalledExtension> =
         loadedExtensions
             .groupBy { it.jarFile }
             .map { (jarFile, exts) ->
-                InstalledExtension(jarFile = jarFile, sources = exts.map { it.source })
+                val meta = readExtensionMeta(jarFile)
+                InstalledExtension(
+                    jarFile = jarFile,
+                    sources = exts.map { it.source },
+                    versionCode = meta?.versionCode ?: 0L,
+                    versionName = meta?.versionName ?: "",
+                    iconUrl = meta?.iconUrl ?: "",
+                )
             }
 
     /**
@@ -41,6 +49,16 @@ class DesktopExtensionManager(
      */
     fun removeExtension(extension: InstalledExtension): Boolean {
         loadedExtensions.removeAll { it.jarFile == extension.jarFile }
+        return extension.jarFile.delete()
+    }
+
+    /**
+     * Deletes the JAR file and its meta sidecar for [extension].
+     * @return true if the JAR was deleted successfully.
+     */
+    fun removeExtensionWithMeta(extension: InstalledExtension): Boolean {
+        loadedExtensions.removeAll { it.jarFile == extension.jarFile }
+        deleteExtensionMeta(extension.jarFile)
         return extension.jarFile.delete()
     }
 
@@ -53,10 +71,15 @@ class DesktopExtensionManager(
 
 /**
  * An installed extension: one JAR file containing one or more [Source] implementations.
+ * Version info is populated from the sidecar meta file when available.
  */
 data class InstalledExtension(
     val jarFile: java.io.File,
     val sources: List<Source>,
+    val versionCode: Long = 0L,
+    val versionName: String = "",
+    val iconUrl: String = "",
 ) {
     val name: String get() = jarFile.nameWithoutExtension
+    val pkgName: String get() = jarFile.nameWithoutExtension
 }

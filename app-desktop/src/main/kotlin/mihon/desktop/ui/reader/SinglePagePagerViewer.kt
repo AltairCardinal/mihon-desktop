@@ -9,6 +9,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import mihon.desktop.reader.PagePreloader
+import mihon.desktop.reader.ScaleType
+import mihon.desktop.reader.VirtualPage
 import mihon.desktop.reader.ZoomState
 
 /**
@@ -34,12 +37,18 @@ import mihon.desktop.reader.ZoomState
  * dependency besides Compose itself is [ZoomablePageBox] (same package) and
  * [ZoomState] (pure Kotlin).
  *
- * @param pageUrls      Ordered list of page image URLs in logical reading order (LTR).
- * @param currentPage   Currently-visible page index (logical, 0-based, LTR order).
- * @param isRtl         When true, the pager renders right-to-left.
- * @param zoomState     Current zoom/pan state shared across all pages.
- * @param onPageChange  Called when the pager settles on a new page.
- * @param onZoomChange  Called when the user changes the zoom/pan state.
+ * @param pageUrls        Ordered list of page image URLs in logical reading order (LTR).
+ * @param currentPage     Currently-visible page index (logical, 0-based, LTR order).
+ *                        When [virtualPages] is non-null, this is the **virtual** index.
+ * @param isRtl           When true, the pager renders right-to-left.
+ * @param zoomState       Current zoom/pan state shared across all pages.
+ * @param virtualPages    Optional virtual page mapping for split-wide-pages mode.
+ *                        When non-null, pager count and page lookup use this list.
+ * @param onPageChange    Called when the pager settles on a new page (virtual index if split active).
+ * @param onZoomChange    Called when the user changes the zoom/pan state.
+ * @param onSpreadDetected Called when a page is detected as wide (width > height).
+ *                        Receives the **real** page index.
+ * @param onTapCenter     Called when the user taps the center zone.
  */
 @Composable
 internal fun SinglePagePagerViewer(
@@ -51,10 +60,19 @@ internal fun SinglePagePagerViewer(
     contextMenuScope: CoroutineScope? = null,
     mangaTitle: String = "",
     chapterTitle: String = "",
+    scaleType: ScaleType = ScaleType.FIT_SCREEN,
+    navigationMode: NavigationMode = NavigationMode.RightAndLeft,
+    virtualPages: List<VirtualPage>? = null,
+    preloader: PagePreloader? = null,
     onPageChange: (Int) -> Unit,
     onZoomChange: (ZoomState) -> Unit,
+    onSpreadDetected: ((Int) -> Unit)? = null,
+    onTapCenter: (() -> Unit)? = null,
+    onPrevChapter: (() -> Unit)? = null,
+    onNextChapter: (() -> Unit)? = null,
 ) {
-    val maxPageIndex = (pageUrls.size - 1).coerceAtLeast(0)
+    val effectivePageCount = virtualPages?.size ?: pageUrls.size
+    val maxPageIndex = (effectivePageCount - 1).coerceAtLeast(0)
 
     // Index mapping: pager always runs LTR; RTL reverses the mapping.
     fun pageToPager(page: Int): Int = if (isRtl) maxPageIndex - page else page
@@ -62,7 +80,7 @@ internal fun SinglePagePagerViewer(
 
     val pagerState = rememberPagerState(
         initialPage = pageToPager(currentPage.coerceIn(0, maxPageIndex)),
-        pageCount = { pageUrls.size },
+        pageCount = { effectivePageCount },
     )
     val scope = rememberCoroutineScope()
 
@@ -80,16 +98,28 @@ internal fun SinglePagePagerViewer(
     }
 
     // Tap-zone navigation: left tap decreases pager index, right tap increases it.
-    // Works for both LTR and RTL because the index reversal is already baked into
-    // pageToPager/pagerToPage — physically tapping left always moves the pager
-    // leftward, which maps to the correct reading direction in both modes.
+    // At chapter boundaries, RTL direction is accounted for:
+    //   LTR: left boundary → PrevChapter, right boundary → NextChapter
+    //   RTL: left boundary → NextChapter, right boundary → PrevChapter
     val onTapLeft: () -> Unit = {
-        val prev = pagerState.currentPage - 1
-        if (prev >= 0) scope.launch { pagerState.animateScrollToPage(prev) }
+        when (val action = tapLeftAction(pagerState.currentPage)) {
+            is PageNavAction.ScrollTo -> scope.launch { pagerState.animateScrollToPage(action.pagerIndex) }
+            else -> when (chapterNavForTapLeft(pagerState.currentPage, isRtl)) {
+                PageNavAction.PrevChapter -> onPrevChapter?.invoke()
+                PageNavAction.NextChapter -> onNextChapter?.invoke()
+                else -> Unit
+            }
+        }
     }
     val onTapRight: () -> Unit = {
-        val next = pagerState.currentPage + 1
-        if (next < pageUrls.size) scope.launch { pagerState.animateScrollToPage(next) }
+        when (val action = tapRightAction(pagerState.currentPage, effectivePageCount)) {
+            is PageNavAction.ScrollTo -> scope.launch { pagerState.animateScrollToPage(action.pagerIndex) }
+            else -> when (chapterNavForTapRight(pagerState.currentPage, effectivePageCount, isRtl)) {
+                PageNavAction.NextChapter -> onNextChapter?.invoke()
+                PageNavAction.PrevChapter -> onPrevChapter?.invoke()
+                else -> Unit
+            }
+        }
     }
 
     HorizontalPager(
@@ -97,20 +127,32 @@ internal fun SinglePagePagerViewer(
         modifier = Modifier.fillMaxSize(),
     ) { pagerIndex ->
         val page = pagerToPage(pagerIndex)
+        val vp = virtualPages?.get(page)
+        val realIndex = vp?.realIndex ?: page
+        val splitHalf = vp?.splitHalf
         ZoomablePageBox(
-            url = pageUrls[page],
-            pageLabel = "Page ${page + 1}",
+            url = pageUrls[realIndex],
+            pageLabel = "Page ${realIndex + 1}",
             zoomState = zoomState,
             onZoomChange = onZoomChange,
             cropBorders = cropBorders,
+            splitHalf = splitHalf,
             contextMenuScope = contextMenuScope,
             mangaTitle = mangaTitle,
             chapterTitle = chapterTitle,
-            pageIndex = page,
-            // No spread detection in single-page mode (null = zero overhead).
-            onSpreadDetected = null,
+            pageIndex = realIndex,
+            preloader = preloader,
+            // Detect spreads only on full pages (not already-split halves).
+            onSpreadDetected = if (splitHalf == null && onSpreadDetected != null) {
+                { onSpreadDetected.invoke(realIndex) }
+            } else {
+                null
+            },
+            scaleType = scaleType,
+            navigationMode = navigationMode,
             onTapLeft = onTapLeft,
             onTapRight = onTapRight,
+            onTapCenter = onTapCenter,
         )
     }
 }

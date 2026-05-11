@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
@@ -53,9 +54,14 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.AddMangaToLibrary
 import mihon.desktop.domain.ReaderProgressTracker
+import tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga
+import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.model.MangaWithChapterCount
 import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.reader.ReaderNavigator
 import mihon.desktop.ui.reader.DesktopReaderScreen
+import mihon.desktop.extension.SourceCallResult
+import mihon.desktop.extension.safeSourceCall
 import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -76,6 +82,7 @@ data class SourceMangaDetailScreen(
         val navigator = LocalNavigator.currentOrThrow
         val sourceManager = remember { Injekt.get<SourceManager>() }
         val addToLibrary = remember { Injekt.get<AddMangaToLibrary>() }
+        val getDuplicateLibraryManga = remember { Injekt.get<GetDuplicateLibraryManga>() }
         val progressTracker = remember { Injekt.get<ReaderProgressTracker>() }
         val source = remember {
             sourceManager.getCatalogueSources().find { it.id == sourceId }
@@ -97,21 +104,53 @@ data class SourceMangaDetailScreen(
         // null = unknown, false = not in library, true = in library
         var isInLibrary by remember { mutableStateOf<Boolean?>(null) }
         var savedMangaId by remember { mutableStateOf(0L) }
+        var duplicatesForConfirm by remember { mutableStateOf<List<MangaWithChapterCount>>(emptyList()) }
 
         LaunchedEffect(mangaUrl) {
             if (source == null) {
                 isLoading = false
                 return@LaunchedEffect
             }
-            try {
-                manga = source.getMangaDetails(manga)
-                chapters.clear()
-                chapters.addAll(source.getChapterList(manga))
-            } catch (e: Exception) {
-                errorMessage = e.message ?: "Failed to load details"
-            } finally {
-                isLoading = false
+            val detailsResult = safeSourceCall { source.getMangaDetails(manga) }
+            when (detailsResult) {
+                is SourceCallResult.Success -> manga = applyMangaDetails(manga, detailsResult.value)
+                is SourceCallResult.Timeout -> { errorMessage = "Source timed out"; isLoading = false; return@LaunchedEffect }
+                is SourceCallResult.Error -> { errorMessage = detailsResult.message; isLoading = false; return@LaunchedEffect }
             }
+            val chaptersResult = safeSourceCall { source.getChapterList(manga) }
+            when (chaptersResult) {
+                is SourceCallResult.Success -> { chapters.clear(); chapters.addAll(chaptersResult.value) }
+                is SourceCallResult.Timeout -> errorMessage = "Source timed out loading chapters"
+                is SourceCallResult.Error -> errorMessage = chaptersResult.message
+            }
+            isLoading = false
+        }
+
+        // Duplicate confirmation dialog
+        if (duplicatesForConfirm.isNotEmpty()) {
+            val dupeTitle = duplicatesForConfirm.first().manga.title
+            AlertDialog(
+                onDismissRequest = { duplicatesForConfirm = emptyList() },
+                title = { Text("Already in library") },
+                text = {
+                    Text(
+                        "\"$dupeTitle\" is already in your library. Add this entry as well?",
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        duplicatesForConfirm = emptyList()
+                        scope.launch {
+                            val saved = addToLibrary.await(manga, sourceId, chapters)
+                            savedMangaId = saved.id
+                            isInLibrary = true
+                        }
+                    }) { Text("Add anyway") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { duplicatesForConfirm = emptyList() }) { Text("Cancel") }
+                },
+            )
         }
 
         Scaffold(
@@ -129,9 +168,15 @@ data class SourceMangaDetailScreen(
                                 onClick = {
                                     if (isInLibrary != true) {
                                         scope.launch {
-                                            val saved = addToLibrary.await(manga, sourceId, chapters)
-                                            savedMangaId = saved.id
-                                            isInLibrary = true
+                                            val tempManga = Manga.create().copy(title = manga.title)
+                                            val dupes = getDuplicateLibraryManga(tempManga)
+                                            if (shouldShowDuplicateWarning(dupes)) {
+                                                duplicatesForConfirm = dupes
+                                            } else {
+                                                val saved = addToLibrary.await(manga, sourceId, chapters)
+                                                savedMangaId = saved.id
+                                                isInLibrary = true
+                                            }
                                         }
                                     }
                                 },
@@ -171,17 +216,21 @@ data class SourceMangaDetailScreen(
                                 isLoading = true
                                 errorMessage = null
                                 scope.launch {
-                                    try {
-                                        if (source != null) {
-                                            manga = source.getMangaDetails(manga)
-                                            chapters.clear()
-                                            chapters.addAll(source.getChapterList(manga))
+                                    if (source != null) {
+                                        val dr = safeSourceCall { source.getMangaDetails(manga) }
+                                        when (dr) {
+                                            is SourceCallResult.Success -> manga = applyMangaDetails(manga, dr.value)
+                                            is SourceCallResult.Timeout -> { errorMessage = "Source timed out"; isLoading = false; return@launch }
+                                            is SourceCallResult.Error -> { errorMessage = dr.message; isLoading = false; return@launch }
                                         }
-                                    } catch (e: Exception) {
-                                        errorMessage = e.message
-                                    } finally {
-                                        isLoading = false
+                                        val cr = safeSourceCall { source.getChapterList(manga) }
+                                        when (cr) {
+                                            is SourceCallResult.Success -> { chapters.clear(); chapters.addAll(cr.value) }
+                                            is SourceCallResult.Timeout -> errorMessage = "Source timed out loading chapters"
+                                            is SourceCallResult.Error -> errorMessage = cr.message
+                                        }
                                     }
+                                    isLoading = false
                                 }
                             },
                             modifier = Modifier.padding(top = 8.dp),
@@ -223,6 +272,7 @@ data class SourceMangaDetailScreen(
                                                 id = it.hashCode().toLong(),
                                                 url = it.url,
                                                 name = it.name,
+                                                isRead = false,
                                             )
                                         }
                                         val idx = chapterRefs.indexOfFirst { it.url == chapter.url }
@@ -252,6 +302,19 @@ data class SourceMangaDetailScreen(
             }
         }
     }
+}
+
+/**
+ * Merges getMangaDetails() result with the original manga.
+ *
+ * Extensions commonly return getMangaDetails() without setting url or title —
+ * those are already known from the catalogue listing. This function preserves
+ * them from [original] so that downstream code (e.g. AddMangaToLibrary) does
+ * not crash with "lateinit property url has not been initialized".
+ */
+internal fun applyMangaDetails(original: SManga, details: SManga): SManga = details.also { d ->
+    runCatching { d.url }.onFailure { d.url = original.url }
+    runCatching { d.title }.onFailure { d.title = original.title }
 }
 
 @Composable

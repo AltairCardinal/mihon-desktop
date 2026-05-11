@@ -2,6 +2,8 @@ package mihon.desktop.domain
 
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.SManga
+import mihon.desktop.extension.SourceCallResult
+import mihon.desktop.extension.safeSourceCall
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.manga.model.Manga
@@ -26,10 +28,10 @@ class LibraryUpdateChecker(
             title = manga.title
         }
 
-        val remoteChapters = try {
-            source.getChapterList(sManga)
-        } catch (_: Exception) {
-            return UpdateResult(newChapterCount = 0, error = null)
+        val remoteChapters = when (val r = safeSourceCall { source.getChapterList(sManga) }) {
+            is SourceCallResult.Success -> r.value
+            is SourceCallResult.Timeout -> return UpdateResult(newChapterCount = 0, error = "Timed out")
+            is SourceCallResult.Error -> return UpdateResult(newChapterCount = 0, error = r.message)
         }
 
         val knownUrls = chapterRepository.getChapterByMangaId(manga.id)

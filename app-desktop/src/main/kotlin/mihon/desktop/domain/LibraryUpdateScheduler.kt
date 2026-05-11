@@ -7,6 +7,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import mihon.desktop.settings.DesktopAppPreferences
+import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.source.service.SourceManager
 
@@ -22,6 +23,8 @@ class LibraryUpdateScheduler(
     private val updateChecker: LibraryUpdateChecker,
     private val getLibraryManga: GetLibraryManga,
     private val sourceManager: SourceManager,
+    private val categoryRepository: CategoryRepository? = null,
+    private val notificationService: DesktopNotificationService? = null,
     scope: CoroutineScope? = null,
 ) {
     private val scope: CoroutineScope = scope ?: CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -54,13 +57,51 @@ class LibraryUpdateScheduler(
         schedulerJob = null
     }
 
+    private fun parseCategoryIds(raw: String): Set<Long> =
+        raw.split(",").mapNotNull { it.trim().toLongOrNull() }.toSet()
+
     private suspend fun runLibraryUpdate() {
         try {
             val allManga = getLibraryManga.await()
+            val includeCategories = parseCategoryIds(appPreferences.updateCategoryIncludes.get())
+            val excludeCategories = parseCategoryIds(appPreferences.updateCategoryExcludes.get())
+
+            val mangaIds = allManga.map { it.manga.id }
+            val filteredIds = if (includeCategories.isEmpty() && excludeCategories.isEmpty()) {
+                mangaIds
+            } else {
+                // Pre-compute category lookup (suspend calls not allowed in filter lambda)
+                val catLookup = mutableMapOf<Long, List<Long>>()
+                for (id in mangaIds) {
+                    catLookup[id] = categoryRepository?.getCategoriesByMangaId(id)
+                        ?.map { it.id } ?: emptyList()
+                }
+                filterMangaForUpdate(
+                    mangaIds = mangaIds,
+                    mangaCategoryLookup = { catLookup[it] ?: emptyList() },
+                    includeCategories = includeCategories,
+                    excludeCategories = excludeCategories,
+                )
+            }
+            val filteredIdSet = filteredIds.toSet()
+
             val sources = sourceManager.getCatalogueSources()
+            var newChapters = 0
             for (manga in allManga) {
+                if (manga.manga.id !in filteredIdSet) continue
                 val source = sources.find { it.id == manga.manga.source } ?: continue
-                runCatching { updateChecker.checkForUpdates(manga.manga, source) }
+                runCatching {
+                    val result = updateChecker.checkForUpdates(manga.manga, source)
+                    newChapters += result.newChapterCount
+                }
+            }
+            if (newChapters > 0) {
+                notificationService?.post(
+                    DesktopNotification(
+                        title = "Library updated",
+                        message = "$newChapters new chapter${if (newChapters != 1) "s" else ""} found",
+                    ),
+                )
             }
         } catch (_: Exception) {
             // Silently ignore scheduler errors to keep the loop alive.

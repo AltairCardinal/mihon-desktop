@@ -1,8 +1,8 @@
 package mihon.desktop.ui.reader
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.calculateCentroidSize
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
@@ -16,21 +16,55 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import coil3.BitmapImage
+import coil3.Image as CoilImage
 import coil3.compose.AsyncImagePainter
 import coil3.compose.rememberAsyncImagePainter
 import androidx.compose.runtime.collectAsState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import mihon.desktop.reader.CropBorderScanner
+import mihon.desktop.reader.PagePreloader
+import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.ZoomState
-import java.awt.image.BufferedImage
-import javax.imageio.ImageIO
+import org.jetbrains.skia.Bitmap as SkiaBitmap
+import org.jetbrains.skia.Canvas as SkiaCanvas
+import org.jetbrains.skia.Image as SkiaImage
+import org.jetbrains.skia.Rect as SkiaRect
+import androidx.compose.ui.graphics.asComposeImageBitmap
+import androidx.compose.ui.graphics.asSkiaBitmap
+
+// Kept for binary-compat with existing tests that call it directly.
+internal fun loadSplitHalf(url: String, half: PageSplitHalf): ImageBitmap? = try {
+    val bytes = java.net.URL(url).readBytes()
+    splitHalfFromBytes(bytes, half)
+} catch (_: Exception) {
+    null
+}
+
+/** Crops the already-decoded Coil image to the requested half — no re-download. */
+internal fun splitHalfFromCoilImage(image: CoilImage, half: PageSplitHalf): ImageBitmap? {
+    val skiaBitmap = image.toSkiaBitmap() ?: return null
+    return splitSkiaBitmap(skiaBitmap, half)
+}
+
+private fun splitHalfFromBytes(bytes: ByteArray, half: PageSplitHalf): ImageBitmap? {
+    val imageBitmap = mihon.desktop.reader.SkiaImageDecoder.decode(bytes)
+    return splitSkiaBitmap(imageBitmap.asSkiaBitmap(), half)
+}
+
+private fun splitSkiaBitmap(src: SkiaBitmap, half: PageSplitHalf): ImageBitmap? {
+    val bounds = splitBounds(src.width, src.height, half)
+    return extractSkiaSubBitmap(src, bounds.x, bounds.y, bounds.width, bounds.height)
+}
 
 /**
  * A single manga page image with pinch-to-zoom, drag-to-pan, double-tap-to-reset,
@@ -67,6 +101,8 @@ import javax.imageio.ImageIO
  * @param onSpreadDetected
  *   Called once after Coil decodes the image and its width > height
  *   (landscape / double-page spread image).  Pass `null` to skip detection.
+ * @param onTapCenter
+ *   Called when the user taps the center zone (for toggling UI visibility).
  */
 @Composable
 internal fun ZoomablePageBox(
@@ -80,13 +116,31 @@ internal fun ZoomablePageBox(
     chapterTitle: String = "",
     pageIndex: Int = 0,
     onSetAsCover: (() -> Unit)? = null,
+    splitHalf: PageSplitHalf? = null,
+    preloader: PagePreloader? = null,
     modifier: Modifier = Modifier.fillMaxSize(),
     imageAlignment: Alignment = Alignment.Center,
     onSpreadDetected: (() -> Unit)? = null,
+    scaleType: ScaleType = ScaleType.FIT_SCREEN,
+    navigationMode: NavigationMode = NavigationMode.RightAndLeft,
     onTapLeft: (() -> Unit)? = null,
     onTapRight: (() -> Unit)? = null,
+    onTapCenter: (() -> Unit)? = null,
 ) {
+    // Blank URL = page not yet downloaded. Show a loading spinner directly
+    // rather than letting Coil attempt a request and return an error state.
+    if (url.isBlank()) {
+        Box(modifier = modifier, contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = Color.White)
+        }
+        return
+    }
+
     val latestZoom by rememberUpdatedState(zoomState)
+
+    // Fast path: if the preloader already has this page decoded, use it directly.
+    // This eliminates the Coil loading indicator for pre-warmed pages.
+    val preloadedBitmap = remember(url, preloader) { preloader?.get(pageIndex) }
 
     val painter = rememberAsyncImagePainter(url)
     val painterState by painter.state.collectAsState()
@@ -96,92 +150,219 @@ internal fun ZoomablePageBox(
     var croppedBitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
 
     // Detect spread pages and optionally apply crop borders after Coil decodes the image.
-    LaunchedEffect(painterState, cropBorders) {
+    LaunchedEffect(painterState, cropBorders, splitHalf) {
         val s = painterState
         if (s is AsyncImagePainter.State.Success) {
             val img = s.result.image
 
-            // Spread detection
-            if (onSpreadDetected != null && img.width > img.height) {
+            // Spread detection (only when not already splitting)
+            if (onSpreadDetected != null && splitHalf == null && img.width > img.height) {
                 onSpreadDetected()
             }
 
-            // Crop borders: reload with ImageIO on the IO thread, scan, crop
-            if (cropBorders) {
-                croppedBitmap = withContext(Dispatchers.IO) {
-                    loadAndCrop(url)
+            when {
+                // Split half: crop the already-decoded Coil image — no re-download
+                splitHalf != null -> {
+                    croppedBitmap = withContext(Dispatchers.Default) {
+                        splitHalfFromCoilImage(s.result.image, splitHalf)
+                    }
                 }
-            } else {
-                croppedBitmap = null
+                // Crop borders: scan the already-decoded Coil image — no re-download
+                cropBorders -> {
+                    croppedBitmap = withContext(Dispatchers.Default) {
+                        cropBordersFromCoilImage(s.result.image)
+                    }
+                }
+                else -> croppedBitmap = null
             }
         }
     }
 
     val innerContent: @Composable () -> Unit = {
-        Box(
-            modifier = modifier
-                .pointerInput(Unit) {
-                    detectTransformGestures { _, pan, zoom, _ ->
-                        val current = latestZoom
-                        val newScale = (current.scale * zoom).coerceIn(1f, ZoomState.MAX_SCALE)
-                        val scaled = if (newScale <= 1f) ZoomState() else current.copy(scale = newScale)
-                        onZoomChange(scaled.pan(pan.x, pan.y))
-                    }
-                }
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onTap = { offset ->
-                            // Only trigger tap navigation when at default zoom (not zoomed in)
-                            if (latestZoom.scale <= 1f) {
-                                when (tapZoneFor(offset.x, size.width.toFloat())) {
-                                    TapZone.LEFT -> onTapLeft?.invoke()
-                                    TapZone.RIGHT -> onTapRight?.invoke()
-                                    TapZone.CENTER -> {}
+        // Unified gesture handler using detectTapGestures for tap detection
+        // combined with transform gesture handling in a single pointerInput.
+        val gestureModifier = if (onTapLeft != null || onTapRight != null || onTapCenter != null) {
+            Modifier.pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+
+                        // Multi-touch → zoom/pan
+                        if (event.changes.size > 1) {
+                            val zoom = event.calculateZoom()
+                            if (zoom != 1f) {
+                                val current = latestZoom
+                                val newScale = (current.scale * zoom).coerceIn(1f, ZoomState.MAX_SCALE)
+                                val scaled = if (newScale <= 1f) ZoomState() else current.copy(scale = newScale)
+                                onZoomChange(scaled)
+                            }
+                            val pressedChanges = event.changes.filter { it.pressed }
+                            if (pressedChanges.isNotEmpty()) {
+                                val panX = pressedChanges.sumOf { (it.position.x - it.previousPosition.x).toDouble() }.toFloat() / pressedChanges.size
+                                val panY = pressedChanges.sumOf { (it.position.y - it.previousPosition.y).toDouble() }.toFloat() / pressedChanges.size
+                                if (panX != 0f || panY != 0f) {
+                                    val current = latestZoom
+                                    onZoomChange(current.pan(panX, panY))
                                 }
                             }
-                        },
-                        onDoubleTap = { onZoomChange(ZoomState()) },
-                    )
-                },
+                            event.changes.forEach { it.consume() }
+                            continue
+                        }
+
+                        // Single-touch press → track for potential tap
+                        if (event.type == PointerEventType.Press) {
+                            val down = event.changes.first()
+                            val downPos = down.position
+                            val downTime = System.currentTimeMillis()
+
+                            // Track gesture completion
+                            var gestureComplete = false
+                            var moved = false
+                            var isTap = false
+                            var releasePos = downPos
+
+                            while (!gestureComplete) {
+                                val nextEvent = awaitPointerEvent(PointerEventPass.Main)
+                                when (nextEvent.type) {
+                                    PointerEventType.Move -> {
+                                        val change = nextEvent.changes.first()
+                                        val dx = change.position.x - downPos.x
+                                        val dy = change.position.y - downPos.y
+                                        // Movement threshold: ~15px
+                                        if (dx * dx + dy * dy > 225f) {
+                                            moved = true
+                                            gestureComplete = true
+                                            // Pan when zoomed in
+                                            if (latestZoom.scale > 1f) {
+                                                val current = latestZoom
+                                                onZoomChange(current.pan(
+                                                    change.position.x - change.previousPosition.x,
+                                                    change.position.y - change.previousPosition.y,
+                                                ))
+                                            }
+                                        }
+                                    }
+                                    PointerEventType.Release -> {
+                                        releasePos = nextEvent.changes.first().position
+                                        val elapsed = System.currentTimeMillis() - downTime
+                                        // Tap: released quickly (<400ms) without significant movement
+                                        if (elapsed < 400) {
+                                            isTap = true
+                                        }
+                                        gestureComplete = true
+                                    }
+                                    PointerEventType.Exit -> {
+                                        gestureComplete = true
+                                    }
+                                }
+                            }
+
+                            // Handle tap
+                            if (isTap && !moved) {
+                                val tapX = releasePos.x
+                                val tapY = releasePos.y
+                                val tapWidth = size.width.toFloat()
+                                val tapHeight = size.height.toFloat()
+                                if (latestZoom.scale <= 1f) {
+                                    when (tapNavRegion(tapX, tapY, tapWidth, tapHeight, navigationMode)) {
+                                        TapNavRegion.PREV -> onTapLeft?.invoke()
+                                        TapNavRegion.NEXT -> onTapRight?.invoke()
+                                        TapNavRegion.MENU -> onTapCenter?.invoke()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            Modifier
+        }
+
+        // Double-tap to reset zoom (only when tap navigation is active)
+        val doubleTapModifier = if (onTapLeft != null || onTapRight != null || onTapCenter != null) {
+            Modifier.pointerInput(Unit) {
+                var lastTapTime = 0L
+                var lastTapPos = androidx.compose.ui.geometry.Offset.Zero
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Main)
+                        if (event.type == PointerEventType.Press) {
+                            val now = System.currentTimeMillis()
+                            val pos = event.changes.first().position
+                            if (now - lastTapTime < 300 &&
+                                (pos - lastTapPos).getDistance() < 50
+                            ) {
+                                // Double-tap detected → reset zoom
+                                onZoomChange(ZoomState())
+                                lastTapTime = 0L
+                                event.changes.forEach { it.consume() }
+                            } else {
+                                lastTapTime = now
+                                lastTapPos = pos
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            Modifier
+        }
+
+        Box(
+            modifier = modifier
+                .then(gestureModifier)
+                .then(doubleTapModifier),
             contentAlignment = imageAlignment,
         ) {
-            // Loading indicator — shown while the image is loading
+            // Loading indicator — suppressed when preloaded bitmap or crop is ready
             val isLoading = painterState is AsyncImagePainter.State.Loading ||
                 painterState is AsyncImagePainter.State.Empty
-            if (isLoading && croppedBitmap == null) {
+            if (isLoading && croppedBitmap == null && preloadedBitmap == null) {
                 CircularProgressIndicator(color = Color.White)
             }
 
-            val cropped = croppedBitmap
-            if (cropped != null) {
+            // Resolve ContentScale from ScaleType.
+            // SmartFit: FillWidth for portrait images, Fit for landscape.
+            val resolvedScale = when (scaleType) {
+                ScaleType.FIT_SCREEN -> ContentScale.Fit
+                ScaleType.FIT_WIDTH -> ContentScale.FillWidth
+                ScaleType.FIT_HEIGHT -> ContentScale.FillHeight
+                ScaleType.ORIGINAL_SIZE -> ContentScale.None
+                ScaleType.SMART_FIT -> {
+                    val s = painterState
+                    if (s is AsyncImagePainter.State.Success && s.result.image.height > s.result.image.width) {
+                        ContentScale.FillWidth
+                    } else {
+                        ContentScale.Fit
+                    }
+                }
+            }
+
+            val displayBitmap = croppedBitmap ?: preloadedBitmap
+            val imageModifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer(
+                    scaleX = zoomState.scale,
+                    scaleY = zoomState.scale,
+                    translationX = zoomState.offsetX,
+                    translationY = zoomState.offsetY,
+                )
+            if (displayBitmap != null) {
                 Image(
-                    bitmap = cropped,
+                    bitmap = displayBitmap,
                     contentDescription = pageLabel,
                     alignment = imageAlignment,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer(
-                            scaleX = zoomState.scale,
-                            scaleY = zoomState.scale,
-                            translationX = zoomState.offsetX,
-                            translationY = zoomState.offsetY,
-                        ),
-                    contentScale = ContentScale.Fit,
+                    modifier = imageModifier,
+                    contentScale = resolvedScale,
                 )
             } else {
                 Image(
                     painter = painter,
                     contentDescription = pageLabel,
                     alignment = imageAlignment,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer(
-                            scaleX = zoomState.scale,
-                            scaleY = zoomState.scale,
-                            translationX = zoomState.offsetX,
-                            translationY = zoomState.offsetY,
-                        ),
-                    contentScale = ContentScale.Fit,
+                    modifier = imageModifier,
+                    contentScale = resolvedScale,
                 )
             }
         }
@@ -203,28 +384,78 @@ internal fun ZoomablePageBox(
     }
 }
 
-/**
- * Loads [url] with [ImageIO], runs [CropBorderScanner], and returns a cropped
- * [ImageBitmap].  Returns null if nothing was cropped or if loading failed.
- *
- * Using [ImageIO] (same as [mihon.desktop.reader.EdgePixelMatcher.loadImage]) means
- * the OS/JVM URL cache may already have the bytes, avoiding a second network round-trip
- * for images loaded from local disk.  For network images Coil's disk cache is separate,
- * but the trade-off is acceptable given crop is toggled infrequently.
- */
-private fun loadAndCrop(url: String): ImageBitmap? = try {
-    val awtImage: BufferedImage = ImageIO.read(java.net.URL(url)) ?: return null
-    val rect = CropBorderScanner().detectCropRect(awtImage)
+/** Crops the already-decoded Coil image's white borders — no re-download. */
+internal fun cropBordersFromCoilImage(image: CoilImage): ImageBitmap? {
+    val skiaBitmap = image.toSkiaBitmap() ?: return null
+    return cropBordersFromSkiaBitmap(skiaBitmap)
+}
 
-    // Skip if no meaningful crop
-    if (rect.top == 0 && rect.left == 0 &&
-        rect.bottom == awtImage.height && rect.right == awtImage.width
-    ) {
-        return null
+/**
+ * Extracts a [SkiaBitmap] from a [CoilImage].
+ * For [BitmapImage] the backing SkiaBitmap is reused directly (zero-copy).
+ */
+private fun CoilImage.toSkiaBitmap(): SkiaBitmap? = when (this) {
+    is BitmapImage -> bitmap
+    else -> null
+}
+
+/**
+ * Scans [src] for white borders using [CropBorderScanner] and returns a cropped
+ * [ImageBitmap].  Returns null if no meaningful crop is found.
+ *
+ * Border scanning reads pixel colours via [SkiaBitmap.getColor] — no AWT conversion needed.
+ */
+private fun cropBordersFromSkiaBitmap(src: SkiaBitmap): ImageBitmap? {
+    val w = src.width
+    val h = src.height
+    val threshold = 240
+
+    fun isLight(x: Int, y: Int): Boolean {
+        val c = src.getColor(x, y)
+        val r = (c shr 16) and 0xFF
+        val g = (c shr 8) and 0xFF
+        val b = c and 0xFF
+        return r >= threshold && g >= threshold && b >= threshold
     }
 
-    val cropped = awtImage.getSubimage(rect.left, rect.top, rect.width, rect.height)
-    cropped.toComposeImageBitmap()
-} catch (_: Exception) {
-    null
+    var top = 0
+    outer@ for (y in 0 until h) {
+        for (x in 0 until w) { if (!isLight(x, y)) { top = y; break@outer } }
+        if (y == h - 1) top = 0
+    }
+    var bottom = h
+    outer@ for (y in h - 1 downTo 0) {
+        for (x in 0 until w) { if (!isLight(x, y)) { bottom = y + 1; break@outer } }
+        if (y == 0) bottom = h
+    }
+    var left = 0
+    outer@ for (x in 0 until w) {
+        for (y in top until bottom) { if (!isLight(x, y)) { left = x; break@outer } }
+        if (x == w - 1) left = 0
+    }
+    var right = w
+    outer@ for (x in w - 1 downTo 0) {
+        for (y in top until bottom) { if (!isLight(x, y)) { right = x + 1; break@outer } }
+        if (x == 0) right = w
+    }
+
+    if (top == 0 && left == 0 && bottom == h && right == w) return null
+    if (right <= left || bottom <= top) return null
+
+    return extractSkiaSubBitmap(src, left, top, right - left, bottom - top)
+}
+
+/**
+ * Copies a rectangular sub-region from [src] into a new [ImageBitmap].
+ */
+private fun extractSkiaSubBitmap(src: SkiaBitmap, x: Int, y: Int, w: Int, h: Int): ImageBitmap {
+    val dst = SkiaBitmap()
+    dst.allocN32Pixels(w, h)
+    val canvas = SkiaCanvas(dst)
+    canvas.drawImageRect(
+        SkiaImage.makeFromBitmap(src),
+        SkiaRect.makeLTRB(x.toFloat(), y.toFloat(), (x + w).toFloat(), (y + h).toFloat()),
+        SkiaRect.makeWH(w.toFloat(), h.toFloat()),
+    )
+    return dst.asComposeImageBitmap()
 }
