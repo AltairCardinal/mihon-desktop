@@ -9,6 +9,7 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
+import mihon.desktop.test.navigation.TestNavigationController
 import mihon.desktop.test.screenshot.ScreenshotService
 import mihon.desktop.test.state.applicationState
 import java.time.Instant
@@ -58,7 +59,8 @@ fun Application.testHttpServer() {
                     |"actions": [],
                     |"testMode": ${state.testMode},
                     |"timestamp": "${Instant.now()}"
-                |}""".trimMargin()
+                |}
+                """.trimMargin()
             }
         }
 
@@ -68,26 +70,27 @@ fun Application.testHttpServer() {
                 contentType = ContentType.Application.Json,
                 status = HttpStatusCode.OK,
             ) {
-                val screens = applicationState.screens.value.map { screen ->
+                val screens = TestNavigationController.getAvailableScreens().map { screen ->
                     """{"id":"$screen","name":"$screen"}"""
                 }
                 "[${screens.joinToString(",")}]"
             }
         }
 
-        // Navigate to a screen
+        // Navigate to a screen (triggers actual UI navigation)
         post("/test/navigate/{screen}") {
             val screen = call.parameters["screen"] ?: "HomeScreen"
+            val success = TestNavigationController.navigateTo(screen)
             applicationState.setCurrentScreen(screen)
             applicationState.recordAction(
                 "navigate",
-                mapOf("screen" to screen),
+                mapOf("screen" to screen, "success" to success),
             )
             call.respondText(
                 contentType = ContentType.Application.Json,
                 status = HttpStatusCode.OK,
             ) {
-                """{"success":true,"newScreen":"$screen","timestamp":"${Instant.now()}"}"""
+                """{"success":$success,"newScreen":"$screen","timestamp":"${Instant.now()}"}"""
             }
         }
 
@@ -99,21 +102,21 @@ fun Application.testHttpServer() {
             } catch (e: Exception) {
                 "{}"
             }
-            
+
             val params = parseJsonBody(body)
-            
+
             applicationState.recordAction(action, params)
-            
+
             when (action) {
                 "search" -> applicationState.setLoading(true)
                 "filter", "sort" -> { }
                 else -> { }
             }
-            
+
             if (action == "search") {
                 applicationState.setLoading(false)
             }
-            
+
             call.respondText(
                 contentType = ContentType.Application.Json,
                 status = HttpStatusCode.OK,
@@ -129,12 +132,12 @@ fun Application.testHttpServer() {
             } catch (e: Exception) {
                 """{"name": "screenshot"}"""
             }
-            
+
             val params = parseJsonBody(body)
             val name = params["name"] ?: "screenshot"
-            
+
             val path = ScreenshotService.capture(name)
-            
+
             if (path != null) {
                 call.respondText(
                     contentType = ContentType.Application.Json,
@@ -156,6 +159,7 @@ fun Application.testHttpServer() {
         post("/test/reset") {
             applicationState.reset()
             applicationState.testMode = true
+            TestNavigationController.reset()
             call.respondText(
                 contentType = ContentType.Application.Json,
                 status = HttpStatusCode.OK,

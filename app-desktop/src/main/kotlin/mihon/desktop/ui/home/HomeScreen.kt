@@ -19,15 +19,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import mihon.desktop.domain.DesktopNotificationService
 import androidx.compose.ui.Modifier
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.tab.CurrentTab
 import cafe.adriel.voyager.navigator.tab.LocalTabNavigator
 import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabNavigator
+import mihon.desktop.domain.DesktopNotificationService
 import mihon.desktop.network.CloudflareChallenge
 import mihon.desktop.network.CloudflareChallengeManager
+import mihon.desktop.test.navigation.TestNavigationController
 import mihon.desktop.ui.browse.BrowseTab
 import mihon.desktop.ui.cloudflare.CloudflareBypassDialog
 import mihon.desktop.ui.history.HistoryTab
@@ -88,7 +89,21 @@ class HomeScreen : Screen {
             )
         }
 
-        TabNavigator(LibraryTab) {
+        // Create TabNavigator at this level to share with test navigation
+        TabNavigator(LibraryTab) { tabNavigator ->
+            // Observe test navigation requests
+            LaunchedEffect(Unit) {
+                TestNavigationController.pendingNavigation.collect { targetScreen ->
+                    if (targetScreen != null) {
+                        val tab = TestNavigationController.getTabOrNull(targetScreen)
+                        if (tab != null) {
+                            tabNavigator.current = tab
+                        }
+                        TestNavigationController.clearPendingNavigation()
+                    }
+                }
+            }
+
             Scaffold(
                 snackbarHost = {
                     SnackbarHost(hostState = snackbarHostState) { data ->
