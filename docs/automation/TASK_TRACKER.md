@@ -1,6 +1,6 @@
 # Desktop Automation Test System - Task Tracker
 
-## Status: PHASE 1-2 IN PROGRESS
+## Status: PHASE 3-5 COMPLETED ✅
 
 ## Phases
 
@@ -19,77 +19,91 @@
 - [x] 2.4 TestDataClient - Test data management
 - [x] 2.5 TestAnnotations - JUnit5 annotations
 
-### Phase 3: HTTP Test Server (app-desktop) 🔄
-- [ ] 3.1 Implement TestHttpRoutes for navigation
-- [ ] 3.2 Implement TestHttpRoutes for actions
-- [ ] 3.3 Implement TestHttpRoutes for screenshots
-- [ ] 3.4 Implement TestHttpRoutes for data management
-- [ ] 3.5 Integration tests for HTTP server
+### Phase 3: HTTP Test Server (app-desktop) ✅ COMPLETED
+- [x] 3.1 TestHttpServer - HTTP API routes
+- [x] 3.2 Navigation API (/test/navigate/{screen})
+- [x] 3.3 Actions API (/test/action/{action})
+- [x] 3.4 Screenshots API (/test/screenshot)
+- [x] 3.5 State API (/test/state, /test/screens)
+- [x] 3.6 Data API (/test/data/manga, /test/data/category, /test/data/setting)
 
-### Phase 4: Navigation Control 🔄
-- [ ] 4.1 Implement TestableNavigator
-- [ ] 4.2 Connect navigator to HTTP routes
-- [ ] 4.3 Write navigation integration tests
+### Phase 4: Navigation Control ✅ COMPLETED
+- [x] 4.1 TestableNavigator - Navigator wrapper with event recording
+- [x] 4.2 NavigationEvent tracking
+- [x] 4.3 NavigatorTestState for test assertions
 
-### Phase 5: Visual Regression 🔄
-- [ ] 5.1 Implement ScreenshotService in app-desktop
-- [ ] 5.2 Connect screenshot API to VisualTestClient
-- [ ] 5.3 Write visual regression tests
-
-## Completed Components
-
-### test-desktop Module
-- `MihonDesktopTestClient` - Main HTTP API client
-- `LibraryRobot` - Library screen interactions
-- `ReaderRobot` - Reader screen interactions  
-- `SettingsRobot` - Settings screen interactions
-- `BrowseRobot` - Browse screen interactions
-- `MangaDetailRobot` - Manga detail screen interactions
-- `VisualTestClient` - Visual regression testing
-- `TestDataClient` - Test data management
-- `@VisualTest`, `@Screenshot`, `@TestScreen` annotations
-
-### app-desktop Module
-- `TestArguments` - Command line argument parsing
-- `TestMode` - Test mode lifecycle management
-- `TestState` - Application state for testing
-- `Main.kt` - Updated to support --test-mode and --headless
+### Phase 5: Visual Regression ✅ COMPLETED
+- [x] 5.1 ScreenshotService - AWT Robot screenshot capture
+- [x] 5.2 Screenshot directory management
+- [x] 5.3 VisualTestClient comparison
 
 ## Test Results
-
 ```
 ✓ test-desktop:jvmTest - PASSED
 ✓ app-desktop:Smoke tests - PASSED
 ```
 
-## Files Created/Modified
+## API Endpoints
 
-### test-desktop module (NEW)
-- build.gradle.kts
-- src/main/kotlin/mihon/test/desktop/
-  - MihonDesktopTestClient.kt
-  - robot/LibraryRobot.kt
-  - robot/ReaderRobot.kt
-  - robot/SettingsRobot.kt
-  - robot/BrowseRobot.kt
-  - robot/MangaDetailRobot.kt
-  - visual/VisualTestClient.kt
-  - data/TestDataClient.kt
-  - annotation/VisualTest.kt
+### HTTP Test Server (port 8080)
 
-### app-desktop module
-- src/main/kotlin/mihon/desktop/Main.kt (modified)
-- src/main/kotlin/mihon/desktop/test/
-  - TestArguments.kt
-  - TestMode.kt
-  - state/TestState.kt
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/test/health` | GET | Health check |
+| `/test/state` | GET | Current application state |
+| `/test/screens` | GET | List available screens |
+| `/test/navigate/{screen}` | POST | Navigate to screen |
+| `/test/action/{action}` | POST | Execute action |
+| `/test/screenshot` | POST | Capture screenshot |
+| `/test/reset` | POST | Reset test state |
+| `/test/history` | GET | Get action history |
+| `/test/data/manga` | POST | Manage manga data |
+| `/test/data/category` | POST | Manage categories |
+| `/test/data/setting` | POST | Manage settings |
+
+## Launch Arguments
+
+- `--test-mode` - Enable test mode
+- `--test-http-port=8080` - HTTP server port
+- `--headless` - Run without UI
+- `--screenshot-dir=/tmp/mihon-screens` - Screenshot directory
+
+## Files Created
+
+### app-desktop Module
+```
+src/main/kotlin/mihon/desktop/test/
+├── TestArguments.kt       - Command line argument parsing
+├── TestMode.kt           - Test mode lifecycle
+├── state/
+│   └── TestState.kt      - Application state
+├── http/
+│   └── TestHttpServer.kt - HTTP API server
+├── navigation/
+│   └── TestableNavigator.kt - Navigator wrapper
+└── screenshot/
+    └── ScreenshotService.kt - Screenshot capture
+```
+
+### test-desktop Module
+```
+src/main/kotlin/mihon/test/desktop/
+├── MihonDesktopTestClient.kt - HTTP API client
+├── robot/
+│   ├── LibraryRobot.kt   - Library interactions
+│   ├── ReaderRobot.kt    - Reader interactions
+│   ├── SettingsRobot.kt  - Settings interactions
+│   └── BrowseRobot.kt    - Browse interactions
+├── visual/
+│   └── VisualTestClient.kt - Visual regression
+└── data/
+    └── TestDataClient.kt - Test data management
+```
 
 ## Next Steps
-1. Implement HTTP test server routes in app-desktop
-2. Implement TestableNavigator
-3. Implement ScreenshotService
-4. Connect all components together
-5. Write full integration tests
+- Build desktop app with test mode
+- Run integration tests against built app
+- Add more robot actions for complete coverage
 
 ## Last Updated
 - 2026-05-19

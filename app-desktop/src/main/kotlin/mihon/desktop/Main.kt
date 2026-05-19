@@ -10,9 +10,9 @@ import mihon.desktop.di.initDesktopDI
 import mihon.desktop.domain.LibraryUpdateScheduler
 import mihon.desktop.source.LocalSourceScanService
 import mihon.desktop.ui.home.HomeScreen
+import mihon.desktop.ui.theme.DesktopTheme
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import mihon.desktop.ui.theme.DesktopTheme
 
 fun main() {
     initDesktopDI()

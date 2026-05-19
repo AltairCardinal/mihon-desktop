@@ -62,7 +62,7 @@ kotlin {
                 implementation(projects.domain)
                 implementation(projects.data)
                 implementation(projects.coreMetadata)
-                implementation(projects.i18n)
+                // implementation(projects.i18n) // excluded in worktree
 
                 // Network
                 implementation(libs.okhttp.core)
@@ -105,6 +105,13 @@ kotlin {
 
                 // DEX to JVM bytecode conversion (for loading Android extension APKs on desktop)
                 implementation(libs.dex.tools)
+
+                // Test HTTP Server (Ktor)
+                implementation("io.ktor:ktor-server-core:2.3.12")
+                implementation("io.ktor:ktor-server-netty:2.3.12")
+                implementation("io.ktor:ktor-server-cio:2.3.12")
+                implementation("io.ktor:ktor-client-core:2.3.12")
+                implementation("io.ktor:ktor-client-okhttp:2.3.12")
             }
         }
         val jvmTest by getting {
@@ -113,7 +120,6 @@ kotlin {
                 implementation(libs.bundles.test)
                 implementation(kotlinx.coroutines.test)
                 implementation(libs.okhttp.core) // for mockwebserver
-                implementation("com.squareup.okhttp3:mockwebserver3-junit5:5.3.2")
                 runtimeOnly(libs.junit.platform.launcher)
             }
         }
