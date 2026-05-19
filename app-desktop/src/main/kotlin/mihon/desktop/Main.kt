@@ -9,15 +9,43 @@ import cafe.adriel.voyager.transitions.SlideTransition
 import mihon.desktop.di.initDesktopDI
 import mihon.desktop.domain.LibraryUpdateScheduler
 import mihon.desktop.source.LocalSourceScanService
+import mihon.desktop.test.TestArguments
+import mihon.desktop.test.TestMode
 import mihon.desktop.ui.home.HomeScreen
 import mihon.desktop.ui.theme.DesktopTheme
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
-fun main() {
+/**
+ * Main entry point for Mihon Desktop application.
+ * Supports test mode via command-line arguments:
+ * - --test-mode: Enable test mode
+ * - --headless: Run without UI (for automated testing)
+ */
+fun main(args: Array<String>) {
+    // Install crash handler FIRST
+    CrashHandler.install()
+
+    // Parse test arguments
+    val testArgs = TestArguments.parse(args)
+
+    // Initialize DI
     initDesktopDI()
+
+    // Start test mode if enabled
+    if (testArgs.testMode) {
+        TestMode.start(testArgs)
+    }
+
+    // Start background services
     Injekt.get<LibraryUpdateScheduler>().start()
     Injekt.get<LocalSourceScanService>().start()
+
+    // Skip UI in headless mode
+    if (testArgs.headless) {
+        return
+    }
+
     application {
         Window(
             onCloseRequest = ::exitApplication,
