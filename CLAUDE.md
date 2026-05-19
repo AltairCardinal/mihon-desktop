@@ -276,3 +276,54 @@ For every PR, verify the following. If a row applies and has no test, the PR is 
 | New `Injekt.get<T>()` in a Composable | T is covered in DI wiring test |
 | New/modified HTTP parsing code | MockWebServer test with success + failure cases |
 | New domain use case | Unit test for the use case (existing practice) |
+
+---
+
+## Desktop Automation Testing
+
+Mihon Desktop includes a complete automation test system for E2E testing.
+
+### Quick Commands
+
+```bash
+# Run smoke tests
+./scripts/desktop-smoke-test.sh
+
+# Run test module tests
+./gradlew :test-desktop:test
+
+# Run all desktop tests
+./gradlew :app-desktop:jvmTest
+
+# Build desktop with test mode
+./scripts/build-desktop.sh
+```
+
+### Test Documentation
+
+- **用户指南**: `docs/automation/TEST_GUIDE.md` - 完整使用说明
+- **API 参考**: `docs/automation/API_REFERENCE.md` - HTTP API 端点文档
+- **进度追踪**: `docs/automation/TASK_TRACKER.md` - 开发进度
+
+### Key Files
+
+| 文件 | 说明 |
+|------|------|
+| `app-desktop/src/main/kotlin/mihon/desktop/test/` | 测试基础设施（TestMode, TestState, HTTP Server） |
+| `test-desktop/src/main/kotlin/mihon/test/desktop/` | 测试客户端库（Robot 模式、HTTP 客户端） |
+| `app-desktop/src/test/kotlin/mihon/desktop/smoke/` | 冒烟测试套件 |
+
+### Test Mode Launch
+
+启动应用时添加参数启用测试模式：
+```bash
+"/Applications/Mihon Desktop.app" --test-mode --test-http-port=8080 --headless
+```
+
+测试模式提供 HTTP API 用于自动化控制：
+- `GET /test/state` - 获取应用状态
+- `POST /test/navigate/{screen}` - 导航
+- `POST /test/action/{action}` - 执行动作
+- `POST /test/screenshot` - 截图
+
+详细说明见 `docs/automation/TEST_GUIDE.md`。
