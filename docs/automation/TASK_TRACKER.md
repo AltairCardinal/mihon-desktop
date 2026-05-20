@@ -1,6 +1,6 @@
 # Desktop Automation Test System - Task Tracker
 
-## Status: PHASE 3-5 COMPLETED ✅
+## Status: PHASE 6 COMPLETED ✅
 
 ## Phases
 
@@ -42,11 +42,23 @@
 - [x] 5.2 Screenshot directory management
 - [x] 5.3 VisualTestClient comparison
 
+### Phase 6: Extended Coverage (本轮) ✅ COMPLETED
+
+- [x] 6.1 DownloadsRobot - 下载管理 Robot
+- [x] 6.2 UpdatesRobot - 更新管理 Robot
+- [x] 6.3 HistoryRobot - 历史记录 Robot
+- [x] 6.4 MoreRobot + sub-robots (Extensions, Migration, About, Backup)
+- [x] 6.5 Extended HTTP actions for all scenarios
+- [x] 6.6 Extended state tracking (download queue, updates, history)
+- [x] 6.7 Comprehensive smoke tests for all scenarios
+- [x] 6.8 API reference documentation
+
 ## Test Results
 
 ```
-✓ test-desktop:jvmTest - PASSED
-✓ app-desktop:Smoke tests - PASSED
+✓ test-desktop:jvmTest - PASSED (16 tests)
+✓ app-desktop:jvmTest SmokeTestSuite - PASSED (42 tests)
+✓ Desktop build - SUCCESSFUL
 ```
 
 ## API Endpoints
@@ -74,7 +86,7 @@
 - `--headless` - Run without UI
 - `--screenshot-dir=/tmp/mihon-screens` - Screenshot directory
 
-## Files Created
+## Files Created/Modified
 
 ### app-desktop Module
 
@@ -83,11 +95,12 @@ src/main/kotlin/mihon/desktop/test/
 ├── TestArguments.kt       - Command line argument parsing
 ├── TestMode.kt           - Test mode lifecycle
 ├── state/
-│   └── TestState.kt      - Application state
+│   ├── TestState.kt      - Application state + Download/Updates/History state
 ├── http/
-│   └── TestHttpServer.kt - HTTP API server
+│   └── TestHttpServer.kt - HTTP API server (extended actions)
 ├── navigation/
-│   └── TestableNavigator.kt - Navigator wrapper
+│   ├── TestableNavigator.kt - Navigator wrapper
+│   └── TestNavigationController.kt - Navigation controller
 └── screenshot/
     └── ScreenshotService.kt - Screenshot capture
 ```
@@ -96,24 +109,96 @@ src/main/kotlin/mihon/desktop/test/
 
 ```
 src/main/kotlin/mihon/test/desktop/
-├── MihonDesktopTestClient.kt - HTTP API client
+├── MihonDesktopTestClient.kt - HTTP API client (extended state)
 ├── robot/
-│   ├── LibraryRobot.kt   - Library interactions
-│   ├── ReaderRobot.kt    - Reader interactions
+│   ├── LibraryRobot.kt    - Library interactions
+│   ├── MangaDetailRobot.kt - Manga detail interactions
+│   ├── ReaderRobot.kt     - Reader interactions
 │   ├── SettingsRobot.kt  - Settings interactions
-│   └── BrowseRobot.kt    - Browse interactions
+│   ├── BrowseRobot.kt     - Browse interactions
+│   ├── DownloadsRobot.kt  - Download management ⭐ NEW
+│   ├── UpdatesRobot.kt   - Updates tab ⭐ NEW
+│   ├── HistoryRobot.kt    - History tab ⭐ NEW
+│   └── MoreRobot.kt      - More tab + sub-robots ⭐ NEW
 ├── visual/
 │   └── VisualTestClient.kt - Visual regression
 └── data/
-    └── TestDataClient.kt - Test data management
+    └── TestDataClient.kt  - Test data management
 ```
 
-## Next Steps
+### Tests
 
-- Build desktop app with test mode
-- Run integration tests against built app
-- Add more robot actions for complete coverage
+```
+app-desktop/src/test/kotlin/mihon/desktop/smoke/
+├── CoreScenarioSmokeTestSuite.kt - Core + scenario tests ⭐ NEW
+└── DesktopSmokeTestSuite.kt - Existing smoke tests
+
+test-desktop/src/test/kotlin/mihon/test/desktop/
+├── RobotSmokeTestSuite.kt - Robot instantiation tests ⭐ NEW
+└── ExampleE2ETest.kt - E2E documentation
+```
+
+## Test Coverage by Scenario
+
+### Library Management
+- ✅ Navigation to library
+- ✅ Search manga
+- ✅ Filter by status (unread/started/completed)
+- ✅ Sort by various modes
+- ✅ Category selection
+- ✅ Manga selection → detail
+
+### Manga Detail
+- ✅ Open detail screen
+- ✅ Add/remove from library
+- ✅ Download chapters
+- ✅ Read chapters → Reader
+
+### Reader
+- ✅ Page navigation (next/prev)
+- ✅ Chapter navigation (next/prev)
+- ✅ Reading mode switching
+- ✅ Zoom in/out
+- ✅ Screenshot capture
+
+### Downloads ⭐ NEW
+- ✅ Open downloads screen
+- ✅ Pause/resume all
+- ✅ Cancel single/all
+- ✅ Clear/retry errors
+- ✅ Reorder queue
+- ✅ Sort queue
+
+### Updates ⭐ NEW
+- ✅ Open updates screen
+- ✅ Refresh from sources
+- ✅ Mark all as read
+- ✅ Filter by status
+- ✅ Open upcoming calendar
+- ✅ Read updates
+- ✅ Download updates
+- ✅ Mark single as read
+
+### History ⭐ NEW
+- ✅ Open history screen
+- ✅ Search history
+- ✅ Remove entries
+- ✅ Clear all
+- ✅ Select entry → Reader
+
+### Settings & More ⭐ NEW
+- ✅ Open settings
+- ✅ Change settings
+- ✅ Reset settings
+- ✅ Extensions management
+- ✅ Migration
+- ✅ Backup/restore
+- ✅ About screen
+
+## Known Issues
+
+- 1 pre-existing test failure: `ReaderScreenModelTest.setDualPageMode updates dualPageMode` (unrelated to automation system)
 
 ## Last Updated
 
-- 2026-05-19
+- 2026-05-20

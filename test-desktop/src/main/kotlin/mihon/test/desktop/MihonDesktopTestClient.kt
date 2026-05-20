@@ -15,9 +15,13 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import mihon.test.desktop.data.TestDataClient
 import mihon.test.desktop.robot.BrowseRobot
+import mihon.test.desktop.robot.DownloadsRobot
+import mihon.test.desktop.robot.HistoryRobot
 import mihon.test.desktop.robot.LibraryRobot
+import mihon.test.desktop.robot.MoreRobot
 import mihon.test.desktop.robot.ReaderRobot
 import mihon.test.desktop.robot.SettingsRobot
+import mihon.test.desktop.robot.UpdatesRobot
 import mihon.test.desktop.visual.VisualTestClient
 import org.slf4j.LoggerFactory
 import java.time.Instant
@@ -41,11 +45,17 @@ class DesktopTestClient(
 
     val baseUrl = "http://$host:$port"
 
-    // Robot modules
+    // Robot modules - Library & Details
     val library = LibraryRobot(this)
     val reader = ReaderRobot(this)
     val settings = SettingsRobot(this)
     val browse = BrowseRobot(this)
+
+    // Robot modules - Additional screens
+    val downloads = DownloadsRobot(this)
+    val updates = UpdatesRobot(this)
+    val history = HistoryRobot(this)
+    val more = MoreRobot(this)
 
     // Visual testing
     val visual = VisualTestClient(this)
@@ -212,6 +222,14 @@ data class AppState(
     val actions: List<String> = emptyList(),
     val testMode: Boolean = false,
     val timestamp: String = Instant.now().toString(),
+    // Download state
+    val downloadQueueSize: Int? = null,
+    val downloadsPaused: Boolean? = null,
+    // Updates state
+    val updateCount: Int? = null,
+    val hasUnreadUpdates: Boolean? = null,
+    // History state
+    val historyCount: Int? = null,
 )
 
 @Serializable

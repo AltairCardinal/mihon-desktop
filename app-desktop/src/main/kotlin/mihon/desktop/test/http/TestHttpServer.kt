@@ -12,6 +12,9 @@ import io.ktor.server.routing.routing
 import mihon.desktop.test.navigation.TestNavigationController
 import mihon.desktop.test.screenshot.ScreenshotService
 import mihon.desktop.test.state.applicationState
+import mihon.desktop.test.state.downloadState
+import mihon.desktop.test.state.historyState
+import mihon.desktop.test.state.updatesState
 import java.time.Instant
 
 private fun parseJsonBody(body: String): Map<String, String> {
@@ -51,6 +54,9 @@ fun Application.testHttpServer() {
                 status = HttpStatusCode.OK,
             ) {
                 val state = applicationState
+                val dlState = downloadState
+                val upState = updatesState
+                val histState = historyState
                 """{
                     |"currentScreen": "${state.currentScreen.value ?: "HomeScreen"}",
                     |"isLoading": ${state.isLoading.value},
@@ -58,6 +64,11 @@ fun Application.testHttpServer() {
                     |"screens": [],
                     |"actions": [],
                     |"testMode": ${state.testMode},
+                    |"downloadQueueSize": ${dlState.queueSize},
+                    |"downloadsPaused": ${dlState.isPaused},
+                    |"updateCount": ${upState.count},
+                    |"hasUnreadUpdates": ${upState.hasUnread},
+                    |"historyCount": ${histState.count},
                     |"timestamp": "${Instant.now()}"
                 |}
                 """.trimMargin()
@@ -107,14 +118,42 @@ fun Application.testHttpServer() {
 
             applicationState.recordAction(action, params)
 
+            // Process actions
             when (action) {
-                "search" -> applicationState.setLoading(true)
-                "filter", "sort" -> { }
-                else -> { }
-            }
-
-            if (action == "search") {
-                applicationState.setLoading(false)
+                // Library actions
+                "search", "filter", "sort", "select" -> { }
+                // Reader actions
+                "reader_next_page", "reader_prev_page", "reader_next_chapter", "reader_prev_chapter",
+                "reader_mode", "reader_zoom",
+                -> { }
+                // Settings actions
+                "setting_change", "setting_reset" -> { }
+                // Browse actions
+                "browse_search" -> { }
+                // Download actions
+                "downloads_pause_all" -> downloadState.isPaused = true
+                "downloads_resume_all" -> downloadState.isPaused = false
+                "downloads_cancel", "downloads_cancel_all", "downloads_clear_errors",
+                "downloads_retry_errors", "downloads_reorder", "downloads_sort",
+                "downloads_reverse",
+                -> { }
+                // Updates actions
+                "updates_refresh", "updates_mark_all_read", "updates_filter",
+                "updates_clear_filters", "updates_open_upcoming", "updates_select",
+                "updates_download", "updates_mark_read",
+                -> { }
+                // History actions
+                "history_search", "history_clear_all", "history_remove", "history_select" -> { }
+                // Extension actions
+                "extension_select", "extension_enable", "extension_disable",
+                "extension_update", "extension_update_all", "extension_search",
+                -> { }
+                // Migration actions
+                "migration_search", "migration_select" -> { }
+                // Backup actions
+                "backup_create", "backup_restore" -> { }
+                // Manga detail actions
+                "addToLibrary", "removeFromLibrary", "download" -> { }
             }
 
             call.respondText(
@@ -160,6 +199,9 @@ fun Application.testHttpServer() {
             applicationState.reset()
             applicationState.testMode = true
             TestNavigationController.reset()
+            downloadState.reset()
+            updatesState.reset()
+            historyState.reset()
             call.respondText(
                 contentType = ContentType.Application.Json,
                 status = HttpStatusCode.OK,

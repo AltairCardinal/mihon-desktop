@@ -1,0 +1,231 @@
+package mihon.test.desktop.robot
+
+import mihon.test.desktop.DesktopTestClient
+import mihon.test.desktop.ScreenshotResult
+
+/**
+ * Robot for More tab interactions.
+ */
+class MoreRobot(private val client: DesktopTestClient) {
+
+    private val baseUrl = client.baseUrl
+
+    /**
+     * Navigate to the More tab.
+     */
+    fun open(): MoreRobot {
+        client.navigate("MoreTab")
+        return this
+    }
+
+    /**
+     * Open settings screen.
+     */
+    fun openSettings(): SettingsRobot {
+        client.navigate("SettingsScreen")
+        return SettingsRobot(client)
+    }
+
+    /**
+     * Open extension list screen.
+     */
+    fun openExtensions(): ExtensionsRobot {
+        client.navigate("ExtensionListScreen")
+        return ExtensionsRobot(client)
+    }
+
+    /**
+     * Open migration screen.
+     */
+    fun openMigration(): MigrationRobot {
+        client.navigate("MigrationSearchScreen")
+        return MigrationRobot(client)
+    }
+
+    /**
+     * Open about screen.
+     */
+    fun openAbout(): AboutRobot {
+        client.navigate("AboutScreen")
+        return AboutRobot(client)
+    }
+
+    /**
+     * Open backup/restore screen.
+     */
+    fun openBackup(): BackupRobot {
+        client.navigate("BackupScreen")
+        return BackupRobot(client)
+    }
+
+    /**
+     * Capture screenshot of the more screen.
+     */
+    fun capture(name: String = "more"): ScreenshotResult {
+        return client.screenshot(name)
+    }
+}
+
+/**
+ * Robot for Extensions management screen.
+ */
+class ExtensionsRobot(private val client: DesktopTestClient) {
+
+    /**
+     * Navigate to extensions screen.
+     */
+    fun open(): ExtensionsRobot {
+        client.navigate("ExtensionListScreen")
+        return this
+    }
+
+    /**
+     * Select an extension by index.
+     */
+    fun selectExtension(index: Int): ExtensionsRobot {
+        client.executeAction("extension_select", mapOf("index" to index))
+        return this
+    }
+
+    /**
+     * Enable an extension by index.
+     */
+    fun enableExtension(index: Int): ExtensionsRobot {
+        client.executeAction("extension_enable", mapOf("index" to index))
+        return this
+    }
+
+    /**
+     * Disable an extension by index.
+     */
+    fun disableExtension(index: Int): ExtensionsRobot {
+        client.executeAction("extension_disable", mapOf("index" to index))
+        return this
+    }
+
+    /**
+     * Update an extension by index.
+     */
+    fun updateExtension(index: Int): ExtensionsRobot {
+        client.executeAction("extension_update", mapOf("index" to index))
+        return this
+    }
+
+    /**
+     * Update all extensions.
+     */
+    fun updateAll(): ExtensionsRobot {
+        client.executeAction("extension_update_all")
+        return this
+    }
+
+    /**
+     * Search extensions by name.
+     */
+    fun search(query: String): ExtensionsRobot {
+        client.executeAction("extension_search", mapOf("query" to query))
+        return this
+    }
+
+    /**
+     * Capture screenshot of extensions screen.
+     */
+    fun capture(name: String = "extensions"): ScreenshotResult {
+        return client.screenshot(name)
+    }
+}
+
+/**
+ * Robot for Migration screen.
+ */
+class MigrationRobot(private val client: DesktopTestClient) {
+
+    /**
+     * Navigate to migration screen.
+     */
+    fun open(): MigrationRobot {
+        client.navigate("MigrationSearchScreen")
+        return this
+    }
+
+    /**
+     * Search for manga to migrate.
+     */
+    fun search(query: String): MigrationRobot {
+        client.executeAction("migration_search", mapOf("query" to query))
+        return this
+    }
+
+    /**
+     * Select a manga by index.
+     */
+    fun selectManga(index: Int): MigrationRobot {
+        client.executeAction("migration_select", mapOf("index" to index))
+        return this
+    }
+
+    /**
+     * Capture screenshot of migration screen.
+     */
+    fun capture(name: String = "migration"): ScreenshotResult {
+        return client.screenshot(name)
+    }
+}
+
+/**
+ * Robot for About screen.
+ */
+class AboutRobot(private val client: DesktopTestClient) {
+
+    /**
+     * Navigate to about screen.
+     */
+    fun open(): AboutRobot {
+        client.navigate("AboutScreen")
+        return this
+    }
+
+    /**
+     * Capture screenshot of about screen.
+     */
+    fun capture(name: String = "about"): ScreenshotResult {
+        return client.screenshot(name)
+    }
+}
+
+/**
+ * Robot for Backup/Restore screen.
+ */
+class BackupRobot(private val client: DesktopTestClient) {
+
+    /**
+     * Navigate to backup screen.
+     */
+    fun open(): BackupRobot {
+        client.navigate("BackupScreen")
+        return this
+    }
+
+    /**
+     * Create a backup.
+     */
+    fun createBackup(): BackupRobot {
+        client.executeAction("backup_create")
+        return this
+    }
+
+    /**
+     * Restore from backup.
+     */
+    fun restoreBackup(): BackupRobot {
+        client.executeAction("backup_restore")
+        return this
+    }
+
+    /**
+     * Capture screenshot of backup screen.
+     */
+    fun capture(name: String = "backup"): ScreenshotResult {
+        return client.screenshot(name)
+    }
+}

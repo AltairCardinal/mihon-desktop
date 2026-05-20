@@ -83,3 +83,55 @@ data class ActionRecord(
  * Global application state accessible for testing.
  */
 val applicationState = TestState()
+
+/**
+ * Download queue state for testing.
+ */
+class DownloadState {
+    var queueSize: Int = 0
+    var isPaused: Boolean = false
+
+    fun reset() {
+        queueSize = 0
+        isPaused = false
+    }
+}
+
+/**
+ * Global download state accessible for testing.
+ */
+val downloadState = DownloadState()
+
+/**
+ * Updates tab state for testing.
+ */
+class UpdatesState {
+    var count: Int = 0
+    var hasUnread: Boolean = false
+
+    fun reset() {
+        count = 0
+        hasUnread = false
+    }
+}
+
+/**
+ * Global updates state accessible for testing.
+ */
+val updatesState = UpdatesState()
+
+/**
+ * History state for testing.
+ */
+class HistoryState {
+    var count: Int = 0
+
+    fun reset() {
+        count = 0
+    }
+}
+
+/**
+ * Global history state accessible for testing.
+ */
+val historyState = HistoryState()
