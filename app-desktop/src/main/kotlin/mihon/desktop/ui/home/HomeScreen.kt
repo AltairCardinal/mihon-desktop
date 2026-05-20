@@ -25,16 +25,23 @@ import cafe.adriel.voyager.navigator.tab.CurrentTab
 import cafe.adriel.voyager.navigator.tab.LocalTabNavigator
 import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabNavigator
+import kotlinx.coroutines.delay
 import mihon.desktop.domain.DesktopNotificationService
 import mihon.desktop.network.CloudflareChallenge
 import mihon.desktop.network.CloudflareChallengeManager
 import mihon.desktop.test.navigation.TestNavigationController
 import mihon.desktop.ui.browse.BrowseTab
 import mihon.desktop.ui.cloudflare.CloudflareBypassDialog
+import mihon.desktop.ui.extension.ExtensionListScreen
 import mihon.desktop.ui.history.HistoryTab
 import mihon.desktop.ui.library.LibraryTab
+import mihon.desktop.ui.migration.MigrationSearchScreen
 import mihon.desktop.ui.more.MoreTab
 import mihon.desktop.ui.reader.ReaderModeState
+import mihon.desktop.ui.settings.BackupSettingsScreen
+import mihon.desktop.ui.settings.DownloadSettingsScreen
+import mihon.desktop.ui.settings.GeneralSettingsScreen
+import mihon.desktop.ui.settings.MoreRootScreen
 import mihon.desktop.ui.updates.UpdatesTab
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import uy.kohesive.injekt.Injekt
@@ -91,9 +98,9 @@ class HomeScreen : Screen {
 
         // Create TabNavigator at this level to share with test navigation
         TabNavigator(LibraryTab) { tabNavigator ->
-            // Observe test navigation requests
+            // Observe test navigation requests for tabs
             LaunchedEffect(Unit) {
-                TestNavigationController.pendingNavigation.collect { targetScreen ->
+                TestNavigationController.pendingTabNavigation.collect { targetScreen ->
                     if (targetScreen != null) {
                         val tab = TestNavigationController.getTabOrNull(targetScreen)
                         if (tab != null) {

@@ -1,5 +1,6 @@
 package mihon.desktop.test.navigation
 
+import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.tab.Tab
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -8,6 +9,7 @@ import mihon.desktop.ui.browse.BrowseTab
 import mihon.desktop.ui.history.HistoryTab
 import mihon.desktop.ui.library.LibraryTab
 import mihon.desktop.ui.more.MoreTab
+import mihon.desktop.ui.settings.GeneralSettingsScreen
 import mihon.desktop.ui.updates.UpdatesTab
 
 /**
@@ -17,20 +19,24 @@ import mihon.desktop.ui.updates.UpdatesTab
  */
 object TestNavigationController {
 
-    private val _pendingNavigation = MutableStateFlow<String?>(null)
-    val pendingNavigation: StateFlow<String?> = _pendingNavigation.asStateFlow()
+    private val _pendingTabNavigation = MutableStateFlow<String?>(null)
+    val pendingTabNavigation: StateFlow<String?> = _pendingTabNavigation.asStateFlow()
+
+    private val _pendingScreenNavigation = MutableStateFlow<Screen?>(null)
+    val pendingScreenNavigation: StateFlow<Screen?> = _pendingScreenNavigation.asStateFlow()
 
     private val _navigationHistory = MutableStateFlow<List<NavigationRequest>>(emptyList())
     val navigationHistory: StateFlow<List<NavigationRequest>> = _navigationHistory.asStateFlow()
 
     /**
      * Request navigation to a specific tab.
-     * The UI should observe [pendingNavigation] and execute the navigation.
+     * The UI should observe [pendingTabNavigation] and execute the navigation.
      */
-    fun navigateTo(screenId: String): Boolean {
+    fun navigateToTab(screenId: String): Boolean {
         val tab = getTab(screenId)
         if (tab != null) {
-            _pendingNavigation.value = screenId
+            _pendingTabNavigation.value = screenId
+            _pendingScreenNavigation.value = null // Clear any pending screen
             _navigationHistory.value = _navigationHistory.value + NavigationRequest(
                 screenId = screenId,
                 success = true,
@@ -40,16 +46,37 @@ object TestNavigationController {
         _navigationHistory.value = _navigationHistory.value + NavigationRequest(
             screenId = screenId,
             success = false,
-            error = "Unknown screen: $screenId",
+            error = "Unknown or non-tab screen: $screenId",
         )
         return false
+    }
+
+    /**
+     * Request navigation to a specific screen (push onto current navigator).
+     * This requires being on the correct tab first.
+     */
+    fun navigateToScreen(screen: Screen): Boolean {
+        _pendingScreenNavigation.value = screen
+        _navigationHistory.value = _navigationHistory.value + NavigationRequest(
+            screenId = screen::class.java.simpleName,
+            success = true,
+        )
+        return true
+    }
+
+    /**
+     * Legacy method for backward compatibility.
+     */
+    fun navigateTo(screenId: String): Boolean {
+        return navigateToTab(screenId)
     }
 
     /**
      * Clear pending navigation after it's been processed by the UI.
      */
     fun clearPendingNavigation() {
-        _pendingNavigation.value = null
+        _pendingTabNavigation.value = null
+        _pendingScreenNavigation.value = null
     }
 
     /**
@@ -62,7 +89,9 @@ object TestNavigationController {
         "UpdatesTab", "Updates",
         "HistoryTab", "History",
         "MoreTab", "More",
-        "SettingsScreen",
+        "GeneralSettingsScreen",
+        "DownloadSettingsScreen",
+        "BackupSettingsScreen",
         "ExtensionListScreen",
         "MigrationSearchScreen",
     )
@@ -88,10 +117,23 @@ object TestNavigationController {
     fun getTabOrNull(screenId: String): Tab? = getTab(screenId)
 
     /**
+     * Get Screen instance by screen ID for nested navigation.
+     */
+    fun getScreen(screenId: String): Screen? {
+        return when (screenId) {
+            "GeneralSettingsScreen" -> GeneralSettingsScreen()
+            "DownloadSettingsScreen" -> mihon.desktop.ui.settings.DownloadSettingsScreen()
+            "BackupSettingsScreen" -> mihon.desktop.ui.settings.BackupSettingsScreen()
+            else -> null
+        }
+    }
+
+    /**
      * Reset navigation history.
      */
     fun reset() {
-        _pendingNavigation.value = null
+        _pendingTabNavigation.value = null
+        _pendingScreenNavigation.value = null
         _navigationHistory.value = emptyList()
     }
 }

@@ -141,6 +141,7 @@ test-desktop/src/test/kotlin/mihon/test/desktop/
 ## Test Coverage by Scenario
 
 ### Library Management
+
 - ✅ Navigation to library
 - ✅ Search manga
 - ✅ Filter by status (unread/started/completed)
@@ -149,12 +150,14 @@ test-desktop/src/test/kotlin/mihon/test/desktop/
 - ✅ Manga selection → detail
 
 ### Manga Detail
+
 - ✅ Open detail screen
 - ✅ Add/remove from library
 - ✅ Download chapters
 - ✅ Read chapters → Reader
 
 ### Reader
+
 - ✅ Page navigation (next/prev)
 - ✅ Chapter navigation (next/prev)
 - ✅ Reading mode switching
@@ -162,6 +165,7 @@ test-desktop/src/test/kotlin/mihon/test/desktop/
 - ✅ Screenshot capture
 
 ### Downloads ⭐ NEW
+
 - ✅ Open downloads screen
 - ✅ Pause/resume all
 - ✅ Cancel single/all
@@ -170,6 +174,7 @@ test-desktop/src/test/kotlin/mihon/test/desktop/
 - ✅ Sort queue
 
 ### Updates ⭐ NEW
+
 - ✅ Open updates screen
 - ✅ Refresh from sources
 - ✅ Mark all as read
@@ -180,6 +185,7 @@ test-desktop/src/test/kotlin/mihon/test/desktop/
 - ✅ Mark single as read
 
 ### History ⭐ NEW
+
 - ✅ Open history screen
 - ✅ Search history
 - ✅ Remove entries
@@ -187,6 +193,7 @@ test-desktop/src/test/kotlin/mihon/test/desktop/
 - ✅ Select entry → Reader
 
 ### Settings & More ⭐ NEW
+
 - ✅ Open settings
 - ✅ Change settings
 - ✅ Reset settings

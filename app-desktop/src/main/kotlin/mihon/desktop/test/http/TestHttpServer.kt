@@ -90,41 +90,75 @@ fun Application.testHttpServer() {
 
         // Navigate to a screen (triggers actual UI navigation)
         post("/test/navigate/{screen}") {
-            val screen = call.parameters["screen"] ?: "HomeScreen"
+            val screenId = call.parameters["screen"] ?: "HomeScreen"
 
-            // Get the tab first to check if navigation is possible
-            val tab = TestNavigationController.getTabOrNull(screen)
+            // First try to get a tab for this screenId
+            val tab = TestNavigationController.getTabOrNull(screenId)
 
             if (tab != null) {
-                // This is a tab - it will be handled by UI observing pendingNavigation
-                TestNavigationController.navigateTo(screen)
-
-                // Record action with the target screen
-                applicationState.setCurrentScreen(screen)
+                // This is a tab - navigate to it
+                TestNavigationController.navigateToTab(screenId)
+                applicationState.setCurrentScreen(screenId)
                 applicationState.recordAction(
                     "navigate",
-                    mapOf("screen" to screen, "success" to true),
+                    mapOf("screen" to screenId, "type" to "tab", "success" to true),
                 )
-
                 call.respondText(
                     contentType = ContentType.Application.Json,
                     status = HttpStatusCode.OK,
                 ) {
-                    """{"success":true,"newScreen":"$screen","timestamp":"${Instant.now()}"}"""
+                    """{"success":true,"newScreen":"$screenId","type":"tab","tabFound":true,"timestamp":"${Instant.now()}"}"""
                 }
             } else {
-                // Non-tab screen (like SettingsScreen)
-                // These need special handling
-                applicationState.recordAction(
-                    "navigate",
-                    mapOf("screen" to screen, "success" to false, "error" to "Non-tab screens not yet supported"),
+                // Check if this is a known screen that needs special navigation
+                val screenMap = mapOf(
+                    "SettingsScreen" to "open_general_settings",
+                    "GeneralSettingsScreen" to "open_general_settings",
+                    "DownloadSettingsScreen" to "open_download_settings",
+                    "BackupSettingsScreen" to "open_backup_settings",
+                    "ExtensionListScreen" to "open_extensions",
+                    "MigrationSearchScreen" to "open_migration",
                 )
 
-                call.respondText(
-                    contentType = ContentType.Application.Json,
-                    status = HttpStatusCode.OK,
-                ) {
-                    """{"success":false,"newScreen":"$screen","error":"Non-tab screens not yet supported","timestamp":"${Instant.now()}"}"""
+                // DEBUG: Record in action history
+                applicationState.recordAction(
+                    "DEBUG_screenMapCheck",
+                    mapOf(
+                        "screenId" to screenId,
+                        "inMap" to screenMap.containsKey(screenId).toString(),
+                    ),
+                )
+
+                if (screenMap.containsKey(screenId)) {
+                    // First navigate to MoreTab
+                    TestNavigationController.navigateToTab("MoreTab")
+                    // Then trigger the screen navigation via shared state
+                    val action = screenMap[screenId]!!
+                    applicationState.setCurrentScreen(screenId)
+                    applicationState.recordAction(
+                        "navigate",
+                        mapOf("screen" to screenId, "type" to "nested", "action" to action),
+                    )
+                    // Set the pending screen navigation for MoreRootScreen to pick up
+                    mihon.desktop.ui.settings.TestScreenNavigator.navigateTo(action)
+                    call.respondText(
+                        contentType = ContentType.Application.Json,
+                        status = HttpStatusCode.OK,
+                    ) {
+                        """{"success":true,"newScreen":"$screenId","type":"nested","note":"Navigate to MoreTab first, then trigger action","timestamp":"${Instant.now()}"}"""
+                    }
+                } else {
+                    // Unknown screen
+                    applicationState.recordAction(
+                        "navigate",
+                        mapOf("screen" to screenId, "success" to false, "error" to "Unknown screen: $screenId"),
+                    )
+                    call.respondText(
+                        contentType = ContentType.Application.Json,
+                        status = HttpStatusCode.OK,
+                    ) {
+                        """{"success":false,"newScreen":"$screenId","error":"Unknown screen: $screenId","timestamp":"${Instant.now()}"}"""
+                    }
                 }
             }
         }

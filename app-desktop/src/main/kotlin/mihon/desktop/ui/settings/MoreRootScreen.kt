@@ -7,23 +7,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Extension
-import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import mihon.desktop.download.DesktopDownloadManager
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -33,11 +27,23 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import mihon.desktop.download.DesktopDownloadManager
+import mihon.desktop.test.state.applicationState
+import mihon.desktop.ui.extension.ExtensionListScreen
+import mihon.desktop.ui.migration.MigrationSearchScreen
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 class MoreRootScreen : Screen {
 
@@ -48,6 +54,30 @@ class MoreRootScreen : Screen {
         val downloadManager = remember { Injekt.get<DesktopDownloadManager>() }
         val downloadQueue by downloadManager.queue.collectAsState()
         val activeDownloads = downloadQueue.size
+
+        // Handle pending screen navigation from test automation
+        // Use local state to track if we've handled the pending navigation
+        var hasHandledPending by remember { mutableStateOf(false) }
+
+        // Check pending navigation on every composition
+        LaunchedEffect(hasHandledPending) {
+            if (!hasHandledPending) {
+                val screen = TestScreenNavigator.pendingScreen.value
+                if (screen != null) {
+                    when (screen) {
+                        "open_general_settings" -> navigator.push(GeneralSettingsScreen())
+                        "open_download_settings" -> navigator.push(DownloadSettingsScreen())
+                        "open_backup_settings" -> navigator.push(BackupSettingsScreen())
+                        "open_extensions" -> navigator.push(ExtensionListScreen())
+                        "open_migration" -> navigator.push(
+                            MigrationSearchScreen(sourceMangaId = 0L, sourceMangaTitle = ""),
+                        )
+                    }
+                    TestScreenNavigator.clear()
+                    hasHandledPending = true
+                }
+            }
+        }
 
         Scaffold(
             topBar = { TopAppBar(title = { Text("More") }) },
