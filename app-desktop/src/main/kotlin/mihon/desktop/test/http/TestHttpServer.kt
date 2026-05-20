@@ -91,17 +91,41 @@ fun Application.testHttpServer() {
         // Navigate to a screen (triggers actual UI navigation)
         post("/test/navigate/{screen}") {
             val screen = call.parameters["screen"] ?: "HomeScreen"
-            val success = TestNavigationController.navigateTo(screen)
-            applicationState.setCurrentScreen(screen)
-            applicationState.recordAction(
-                "navigate",
-                mapOf("screen" to screen, "success" to success),
-            )
-            call.respondText(
-                contentType = ContentType.Application.Json,
-                status = HttpStatusCode.OK,
-            ) {
-                """{"success":$success,"newScreen":"$screen","timestamp":"${Instant.now()}"}"""
+
+            // Get the tab first to check if navigation is possible
+            val tab = TestNavigationController.getTabOrNull(screen)
+
+            if (tab != null) {
+                // This is a tab - it will be handled by UI observing pendingNavigation
+                TestNavigationController.navigateTo(screen)
+
+                // Record action with the target screen
+                applicationState.setCurrentScreen(screen)
+                applicationState.recordAction(
+                    "navigate",
+                    mapOf("screen" to screen, "success" to true),
+                )
+
+                call.respondText(
+                    contentType = ContentType.Application.Json,
+                    status = HttpStatusCode.OK,
+                ) {
+                    """{"success":true,"newScreen":"$screen","timestamp":"${Instant.now()}"}"""
+                }
+            } else {
+                // Non-tab screen (like SettingsScreen)
+                // These need special handling
+                applicationState.recordAction(
+                    "navigate",
+                    mapOf("screen" to screen, "success" to false, "error" to "Non-tab screens not yet supported"),
+                )
+
+                call.respondText(
+                    contentType = ContentType.Application.Json,
+                    status = HttpStatusCode.OK,
+                ) {
+                    """{"success":false,"newScreen":"$screen","error":"Non-tab screens not yet supported","timestamp":"${Instant.now()}"}"""
+                }
             }
         }
 
