@@ -14,6 +14,7 @@ import mihon.desktop.test.screenshot.ScreenshotService
 import mihon.desktop.test.state.applicationState
 import mihon.desktop.test.state.downloadState
 import mihon.desktop.test.state.historyState
+import mihon.desktop.test.state.readerState
 import mihon.desktop.test.state.updatesState
 import java.time.Instant
 
@@ -252,6 +253,153 @@ fun Application.testHttpServer() {
             }
         }
 
+        // Reader navigation endpoints
+        post("/test/reader/next_page") {
+            val currentPage = readerState.currentPage
+            val totalPages = readerState.totalPages
+            
+            if (currentPage < totalPages - 1) {
+                readerState.updatePage(currentPage + 1)
+                applicationState.recordAction("reader_next_page", mapOf("page" to (currentPage + 1)))
+                call.respondText(
+                    contentType = ContentType.Application.Json,
+                    status = HttpStatusCode.OK,
+                ) {
+                    """{"success":true,"action":"next_page","page":${currentPage + 1},"totalPages":$totalPages,"timestamp":"${Instant.now()}"}"""
+                }
+            } else {
+                call.respondText(
+                    contentType = ContentType.Application.Json,
+                    status = HttpStatusCode.OK,
+                ) {
+                    """{"success":false,"action":"next_page","error":"Already at last page","page":$currentPage,"timestamp":"${Instant.now()}"}"""
+                }
+            }
+        }
+
+        post("/test/reader/prev_page") {
+            val currentPage = readerState.currentPage
+            val totalPages = readerState.totalPages
+            
+            if (currentPage > 0) {
+                readerState.updatePage(currentPage - 1)
+                applicationState.recordAction("reader_prev_page", mapOf("page" to (currentPage - 1)))
+                call.respondText(
+                    contentType = ContentType.Application.Json,
+                    status = HttpStatusCode.OK,
+                ) {
+                    """{"success":true,"action":"prev_page","page":${currentPage - 1},"totalPages":$totalPages,"timestamp":"${Instant.now()}"}"""
+                }
+            } else {
+                call.respondText(
+                    contentType = ContentType.Application.Json,
+                    status = HttpStatusCode.OK,
+                ) {
+                    """{"success":false,"action":"prev_page","error":"Already at first page","page":$currentPage,"timestamp":"${Instant.now()}"}"""
+                }
+            }
+        }
+
+        post("/test/reader/go_to_page") {
+            val body = try {
+                call.receiveText()
+            } catch (e: Exception) {
+                "{}"
+            }
+            val params = parseJsonBody(body)
+            val targetPage = params["page"]?.toIntOrNull() ?: 0
+            val totalPages = readerState.totalPages
+            
+            if (targetPage in 0 until totalPages) {
+                readerState.updatePage(targetPage)
+                applicationState.recordAction("reader_go_to_page", mapOf("page" to targetPage))
+                call.respondText(
+                    contentType = ContentType.Application.Json,
+                    status = HttpStatusCode.OK,
+                ) {
+                    """{"success":true,"action":"go_to_page","page":$targetPage,"totalPages":$totalPages,"timestamp":"${Instant.now()}"}"""
+                }
+            } else {
+                call.respondText(
+                    contentType = ContentType.Application.Json,
+                    status = HttpStatusCode.BadRequest,
+                ) {
+                    """{"success":false,"action":"go_to_page","error":"Invalid page number","requestedPage":$targetPage,"validRange":"0-${totalPages - 1}","timestamp":"${Instant.now()}"}"""
+                }
+            }
+        }
+
+        post("/test/reader/next_chapter") {
+            if (readerState.hasNextChapter) {
+                applicationState.recordAction("reader_next_chapter", mapOf("chapterId" to readerState.currentChapterId))
+                call.respondText(
+                    contentType = ContentType.Application.Json,
+                    status = HttpStatusCode.OK,
+                ) {
+                    """{"success":true,"action":"next_chapter","hasNext":${readerState.hasNextChapter},"timestamp":"${Instant.now()}"}"""
+                }
+            } else {
+                call.respondText(
+                    contentType = ContentType.Application.Json,
+                    status = HttpStatusCode.OK,
+                ) {
+                    """{"success":false,"action":"next_chapter","error":"No next chapter available","timestamp":"${Instant.now()}"}"""
+                }
+            }
+        }
+
+        post("/test/reader/prev_chapter") {
+            if (readerState.hasPrevChapter) {
+                applicationState.recordAction("reader_prev_chapter", mapOf("chapterId" to readerState.currentChapterId))
+                call.respondText(
+                    contentType = ContentType.Application.Json,
+                    status = HttpStatusCode.OK,
+                ) {
+                    """{"success":true,"action":"prev_chapter","hasPrev":${readerState.hasPrevChapter},"timestamp":"${Instant.now()}"}"""
+                }
+            } else {
+                call.respondText(
+                    contentType = ContentType.Application.Json,
+                    status = HttpStatusCode.OK,
+                ) {
+                    """{"success":false,"action":"prev_chapter","error":"No previous chapter available","timestamp":"${Instant.now()}"}"""
+                }
+            }
+        }
+
+        post("/test/reader/close") {
+            readerState.close()
+            applicationState.recordAction("reader_close", emptyMap())
+            TestNavigationController.navigateBack()
+            call.respondText(
+                contentType = ContentType.Application.Json,
+                status = HttpStatusCode.OK,
+            ) {
+                """{"success":true,"action":"close_reader","timestamp":"${Instant.now()}"}"""
+            }
+        }
+
+        get("/test/reader/state") {
+            call.respondText(
+                contentType = ContentType.Application.Json,
+                status = HttpStatusCode.OK,
+            ) {
+                """{
+                    |"isOpen": ${readerState.isOpen},
+                    |"currentPage": ${readerState.currentPage},
+                    |"totalPages": ${readerState.totalPages},
+                    |"currentChapterId": ${readerState.currentChapterId},
+                    |"isWebtoon": ${readerState.isWebtoon},
+                    |"mangaTitle": "${readerState.mangaTitle}",
+                    |"chapterTitle": "${readerState.chapterTitle}",
+                    |"hasNextChapter": ${readerState.hasNextChapter},
+                    |"hasPrevChapter": ${readerState.hasPrevChapter},
+                    |"timestamp": "${Instant.now()}"
+                |}
+                """.trimMargin()
+            }
+        }
+
         // Reset test state
         post("/test/reset") {
             applicationState.reset()
@@ -260,6 +408,7 @@ fun Application.testHttpServer() {
             downloadState.reset()
             updatesState.reset()
             historyState.reset()
+            readerState.reset()
             call.respondText(
                 contentType = ContentType.Application.Json,
                 status = HttpStatusCode.OK,

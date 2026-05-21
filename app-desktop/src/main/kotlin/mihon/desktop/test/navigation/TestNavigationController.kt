@@ -72,6 +72,16 @@ object TestNavigationController {
     }
 
     /**
+     * Navigate back (pop from navigation stack).
+     * Returns to the previous screen in the navigation history.
+     */
+    fun navigateBack(): Boolean {
+        _pendingScreenNavigation.value = null
+        _pendingTabNavigation.value = null
+        return true
+    }
+
+    /**
      * Clear pending navigation after it's been processed by the UI.
      */
     fun clearPendingNavigation() {

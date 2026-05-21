@@ -135,3 +135,63 @@ class HistoryState {
  * Global history state accessible for testing.
  */
 val historyState = HistoryState()
+
+/**
+ * Reader state for testing.
+ */
+class ReaderState {
+    var isOpen: Boolean = false
+        private set
+    var currentChapterId: Long = 0L
+        private set
+    var currentPage: Int = 0
+        private set
+    var totalPages: Int = 0
+        private set
+    var isWebtoon: Boolean = false
+        private set
+    var mangaTitle: String = ""
+        private set
+    var chapterTitle: String = ""
+        private set
+    var hasNextChapter: Boolean = false
+        private set
+    var hasPrevChapter: Boolean = false
+        private set
+
+    fun open(chapterId: Long, page: Int, totalPages: Int, isWebtoon: Boolean, mangaTitle: String, chapterTitle: String, hasNext: Boolean, hasPrev: Boolean) {
+        this.isOpen = true
+        this.currentChapterId = chapterId
+        this.currentPage = page
+        this.totalPages = totalPages
+        this.isWebtoon = isWebtoon
+        this.mangaTitle = mangaTitle
+        this.chapterTitle = chapterTitle
+        this.hasNextChapter = hasNext
+        this.hasPrevChapter = hasPrev
+    }
+
+    fun updatePage(page: Int) {
+        this.currentPage = page
+    }
+
+    fun close() {
+        isOpen = false
+        currentChapterId = 0L
+        currentPage = 0
+        totalPages = 0
+        mangaTitle = ""
+        chapterTitle = ""
+    }
+
+    fun reset() {
+        close()
+        hasNextChapter = false
+        hasPrevChapter = false
+    }
+}
+
+/**
+ * Global reader state accessible for testing.
+ */
+val readerState = ReaderState()

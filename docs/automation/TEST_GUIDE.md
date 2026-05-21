@@ -176,6 +176,48 @@ fun main() {
 }
 ```
 
+### Reader Robot
+
+用于控制阅读器的 Robot。
+
+```kotlin
+// 获取阅读器 Robot
+val reader = client.reader
+
+// 翻页
+reader.nextPage()   // 下一页
+reader.prevPage()   // 上一页
+
+// 跳转
+reader.goToPage(10)     // 跳到第10页（0-indexed）
+reader.goToFirstPage()  // 第一页
+reader.goToLastPage()   // 最后一页
+
+// 章节切换
+reader.nextChapter()  // 下一章
+reader.prevChapter()  // 上一章
+
+// 关闭阅读器
+reader.close()
+
+// 获取状态
+val state = reader.getState()
+println("Progress: ${state.progress}% (${state.currentPage}/${state.totalPages})")
+```
+
+**ReaderStateResponse 字段：**
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `isOpen` | Boolean | 阅读器是否打开 |
+| `currentPage` | Int | 当前页码（0-indexed） |
+| `totalPages` | Int | 总页数 |
+| `isWebtoon` | Boolean | 是否 Webtoon 模式 |
+| `mangaTitle` | String | 漫画标题 |
+| `chapterTitle` | String | 章节标题 |
+| `hasNextChapter` | Boolean | 是否有下一章 |
+| `hasPrevChapter` | Boolean | 是否有上一章 |
+| `progress` | Float | 阅读进度（0.0-1.0） |
+
 ---
 
 ### LibraryRobot - 漫画库

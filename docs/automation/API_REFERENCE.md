@@ -262,6 +262,179 @@ http://localhost:8080/test
 
 ---
 
+## Reader Endpoints
+
+### `GET /test/reader/state`
+
+获取阅读器当前状态。
+
+**Response:**
+
+```json
+{
+  "isOpen": true,
+  "currentPage": 5,
+  "totalPages": 24,
+  "currentChapterId": 12345,
+  "isWebtoon": false,
+  "mangaTitle": "One Piece",
+  "chapterTitle": "Chapter 1000: The Dawn of the New Era",
+  "hasNextChapter": true,
+  "hasPrevChapter": true,
+  "timestamp": "2026-05-19T12:00:00.000Z"
+}
+```
+
+**State Fields:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `isOpen` | Boolean | 阅读器是否已打开 |
+| `currentPage` | Int | 当前页码（0-indexed） |
+| `totalPages` | Int | 总页数 |
+| `currentChapterId` | Long | 当前章节 ID |
+| `isWebtoon` | Boolean | 是否为 Webtoon 模式 |
+| `mangaTitle` | String | 漫画标题 |
+| `chapterTitle` | String | 章节标题 |
+| `hasNextChapter` | Boolean | 是否有下一章节 |
+| `hasPrevChapter` | Boolean | 是否有上一章节 |
+
+---
+
+### `POST /test/reader/next_page`
+
+翻到下一页。
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "action": "next_page",
+  "page": 6,
+  "totalPages": 24,
+  "timestamp": "2026-05-19T12:00:00.000Z"
+}
+```
+
+**Error (Already at last page):**
+
+```json
+{
+  "success": false,
+  "action": "next_page",
+  "error": "Already at last page",
+  "page": 23,
+  "timestamp": "2026-05-19T12:00:00.000Z"
+}
+```
+
+---
+
+### `POST /test/reader/prev_page`
+
+翻到上一页。
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "action": "prev_page",
+  "page": 4,
+  "totalPages": 24,
+  "timestamp": "2026-05-19T12:00:00.000Z"
+}
+```
+
+---
+
+### `POST /test/reader/go_to_page`
+
+跳转到指定页码。
+
+**Body:**
+
+```json
+{ "page": 10 }
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "action": "go_to_page",
+  "page": 10,
+  "totalPages": 24,
+  "timestamp": "2026-05-19T12:00:00.000Z"
+}
+```
+
+**Error (Invalid page):**
+
+```json
+{
+  "success": false,
+  "action": "go_to_page",
+  "error": "Invalid page number",
+  "requestedPage": 30,
+  "validRange": "0-23",
+  "timestamp": "2026-05-19T12:00:00.000Z"
+}
+```
+
+---
+
+### `POST /test/reader/next_chapter`
+
+切换到下一章节。
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "action": "next_chapter",
+  "hasNext": true,
+  "timestamp": "2026-05-19T12:00:00.000Z"
+}
+```
+
+---
+
+### `POST /test/reader/prev_chapter`
+
+切换到上一章节。
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "action": "prev_chapter",
+  "hasPrev": true,
+  "timestamp": "2026-05-19T12:00:00.000Z"
+}
+```
+
+---
+
+### `POST /test/reader/close`
+
+关闭阅读器，返回上一屏幕。
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "action": "close_reader",
+  "timestamp": "2026-05-19T12:00:00.000Z"
+}
+```
+
+---
+
 ### `POST /test/screenshot`
 
 捕获截图。
