@@ -5,13 +5,13 @@ import cafe.adriel.voyager.navigator.tab.Tab
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import mihon.desktop.test.state.readerState
 import mihon.desktop.ui.browse.BrowseTab
 import mihon.desktop.ui.history.HistoryTab
 import mihon.desktop.ui.library.LibraryTab
 import mihon.desktop.ui.more.MoreTab
 import mihon.desktop.ui.settings.GeneralSettingsScreen
 import mihon.desktop.ui.updates.UpdatesTab
-import mihon.desktop.test.state.readerState
 
 /**
  * Global navigation controller for test automation.
@@ -36,6 +36,10 @@ object TestNavigationController {
     // Store pending reader screen for opening reader
     private val _pendingReaderScreen = MutableStateFlow<Screen?>(null)
     val pendingReaderScreen: StateFlow<Screen?> = _pendingReaderScreen.asStateFlow()
+
+    // Track pushed screens for test navigation
+    private val _pushedScreens = MutableStateFlow<List<Screen>>(emptyList())
+    val pushedScreens: StateFlow<List<Screen>> = _pushedScreens.asStateFlow()
 
     /**
      * Request navigation to a specific tab.
@@ -165,7 +169,25 @@ object TestNavigationController {
     fun getPendingMangaId(): Long? = _pendingMangaId.value
 
     /**
-     * Open reader screen with given parameters.
+     * Mock manga page URLs for testing.
+     * Using placeholder images from picsum.photos
+     */
+    private val mockPageUrls: List<String> by lazy {
+        // Generate 20 placeholder image URLs
+        (1..20).map { page ->
+            "https://picsum.photos/seed/manga$page/800/1200"
+        }
+    }
+
+    /**
+     * Get mock page URLs for testing.
+     */
+    fun getMockPageUrls(count: Int = 20): List<String> {
+        return mockPageUrls.take(count)
+    }
+
+    /**
+     * Open reader screen with mock data for testing.
      */
     fun openReader(
         mangaId: Long,
@@ -175,12 +197,15 @@ object TestNavigationController {
         chapterUrl: String,
         sourceId: Long,
         initialPage: Int = 0,
+        pageCount: Int = 20,
     ) {
-        // Create a placeholder reader screen
+        // Use mock page URLs for testing
+        val mockPages = getMockPageUrls(pageCount)
+
         val readerScreen = mihon.desktop.ui.reader.DesktopReaderScreen(
             chapterTitle = chapterTitle,
             mangaTitle = mangaTitle,
-            pageUrls = emptyList(),
+            pageUrls = mockPages,
             isWebtoon = false,
             sourceId = sourceId,
             chapterUrl = chapterUrl,
@@ -193,12 +218,13 @@ object TestNavigationController {
             isDualPage = false,
         )
         _pendingReaderScreen.value = readerScreen
+        _pushedScreens.value = _pushedScreens.value + readerScreen
 
         // Also update reader state
         readerState.open(
             chapterId = chapterId,
             page = initialPage,
-            totalPages = 20,
+            totalPages = pageCount,
             isWebtoon = false,
             mangaTitle = mangaTitle,
             chapterTitle = chapterTitle,
@@ -215,6 +241,7 @@ object TestNavigationController {
         _pendingScreenNavigation.value = null
         _pendingMangaId.value = null
         _pendingReaderScreen.value = null
+        _pushedScreens.value = emptyList()
         _navigationHistory.value = emptyList()
     }
 }

@@ -15,15 +15,16 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import cafe.adriel.voyager.core.screen.Screen
+import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.tab.CurrentTab
 import cafe.adriel.voyager.navigator.tab.LocalTabNavigator
 import cafe.adriel.voyager.navigator.tab.Tab
@@ -126,6 +127,10 @@ class HomeScreen : Screen {
                     }
                 }
 
+                // Observe pushed screens for test navigation
+                val pushedScreens by TestNavigationController.pushedScreens.collectAsState()
+                val testScreen = pushedScreens.lastOrNull()
+
                 Scaffold(
                     snackbarHost = {
                         SnackbarHost(hostState = snackbarHostState) { data ->
@@ -150,7 +155,15 @@ class HomeScreen : Screen {
                             .fillMaxSize()
                             .padding(paddingValues),
                     ) {
-                        CurrentScreen()
+                        // Show test pushed screen if any, otherwise show current tab
+                        if (testScreen != null) {
+                            // Use Navigator to display the pushed screen
+                            Navigator(testScreen) {
+                                CurrentScreen()
+                            }
+                        } else {
+                            CurrentTab()
+                        }
                     }
                 }
             }
