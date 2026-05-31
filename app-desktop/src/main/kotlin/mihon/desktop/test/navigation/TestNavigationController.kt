@@ -11,6 +11,7 @@ import mihon.desktop.ui.library.LibraryTab
 import mihon.desktop.ui.more.MoreTab
 import mihon.desktop.ui.settings.GeneralSettingsScreen
 import mihon.desktop.ui.updates.UpdatesTab
+import mihon.desktop.test.state.readerState
 
 /**
  * Global navigation controller for test automation.
@@ -27,6 +28,14 @@ object TestNavigationController {
 
     private val _navigationHistory = MutableStateFlow<List<NavigationRequest>>(emptyList())
     val navigationHistory: StateFlow<List<NavigationRequest>> = _navigationHistory.asStateFlow()
+
+    // Store manga ID for read operations
+    private var _pendingMangaId = MutableStateFlow<Long?>(null)
+    val pendingMangaId: StateFlow<Long?> = _pendingMangaId.asStateFlow()
+
+    // Store pending reader screen for opening reader
+    private val _pendingReaderScreen = MutableStateFlow<Screen?>(null)
+    val pendingReaderScreen: StateFlow<Screen?> = _pendingReaderScreen.asStateFlow()
 
     /**
      * Request navigation to a specific tab.
@@ -139,11 +148,73 @@ object TestNavigationController {
     }
 
     /**
+     * Navigate to MangaDetailScreen by manga ID.
+     * First navigates to LibraryTab, then pushes MangaDetailScreen.
+     */
+    fun navigateToMangaDetail(mangaId: Long): Boolean {
+        _pendingMangaId.value = mangaId
+        navigateToTab("LibraryTab")
+        val screen = mihon.desktop.ui.library.MangaDetailScreen(mangaId)
+        navigateToScreen(screen)
+        return true
+    }
+
+    /**
+     * Get the pending manga ID for opening manga detail.
+     */
+    fun getPendingMangaId(): Long? = _pendingMangaId.value
+
+    /**
+     * Open reader screen with given parameters.
+     */
+    fun openReader(
+        mangaId: Long,
+        chapterId: Long,
+        chapterTitle: String,
+        mangaTitle: String,
+        chapterUrl: String,
+        sourceId: Long,
+        initialPage: Int = 0,
+    ) {
+        // Create a placeholder reader screen
+        val readerScreen = mihon.desktop.ui.reader.DesktopReaderScreen(
+            chapterTitle = chapterTitle,
+            mangaTitle = mangaTitle,
+            pageUrls = emptyList(),
+            isWebtoon = false,
+            sourceId = sourceId,
+            chapterUrl = chapterUrl,
+            chapterId = chapterId,
+            chapters = emptyList(),
+            currentChapterIndex = 0,
+            initialPage = initialPage,
+            mangaViewerFlags = 0L,
+            isRtl = false,
+            isDualPage = false,
+        )
+        _pendingReaderScreen.value = readerScreen
+
+        // Also update reader state
+        readerState.open(
+            chapterId = chapterId,
+            page = initialPage,
+            totalPages = 20,
+            isWebtoon = false,
+            mangaTitle = mangaTitle,
+            chapterTitle = chapterTitle,
+            hasNext = true,
+            hasPrev = false,
+        )
+    }
+
+    /**
      * Reset navigation history.
      */
     fun reset() {
         _pendingTabNavigation.value = null
         _pendingScreenNavigation.value = null
+        _pendingMangaId.value = null
+        _pendingReaderScreen.value = null
         _navigationHistory.value = emptyList()
     }
 }

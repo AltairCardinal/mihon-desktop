@@ -9,7 +9,7 @@ import mihon.test.desktop.DesktopTestClient
 
 /**
  * Robot for controlling the manga reader.
- * 
+ *
  * ## Usage
  * ```kotlin
  * val reader = client.reader
@@ -18,9 +18,9 @@ import mihon.test.desktop.DesktopTestClient
  * ```
  */
 class ReaderRobot(private val client: DesktopTestClient) {
-    
+
     private val baseUrl = client.baseUrl
-    
+
     /**
      * Navigate to the next page.
      */
@@ -30,7 +30,7 @@ class ReaderRobot(private val client: DesktopTestClient) {
         }
         return this
     }
-    
+
     /**
      * Navigate to the previous page.
      */
@@ -40,10 +40,10 @@ class ReaderRobot(private val client: DesktopTestClient) {
         }
         return this
     }
-    
+
     /**
      * Go to a specific page.
-     * 
+     *
      * @param page Page number (0-indexed)
      */
     fun goToPage(page: Int): ReaderRobot {
@@ -54,12 +54,12 @@ class ReaderRobot(private val client: DesktopTestClient) {
         }
         return this
     }
-    
+
     /**
      * Go to the first page.
      */
     fun goToFirstPage(): ReaderRobot = goToPage(0)
-    
+
     /**
      * Go to the last page.
      */
@@ -67,7 +67,7 @@ class ReaderRobot(private val client: DesktopTestClient) {
         val state = getState()
         return goToPage(state.totalPages - 1)
     }
-    
+
     /**
      * Go to next chapter.
      */
@@ -77,7 +77,7 @@ class ReaderRobot(private val client: DesktopTestClient) {
         }
         return this
     }
-    
+
     /**
      * Go to previous chapter.
      */
@@ -87,7 +87,7 @@ class ReaderRobot(private val client: DesktopTestClient) {
         }
         return this
     }
-    
+
     /**
      * Close the reader and return to the previous screen.
      */
@@ -97,7 +97,7 @@ class ReaderRobot(private val client: DesktopTestClient) {
         }
         return this
     }
-    
+
     /**
      * Get current reader state.
      */
@@ -108,22 +108,22 @@ class ReaderRobot(private val client: DesktopTestClient) {
             ReaderStateResponse.fromJson(body)
         }
     }
-    
+
     /**
      * Check if the reader is currently open.
      */
     fun isOpen(): Boolean = getState().isOpen
-    
+
     /**
      * Get current page number (0-indexed).
      */
     fun currentPage(): Int = getState().currentPage
-    
+
     /**
      * Get total number of pages.
      */
     fun totalPages(): Int = getState().totalPages
-    
+
     /**
      * Get reading progress as a fraction (0.0 to 1.0).
      */
@@ -142,12 +142,12 @@ data class ReaderStateResponse(
     val mangaTitle: String,
     val chapterTitle: String,
     val hasNextChapter: Boolean,
-    val hasPrevChapter: Boolean
+    val hasPrevChapter: Boolean,
 ) {
     val progress: Float get() = if (totalPages > 0) (currentPage + 1).toFloat() / totalPages else 0f
     val hasNextPage: Boolean get() = currentPage < totalPages - 1
     val hasPrevPage: Boolean get() = currentPage > 0
-    
+
     companion object {
         fun fromJson(json: String): ReaderStateResponse {
             val obj = mutableMapOf<String, Any>()
@@ -173,7 +173,7 @@ data class ReaderStateResponse(
                 mangaTitle = obj["mangaTitle"] as? String ?: "",
                 chapterTitle = obj["chapterTitle"] as? String ?: "",
                 hasNextChapter = obj["hasNextChapter"] as? Boolean ?: false,
-                hasPrevChapter = obj["hasPrevChapter"] as? Boolean ?: false
+                hasPrevChapter = obj["hasPrevChapter"] as? Boolean ?: false,
             )
         }
     }

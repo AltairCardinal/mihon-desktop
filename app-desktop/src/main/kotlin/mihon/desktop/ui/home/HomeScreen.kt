@@ -21,6 +21,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import cafe.adriel.voyager.core.screen.Screen
+import cafe.adriel.voyager.navigator.Navigator
+import cafe.adriel.voyager.navigator.currentOrThrow
+import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.tab.CurrentTab
 import cafe.adriel.voyager.navigator.tab.LocalTabNavigator
 import cafe.adriel.voyager.navigator.tab.Tab
@@ -96,46 +99,59 @@ class HomeScreen : Screen {
             )
         }
 
-        // Create TabNavigator at this level to share with test navigation
-        TabNavigator(LibraryTab) { tabNavigator ->
-            // Observe test navigation requests for tabs
-            LaunchedEffect(Unit) {
-                TestNavigationController.pendingTabNavigation.collect { targetScreen ->
-                    if (targetScreen != null) {
-                        val tab = TestNavigationController.getTabOrNull(targetScreen)
-                        if (tab != null) {
-                            tabNavigator.current = tab
+        // Create Navigator at top level for Screen navigation
+        Navigator(LibraryTab) { navigator ->
+            // Create TabNavigator for tab navigation
+            TabNavigator(LibraryTab) { tabNavigator ->
+                // Observe test navigation requests for tabs
+                LaunchedEffect(Unit) {
+                    TestNavigationController.pendingTabNavigation.collect { targetScreen ->
+                        if (targetScreen != null) {
+                            val tab = TestNavigationController.getTabOrNull(targetScreen)
+                            if (tab != null) {
+                                tabNavigator.current = tab
+                            }
+                            TestNavigationController.clearPendingNavigation()
                         }
-                        TestNavigationController.clearPendingNavigation()
                     }
                 }
-            }
 
-            Scaffold(
-                snackbarHost = {
-                    SnackbarHost(hostState = snackbarHostState) { data ->
-                        Snackbar(snackbarData = data)
-                    }
-                },
-                bottomBar = {
-                    // Hide bottom navigation bar when in reader mode
-                    if (!ReaderModeState.isInReaderMode) {
-                        NavigationBar {
-                            TabNavigationItem(LibraryTab)
-                            TabNavigationItem(UpdatesTab)
-                            TabNavigationItem(HistoryTab)
-                            TabNavigationItem(BrowseTab)
-                            TabNavigationItem(MoreTab)
+                // Observe test navigation requests for screens
+                LaunchedEffect(Unit) {
+                    TestNavigationController.pendingScreenNavigation.collect { screen ->
+                        if (screen != null) {
+                            navigator.push(screen)
+                            TestNavigationController.clearPendingNavigation()
                         }
                     }
-                },
-            ) { paddingValues ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(paddingValues),
-                ) {
-                    CurrentTab()
+                }
+
+                Scaffold(
+                    snackbarHost = {
+                        SnackbarHost(hostState = snackbarHostState) { data ->
+                            Snackbar(snackbarData = data)
+                        }
+                    },
+                    bottomBar = {
+                        // Hide bottom navigation bar when in reader mode
+                        if (!ReaderModeState.isInReaderMode) {
+                            NavigationBar {
+                                TabNavigationItem(LibraryTab)
+                                TabNavigationItem(UpdatesTab)
+                                TabNavigationItem(HistoryTab)
+                                TabNavigationItem(BrowseTab)
+                                TabNavigationItem(MoreTab)
+                            }
+                        }
+                    },
+                ) { paddingValues ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(paddingValues),
+                    ) {
+                        CurrentScreen()
+                    }
                 }
             }
         }

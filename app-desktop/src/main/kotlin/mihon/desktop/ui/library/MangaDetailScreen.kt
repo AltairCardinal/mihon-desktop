@@ -1,9 +1,10 @@
 package mihon.desktop.ui.library
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size as layoutSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -18,33 +19,30 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.foundation.background
+import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Note
-import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.DownloadDone
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Note
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SelectAll
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Checkbox
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -52,6 +50,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -61,14 +60,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -77,24 +76,25 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
+import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.launch
-import mihon.desktop.domain.LibraryUpdateChecker
-import mihon.desktop.domain.ReaderProgressTracker
-import mihon.desktop.download.DesktopDownloadManager
-import mihon.desktop.download.DownloadItem
-import mihon.desktop.reader.ReadingMode
-import mihon.desktop.reader.readingModeFromViewerFlags
-import mihon.desktop.reader.ReaderChapterRef
-import mihon.desktop.reader.ReaderNavigator
-import mihon.desktop.ui.reader.DesktopReaderScreen
+import mihon.desktop.domain.DesktopMangaCoverManager
 import mihon.desktop.domain.GetAvailableScanlators
 import mihon.desktop.domain.GetExcludedScanlators
+import mihon.desktop.domain.LibraryUpdateChecker
+import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.domain.SetExcludedScanlators
+import mihon.desktop.download.DesktopDownloadManager
+import mihon.desktop.download.DownloadItem
+import mihon.desktop.reader.ReaderChapterRef
+import mihon.desktop.reader.ReaderNavigator
+import mihon.desktop.reader.ReadingMode
+import mihon.desktop.reader.readingModeFromViewerFlags
+import mihon.desktop.ui.reader.DesktopReaderScreen
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.repository.ChapterRepository
-import eu.kanade.tachiyomi.source.model.FilterList
-import eu.kanade.tachiyomi.source.model.SManga
 import tachiyomi.domain.manga.interactor.GetMangaWithChapters
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
@@ -102,12 +102,12 @@ import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import mihon.desktop.domain.DesktopMangaCoverManager
 import java.awt.Desktop
 import java.net.URI
 import javax.swing.JFileChooser
 import javax.swing.SwingUtilities
 import javax.swing.filechooser.FileNameExtensionFilter
+import androidx.compose.foundation.layout.size as layoutSize
 
 data class MangaDetailScreen(val mangaId: Long) : Screen {
 
@@ -126,6 +126,16 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         val setExcludedScanlators = remember { Injekt.get<SetExcludedScanlators>() }
         val getAvailableScanlators = remember { Injekt.get<GetAvailableScanlators>() }
         val scope = rememberCoroutineScope()
+
+        // Observe test navigation for reader screen
+        LaunchedEffect(Unit) {
+            mihon.desktop.test.navigation.TestNavigationController.pendingReaderScreen.collect { readerScreen ->
+                if (readerScreen != null) {
+                    navigator.push(readerScreen)
+                    mihon.desktop.test.navigation.TestNavigationController.clearPendingNavigation()
+                }
+            }
+        }
 
         val model = rememberScreenModel { MangaDetailScreenModel(mangaId) }
         val state by model.state.collectAsState()
@@ -170,8 +180,13 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
 
         // Apply chapter filter + sort
         val displayedChapters = remember(
-            chapters, filterShowRead, filterShowUnread, filterShowBookmarked, filterShowDownloaded,
-            chapterSortMode, chapterSortAscending,
+            chapters,
+            filterShowRead,
+            filterShowUnread,
+            filterShowBookmarked,
+            filterShowDownloaded,
+            chapterSortMode,
+            chapterSortAscending,
         ) {
             val filtered = chapters.filter { ch ->
                 val readOk = (filterShowRead && ch.read) || (filterShowUnread && !ch.read)
@@ -179,7 +194,9 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 val downloadedOk = if (filterShowDownloaded) {
                     val m = manga
                     m != null && downloadManager.isDownloaded(m.source, m.title, ch.name)
-                } else true
+                } else {
+                    true
+                }
                 readOk && bookmarkOk && downloadedOk
             }
             val comparator: Comparator<Chapter> = when (chapterSortMode) {
@@ -187,8 +204,11 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 ChapterSortMode.BY_CHAPTER_NUMBER -> compareBy { it.chapterNumber }
                 ChapterSortMode.BY_DATE_UPLOAD -> compareBy { it.dateUpload }
             }
-            if (chapterSortAscending) filtered.sortedWith(comparator)
-            else filtered.sortedWith(comparator.reversed())
+            if (chapterSortAscending) {
+                filtered.sortedWith(comparator)
+            } else {
+                filtered.sortedWith(comparator.reversed())
+            }
         }
 
         Scaffold(
@@ -209,7 +229,9 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                     eu.kanade.tachiyomi.source.model.SManga.create().apply { url = m.url },
                                 )
                                 IconButton(onClick = {
-                                    try { Desktop.getDesktop().browse(URI(mangaUrl)) } catch (_: Exception) { }
+                                    try {
+                                        Desktop.getDesktop().browse(URI(mangaUrl))
+                                    } catch (_: Exception) { }
                                 }) {
                                     Icon(Icons.Default.OpenInBrowser, contentDescription = "Open in browser")
                                 }
@@ -257,11 +279,15 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                     onClick = { model.setFilterShowUnread(!filterShowUnread) },
                                 )
                                 DropdownMenuItem(
-                                    text = { Text(if (filterShowBookmarked) "✓ Bookmarked only" else "  Bookmarked only") },
+                                    text = {
+                                        Text(if (filterShowBookmarked) "✓ Bookmarked only" else "  Bookmarked only")
+                                    },
                                     onClick = { model.setFilterShowBookmarked(!filterShowBookmarked) },
                                 )
                                 DropdownMenuItem(
-                                    text = { Text(if (filterShowDownloaded) "✓ Downloaded only" else "  Downloaded only") },
+                                    text = {
+                                        Text(if (filterShowDownloaded) "✓ Downloaded only" else "  Downloaded only")
+                                    },
                                     onClick = { model.setFilterShowDownloaded(!filterShowDownloaded) },
                                 )
                                 if (availableScanlators.isNotEmpty()) {
@@ -300,7 +326,13 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                         ChapterSortMode.BY_CHAPTER_NUMBER -> "Chapter number"
                                         ChapterSortMode.BY_DATE_UPLOAD -> "Upload date"
                                     }
-                                    val arrow = if (mode == chapterSortMode) (if (chapterSortAscending) " ↑" else " ↓") else ""
+                                    val arrow = if (mode ==
+                                        chapterSortMode
+                                    ) {
+                                        (if (chapterSortAscending) " ↑" else " ↓")
+                                    } else {
+                                        ""
+                                    }
                                     DropdownMenuItem(
                                         text = { Text("$label$arrow") },
                                         onClick = {
@@ -484,8 +516,11 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         model.setMigrateTargetSourceId(null)
                     },
                     title = {
-                        if (migrateSearching) Text("Searching\u2026")
-                        else Text("Select match (${searchResults.size} results)")
+                        if (migrateSearching) {
+                            Text("Searching\u2026")
+                        } else {
+                            Text("Select match (${searchResults.size} results)")
+                        }
                     },
                     text = {
                         if (migrateSearching) {
@@ -773,7 +808,11 @@ private fun MangaHeader(manga: Manga) {
                                 val chooser = JFileChooser()
                                 chooser.fileFilter = FileNameExtensionFilter(
                                     "Image files",
-                                    "jpg", "jpeg", "png", "webp", "gif",
+                                    "jpg",
+                                    "jpeg",
+                                    "png",
+                                    "webp",
+                                    "gif",
                                 )
                                 if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
                                     coverManager.setCustomCover(manga.id, chooser.selectedFile)
@@ -861,8 +900,11 @@ private fun ChapterRow(
                     Icon(
                         if (chapter.bookmark) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
                         contentDescription = if (chapter.bookmark) "Remove bookmark" else "Add bookmark",
-                        tint = if (chapter.bookmark) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = if (chapter.bookmark) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
                     )
                 }
 
@@ -972,7 +1014,10 @@ private fun ChapterDownloadingIndicator(
         DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
             DropdownMenuItem(
                 text = { Text("Cancel") },
-                onClick = { onCancel(); showMenu = false },
+                onClick = {
+                    onCancel()
+                    showMenu = false
+                },
             )
         }
     }

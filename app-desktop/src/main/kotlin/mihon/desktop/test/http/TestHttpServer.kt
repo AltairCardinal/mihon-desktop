@@ -180,7 +180,52 @@ fun Application.testHttpServer() {
             // Process actions
             when (action) {
                 // Library actions
-                "search", "filter", "sort", "select" -> { }
+                "search", "filter", "sort" -> { }
+
+                // Select manga and open detail
+                "select" -> {
+                    val index = params["index"]?.toIntOrNull() ?: 0
+                    // Record the selection - UI should handle actual navigation
+                    applicationState.recordAction("select", mapOf("index" to index))
+                }
+
+                // Open manga detail by mangaId
+                "open_manga_detail" -> {
+                    val mangaId = params["mangaId"]?.toLongOrNull() ?: 0L
+                    if (mangaId > 0) {
+                        TestNavigationController.navigateToMangaDetail(mangaId)
+                        applicationState.setCurrentScreen("MangaDetailScreen")
+                        applicationState.recordAction("open_manga_detail", mapOf("mangaId" to mangaId))
+                    }
+                }
+
+                // Read chapter - open reader
+                "read_chapter", "start_reading" -> {
+                    val mangaId = params["mangaId"]?.toLongOrNull()
+                        ?: params["mangaIndex"]?.toLongOrNull()
+                        ?: 0L
+                    if (mangaId > 0) {
+                        // Navigate to manga detail first
+                        TestNavigationController.navigateToMangaDetail(mangaId)
+                        
+                        // Then open reader
+                        val chapterId = params["chapterId"]?.toLongOrNull() ?: mangaId
+                        val chapterTitle = params["chapterTitle"] ?: "Chapter ${params["chapterIndex"] ?: 0}"
+                        TestNavigationController.openReader(
+                            mangaId = mangaId,
+                            chapterId = chapterId,
+                            chapterTitle = chapterTitle,
+                            mangaTitle = "Manga",
+                            chapterUrl = "",
+                            sourceId = 0L,
+                            initialPage = params["chapterIndex"]?.toIntOrNull() ?: 0,
+                        )
+                        
+                        applicationState.setCurrentScreen("ReaderScreen")
+                        applicationState.recordAction(action, mapOf("mangaId" to mangaId, "chapterId" to chapterId))
+                    }
+                }
+
                 // Reader actions
                 "reader_next_page", "reader_prev_page", "reader_next_chapter", "reader_prev_chapter",
                 "reader_mode", "reader_zoom",
@@ -257,7 +302,7 @@ fun Application.testHttpServer() {
         post("/test/reader/next_page") {
             val currentPage = readerState.currentPage
             val totalPages = readerState.totalPages
-            
+
             if (currentPage < totalPages - 1) {
                 readerState.updatePage(currentPage + 1)
                 applicationState.recordAction("reader_next_page", mapOf("page" to (currentPage + 1)))
@@ -280,7 +325,7 @@ fun Application.testHttpServer() {
         post("/test/reader/prev_page") {
             val currentPage = readerState.currentPage
             val totalPages = readerState.totalPages
-            
+
             if (currentPage > 0) {
                 readerState.updatePage(currentPage - 1)
                 applicationState.recordAction("reader_prev_page", mapOf("page" to (currentPage - 1)))
@@ -309,7 +354,7 @@ fun Application.testHttpServer() {
             val params = parseJsonBody(body)
             val targetPage = params["page"]?.toIntOrNull() ?: 0
             val totalPages = readerState.totalPages
-            
+
             if (targetPage in 0 until totalPages) {
                 readerState.updatePage(targetPage)
                 applicationState.recordAction("reader_go_to_page", mapOf("page" to targetPage))

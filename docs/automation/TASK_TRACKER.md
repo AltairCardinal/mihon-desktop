@@ -1,6 +1,6 @@
 # Desktop Automation Test System - Task Tracker
 
-## Status: PHASE 6 COMPLETED ✅
+## Status: ✅ GOAL COMPLETED
 
 ## Phases
 
@@ -163,6 +163,14 @@ test-desktop/src/test/kotlin/mihon/test/desktop/
 - ✅ Reading mode switching
 - ✅ Zoom in/out
 - ✅ Screenshot capture
+- ✅ **ReaderRobot HTTP API (Phase 7)**
+  - GET /test/reader/state
+  - POST /test/reader/next_page
+  - POST /test/reader/prev_page
+  - POST /test/reader/go_to_page
+  - POST /test/reader/next_chapter
+  - POST /test/reader/prev_chapter
+  - POST /test/reader/close
 
 ### Downloads ⭐ NEW
 
@@ -208,4 +216,4 @@ test-desktop/src/test/kotlin/mihon/test/desktop/
 
 ## Last Updated
 
-- 2026-05-20
+- 2026-05-21
