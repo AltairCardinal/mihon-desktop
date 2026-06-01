@@ -127,9 +127,15 @@ class HomeScreen : Screen {
                     }
                 }
 
-                // Observe pushed screens for test navigation
-                val pushedScreens by TestNavigationController.pushedScreens.collectAsState()
-                val testScreen = pushedScreens.lastOrNull()
+                // Observe pending pop requests (from close_reader, etc.)
+                LaunchedEffect(Unit) {
+                    TestNavigationController.pendingPop.collect { shouldPop ->
+                        if (shouldPop && navigator.size > 1) {
+                            navigator.pop()
+                            TestNavigationController.clearPendingPop()
+                        }
+                    }
+                }
 
                 Scaffold(
                     snackbarHost = {
@@ -155,12 +161,10 @@ class HomeScreen : Screen {
                             .fillMaxSize()
                             .padding(paddingValues),
                     ) {
-                        // Show test pushed screen if any, otherwise show current tab
-                        if (testScreen != null) {
-                            // Use Navigator to display the pushed screen
-                            Navigator(testScreen) {
-                                CurrentScreen()
-                            }
+                        // Show pushed screen if navigator has more than root, otherwise show current tab
+                        // This uses the SAME navigator that receives pushes from TestNavigationController
+                        if (navigator.size > 1) {
+                            CurrentScreen()
                         } else {
                             CurrentTab()
                         }

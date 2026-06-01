@@ -41,6 +41,10 @@ object TestNavigationController {
     private val _pushedScreens = MutableStateFlow<List<Screen>>(emptyList())
     val pushedScreens: StateFlow<List<Screen>> = _pushedScreens.asStateFlow()
 
+    // Flag to trigger navigator.pop() in UI
+    private val _pendingPop = MutableStateFlow(false)
+    val pendingPop: StateFlow<Boolean> = _pendingPop.asStateFlow()
+
     /**
      * Request navigation to a specific tab.
      * The UI should observe [pendingTabNavigation] and execute the navigation.
@@ -91,6 +95,7 @@ object TestNavigationController {
     fun navigateBack(): Boolean {
         _pendingScreenNavigation.value = null
         _pendingTabNavigation.value = null
+        _pendingPop.value = true
         return true
     }
 
@@ -100,6 +105,13 @@ object TestNavigationController {
     fun clearPendingNavigation() {
         _pendingTabNavigation.value = null
         _pendingScreenNavigation.value = null
+    }
+
+    /**
+     * Clear pending pop flag after it's been processed by the UI.
+     */
+    fun clearPendingPop() {
+        _pendingPop.value = false
     }
 
     /**
@@ -242,6 +254,7 @@ object TestNavigationController {
         _pendingMangaId.value = null
         _pendingReaderScreen.value = null
         _pushedScreens.value = emptyList()
+        _pendingPop.value = false
         _navigationHistory.value = emptyList()
     }
 }
