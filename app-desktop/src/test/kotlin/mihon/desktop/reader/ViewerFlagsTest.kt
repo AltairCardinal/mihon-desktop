@@ -1,7 +1,9 @@
 package mihon.desktop.reader
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class ViewerFlagsTest {
@@ -40,5 +42,43 @@ class ViewerFlagsTest {
     @Test
     fun `unknown flags return null`() {
         assertNull(readingModeFromViewerFlags(99L))
+    }
+
+    @Test
+    fun `dual page flag returns null when manga uses default`() {
+        assertNull(dualPageFromViewerFlags(0L))
+    }
+
+    @Test
+    fun `viewer flags can remember dual page disabled per manga`() {
+        val flags = viewerFlagsWithDualPage(0L, enabled = false)
+
+        assertFalse(dualPageFromViewerFlags(flags)!!)
+    }
+
+    @Test
+    fun `viewer flags can remember dual page enabled per manga`() {
+        val flags = viewerFlagsWithDualPage(0L, enabled = true)
+
+        assertTrue(dualPageFromViewerFlags(flags)!!)
+    }
+
+    @Test
+    fun `viewer flags preserve reading mode when dual page changes`() {
+        val flags = viewerFlagsWithDualPage(2L, enabled = false)
+
+        assertEquals(ReadingMode.RTL, readingModeFromViewerFlags(flags))
+        assertFalse(dualPageFromViewerFlags(flags)!!)
+    }
+
+    @Test
+    fun `viewer flags preserve dual page when reading mode changes`() {
+        val flags = viewerFlagsWithReadingMode(
+            viewerFlagsWithDualPage(0L, enabled = false),
+            ReadingMode.WEBTOON,
+        )
+
+        assertEquals(ReadingMode.WEBTOON, readingModeFromViewerFlags(flags))
+        assertFalse(dualPageFromViewerFlags(flags)!!)
     }
 }

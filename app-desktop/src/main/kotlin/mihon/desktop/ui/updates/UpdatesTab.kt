@@ -65,6 +65,7 @@ import mihon.desktop.ui.reader.DesktopReaderScreen
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
+import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.updates.interactor.GetUpdates
 import tachiyomi.domain.updates.model.UpdatesWithRelations
@@ -108,6 +109,7 @@ class UpdatesRootScreen : Screen {
         val navigator = LocalNavigator.currentOrThrow
         val getUpdates = remember { Injekt.get<GetUpdates>() }
         val updateChapter = remember { Injekt.get<UpdateChapter>() }
+        val getManga = remember { Injekt.get<GetManga>() }
         val downloadManager = remember { Injekt.get<DesktopDownloadManager>() }
         val updateChecker = remember { Injekt.get<LibraryUpdateChecker>() }
         val sourceManager = remember { Injekt.get<SourceManager>() }
@@ -328,18 +330,23 @@ class UpdatesRootScreen : Screen {
                             is UpdatesListItem.Entry -> UpdateItem(
                                 item = item.update,
                                 onRead = {
-                                    navigator.push(
-                                        DesktopReaderScreen(
-                                            chapterTitle = item.update.chapterName,
-                                            mangaTitle = item.update.mangaTitle,
-                                            isWebtoon = false,
-                                            sourceId = item.update.sourceId,
-                                            chapterUrl = item.update.chapterUrl,
-                                            chapterId = item.update.chapterId,
-                                            initialPage = item.update.lastPageRead.toInt().coerceAtLeast(0),
-                                            progressTracker = progressTracker,
-                                        ),
-                                    )
+                                    scope.launch {
+                                        val manga = getManga.await(item.update.mangaId)
+                                        navigator.push(
+                                            DesktopReaderScreen(
+                                                chapterTitle = item.update.chapterName,
+                                                mangaTitle = item.update.mangaTitle,
+                                                isWebtoon = false,
+                                                sourceId = item.update.sourceId,
+                                                chapterUrl = item.update.chapterUrl,
+                                                chapterId = item.update.chapterId,
+                                                mangaId = item.update.mangaId,
+                                                mangaViewerFlags = manga?.viewerFlags ?: 0L,
+                                                initialPage = item.update.lastPageRead.toInt().coerceAtLeast(0),
+                                                progressTracker = progressTracker,
+                                            ),
+                                        )
+                                    }
                                 },
                                 onDownload = {
                                     downloadManager.enqueue(

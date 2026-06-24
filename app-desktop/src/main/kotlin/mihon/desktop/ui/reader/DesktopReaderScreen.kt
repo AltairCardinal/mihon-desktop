@@ -70,9 +70,13 @@ import mihon.desktop.reader.VirtualPage
 import mihon.desktop.reader.WebtoonSidePadding
 import mihon.desktop.reader.ZoomState
 import mihon.desktop.reader.buildVirtualPageList
+import mihon.desktop.reader.viewerFlagsWithDualPage
+import mihon.desktop.reader.viewerFlagsWithReadingMode
 import mihon.desktop.reader.firstVirtualIndex
 import mihon.desktop.reader.realPageIndex
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.manga.model.MangaUpdate
+import tachiyomi.domain.manga.repository.MangaRepository
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -85,6 +89,7 @@ data class DesktopReaderScreen(
     val sourceId: Long = 0L,
     val chapterUrl: String = "",
     val chapterId: Long = 0L,
+    val mangaId: Long = 0L,
     /** All chapters for this manga (desc order = newest first), enables prev/next navigation. */
     val chapters: List<ReaderChapterRef> = emptyList(),
     /** Index of the current chapter within [chapters]. */
@@ -96,7 +101,7 @@ data class DesktopReaderScreen(
     /** RTL (right-to-left) pager mode. */
     val isRtl: Boolean = false,
     /** Show two pages side-by-side (dual-page spread). */
-    val isDualPage: Boolean = false,
+    val isDualPage: Boolean = true,
     @Transient val progressTracker: ReaderProgressTracker? = null,
 ) : Screen {
 
@@ -125,6 +130,7 @@ data class DesktopReaderScreen(
         val focusRequester = remember { FocusRequester() }
         val preloader = remember { buildPreloader(Injekt.get<NetworkHelper>()) }
         val tracker = remember { progressTracker ?: Injekt.get<ReaderProgressTracker>() }
+        val mangaRepository = remember { runCatching { Injekt.get<MangaRepository>() }.getOrNull() }
 
         // Lifecycle: set global reader-mode flag + persist progress on leave
         ReaderLifecycleEffect(state, model, scope, tracker, chapterId)
@@ -140,11 +146,33 @@ data class DesktopReaderScreen(
         val readerNav = remember(chapters, currentChapterIndex, skipRead) {
             chapters.takeIf { it.isNotEmpty() }?.let { ReaderNavigator(it, currentChapterIndex, skipRead) }
         }
+        fun currentViewerFlags(): Long = viewerFlagsWithReadingMode(
+            viewerFlagsWithDualPage(mangaViewerFlags, state.dualPageMode),
+            state.readingMode,
+        )
         val onPrevChapter: () -> Unit = {
-            readerNav?.previousRead?.let { navigator.replace(copyForChapter(it, ReaderNavigator.indexForId(chapters, it.id))) }
+            readerNav?.previousRead?.let {
+                navigator.replace(
+                    copyForChapter(
+                        ref = it,
+                        newIndex = ReaderNavigator.indexForId(chapters, it.id),
+                        initialPage = initialPageForChapterNavigation(ReaderChapterNavigationDirection.Previous),
+                        viewerFlags = currentViewerFlags(),
+                    ),
+                )
+            }
         }
         val onNextChapter: () -> Unit = {
-            readerNav?.nextToRead?.let { navigator.replace(copyForChapter(it, ReaderNavigator.indexForId(chapters, it.id))) }
+            readerNav?.nextToRead?.let {
+                navigator.replace(
+                    copyForChapter(
+                        ref = it,
+                        newIndex = ReaderNavigator.indexForId(chapters, it.id),
+                        initialPage = initialPageForChapterNavigation(ReaderChapterNavigationDirection.Next),
+                        viewerFlags = currentViewerFlags(),
+                    ),
+                )
+            }
         }
 
         // Settings dialog
@@ -157,8 +185,30 @@ data class DesktopReaderScreen(
                 webtoonSidePadding = state.webtoonSidePadding, webtoonAutoScroll = state.webtoonAutoScroll,
                 webtoonAutoScrollSpeed = state.webtoonAutoScrollSpeed, colorFilter = state.colorFilter,
                 scaleType = state.scaleType, skipReadChapters = state.skipReadChapters, zoomState = state.zoomState,
-                onModeChange = { model.setReadingMode(it, readerPrefs) },
-                onDualPageChange = { model.setDualPageMode(it, readerPrefs) },
+                onModeChange = {
+                    model.setReadingMode(it, readerPrefs)
+                    persistReaderViewerFlags(
+                        scope = scope,
+                        mangaRepository = mangaRepository,
+                        mangaId = mangaId,
+                        flags = viewerFlagsWithReadingMode(
+                            viewerFlagsWithDualPage(mangaViewerFlags, state.dualPageMode),
+                            it,
+                        ),
+                    )
+                },
+                onDualPageChange = {
+                    model.setDualPageMode(it, readerPrefs)
+                    persistReaderViewerFlags(
+                        scope = scope,
+                        mangaRepository = mangaRepository,
+                        mangaId = mangaId,
+                        flags = viewerFlagsWithDualPage(
+                            viewerFlagsWithReadingMode(mangaViewerFlags, state.readingMode),
+                            it,
+                        ),
+                    )
+                },
                 onAutoSplitPagesChange = { model.setAutoSplitPages(it, readerPrefs) },
                 onAutoSpreadMatchingChange = { model.setAutoSpreadMatching(it, readerPrefs) },
                 onBackgroundThemeChange = { model.setBackgroundTheme(it, readerPrefs) },
@@ -193,13 +243,47 @@ data class DesktopReaderScreen(
     }
 
     /** Creates a replacement screen for a sibling chapter, preserving context. */
-    private fun copyForChapter(ref: ReaderChapterRef, newIndex: Int) = DesktopReaderScreen(
+    private fun copyForChapter(
+        ref: ReaderChapterRef,
+        newIndex: Int,
+        initialPage: Int,
+        viewerFlags: Long,
+    ) = DesktopReaderScreen(
         chapterTitle = ref.name, mangaTitle = mangaTitle, pageUrls = emptyList(),
         isWebtoon = isWebtoon, sourceId = sourceId, chapterUrl = ref.url, chapterId = ref.id,
-        chapters = chapters, currentChapterIndex = newIndex, initialPage = 0,
+        mangaId = mangaId, mangaViewerFlags = viewerFlags,
+        chapters = chapters, currentChapterIndex = newIndex, initialPage = initialPage,
         isRtl = isRtl, isDualPage = isDualPage, progressTracker = progressTracker,
     )
 }
+
+private fun persistReaderViewerFlags(
+    scope: kotlinx.coroutines.CoroutineScope,
+    mangaRepository: MangaRepository?,
+    mangaId: Long,
+    flags: Long,
+) {
+    if (mangaId == 0L || mangaRepository == null) return
+    scope.launch {
+        mangaRepository.update(MangaUpdate(id = mangaId, viewerFlags = flags))
+    }
+}
+
+internal object ReaderInitialPage {
+    const val FIRST: Int = 0
+    const val LAST: Int = Int.MAX_VALUE
+}
+
+internal enum class ReaderChapterNavigationDirection {
+    Previous,
+    Next,
+}
+
+internal fun initialPageForChapterNavigation(direction: ReaderChapterNavigationDirection): Int =
+    when (direction) {
+        ReaderChapterNavigationDirection.Previous -> ReaderInitialPage.LAST
+        ReaderChapterNavigationDirection.Next -> ReaderInitialPage.FIRST
+    }
 
 // ── Private helper composables ───────────────────────────────────────────────
 
@@ -211,7 +295,7 @@ private fun ReaderLifecycleEffect(
     tracker: ReaderProgressTracker,
     chapterId: Long,
 ) {
-    val latestPage by rememberUpdatedState(state.currentPage)
+    val latestPage by rememberUpdatedState(readerProgressPageForTracking(state))
     val latestUrls by rememberUpdatedState(state.resolvedUrls)
     DisposableEffect(Unit) {
         ReaderModeState.isInReaderMode = true
@@ -224,6 +308,22 @@ private fun ReaderLifecycleEffect(
             }
         }
     }
+}
+
+internal fun readerProgressPageForTracking(state: ReaderState): Int {
+    val pageCount = state.resolvedUrls.size
+    if (pageCount <= 0) return 0
+    val safeCurrent = state.currentPage.coerceIn(0, pageCount - 1)
+    if (!state.dualPageMode || pageCount == 1) return safeCurrent
+
+    val dualState = DualPageState(
+        totalPages = pageCount,
+        spreadPages = state.spreadPages,
+        forcedSinglePages = state.forcedSinglePages,
+        matchedPairs = state.matchedPairs,
+    )
+    val group = dualState.getGroup(dualState.groupIndexForPage(safeCurrent))
+    return group.maxOrNull()?.coerceIn(0, pageCount - 1) ?: safeCurrent
 }
 
 @Composable
@@ -259,8 +359,9 @@ private fun ReaderPageLoader(
             if (pages.isEmpty()) { model.setLoadError("Source returned 0 pages"); return@LaunchedEffect }
             val fetcher = SourcePageFetcher(source = source, fallbackClient = Injekt.get<NetworkHelper>().client)
             val tempDir = java.io.File(System.getProperty("java.io.tmpdir"), "mihon_reader_${sourceId}_${chapterUrl.hashCode()}").also { it.mkdirs() }
+            model.setLoadingPageSlots(pages.size, initialPage)
             pages.mapIndexed { i, page -> scope.launch { fetcher.fetchToFile(page, tempDir)?.let { model.appendLoadedPage(i, it) } } }.forEach { it.join() }
-            if (state.resolvedUrls.all { it.isBlank() }) model.setLoadError("Failed to load any page images") else model.setLoadingDone()
+            if (model.hasLoadedPage()) model.setLoadingDone() else model.setLoadError("Failed to load any page images")
         } catch (e: Exception) {
             model.setLoadError(e.message ?: "Unknown error loading pages")
         }
@@ -335,7 +436,7 @@ private fun ReaderViewport(
         ) {
             when {
                 state.isLoadingPages -> LoadingState()
-                state.errorMessage != null -> ErrorState(state.errorMessage!!, onBack = { navigator.pop() })
+                state.errorMessage != null -> ErrorState(state.errorMessage, onBack = { navigator.pop() })
                 state.resolvedUrls.isEmpty() -> EmptyState(onBack = { navigator.pop() })
                 else -> {
                     ReaderContent(state, model, navigator, contextMenuScope, mangaTitle, chapterTitle, preloader, readerNav, onPrevChapter, onNextChapter)
@@ -379,9 +480,9 @@ private fun handleReaderKeyEvent(
     onNextChapter: () -> Unit,
 ): Boolean {
     if (event.type != KeyEventType.KeyDown) return false
-    val vPages = state.virtualPages
-    val totalPages = vPages?.size ?: state.resolvedUrls.size
-    val navCurrent = vPages?.firstVirtualIndex(state.currentPage.coerceIn(0, (state.resolvedUrls.size - 1).coerceAtLeast(0))) ?: state.currentPage
+    val navPosition = readerKeyboardNavigationPosition(state)
+    val totalPages = navPosition.total
+    val navCurrent = navPosition.current
     if (event.isCtrlPressed) {
         return when (event.key) {
             Key.Equals -> { model.setZoomState(state.zoomState.zoomIn()); true }
@@ -419,16 +520,43 @@ private fun handleReaderKeyEvent(
                 when (action.page) {
                     navCurrent + 1 -> ds.firstPageInGroup((cg + 1).coerceIn(0, ds.groupCount - 1))
                     navCurrent - 1 -> ds.firstPageInGroup((cg - 1).coerceIn(0, ds.groupCount - 1))
-                    else -> ds.firstPageInGroup(ds.groupIndexForPage(action.page.coerceIn(0, state.resolvedUrls.size - 1)))
+                    else -> ds.firstPageInGroup(action.page.coerceIn(0, ds.groupCount - 1))
                 }
-            } else if (vPages != null) {
-                vPages.realPageIndex(action.page.coerceIn(0, vPages.size - 1))
+            } else if (state.virtualPages != null) {
+                state.virtualPages.realPageIndex(action.page.coerceIn(0, state.virtualPages.size - 1))
             } else action.page
             model.goToPage(target); true
         }
         is ReaderPageAction.NoPrevPage -> { onPrevChapter(); true }
         is ReaderPageAction.NoNextPage -> { onNextChapter(); true }
     }
+}
+
+internal data class ReaderKeyboardNavigationPosition(
+    val current: Int,
+    val total: Int,
+)
+
+internal fun readerKeyboardNavigationPosition(state: ReaderState): ReaderKeyboardNavigationPosition {
+    if (state.dualPageMode && state.resolvedUrls.size > 1) {
+        val dualState = DualPageState(
+            totalPages = state.resolvedUrls.size,
+            spreadPages = state.spreadPages,
+            forcedSinglePages = state.forcedSinglePages,
+            matchedPairs = state.matchedPairs,
+        )
+        val safePage = state.currentPage.coerceIn(0, state.resolvedUrls.size - 1)
+        return ReaderKeyboardNavigationPosition(
+            current = dualState.groupIndexForPage(safePage),
+            total = dualState.groupCount,
+        )
+    }
+
+    val vPages = state.virtualPages
+    val totalPages = vPages?.size ?: state.resolvedUrls.size
+    val safeCurrent = state.currentPage.coerceIn(0, (state.resolvedUrls.size - 1).coerceAtLeast(0))
+    val navCurrent = vPages?.firstVirtualIndex(safeCurrent) ?: state.currentPage
+    return ReaderKeyboardNavigationPosition(current = navCurrent, total = totalPages)
 }
 
 @Composable

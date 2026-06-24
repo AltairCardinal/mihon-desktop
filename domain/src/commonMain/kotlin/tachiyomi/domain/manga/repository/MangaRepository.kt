@@ -32,6 +32,8 @@ interface MangaRepository {
 
     suspend fun resetViewerFlags(): Boolean
 
+    suspend fun resetViewerFlagsForNonFavorites(): Boolean
+
     suspend fun setMangaCategories(mangaId: Long, categoryIds: List<Long>)
 
     suspend fun update(update: MangaUpdate): Boolean

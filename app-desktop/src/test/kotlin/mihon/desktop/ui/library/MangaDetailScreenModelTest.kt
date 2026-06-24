@@ -178,6 +178,31 @@ class MangaDetailScreenModelTest {
     }
 
     @Test
+    fun `setManga restores sort mode and direction from each manga chapterFlags`() {
+        val model = MangaDetailScreenModel(mangaId = 1L)
+        val firstManga = createFakeManga(id = 1L).copy(
+            chapterFlags = chapterSortFlags(
+                mode = ChapterSortMode.BY_CHAPTER_NUMBER,
+                ascending = true,
+            ),
+        )
+        val secondManga = createFakeManga(id = 2L).copy(
+            chapterFlags = chapterSortFlags(
+                mode = ChapterSortMode.BY_DATE_UPLOAD,
+                ascending = false,
+            ),
+        )
+
+        model.setManga(firstManga)
+        assertEquals(ChapterSortMode.BY_CHAPTER_NUMBER, model.state.value.chapterSortMode)
+        assertTrue(model.state.value.chapterSortAscending)
+
+        model.setManga(secondManga)
+        assertEquals(ChapterSortMode.BY_DATE_UPLOAD, model.state.value.chapterSortMode)
+        assertFalse(model.state.value.chapterSortAscending)
+    }
+
+    @Test
     fun `setChapters updates chapters in state`() {
         val model = MangaDetailScreenModel(mangaId = 1L)
         assertTrue(model.state.value.chapters.isEmpty())

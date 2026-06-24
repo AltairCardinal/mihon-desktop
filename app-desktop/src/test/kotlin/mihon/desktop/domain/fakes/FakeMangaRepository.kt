@@ -39,6 +39,7 @@ class FakeMangaRepository : MangaRepository {
             favorite = update.favorite ?: existing.favorite,
             dateAdded = update.dateAdded ?: existing.dateAdded,
             initialized = update.initialized ?: existing.initialized,
+            viewerFlags = update.viewerFlags ?: existing.viewerFlags,
         )
         return true
     }
@@ -61,6 +62,12 @@ class FakeMangaRepository : MangaRepository {
     override suspend fun getDuplicateLibraryManga(id: Long, title: String): List<MangaWithChapterCount> = emptyList()
     override suspend fun getUpcomingManga(statuses: Set<Long>): Flow<List<Manga>> = flowOf(emptyList())
     override suspend fun resetViewerFlags(): Boolean = true
+    override suspend fun resetViewerFlagsForNonFavorites(): Boolean {
+        store.replaceAll { _, manga ->
+            if (manga.favorite) manga else manga.copy(viewerFlags = 0L)
+        }
+        return true
+    }
     override suspend fun setMangaCategories(mangaId: Long, categoryIds: List<Long>) {
         mangaCategoryMap[mangaId] = categoryIds
     }

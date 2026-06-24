@@ -39,7 +39,7 @@ class DesktopDownloadProvider(
      */
     fun isChapterDownloaded(sourceId: Long, mangaTitle: String, chapterName: String): Boolean {
         val dir = chapterDownloadDir(sourceId, mangaTitle, chapterName)
-        return dir.isDirectory && dir.listFiles()?.any { it.isImageFile() } == true
+        return dir.isDirectory && dir.listFiles()?.any { it.isReadableImageFile() } == true
     }
 
     /** Returns true if a `_tmp` directory exists for this chapter (download in progress or abandoned). */
@@ -52,7 +52,7 @@ class DesktopDownloadProvider(
         val dir = chapterDownloadDir(sourceId, mangaTitle, chapterName)
         if (!dir.isDirectory) return emptyList()
         return dir.listFiles()
-            ?.filter { it.isImageFile() }
+            ?.filter { it.isReadableImageFile() }
             ?.sortedBy { it.name }
             ?: emptyList()
     }
@@ -67,9 +67,12 @@ class DesktopDownloadProvider(
         return mangaDir.listFiles()?.any { chapterDir ->
             chapterDir.isDirectory &&
                 !chapterDir.name.endsWith(TMP_DIR_SUFFIX) &&
-                chapterDir.listFiles()?.any { f -> f.isImageFile() } == true
+                chapterDir.listFiles()?.any { f -> f.isReadableImageFile() } == true
         } == true
     }
+
+    /** Returns true when a downloaded image has a supported extension and a matching file signature. */
+    fun isValidDownloadedImage(file: File): Boolean = file.isReadableImageFile()
 
     /** Deletes the chapter download directory and all its contents. */
     fun deleteChapterDownload(sourceId: Long, mangaTitle: String, chapterName: String) {
@@ -96,8 +99,38 @@ class DesktopDownloadProvider(
         return tmpDir.renameTo(finalDir)
     }
 
-    private fun File.isImageFile(): Boolean {
+    private fun File.isReadableImageFile(): Boolean {
         val ext = extension.lowercase()
-        return ext in setOf("jpg", "jpeg", "png", "webp", "gif", "avif")
+        if (ext !in setOf("jpg", "jpeg", "png", "webp", "gif", "avif")) return false
+        if (!isFile || length() <= 0L) return false
+
+        val header = inputStream().use { input ->
+            ByteArray(32).also { bytes -> input.read(bytes) }
+        }
+
+        return when (ext) {
+            "jpg", "jpeg" -> header.startsWith(0xFF, 0xD8)
+            "png" -> header.startsWith(0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+            "gif" -> header.startsWith("GIF87a") || header.startsWith("GIF89a")
+            "webp" -> header.startsWith("RIFF") && header.hasAsciiAt(8, "WEBP")
+            "avif" -> header.hasAsciiAt(4, "ftyp") &&
+                listOf("avif", "avis", "mif1", "msf1").any { brand -> header.containsAscii(brand) }
+            else -> false
+        }
+    }
+
+    private fun ByteArray.startsWith(vararg bytes: Int): Boolean =
+        bytes.withIndex().all { (index, byte) -> this.getOrNull(index) == byte.toByte() }
+
+    private fun ByteArray.startsWith(ascii: String): Boolean = hasAsciiAt(0, ascii)
+
+    private fun ByteArray.hasAsciiAt(offset: Int, ascii: String): Boolean =
+        ascii.indices.all { index -> getOrNull(offset + index) == ascii[index].code.toByte() }
+
+    private fun ByteArray.containsAscii(ascii: String): Boolean {
+        if (ascii.isEmpty() || ascii.length > size) return false
+        return indices.any { offset ->
+            offset + ascii.length <= size && hasAsciiAt(offset, ascii)
+        }
     }
 }

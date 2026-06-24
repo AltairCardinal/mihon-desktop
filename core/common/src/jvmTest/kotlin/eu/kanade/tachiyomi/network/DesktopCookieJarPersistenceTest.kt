@@ -54,12 +54,18 @@ class DesktopCookieJarPersistenceTest {
         val url2 = "https://site-b.com/".toHttpUrl()
         val expiry = System.currentTimeMillis() + 3_600_000L
 
-        jar1.saveFromResponse(url1, listOf(
-            Cookie.Builder().name("a").value("1").domain("site-a.com").path("/").expiresAt(expiry).build(),
-        ))
-        jar1.saveFromResponse(url2, listOf(
-            Cookie.Builder().name("b").value("2").domain("site-b.com").path("/").expiresAt(expiry).build(),
-        ))
+        jar1.saveFromResponse(
+            url1,
+            listOf(
+                Cookie.Builder().name("a").value("1").domain("site-a.com").path("/").expiresAt(expiry).build(),
+            ),
+        )
+        jar1.saveFromResponse(
+            url2,
+            listOf(
+                Cookie.Builder().name("b").value("2").domain("site-b.com").path("/").expiresAt(expiry).build(),
+            ),
+        )
 
         val jar2 = DesktopCookieJar(storageFile = file)
         assertEquals(1, jar2.loadForRequest(url1).size)
@@ -130,9 +136,12 @@ class DesktopCookieJarPersistenceTest {
         val expiry = System.currentTimeMillis() + 3_600_000L
 
         val jar1 = DesktopCookieJar(storageFile = file)
-        jar1.saveFromResponse(url, listOf(
-            Cookie.Builder().name("k").value("v").domain("example.com").path("/").expiresAt(expiry).build(),
-        ))
+        jar1.saveFromResponse(
+            url,
+            listOf(
+                Cookie.Builder().name("k").value("v").domain("example.com").path("/").expiresAt(expiry).build(),
+            ),
+        )
         jar1.clear()
 
         val jar2 = DesktopCookieJar(storageFile = file)
@@ -145,10 +154,13 @@ class DesktopCookieJarPersistenceTest {
         val jar = DesktopCookieJar(storageFile = file)
         val url = "https://example.com/".toHttpUrl()
         // Should not throw
-        jar.saveFromResponse(url, listOf(
-            Cookie.Builder().name("k").value("v").domain("example.com").path("/")
-                .expiresAt(System.currentTimeMillis() + 3_600_000L).build(),
-        ))
+        jar.saveFromResponse(
+            url,
+            listOf(
+                Cookie.Builder().name("k").value("v").domain("example.com").path("/")
+                    .expiresAt(System.currentTimeMillis() + 3_600_000L).build(),
+            ),
+        )
     }
 
     @Test
@@ -156,9 +168,12 @@ class DesktopCookieJarPersistenceTest {
         // The default jar (no storageFile) must still work in-memory
         val jar = DesktopCookieJar()
         val url = "https://example.com/".toHttpUrl()
-        jar.saveFromResponse(url, listOf(
-            Cookie.Builder().name("k").value("v").domain("example.com").build(),
-        ))
+        jar.saveFromResponse(
+            url,
+            listOf(
+                Cookie.Builder().name("k").value("v").domain("example.com").build(),
+            ),
+        )
         assertEquals(1, jar.loadForRequest(url).size)
     }
 }

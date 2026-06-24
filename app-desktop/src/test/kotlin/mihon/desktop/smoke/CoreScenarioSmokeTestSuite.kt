@@ -265,7 +265,7 @@ class UpdatesScenarioSmokeTestSuite {
  *
  * Tests reader navigation functionality.
  */
-class ReaderScenarioSmokeTestSuite {
+class ReaderCoreSmokeTestSuite {
 
     @Test
     fun `reader navigator handles chapter boundary conditions`() {

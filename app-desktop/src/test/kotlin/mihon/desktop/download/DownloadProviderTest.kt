@@ -15,6 +15,13 @@ class DownloadProviderTest {
 
     private fun provider() = DesktopDownloadProvider(baseDir = tempDir)
 
+    private fun jpegBytes() = byteArrayOf(
+        0xFF.toByte(),
+        0xD8.toByte(),
+        0xFF.toByte(),
+        0xD9.toByte(),
+    )
+
     @Test
     fun `chapter download dir uses sourceId mangaTitle chapterName`() {
         val dir = provider().chapterDownloadDir(
@@ -49,17 +56,25 @@ class DownloadProviderTest {
     fun `isChapterDownloaded returns true when dir has jpg files`() {
         val dir = provider().chapterDownloadDir(1L, "Test", "Ch 1")
         dir.mkdirs()
-        File(dir, "001.jpg").writeBytes(ByteArray(10))
+        File(dir, "001.jpg").writeBytes(jpegBytes())
         assertTrue(provider().isChapterDownloaded(1L, "Test", "Ch 1"))
+    }
+
+    @Test
+    fun `isChapterDownloaded returns false when jpg file is not a readable image`() {
+        val dir = provider().chapterDownloadDir(1L, "Test", "Ch 1")
+        dir.mkdirs()
+        File(dir, "001.jpg").writeText("<html>forbidden</html>")
+        assertFalse(provider().isChapterDownloaded(1L, "Test", "Ch 1"))
     }
 
     @Test
     fun `getDownloadedPages returns sorted image files`() {
         val dir = provider().chapterDownloadDir(1L, "Test", "Ch 1")
         dir.mkdirs()
-        File(dir, "003.jpg").writeBytes(ByteArray(10))
-        File(dir, "001.jpg").writeBytes(ByteArray(10))
-        File(dir, "002.jpg").writeBytes(ByteArray(10))
+        File(dir, "003.jpg").writeBytes(jpegBytes())
+        File(dir, "001.jpg").writeBytes(jpegBytes())
+        File(dir, "002.jpg").writeBytes(jpegBytes())
 
         val pages = provider().getDownloadedPages(1L, "Test", "Ch 1")
         assertEquals(3, pages.size)
@@ -72,6 +87,19 @@ class DownloadProviderTest {
     fun `getDownloadedPages returns empty list when not downloaded`() {
         val pages = provider().getDownloadedPages(99L, "None", "Ch 0")
         assertTrue(pages.isEmpty())
+    }
+
+    @Test
+    fun `getDownloadedPages excludes unreadable image files`() {
+        val dir = provider().chapterDownloadDir(1L, "Test", "Ch 1")
+        dir.mkdirs()
+        File(dir, "001.jpg").writeText("not an image")
+        File(dir, "002.jpg").writeBytes(jpegBytes())
+
+        val pages = provider().getDownloadedPages(1L, "Test", "Ch 1")
+
+        assertEquals(1, pages.size)
+        assertEquals("002.jpg", pages.single().name)
     }
 
     // ── hasMangaDownloads ─────────────────────────────────────────────────────
@@ -92,7 +120,7 @@ class DownloadProviderTest {
     fun `hasMangaDownloads returns false when only tmp dirs exist`() {
         val tmpDir = provider().chapterTmpDir(1L, "My Manga", "Ch 1")
         tmpDir.mkdirs()
-        File(tmpDir, "001.jpg").writeBytes(ByteArray(10))
+        File(tmpDir, "001.jpg").writeBytes(jpegBytes())
         assertFalse(provider().hasMangaDownloads(sourceId = 1L, mangaTitle = "My Manga"))
     }
 
@@ -100,7 +128,7 @@ class DownloadProviderTest {
     fun `hasMangaDownloads returns true when a chapter dir with images exists`() {
         val chDir = provider().chapterDownloadDir(1L, "My Manga", "Ch 1")
         chDir.mkdirs()
-        File(chDir, "001.jpg").writeBytes(ByteArray(10))
+        File(chDir, "001.jpg").writeBytes(jpegBytes())
         assertTrue(provider().hasMangaDownloads(sourceId = 1L, mangaTitle = "My Manga"))
     }
 

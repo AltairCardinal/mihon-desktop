@@ -40,7 +40,7 @@ class ReaderPreferences {
 
     /** Whether dual-page mode was last enabled. */
     var isDualPage: Boolean
-        get() = prefs.getBoolean(KEY_DUAL_PAGE, false)
+        get() = prefs.getBoolean(KEY_DUAL_PAGE, true)
         set(value) {
             prefs.putBoolean(KEY_DUAL_PAGE, value)
             prefs.flush()
@@ -208,6 +208,11 @@ class ReaderPreferences {
         colorFilterG = filter.g
         colorFilterB = filter.b
         colorFilterAlpha = filter.alpha
+    }
+
+    internal fun clearDualPageForTests() {
+        prefs.remove(KEY_DUAL_PAGE)
+        prefs.flush()
     }
 
     private companion object {

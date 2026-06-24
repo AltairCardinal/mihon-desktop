@@ -6,8 +6,10 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.transitions.SlideTransition
+import kotlinx.coroutines.runBlocking
 import mihon.desktop.di.initDesktopDI
 import mihon.desktop.domain.LibraryUpdateScheduler
+import mihon.desktop.domain.ReaderModeMemoryCleaner
 import mihon.desktop.source.LocalSourceScanService
 import mihon.desktop.test.TestArguments
 import mihon.desktop.test.TestMode
@@ -31,6 +33,12 @@ fun main(args: Array<String>) {
 
     // Initialize DI
     initDesktopDI()
+
+    runCatching {
+        runBlocking {
+            Injekt.get<ReaderModeMemoryCleaner>().clearNonFavoriteManga()
+        }
+    }
 
     // Start test mode if enabled
     if (testArgs.testMode) {

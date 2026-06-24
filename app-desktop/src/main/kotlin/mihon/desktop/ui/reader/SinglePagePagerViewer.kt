@@ -85,7 +85,7 @@ internal fun SinglePagePagerViewer(
     val scope = rememberCoroutineScope()
 
     // External navigation (slider / keyboard) → jump pager to the new page.
-    LaunchedEffect(currentPage) {
+    LaunchedEffect(currentPage, maxPageIndex, isRtl) {
         val target = pageToPager(currentPage.coerceIn(0, maxPageIndex))
         if (pagerState.currentPage != target) {
             pagerState.scrollToPage(target)

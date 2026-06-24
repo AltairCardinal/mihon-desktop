@@ -168,6 +168,11 @@ resetViewerFlags:
 UPDATE mangas
 SET viewer = 0;
 
+resetViewerFlagsForNonFavorites:
+UPDATE mangas
+SET viewer = 0
+WHERE favorite = 0;
+
 resetIsSyncing:
 UPDATE mangas
 SET is_syncing = 0

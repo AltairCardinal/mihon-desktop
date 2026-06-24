@@ -12,6 +12,7 @@ import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.WebtoonSidePadding
 import mihon.desktop.reader.ZoomState
+import mihon.desktop.reader.dualPageFromViewerFlags
 import mihon.desktop.reader.readingModeFromViewerFlags
 
 /**
@@ -49,7 +50,7 @@ class ReaderScreenModel(
             resolvedUrls = pageUrls,
             isLoadingPages = pageUrls.isEmpty() && sourceId != 0L && chapterUrl.isNotBlank(),
             readingMode = resolvedMode,
-            dualPageMode = prefs.isDualPage,
+            dualPageMode = dualPageFromViewerFlags(mangaViewerFlags) ?: true,
             autoSplitPages = prefs.autoSplitPages,
             autoSpreadMatching = prefs.isAutoSpreadMatching,
             backgroundTheme = prefs.backgroundTheme,
@@ -86,24 +87,33 @@ class ReaderScreenModel(
         }
     }
 
+    fun setLoadingPageSlots(totalPages: Int, initialPage: Int = 0) {
+        _state.update { s ->
+            val pageCount = totalPages.coerceAtLeast(0)
+            s.copy(
+                resolvedUrls = List(pageCount) { "" },
+                isLoadingPages = pageCount > 0,
+                currentPage = initialPage.coerceIn(0, (pageCount - 1).coerceAtLeast(0)),
+                errorMessage = null,
+            )
+        }
+    }
+
     fun appendLoadedPage(index: Int, url: String) {
         _state.update { s ->
             val newUrls = s.resolvedUrls.toMutableList()
             while (newUrls.size <= index) newUrls.add("")
             newUrls[index] = url
-            val wasLoading = s.isLoadingPages
-            val firstArrived = wasLoading && url.isNotEmpty()
+            val firstArrived = s.isLoadingPages && url.isNotBlank()
             s.copy(
                 resolvedUrls = newUrls,
                 isLoadingPages = if (firstArrived) false else s.isLoadingPages,
-                currentPage = if (firstArrived) {
-                    s.currentPage.coerceIn(0, (newUrls.size - 1).coerceAtLeast(0))
-                } else {
-                    s.currentPage
-                },
+                currentPage = s.currentPage.coerceIn(0, (newUrls.size - 1).coerceAtLeast(0)),
             )
         }
     }
+
+    fun hasLoadedPage(): Boolean = state.value.resolvedUrls.any { it.isNotBlank() }
 
     fun setLoadError(message: String) {
         _state.update { it.copy(isLoadingPages = false, errorMessage = message) }

@@ -72,6 +72,7 @@ actual class PreferenceScreen {
             // Extract sub-preferences stored in the private _prefs field
             try {
                 val field = cls.getDeclaredField("_prefs").also { it.isAccessible = true }
+
                 @Suppress("UNCHECKED_CAST")
                 val subPrefs = field.get(pref) as? List<*> ?: emptyList<Any>()
                 subPrefs.forEach { sub ->
@@ -122,9 +123,16 @@ actual class PreferenceScreen {
                     ?.map { it.toString() } ?: emptyList()
                 val values = (cls.method("getEntryValues")?.invoke(pref) as? Array<*>)
                     ?.map { it.toString() } ?: emptyList()
+
                 @Suppress("UNCHECKED_CAST")
                 val selected = cls.method("getValues")?.invoke(pref) as? Set<String> ?: emptySet()
-                MultiSelectListPreference(key = key, title = title, entries = entries, entryValues = values, defaultValue = selected)
+                MultiSelectListPreference(
+                    key = key,
+                    title = title,
+                    entries = entries,
+                    entryValues = values,
+                    defaultValue = selected,
+                )
             }
             else -> null
         }

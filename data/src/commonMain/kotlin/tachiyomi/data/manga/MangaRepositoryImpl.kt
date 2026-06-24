@@ -89,6 +89,16 @@ class MangaRepositoryImpl(
         }
     }
 
+    override suspend fun resetViewerFlagsForNonFavorites(): Boolean {
+        return try {
+            handler.await { mangasQueries.resetViewerFlagsForNonFavorites() }
+            true
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e)
+            false
+        }
+    }
+
     override suspend fun setMangaCategories(mangaId: Long, categoryIds: List<Long>) {
         handler.await(inTransaction = true) {
             mangas_categoriesQueries.deleteMangaCategoryByMangaId(mangaId)

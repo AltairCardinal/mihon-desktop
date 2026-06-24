@@ -356,9 +356,9 @@ class PhaseEReaderTest {
     }
 
     @Test
-    fun `DesktopReaderScreen isDualPage defaults to false`() {
+    fun `DesktopReaderScreen isDualPage defaults to true`() {
         val screen = mihon.desktop.ui.reader.DesktopReaderScreen(chapterTitle = "Chapter 1")
-        assertFalse(screen.isDualPage)
+        assertTrue(screen.isDualPage)
     }
 
     // ── 4. ReadingMode derivation ──────────────────────────────────────────

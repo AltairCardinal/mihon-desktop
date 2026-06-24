@@ -38,6 +38,7 @@ import mihon.desktop.domain.SetExcludedScanlators
 import mihon.desktop.domain.DesktopCategoryManager
 import mihon.desktop.domain.LibraryUpdateChecker
 import mihon.desktop.domain.LibraryUpdateScheduler
+import mihon.desktop.domain.ReaderModeMemoryCleaner
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.reader.ReaderPreferences
 import mihon.domain.extensionrepo.interactor.CreateExtensionRepo
@@ -243,6 +244,7 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
         ),
     )
     Injekt.addSingleton(UpdateMangaNotes(mangaRepository))
+    Injekt.addSingleton(ReaderModeMemoryCleaner(mangaRepository))
     Injekt.addSingleton(LibraryUpdateChecker(chapterRepository))
 }
 

@@ -9,6 +9,11 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
 import mihon.desktop.test.navigation.TestNavigationController
 import mihon.desktop.test.screenshot.ScreenshotService
 import mihon.desktop.test.state.applicationState
@@ -20,17 +25,17 @@ import java.time.Instant
 
 private fun parseJsonBody(body: String): Map<String, String> {
     if (body.isBlank()) return emptyMap()
-    val map = mutableMapOf<String, String>()
-    val content = body.trim().removePrefix("{").removeSuffix("}")
-    content.split(",").forEach { pair ->
-        val parts = pair.split(":")
-        if (parts.size == 2) {
-            val key = parts[0].trim().removeSurrounding("\"")
-            val value = parts[1].trim().removeSurrounding("\"")
-            map[key] = value
+    return try {
+        Json.parseToJsonElement(body).jsonObject.mapValues { (_, value) ->
+            when (value) {
+                is JsonPrimitive -> value.contentOrNull ?: value.toString()
+                is JsonObject -> value.toString()
+                else -> value.toString()
+            }
         }
+    } catch (_: Exception) {
+        emptyMap()
     }
-    return map
 }
 
 /**

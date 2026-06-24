@@ -112,7 +112,7 @@ class HomeScreen : Screen {
                             if (tab != null) {
                                 tabNavigator.current = tab
                             }
-                            TestNavigationController.clearPendingNavigation()
+                            TestNavigationController.clearPendingTabNavigation()
                         }
                     }
                 }
@@ -122,7 +122,7 @@ class HomeScreen : Screen {
                     TestNavigationController.pendingScreenNavigation.collect { screen ->
                         if (screen != null) {
                             navigator.push(screen)
-                            TestNavigationController.clearPendingNavigation()
+                            TestNavigationController.clearPendingScreenNavigation()
                         }
                     }
                 }

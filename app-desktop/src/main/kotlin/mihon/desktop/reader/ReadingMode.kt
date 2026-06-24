@@ -28,7 +28,11 @@ enum class ReadingMode(val displayName: String) {
  *
  * Returns null for 0 (use global default) or unknown values.
  */
-fun readingModeFromViewerFlags(flags: Long): ReadingMode? = when (flags) {
+private const val READING_MODE_MASK = 0xFFL
+private const val DUAL_PAGE_SET_FLAG = 1L shl 32
+private const val DUAL_PAGE_VALUE_FLAG = 1L shl 33
+
+fun readingModeFromViewerFlags(flags: Long): ReadingMode? = when (flags and READING_MODE_MASK) {
     0L -> null
     1L -> ReadingMode.LTR
     2L -> ReadingMode.RTL
@@ -36,4 +40,25 @@ fun readingModeFromViewerFlags(flags: Long): ReadingMode? = when (flags) {
     4L -> ReadingMode.WEBTOON
     5L -> ReadingMode.WEBTOON
     else -> null
+}
+
+fun dualPageFromViewerFlags(flags: Long): Boolean? {
+    if (flags and DUAL_PAGE_SET_FLAG == 0L) return null
+    return flags and DUAL_PAGE_VALUE_FLAG != 0L
+}
+
+fun viewerFlagsWithDualPage(flags: Long, enabled: Boolean): Long {
+    val cleared = flags and DUAL_PAGE_VALUE_FLAG.inv()
+    val value = if (enabled) DUAL_PAGE_VALUE_FLAG else 0L
+    return cleared or DUAL_PAGE_SET_FLAG or value
+}
+
+fun viewerFlagsWithReadingMode(flags: Long, mode: ReadingMode?): Long {
+    val readingFlag = when (mode) {
+        null -> 0L
+        ReadingMode.LTR -> 1L
+        ReadingMode.RTL -> 2L
+        ReadingMode.WEBTOON -> 5L
+    }
+    return (flags and READING_MODE_MASK.inv()) or readingFlag
 }

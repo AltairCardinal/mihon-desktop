@@ -261,18 +261,31 @@ class DesktopDownloadManager(
 
                 // Skip if this page was already fully downloaded in a previous attempt
                 val alreadyDownloaded = tmpDir.listFiles()
-                    ?.any { it.nameWithoutExtension == baseName && it.extension != "tmp" }
+                    ?.any {
+                        it.nameWithoutExtension == baseName &&
+                            it.extension != "tmp" &&
+                            provider.isValidDownloadedImage(it)
+                    }
                     ?: false
 
                 if (!alreadyDownloaded) {
                     // Download to .tmp file first
+                    val finalFile = File(tmpDir, "$baseName.${extensionFromUrl(url)}")
+                    finalFile.delete()
                     val response = client.newCall(Request.Builder().url(url).build()).execute()
-                    response.body.byteStream().use { input ->
-                        tmpFile.outputStream().use { output -> input.copyTo(output) }
+                    val pageDownloaded = response.use {
+                        if (!it.isSuccessful) return@use false
+                        it.body.byteStream().use { input ->
+                            tmpFile.outputStream().use { output -> input.copyTo(output) }
+                        }
+                        if (tmpFile.length() <= 0L) return@use false
+                        tmpFile.renameTo(finalFile) && provider.isValidDownloadedImage(finalFile)
                     }
-                    // Determine extension and rename from .tmp to final name
-                    val ext = url.substringAfterLast('.').substringBefore('?').take(5).ifBlank { "jpg" }
-                    tmpFile.renameTo(File(tmpDir, "$baseName.$ext"))
+                    if (!pageDownloaded) {
+                        tmpFile.delete()
+                        finalFile.delete()
+                        return false
+                    }
                 }
 
                 _queue.value = _queue.value.map {
@@ -314,6 +327,14 @@ class DesktopDownloadManager(
     private fun setStatus(chapterId: Long, status: DownloadStatus) {
         _queue.value = _queue.value.map {
             if (it.chapterId == chapterId) it.copy(status = status) else it
+        }
+    }
+
+    private fun extensionFromUrl(url: String): String {
+        val ext = url.substringAfterLast('/').substringAfterLast('.').substringBefore('?').lowercase()
+        return when (ext) {
+            "jpg", "jpeg", "png", "webp", "gif", "avif" -> ext
+            else -> "jpg"
         }
     }
 }

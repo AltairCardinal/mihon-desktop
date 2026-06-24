@@ -31,6 +31,13 @@ import java.nio.file.Path
  */
 class UIFixNavigationContractTest {
 
+    private fun jpegBytes() = byteArrayOf(
+        0xFF.toByte(),
+        0xD8.toByte(),
+        0xFF.toByte(),
+        0xD9.toByte(),
+    )
+
     // ── Navigation type contracts ──────────────────────────────────────────────
 
     @Test
@@ -59,7 +66,7 @@ class UIFixNavigationContractTest {
             chapterName = "Chapter 1",
         )
         chapterDir.mkdirs()
-        File(chapterDir, "page_001.jpg").writeBytes(ByteArray(10))
+        File(chapterDir, "page_001.jpg").writeBytes(jpegBytes())
         assertTrue(provider.isChapterDownloaded(1L, "Test Manga", "Chapter 1"))
 
         // Delete it
@@ -158,7 +165,7 @@ class UIFixNavigationContractTest {
         // Create a _tmp directory with images — should NOT count as downloaded
         val tmpDir = provider.chapterTmpDir(1L, "Manga", "Ch 1")
         tmpDir.mkdirs()
-        File(tmpDir, "001.jpg").writeBytes(ByteArray(10))
+        File(tmpDir, "001.jpg").writeBytes(jpegBytes())
 
         assertFalse(provider.isChapterDownloaded(1L, "Manga", "Ch 1"),
             "_tmp directory must not be considered as downloaded")
@@ -172,7 +179,7 @@ class UIFixNavigationContractTest {
         // Create a _tmp directory with images
         val tmpDir = provider.chapterTmpDir(1L, "Manga", "Ch 1")
         tmpDir.mkdirs()
-        File(tmpDir, "001.jpg").writeBytes(ByteArray(10))
+        File(tmpDir, "001.jpg").writeBytes(jpegBytes())
 
         assertFalse(provider.isChapterDownloaded(1L, "Manga", "Ch 1"))
 
@@ -228,8 +235,8 @@ class UIFixNavigationContractTest {
         val tmp2 = provider.chapterTmpDir(1L, "Manga", "Ch 2")
         tmp1.mkdirs()
         tmp2.mkdirs()
-        File(tmp1, "001.jpg").writeBytes(ByteArray(10))
-        File(tmp2, "001.jpg").writeBytes(ByteArray(10))
+        File(tmp1, "001.jpg").writeBytes(jpegBytes())
+        File(tmp2, "001.jpg").writeBytes(jpegBytes())
 
         manager.cancelAll()
 

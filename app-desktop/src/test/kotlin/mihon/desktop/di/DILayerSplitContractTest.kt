@@ -7,6 +7,10 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.data.DatabaseHandler
+import tachiyomi.domain.category.interactor.SetMangaCategories
+import tachiyomi.domain.category.repository.CategoryRepository
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.io.File
 
 /**
@@ -61,6 +65,17 @@ class DILayerSplitContractTest {
         assertNotNull(handler)
         initDomainLayer(handler)
         // No exception means domain use cases were registered without touching network/UI
+    }
+
+    @Test
+    fun `manga detail category dependencies resolve after data and domain init`(
+        @TempDir tempDir: File,
+    ) {
+        val handler = initDataLayer(tempDir)
+        initDomainLayer(handler)
+
+        assertNotNull(Injekt.get<CategoryRepository>())
+        assertNotNull(Injekt.get<SetMangaCategories>())
     }
 
     /**

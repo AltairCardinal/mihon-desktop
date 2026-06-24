@@ -26,7 +26,17 @@ class MangaDetailScreenModel(
     // ── Data loading ──────────────────────────────────────────────────────────
 
     fun setManga(manga: Manga?) {
-        _state.update { it.copy(manga = manga) }
+        _state.update { state ->
+            if (manga == null) {
+                state.copy(manga = null)
+            } else {
+                state.copy(
+                    manga = manga,
+                    chapterSortMode = chapterSortModeFromManga(manga),
+                    chapterSortAscending = !manga.sortDescending(),
+                )
+            }
+        }
     }
 
     fun setChapters(chapters: List<Chapter>) {
@@ -80,11 +90,8 @@ class MangaDetailScreenModel(
      */
     fun toggleSort(mode: ChapterSortMode) {
         _state.update { s ->
-            if (s.chapterSortMode == mode) {
-                s.copy(chapterSortAscending = !s.chapterSortAscending)
-            } else {
-                s.copy(chapterSortMode = mode, chapterSortAscending = false)
-            }
+            val (nextMode, nextAscending) = nextChapterSort(s.chapterSortMode, s.chapterSortAscending, mode)
+            s.copy(chapterSortMode = nextMode, chapterSortAscending = nextAscending)
         }
     }
 

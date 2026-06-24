@@ -108,6 +108,27 @@ object TestNavigationController {
     }
 
     /**
+     * Clear only pending tab navigation after the tab navigator consumes it.
+     */
+    fun clearPendingTabNavigation() {
+        _pendingTabNavigation.value = null
+    }
+
+    /**
+     * Clear only pending screen navigation after the root navigator consumes it.
+     */
+    fun clearPendingScreenNavigation() {
+        _pendingScreenNavigation.value = null
+    }
+
+    /**
+     * Clear only pending reader screen navigation after the detail screen consumes it.
+     */
+    fun clearPendingReaderScreen() {
+        _pendingReaderScreen.value = null
+    }
+
+    /**
      * Clear pending pop flag after it's been processed by the UI.
      */
     fun clearPendingPop() {

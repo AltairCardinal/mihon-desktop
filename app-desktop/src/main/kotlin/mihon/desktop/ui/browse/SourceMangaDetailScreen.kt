@@ -286,6 +286,7 @@ data class SourceMangaDetailScreen(
                                                 sourceId = sourceId,
                                                 chapterUrl = chapter.url,
                                                 chapterId = savedMangaId,
+                                                mangaId = savedMangaId,
                                                 chapters = chapterRefs,
                                                 currentChapterIndex = idx,
                                                 initialPage = 0,

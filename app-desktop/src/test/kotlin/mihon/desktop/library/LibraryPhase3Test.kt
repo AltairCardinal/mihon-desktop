@@ -177,6 +177,7 @@ fun sortChapters(
         ChapterSortMode.BY_SOURCE_ORDER -> compareBy { it.sourceOrder }
         ChapterSortMode.BY_CHAPTER_NUMBER -> compareBy { it.chapterNumber }
         ChapterSortMode.BY_DATE_UPLOAD -> compareBy { it.dateUpload }
+        ChapterSortMode.BY_ALPHABET -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.name }
     }
     return if (ascending) chapters.sortedWith(comparator) else chapters.sortedWith(comparator.reversed())
 }

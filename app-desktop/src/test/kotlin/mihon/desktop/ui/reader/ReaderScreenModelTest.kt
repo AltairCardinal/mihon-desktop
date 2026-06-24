@@ -8,6 +8,7 @@ import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.WebtoonSidePadding
 import mihon.desktop.reader.ZoomState
+import mihon.desktop.reader.viewerFlagsWithDualPage
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -54,6 +55,33 @@ class ReaderScreenModelTest {
             chapterUrl = "/chapter/1",
         )
         assertTrue(model.state.value.isLoadingPages)
+    }
+
+    @Test
+    fun `reader defaults to dual page mode`() {
+        val prefs = ReaderPreferences().apply { clearDualPageForTests() }
+        val model = ReaderScreenModel(prefs = prefs)
+
+        assertTrue(model.state.value.dualPageMode)
+    }
+
+    @Test
+    fun `reader defaults to dual page mode even when old global preference was single page`() {
+        val prefs = ReaderPreferences().apply { isDualPage = false }
+        val model = ReaderScreenModel(prefs = prefs)
+
+        assertTrue(model.state.value.dualPageMode)
+    }
+
+    @Test
+    fun `manga viewer flags override global dual page mode`() {
+        val prefs = ReaderPreferences().apply { isDualPage = true }
+        val model = ReaderScreenModel(
+            mangaViewerFlags = viewerFlagsWithDualPage(0L, enabled = false),
+            prefs = prefs,
+        )
+
+        assertFalse(model.state.value.dualPageMode)
     }
 
     @Test
@@ -160,7 +188,7 @@ class ReaderScreenModelTest {
 
     @Test
     fun `setDualPageMode updates dualPageMode`() {
-        val model = ReaderScreenModel()
+        val model = ReaderScreenModel(mangaViewerFlags = viewerFlagsWithDualPage(0L, enabled = false))
         assertFalse(model.state.value.dualPageMode)
         model.setDualPageMode(true)
         assertTrue(model.state.value.dualPageMode)
@@ -236,6 +264,24 @@ class ReaderScreenModelTest {
         assertFalse(model.state.value.isLoadingPages)
         assertEquals(listOf("img1.jpg", "img2.jpg"), model.state.value.resolvedUrls)
         assertEquals(0, model.state.value.currentPage)
+    }
+
+    @Test
+    fun `setLoadingPageSlots fixes total page count before out of order page downloads`() {
+        val model = ReaderScreenModel(
+            pageUrls = emptyList(),
+            sourceId = 1L,
+            chapterUrl = "/ch/1",
+        )
+
+        model.setLoadingPageSlots(totalPages = 44, initialPage = 0)
+        model.appendLoadedPage(20, "img21.jpg")
+
+        assertFalse(model.state.value.isLoadingPages)
+        assertEquals(44, model.state.value.resolvedUrls.size)
+        assertEquals("img21.jpg", model.state.value.resolvedUrls[20])
+        assertEquals(0, model.state.value.currentPage)
+        assertTrue(model.hasLoadedPage())
     }
 
     @Test

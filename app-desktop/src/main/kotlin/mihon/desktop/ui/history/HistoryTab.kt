@@ -246,6 +246,8 @@ class HistoryRootScreen : Screen {
                                                 sourceId = manga.source,
                                                 chapterUrl = chapter.url,
                                                 chapterId = chapter.id,
+                                                mangaId = manga.id,
+                                                mangaViewerFlags = manga.viewerFlags,
                                                 initialPage = chapter.lastPageRead.toInt().coerceAtLeast(0),
                                                 progressTracker = progressTracker,
                                             ),
