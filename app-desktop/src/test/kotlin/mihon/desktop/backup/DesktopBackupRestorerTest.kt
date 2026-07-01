@@ -1,6 +1,11 @@
 package mihon.desktop.backup
 
 import kotlinx.coroutines.test.runTest
+import eu.kanade.tachiyomi.source.model.UpdateStrategy
+import mihon.desktop.domain.fakes.FakeCategoryRepository
+import mihon.desktop.domain.fakes.FakeChapterRepository
+import mihon.desktop.domain.fakes.FakeHistoryRepository
+import mihon.desktop.domain.fakes.FakeMangaRepository
 import mihon.desktop.backup.models.Backup
 import mihon.desktop.backup.models.BackupCategory
 import mihon.desktop.backup.models.BackupChapter
@@ -111,5 +116,98 @@ class DesktopBackupRestorerTest {
         // Backup read=true should win (backup data is authoritative on read state)
         assertEquals(true, merged["/ch/1"])
         assertEquals(false, merged["/ch/2"])
+    }
+
+    @Test
+    fun `restore preserves viewer flags from backup viewer field`() = runTest {
+        val mangaRepository = FakeMangaRepository()
+        val restorer = DesktopBackupRestorer(
+            mangaRepository = mangaRepository,
+            chapterRepository = FakeChapterRepository(),
+            categoryRepository = FakeCategoryRepository(),
+            historyRepository = FakeHistoryRepository(),
+        )
+
+        val result = restorer.restore(
+            Backup(
+                backupManga = listOf(
+                    BackupManga(
+                        source = 42L,
+                        url = "/m/test",
+                        title = "Test Manga",
+                        favorite = true,
+                        viewer = 0x22,
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(1, result.successCount)
+        assertEquals(0x22L, mangaRepository.get(1L)?.viewerFlags)
+    }
+
+    @Test
+    fun `restore preserves manga update metadata fields`() = runTest {
+        val mangaRepository = FakeMangaRepository()
+        val restorer = DesktopBackupRestorer(
+            mangaRepository = mangaRepository,
+            chapterRepository = FakeChapterRepository(),
+            categoryRepository = FakeCategoryRepository(),
+            historyRepository = FakeHistoryRepository(),
+        )
+
+        val result = restorer.restore(
+            Backup(
+                backupManga = listOf(
+                    BackupManga(
+                        source = 42L,
+                        url = "/m/test",
+                        title = "Test Manga",
+                        favorite = true,
+                        updateStrategy = UpdateStrategy.ONLY_FETCH_ONCE,
+                        favoriteModifiedAt = 123_456L,
+                        version = 7L,
+                    ),
+                ),
+            ),
+        )
+
+        val restored = mangaRepository.get(1L)
+        assertEquals(1, result.successCount)
+        assertEquals(UpdateStrategy.ONLY_FETCH_ONCE, restored?.updateStrategy)
+        assertEquals(123_456L, restored?.favoriteModifiedAt)
+        assertEquals(7L, restored?.version)
+    }
+
+    @Test
+    fun `restore preserves excluded scanlators`() = runTest {
+        val mangaRepository = FakeMangaRepository()
+        val restoredExcluded = mutableListOf<Pair<Long, List<String>>>()
+        val restorer = DesktopBackupRestorer(
+            mangaRepository = mangaRepository,
+            chapterRepository = FakeChapterRepository(),
+            categoryRepository = FakeCategoryRepository(),
+            historyRepository = FakeHistoryRepository(),
+            setExcludedScanlatorsForManga = { mangaId, excluded ->
+                restoredExcluded += mangaId to excluded
+            },
+        )
+
+        val result = restorer.restore(
+            Backup(
+                backupManga = listOf(
+                    BackupManga(
+                        source = 42L,
+                        url = "/m/test",
+                        title = "Test Manga",
+                        favorite = true,
+                        excludedScanlators = listOf("Group A", "Group B"),
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(1, result.successCount)
+        assertEquals(listOf(1L to listOf("Group A", "Group B")), restoredExcluded)
     }
 }

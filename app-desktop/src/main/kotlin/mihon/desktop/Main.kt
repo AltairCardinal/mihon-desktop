@@ -1,16 +1,13 @@
 package mihon.desktop
 
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.transitions.SlideTransition
-import kotlinx.coroutines.runBlocking
 import mihon.desktop.di.initDesktopDI
-import mihon.desktop.domain.LibraryUpdateScheduler
-import mihon.desktop.domain.ReaderModeMemoryCleaner
-import mihon.desktop.source.LocalSourceScanService
 import mihon.desktop.test.TestArguments
 import mihon.desktop.test.TestMode
 import mihon.desktop.ui.home.HomeScreen
@@ -34,20 +31,14 @@ fun main(args: Array<String>) {
     // Initialize DI
     initDesktopDI()
 
-    runCatching {
-        runBlocking {
-            Injekt.get<ReaderModeMemoryCleaner>().clearNonFavoriteManga()
-        }
-    }
-
     // Start test mode if enabled
     if (testArgs.testMode) {
         TestMode.start(testArgs)
     }
 
-    // Start background services
-    Injekt.get<LibraryUpdateScheduler>().start()
-    Injekt.get<LocalSourceScanService>().start()
+    val runtime = Injekt.get<DesktopAppRuntime>()
+    val uiDependencies = DesktopUiDependencies.fromInjekt()
+    runtime.start()
 
     // Skip UI in headless mode
     if (testArgs.headless) {
@@ -56,13 +47,18 @@ fun main(args: Array<String>) {
 
     application {
         Window(
-            onCloseRequest = ::exitApplication,
+            onCloseRequest = {
+                runtime.close()
+                exitApplication()
+            },
             title = "Mihon Desktop $APP_VERSION",
             state = rememberWindowState(width = 1024.dp, height = 768.dp),
         ) {
-            DesktopTheme {
-                Navigator(HomeScreen()) { navigator ->
-                    SlideTransition(navigator)
+            CompositionLocalProvider(LocalDesktopUiDependencies provides uiDependencies) {
+                DesktopTheme {
+                    Navigator(HomeScreen()) { navigator ->
+                        SlideTransition(navigator)
+                    }
                 }
             }
         }

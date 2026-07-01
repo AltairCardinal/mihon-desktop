@@ -1,5 +1,7 @@
 package mihon.desktop.ui.settings
 
+import mihon.desktop.LocalDesktopUiDependencies
+
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,9 +31,7 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import mihon.desktop.extension.DesktopExtensionManager
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
-import java.io.File
+import mihon.desktop.platform.DesktopPlatformPaths
 
 class AboutScreen : Screen {
 
@@ -39,11 +39,12 @@ class AboutScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val appDir = remember { File(System.getProperty("user.home"), ".mihon") }
-        val cacheDir = remember { File(appDir, "cache/network") }
-        val dbFile = remember { File(appDir, "mihon.db") }
-        val extensionsDir = remember { File(appDir, "extensions") }
-        val extensionManager = remember { runCatching { Injekt.get<DesktopExtensionManager>() }.getOrNull() }
+        val paths = remember { DesktopPlatformPaths.current() }
+        val appDir = remember(paths) { paths.configDir }
+        val cacheDir = remember(paths) { paths.networkCacheDir }
+        val dbFile = remember(paths) { paths.databaseFile }
+        val extensionsDir = remember(paths) { paths.extensionsDir }
+        val extensionManager = LocalDesktopUiDependencies.current.extensionManager
 
         var cacheSizeText by remember {
             mutableStateOf(formatBytes(cacheDir.walkBottomUp().filter { it.isFile }.sumOf { it.length() }))

@@ -2,6 +2,7 @@
 
 package mihon.desktop.backup.models
 
+import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.protobuf.ProtoNumber
 
@@ -37,7 +38,11 @@ data class BackupManga(
     @ProtoNumber(100) val favorite: Boolean = true,
     @ProtoNumber(101) val chapterFlags: Int = 0,
     @ProtoNumber(104) val history: List<BackupHistory> = emptyList(),
+    @ProtoNumber(105) val updateStrategy: UpdateStrategy = UpdateStrategy.ALWAYS_UPDATE,
     @ProtoNumber(106) val lastModifiedAt: Long = 0,
+    @ProtoNumber(107) val favoriteModifiedAt: Long? = null,
+    @ProtoNumber(108) val excludedScanlators: List<String> = emptyList(),
+    @ProtoNumber(109) val version: Long = 0,
     @ProtoNumber(110) val notes: String = "",
     @ProtoNumber(111) val initialized: Boolean = false,
 )

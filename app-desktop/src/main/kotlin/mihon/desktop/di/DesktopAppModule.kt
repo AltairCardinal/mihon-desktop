@@ -11,6 +11,7 @@ import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.source.DesktopSourceManager
 import eu.kanade.tachiyomi.network.NetworkHelper
 import mihon.desktop.platform.DesktopNetworkHelper
+import mihon.desktop.platform.DesktopPlatformPaths
 import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.DesktopSourceRepository
@@ -40,6 +41,7 @@ import mihon.desktop.domain.LibraryUpdateChecker
 import mihon.desktop.domain.LibraryUpdateScheduler
 import mihon.desktop.domain.ReaderModeMemoryCleaner
 import mihon.desktop.domain.ReaderProgressTracker
+import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.reader.ReaderPreferences
 import mihon.domain.extensionrepo.interactor.CreateExtensionRepo
 import mihon.domain.upcoming.interactor.GetUpcomingManga
@@ -51,6 +53,7 @@ import mihon.domain.extensionrepo.repository.ExtensionRepoRepository
 import mihon.domain.extensionrepo.service.ExtensionRepoService
 import tachiyomi.data.category.CategoryRepositoryImpl
 import tachiyomi.data.chapter.ChapterRepositoryImpl
+import tachiyomi.data.creator.CreatorRepositoryImpl
 import tachiyomi.data.history.HistoryRepositoryImpl
 import tachiyomi.data.manga.MangaRepositoryImpl
 import tachiyomi.data.updates.UpdatesRepositoryImpl
@@ -63,6 +66,8 @@ import tachiyomi.domain.chapter.interactor.GetChapter
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.creator.repository.CreatorRepository
+import tachiyomi.domain.creator.service.CreatorDiscoveryService
 import tachiyomi.domain.history.interactor.GetHistory
 import tachiyomi.domain.history.interactor.RemoveHistory
 import tachiyomi.domain.history.interactor.UpsertHistory
@@ -80,6 +85,7 @@ import tachiyomi.domain.manga.interactor.UpdateMangaNotes
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.repository.SourceRepository
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.source.service.SourceMangaSearchService
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.api.get
@@ -90,13 +96,13 @@ import java.io.File
  * Call once at application startup before showing any UI.
  */
 fun initDesktopDI() {
-    val appDir = File(System.getProperty("user.home"), ".mihon").also { it.mkdirs() }
-    val preferenceStore = initConfigLayer(appDir)
-    val networkHelper = initNetworkLayer(appDir, preferenceStore)
-    val handler = initDataLayer(appDir)
-    initExtensionLayer(appDir, networkHelper, handler)
+    val paths = DesktopPlatformPaths.current()
+    val preferenceStore = initConfigLayer(paths.configDir)
+    val networkHelper = initNetworkLayer(paths, preferenceStore)
+    val handler = initDataLayer(paths)
+    initExtensionLayer(paths, networkHelper, handler)
     initDomainLayer(handler)
-    initUILayer(appDir, preferenceStore, networkHelper, handler)
+    initUILayer(paths, preferenceStore, networkHelper, handler)
 }
 
 // ── Config layer ─────────────────────────────────────────────────────────────
@@ -117,7 +123,7 @@ internal fun initConfigLayer(appDir: File): DesktopPreferenceStore {
 // HTTP client, JSON serializer, DoH, Cloudflare bypass.
 // Depends on: config layer (preferenceStore for DoH setting).
 
-internal fun initNetworkLayer(appDir: File, preferenceStore: DesktopPreferenceStore): DesktopNetworkHelper {
+internal fun initNetworkLayer(paths: DesktopPlatformPaths, preferenceStore: DesktopPreferenceStore): DesktopNetworkHelper {
     val dohProvider = preferenceStore.getObjectFromString(
         key = "doh_provider",
         defaultValue = mihon.desktop.settings.DohProvider.OFF,
@@ -127,7 +133,8 @@ internal fun initNetworkLayer(appDir: File, preferenceStore: DesktopPreferenceSt
     val challengeManager = mihon.desktop.network.CloudflareChallengeManager()
     Injekt.addSingleton(challengeManager)
     val networkHelper = DesktopNetworkHelper(
-        cacheDir = File(appDir, "cache/network"),
+        cacheDir = paths.networkCacheDir,
+        cookieStorageFile = paths.cookiesFile,
         dohProvider = dohProvider,
         challengeManager = challengeManager,
     )
@@ -147,30 +154,47 @@ internal fun initNetworkLayer(appDir: File, preferenceStore: DesktopPreferenceSt
 // SQLite database + all repository implementations.
 // No dependency on network or extensions.
 
-internal fun initDataLayer(appDir: File): DatabaseHandler {
-    val handler = initDatabase(File(appDir, "mihon.db"))
+internal fun initDataLayer(paths: DesktopPlatformPaths): DatabaseHandler {
+    val handler = initDatabase(paths.databaseFile)
     val mangaRepository: MangaRepository = MangaRepositoryImpl(handler)
     val chapterRepository: ChapterRepository = ChapterRepositoryImpl(handler)
     val categoryRepository: CategoryRepository = CategoryRepositoryImpl(handler)
     val historyRepository: HistoryRepository = HistoryRepositoryImpl(handler)
     val updatesRepository: UpdatesRepository = UpdatesRepositoryImpl(handler)
+    val creatorRepository: CreatorRepository = CreatorRepositoryImpl(handler)
     val extensionRepoRepository: ExtensionRepoRepository = ExtensionRepoRepositoryImpl(handler)
     Injekt.addSingleton(mangaRepository)
     Injekt.addSingleton(chapterRepository)
     Injekt.addSingleton(categoryRepository)
     Injekt.addSingleton(historyRepository)
     Injekt.addSingleton(updatesRepository)
+    Injekt.addSingleton(creatorRepository)
     Injekt.addSingleton(extensionRepoRepository)
     return handler
 }
+
+internal fun initDataLayer(appDir: File): DatabaseHandler = initDataLayer(
+    DesktopPlatformPaths(
+        configDir = appDir,
+        databaseFile = File(appDir, "mihon.db"),
+        networkCacheDir = File(appDir, "cache/network"),
+        cookiesFile = File(appDir, "cookies.json"),
+        downloadsDir = File(appDir, "downloads"),
+        extensionsDir = File(appDir, "extensions"),
+        coversDir = File(appDir, "covers"),
+        logsDir = File(appDir, "logs"),
+        backupsDir = File(appDir, "backups"),
+        testScreenshotsDir = File(appDir, "test-screenshots"),
+    ),
+)
 
 // ── Extension layer ────────────────────────────────────────────────────────────
 // Extension loader, source manager, extension API.
 // Depends on: data layer (extensionRepoRepository), network layer.
 
-internal fun initExtensionLayer(appDir: File, networkHelper: DesktopNetworkHelper, handler: DatabaseHandler) {
+internal fun initExtensionLayer(paths: DesktopPlatformPaths, networkHelper: DesktopNetworkHelper, handler: DatabaseHandler) {
     val extensionManager = DesktopExtensionManager(
-        DesktopExtensionLoader(File(appDir, "extensions")),
+        DesktopExtensionLoader(paths.extensionsDir),
     )
     extensionManager.loadAll()
     Injekt.addSingleton(extensionManager)
@@ -205,7 +229,10 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
     val categoryRepository = Injekt.get<CategoryRepository>()
     val historyRepository = Injekt.get<HistoryRepository>()
     val updatesRepository = Injekt.get<UpdatesRepository>()
+    val creatorRepository = Injekt.get<CreatorRepository>()
+    val sourceMangaSearchService = SourceMangaSearchService()
 
+    Injekt.addSingleton(sourceMangaSearchService)
     Injekt.addSingleton(GetLibraryManga(mangaRepository))
     Injekt.addSingleton(GetDuplicateLibraryManga(mangaRepository))
     Injekt.addSingleton(GetUpcomingManga(mangaRepository))
@@ -230,6 +257,7 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
 
     val addMangaToLibrary = AddMangaToLibrary(networkToLocalManga, mangaRepository, chapterRepository)
     Injekt.addSingleton(addMangaToLibrary)
+    Injekt.addSingleton(SaveSourceMangaForDetails(networkToLocalManga, mangaRepository, chapterRepository))
     Injekt.addSingleton(GetFavorites(mangaRepository))
     val setMangaCategories = SetMangaCategories(mangaRepository)
     Injekt.addSingleton(setMangaCategories)
@@ -246,6 +274,7 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
     Injekt.addSingleton(UpdateMangaNotes(mangaRepository))
     Injekt.addSingleton(ReaderModeMemoryCleaner(mangaRepository))
     Injekt.addSingleton(LibraryUpdateChecker(chapterRepository))
+    Injekt.addSingleton(CreatorDiscoveryService(creatorRepository, sourceMangaSearchService))
 }
 
 // ── UI / Service layer ────────────────────────────────────────────────────────
@@ -254,7 +283,7 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
 // Depends on: all lower layers.
 
 internal fun initUILayer(
-    appDir: File,
+    paths: DesktopPlatformPaths,
     preferenceStore: DesktopPreferenceStore,
     networkHelper: DesktopNetworkHelper,
     handler: DatabaseHandler,
@@ -268,7 +297,8 @@ internal fun initUILayer(
     val upsertHistory = Injekt.get<UpsertHistory>()
 
     Injekt.addSingleton(ReaderPreferences())
-    Injekt.addSingleton(DesktopMangaCoverManager(File(appDir, "covers")))
+    Injekt.addSingleton(paths)
+    Injekt.addSingleton(DesktopMangaCoverManager(paths.coversDir))
     val notificationService = DesktopNotificationService()
     Injekt.addSingleton(notificationService)
     Injekt.addSingleton(DesktopCategoryManager(categoryRepository))
@@ -280,13 +310,13 @@ internal fun initUILayer(
             sourceManager = Injekt.get<SourceManager>(),
             categoryRepository = categoryRepository,
             notificationService = notificationService,
+            creatorDiscoveryService = Injekt.get<CreatorDiscoveryService>(),
         ),
     )
     Injekt.addSingleton(UpdatesPreferences(preferenceStore))
 
-    val downloadsDir = File(appDir, "downloads")
     val downloadPreferences = DesktopDownloadPreferences(preferenceStore)
-    val downloadProvider = mihon.desktop.download.DesktopDownloadProvider(downloadsDir)
+    val downloadProvider = mihon.desktop.download.DesktopDownloadProvider(paths.downloadsDir)
     val downloadManager = mihon.desktop.download.DesktopDownloadManager(
         provider = downloadProvider,
         downloadPreferences = downloadPreferences,
@@ -319,9 +349,19 @@ internal fun initUILayer(
         chapterRepository = chapterRepository,
         categoryRepository = categoryRepository,
         historyRepository = historyRepository,
+        excludedScanlatorsForManga = { mangaId ->
+            Injekt.get<GetExcludedScanlators>().await(mangaId).toList()
+        },
     )
-    autoBackupScheduler.start()
     Injekt.addSingleton(autoBackupScheduler)
+    Injekt.addSingleton(
+        mihon.desktop.DesktopAppRuntime.create(
+            libraryUpdateScheduler = Injekt.get<LibraryUpdateScheduler>(),
+            localSourceScanService = Injekt.get<LocalSourceScanService>(),
+            autoBackupScheduler = autoBackupScheduler,
+            readerModeMemoryCleaner = Injekt.get<ReaderModeMemoryCleaner>(),
+        ),
+    )
 }
 
 /**

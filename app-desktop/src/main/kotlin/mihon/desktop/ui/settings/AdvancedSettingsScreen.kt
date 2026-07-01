@@ -1,5 +1,7 @@
 package mihon.desktop.ui.settings
 
+import mihon.desktop.LocalDesktopUiDependencies
+
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -44,10 +46,9 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import mihon.desktop.CrashHandler
 import mihon.desktop.platform.DesktopNetworkHelper
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
-import java.io.File
+import mihon.desktop.platform.DesktopPlatformPaths
 
 class AdvancedSettingsScreen : Screen {
 
@@ -55,7 +56,8 @@ class AdvancedSettingsScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val networkHelper = remember { Injekt.get<DesktopNetworkHelper>() }
+        val networkHelper = LocalDesktopUiDependencies.current.networkHelper
+        val paths = remember { DesktopPlatformPaths.current() }
         val scope = rememberCoroutineScope()
 
         val snackbar = remember { SnackbarHostState() }
@@ -73,10 +75,7 @@ class AdvancedSettingsScreen : Screen {
         // Compute network cache size once (and refresh after clearing)
         val cacheSize by produceState(initialValue = "", cacheCleared) {
             value = withContext(Dispatchers.IO) {
-                val cacheDir = File(
-                    System.getProperty("user.home"),
-                    ".mihon/cache/network",
-                )
+                val cacheDir = paths.networkCacheDir
                 if (cacheDir.exists()) formatBytes(cacheDir.walkTopDown().sumOf { it.length() })
                 else "0 B"
             }
@@ -135,6 +134,32 @@ class AdvancedSettingsScreen : Screen {
                     modifier = Modifier.padding(horizontal = 16.dp),
                 ) {
                     Text("Clear network cache")
+                }
+
+                HorizontalDivider()
+
+                ListItem(
+                    headlineContent = { Text("Crash log folder") },
+                    supportingContent = { Text(CrashHandler.defaultCrashLogDir().path) },
+                )
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            val opened = withContext(Dispatchers.IO) {
+                                DesktopDirectoryOpener.open(CrashHandler.defaultCrashLogDir())
+                            }
+                            snackbar.showSnackbar(
+                                if (opened) {
+                                    "Crash log folder opened"
+                                } else {
+                                    "Could not open crash log folder"
+                                },
+                            )
+                        }
+                    },
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                ) {
+                    Text("Open crash log folder")
                 }
 
                 HorizontalDivider()
@@ -228,11 +253,7 @@ class AdvancedSettingsScreen : Screen {
                         onClick = {
                             showClearCacheDialog = false
                             scope.launch(Dispatchers.IO) {
-                                val cacheDir = File(
-                                    System.getProperty("user.home"),
-                                    ".mihon/cache/network",
-                                )
-                                cacheDir.deleteRecursively()
+                                paths.networkCacheDir.deleteRecursively()
                                 withContext(Dispatchers.Main) {
                                     cacheCleared = !cacheCleared // trigger produceState refresh
                                 }

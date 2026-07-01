@@ -24,11 +24,14 @@ fun DesktopExtensionLoader.readMetaVersionCode(jarFile: java.io.File): Long =
 open class DesktopExtensionLoader(
     val extensionsDirectory: File = File(System.getProperty("user.home"), ".mihon/extensions"),
 ) {
+    private val mutableDiagnostics = mutableListOf<ExtensionLoadDiagnostic>()
+    val diagnostics: List<ExtensionLoadDiagnostic> get() = mutableDiagnostics.toList()
 
     /**
      * Loads all Source implementations from JAR files in the extensions directory.
      */
     open fun loadExtensions(): List<LoadedExtension> {
+        mutableDiagnostics.clear()
         if (!extensionsDirectory.exists() || !extensionsDirectory.isDirectory) {
             return emptyList()
         }
@@ -89,9 +92,19 @@ open class DesktopExtensionLoader(
         } catch (e: Throwable) {
             // ServiceConfigurationError (extends Error) is thrown when a ServiceLoader provider
             // cannot be instantiated — must catch Throwable, not just Exception.
-            System.err.println("Failed to load extension from ${jarFile.name}: ${e.message}")
+            recordDiagnostic(jarFile, e)
             emptyList()
         }
+    }
+
+    private fun recordDiagnostic(jarFile: File, error: Throwable) {
+        mutableDiagnostics += ExtensionLoadDiagnostic(
+            jarName = jarFile.name,
+            category = ExtensionFailureCategory.from(error),
+            errorType = error.javaClass.name,
+            message = error.message ?: error.javaClass.simpleName,
+        )
+        System.err.println("Failed to load extension from ${jarFile.name}: ${error.message}")
     }
 
     /**
@@ -152,8 +165,8 @@ open class DesktopExtensionLoader(
                         }
                     }
             }
-        } catch (_: Throwable) {
-            // Malformed JAR — nothing to scan
+        } catch (e: Throwable) {
+            recordDiagnostic(jarFile, e)
         }
         return result
     }
@@ -166,6 +179,13 @@ data class LoadedExtension(
     val source: Source,
     val jarFile: File,
     val classLoader: ClassLoader,
+)
+
+data class ExtensionLoadDiagnostic(
+    val jarName: String,
+    val category: ExtensionFailureCategory,
+    val errorType: String,
+    val message: String,
 )
 
 /**

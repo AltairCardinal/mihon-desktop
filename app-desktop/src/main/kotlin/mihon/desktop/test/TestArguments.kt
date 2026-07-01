@@ -13,7 +13,7 @@ data class TestArguments(
     companion object {
         const val DEFAULT_HTTP_PORT = 8080
         const val DEFAULT_JMX_PORT = 9999
-        const val DEFAULT_SCREENSHOT_DIR = "/tmp/mihon-screens"
+        val DEFAULT_SCREENSHOT_DIR: String = TestArtifactPaths.defaultScreenshotDir().toString()
 
         /**
          * Parse command-line arguments.

@@ -1,5 +1,6 @@
 package mihon.desktop
 
+import mihon.desktop.platform.DesktopPlatformPaths
 import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
@@ -12,16 +13,15 @@ import java.util.Date
  */
 object CrashHandler : Thread.UncaughtExceptionHandler {
 
-    private val crashLogDir = File("/tmp")
-    private val crashLogFile = File(crashLogDir, "mihon_crash.log")
+    private const val MAX_LOG_BYTES = 2L * 1024L * 1024L
+    private const val MAX_ARCHIVES = 3
 
     private val timestampFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS")
 
     override fun uncaughtException(thread: Thread, exception: Throwable) {
         val crashReport = buildCrashReport(thread, exception)
 
-        // Write to crash log file
-        crashLogFile.appendText(crashReport)
+        appendCrashReport(crashLogFile(), crashReport)
 
         // Also print to stderr for visibility
         System.err.println(crashReport)
@@ -35,6 +35,42 @@ object CrashHandler : Thread.UncaughtExceptionHandler {
         } catch (_: InterruptedException) {
             // Ignore
         }
+    }
+
+    internal fun defaultCrashLogDir(): File {
+        return DesktopPlatformPaths.current().logsDir
+    }
+
+    internal fun crashLogFile(directory: File = defaultCrashLogDir()): File = File(directory, "mihon_crash.log")
+
+    @Synchronized
+    internal fun appendCrashReport(
+        file: File,
+        report: String,
+        maxBytes: Long = MAX_LOG_BYTES,
+        maxArchives: Int = MAX_ARCHIVES,
+    ) {
+        file.parentFile?.mkdirs()
+        if (file.exists() && file.length() >= maxBytes) {
+            rotateCrashLogs(file, maxArchives)
+        }
+        file.appendText(report)
+    }
+
+    private fun rotateCrashLogs(file: File, maxArchives: Int) {
+        if (maxArchives <= 0) {
+            file.delete()
+            return
+        }
+
+        File("${file.path}.$maxArchives").delete()
+        for (index in maxArchives - 1 downTo 1) {
+            val source = File("${file.path}.$index")
+            if (source.exists()) {
+                source.renameTo(File("${file.path}.${index + 1}"))
+            }
+        }
+        file.renameTo(File("${file.path}.1"))
     }
 
     private fun buildCrashReport(thread: Thread, exception: Throwable): String {

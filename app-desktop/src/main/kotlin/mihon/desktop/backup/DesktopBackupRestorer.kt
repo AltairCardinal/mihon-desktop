@@ -28,6 +28,7 @@ class DesktopBackupRestorer(
     private val chapterRepository: ChapterRepository,
     private val categoryRepository: CategoryRepository,
     private val historyRepository: HistoryRepository,
+    private val setExcludedScanlatorsForManga: suspend (Long, List<String>) -> Unit = { _, _ -> },
 ) {
 
     /**
@@ -52,6 +53,7 @@ class DesktopBackupRestorer(
                     backup.backupCategories,
                     categoryNameToId,
                 )
+                restoreExcludedScanlators(mangaId, backupManga.excludedScanlators, result)
                 result.incrementSuccess()
             } catch (e: Exception) {
                 result.addError(backupManga.url, e.message ?: "unknown error")
@@ -141,14 +143,14 @@ class DesktopBackupRestorer(
                     nextUpdate = 0L,
                     fetchInterval = 0,
                     dateAdded = backupManga.dateAdded,
-                    viewerFlags = 0L,
+                    viewerFlags = backupManga.viewer.toLong(),
                     chapterFlags = backupManga.chapterFlags.toLong(),
                     coverLastModified = 0L,
-                    updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
+                    updateStrategy = backupManga.updateStrategy,
                     initialized = backupManga.initialized,
                     lastModifiedAt = backupManga.lastModifiedAt,
-                    favoriteModifiedAt = null,
-                    version = 0L,
+                    favoriteModifiedAt = backupManga.favoriteModifiedAt,
+                    version = backupManga.version,
                     notes = backupManga.notes,
                 ),
             ),
@@ -251,6 +253,19 @@ class DesktopBackupRestorer(
         val ids = resolveBackupCategoryIds(backupCategoryIndices, backupCategories, categoryNameToId)
         if (ids.isNotEmpty()) {
             mangaRepository.setMangaCategories(mangaId, ids)
+        }
+    }
+
+    private suspend fun restoreExcludedScanlators(
+        mangaId: Long,
+        excludedScanlators: List<String>,
+        result: RestoreResult,
+    ) {
+        if (excludedScanlators.isEmpty()) return
+        try {
+            setExcludedScanlatorsForManga(mangaId, excludedScanlators)
+        } catch (e: Exception) {
+            result.addError("excludedScanlators:manga$mangaId", e.message ?: "restore failed")
         }
     }
 

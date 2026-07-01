@@ -16,13 +16,14 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 
 class DesktopNetworkHelper(
-    cacheDir: File = File(System.getProperty("user.home"), ".mihon/cache/network"),
+    cacheDir: File = DesktopPlatformPaths.current().networkCacheDir,
+    cookieStorageFile: File = DesktopPlatformPaths.current().cookiesFile,
     dohProvider: DohProvider = DohProvider.OFF,
     challengeManager: CloudflareChallengeManager? = null,
 ) {
 
     val cookieJar = DesktopCookieJar(
-        storageFile = File(System.getProperty("user.home"), ".mihon/cookies.json"),
+        storageFile = cookieStorageFile,
     )
 
     /** Base client without DoH — used to bootstrap DnsOverHttps. */

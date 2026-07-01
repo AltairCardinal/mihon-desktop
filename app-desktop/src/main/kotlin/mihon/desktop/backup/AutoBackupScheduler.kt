@@ -6,6 +6,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import mihon.desktop.platform.DesktopPlatformPaths
 import mihon.desktop.settings.DesktopAppPreferences
 import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.chapter.repository.ChapterRepository
@@ -35,6 +36,8 @@ class AutoBackupScheduler(
     private val chapterRepository: ChapterRepository,
     private val categoryRepository: CategoryRepository,
     private val historyRepository: HistoryRepository,
+    private val excludedScanlatorsForManga: suspend (Long) -> List<String> = { emptyList() },
+    private val defaultBackupDir: File = DesktopPlatformPaths.current().backupsDir,
     scope: CoroutineScope? = null,
 ) {
     private val scope: CoroutineScope = scope ?: CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -70,7 +73,7 @@ class AutoBackupScheduler(
         try {
             val backupDir = File(
                 appPreferences.autoBackupDir.get().ifBlank {
-                    System.getProperty("user.home") + "/MihonDesktopBackups"
+                    defaultBackupDir.path
                 },
             )
             backupDir.mkdirs()
@@ -80,6 +83,7 @@ class AutoBackupScheduler(
                 chapterRepository,
                 categoryRepository,
                 historyRepository,
+                excludedScanlatorsForManga = excludedScanlatorsForManga,
             )
             DesktopBackupCreator.writeBackupFile(backup, backupDir)
 

@@ -29,7 +29,7 @@ object DesktopBackupCreator {
 
     private val proto = ProtoBuf
 
-    private val filenameDateFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm")
+    private val filenameDateFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss-SSS")
 
     // ── Encode / decode ────────────────────────────────────────────────────────
 
@@ -55,13 +55,25 @@ object DesktopBackupCreator {
 
     /**
      * Writes [backup] as a `.tachibk` file inside [directory].
-     * Filename: `mihon_YYYY-MM-DD_HH-mm.tachibk`
+     * Filename: `mihon_YYYY-MM-DD_HH-mm-ss-SSS.tachibk`
      */
+    @Synchronized
     fun writeBackupFile(backup: Backup, directory: File): File {
         directory.mkdirs()
         val timestamp = LocalDateTime.now().format(filenameDateFormat)
-        val file = File(directory, "mihon_$timestamp.tachibk")
+        val file = nextAvailableBackupFile(directory, timestamp)
         file.writeBytes(encodeToBytes(backup))
+        return file
+    }
+
+    private fun nextAvailableBackupFile(directory: File, timestamp: String): File {
+        val baseName = "mihon_$timestamp"
+        var file = File(directory, "$baseName.tachibk")
+        var suffix = 2
+        while (file.exists()) {
+            file = File(directory, "${baseName}_$suffix.tachibk")
+            suffix += 1
+        }
         return file
     }
 
@@ -86,6 +98,7 @@ object DesktopBackupCreator {
         chapterRepository: ChapterRepository,
         categoryRepository: CategoryRepository,
         historyRepository: HistoryRepository,
+        excludedScanlatorsForManga: suspend (Long) -> List<String> = { emptyList() },
     ): Backup {
         val mangas = mangaRepository.getFavorites()
         val allCategories = categoryRepository.getAll()
@@ -140,12 +153,17 @@ object DesktopBackupCreator {
                 status = manga.status.toInt(),
                 thumbnailUrl = manga.thumbnailUrl,
                 dateAdded = manga.dateAdded,
+                viewer = manga.viewerFlags.toInt(),
                 favorite = manga.favorite,
                 chapterFlags = manga.chapterFlags.toInt(),
                 chapters = backupChapters,
                 history = backupHistory,
                 categories = categoryIndices,
+                updateStrategy = manga.updateStrategy,
                 lastModifiedAt = manga.lastModifiedAt,
+                favoriteModifiedAt = manga.favoriteModifiedAt,
+                excludedScanlators = excludedScanlatorsForManga(manga.id),
+                version = manga.version,
                 notes = manga.notes,
                 initialized = manga.initialized,
             )

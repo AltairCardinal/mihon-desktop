@@ -2,6 +2,7 @@ package mihon.desktop.di
 
 import app.cash.sqldelight.db.SqlDriver
 import mihon.desktop.platform.DesktopNetworkHelper
+import mihon.desktop.platform.DesktopPlatformPaths
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -9,6 +10,10 @@ import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.repository.CategoryRepository
+import tachiyomi.domain.creator.repository.CreatorRepository
+import tachiyomi.domain.creator.service.CreatorDiscoveryService
+import mihon.desktop.domain.SaveSourceMangaForDetails
+import tachiyomi.domain.source.service.SourceMangaSearchService
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
@@ -37,11 +42,11 @@ class DILayerSplitContractTest {
         // These :: references are resolved at compile time.
         // The test body will never execute if compilation fails.
         val configFn: (File) -> DesktopPreferenceStore = ::initConfigLayer
-        val networkFn: (File, DesktopPreferenceStore) -> DesktopNetworkHelper = ::initNetworkLayer
+        val networkFn: (DesktopPlatformPaths, DesktopPreferenceStore) -> DesktopNetworkHelper = ::initNetworkLayer
         val dataFn: (File) -> DatabaseHandler = ::initDataLayer
-        val extFn: (File, DesktopNetworkHelper, DatabaseHandler) -> Unit = ::initExtensionLayer
+        val extFn: (DesktopPlatformPaths, DesktopNetworkHelper, DatabaseHandler) -> Unit = ::initExtensionLayer
         val domainFn: (DatabaseHandler) -> Unit = ::initDomainLayer
-        val uiFn: (File, DesktopPreferenceStore, DesktopNetworkHelper, DatabaseHandler) -> Unit =
+        val uiFn: (DesktopPlatformPaths, DesktopPreferenceStore, DesktopNetworkHelper, DatabaseHandler) -> Unit =
             ::initUILayer
 
         assertNotNull(configFn)
@@ -76,6 +81,10 @@ class DILayerSplitContractTest {
 
         assertNotNull(Injekt.get<CategoryRepository>())
         assertNotNull(Injekt.get<SetMangaCategories>())
+        assertNotNull(Injekt.get<CreatorRepository>())
+        assertNotNull(Injekt.get<CreatorDiscoveryService>())
+        assertNotNull(Injekt.get<SourceMangaSearchService>())
+        assertNotNull(Injekt.get<SaveSourceMangaForDetails>())
     }
 
     /**

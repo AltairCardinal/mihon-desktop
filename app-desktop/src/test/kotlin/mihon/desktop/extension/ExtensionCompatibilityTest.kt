@@ -124,6 +124,9 @@ class ExtensionCompatibilityTest {
         val loader = DesktopExtensionLoader(tempDir)
         val results = loader.loadExtensions()
         assertTrue(results.isEmpty(), "Corrupt JAR should produce 0 results, not throw")
+        assertEquals(1, loader.diagnostics.size)
+        assertEquals("corrupt.jar", loader.diagnostics.single().jarName)
+        assertEquals(ExtensionFailureCategory.LOAD_ERROR, loader.diagnostics.single().category)
     }
 
     @Test

@@ -7,6 +7,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import mihon.desktop.settings.DesktopAppPreferences
+import tachiyomi.domain.creator.service.CreatorDiscoveryService
 import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.source.service.SourceManager
@@ -25,6 +26,7 @@ class LibraryUpdateScheduler(
     private val sourceManager: SourceManager,
     private val categoryRepository: CategoryRepository? = null,
     private val notificationService: DesktopNotificationService? = null,
+    private val creatorDiscoveryService: CreatorDiscoveryService? = null,
     scope: CoroutineScope? = null,
 ) {
     private val scope: CoroutineScope = scope ?: CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -102,6 +104,16 @@ class LibraryUpdateScheduler(
                         message = "$newChapters new chapter${if (newChapters != 1) "s" else ""} found",
                     ),
                 )
+            }
+            creatorDiscoveryService?.discoverDueWatches(sources)?.let { result ->
+                if (result.newCandidateCount > 0) {
+                    notificationService?.post(
+                        DesktopNotification(
+                            title = "Author works discovered",
+                            message = "${result.newCandidateCount} new candidate${if (result.newCandidateCount != 1) "s" else ""} found",
+                        ),
+                    )
+                }
             }
         } catch (_: Exception) {
             // Silently ignore scheduler errors to keep the loop alive.

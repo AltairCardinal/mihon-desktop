@@ -1,6 +1,7 @@
 package mihon.desktop.test.screenshot
 
 import org.slf4j.LoggerFactory
+import mihon.desktop.test.TestArtifactPaths
 import java.awt.Robot
 import java.awt.Toolkit
 import java.io.File
@@ -21,7 +22,7 @@ object ScreenshotService {
     
     private val logger = LoggerFactory.getLogger(ScreenshotService::class.java)
     
-    private var screenshotDir: Path = Paths.get("/tmp/mihon-screens")
+    private var screenshotDir: Path = TestArtifactPaths.defaultScreenshotDir()
     private var enabled = false
     
     /**
