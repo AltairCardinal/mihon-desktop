@@ -1,5 +1,7 @@
 package mihon.desktop.ui.browse
 
+import mihon.desktop.LocalDesktopUiDependencies
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -36,8 +38,6 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.LocalSourceScanService
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 import java.awt.FileDialog
 import java.io.File
 import javax.swing.JFileChooser
@@ -57,8 +57,8 @@ class LocalSourceSettingsScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val prefs = remember { Injekt.get<DesktopAppPreferences>() }
-        val scanService = remember { Injekt.get<LocalSourceScanService>() }
+        val prefs = LocalDesktopUiDependencies.current.appPreferences
+        val scanService = LocalDesktopUiDependencies.current.localSourceScanService
 
         val scanState by scanService.scanState.collectAsState()
         val mangaList by scanService.mangaList.collectAsState()

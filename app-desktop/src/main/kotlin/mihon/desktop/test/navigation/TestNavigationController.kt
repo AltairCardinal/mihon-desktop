@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import mihon.desktop.test.state.readerState
+import mihon.desktop.ui.authors.AuthorsTab
 import mihon.desktop.ui.browse.BrowseTab
 import mihon.desktop.ui.history.HistoryTab
 import mihon.desktop.ui.library.LibraryTab
@@ -142,6 +143,7 @@ object TestNavigationController {
         "HomeScreen",
         "LibraryTab", "Library",
         "BrowseTab", "Browse",
+        "AuthorsTab", "Authors",
         "UpdatesTab", "Updates",
         "HistoryTab", "History",
         "MoreTab", "More",
@@ -160,6 +162,7 @@ object TestNavigationController {
             "Home" -> null // HomeScreen contains the TabNavigator
             "Library" -> LibraryTab
             "Browse" -> BrowseTab
+            "Authors" -> AuthorsTab
             "Updates" -> UpdatesTab
             "History" -> HistoryTab
             "More" -> MoreTab

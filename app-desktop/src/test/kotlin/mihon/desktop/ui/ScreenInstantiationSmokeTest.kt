@@ -4,11 +4,14 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.tab.Tab
 import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.ui.browse.GlobalSearchScreen
+import mihon.desktop.ui.authors.AuthorDetailScreen
+import mihon.desktop.ui.authors.AuthorsRootScreen
+import mihon.desktop.ui.authors.AuthorsTab
+import mihon.desktop.ui.authors.WorkCompareScreen
 import mihon.desktop.ui.browse.LocalChapterScreen
 import mihon.desktop.ui.browse.LocalMangaBrowseScreen
 import mihon.desktop.ui.browse.LocalSourceSettingsScreen
 import mihon.desktop.ui.browse.SourceBrowseScreen
-import mihon.desktop.ui.browse.SourceMangaDetailScreen
 import mihon.desktop.ui.download.DownloadQueueScreen
 import mihon.desktop.ui.extension.ExtensionListScreen
 import mihon.desktop.ui.extension.SourcePreferencesScreen
@@ -47,21 +50,34 @@ import org.junit.jupiter.api.Test
  */
 class ScreenInstantiationSmokeTest {
 
-    // ── Browse ──────────────────────────────────────────────────────────────
+    // ── Authors ─────────────────────────────────────────────────────────────
 
-    @Test fun `SourceBrowseScreen is Screen`() {
-        val s = SourceBrowseScreen(sourceId = 1L)
+    @Test fun `AuthorsTab is Tab`() {
+        assert(AuthorsTab is Tab)
+    }
+
+    @Test fun `AuthorsRootScreen is Screen not Tab`() {
+        val s = AuthorsRootScreen()
         assert(s is Screen)
         assert(s !is Tab)
     }
 
-    @Test fun `SourceMangaDetailScreen is Screen`() {
-        val s = SourceMangaDetailScreen(
-            sourceId = 1L,
-            mangaUrl = "/manga/test",
-            mangaTitle = "Test Manga",
-            thumbnailUrl = null,
-        )
+    @Test fun `AuthorDetailScreen is Screen not Tab`() {
+        val s = AuthorDetailScreen(creatorId = 1L)
+        assert(s is Screen)
+        assert(s !is Tab)
+    }
+
+    @Test fun `WorkCompareScreen is Screen not Tab`() {
+        val s = WorkCompareScreen(workId = 1L)
+        assert(s is Screen)
+        assert(s !is Tab)
+    }
+
+    // ── Browse ──────────────────────────────────────────────────────────────
+
+    @Test fun `SourceBrowseScreen is Screen`() {
+        val s = SourceBrowseScreen(sourceId = 1L)
         assert(s is Screen)
         assert(s !is Tab)
     }

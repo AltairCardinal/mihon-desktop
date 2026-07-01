@@ -1,5 +1,7 @@
 package mihon.desktop.ui.browse
 
+import mihon.desktop.LocalDesktopUiDependencies
+
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -49,8 +51,6 @@ import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import eu.kanade.tachiyomi.source.CatalogueSource
 import tachiyomi.domain.source.service.SourceManager
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 object BrowseTab : Tab {
 
@@ -85,7 +85,7 @@ class BrowseSourceListScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val sourceManager = remember { Injekt.get<SourceManager>() }
+        val sourceManager = LocalDesktopUiDependencies.current.sourceManager
         val allSources = remember { sourceManager.getCatalogueSources() }
 
         var selectedLang by remember { mutableStateOf<String?>(null) }

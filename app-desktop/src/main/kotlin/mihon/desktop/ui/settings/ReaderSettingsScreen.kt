@@ -1,5 +1,7 @@
 package mihon.desktop.ui.settings
 
+import mihon.desktop.LocalDesktopUiDependencies
+
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -28,8 +30,6 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.settings.ReaderDefaultMode
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 class ReaderSettingsScreen : Screen {
 
@@ -37,7 +37,7 @@ class ReaderSettingsScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val prefs = remember { Injekt.get<DesktopAppPreferences>() }
+        val prefs = LocalDesktopUiDependencies.current.appPreferences
         var readerMode by remember { mutableStateOf(prefs.defaultReaderMode.get()) }
         var isRtl by remember { mutableStateOf(prefs.defaultRtl.get()) }
 

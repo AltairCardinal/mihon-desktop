@@ -1,5 +1,7 @@
 package mihon.desktop.ui.more
 
+import mihon.desktop.LocalDesktopUiDependencies
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -37,8 +39,6 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.manga.interactor.GetLibraryManga
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 /** Statistics aggregated from the library. All fields are counts/sums. */
 data class StatsData(
@@ -67,7 +67,7 @@ class StatsScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val getLibraryManga = remember { Injekt.get<GetLibraryManga>() }
+        val getLibraryManga = LocalDesktopUiDependencies.current.getLibraryManga
         var stats by remember { mutableStateOf(StatsData(0, 0, 0, 0L, 0L)) }
 
         LaunchedEffect(Unit) {

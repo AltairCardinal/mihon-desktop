@@ -4,6 +4,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class TestNavigationControllerTest {
@@ -40,5 +41,11 @@ class TestNavigationControllerTest {
 
         assertNull(TestNavigationController.pendingReaderScreen.value)
         assertFalse(TestNavigationController.pendingPop.value)
+    }
+
+    @Test
+    fun `authors tab is available to automation navigation`() {
+        assertTrue(TestNavigationController.getAvailableScreens().contains("AuthorsTab"))
+        assertNotNull(TestNavigationController.getTabOrNull("AuthorsTab"))
     }
 }

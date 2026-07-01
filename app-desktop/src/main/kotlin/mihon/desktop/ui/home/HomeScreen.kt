@@ -1,5 +1,7 @@
 package mihon.desktop.ui.home
 
+import mihon.desktop.LocalDesktopUiDependencies
+
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,6 +37,7 @@ import mihon.desktop.network.CloudflareChallenge
 import mihon.desktop.network.CloudflareChallengeManager
 import mihon.desktop.test.navigation.TestNavigationController
 import mihon.desktop.ui.browse.BrowseTab
+import mihon.desktop.ui.authors.AuthorsTab
 import mihon.desktop.ui.cloudflare.CloudflareBypassDialog
 import mihon.desktop.ui.extension.ExtensionListScreen
 import mihon.desktop.ui.history.HistoryTab
@@ -48,16 +51,14 @@ import mihon.desktop.ui.settings.GeneralSettingsScreen
 import mihon.desktop.ui.settings.MoreRootScreen
 import mihon.desktop.ui.updates.UpdatesTab
 import okhttp3.HttpUrl.Companion.toHttpUrl
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 class HomeScreen : Screen {
 
     @Composable
     override fun Content() {
         var activeChallenge by remember { mutableStateOf<CloudflareChallenge?>(null) }
-        val challengeManager = remember { Injekt.get<CloudflareChallengeManager>() }
-        val notificationService = remember { Injekt.get<DesktopNotificationService>() }
+        val challengeManager = LocalDesktopUiDependencies.current.cloudflareChallengeManager
+        val notificationService = LocalDesktopUiDependencies.current.notificationService
         val snackbarHostState = remember { SnackbarHostState() }
 
         // Cloudflare challenges
@@ -80,7 +81,7 @@ class HomeScreen : Screen {
         }
 
         activeChallenge?.let { challenge ->
-            val networkHelper = remember { Injekt.get<mihon.desktop.platform.DesktopNetworkHelper>() }
+            val networkHelper = LocalDesktopUiDependencies.current.networkHelper
             CloudflareBypassDialog(
                 url = challenge.url,
                 onCookieSubmit = { cookieValue ->
@@ -151,6 +152,7 @@ class HomeScreen : Screen {
                                 TabNavigationItem(UpdatesTab)
                                 TabNavigationItem(HistoryTab)
                                 TabNavigationItem(BrowseTab)
+                                TabNavigationItem(AuthorsTab)
                                 TabNavigationItem(MoreTab)
                             }
                         }

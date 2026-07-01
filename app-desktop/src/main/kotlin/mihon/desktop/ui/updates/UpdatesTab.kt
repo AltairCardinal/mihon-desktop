@@ -36,11 +36,10 @@ import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,6 +47,7 @@ import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -57,26 +57,14 @@ import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
-import mihon.desktop.domain.LibraryUpdateChecker
-import mihon.desktop.domain.ReaderProgressTracker
-import mihon.desktop.download.DesktopDownloadManager
-import mihon.desktop.download.DownloadItem
 import mihon.desktop.ui.reader.DesktopReaderScreen
+import mihon.desktop.updates.UpdatesScreenModelFactory
 import tachiyomi.core.common.preference.TriState
-import tachiyomi.domain.chapter.interactor.UpdateChapter
-import tachiyomi.domain.chapter.model.ChapterUpdate
-import tachiyomi.domain.manga.interactor.GetManga
-import tachiyomi.domain.source.service.SourceManager
-import tachiyomi.domain.updates.interactor.GetUpdates
 import tachiyomi.domain.updates.model.UpdatesWithRelations
-import tachiyomi.domain.updates.service.UpdatesPreferences
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 object UpdatesTab : Tab {
@@ -107,100 +95,55 @@ class UpdatesRootScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val getUpdates = remember { Injekt.get<GetUpdates>() }
-        val updateChapter = remember { Injekt.get<UpdateChapter>() }
-        val getManga = remember { Injekt.get<GetManga>() }
-        val downloadManager = remember { Injekt.get<DesktopDownloadManager>() }
-        val updateChecker = remember { Injekt.get<LibraryUpdateChecker>() }
-        val sourceManager = remember { Injekt.get<SourceManager>() }
-        val progressTracker = remember { Injekt.get<ReaderProgressTracker>() }
-        val updatesPreferences = remember { Injekt.get<UpdatesPreferences>() }
+        val model = rememberScreenModel { UpdatesScreenModelFactory.create() }
+        val state by model.state.collectAsState()
         val scope = rememberCoroutineScope()
 
-        var updateItems by remember { mutableStateOf<List<UpdatesWithRelations>>(emptyList()) }
-        var isRefreshing by remember { mutableStateOf(false) }
-        var showMarkAllReadDialog by remember { mutableStateOf(false) }
-        var showFilterDialog by remember { mutableStateOf(false) }
-
-        // Filter state — backed by preferences
-        var filterUnread by remember { mutableStateOf(updatesPreferences.filterUnread().get()) }
-        var filterDownloaded by remember { mutableStateOf(updatesPreferences.filterDownloaded().get()) }
-        var filterStarted by remember { mutableStateOf(updatesPreferences.filterStarted().get()) }
-        var filterBookmarked by remember { mutableStateOf(updatesPreferences.filterBookmarked().get()) }
-        var filterExcludedScanlators by remember { mutableStateOf(updatesPreferences.filterExcludedScanlators().get()) }
-
-        val hasActiveFilters = hasActiveUpdatesFilters(
-            filterUnread, filterDownloaded, filterStarted, filterBookmarked, filterExcludedScanlators,
-        )
-
-        // Re-subscribe whenever SQL-level filters change
-        LaunchedEffect(filterUnread, filterStarted, filterBookmarked, filterExcludedScanlators) {
-            val since = Instant.now().minus(14, ChronoUnit.DAYS)
-            getUpdates.subscribe(
-                instant = since,
-                unread = filterUnread.toBooleanOrNull(),
-                started = filterStarted.toBooleanOrNull(),
-                bookmarked = filterBookmarked.toBooleanOrNull(),
-                hideExcludedScanlators = filterExcludedScanlators,
-            ).collect { raw ->
-                updateItems = raw.applyDownloadedFilter(filterDownloaded) {
-                    downloadManager.isDownloaded(it.sourceId, it.mangaTitle, it.chapterName)
-                }
-            }
+        LaunchedEffect(Unit) {
+            model.loadUpdates()
         }
 
-        // Re-apply downloaded (client-side) filter when its state changes
-        LaunchedEffect(filterDownloaded) {
-            updateItems = updateItems.applyDownloadedFilter(filterDownloaded) {
-                downloadManager.isDownloaded(it.sourceId, it.mangaTitle, it.chapterName)
-            }
-        }
-
-        if (showMarkAllReadDialog) {
+        if (state.showMarkAllReadDialog) {
             AlertDialog(
-                onDismissRequest = { showMarkAllReadDialog = false },
+                onDismissRequest = { model.setShowMarkAllReadDialog(false) },
                 title = { Text("Mark all as read?") },
-                text = { Text("This will mark all ${updateItems.count { !it.read }} unread updates as read.") },
+                text = { Text("This will mark all ${state.items.count { !it.read }} unread updates as read.") },
                 confirmButton = {
                     TextButton(onClick = {
                         scope.launch {
-                            updateItems.filter { !it.read }.forEach { item ->
-                                updateChapter.await(ChapterUpdate(id = item.chapterId, read = true))
-                            }
-                            showMarkAllReadDialog = false
+                            model.markAllRead()
                         }
                     }) { Text("Mark all read") }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showMarkAllReadDialog = false }) { Text("Cancel") }
+                    TextButton(onClick = { model.setShowMarkAllReadDialog(false) }) { Text("Cancel") }
                 },
             )
         }
 
-        if (showFilterDialog) {
+        if (state.showFilterDialog) {
             UpdatesFilterDialog(
-                filterUnread = filterUnread,
-                filterDownloaded = filterDownloaded,
-                filterStarted = filterStarted,
-                filterBookmarked = filterBookmarked,
-                filterExcludedScanlators = filterExcludedScanlators,
+                filterUnread = state.filterUnread,
+                filterDownloaded = state.filterDownloaded,
+                filterStarted = state.filterStarted,
+                filterBookmarked = state.filterBookmarked,
+                filterExcludedScanlators = state.filterExcludedScanlators,
                 onToggleUnread = {
-                    filterUnread = filterUnread.next().also { updatesPreferences.filterUnread().set(it) }
+                    scope.launch { model.toggleUnreadFilter() }
                 },
                 onToggleDownloaded = {
-                    filterDownloaded = filterDownloaded.next().also { updatesPreferences.filterDownloaded().set(it) }
+                    model.toggleDownloadedFilter()
                 },
                 onToggleStarted = {
-                    filterStarted = filterStarted.next().also { updatesPreferences.filterStarted().set(it) }
+                    scope.launch { model.toggleStartedFilter() }
                 },
                 onToggleBookmarked = {
-                    filterBookmarked = filterBookmarked.next().also { updatesPreferences.filterBookmarked().set(it) }
+                    scope.launch { model.toggleBookmarkedFilter() }
                 },
                 onToggleExcludedScanlators = {
-                    filterExcludedScanlators = !filterExcludedScanlators
-                    updatesPreferences.filterExcludedScanlators().set(filterExcludedScanlators)
+                    scope.launch { model.toggleExcludedScanlatorsFilter() }
                 },
-                onDismiss = { showFilterDialog = false },
+                onDismiss = { model.setShowFilterDialog(false) },
             )
         }
 
@@ -221,11 +164,11 @@ class UpdatesRootScreen : Screen {
                     tooltip = { Text("Filter") },
                     state = rememberTooltipState(),
                 ) {
-                    IconButton(onClick = { showFilterDialog = true }) {
+                    IconButton(onClick = { model.setShowFilterDialog(true) }) {
                         Icon(
                             Icons.Default.FilterList,
                             contentDescription = "Filter",
-                            tint = if (hasActiveFilters) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                            tint = if (state.hasActiveFilters) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                         )
                     }
                 }
@@ -240,20 +183,20 @@ class UpdatesRootScreen : Screen {
                     }
                 }
                 // Mark all as read — only shown when unread items exist
-                val hasUnread = updateItems.any { !it.read }
+                val hasUnread = state.items.any { !it.read }
                 if (hasUnread) {
                     TooltipBox(
                         positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
                         tooltip = { Text("Mark all as read") },
                         state = rememberTooltipState(),
                     ) {
-                        IconButton(onClick = { showMarkAllReadDialog = true }) {
+                        IconButton(onClick = { model.setShowMarkAllReadDialog(true) }) {
                             Icon(Icons.Default.DoneAll, contentDescription = "Mark all as read")
                         }
                     }
                 }
 
-                if (isRefreshing) {
+                if (state.isRefreshing) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(24.dp).padding(end = 8.dp),
                         strokeWidth = 2.dp,
@@ -266,15 +209,7 @@ class UpdatesRootScreen : Screen {
                     ) {
                         IconButton(onClick = {
                             scope.launch {
-                                isRefreshing = true
-                                // Refresh by checking all sources with items in the list
-                                val sourceIds = updateItems.map { it.sourceId }.distinct()
-                                for (sourceId in sourceIds) {
-                                    sourceManager.getCatalogueSources()
-                                        .find { it.id == sourceId }
-                                        ?: continue
-                                }
-                                isRefreshing = false
+                                model.refreshUpdates()
                             }
                         }) {
                             Icon(Icons.Default.Refresh, contentDescription = "Refresh updates")
@@ -283,7 +218,7 @@ class UpdatesRootScreen : Screen {
                 }
             }
 
-            val listItems = remember(updateItems) { buildUpdatesListItems(updateItems) }
+            val listItems = remember(state.items) { buildUpdatesListItems(state.items) }
 
             if (listItems.isEmpty()) {
                 Box(
@@ -331,37 +266,28 @@ class UpdatesRootScreen : Screen {
                                 item = item.update,
                                 onRead = {
                                     scope.launch {
-                                        val manga = getManga.await(item.update.mangaId)
+                                        val request = model.readerRequestFor(item.update)
                                         navigator.push(
                                             DesktopReaderScreen(
-                                                chapterTitle = item.update.chapterName,
-                                                mangaTitle = item.update.mangaTitle,
+                                                chapterTitle = request.chapterTitle,
+                                                mangaTitle = request.mangaTitle,
                                                 isWebtoon = false,
-                                                sourceId = item.update.sourceId,
-                                                chapterUrl = item.update.chapterUrl,
-                                                chapterId = item.update.chapterId,
-                                                mangaId = item.update.mangaId,
-                                                mangaViewerFlags = manga?.viewerFlags ?: 0L,
-                                                initialPage = item.update.lastPageRead.toInt().coerceAtLeast(0),
-                                                progressTracker = progressTracker,
+                                                sourceId = request.sourceId,
+                                                chapterUrl = request.chapterUrl,
+                                                chapterId = request.chapterId,
+                                                mangaId = request.mangaId,
+                                                mangaViewerFlags = request.mangaViewerFlags,
+                                                initialPage = request.initialPage,
                                             ),
                                         )
                                     }
                                 },
                                 onDownload = {
-                                    downloadManager.enqueue(
-                                        DownloadItem(
-                                            sourceId = item.update.sourceId,
-                                            mangaTitle = item.update.mangaTitle,
-                                            chapterName = item.update.chapterName,
-                                            chapterId = item.update.chapterId,
-                                            chapterUrl = item.update.chapterUrl,
-                                        ),
-                                    )
+                                    model.enqueueDownload(item.update)
                                 },
                                 onMarkRead = {
                                     scope.launch {
-                                        updateChapter.await(ChapterUpdate(id = item.update.chapterId, read = true))
+                                        model.markRead(item.update)
                                     }
                                 },
                             )
@@ -443,12 +369,6 @@ private fun TriStateFilterRow(label: String, state: TriState, onToggle: () -> Un
             },
         )
     }
-}
-
-private fun TriState.toBooleanOrNull(): Boolean? = when (this) {
-    TriState.DISABLED -> null
-    TriState.ENABLED_IS -> true
-    TriState.ENABLED_NOT -> false
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

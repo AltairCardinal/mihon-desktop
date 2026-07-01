@@ -93,30 +93,13 @@ import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
-import mihon.desktop.download.DesktopDownloadManager
-import mihon.desktop.download.DesktopDownloadPreferences
-import mihon.desktop.download.DownloadItem
-import mihon.desktop.domain.batchSetCategories
-import mihon.desktop.domain.DesktopCategoryManager
-import tachiyomi.domain.category.interactor.SetMangaCategories
-import tachiyomi.domain.category.repository.CategoryRepository
-import mihon.desktop.settings.LibraryCategoryPrefs
 import mihon.desktop.domain.LibrarySearchFilter
 import mihon.desktop.ui.library.pickRandomMangaId
-import mihon.desktop.domain.LibraryUpdateChecker
 import mihon.desktop.domain.SortMode
-import mihon.desktop.reader.ReaderChapterRef
-import mihon.desktop.reader.ReaderNavigator
+import mihon.desktop.library.LibraryScreenModelFactory
 import mihon.desktop.ui.reader.DesktopReaderScreen
 import tachiyomi.domain.category.model.Category
-import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.library.model.LibraryManga
-import tachiyomi.domain.manga.interactor.GetLibraryManga
-import tachiyomi.domain.manga.model.MangaUpdate
-import tachiyomi.domain.manga.repository.MangaRepository
-import tachiyomi.domain.source.service.SourceManager
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 object LibraryTab : Tab {
 
@@ -146,23 +129,10 @@ class LibraryRootScreen : Screen {
     @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
     @Composable
     override fun Content() {
-        val getLibraryManga = remember { Injekt.get<GetLibraryManga>() }
-        val categoryManager = remember { Injekt.get<DesktopCategoryManager>() }
-        val updateChecker = remember { Injekt.get<LibraryUpdateChecker>() }
-        val sourceManager = remember { Injekt.get<SourceManager>() }
-        val mangaRepository = remember { Injekt.get<MangaRepository>() }
-        val chapterRepository = remember { Injekt.get<ChapterRepository>() }
-        val progressTracker = remember { Injekt.get<mihon.desktop.domain.ReaderProgressTracker>() }
-        val downloadManager = remember { runCatching { Injekt.get<DesktopDownloadManager>() }.getOrNull() }
-        val downloadProvider = remember { runCatching { Injekt.get<mihon.desktop.download.DesktopDownloadProvider>() }.getOrNull() }
-        val downloadPrefs = remember { runCatching { Injekt.get<DesktopDownloadPreferences>() }.getOrNull() }
-        val categoryPrefs = remember { runCatching { Injekt.get<LibraryCategoryPrefs>() }.getOrNull() }
-        val setMangaCategories = remember { Injekt.get<SetMangaCategories>() }
-        val categoryRepository = remember { Injekt.get<CategoryRepository>() }
         val scope = rememberCoroutineScope()
         val navigator = LocalNavigator.currentOrThrow
 
-        val model = rememberScreenModel { LibraryScreenModel() }
+        val model = rememberScreenModel { LibraryScreenModelFactory.create() }
         val state by model.state.collectAsState()
         val selectionState = remember { LibrarySelectionState() }
 
@@ -185,8 +155,8 @@ class LibraryRootScreen : Screen {
         val showBatchCategoryDialog = state.showBatchCategoryDialog
 
         LaunchedEffect(Unit) {
-            launch { getLibraryManga.subscribe().collect { model.setAllItems(it) } }
-            launch { model.setCategories(categoryManager.getAll()) }
+            launch { model.libraryMangaFlow().collect { model.setAllItems(it) } }
+            launch { model.refreshCategories() }
         }
 
         val categoryTabs = remember(categories) { listOf(null) + categories }
@@ -194,16 +164,11 @@ class LibraryRootScreen : Screen {
         // Load per-category sort/display settings when the selected tab changes.
         LaunchedEffect(selectedCategoryIndex, categoryTabs) {
             val cat = categoryTabs.getOrNull(selectedCategoryIndex)
-            categoryPrefs?.let { prefs ->
-                model.setSortMode(prefs.getSortMode(cat?.id))
-                model.setSortAscending(prefs.getSortAscending(cat?.id))
-                model.setDisplayMode(prefs.getDisplayMode(cat?.id))
-            }
+            model.applyCategoryPreferences(cat?.id)
         }
 
         val downloadedMangaIds = remember(allItems) {
-            if (downloadProvider == null) emptySet()
-            else allItems.filter { downloadProvider.hasMangaDownloads(it.manga.source, it.manga.title) }.map { it.id }.toSet()
+            model.downloadedMangaIds(allItems)
         }
 
         val displayedItems = remember(
@@ -228,10 +193,13 @@ class LibraryRootScreen : Screen {
 
         if (showCategoryDialog) {
             CategoryManagementDialog(
-                categoryManager = categoryManager,
+                categories = categories,
+                onCreate = model::createCategory,
+                onRename = model::renameCategory,
+                onDelete = model::deleteCategory,
+                onReorder = model::reorderCategory,
                 onDismiss = {
                     model.setShowCategoryDialog(false)
-                    scope.launch { model.setCategories(categoryManager.getAll()) }
                 },
             )
         }
@@ -245,43 +213,24 @@ class LibraryRootScreen : Screen {
                 onMarkAllRead = {
                     model.setContextMenuManga(null)
                     scope.launch {
-                        val updates = chapterRepository.getChapterByMangaId(ctxManga.manga.id)
-                            .map { tachiyomi.domain.chapter.model.ChapterUpdate(id = it.id, read = true) }
-                        chapterRepository.updateAll(updates)
+                        model.markMangaRead(ctxManga.manga.id, read = true)
                     }
                 },
                 onMarkAllUnread = {
                     model.setContextMenuManga(null)
                     scope.launch {
-                        val updates = chapterRepository.getChapterByMangaId(ctxManga.manga.id)
-                            .map { tachiyomi.domain.chapter.model.ChapterUpdate(id = it.id, read = false) }
-                        chapterRepository.updateAll(updates)
+                        model.markMangaRead(ctxManga.manga.id, read = false)
                     }
                 },
                 onRemoveFromLibrary = {
                     model.setContextMenuManga(null)
                     scope.launch {
-                        mangaRepository.update(MangaUpdate(id = ctxManga.manga.id, favorite = false))
+                        model.removeFromLibrary(listOf(ctxManga.manga.id))
                     }
                 },
                 onDownload = {
                     model.setContextMenuManga(null)
-                    if (downloadManager != null) {
-                        scope.launch {
-                            val chapters = chapterRepository.getChapterByMangaId(ctxManga.manga.id)
-                            val firstUnread = chapters.sortedBy { it.sourceOrder }.firstOrNull { !it.read }
-                                ?: return@launch
-                            downloadManager.enqueue(
-                                DownloadItem(
-                                    sourceId = ctxManga.manga.source,
-                                    mangaTitle = ctxManga.manga.title,
-                                    chapterName = firstUnread.name,
-                                    chapterId = firstUnread.id,
-                                    chapterUrl = firstUnread.url,
-                                ),
-                            )
-                        }
-                    }
+                    scope.launch { model.enqueueNextUnreadDownload(ctxManga) }
                 },
             )
         }
@@ -291,14 +240,10 @@ class LibraryRootScreen : Screen {
             BatchCategoryDialog(
                 categories = categories,
                 selectedMangaIds = selectionState.selectedIds.toList(),
-                categoryRepository = categoryRepository,
+                loadCategoryIds = model::categoryIdsForManga,
                 onConfirm = { selectedCategoryIds ->
                     scope.launch {
-                        batchSetCategories(
-                            selectionState.selectedIds.toList(),
-                            selectedCategoryIds,
-                            setMangaCategories,
-                        )
+                        model.setCategoriesForManga(selectionState.selectedIds.toList(), selectedCategoryIds)
                         model.setShowBatchCategoryDialog(false)
                         selectionState.clear()
                     }
@@ -318,33 +263,19 @@ class LibraryRootScreen : Screen {
                         onSetCategories = { model.setShowBatchCategoryDialog(true) },
                         onMarkRead = {
                             scope.launch {
-                                selectionState.selectedIds.forEach { mangaId ->
-                                    val chapters = chapterRepository.getChapterByMangaId(mangaId)
-                                    val updates = chapters.map { ch ->
-                                        tachiyomi.domain.chapter.model.ChapterUpdate(id = ch.id, read = true)
-                                    }
-                                    chapterRepository.updateAll(updates)
-                                }
+                                model.markMangaRead(selectionState.selectedIds, read = true)
                                 selectionState.clear()
                             }
                         },
                         onMarkUnread = {
                             scope.launch {
-                                selectionState.selectedIds.forEach { mangaId ->
-                                    val chapters = chapterRepository.getChapterByMangaId(mangaId)
-                                    val updates = chapters.map { ch ->
-                                        tachiyomi.domain.chapter.model.ChapterUpdate(id = ch.id, read = false)
-                                    }
-                                    chapterRepository.updateAll(updates)
-                                }
+                                model.markMangaRead(selectionState.selectedIds, read = false)
                                 selectionState.clear()
                             }
                         },
                         onRemoveFromLibrary = {
                             scope.launch {
-                                selectionState.selectedIds.forEach { mangaId ->
-                                    mangaRepository.update(MangaUpdate(id = mangaId, favorite = false))
-                                }
+                                model.removeFromLibrary(selectionState.selectedIds)
                                 selectionState.clear()
                             }
                         },
@@ -359,10 +290,8 @@ class LibraryRootScreen : Screen {
                     sortMode = sortMode,
                     sortAscending = sortAscending,
                     onSortChange = { mode, asc ->
-                        model.setSortModeAndDirection(mode, asc)
                         val cat = categoryTabs.getOrNull(selectedCategoryIndex)
-                        categoryPrefs?.setSortMode(cat?.id, mode)
-                        categoryPrefs?.setSortAscending(cat?.id, asc)
+                        model.setSortModeAndDirectionForCategory(cat?.id, mode, asc)
                     },
                     filterUnread = filterUnread,
                     filterStarted = filterStarted,
@@ -372,9 +301,8 @@ class LibraryRootScreen : Screen {
                     isUpdating = isUpdating,
                     displayMode = displayMode,
                     onDisplayModeChange = {
-                        model.setDisplayMode(it)
                         val cat = categoryTabs.getOrNull(selectedCategoryIndex)
-                        categoryPrefs?.setDisplayMode(cat?.id, it)
+                        model.setDisplayModeForCategory(cat?.id, it)
                     },
                     onManageCategories = { model.setShowCategoryDialog(true) },
                     onRandomManga = {
@@ -383,33 +311,7 @@ class LibraryRootScreen : Screen {
                     },
                     onRefresh = {
                         scope.launch {
-                            model.setIsUpdating(true)
-                            model.setUpdateStatusText("Checking for updates...")
-                            var totalNew = 0
-                            val autoDownload = downloadPrefs?.autoDownloadNewChapters?.get() == true
-                            for (item in allItems) {
-                                val source = sourceManager.getCatalogueSources()
-                                    .find { it.id == item.manga.source } ?: continue
-                                val result = updateChecker.checkForUpdates(item.manga, source)
-                                totalNew += result.newChapterCount
-                                if (autoDownload && downloadManager != null) {
-                                    result.newChapters.forEach { chapter ->
-                                        downloadManager.enqueue(
-                                            DownloadItem(
-                                                sourceId = item.manga.source,
-                                                mangaTitle = item.manga.title,
-                                                chapterName = chapter.name,
-                                                chapterId = chapter.id,
-                                                chapterUrl = chapter.url,
-                                            ),
-                                        )
-                                    }
-                                }
-                            }
-                            model.setUpdateStatusText(
-                                if (totalNew > 0) "$totalNew new chapter(s) found" else "Library is up to date",
-                            )
-                            model.setIsUpdating(false)
+                            model.refreshLibrary(allItems)
                         }
                     },
                 )
@@ -468,30 +370,21 @@ class LibraryRootScreen : Screen {
                                 onItemLongClick = { item -> selectionState.toggle(item.manga.id) },
                                 onContinueReading = { item ->
                                     scope.launch {
-                                        val chapters = chapterRepository.getChapterByMangaId(item.manga.id)
-                                        val firstUnread = chapters
-                                            .sortedBy { it.sourceOrder }
-                                            .firstOrNull { !it.read }
-                                            ?: chapters.maxByOrNull { it.sourceOrder }
-                                            ?: return@launch
-                                        val chapterRefs = chapters.sortedBy { it.sourceOrder }
-                                            .map { ReaderChapterRef(id = it.id, url = it.url, name = it.name, isRead = it.read) }
-                                        val idx = ReaderNavigator.indexForId(chapterRefs, firstUnread.id)
+                                        val request = model.continueReadingRequest(item) ?: return@launch
                                         navigator.push(
                                             DesktopReaderScreen(
-                                                chapterTitle = firstUnread.name,
-                                                mangaTitle = item.manga.title,
+                                                chapterTitle = request.chapterTitle,
+                                                mangaTitle = request.mangaTitle,
                                                 pageUrls = emptyList(),
                                                 isWebtoon = false,
-                                                sourceId = item.manga.source,
-                                                chapterUrl = firstUnread.url,
-                                                chapterId = firstUnread.id,
-                                                mangaId = item.manga.id,
-                                                mangaViewerFlags = item.manga.viewerFlags,
-                                                chapters = chapterRefs,
-                                                currentChapterIndex = idx,
-                                                initialPage = firstUnread.lastPageRead.toInt().coerceAtLeast(0),
-                                                progressTracker = progressTracker,
+                                                sourceId = request.sourceId,
+                                                chapterUrl = request.chapterUrl,
+                                                chapterId = request.chapterId,
+                                                mangaId = request.mangaId,
+                                                mangaViewerFlags = request.mangaViewerFlags,
+                                                chapters = request.chapters,
+                                                currentChapterIndex = request.currentChapterIndex,
+                                                initialPage = request.initialPage,
                                             ),
                                         )
                                     }
@@ -515,30 +408,21 @@ class LibraryRootScreen : Screen {
                                 onItemLongClick = { item -> selectionState.toggle(item.manga.id) },
                                 onContinueReading = { item ->
                                     scope.launch {
-                                        val chapters = chapterRepository.getChapterByMangaId(item.manga.id)
-                                        val firstUnread = chapters
-                                            .sortedBy { it.sourceOrder }
-                                            .firstOrNull { !it.read }
-                                            ?: chapters.maxByOrNull { it.sourceOrder }
-                                            ?: return@launch
-                                        val chapterRefs = chapters.sortedBy { it.sourceOrder }
-                                            .map { ReaderChapterRef(id = it.id, url = it.url, name = it.name, isRead = it.read) }
-                                        val idx = ReaderNavigator.indexForId(chapterRefs, firstUnread.id)
+                                        val request = model.continueReadingRequest(item) ?: return@launch
                                         navigator.push(
                                             DesktopReaderScreen(
-                                                chapterTitle = firstUnread.name,
-                                                mangaTitle = item.manga.title,
+                                                chapterTitle = request.chapterTitle,
+                                                mangaTitle = request.mangaTitle,
                                                 pageUrls = emptyList(),
                                                 isWebtoon = false,
-                                                sourceId = item.manga.source,
-                                                chapterUrl = firstUnread.url,
-                                                chapterId = firstUnread.id,
-                                                mangaId = item.manga.id,
-                                                mangaViewerFlags = item.manga.viewerFlags,
-                                                chapters = chapterRefs,
-                                                currentChapterIndex = idx,
-                                                initialPage = firstUnread.lastPageRead.toInt().coerceAtLeast(0),
-                                                progressTracker = progressTracker,
+                                                sourceId = request.sourceId,
+                                                chapterUrl = request.chapterUrl,
+                                                chapterId = request.chapterId,
+                                                mangaId = request.mangaId,
+                                                mangaViewerFlags = request.mangaViewerFlags,
+                                                chapters = request.chapters,
+                                                currentChapterIndex = request.currentChapterIndex,
+                                                initialPage = request.initialPage,
                                             ),
                                         )
                                     }
@@ -566,586 +450,3 @@ class LibraryRootScreen : Screen {
 }
 
 // ── Toolbar ───────────────────────────────────────────────────────────────────
-
-@Composable
-private fun LibraryToolbar(
-    searchQuery: String,
-    onSearchChange: (String) -> Unit,
-    sortMode: SortMode,
-    sortAscending: Boolean,
-    onSortChange: (SortMode, Boolean) -> Unit,
-    filterUnread: Boolean,
-    filterStarted: Boolean,
-    filterCompleted: Boolean,
-    filterDownloaded: Boolean,
-    onFilterChange: (unread: Boolean, started: Boolean, completed: Boolean, downloaded: Boolean) -> Unit,
-    isUpdating: Boolean,
-    displayMode: LibraryDisplayMode,
-    onDisplayModeChange: (LibraryDisplayMode) -> Unit,
-    onManageCategories: () -> Unit,
-    onRandomManga: () -> Unit,
-    onRefresh: () -> Unit,
-) {
-    var showSortMenu by remember { mutableStateOf(false) }
-    var showFilterMenu by remember { mutableStateOf(false) }
-    var showDisplayMenu by remember { mutableStateOf(false) }
-
-    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = onSearchChange,
-                placeholder = { Text("Search library...") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
-                singleLine = true,
-                modifier = Modifier.weight(1f),
-            )
-
-            // Display mode
-            Box {
-                IconButton(onClick = { showDisplayMenu = true }) {
-                    val icon = when (displayMode) {
-                        LibraryDisplayMode.COMPACT_GRID -> Icons.Default.GridOn
-                        LibraryDisplayMode.COMFORTABLE_GRID -> Icons.Default.GridView
-                        LibraryDisplayMode.LIST -> Icons.AutoMirrored.Filled.List
-                    }
-                    Icon(icon, contentDescription = "Display mode")
-                }
-                DropdownMenu(expanded = showDisplayMenu, onDismissRequest = { showDisplayMenu = false }) {
-                    DropdownMenuItem(
-                        text = { Text(if (displayMode == LibraryDisplayMode.COMPACT_GRID) "✓ Compact Grid" else "  Compact Grid") },
-                        onClick = { onDisplayModeChange(LibraryDisplayMode.COMPACT_GRID); showDisplayMenu = false },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(if (displayMode == LibraryDisplayMode.COMFORTABLE_GRID) "✓ Comfortable Grid" else "  Comfortable Grid") },
-                        onClick = { onDisplayModeChange(LibraryDisplayMode.COMFORTABLE_GRID); showDisplayMenu = false },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(if (displayMode == LibraryDisplayMode.LIST) "✓ List" else "  List") },
-                        onClick = { onDisplayModeChange(LibraryDisplayMode.LIST); showDisplayMenu = false },
-                    )
-                }
-            }
-
-            // Sort
-            Box {
-                IconButton(onClick = { showSortMenu = true }) {
-                    Icon(Icons.Default.SortByAlpha, contentDescription = "Sort")
-                }
-                DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
-                    SortMode.entries.forEach { mode ->
-                        DropdownMenuItem(
-                            text = {
-                                val label = when (mode) {
-                                    SortMode.TITLE -> "Title"
-                                    SortMode.UNREAD_COUNT -> "Unread count"
-                                    SortMode.DATE_ADDED -> "Date added"
-                                    SortMode.LAST_READ -> "Last read"
-                                }
-                                val arrow = if (mode == sortMode) (if (sortAscending) " ↑" else " ↓") else ""
-                                Text("$label$arrow")
-                            },
-                            onClick = {
-                                if (mode == sortMode) onSortChange(mode, !sortAscending) else onSortChange(mode, true)
-                                showSortMenu = false
-                            },
-                        )
-                    }
-                }
-            }
-
-            // Filter
-            Box {
-                IconButton(onClick = { showFilterMenu = true }) {
-                    Icon(Icons.Default.FilterList, contentDescription = "Filter")
-                }
-                DropdownMenu(expanded = showFilterMenu, onDismissRequest = { showFilterMenu = false }) {
-                    DropdownMenuItem(
-                        text = { Text(if (filterUnread) "✓ Unread" else "  Unread") },
-                        onClick = { onFilterChange(!filterUnread, filterStarted, filterCompleted, filterDownloaded) },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(if (filterStarted) "✓ Started" else "  Started") },
-                        onClick = { onFilterChange(filterUnread, !filterStarted, filterCompleted, filterDownloaded) },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(if (filterCompleted) "✓ Completed" else "  Completed") },
-                        onClick = { onFilterChange(filterUnread, filterStarted, !filterCompleted, filterDownloaded) },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(if (filterDownloaded) "✓ Downloaded" else "  Downloaded") },
-                        onClick = { onFilterChange(filterUnread, filterStarted, filterCompleted, !filterDownloaded) },
-                    )
-                }
-            }
-
-            IconButton(onClick = onRandomManga) {
-                Icon(Icons.Default.Shuffle, contentDescription = "Random manga")
-            }
-
-            IconButton(onClick = onManageCategories) {
-                Icon(Icons.Default.CreateNewFolder, contentDescription = "Manage categories")
-            }
-
-            if (isUpdating) {
-                CircularProgressIndicator(modifier = Modifier.padding(8.dp), strokeWidth = 2.dp)
-            } else {
-                IconButton(onClick = onRefresh) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Check for updates")
-                }
-            }
-        }
-
-        val activeFilters = buildList {
-            if (filterUnread) add("Unread")
-            if (filterStarted) add("Started")
-            if (filterCompleted) add("Completed")
-            if (filterDownloaded) add("Downloaded")
-        }
-        if (activeFilters.isNotEmpty()) {
-            Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                activeFilters.forEach { label ->
-                    FilterChip(
-                        selected = true,
-                        onClick = {
-                            when (label) {
-                                "Unread" -> onFilterChange(false, filterStarted, filterCompleted, filterDownloaded)
-                                "Started" -> onFilterChange(filterUnread, false, filterCompleted, filterDownloaded)
-                                "Completed" -> onFilterChange(filterUnread, filterStarted, false, filterDownloaded)
-                                "Downloaded" -> onFilterChange(filterUnread, filterStarted, filterCompleted, false)
-                            }
-                        },
-                        label = { Text(label) },
-                    )
-                }
-            }
-        }
-    }
-}
-
-// ── Selection action bar ──────────────────────────────────────────────────────
-
-@Composable
-private fun SelectionActionBar(
-    selectedCount: Int,
-    onClose: () -> Unit,
-    onSelectAll: () -> Unit,
-    onSetCategories: () -> Unit,
-    onMarkRead: () -> Unit,
-    onMarkUnread: () -> Unit,
-    onRemoveFromLibrary: () -> Unit,
-) {
-    BottomAppBar(
-        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-    ) {
-        IconButton(onClick = onClose) {
-            Icon(Icons.Default.Close, contentDescription = "Clear selection")
-        }
-        Text(
-            text = "$selectedCount selected",
-            style = MaterialTheme.typography.titleSmall,
-            modifier = Modifier.weight(1f),
-        )
-        IconButton(onClick = onSelectAll) {
-            Icon(Icons.Default.SelectAll, contentDescription = "Select all")
-        }
-        TextButton(onClick = onSetCategories) { Text("Categories") }
-        TextButton(onClick = onMarkRead) { Text("Mark read") }
-        TextButton(onClick = onMarkUnread) { Text("Mark unread") }
-        TextButton(onClick = onRemoveFromLibrary) {
-            Text("Remove", color = MaterialTheme.colorScheme.error)
-        }
-    }
-}
-
-// ── Grid view ─────────────────────────────────────────────────────────────────
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun LibraryGrid(
-    items: List<LibraryManga>,
-    minCardWidth: androidx.compose.ui.unit.Dp,
-    comfortable: Boolean = false,
-    selectionState: LibrarySelectionState,
-    downloadedMangaIds: Set<Long> = emptySet(),
-    onContextMenu: (LibraryManga) -> Unit,
-    onItemClick: (LibraryManga) -> Unit,
-    onItemLongClick: (LibraryManga) -> Unit,
-    onContinueReading: (LibraryManga) -> Unit,
-) {
-    LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = minCardWidth),
-        contentPadding = PaddingValues(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        items(items, key = { it.id }) { item ->
-            MangaCoverCard(
-                item = item,
-                comfortable = comfortable,
-                isSelected = selectionState.isSelected(item.manga.id),
-                isDownloaded = item.id in downloadedMangaIds,
-                onClick = { onItemClick(item) },
-                onLongClick = { onItemLongClick(item) },
-                onContinueReading = { onContinueReading(item) },
-                onContextMenu = { onContextMenu(item) },
-            )
-        }
-    }
-}
-
-// ── List view ─────────────────────────────────────────────────────────────────
-
-@OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
-@Composable
-private fun LibraryList(
-    items: List<LibraryManga>,
-    selectionState: LibrarySelectionState,
-    onContextMenu: (LibraryManga) -> Unit,
-    onItemClick: (LibraryManga) -> Unit,
-    onItemLongClick: (LibraryManga) -> Unit,
-) {
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        items(items, key = { it.id }) { item ->
-            val isSelected = selectionState.isSelected(item.manga.id)
-            ListItem(
-                headlineContent = {
-                    Text(
-                        item.manga.title,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-                leadingContent = {
-                    Box {
-                        AsyncImage(
-                            model = item.manga.thumbnailUrl,
-                            contentDescription = item.manga.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.size(48.dp),
-                        )
-                        if (isSelected) {
-                            Box(
-                                Modifier.size(48.dp).background(
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                ),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    Icons.Default.CheckCircle,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                )
-                            }
-                        }
-                    }
-                },
-                supportingContent = if (item.unreadCount > 0L) {
-                    { Text("${item.unreadCount} unread") }
-                } else {
-                    null
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .combinedClickable(
-                        onClick = { onItemClick(item) },
-                        onLongClick = { onItemLongClick(item) },
-                    )
-                    .pointerInput(item.manga.id) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                if (event.type == PointerEventType.Press &&
-                                    event.button == PointerButton.Secondary
-                                ) {
-                                    onContextMenu(item)
-                                }
-                            }
-                        }
-                    }
-                    .background(
-                        if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                        else Color.Transparent,
-                    ),
-            )
-        }
-    }
-}
-
-// ── Card ──────────────────────────────────────────────────────────────────────
-
-@OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
-@Composable
-private fun MangaCoverCard(
-    item: LibraryManga,
-    comfortable: Boolean,
-    isSelected: Boolean,
-    isDownloaded: Boolean = false,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-    onContinueReading: () -> Unit,
-    onContextMenu: () -> Unit,
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .pointerInput(item.manga.id) {
-                awaitPointerEventScope {
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        if (event.type == PointerEventType.Press &&
-                            event.button == PointerButton.Secondary
-                        ) {
-                            onContextMenu()
-                        }
-                    }
-                }
-            },
-        colors = if (isSelected) {
-            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-        } else {
-            CardDefaults.cardColors()
-        },
-    ) {
-        Column {
-            Box {
-                AsyncImage(
-                    model = item.manga.thumbnailUrl,
-                    contentDescription = item.manga.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(0.7f),
-                )
-                // Gradient overlay (only for compact grid with title inside)
-                if (!comfortable) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(0.7f)
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f)),
-                                    startY = 0.4f,
-                                ),
-                            ),
-                    )
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(6.dp),
-                    ) {
-                        Text(
-                            text = item.manga.title,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-
-                // Unread badge
-                if (item.unreadCount > 0L) {
-                    Badge(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(4.dp),
-                        containerColor = MaterialTheme.colorScheme.primary,
-                    ) {
-                        Text(
-                            text = item.unreadCount.toString(),
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                    }
-                }
-
-                // Downloaded badge
-                if (isDownloaded) {
-                    Badge(
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(4.dp),
-                        containerColor = MaterialTheme.colorScheme.tertiary,
-                    ) {
-                        Icon(
-                            Icons.Default.Download,
-                            contentDescription = "Downloaded",
-                            tint = MaterialTheme.colorScheme.onTertiary,
-                            modifier = Modifier.size(10.dp),
-                        )
-                    }
-                }
-
-                // Continue reading FAB overlay (bottom-start, visible on hover via always-visible small icon)
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(4.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f),
-                            shape = androidx.compose.foundation.shape.CircleShape,
-                        )
-                        .clickable { onContinueReading() }
-                        .padding(4.dp),
-                ) {
-                    Icon(
-                        Icons.Default.PlayArrow,
-                        contentDescription = "Continue reading",
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.size(16.dp),
-                    )
-                }
-
-                // Selection indicator
-                if (isSelected) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(0.7f)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            Icons.Default.CheckCircle,
-                            contentDescription = "Selected",
-                            tint = Color.White,
-                            modifier = Modifier.size(32.dp),
-                        )
-                    }
-                }
-            }
-
-            // Title below cover in comfortable mode
-            if (comfortable) {
-                Text(
-                    text = item.manga.title,
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun EmptyLibrary() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = "Your library is empty",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = "Add manga from Browse to get started",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp),
-            )
-        }
-    }
-}
-
-// ── Manga right-click context menu ────────────────────────────────────────────
-
-@Composable
-private fun MangaContextMenu(
-    expanded: Boolean,
-    onDismiss: () -> Unit,
-    onMarkAllRead: () -> Unit,
-    onMarkAllUnread: () -> Unit,
-    onRemoveFromLibrary: () -> Unit,
-    onDownload: () -> Unit,
-) {
-    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-        DropdownMenuItem(
-            text = { Text("Mark all read") },
-            onClick = onMarkAllRead,
-        )
-        DropdownMenuItem(
-            text = { Text("Mark all unread") },
-            onClick = onMarkAllUnread,
-        )
-        DropdownMenuItem(
-            text = { Text("Download next unread") },
-            onClick = onDownload,
-        )
-        DropdownMenuItem(
-            text = { Text("Remove from library", color = MaterialTheme.colorScheme.error) },
-            onClick = onRemoveFromLibrary,
-        )
-    }
-}
-
-// ── Batch category assignment dialog ─────────────────────────────────────────
-
-@Composable
-private fun BatchCategoryDialog(
-    categories: List<Category>,
-    selectedMangaIds: List<Long>,
-    categoryRepository: CategoryRepository,
-    onConfirm: (List<Long>) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    // Load current categories for the first selected manga as initial state
-    var checkedIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
-    var loaded by remember { mutableStateOf(false) }
-
-    LaunchedEffect(selectedMangaIds) {
-        if (selectedMangaIds.isNotEmpty()) {
-            val firstMangaCats = categoryRepository.getCategoriesByMangaId(selectedMangaIds.first())
-            checkedIds = firstMangaCats.map { it.id }.toSet()
-        }
-        loaded = true
-    }
-
-    if (!loaded) return
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Set categories") },
-        text = {
-            if (categories.isEmpty()) {
-                Text("No categories. Create categories first.")
-            } else {
-                Column {
-                    categories.forEach { cat ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { checkedIds = if (cat.id in checkedIds) checkedIds - cat.id else checkedIds + cat.id }
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Checkbox(
-                                checked = cat.id in checkedIds,
-                                onCheckedChange = { checked ->
-                                    checkedIds = if (checked) checkedIds + cat.id else checkedIds - cat.id
-                                },
-                            )
-                            Text(cat.name, modifier = Modifier.padding(start = 8.dp))
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(checkedIds.toList()) }) { Text("OK") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    )
-}

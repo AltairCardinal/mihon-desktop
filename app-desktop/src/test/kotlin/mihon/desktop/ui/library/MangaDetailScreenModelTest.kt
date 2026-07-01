@@ -1,12 +1,26 @@
 package mihon.desktop.ui.library
 
+import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.test.runTest
+import mihon.desktop.domain.fakes.FakeChapterRepository
+import mihon.desktop.domain.fakes.FakeMangaRepository
+import mihon.desktop.download.DownloadItem
+import mihon.desktop.reader.ReadingMode
+import mihon.desktop.reader.viewerFlagsWithReadingMode
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.domain.category.interactor.SetMangaCategories
+import tachiyomi.domain.chapter.model.ChapterUpdate
+import tachiyomi.domain.creator.model.Creator
+import tachiyomi.domain.creator.model.CreatorRole
+import tachiyomi.domain.creator.repository.CreatorRepository
+import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.model.Manga
 
 /**
@@ -25,6 +39,28 @@ class MangaDetailScreenModelTest {
         val flow: StateFlow<MangaDetailState> = model.state
         assertNotNull(flow)
         assertNotNull(flow.value)
+    }
+
+    @Test
+    fun `cover state key changes when manga identity or thumbnail changes`() {
+        val first = mangaCoverStateKey(
+            mangaId = 1L,
+            thumbnailUrl = "https://example.invalid/one.jpg",
+            coverVersion = 0,
+        )
+        val sameMangaNewCover = mangaCoverStateKey(
+            mangaId = 1L,
+            thumbnailUrl = "https://example.invalid/two.jpg",
+            coverVersion = 0,
+        )
+        val differentMangaSameCover = mangaCoverStateKey(
+            mangaId = 2L,
+            thumbnailUrl = "https://example.invalid/one.jpg",
+            coverVersion = 0,
+        )
+
+        assertNotEquals(first, sameMangaNewCover)
+        assertNotEquals(first, differentMangaSameCover)
     }
 
     @Test
@@ -236,6 +272,153 @@ class MangaDetailScreenModelTest {
         assertEquals(setOf("Group A"), model.state.value.excludedScanlators)
     }
 
+    // ── Actions ──────────────────────────────────────────────────────────────
+
+    @Test
+    fun `markAllRead updates every chapter`() = runTest {
+        val chapterRepository = FakeChapterRepository()
+        val chapters = listOf(createFakeChapter(1L), createFakeChapter(2L))
+        chapterRepository.addAll(chapters)
+        val model = MangaDetailScreenModel(mangaId = 1L, chapterRepository = chapterRepository)
+
+        model.markAllRead(chapters)
+
+        assertEquals(listOf(1L, 2L), chapterRepository.updates.map { it.id })
+        assertTrue(chapterRepository.updates.all { it.read == true })
+    }
+
+    @Test
+    fun `markSelectedBookmark uses true when any selected chapter is not bookmarked`() = runTest {
+        val chapterRepository = FakeChapterRepository()
+        val chapters = listOf(
+            createFakeChapter(1L).copy(bookmark = true),
+            createFakeChapter(2L).copy(bookmark = false),
+        )
+        chapterRepository.addAll(chapters)
+        val model = MangaDetailScreenModel(mangaId = 1L, chapterRepository = chapterRepository)
+
+        model.markSelectedBookmark(chapters)
+
+        assertEquals(
+            listOf(
+                ChapterUpdate(id = 1L, bookmark = true),
+                ChapterUpdate(id = 2L, bookmark = true),
+            ),
+            chapterRepository.updates,
+        )
+    }
+
+    @Test
+    fun `toggleLibrary flips favorite and preserves date when removing`() = runTest {
+        val mangaRepository = FakeMangaRepository()
+        mangaRepository.seed(createFakeManga(id = 1L).copy(favorite = true, dateAdded = 123L))
+        val model = MangaDetailScreenModel(mangaId = 1L, mangaRepository = mangaRepository)
+
+        model.toggleLibrary(mangaRepository.get(1L)!!)
+
+        assertEquals(MangaUpdate(id = 1L, favorite = false, dateAdded = 123L), mangaRepository.updates.single())
+    }
+
+    @Test
+    fun `setChapterSort persists chapter flags and updates state`() = runTest {
+        val mangaRepository = FakeMangaRepository()
+        val manga = createFakeManga(id = 1L).copy(chapterFlags = chapterSortFlags(ChapterSortMode.BY_SOURCE_ORDER, false))
+        mangaRepository.seed(manga)
+        val model = MangaDetailScreenModel(mangaId = 1L, mangaRepository = mangaRepository)
+        model.setManga(manga)
+
+        model.setChapterSort(manga, ChapterSortMode.BY_CHAPTER_NUMBER)
+
+        assertEquals(ChapterSortMode.BY_CHAPTER_NUMBER, model.state.value.chapterSortMode)
+        assertFalse(model.state.value.chapterSortAscending)
+        assertEquals(1, mangaRepository.updates.size)
+        assertEquals(1L, mangaRepository.updates.single().id)
+        assertNotNull(mangaRepository.updates.single().chapterFlags)
+    }
+
+    @Test
+    fun `setReadingMode persists viewer flags`() = runTest {
+        val mangaRepository = FakeMangaRepository()
+        val model = MangaDetailScreenModel(mangaId = 1L, mangaRepository = mangaRepository)
+
+        model.setReadingMode(mangaId = 1L, currentFlags = 0L, mode = ReadingMode.WEBTOON)
+
+        assertEquals(viewerFlagsWithReadingMode(0L, ReadingMode.WEBTOON), mangaRepository.updates.single().viewerFlags)
+    }
+
+    @Test
+    fun `enqueueDownload skips already downloaded chapters`() {
+        val enqueued = mutableListOf<DownloadItem>()
+        val model = MangaDetailScreenModel(
+            mangaId = 1L,
+            enqueueDownload = enqueued::add,
+            isDownloaded = { _, _, chapterName -> chapterName == "Chapter 1" },
+        )
+        val manga = createFakeManga(id = 1L, title = "M")
+        val chapters = listOf(createFakeChapter(1L), createFakeChapter(2L))
+
+        model.enqueueDownloads(manga, chapters)
+
+        assertEquals(listOf(2L), enqueued.map { it.chapterId })
+    }
+
+    @Test
+    fun `readerRequest uses source order and last page`() {
+        val model = MangaDetailScreenModel(mangaId = 1L)
+        val manga = createFakeManga(id = 1L, title = "M").copy(source = 9L, viewerFlags = 7L)
+        val chapters = listOf(
+            createFakeChapter(2L).copy(sourceOrder = 2L),
+            createFakeChapter(1L).copy(sourceOrder = 1L, lastPageRead = 4L),
+        )
+
+        val request = model.readerRequest(manga, chapters, chapters[1])
+
+        assertNotNull(request)
+        assertEquals(1L, request!!.chapterId)
+        assertEquals(0, request.currentChapterIndex)
+        assertEquals(4, request.initialPage)
+        assertEquals(9L, request.sourceId)
+    }
+
+    @Test
+    fun `setCategoriesForManga delegates to category interactor`() = runTest {
+        val mangaRepository = FakeMangaRepository()
+        val model = MangaDetailScreenModel(mangaId = 1L, setMangaCategories = SetMangaCategories(mangaRepository))
+
+        model.setCategoriesForManga(1L, listOf(10L, 11L))
+
+        assertEquals(listOf(10L, 11L), mangaRepository.getMangaCategoryIds(1L))
+    }
+
+    @Test
+    fun `migrateTo persists target source and manga identity`() = runTest {
+        val mangaRepository = FakeMangaRepository()
+        val model = MangaDetailScreenModel(mangaId = 1L, mangaRepository = mangaRepository)
+        val target = SManga.create().apply {
+            url = "/new"
+            title = "New title"
+            thumbnail_url = "https://example.invalid/new.jpg"
+        }
+
+        model.migrateTo(targetSourceId = 9L, item = target, fallbackTitle = "Old")
+
+        assertEquals(9L, mangaRepository.updates.single().source)
+        assertEquals("/new", mangaRepository.updates.single().url)
+        assertEquals("New title", mangaRepository.updates.single().title)
+    }
+
+    @Test
+    fun `linkCreator stores creator relation and returns creator id`() = runTest {
+        val creatorRepository = FakeCreatorRepository()
+        val model = MangaDetailScreenModel(mangaId = 42L, creatorRepository = creatorRepository)
+
+        val creatorId = model.linkCreator("Jane", CreatorRole.AUTHOR)
+
+        assertEquals(1L, creatorId)
+        assertEquals(42L, creatorRepository.links.single().mangaId)
+        assertEquals(CreatorRole.AUTHOR, creatorRepository.links.single().role)
+    }
+
     // ── MangaDetailState data class sanity ───────────────────────────────────
 
     @Test
@@ -260,3 +443,83 @@ private fun createFakeManga(id: Long, title: String = "Manga $id") =
 
 private fun createFakeChapter(id: Long) =
     tachiyomi.domain.chapter.model.Chapter.create().copy(id = id, mangaId = 1L, name = "Chapter $id")
+
+private class FakeCreatorRepository : CreatorRepository {
+    data class Link(val mangaId: Long, val creatorId: Long, val role: CreatorRole)
+
+    val links = mutableListOf<Link>()
+    private var nextId = 1L
+
+    override suspend fun upsertCreator(displayName: String, aliases: List<String>): Creator =
+        Creator(
+            id = nextId++,
+            displayName = displayName,
+            normalizedName = displayName.lowercase(),
+            sortName = displayName.lowercase(),
+            aliases = aliases,
+            createdAt = 1L,
+            lastModifiedAt = 1L,
+        )
+
+    override suspend fun linkMangaCreator(
+        mangaId: Long,
+        creatorId: Long,
+        role: CreatorRole,
+        sourceText: String?,
+        confidence: Double,
+        evidence: String,
+    ) {
+        links += Link(mangaId, creatorId, role)
+    }
+
+    override suspend fun getCreator(id: Long) = null
+    override fun getCreatorsAsFlow() = kotlinx.coroutines.flow.flowOf(emptyList<Creator>())
+    override suspend fun linkDiscoveryCandidateCreator(
+        candidateId: Long,
+        creatorId: Long,
+        role: CreatorRole,
+        sourceText: String?,
+        confidence: Double,
+        evidence: String,
+    ) = Unit
+    override suspend fun followCreator(
+        creatorId: Long,
+        sourceIds: List<Long>,
+        languageTags: List<String>,
+    ) = error("unused")
+    override suspend fun unfollowCreator(creatorId: Long) = Unit
+    override suspend fun getFollowedCreators() = emptyList<tachiyomi.domain.creator.model.CreatorWatch>()
+    override fun getFollowedCreatorsAsFlow() =
+        kotlinx.coroutines.flow.flowOf(emptyList<tachiyomi.domain.creator.model.CreatorWatch>())
+    override suspend fun updateWatchCheckResult(creatorId: Long, checkedAt: Long, success: Boolean, error: String?) = Unit
+    override suspend fun upsertDiscoveryCandidate(
+        source: Long,
+        url: String,
+        title: String,
+        authorText: String?,
+        artistText: String?,
+        languageTag: String,
+        languageConfidence: Double,
+        languageEvidence: String,
+        thumbnailUrl: String?,
+        detailsFetchedAt: Long?,
+        state: tachiyomi.domain.creator.model.DiscoveryCandidateState,
+    ) = error("unused")
+    override suspend fun getDiscoveryCandidatesForCreator(creatorId: Long) =
+        emptyList<tachiyomi.domain.creator.model.DiscoveryCandidate>()
+    override suspend fun getDiscoveryCandidate(id: Long) = null
+    override suspend fun getMangaCreatorsForCreator(creatorId: Long) =
+        emptyList<tachiyomi.domain.creator.model.MangaCreator>()
+    override suspend fun getDiscoveryCandidateCreatorsForCreator(creatorId: Long) =
+        emptyList<tachiyomi.domain.creator.model.DiscoveryCandidateCreator>()
+    override suspend fun createCanonicalWork(primaryTitle: String, primaryCreatorId: Long?, originalLanguage: String?) =
+        error("unused")
+    override suspend fun upsertMangaWorkMatch(
+        mangaId: Long,
+        workId: Long,
+        confidence: Double,
+        matchReason: String,
+        state: tachiyomi.domain.creator.model.WorkMatchState,
+        manuallyConfirmed: Boolean,
+    ) = error("unused")
+}

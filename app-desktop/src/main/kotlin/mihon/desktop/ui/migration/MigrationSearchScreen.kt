@@ -1,5 +1,7 @@
 package mihon.desktop.ui.migration
 
+import mihon.desktop.LocalDesktopUiDependencies
+
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -55,8 +57,6 @@ import mihon.desktop.extension.safeSourceCall
 import mihon.desktop.domain.MigrationOptions
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.source.service.SourceManager
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 /**
  * Search for a replacement manga across all sources — step 3 of migration.
@@ -71,9 +71,9 @@ data class MigrationSearchScreen(
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val sourceManager = remember { Injekt.get<SourceManager>() }
-        val getManga = remember { Injekt.get<GetManga>() }
-        val migrateManga = remember { Injekt.get<DesktopMigrateMangaUseCase>() }
+        val sourceManager = LocalDesktopUiDependencies.current.sourceManager
+        val getManga = LocalDesktopUiDependencies.current.getManga
+        val migrateManga = LocalDesktopUiDependencies.current.migrateManga
         val scope = rememberCoroutineScope()
 
         var query by remember { mutableStateOf(sourceMangaTitle) }

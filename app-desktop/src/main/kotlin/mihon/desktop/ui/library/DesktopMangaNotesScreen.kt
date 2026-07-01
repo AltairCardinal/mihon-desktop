@@ -1,5 +1,7 @@
 package mihon.desktop.ui.library
 
+import mihon.desktop.LocalDesktopUiDependencies
+
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -19,8 +21,6 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import tachiyomi.domain.manga.interactor.UpdateMangaNotes
 import tachiyomi.domain.manga.model.Manga
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 /**
  * Dialog for viewing and editing manga notes.
@@ -31,7 +31,7 @@ fun MangaNotesDialog(
     manga: Manga,
     onDismiss: () -> Unit,
 ) {
-    val updateMangaNotes = remember { Injekt.get<UpdateMangaNotes>() }
+    val updateMangaNotes = LocalDesktopUiDependencies.current.updateMangaNotes
     val scope = rememberCoroutineScope()
     var notes by remember { mutableStateOf(manga.notes) }
 

@@ -1,5 +1,7 @@
 package mihon.desktop.ui.updates
 
+import mihon.desktop.LocalDesktopUiDependencies
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -52,8 +54,6 @@ import kotlinx.coroutines.launch
 import mihon.desktop.ui.library.MangaDetailScreen
 import mihon.domain.upcoming.interactor.GetUpcomingManga
 import tachiyomi.domain.manga.model.Manga
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
@@ -69,7 +69,7 @@ class UpcomingScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val getUpcomingManga = remember { Injekt.get<GetUpcomingManga>() }
+        val getUpcomingManga = LocalDesktopUiDependencies.current.getUpcomingManga
         val scope = rememberCoroutineScope()
         val listState = rememberLazyListState()
 

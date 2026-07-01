@@ -35,6 +35,7 @@ class ReaderScreenModel(
     val chapterUrl: String = "",
     val mangaViewerFlags: Long = 0L,
     prefs: ReaderPreferences = ReaderPreferences(),
+    private val persistViewerFlags: suspend (mangaId: Long, flags: Long) -> Unit = { _, _ -> },
 ) : ScreenModel {
 
     private val _state = MutableStateFlow(buildInitialState(prefs))
@@ -238,5 +239,10 @@ class ReaderScreenModel(
     fun setSkipReadChapters(skip: Boolean, prefs: ReaderPreferences? = null) {
         _state.update { it.copy(skipReadChapters = skip) }
         prefs?.skipReadChapters = skip
+    }
+
+    suspend fun persistViewerFlags(mangaId: Long, flags: Long) {
+        if (mangaId == 0L) return
+        persistViewerFlags.invoke(mangaId, flags)
     }
 }

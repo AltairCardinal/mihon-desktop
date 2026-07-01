@@ -1,5 +1,7 @@
 package mihon.desktop.ui.settings
 
+import mihon.desktop.LocalDesktopUiDependencies
+
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -43,12 +45,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import mihon.desktop.backup.DesktopBackupCreator
 import mihon.desktop.backup.DesktopBackupRestorer
+import mihon.desktop.domain.GetExcludedScanlators
+import mihon.desktop.domain.SetExcludedScanlators
 import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.history.repository.HistoryRepository
 import tachiyomi.domain.manga.repository.MangaRepository
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 import java.io.File
 import javax.swing.JFileChooser
 import javax.swing.SwingUtilities
@@ -63,7 +65,7 @@ class BackupSettingsScreen : Screen {
         val scope = rememberCoroutineScope()
         val snackbar = remember { SnackbarHostState() }
 
-        val appPrefs = remember { Injekt.get<DesktopAppPreferences>() }
+        val appPrefs = LocalDesktopUiDependencies.current.appPreferences
         var isBusy by remember { mutableStateOf(false) }
         var restoreErrors by remember { mutableStateOf<List<String>?>(null) }
         val autoBackupInterval by appPrefs.autoBackupInterval.changes()
@@ -71,10 +73,12 @@ class BackupSettingsScreen : Screen {
         val autoBackupMaxFiles by appPrefs.autoBackupMaxFiles.changes()
             .collectAsState(initial = appPrefs.autoBackupMaxFiles.get())
 
-        val mangaRepo = remember { Injekt.get<MangaRepository>() }
-        val chapterRepo = remember { Injekt.get<ChapterRepository>() }
-        val categoryRepo = remember { Injekt.get<CategoryRepository>() }
-        val historyRepo = remember { Injekt.get<HistoryRepository>() }
+        val mangaRepo = LocalDesktopUiDependencies.current.mangaRepository
+        val chapterRepo = LocalDesktopUiDependencies.current.chapterRepository
+        val categoryRepo = LocalDesktopUiDependencies.current.categoryRepository
+        val historyRepo = LocalDesktopUiDependencies.current.historyRepository
+        val getExcludedScanlators = LocalDesktopUiDependencies.current.getExcludedScanlators
+        val setExcludedScanlators = LocalDesktopUiDependencies.current.setExcludedScanlators
 
         // ── Restore error dialog ──────────────────────────────────────────────
         restoreErrors?.let { errors ->
@@ -140,6 +144,9 @@ class BackupSettingsScreen : Screen {
                                         chapterRepo,
                                         categoryRepo,
                                         historyRepo,
+                                        excludedScanlatorsForManga = { mangaId ->
+                                            getExcludedScanlators.await(mangaId).toList()
+                                        },
                                     )
                                 }
                                 val file = withContext(Dispatchers.IO) {
@@ -190,6 +197,9 @@ class BackupSettingsScreen : Screen {
                                     chapterRepo,
                                     categoryRepo,
                                     historyRepo,
+                                    setExcludedScanlatorsForManga = { mangaId, excluded ->
+                                        setExcludedScanlators.await(mangaId, excluded.toSet())
+                                    },
                                 )
                                 val result = withContext(Dispatchers.IO) {
                                     restorer.restore(backup)

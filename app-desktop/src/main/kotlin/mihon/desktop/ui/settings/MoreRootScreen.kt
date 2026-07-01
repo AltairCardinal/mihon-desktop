@@ -1,5 +1,7 @@
 package mihon.desktop.ui.settings
 
+import mihon.desktop.LocalDesktopUiDependencies
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -42,8 +44,6 @@ import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.test.state.applicationState
 import mihon.desktop.ui.extension.ExtensionListScreen
 import mihon.desktop.ui.migration.MigrationSearchScreen
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 class MoreRootScreen : Screen {
 
@@ -51,7 +51,7 @@ class MoreRootScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val downloadManager = remember { Injekt.get<DesktopDownloadManager>() }
+        val downloadManager = LocalDesktopUiDependencies.current.downloadManager
         val downloadQueue by downloadManager.queue.collectAsState()
         val activeDownloads = downloadQueue.size
 

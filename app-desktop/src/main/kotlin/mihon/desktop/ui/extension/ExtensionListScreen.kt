@@ -1,5 +1,7 @@
 package mihon.desktop.ui.extension
 
+import mihon.desktop.LocalDesktopUiDependencies
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,8 +68,6 @@ import mihon.desktop.extension.filterInstalledByLangs
 import mihon.desktop.extension.findUpdatableExtensions
 import mihon.desktop.extension.installedLangs
 import mihon.desktop.extension.isExtensionInstalled
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 /** Lists installed extensions and available extensions from registered repositories. */
 class ExtensionListScreen : Screen {
@@ -79,8 +79,8 @@ class ExtensionListScreen : Screen {
         val scope = rememberCoroutineScope()
         val snackbarHostState = remember { SnackbarHostState() }
 
-        val manager = remember { Injekt.get<DesktopExtensionManager>() }
-        val api = remember { Injekt.get<DesktopExtensionApi>() }
+        val manager = LocalDesktopUiDependencies.current.extensionManager
+        val api = LocalDesktopUiDependencies.current.extensionApi
 
         var selectedTab by remember { mutableStateOf(0) }
         var installedExtensions by remember { mutableStateOf(manager.getInstalledExtensions()) }

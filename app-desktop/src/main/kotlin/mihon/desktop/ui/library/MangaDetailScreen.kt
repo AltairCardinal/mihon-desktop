@@ -1,5 +1,7 @@
 package mihon.desktop.ui.library
 
+import mihon.desktop.LocalDesktopUiDependencies
+
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -68,6 +70,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -85,37 +88,19 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
-import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.DesktopMangaCoverManager
-import mihon.desktop.domain.GetAvailableScanlators
-import mihon.desktop.domain.GetExcludedScanlators
-import mihon.desktop.domain.LibraryUpdateChecker
-import mihon.desktop.domain.ReaderProgressTracker
-import mihon.desktop.domain.SetExcludedScanlators
-import mihon.desktop.download.DesktopDownloadManager
-import mihon.desktop.download.DownloadItem
-import mihon.desktop.reader.ReaderChapterRef
-import mihon.desktop.reader.ReaderNavigator
+import mihon.desktop.library.MangaDetailScreenModelFactory
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.readingModeFromViewerFlags
-import mihon.desktop.reader.viewerFlagsWithReadingMode
 import mihon.desktop.ui.browse.GlobalSearchScreen
+import mihon.desktop.ui.authors.AuthorDetailScreen
 import mihon.desktop.ui.reader.DesktopReaderScreen
-import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
-import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.chapter.model.Chapter
-import tachiyomi.domain.chapter.model.ChapterUpdate
-import tachiyomi.domain.chapter.repository.ChapterRepository
-import tachiyomi.domain.manga.interactor.GetMangaWithChapters
+import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.manga.model.Manga
-import tachiyomi.domain.manga.model.MangaUpdate
-import tachiyomi.domain.manga.repository.MangaRepository
-import tachiyomi.domain.source.service.SourceManager
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.awt.Desktop
@@ -131,18 +116,6 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val getMangaWithChapters = remember { Injekt.get<GetMangaWithChapters>() }
-        val sourceManager = remember { Injekt.get<SourceManager>() }
-        val progressTracker = remember { Injekt.get<ReaderProgressTracker>() }
-        val downloadManager = remember { Injekt.get<DesktopDownloadManager>() }
-        val updateChecker = remember { Injekt.get<LibraryUpdateChecker>() }
-        val chapterRepository = remember { Injekt.get<ChapterRepository>() }
-        val mangaRepository = remember { Injekt.get<MangaRepository>() }
-        val categoryRepository = remember { Injekt.get<CategoryRepository>() }
-        val setMangaCategories = remember { Injekt.get<SetMangaCategories>() }
-        val getExcludedScanlators = remember { Injekt.get<GetExcludedScanlators>() }
-        val setExcludedScanlators = remember { Injekt.get<SetExcludedScanlators>() }
-        val getAvailableScanlators = remember { Injekt.get<GetAvailableScanlators>() }
         val scope = rememberCoroutineScope()
 
         // Observe test navigation for reader screen
@@ -155,8 +128,9 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
             }
         }
 
-        val model = rememberScreenModel { MangaDetailScreenModel(mangaId) }
+        val model = rememberScreenModel { MangaDetailScreenModelFactory.create(mangaId) }
         val state by model.state.collectAsState()
+        val downloadQueue by model.downloadQueueFlow().collectAsState()
         val selectionState = remember { ChapterSelectionState() }
 
         // Read aliases — immutable vals at all read sites, writes go through model
@@ -186,18 +160,18 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         var downloadMenuExpanded by remember { mutableStateOf(false) }
 
         LaunchedEffect(mangaId) {
-            getMangaWithChapters.subscribe(mangaId, applyScanlatorFilter = true).collect { (m, ch) ->
+            model.mangaWithChaptersFlow().collect { (m, ch) ->
                 model.setManga(m)
                 model.setChapters(ch)
             }
         }
 
         LaunchedEffect(mangaId) {
-            getAvailableScanlators.subscribe(mangaId).collect { model.setAvailableScanlators(it) }
+            model.availableScanlatorsFlow().collect { model.setAvailableScanlators(it) }
         }
 
         LaunchedEffect(mangaId) {
-            getExcludedScanlators.subscribe(mangaId).collect { model.setExcludedScanlators(it) }
+            model.excludedScanlatorsFlow().collect { model.setExcludedScanlators(it) }
         }
 
         // Apply chapter filter + sort
@@ -215,7 +189,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 val bookmarkOk = if (filterShowBookmarked) ch.bookmark else true
                 val downloadedOk = if (filterShowDownloaded) {
                     val m = manga
-                    m != null && downloadManager.isDownloaded(m.source, m.title, ch.name)
+                    m != null && model.isChapterDownloaded(m, ch)
                 } else {
                     true
                 }
@@ -224,7 +198,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
             sortMangaDetailChapters(filtered, chapterSortMode, chapterSortAscending)
         }
         val source = remember(manga?.source) {
-            manga?.let { m -> sourceManager.getCatalogueSources().find { it.id == m.source } }
+            manga?.let { m -> model.sourceFor(m) }
         }
         val isHttpSource = source is eu.kanade.tachiyomi.source.online.HttpSource
         val mangaUrl = remember(manga?.url, source) {
@@ -267,18 +241,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                             onClick = {
                                                 val m = manga ?: return@DropdownMenuItem
                                                 chaptersForDownloadAction(chapters, action)
-                                                    .filterNot { ch -> downloadManager.isDownloaded(m.source, m.title, ch.name) }
-                                                    .forEach { ch ->
-                                                        downloadManager.enqueue(
-                                                            DownloadItem(
-                                                                sourceId = m.source,
-                                                                mangaTitle = m.title,
-                                                                chapterName = ch.name,
-                                                                chapterId = ch.id,
-                                                                chapterUrl = ch.url,
-                                                            ),
-                                                        )
-                                                    }
+                                                    .let { model.enqueueDownloads(m, it) }
                                                 downloadMenuExpanded = false
                                             },
                                         )
@@ -361,7 +324,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                                     } else {
                                                         excludedScanlators + scanlator
                                                     }
-                                                    setExcludedScanlators.await(mangaId, newExcluded)
+                                                    model.updateExcludedScanlators(newExcluded)
                                                 }
                                             },
                                         )
@@ -391,25 +354,10 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                         text = { Text("$label$arrow") },
                                         onClick = {
                                             manga?.let { m ->
-                                                val (nextMode, nextAscending) = nextChapterSort(
-                                                    currentMode = chapterSortMode,
-                                                    currentAscending = chapterSortAscending,
-                                                    requestedMode = mode,
-                                                )
                                                 scope.launch {
-                                                    mangaRepository.update(
-                                                        MangaUpdate(
-                                                            id = m.id,
-                                                            chapterFlags = chapterSortFlags(
-                                                                mode = nextMode,
-                                                                ascending = nextAscending,
-                                                                currentFlags = m.chapterFlags,
-                                                            ),
-                                                        ),
-                                                    )
+                                                    model.setChapterSort(m, mode)
                                                 }
                                             }
-                                            model.toggleSort(mode)
                                             model.toggleFilterMenu()
                                         },
                                     )
@@ -425,15 +373,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                     onClick = {
                                         manga?.let { m ->
                                             scope.launch {
-                                                mangaRepository.update(
-                                                    MangaUpdate(
-                                                        id = m.id,
-                                                        chapterFlags = chapterDisplayFlags(
-                                                            displayMode = Manga.CHAPTER_DISPLAY_NAME,
-                                                            currentFlags = m.chapterFlags,
-                                                        ),
-                                                    ),
-                                                )
+                                                model.setChapterDisplayMode(m, Manga.CHAPTER_DISPLAY_NAME)
                                             }
                                         }
                                         model.toggleFilterMenu()
@@ -446,15 +386,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                     onClick = {
                                         manga?.let { m ->
                                             scope.launch {
-                                                mangaRepository.update(
-                                                    MangaUpdate(
-                                                        id = m.id,
-                                                        chapterFlags = chapterDisplayFlags(
-                                                            displayMode = Manga.CHAPTER_DISPLAY_NUMBER,
-                                                            currentFlags = m.chapterFlags,
-                                                        ),
-                                                    ),
-                                                )
+                                                model.setChapterDisplayMode(m, Manga.CHAPTER_DISPLAY_NUMBER)
                                             }
                                         }
                                         model.toggleFilterMenu()
@@ -473,9 +405,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                 val m = manga ?: return@IconButton
                                 scope.launch {
                                     model.setIsUpdating(true)
-                                    val source = sourceManager.getCatalogueSources()
-                                        .find { it.id == m.source }
-                                    if (source != null) updateChecker.checkForUpdates(m, source)
+                                    model.refreshManga(m)
                                     model.setIsUpdating(false)
                                 }
                             }) {
@@ -500,41 +430,32 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                     val selectedChapters = chapters.filter { it.id in selectionState.selectedIds }
                     val selectedDownloadAction = chapterSelectionDownloadAction(selectedChapters) { ch ->
                         val m = manga
-                        m != null && downloadManager.isDownloaded(m.source, m.title, ch.name)
+                        m != null && model.isChapterDownloaded(m, ch)
                     }
                     ChapterSelectionBar(
                         selectedCount = selectionState.selectedIds.size,
                         downloadAction = selectedDownloadAction,
                         onBookmark = {
                             scope.launch {
-                                val shouldBookmark = selectedChapters.any { !it.bookmark }
-                                selectedChapters.forEach { ch ->
-                                    chapterRepository.update(ChapterUpdate(id = ch.id, bookmark = shouldBookmark))
-                                }
+                                model.markSelectedBookmark(selectedChapters)
                                 selectionState.clear()
                             }
                         },
                         onMarkRead = {
                             scope.launch {
-                                selectedChapters.forEach { ch ->
-                                    chapterRepository.update(ChapterUpdate(id = ch.id, read = true))
-                                }
+                                model.markSelectedRead(selectedChapters, read = true)
                                 selectionState.clear()
                             }
                         },
                         onMarkUnread = {
                             scope.launch {
-                                selectedChapters.forEach { ch ->
-                                    chapterRepository.update(ChapterUpdate(id = ch.id, read = false))
-                                }
+                                model.markSelectedRead(selectedChapters, read = false)
                                 selectionState.clear()
                             }
                         },
                         onMarkBelowRead = {
                             scope.launch {
-                                chaptersAtOrBelowSelection(displayedChapters, selectionState.selectedIds).forEach { ch ->
-                                    chapterRepository.update(ChapterUpdate(id = ch.id, read = true))
-                                }
+                                model.markAtOrBelowRead(displayedChapters, selectionState.selectedIds)
                                 selectionState.clear()
                             }
                         },
@@ -542,24 +463,10 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                             val m = manga ?: return@ChapterSelectionBar
                             when (selectedDownloadAction) {
                                 ChapterSelectionDownloadAction.DOWNLOAD -> {
-                                    selectedChapters
-                                        .filterNot { ch -> downloadManager.isDownloaded(m.source, m.title, ch.name) }
-                                        .forEach { ch ->
-                                            downloadManager.enqueue(
-                                                DownloadItem(
-                                                    sourceId = m.source,
-                                                    mangaTitle = m.title,
-                                                    chapterName = ch.name,
-                                                    chapterId = ch.id,
-                                                    chapterUrl = ch.url,
-                                                ),
-                                            )
-                                        }
+                                    model.enqueueDownloads(m, selectedChapters)
                                 }
                                 ChapterSelectionDownloadAction.DELETE_DOWNLOAD -> {
-                                    selectedChapters.forEach { ch ->
-                                        downloadManager.deleteDownload(m.source, m.title, ch.name)
-                                    }
+                                    selectedChapters.forEach { ch -> model.deleteChapterDownload(m, ch) }
                                 }
                             }
                             selectionState.clear()
@@ -575,24 +482,21 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         text = { Text(if (chapters.any { it.read }) "Resume" else "Start") },
                         icon = { Icon(Icons.Default.PlayArrow, contentDescription = null) },
                         onClick = {
-                            val chapterRefs = chapters.sortedBy { it.sourceOrder }
-                                .map { ReaderChapterRef(id = it.id, url = it.url, name = it.name, isRead = it.read) }
-                            val idx = ReaderNavigator.indexForId(chapterRefs, ch.id)
+                            val request = model.readerRequest(manga!!, chapters, ch)
                             navigator.push(
                                 DesktopReaderScreen(
-                                    chapterTitle = ch.name,
-                                    mangaId = mangaId,
-                                    mangaTitle = manga?.title ?: "",
+                                    chapterTitle = request.chapterTitle,
+                                    mangaId = request.mangaId,
+                                    mangaTitle = request.mangaTitle,
                                     pageUrls = emptyList(),
                                     isWebtoon = false,
-                                    sourceId = manga?.source ?: 0L,
-                                    chapterUrl = ch.url,
-                                    chapterId = ch.id,
-                                    chapters = chapterRefs,
-                                    currentChapterIndex = idx,
-                                    initialPage = ch.lastPageRead.toInt().coerceAtLeast(0),
-                                    mangaViewerFlags = manga?.viewerFlags ?: 0L,
-                                    progressTracker = progressTracker,
+                                    sourceId = request.sourceId,
+                                    chapterUrl = request.chapterUrl,
+                                    chapterId = request.chapterId,
+                                    chapters = request.chapters,
+                                    currentChapterIndex = request.currentChapterIndex,
+                                    initialPage = request.initialPage,
+                                    mangaViewerFlags = request.mangaViewerFlags,
                                 ),
                             )
                         },
@@ -608,11 +512,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                     text = { Text("Delete local files for \"${ch.name}\"? You can re-download it later.") },
                     confirmButton = {
                         TextButton(onClick = {
-                            downloadManager.deleteDownload(
-                                sourceId = manga?.source ?: 0L,
-                                mangaTitle = manga?.title ?: "",
-                                chapterName = ch.name,
-                            )
+                            manga?.let { model.deleteChapterDownload(it, ch) }
                             model.setDeleteConfirmChapter(null)
                         }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
                     },
@@ -631,8 +531,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                     confirmButton = {
                         TextButton(onClick = {
                             scope.launch {
-                                val updates = chapters.map { ch -> ChapterUpdate(id = ch.id, read = true) }
-                                chapterRepository.updateAll(updates)
+                                model.markAllRead(chapters)
                             }
                             model.setMarkAllReadConfirm(false)
                         }) { Text("Mark all read") }
@@ -647,8 +546,9 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
             if (showCategoryDialog && categoryManga != null) {
                 MangaCategoryDialog(
                     mangaId = categoryManga.id,
-                    categoryRepository = categoryRepository,
-                    setMangaCategories = setMangaCategories,
+                    loadCategories = model::categories,
+                    loadCategoryIds = model::categoryIdsForManga,
+                    setCategories = model::setCategoriesForManga,
                     onDismiss = { showCategoryDialog = false },
                 )
             }
@@ -660,12 +560,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                     onDismiss = { showFetchIntervalDialog = false },
                     onConfirm = { interval ->
                         scope.launch {
-                            mangaRepository.update(
-                                MangaUpdate(
-                                    id = intervalManga.id,
-                                    fetchInterval = if (interval == 0) 0 else -interval,
-                                ),
-                            )
+                            model.setFetchInterval(intervalManga.id, interval)
                         }
                         showFetchIntervalDialog = false
                     },
@@ -686,7 +581,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
             // ── Migration: source picker ──────────────────────────────────
             if (showMigrateSourcePicker) {
                 val availableSources = remember {
-                    sourceManager.getCatalogueSources().filter { it.id != manga?.source }
+                    model.migrationSources(manga?.source)
                 }
                 AlertDialog(
                     onDismissRequest = { model.setShowMigrateSourcePicker(false) },
@@ -707,8 +602,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                                 model.setMigrateSearching(true)
                                                 runCatching {
                                                     val query = manga?.title ?: return@runCatching
-                                                    val results = src.getSearchManga(1, query, FilterList())
-                                                    model.setMigrateSearchResults(results.mangas)
+                                                    model.setMigrateSearchResults(model.searchMigration(src, query))
                                                 }
                                                 model.setMigrateSearching(false)
                                             }
@@ -788,15 +682,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         TextButton(onClick = {
                             val targetSourceId = migrateTargetSourceId ?: return@TextButton
                             scope.launch {
-                                mangaRepository.update(
-                                    MangaUpdate(
-                                        id = mangaId,
-                                        source = targetSourceId,
-                                        url = confirmItem.url,
-                                        title = confirmItem.title.takeIf { it.isNotBlank() } ?: manga?.title,
-                                        thumbnailUrl = confirmItem.thumbnail_url,
-                                    ),
-                                )
+                                model.migrateTo(targetSourceId, confirmItem, manga?.title)
                             }
                             model.setMigrateConfirmItem(null)
                             model.setMigrateSearchResults(null)
@@ -835,6 +721,18 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         sourceName = source?.name,
                         onTagSearch = { tag -> navigator.push(GlobalSearchScreen(initialQuery = tag)) },
                         onTagCopy = ::copyText,
+                        onAuthorClick = { author ->
+                            scope.launch {
+                                val creatorId = model.linkCreator(author, CreatorRole.AUTHOR)
+                                navigator.push(AuthorDetailScreen(creatorId, collectOnOpen = true))
+                            }
+                        },
+                        onArtistClick = { artist ->
+                            scope.launch {
+                                val creatorId = model.linkCreator(artist, CreatorRole.ARTIST)
+                                navigator.push(AuthorDetailScreen(creatorId, collectOnOpen = true))
+                            }
+                        },
                     )
                 }
 
@@ -846,13 +744,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         onToggleLibrary = {
                             val current = manga ?: return@MangaDetailActionRow
                             scope.launch {
-                                mangaRepository.update(
-                                    MangaUpdate(
-                                        id = current.id,
-                                        favorite = !current.favorite,
-                                        dateAdded = if (!current.favorite) System.currentTimeMillis() else current.dateAdded,
-                                    ),
-                                )
+                                model.toggleLibrary(current)
                             }
                         },
                         onEditCategories = { showCategoryDialog = true },
@@ -885,12 +777,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                     onClick = {
                                         expanded = false
                                         scope.launch {
-                                            mangaRepository.update(
-                                                MangaUpdate(
-                                                    id = mangaId,
-                                                    viewerFlags = viewerFlagsWithReadingMode(currentFlags, null),
-                                                ),
-                                            )
+                                            model.setReadingMode(mangaId, currentFlags, null)
                                         }
                                     },
                                 )
@@ -899,12 +786,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                     onClick = {
                                         expanded = false
                                         scope.launch {
-                                            mangaRepository.update(
-                                                MangaUpdate(
-                                                    id = mangaId,
-                                                    viewerFlags = viewerFlagsWithReadingMode(currentFlags, ReadingMode.LTR),
-                                                ),
-                                            )
+                                            model.setReadingMode(mangaId, currentFlags, ReadingMode.LTR)
                                         }
                                     },
                                 )
@@ -913,12 +795,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                     onClick = {
                                         expanded = false
                                         scope.launch {
-                                            mangaRepository.update(
-                                                MangaUpdate(
-                                                    id = mangaId,
-                                                    viewerFlags = viewerFlagsWithReadingMode(currentFlags, ReadingMode.RTL),
-                                                ),
-                                            )
+                                            model.setReadingMode(mangaId, currentFlags, ReadingMode.RTL)
                                         }
                                     },
                                 )
@@ -927,12 +804,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                     onClick = {
                                         expanded = false
                                         scope.launch {
-                                            mangaRepository.update(
-                                                MangaUpdate(
-                                                    id = mangaId,
-                                                    viewerFlags = viewerFlagsWithReadingMode(currentFlags, ReadingMode.WEBTOON),
-                                                ),
-                                            )
+                                            model.setReadingMode(mangaId, currentFlags, ReadingMode.WEBTOON)
                                         }
                                     },
                                 )
@@ -956,18 +828,13 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                     HorizontalDivider()
                 }
                 items(displayedChapters, key = { it.id }) { chapter ->
-                    val chapterRefs = remember(chapters) {
-                        chapters.sortedBy { it.sourceOrder }
-                            .map { ReaderChapterRef(id = it.id, url = it.url, name = it.name, isRead = it.read) }
-                    }
-                    val downloadQueue by downloadManager.queue.collectAsState()
                     val queuedItem = downloadQueue.find { it.chapterId == chapter.id }
                     val downloadStatus = when {
                         queuedItem != null -> when (queuedItem.status) {
                             mihon.desktop.download.DownloadStatus.DOWNLOADING -> ChapterDownloadStatus.DOWNLOADING
                             else -> ChapterDownloadStatus.QUEUED
                         }
-                        downloadManager.isDownloaded(manga?.source ?: 0L, manga?.title ?: "", chapter.name) ->
+                        manga != null && model.isChapterDownloaded(manga, chapter) ->
                             ChapterDownloadStatus.DOWNLOADED
                         else -> ChapterDownloadStatus.NOT_DOWNLOADED
                     }
@@ -984,41 +851,32 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         isSelected = isSelected,
                         onSelect = { selectionState.toggle(chapter.id) },
                         onDownload = {
-                            downloadManager.enqueue(
-                                DownloadItem(
-                                    sourceId = manga?.source ?: 0L,
-                                    mangaTitle = manga?.title ?: "",
-                                    chapterName = chapter.name,
-                                    chapterId = chapter.id,
-                                    chapterUrl = chapter.url,
-                                ),
-                            )
+                            manga?.let { model.enqueueDownloads(it, listOf(chapter)) }
                         },
                         onDeleteDownload = { model.setDeleteConfirmChapter(chapter) },
-                        onCancelDownload = { downloadManager.cancel(chapter.id) },
+                        onCancelDownload = { model.cancelChapterDownload(chapter.id) },
                         onToggleBookmark = {
                             scope.launch {
-                                chapterRepository.update(ChapterUpdate(id = chapter.id, bookmark = !chapter.bookmark))
+                                model.toggleChapterBookmark(chapter)
                             }
                         },
                         onRead = {
                             scope.launch {
-                                val idx = ReaderNavigator.indexForId(chapterRefs, chapter.id)
+                                val request = model.readerRequest(manga!!, chapters, chapter)
                                 navigator.push(
                                     DesktopReaderScreen(
-                                        chapterTitle = chapter.name,
-                                        mangaId = mangaId,
-                                        mangaTitle = manga?.title ?: "",
+                                        chapterTitle = request.chapterTitle,
+                                        mangaId = request.mangaId,
+                                        mangaTitle = request.mangaTitle,
                                         pageUrls = emptyList(),
                                         isWebtoon = false,
-                                        sourceId = manga?.source ?: 0L,
-                                        chapterUrl = chapter.url,
-                                        chapterId = chapter.id,
-                                        chapters = chapterRefs,
-                                        currentChapterIndex = idx,
-                                        initialPage = chapter.lastPageRead.toInt().coerceAtLeast(0),
-                                        mangaViewerFlags = manga?.viewerFlags ?: 0L,
-                                        progressTracker = progressTracker,
+                                        sourceId = request.sourceId,
+                                        chapterUrl = request.chapterUrl,
+                                        chapterId = request.chapterId,
+                                        chapters = request.chapters,
+                                        currentChapterIndex = request.currentChapterIndex,
+                                        initialPage = request.initialPage,
+                                        mangaViewerFlags = request.mangaViewerFlags,
                                     ),
                                 )
                             }
@@ -1030,589 +888,20 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
     }
 }
 
-@Composable
-private fun MangaHeader(
-    manga: Manga,
-    sourceName: String?,
-    onTagSearch: (String) -> Unit,
-    onTagCopy: (String) -> Unit,
-) {
-    val coverManager = remember { Injekt.get<DesktopMangaCoverManager>() }
-    var coverVersion by remember { mutableStateOf(0) }
-    val coverModel by produceState<String?>(initialValue = manga.thumbnailUrl, coverVersion) {
-        value = coverManager.resolveModel(manga.id, manga.thumbnailUrl)
-    }
-    var showCoverMenu by remember { mutableStateOf(false) }
+internal data class MangaCoverStateKey(
+    val mangaId: Long,
+    val thumbnailUrl: String?,
+    val coverVersion: Int,
+)
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Box {
-            AsyncImage(
-                model = coverModel,
-                contentDescription = manga.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .width(120.dp)
-                    .aspectRatio(0.7f),
-            )
-            // Edit cover button overlay
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd),
-            ) {
-                IconButton(
-                    onClick = { showCoverMenu = true },
-                ) {
-                    Icon(
-                        Icons.Default.Edit,
-                        contentDescription = "Edit cover",
-                        tint = Color.White,
-                    )
-                }
-                DropdownMenu(
-                    expanded = showCoverMenu,
-                    onDismissRequest = { showCoverMenu = false },
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("Edit cover") },
-                        onClick = {
-                            showCoverMenu = false
-                            SwingUtilities.invokeLater {
-                                val chooser = JFileChooser()
-                                chooser.fileFilter = FileNameExtensionFilter(
-                                    "Image files",
-                                    "jpg",
-                                    "jpeg",
-                                    "png",
-                                    "webp",
-                                    "gif",
-                                )
-                                if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-                                    coverManager.setCustomCover(manga.id, chooser.selectedFile)
-                                    coverVersion++
-                                }
-                            }
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Delete cover") },
-                        onClick = {
-                            showCoverMenu = false
-                            coverManager.deleteCustomCover(manga.id)
-                            coverVersion++
-                        },
-                        enabled = coverManager.customCoverExists(manga.id),
-                    )
-                }
-            }
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = manga.title,
-                style = MaterialTheme.typography.titleLarge,
-            )
-            manga.author?.let { author ->
-                Text(
-                    text = "Author: $author",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
-            manga.artist?.takeIf { it != manga.author }?.let { artist ->
-                Text(
-                    text = "Artist: $artist",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            }
-            Text(
-                text = listOfNotNull(
-                    mangaStatusLabel(manga.status),
-                    sourceName?.let { "Source: $it" },
-                ).joinToString(" · "),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp),
-            )
-            manga.description?.let { desc ->
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = desc,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 6,
-                    overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            val tags = manga.genre.orEmpty().filter { it.isNotBlank() }
-            if (tags.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    tags.forEach { tag ->
-                        FilterChip(
-                            selected = false,
-                            onClick = { onTagSearch(tag) },
-                            label = { Text(tag, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            trailingIcon = {
-                                IconButton(onClick = { onTagCopy(tag) }) {
-                                    Icon(Icons.Default.Link, contentDescription = "Copy tag")
-                                }
-                            },
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MangaCategoryDialog(
+internal fun mangaCoverStateKey(
     mangaId: Long,
-    categoryRepository: CategoryRepository,
-    setMangaCategories: SetMangaCategories,
-    onDismiss: () -> Unit,
-) {
-    var categories by remember { mutableStateOf<List<Category>>(emptyList()) }
-    var checkedIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
-    var loaded by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-
-    LaunchedEffect(mangaId) {
-        categories = categoryRepository.getAll().sortedBy { it.order }
-        checkedIds = categoryRepository.getCategoriesByMangaId(mangaId).map { it.id }.toSet()
-        loaded = true
-    }
-
-    if (!loaded) return
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Edit categories") },
-        text = {
-            if (categories.isEmpty()) {
-                Text("No categories. Create categories from Library first.")
-            } else {
-                Column {
-                    categories.forEach { category ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    checkedIds = if (category.id in checkedIds) {
-                                        checkedIds - category.id
-                                    } else {
-                                        checkedIds + category.id
-                                    }
-                                }
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Checkbox(
-                                checked = category.id in checkedIds,
-                                onCheckedChange = { checked ->
-                                    checkedIds = if (checked) checkedIds + category.id else checkedIds - category.id
-                                },
-                            )
-                            Text(category.name, modifier = Modifier.padding(start = 8.dp))
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    scope.launch {
-                        setMangaCategories.await(mangaId, checkedIds.toList())
-                    }
-                    onDismiss()
-                },
-            ) {
-                Text("OK")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
+    thumbnailUrl: String?,
+    coverVersion: Int,
+): MangaCoverStateKey {
+    return MangaCoverStateKey(
+        mangaId = mangaId,
+        thumbnailUrl = thumbnailUrl,
+        coverVersion = coverVersion,
     )
-}
-
-@Composable
-private fun FetchIntervalDialog(
-    manga: Manga,
-    onDismiss: () -> Unit,
-    onConfirm: (Int) -> Unit,
-) {
-    var selectedInterval by remember(manga.fetchInterval) {
-        mutableStateOf(manga.fetchInterval.coerceAtMost(0).let { -it })
-    }
-    val options = listOf(0, 1, 2, 7, 14, 30)
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Update interval") },
-        text = {
-            Column {
-                options.forEach { interval ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { selectedInterval = interval }
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Checkbox(
-                            checked = selectedInterval == interval,
-                            onCheckedChange = { selectedInterval = interval },
-                        )
-                        Text(
-                            text = if (interval == 0) "Default" else "$interval day${if (interval == 1) "" else "s"}",
-                            modifier = Modifier.padding(start = 8.dp),
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(selectedInterval) }) { Text("OK") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    )
-}
-
-private fun mangaStatusLabel(status: Long): String? =
-    when (status) {
-        SManga.ONGOING.toLong() -> "Ongoing"
-        SManga.COMPLETED.toLong() -> "Completed"
-        SManga.LICENSED.toLong() -> "Licensed"
-        SManga.PUBLISHING_FINISHED.toLong() -> "Publishing finished"
-        SManga.CANCELLED.toLong() -> "Cancelled"
-        else -> null
-    }
-
-@Composable
-private fun MangaDetailActionRow(
-    manga: Manga,
-    isHttpSource: Boolean,
-    hasUnreadChapters: Boolean,
-    onToggleLibrary: () -> Unit,
-    onEditCategories: () -> Unit,
-    onEditFetchInterval: () -> Unit,
-    onTracking: () -> Unit,
-    onOpenInBrowser: () -> Unit,
-    onCopyLink: () -> Unit,
-    onShare: () -> Unit,
-) {
-    val actions = mangaDetailPrimaryActionTypes(
-        isFavorite = manga.favorite,
-        isHttpSource = isHttpSource,
-        hasUnreadChapters = hasUnreadChapters,
-    )
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        actions.forEach { action ->
-            when (action) {
-                MangaDetailPrimaryActionType.TOGGLE_LIBRARY ->
-                    TextButton(onClick = onToggleLibrary) {
-                        Icon(
-                            if (manga.favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = null,
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(if (manga.favorite) "In library" else "Add to library")
-                    }
-                MangaDetailPrimaryActionType.EDIT_CATEGORIES ->
-                    IconButton(onClick = onEditCategories) {
-                        Icon(Icons.Default.Category, contentDescription = "Edit categories")
-                    }
-                MangaDetailPrimaryActionType.EDIT_FETCH_INTERVAL ->
-                    IconButton(onClick = onEditFetchInterval) {
-                        Icon(Icons.Default.HourglassEmpty, contentDescription = "Edit update interval")
-                    }
-                MangaDetailPrimaryActionType.TRACKING ->
-                    IconButton(onClick = onTracking) {
-                        Icon(Icons.Default.Sync, contentDescription = "Tracking")
-                    }
-                MangaDetailPrimaryActionType.OPEN_IN_BROWSER ->
-                    IconButton(onClick = onOpenInBrowser) {
-                        Icon(Icons.Default.OpenInBrowser, contentDescription = "Open in browser")
-                    }
-                MangaDetailPrimaryActionType.COPY_LINK ->
-                    IconButton(onClick = onCopyLink) {
-                        Icon(Icons.Default.Link, contentDescription = "Copy link")
-                    }
-                MangaDetailPrimaryActionType.SHARE ->
-                    IconButton(onClick = onShare) {
-                        Icon(Icons.Default.Share, contentDescription = "Share link")
-                    }
-                MangaDetailPrimaryActionType.CONTINUE_READING -> Unit
-            }
-        }
-    }
-}
-
-private enum class ChapterDownloadStatus { NOT_DOWNLOADED, QUEUED, DOWNLOADING, DOWNLOADED }
-
-@Composable
-private fun ChapterRow(
-    chapter: Chapter,
-    title: String,
-    downloadStatus: ChapterDownloadStatus,
-    downloadProgress: Float?,
-    isSelected: Boolean = false,
-    onSelect: () -> Unit = {},
-    onDownload: () -> Unit,
-    onDeleteDownload: () -> Unit,
-    onCancelDownload: () -> Unit,
-    onToggleBookmark: () -> Unit,
-    onRead: () -> Unit,
-) {
-    ListItem(
-        modifier = if (isSelected) Modifier.background(MaterialTheme.colorScheme.secondaryContainer) else Modifier,
-        leadingContent = {
-            Checkbox(
-                checked = isSelected,
-                onCheckedChange = { onSelect() },
-            )
-        },
-        headlineContent = {
-            Text(
-                text = title,
-                color = if (chapter.read) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-            )
-        },
-        trailingContent = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // Bookmark toggle
-                IconButton(onClick = onToggleBookmark) {
-                    Icon(
-                        if (chapter.bookmark) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                        contentDescription = if (chapter.bookmark) "Remove bookmark" else "Add bookmark",
-                        tint = if (chapter.bookmark) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                    )
-                }
-
-                when (downloadStatus) {
-                    ChapterDownloadStatus.DOWNLOADED ->
-                        IconButton(onClick = onDeleteDownload) {
-                            Icon(
-                                Icons.Default.DownloadDone,
-                                contentDescription = "Delete download",
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                    ChapterDownloadStatus.QUEUED, ChapterDownloadStatus.DOWNLOADING ->
-                        ChapterDownloadingIndicator(
-                            downloadProgress = downloadProgress,
-                            onCancel = onCancelDownload,
-                        )
-                    ChapterDownloadStatus.NOT_DOWNLOADED ->
-                        IconButton(onClick = onDownload) {
-                            Icon(Icons.Default.CloudDownload, contentDescription = "Download")
-                        }
-                }
-                if (!isSelected) {
-                    TextButton(onClick = onRead) {
-                        if (chapter.read) {
-                            Icon(
-                                Icons.Default.CheckCircle,
-                                contentDescription = "Read",
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                        } else {
-                            Text("Read")
-                        }
-                    }
-                }
-            }
-        },
-        supportingContent = chapter.scanlator?.let { { Text(it, style = MaterialTheme.typography.bodySmall) } },
-    )
-    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-}
-
-/**
- * Returns the download progress as a fraction [0.0, 1.0], or null for indeterminate state.
- *
- * Returns null when:
- * - totalPages is 0 (page list not yet resolved)
- * - progress is 0 (download just started, no pages fetched yet)
- */
-internal fun downloadProgressFraction(progress: Int, totalPages: Int): Float? {
-    if (totalPages == 0 || progress == 0) return null
-    return (progress.toFloat() / totalPages).coerceIn(0f, 1f)
-}
-
-private val MangaDetailDownloadAction.label: String
-    get() = when (this) {
-        MangaDetailDownloadAction.NEXT_1_CHAPTER -> "Next 1 chapter"
-        MangaDetailDownloadAction.NEXT_5_CHAPTERS -> "Next 5 chapters"
-        MangaDetailDownloadAction.NEXT_10_CHAPTERS -> "Next 10 chapters"
-        MangaDetailDownloadAction.NEXT_25_CHAPTERS -> "Next 25 chapters"
-        MangaDetailDownloadAction.UNREAD_CHAPTERS -> "Unread chapters"
-        MangaDetailDownloadAction.BOOKMARKED_CHAPTERS -> "Bookmarked chapters"
-    }
-
-private fun copyText(text: String) {
-    runCatching {
-        val selection = StringSelection(text)
-        Toolkit.getDefaultToolkit().systemClipboard.setContents(selection, selection)
-    }
-}
-
-private fun openExternalLink(url: String) {
-    runCatching {
-        Desktop.getDesktop().browse(URI(url))
-    }
-}
-
-/**
- * Matches Android's ChapterDownloadIndicator for QUEUE and DOWNLOADING states:
- * - null progress → indeterminate circular indicator
- * - non-null → determinate circular indicator with animation
- * - ArrowDownward icon in center
- * - Click shows context menu with Cancel option
- */
-@Composable
-private fun ChapterDownloadingIndicator(
-    downloadProgress: Float?,
-    onCancel: () -> Unit,
-) {
-    var showMenu by remember { mutableStateOf(false) }
-    val indicatorSize = 36.dp
-    val strokeWidth = 3.dp
-    val strokeColor = MaterialTheme.colorScheme.onSurfaceVariant
-
-    Box(
-        modifier = Modifier
-            .clickable { showMenu = true }
-            .layoutSize(indicatorSize),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (downloadProgress == null) {
-            CircularProgressIndicator(
-                modifier = Modifier.matchParentSize(),
-                color = strokeColor,
-                strokeWidth = strokeWidth,
-                trackColor = androidx.compose.ui.graphics.Color.Transparent,
-                strokeCap = StrokeCap.Butt,
-            )
-        } else {
-            val animatedProgress by animateFloatAsState(
-                targetValue = downloadProgress,
-                animationSpec = ProgressIndicatorDefaults.ProgressAnimationSpec,
-                label = "download_progress",
-            )
-            CircularProgressIndicator(
-                progress = { animatedProgress },
-                modifier = Modifier.matchParentSize(),
-                color = strokeColor,
-                strokeWidth = strokeWidth,
-                trackColor = androidx.compose.ui.graphics.Color.Transparent,
-                strokeCap = StrokeCap.Butt,
-            )
-        }
-        Icon(
-            imageVector = Icons.Default.ArrowDownward,
-            contentDescription = "Downloading",
-            modifier = Modifier.layoutSize(16.dp),
-            tint = strokeColor,
-        )
-        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-            DropdownMenuItem(
-                text = { Text("Cancel") },
-                onClick = {
-                    onCancel()
-                    showMenu = false
-                },
-            )
-        }
-    }
-}
-
-/**
- * Batch action bar that appears at the bottom when chapters are selected.
- * Mirrors the SelectionActionBar pattern from LibraryTab.
- */
-@Composable
-private fun ChapterSelectionBar(
-    selectedCount: Int,
-    downloadAction: ChapterSelectionDownloadAction,
-    onBookmark: () -> Unit,
-    onMarkRead: () -> Unit,
-    onMarkUnread: () -> Unit,
-    onMarkBelowRead: () -> Unit,
-    onDownloadOrDelete: () -> Unit,
-    onClose: () -> Unit,
-) {
-    val actionTypes = chapterSelectionActionTypes(downloadAction)
-    BottomAppBar(
-        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-    ) {
-        IconButton(onClick = onClose) {
-            Icon(Icons.Default.Close, contentDescription = "Clear selection")
-        }
-        Text(
-            text = "$selectedCount selected",
-            style = MaterialTheme.typography.titleSmall,
-            modifier = Modifier.weight(1f),
-        )
-        actionTypes.forEach { action ->
-            when (action) {
-                ChapterSelectionActionType.BOOKMARK ->
-                    IconButton(onClick = onBookmark) {
-                        Icon(Icons.Default.Bookmark, contentDescription = "Bookmark selected")
-                    }
-                ChapterSelectionActionType.MARK_READ ->
-                    IconButton(onClick = onMarkRead) {
-                        Icon(Icons.Default.DoneAll, contentDescription = "Mark selected as read")
-                    }
-                ChapterSelectionActionType.MARK_UNREAD ->
-                    IconButton(onClick = onMarkUnread) {
-                        Icon(Icons.Default.RadioButtonUnchecked, contentDescription = "Mark selected as unread")
-                    }
-                ChapterSelectionActionType.MARK_BELOW_READ ->
-                    IconButton(onClick = onMarkBelowRead) {
-                        Icon(Icons.Default.ArrowDownward, contentDescription = "Mark below as read")
-                    }
-                ChapterSelectionActionType.DOWNLOAD ->
-                    IconButton(onClick = onDownloadOrDelete) {
-                        Icon(Icons.Default.CloudDownload, contentDescription = "Download selected")
-                    }
-                ChapterSelectionActionType.DELETE_DOWNLOAD ->
-                    IconButton(onClick = onDownloadOrDelete) {
-                        Icon(
-                            Icons.Default.Delete,
-                            contentDescription = "Delete downloaded",
-                            tint = MaterialTheme.colorScheme.error,
-                        )
-                    }
-            }
-        }
-    }
 }

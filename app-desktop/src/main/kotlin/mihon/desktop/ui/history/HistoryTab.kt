@@ -34,11 +34,10 @@ import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,6 +45,7 @@ import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -55,15 +55,9 @@ import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
-import mihon.desktop.domain.ReaderProgressTracker
+import mihon.desktop.history.HistoryScreenModelFactory
 import mihon.desktop.ui.reader.DesktopReaderScreen
-import tachiyomi.domain.chapter.interactor.GetChapter
-import tachiyomi.domain.history.interactor.GetHistory
-import tachiyomi.domain.history.interactor.RemoveHistory
 import tachiyomi.domain.history.model.HistoryWithRelations
-import tachiyomi.domain.manga.interactor.GetManga
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -133,38 +127,30 @@ class HistoryRootScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val getHistory = remember { Injekt.get<GetHistory>() }
-        val removeHistory = remember { Injekt.get<RemoveHistory>() }
-        val getChapter = remember { Injekt.get<GetChapter>() }
-        val getManga = remember { Injekt.get<GetManga>() }
-        val progressTracker = remember { Injekt.get<ReaderProgressTracker>() }
+        val model = rememberScreenModel { HistoryScreenModelFactory.create() }
+        val state by model.state.collectAsState()
         val scope = rememberCoroutineScope()
 
-        var searchQuery by remember { mutableStateOf("") }
-        var historyItems by remember { mutableStateOf<List<HistoryWithRelations>>(emptyList()) }
-        var showClearAllDialog by remember { mutableStateOf(false) }
-
-        LaunchedEffect(searchQuery) {
-            getHistory.subscribe(searchQuery).collect { historyItems = it }
+        LaunchedEffect(state.searchQuery) {
+            model.loadHistory(state.searchQuery)
         }
 
-        if (showClearAllDialog) {
+        if (state.showClearAllDialog) {
             AlertDialog(
-                onDismissRequest = { showClearAllDialog = false },
+                onDismissRequest = { model.setShowClearAllDialog(false) },
                 title = { Text("Clear all history?") },
                 text = { Text("This will permanently delete all reading history. This cannot be undone.") },
                 confirmButton = {
                     TextButton(
                         onClick = {
                             scope.launch {
-                                historyItems.forEach { removeHistory.await(it) }
-                                showClearAllDialog = false
+                                model.clearAllHistory()
                             }
                         },
                     ) { Text("Clear all", color = MaterialTheme.colorScheme.error) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showClearAllDialog = false }) { Text("Cancel") }
+                    TextButton(onClick = { model.setShowClearAllDialog(false) }) { Text("Cancel") }
                 },
             )
         }
@@ -177,20 +163,20 @@ class HistoryRootScreen : Screen {
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
+                    value = state.searchQuery,
+                    onValueChange = { query -> scope.launch { model.loadHistory(query) } },
                     placeholder = { Text("Search history...") },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
                     singleLine = true,
                     modifier = Modifier.weight(1f),
                 )
-                if (historyItems.isNotEmpty()) {
+                if (state.items.isNotEmpty()) {
                     TooltipBox(
                         positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
                         tooltip = { Text("Clear all history") },
                         state = rememberTooltipState(),
                     ) {
-                        IconButton(onClick = { showClearAllDialog = true }) {
+                        IconButton(onClick = { model.setShowClearAllDialog(true) }) {
                             Icon(
                                 Icons.Default.DeleteSweep,
                                 contentDescription = "Clear all history",
@@ -201,7 +187,7 @@ class HistoryRootScreen : Screen {
                 }
             }
 
-            if (historyItems.isEmpty()) {
+            if (state.items.isEmpty()) {
                 Box(
                     Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
@@ -221,7 +207,7 @@ class HistoryRootScreen : Screen {
                     }
                 }
             } else {
-                val sections = remember(historyItems) { groupHistoryByDate(historyItems) }
+                val sections = remember(state.items) { groupHistoryByDate(state.items) }
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
@@ -236,26 +222,24 @@ class HistoryRootScreen : Screen {
                                 item = item,
                                 onRead = {
                                     scope.launch {
-                                        val chapter = getChapter.await(item.chapterId) ?: return@launch
-                                        val manga = getManga.await(item.mangaId) ?: return@launch
+                                        val request = model.readerRequestFor(item) ?: return@launch
                                         navigator.push(
                                             DesktopReaderScreen(
-                                                chapterTitle = chapter.name,
-                                                mangaTitle = manga.title,
+                                                chapterTitle = request.chapterTitle,
+                                                mangaTitle = request.mangaTitle,
                                                 isWebtoon = false,
-                                                sourceId = manga.source,
-                                                chapterUrl = chapter.url,
-                                                chapterId = chapter.id,
-                                                mangaId = manga.id,
-                                                mangaViewerFlags = manga.viewerFlags,
-                                                initialPage = chapter.lastPageRead.toInt().coerceAtLeast(0),
-                                                progressTracker = progressTracker,
+                                                sourceId = request.sourceId,
+                                                chapterUrl = request.chapterUrl,
+                                                chapterId = request.chapterId,
+                                                mangaId = request.mangaId,
+                                                mangaViewerFlags = request.mangaViewerFlags,
+                                                initialPage = request.initialPage,
                                             ),
                                         )
                                     }
                                 },
                                 onRemove = {
-                                    scope.launch { removeHistory.await(item) }
+                                    scope.launch { model.removeHistory(item) }
                                 },
                             )
                         }

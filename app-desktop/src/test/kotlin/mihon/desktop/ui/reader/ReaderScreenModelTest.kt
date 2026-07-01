@@ -1,6 +1,7 @@
 package mihon.desktop.ui.reader
 
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.test.runTest
 import mihon.desktop.reader.ReaderBackgroundTheme
 import mihon.desktop.reader.ReaderColorFilter
 import mihon.desktop.reader.ReaderPreferences
@@ -294,6 +295,26 @@ class ReaderScreenModelTest {
         model.setLoadError("Network timeout")
         assertFalse(model.state.value.isLoadingPages)
         assertEquals("Network timeout", model.state.value.errorMessage)
+    }
+
+    @Test
+    fun `persistViewerFlags ignores missing manga id`() = runTest {
+        val calls = mutableListOf<Pair<Long, Long>>()
+        val model = ReaderScreenModel(persistViewerFlags = { mangaId, flags -> calls += mangaId to flags })
+
+        model.persistViewerFlags(mangaId = 0L, flags = 7L)
+
+        assertTrue(calls.isEmpty())
+    }
+
+    @Test
+    fun `persistViewerFlags delegates nonzero manga id`() = runTest {
+        val calls = mutableListOf<Pair<Long, Long>>()
+        val model = ReaderScreenModel(persistViewerFlags = { mangaId, flags -> calls += mangaId to flags })
+
+        model.persistViewerFlags(mangaId = 42L, flags = 7L)
+
+        assertEquals(listOf(42L to 7L), calls)
     }
 
     // ── ReaderState data class sanity ─────────────────────────────────────────

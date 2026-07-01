@@ -1,5 +1,7 @@
 package mihon.desktop.ui.settings
 
+import mihon.desktop.LocalDesktopUiDependencies
+
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -25,8 +27,6 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import mihon.desktop.download.DesktopDownloadPreferences
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 class DownloadSettingsScreen : Screen {
 
@@ -34,7 +34,7 @@ class DownloadSettingsScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val prefs = remember { Injekt.get<DesktopDownloadPreferences>() }
+        val prefs = LocalDesktopUiDependencies.current.downloadPreferences
 
         val downloadAsCbz by prefs.downloadAsCbz.changes().collectAsState(initial = prefs.downloadAsCbz.get())
         val autoDownload by prefs.autoDownloadNewChapters.changes().collectAsState(initial = prefs.autoDownloadNewChapters.get())

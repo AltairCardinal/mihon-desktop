@@ -1,5 +1,7 @@
 package mihon.desktop.ui.migration
 
+import mihon.desktop.LocalDesktopUiDependencies
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,8 +38,6 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
 import tachiyomi.domain.manga.interactor.GetFavorites
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 /**
  * Lists library manga from a specific source — step 2 of migration flow.
@@ -52,7 +52,7 @@ data class MigrationMangaScreen(
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val getFavorites = remember { Injekt.get<GetFavorites>() }
+        val getFavorites = LocalDesktopUiDependencies.current.getFavorites
 
         val manga by remember(sourceId) {
             getFavorites.subscribe(sourceId)

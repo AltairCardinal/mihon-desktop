@@ -1,5 +1,7 @@
 package mihon.desktop.ui.browse
 
+import mihon.desktop.LocalDesktopUiDependencies
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -70,8 +72,6 @@ import mihon.desktop.ui.reader.DesktopReaderScreen
 import net.sf.sevenzipjbinding.ISequentialOutStream
 import net.sf.sevenzipjbinding.SevenZip
 import net.sf.sevenzipjbinding.impl.RandomAccessFileInStream
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 import java.awt.FileDialog
 import java.io.File
 import java.io.FileOutputStream
@@ -93,8 +93,8 @@ class LocalMangaBrowseScreen : Screen {
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val scope = rememberCoroutineScope()
-        val prefs = remember { Injekt.get<DesktopAppPreferences>() }
-        val scanService = remember { Injekt.get<LocalSourceScanService>() }
+        val prefs = LocalDesktopUiDependencies.current.appPreferences
+        val scanService = LocalDesktopUiDependencies.current.localSourceScanService
 
         val mangaList by scanService.mangaList.collectAsState()
         val scanState by scanService.scanState.collectAsState()

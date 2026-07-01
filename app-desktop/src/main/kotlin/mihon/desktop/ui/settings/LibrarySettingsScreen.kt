@@ -1,5 +1,7 @@
 package mihon.desktop.ui.settings
 
+import mihon.desktop.LocalDesktopUiDependencies
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -36,8 +38,6 @@ import mihon.desktop.domain.DesktopCategoryManager
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.settings.LibraryUpdateInterval
 import tachiyomi.domain.category.model.Category
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 class LibrarySettingsScreen : Screen {
 
@@ -45,8 +45,8 @@ class LibrarySettingsScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val prefs = remember { Injekt.get<DesktopAppPreferences>() }
-        val categoryManager = remember { Injekt.get<DesktopCategoryManager>() }
+        val prefs = LocalDesktopUiDependencies.current.appPreferences
+        val categoryManager = LocalDesktopUiDependencies.current.categoryManager
         val updateInterval by prefs.libraryUpdateInterval.changes().collectAsState(
             initial = prefs.libraryUpdateInterval.get(),
         )

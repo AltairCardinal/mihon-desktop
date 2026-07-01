@@ -46,16 +46,13 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import eu.kanade.tachiyomi.network.NetworkHelper
-import eu.kanade.tachiyomi.source.model.SChapter
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.ReaderProgressTracker
-import mihon.desktop.download.DesktopDownloadProvider
-import mihon.desktop.extension.SourceCallResult
-import mihon.desktop.extension.safeSourceCall
+import mihon.desktop.reader.DesktopReaderRuntimeFactory
 import mihon.desktop.reader.DualPageState
 import mihon.desktop.reader.EdgePixelMatcher
+import mihon.desktop.reader.DesktopReaderPageLoader
 import mihon.desktop.reader.PagePreloader
 import mihon.desktop.reader.ReaderBackgroundTheme
 import mihon.desktop.reader.ReaderChapterRef
@@ -65,7 +62,6 @@ import mihon.desktop.reader.ReaderPageAction
 import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.ScaleType
-import mihon.desktop.reader.SourcePageFetcher
 import mihon.desktop.reader.VirtualPage
 import mihon.desktop.reader.WebtoonSidePadding
 import mihon.desktop.reader.ZoomState
@@ -74,11 +70,6 @@ import mihon.desktop.reader.viewerFlagsWithDualPage
 import mihon.desktop.reader.viewerFlagsWithReadingMode
 import mihon.desktop.reader.firstVirtualIndex
 import mihon.desktop.reader.realPageIndex
-import tachiyomi.domain.source.service.SourceManager
-import tachiyomi.domain.manga.model.MangaUpdate
-import tachiyomi.domain.manga.repository.MangaRepository
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 @OptIn(ExperimentalMaterial3Api::class)
 data class DesktopReaderScreen(
@@ -114,8 +105,9 @@ data class DesktopReaderScreen(
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val scope = rememberCoroutineScope()
+        val runtime = remember { DesktopReaderRuntimeFactory.createRuntime(progressTracker) }
         val model = rememberScreenModel {
-            ReaderScreenModel(
+            DesktopReaderRuntimeFactory.createModel(
                 chapterTitle = chapterTitle,
                 pageUrls = pageUrls,
                 initialPage = initialPage,
@@ -123,23 +115,30 @@ data class DesktopReaderScreen(
                 sourceId = sourceId,
                 chapterUrl = chapterUrl,
                 mangaViewerFlags = mangaViewerFlags,
+                prefs = runtime.prefs,
             )
         }
         val state by model.state.collectAsState()
-        val readerPrefs = remember { Injekt.get<ReaderPreferences>() }
         val focusRequester = remember { FocusRequester() }
-        val preloader = remember { buildPreloader(Injekt.get<NetworkHelper>()) }
-        val tracker = remember { progressTracker ?: Injekt.get<ReaderProgressTracker>() }
-        val mangaRepository = remember { runCatching { Injekt.get<MangaRepository>() }.getOrNull() }
 
         // Lifecycle: set global reader-mode flag + persist progress on leave
-        ReaderLifecycleEffect(state, model, scope, tracker, chapterId)
+        ReaderLifecycleEffect(state, model, scope, runtime.tracker, chapterId)
 
         // Background page loading (network / local)
-        ReaderPageLoader(state, model, scope, pageUrls, sourceId, chapterUrl, mangaTitle, chapterTitle, initialPage)
+        ReaderPageLoaderEffect(
+            model = model,
+            scope = scope,
+            pageLoader = runtime.pageLoader,
+            pageUrls = pageUrls,
+            sourceId = sourceId,
+            chapterUrl = chapterUrl,
+            mangaTitle = mangaTitle,
+            chapterTitle = chapterTitle,
+            initialPage = initialPage,
+        )
 
         // Compute: zoom reset, preload, focus, edge-scan, virtual pages
-        ReaderSideEffects(state, model, preloader, focusRequester)
+        ReaderSideEffects(state, model, runtime.preloader, focusRequester)
 
         // Chapter navigation lambdas
         val skipRead = state.skipReadChapters
@@ -186,41 +185,41 @@ data class DesktopReaderScreen(
                 webtoonAutoScrollSpeed = state.webtoonAutoScrollSpeed, colorFilter = state.colorFilter,
                 scaleType = state.scaleType, skipReadChapters = state.skipReadChapters, zoomState = state.zoomState,
                 onModeChange = {
-                    model.setReadingMode(it, readerPrefs)
-                    persistReaderViewerFlags(
-                        scope = scope,
-                        mangaRepository = mangaRepository,
-                        mangaId = mangaId,
-                        flags = viewerFlagsWithReadingMode(
-                            viewerFlagsWithDualPage(mangaViewerFlags, state.dualPageMode),
-                            it,
-                        ),
-                    )
+                    model.setReadingMode(it, runtime.prefs)
+                    scope.launch {
+                        model.persistViewerFlags(
+                            mangaId = mangaId,
+                            flags = viewerFlagsWithReadingMode(
+                                viewerFlagsWithDualPage(mangaViewerFlags, state.dualPageMode),
+                                it,
+                            ),
+                        )
+                    }
                 },
                 onDualPageChange = {
-                    model.setDualPageMode(it, readerPrefs)
-                    persistReaderViewerFlags(
-                        scope = scope,
-                        mangaRepository = mangaRepository,
-                        mangaId = mangaId,
-                        flags = viewerFlagsWithDualPage(
-                            viewerFlagsWithReadingMode(mangaViewerFlags, state.readingMode),
-                            it,
-                        ),
-                    )
+                    model.setDualPageMode(it, runtime.prefs)
+                    scope.launch {
+                        model.persistViewerFlags(
+                            mangaId = mangaId,
+                            flags = viewerFlagsWithDualPage(
+                                viewerFlagsWithReadingMode(mangaViewerFlags, state.readingMode),
+                                it,
+                            ),
+                        )
+                    }
                 },
-                onAutoSplitPagesChange = { model.setAutoSplitPages(it, readerPrefs) },
-                onAutoSpreadMatchingChange = { model.setAutoSpreadMatching(it, readerPrefs) },
-                onBackgroundThemeChange = { model.setBackgroundTheme(it, readerPrefs) },
-                onNavigationModeChange = { model.setNavigationMode(it, readerPrefs) },
-                onCropBordersPagerChange = { model.setCropBordersPager(it, readerPrefs) },
-                onCropBordersWebtoonChange = { model.setCropBordersWebtoon(it, readerPrefs) },
-                onWebtoonSidePaddingChange = { model.setWebtoonSidePadding(it, readerPrefs) },
-                onWebtoonAutoScrollChange = { model.setWebtoonAutoScroll(it, readerPrefs) },
-                onWebtoonAutoScrollSpeedChange = { model.setWebtoonAutoScrollSpeed(it, readerPrefs) },
-                onColorFilterChange = { model.setColorFilter(it, readerPrefs) },
-                onSkipReadChaptersChange = { model.setSkipReadChapters(it, readerPrefs) },
-                onScaleTypeChange = { model.setScaleType(it, readerPrefs) },
+                onAutoSplitPagesChange = { model.setAutoSplitPages(it, runtime.prefs) },
+                onAutoSpreadMatchingChange = { model.setAutoSpreadMatching(it, runtime.prefs) },
+                onBackgroundThemeChange = { model.setBackgroundTheme(it, runtime.prefs) },
+                onNavigationModeChange = { model.setNavigationMode(it, runtime.prefs) },
+                onCropBordersPagerChange = { model.setCropBordersPager(it, runtime.prefs) },
+                onCropBordersWebtoonChange = { model.setCropBordersWebtoon(it, runtime.prefs) },
+                onWebtoonSidePaddingChange = { model.setWebtoonSidePadding(it, runtime.prefs) },
+                onWebtoonAutoScrollChange = { model.setWebtoonAutoScroll(it, runtime.prefs) },
+                onWebtoonAutoScrollSpeedChange = { model.setWebtoonAutoScrollSpeed(it, runtime.prefs) },
+                onColorFilterChange = { model.setColorFilter(it, runtime.prefs) },
+                onSkipReadChaptersChange = { model.setSkipReadChapters(it, runtime.prefs) },
+                onScaleTypeChange = { model.setScaleType(it, runtime.prefs) },
                 onZoomChange = { model.setZoomState(it) },
                 onDismiss = { model.closeSettings() },
             )
@@ -235,7 +234,7 @@ data class DesktopReaderScreen(
             contextMenuScope = scope,
             mangaTitle = mangaTitle,
             chapterTitle = chapterTitle,
-            preloader = preloader,
+            preloader = runtime.preloader,
             readerNav = readerNav,
             onPrevChapter = onPrevChapter,
             onNextChapter = onNextChapter,
@@ -255,18 +254,6 @@ data class DesktopReaderScreen(
         chapters = chapters, currentChapterIndex = newIndex, initialPage = initialPage,
         isRtl = isRtl, isDualPage = isDualPage, progressTracker = progressTracker,
     )
-}
-
-private fun persistReaderViewerFlags(
-    scope: kotlinx.coroutines.CoroutineScope,
-    mangaRepository: MangaRepository?,
-    mangaId: Long,
-    flags: Long,
-) {
-    if (mangaId == 0L || mangaRepository == null) return
-    scope.launch {
-        mangaRepository.update(MangaUpdate(id = mangaId, viewerFlags = flags))
-    }
 }
 
 internal object ReaderInitialPage {
@@ -327,10 +314,10 @@ internal fun readerProgressPageForTracking(state: ReaderState): Int {
 }
 
 @Composable
-private fun ReaderPageLoader(
-    state: ReaderState,
+private fun ReaderPageLoaderEffect(
     model: ReaderScreenModel,
     scope: kotlinx.coroutines.CoroutineScope,
+    pageLoader: DesktopReaderPageLoader,
     pageUrls: List<String>,
     sourceId: Long,
     chapterUrl: String,
@@ -341,27 +328,15 @@ private fun ReaderPageLoader(
     LaunchedEffect(sourceId, chapterUrl) {
         if (pageUrls.isNotEmpty() || sourceId == 0L || chapterUrl.isBlank()) return@LaunchedEffect
         try {
-            val downloadProvider = Injekt.get<DesktopDownloadProvider>()
-            val localPages = if (mangaTitle.isNotBlank()) {
-                downloadProvider.getDownloadedPages(sourceId = sourceId, mangaTitle = mangaTitle, chapterName = chapterTitle)
-            } else emptyList()
-            if (localPages.isNotEmpty()) {
-                model.setLoadedPages(localPages.map { it.toURI().toString() }, initialPage); return@LaunchedEffect
-            }
-            val source = Injekt.get<SourceManager>().getCatalogueSources().find { it.id == sourceId }
-                ?: run { model.setLoadError("Source not found (id=$sourceId)"); return@LaunchedEffect }
-            val chapter = SChapter.create().apply { url = chapterUrl; name = chapterTitle }
-            val pages = when (val r = safeSourceCall { source.getPageList(chapter) }) {
-                is SourceCallResult.Success -> r.value
-                is SourceCallResult.Timeout -> { model.setLoadError("Source timed out loading pages"); return@LaunchedEffect }
-                is SourceCallResult.Error -> { model.setLoadError(r.message); return@LaunchedEffect }
-            }
-            if (pages.isEmpty()) { model.setLoadError("Source returned 0 pages"); return@LaunchedEffect }
-            val fetcher = SourcePageFetcher(source = source, fallbackClient = Injekt.get<NetworkHelper>().client)
-            val tempDir = java.io.File(System.getProperty("java.io.tmpdir"), "mihon_reader_${sourceId}_${chapterUrl.hashCode()}").also { it.mkdirs() }
-            model.setLoadingPageSlots(pages.size, initialPage)
-            pages.mapIndexed { i, page -> scope.launch { fetcher.fetchToFile(page, tempDir)?.let { model.appendLoadedPage(i, it) } } }.forEach { it.join() }
-            if (model.hasLoadedPage()) model.setLoadingDone() else model.setLoadError("Failed to load any page images")
+            pageLoader.load(
+                model = model,
+                scope = scope,
+                sourceId = sourceId,
+                chapterUrl = chapterUrl,
+                mangaTitle = mangaTitle,
+                chapterTitle = chapterTitle,
+                initialPage = initialPage,
+            )
         } catch (e: Exception) {
             model.setLoadError(e.message ?: "Unknown error loading pages")
         }
@@ -667,18 +642,6 @@ private fun ZoomablePagerViewer(
         )
     }
 }
-
-// ── Utility ──────────────────────────────────────────────────────────────────
-
-private fun buildPreloader(networkHelper: NetworkHelper): PagePreloader = PagePreloader(
-    fetcher = { url ->
-        try {
-            val request = okhttp3.Request.Builder().url(url).build()
-            networkHelper.client.newCall(request).execute().use { resp -> if (resp.isSuccessful) resp.body.bytes() else null }
-        } catch (_: Exception) { null }
-    },
-    windowSize = 3,
-)
 
 // ── State overlays ───────────────────────────────────────────────────────────
 

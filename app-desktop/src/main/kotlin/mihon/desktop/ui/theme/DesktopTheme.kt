@@ -1,5 +1,7 @@
 package mihon.desktop.ui.theme
 
+import mihon.desktop.LocalDesktopUiDependencies
+
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -10,12 +12,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.settings.ThemeMode
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 @Composable
 fun DesktopTheme(content: @Composable () -> Unit) {
-    val prefs = remember { Injekt.get<DesktopAppPreferences>() }
+    val prefs = LocalDesktopUiDependencies.current.appPreferences
     val themeMode by prefs.themeMode.changes().collectAsState(initial = prefs.themeMode.get())
     val systemIsDark = isSystemInDarkTheme()
 

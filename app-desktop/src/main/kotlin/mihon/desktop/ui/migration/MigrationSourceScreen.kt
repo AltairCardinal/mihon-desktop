@@ -1,5 +1,7 @@
 package mihon.desktop.ui.migration
 
+import mihon.desktop.LocalDesktopUiDependencies
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,8 +36,6 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import kotlinx.coroutines.flow.map
 import tachiyomi.domain.source.repository.SourceRepository
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 /**
  * Lists sources that have library manga — entry point for manga migration.
@@ -47,11 +47,11 @@ class MigrationSourceScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val sourceRepository = remember { Injekt.get<SourceRepository>() }
+        val desktopDependencies = LocalDesktopUiDependencies.current
 
         // Sources with at least one library manga, sorted descending by count
         val sourcesWithCount by remember {
-            sourceRepository.getSourcesWithFavoriteCount()
+            desktopDependencies.getSourcesWithFavoriteCount()
                 .map { list -> list.filter { it.second > 0 }.sortedByDescending { it.second } }
         }.collectAsState(initial = null)
 

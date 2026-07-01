@@ -32,39 +32,38 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
-import mihon.desktop.domain.DesktopCategoryManager
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import tachiyomi.domain.category.model.Category
 
 @Composable
 fun CategoryManagementDialog(
-    categoryManager: DesktopCategoryManager,
+    categories: List<Category>,
+    onCreate: suspend (String) -> Unit,
+    onRename: suspend (Long, String) -> Unit,
+    onDelete: suspend (Long) -> Unit,
+    onReorder: suspend (Long, Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    var categories by remember { mutableStateOf<List<Category>>(emptyList()) }
+    var visibleCategories by remember { mutableStateOf(categories) }
     var newName by remember { mutableStateOf("") }
     var editingId by remember { mutableStateOf<Long?>(null) }
     var editingName by remember { mutableStateOf("") }
 
-    fun refresh() {
-        scope.launch { categories = categoryManager.getAll() }
-    }
-
-    LaunchedEffect(Unit) { refresh() }
+    LaunchedEffect(categories) { visibleCategories = categories }
 
     val lazyListState = rememberLazyListState()
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
         val fromId = from.key as? Long ?: return@rememberReorderableLazyListState
-        val toIdx = categories.indexOfFirst { it.id == (to.key as? Long) }
+        val toIdx = visibleCategories.indexOfFirst { it.id == (to.key as? Long) }
         if (toIdx >= 0) {
             // Optimistic update for smooth UI, then persist
-            categories = categories.toMutableList().also { list ->
+            visibleCategories = visibleCategories.toMutableList().also { list ->
                 val fromIdx = list.indexOfFirst { it.id == fromId }
                 if (fromIdx >= 0) list.add(toIdx, list.removeAt(fromIdx))
             }
-            scope.launch { categoryManager.reorder(fromId, toIdx) }
+            scope.launch { onReorder(fromId, toIdx) }
         }
     }
 
@@ -89,9 +88,8 @@ fun CategoryManagementDialog(
                     IconButton(
                         onClick = {
                             scope.launch {
-                                categoryManager.create(newName)
+                                onCreate(newName)
                                 newName = ""
-                                refresh()
                             }
                         },
                         enabled = newName.isNotBlank(),
@@ -106,7 +104,7 @@ fun CategoryManagementDialog(
                     modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp).padding(top = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    items(categories, key = { it.id }) { cat ->
+                    items(visibleCategories, key = { it.id }) { cat ->
                         ReorderableItem(reorderableState, key = cat.id) {
                             Row(
                                 Modifier.fillMaxWidth(),
@@ -129,9 +127,8 @@ fun CategoryManagementDialog(
                                     )
                                     TextButton(onClick = {
                                         scope.launch {
-                                            categoryManager.rename(cat.id, editingName)
+                                            onRename(cat.id, editingName)
                                             editingId = null
-                                            refresh()
                                         }
                                     }) { Text("Save") }
                                 } else {
@@ -148,8 +145,7 @@ fun CategoryManagementDialog(
                                     }
                                     IconButton(onClick = {
                                         scope.launch {
-                                            categoryManager.delete(cat.id)
-                                            refresh()
+                                            onDelete(cat.id)
                                         }
                                     }) {
                                         Icon(Icons.Default.Delete, contentDescription = "Delete")

@@ -1,5 +1,7 @@
 package mihon.desktop.ui.settings
 
+import mihon.desktop.LocalDesktopUiDependencies
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -59,8 +61,6 @@ import mihon.domain.extensionrepo.interactor.GetExtensionRepo
 import mihon.domain.extensionrepo.interactor.ReplaceExtensionRepo
 import mihon.domain.extensionrepo.interactor.UpdateExtensionRepo
 import mihon.domain.extensionrepo.model.ExtensionRepo
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 import java.awt.Desktop
 import java.net.URI
 import kotlin.time.Duration.Companion.milliseconds
@@ -82,11 +82,11 @@ class ExtensionRepoScreen : Screen {
         val snackbarHostState = remember { SnackbarHostState() }
         val clipboardManager = LocalClipboardManager.current
 
-        val getExtensionRepo = remember { Injekt.get<GetExtensionRepo>() }
-        val createExtensionRepo = remember { Injekt.get<CreateExtensionRepo>() }
-        val deleteExtensionRepo = remember { Injekt.get<DeleteExtensionRepo>() }
-        val replaceExtensionRepo = remember { Injekt.get<ReplaceExtensionRepo>() }
-        val updateExtensionRepo = remember { Injekt.get<UpdateExtensionRepo>() }
+        val getExtensionRepo = LocalDesktopUiDependencies.current.getExtensionRepo
+        val createExtensionRepo = LocalDesktopUiDependencies.current.createExtensionRepo
+        val deleteExtensionRepo = LocalDesktopUiDependencies.current.deleteExtensionRepo
+        val replaceExtensionRepo = LocalDesktopUiDependencies.current.replaceExtensionRepo
+        val updateExtensionRepo = LocalDesktopUiDependencies.current.updateExtensionRepo
 
         val repos by getExtensionRepo.subscribeAll().collectAsState(initial = emptyList())
         var dialog by remember { mutableStateOf<RepoDialog?>(null) }

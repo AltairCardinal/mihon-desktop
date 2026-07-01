@@ -1,5 +1,7 @@
 package mihon.desktop.ui.download
 
+import mihon.desktop.LocalDesktopUiDependencies
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,8 +56,6 @@ import mihon.desktop.download.DownloadItem
 import mihon.desktop.download.DownloadStatus
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 class DownloadQueueScreen : Screen {
 
@@ -63,7 +63,7 @@ class DownloadQueueScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val manager = remember { Injekt.get<DesktopDownloadManager>() }
+        val manager = LocalDesktopUiDependencies.current.downloadManager
         val queue by manager.queue.collectAsState()
         val isPaused by manager.isPaused.collectAsState()
         val scope = rememberCoroutineScope()

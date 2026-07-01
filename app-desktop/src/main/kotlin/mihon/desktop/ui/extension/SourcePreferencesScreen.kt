@@ -1,5 +1,7 @@
 package mihon.desktop.ui.extension
 
+import mihon.desktop.LocalDesktopUiDependencies
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -48,8 +50,6 @@ import eu.kanade.tachiyomi.source.preference.PreferenceCategoryItem
 import eu.kanade.tachiyomi.source.preference.SwitchPreference
 import mihon.desktop.extension.DesktopExtensionManager
 import tachiyomi.core.common.preference.DesktopPreferenceStore
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 import java.util.prefs.Preferences as JvmPrefs
 
 /**
@@ -66,7 +66,7 @@ data class SourcePreferencesScreen(
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val manager = remember { Injekt.get<DesktopExtensionManager>() }
+        val manager = LocalDesktopUiDependencies.current.extensionManager
 
         val source = remember(sourceId) { manager.getSource(sourceId) }
         val configurableSource = source as? ConfigurableSource
