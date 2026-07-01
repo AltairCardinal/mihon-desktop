@@ -1,5 +1,7 @@
 package mihon.desktop.ui.browse
 
+import mihon.desktop.LocalDesktopUiDependencies
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -54,9 +56,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import mihon.desktop.domain.SaveSourceMangaForDetails
+import mihon.desktop.ui.library.MangaDetailScreen
 import tachiyomi.domain.source.service.SourceManager
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 /** Result group from one source. */
 data class SourceSearchResult(
@@ -72,11 +74,13 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val sourceManager = remember { Injekt.get<SourceManager>() }
+        val sourceManager = LocalDesktopUiDependencies.current.sourceManager
+        val saveSourceMangaForDetails = LocalDesktopUiDependencies.current.saveSourceMangaForDetails
         val scope = rememberCoroutineScope()
 
         var query by remember { mutableStateOf(initialQuery) }
         var isSearching by remember { mutableStateOf(false) }
+        var openingMangaUrl by remember { mutableStateOf<String?>(null) }
         val results = remember { mutableStateListOf<SourceSearchResult>() }
 
         fun launchSearch(q: String) {
@@ -188,14 +192,16 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
                                 GlobalSearchMangaCard(
                                     manga = manga,
                                     onClick = {
-                                        navigator.push(
-                                            SourceMangaDetailScreen(
-                                                sourceId = sourceResult.source.id,
-                                                mangaUrl = manga.url,
-                                                mangaTitle = manga.title,
-                                                thumbnailUrl = manga.thumbnail_url,
-                                            ),
-                                        )
+                                        if (openingMangaUrl != null) return@GlobalSearchMangaCard
+                                        openingMangaUrl = "${sourceResult.source.id}:${manga.url}"
+                                        scope.launch {
+                                            val saved = saveSourceMangaForDetails.awaitListed(manga, sourceResult.source.id)
+                                            navigator.push(MangaDetailScreen(saved.id))
+                                            if (!saved.initialized) {
+                                                saveSourceMangaForDetails.refreshFromSource(sourceResult.source, manga)
+                                            }
+                                            openingMangaUrl = null
+                                        }
                                     },
                                 )
                             }

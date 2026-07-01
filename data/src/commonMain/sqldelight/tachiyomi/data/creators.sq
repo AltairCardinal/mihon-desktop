@@ -1,0 +1,274 @@
+import kotlin.Boolean;
+
+CREATE TABLE creators(
+    _id INTEGER NOT NULL PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    normalized_name TEXT NOT NULL UNIQUE,
+    sort_name TEXT,
+    aliases TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL
+);
+
+CREATE INDEX idx_creators_normalized_name ON creators(normalized_name);
+
+CREATE TABLE manga_creators(
+    manga_id INTEGER NOT NULL,
+    creator_id INTEGER NOT NULL,
+    role TEXT NOT NULL,
+    source_text TEXT,
+    confidence REAL NOT NULL,
+    evidence TEXT NOT NULL,
+    PRIMARY KEY(manga_id, creator_id, role)
+);
+
+CREATE INDEX idx_manga_creators_creator_id ON manga_creators(creator_id);
+CREATE INDEX idx_manga_creators_manga_id ON manga_creators(manga_id);
+CREATE INDEX idx_manga_creators_creator_role ON manga_creators(creator_id, role);
+
+CREATE TABLE discovery_candidate_creators(
+    candidate_id INTEGER NOT NULL,
+    creator_id INTEGER NOT NULL,
+    role TEXT NOT NULL,
+    source_text TEXT,
+    confidence REAL NOT NULL,
+    evidence TEXT NOT NULL,
+    PRIMARY KEY(candidate_id, creator_id, role)
+);
+
+CREATE INDEX idx_discovery_candidate_creators_creator_id ON discovery_candidate_creators(creator_id);
+CREATE INDEX idx_discovery_candidate_creators_candidate_id ON discovery_candidate_creators(candidate_id);
+CREATE INDEX idx_discovery_candidate_creators_creator_role ON discovery_candidate_creators(creator_id, role);
+
+CREATE TABLE creator_watches(
+    creator_id INTEGER NOT NULL PRIMARY KEY,
+    enabled INTEGER AS Boolean NOT NULL,
+    source_ids TEXT NOT NULL,
+    language_tags TEXT NOT NULL,
+    last_checked_at INTEGER,
+    last_success_at INTEGER,
+    last_error TEXT,
+    created_at INTEGER NOT NULL
+);
+
+CREATE INDEX idx_creator_watches_enabled ON creator_watches(enabled);
+CREATE INDEX idx_creator_watches_last_checked_at ON creator_watches(last_checked_at);
+
+CREATE TABLE canonical_works(
+    _id INTEGER NOT NULL PRIMARY KEY,
+    primary_title TEXT NOT NULL,
+    normalized_title TEXT NOT NULL,
+    primary_creator_id INTEGER,
+    original_language TEXT,
+    created_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL
+);
+
+CREATE INDEX idx_canonical_works_normalized_title ON canonical_works(normalized_title);
+CREATE INDEX idx_canonical_works_primary_creator ON canonical_works(primary_creator_id);
+
+CREATE TABLE manga_work_matches(
+    manga_id INTEGER NOT NULL UNIQUE,
+    work_id INTEGER NOT NULL,
+    confidence REAL NOT NULL,
+    match_reason TEXT NOT NULL,
+    state TEXT NOT NULL,
+    manually_confirmed INTEGER AS Boolean NOT NULL,
+    created_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL
+);
+
+CREATE INDEX idx_manga_work_matches_work_id ON manga_work_matches(work_id);
+CREATE INDEX idx_manga_work_matches_state ON manga_work_matches(state);
+CREATE INDEX idx_manga_work_matches_work_state ON manga_work_matches(work_id, state);
+
+CREATE TABLE discovery_candidates(
+    _id INTEGER NOT NULL PRIMARY KEY,
+    source INTEGER NOT NULL,
+    url TEXT NOT NULL,
+    title TEXT NOT NULL,
+    normalized_title TEXT NOT NULL,
+    author_text TEXT,
+    artist_text TEXT,
+    language_tag TEXT NOT NULL,
+    language_confidence REAL NOT NULL,
+    language_evidence TEXT NOT NULL,
+    thumbnail_url TEXT,
+    first_seen_at INTEGER NOT NULL,
+    last_seen_at INTEGER NOT NULL,
+    details_fetched_at INTEGER,
+    state TEXT NOT NULL,
+    UNIQUE(source, url)
+);
+
+CREATE INDEX idx_discovery_candidates_normalized_title ON discovery_candidates(normalized_title);
+CREATE INDEX idx_discovery_candidates_language_tag ON discovery_candidates(language_tag);
+CREATE INDEX idx_discovery_candidates_state ON discovery_candidates(state);
+CREATE INDEX idx_discovery_candidates_first_seen_at ON discovery_candidates(first_seen_at);
+
+getCreator:
+SELECT *
+FROM creators
+WHERE _id = :id;
+
+getCreatorByNormalizedName:
+SELECT *
+FROM creators
+WHERE normalized_name = :normalizedName;
+
+getCreators:
+SELECT *
+FROM creators
+ORDER BY sort_name COLLATE NOCASE, display_name COLLATE NOCASE;
+
+insertCreator:
+INSERT INTO creators(display_name, normalized_name, sort_name, aliases, created_at, last_modified_at)
+VALUES (:displayName, :normalizedName, :sortName, :aliases, :createdAt, :lastModifiedAt);
+
+updateCreator:
+UPDATE creators
+SET display_name = :displayName,
+    sort_name = :sortName,
+    aliases = :aliases,
+    last_modified_at = :lastModifiedAt
+WHERE _id = :id;
+
+selectLastInsertedRowId:
+SELECT last_insert_rowid();
+
+linkMangaCreator:
+INSERT INTO manga_creators(manga_id, creator_id, role, source_text, confidence, evidence)
+VALUES (:mangaId, :creatorId, :role, :sourceText, :confidence, :evidence)
+ON CONFLICT(manga_id, creator_id, role)
+DO UPDATE SET
+    source_text = :sourceText,
+    confidence = :confidence,
+    evidence = :evidence;
+
+linkDiscoveryCandidateCreator:
+INSERT INTO discovery_candidate_creators(candidate_id, creator_id, role, source_text, confidence, evidence)
+VALUES (:candidateId, :creatorId, :role, :sourceText, :confidence, :evidence)
+ON CONFLICT(candidate_id, creator_id, role)
+DO UPDATE SET
+    source_text = :sourceText,
+    confidence = :confidence,
+    evidence = :evidence;
+
+followCreator:
+INSERT INTO creator_watches(creator_id, enabled, source_ids, language_tags, last_checked_at, last_success_at, last_error, created_at)
+VALUES (:creatorId, 1, :sourceIds, :languageTags, NULL, NULL, NULL, :createdAt)
+ON CONFLICT(creator_id)
+DO UPDATE SET
+    enabled = 1,
+    source_ids = :sourceIds,
+    language_tags = :languageTags,
+    last_error = NULL;
+
+unfollowCreator:
+UPDATE creator_watches
+SET enabled = 0
+WHERE creator_id = :creatorId;
+
+getFollowedCreators:
+SELECT *
+FROM creator_watches
+WHERE enabled = 1
+ORDER BY created_at DESC;
+
+updateWatchCheckResult:
+UPDATE creator_watches
+SET last_checked_at = :checkedAt,
+    last_success_at = CASE WHEN :success THEN :checkedAt ELSE last_success_at END,
+    last_error = :error
+WHERE creator_id = :creatorId;
+
+upsertDiscoveryCandidate {
+    INSERT INTO discovery_candidates(
+        source, url, title, normalized_title, author_text, artist_text, language_tag,
+        language_confidence, language_evidence, thumbnail_url, first_seen_at, last_seen_at,
+        details_fetched_at, state
+    )
+    SELECT
+        :source, :url, :title, :normalizedTitle, :authorText, :artistText, :languageTag,
+        :languageConfidence, :languageEvidence, :thumbnailUrl, :now, :now,
+        :detailsFetchedAt, :state
+    WHERE NOT EXISTS(SELECT 1 FROM discovery_candidates WHERE source = :source AND url = :url);
+
+    UPDATE discovery_candidates
+    SET title = :title,
+        normalized_title = :normalizedTitle,
+        author_text = :authorText,
+        artist_text = :artistText,
+        language_tag = :languageTag,
+        language_confidence = :languageConfidence,
+        language_evidence = :languageEvidence,
+        thumbnail_url = :thumbnailUrl,
+        last_seen_at = :now,
+        details_fetched_at = coalesce(:detailsFetchedAt, details_fetched_at),
+        state = :state
+    WHERE source = :source
+    AND url = :url;
+
+    SELECT *
+    FROM discovery_candidates
+    WHERE source = :source
+    AND url = :url
+    LIMIT 1;
+}
+
+getDiscoveryCandidatesForCreator:
+SELECT DC.*
+FROM discovery_candidates DC
+JOIN discovery_candidate_creators DCC
+ON DCC.candidate_id = DC._id
+WHERE DCC.creator_id = :creatorId
+ORDER BY DC.first_seen_at DESC;
+
+getDiscoveryCandidate:
+SELECT *
+FROM discovery_candidates
+WHERE _id = :id;
+
+getMangaCreatorsForCreator:
+SELECT *
+FROM manga_creators
+WHERE creator_id = :creatorId
+ORDER BY manga_id ASC, role ASC;
+
+getDiscoveryCandidateCreatorsForCreator:
+SELECT *
+FROM discovery_candidate_creators
+WHERE creator_id = :creatorId
+ORDER BY candidate_id ASC, role ASC;
+
+insertCanonicalWork:
+INSERT INTO canonical_works(primary_title, normalized_title, primary_creator_id, original_language, created_at, last_modified_at)
+VALUES (:primaryTitle, :normalizedTitle, :primaryCreatorId, :originalLanguage, :createdAt, :lastModifiedAt);
+
+getCanonicalWorkById:
+SELECT *
+FROM canonical_works
+WHERE _id = :id;
+
+upsertMangaWorkMatch {
+    INSERT INTO manga_work_matches(
+        manga_id, work_id, confidence, match_reason, state, manually_confirmed, created_at, last_modified_at
+    )
+    SELECT
+        :mangaId, :workId, :confidence, :matchReason, :state, :manuallyConfirmed, :now, :now
+    WHERE NOT EXISTS(SELECT 1 FROM manga_work_matches WHERE manga_id = :mangaId);
+
+    UPDATE manga_work_matches
+    SET work_id = :workId,
+        confidence = :confidence,
+        match_reason = :matchReason,
+        state = :state,
+        manually_confirmed = :manuallyConfirmed,
+        last_modified_at = :now
+    WHERE manga_id = :mangaId;
+
+    SELECT *
+    FROM manga_work_matches
+    WHERE manga_id = :mangaId
+    LIMIT 1;
+}

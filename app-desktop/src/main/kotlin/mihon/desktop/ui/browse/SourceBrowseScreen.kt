@@ -1,5 +1,7 @@
 package mihon.desktop.ui.browse
 
+import mihon.desktop.LocalDesktopUiDependencies
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -64,12 +66,13 @@ import mihon.desktop.extension.SourceCallResult
 import mihon.desktop.extension.safeSourceCall
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
-import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.launch
+import mihon.desktop.domain.SaveSourceMangaForDetails
+import mihon.desktop.ui.library.MangaDetailScreen
 import tachiyomi.domain.source.service.SourceManager
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
+import tachiyomi.domain.source.service.SourceMangaSearchRequest
+import tachiyomi.domain.source.service.SourceMangaSearchService
 
 data class SourceBrowseScreen(val sourceId: Long) : Screen {
 
@@ -77,12 +80,15 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val sourceManager = remember { Injekt.get<SourceManager>() }
+        val sourceManager = LocalDesktopUiDependencies.current.sourceManager
+        val sourceMangaSearchService = LocalDesktopUiDependencies.current.sourceMangaSearchService
+        val saveSourceMangaForDetails = LocalDesktopUiDependencies.current.saveSourceMangaForDetails
         val source = remember { sourceManager.getCatalogueSources().find { it.id == sourceId } }
         val scope = rememberCoroutineScope()
 
         val mangas = remember { mutableStateListOf<SManga>() }
         var isLoading by remember { mutableStateOf(false) }
+        var openingMangaUrl by remember { mutableStateOf<String?>(null) }
         var errorMessage by remember { mutableStateOf<String?>(null) }
         var currentPage by remember { mutableStateOf(1) }
         var hasNextPage by remember { mutableStateOf(false) }
@@ -107,12 +113,16 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
             errorMessage = null
             scope.launch {
                 val callResult = safeSourceCall {
-                    when {
-                        query.isNotBlank() -> source.getSearchManga(page, query, activeFilters)
-                        hasActiveFilters(activeFilters) -> source.getSearchManga(page, "", activeFilters)
-                        mode == BrowseMode.LATEST -> source.getLatestUpdates(page)
-                        else -> source.getPopularManga(page)
-                    }
+                    sourceMangaSearchService.loadPage(
+                        source = source,
+                        page = page,
+                        request = when {
+                            query.isNotBlank() -> SourceMangaSearchRequest.Search(query, activeFilters)
+                            hasActiveFilters(activeFilters) -> SourceMangaSearchRequest.Search("", activeFilters)
+                            mode == BrowseMode.LATEST -> SourceMangaSearchRequest.Latest
+                            else -> SourceMangaSearchRequest.Popular
+                        },
+                    )
                 }
                 when (callResult) {
                     is SourceCallResult.Success -> {
@@ -264,14 +274,17 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
                         ) {
                             items(mangas, key = { it.url }) { manga ->
                                 MangaCard(manga = manga) {
-                                    navigator.push(
-                                        SourceMangaDetailScreen(
-                                            sourceId = sourceId,
-                                            mangaUrl = manga.url,
-                                            mangaTitle = manga.title,
-                                            thumbnailUrl = manga.thumbnail_url,
-                                        ),
-                                    )
+                                    val catalogueSource = source ?: return@MangaCard
+                                    if (openingMangaUrl != null) return@MangaCard
+                                    openingMangaUrl = manga.url
+                                    scope.launch {
+                                        val saved = saveSourceMangaForDetails.awaitListed(manga, sourceId)
+                                        navigator.push(MangaDetailScreen(saved.id))
+                                        if (!saved.initialized) {
+                                            saveSourceMangaForDetails.refreshFromSource(catalogueSource, manga)
+                                        }
+                                        openingMangaUrl = null
+                                    }
                                 }
                             }
 
