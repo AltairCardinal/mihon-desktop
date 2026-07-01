@@ -1,47 +1,64 @@
 # AGENTS.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+本文件说明 Codex 在本仓库工作时必须遵守的规则。
 
 ## 语言
 
-与用户的所有交流使用中文。确认 bug 已修复时，须用中文明确告知用户。
+所有面向用户的交流使用中文。确认 bug 已修复时，必须用中文明确说明。
 
 ## TDD 强制要求
 
-**所有功能变化（新增/修改/修复）必须严格执行红绿 TDD 流程，无例外。**
+**所有功能变化（新增、修改、修复）必须严格执行红绿重构流程，无例外。**
 
-流程：
-1. **Red**：先写失败的测试，运行确认它因正确原因失败
-2. **Green**：写最小实现让测试通过，运行确认全绿
-3. **Refactor**：清理代码，重新运行确认仍全绿
+1. **红**：先写失败测试，并确认它因正确原因失败。
+2. **绿**：写最小实现让测试通过，并确认全绿。
+3. **重构**：清理代码，再次确认测试全绿。
 
-**没有对应测试的功能代码 = 不允许提交。**
+**没有对应测试的功能代码不允许提交。**
 
 ---
 
 ## 功能规划原则
 
-**所有功能在规划时都要确保用户界面也被考虑到。**
+**规划任何功能时都必须同时考虑用户界面。**
 
-每个后端功能（Use Case、Manager、Repository）都必须有对应的 UI 入口，用户才能使用它。规划时需检查：
+每个后端功能（Use Case、Manager、Repository 等）必须有对应 UI 入口。规划时检查：
 
-1. 用户如何触发该功能？（按钮/菜单/快捷键）
-2. 操作结果如何反馈给用户？（状态更新/Toast/对话框）
-3. 危险操作是否有确认步骤？（AlertDialog）
+1. 用户如何触发？（按钮、菜单、快捷键等）
+2. 结果如何反馈？（状态、Toast、对话框等）
+3. 危险操作是否需要确认？（AlertDialog）
 
-**后端实现了但 UI 入口缺失 = 用户完全用不到 = 功能等于未实现。**
+**后端有实现但没有 UI 入口 = 用户无法使用 = 功能未完成。**
+
+### 复用优先
+
+新增功能前必须检查项目内是否已有相同或相近能力可复用，包括：
+
+- 已有 Use Case、Manager、Repository、Service
+- 已有搜索、分页、错误处理、缓存、同步、下载、解析流程
+- 已有 Screen、Tab、Composable、导航入口
+- 已有数据模型、数据库表、查询、状态管理、测试工具
+
+规划时必须回答：
+
+1. 能否直接复用现有功能？
+2. 不能直接复用时，是否应抽取公共能力供新旧功能共用？
+3. 新特性应追加到已有链路，还是确实需要独立维护？
+4. 若独立实现，必须说明不能复用的技术原因和用户体验原因。
+
+**能复用却另起一套实现，默认不允许。**
 
 ## 完成报告格式
 
-每次完成一轮开发后，完成报告必须按以下结构汇报，不得省略：
+每轮开发完成后必须按以下结构汇报，不得省略：
 
-```
+```markdown
 ## 【功能特性】
-- [功能名称]：用户会看到/用到的具体变化，说明操作路径和边界
+- [功能名称]：用户能看到/使用的变化，说明操作路径和边界
   - 示例：下载队列 → 顶部显示 Pause/Resume FAB 按钮 → 点击暂停/继续所有下载
 
 ## 【BUG 修复】
-- [bug 描述]：修复前的现象 → 修复后的行为
+- [bug 描述]：修复前现象 → 修复后行为
   - 示例：下载队列管理按钮不可见 → 按钮已改为 FAB，始终可见
 
 ## 【验收清单】
@@ -50,162 +67,163 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 ```
 
 规则：
-- 每一项必须描述用户**实际能看到或操作的变化**，不写代码层面的实现细节
-- 验收清单必须可执行——用户能在 5 分钟内逐条验证
-- 功能边界必须说清楚（如：仅 QUEUED 状态可取消，DOWNLOADING 不行）
 
-## Desktop 构建与部署
+- 每项都必须描述用户实际可见或可操作的变化，不写纯代码细节。
+- 验收清单必须可执行，用户应能在 5 分钟内逐项验证。
+- 必须说明功能边界，例如“仅 QUEUED 状态可取消，DOWNLOADING 不可取消”。
 
-每次完成 desktop 迭代必须使用构建脚本，**不直接调用 gradle**：
+## 桌面端构建与部署
+
+每次完成桌面端迭代必须使用构建脚本，**不得直接调用 Gradle 构建部署**：
 
 ```bash
 ./scripts/build-desktop.sh           # 默认：仅更新 git hash
 ./scripts/build-desktop.sh feature   # 递增功能批次号（7.0 → 7.1）
-./scripts/build-desktop.sh stage     # 递增阶段号，重置功能批次（7.x → 8.0）
+./scripts/build-desktop.sh stage     # 递增阶段号并重置功能批次（7.x → 8.0）
 ```
 
-版本格式：`0.STAGE.FEATURE.GIT_HASH`（例如 `0.7.0.92dab15`）
+版本格式：`0.STAGE.FEATURE.GIT_HASH`，例如 `0.7.0.92dab15`。
 
-脚本会自动：运行测试 → 构建 → 部署到 `/Applications/Mihon Desktop.app`。
+脚本会自动运行测试、构建并部署到 `/Applications/Mihon Desktop.app`。
 
-完成后必须向用户报告版本号（例如："已部署 Mihon Desktop **0.7.1.abc1234**"）。
+完成后必须报告版本号，例如：`已部署 Mihon Desktop 0.7.1.abc1234`。
 
-版本号单一来源：`app-desktop/src/main/kotlin/mihon/desktop/AppVersion.kt`
+版本号唯一来源：`app-desktop/src/main/kotlin/mihon/desktop/AppVersion.kt`。
 
 ---
 
-## Commands
+## 常用命令
 
 ```bash
-# Check code formatting (must pass in CI)
+# 检查格式（CI 必须通过）
 ./gradlew spotlessCheck
 
-# Auto-fix formatting
+# 自动修复格式
 ./gradlew spotlessApply
 
-# Build debug APK
+# 构建 debug APK
 ./gradlew assembleDebug
 
-# Build release APK (with telemetry and updater flags used in CI)
+# 构建 release APK（使用 CI 的遥测与更新器参数）
 ./gradlew assembleRelease -Pinclude-telemetry -Penable-updater
 
-# Run unit tests
+# 运行单元测试
 ./gradlew testReleaseUnitTest
 
-# Run a single test class
+# 运行单个测试类
 ./gradlew :app:testReleaseUnitTest --tests "eu.kanade.tachiyomi.SomeTest"
 ```
 
-Build flags:
-- `-Pinclude-telemetry` — enables Firebase Analytics/Crashlytics
-- `-Penable-updater` — enables in-app update checker
-- `-Pdisable-code-shrink` — disables R8/ProGuard minification
+构建参数：
 
-## Architecture
+- `-Pinclude-telemetry`：启用 Firebase Analytics / Crashlytics。
+- `-Penable-updater`：启用应用内更新检查。
+- `-Pdisable-code-shrink`：禁用 R8 / ProGuard 压缩。
 
-Mihon is a multi-module Android app. Modules follow a layered architecture:
+## 架构
 
-| Module | Purpose |
+Mihon 是多模块 Android 应用，采用分层架构：
+
+| 模块 | 职责 |
 |---|---|
-| `app/` | Presentation layer — Compose screens, Activities, DI wiring |
-| `domain/` | Business logic — use cases, domain models, repository interfaces |
-| `data/` | Data layer — SQLDelight DB, repository implementations, mappers |
-| `presentation-core/` | Reusable Compose components shared across screens |
-| `core/common/` | Shared utilities and Kotlin extensions |
-| `source-api/` | KMP source abstraction (shared with extensions) |
-| `source-local/` | Local file source (reading files from device storage) |
-| `i18n/` | String resources via Moko |
+| `app/` | 表现层：Compose 页面、Activity、DI wiring |
+| `domain/` | 业务逻辑：用例、领域模型、仓库接口 |
+| `data/` | 数据层：SQLDelight 数据库、仓库实现、映射 |
+| `presentation-core/` | 跨页面复用的 Compose 组件 |
+| `core/common/` | 公共工具与 Kotlin 扩展 |
+| `source-api/` | KMP 漫画源抽象，供扩展复用 |
+| `source-local/` | 本地文件源 |
+| `i18n/` | Moko 字符串资源 |
 
-### Package naming
+### 包名
 
-The codebase has two package roots due to the Tachiyomi → Mihon fork history:
-- `eu.kanade.tachiyomi.*` — app module and most legacy code
-- `tachiyomi.domain.*` / `tachiyomi.data.*` — domain and data modules
-- `mihon.domain.*` / `mihon.feature.*` — newer Mihon-specific additions
+因 Tachiyomi → Mihon 迁移历史，仓库存在多个包名前缀：
 
-### Key patterns
+- `eu.kanade.tachiyomi.*`：app 模块和多数旧代码
+- `tachiyomi.domain.*` / `tachiyomi.data.*`：domain 与 data 模块
+- `mihon.domain.*` / `mihon.feature.*`：较新的 Mihon 功能
 
-**Dependency injection:** Injekt (a custom fork). Modules are registered in `app/src/main/java/eu/kanade/tachiyomi/di/`. Use `Injekt.get<T>()` to retrieve dependencies; use `by injectLazy<T>()` for lazy field injection.
+### 关键模式
 
-**Navigation:** Voyager (`cafe.adriel.voyager`). Screens implement `cafe.adriel.voyager.core.screen.Screen`. Navigation is handled via `LocalNavigator`.
+- **依赖注入**：使用 Injekt。模块注册在 `app/src/main/java/eu/kanade/tachiyomi/di/`。使用 `Injekt.get<T>()` 获取依赖，使用 `by injectLazy<T>()` 延迟注入。
+- **导航**：使用 Voyager（`cafe.adriel.voyager`）。Screen 实现 `cafe.adriel.voyager.core.screen.Screen`，导航通过 `LocalNavigator`。
+- **数据库**：SQLDelight + 协程。schema 位于 `data/src/main/sqldelight/`，生成查询在 `tachiyomi.data.*.db`。
+- **图片加载**：Coil 3，自定义 fetcher / decoder 位于 `app/src/main/java/eu/kanade/tachiyomi/data/coil/`。
+- **偏好设置**：`tachiyomi.core.common.preference` 封装 AndroidX DataStore / SharedPreferences。
 
-**Database:** SQLDelight with coroutines. SQL schema lives in `data/src/main/sqldelight/`. Generated Kotlin queries are in `tachiyomi.data.*.db`.
+### 构建逻辑
 
-**Image loading:** Coil 3 with custom fetchers/decoders in `app/src/main/java/eu/kanade/tachiyomi/data/coil/`.
+自定义 Gradle 插件位于 `buildSrc/src/main/kotlin/`：
 
-**Preferences:** `tachiyomi.core.common.preference` wrappers over AndroidX DataStore/SharedPreferences.
+- `mihon.android.application`：应用基础配置
+- `mihon.library`：库模块配置
+- `mihon.code.lint`：Spotless + ktlint
 
-### Build logic
+依赖版本由 `gradle/*.versions.toml` 管理。
 
-Custom Gradle plugins live in `buildSrc/src/main/kotlin/`:
-- `mihon.android.application` — base app config
-- `mihon.library` — library module config
-- `mihon.code.lint` — Spotless + ktlint setup
+## 测试政策：必须覆盖集成点
 
-Dependency versions are managed via version catalogs in `gradle/*.versions.toml`.
+仅有 domain 单元测试不够。任何涉及导航、DI wiring、Screen / Tab、HTTP / API 的变更，必须加入对应集成级测试。影响集成点却只有 domain 测试的改动不得合并。
 
-## Test Policy — Mandatory Integration Coverage
+### 1. 导航类型安全测试
 
-Domain-only unit tests are necessary but **not sufficient**. Every change that touches navigation, DI wiring, screen classes, or HTTP/API code **must** include integration-level tests as described below. Do not merge changes that only have domain-level unit tests when integration points are affected.
+**适用场景**：新增或修改 Screen / Tab，或修改 `navigator.push()` / `navigator.replace()`。
 
-### 1. Navigation Type Safety Tests
+**测试要求**：
 
-**When required:** Any change that adds or modifies a Screen/Tab class, or changes a `navigator.push()` / `navigator.replace()` call.
-
-**What to test:**
-- Verify at compile time or in a test that every object passed to `navigator.push()` implements the correct Voyager type for that navigator context:
-  - Inside a `TabNavigator` context, only `Tab` objects may be set via `tabNavigator.current = ...`. Regular `Screen` objects must use a separate nested `Navigator`, not the tab navigator.
-  - Inside a regular `Navigator`, objects must implement `cafe.adriel.voyager.core.screen.Screen`.
-- Write a JVM unit test that instantiates every Screen/Tab class with dummy parameters and asserts the correct interface:
+- 验证传给 `navigator.push()` 的对象符合当前 Voyager 导航上下文：
+  - `TabNavigator` 中只能设置 `Tab`：`tabNavigator.current = ...`。
+  - 普通 `Screen` 必须进入嵌套 `Navigator`，不能直接作为 Tab。
+  - 普通 `Navigator` 中的对象必须实现 `cafe.adriel.voyager.core.screen.Screen`。
+- JVM 测试必须实例化每个 Screen / Tab，并断言接口正确：
 
 ```kotlin
 @Test
-fun `MangaDetailScreen implements Screen not Tab`() {
+fun `MangaDetailScreen 是 Screen 不是 Tab`() {
     val screen = MangaDetailScreen(mangaId = 1L)
     assertThat(screen).isInstanceOf(Screen::class.java)
     assertThat(screen).isNotInstanceOf(Tab::class.java)
 }
 ```
 
-- For each navigator.push() call site, write a test that verifies the pushed type is compatible with the navigator's expected type. If the code uses `LocalNavigator` inside a `TabNavigator`, the test must verify that a nested `Navigator` is used (not the tab navigator directly).
+- 每个 `navigator.push()` 调用点都要测试推入类型与导航上下文兼容。
+- 若在 `TabNavigator` 内使用 `LocalNavigator`，必须测试确实使用了嵌套 `Navigator`，而不是直接使用 tab navigator。
 
-**Common pitfall (the bug that prompted this policy):** `LocalNavigator.currentOrThrow` inside a Tab's `Content()` resolves to the parent `Navigator` wrapping the `TabNavigator`, if one exists. If no parent `Navigator` exists, `push()` on the tab navigator with a non-Tab `Screen` causes a `ClassCastException` at runtime. Always verify your navigation hierarchy in tests.
+**常见坑**：Tab 的 `Content()` 中，`LocalNavigator.currentOrThrow` 可能解析到包裹 `TabNavigator` 的父 `Navigator`；若没有父 `Navigator`，向 tab navigator 推入非 Tab 的 Screen 会在运行时 `ClassCastException`。必须用测试验证导航层级。
 
-### 2. DI Wiring Tests
+### 2. DI Wiring 测试
 
-**When required:** Any change that adds a new Injekt binding, adds a new `Injekt.get<T>()` call, or modifies a DI module.
+**适用场景**：新增 Injekt 绑定、新增 `Injekt.get<T>()` 调用、修改 DI 模块。
 
-**What to test:**
-- Write a test that initializes all DI modules (or the relevant subset) and resolves every registered type without throwing. This catches missing bindings before runtime.
+**测试要求**：
+
+- 初始化全部或相关 DI 模块，并断言每个注册类型都能解析。
 
 ```kotlin
 @Test
-fun `all DI bindings resolve without error`() {
-    // Initialize modules
+fun `所有 DI 绑定都能解析`() {
     AppModule.register()
     DomainModule.register()
-    // ... other modules
 
-    // Assert each expected type resolves
     assertNotNull(Injekt.get<GetLibraryManga>())
     assertNotNull(Injekt.get<SourceManager>())
-    // ... every type used in Screen/Tab Content() methods
 }
 ```
 
-- When adding a new `Injekt.get<T>()` call in a Composable, add the type to the DI wiring test.
+- 在 Composable 中新增 `Injekt.get<T>()` 时，必须把该类型加入 DI wiring 测试。
 
-### 3. HTTP / API Integration Tests (MockWebServer)
+### 3. HTTP / API 集成测试（MockWebServer）
 
-**When required:** Any change that touches HTTP client code, source implementations, API response parsing, or page loading logic.
+**适用场景**：修改 HTTP 客户端、源实现、API 解析、页面加载逻辑。
 
-**What to test:**
-- Use `okhttp3.mockwebserver.MockWebServer` to enqueue realistic API responses (success, empty, error, malformed JSON).
-- Test the **full parse path** from raw HTTP response to domain objects. Do not mock the parser — mock the server.
+**测试要求**：
+
+- 使用 `okhttp3.mockwebserver.MockWebServer` 注入真实形状响应，覆盖成功、空数据、错误、畸形 JSON。
+- 测试从原始 HTTP 响应到领域对象的完整解析路径，不得 mock parser。
 
 ```kotlin
 @Test
-fun `MangaDex source parses chapter pages from real response shape`() {
+fun `MangaDex 源能解析真实章节页响应`() {
     server.enqueue(MockResponse().setBody(realPageListJson))
     val pages = source.getPageList(chapter)
     assertThat(pages).isNotEmpty()
@@ -213,27 +231,25 @@ fun `MangaDex source parses chapter pages from real response shape`() {
 }
 
 @Test
-fun `source handles empty page list without crashing`() {
+fun `源遇到空页列表不会崩溃`() {
     server.enqueue(MockResponse().setBody("""{"result":"ok","data":[]}"""))
     val pages = source.getPageList(chapter)
-    // Should either return empty list or throw a descriptive exception,
-    // NOT return an empty list that silently breaks the reader.
+    // 应返回空列表或抛出明确异常；
+    // 不得静默返回会破坏阅读器的无意义结果。
 }
 ```
 
-- Cover at minimum: successful response, empty/missing data, HTTP error codes (403, 429, 500), and malformed response bodies.
+最低覆盖：成功响应、空/缺失数据、HTTP 403 / 429 / 500、畸形响应体。
 
-### 4. Screen Instantiation Smoke Tests
+### 4. Screen 实例化冒烟测试
 
-**When required:** Any change that adds or modifies a Screen or Tab class.
+**适用场景**：新增或修改 Screen / Tab。
 
-**What to test:**
-- Instantiate every Screen and Tab with representative parameters on the JVM. This catches serialization issues, missing default values, and broken constructors.
+**测试要求**：在 JVM 上用代表性参数实例化每个 Screen / Tab，捕获序列化问题、默认值缺失和构造器错误。
 
 ```kotlin
 @Test
-fun `all screens can be instantiated`() {
-    // These must not throw
+fun `所有页面都能实例化`() {
     MangaDetailScreen(mangaId = 1L)
     SourceBrowseScreen(sourceId = 1L)
     DesktopReaderScreen(
@@ -248,82 +264,81 @@ fun `all screens can be instantiated`() {
 }
 ```
 
-### 5. Red-Green TDD Rules for UI Wiring Changes
+### 5. UI Wiring 变更的红绿 TDD
 
-When making a change that involves navigation, DI, or screen wiring, follow this sequence **strictly**:
+涉及导航、DI、Screen wiring 时必须严格按以下顺序：
 
-1. **Red:** Write a failing test first that exercises the integration point (navigation push, DI resolution, or HTTP parse). Run it and confirm it fails for the right reason.
-2. **Green:** Implement the minimal code to make the test pass.
-3. **Refactor:** Clean up, then re-run all tests.
+1. **红**：先写覆盖集成点的失败测试（导航 push、DI 解析、HTTP 解析等），并确认失败原因正确。
+2. **绿**：写最小实现让测试通过。
+3. **重构**：清理后重新运行测试。
 
-**What counts as a "UI wiring change":**
-- Adding a new Screen or Tab class
-- Adding or changing a `navigator.push()` / `navigator.replace()` call
-- Adding a new `Injekt.get<>()` or `injectLazy<>()` call in a Composable
-- Changing the navigation hierarchy (e.g., nesting a `Navigator` inside a `TabNavigator`)
-- Modifying how a source fetches or parses HTTP responses
+以下都属于 UI wiring 变更：
 
-**The rule:** If your change introduces a new call to `navigator.push()`, `Injekt.get()`, or an HTTP endpoint, and you do not have a corresponding test that would fail if that call were broken, **the change is not ready to merge**.
+- 新增 Screen / Tab
+- 新增或修改 `navigator.push()` / `navigator.replace()`
+- 在 Composable 中新增 `Injekt.get<>()` 或 `injectLazy<>()`
+- 修改导航层级，例如在 `TabNavigator` 中嵌套 `Navigator`
+- 修改源的 HTTP 获取或解析方式
 
-### 6. Test Checklist Before Merge
+**规则**：新增 `navigator.push()`、`Injekt.get()` 或 HTTP 端点时，必须有对应测试能在其损坏时失败，否则不可合并。
 
-For every PR, verify the following. If a row applies and has no test, the PR is blocked:
+### 6. 合并前测试清单
 
-| Change type | Required test |
+| 变更类型 | 必须测试 |
 |---|---|
-| New/modified Screen or Tab class | Screen instantiation test + navigation type test |
-| New `navigator.push(X)` call | Test that X is compatible with the navigator context |
-| New `Injekt.get<T>()` in a Composable | T is covered in DI wiring test |
-| New/modified HTTP parsing code | MockWebServer test with success + failure cases |
-| New domain use case | Unit test for the use case (existing practice) |
+| 新增/修改 Screen 或 Tab | Screen 实例化测试 + 导航类型测试 |
+| 新增 `navigator.push(X)` | 测试 `X` 与当前导航上下文兼容 |
+| Composable 新增 `Injekt.get<T>()` | `T` 纳入 DI wiring 测试 |
+| 新增/修改 HTTP 解析 | MockWebServer 成功 + 失败用例 |
+| 新增 domain use case | use case 单元测试 |
 
 ---
 
-## Desktop Automation Testing
+## 桌面端自动化测试
 
-Mihon Desktop includes a complete automation test system for E2E testing.
+Mihon Desktop 包含完整 E2E 自动化测试系统。
 
-### Quick Commands
+### 快速命令
 
 ```bash
-# Run smoke tests
+# 运行冒烟测试
 ./scripts/desktop-smoke-test.sh
 
-# Run test module tests
+# 运行测试模块
 ./gradlew :test-desktop:test
 
-# Run all desktop tests
+# 运行全部桌面端测试
 ./gradlew :app-desktop:jvmTest
 
-# Build desktop with test mode
+# 使用测试模式构建桌面端
 ./scripts/build-desktop.sh
 ```
 
-### Test Documentation
+### 测试文档
 
-- **用户指南**: `docs/automation/TEST_GUIDE.md` - 完整使用说明
-- **API 参考**: `docs/automation/API_REFERENCE.md` - HTTP API 端点文档
-- **进度追踪**: `docs/automation/TASK_TRACKER.md` - 开发进度
+- 用户指南：`docs/automation/TEST_GUIDE.md`
+- API 参考：`docs/automation/API_REFERENCE.md`
+- 进度追踪：`docs/automation/TASK_TRACKER.md`
 
-### Key Files
+### 关键文件
 
 | 文件 | 说明 |
-|------|------|
-| `app-desktop/src/main/kotlin/mihon/desktop/test/` | 测试基础设施（TestMode, TestState, HTTP Server） |
-| `test-desktop/src/main/kotlin/mihon/test/desktop/` | 测试客户端库（Robot 模式、HTTP 客户端） |
+|---|---|
+| `app-desktop/src/main/kotlin/mihon/desktop/test/` | 测试基础设施：TestMode、TestState、HTTP Server |
+| `test-desktop/src/main/kotlin/mihon/test/desktop/` | 测试客户端库：Robot 模式、HTTP 客户端 |
 | `app-desktop/src/test/kotlin/mihon/desktop/smoke/` | 冒烟测试套件 |
 
-### Test Mode Launch
+### 测试模式启动
 
-启动应用时添加参数启用测试模式：
 ```bash
 "/Applications/Mihon Desktop.app" --test-mode --test-http-port=8080 --headless
 ```
 
-测试模式提供 HTTP API 用于自动化控制：
-- `GET /test/state` - 获取应用状态
-- `POST /test/navigate/{screen}` - 导航
-- `POST /test/action/{action}` - 执行动作
-- `POST /test/screenshot` - 截图
+测试模式提供 HTTP API：
 
-详细说明见 `docs/automation/TEST_GUIDE.md`。
+- `GET /test/state`：获取应用状态
+- `POST /test/navigate/{screen}`：导航
+- `POST /test/action/{action}`：执行动作
+- `POST /test/screenshot`：截图
+
+详见 `docs/automation/TEST_GUIDE.md`。

@@ -480,7 +480,7 @@ when (val result = SourceCallWrapper.call { source.getPopularManga(page) }) {
 
 | 文件 | 方法 | 超时 |
 |------|------|------|
-| `SourceMangaDetailScreen.kt` | `getMangaDetails()` + `getChapterList()` | 30s |
+| `SaveSourceMangaForDetails.kt` | `getMangaDetails()` + `getChapterList()` | 30s |
 | `SourceBrowseScreen.kt` | `getPopularManga()` / `getSearchManga()` / `getLatestUpdates()` | 30s |
 | `GlobalSearchScreen.kt` | `getSearchManga()` | 15s（并行查询多源，单源超时不应太长） |
 | `DesktopReaderScreen.kt` | `getPageList()` | 60s |
@@ -495,7 +495,7 @@ when (val result = SourceCallWrapper.call { source.getPopularManga(page) }) {
 |------|------|
 | `app-desktop/.../extension/SourceCallWrapper.kt` | **新建** |
 | `app-desktop/.../extension/SourceCallWrapperTest.kt` | **新建** |
-| `app-desktop/.../ui/browse/SourceMangaDetailScreen.kt` | **修改** — 接入 wrapper |
+| `app-desktop/.../domain/SaveSourceMangaForDetails.kt` | **修改** — 接入 wrapper |
 | `app-desktop/.../ui/browse/SourceBrowseScreen.kt` | **修改** — 接入 wrapper |
 | `app-desktop/.../ui/browse/GlobalSearchScreen.kt` | **修改** — 接入 wrapper |
 | `app-desktop/.../ui/reader/DesktopReaderScreen.kt` | **修改** — 接入 wrapper |
