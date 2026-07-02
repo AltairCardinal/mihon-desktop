@@ -28,6 +28,17 @@ class NavigationContractTest {
     }
 
     @Test
+    fun `MangaDetailScreen key includes manga id`() {
+        val first = MangaDetailScreen(mangaId = 1L)
+        val second = MangaDetailScreen(mangaId = 2L)
+
+        assertTrue(
+            first.key != second.key,
+            "MangaDetailScreen key must include mangaId so Voyager does not reuse the previous manga detail model",
+        )
+    }
+
+    @Test
     fun `LibraryTab wraps content in nested Navigator for Screen navigation`() {
         // LibraryTab.Content() must use Navigator(rootScreen) { CurrentScreen() }
         // so that LocalNavigator.currentOrThrow returns a Screen-based navigator,

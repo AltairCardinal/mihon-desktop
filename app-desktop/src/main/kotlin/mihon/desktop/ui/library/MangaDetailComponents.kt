@@ -71,7 +71,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -118,12 +117,9 @@ internal fun MangaHeader(
     onAuthorClick: (String) -> Unit,
     onArtistClick: (String) -> Unit,
 ) {
-    val coverManager = LocalDesktopUiDependencies.current.mangaCoverManager
     var coverVersion by remember { mutableStateOf(0) }
-    val coverStateKey = mangaCoverStateKey(manga.id, manga.thumbnailUrl, coverVersion)
-    val coverModel by produceState<String?>(initialValue = null, coverStateKey) {
-        value = coverManager.resolveModel(manga.id, manga.thumbnailUrl)
-    }
+    val coverRequestState = rememberMangaCoverRequestState(manga.id, manga.thumbnailUrl, coverVersion)
+    val coverManager = LocalDesktopUiDependencies.current.mangaCoverManager
     var showCoverMenu by remember { mutableStateOf(false) }
 
     Row(
@@ -133,11 +129,12 @@ internal fun MangaHeader(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Box {
-            key(coverStateKey) {
+            key(coverRequestState.stateKey) {
                 AsyncImage(
-                    model = coverModel,
+                    model = coverRequestState.request,
                     contentDescription = manga.title,
                     contentScale = ContentScale.Crop,
+                    placeholder = null,
                     modifier = Modifier
                         .width(120.dp)
                         .aspectRatio(0.7f),

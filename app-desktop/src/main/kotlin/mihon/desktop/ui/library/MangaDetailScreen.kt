@@ -72,7 +72,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -111,6 +110,8 @@ import javax.swing.filechooser.FileNameExtensionFilter
 import androidx.compose.foundation.layout.size as layoutSize
 
 data class MangaDetailScreen(val mangaId: Long) : Screen {
+
+    override val key: String get() = "MangaDetailScreen-$mangaId"
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
@@ -886,22 +887,4 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
             }
         }
     }
-}
-
-internal data class MangaCoverStateKey(
-    val mangaId: Long,
-    val thumbnailUrl: String?,
-    val coverVersion: Int,
-)
-
-internal fun mangaCoverStateKey(
-    mangaId: Long,
-    thumbnailUrl: String?,
-    coverVersion: Int,
-): MangaCoverStateKey {
-    return MangaCoverStateKey(
-        mangaId = mangaId,
-        thumbnailUrl = thumbnailUrl,
-        coverVersion = coverVersion,
-    )
 }

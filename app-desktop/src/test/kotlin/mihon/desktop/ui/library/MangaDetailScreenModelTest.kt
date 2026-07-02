@@ -64,6 +64,22 @@ class MangaDetailScreenModelTest {
     }
 
     @Test
+    fun `cover request key changes when manga identity changes`() {
+        val first = mangaCoverRequestKey(
+            mangaId = 1L,
+            model = "https://example.invalid/shared.jpg",
+            coverVersion = 0,
+        )
+        val second = mangaCoverRequestKey(
+            mangaId = 2L,
+            model = "https://example.invalid/shared.jpg",
+            coverVersion = 0,
+        )
+
+        assertNotEquals(first, second)
+    }
+
+    @Test
     fun `initial state has expected defaults`() {
         val model = MangaDetailScreenModel(mangaId = 42L)
         val s = model.state.value
