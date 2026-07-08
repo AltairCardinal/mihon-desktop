@@ -132,6 +132,10 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         val model = rememberScreenModel { MangaDetailScreenModelFactory.create(mangaId) }
         val state by model.state.collectAsState()
         val downloadQueue by model.downloadQueueFlow().collectAsState()
+        val appPreferences = LocalDesktopUiDependencies.current.appPreferences
+        val hideMissingChapterIndicators by appPreferences.hideMissingChapterIndicators.changes().collectAsState(
+            initial = appPreferences.hideMissingChapterIndicators.get(),
+        )
         val selectionState = remember { ChapterSelectionState() }
 
         // Read aliases — immutable vals at all read sites, writes go through model
@@ -197,6 +201,13 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 readOk && bookmarkOk && downloadedOk
             }
             sortMangaDetailChapters(filtered, chapterSortMode, chapterSortAscending)
+        }
+        val chapterRows = remember(displayedChapters, chapterSortAscending, hideMissingChapterIndicators) {
+            mangaDetailChapterRows(
+                chapters = displayedChapters,
+                ascending = chapterSortAscending,
+                hideMissingChapters = hideMissingChapterIndicators,
+            )
         }
         val source = remember(manga?.source) {
             manga?.let { m -> model.sourceFor(m) }
@@ -815,75 +826,47 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                     HorizontalDivider()
                 }
 
-                item {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "Chapters (${displayedChapters.size}${if (displayedChapters.size != chapters.size) "/${chapters.size}" else ""})",
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                    HorizontalDivider()
-                }
-                items(displayedChapters, key = { it.id }) { chapter ->
-                    val queuedItem = downloadQueue.find { it.chapterId == chapter.id }
-                    val downloadStatus = when {
-                        queuedItem != null -> when (queuedItem.status) {
-                            mihon.desktop.download.DownloadStatus.DOWNLOADING -> ChapterDownloadStatus.DOWNLOADING
-                            else -> ChapterDownloadStatus.QUEUED
+                mangaDetailChapterListItems(
+                    displayedChapterCount = displayedChapters.size,
+                    totalChapterCount = chapters.size,
+                    chapterRows = chapterRows,
+                    downloadQueue = downloadQueue,
+                    manga = manga,
+                    isChapterDownloaded = model::isChapterDownloaded,
+                    isChapterSelected = { chapterId -> chapterId in selectionState.selectedIds },
+                    onSelectChapter = selectionState::toggle,
+                    onDownloadChapter = { chapter ->
+                        manga?.let { model.enqueueDownloads(it, listOf(chapter)) }
+                    },
+                    onDeleteDownload = model::setDeleteConfirmChapter,
+                    onCancelDownload = model::cancelChapterDownload,
+                    onToggleBookmark = { chapter ->
+                        scope.launch {
+                            model.toggleChapterBookmark(chapter)
                         }
-                        manga != null && model.isChapterDownloaded(manga, chapter) ->
-                            ChapterDownloadStatus.DOWNLOADED
-                        else -> ChapterDownloadStatus.NOT_DOWNLOADED
-                    }
-                    val downloadProgress = downloadProgressFraction(
-                        progress = queuedItem?.progress ?: 0,
-                        totalPages = queuedItem?.pageUrls?.size ?: 0,
-                    )
-                    val isSelected = chapter.id in selectionState.selectedIds
-                    ChapterRow(
-                        chapter = chapter,
-                        title = chapterDisplayTitle(chapter, manga?.displayMode ?: Manga.CHAPTER_DISPLAY_NAME),
-                        downloadStatus = downloadStatus,
-                        downloadProgress = downloadProgress,
-                        isSelected = isSelected,
-                        onSelect = { selectionState.toggle(chapter.id) },
-                        onDownload = {
-                            manga?.let { model.enqueueDownloads(it, listOf(chapter)) }
-                        },
-                        onDeleteDownload = { model.setDeleteConfirmChapter(chapter) },
-                        onCancelDownload = { model.cancelChapterDownload(chapter.id) },
-                        onToggleBookmark = {
-                            scope.launch {
-                                model.toggleChapterBookmark(chapter)
-                            }
-                        },
-                        onRead = {
-                            scope.launch {
-                                val request = model.readerRequest(manga!!, chapters, chapter)
-                                navigator.push(
-                                    DesktopReaderScreen(
-                                        chapterTitle = request.chapterTitle,
-                                        mangaId = request.mangaId,
-                                        mangaTitle = request.mangaTitle,
-                                        pageUrls = emptyList(),
-                                        isWebtoon = false,
-                                        sourceId = request.sourceId,
-                                        chapterUrl = request.chapterUrl,
-                                        chapterId = request.chapterId,
-                                        chapters = request.chapters,
-                                        currentChapterIndex = request.currentChapterIndex,
-                                        initialPage = request.initialPage,
-                                        mangaViewerFlags = request.mangaViewerFlags,
-                                    ),
-                                )
-                            }
-                        },
-                    )
-                }
+                    },
+                    onReadChapter = { chapter ->
+                        scope.launch {
+                            val request = model.readerRequest(manga!!, chapters, chapter)
+                            navigator.push(
+                                DesktopReaderScreen(
+                                    chapterTitle = request.chapterTitle,
+                                    mangaId = request.mangaId,
+                                    mangaTitle = request.mangaTitle,
+                                    pageUrls = emptyList(),
+                                    isWebtoon = false,
+                                    sourceId = request.sourceId,
+                                    chapterUrl = request.chapterUrl,
+                                    chapterId = request.chapterId,
+                                    chapters = request.chapters,
+                                    currentChapterIndex = request.currentChapterIndex,
+                                    initialPage = request.initialPage,
+                                    mangaViewerFlags = request.mangaViewerFlags,
+                                ),
+                            )
+                        }
+                    },
+                )
             }
         }
     }

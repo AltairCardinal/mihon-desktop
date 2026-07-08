@@ -30,6 +30,7 @@ class FakeChapterRepository : ChapterRepository {
             read = chapterUpdate.read ?: existing.read,
             lastPageRead = chapterUpdate.lastPageRead ?: existing.lastPageRead,
             bookmark = chapterUpdate.bookmark ?: existing.bookmark,
+            chapterNumber = chapterUpdate.chapterNumber ?: existing.chapterNumber,
         )
     }
 

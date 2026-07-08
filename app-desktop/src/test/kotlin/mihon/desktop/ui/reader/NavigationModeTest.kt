@@ -1,7 +1,9 @@
 package mihon.desktop.ui.reader
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
+import androidx.compose.ui.input.pointer.PointerButton
 
 /**
  * Tests for [tapNavRegion] — 2D tap navigation for all 5 navigation modes.
@@ -131,4 +133,43 @@ class NavigationModeTest {
 
     @Test fun `zero height returns MENU safely`() =
         assertEquals(TapNavRegion.MENU, tapNavRegion(0f, 0f, 300f, 0f, NavigationMode.RightAndLeft))
+
+    @Test
+    fun `mouse primary button can trigger reader tap navigation`() {
+        assertEquals(
+            TapNavRegion.PREV,
+            tapNavRegionForPointerButton(
+                button = PointerButton.Primary,
+                x = 50f,
+                y = 150f,
+                width = W,
+                height = H,
+                mode = NavigationMode.RightAndLeft,
+            ),
+        )
+    }
+
+    @Test
+    fun `mouse secondary and tertiary buttons do not trigger reader tap navigation`() {
+        assertNull(
+            tapNavRegionForPointerButton(
+                button = PointerButton.Secondary,
+                x = 50f,
+                y = 150f,
+                width = W,
+                height = H,
+                mode = NavigationMode.RightAndLeft,
+            ),
+        )
+        assertNull(
+            tapNavRegionForPointerButton(
+                button = PointerButton.Tertiary,
+                x = 250f,
+                y = 150f,
+                width = W,
+                height = H,
+                mode = NavigationMode.RightAndLeft,
+            ),
+        )
+    }
 }

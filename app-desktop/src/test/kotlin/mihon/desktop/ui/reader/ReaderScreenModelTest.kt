@@ -10,6 +10,7 @@ import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.WebtoonSidePadding
 import mihon.desktop.reader.ZoomState
 import mihon.desktop.reader.viewerFlagsWithDualPage
+import mihon.desktop.reader.viewerFlagsWithReadingMode
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -97,6 +98,19 @@ class ReaderScreenModelTest {
         val model = ReaderScreenModel(isWebtoon = false, mangaViewerFlags = 0L, prefs = prefs)
         // Mode should come from prefs (whatever it is), not be forced to WEBTOON
         assertEquals(prefs.readingMode, model.state.value.readingMode)
+    }
+
+    @Test
+    fun `non-webtoon manga viewer flags keep RTL dual page reader mode`() {
+        val flags = viewerFlagsWithDualPage(
+            viewerFlagsWithReadingMode(0L, ReadingMode.RTL),
+            enabled = true,
+        )
+
+        val model = ReaderScreenModel(isWebtoon = false, mangaViewerFlags = flags)
+
+        assertEquals(ReadingMode.RTL, model.state.value.readingMode)
+        assertTrue(model.state.value.dualPageMode)
     }
 
     @Test

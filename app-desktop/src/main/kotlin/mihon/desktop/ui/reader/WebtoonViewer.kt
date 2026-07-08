@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import coil3.BitmapImage
 import androidx.compose.material3.CircularProgressIndicator
@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import coil3.compose.AsyncImagePainter
 import coil3.compose.rememberAsyncImagePainter
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -53,6 +54,9 @@ internal fun WebtoonViewer(
     sidePadding: WebtoonSidePadding = WebtoonSidePadding.NONE,
     autoScroll: Boolean = false,
     autoScrollSpeed: WebtoonAutoScrollSpeed = WebtoonAutoScrollSpeed.Normal,
+    contextMenuScope: CoroutineScope? = null,
+    mangaTitle: String = "",
+    chapterTitle: String = "",
     onNextChapter: (() -> Unit)? = null,
 ) {
     val paddingFraction = sidePadding.ratio
@@ -83,16 +87,32 @@ internal fun WebtoonViewer(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        items(pageUrls) { url ->
+        itemsIndexed(pageUrls) { pageIndex, url ->
             val itemModifier = if (paddingFraction > 0f) {
                 Modifier.fillMaxWidth(1f - 2f * paddingFraction)
             } else {
                 Modifier.fillMaxWidth()
             }
-            WebtoonPageItem(url = url, cropBorders = cropBorders, modifier = itemModifier)
+            WebtoonPageItem(
+                url = url,
+                cropBorders = cropBorders,
+                modifier = itemModifier,
+                contextMenuScope = contextMenuScope,
+                mangaTitle = mangaTitle,
+                chapterTitle = chapterTitle,
+                pageIndex = pageIndex,
+            )
         }
     }
 }
+
+internal fun webtoonPageContextMenuLabels(): List<String> =
+    pageContextMenuLabels(includeSetAsCover = false)
+
+internal fun shouldShowWebtoonPageContextMenu(
+    hasContextMenuScope: Boolean,
+    pageUrl: String,
+): Boolean = hasContextMenuScope && pageUrl.isNotBlank()
 
 /**
  * A single item in the webtoon LazyColumn.
@@ -104,6 +124,10 @@ private fun WebtoonPageItem(
     url: String,
     cropBorders: Boolean,
     modifier: Modifier = Modifier,
+    contextMenuScope: CoroutineScope? = null,
+    mangaTitle: String = "",
+    chapterTitle: String = "",
+    pageIndex: Int = 0,
 ) {
     var croppedBitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
 
@@ -122,33 +146,50 @@ private fun WebtoonPageItem(
         }
     }
 
-    val cropped = croppedBitmap
-    if (cropped != null) {
-        Image(
-            bitmap = cropped,
-            contentDescription = null,
-            modifier = modifier,
-            contentScale = ContentScale.FillWidth,
-        )
-    } else {
-        when (painterState) {
-            is AsyncImagePainter.State.Loading, is AsyncImagePainter.State.Empty -> {
-                Box(
-                    modifier = modifier.aspectRatio(2f / 3f),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(color = Color.White)
+    val pageContent: @Composable () -> Unit = {
+        val cropped = croppedBitmap
+        if (cropped != null) {
+            Image(
+                bitmap = cropped,
+                contentDescription = null,
+                modifier = modifier,
+                contentScale = ContentScale.FillWidth,
+            )
+        } else {
+            when (painterState) {
+                is AsyncImagePainter.State.Loading, is AsyncImagePainter.State.Empty -> {
+                    Box(
+                        modifier = modifier.aspectRatio(2f / 3f),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(color = Color.White)
+                    }
+                }
+                else -> {
+                    Image(
+                        painter = painter,
+                        contentDescription = null,
+                        modifier = modifier,
+                        contentScale = ContentScale.FillWidth,
+                    )
                 }
             }
-            else -> {
-                Image(
-                    painter = painter,
-                    contentDescription = null,
-                    modifier = modifier,
-                    contentScale = ContentScale.FillWidth,
-                )
-            }
         }
+    }
+
+    val scope = contextMenuScope
+    if (scope != null && shouldShowWebtoonPageContextMenu(hasContextMenuScope = true, pageUrl = url)) {
+        PageContextMenu(
+            pageUrl = url,
+            mangaTitle = mangaTitle,
+            chapterTitle = chapterTitle,
+            pageIndex = pageIndex,
+            scope = scope,
+            onSetAsCover = null,
+            content = pageContent,
+        )
+    } else {
+        pageContent()
     }
 }
 

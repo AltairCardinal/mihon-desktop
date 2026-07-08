@@ -9,6 +9,7 @@ import mihon.desktop.domain.fakes.FakeMangaRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
+import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 
@@ -38,6 +39,62 @@ class SaveSourceMangaForDetailsTest {
         assertEquals(42L, result.source)
         assertEquals(2, chapterRepo.addedChapters.size)
         assertEquals(result.id, chapterRepo.addedChapters.first().mangaId)
+    }
+
+    @Test
+    fun `recognizes chapter numbers from source chapter names when saving details`() = runBlocking<Unit> {
+        val mangaRepo = FakeMangaRepository()
+        val chapterRepo = FakeChapterRepository()
+        val useCase = SaveSourceMangaForDetails(NetworkToLocalManga(mangaRepo), mangaRepo, chapterRepo)
+
+        useCase.await(
+            sManga = SManga.create().apply {
+                url = "/manga/soul-eater"
+                title = "SOUL EATER噬魂者"
+            },
+            sourceId = 42L,
+            sChapters = listOf(
+                SChapter.create().apply { url = "/chapter/16"; name = "第16卷" },
+                SChapter.create().apply { url = "/chapter/22"; name = "第22卷" },
+            ),
+        )
+
+        assertEquals(listOf(16.0, 22.0), chapterRepo.addedChapters.map { it.chapterNumber })
+    }
+
+    @Test
+    fun `updates existing unrecognized chapter numbers when saving details again`() = runBlocking<Unit> {
+        val mangaRepo = FakeMangaRepository()
+        val chapterRepo = FakeChapterRepository()
+        val useCase = SaveSourceMangaForDetails(NetworkToLocalManga(mangaRepo), mangaRepo, chapterRepo)
+        val existing = Manga.create().copy(
+            id = 7L,
+            source = 42L,
+            url = "/manga/soul-eater",
+            title = "SOUL EATER噬魂者",
+            initialized = true,
+        )
+        mangaRepo.seed(existing)
+        chapterRepo.addAll(
+            listOf(
+                Chapter.create().copy(id = 100L, mangaId = 7L, url = "/chapter/16", name = "第16卷", chapterNumber = -1.0),
+                Chapter.create().copy(id = 101L, mangaId = 7L, url = "/chapter/22", name = "第22卷", chapterNumber = -1.0),
+            ),
+        )
+
+        useCase.await(
+            sManga = SManga.create().apply {
+                url = "/manga/soul-eater"
+                title = "SOUL EATER噬魂者"
+            },
+            sourceId = 42L,
+            sChapters = listOf(
+                SChapter.create().apply { url = "/chapter/16"; name = "第16卷" },
+                SChapter.create().apply { url = "/chapter/22"; name = "第22卷" },
+            ),
+        )
+
+        assertEquals(listOf(16.0, 22.0), chapterRepo.getChapterByMangaId(7L).map { it.chapterNumber })
     }
 
     @Test

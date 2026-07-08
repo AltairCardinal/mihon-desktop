@@ -551,7 +551,7 @@ private fun ReaderContent(
         ReadingMode.WEBTOON -> WebtoonViewer(
             pageUrls = state.resolvedUrls, cropBorders = state.cropBordersWebtoon,
             sidePadding = state.webtoonSidePadding, autoScroll = state.webtoonAutoScroll,
-            autoScrollSpeed = state.webtoonAutoScrollSpeed,
+            autoScrollSpeed = state.webtoonAutoScrollSpeed, contextMenuScope = contextMenuScope, mangaTitle = mangaTitle, chapterTitle = chapterTitle,
             onNextChapter = if (readerNav?.nextToRead != null) onNextChapter else null,
         )
         ReadingMode.LTR, ReadingMode.RTL -> {

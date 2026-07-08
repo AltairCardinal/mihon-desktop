@@ -120,6 +120,9 @@ internal fun ZoomablePageBox(
     preloader: PagePreloader? = null,
     modifier: Modifier = Modifier.fillMaxSize(),
     imageAlignment: Alignment = Alignment.Center,
+    loadingAlignment: Alignment = Alignment.Center,
+    showLoadingIndicator: Boolean = true,
+    onLoadingStateChange: ((Boolean) -> Unit)? = null,
     onSpreadDetected: (() -> Unit)? = null,
     scaleType: ScaleType = ScaleType.FIT_SCREEN,
     navigationMode: NavigationMode = NavigationMode.RightAndLeft,
@@ -130,8 +133,13 @@ internal fun ZoomablePageBox(
     // Blank URL = page not yet downloaded. Show a loading spinner directly
     // rather than letting Coil attempt a request and return an error state.
     if (url.isBlank()) {
-        Box(modifier = modifier, contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = Color.White)
+        LaunchedEffect(url) {
+            onLoadingStateChange?.invoke(true)
+        }
+        Box(modifier = modifier, contentAlignment = loadingAlignment) {
+            if (showLoadingIndicator) {
+                CircularProgressIndicator(color = Color.White)
+            }
         }
         return
     }
@@ -210,7 +218,7 @@ internal fun ZoomablePageBox(
                         }
 
                         // Single-touch press → track for potential tap
-                        if (event.type == PointerEventType.Press) {
+                        if (event.isReaderPrimaryPress()) {
                             val down = event.changes.first()
                             val downPos = down.position
                             val downTime = System.currentTimeMillis()
@@ -287,7 +295,7 @@ internal fun ZoomablePageBox(
                 awaitPointerEventScope {
                     while (true) {
                         val event = awaitPointerEvent(PointerEventPass.Main)
-                        if (event.type == PointerEventType.Press) {
+                        if (event.isReaderPrimaryPress()) {
                             val now = System.currentTimeMillis()
                             val pos = event.changes.first().position
                             if (now - lastTapTime < 300 &&
@@ -318,8 +326,17 @@ internal fun ZoomablePageBox(
             // Loading indicator — suppressed when preloaded bitmap or crop is ready
             val isLoading = painterState is AsyncImagePainter.State.Loading ||
                 painterState is AsyncImagePainter.State.Empty
-            if (isLoading && croppedBitmap == null && preloadedBitmap == null) {
-                CircularProgressIndicator(color = Color.White)
+            val shouldShowLoading = isLoading && croppedBitmap == null && preloadedBitmap == null
+            LaunchedEffect(shouldShowLoading) {
+                onLoadingStateChange?.invoke(shouldShowLoading)
+            }
+            if (showLoadingIndicator && shouldShowLoading) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = loadingAlignment,
+                ) {
+                    CircularProgressIndicator(color = Color.White)
+                }
             }
 
             // Resolve ContentScale from ScaleType.

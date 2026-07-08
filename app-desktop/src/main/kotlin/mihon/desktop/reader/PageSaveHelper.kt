@@ -1,8 +1,12 @@
 package mihon.desktop.reader
 
 import java.awt.image.BufferedImage
+import java.io.ByteArrayInputStream
 import java.io.File
+import java.net.URI
 import javax.imageio.ImageIO
+import org.jetbrains.skia.EncodedImageFormat
+import org.jetbrains.skia.Image as SkiaImage
 
 /**
  * Utility object for page-save actions in the reader context menu.
@@ -45,11 +49,14 @@ object PageSaveHelper {
     }
 
     /**
-     * Loads a page image from [url] using [ImageIO] (same approach as [EdgePixelMatcher]).
+     * Loads a page image from [url] using Skia, matching the reader decoder's format support.
      * Returns null if loading fails.
      */
     fun loadImage(url: String): BufferedImage? = try {
-        ImageIO.read(java.net.URL(url))
+        val bytes = URI(url).toURL().readBytes()
+        val image = SkiaImage.makeFromEncoded(bytes)
+        val pngBytes = image.encodeToData(EncodedImageFormat.PNG)!!.bytes
+        ImageIO.read(ByteArrayInputStream(pngBytes))
     } catch (_: Exception) {
         null
     }

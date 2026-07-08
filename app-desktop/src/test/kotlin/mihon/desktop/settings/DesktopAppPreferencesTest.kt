@@ -71,4 +71,21 @@ class DesktopAppPreferencesTest {
         p.localSourceMaxDepth.set(5)
         assertEquals(5, p.localSourceMaxDepth.get())
     }
+
+    @Test
+    fun `hide missing chapter indicators defaults to false`() {
+        assertFalse(prefs().hideMissingChapterIndicators.get())
+    }
+
+    @Test
+    fun `hide missing chapter indicators round-trips true`() {
+        val p = prefs()
+        p.hideMissingChapterIndicators.set(true)
+        assertEquals(true, p.hideMissingChapterIndicators.get())
+    }
+
+    @Test
+    fun `hide missing chapter indicators uses original Mihon preference key`() {
+        assertEquals("pref_hide_missing_chapter_indicators", prefs().hideMissingChapterIndicators.key())
+    }
 }

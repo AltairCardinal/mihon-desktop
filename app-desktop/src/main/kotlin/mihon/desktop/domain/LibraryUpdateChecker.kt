@@ -5,6 +5,7 @@ import eu.kanade.tachiyomi.source.model.SManga
 import mihon.desktop.extension.SourceCallResult
 import mihon.desktop.extension.safeSourceCall
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.manga.model.Manga
 
@@ -34,23 +35,34 @@ class LibraryUpdateChecker(
             is SourceCallResult.Error -> return UpdateResult(newChapterCount = 0, error = r.message)
         }
 
-        val knownUrls = chapterRepository.getChapterByMangaId(manga.id)
-            .mapTo(HashSet()) { it.url }
+        val knownChaptersByUrl = chapterRepository.getChapterByMangaId(manga.id)
+            .associateBy { it.url }
+        val toUpdate = mutableListOf<ChapterUpdate>()
 
         val toAdd = remoteChapters.mapIndexedNotNull { index, sc ->
-            if (sc.url in knownUrls) return@mapIndexedNotNull null
+            val chapterNumber = sc.recognizedChapterNumber(manga)
+            val knownChapter = knownChaptersByUrl[sc.url]
+            if (knownChapter != null) {
+                if (knownChapter.chapterNumber != chapterNumber) {
+                    toUpdate += ChapterUpdate(id = knownChapter.id, chapterNumber = chapterNumber)
+                }
+                return@mapIndexedNotNull null
+            }
             Chapter.create().copy(
                 mangaId = manga.id,
                 url = sc.url,
                 name = sc.name,
                 dateUpload = sc.date_upload,
-                chapterNumber = sc.chapter_number.toDouble(),
+                chapterNumber = chapterNumber,
                 scanlator = sc.scanlator?.ifBlank { null }?.trim(),
                 sourceOrder = index.toLong(),
                 dateFetch = System.currentTimeMillis(),
             )
         }
 
+        if (toUpdate.isNotEmpty()) {
+            chapterRepository.updateAll(toUpdate)
+        }
         val inserted = if (toAdd.isNotEmpty()) {
             chapterRepository.addAll(toAdd)
         } else {

@@ -16,9 +16,9 @@ import java.io.IOException
 
 /**
  * Wraps [content] in a right-click context menu with page actions:
- *   • Save Image → ~/Pictures/Mihon/{filename}.png
- *   • Copy to Clipboard
- *   • Set as Cover (calls back to the parent)
+ *   • 保存图片 → ~/Pictures/Mihon/{filename}.png
+ *   • 复制到剪贴板
+ *   • 设为封面 (calls back to the parent)
  *
  * Android reference: presentation/reader/ReaderPageActionsDialog.kt
  *
@@ -41,8 +41,9 @@ internal fun PageContextMenu(
     onSetAsCover: (() -> Unit)?,
     content: @Composable () -> Unit,
 ) {
+    val labels = pageContextMenuLabels(includeSetAsCover = onSetAsCover != null)
     val items = buildList {
-        add(ContextMenuItem("Save Image") {
+        add(ContextMenuItem(labels[0]) {
             scope.launch(Dispatchers.IO) {
                 val img = PageSaveHelper.loadImage(pageUrl) ?: return@launch
                 val dir = PageSaveHelper.defaultSaveDirectory()
@@ -56,7 +57,7 @@ internal fun PageContextMenu(
                 } catch (_: Exception) { /* best-effort */ }
             }
         })
-        add(ContextMenuItem("Copy to Clipboard") {
+        add(ContextMenuItem(labels[1]) {
             scope.launch(Dispatchers.IO) {
                 val img = PageSaveHelper.loadImage(pageUrl) ?: return@launch
                 val transferable = BufferedImageTransferable(img)
@@ -64,13 +65,19 @@ internal fun PageContextMenu(
             }
         })
         if (onSetAsCover != null) {
-            add(ContextMenuItem("Set as Cover", onSetAsCover))
+            add(ContextMenuItem(labels[2], onSetAsCover))
         }
     }
 
     ContextMenuArea(items = { items }) {
         content()
     }
+}
+
+internal fun pageContextMenuLabels(includeSetAsCover: Boolean): List<String> = buildList {
+    add("保存图片")
+    add("复制到剪贴板")
+    if (includeSetAsCover) add("设为封面")
 }
 
 // ── AWT clipboard helpers ─────────────────────────────────────────────────────

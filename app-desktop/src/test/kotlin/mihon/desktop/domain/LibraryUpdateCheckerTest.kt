@@ -111,6 +111,46 @@ class LibraryUpdateCheckerTest {
     }
 
     @Test
+    fun `recognizes chapter numbers from source chapter names during library update`() = runBlocking<Unit> {
+        val chapterRepo = FakeChapterRepository()
+        val source = StubSource(listOf(
+            sChapter("/ch/16", "第16卷"),
+            sChapter("/ch/22", "第22卷"),
+        ))
+
+        val checker = LibraryUpdateChecker(chapterRepo)
+        checker.checkForUpdates(
+            manga = manga().copy(title = "SOUL EATER噬魂者"),
+            source = source,
+        )
+
+        assertEquals(listOf(16.0, 22.0), chapterRepo.getChapterByMangaId(1L).map { it.chapterNumber })
+    }
+
+    @Test
+    fun `updates existing unrecognized chapter numbers during library update`() = runBlocking<Unit> {
+        val chapterRepo = FakeChapterRepository()
+        chapterRepo.addAll(
+            listOf(
+                Chapter.create().copy(mangaId = 1L, url = "/ch/16", name = "第16卷", chapterNumber = -1.0),
+                Chapter.create().copy(mangaId = 1L, url = "/ch/22", name = "第22卷", chapterNumber = -1.0),
+            ),
+        )
+        val source = StubSource(listOf(
+            sChapter("/ch/16", "第16卷"),
+            sChapter("/ch/22", "第22卷"),
+        ))
+
+        val checker = LibraryUpdateChecker(chapterRepo)
+        checker.checkForUpdates(
+            manga = manga().copy(title = "SOUL EATER噬魂者"),
+            source = source,
+        )
+
+        assertEquals(listOf(16.0, 22.0), chapterRepo.getChapterByMangaId(1L).map { it.chapterNumber })
+    }
+
+    @Test
     fun `result includes inserted chapter models with correct URLs`() = runBlocking<Unit> {
         val chapterRepo = FakeChapterRepository()
         val source = StubSource(listOf(

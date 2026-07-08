@@ -41,6 +41,74 @@ class AddMangaToLibraryTest {
     }
 
     @Test
+    fun `recognizes chapter numbers from source chapter names when adding to library`() = runBlocking<Unit> {
+        val mangaRepo = FakeMangaRepository()
+        val chapterRepo = FakeChapterRepository()
+        val useCase = AddMangaToLibrary(NetworkToLocalManga(mangaRepo), mangaRepo, chapterRepo)
+
+        useCase.await(
+            sManga = SManga.create().apply {
+                url = "/manga/soul-eater"
+                title = "SOUL EATER噬魂者"
+            },
+            sourceId = 42L,
+            sChapters = listOf(
+                SChapter.create().apply { url = "/ch/16"; name = "第16卷" },
+                SChapter.create().apply { url = "/ch/22"; name = "第22卷" },
+            ),
+        )
+
+        assertEquals(listOf(16.0, 22.0), chapterRepo.addedChapters.map { it.chapterNumber })
+    }
+
+    @Test
+    fun `updates existing unrecognized chapter numbers when adding to library`() = runBlocking<Unit> {
+        val mangaRepo = FakeMangaRepository()
+        val existing = Manga.create().copy(
+            id = 7L,
+            source = 42L,
+            url = "/manga/soul-eater",
+            title = "SOUL EATER噬魂者",
+            favorite = false,
+        )
+        mangaRepo.seed(existing)
+        val chapterRepo = FakeChapterRepository()
+        chapterRepo.addAll(
+            listOf(
+                tachiyomi.domain.chapter.model.Chapter.create().copy(
+                    id = 100L,
+                    mangaId = 7L,
+                    url = "/ch/16",
+                    name = "第16卷",
+                    chapterNumber = -1.0,
+                ),
+                tachiyomi.domain.chapter.model.Chapter.create().copy(
+                    id = 101L,
+                    mangaId = 7L,
+                    url = "/ch/22",
+                    name = "第22卷",
+                    chapterNumber = -1.0,
+                ),
+            ),
+        )
+        val useCase = AddMangaToLibrary(NetworkToLocalManga(mangaRepo), mangaRepo, chapterRepo)
+
+        useCase.await(
+            sManga = SManga.create().apply {
+                url = "/manga/soul-eater"
+                title = "SOUL EATER噬魂者"
+            },
+            sourceId = 42L,
+            sChapters = listOf(
+                SChapter.create().apply { url = "/ch/16"; name = "第16卷" },
+                SChapter.create().apply { url = "/ch/22"; name = "第22卷" },
+            ),
+        )
+
+        assertEquals(listOf(16.0, 22.0), chapterRepo.getChapterByMangaId(7L).map { it.chapterNumber })
+    }
+
+    @Test
     fun `is idempotent — second call does not add duplicate chapters`() = runBlocking<Unit> {
         val mangaRepo = FakeMangaRepository()
         val chapterRepo = FakeChapterRepository()

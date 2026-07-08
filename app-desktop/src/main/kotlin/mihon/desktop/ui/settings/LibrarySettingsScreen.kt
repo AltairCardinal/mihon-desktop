@@ -50,6 +50,9 @@ class LibrarySettingsScreen : Screen {
         val updateInterval by prefs.libraryUpdateInterval.changes().collectAsState(
             initial = prefs.libraryUpdateInterval.get(),
         )
+        val hideMissingChapterIndicators by prefs.hideMissingChapterIndicators.changes().collectAsState(
+            initial = prefs.hideMissingChapterIndicators.get(),
+        )
         var categories by remember { mutableStateOf<List<Category>>(emptyList()) }
         var excludeIds by remember {
             mutableStateOf(
@@ -115,6 +118,32 @@ class LibrarySettingsScreen : Screen {
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                Text(
+                    text = "显示",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+                val missingChapterIndicatorItem = missingChapterIndicatorSettingsItem(
+                    prefs = prefs,
+                    checked = hideMissingChapterIndicators,
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = missingChapterIndicatorItem.onClick)
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(
+                        checked = missingChapterIndicatorItem.checked,
+                        onCheckedChange = missingChapterIndicatorItem.onCheckedChange,
+                    )
+                    Text(missingChapterIndicatorItem.title, modifier = Modifier.padding(start = 8.dp))
+                }
 
                 if (categories.isNotEmpty()) {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))

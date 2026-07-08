@@ -1,5 +1,10 @@
 package mihon.desktop.ui.reader
 
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.input.pointer.PointerButton
+import androidx.compose.ui.input.pointer.PointerEvent
+import androidx.compose.ui.input.pointer.PointerEventType
+
 enum class TapZone { LEFT, CENTER, RIGHT }
 
 /** Region a 2D tap falls into for chapter navigation. */
@@ -72,6 +77,29 @@ fun tapNavRegion(
         }
     }
 }
+
+@OptIn(ExperimentalComposeUiApi::class)
+fun PointerEvent.isReaderPrimaryPress(): Boolean =
+    type == PointerEventType.Press && isReaderPrimaryClick(button)
+
+@OptIn(ExperimentalComposeUiApi::class)
+fun isReaderPrimaryClick(button: PointerButton?): Boolean = button == PointerButton.Primary
+
+@OptIn(ExperimentalComposeUiApi::class)
+fun tapNavRegionForPointerButton(
+    button: PointerButton?,
+    x: Float,
+    y: Float,
+    width: Float,
+    height: Float,
+    mode: NavigationMode,
+    isRtl: Boolean = false,
+): TapNavRegion? =
+    if (isReaderPrimaryClick(button)) {
+        tapNavRegion(x, y, width, height, mode, isRtl)
+    } else {
+        null
+    }
 
 /**
  * Returns the tap zone for a tap at horizontal position [x] within a

@@ -3,6 +3,7 @@ package mihon.desktop.domain
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
@@ -54,23 +55,32 @@ class AddMangaToLibrary(
             )
         }
 
-        val knownUrls = chapterRepository.getChapterByMangaId(dbManga.id)
-            .mapTo(HashSet()) { it.url }
+        val knownChaptersByUrl = chapterRepository.getChapterByMangaId(dbManga.id)
+            .associateBy { it.url }
+        val toUpdate = mutableListOf<ChapterUpdate>()
 
         val toAdd = sChapters.mapIndexedNotNull { index, sc ->
-            if (sc.url in knownUrls) return@mapIndexedNotNull null
+            val chapterNumber = sc.recognizedChapterNumber(dbManga)
+            val knownChapter = knownChaptersByUrl[sc.url]
+            if (knownChapter != null) {
+                if (knownChapter.chapterNumber != chapterNumber) {
+                    toUpdate += ChapterUpdate(id = knownChapter.id, chapterNumber = chapterNumber)
+                }
+                return@mapIndexedNotNull null
+            }
             Chapter.create().copy(
                 mangaId = dbManga.id,
                 url = sc.url,
                 name = sc.name,
                 dateUpload = sc.date_upload,
-                chapterNumber = sc.chapter_number.toDouble(),
+                chapterNumber = chapterNumber,
                 scanlator = sc.scanlator?.ifBlank { null }?.trim(),
                 sourceOrder = index.toLong(),
                 dateFetch = System.currentTimeMillis(),
             )
         }
 
+        if (toUpdate.isNotEmpty()) chapterRepository.updateAll(toUpdate)
         if (toAdd.isNotEmpty()) chapterRepository.addAll(toAdd)
 
         return dbManga.copy(favorite = true)

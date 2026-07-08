@@ -71,6 +71,11 @@ class DesktopAppPreferences(private val store: PreferenceStore) {
         )
     }
 
+    /** When true, manga detail lists hide missing chapter indicator rows. */
+    val hideMissingChapterIndicators: Preference<Boolean> by lazy {
+        store.getBoolean(key = "pref_hide_missing_chapter_indicators", defaultValue = false)
+    }
+
     /** DNS over HTTPS provider selection. */
     val dohProvider: Preference<DohProvider> by lazy {
         store.getObjectFromString(

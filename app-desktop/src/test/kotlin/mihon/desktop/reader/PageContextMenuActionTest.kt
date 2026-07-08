@@ -4,6 +4,12 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.Canvas
+import org.jetbrains.skia.Color
+import org.jetbrains.skia.EncodedImageFormat
+import org.jetbrains.skia.Image
+import mihon.desktop.ui.reader.pageContextMenuLabels
 import java.awt.image.BufferedImage
 import java.io.File
 import java.nio.file.Files
@@ -63,5 +69,43 @@ class PageContextMenuActionTest {
     fun `defaultSaveDirectory returns a non-null path`() {
         val dir = PageSaveHelper.defaultSaveDirectory()
         assertNotNull(dir)
+    }
+
+    @Test
+    fun `reader context menu image actions use Chinese labels`() {
+        assertEquals(
+            listOf("保存图片", "复制到剪贴板", "设为封面"),
+            pageContextMenuLabels(includeSetAsCover = true),
+        )
+        assertEquals(
+            listOf("保存图片", "复制到剪贴板"),
+            pageContextMenuLabels(includeSetAsCover = false),
+        )
+    }
+
+    @Test
+    fun `loadImage decodes webp page files used by the reader`() {
+        val tmpFile = Files.createTempFile("page-save-webp", ".webp").toFile()
+        try {
+            tmpFile.writeBytes(testWebpBytes())
+
+            val img = PageSaveHelper.loadImage(tmpFile.toURI().toURL().toString())
+
+            assertNotNull(img)
+            assertEquals(2, img!!.width)
+            assertEquals(2, img.height)
+        } finally {
+            tmpFile.delete()
+        }
+    }
+
+    private fun testWebpBytes(): ByteArray {
+        val bitmap = Bitmap().apply {
+            allocN32Pixels(2, 2)
+        }
+        Canvas(bitmap).clear(Color.RED)
+        return Image.makeFromBitmap(bitmap)
+            .encodeToData(EncodedImageFormat.WEBP, 90)!!
+            .bytes
     }
 }
