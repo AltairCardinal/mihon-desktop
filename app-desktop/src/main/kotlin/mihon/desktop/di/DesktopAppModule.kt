@@ -90,7 +90,6 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.api.get
 import java.io.File
-import java.util.prefs.Preferences
 
 /**
  * Initializes all desktop DI bindings.
@@ -106,20 +105,17 @@ fun initDesktopDI() {
     initUILayer(paths, preferenceStore, networkHelper, handler)
 }
 
-internal fun initDesktopConfigurationForTest(appDir: File): DesktopPreferenceStore {
-    val node = Preferences.userRoot().node("/mihon/test/${appDir.absolutePath.hashCode().toUInt()}")
-    val preferenceStore = DesktopPreferenceStore(node)
+internal fun initDesktopConfigurationForTest(appDir: File, preferenceStore: PreferenceStore) {
     registerDesktopSettings(preferenceStore)
     registerDesktopReader(preferenceStore)
     Injekt.addSingleton<PreferenceStore>(preferenceStore)
     Injekt.addSingleton<FolderProvider>(DesktopStorageFolderProvider(appDir))
     Injekt.addSingleton<PlatformInfo>(DesktopPlatformInfo())
-    return preferenceStore
 }
 
-internal fun initDesktopDIForTest(appDir: File) {
+internal fun initDesktopDIForTest(appDir: File, preferenceStore: PreferenceStore) {
     val paths = desktopPaths(appDir)
-    val preferenceStore = initDesktopConfigurationForTest(appDir)
+    initDesktopConfigurationForTest(appDir, preferenceStore)
     val networkHelper = initNetworkLayer(paths, preferenceStore)
     val handler = initDataLayer(paths)
     initExtensionLayer(paths, networkHelper, handler)
@@ -154,11 +150,11 @@ private fun registerDesktopReader(preferenceStore: PreferenceStore) {
 // HTTP client, JSON serializer, DoH, Cloudflare bypass.
 // Depends on: config layer (preferenceStore for DoH setting).
 
-internal fun initNetworkLayer(paths: DesktopPlatformPaths, preferenceStore: DesktopPreferenceStore): DesktopNetworkHelper {
+internal fun initNetworkLayer(paths: DesktopPlatformPaths, preferenceStore: PreferenceStore): DesktopNetworkHelper {
     return registerDesktopNetwork(paths, preferenceStore)
 }
 
-private fun registerDesktopNetwork(paths: DesktopPlatformPaths, preferenceStore: DesktopPreferenceStore): DesktopNetworkHelper {
+private fun registerDesktopNetwork(paths: DesktopPlatformPaths, preferenceStore: PreferenceStore): DesktopNetworkHelper {
     val dohProvider = preferenceStore.getObjectFromString(
         key = "doh_provider",
         defaultValue = mihon.desktop.settings.DohProvider.OFF,
@@ -326,7 +322,7 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
 
 internal fun initUILayer(
     paths: DesktopPlatformPaths,
-    preferenceStore: DesktopPreferenceStore,
+    preferenceStore: PreferenceStore,
     networkHelper: DesktopNetworkHelper,
     handler: DatabaseHandler,
 ) {

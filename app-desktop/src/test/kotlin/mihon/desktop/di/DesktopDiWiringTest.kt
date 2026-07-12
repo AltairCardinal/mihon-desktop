@@ -1,5 +1,7 @@
 package mihon.desktop.di
 
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import mihon.desktop.backup.AutoBackupScheduler
 import mihon.desktop.domain.LibraryUpdateScheduler
 import mihon.desktop.download.DesktopDownloadManager
@@ -7,24 +9,24 @@ import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.settings.DesktopAppPreferences
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.core.common.preference.PreferenceStore
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
-import java.util.prefs.Preferences
 
 class DesktopDiWiringTest {
     @Test
-    fun `测试配置入口隔离用户偏好并解析七领域实际依赖`(@TempDir tempDir: File) {
-        val userStore = Preferences.userRoot().node("/mihon")
-        userStore.put("task1a_isolation_probe", "user")
+    fun `测试配置入口使用隔离内存存储并解析实际依赖`(@TempDir tempDir: File) = runBlocking {
+        val testStore = InMemoryPreferenceStore()
+        initDesktopDIForTest(tempDir, testStore)
 
-        initDesktopDIForTest(tempDir)
-
-        assertNotNull(Injekt.get<PreferenceStore>())
+        assertSame(testStore, Injekt.get<PreferenceStore>())
         assertNotNull(Injekt.get<DesktopAppPreferences>())
         assertNotNull(Injekt.get<ReaderPreferences>())
         assertNotNull(Injekt.get<LibraryUpdateScheduler>())
@@ -32,16 +34,9 @@ class DesktopDiWiringTest {
         assertNotNull(Injekt.get<DesktopDownloadManager>())
         assertNotNull(Injekt.get<AutoBackupScheduler>())
         assertNotNull(Injekt.get<DesktopExtensionManager>())
-        Injekt.get<PreferenceStore>().getString("task1a_isolation_probe").set("test")
-        org.junit.jupiter.api.Assertions.assertEquals("user", userStore.get("task1a_isolation_probe", null))
-        userStore.remove("task1a_isolation_probe")
-    }
 
-    @Test
-    fun `单一初始化入口调用全部领域 registrar`() {
-        val source = File("src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt").readText()
-        listOf("Settings", "Reader", "Library", "Network", "Download", "Backup", "Extension").forEach { domain ->
-            org.junit.jupiter.api.Assertions.assertTrue(source.contains("registerDesktop$domain("), domain)
-        }
+        val preference = Injekt.get<PreferenceStore>().getString("wiring_observe", "initial")
+        preference.set("updated")
+        assertEquals("updated", preference.changes().first())
     }
 }

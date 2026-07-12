@@ -72,6 +72,19 @@ class DesktopPreferenceMigrationTest {
         MigrationCase("auto_backup_dir", "auto_backup_dir", "old", "new", "") { s, l -> DesktopAppPreferences(s, l).autoBackupDir.get() },
     )
 
+    private val enumCases = listOf(
+        readerCases[0],
+        readerCases[1],
+        readerCases[5],
+        readerCases[7],
+        readerCases[9],
+        readerCases[12],
+        appCases[0],
+        appCases[1],
+        appCases[7],
+        appCases[9],
+    )
+
     @TestFactory
     fun `每项偏好迁移旧值 默认值且新值优先`() = (readerCases + appCases).flatMapIndexed { index, case ->
         listOf(
@@ -102,13 +115,27 @@ class DesktopPreferenceMigrationTest {
         else -> raw
     }
 
-    @Test
-    fun `非法旧值与非法新枚举均回退默认值`() {
-        val legacy = root.node("invalid/legacy")
-        val current = root.node("invalid/current")
-        legacy.put("readingMode", "BROKEN")
-        current.put("theme_mode", "BROKEN")
-        assertEquals(ReadingMode.LTR, ReaderPreferences(DesktopPreferenceStore(current), legacy).readingMode)
-        assertEquals(ThemeMode.SYSTEM, DesktopAppPreferences(DesktopPreferenceStore(current), legacy).themeMode.get())
+    @TestFactory
+    fun `所有枚举的非法旧值与非法当前值均回退默认值`() = enumCases.flatMapIndexed { index, case ->
+        listOf(
+            DynamicTest.dynamicTest("${case.newKey} 非法旧值") {
+                val node = root.node("invalid-$index-legacy")
+                val legacy = node.node("legacy")
+                val current = node.node("current")
+                legacy.put(case.oldKey, "BROKEN")
+
+                assertEquals(case.defaultValue, case.read(DesktopPreferenceStore(current), legacy))
+                assertEquals(null, current.get(case.newKey, null), "非法旧值不得迁入 current")
+            },
+            DynamicTest.dynamicTest("${case.newKey} 非法当前值") {
+                val node = root.node("invalid-$index-current")
+                val legacy = node.node("legacy")
+                val current = node.node("current")
+                current.put(case.newKey, "BROKEN")
+
+                assertEquals(case.defaultValue, case.read(DesktopPreferenceStore(current), legacy))
+                assertEquals("BROKEN", current.get(case.newKey, null), "读取回退不应改写 current")
+            },
+        )
     }
 }
