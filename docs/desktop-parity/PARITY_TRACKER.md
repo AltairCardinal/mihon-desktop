@@ -29,9 +29,11 @@
 4. `VERIFIED`：相关单元、集成及 Test Mode 场景通过，且保护测试写入 manifest。
 5. `EXEMPT`：确无桌面等价需求，manifest 中记录平台证据和边界。
 
-## 已纳入的现有保护证据
+## 全局产品证据池与逐项证据
 
-作者聚合、Upcoming、阅读器双页、Webtoon 自动滚动、APK 转换以及 Test Mode 导航/HTTP 已有测试继续作为 Desktop 产品能力的回归证据。manifest 不允许 `MISSING:` 占位，也会验证每条证据指向真实文件。
+作者聚合、Upcoming、阅读器双页、Webtoon 自动滚动以及 Test Mode 导航/HTTP 属于全局 Desktop 产品证据池：契约测试独立验证这些真实测试存在，但它们不对应 64 项中的普通对齐条目，因此不会被写入无关条目的 `protectionTests`。
+
+逐项 `protectionTests` 只保护该条目上明确标记的 `DESKTOP-PRODUCT` 增强。当前 APK→JAR、FlareSolverr 后备、宽页拆分/边缘匹配和双页点击区域分别绑定能在对应能力回退时失败的具体测试；其他条目保留空数组。manifest 不允许自引用契约测试或 `MISSING:` 占位。
 
 ## 维护方式
 

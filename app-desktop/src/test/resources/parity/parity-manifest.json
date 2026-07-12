@@ -8,10 +8,8 @@
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #3: 状态管理",
     "desktopImplementation": "Desktop current implementation to characterize and align: 状态管理",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
@@ -23,10 +21,8 @@
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #4: 依赖注入",
     "desktopImplementation": "Desktop current implementation to characterize and align: 依赖注入",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
@@ -38,100 +34,89 @@
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #7: 偏好存储",
     "desktopImplementation": "Desktop current implementation to characterize and align: 偏好存储",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 8,
     "group": "平台基础",
     "tags": [
-      "SHARE-EXTRACT"
+      "SHARE-EXTRACT",
+      "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #8: 网络栈",
     "desktopImplementation": "Desktop current implementation to characterize and align: 网络栈",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 9,
     "group": "平台基础",
     "tags": [
-      "SHARE-EXTRACT"
+      "SHARE-EXTRACT",
+      "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #9: 图片加载与解码",
     "desktopImplementation": "Desktop current implementation to characterize and align: 图片加载与解码",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 10,
     "group": "平台基础",
     "tags": [
-      "PLATFORM-EXEMPT"
+      "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #10: 后台任务",
     "desktopImplementation": "Desktop current implementation to characterize and align: 后台任务",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/test/navigation/TestNavigationControllerTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 11,
     "group": "平台基础",
     "tags": [
-      "PLATFORM-EXEMPT"
+      "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #11: 通知",
     "desktopImplementation": "Desktop current implementation to characterize and align: 通知",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/test/navigation/TestNavigationControllerTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 12,
     "group": "平台基础",
     "tags": [
-      "PLATFORM-EXEMPT"
+      "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #12: 崩溃与诊断",
     "desktopImplementation": "Desktop current implementation to characterize and align: 崩溃与诊断",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/test/navigation/TestNavigationControllerTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 16,
     "group": "书库与详情",
     "tags": [
+      "SHARE-DIRECT",
       "SHARE-EXTRACT"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #16: 分类",
     "desktopImplementation": "Desktop current implementation to characterize and align: 分类",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
@@ -143,10 +128,8 @@
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #17: 书库筛选",
     "desktopImplementation": "Desktop current implementation to characterize and align: 书库筛选",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
@@ -158,25 +141,21 @@
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #19: 书库多选批处理",
     "desktopImplementation": "Desktop current implementation to characterize and align: 书库多选批处理",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 22,
     "group": "书库与详情",
     "tags": [
-      "SHARE-EXTRACT"
+      "SHARE-DIRECT"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #22: 收藏与分类联动",
     "desktopImplementation": "Desktop current implementation to characterize and align: 收藏与分类联动",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
@@ -188,25 +167,22 @@
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #24: 章节批量操作",
     "desktopImplementation": "Desktop current implementation to characterize and align: 章节批量操作",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 26,
     "group": "书库与详情",
     "tags": [
-      "SHARE-EXTRACT"
+      "SHARE-EXTRACT",
+      "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #26: 封面管理",
     "desktopImplementation": "Desktop current implementation to characterize and align: 封面管理",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
@@ -218,40 +194,35 @@
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #28: 源列表",
     "desktopImplementation": "Desktop current implementation to characterize and align: 源列表",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 29,
     "group": "浏览与扩展",
     "tags": [
+      "SHARE-DIRECT",
       "SHARE-EXTRACT"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #29: 单源浏览",
     "desktopImplementation": "Desktop current implementation to characterize and align: 单源浏览",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 30,
     "group": "浏览与扩展",
     "tags": [
-      "SHARE-EXTRACT"
+      "SHARE-DIRECT"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #30: 全局搜索",
     "desktopImplementation": "Desktop current implementation to characterize and align: 全局搜索",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
@@ -263,32 +234,30 @@
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #32: 扩展仓库",
     "desktopImplementation": "Desktop current implementation to characterize and align: 扩展仓库",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 33,
     "group": "浏览与扩展",
     "tags": [
-      "TEMP-COMPAT"
+      "SHARE-EXTRACT",
+      "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #33: 扩展发现",
     "desktopImplementation": "Desktop current implementation to characterize and align: 扩展发现",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 34,
     "group": "浏览与扩展",
     "tags": [
-      "PLATFORM-ADAPTER"
+      "PLATFORM-ADAPTER",
+      "DESKTOP-PRODUCT"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #34: 扩展安装",
@@ -296,67 +265,61 @@
     "protectionTests": [
       "app-desktop/src/test/kotlin/mihon/desktop/extension/ApkToJarConverterTest.kt"
     ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 35,
     "group": "浏览与扩展",
     "tags": [
-      "PLATFORM-ADAPTER"
+      "PLATFORM-ADAPTER",
+      "TEMP-COMPAT"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #35: 扩展加载",
     "desktopImplementation": "Desktop current implementation to characterize and align: 扩展加载",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/extension/ApkToJarConverterTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 36,
     "group": "浏览与扩展",
     "tags": [
-      "TEMP-COMPAT"
+      "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #36: 扩展安全",
     "desktopImplementation": "Desktop current implementation to characterize and align: 扩展安全",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/extension/ApkToJarConverterTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 37,
     "group": "浏览与扩展",
     "tags": [
-      "TEMP-COMPAT"
+      "SHARE-EXTRACT"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #37: 扩展详情与更新",
     "desktopImplementation": "Desktop current implementation to characterize and align: 扩展详情与更新",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/extension/ApkToJarConverterTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 38,
     "group": "浏览与扩展",
     "tags": [
+      "SHARE-EXTRACT",
       "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #38: 源偏好设置",
     "desktopImplementation": "Desktop current implementation to characterize and align: 源偏好设置",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/extension/ApkToJarConverterTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
@@ -368,55 +331,54 @@
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #39: WebView/源登录",
     "desktopImplementation": "Desktop current implementation to characterize and align: WebView/源登录",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 40,
     "group": "浏览与扩展",
     "tags": [
-      "PLATFORM-ADAPTER"
+      "PLATFORM-ADAPTER",
+      "DESKTOP-PRODUCT"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #40: Cloudflare 绕过",
     "desktopImplementation": "Desktop current implementation to characterize and align: Cloudflare 绕过",
     "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/network/FlareSolverrClientTest.kt"
     ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 43,
     "group": "阅读器",
     "tags": [
-      "SHARE-EXTRACT"
+      "SHARE-EXTRACT",
+      "DESKTOP-PRODUCT"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #43: 宽页拆分",
     "desktopImplementation": "Desktop current implementation to characterize and align: 宽页拆分",
     "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DualPageLayoutPolicyTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt"
     ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 44,
     "group": "阅读器",
     "tags": [
-      "SHARE-EXTRACT"
+      "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #44: 大图与缩放",
     "desktopImplementation": "Desktop current implementation to characterize and align: 大图与缩放",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DualPageLayoutPolicyTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
@@ -428,10 +390,8 @@
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #45: 图片预加载",
     "desktopImplementation": "Desktop current implementation to characterize and align: 图片预加载",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DualPageLayoutPolicyTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
@@ -443,70 +403,64 @@
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #47: 页面过渡",
     "desktopImplementation": "Desktop current implementation to characterize and align: 页面过渡",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DualPageLayoutPolicyTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 49,
     "group": "阅读器",
     "tags": [
-      "SHARE-EXTRACT"
+      "SHARE-DIRECT",
+      "DESKTOP-PRODUCT"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #49: 点击区域方案",
     "desktopImplementation": "Desktop current implementation to characterize and align: 点击区域方案",
     "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DualPageLayoutPolicyTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/TapZoneTest.kt"
     ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 51,
     "group": "阅读器",
     "tags": [
-      "SHARE-EXTRACT"
+      "SHARE-EXTRACT",
+      "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #51: 色彩处理",
     "desktopImplementation": "Desktop current implementation to characterize and align: 色彩处理",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DualPageLayoutPolicyTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 53,
     "group": "阅读器",
     "tags": [
-      "SHARE-EXTRACT"
+      "SHARE-DIRECT"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #53: 章节进度",
     "desktopImplementation": "Desktop current implementation to characterize and align: 章节进度",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DualPageLayoutPolicyTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 54,
     "group": "阅读器",
     "tags": [
-      "SHARE-EXTRACT"
+      "SHARE-DIRECT"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #54: 跳过规则",
     "desktopImplementation": "Desktop current implementation to characterize and align: 跳过规则",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DualPageLayoutPolicyTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
@@ -518,10 +472,8 @@
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #56: 下载队列",
     "desktopImplementation": "Desktop current implementation to characterize and align: 下载队列",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
@@ -533,100 +485,90 @@
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #57: 下载并发",
     "desktopImplementation": "Desktop current implementation to characterize and align: 下载并发",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 59,
     "group": "下载更新与历史",
     "tags": [
-      "SHARE-EXTRACT"
+      "SHARE-DIRECT",
+      "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #59: 自动下载",
     "desktopImplementation": "Desktop current implementation to characterize and align: 自动下载",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 61,
     "group": "下载更新与历史",
     "tags": [
-      "SHARE-EXTRACT"
+      "SHARE-EXTRACT",
+      "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #61: 书库更新",
     "desktopImplementation": "Desktop current implementation to characterize and align: 书库更新",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 62,
     "group": "下载更新与历史",
     "tags": [
-      "SHARE-EXTRACT"
+      "SHARE-DIRECT"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #62: 更新列表",
     "desktopImplementation": "Desktop current implementation to characterize and align: 更新列表",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 64,
     "group": "下载更新与历史",
     "tags": [
-      "SHARE-EXTRACT"
+      "SHARE-DIRECT"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #64: 历史记录",
     "desktopImplementation": "Desktop current implementation to characterize and align: 历史记录",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 66,
     "group": "下载更新与历史",
     "tags": [
+      "SHARE-DIRECT",
       "SHARE-EXTRACT"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #66: 统计",
     "desktopImplementation": "Desktop current implementation to characterize and align: 统计",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 67,
     "group": "迁移追踪与备份",
     "tags": [
+      "SHARE-DIRECT",
       "SHARE-EXTRACT"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #67: 单部漫画迁移",
     "desktopImplementation": "Desktop current implementation to characterize and align: 单部漫画迁移",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
@@ -638,40 +580,35 @@
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #68: 批量迁移",
     "desktopImplementation": "Desktop current implementation to characterize and align: 批量迁移",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 69,
     "group": "迁移追踪与备份",
     "tags": [
-      "SHARE-EXTRACT"
+      "SHARE-EXTRACT",
+      "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #69: 追踪服务",
     "desktopImplementation": "Desktop current implementation to characterize and align: 追踪服务",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 70,
     "group": "迁移追踪与备份",
     "tags": [
-      "SHARE-EXTRACT"
+      "SHARE-DIRECT"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #70: 自动追踪更新",
     "desktopImplementation": "Desktop current implementation to characterize and align: 自动追踪更新",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
@@ -683,10 +620,8 @@
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #71: 手动备份",
     "desktopImplementation": "Desktop current implementation to characterize and align: 手动备份",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
@@ -698,40 +633,35 @@
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #72: 备份恢复",
     "desktopImplementation": "Desktop current implementation to characterize and align: 备份恢复",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 73,
     "group": "迁移追踪与备份",
     "tags": [
-      "SHARE-EXTRACT"
+      "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #73: 自动备份",
     "desktopImplementation": "Desktop current implementation to characterize and align: 自动备份",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 74,
     "group": "迁移追踪与备份",
     "tags": [
+      "SHARE-DIRECT",
       "TEMP-COMPAT"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #74: 跨端备份兼容",
     "desktopImplementation": "Desktop current implementation to characterize and align: 跨端备份兼容",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
@@ -743,10 +673,8 @@
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #81: Deep link",
     "desktopImplementation": "Desktop current implementation to characterize and align: Deep link",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/test/navigation/TestNavigationControllerTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
@@ -758,10 +686,8 @@
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #82: 分享/系统 Intent",
     "desktopImplementation": "Desktop current implementation to characterize and align: 分享/系统 Intent",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/test/navigation/TestNavigationControllerTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
@@ -773,85 +699,75 @@
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #83: 安全锁",
     "desktopImplementation": "Desktop current implementation to characterize and align: 安全锁",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/test/navigation/TestNavigationControllerTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 84,
     "group": "平台能力",
     "tags": [
-      "PLATFORM-ADAPTER"
+      "PLATFORM-ADAPTER",
+      "PLATFORM-EXEMPT"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #84: 屏幕与截图安全",
     "desktopImplementation": "Desktop current implementation to characterize and align: 屏幕与截图安全",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/test/navigation/TestNavigationControllerTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 85,
     "group": "平台能力",
     "tags": [
-      "PLATFORM-ADAPTER"
+      "PLATFORM-EXEMPT"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #85: 桌面/系统 Widget",
     "desktopImplementation": "Desktop current implementation to characterize and align: 桌面/系统 Widget",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/test/navigation/TestNavigationControllerTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 86,
     "group": "平台能力",
     "tags": [
-      "SHARE-EXTRACT"
+      "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #86: 应用更新",
     "desktopImplementation": "Desktop current implementation to characterize and align: 应用更新",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/test/navigation/TestNavigationControllerTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 87,
     "group": "平台能力",
     "tags": [
-      "SHARE-EXTRACT"
+      "SHARE-DIRECT"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #87: 国际化",
     "desktopImplementation": "Desktop current implementation to characterize and align: 国际化",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/test/navigation/TestNavigationControllerTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 88,
     "group": "平台能力",
     "tags": [
-      "SHARE-EXTRACT"
+      "SHARE-EXTRACT",
+      "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #88: 无障碍",
     "desktopImplementation": "Desktop current implementation to characterize and align: 无障碍",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/test/navigation/TestNavigationControllerTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
@@ -863,40 +779,36 @@
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #90: 设置搜索",
     "desktopImplementation": "Desktop current implementation to characterize and align: 设置搜索",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 91,
     "group": "设置与维护",
     "tags": [
-      "SHARE-EXTRACT"
+      "SHARE-EXTRACT",
+      "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #91: 外观",
     "desktopImplementation": "Desktop current implementation to characterize and align: 外观",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 92,
     "group": "设置与维护",
     "tags": [
-      "SHARE-EXTRACT"
+      "SHARE-EXTRACT",
+      "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #92: 安全设置",
     "desktopImplementation": "Desktop current implementation to characterize and align: 安全设置",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
@@ -908,25 +820,22 @@
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #93: 高级维护",
     "desktopImplementation": "Desktop current implementation to characterize and align: 高级维护",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 94,
     "group": "设置与维护",
     "tags": [
-      "SHARE-EXTRACT"
+      "SHARE-DIRECT",
+      "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #94: 开源许可与构建信息",
     "desktopImplementation": "Desktop current implementation to characterize and align: 开源许可与构建信息",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
@@ -938,25 +847,22 @@
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #95: 代码模块边界",
     "desktopImplementation": "Desktop current implementation to characterize and align: 代码模块边界",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 96,
     "group": "设置与维护",
     "tags": [
-      "PLATFORM-ADAPTER"
+      "PLATFORM-ADAPTER",
+      "TEMP-COMPAT"
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #96: 平台兼容层成本",
     "desktopImplementation": "Desktop current implementation to characterize and align: 平台兼容层成本",
-    "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/extension/ApkToJarConverterTest.kt"
-    ],
-    "platformExemptionEvidence": "NOT_APPLICABLE_UNTIL_EXEMPT",
+    "protectionTests": [],
+    "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   }
 ]
