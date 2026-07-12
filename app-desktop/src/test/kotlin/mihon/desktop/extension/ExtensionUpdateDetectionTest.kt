@@ -89,4 +89,19 @@ class ExtensionUpdateDetectionTest {
         val installed = listOf(installedExt("eu.kanade.ext.g", versionCode = 1L))
         assertFalse(isExtensionInstalled("eu.kanade.ext.z", installed))
     }
+
+    @Test
+    fun `isExtensionAvailableOnDesktop returns true for bundled MangaDex extension package`() {
+        assertTrue(isExtensionAvailableOnDesktop("eu.kanade.tachiyomi.extension.all.mangadex", emptyList()))
+    }
+
+    @Test
+    fun `findUpdatableExtensions excludes bundled MangaDex extension package`() {
+        val installed = listOf(installedExt("eu.kanade.tachiyomi.extension.all.mangadex", versionCode = 0L))
+        val available = listOf(
+            availableExt("eu.kanade.tachiyomi.extension.all.mangadex", versionCode = 211L),
+        )
+        val updates = findUpdatableExtensions(installed, available)
+        assertTrue(updates.isEmpty())
+    }
 }

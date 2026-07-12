@@ -71,6 +71,17 @@ class DesktopCookieJar(
         persistToDisk()
     }
 
+    /** Removes all cookies for the supplied hosts and their subdomains. */
+    fun clearDomains(domains: Set<String>): Int {
+        val normalized = domains.map { it.lowercase().trimStart('.') }.filter { it.isNotBlank() }.toSet()
+        val matching = cookieStore.keys.filter { stored ->
+            normalized.any { domain -> stored.equals(domain, true) || stored.endsWith(".$domain", true) }
+        }
+        matching.forEach(cookieStore::remove)
+        if (matching.isNotEmpty()) persistToDisk()
+        return matching.size
+    }
+
     // ── Persistence ────────────────────────────────────────────────────────────
 
     private fun loadFromDisk() {

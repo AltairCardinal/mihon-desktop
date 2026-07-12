@@ -11,6 +11,7 @@ import mihon.desktop.domain.SetExcludedScanlators
 import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.reader.ReaderNavigator
 import mihon.desktop.reader.ReadingMode
+import mihon.desktop.reader.externalChapterUrlOrNull
 import mihon.desktop.reader.viewerFlagsWithReadingMode
 import eu.kanade.tachiyomi.source.model.FilterList
 import kotlinx.coroutines.flow.Flow
@@ -284,6 +285,7 @@ class MangaDetailScreenModel(
     fun enqueueDownloads(manga: Manga, chapters: List<Chapter>) {
         val enqueue = requireNotNull(enqueueDownload) { "Download enqueue callback is required" }
         chapters
+            .filterNot { it.url.externalChapterUrlOrNull() != null }
             .filterNot { chapter -> isChapterDownloaded(manga, chapter) }
             .forEach { chapter ->
                 enqueue(
@@ -310,8 +312,11 @@ class MangaDetailScreenModel(
         return isDownloaded?.invoke(manga.source, manga.title, chapter.name) ?: false
     }
 
-    fun readerRequest(manga: Manga, chapters: List<Chapter>, chapter: Chapter): MangaDetailReaderRequest {
-        val chapterRefs = chapters.sortedBy { it.sourceOrder }
+    fun readerRequest(manga: Manga, chapters: List<Chapter>, chapter: Chapter): MangaDetailReaderRequest? {
+        if (chapter.url.externalChapterUrlOrNull() != null) return null
+        val chapterRefs = chapters
+            .filterNot { it.url.externalChapterUrlOrNull() != null }
+            .sortedBy { it.sourceOrder }
             .map { ReaderChapterRef(id = it.id, url = it.url, name = it.name, isRead = it.read) }
         return MangaDetailReaderRequest(
             chapterTitle = chapter.name,

@@ -379,6 +379,21 @@ class MangaDetailScreenModelTest {
     }
 
     @Test
+    fun `enqueueDownload skips chapters that must open in an external browser`() {
+        val enqueued = mutableListOf<DownloadItem>()
+        val model = MangaDetailScreenModel(
+            mangaId = 1L,
+            enqueueDownload = enqueued::add,
+        )
+        val manga = createFakeManga(id = 1L, title = "M")
+        val externalChapter = createFakeChapter(1L).copy(url = "external:https://kodansha.us/chapter/1")
+
+        model.enqueueDownloads(manga, listOf(externalChapter))
+
+        assertTrue(enqueued.isEmpty())
+    }
+
+    @Test
     fun `readerRequest uses source order and last page`() {
         val model = MangaDetailScreenModel(mangaId = 1L)
         val manga = createFakeManga(id = 1L, title = "M").copy(source = 9L, viewerFlags = 7L)
@@ -387,13 +402,38 @@ class MangaDetailScreenModelTest {
             createFakeChapter(1L).copy(sourceOrder = 1L, lastPageRead = 4L),
         )
 
-        val request = model.readerRequest(manga, chapters, chapters[1])
+        val request = requireNotNull(model.readerRequest(manga, chapters, chapters[1]))
 
         assertNotNull(request)
-        assertEquals(1L, request!!.chapterId)
+        assertEquals(1L, request.chapterId)
         assertEquals(0, request.currentChapterIndex)
         assertEquals(4, request.initialPage)
         assertEquals(9L, request.sourceId)
+    }
+
+    @Test
+    fun `readerRequest returns null for an external browser chapter`() {
+        val model = MangaDetailScreenModel(mangaId = 1L)
+        val manga = createFakeManga(id = 1L)
+        val chapter = createFakeChapter(1L).copy(url = "external:https://kodansha.us/chapter/1")
+
+        val request = model.readerRequest(manga, listOf(chapter), chapter)
+
+        assertNull(request)
+    }
+
+    @Test
+    fun `readerRequest excludes external chapters from reader navigation`() {
+        val model = MangaDetailScreenModel(mangaId = 1L)
+        val manga = createFakeManga(id = 1L)
+        val internalChapter = createFakeChapter(1L).copy(url = "/chapter/internal")
+        val externalChapter = createFakeChapter(2L).copy(url = "external:https://example.com/chapter/2")
+
+        val request = requireNotNull(
+            model.readerRequest(manga, listOf(internalChapter, externalChapter), internalChapter),
+        )
+
+        assertEquals(listOf(1L), request.chapters.map { it.id })
     }
 
     @Test

@@ -8,11 +8,19 @@
 ./gradlew :app-desktop:jvmTest :test-desktop:test
 ```
 
-构建并部署桌面应用：
+构建并验收桌面应用：
 
 ```bash
 ./scripts/build-desktop.sh
 ```
+
+Windows 默认构建产物是未打包应用，不会生成 MSI。唯一的开发验收 EXE 为：
+
+```text
+app-desktop/tmp/mihon-dist/main/app/Mihon Desktop/Mihon Desktop.exe
+```
+
+构建脚本会自动启动该 EXE，并确认窗口标题中的运行版本与本轮 `0.STAGE.FEATURE.BUILD.GIT_HASH` 完全一致。只有发布时才显式执行 `./scripts/build-desktop.sh msi`；MSI 不能替代未打包版本的开发验收。
 
 启动测试模式：
 

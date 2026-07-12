@@ -3,7 +3,7 @@ package mihon.desktop.ui.settings
 import java.awt.Desktop
 import java.io.File
 
-internal object DesktopDirectoryOpener {
+object DesktopDirectoryOpener {
 
     fun open(
         directory: File,

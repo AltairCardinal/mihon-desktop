@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.net.URLClassLoader
 import java.nio.file.Path
 import java.util.jar.JarEntry
 import java.util.jar.JarOutputStream
@@ -59,6 +60,7 @@ class JarScanSourceDiscoveryTest {
         }
         val loaded = DesktopExtensionLoader(tmpDir.toFile()).loadExtensions()
         assertTrue(loaded.isEmpty())
+        loaded.closeClassLoaders()
     }
 
     @Test
@@ -72,6 +74,7 @@ class JarScanSourceDiscoveryTest {
         assertEquals(jar.canonicalFile, loaded[0].jarFile.canonicalFile)
         assertEquals(12345L, loaded[0].source.id)
         assertEquals("JarScanFake", loaded[0].source.name)
+        loaded.closeClassLoaders()
     }
 
     @Test
@@ -98,6 +101,7 @@ class JarScanSourceDiscoveryTest {
 
         val loaded = DesktopExtensionLoader(tmpDir.toFile()).loadExtensions()
         assertEquals(1, loaded.size, "Should find source exactly once (via ServiceLoader)")
+        loaded.closeClassLoaders()
     }
 
     @Test
@@ -113,7 +117,12 @@ class JarScanSourceDiscoveryTest {
         }
         val loaded = DesktopExtensionLoader(tmpDir.toFile()).loadExtensions()
         assertTrue(loaded.isEmpty(), "Inner classes should not be instantiated")
+        loaded.closeClassLoaders()
     }
+}
+
+private fun List<LoadedExtension>.closeClassLoaders() {
+    forEach { (it.classLoader as? URLClassLoader)?.close() }
 }
 
 /**

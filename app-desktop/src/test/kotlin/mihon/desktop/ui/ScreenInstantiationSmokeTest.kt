@@ -14,6 +14,7 @@ import mihon.desktop.ui.browse.LocalSourceSettingsScreen
 import mihon.desktop.ui.browse.SourceBrowseScreen
 import mihon.desktop.ui.download.DownloadQueueScreen
 import mihon.desktop.ui.extension.ExtensionListScreen
+import mihon.desktop.ui.extension.ExtensionDetailsScreen
 import mihon.desktop.ui.extension.SourcePreferencesScreen
 import mihon.desktop.ui.history.HistoryTab
 import mihon.desktop.ui.home.HomeScreen
@@ -123,6 +124,12 @@ class ScreenInstantiationSmokeTest {
 
     @Test fun `ExtensionListScreen is Screen`() {
         val s = ExtensionListScreen()
+        assert(s is Screen)
+        assert(s !is Tab)
+    }
+
+    @Test fun `ExtensionDetailsScreen is Screen`() {
+        val s = ExtensionDetailsScreen(jarPath = "C:/Mihon/extensions/example.jar")
         assert(s is Screen)
         assert(s !is Tab)
     }

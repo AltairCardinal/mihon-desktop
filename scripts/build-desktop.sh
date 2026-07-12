@@ -1,76 +1,178 @@
 #!/usr/bin/env bash
-# build-desktop.sh — Build, version-bump, and deploy Mihon Desktop
-#
-# Version format: 0.STAGE.FEATURE.GIT_HASH
-#   STAGE   = development stage (1-10, reflects Android feature parity)
-#   FEATURE = feature batch within a stage
-#   GIT_HASH = auto-injected by build.gradle.kts from git rev-parse --short=7 HEAD
+# Unified Mihon Desktop build entrypoint.
 #
 # Usage:
-#   ./scripts/build-desktop.sh           # build with current STAGE.FEATURE (hash auto-updates)
-#   ./scripts/build-desktop.sh feature   # bump FEATURE (7.0 → 7.1), then build
-#   ./scripts/build-desktop.sh stage     # bump STAGE, reset FEATURE (7.x → 8.0), then build
+#   ./scripts/build-desktop.sh             # bump BUILD, then build unpackaged app
+#   ./scripts/build-desktop.sh feature     # bump FEATURE, reset BUILD, then build
+#   ./scripts/build-desktop.sh stage       # bump STAGE, reset FEATURE/BUILD, then build
+#   ./scripts/build-desktop.sh msi         # bump BUILD, build MSI, then rebuild unpackaged app
+#   ./scripts/build-desktop.sh test-only   # run tests only where supported
+#   ./scripts/build-desktop.sh full-tests  # run full tests only where supported
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP_VERSION_FILE="$REPO_ROOT/app-desktop/src/main/kotlin/mihon/desktop/AppVersion.kt"
-DEPLOY_DIR="/Applications/Mihon Desktop.app"
-DIST_DIR="/private/tmp/mihon-dist/main/app/Mihon Desktop.app"
+HOST_OS="$(uname -s)"
+MODE="${1:-hash}"
 
-export JAVA_HOME="${JAVA_HOME:-/Users/altair/.jdks/jdk-21.0.10+7/Contents/Home}"
+read_version_constant() {
+  local name="$1"
+  grep "const val $name" "$APP_VERSION_FILE" | grep -o '[0-9]\+'
+}
 
-# ── Read current version ──────────────────────────────────────────────────────
+replace_version_constant() {
+  local name="$1"
+  local value="$2"
+  if [[ "$HOST_OS" == "Darwin" ]]; then
+    sed -i '' "s/const val $name = [0-9][0-9]*/const val $name = $value/" "$APP_VERSION_FILE"
+  else
+    sed -i "s/const val $name = [0-9][0-9]*/const val $name = $value/" "$APP_VERSION_FILE"
+  fi
+}
 
-STAGE=$(grep 'val STAGE' "$APP_VERSION_FILE" | grep -o '[0-9]\+')
-FEATURE=$(grep 'val FEATURE' "$APP_VERSION_FILE" | grep -o '[0-9]\+')
+print_usage_and_exit() {
+  echo "Unknown mode: $MODE"
+  echo "Use: hash, feature, stage, msi, test-only, or full-tests."
+  exit 1
+}
 
-# ── Bump version ──────────────────────────────────────────────────────────────
+STAGE="$(read_version_constant STAGE)"
+FEATURE="$(read_version_constant FEATURE)"
+BUILD="$(read_version_constant BUILD)"
 
-BUMP="${1:-hash}"
-case "$BUMP" in
+case "$MODE" in
   stage)
     STAGE=$((STAGE + 1))
     FEATURE=0
-    echo "Stage bump: → 0.$STAGE.$FEATURE"
-    sed -i '' "s/val STAGE = [0-9]*/val STAGE = $STAGE/" "$APP_VERSION_FILE"
-    sed -i '' "s/val FEATURE = [0-9]*/val FEATURE = $FEATURE/" "$APP_VERSION_FILE"
+    BUILD=1
+    echo "Stage build: 0.$STAGE.$FEATURE.$BUILD"
+    replace_version_constant STAGE "$STAGE"
+    replace_version_constant FEATURE "$FEATURE"
+    replace_version_constant BUILD "$BUILD"
     ;;
   feature)
     FEATURE=$((FEATURE + 1))
-    echo "Feature bump: → 0.$STAGE.$FEATURE"
-    sed -i '' "s/val FEATURE = [0-9]*/val FEATURE = $FEATURE/" "$APP_VERSION_FILE"
+    BUILD=1
+    echo "Feature build: 0.$STAGE.$FEATURE.$BUILD"
+    replace_version_constant FEATURE "$FEATURE"
+    replace_version_constant BUILD "$BUILD"
     ;;
-  hash)
-    echo "Version: 0.$STAGE.$FEATURE (hash auto-updates at build time)"
+  hash|msi)
+    BUILD=$((BUILD + 1))
+    echo "Build bump: 0.$STAGE.$FEATURE.$BUILD"
+    replace_version_constant BUILD "$BUILD"
+    ;;
+  test-only|full-tests)
+    echo "Test version: 0.$STAGE.$FEATURE.$BUILD (version unchanged)"
     ;;
   *)
-    echo "Unknown bump type: $BUMP. Use stage/feature/hash."
-    exit 1
+    print_usage_and_exit
     ;;
 esac
 
-GIT_HASH=$(git -C "$REPO_ROOT" rev-parse --short=7 HEAD)
-echo "Full version: 0.$STAGE.$FEATURE.$GIT_HASH"
+GIT_HASH="$(git -C "$REPO_ROOT" rev-parse --short=7 HEAD)"
+FULL_VERSION="0.$STAGE.$FEATURE.$BUILD.$GIT_HASH"
+echo "Full version: $FULL_VERSION"
 
-# ── Build ─────────────────────────────────────────────────────────────────────
+run_macos() {
+  local DEPLOY_DIR="/Applications/Mihon Desktop.app"
+  local DIST_DIR="/private/tmp/mihon-dist/main/app/Mihon Desktop.app"
 
-echo ""
-echo "▶ Running tests..."
-cd "$REPO_ROOT"
-./gradlew :app-desktop:jvmTest
+  export JAVA_HOME="${JAVA_HOME:-/Users/altair/.jdks/jdk-21.0.10+7/Contents/Home}"
 
-echo ""
-echo "▶ Building distributable..."
-./gradlew :app-desktop:createDistributable
+  if [[ "$MODE" == "msi" ]]; then
+    echo "MSI mode is only supported on Windows."
+    exit 1
+  fi
 
-# ── Deploy ────────────────────────────────────────────────────────────────────
+  cd "$REPO_ROOT"
+  echo ""
+  echo "Running desktop JVM tests..."
+  if [[ "$MODE" == "full-tests" ]]; then
+    ./gradlew :app-desktop:jvmTest -PincludeIntegrationTests=true
+  else
+    ./gradlew :app-desktop:jvmTest
+  fi
 
-echo ""
-echo "▶ Deploying to $DEPLOY_DIR..."
-rm -rf "$DEPLOY_DIR"
-cp -R "$DIST_DIR" "$DEPLOY_DIR"
+  if [[ "$MODE" == "test-only" || "$MODE" == "full-tests" ]]; then
+    echo ""
+    echo "macOS validation completed without packaging app bundle."
+    return
+  fi
 
-echo ""
-echo "✓ Deployed Mihon Desktop 0.$STAGE.$FEATURE.$GIT_HASH"
-echo "  → $DEPLOY_DIR"
+  echo ""
+  echo "Building macOS distributable..."
+  ./gradlew :app-desktop:createDistributable
+
+  echo ""
+  echo "Deploying to $DEPLOY_DIR..."
+  rm -rf "$DEPLOY_DIR"
+  cp -R "$DIST_DIR" "$DEPLOY_DIR"
+
+  echo ""
+  echo "Deployed Mihon Desktop $FULL_VERSION"
+  echo "  $DEPLOY_DIR"
+}
+
+run_windows() {
+  cd "$REPO_ROOT"
+
+  local WINDOWS_PS_SCRIPT="scripts/build-windows.ps1"
+  local POWERSHELL_BIN=""
+  if command -v pwsh >/dev/null 2>&1; then
+    POWERSHELL_BIN="pwsh"
+  elif command -v powershell.exe >/dev/null 2>&1; then
+    POWERSHELL_BIN="powershell.exe"
+  elif command -v powershell >/dev/null 2>&1; then
+    POWERSHELL_BIN="powershell"
+  else
+    echo "PowerShell not found. Install PowerShell or run scripts/build-windows.ps1 directly from PowerShell."
+    exit 1
+  fi
+
+  local ps_args=(-NoProfile -ExecutionPolicy Bypass -File "$WINDOWS_PS_SCRIPT")
+  case "$MODE" in
+    test-only)
+      ps_args+=(-TestOnly)
+      ;;
+    full-tests)
+      ps_args+=(-TestOnly -FullTests)
+      ;;
+    msi)
+      ps_args+=(-PackageMsi -VersionAllocated -ExpectedVersion "$FULL_VERSION")
+      ;;
+    hash|feature|stage)
+      ps_args+=(-VersionAllocated -ExpectedVersion "$FULL_VERSION")
+      ;;
+    *)
+      print_usage_and_exit
+      ;;
+  esac
+
+  echo ""
+  echo "Dispatching to Windows PowerShell build script..."
+  "$POWERSHELL_BIN" "${ps_args[@]}"
+}
+
+case "$HOST_OS" in
+  Darwin)
+    run_macos
+    ;;
+  MINGW*|MSYS*|CYGWIN*)
+    run_windows
+    ;;
+  Linux*)
+    if command -v powershell.exe >/dev/null 2>&1; then
+      run_windows
+    else
+      echo "Linux desktop packaging is not configured for this repository."
+      echo "Supported platforms: macOS via this script, Windows via scripts/build-windows.ps1 dispatch."
+      exit 1
+    fi
+    ;;
+  *)
+    echo "Unsupported platform: $HOST_OS"
+    exit 1
+    ;;
+esac

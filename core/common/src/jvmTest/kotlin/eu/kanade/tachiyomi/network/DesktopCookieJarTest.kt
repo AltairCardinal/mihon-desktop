@@ -9,6 +9,24 @@ import org.junit.jupiter.api.Test
 
 class DesktopCookieJarTest {
 
+    @Test
+    fun `clearDomains removes matching host and subdomains only`() {
+        val jar = DesktopCookieJar()
+        val root = "https://example.com".toHttpUrl()
+        val subdomain = "https://reader.example.com".toHttpUrl()
+        val other = "https://other.test".toHttpUrl()
+        jar.addManual(root, "root", "1")
+        jar.addManual(subdomain, "sub", "2")
+        jar.addManual(other, "other", "3")
+
+        val removed = jar.clearDomains(setOf("example.com"))
+
+        assertEquals(2, removed)
+        assertTrue(jar.get(root).isEmpty())
+        assertTrue(jar.get(subdomain).isEmpty())
+        assertTrue(jar.get(other).isNotEmpty())
+    }
+
     private lateinit var jar: DesktopCookieJar
 
     @BeforeEach

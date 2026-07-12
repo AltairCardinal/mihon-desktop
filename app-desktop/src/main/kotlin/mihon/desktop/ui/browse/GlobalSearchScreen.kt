@@ -195,9 +195,10 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
                                         if (openingMangaUrl != null) return@GlobalSearchMangaCard
                                         openingMangaUrl = "${sourceResult.source.id}:${manga.url}"
                                         scope.launch {
-                                            val saved = saveSourceMangaForDetails.awaitListed(manga, sourceResult.source.id)
+                                            val details = saveSourceMangaForDetails.awaitListedForDetails(manga, sourceResult.source.id)
+                                            val saved = details.manga
                                             navigator.push(MangaDetailScreen(saved.id))
-                                            if (!saved.initialized) {
+                                            if (details.needsRefresh) {
                                                 saveSourceMangaForDetails.refreshFromSource(sourceResult.source, manga)
                                             }
                                             openingMangaUrl = null

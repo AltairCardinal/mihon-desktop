@@ -40,6 +40,12 @@ class DesktopExtensionManager(
                     versionCode = meta?.versionCode ?: 0L,
                     versionName = meta?.versionName ?: "",
                     iconUrl = meta?.iconUrl ?: "",
+                    repoUrl = meta?.repoUrl ?: "",
+                    repoName = meta?.repoName ?: "",
+                    repoFingerprint = meta?.repoFingerprint ?: "",
+                    installedAt = meta?.installedAt ?: 0L,
+                    artifactSha256 = meta?.artifactSha256 ?: "",
+                    origin = meta?.source ?: ExtensionOrigin.COMPILED_JAR,
                 )
             }
 
@@ -79,6 +85,12 @@ data class InstalledExtension(
     val versionCode: Long = 0L,
     val versionName: String = "",
     val iconUrl: String = "",
+    val repoUrl: String = "",
+    val repoName: String = "",
+    val repoFingerprint: String = "",
+    val installedAt: Long = 0L,
+    val artifactSha256: String = "",
+    val origin: ExtensionOrigin = ExtensionOrigin.COMPILED_JAR,
 ) {
     val name: String get() = jarFile.nameWithoutExtension
     val pkgName: String get() = jarFile.nameWithoutExtension

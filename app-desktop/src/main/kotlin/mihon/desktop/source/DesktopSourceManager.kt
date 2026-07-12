@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flowOf
 import mihon.desktop.extension.DesktopExtensionManager
+import mihon.desktop.settings.DesktopAppPreferences
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.domain.source.service.SourceManager
 
@@ -19,10 +20,9 @@ import tachiyomi.domain.source.service.SourceManager
  */
 class DesktopSourceManager(
     private val extensionManager: DesktopExtensionManager,
+    private val preferences: DesktopAppPreferences? = null,
+    private val builtinSources: List<CatalogueSource> = listOf(MangaDexSource()),
 ) : SourceManager {
-
-    /** Built-in sources always available without external JARs. */
-    private val builtinSources: List<CatalogueSource> = listOf(MangaDexSource())
 
     private val _isInitialized = MutableStateFlow(true)
     override val isInitialized: StateFlow<Boolean> = _isInitialized.asStateFlow()
@@ -31,6 +31,7 @@ class DesktopSourceManager(
         get() = flowOf(getCatalogueSources())
 
     override fun get(sourceKey: Long): Source? {
+        if (!isSourceEnabled(sourceKey)) return null
         return builtinSources.find { it.id == sourceKey }
             ?: extensionManager.getSource(sourceKey)
     }
@@ -43,12 +44,27 @@ class DesktopSourceManager(
     override fun getOnlineSources(): List<HttpSource> {
         val builtins = builtinSources.filterIsInstance<HttpSource>()
         val extensions = extensionManager.getInstalledSources().filterIsInstance<HttpSource>()
-        return builtins + extensions
+        return (builtins + extensions).filter { isSourceEnabled(it.id) }
     }
 
     override fun getCatalogueSources(): List<CatalogueSource> {
-        return builtinSources + extensionManager.getInstalledSources().filterIsInstance<CatalogueSource>()
+        return (builtinSources + extensionManager.getInstalledSources().filterIsInstance<CatalogueSource>())
+            .filter { isSourceEnabled(it.id) }
     }
 
     override fun getStubSources(): List<StubSource> = emptyList()
+
+    fun isSourceEnabled(sourceId: Long): Boolean = sourceId !in disabledSourceIds()
+
+    fun setSourceEnabled(sourceId: Long, enabled: Boolean) {
+        val ids = disabledSourceIds().toMutableSet()
+        if (enabled) ids.remove(sourceId) else ids.add(sourceId)
+        preferences?.disabledSourceIds?.set(ids.sorted().joinToString(","))
+    }
+
+    private fun disabledSourceIds(): Set<Long> = preferences?.disabledSourceIds?.get()
+        .orEmpty()
+        .split(',')
+        .mapNotNull { it.trim().toLongOrNull() }
+        .toSet()
 }

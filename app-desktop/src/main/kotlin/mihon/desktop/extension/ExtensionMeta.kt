@@ -20,6 +20,11 @@ data class ExtensionMeta(
     val versionCode: Long,
     val versionName: String,
     val iconUrl: String = "",
+    val repoUrl: String = "",
+    val repoName: String = "",
+    val repoFingerprint: String = "",
+    val installedAt: Long = 0L,
+    val artifactSha256: String = "",
     val source: ExtensionOrigin = ExtensionOrigin.COMPILED_JAR,
     /**
      * Fully-qualified Source class name extracted from AndroidManifest.xml
@@ -56,3 +61,6 @@ internal fun deleteExtensionMeta(jarFile: File) {
 
 private fun metaFileFor(jarFile: File): File =
     File(jarFile.parent, "${jarFile.nameWithoutExtension}.meta.json")
+
+internal fun repositoryIdentityConflicts(existing: String, incoming: String): Boolean =
+    existing.isNotBlank() && incoming.isNotBlank() && !existing.equals(incoming, ignoreCase = true)

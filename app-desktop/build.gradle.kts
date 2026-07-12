@@ -19,6 +19,21 @@ val gitHash: String by lazy {
     stdout.toString().trim()
 }
 
+val appVersionFile = project.file("src/main/kotlin/mihon/desktop/AppVersion.kt")
+
+fun readAppVersionConstant(name: String): Int {
+    val regex = Regex("""const val $name = (\d+)""")
+    val text = appVersionFile.readText()
+    return regex.find(text)?.groupValues?.get(1)?.toInt()
+        ?: error("Unable to read AppVersion.$name from ${appVersionFile.path}")
+}
+
+val desktopNativePackageVersion: String by lazy {
+    "${readAppVersionConstant("STAGE")}." +
+        "${readAppVersionConstant("FEATURE")}." +
+        readAppVersionConstant("BUILD")
+}
+
 val generateBuildInfo = tasks.register("generateBuildInfo") {
     val outputDir = layout.buildDirectory.dir("generated/src/main/kotlin")
     outputs.dir(outputDir)
@@ -119,7 +134,8 @@ kotlin {
             dependencies {
                 implementation(libs.bundles.test)
                 implementation(kotlinx.coroutines.test)
-                implementation(libs.okhttp.core) // for mockwebserver
+                implementation(libs.okhttp.core)
+                implementation(libs.okhttp.mockwebserver)
                 runtimeOnly(libs.junit.platform.launcher)
             }
         }
@@ -130,7 +146,14 @@ tasks.named("compileKotlinJvm") { dependsOn(generateBuildInfo) }
 tasks.named("compileTestKotlinJvm") { dependsOn(generateBuildInfo) }
 
 tasks.withType<Test> {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        val includeIntegrationTests = providers.gradleProperty("includeIntegrationTests")
+            .map(String::toBoolean)
+            .getOrElse(false)
+        if (!includeIntegrationTests) {
+            excludeTags("integration")
+        }
+    }
 }
 
 compose.desktop {
@@ -142,7 +165,7 @@ compose.desktop {
             outputBaseDir.set(project.file("/tmp/mihon-dist"))
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi)
             packageName = "Mihon Desktop"
-            packageVersion = "1.0.0"
+            packageVersion = desktopNativePackageVersion
 
             modules(
                 "java.sql",

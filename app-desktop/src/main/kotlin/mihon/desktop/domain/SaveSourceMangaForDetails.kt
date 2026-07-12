@@ -64,6 +64,18 @@ class SaveSourceMangaForDetails(
         return networkToLocalManga(networkManga)
     }
 
+    suspend fun awaitListedForDetails(
+        sManga: SManga,
+        sourceId: Long,
+    ): ListedMangaForDetails {
+        val manga = awaitListed(sManga, sourceId)
+        val hasNoChapters = chapterRepository.getChapterByMangaId(manga.id).isEmpty()
+        return ListedMangaForDetails(
+            manga = manga,
+            needsRefresh = !manga.initialized || hasNoChapters,
+        )
+    }
+
     suspend fun await(
         sManga: SManga,
         sourceId: Long,
@@ -119,6 +131,11 @@ class SaveSourceMangaForDetails(
         return dbManga
     }
 }
+
+data class ListedMangaForDetails(
+    val manga: Manga,
+    val needsRefresh: Boolean,
+)
 
 internal fun mergeSourceMangaDetails(original: SManga, details: SManga): SManga = details.also { d ->
     runCatching { d.url }.onFailure { d.url = original.url }

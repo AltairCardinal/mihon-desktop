@@ -193,4 +193,62 @@ class SaveSourceMangaForDetailsTest {
         assertEquals(true, result.initialized)
         assertEquals(true, mangaRepo.get(7L)?.initialized)
     }
+
+    @Test
+    fun `listed detail open requests refresh for existing initialized manga with no chapters`() = runBlocking<Unit> {
+        val mangaRepo = FakeMangaRepository()
+        val chapterRepo = FakeChapterRepository()
+        val useCase = SaveSourceMangaForDetails(NetworkToLocalManga(mangaRepo), mangaRepo, chapterRepo)
+        val existing = Manga.create().copy(
+            id = 7L,
+            source = 42L,
+            url = "/manga/empty-old-record",
+            title = "Empty Old Record",
+            initialized = true,
+        )
+        mangaRepo.seed(existing)
+
+        val result = useCase.awaitListedForDetails(
+            sManga = SManga.create().apply {
+                url = "/manga/empty-old-record"
+                title = "Empty Old Record"
+            },
+            sourceId = 42L,
+        )
+
+        assertEquals(7L, result.manga.id)
+        assertEquals(true, result.manga.initialized)
+        assertEquals(true, result.needsRefresh)
+        assertEquals(true, mangaRepo.get(7L)?.initialized)
+    }
+
+    @Test
+    fun `listed detail open does not request refresh for existing initialized manga with chapters`() = runBlocking<Unit> {
+        val mangaRepo = FakeMangaRepository()
+        val chapterRepo = FakeChapterRepository()
+        val useCase = SaveSourceMangaForDetails(NetworkToLocalManga(mangaRepo), mangaRepo, chapterRepo)
+        val existing = Manga.create().copy(
+            id = 7L,
+            source = 42L,
+            url = "/manga/already-has-chapters",
+            title = "Already Has Chapters",
+            initialized = true,
+        )
+        mangaRepo.seed(existing)
+        chapterRepo.addAll(
+            listOf(
+                Chapter.create().copy(mangaId = 7L, url = "/chapter/1", name = "Chapter 1"),
+            ),
+        )
+
+        val result = useCase.awaitListedForDetails(
+            sManga = SManga.create().apply {
+                url = "/manga/already-has-chapters"
+                title = "Already Has Chapters"
+            },
+            sourceId = 42L,
+        )
+
+        assertEquals(false, result.needsRefresh)
+    }
 }

@@ -22,6 +22,7 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -90,6 +91,7 @@ class ExtensionRepoScreen : Screen {
 
         val repos by getExtensionRepo.subscribeAll().collectAsState(initial = emptyList())
         var dialog by remember { mutableStateOf<RepoDialog?>(null) }
+        var pendingRepoUrl by remember { mutableStateOf<String?>(null) }
 
         fun showSnackbar(message: String) {
             scope.launch { snackbarHostState.showSnackbar(message) }
@@ -103,15 +105,17 @@ class ExtensionRepoScreen : Screen {
                     onDismiss = { dialog = null },
                     onCreate = { url ->
                         dialog = null
+                        pendingRepoUrl = url
                         scope.launch {
                             when (val result = createExtensionRepo.await(url)) {
                                 CreateExtensionRepo.Result.Success -> Unit
-                                CreateExtensionRepo.Result.InvalidUrl -> showSnackbar("Invalid repository URL")
-                                CreateExtensionRepo.Result.RepoAlreadyExists -> showSnackbar("Repository already exists")
+                                CreateExtensionRepo.Result.RepoAlreadyExists ->
+                                    extensionRepoCreateMessage(result)?.let(::showSnackbar)
                                 is CreateExtensionRepo.Result.DuplicateFingerprint ->
                                     dialog = RepoDialog.Conflict(result.oldRepo, result.newRepo)
-                                else -> showSnackbar("Failed to add repository")
+                                else -> extensionRepoCreateMessage(result)?.let(::showSnackbar)
                             }
+                            pendingRepoUrl = null
                         }
                     },
                 )
@@ -165,7 +169,8 @@ class ExtensionRepoScreen : Screen {
             },
             snackbarHost = { SnackbarHost(snackbarHostState) },
         ) { padding ->
-            if (repos.isEmpty()) {
+            val pendingUrl = pendingRepoUrl
+            if (repos.isEmpty() && pendingUrl == null) {
                 Box(
                     modifier = Modifier.fillMaxSize().padding(padding),
                     contentAlignment = Alignment.Center,
@@ -182,6 +187,11 @@ class ExtensionRepoScreen : Screen {
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    pendingUrl?.let { url ->
+                        item(key = "pending-repo-$url") {
+                            PendingRepoCard(url = url)
+                        }
+                    }
                     items(repos, key = { it.baseUrl }) { repo ->
                         RepoCard(
                             repo = repo,
@@ -197,6 +207,46 @@ class ExtensionRepoScreen : Screen {
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+internal fun extensionRepoPendingTitle(url: String): String = "Checking repository..."
+
+internal fun extensionRepoCreateMessage(result: CreateExtensionRepo.Result): String? {
+    return when (result) {
+        CreateExtensionRepo.Result.InvalidUrl -> "Repository URL must be HTTPS."
+        CreateExtensionRepo.Result.RepositoryUnavailable -> "Could not reach repository. Check the URL or network connection."
+        CreateExtensionRepo.Result.InvalidRepository -> "Repository metadata is missing or invalid."
+        CreateExtensionRepo.Result.RepoAlreadyExists -> "Repository already exists."
+        CreateExtensionRepo.Result.Error -> "Failed to add repository."
+        CreateExtensionRepo.Result.Success,
+        is CreateExtensionRepo.Result.DuplicateFingerprint,
+        -> null
+    }
+}
+
+@Composable
+private fun PendingRepoCard(
+    url: String,
+    modifier: Modifier = Modifier,
+) {
+    ElevatedCard(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator()
+            Column(modifier = Modifier.padding(start = 12.dp)) {
+                Text(text = extensionRepoPendingTitle(url), style = MaterialTheme.typography.titleSmall)
+                Text(
+                    text = url,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
             }
         }
     }
@@ -267,7 +317,7 @@ private fun CreateRepoDialog(
         text = {
             Column {
                 Text(
-                    text = "Enter the index.min.json URL of the repository to add.",
+                    text = "Enter the repository base URL or index.min.json URL.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 OutlinedTextField(
@@ -278,7 +328,7 @@ private fun CreateRepoDialog(
                     value = url,
                     onValueChange = { url = it },
                     label = { Text("Repository URL") },
-                    placeholder = { Text("https://example.com/index.min.json") },
+                    placeholder = { Text("https://example.com/repo") },
                     supportingText = {
                         if (alreadyExists) Text("Repository already exists")
                         else Text("Required")

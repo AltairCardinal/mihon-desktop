@@ -57,8 +57,9 @@ open class DesktopExtensionLoader(
     internal fun loadFromSingleJar(jarFile: File): List<LoadedExtension> = loadFromJar(jarFile)
 
     private fun loadFromJar(jarFile: File): List<LoadedExtension> {
+        var classLoader: ExtensionClassLoader? = null
         return try {
-            val classLoader = ExtensionClassLoader(
+            classLoader = ExtensionClassLoader(
                 jarFile.toURI().toURL(),
                 this::class.java.classLoader,
             )
@@ -82,6 +83,11 @@ open class DesktopExtensionLoader(
                 sources = scanJarForSources(jarFile, classLoader)
             }
 
+            if (sources.isEmpty()) {
+                classLoader.close()
+                return emptyList()
+            }
+
             sources.map { source ->
                 LoadedExtension(
                     source = source,
@@ -90,6 +96,7 @@ open class DesktopExtensionLoader(
                 )
             }
         } catch (e: Throwable) {
+            classLoader?.close()
             // ServiceConfigurationError (extends Error) is thrown when a ServiceLoader provider
             // cannot be instantiated — must catch Throwable, not just Exception.
             recordDiagnostic(jarFile, e)

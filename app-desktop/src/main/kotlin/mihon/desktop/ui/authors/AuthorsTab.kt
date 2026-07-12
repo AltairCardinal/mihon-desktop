@@ -315,12 +315,13 @@ data class AuthorDetailScreen(
                                         openingCandidateId = candidate.id
                                         scope.launch {
                                             val listedManga = authorCandidateSourceManga(candidate)
-                                            val saved = saveSourceMangaForDetails.awaitListed(
+                                            val details = saveSourceMangaForDetails.awaitListedForDetails(
                                                 sManga = listedManga,
                                                 sourceId = candidate.source,
                                             )
+                                            val saved = details.manga
                                             navigator.push(MangaDetailScreen(saved.id))
-                                            if (!saved.initialized) {
+                                            if (details.needsRefresh) {
                                                 saveSourceMangaForDetails.refreshFromSource(
                                                     source = source,
                                                     listedManga = listedManga,

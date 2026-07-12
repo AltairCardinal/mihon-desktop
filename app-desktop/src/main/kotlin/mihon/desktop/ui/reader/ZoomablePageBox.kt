@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -34,6 +35,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import mihon.desktop.reader.PagePreloader
 import mihon.desktop.reader.ScaleType
+import mihon.desktop.reader.SkiaImageDecoder
 import mihon.desktop.reader.ZoomState
 import org.jetbrains.skia.Bitmap as SkiaBitmap
 import org.jetbrains.skia.Canvas as SkiaCanvas
@@ -41,6 +43,9 @@ import org.jetbrains.skia.Image as SkiaImage
 import org.jetbrains.skia.Rect as SkiaRect
 import androidx.compose.ui.graphics.asComposeImageBitmap
 import androidx.compose.ui.graphics.asSkiaBitmap
+import java.net.URI
+import java.nio.file.Files
+import java.nio.file.Path
 
 // Kept for binary-compat with existing tests that call it directly.
 internal fun loadSplitHalf(url: String, half: PageSplitHalf): ImageBitmap? = try {
@@ -49,6 +54,12 @@ internal fun loadSplitHalf(url: String, half: PageSplitHalf): ImageBitmap? = try
 } catch (_: Exception) {
     null
 }
+
+internal fun loadLocalPageBitmap(url: String): ImageBitmap? = runCatching {
+    val uri = URI(url)
+    if (!uri.scheme.equals("file", ignoreCase = true)) return null
+    SkiaImageDecoder.decode(Files.readAllBytes(Path.of(uri)))
+}.getOrNull()
 
 /** Crops the already-decoded Coil image to the requested half — no re-download. */
 internal fun splitHalfFromCoilImage(image: CoilImage, half: PageSplitHalf): ImageBitmap? {
@@ -153,6 +164,17 @@ internal fun ZoomablePageBox(
     val painter = rememberAsyncImagePainter(url)
     val painterState by painter.state.collectAsState()
 
+    val localBitmap by produceState<ImageBitmap?>(initialValue = null, url, splitHalf, cropBorders) {
+        value = withContext(Dispatchers.IO) {
+            val bitmap = loadLocalPageBitmap(url) ?: return@withContext null
+            when {
+                splitHalf != null -> splitSkiaBitmap(bitmap.asSkiaBitmap(), splitHalf)
+                cropBorders -> cropBordersFromSkiaBitmap(bitmap.asSkiaBitmap())
+                else -> bitmap
+            }
+        }
+    }
+
     // Cropped bitmap: non-null when cropBorders is enabled and crop was applied.
     // Keyed on url so it resets when the page changes.
     var croppedBitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
@@ -183,6 +205,13 @@ internal fun ZoomablePageBox(
                 }
                 else -> croppedBitmap = null
             }
+        }
+    }
+
+    LaunchedEffect(localBitmap, splitHalf) {
+        val bitmap = localBitmap
+        if (bitmap != null && onSpreadDetected != null && splitHalf == null && bitmap.width > bitmap.height) {
+            onSpreadDetected()
         }
     }
 
@@ -326,7 +355,7 @@ internal fun ZoomablePageBox(
             // Loading indicator — suppressed when preloaded bitmap or crop is ready
             val isLoading = painterState is AsyncImagePainter.State.Loading ||
                 painterState is AsyncImagePainter.State.Empty
-            val shouldShowLoading = isLoading && croppedBitmap == null && preloadedBitmap == null
+            val shouldShowLoading = isLoading && croppedBitmap == null && preloadedBitmap == null && localBitmap == null
             LaunchedEffect(shouldShowLoading) {
                 onLoadingStateChange?.invoke(shouldShowLoading)
             }
@@ -356,7 +385,7 @@ internal fun ZoomablePageBox(
                 }
             }
 
-            val displayBitmap = croppedBitmap ?: preloadedBitmap
+            val displayBitmap = croppedBitmap ?: preloadedBitmap ?: localBitmap
             val imageModifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer(

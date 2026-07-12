@@ -86,9 +86,10 @@ class BytecodeEditorTest {
         BytecodeEditor.fixBytecode(input, output)
 
         // Must be loadable without VerifyError
-        val cl = java.net.URLClassLoader(arrayOf(output.toURI().toURL()))
-        val cls = cl.loadClass("TestClass")
-        cls.getDeclaredConstructor().newInstance() // must not throw
+        java.net.URLClassLoader(arrayOf(output.toURI().toURL())).use { cl ->
+            val cls = cl.loadClass("TestClass")
+            cls.getDeclaredConstructor().newInstance() // must not throw
+        }
     }
 
     @Test

@@ -198,7 +198,7 @@ internal fun initExtensionLayer(paths: DesktopPlatformPaths, networkHelper: Desk
     )
     extensionManager.loadAll()
     Injekt.addSingleton(extensionManager)
-    val sourceManager = DesktopSourceManager(extensionManager)
+    val sourceManager = DesktopSourceManager(extensionManager, Injekt.get())
     Injekt.addSingleton<SourceManager>(sourceManager)
     Injekt.addSingleton(sourceManager)
     Injekt.addSingleton<SourceRepository>(DesktopSourceRepository(sourceManager, handler))

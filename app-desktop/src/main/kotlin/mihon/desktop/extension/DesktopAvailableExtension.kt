@@ -14,4 +14,14 @@ data class DesktopAvailableExtension(
     val jarUrl: String,
     val iconUrl: String,
     val repoUrl: String,
+    val repoName: String = "",
+    val repoFingerprint: String = "",
+    val sources: List<DesktopAvailableSource> = emptyList(),
+)
+
+data class DesktopAvailableSource(
+    val id: Long,
+    val lang: String,
+    val name: String,
+    val baseUrl: String,
 )

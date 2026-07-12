@@ -92,6 +92,7 @@ import kotlinx.coroutines.launch
 import mihon.desktop.domain.DesktopMangaCoverManager
 import mihon.desktop.library.MangaDetailScreenModelFactory
 import mihon.desktop.reader.ReadingMode
+import mihon.desktop.reader.externalChapterUrlOrNull
 import mihon.desktop.reader.readingModeFromViewerFlags
 import mihon.desktop.ui.browse.GlobalSearchScreen
 import mihon.desktop.ui.authors.AuthorDetailScreen
@@ -494,7 +495,12 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         text = { Text(if (chapters.any { it.read }) "Resume" else "Start") },
                         icon = { Icon(Icons.Default.PlayArrow, contentDescription = null) },
                         onClick = {
-                            val request = model.readerRequest(manga!!, chapters, ch)
+                            val externalUrl = ch.url.externalChapterUrlOrNull()
+                            if (externalUrl != null) {
+                                openExternalLink(externalUrl)
+                                return@ExtendedFloatingActionButton
+                            }
+                            val request = model.readerRequest(manga!!, chapters, ch) ?: return@ExtendedFloatingActionButton
                             navigator.push(
                                 DesktopReaderScreen(
                                     chapterTitle = request.chapterTitle,
@@ -847,7 +853,12 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                     },
                     onReadChapter = { chapter ->
                         scope.launch {
-                            val request = model.readerRequest(manga!!, chapters, chapter)
+                            val externalUrl = chapter.url.externalChapterUrlOrNull()
+                            if (externalUrl != null) {
+                                openExternalLink(externalUrl)
+                                return@launch
+                            }
+                            val request = model.readerRequest(manga!!, chapters, chapter) ?: return@launch
                             navigator.push(
                                 DesktopReaderScreen(
                                     chapterTitle = request.chapterTitle,

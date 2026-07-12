@@ -56,6 +56,11 @@ class DesktopAppPreferences(private val store: PreferenceStore) {
         store.getBoolean(key = "incognito_mode", defaultValue = false)
     }
 
+    /** Comma-separated source IDs disabled by the user. Empty keeps legacy behavior. */
+    val disabledSourceIds: Preference<String> by lazy {
+        store.getString(key = "disabled_source_ids", defaultValue = "")
+    }
+
     /** When true, the pager shows a page-flip animation between pages. */
     val pageTurnAnimation: Preference<Boolean> by lazy {
         store.getBoolean(key = "page_turn_animation", defaultValue = true)

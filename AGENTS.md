@@ -77,16 +77,27 @@
 每次完成桌面端迭代必须使用构建脚本，**不得直接调用 Gradle 构建部署**：
 
 ```bash
-./scripts/build-desktop.sh           # 默认：仅更新 git hash
-./scripts/build-desktop.sh feature   # 递增功能批次号（7.0 → 7.1）
-./scripts/build-desktop.sh stage     # 递增阶段号并重置功能批次（7.x → 8.0）
+./scripts/build-desktop.sh           # BUILD +1，构建并验收未打包应用
+./scripts/build-desktop.sh feature   # FEATURE +1，BUILD 重置为 1
+./scripts/build-desktop.sh stage     # STAGE +1，FEATURE 重置为 0，BUILD 重置为 1
+./scripts/build-desktop.sh msi       # 显式生成 MSI，最后重新生成并验收未打包应用
 ```
 
-版本格式：`0.STAGE.FEATURE.GIT_HASH`，例如 `0.7.0.92dab15`。
+版本格式：`0.STAGE.FEATURE.BUILD.GIT_HASH`，例如 `0.11.14.3.92dab15`。每次非测试构建都必须产生新的 `BUILD`；`test-only` 和 `full-tests` 不修改版本号。
 
-脚本会自动运行测试、构建并部署到 `/Applications/Mihon Desktop.app`。
+Windows 开发验收只能使用以下固定路径的未打包 EXE：
 
-完成后必须报告版本号，例如：`已部署 Mihon Desktop 0.7.1.abc1234`。
+```text
+app-desktop/tmp/mihon-dist/main/app/Mihon Desktop/Mihon Desktop.exe
+```
+
+MSI 是显式生成的发布产物，不能替代未打包 EXE 的开发验收。即使执行 `msi` 模式，脚本也必须最后重新运行 `createDistributable`，避免 MSI 任务清理或遗留旧的未打包目录。
+
+Windows 构建完成前必须启动上述 EXE，确认窗口标题中的运行版本与本轮预期完整版本完全一致；EXE 不存在、修改时间早于本轮构建或运行版本不一致时，不得报告完成。
+
+macOS 构建继续部署到 `/Applications/Mihon Desktop.app`。
+
+完成报告必须同时包含完整版本号和未打包 EXE 的绝对路径，例如：`已验收 Mihon Desktop 0.11.14.3.abc1234，EXE：D:\...\Mihon Desktop.exe`。
 
 版本号唯一来源：`app-desktop/src/main/kotlin/mihon/desktop/AppVersion.kt`。
 

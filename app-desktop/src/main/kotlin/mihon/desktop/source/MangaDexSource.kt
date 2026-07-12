@@ -14,10 +14,16 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.jsonPrimitive
+import mihon.desktop.reader.externalChapterUrl
+import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.io.File
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.util.concurrent.TimeUnit
 
 /**
  * Built-in MangaDex source using the public MangaDex API v5.
@@ -27,6 +33,7 @@ class MangaDexSource(
     private val client: OkHttpClient = Injekt.get(),
     private val json: Json = Injekt.get(),
     internal val baseUrl: String = "https://api.mangadex.org",
+    private val browserJsonFetcher: MangaDexBrowserJsonFetcher? = DesktopMangaDexBrowserJsonFetcher(),
 ) : CatalogueSource {
 
     override val id: Long = 2499283573021220255L
@@ -35,6 +42,12 @@ class MangaDexSource(
     override val supportsLatest: Boolean = true
 
     private val coverBaseUrl = "https://uploads.mangadex.org/covers"
+    private val requestHeaders = Headers.Builder()
+        .set("User-Agent", "Mozilla/5.0 MihonDesktop")
+        .set("Referer", "https://mangadex.org/")
+        .build()
+
+    fun getHeaders(): Headers = requestHeaders
 
     // ── Catalogue ────────────────────────────────────────────────────────────
 
@@ -71,8 +84,7 @@ class MangaDexSource(
     override suspend fun getMangaDetails(manga: SManga): SManga = withContext(Dispatchers.IO) {
         val id = manga.url.removePrefix("/manga/")
         val url = "$baseUrl/manga/$id?includes[]=cover_art&includes[]=author&includes[]=artist"
-        val response = client.newCall(Request.Builder().url(url).build()).execute()
-        val body = response.body.string()
+        val body = fetchMangaDexJson(url)
         val data = json.parseToJsonElement(body).jsonObject["data"]!!.jsonObject
         parseMangaObject(data)
     }
@@ -83,23 +95,24 @@ class MangaDexSource(
         val mangaId = manga.url.removePrefix("/manga/")
         val chapters = mutableListOf<SChapter>()
         var offset = 0
-        val limit = 96
+        val limit = 500
 
         while (true) {
             val url = "$baseUrl/manga/$mangaId/feed" +
-                "?limit=$limit&offset=$offset&translatedLanguage[]=en" +
+                "?limit=$limit&offset=$offset" +
                 "&order[chapter]=desc&order[volume]=desc"
-            val response = client.newCall(Request.Builder().url(url).build()).execute()
-            val obj = json.parseToJsonElement(response.body.string()).jsonObject
+            val obj = json.parseToJsonElement(fetchMangaDexJson(url)).jsonObject
             val data = obj["data"]?.jsonArray ?: break
 
             for (item in data) {
                 val ch = item.jsonObject
                 val attrs = ch["attributes"]!!.jsonObject
 
-                // Skip chapters that are external-only (e.g. MangaPlus links)
-                val extEl = attrs["externalUrl"]
-                if (extEl != null && extEl !is JsonNull && extEl.jsonPrimitive.content.isNotBlank()) continue
+                val externalUrl = attrs["externalUrl"]
+                    ?.takeUnless { it is JsonNull }
+                    ?.jsonPrimitive
+                    ?.content
+                    ?.takeIf { it.isNotBlank() }
 
                 val chapterId = ch["id"]!!.jsonPrimitive.content
                 val vol = attrs["volume"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
@@ -114,7 +127,7 @@ class MangaDexSource(
                     if (chTitle != null) append(": $chTitle")
                 }.trim().ifEmpty { "Oneshot" }
                 val sChapter = SChapter.create()
-                sChapter.url = "/chapter/$chapterId"
+                sChapter.url = externalUrl?.let(::externalChapterUrl) ?: "/chapter/$chapterId"
                 sChapter.name = chapterName
                 sChapter.chapter_number = num?.toFloatOrNull() ?: -1f
                 sChapter.date_upload = 0L
@@ -134,8 +147,7 @@ class MangaDexSource(
     override suspend fun getPageList(chapter: SChapter): List<Page> = withContext(Dispatchers.IO) {
         val chapterId = chapter.url.removePrefix("/chapter/")
         val url = "$baseUrl/at-home/server/$chapterId"
-        val response = client.newCall(Request.Builder().url(url).build()).execute()
-        val obj = json.parseToJsonElement(response.body.string()).jsonObject
+        val obj = json.parseToJsonElement(fetchMangaDexJson(url)).jsonObject
         val baseServerUrl = obj["baseUrl"]!!.jsonPrimitive.content
         val chapterObj = obj["chapter"]!!.jsonObject
         val hash = chapterObj["hash"]!!.jsonPrimitive.content
@@ -159,8 +171,7 @@ class MangaDexSource(
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun fetchMangaList(url: String): MangasPage {
-        val response = client.newCall(Request.Builder().url(url).build()).execute()
-        val obj = json.parseToJsonElement(response.body.string()).jsonObject
+        val obj = json.parseToJsonElement(fetchMangaDexJsonBlocking(url)).jsonObject
         val data = obj["data"]?.jsonArray ?: return MangasPage(emptyList(), false)
         val total = obj["total"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
         val offset = url.substringAfter("offset=").substringBefore("&").toIntOrNull() ?: 0
@@ -225,4 +236,127 @@ class MangaDexSource(
             this.initialized = true
         }
     }
+
+    private fun mangaDexRequest(url: String): Request =
+        Request.Builder()
+            .url(url)
+            .headers(requestHeaders)
+            .build()
+
+    private suspend fun fetchMangaDexJson(url: String): String = withContext(Dispatchers.IO) {
+        fetchMangaDexJsonBlocking(url)
+    }
+
+    private fun fetchMangaDexJsonBlocking(url: String): String {
+        val responseBody = client.newCall(mangaDexRequest(url)).execute().use { response ->
+            val body = response.body.string()
+            if (response.isSuccessful && !body.isMangaDexUnsupportedBrowserPage()) {
+                return body
+            }
+            body
+        }
+        if (responseBody.isMangaDexUnsupportedBrowserPage()) {
+            browserJsonFetcher?.fetchBlocking(url)?.let { return it }
+        }
+        return responseBody
+    }
 }
+
+fun interface MangaDexBrowserJsonFetcher {
+    fun fetchBlocking(url: String): String?
+}
+
+class DesktopMangaDexBrowserJsonFetcher(
+    private val executableCandidates: List<String> = defaultBrowserExecutableCandidates(),
+) : MangaDexBrowserJsonFetcher {
+
+    private val userDataDir by lazy {
+        Files.createTempDirectory("mihon-mangadex-browser-profile-").also { directory ->
+            Runtime.getRuntime().addShutdownHook(
+                Thread { runCatching { directory.toFile().deleteRecursively() } },
+            )
+        }
+    }
+
+    @Synchronized
+    override fun fetchBlocking(url: String): String? {
+        val executable = executableCandidates
+            .map(::File)
+            .firstOrNull { it.isFile && it.canExecute() }
+            ?: return null
+        val outputFile = Files.createTempFile("mihon-mangadex-browser-", ".html")
+        return try {
+            val process = ProcessBuilder(
+                executable.absolutePath,
+                "--headless=new",
+                "--disable-gpu",
+                "--disable-background-networking",
+                "--no-first-run",
+                "--user-data-dir=${userDataDir.toAbsolutePath()}",
+                "--dump-dom",
+                url,
+            )
+                .redirectErrorStream(true)
+                .redirectOutput(outputFile.toFile())
+                .start()
+            if (!process.waitFor(45, TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                return null
+            }
+            val output = Files.readString(outputFile, StandardCharsets.UTF_8)
+            output.extractJsonFromChromeDump()
+        } catch (_: Throwable) {
+            null
+        } finally {
+            runCatching { Files.deleteIfExists(outputFile) }
+        }
+    }
+}
+
+private fun String.isMangaDexUnsupportedBrowserPage(): Boolean =
+    contains("Unsupported Browser", ignoreCase = true) &&
+        contains("<html", ignoreCase = true)
+
+private fun String.extractJsonFromChromeDump(): String? {
+    val preBody = Regex("""(?is)<pre[^>]*>(.*?)</pre>""")
+        .find(this)
+        ?.groupValues
+        ?.get(1)
+    val candidate = (preBody ?: this).htmlEntityDecode().trim()
+    return candidate.takeIf { it.startsWith("{") || it.startsWith("[") }
+}
+
+private fun String.htmlEntityDecode(): String =
+    replace("&quot;", "\"")
+        .replace("&#34;", "\"")
+        .replace("&#39;", "'")
+        .replace("&apos;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+
+private fun defaultBrowserExecutableCandidates(): List<String> {
+    val envChrome = System.getenv("MIHON_CHROME_PATH")
+    val programFiles = System.getenv("ProgramFiles")
+    val programFilesX86 = System.getenv("ProgramFiles(x86)")
+    val localAppData = System.getenv("LOCALAPPDATA")
+    return listOfNotNull(
+        envChrome,
+        programFiles?.let { "$it\\Google\\Chrome\\Application\\chrome.exe" },
+        programFilesX86?.let { "$it\\Google\\Chrome\\Application\\chrome.exe" },
+        localAppData?.let { "$it\\Google\\Chrome\\Application\\chrome.exe" },
+        programFiles?.let { "$it\\Microsoft\\Edge\\Application\\msedge.exe" },
+        programFilesX86?.let { "$it\\Microsoft\\Edge\\Application\\msedge.exe" },
+        localAppData?.let { "$it\\Microsoft\\Edge\\Application\\msedge.exe" },
+        rootPath("Applications", "Google Chrome.app", "Contents", "MacOS", "Google Chrome"),
+        rootPath("Applications", "Microsoft Edge.app", "Contents", "MacOS", "Microsoft Edge"),
+        rootPath("usr", "bin", "google-chrome"),
+        rootPath("usr", "bin", "google-chrome-stable"),
+        rootPath("usr", "bin", "chromium"),
+        rootPath("usr", "bin", "chromium-browser"),
+        rootPath("usr", "bin", "microsoft-edge"),
+    ).distinct()
+}
+
+private fun rootPath(vararg parts: String): String =
+    File(File.separator + parts.joinToString(File.separator)).path

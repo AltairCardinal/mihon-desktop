@@ -278,9 +278,10 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
                                     if (openingMangaUrl != null) return@MangaCard
                                     openingMangaUrl = manga.url
                                     scope.launch {
-                                        val saved = saveSourceMangaForDetails.awaitListed(manga, sourceId)
+                                        val details = saveSourceMangaForDetails.awaitListedForDetails(manga, sourceId)
+                                        val saved = details.manga
                                         navigator.push(MangaDetailScreen(saved.id))
-                                        if (!saved.initialized) {
+                                        if (details.needsRefresh) {
                                             saveSourceMangaForDetails.refreshFromSource(catalogueSource, manga)
                                         }
                                         openingMangaUrl = null

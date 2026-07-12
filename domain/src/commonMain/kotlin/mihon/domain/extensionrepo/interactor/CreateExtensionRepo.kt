@@ -5,6 +5,7 @@ import mihon.domain.extensionrepo.exception.SaveExtensionRepoException
 import mihon.domain.extensionrepo.model.ExtensionRepo
 import mihon.domain.extensionrepo.repository.ExtensionRepoRepository
 import mihon.domain.extensionrepo.service.ExtensionRepoService
+import mihon.domain.extensionrepo.service.ExtensionRepoService.FetchRepoDetailsResult
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import tachiyomi.core.common.util.system.logcat
 
@@ -12,16 +13,32 @@ class CreateExtensionRepo(
     private val repository: ExtensionRepoRepository,
     private val service: ExtensionRepoService,
 ) {
-    private val repoRegex = """^https://.*/index\.min\.json$""".toRegex()
-
-    suspend fun await(indexUrl: String): Result {
-        val formattedIndexUrl = indexUrl.toHttpUrlOrNull()
-            ?.toString()
-            ?.takeIf { it.matches(repoRegex) }
+    suspend fun await(url: String): Result {
+        val baseUrl = normalizeRepoUrl(url)
             ?: return Result.InvalidUrl
 
-        val baseUrl = formattedIndexUrl.removeSuffix("/index.min.json")
-        return service.fetchRepoDetails(baseUrl)?.let { insert(it) } ?: Result.InvalidUrl
+        return when (val result = service.fetchRepoDetailsResult(baseUrl)) {
+            is FetchRepoDetailsResult.Success -> insert(result.repo)
+            FetchRepoDetailsResult.RepositoryUnavailable -> Result.RepositoryUnavailable
+            FetchRepoDetailsResult.InvalidRepository -> Result.InvalidRepository
+            FetchRepoDetailsResult.UnknownError -> Result.Error
+        }
+    }
+
+    private fun normalizeRepoUrl(url: String): String? {
+        val parsed = url.trim()
+            .takeIf { it.isNotEmpty() }
+            ?.toHttpUrlOrNull()
+            ?: return null
+
+        val isLocalHttp = parsed.scheme == "http" && parsed.host in setOf("localhost", "127.0.0.1", "::1")
+        if (parsed.scheme != "https" && !isLocalHttp) {
+            return null
+        }
+
+        return parsed.toString()
+            .removeSuffix("/")
+            .removeSuffix("/index.min.json")
     }
 
     private suspend fun insert(repo: ExtensionRepo): Result {
@@ -65,6 +82,8 @@ class CreateExtensionRepo(
     sealed interface Result {
         data class DuplicateFingerprint(val oldRepo: ExtensionRepo, val newRepo: ExtensionRepo) : Result
         data object InvalidUrl : Result
+        data object RepositoryUnavailable : Result
+        data object InvalidRepository : Result
         data object RepoAlreadyExists : Result
         data object Success : Result
         data object Error : Result

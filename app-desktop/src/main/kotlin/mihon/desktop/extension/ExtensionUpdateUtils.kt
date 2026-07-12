@@ -9,6 +9,7 @@ fun findUpdatableExtensions(
 ): List<DesktopAvailableExtension> {
     val installedByPkg = installed.associateBy { it.pkgName }
     return available.filter { avail ->
+        if (avail.pkgName in BUNDLED_EXTENSION_PACKAGE_NAMES) return@filter false
         val inst = installedByPkg[avail.pkgName]
         inst != null && avail.versionCode > inst.versionCode
     }
@@ -19,3 +20,14 @@ fun findUpdatableExtensions(
  */
 fun isExtensionInstalled(pkgName: String, installed: List<InstalledExtension>): Boolean =
     installed.any { it.pkgName == pkgName }
+
+/**
+ * Returns true when the package is already usable on desktop, either from an installed
+ * extension JAR or from a source bundled with the desktop app.
+ */
+fun isExtensionAvailableOnDesktop(pkgName: String, installed: List<InstalledExtension>): Boolean =
+    isExtensionInstalled(pkgName, installed) || pkgName in BUNDLED_EXTENSION_PACKAGE_NAMES
+
+private val BUNDLED_EXTENSION_PACKAGE_NAMES = setOf(
+    "eu.kanade.tachiyomi.extension.all.mangadex",
+)

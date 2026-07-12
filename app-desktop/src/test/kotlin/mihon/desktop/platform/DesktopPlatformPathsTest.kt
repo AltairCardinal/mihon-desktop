@@ -24,13 +24,13 @@ class DesktopPlatformPathsTest {
             createDirectories = false,
         )
 
-        assertEquals("C:/Users/Alice/AppData/Roaming/Mihon", paths.configDir.path)
-        assertEquals("C:/Users/Alice/AppData/Roaming/Mihon/mihon.db", paths.databaseFile.path)
-        assertEquals("C:/Users/Alice/AppData/Local/Mihon/cache/network", paths.networkCacheDir.path)
-        assertEquals("C:/Users/Alice/AppData/Local/Mihon/downloads", paths.downloadsDir.path)
-        assertEquals("C:/Users/Alice/AppData/Local/Mihon/extensions", paths.extensionsDir.path)
-        assertEquals("C:/Users/Alice/AppData/Local/Mihon/logs", paths.logsDir.path)
-        assertEquals("C:/Users/Alice/AppData/Local/Mihon/backups", paths.backupsDir.path)
+        assertEquals("C:/Users/Alice/AppData/Roaming/Mihon", paths.configDir.invariantPath())
+        assertEquals("C:/Users/Alice/AppData/Roaming/Mihon/mihon.db", paths.databaseFile.invariantPath())
+        assertEquals("C:/Users/Alice/AppData/Local/Mihon/cache/network", paths.networkCacheDir.invariantPath())
+        assertEquals("C:/Users/Alice/AppData/Local/Mihon/downloads", paths.downloadsDir.invariantPath())
+        assertEquals("C:/Users/Alice/AppData/Local/Mihon/extensions", paths.extensionsDir.invariantPath())
+        assertEquals("C:/Users/Alice/AppData/Local/Mihon/logs", paths.logsDir.invariantPath())
+        assertEquals("C:/Users/Alice/AppData/Local/Mihon/backups", paths.backupsDir.invariantPath())
         assertFalse(paths.configDir.path.contains(".mihon"))
     }
 
@@ -43,9 +43,9 @@ class DesktopPlatformPathsTest {
             createDirectories = false,
         )
 
-        assertEquals("/Users/alice/.mihon", paths.configDir.path)
-        assertEquals("/Users/alice/.mihon/downloads", paths.downloadsDir.path)
-        assertEquals("/Users/alice/Library/Logs/Mihon", paths.logsDir.path)
+        assertEquals("/Users/alice/.mihon", paths.configDir.invariantPath())
+        assertEquals("/Users/alice/.mihon/downloads", paths.downloadsDir.invariantPath())
+        assertEquals("/Users/alice/Library/Logs/Mihon", paths.logsDir.invariantPath())
     }
 
     @Test
@@ -64,4 +64,6 @@ class DesktopPlatformPathsTest {
         assertTrue(paths.logsDir.isDirectory)
         assertTrue(paths.backupsDir.isDirectory)
     }
+
+    private fun File.invariantPath(): String = path.replace(File.separatorChar, '/')
 }

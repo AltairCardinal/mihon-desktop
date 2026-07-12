@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.net.URLClassLoader
 import java.util.jar.JarOutputStream
 import java.util.zip.ZipEntry
 
@@ -139,6 +140,7 @@ class ExtensionCompatibilityTest {
         assertEquals(1, results.size, "Should load the MinimalTestSource")
         assertNotNull(results.first().source)
         assertEquals("Test Source", results.first().source.name)
+        results.closeClassLoaders()
     }
 
     @Test
@@ -172,6 +174,10 @@ class ExtensionCompatibilityTest {
         }
         return jarFile
     }
+}
+
+private fun List<LoadedExtension>.closeClassLoaders() {
+    forEach { (it.classLoader as? URLClassLoader)?.close() }
 }
 
 // ── Test Source fixture ────────────────────────────────────────────────────

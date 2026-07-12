@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -19,6 +21,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
@@ -34,6 +38,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -46,6 +51,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -56,6 +62,7 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import mihon.desktop.extension.DesktopAvailableExtension
 import mihon.desktop.extension.DesktopExtensionApi
@@ -67,7 +74,11 @@ import mihon.desktop.extension.filterAvailableByNsfw
 import mihon.desktop.extension.filterInstalledByLangs
 import mihon.desktop.extension.findUpdatableExtensions
 import mihon.desktop.extension.installedLangs
-import mihon.desktop.extension.isExtensionInstalled
+import mihon.desktop.extension.isExtensionAvailableOnDesktop
+import mihon.desktop.extension.filterAvailableByQuery
+import mihon.desktop.extension.filterInstalledByQuery
+import java.awt.Desktop
+import java.net.URI
 
 /** Lists installed extensions and available extensions from registered repositories. */
 class ExtensionListScreen : Screen {
@@ -90,6 +101,9 @@ class ExtensionListScreen : Screen {
         var selectedLangs by remember { mutableStateOf(emptySet<String>()) }
         var showLangFilter by remember { mutableStateOf(false) }
         var showNsfw by remember { mutableStateOf(false) }
+        var searchQuery by remember { mutableStateOf("") }
+        val installStates = remember { mutableStateMapOf<String, ExtensionInstallUiState>() }
+        val installJobs = remember { mutableMapOf<String, Job>() }
 
         // Compute which available extensions have a newer version than what is installed
         val availableWithUpdate = remember(availableExtensions, installedExtensions) {
@@ -97,11 +111,14 @@ class ExtensionListScreen : Screen {
         }
 
         // Language + NSFW filter
-        val filteredInstalled = remember(installedExtensions, selectedLangs) {
-            filterInstalledByLangs(installedExtensions, selectedLangs)
+        val filteredInstalled = remember(installedExtensions, selectedLangs, searchQuery) {
+            filterInstalledByQuery(filterInstalledByLangs(installedExtensions, selectedLangs), searchQuery)
         }
-        val filteredAvailable = remember(availableExtensions, selectedLangs, showNsfw) {
-            filterAvailableByNsfw(filterAvailableByLangs(availableExtensions, selectedLangs), showNsfw)
+        val filteredAvailable = remember(availableExtensions, selectedLangs, showNsfw, searchQuery) {
+            filterAvailableByQuery(
+                filterAvailableByNsfw(filterAvailableByLangs(availableExtensions, selectedLangs), showNsfw),
+                searchQuery,
+            )
         }
         val currentTabLangs = remember(selectedTab, installedExtensions, availableExtensions) {
             if (selectedTab == 0) installedLangs(installedExtensions)
@@ -211,6 +228,14 @@ class ExtensionListScreen : Screen {
                             },
                         )
                     }
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        singleLine = true,
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        placeholder = { Text("Search extensions") },
+                    )
                 }
             },
             snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -219,6 +244,7 @@ class ExtensionListScreen : Screen {
                 0 -> InstalledTab(
                     extensions = filteredInstalled,
                     onUninstall = { pendingRemoval = it },
+                    onOpen = { navigator.push(ExtensionDetailsScreen(it.jarFile.absolutePath)) },
                     onSettings = { sourceId, sourceName ->
                         navigator.push(SourcePreferencesScreen(sourceId, sourceName))
                     },
@@ -229,17 +255,22 @@ class ExtensionListScreen : Screen {
                     installedExtensions = installedExtensions,
                     updatableExtensions = availableWithUpdate,
                     isLoading = isLoadingAvailable,
+                    installStates = installStates,
                     onInstall = { ext ->
-                        scope.launch {
+                        if (installJobs[ext.pkgName]?.isActive == true) return@AvailableTab
+                        installStates[ext.pkgName] = ExtensionInstallUiState.INSTALLING
+                        installJobs[ext.pkgName] = scope.launch {
                             snackbarHostState.showSnackbar("Installing ${ext.name}…")
                             val result = api.installExtension(ext, manager.extensionsDirectory)
                             when (result) {
                                 is DesktopExtensionApi.InstallResult.Success -> {
+                                    installStates.remove(ext.pkgName)
                                     manager.reloadAll()
                                     installedExtensions = manager.getInstalledExtensions()
                                     snackbarHostState.showSnackbar("${ext.name} installed")
                                 }
                                 is DesktopExtensionApi.InstallResult.Error -> {
+                                    installStates[ext.pkgName] = ExtensionInstallUiState.ERROR
                                     val msg = when {
                                         result.message.startsWith("Android-only") ->
                                             "${ext.name}: Android-only extension, cannot run on desktop"
@@ -250,8 +281,23 @@ class ExtensionListScreen : Screen {
                                     }
                                     snackbarHostState.showSnackbar(msg)
                                 }
+                                is DesktopExtensionApi.InstallResult.TrustRequired -> {
+                                    installStates[ext.pkgName] = ExtensionInstallUiState.ERROR
+                                    snackbarHostState.showSnackbar(
+                                        "Update blocked: repository identity changed from " +
+                                            "${result.existingFingerprint} to ${result.incomingFingerprint}",
+                                    )
+                                }
                             }
                         }
+                    },
+                    onCancel = { ext ->
+                        installJobs.remove(ext.pkgName)?.cancel()
+                        installStates.remove(ext.pkgName)
+                    },
+                    onOpenUrl = { url ->
+                        runCatching { Desktop.getDesktop().browse(URI(url)) }
+                            .onFailure { scope.launch { snackbarHostState.showSnackbar("Unable to open link: ${it.message}") } }
                     },
                     onUpdateAll = {
                         scope.launch {
@@ -279,6 +325,7 @@ class ExtensionListScreen : Screen {
 private fun InstalledTab(
     extensions: List<InstalledExtension>,
     onUninstall: (InstalledExtension) -> Unit,
+    onOpen: (InstalledExtension) -> Unit,
     onSettings: (sourceId: Long, sourceName: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -294,6 +341,7 @@ private fun InstalledTab(
                 ExtensionCard(
                     extension = ext,
                     onUninstall = { onUninstall(ext) },
+                    onOpen = { onOpen(ext) },
                     onSettings = onSettings,
                 )
             }
@@ -307,7 +355,10 @@ private fun AvailableTab(
     installedExtensions: List<InstalledExtension>,
     updatableExtensions: List<DesktopAvailableExtension>,
     isLoading: Boolean,
+    installStates: Map<String, ExtensionInstallUiState>,
     onInstall: (DesktopAvailableExtension) -> Unit,
+    onCancel: (DesktopAvailableExtension) -> Unit,
+    onOpenUrl: (String) -> Unit,
     onUpdateAll: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -327,17 +378,6 @@ private fun AvailableTab(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
         ) {
-            item {
-                ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = "Desktop only supports JVM-compiled extensions. " +
-                            "Standard repositories serve Android-only extensions which cannot run on desktop.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(12.dp),
-                    )
-                }
-            }
             if (updatableExtensions.isNotEmpty()) {
                 item {
                     Button(
@@ -350,13 +390,16 @@ private fun AvailableTab(
                 }
             }
             items(extensions, key = { it.pkgName }) { ext ->
-                val isInstalled = isExtensionInstalled(ext.pkgName, installedExtensions)
+                val isInstalled = isExtensionAvailableOnDesktop(ext.pkgName, installedExtensions)
                 val hasUpdate = updatableExtensions.any { it.pkgName == ext.pkgName }
                 AvailableExtensionCard(
                     extension = ext,
                     isInstalled = isInstalled,
                     hasUpdate = hasUpdate,
                     onInstall = { onInstall(ext) },
+                    onCancel = { onCancel(ext) },
+                    installState = installStates[ext.pkgName],
+                    onOpenUrl = onOpenUrl,
                 )
             }
         }
@@ -367,15 +410,21 @@ private fun AvailableTab(
 private fun ExtensionCard(
     extension: InstalledExtension,
     onUninstall: () -> Unit,
+    onOpen: () -> Unit,
     onSettings: (sourceId: Long, sourceName: String) -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            ExtensionIcon(
+                iconUrl = extension.iconUrl,
+                loadIcon = LocalDesktopUiDependencies.current.extensionApi::loadExtensionIcon,
+                modifier = Modifier.size(48.dp).padding(end = 12.dp),
+            )
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = extension.name, style = MaterialTheme.typography.titleSmall)
                 Spacer(modifier = Modifier.height(4.dp))
@@ -409,6 +458,9 @@ private fun AvailableExtensionCard(
     isInstalled: Boolean,
     hasUpdate: Boolean,
     onInstall: () -> Unit,
+    onCancel: () -> Unit,
+    installState: ExtensionInstallUiState?,
+    onOpenUrl: (String) -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -417,6 +469,11 @@ private fun AvailableExtensionCard(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            ExtensionIcon(
+                iconUrl = extension.iconUrl,
+                loadIcon = LocalDesktopUiDependencies.current.extensionApi::loadExtensionIcon,
+                modifier = Modifier.size(48.dp).padding(end = 12.dp),
+            )
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(text = extension.name, style = MaterialTheme.typography.titleSmall)
@@ -440,7 +497,17 @@ private fun AvailableExtensionCard(
                     color = MaterialTheme.colorScheme.outline,
                 )
             }
+            extension.sources.firstOrNull { it.baseUrl.startsWith("http") }?.let { source ->
+                IconButton(onClick = { onOpenUrl(source.baseUrl) }) {
+                    Icon(Icons.Default.Public, contentDescription = "Open ${source.name} website")
+                }
+            }
             when {
+                installState == ExtensionInstallUiState.INSTALLING -> Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(24.dp))
+                    TextButton(onClick = onCancel) { Text("Cancel") }
+                }
+                installState == ExtensionInstallUiState.ERROR -> Button(onClick = onInstall) { Text("Retry") }
                 hasUpdate -> OutlinedButton(onClick = onInstall) { Text("Update") }
                 isInstalled -> OutlinedButton(onClick = {}, enabled = false) { Text("Installed") }
                 else -> Button(onClick = onInstall) {
@@ -451,6 +518,8 @@ private fun AvailableExtensionCard(
         }
     }
 }
+
+private enum class ExtensionInstallUiState { INSTALLING, ERROR }
 
 @Composable
 private fun EmptyExtensions(modifier: Modifier = Modifier) {

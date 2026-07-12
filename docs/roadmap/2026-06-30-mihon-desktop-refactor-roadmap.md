@@ -303,10 +303,17 @@
 
 | ID | 状态 | 优先级 | 平台 | 任务 | 用户可见变化 | 验收 |
 | --- | --- | --- | --- | --- | --- | --- |
-| XW-01 | DEFERRED | P0 | Windows | 新增 Windows 构建脚本/CI：MSI/EXE/ZIP 至少一种 | 用户可安装 Windows 版本 | 干净 Windows 环境安装 smoke 通过 |
+| XW-01 | DONE | P0 | Windows | 新增 Windows 构建脚本：MSI 至少一种可重复构建产物 | 用户可在 Windows 构建机生成可安装 MSI | `scripts/build-windows.ps1` 已通过，生成 `app-desktop\tmp\mihon-dist\main\msi\Mihon Desktop-1.11.12.msi`；干净 Windows 安装 smoke 进入 XW-02 验收 |
 | XW-02 | DEFERRED | P1 | Windows | 安装、升级、卸载规则和用户数据保留策略 | 升级不丢数据，卸载说明明确 | 安装升级验收记录 |
-| XW-03 | DEFERRED | P1 | Windows | 统一版本号：Android、macOS、Windows 可追溯 | 关于页和安装包版本一致 | 版本测试通过 |
+| XW-03 | DONE | P1 | Windows | 统一版本号：Windows 安装包版本从 `AppVersion` 派生并可追溯 | 关于页和安装包版本使用同一 stage/feature 来源 | `WindowsReleaseConfigurationTest` 通过；应用版本 `0.11.12.1dd3e83`，原生包版本 `1.11.12` |
 | XW-04 | DEFERRED | P2 | Windows | Windows WebView/Cloudflare 可维护方案 | 登录受保护源体验改善 | 技术选型和 PoC |
+
+#### 进度记录
+
+- 2026-07-08：`DEFERRED -> DOING`，开始 Windows 可构建包闭环；先更新 roadmap 并编写发布配置守卫测试：`WindowsReleaseConfigurationTest`。
+- 2026-07-08：实现 `scripts/build-windows.ps1`，脚本在 Windows 上先运行 `:app-desktop:jvmTest`，再运行 `:app-desktop:packageMsi`；`app-desktop` 原生包版本改为从 `AppVersion.STAGE/FEATURE` 派生。
+- 2026-07-09：修正 native distribution 版本规则：应用展示版本仍为 `0.STAGE.FEATURE.GIT_HASH`，Windows/macOS 原生包版本使用 `1.STAGE.FEATURE`，满足 MSI/DMG 对 MAJOR > 0 的要求。
+- 2026-07-09：`DOING -> DONE`，Windows 构建脚本完整通过；验证：`powershell -ExecutionPolicy Bypass -File scripts/build-windows.ps1`；产物：`app-desktop\tmp\mihon-dist\main\msi\Mihon Desktop-1.11.12.msi`。
 
 ### 13.2 Android 功能资产剥离清单
 
@@ -368,7 +375,9 @@
 | Desktop E2E/Robot | `./gradlew :test-desktop:test` |
 | Desktop 冒烟 | `./scripts/desktop-smoke-test.sh` |
 | macOS Desktop 构建部署 | `./scripts/build-desktop.sh` |
-| Windows 包 | 延期队列执行时在 Windows 构建机运行 `./gradlew :app-desktop:packageMsi` 或正式脚本 |
+| Windows 测试验证 | 在 Windows 构建机运行 `powershell -ExecutionPolicy Bypass -File scripts/build-windows.ps1 -TestOnly` |
+| Windows 完整集成验证 | 需要真实网络扩展样本时运行 `powershell -ExecutionPolicy Bypass -File scripts/build-windows.ps1 -TestOnly -FullTests` |
+| Windows 包 | 发布产包时运行 `powershell -ExecutionPolicy Bypass -File scripts/build-windows.ps1` |
 
 ## 16. 当前状态摘要
 
@@ -376,9 +385,9 @@
 | --- | --- |
 | 产品路线 | 已确认：当前以 macOS `app-desktop` 为主线；Android 原版 Mihon 和 Windows 发布化进入延期队列 |
 | 正式 roadmap | 已建立 |
-| 进度追踪表 | 已建立，W1-01/W1-02/W1-03/W1-04a/W1-04b/W2-01/W2-02/W2-03/W3-01/W3-02/W3-04/W3-05/W3-06 已关闭并记录验证证据 |
+| 进度追踪表 | 已建立，W1-01/W1-02/W1-03/W1-04a/W1-04b/W2-01/W2-02/W2-03/W3-01/W3-02/W3-04/W3-05/W3-06、XW-01、XW-03 已关闭并记录验证证据 |
 | 技术债台账 | TD-01 至 TD-09 已偿还到 `PAID`；TD-10 Android 合并边界已由 Phase X 延期队列继续约束 |
-| 下一步建议 | macOS `app-desktop` 可继续单平台功能迭代；Windows/Android 构建发布按 Phase X 独立处理 |
+| 下一步建议 | Windows 已可构建 MSI；下一步按 XW-02 处理安装、升级、卸载和用户数据保留验收，Android 构建发布继续按 Phase X 独立处理 |
 
 ## 17. 不建议事项
 
