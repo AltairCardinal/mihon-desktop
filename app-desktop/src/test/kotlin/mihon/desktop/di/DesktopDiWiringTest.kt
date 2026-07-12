@@ -1,7 +1,11 @@
 package mihon.desktop.di
 
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import mihon.desktop.backup.AutoBackupScheduler
 import mihon.desktop.domain.LibraryUpdateScheduler
 import mihon.desktop.download.DesktopDownloadManager
@@ -36,7 +40,8 @@ class DesktopDiWiringTest {
         assertNotNull(Injekt.get<DesktopExtensionManager>())
 
         val preference = Injekt.get<PreferenceStore>().getString("wiring_observe", "initial")
+        val changed = async(start = CoroutineStart.UNDISPATCHED) { preference.changes().drop(1).first() }
         preference.set("updated")
-        assertEquals("updated", preference.changes().first())
+        assertEquals("updated", withTimeout(1_000) { changed.await() })
     }
 }
