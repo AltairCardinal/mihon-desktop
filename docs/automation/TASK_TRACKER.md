@@ -20,6 +20,18 @@
 | P2 | 截图测试稳定化 | 截图失败时返回明确错误，不假成功 |
 | P2 | CI artifact 归档截图 | 截图不提交仓库，仅上传 artifact |
 
+## Desktop 对齐 Test Mode 计划
+
+以下均为规划状态，不代表已经实现。单项只有在对应 API、真实 UI 状态断言和失败路径测试完成后，才能在 parity manifest 中进入 `VERIFIED`。
+
+| 阶段 | 计划场景 | Test Mode 验收边界 | 状态 |
+|---|---|---|---|
+| 行为刻画 | 书库、浏览、阅读器、下载、更新、备份关键入口 | 导航后 `/test/state` 与真实 UI 一致，并覆盖空、加载、错误状态 | 计划中 |
+| 共享实现 | 共享 use case/repository 替换 Desktop 重复业务 | 同一 fixture 在共享层与 Desktop wiring 得到一致结果 | 计划中 |
+| UI Wiring | 导航、DI、HTTP、数据库、后台任务接点 | route/action 成功与未知输入、权限缺失、数据缺失均有明确响应 | 计划中 |
+| Desktop 产品保护 | 作者、Upcoming、双页、自动滚动、APK 转换 | 现有能力可从用户入口触发，重构后行为不回退 | 计划中 |
+| 端到端验证 | 代表性用户旅程与恢复场景 | 重启/重试后状态可解释，截图只作为辅助证据而非宽松断言 | 计划中 |
+
 ## 不再入库
 
 - `docs/automation/screenshots/`

@@ -157,6 +157,10 @@
 
 总体判断：原版 Mihon 在功能完整度、扩展兼容、安全、后台执行、追踪、阅读器边界处理、国际化与长期维护上明显领先；Mihon Desktop 的优势集中在桌面输入、大屏双页、文件系统、作者/作品整理、未来更新预测和可自动化测试性。Desktop 当前已不是“缺少历史和迁移的早期移植版”，而是已补齐核心漫画管理闭环、但仍在追赶外围生态与成熟度的独立桌面实现。
 
+## Desktop 对齐路线图
+
+上述 64 项“原版更优”能力已进入可机器检查的重构路线图。唯一机器数据源为 `app-desktop/src/test/resources/parity/parity-manifest.json`，治理规则见 `docs/desktop-parity/PARITY_TRACKER.md`。所有条目初始均为 `NOT_STARTED`；纳入路线图不表示功能已经对齐，也不改变本报告的原有评分。后续只有在行为刻画、共享实现、UI wiring 与保护测试均满足门槛后才能推进状态。
+
 ## 主要代码证据入口
 
 - 原版主 UI：`app/src/main/java/eu/kanade/tachiyomi/ui/`、`app/src/main/java/eu/kanade/presentation/`
