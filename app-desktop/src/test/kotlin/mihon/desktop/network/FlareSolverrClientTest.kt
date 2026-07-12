@@ -6,6 +6,7 @@ import mockwebserver3.MockWebServer
 import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class FlareSolverrClientTest {
@@ -24,6 +25,10 @@ class FlareSolverrClientTest {
                 FlareSolverrClient(server.url("/").toString().removeSuffix("/"), OkHttpClient())
                     .solve("https://example.com")
 
+            val request = server.takeRequest()
+            assertEquals("POST", request.method)
+            assertEquals("/v1", request.url.encodedPath)
+            assertTrue(request.body?.utf8()?.contains("https://example.com") == true)
             assertEquals("desktop-agent", result?.userAgent)
             assertEquals(listOf(FlareSolverrCookie("cf_clearance", "token", "example.com")), result?.cookies)
         } finally {

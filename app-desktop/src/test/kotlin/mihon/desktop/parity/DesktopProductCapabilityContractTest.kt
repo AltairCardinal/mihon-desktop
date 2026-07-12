@@ -4,15 +4,23 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.exists
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 
 class DesktopProductCapabilityContractTest {
+    @TempDir
+    lateinit var tempDir: Path
+
     private val expectedIds =
         setOf(
             3, 4, 7, 8, 9, 10, 11, 12, 16, 17, 19, 22, 24, 26, 28, 29,
@@ -90,21 +98,15 @@ class DesktopProductCapabilityContractTest {
 
     @Test
     fun `parity manifest defines the exact roadmap contract`() {
-        val repositoryRoot =
-            generateSequence(Path.of("").toAbsolutePath()) { it.parent }
-                .first { Files.isDirectory(it.resolve("app-desktop")) && Files.isDirectory(it.resolve("docs")) }
-        val resource = repositoryRoot.resolve("app-desktop/src/test/resources/parity/parity-manifest.json")
-        require(resource.exists()) {
-            "Missing parity/parity-manifest.json"
-        }
-        val items = Json.parseToJsonElement(Files.readString(resource)).jsonArray
+        val repositoryRoot = repositoryRoot()
+        val items = manifestItems(repositoryRoot)
 
         desktopProductEvidence.forEach { evidence ->
             assertTrue(Files.isRegularFile(repositoryRoot.resolve(evidence)), "Missing Desktop product evidence $evidence")
         }
 
         assertEquals(64, items.size)
-        val ids = items.map { it.jsonObject.getValue("id").jsonPrimitive.content.toInt() }
+        val ids = items.map { validatedId(it.jsonObject) }
         assertEquals(ids.size, ids.toSet().size, "Parity IDs must be unique")
         assertEquals(expectedIds, ids.toSet(), "Parity IDs must exactly match the 64-item design set")
         assertEquals(expectedIds, expectedTags.keys, "Every parity ID must have an exact design tag mapping")
@@ -120,28 +122,17 @@ class DesktopProductCapabilityContractTest {
             )
         items.forEach { element ->
             val item = element.jsonObject
+            validateItem(item, repositoryRoot)
+            val id = validatedId(item)
             requiredTextFields.forEach { field ->
                 assertTrue(item.getValue(field).jsonPrimitive.content.isNotBlank(), "ID ${item["id"]}: $field must not be blank")
             }
             assertTrue(item.getValue("status").jsonPrimitive.content in validStatuses)
-            assertEquals("NOT_STARTED", item.getValue("status").jsonPrimitive.content)
 
             val tags = item.getValue("tags").jsonArray.map { it.jsonPrimitive.content }
             assertTrue(tags.isNotEmpty(), "ID ${item["id"]}: tags must not be empty")
             assertTrue(tags.all { it in validTags }, "ID ${item["id"]}: invalid tag")
-            val id = item.getValue("id").jsonPrimitive.content.toInt()
             assertEquals(expectedTags.getValue(id), tags.toSet(), "ID $id: tags differ from design A-J tables")
-
-            val exemptionEvidence = item.getValue("platformExemptionEvidence").jsonPrimitive.content
-            if (item.getValue("status").jsonPrimitive.content == "EXEMPT") {
-                assertTrue(exemptionEvidence != "NONE", "ID $id: EXEMPT requires real platform evidence")
-                assertTrue(
-                    Files.isRegularFile(repositoryRoot.resolve(exemptionEvidence)),
-                    "ID $id: missing exemption evidence",
-                )
-            } else {
-                assertEquals("NONE", exemptionEvidence, "ID $id: non-EXEMPT evidence must be NONE")
-            }
 
             val protectionTests = item.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content }
             assertFalse(
@@ -171,4 +162,90 @@ class DesktopProductCapabilityContractTest {
                 .toSet()
         assertEquals(expectedCapabilityEvidence.keys, productIds)
     }
+
+    @Test
+    fun `initial manifest items are all NOT_STARTED`() {
+        manifestItems(repositoryRoot()).forEach { item ->
+            val objectItem = item.jsonObject
+            assertEquals("NOT_STARTED", objectItem.getValue("status").jsonPrimitive.content, "ID ${validatedId(objectItem)}")
+        }
+    }
+
+    @Test
+    fun `EXEMPT item accepts real evidence and rejects NONE or missing files`() {
+        val evidence = Files.createFile(tempDir.resolve("evidence.md"))
+        validateItem(syntheticItem(84, "EXEMPT", evidence.toString()), tempDir)
+
+        val noneFailure = assertThrows(AssertionError::class.java) {
+            validateItem(syntheticItem(84, "EXEMPT", "NONE"), tempDir)
+        }
+        assertTrue(noneFailure.message.orEmpty().contains("ID 84"))
+
+        val missingFailure = assertThrows(AssertionError::class.java) {
+            validateItem(syntheticItem(84, "EXEMPT", "missing.md"), tempDir)
+        }
+        assertTrue(missingFailure.message.orEmpty().contains("ID 84"))
+    }
+
+    @Test
+    fun `missing empty non-integer and wrong-type ids fail with item context`() {
+        val invalidItems =
+            listOf(
+                buildJsonObject { put("status", "NOT_STARTED") },
+                syntheticItem(3).toMutableMap().also { it["id"] = Json.parseToJsonElement("\"\"") }.let(::JsonObject),
+                syntheticItem(3).toMutableMap().also { it["id"] = Json.parseToJsonElement("\"three\"") }.let(::JsonObject),
+                syntheticItem(3).toMutableMap().also { it["id"] = Json.parseToJsonElement("\"3\"") }.let(::JsonObject),
+                syntheticItem(3).toMutableMap().also { it["id"] = buildJsonObject { put("value", 3) } }.let(::JsonObject),
+            )
+
+        invalidItems.forEach { item ->
+            val failure = assertThrows(AssertionError::class.java) { validateItem(item, tempDir) }
+            assertTrue(failure.message.orEmpty().contains("ID"), failure.message)
+            assertTrue(failure.message.orEmpty().contains("item="), failure.message)
+        }
+    }
+
+    private fun validateItem(item: JsonObject, repositoryRoot: Path) {
+        val id = validatedId(item)
+        val status = item["status"]?.jsonPrimitive?.content
+        assertTrue(status in validStatuses, "ID $id: status must be one of $validStatuses")
+        val exemptionEvidence = item["platformExemptionEvidence"]?.jsonPrimitive?.content
+        if (status == "EXEMPT") {
+            assertTrue(exemptionEvidence != null && exemptionEvidence != "NONE", "ID $id: EXEMPT requires real platform evidence")
+            assertTrue(Files.isRegularFile(repositoryRoot.resolve(exemptionEvidence!!)), "ID $id: missing exemption evidence $exemptionEvidence")
+        } else {
+            assertEquals("NONE", exemptionEvidence, "ID $id: non-EXEMPT evidence must be NONE")
+        }
+    }
+
+    private fun validatedId(item: JsonObject): Int {
+        val raw = item["id"] ?: throw AssertionError("ID <missing>: item has no id field; item=$item")
+        val primitive = try {
+            raw.jsonPrimitive
+        } catch (_: IllegalArgumentException) {
+            throw AssertionError("ID <invalid>: id must be an integer; item=$item")
+        }
+        val text = primitive.content
+        if (primitive.isString) {
+            throw AssertionError("ID <$text>: id must be a JSON integer, not a string; item=$item")
+        }
+        return text.toIntOrNull() ?: throw AssertionError("ID <$text>: id must be a non-empty integer; item=$item")
+    }
+
+    private fun syntheticItem(id: Int, status: String = "NOT_STARTED", evidence: String = "NONE") =
+        buildJsonObject {
+            put("id", id)
+            put("status", status)
+            put("platformExemptionEvidence", evidence)
+        }
+
+    private fun repositoryRoot() =
+        generateSequence(Path.of("").toAbsolutePath()) { it.parent }
+            .first { Files.isDirectory(it.resolve("app-desktop")) && Files.isDirectory(it.resolve("docs")) }
+
+    private fun manifestItems(repositoryRoot: Path) =
+        repositoryRoot.resolve("app-desktop/src/test/resources/parity/parity-manifest.json").let { resource ->
+            require(resource.exists()) { "Missing parity/parity-manifest.json" }
+            Json.parseToJsonElement(Files.readString(resource)).jsonArray
+        }
 }
