@@ -76,4 +76,4 @@
 
 ### 审查修复提交
 
-- 提交哈希：提交后回填。
+- 提交哈希：`86af7a4d4 test(desktop): enforce parity protection evidence`。
