@@ -1,8 +1,12 @@
 package mihon.desktop.domain
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import mihon.desktop.domain.LibraryUpdateChecker.UpdateResult
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.task.DesktopTaskScheduler
@@ -77,6 +81,147 @@ class LibraryUpdateRecoveryIntegrationTest {
     }
 
     @Test
+    fun `cancelling during non cancellable final source update emits cancelled only`() = runTest {
+        val delivered = mutableListOf<DesktopNotification>()
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val scheduler = scheduler(directory.resolve("tasks.json"), mutableListOf(), this, delivered) { id ->
+            if (id == 3L) withContext(NonCancellable) {
+                entered.complete(Unit)
+                release.await()
+            }
+            UpdateResult(1)
+        }
+
+        val job = scheduler.runNow()
+        entered.await()
+        assertTrue(scheduler.cancelUpdate())
+        release.complete(Unit)
+        job.join()
+
+        assertEquals(mihon.domain.task.TaskStatus.Cancelled, scheduler.taskSnapshot()?.status)
+        assertEquals(1, delivered.count { it.title == "Library update cancelled" })
+        assertEquals(0, delivered.count { it.title == "Library updated" })
+    }
+
+    @Test
+    fun `cancelling while non cancellable final source returns error never emits failure`() = runTest {
+        val delivered = mutableListOf<DesktopNotification>()
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val scheduler = scheduler(directory.resolve("tasks.json"), mutableListOf(), this, delivered) { id ->
+            if (id == 3L) withContext(NonCancellable) {
+                entered.complete(Unit)
+                release.await()
+                return@withContext UpdateResult(0, error = "source failed after cancellation")
+            }
+            UpdateResult(0)
+        }
+
+        val job = scheduler.runNow()
+        entered.await()
+        assertTrue(scheduler.cancelUpdate())
+        release.complete(Unit)
+        job.join()
+
+        assertEquals(mihon.domain.task.TaskStatus.Cancelled, scheduler.taskSnapshot()?.status)
+        assertEquals(1, delivered.count { it.title == "Library update cancelled" })
+        assertEquals(0, delivered.count { it.title.contains("failed", ignoreCase = true) })
+    }
+
+    @Test
+    fun `creator discovery failure after successful update does not emit a second terminal`() = runTest {
+        val delivered = mutableListOf<DesktopNotification>()
+        val taskScheduler = DesktopTaskScheduler(FileTaskCheckpointStore(directory.resolve("tasks.json")))
+        val scheduler = LibraryUpdateScheduler(
+            appPreferences = DesktopAppPreferences(InMemoryPreferenceStore()),
+            updateChecker = null,
+            getLibraryManga = null,
+            sourceManager = null,
+            taskScheduler = taskScheduler,
+            taskNotifier = DesktopSystemNotifier(system = { delivered += it; true }, fallback = DesktopNotificationService()),
+            scope = this,
+            libraryProvider = { listOf(libraryManga(1L)) },
+            updateManga = { UpdateResult(0) },
+            discoverCreators = { error("discovery unavailable") },
+        )
+
+        scheduler.runNow().join()
+
+        assertEquals(mihon.domain.task.TaskStatus.Completed, scheduler.taskSnapshot()?.status)
+        assertEquals(1, delivered.count { it.title == "Library updated" })
+        assertEquals(0, delivered.count { it.title.contains("failed", ignoreCase = true) })
+    }
+
+    @Test
+    fun `missing cursor after deletion restarts safely and skips completed ids`() = runTest {
+        val file = directory.resolve("tasks.json")
+        val firstCalls = mutableListOf<Long>()
+        scheduler(file, firstCalls, this) { id -> if (id == 2L) error("stop") else UpdateResult(0) }.runNow().join()
+        val resumedCalls = mutableListOf<Long>()
+        val resumed = scheduler(file, resumedCalls, this, ids = listOf(3L, 1L)) { UpdateResult(0) }
+
+        resumed.runNow().join()
+
+        assertEquals(listOf(3L), resumedCalls)
+        assertEquals(mihon.domain.task.TaskStatus.Completed, resumed.taskSnapshot()?.status)
+    }
+
+    @Test
+    fun `resumed progress uses original workset after completed manga are filtered out`() = runTest {
+        val file = directory.resolve("tasks.json")
+        val first = scheduler(file, mutableListOf(), this) { id ->
+            if (id == 3L) error("stop after two")
+            UpdateResult(0)
+        }
+        first.runNow().join()
+        val resumed = scheduler(file, mutableListOf(), this, ids = listOf(3L)) { UpdateResult(0) }
+
+        resumed.runNow().join()
+
+        assertEquals(1f, resumed.taskSnapshot()?.task?.checkpoint?.progress)
+        assertEquals(mihon.domain.task.TaskStatus.Completed, resumed.taskSnapshot()?.status)
+    }
+
+    @Test
+    fun `initialized empty workset does not absorb manga added during recovery`() = runTest {
+        val file = directory.resolve("tasks.json")
+        DesktopTaskScheduler(FileTaskCheckpointStore(file)).apply {
+            register(LibraryUpdateScheduler.LIBRARY_UPDATE_TASK)
+            start(LibraryUpdateScheduler.LIBRARY_UPDATE_TASK.id)
+            setWorkset(LibraryUpdateScheduler.LIBRARY_UPDATE_TASK.id, emptyList())
+            fail(LibraryUpdateScheduler.LIBRARY_UPDATE_TASK.id, mihon.domain.error.AppError.Unknown())
+        }
+        val calls = mutableListOf<Long>()
+        val resumed = scheduler(file, calls, this, ids = listOf(4L)) { UpdateResult(0) }
+
+        resumed.runNow().join()
+
+        assertTrue(calls.isEmpty())
+        assertEquals(mihon.domain.task.TaskStatus.Completed, resumed.taskSnapshot()?.status)
+    }
+
+    @Test
+    fun `concurrent runNow calls share one occurrence`() = runTest {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var calls = 0
+        val scheduler = scheduler(directory.resolve("tasks.json"), mutableListOf(), this) {
+            calls++
+            entered.complete(Unit)
+            release.await()
+            UpdateResult(0)
+        }
+
+        val jobs = (1..20).map { async { scheduler.runNow() } }.awaitAll()
+        entered.await()
+        assertEquals(1, jobs.distinct().size)
+        release.complete(Unit)
+        jobs.first().join()
+        assertEquals(3, calls)
+    }
+
+    @Test
     fun `real update emits progress and one terminal success event`() = runTest {
         val delivered = mutableListOf<DesktopNotification>()
         val scheduler = scheduler(directory.resolve("tasks.json"), mutableListOf(), this, delivered) { UpdateResult(0) }
@@ -123,6 +268,7 @@ class LibraryUpdateRecoveryIntegrationTest {
         calls: MutableList<Long>,
         scope: kotlinx.coroutines.CoroutineScope,
         delivered: MutableList<DesktopNotification> = mutableListOf(),
+        ids: List<Long> = (1L..3L).toList(),
         update: suspend (Long) -> UpdateResult,
     ): LibraryUpdateScheduler {
         val taskScheduler = DesktopTaskScheduler(FileTaskCheckpointStore(file))
@@ -134,7 +280,7 @@ class LibraryUpdateRecoveryIntegrationTest {
             taskScheduler = taskScheduler,
             taskNotifier = DesktopSystemNotifier(system = { delivered += it; true }, fallback = DesktopNotificationService()),
             scope = scope,
-            libraryProvider = { (1L..3L).map(::libraryManga) },
+            libraryProvider = { ids.map(::libraryManga) },
             updateManga = { manga -> calls += manga.id; update(manga.id) },
         )
     }

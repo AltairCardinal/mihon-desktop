@@ -17,6 +17,7 @@ import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.reader.ReaderNavigator
 import mihon.desktop.settings.LibraryCategoryPrefs
+import mihon.domain.task.TaskStatus
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.chapter.model.ChapterUpdate
@@ -63,6 +64,7 @@ class LibraryScreenModel(
     private val categoryRepository: CategoryRepository? = null,
     private val startBackgroundUpdate: (() -> Job)? = null,
     private val cancelBackgroundUpdate: (() -> Boolean)? = null,
+    private val backgroundUpdateStatus: (() -> TaskStatus?)? = null,
 ) : ScreenModel {
 
     private val _state = MutableStateFlow(LibraryState())
@@ -214,7 +216,13 @@ class LibraryScreenModel(
             setUpdateStatusText("Checking for updates...")
             try {
                 start().join()
-                setUpdateStatusText("Library update finished")
+                setUpdateStatusText(
+                    when (backgroundUpdateStatus?.invoke()) {
+                        TaskStatus.Failed -> "Library update failed"
+                        TaskStatus.Cancelled -> "Library update cancelled"
+                        else -> "Library update finished"
+                    },
+                )
             } finally {
                 setIsUpdating(false)
             }

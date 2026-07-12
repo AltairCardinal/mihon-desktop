@@ -39,6 +39,19 @@ class NetworkErrorContractTest {
     @Test fun `500 maps to server error`() = assertError<AppError.Server>(500, "oops")
     @Test fun `malformed json maps to malformed data`() = assertError<AppError.MalformedData>(200, "not-json")
 
+    @Test fun `empty full and saver page arrays preserve original empty page contract`() = runTest {
+        enqueue(200, """{"baseUrl":"https://img","chapter":{"hash":"abc","data":[],"dataSaver":[]}}""")
+        assertEquals(emptyList<eu.kanade.tachiyomi.source.model.Page>(), source.getPageList(chapter))
+    }
+
+    @Test fun `empty full pages with missing saver preserves original empty page contract`() = runTest {
+        enqueue(200, """{"baseUrl":"https://img","chapter":{"hash":"abc","data":[]}}""")
+        assertEquals(emptyList<eu.kanade.tachiyomi.source.model.Page>(), source.getPageList(chapter))
+    }
+
+    @Test fun `missing full page array maps to malformed data`() =
+        assertError<AppError.MalformedData>(200, """{"baseUrl":"https://img","chapter":{"hash":"abc","dataSaver":[]}}""")
+
     private inline fun <reified T : AppError> assertError(code: Int, body: String) = runTest {
         enqueue(code, body)
         val thrown = assertThrows(AppErrorException::class.java) { kotlinx.coroutines.runBlocking { source.getPageList(chapter) } }

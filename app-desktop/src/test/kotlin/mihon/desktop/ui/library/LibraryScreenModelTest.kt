@@ -18,6 +18,7 @@ import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.manga.model.Manga
+import mihon.domain.task.TaskStatus
 
 /**
  * Stage 25.2 — LibraryScreenModel tests.
@@ -39,6 +40,22 @@ class LibraryScreenModelTest {
 
         assertEquals(1, started)
         assertEquals(1, cancelled)
+    }
+
+    @Test
+    fun `background update UI reports each persisted terminal state accurately`() = runTest {
+        for ((status, text) in listOf(
+            TaskStatus.Completed to "Library update finished",
+            TaskStatus.Failed to "Library update failed",
+            TaskStatus.Cancelled to "Library update cancelled",
+        )) {
+            val model = LibraryScreenModel(
+                startBackgroundUpdate = { kotlinx.coroutines.Job().also { it.complete() } },
+                backgroundUpdateStatus = { status },
+            )
+            model.refreshLibrary(emptyList())
+            assertEquals(text, model.state.value.updateStatusText)
+        }
     }
 
     // ── Construction ─────────────────────────────────────────────────────────

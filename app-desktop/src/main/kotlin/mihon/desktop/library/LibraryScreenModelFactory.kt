@@ -36,6 +36,7 @@ object LibraryScreenModelFactory {
             categoryRepository = Injekt.get<CategoryRepository>(),
             startBackgroundUpdate = updateScheduler::runNow,
             cancelBackgroundUpdate = updateScheduler::cancelUpdate,
+            backgroundUpdateStatus = { updateScheduler.taskSnapshot()?.status },
         )
     }
 }

@@ -3,6 +3,7 @@ package mihon.desktop.domain
 import eu.kanade.tachiyomi.source.CatalogueSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -38,10 +39,12 @@ class LibraryUpdateScheduler(
     scope: CoroutineScope? = null,
     private val libraryProvider: (suspend () -> List<LibraryManga>)? = null,
     private val updateManga: (suspend (Manga) -> LibraryUpdateChecker.UpdateResult)? = null,
+    private val discoverCreators: (suspend () -> Unit)? = null,
 ) {
     private val scope = scope ?: CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var schedulerJob: Job? = null
     private var updateJob: Job? = null
+    private val updateLock = Any()
     val isRunning: Boolean get() = schedulerJob?.isActive == true
 
     fun start() {
@@ -66,8 +69,8 @@ class LibraryUpdateScheduler(
         }
     }
 
-    fun runNow(): Job {
-        updateJob?.takeIf { it.isActive }?.let { return it }
+    fun runNow(): Job = synchronized(updateLock) {
+        updateJob?.takeIf { it.isActive }?.let { return@synchronized it }
         val existing = taskSnapshot()
         val task = if (existing?.status in setOf(TaskStatus.Completed, TaskStatus.Cancelled)) {
             LIBRARY_UPDATE_TASK.copy(idempotencyKey = "library-update:${System.nanoTime()}")
@@ -76,7 +79,10 @@ class LibraryUpdateScheduler(
         }
         taskScheduler?.register(task)
         taskScheduler?.start(LIBRARY_UPDATE_TASK.id)
-        return scope.launch { runLibraryUpdate() }.also { updateJob = it }
+        scope.launch(start = CoroutineStart.LAZY) { runLibraryUpdate() }.also {
+            updateJob = it
+            it.start()
+        }
     }
 
     fun stop() {
@@ -103,11 +109,14 @@ class LibraryUpdateScheduler(
         try {
             val allManga = libraryProvider?.invoke() ?: requireNotNull(getLibraryManga).await()
             val filtered = filterLibrary(allManga)
-            val checkpoint = taskSnapshot()?.task?.checkpoint
-            val remaining = checkpoint?.cursor?.toLongOrNull()?.let { cursor ->
-                filtered.dropWhile { it.manga.id != cursor }.drop(1)
-            } ?: filtered
-            var completed = checkpoint?.completedUnits ?: 0
+            taskScheduler?.setWorkset(LIBRARY_UPDATE_TASK.id, filtered.map { it.manga.id })
+            val snapshot = taskSnapshot()
+            val completedIds = snapshot?.completedUnitIds.orEmpty()
+            val stableIds = if (snapshot?.worksetInitialized == true) snapshot.workset else filtered.map { it.manga.id }
+            val totalUnits = stableIds.size
+            val byId = filtered.associateBy { it.manga.id }
+            val remaining = stableIds.filterNot(completedIds::contains).mapNotNull(byId::get)
+            var completed = completedIds.size
             var newChapters = 0
             val failures = mutableListOf<AppError>()
             val failedUnits = mutableListOf<AppError.FailedUnit>()
@@ -118,7 +127,7 @@ class LibraryUpdateScheduler(
                     NotificationEvent.Progress(
                         LIBRARY_UPDATE_TASK.id,
                         "Updating library",
-                        if (filtered.isEmpty()) null else completed.toFloat() / filtered.size,
+                        if (totalUnits == 0) null else completed.toFloat() / totalUnits,
                     ),
                 )
                 val result = runCatching { update(entry.manga) }
@@ -126,9 +135,10 @@ class LibraryUpdateScheduler(
                     if (updateResult.error == null) {
                         newChapters += updateResult.newChapterCount
                         completed++
-                        taskScheduler?.checkpoint(
+                        taskScheduler?.completeUnit(
                             LIBRARY_UPDATE_TASK.id,
-                            TaskCheckpoint(entry.manga.id.toString(), completed, completed.toFloat() / filtered.size),
+                            entry.manga.id,
+                            TaskCheckpoint(entry.manga.id.toString(), completed, completed.toFloat() / totalUnits),
                         )
                     } else {
                         val error = AppError.Unknown(IllegalStateException(updateResult.error))
@@ -141,34 +151,55 @@ class LibraryUpdateScheduler(
                     failures += appError
                     failedUnits += AppError.FailedUnit("manga:${entry.manga.id}", appError)
                 }
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                if (taskScheduler?.isCancelled(LIBRARY_UPDATE_TASK.id) == true) throw CancellationException()
                 if (failures.isNotEmpty()) break
             }
             if (failures.isEmpty()) {
-                taskScheduler?.complete(LIBRARY_UPDATE_TASK.id)
-                taskNotifier?.notify(NotificationEvent.Success(LIBRARY_UPDATE_TASK.id, "Library updated", "$newChapters new chapters found"))
-                sourceManager?.getCatalogueSources()?.let { sources ->
-                    creatorDiscoveryService?.discoverDueWatches(sources)?.let { result ->
-                        if (result.newCandidateCount > 0) {
-                            notificationService?.post(
-                                DesktopNotification(
-                                    "Author works discovered",
-                                    "${result.newCandidateCount} new candidates found",
-                                ),
-                            )
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                if (taskScheduler?.isCancelled(LIBRARY_UPDATE_TASK.id) == true) throw CancellationException()
+                if (taskScheduler?.complete(LIBRARY_UPDATE_TASK.id) == true) {
+                    taskNotifier?.notify(NotificationEvent.Success(LIBRARY_UPDATE_TASK.id, "Library updated", "$newChapters new chapters found"))
+                }
+                runCatching {
+                    discoverCreators?.invoke() ?: sourceManager?.getCatalogueSources()?.let { sources ->
+                        creatorDiscoveryService?.discoverDueWatches(sources)?.let { result ->
+                            if (result.newCandidateCount > 0) {
+                                notificationService?.post(
+                                    DesktopNotification(
+                                        "Author works discovered",
+                                        "${result.newCandidateCount} new candidates found",
+                                    ),
+                                )
+                            }
                         }
                     }
                 }
             } else {
                 val error = AppError.PartialFailure(failures, failedUnits)
-                taskScheduler?.fail(LIBRARY_UPDATE_TASK.id, error)
-                taskNotifier?.notify(NotificationEvent.Failure(LIBRARY_UPDATE_TASK.id, "Library update partially failed", "${failures.size} items can be retried"))
+                if (taskScheduler?.fail(LIBRARY_UPDATE_TASK.id, error) == true) {
+                    taskNotifier?.notify(
+                        NotificationEvent.Failure(
+                            LIBRARY_UPDATE_TASK.id,
+                            "Library update partially failed",
+                            "${failures.size} items can be retried",
+                        ),
+                    )
+                }
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
             val appError = AppError.Unknown(error)
-            taskScheduler?.fail(LIBRARY_UPDATE_TASK.id, appError)
-            taskNotifier?.notify(NotificationEvent.Failure(LIBRARY_UPDATE_TASK.id, "Library update failed", "Retry from Library"))
+            if (taskScheduler?.fail(LIBRARY_UPDATE_TASK.id, appError) == true) {
+                taskNotifier?.notify(
+                    NotificationEvent.Failure(
+                        LIBRARY_UPDATE_TASK.id,
+                        "Library update failed",
+                        "Retry from Library",
+                    ),
+                )
+            }
         }
     }
 

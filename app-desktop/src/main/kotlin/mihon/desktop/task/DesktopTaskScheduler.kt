@@ -1,8 +1,19 @@
 package mihon.desktop.task
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonEncoder
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.encodeToJsonElement
 import mihon.domain.error.AppError
 import mihon.domain.task.BackgroundTask
 import mihon.domain.task.TaskCheckpoint
@@ -20,9 +31,83 @@ import kotlin.concurrent.withLock
 data class StoredTask(
     val task: BackgroundTask,
     val status: TaskStatus = TaskStatus.Pending,
-    val failure: String? = null,
+    @Serializable(with = StoredAppErrorCompatSerializer::class)
+    val failure: StoredAppError? = null,
     val failedUnits: List<String> = emptyList(),
+    val workset: List<Long> = emptyList(),
+    val worksetInitialized: Boolean = false,
+    val completedUnitIds: Set<Long> = emptySet(),
 )
+
+@Serializable
+data class StoredAppError(
+    val type: String,
+    val statusCode: Int? = null,
+    val retryAfterSeconds: Long? = null,
+    val message: String? = null,
+    val failures: List<StoredAppError> = emptyList(),
+    val failedUnits: List<StoredFailedUnit> = emptyList(),
+) {
+    fun toAppError(): AppError = when (type) {
+        "Network" -> AppError.Network(message?.let(::IllegalStateException))
+        "Authentication" -> AppError.Authentication(message?.let(::IllegalStateException))
+        "Challenge" -> AppError.Challenge(message?.let(::IllegalStateException))
+        "RateLimited" -> AppError.RateLimited(retryAfterSeconds, message?.let(::IllegalStateException))
+        "Server" -> AppError.Server(requireNotNull(statusCode), message?.let(::IllegalStateException))
+        "Permission" -> AppError.Permission(message?.let(::IllegalStateException))
+        "MalformedData" -> AppError.MalformedData(message?.let(::IllegalStateException))
+        "Storage" -> AppError.Storage(message?.let(::IllegalStateException))
+        "Cancelled" -> AppError.Cancelled
+        "PartialFailure" -> AppError.PartialFailure(
+            failures.map(StoredAppError::toAppError),
+            failedUnits.map { AppError.FailedUnit(it.unitId, it.error.toAppError()) },
+            message?.let(::IllegalStateException),
+        )
+        else -> AppError.Unknown(message?.let(::IllegalStateException))
+    }
+}
+
+@Serializable
+data class StoredFailedUnit(val unitId: String, val error: StoredAppError)
+
+object StoredAppErrorCompatSerializer : KSerializer<StoredAppError?> {
+    override val descriptor: SerialDescriptor = StoredAppError.serializer().descriptor
+
+    override fun deserialize(decoder: Decoder): StoredAppError? {
+        require(decoder is JsonDecoder)
+        return when (val element = decoder.decodeJsonElement()) {
+            JsonNull -> null
+            is JsonObject -> decoder.json.decodeFromJsonElement(StoredAppError.serializer(), element)
+            is JsonPrimitive -> {
+                require(element.isString) { "Stored task failure must be a string, object, or null" }
+                StoredAppError(type = "Unknown", message = element.content)
+            }
+            else -> error("Stored task failure must be a string, object, or null")
+        }
+    }
+
+    override fun serialize(encoder: Encoder, value: StoredAppError?) {
+        require(encoder is JsonEncoder)
+        val element = value?.let { encoder.json.encodeToJsonElement(StoredAppError.serializer(), it) } ?: JsonNull
+        encoder.encodeJsonElement(element)
+    }
+}
+
+private fun AppError.toStored(): StoredAppError = when (this) {
+    is AppError.RateLimited -> StoredAppError(
+        "RateLimited",
+        retryAfterSeconds = retryAfterSeconds,
+        message = cause?.message,
+    )
+    is AppError.Server -> StoredAppError("Server", statusCode = statusCode, message = cause?.message)
+    is AppError.PartialFailure -> StoredAppError(
+        "PartialFailure",
+        message = cause?.message,
+        failures = failures.map(AppError::toStored),
+        failedUnits = failedUnits.map { StoredFailedUnit(it.unitId, it.error.toStored()) },
+    )
+    else -> StoredAppError(this::class.simpleName ?: "Unknown", message = cause?.message)
+}
 
 class FileTaskCheckpointStore(
     private val file: Path,
@@ -47,7 +132,7 @@ class FileTaskCheckpointStore(
         return try {
             json.decodeFromString(Files.readString(file))
         } catch (error: Exception) {
-            val corrupt = file.resolveSibling("${file.fileName}.corrupt-${System.currentTimeMillis()}")
+            val corrupt = file.resolveSibling("${file.fileName}.corrupt-${UUID.randomUUID()}")
             runCatching { Files.move(file, corrupt, StandardCopyOption.REPLACE_EXISTING) }
             diagnosticMessages += "corrupt task store quarantined: ${error.message}"
             emptyList()
@@ -99,6 +184,22 @@ class DesktopTaskScheduler(private val store: FileTaskCheckpointStore) {
         )
     }
 
+    fun setWorkset(id: String, workset: List<Long>): Boolean = transition(id) { current ->
+        if (current.status !in setOf(TaskStatus.Pending, TaskStatus.Running) || current.worksetInitialized) {
+            current
+        } else {
+            current.copy(workset = workset, worksetInitialized = true)
+        }
+    }
+
+    fun completeUnit(id: String, unitId: Long, checkpoint: TaskCheckpoint): Boolean = transition(id) { current ->
+        if (current.status !in setOf(TaskStatus.Pending, TaskStatus.Running)) current else current.copy(
+            task = current.task.copy(checkpoint = checkpoint),
+            status = TaskStatus.Running,
+            completedUnitIds = current.completedUnitIds + unitId,
+        )
+    }
+
     fun cancel(id: String): Boolean = transition(id) { current ->
         if (current.status !in setOf(TaskStatus.Pending, TaskStatus.Running, TaskStatus.Failed)) current else current.copy(status = TaskStatus.Cancelled)
     }
@@ -107,6 +208,7 @@ class DesktopTaskScheduler(private val store: FileTaskCheckpointStore) {
         if (current.status !in setOf(TaskStatus.Pending, TaskStatus.Failed)) current else current.copy(
             status = TaskStatus.Running,
             failure = null,
+            failedUnits = emptyList(),
         )
     }
 
@@ -117,7 +219,7 @@ class DesktopTaskScheduler(private val store: FileTaskCheckpointStore) {
     fun fail(id: String, error: AppError): Boolean = transition(id) { current ->
         if (current.status !in setOf(TaskStatus.Pending, TaskStatus.Running)) current else current.copy(
             status = TaskStatus.Failed,
-            failure = error::class.simpleName,
+            failure = error.toStored(),
             failedUnits = (error as? AppError.PartialFailure)?.failedUnits?.map { it.unitId }.orEmpty(),
         )
     }
