@@ -13,6 +13,7 @@ import kotlin.reflect.KProperty
 private operator fun <T> Preference<T>.getValue(thisRef: Any?, property: KProperty<*>): T = get()
 private operator fun <T> Preference<T>.setValue(thisRef: Any?, property: KProperty<*>, value: T) = set(value)
 
+/** Reader preferences eagerly migrate every public setting during construction. */
 class ReaderPreferences(
     store: PreferenceStore = DesktopPreferenceStore(),
     private val legacy: Preferences = Preferences.userRoot().node("mihon/desktop/reader"),

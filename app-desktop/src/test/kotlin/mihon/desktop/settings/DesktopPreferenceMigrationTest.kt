@@ -1,65 +1,114 @@
 package mihon.desktop.settings
 
-import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.async
-import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.runCurrent
+import mihon.desktop.reader.ReaderBackgroundTheme
 import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.reader.ReadingMode
+import mihon.desktop.reader.ScaleType
+import mihon.desktop.reader.WebtoonSidePadding
+import mihon.desktop.ui.reader.NavigationMode
+import mihon.desktop.ui.reader.WebtoonAutoScrollSpeed
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.TestFactory
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import java.util.prefs.Preferences
 
-@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class DesktopPreferenceMigrationTest {
     private val root = Preferences.userRoot().node("/mihon/task1a/${System.nanoTime()}")
-    private val newNode = root.node("new")
-    private val legacyApp = root.node("legacy-app")
-    private val legacyReader = root.node("legacy-reader")
-    private val store = DesktopPreferenceStore(newNode)
 
     @AfterEach
     fun tearDown() = root.removeNode()
 
-    @Test
-    fun `仅旧 reader 值首次读取时迁移且保留旧值`() {
-        legacyReader.put("readingMode", ReadingMode.WEBTOON.name)
+    private data class MigrationCase(
+        val oldKey: String,
+        val newKey: String,
+        val oldValue: String,
+        val newValue: String,
+        val defaultValue: Any,
+        val read: (DesktopPreferenceStore, Preferences) -> Any,
+    )
 
-        val prefs = ReaderPreferences(store, legacyReader)
+    private val readerCases = listOf(
+        MigrationCase("readingMode", "reader_reading_mode", "WEBTOON", "RTL", ReadingMode.LTR) { s, l -> ReaderPreferences(s, l).readingMode },
+        MigrationCase("navigationMode", "reader_navigation_mode", "L", "RightAndLeft", NavigationMode.RightAndLeft) { s, l -> ReaderPreferences(s, l).navigationMode },
+        MigrationCase("isDualPage", "reader_dual_page", "false", "true", true) { s, l -> ReaderPreferences(s, l).isDualPage },
+        MigrationCase("autoSplitPages", "reader_auto_split_pages", "true", "false", false) { s, l -> ReaderPreferences(s, l).autoSplitPages },
+        MigrationCase("autoSpreadMatching", "reader_auto_spread_matching", "true", "false", false) { s, l -> ReaderPreferences(s, l).isAutoSpreadMatching },
+        MigrationCase("backgroundTheme", "reader_background_theme", "BLACK", "WHITE", ReaderBackgroundTheme.DEFAULT) { s, l -> ReaderPreferences(s, l).backgroundTheme },
+        MigrationCase("cropBordersPager", "reader_crop_borders_pager", "true", "false", false) { s, l -> ReaderPreferences(s, l).cropBordersPager },
+        MigrationCase("webtoonSidePadding", "reader_webtoon_side_padding", "EXTRA_LARGE", "SMALL", WebtoonSidePadding.DEFAULT) { s, l -> ReaderPreferences(s, l).webtoonSidePadding },
+        MigrationCase("webtoonAutoScroll", "reader_webtoon_auto_scroll", "true", "false", false) { s, l -> ReaderPreferences(s, l).webtoonAutoScroll },
+        MigrationCase("webtoonAutoScrollSpeed", "reader_webtoon_auto_scroll_speed", "Fast", "Slow", WebtoonAutoScrollSpeed.Normal) { s, l -> ReaderPreferences(s, l).webtoonAutoScrollSpeed },
+        MigrationCase("cropBordersWebtoon", "reader_crop_borders_webtoon", "true", "false", false) { s, l -> ReaderPreferences(s, l).cropBordersWebtoon },
+        MigrationCase("skipReadChapters", "reader_skip_read_chapters", "true", "false", false) { s, l -> ReaderPreferences(s, l).skipReadChapters },
+        MigrationCase("scaleType", "reader_scale_type", "FIT_WIDTH", "FIT_HEIGHT", ScaleType.DEFAULT) { s, l -> ReaderPreferences(s, l).scaleType },
+        MigrationCase("colorFilterEnabled", "reader_color_filter_enabled", "true", "false", false) { s, l -> ReaderPreferences(s, l).colorFilterEnabled },
+        MigrationCase("colorFilterBrightness", "reader_color_filter_brightness", "0.5", "0.25", 0f) { s, l -> ReaderPreferences(s, l).colorFilterBrightness },
+        MigrationCase("colorFilterR", "reader_color_filter_red", "10", "20", 0) { s, l -> ReaderPreferences(s, l).colorFilterR },
+        MigrationCase("colorFilterG", "reader_color_filter_green", "11", "21", 0) { s, l -> ReaderPreferences(s, l).colorFilterG },
+        MigrationCase("colorFilterB", "reader_color_filter_blue", "12", "22", 0) { s, l -> ReaderPreferences(s, l).colorFilterB },
+        MigrationCase("colorFilterAlpha", "reader_color_filter_alpha", "100", "200", 128) { s, l -> ReaderPreferences(s, l).colorFilterAlpha },
+    )
 
-        assertEquals(ReadingMode.WEBTOON, prefs.readingMode)
-        assertEquals(ReadingMode.WEBTOON.name, newNode.get("reader_reading_mode", null))
-        assertEquals(ReadingMode.WEBTOON.name, legacyReader.get("readingMode", null))
+    private val appCases = listOf(
+        MigrationCase("theme_mode", "theme_mode", "DARK", "LIGHT", ThemeMode.SYSTEM) { s, l -> DesktopAppPreferences(s, l).themeMode.get() },
+        MigrationCase("default_reader_mode", "default_reader_mode", "WEBTOON", "PAGER", ReaderDefaultMode.PAGER) { s, l -> DesktopAppPreferences(s, l).defaultReaderMode.get() },
+        MigrationCase("library_grid_columns", "library_grid_columns", "5", "6", 3) { s, l -> DesktopAppPreferences(s, l).libraryGridColumns.get() },
+        MigrationCase("default_rtl", "default_rtl", "true", "false", false) { s, l -> DesktopAppPreferences(s, l).defaultRtl.get() },
+        MigrationCase("incognito_mode", "incognito_mode", "true", "false", false) { s, l -> DesktopAppPreferences(s, l).incognitoMode.get() },
+        MigrationCase("disabled_source_ids", "disabled_source_ids", "1,2", "3", "") { s, l -> DesktopAppPreferences(s, l).disabledSourceIds.get() },
+        MigrationCase("page_turn_animation", "page_turn_animation", "false", "true", true) { s, l -> DesktopAppPreferences(s, l).pageTurnAnimation.get() },
+        MigrationCase("library_update_interval", "library_update_interval", "EVERY_6H", "WEEKLY", LibraryUpdateInterval.OFF) { s, l -> DesktopAppPreferences(s, l).libraryUpdateInterval.get() },
+        MigrationCase("pref_hide_missing_chapter_indicators", "pref_hide_missing_chapter_indicators", "true", "false", false) { s, l -> DesktopAppPreferences(s, l).hideMissingChapterIndicators.get() },
+        MigrationCase("doh_provider", "doh_provider", "GOOGLE", "CLOUDFLARE", DohProvider.OFF) { s, l -> DesktopAppPreferences(s, l).dohProvider.get() },
+        MigrationCase("update_category_includes", "update_category_includes", "1", "2", "") { s, l -> DesktopAppPreferences(s, l).updateCategoryIncludes.get() },
+        MigrationCase("update_category_excludes", "update_category_excludes", "1", "2", "") { s, l -> DesktopAppPreferences(s, l).updateCategoryExcludes.get() },
+        MigrationCase("local_source_root_dir", "local_source_root_dir", "old", "new", "") { s, l -> DesktopAppPreferences(s, l).localSourceRootDir.get() },
+        MigrationCase("local_source_max_depth", "local_source_max_depth", "4", "5", 3) { s, l -> DesktopAppPreferences(s, l).localSourceMaxDepth.get() },
+        MigrationCase("auto_backup_interval", "auto_backup_interval", "DAILY", "OFF", "OFF") { s, l -> DesktopAppPreferences(s, l).autoBackupInterval.get() },
+        MigrationCase("auto_backup_max_files", "auto_backup_max_files", "3", "4", 2) { s, l -> DesktopAppPreferences(s, l).autoBackupMaxFiles.get() },
+        MigrationCase("auto_backup_dir", "auto_backup_dir", "old", "new", "") { s, l -> DesktopAppPreferences(s, l).autoBackupDir.get() },
+    )
+
+    @TestFactory
+    fun `每项偏好迁移旧值 默认值且新值优先`() = (readerCases + appCases).flatMapIndexed { index, case ->
+        listOf(
+            DynamicTest.dynamicTest("${case.newKey} 旧值迁移") { assertScenario(index, case, "legacy") },
+            DynamicTest.dynamicTest("${case.newKey} 无值默认") { assertScenario(index, case, "default") },
+            DynamicTest.dynamicTest("${case.newKey} 新值优先") { assertScenario(index, case, "new") },
+        )
+    }
+
+    private fun assertScenario(index: Int, case: MigrationCase, scenario: String) {
+        val node = root.node("$index-$scenario")
+        val legacy = node.node("legacy")
+        val current = node.node("current")
+        if (scenario != "default") legacy.put(case.oldKey, case.oldValue)
+        if (scenario == "new") current.put(case.newKey, case.newValue)
+        val actual = case.read(DesktopPreferenceStore(current), legacy)
+        val expectedRaw = if (scenario == "new") case.newValue else case.oldValue
+        val expected = if (scenario == "default") case.defaultValue else parseLike(actual, expectedRaw)
+        assertEquals(expected, actual, case.newKey)
+        if (scenario == "legacy") assertEquals(case.oldValue, current.get(case.newKey, null), case.newKey)
+    }
+
+    private fun parseLike(sample: Any, raw: String): Any = when (sample) {
+        is Boolean -> raw.toBoolean()
+        is Int -> raw.toInt()
+        is Float -> raw.toFloat()
+        is Enum<*> -> sample::class.java.enumConstants.first { (it as Enum<*>).name == raw }
+        else -> raw
     }
 
     @Test
-    fun `新值优先于冲突旧值`() {
-        newNode.put("reader_reading_mode", ReadingMode.RTL.name)
-        legacyReader.put("readingMode", ReadingMode.WEBTOON.name)
-
-        assertEquals(ReadingMode.RTL, ReaderPreferences(store, legacyReader).readingMode)
-    }
-
-    @Test
-    fun `无值使用默认且非法枚举回退`() {
-        legacyReader.put("readingMode", "BROKEN")
-
-        assertEquals(ReadingMode.LTR, ReaderPreferences(store, legacyReader).readingMode)
-        assertEquals(ThemeMode.SYSTEM, DesktopAppPreferences(store, legacyApp).themeMode.get())
-    }
-
-    @Test
-    fun `旧 app 值迁移且写入会通知观察者`() = runTest {
-        legacyApp.put("theme_mode", ThemeMode.DARK.name)
-        val preference = DesktopAppPreferences(store, legacyApp).themeMode
-        assertEquals(ThemeMode.DARK, preference.get())
-
-        val observed = async { preference.changes().drop(1).first() }
-        runCurrent()
-        preference.set(ThemeMode.LIGHT)
-        assertEquals(ThemeMode.LIGHT, observed.await())
+    fun `非法旧值与非法新枚举均回退默认值`() {
+        val legacy = root.node("invalid/legacy")
+        val current = root.node("invalid/current")
+        legacy.put("readingMode", "BROKEN")
+        current.put("theme_mode", "BROKEN")
+        assertEquals(ReadingMode.LTR, ReaderPreferences(DesktopPreferenceStore(current), legacy).readingMode)
+        assertEquals(ThemeMode.SYSTEM, DesktopAppPreferences(DesktopPreferenceStore(current), legacy).themeMode.get())
     }
 }

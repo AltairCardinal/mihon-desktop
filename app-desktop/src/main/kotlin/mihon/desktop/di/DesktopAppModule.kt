@@ -90,6 +90,7 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.api.get
 import java.io.File
+import java.util.prefs.Preferences
 
 /**
  * Initializes all desktop DI bindings.
@@ -105,6 +106,27 @@ fun initDesktopDI() {
     initUILayer(paths, preferenceStore, networkHelper, handler)
 }
 
+internal fun initDesktopConfigurationForTest(appDir: File): DesktopPreferenceStore {
+    val node = Preferences.userRoot().node("/mihon/test/${appDir.absolutePath.hashCode().toUInt()}")
+    val preferenceStore = DesktopPreferenceStore(node)
+    registerDesktopSettings(preferenceStore)
+    registerDesktopReader(preferenceStore)
+    Injekt.addSingleton<PreferenceStore>(preferenceStore)
+    Injekt.addSingleton<FolderProvider>(DesktopStorageFolderProvider(appDir))
+    Injekt.addSingleton<PlatformInfo>(DesktopPlatformInfo())
+    return preferenceStore
+}
+
+internal fun initDesktopDIForTest(appDir: File) {
+    val paths = desktopPaths(appDir)
+    val preferenceStore = initDesktopConfigurationForTest(appDir)
+    val networkHelper = initNetworkLayer(paths, preferenceStore)
+    val handler = initDataLayer(paths)
+    initExtensionLayer(paths, networkHelper, handler)
+    initDomainLayer(handler)
+    initUILayer(paths, preferenceStore, networkHelper, handler)
+}
+
 // ── Config layer ─────────────────────────────────────────────────────────────
 // Preferences, storage, platform metadata.
 // No external dependencies.
@@ -112,19 +134,19 @@ fun initDesktopDI() {
 internal fun initConfigLayer(appDir: File): DesktopPreferenceStore {
     val preferenceStore = DesktopPreferenceStore()
     Injekt.addSingleton<PreferenceStore>(preferenceStore)
-    registerSettings(preferenceStore)
-    registerReader(preferenceStore)
+    registerDesktopSettings(preferenceStore)
+    registerDesktopReader(preferenceStore)
     Injekt.addSingleton<FolderProvider>(DesktopStorageFolderProvider())
     Injekt.addSingleton<PlatformInfo>(DesktopPlatformInfo())
     return preferenceStore
 }
 
-private fun registerSettings(preferenceStore: PreferenceStore) {
+private fun registerDesktopSettings(preferenceStore: PreferenceStore) {
     Injekt.addSingleton(DesktopAppPreferences(preferenceStore))
     Injekt.addSingleton(LibraryCategoryPrefs(preferenceStore))
 }
 
-private fun registerReader(preferenceStore: PreferenceStore) {
+private fun registerDesktopReader(preferenceStore: PreferenceStore) {
     Injekt.addSingleton(ReaderPreferences(preferenceStore))
 }
 
@@ -133,6 +155,10 @@ private fun registerReader(preferenceStore: PreferenceStore) {
 // Depends on: config layer (preferenceStore for DoH setting).
 
 internal fun initNetworkLayer(paths: DesktopPlatformPaths, preferenceStore: DesktopPreferenceStore): DesktopNetworkHelper {
+    return registerDesktopNetwork(paths, preferenceStore)
+}
+
+private fun registerDesktopNetwork(paths: DesktopPlatformPaths, preferenceStore: DesktopPreferenceStore): DesktopNetworkHelper {
     val dohProvider = preferenceStore.getObjectFromString(
         key = "doh_provider",
         defaultValue = mihon.desktop.settings.DohProvider.OFF,
@@ -183,6 +209,10 @@ internal fun initDataLayer(paths: DesktopPlatformPaths): DatabaseHandler {
 }
 
 internal fun initDataLayer(appDir: File): DatabaseHandler = initDataLayer(
+    desktopPaths(appDir),
+)
+
+private fun desktopPaths(appDir: File) =
     DesktopPlatformPaths(
         configDir = appDir,
         databaseFile = File(appDir, "mihon.db"),
@@ -194,14 +224,17 @@ internal fun initDataLayer(appDir: File): DatabaseHandler = initDataLayer(
         logsDir = File(appDir, "logs"),
         backupsDir = File(appDir, "backups"),
         testScreenshotsDir = File(appDir, "test-screenshots"),
-    ),
-)
+    )
 
 // ── Extension layer ────────────────────────────────────────────────────────────
 // Extension loader, source manager, extension API.
 // Depends on: data layer (extensionRepoRepository), network layer.
 
 internal fun initExtensionLayer(paths: DesktopPlatformPaths, networkHelper: DesktopNetworkHelper, handler: DatabaseHandler) {
+    registerDesktopExtension(paths, networkHelper, handler)
+}
+
+private fun registerDesktopExtension(paths: DesktopPlatformPaths, networkHelper: DesktopNetworkHelper, handler: DatabaseHandler) {
     val extensionManager = DesktopExtensionManager(
         DesktopExtensionLoader(paths.extensionsDir),
     )
@@ -305,34 +338,8 @@ internal fun initUILayer(
     val updateChapter = Injekt.get<UpdateChapter>()
     val upsertHistory = Injekt.get<UpsertHistory>()
 
-    Injekt.addSingleton(paths)
-    Injekt.addSingleton(DesktopMangaCoverManager(paths.coversDir))
-    val notificationService = DesktopNotificationService()
-    Injekt.addSingleton(notificationService)
-    Injekt.addSingleton(DesktopCategoryManager(categoryRepository))
-    Injekt.addSingleton(
-        LibraryUpdateScheduler(
-            appPreferences = appPreferences,
-            updateChecker = Injekt.get<LibraryUpdateChecker>(),
-            getLibraryManga = Injekt.get<GetLibraryManga>(),
-            sourceManager = Injekt.get<SourceManager>(),
-            categoryRepository = categoryRepository,
-            notificationService = notificationService,
-            creatorDiscoveryService = Injekt.get<CreatorDiscoveryService>(),
-        ),
-    )
-    Injekt.addSingleton(UpdatesPreferences(preferenceStore))
-
-    val downloadPreferences = DesktopDownloadPreferences(preferenceStore)
-    val downloadProvider = mihon.desktop.download.DesktopDownloadProvider(paths.downloadsDir)
-    val downloadManager = mihon.desktop.download.DesktopDownloadManager(
-        provider = downloadProvider,
-        downloadPreferences = downloadPreferences,
-    )
-    downloadManager.start()
-    Injekt.addSingleton(downloadPreferences)
-    Injekt.addSingleton(downloadProvider)
-    Injekt.addSingleton(downloadManager)
+    val notificationService = registerDesktopLibrary(paths, preferenceStore, categoryRepository, appPreferences)
+    val (downloadPreferences, downloadManager) = registerDesktopDownload(paths, preferenceStore)
 
     Injekt.addSingleton(DesktopJsEngine())
     Injekt.addSingleton(
@@ -351,7 +358,74 @@ internal fun initUILayer(
         ),
     )
 
-    val autoBackupScheduler = mihon.desktop.backup.AutoBackupScheduler(
+    val autoBackupScheduler = registerDesktopBackup(
+        appPreferences,
+        mangaRepository,
+        chapterRepository,
+        categoryRepository,
+        historyRepository,
+    )
+    Injekt.addSingleton(
+        mihon.desktop.DesktopAppRuntime.create(
+            libraryUpdateScheduler = Injekt.get<LibraryUpdateScheduler>(),
+            localSourceScanService = Injekt.get<LocalSourceScanService>(),
+            autoBackupScheduler = autoBackupScheduler,
+            readerModeMemoryCleaner = Injekt.get<ReaderModeMemoryCleaner>(),
+        ),
+    )
+}
+
+private fun registerDesktopLibrary(
+    paths: DesktopPlatformPaths,
+    preferenceStore: PreferenceStore,
+    categoryRepository: CategoryRepository,
+    appPreferences: DesktopAppPreferences,
+): DesktopNotificationService {
+    Injekt.addSingleton(paths)
+    Injekt.addSingleton(DesktopMangaCoverManager(paths.coversDir))
+    val notificationService = DesktopNotificationService()
+    Injekt.addSingleton(notificationService)
+    Injekt.addSingleton(DesktopCategoryManager(categoryRepository))
+    Injekt.addSingleton(
+        LibraryUpdateScheduler(
+            appPreferences = appPreferences,
+            updateChecker = Injekt.get<LibraryUpdateChecker>(),
+            getLibraryManga = Injekt.get<GetLibraryManga>(),
+            sourceManager = Injekt.get<SourceManager>(),
+            categoryRepository = categoryRepository,
+            notificationService = notificationService,
+            creatorDiscoveryService = Injekt.get<CreatorDiscoveryService>(),
+        ),
+    )
+    Injekt.addSingleton(UpdatesPreferences(preferenceStore))
+    return notificationService
+}
+
+private fun registerDesktopDownload(
+    paths: DesktopPlatformPaths,
+    preferenceStore: PreferenceStore,
+): Pair<DesktopDownloadPreferences, mihon.desktop.download.DesktopDownloadManager> {
+    val downloadPreferences = DesktopDownloadPreferences(preferenceStore)
+    val downloadProvider = mihon.desktop.download.DesktopDownloadProvider(paths.downloadsDir)
+    val downloadManager = mihon.desktop.download.DesktopDownloadManager(
+        provider = downloadProvider,
+        downloadPreferences = downloadPreferences,
+    )
+    downloadManager.start()
+    Injekt.addSingleton(downloadPreferences)
+    Injekt.addSingleton(downloadProvider)
+    Injekt.addSingleton(downloadManager)
+    return downloadPreferences to downloadManager
+}
+
+private fun registerDesktopBackup(
+    appPreferences: DesktopAppPreferences,
+    mangaRepository: MangaRepository,
+    chapterRepository: ChapterRepository,
+    categoryRepository: CategoryRepository,
+    historyRepository: HistoryRepository,
+): mihon.desktop.backup.AutoBackupScheduler {
+    val scheduler = mihon.desktop.backup.AutoBackupScheduler(
         appPreferences = appPreferences,
         mangaRepository = mangaRepository,
         chapterRepository = chapterRepository,
@@ -361,15 +435,8 @@ internal fun initUILayer(
             Injekt.get<GetExcludedScanlators>().await(mangaId).toList()
         },
     )
-    Injekt.addSingleton(autoBackupScheduler)
-    Injekt.addSingleton(
-        mihon.desktop.DesktopAppRuntime.create(
-            libraryUpdateScheduler = Injekt.get<LibraryUpdateScheduler>(),
-            localSourceScanService = Injekt.get<LocalSourceScanService>(),
-            autoBackupScheduler = autoBackupScheduler,
-            readerModeMemoryCleaner = Injekt.get<ReaderModeMemoryCleaner>(),
-        ),
-    )
+    Injekt.addSingleton(scheduler)
+    return scheduler
 }
 
 /**

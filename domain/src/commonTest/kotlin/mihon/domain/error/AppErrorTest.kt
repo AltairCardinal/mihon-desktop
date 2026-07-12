@@ -17,4 +17,21 @@ class AppErrorTest {
         assertEquals(cause, error.cause)
         assertInstanceOf(AppError.Network::class.java, partial.failures.single())
     }
+
+    @Test
+    fun `错误契约包含全部结构化 variant`() {
+        val variants = listOf(
+            AppError.Network(),
+            AppError.Authentication(),
+            AppError.Challenge(),
+            AppError.Permission(),
+            AppError.MalformedData(),
+            AppError.Storage(),
+            AppError.Cancelled,
+            AppError.PartialFailure(emptyList()),
+            AppError.Unknown(),
+        )
+
+        assertEquals(9, variants.map { it::class }.distinct().size)
+    }
 }

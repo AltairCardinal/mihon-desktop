@@ -22,6 +22,7 @@ enum class LibraryUpdateInterval(val hours: Long) {
     fun toMillis(): Long = hours * 3_600_000L
 }
 
+/** App preferences migrate eagerly when each lazy public preference is first accessed. */
 class DesktopAppPreferences(
     private val store: PreferenceStore,
     private val legacy: Preferences = Preferences.userRoot().node("mihon/desktop/app"),
