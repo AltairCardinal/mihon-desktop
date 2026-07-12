@@ -47,6 +47,10 @@ import mihon.desktop.ui.migration.MigrationSearchScreen
 
 class MoreRootScreen : Screen {
 
+    companion object {
+        fun backupSettingsDestination(): Screen = BackupSettingsScreen()
+    }
+
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     override fun Content() {
@@ -108,7 +112,7 @@ class MoreRootScreen : Screen {
                         icon = Icons.Default.SaveAlt,
                         title = "Backup and Restore",
                         subtitle = "Create or restore .tachibk backups",
-                        onClick = { navigator.push(BackupSettingsScreen()) },
+                        onClick = { navigator.push(backupSettingsDestination()) },
                     )
                     HorizontalDivider()
                 }

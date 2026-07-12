@@ -40,6 +40,17 @@ class FakeMangaRepository : MangaRepository {
             dateAdded = update.dateAdded ?: existing.dateAdded,
             initialized = update.initialized ?: existing.initialized,
             viewerFlags = update.viewerFlags ?: existing.viewerFlags,
+            chapterFlags = update.chapterFlags ?: existing.chapterFlags,
+            title = update.title ?: existing.title,
+            artist = update.artist ?: existing.artist,
+            author = update.author ?: existing.author,
+            description = update.description ?: existing.description,
+            genre = update.genre ?: existing.genre,
+            status = update.status ?: existing.status,
+            thumbnailUrl = update.thumbnailUrl ?: existing.thumbnailUrl,
+            updateStrategy = update.updateStrategy ?: existing.updateStrategy,
+            version = update.version ?: existing.version,
+            notes = update.notes ?: existing.notes,
         )
         return true
     }

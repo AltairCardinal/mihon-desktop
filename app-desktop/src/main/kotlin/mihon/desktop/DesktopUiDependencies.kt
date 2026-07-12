@@ -2,6 +2,7 @@ package mihon.desktop
 
 import androidx.compose.runtime.compositionLocalOf
 import kotlinx.coroutines.flow.Flow
+import mihon.desktop.backup.BackupRestoreScreenModelFactory
 import mihon.desktop.domain.DesktopCategoryManager
 import mihon.desktop.domain.DesktopMangaCoverManager
 import mihon.desktop.domain.DesktopMigrateMangaUseCase
@@ -42,6 +43,7 @@ import uy.kohesive.injekt.api.get
 
 data class DesktopUiDependencies(
     val appPreferences: DesktopAppPreferences,
+    val backupRestoreScreenModelFactory: BackupRestoreScreenModelFactory,
     val categoryManager: DesktopCategoryManager,
     val categoryRepository: CategoryRepository,
     val chapterRepository: ChapterRepository,
@@ -88,6 +90,7 @@ data class DesktopUiDependencies(
         fun fromInjekt(): DesktopUiDependencies {
             return DesktopUiDependencies(
                 appPreferences = Injekt.get(),
+                backupRestoreScreenModelFactory = Injekt.get(),
                 categoryManager = Injekt.get(),
                 categoryRepository = Injekt.get(),
                 chapterRepository = Injekt.get(),

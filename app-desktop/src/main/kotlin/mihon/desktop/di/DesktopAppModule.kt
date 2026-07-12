@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.serialization.json.Json
 import mihon.desktop.extension.DesktopExtensionLoader
+import mihon.desktop.backup.BackupRestoreScreenModelFactory
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.source.DesktopSourceManager
 import eu.kanade.tachiyomi.network.NetworkHelper
@@ -58,6 +59,7 @@ import tachiyomi.data.category.CategoryRepositoryImpl
 import tachiyomi.data.chapter.ChapterRepositoryImpl
 import tachiyomi.data.creator.CreatorRepositoryImpl
 import tachiyomi.data.history.HistoryRepositoryImpl
+import tachiyomi.data.track.TrackRepositoryImpl
 import tachiyomi.data.manga.MangaRepositoryImpl
 import tachiyomi.data.updates.UpdatesRepositoryImpl
 import tachiyomi.data.release.DesktopPlatformInfo
@@ -75,6 +77,7 @@ import tachiyomi.domain.history.interactor.GetHistory
 import tachiyomi.domain.history.interactor.RemoveHistory
 import tachiyomi.domain.history.interactor.UpsertHistory
 import tachiyomi.domain.history.repository.HistoryRepository
+import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.updates.interactor.GetUpdates
 import tachiyomi.domain.updates.repository.UpdatesRepository
 import tachiyomi.domain.updates.service.UpdatesPreferences
@@ -197,6 +200,7 @@ internal fun initDataLayer(paths: DesktopPlatformPaths): DatabaseHandler {
     val updatesRepository: UpdatesRepository = UpdatesRepositoryImpl(handler)
     val creatorRepository: CreatorRepository = CreatorRepositoryImpl(handler)
     val extensionRepoRepository: ExtensionRepoRepository = ExtensionRepoRepositoryImpl(handler)
+    val trackRepository: TrackRepository = TrackRepositoryImpl(handler)
     Injekt.addSingleton(mangaRepository)
     Injekt.addSingleton(chapterRepository)
     Injekt.addSingleton(categoryRepository)
@@ -204,6 +208,7 @@ internal fun initDataLayer(paths: DesktopPlatformPaths): DatabaseHandler {
     Injekt.addSingleton(updatesRepository)
     Injekt.addSingleton(creatorRepository)
     Injekt.addSingleton(extensionRepoRepository)
+    Injekt.addSingleton(trackRepository)
     return handler
 }
 
@@ -336,6 +341,20 @@ internal fun initUILayer(
     val appPreferences = Injekt.get<DesktopAppPreferences>()
     val updateChapter = Injekt.get<UpdateChapter>()
     val upsertHistory = Injekt.get<UpsertHistory>()
+
+    Injekt.addSingleton(
+        BackupRestoreScreenModelFactory(
+            mangaRepository = mangaRepository,
+            chapterRepository = chapterRepository,
+            categoryRepository = categoryRepository,
+            historyRepository = historyRepository,
+            getExcludedScanlators = Injekt.get(),
+            setExcludedScanlators = Injekt.get(),
+            trackRepository = Injekt.get(),
+            preferenceStore = preferenceStore,
+            extensionRepoRepository = Injekt.get(),
+        ),
+    )
 
     val notificationService = registerDesktopLibrary(paths, preferenceStore, categoryRepository, appPreferences)
     val (downloadPreferences, downloadManager) = registerDesktopDownload(paths, preferenceStore)

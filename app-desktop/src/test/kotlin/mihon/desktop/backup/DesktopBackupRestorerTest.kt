@@ -1,5 +1,6 @@
 package mihon.desktop.backup
 
+import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import kotlinx.coroutines.test.runTest
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import mihon.desktop.domain.fakes.FakeCategoryRepository
@@ -15,12 +16,196 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.util.prefs.Preferences
+import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.core.common.preference.DesktopPreferenceStore
+import tachiyomi.domain.track.repository.TrackRepository
+import tachiyomi.domain.track.model.Track
+import mihon.domain.extensionrepo.repository.ExtensionRepoRepository
+import mihon.domain.extensionrepo.model.ExtensionRepo
+import kotlinx.coroutines.flow.flowOf
+import mihon.desktop.backup.models.*
+import tachiyomi.data.Database
+import tachiyomi.data.DateColumnAdapter
+import tachiyomi.data.JvmDatabaseHandler
+import tachiyomi.data.StringListColumnAdapter
+import tachiyomi.data.UpdateStrategyColumnAdapter
+import tachiyomi.data.category.CategoryRepositoryImpl
+import tachiyomi.data.chapter.ChapterRepositoryImpl
+import tachiyomi.data.history.HistoryRepositoryImpl
+import tachiyomi.data.manga.MangaRepositoryImpl
 
 /**
  * RED tests for DesktopBackupRestorer.
  * These tests define the expected contract before implementation exists.
  */
 class DesktopBackupRestorerTest {
+
+    @Test
+    fun `restore history uses Android non-regressing merge semantics with real SQL repository`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        try {
+            Database.Schema.create(driver)
+            val database = Database(
+                driver = driver,
+                historyAdapter = tachiyomi.data.History.Adapter(last_readAdapter = DateColumnAdapter),
+                mangasAdapter = tachiyomi.data.Mangas.Adapter(
+                    genreAdapter = StringListColumnAdapter,
+                    update_strategyAdapter = UpdateStrategyColumnAdapter,
+                ),
+            )
+            val handler = JvmDatabaseHandler(database, driver)
+            val mangaRepository = MangaRepositoryImpl(handler)
+            val chapterRepository = ChapterRepositoryImpl(handler)
+            val historyRepository = HistoryRepositoryImpl(handler)
+            val restorer = DesktopBackupRestorer(
+                mangaRepository = mangaRepository,
+                chapterRepository = chapterRepository,
+                categoryRepository = CategoryRepositoryImpl(handler),
+                historyRepository = historyRepository,
+            )
+            suspend fun restoreHistory(lastRead: Long, readDuration: Long, chapterUrl: String = "/c") {
+                restorer.restore(
+                    Backup(
+                        backupManga = listOf(
+                            BackupManga(
+                                source = 42,
+                                url = "/m",
+                                chapters = listOf(BackupChapter(chapterUrl, chapterUrl)),
+                                history = listOf(BackupHistory(chapterUrl, lastRead, readDuration)),
+                            ),
+                        ),
+                    ),
+                )
+            }
+
+            restoreHistory(lastRead = 200, readDuration = 100)
+            restoreHistory(lastRead = 100, readDuration = 120)
+            restoreHistory(lastRead = 300, readDuration = 80)
+            restoreHistory(lastRead = 400, readDuration = 50, chapterUrl = "/new")
+
+            val histories = historyRepository.getHistoryByMangaId(1).associateBy { history -> history.chapterId }
+            assertEquals(2, histories.size)
+            assertEquals(120, histories.getValue(1).readDuration)
+            assertEquals(300, histories.getValue(1).readAt?.time)
+            assertEquals(50, histories.getValue(2).readDuration)
+            assertEquals(400, histories.getValue(2).readAt?.time)
+        } finally {
+            driver.close()
+        }
+    }
+
+    @Test
+    fun `existing initialized manga restores canonical state and newer bibliography`() = runTest {
+        val mangas = FakeMangaRepository().apply {
+            seed(Manga.create().copy(id = 10, source = 42, url = "/m", title = "Old", initialized = true, version = 1))
+        }
+        val restorer = restorer(mangaRepository = mangas)
+
+        restorer.restore(Backup(backupManga = listOf(BackupManga(
+            source = 42, url = "/m", title = "Backup", author = "Author", favorite = true,
+            dateAdded = 123, viewer = 1, viewer_flags = 2, chapterFlags = 3,
+            updateStrategy = UpdateStrategy.ONLY_FETCH_ONCE, initialized = true, version = 7, notes = "note",
+        ))))
+
+        val restored = requireNotNull(mangas.get(10))
+        assertEquals("Backup", restored.title)
+        assertEquals("Author", restored.author)
+        assertEquals(true, restored.favorite)
+        assertEquals(123, restored.dateAdded)
+        assertEquals(2, restored.viewerFlags)
+        assertEquals(3, restored.chapterFlags)
+        assertEquals(UpdateStrategy.ONLY_FETCH_ONCE, restored.updateStrategy)
+        assertEquals(7, restored.version)
+        assertEquals("note", restored.notes)
+    }
+
+    @Test
+    fun `existing chapter merges every field without regressing local reading progress`() = runTest {
+        val mangas = FakeMangaRepository().apply { seed(Manga.create().copy(id = 1, source = 42, url = "/m")) }
+        val chapters = FakeChapterRepository().apply {
+            seed(Chapter.create().copy(id = 5, mangaId = 1, url = "/c", read = true, bookmark = true, lastPageRead = 9))
+        }
+        val history = FakeHistoryRepository()
+        val restorer = DesktopBackupRestorer(mangas, chapters, FakeCategoryRepository(), history)
+
+        restorer.restore(Backup(backupManga = listOf(BackupManga(42, "/m", chapters = listOf(
+            BackupChapter("/c", "Renamed", "Group", read = false, bookmark = false, lastPageRead = 2,
+                dateFetch = 10, dateUpload = 11, chapterNumber = 12f, sourceOrder = 13, lastModifiedAt = 14, version = 15),
+        ), history = listOf(BackupHistory("/c", 100, 321))))))
+
+        val restored = requireNotNull(chapters.getChapterById(5))
+        assertEquals("Renamed", restored.name)
+        assertEquals("Group", restored.scanlator)
+        assertEquals(true, restored.read)
+        assertEquals(true, restored.bookmark)
+        assertEquals(9, restored.lastPageRead)
+        assertEquals(10, restored.dateFetch)
+        assertEquals(11, restored.dateUpload)
+        assertEquals(12.0, restored.chapterNumber)
+        assertEquals(13, restored.sourceOrder)
+        assertEquals(15, restored.version)
+        assertEquals(321, history.upserted.single().sessionReadDuration)
+    }
+
+    @Test
+    fun `first Desktop protobuf fixture follows the current restore chain`() = runTest {
+        val mangaRepository = FakeMangaRepository()
+        val chapterRepository = FakeChapterRepository()
+        val categoryRepository = FakeCategoryRepository()
+        val historyRepository = FakeHistoryRepository()
+        val tracks = mutableListOf<Track>()
+        val backup = DesktopBackupCreator.decodeFromBytes(
+            requireNotNull(javaClass.getResourceAsStream("/backup/desktop-first-writer.tachibk")).readBytes(),
+        )
+        val result = DesktopBackupRestorer(
+            mangaRepository,
+            chapterRepository,
+            categoryRepository,
+            historyRepository,
+            trackRepository = recordingTrackRepository(tracks),
+        ).restore(backup)
+
+        assertEquals(1, result.successCount)
+        assertEquals(false, result.hasErrors)
+        val manga = requireNotNull(mangaRepository.get(1L))
+        assertEquals("Historical Desktop manga", manga.title)
+        assertEquals(13L, manga.viewerFlags)
+        assertEquals(21L, manga.chapterFlags)
+        assertEquals("Desktop notes", manga.notes)
+        assertEquals(9L, tracks.single().trackerId)
+        assertEquals(15L, tracks.single().remoteId)
+        assertEquals("Desktop tracked title", tracks.single().title)
+    }
+
+    @Test
+    fun `restore reports every category and manga as processed including partial failures`() = runTest {
+        val progress = mutableListOf<RestoreProgress>()
+        val restorer = DesktopBackupRestorer(
+            mangaRepository = FakeMangaRepository(),
+            chapterRepository = FakeChapterRepository(),
+            categoryRepository = FakeCategoryRepository(),
+            historyRepository = FakeHistoryRepository(),
+            setExcludedScanlatorsForManga = { _, _ -> error("scanlator failure") },
+        )
+
+        val result = restorer.restore(
+            Backup(
+                backupCategories = listOf(BackupCategory("Action", 0)),
+                backupManga = listOf(
+                    BackupManga(1, "/ok"),
+                    BackupManga(1, "/partial", excludedScanlators = listOf("Group")),
+                ),
+            ),
+            onProgress = { progress += it },
+        )
+
+        assertEquals(listOf(1, 2, 3), progress.map { it.completed })
+        assertEquals(listOf(3, 3, 3), progress.map { it.total })
+        assertEquals(3, progress.last().completed)
+        assertEquals(1, result.errors.size)
+    }
 
     @TempDir
     lateinit var tempDir: File
@@ -144,6 +329,124 @@ class DesktopBackupRestorerTest {
 
         assertEquals(1, result.successCount)
         assertEquals(0x22L, mangaRepository.get(1L)?.viewerFlags)
+    }
+
+    @Test
+    fun `restore prefers canonical viewer flags over legacy viewer`() = runTest {
+        val mangaRepository = FakeMangaRepository()
+        val restorer = restorer(mangaRepository = mangaRepository)
+
+        restorer.restore(Backup(backupManga = listOf(BackupManga(42, "/m", viewer = 1, viewer_flags = 0x66))))
+
+        assertEquals(0x66L, mangaRepository.get(1L)?.viewerFlags)
+    }
+
+    @Test
+    fun `restore persists tracking preferences source preferences and extension repositories field by field`() = runTest {
+        val appNode = Preferences.userRoot().node("/mihon-test/restore-${System.nanoTime()}")
+        val sourceNode = Preferences.userRoot().node("/mihon-test/source-${System.nanoTime()}")
+        val appStore = DesktopPreferenceStore(appNode)
+        val sourceStore = DesktopPreferenceStore(sourceNode)
+        val tracks = mutableListOf<Track>()
+        val repos = mutableListOf<ExtensionRepo>()
+        val restorer = restorer(
+            trackRepository = recordingTrackRepository(tracks),
+            preferenceStore = appStore,
+            sourcePreferenceStore = { sourceStore },
+            extensionRepoRepository = recordingExtensionRepoRepository(repos),
+        )
+        val tracking = BackupTracking(
+            syncId = 7, libraryId = 8, mediaId = 9, trackingUrl = "https://track", title = "Tracked",
+            lastChapterRead = 3.5f, totalChapters = 10, score = 8.5f, status = 2,
+            startedReadingDate = 11, finishedReadingDate = 12, private = true,
+        )
+        val repo = BackupExtensionRepos("https://repo", "Repo", "R", "https://site", "fingerprint")
+
+        val result = restorer.restore(
+            Backup(
+                backupManga = listOf(BackupManga(42, "/m", title = "M", tracking = listOf(tracking))),
+                backupPreferences = listOf(
+                    BackupPreference("int", IntPreferenceValue(1)),
+                    BackupPreference("long", LongPreferenceValue(2)),
+                    BackupPreference("float", FloatPreferenceValue(3.5f)),
+                    BackupPreference("string", StringPreferenceValue("value")),
+                    BackupPreference("boolean", BooleanPreferenceValue(true)),
+                    BackupPreference("set", StringSetPreferenceValue(setOf("a", "b"))),
+                ),
+                backupSourcePreferences = listOf(
+                    BackupSourcePreferences("42", listOf(BackupPreference("lang", StringPreferenceValue("en")))),
+                ),
+                backupExtensionRepo = listOf(repo),
+            ),
+        )
+
+        assertEquals(false, result.hasErrors)
+        assertEquals(7L, tracks.single().trackerId)
+        assertEquals(1L, tracks.single().mangaId)
+        assertEquals(9L, tracks.single().remoteId)
+        assertEquals(8L, tracks.single().libraryId)
+        assertEquals("Tracked", tracks.single().title)
+        assertEquals(3.5, tracks.single().lastChapterRead)
+        assertEquals(10L, tracks.single().totalChapters)
+        assertEquals(8.5, tracks.single().score)
+        assertEquals(2L, tracks.single().status)
+        assertEquals("https://track", tracks.single().remoteUrl)
+        assertEquals(11L, tracks.single().startDate)
+        assertEquals(12L, tracks.single().finishDate)
+        assertEquals(true, tracks.single().private)
+        assertEquals(1, appStore.getInt("int").get())
+        assertEquals(2L, appStore.getLong("long").get())
+        assertEquals(3.5f, appStore.getFloat("float").get())
+        assertEquals("value", appStore.getString("string").get())
+        assertEquals(true, appStore.getBoolean("boolean").get())
+        assertEquals(setOf("a", "b"), appStore.getStringSet("set").get())
+        assertEquals("en", sourceStore.getString("lang").get())
+        assertEquals("https://repo", repos.single().baseUrl)
+        assertEquals("Repo", repos.single().name)
+        assertEquals("R", repos.single().shortName)
+        assertEquals("https://site", repos.single().website)
+        assertEquals("fingerprint", repos.single().signingKeyFingerprint)
+        appNode.removeNode()
+        sourceNode.removeNode()
+    }
+
+    private fun restorer(
+        mangaRepository: FakeMangaRepository = FakeMangaRepository(),
+        trackRepository: TrackRepository? = null,
+        preferenceStore: tachiyomi.core.common.preference.PreferenceStore? = null,
+        sourcePreferenceStore: ((Long) -> tachiyomi.core.common.preference.PreferenceStore)? = null,
+        extensionRepoRepository: ExtensionRepoRepository? = null,
+    ) = DesktopBackupRestorer(
+        mangaRepository, FakeChapterRepository(), FakeCategoryRepository(), FakeHistoryRepository(),
+        trackRepository = trackRepository,
+        preferenceStore = preferenceStore,
+        sourcePreferenceStore = sourcePreferenceStore,
+        extensionRepoRepository = extensionRepoRepository,
+    )
+
+    private fun recordingTrackRepository(target: MutableList<Track>) = object : TrackRepository {
+        override suspend fun getTrackById(id: Long) = target.singleOrNull { it.id == id }
+        override suspend fun getTracksByMangaId(mangaId: Long) = target.filter { it.mangaId == mangaId }
+        override fun getTracksAsFlow() = flowOf(target.toList())
+        override fun getTracksByMangaIdAsFlow(mangaId: Long) = flowOf(target.filter { it.mangaId == mangaId })
+        override suspend fun delete(mangaId: Long, syncId: Long) = Unit
+        override suspend fun insert(track: Track) { target += track }
+        override suspend fun insertAll(tracks: List<Track>) { target += tracks }
+    }
+
+    private fun recordingExtensionRepoRepository(target: MutableList<ExtensionRepo>) = object : ExtensionRepoRepository {
+        override fun subscribeAll() = flowOf(target.toList())
+        override suspend fun getAll() = target.toList()
+        override suspend fun getRepo(baseUrl: String) = target.singleOrNull { it.baseUrl == baseUrl }
+        override suspend fun getRepoBySigningKeyFingerprint(fingerprint: String) = target.singleOrNull { it.signingKeyFingerprint == fingerprint }
+        override fun getCount() = flowOf(target.size)
+        override suspend fun insertRepo(baseUrl: String, name: String, shortName: String?, website: String, signingKeyFingerprint: String) = upsertRepo(baseUrl, name, shortName, website, signingKeyFingerprint)
+        override suspend fun upsertRepo(baseUrl: String, name: String, shortName: String?, website: String, signingKeyFingerprint: String) {
+            target.removeAll { it.baseUrl == baseUrl }
+            target += ExtensionRepo(baseUrl, name, shortName, website, signingKeyFingerprint)
+        }
+        override suspend fun replaceRepo(newRepo: ExtensionRepo) { upsertRepo(newRepo) }
+        override suspend fun deleteRepo(baseUrl: String) { target.removeAll { it.baseUrl == baseUrl } }
     }
 
     @Test

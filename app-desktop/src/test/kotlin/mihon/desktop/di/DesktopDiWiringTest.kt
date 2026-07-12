@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import mihon.desktop.backup.AutoBackupScheduler
+import mihon.desktop.backup.BackupRestoreScreenModelFactory
 import mihon.desktop.domain.LibraryUpdateScheduler
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.extension.DesktopExtensionManager
@@ -22,6 +23,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.core.common.preference.PreferenceStore
+import tachiyomi.domain.track.repository.TrackRepository
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
@@ -41,6 +43,8 @@ class DesktopDiWiringTest {
         assertNotNull(Injekt.get<DesktopDownloadManager>())
         assertNotNull(Injekt.get<AutoBackupScheduler>())
         assertNotNull(Injekt.get<DesktopExtensionManager>())
+        assertNotNull(Injekt.get<TrackRepository>())
+        assertNotNull(Injekt.get<BackupRestoreScreenModelFactory>())
         assertNotNull(LibraryScreenModelFactory.create())
 
         val preference = Injekt.get<PreferenceStore>().getString("wiring_observe", "initial")

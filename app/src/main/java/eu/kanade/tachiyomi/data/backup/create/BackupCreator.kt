@@ -17,13 +17,10 @@ import eu.kanade.tachiyomi.data.backup.models.BackupManga
 import eu.kanade.tachiyomi.data.backup.models.BackupPreference
 import eu.kanade.tachiyomi.data.backup.models.BackupSource
 import eu.kanade.tachiyomi.data.backup.models.BackupSourcePreferences
-import kotlinx.serialization.protobuf.ProtoBuf
 import logcat.LogPriority
-import okio.buffer
-import okio.gzip
-import okio.sink
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.system.logcat
+import tachiyomi.data.backup.BackupCodec
 import tachiyomi.domain.backup.service.BackupPreferences
 import tachiyomi.domain.manga.interactor.GetFavorites
 import tachiyomi.domain.manga.model.Manga
@@ -41,7 +38,6 @@ class BackupCreator(
     private val context: Context,
     private val isAutoBackup: Boolean,
 
-    private val parser: ProtoBuf = Injekt.get(),
     private val getFavorites: GetFavorites = Injekt.get(),
     private val backupPreferences: BackupPreferences = Injekt.get(),
     private val mangaRepository: MangaRepository = Injekt.get(),
@@ -89,7 +85,7 @@ class BackupCreator(
                 backupSourcePreferences = backupSourcePreferences(options),
             )
 
-            val byteArray = parser.encodeToByteArray(Backup.serializer(), backup)
+            val byteArray = encodeForBackup(backup)
             if (byteArray.isEmpty()) {
                 throw IllegalStateException(context.stringResource(MR.strings.empty_backup_error))
             }
@@ -99,9 +95,7 @@ class BackupCreator(
                     // Force overwrite old file
                     (it as? FileOutputStream)?.channel?.truncate(0)
                 }
-                .sink().gzip().buffer().use {
-                    it.write(byteArray)
-                }
+                .use { it.write(byteArray) }
             val fileUri = file.uri
 
             // Make sure it's a valid backup file
@@ -161,5 +155,8 @@ class BackupCreator(
             val date = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.ENGLISH).format(Date())
             return "${BuildConfig.APPLICATION_ID}_$date.tachibk"
         }
+
+        internal fun encodeForBackup(backup: Backup): ByteArray =
+            BackupCodec.encode(Backup.serializer(), backup)
     }
 }

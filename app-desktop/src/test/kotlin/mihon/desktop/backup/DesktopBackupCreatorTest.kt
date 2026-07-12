@@ -13,12 +13,18 @@ import mihon.desktop.backup.models.Backup
 import mihon.desktop.backup.models.BackupCategory
 import mihon.desktop.backup.models.BackupChapter
 import mihon.desktop.backup.models.BackupManga
+import mihon.desktop.backup.models.BooleanPreferenceValue
+import mihon.desktop.backup.models.StringPreferenceValue
+import mihon.desktop.domain.fakes.FakeExtensionRepoRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.track.model.Track
+import tachiyomi.domain.track.repository.TrackRepository
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import java.io.File
 
 /**
@@ -151,6 +157,10 @@ class DesktopBackupCreatorTest {
             chapterRepository = FakeChapterRepository(),
             categoryRepository = FakeCategoryRepository(),
             historyRepository = FakeHistoryRepository(),
+            trackRepository = trackRepositoryOf(),
+            preferenceStore = preferenceStoreOf(),
+            sourcePreferenceStore = { preferenceStoreOf() },
+            extensionRepoRepository = FakeExtensionRepoRepository(),
         )
 
         assertEquals(viewerFlags.toInt(), backup.backupManga.single().viewer)
@@ -177,6 +187,10 @@ class DesktopBackupCreatorTest {
             chapterRepository = FakeChapterRepository(),
             categoryRepository = FakeCategoryRepository(),
             historyRepository = FakeHistoryRepository(),
+            trackRepository = trackRepositoryOf(),
+            preferenceStore = preferenceStoreOf(),
+            sourcePreferenceStore = { preferenceStoreOf() },
+            extensionRepoRepository = FakeExtensionRepoRepository(),
         )
 
         val backupManga = backup.backupManga.single()
@@ -206,8 +220,107 @@ class DesktopBackupCreatorTest {
             excludedScanlatorsForManga = { mangaId ->
                 if (mangaId == 1L) listOf("Group A", "Group B") else emptyList()
             },
+            trackRepository = trackRepositoryOf(),
+            preferenceStore = preferenceStoreOf(),
+            sourcePreferenceStore = { preferenceStoreOf() },
+            extensionRepoRepository = FakeExtensionRepoRepository(),
         )
 
         assertEquals(listOf("Group A", "Group B"), backup.backupManga.single().excludedScanlators)
+    }
+
+    @Test
+    fun `createFromDatabase collects tracking app preferences source preferences and extension repositories`() = runTest {
+        val mangaRepository = FakeMangaRepository().apply {
+            seed(
+                Manga.create().copy(
+                    id = 1L,
+                    source = 42L,
+                    url = "/m/test",
+                    title = "Test Manga",
+                    favorite = true,
+                ),
+            )
+        }
+        val track = Track(
+            id = 7L,
+            mangaId = 1L,
+            trackerId = 3L,
+            remoteId = 99L,
+            libraryId = 12L,
+            title = "Tracked Manga",
+            lastChapterRead = 4.5,
+            totalChapters = 20L,
+            status = 2L,
+            score = 8.5,
+            remoteUrl = "https://tracker/manga/99",
+            startDate = 100L,
+            finishDate = 200L,
+            private = true,
+        )
+        val appPreferences = preferenceStoreOf("theme" to "dark", "show_nsfw" to true)
+        val sourcePreferences = preferenceStoreOf("language" to "en")
+        val extensionRepositories = FakeExtensionRepoRepository().apply {
+            insertRepo("https://repo.example/index.min.json", "Example", "Ex", "https://repo.example", "abc123")
+        }
+
+        val backup = DesktopBackupCreator.createFromDatabase(
+            mangaRepository = mangaRepository,
+            chapterRepository = FakeChapterRepository(),
+            categoryRepository = FakeCategoryRepository(),
+            historyRepository = FakeHistoryRepository(),
+            trackRepository = trackRepositoryOf(track),
+            preferenceStore = appPreferences,
+            sourcePreferenceStore = { sourceId ->
+                assertEquals(42L, sourceId)
+                sourcePreferences
+            },
+            extensionRepoRepository = extensionRepositories,
+        )
+
+        val tracking = backup.backupManga.single().tracking.single()
+        assertEquals(3, tracking.syncId)
+        assertEquals(99L, tracking.mediaId)
+        assertEquals(12L, tracking.libraryId)
+        assertEquals("Tracked Manga", tracking.title)
+        assertEquals(4.5f, tracking.lastChapterRead)
+        assertEquals(20, tracking.totalChapters)
+        assertEquals(2, tracking.status)
+        assertEquals(8.5f, tracking.score)
+        assertEquals("https://tracker/manga/99", tracking.trackingUrl)
+        assertEquals(100L, tracking.startedReadingDate)
+        assertEquals(200L, tracking.finishedReadingDate)
+        assertTrue(tracking.private)
+        assertEquals(StringPreferenceValue("dark"), backup.backupPreferences.single { it.key == "theme" }.value)
+        assertEquals(BooleanPreferenceValue(true), backup.backupPreferences.single { it.key == "show_nsfw" }.value)
+        assertEquals("42", backup.backupSourcePreferences.single().sourceKey)
+        assertEquals(
+            StringPreferenceValue("en"),
+            backup.backupSourcePreferences.single().prefs.single { it.key == "language" }.value,
+        )
+        val extensionRepo = backup.backupExtensionRepo.single()
+        assertEquals("https://repo.example/index.min.json", extensionRepo.baseUrl)
+        assertEquals("Example", extensionRepo.name)
+        assertEquals("Ex", extensionRepo.shortName)
+        assertEquals("https://repo.example", extensionRepo.website)
+        assertEquals("abc123", extensionRepo.signingKeyFingerprint)
+    }
+
+    private fun preferenceStoreOf(vararg entries: Pair<String, Any>): tachiyomi.core.common.preference.PreferenceStore {
+        val delegate = InMemoryPreferenceStore()
+        return object : tachiyomi.core.common.preference.PreferenceStore by delegate {
+            override fun getAll(): Map<String, *> = entries.toMap()
+        }
+    }
+
+    private fun trackRepositoryOf(vararg tracks: Track) = object : TrackRepository {
+        override suspend fun getTrackById(id: Long) = tracks.singleOrNull { it.id == id }
+        override suspend fun getTracksByMangaId(mangaId: Long) = tracks.filter { it.mangaId == mangaId }
+        override fun getTracksAsFlow() = kotlinx.coroutines.flow.flowOf(tracks.toList())
+        override fun getTracksByMangaIdAsFlow(mangaId: Long) =
+            kotlinx.coroutines.flow.flowOf(tracks.filter { it.mangaId == mangaId })
+        override suspend fun delete(mangaId: Long, trackerId: Long) = Unit
+        override suspend fun insert(track: Track) = Unit
+        override suspend fun insertAll(tracks: List<Track>) = Unit
     }
 }

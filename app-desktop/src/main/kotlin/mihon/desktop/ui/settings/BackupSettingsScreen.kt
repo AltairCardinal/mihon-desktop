@@ -38,19 +38,13 @@ import androidx.compose.ui.unit.dp
 import mihon.desktop.backup.AutoBackupInterval
 import mihon.desktop.settings.DesktopAppPreferences
 import cafe.adriel.voyager.core.screen.Screen
+import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import mihon.desktop.backup.DesktopBackupCreator
-import mihon.desktop.backup.DesktopBackupRestorer
-import mihon.desktop.domain.GetExcludedScanlators
-import mihon.desktop.domain.SetExcludedScanlators
-import tachiyomi.domain.category.repository.CategoryRepository
-import tachiyomi.domain.chapter.repository.ChapterRepository
-import tachiyomi.domain.history.repository.HistoryRepository
-import tachiyomi.domain.manga.repository.MangaRepository
+import mihon.desktop.backup.BackupPreview
 import java.io.File
 import javax.swing.JFileChooser
 import javax.swing.SwingUtilities
@@ -73,12 +67,10 @@ class BackupSettingsScreen : Screen {
         val autoBackupMaxFiles by appPrefs.autoBackupMaxFiles.changes()
             .collectAsState(initial = appPrefs.autoBackupMaxFiles.get())
 
-        val mangaRepo = LocalDesktopUiDependencies.current.mangaRepository
-        val chapterRepo = LocalDesktopUiDependencies.current.chapterRepository
-        val categoryRepo = LocalDesktopUiDependencies.current.categoryRepository
-        val historyRepo = LocalDesktopUiDependencies.current.historyRepository
-        val getExcludedScanlators = LocalDesktopUiDependencies.current.getExcludedScanlators
-        val setExcludedScanlators = LocalDesktopUiDependencies.current.setExcludedScanlators
+        val backupFactory = LocalDesktopUiDependencies.current.backupRestoreScreenModelFactory
+
+        val restoreModel = rememberScreenModel { backupFactory.create() }
+        val restoreState by restoreModel.state.collectAsState()
 
         // ── Restore error dialog ──────────────────────────────────────────────
         restoreErrors?.let { errors ->
@@ -100,6 +92,24 @@ class BackupSettingsScreen : Screen {
                 confirmButton = {
                     TextButton(onClick = { restoreErrors = null }) { Text("OK") }
                 },
+            )
+        }
+
+        (restoreState as? BackupRestoreUiState.Preview)?.let { preview ->
+            AlertDialog(
+                onDismissRequest = restoreModel::cancel,
+                title = { Text("确认恢复备份？") },
+                text = {
+                    Column {
+                        Text("将把缺失数据合并到当前资料库；现有条目会保留。")
+                        Spacer(Modifier.height(8.dp))
+                        BackupPreviewText(preview.summary)
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = restoreModel::confirmRestore) { Text("确认恢复") }
+                },
+                dismissButton = { TextButton(onClick = restoreModel::cancel) { Text("取消") } },
             )
         }
 
@@ -138,20 +148,7 @@ class BackupSettingsScreen : Screen {
                             val dir = chooseDirectory("Choose backup folder") ?: return@launch
                             isBusy = true
                             try {
-                                val backup = withContext(Dispatchers.IO) {
-                                    DesktopBackupCreator.createFromDatabase(
-                                        mangaRepo,
-                                        chapterRepo,
-                                        categoryRepo,
-                                        historyRepo,
-                                        excludedScanlatorsForManga = { mangaId ->
-                                            getExcludedScanlators.await(mangaId).toList()
-                                        },
-                                    )
-                                }
-                                val file = withContext(Dispatchers.IO) {
-                                    DesktopBackupCreator.writeBackupFile(backup, dir)
-                                }
+                                val file = backupFactory.createBackup(dir)
                                 snackbar.showSnackbar("Backup saved: ${file.name}")
                             } catch (e: Exception) {
                                 snackbar.showSnackbar("Backup failed: ${e.message}")
@@ -183,43 +180,16 @@ class BackupSettingsScreen : Screen {
                     onClick = {
                         scope.launch {
                             val file = chooseBackupFile() ?: return@launch
-                            isBusy = true
-                            try {
-                                val backup = withContext(Dispatchers.IO) {
-                                    DesktopBackupCreator.readBackupFile(file)
-                                }
-                                if (backup == null) {
-                                    snackbar.showSnackbar("Could not read backup file")
-                                    return@launch
-                                }
-                                val restorer = DesktopBackupRestorer(
-                                    mangaRepo,
-                                    chapterRepo,
-                                    categoryRepo,
-                                    historyRepo,
-                                    setExcludedScanlatorsForManga = { mangaId, excluded ->
-                                        setExcludedScanlators.await(mangaId, excluded.toSet())
-                                    },
-                                )
-                                val result = withContext(Dispatchers.IO) {
-                                    restorer.restore(backup)
-                                }
-                                if (result.hasErrors) {
-                                    restoreErrors = result.errors.map { "${it.first}: ${it.second}" }
-                                } else {
-                                    snackbar.showSnackbar("Restored ${result.successCount} entries successfully")
-                                }
-                            } catch (e: Exception) {
-                                snackbar.showSnackbar("Restore failed: ${e.message}")
-                            } finally {
-                                isBusy = false
-                            }
+                            restoreModel.select(file)
                         }
                     },
-                    enabled = !isBusy,
+                    enabled = !isBusy && restoreState !is BackupRestoreUiState.Loading &&
+                        restoreState !is BackupRestoreUiState.Restoring,
                 ) {
-                    Text("Restore Backup")
+                    Text("选择备份文件")
                 }
+                Spacer(Modifier.height(12.dp))
+                RestoreStatus(restoreState, restoreModel::retryRestore, restoreModel::cancel)
 
                 Spacer(Modifier.height(32.dp))
                 HorizontalDivider()
@@ -319,4 +289,43 @@ class BackupSettingsScreen : Screen {
             latch.await()
             result
         }
+}
+
+@Composable
+private fun BackupPreviewText(preview: BackupPreview) {
+    Text("漫画 ${preview.mangaCount} · 章节 ${preview.chapterCount} · 分类 ${preview.categoryCount}")
+    Text("追踪 ${preview.trackingCount} · 偏好 ${preview.preferenceCount} · 来源 ${preview.sourceCount}")
+    Text("扩展仓库 ${preview.extensionRepoCount}")
+}
+
+@Composable
+private fun RestoreStatus(
+    state: BackupRestoreUiState,
+    onRetry: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    when (state) {
+        BackupRestoreUiState.Empty -> Text("尚未选择备份文件", style = MaterialTheme.typography.bodySmall)
+        is BackupRestoreUiState.Loading -> {
+            CircularProgressIndicator()
+            Text("正在读取 ${state.fileName}…")
+        }
+        is BackupRestoreUiState.Preview -> BackupPreviewText(state.summary)
+        is BackupRestoreUiState.Restoring -> {
+            CircularProgressIndicator(progress = { state.progress })
+            Text("正在恢复 ${state.fileName}…")
+            Text("${state.completed} / ${state.total}（${(state.progress * 100).toInt()}%）")
+            TextButton(onClick = onCancel) { Text("取消恢复") }
+        }
+        is BackupRestoreUiState.Completed -> Text("恢复完成：成功 ${state.restoredItems} 项")
+        is BackupRestoreUiState.PartialSuccess -> {
+            Text("恢复完成，但以下项目失败：")
+            state.failedUnits.take(10).forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
+        }
+        is BackupRestoreUiState.Failure -> {
+            Text(state.message, color = MaterialTheme.colorScheme.error)
+            if (state.recoverable) TextButton(onClick = onRetry) { Text("重试") }
+        }
+        BackupRestoreUiState.Cancelled -> Text("恢复已取消，可重新选择备份文件")
+    }
 }

@@ -224,20 +224,20 @@
 - Test: `app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCompatibilityTest.kt`
 
 **Interfaces:**
-- Produces: 原版 protobuf `BackupCodec`；`LegacyDesktopBackupReader`；双读单写策略。
-- Consumes: AppError/TaskState、原版 Backup schema 和现有 Desktop legacy models。
+- Produces: 共享 canonical protobuf `BackupCodec`；历史 Android/Desktop protobuf 读取；canonical protobuf 单写策略。
+- Consumes: AppError/TaskState、原版 Backup schema 和历史 Desktop protobuf schema。
 
 - [ ] **Step 1: 保存真实 Android 完整备份和旧 Desktop 备份 fixture**
 - [ ] **Step 2: 写跨端读写失败测试：Desktop 读 Android、Android/shared 读 Desktop 转换结果**
-- [ ] **Step 3: 运行 RED，确认当前 Desktop JSON writer 与原版 protobuf 不兼容**
+- [ ] **Step 3: 运行 RED，确认历史 Android/Desktop protobuf 与 canonical protobuf 的兼容边界**
 - [ ] **Step 4: 将原版 codec/validator 中的平台无关部分迁到 data common**
-- [ ] **Step 5: Desktop creator 改为只写原版 protobuf**
-- [ ] **Step 6: 保留 `LegacyDesktopBackupReader`，读取旧格式后映射到共享模型**
+- [ ] **Step 5: Android/Desktop creator 统一为只写 canonical protobuf**
+- [ ] **Step 6: 通过共享 codec 读取历史 Android/Desktop protobuf，并映射到 canonical 共享模型**
 - [ ] **Step 7: 对漫画、章节、分类、历史、追踪、偏好、源、扩展仓库逐字段断言**
 - [ ] **Step 8: 为损坏、未知版本、部分恢复、取消和磁盘不足写集成测试**
 - [ ] **Step 9: UI 显示预览、进度、逐项结果和可恢复错误**
 - [ ] **Step 10: 运行 Android backup tests、data tests 和 Desktop backup tests**
-- [ ] **Step 11: 删除旧 Desktop writer，但保留至少两个正式版本的 legacy reader**
+- [ ] **Step 11: 删除旧 Desktop writer；通过共享 codec 保留历史 Android/Desktop protobuf 读取兼容**
 - [ ] **Step 12: 更新追踪项 71–74**
 
 ## 8. Task 2B：下载、更新、历史与阅读进度

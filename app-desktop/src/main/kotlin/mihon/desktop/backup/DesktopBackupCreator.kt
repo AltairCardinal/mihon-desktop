@@ -2,32 +2,43 @@
 
 package mihon.desktop.backup
 
-import kotlinx.serialization.decodeFromByteArray
-import kotlinx.serialization.encodeToByteArray
-import kotlinx.serialization.protobuf.ProtoBuf
 import mihon.desktop.backup.models.Backup
 import mihon.desktop.backup.models.BackupCategory
 import mihon.desktop.backup.models.BackupChapter
 import mihon.desktop.backup.models.BackupHistory
 import mihon.desktop.backup.models.BackupManga
+import mihon.desktop.backup.models.BackupPreference
 import mihon.desktop.backup.models.BackupSource
+import mihon.desktop.backup.models.BackupSourcePreferences
+import mihon.desktop.backup.models.BooleanPreferenceValue
+import mihon.desktop.backup.models.FloatPreferenceValue
+import mihon.desktop.backup.models.IntPreferenceValue
+import mihon.desktop.backup.models.LongPreferenceValue
+import mihon.desktop.backup.models.StringPreferenceValue
+import mihon.desktop.backup.models.StringSetPreferenceValue
+import mihon.domain.extensionrepo.repository.ExtensionRepoRepository
+import tachiyomi.core.common.preference.DesktopPreferenceStore
+import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.history.repository.HistoryRepository
 import tachiyomi.domain.manga.repository.MangaRepository
+import tachiyomi.domain.track.repository.TrackRepository
+import tachiyomi.data.backup.BackupCodec
+import eu.kanade.tachiyomi.data.backup.models.backupExtensionReposMapper
+import eu.kanade.tachiyomi.data.backup.models.backupTrackMapper
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import java.util.zip.GZIPInputStream
-import java.util.zip.GZIPOutputStream
+import java.util.prefs.Preferences
 
 /**
  * Creates and reads `.tachibk` backup files in the same protobuf+gzip format
  * as the Android version, enabling cross-platform backup compatibility.
  */
 object DesktopBackupCreator {
-
-    private val proto = ProtoBuf
 
     private val filenameDateFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss-SSS")
 
@@ -37,18 +48,14 @@ object DesktopBackupCreator {
      * Encodes [backup] to gzip-compressed protobuf bytes.
      */
     fun encodeToBytes(backup: Backup): ByteArray {
-        val protoBytes = proto.encodeToByteArray(backup)
-        val buf = java.io.ByteArrayOutputStream()
-        GZIPOutputStream(buf).use { it.write(protoBytes) }
-        return buf.toByteArray()
+        return BackupCodec.encode(Backup.serializer(), backup)
     }
 
     /**
      * Decodes gzip-compressed protobuf [bytes] back to a [Backup] object.
      */
     fun decodeFromBytes(bytes: ByteArray): Backup {
-        val protoBytes = GZIPInputStream(bytes.inputStream()).use { it.readBytes() }
-        return proto.decodeFromByteArray(protoBytes)
+        return BackupCodec.decode(Backup.serializer(), bytes)
     }
 
     // ── File I/O ──────────────────────────────────────────────────────────────
@@ -82,7 +89,7 @@ object DesktopBackupCreator {
      * Returns null if the file cannot be decoded (corrupted, wrong format, empty).
      */
     fun readBackupFile(file: File): Backup? = try {
-        if (!file.exists() || file.length() == 0L) return null
+        if (!file.exists() || file.length() == 0L || file.extension != "tachibk") return null
         decodeFromBytes(file.readBytes())
     } catch (_: Exception) {
         null
@@ -99,6 +106,12 @@ object DesktopBackupCreator {
         categoryRepository: CategoryRepository,
         historyRepository: HistoryRepository,
         excludedScanlatorsForManga: suspend (Long) -> List<String> = { emptyList() },
+        trackRepository: TrackRepository = Injekt.get(),
+        preferenceStore: PreferenceStore = Injekt.get(),
+        sourcePreferenceStore: (Long) -> PreferenceStore = { sourceId ->
+            DesktopPreferenceStore(Preferences.userRoot().node("/mihon/source_$sourceId"))
+        },
+        extensionRepoRepository: ExtensionRepoRepository = Injekt.get(),
     ): Backup {
         val mangas = mangaRepository.getFavorites()
         val allCategories = categoryRepository.getAll()
@@ -113,6 +126,7 @@ object DesktopBackupCreator {
         val backupMangas = mangas.map { manga ->
             val chapters = chapterRepository.getChapterByMangaId(manga.id)
             val history = historyRepository.getHistoryByMangaId(manga.id)
+            val tracking = trackRepository.getTracksByMangaId(manga.id)
             val mangaCategories = categoryRepository.getCategoriesByMangaId(manga.id)
 
             val backupChapters = chapters.map { ch ->
@@ -158,6 +172,24 @@ object DesktopBackupCreator {
                 chapterFlags = manga.chapterFlags.toInt(),
                 chapters = backupChapters,
                 history = backupHistory,
+                tracking = tracking.map { track ->
+                    backupTrackMapper(
+                        track.id,
+                        track.mangaId,
+                        track.trackerId,
+                        track.remoteId,
+                        track.libraryId,
+                        track.title,
+                        track.lastChapterRead,
+                        track.totalChapters,
+                        track.status,
+                        track.score,
+                        track.remoteUrl,
+                        track.startDate,
+                        track.finishDate,
+                        track.private,
+                    )
+                },
                 categories = categoryIndices,
                 updateStrategy = manga.updateStrategy,
                 lastModifiedAt = manga.lastModifiedAt,
@@ -171,11 +203,32 @@ object DesktopBackupCreator {
 
         val sourceIds = mangas.map { it.source }.distinct()
         val backupSources = sourceIds.map { id -> BackupSource(sourceId = id) }
+        val backupSourcePreferences = sourceIds.mapNotNull { sourceId ->
+            sourcePreferenceStore(sourceId).getAll().toBackupPreferences()
+                .takeIf { it.isNotEmpty() }
+                ?.let { BackupSourcePreferences(sourceId.toString(), it) }
+        }
 
         return Backup(
             backupManga = backupMangas,
             backupCategories = backupCategories,
             backupSources = backupSources,
+            backupPreferences = preferenceStore.getAll().toBackupPreferences(),
+            backupSourcePreferences = backupSourcePreferences,
+            backupExtensionRepo = extensionRepoRepository.getAll().map(backupExtensionReposMapper),
         )
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun Map<String, *>.toBackupPreferences(): List<BackupPreference> = mapNotNull { (key, value) ->
+        when (value) {
+            is Int -> BackupPreference(key, IntPreferenceValue(value))
+            is Long -> BackupPreference(key, LongPreferenceValue(value))
+            is Float -> BackupPreference(key, FloatPreferenceValue(value))
+            is String -> BackupPreference(key, StringPreferenceValue(value))
+            is Boolean -> BackupPreference(key, BooleanPreferenceValue(value))
+            is Set<*> -> (value as? Set<String>)?.let { BackupPreference(key, StringSetPreferenceValue(it)) }
+            else -> null
+        }
     }
 }

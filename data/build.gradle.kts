@@ -26,6 +26,12 @@ kotlin {
                 implementation(project.dependencies.platform(kotlinx.coroutines.bom))
                 implementation(kotlinx.coroutines.core)
                 implementation(kotlinx.serialization.json)
+                implementation(kotlinx.serialization.protobuf)
+            }
+        }
+        commonTest {
+            dependencies {
+                implementation(libs.bundles.test)
             }
         }
         androidMain {

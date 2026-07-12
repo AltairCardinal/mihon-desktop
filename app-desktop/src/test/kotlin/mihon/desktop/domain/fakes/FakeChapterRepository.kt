@@ -13,6 +13,11 @@ class FakeChapterRepository : ChapterRepository {
     val addedChapters = mutableListOf<Chapter>()
     val updates = mutableListOf<ChapterUpdate>()
 
+    fun seed(chapter: Chapter) {
+        store[chapter.id] = chapter
+        nextId = maxOf(nextId, chapter.id + 1)
+    }
+
     override suspend fun addAll(chapters: List<Chapter>): List<Chapter> {
         val assigned = chapters.map { ch ->
             val withId = if (ch.id == -1L) ch.copy(id = nextId++) else ch
@@ -31,6 +36,12 @@ class FakeChapterRepository : ChapterRepository {
             lastPageRead = chapterUpdate.lastPageRead ?: existing.lastPageRead,
             bookmark = chapterUpdate.bookmark ?: existing.bookmark,
             chapterNumber = chapterUpdate.chapterNumber ?: existing.chapterNumber,
+            name = chapterUpdate.name ?: existing.name,
+            scanlator = chapterUpdate.scanlator ?: existing.scanlator,
+            dateFetch = chapterUpdate.dateFetch ?: existing.dateFetch,
+            dateUpload = chapterUpdate.dateUpload ?: existing.dateUpload,
+            sourceOrder = chapterUpdate.sourceOrder ?: existing.sourceOrder,
+            version = chapterUpdate.version ?: existing.version,
         )
     }
 

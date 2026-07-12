@@ -38,3 +38,14 @@
 ## 维护方式
 
 只修改 manifest 中对应条目推进状态；本文仅在治理规则或标签语义变化时更新。比较报告原评分保持不变，直到单项达到 `VERIFIED` 或有充分证据达到 `EXEMPT` 后，再单独评审评分变化。
+
+## 71–74 备份对齐进展
+
+| 编号 | 当前阶段 | 证据与剩余门禁 |
+|---:|---|---|
+| 71 手动备份 | WIRED | canonical schema 已迁入 common，Android/Desktop writer 共用 codec；Desktop 已采集漫画、章节、分类、历史、tracking、应用/源偏好、来源和扩展仓库。真实迁移前 Android producer fixture 的可复现来源仍是 VERIFIED 门禁。 |
+| 72 备份恢复 | WIRED | 设置页已有预览、危险确认、确定进度、取消、逐项失败及权限/存储可重试反馈；恢复器已覆盖 canonical 全部数据段。GUI/E2E 与真实跨端 fixture 恢复仍是 VERIFIED 门禁。 |
+| 73 自动备份 | CHARACTERIZED | 既有 scheduler 继续调用统一 writer；退出进程后的平台唤醒能力尚未验证。 |
+| 74 跨端兼容 | SHARED | Android/Desktop 解码及 canonical writer 共用 `BackupCodec`；读取兼容首个 Desktop writer（8c6d18c20）的历史 protobuf 与 canonical protobuf，写入仅生成 Android 相同的 canonical gzip+protobuf。历史 Desktop 与迁移前 Android fixture 均由各自旧 serializer 独立生成并以 SHA-256/逐字段测试锁定；仓库无可归因 JSON writer，故不维护 JSON 分支。 |
+
+这些状态只记录本轮可证实进展；在真实历史 fixture、Android/GUI 集成测试与完整构建验收通过前不得提升为 `VERIFIED`。
