@@ -1,206 +1,72 @@
 package mihon.desktop.reader
 
+import mihon.desktop.settings.migrateFrom
 import mihon.desktop.ui.reader.NavigationMode
 import mihon.desktop.ui.reader.WebtoonAutoScrollSpeed
+import tachiyomi.core.common.preference.DesktopPreferenceStore
+import tachiyomi.core.common.preference.Preference
+import tachiyomi.core.common.preference.PreferenceStore
+import tachiyomi.core.common.preference.getEnum
+import java.util.prefs.Preferences
+import kotlin.reflect.KProperty
 
-/**
- * Persists reader settings across sessions using java.util.prefs.Preferences.
- * Data is stored per-user in the OS preference store (~/.java/.userPrefs on Linux,
- * ~/Library/Preferences on macOS, registry on Windows).
- */
-class ReaderPreferences {
+private operator fun <T> Preference<T>.getValue(thisRef: Any?, property: KProperty<*>): T = get()
+private operator fun <T> Preference<T>.setValue(thisRef: Any?, property: KProperty<*>, value: T) = set(value)
 
-    private val prefs = java.util.prefs.Preferences
-        .userRoot()
-        .node("mihon/desktop/reader")
+class ReaderPreferences(
+    store: PreferenceStore = DesktopPreferenceStore(),
+    private val legacy: Preferences = Preferences.userRoot().node("mihon/desktop/reader"),
+) {
+    private fun <T> Preference<T>.legacy(key: String, read: () -> T?): Preference<T> =
+        migrateFrom(legacy, key) { read() }
 
-    /** Last used reading mode (LTR/RTL/WEBTOON). Does not override chapter-specific flags. */
-    var readingMode: ReadingMode
-        get() = try {
-            ReadingMode.valueOf(prefs.get(KEY_READING_MODE, ReadingMode.LTR.name))
-        } catch (_: Exception) {
-            ReadingMode.LTR
-        }
-        set(value) {
-            prefs.put(KEY_READING_MODE, value.name)
-            prefs.flush()
-        }
+    private val readingModePref = store.getEnum("reader_reading_mode", ReadingMode.LTR)
+        .legacy("readingMode") { legacy.get("readingMode", null)?.let { runCatching { ReadingMode.valueOf(it) }.getOrNull() } }
+    private val navigationModePref = store.getEnum("reader_navigation_mode", NavigationMode.RightAndLeft)
+        .legacy("navigationMode") { legacy.get("navigationMode", null)?.let { runCatching { NavigationMode.valueOf(it) }.getOrNull() } }
+    private val dualPagePref = store.getBoolean("reader_dual_page", true).legacy("isDualPage") { legacy.getBoolean("isDualPage", true) }
+    private val autoSplitPref = store.getBoolean("reader_auto_split_pages", false).legacy("autoSplitPages") { legacy.getBoolean("autoSplitPages", false) }
+    private val autoSpreadPref = store.getBoolean("reader_auto_spread_matching", false).legacy("autoSpreadMatching") { legacy.getBoolean("autoSpreadMatching", false) }
+    private val backgroundPref = store.getEnum("reader_background_theme", ReaderBackgroundTheme.DEFAULT)
+        .legacy("backgroundTheme") { legacy.get("backgroundTheme", null)?.let { runCatching { ReaderBackgroundTheme.valueOf(it) }.getOrNull() } }
+    private val cropPagerPref = store.getBoolean("reader_crop_borders_pager", false).legacy("cropBordersPager") { legacy.getBoolean("cropBordersPager", false) }
+    private val paddingPref = store.getEnum("reader_webtoon_side_padding", WebtoonSidePadding.DEFAULT)
+        .legacy("webtoonSidePadding") { legacy.get("webtoonSidePadding", null)?.let { runCatching { WebtoonSidePadding.valueOf(it) }.getOrNull() } }
+    private val autoScrollPref = store.getBoolean("reader_webtoon_auto_scroll", false).legacy("webtoonAutoScroll") { legacy.getBoolean("webtoonAutoScroll", false) }
+    private val autoScrollSpeedPref = store.getEnum("reader_webtoon_auto_scroll_speed", WebtoonAutoScrollSpeed.Normal)
+        .legacy("webtoonAutoScrollSpeed") { legacy.get("webtoonAutoScrollSpeed", null)?.let { runCatching { WebtoonAutoScrollSpeed.valueOf(it) }.getOrNull() } }
+    private val cropWebtoonPref = store.getBoolean("reader_crop_borders_webtoon", false).legacy("cropBordersWebtoon") { legacy.getBoolean("cropBordersWebtoon", false) }
+    private val skipReadPref = store.getBoolean("reader_skip_read_chapters", false).legacy("skipReadChapters") { legacy.getBoolean("skipReadChapters", false) }
+    private val scaleTypePref = store.getEnum("reader_scale_type", ScaleType.DEFAULT)
+        .legacy("scaleType") { legacy.get("scaleType", null)?.let { runCatching { ScaleType.valueOf(it) }.getOrNull() } }
+    private val filterEnabledPref = store.getBoolean("reader_color_filter_enabled", false).legacy("colorFilterEnabled") { legacy.getBoolean("colorFilterEnabled", false) }
+    private val brightnessPref = store.getFloat("reader_color_filter_brightness", 0f).legacy("colorFilterBrightness") { legacy.getFloat("colorFilterBrightness", 0f) }
+    private val redPref = store.getInt("reader_color_filter_red", 0).legacy("colorFilterR") { legacy.getInt("colorFilterR", 0) }
+    private val greenPref = store.getInt("reader_color_filter_green", 0).legacy("colorFilterG") { legacy.getInt("colorFilterG", 0) }
+    private val bluePref = store.getInt("reader_color_filter_blue", 0).legacy("colorFilterB") { legacy.getInt("colorFilterB", 0) }
+    private val alphaPref = store.getInt("reader_color_filter_alpha", 128).legacy("colorFilterAlpha") { legacy.getInt("colorFilterAlpha", 128) }
 
-    /** Tap navigation layout mode for pager viewers. */
-    var navigationMode: NavigationMode
-        get() = try {
-            NavigationMode.valueOf(prefs.get(KEY_NAVIGATION_MODE, NavigationMode.RightAndLeft.name))
-        } catch (_: Exception) {
-            NavigationMode.RightAndLeft
-        }
-        set(value) {
-            prefs.put(KEY_NAVIGATION_MODE, value.name)
-            prefs.flush()
-        }
+    var readingMode by readingModePref
+    var navigationMode by navigationModePref
+    var isDualPage by dualPagePref
+    var autoSplitPages by autoSplitPref
+    var isAutoSpreadMatching by autoSpreadPref
+    var backgroundTheme by backgroundPref
+    var cropBordersPager by cropPagerPref
+    var webtoonSidePadding by paddingPref
+    var webtoonAutoScroll by autoScrollPref
+    var webtoonAutoScrollSpeed by autoScrollSpeedPref
+    var cropBordersWebtoon by cropWebtoonPref
+    var skipReadChapters by skipReadPref
+    var scaleType by scaleTypePref
+    var colorFilterEnabled by filterEnabledPref
+    var colorFilterBrightness by brightnessPref
+    var colorFilterR by redPref
+    var colorFilterG by greenPref
+    var colorFilterB by bluePref
+    var colorFilterAlpha by alphaPref
 
-    /** Whether dual-page mode was last enabled. */
-    var isDualPage: Boolean
-        get() = prefs.getBoolean(KEY_DUAL_PAGE, true)
-        set(value) {
-            prefs.putBoolean(KEY_DUAL_PAGE, value)
-            prefs.flush()
-        }
-
-    /** Whether wide (landscape) pages are automatically split into two half-pages in dual-page mode. */
-    var autoSplitPages: Boolean
-        get() = prefs.getBoolean(KEY_AUTO_SPLIT_PAGES, false)
-        set(value) {
-            prefs.putBoolean(KEY_AUTO_SPLIT_PAGES, value)
-            prefs.flush()
-        }
-
-    /** Whether automatic edge-pixel spread matching is enabled. */
-    var isAutoSpreadMatching: Boolean
-        get() = prefs.getBoolean(KEY_AUTO_SPREAD, false)
-        set(value) {
-            prefs.putBoolean(KEY_AUTO_SPREAD, value)
-            prefs.flush()
-        }
-
-    /** Background colour theme for the reader. */
-    var backgroundTheme: ReaderBackgroundTheme
-        get() = try {
-            ReaderBackgroundTheme.valueOf(prefs.get(KEY_BG_THEME, ReaderBackgroundTheme.DEFAULT.name))
-        } catch (_: Exception) {
-            ReaderBackgroundTheme.DEFAULT
-        }
-        set(value) {
-            prefs.put(KEY_BG_THEME, value.name)
-            prefs.flush()
-        }
-
-    /** Whether to automatically crop white borders from page images (pager modes). */
-    var cropBordersPager: Boolean
-        get() = prefs.getBoolean(KEY_CROP_BORDERS_PAGER, false)
-        set(value) {
-            prefs.putBoolean(KEY_CROP_BORDERS_PAGER, value)
-            prefs.flush()
-        }
-
-    /** Webtoon side padding — limits page width on wide screens. */
-    var webtoonSidePadding: WebtoonSidePadding
-        get() = try {
-            WebtoonSidePadding.valueOf(prefs.get(KEY_WEBTOON_SIDE_PADDING, WebtoonSidePadding.DEFAULT.name))
-        } catch (_: Exception) {
-            WebtoonSidePadding.DEFAULT
-        }
-        set(value) {
-            prefs.put(KEY_WEBTOON_SIDE_PADDING, value.name)
-            prefs.flush()
-        }
-
-    /** Whether webtoon auto-scroll is enabled. */
-    var webtoonAutoScroll: Boolean
-        get() = prefs.getBoolean(KEY_WEBTOON_AUTO_SCROLL, false)
-        set(value) {
-            prefs.putBoolean(KEY_WEBTOON_AUTO_SCROLL, value)
-            prefs.flush()
-        }
-
-    /** Auto-scroll speed preset for webtoon mode. */
-    var webtoonAutoScrollSpeed: WebtoonAutoScrollSpeed
-        get() = try {
-            WebtoonAutoScrollSpeed.valueOf(prefs.get(KEY_WEBTOON_AUTO_SCROLL_SPEED, WebtoonAutoScrollSpeed.Normal.name))
-        } catch (_: Exception) {
-            WebtoonAutoScrollSpeed.Normal
-        }
-        set(value) {
-            prefs.put(KEY_WEBTOON_AUTO_SCROLL_SPEED, value.name)
-            prefs.flush()
-        }
-
-    /** Whether to automatically crop white borders from page images (webtoon mode). */
-    var cropBordersWebtoon: Boolean
-        get() = prefs.getBoolean(KEY_CROP_BORDERS_WEBTOON, false)
-        set(value) {
-            prefs.putBoolean(KEY_CROP_BORDERS_WEBTOON, value)
-            prefs.flush()
-        }
-
-    /** Whether to skip already-read chapters when navigating prev/next. */
-    var skipReadChapters: Boolean
-        get() = prefs.getBoolean(KEY_SKIP_READ_CHAPTERS, false)
-        set(value) {
-            prefs.putBoolean(KEY_SKIP_READ_CHAPTERS, value)
-            prefs.flush()
-        }
-
-    /** Image scale type for pager viewers. */
-    var scaleType: ScaleType
-        get() = try {
-            ScaleType.valueOf(prefs.get(KEY_SCALE_TYPE, ScaleType.DEFAULT.name))
-        } catch (_: Exception) {
-            ScaleType.DEFAULT
-        }
-        set(value) {
-            prefs.put(KEY_SCALE_TYPE, value.name)
-            prefs.flush()
-        }
-
-    /** Whether the colour filter overlay is active. */
-    var colorFilterEnabled: Boolean
-        get() = prefs.getBoolean(KEY_COLOR_FILTER_ENABLED, false)
-        set(value) {
-            prefs.putBoolean(KEY_COLOR_FILTER_ENABLED, value)
-            prefs.flush()
-        }
-
-    /** Brightness offset: -0.75 (dark) … 0 (neutral) … 1.0 (bright). */
-    var colorFilterBrightness: Float
-        get() = prefs.getFloat(KEY_COLOR_FILTER_BRIGHTNESS, 0f)
-        set(value) {
-            prefs.putFloat(KEY_COLOR_FILTER_BRIGHTNESS, value)
-            prefs.flush()
-        }
-
-    /** Red channel of the colour tint overlay (0–255). */
-    var colorFilterR: Int
-        get() = prefs.getInt(KEY_COLOR_FILTER_R, 0)
-        set(value) {
-            prefs.putInt(KEY_COLOR_FILTER_R, value)
-            prefs.flush()
-        }
-
-    /** Green channel of the colour tint overlay (0–255). */
-    var colorFilterG: Int
-        get() = prefs.getInt(KEY_COLOR_FILTER_G, 0)
-        set(value) {
-            prefs.putInt(KEY_COLOR_FILTER_G, value)
-            prefs.flush()
-        }
-
-    /** Blue channel of the colour tint overlay (0–255). */
-    var colorFilterB: Int
-        get() = prefs.getInt(KEY_COLOR_FILTER_B, 0)
-        set(value) {
-            prefs.putInt(KEY_COLOR_FILTER_B, value)
-            prefs.flush()
-        }
-
-    /** Alpha (opacity) of the colour tint overlay (0–255). */
-    var colorFilterAlpha: Int
-        get() = prefs.getInt(KEY_COLOR_FILTER_ALPHA, 128)
-        set(value) {
-            prefs.putInt(KEY_COLOR_FILTER_ALPHA, value)
-            prefs.flush()
-        }
-
-    /** Loads and returns a [ReaderColorFilter] reflecting the persisted state. */
-    fun loadColorFilter(): ReaderColorFilter = ReaderColorFilter(
-        enabled = colorFilterEnabled,
-        brightness = colorFilterBrightness,
-        r = colorFilterR,
-        g = colorFilterG,
-        b = colorFilterB,
-        alpha = colorFilterAlpha,
-    )
-
-    /** Persists a [ReaderColorFilter] in a single call. */
+    fun loadColorFilter() = ReaderColorFilter(colorFilterEnabled, colorFilterBrightness, colorFilterR, colorFilterG, colorFilterB, colorFilterAlpha)
     fun saveColorFilter(filter: ReaderColorFilter) {
         colorFilterEnabled = filter.enabled
         colorFilterBrightness = filter.brightness
@@ -211,29 +77,7 @@ class ReaderPreferences {
     }
 
     internal fun clearDualPageForTests() {
-        prefs.remove(KEY_DUAL_PAGE)
-        prefs.flush()
-    }
-
-    private companion object {
-        const val KEY_NAVIGATION_MODE = "navigationMode"
-        const val KEY_WEBTOON_AUTO_SCROLL = "webtoonAutoScroll"
-        const val KEY_WEBTOON_AUTO_SCROLL_SPEED = "webtoonAutoScrollSpeed"
-        const val KEY_READING_MODE = "readingMode"
-        const val KEY_DUAL_PAGE = "isDualPage"
-        const val KEY_AUTO_SPLIT_PAGES = "autoSplitPages"
-        const val KEY_AUTO_SPREAD = "autoSpreadMatching"
-        const val KEY_BG_THEME = "backgroundTheme"
-        const val KEY_WEBTOON_SIDE_PADDING = "webtoonSidePadding"
-        const val KEY_CROP_BORDERS_PAGER = "cropBordersPager"
-        const val KEY_CROP_BORDERS_WEBTOON = "cropBordersWebtoon"
-        const val KEY_COLOR_FILTER_ENABLED = "colorFilterEnabled"
-        const val KEY_COLOR_FILTER_BRIGHTNESS = "colorFilterBrightness"
-        const val KEY_COLOR_FILTER_R = "colorFilterR"
-        const val KEY_COLOR_FILTER_G = "colorFilterG"
-        const val KEY_COLOR_FILTER_B = "colorFilterB"
-        const val KEY_SKIP_READ_CHAPTERS = "skipReadChapters"
-        const val KEY_SCALE_TYPE = "scaleType"
-        const val KEY_COLOR_FILTER_ALPHA = "colorFilterAlpha"
+        dualPagePref.delete()
+        legacy.remove("isDualPage")
     }
 }

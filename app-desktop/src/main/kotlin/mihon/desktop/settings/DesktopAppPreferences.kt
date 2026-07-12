@@ -2,6 +2,7 @@ package mihon.desktop.settings
 
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
+import java.util.prefs.Preferences
 
 enum class ThemeMode { LIGHT, DARK, SYSTEM }
 enum class ReaderDefaultMode { PAGER, WEBTOON }
@@ -21,7 +22,20 @@ enum class LibraryUpdateInterval(val hours: Long) {
     fun toMillis(): Long = hours * 3_600_000L
 }
 
-class DesktopAppPreferences(private val store: PreferenceStore) {
+class DesktopAppPreferences(
+    private val store: PreferenceStore,
+    private val legacy: Preferences = Preferences.userRoot().node("mihon/desktop/app"),
+) {
+
+    private fun <T> Preference<T>.migrate(key: String, parser: (String) -> T?): Preference<T> =
+        migrateFrom(legacy, key) { parser(legacy.get(it, null)) }
+
+    private fun string(key: String, default: String) = store.getString(key, default)
+        .migrate(key) { it }
+    private fun int(key: String, default: Int) = store.getInt(key, default)
+        .migrate(key) { it.toIntOrNull() }
+    private fun boolean(key: String, default: Boolean) = store.getBoolean(key, default)
+        .migrate(key) { it.toBooleanStrictOrNull() }
 
     // Lazy vals so repeated accesses return the same mutable Preference instance.
 
@@ -31,7 +45,7 @@ class DesktopAppPreferences(private val store: PreferenceStore) {
             defaultValue = ThemeMode.SYSTEM,
             serializer = { it.name },
             deserializer = { ThemeMode.valueOf(it) },
-        )
+        ).migrate("theme_mode") { runCatching { ThemeMode.valueOf(it) }.getOrNull() }
     }
 
     val defaultReaderMode: Preference<ReaderDefaultMode> by lazy {
@@ -40,30 +54,30 @@ class DesktopAppPreferences(private val store: PreferenceStore) {
             defaultValue = ReaderDefaultMode.PAGER,
             serializer = { it.name },
             deserializer = { ReaderDefaultMode.valueOf(it) },
-        )
+        ).migrate("default_reader_mode") { runCatching { ReaderDefaultMode.valueOf(it) }.getOrNull() }
     }
 
     val libraryGridColumns: Preference<Int> by lazy {
-        store.getInt(key = "library_grid_columns", defaultValue = 3)
+        int(key = "library_grid_columns", default = 3)
     }
 
     val defaultRtl: Preference<Boolean> by lazy {
-        store.getBoolean(key = "default_rtl", defaultValue = false)
+        boolean(key = "default_rtl", default = false)
     }
 
     /** When true, reading history is not recorded. */
     val incognitoMode: Preference<Boolean> by lazy {
-        store.getBoolean(key = "incognito_mode", defaultValue = false)
+        boolean(key = "incognito_mode", default = false)
     }
 
     /** Comma-separated source IDs disabled by the user. Empty keeps legacy behavior. */
     val disabledSourceIds: Preference<String> by lazy {
-        store.getString(key = "disabled_source_ids", defaultValue = "")
+        string(key = "disabled_source_ids", default = "")
     }
 
     /** When true, the pager shows a page-flip animation between pages. */
     val pageTurnAnimation: Preference<Boolean> by lazy {
-        store.getBoolean(key = "page_turn_animation", defaultValue = true)
+        boolean(key = "page_turn_animation", default = true)
     }
 
     /** Automatic library update interval. */
@@ -73,12 +87,12 @@ class DesktopAppPreferences(private val store: PreferenceStore) {
             defaultValue = LibraryUpdateInterval.OFF,
             serializer = { it.name },
             deserializer = { LibraryUpdateInterval.valueOf(it) },
-        )
+        ).migrate("library_update_interval") { runCatching { LibraryUpdateInterval.valueOf(it) }.getOrNull() }
     }
 
     /** When true, manga detail lists hide missing chapter indicator rows. */
     val hideMissingChapterIndicators: Preference<Boolean> by lazy {
-        store.getBoolean(key = "pref_hide_missing_chapter_indicators", defaultValue = false)
+        boolean(key = "pref_hide_missing_chapter_indicators", default = false)
     }
 
     /** DNS over HTTPS provider selection. */
@@ -88,41 +102,41 @@ class DesktopAppPreferences(private val store: PreferenceStore) {
             defaultValue = DohProvider.OFF,
             serializer = { it.name },
             deserializer = { DohProvider.valueOf(it) },
-        )
+        ).migrate("doh_provider") { runCatching { DohProvider.valueOf(it) }.getOrNull() }
     }
 
     /** Category IDs to include in library updates (comma-separated). Empty = all. */
     val updateCategoryIncludes: Preference<String> by lazy {
-        store.getString(key = "update_category_includes", defaultValue = "")
+        string(key = "update_category_includes", default = "")
     }
 
     /** Category IDs to exclude from library updates (comma-separated). */
     val updateCategoryExcludes: Preference<String> by lazy {
-        store.getString(key = "update_category_excludes", defaultValue = "")
+        string(key = "update_category_excludes", default = "")
     }
 
     /** Last directory selected in the local manga source browser. Empty = none selected. */
     val localSourceRootDir: Preference<String> by lazy {
-        store.getString(key = "local_source_root_dir", defaultValue = "")
+        string(key = "local_source_root_dir", default = "")
     }
 
     /** Maximum directory depth for recursive local source scanning. */
     val localSourceMaxDepth: Preference<Int> by lazy {
-        store.getInt(key = "local_source_max_depth", defaultValue = 3)
+        int(key = "local_source_max_depth", default = 3)
     }
 
     /** Auto-backup interval (stored as enum name). */
     val autoBackupInterval: Preference<String> by lazy {
-        store.getString(key = "auto_backup_interval", defaultValue = "OFF")
+        string(key = "auto_backup_interval", default = "OFF")
     }
 
     /** Maximum number of auto-backup files to keep. */
     val autoBackupMaxFiles: Preference<Int> by lazy {
-        store.getInt(key = "auto_backup_max_files", defaultValue = 2)
+        int(key = "auto_backup_max_files", default = 2)
     }
 
     /** Directory for auto-backup files. Empty = ~/MihonDesktopBackups. */
     val autoBackupDir: Preference<String> by lazy {
-        store.getString(key = "auto_backup_dir", defaultValue = "")
+        string(key = "auto_backup_dir", default = "")
     }
 }

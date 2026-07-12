@@ -1,0 +1,20 @@
+package mihon.domain.error
+
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Test
+
+class AppErrorTest {
+    @Test
+    fun `错误契约覆盖跨端失败类别并保留结构化原因`() {
+        val cause = IllegalStateException("boom")
+        val error: AppError = AppError.PartialFailure(
+            failures = listOf(AppError.Network(cause = cause)),
+            cause = cause,
+        )
+
+        val partial = assertInstanceOf(AppError.PartialFailure::class.java, error)
+        assertEquals(cause, error.cause)
+        assertInstanceOf(AppError.Network::class.java, partial.failures.single())
+    }
+}

@@ -142,8 +142,8 @@ class DesktopProductCapabilityContractTest {
             if ("DESKTOP-PRODUCT" in tags) {
                 assertTrue(protectionTests.isNotEmpty(), "ID $id: DESKTOP-PRODUCT protectionTests must not be empty")
                 assertEquals(expectedCapabilityEvidence.getValue(id), protectionTests.toSet(), "ID $id: unexpected evidence")
-            } else {
-                assertTrue(protectionTests.isEmpty(), "ID $id: non-product capabilities cannot use unrelated evidence")
+            } else if (item.getValue("status").jsonPrimitive.content == "NOT_STARTED") {
+                assertTrue(protectionTests.isEmpty(), "ID $id: unstarted capabilities cannot claim evidence")
             }
             protectionTests.forEach { testEvidence ->
                 assertFalse(testEvidence.startsWith("MISSING:"), "ID ${item["id"]}: $testEvidence")
@@ -164,10 +164,12 @@ class DesktopProductCapabilityContractTest {
     }
 
     @Test
-    fun `initial manifest items are all NOT_STARTED`() {
+    fun `manifest records only completed Task 1A foundations`() {
+        val task1aStatuses = mapOf(3 to "SHARED", 4 to "WIRED", 7 to "WIRED")
         manifestItems(repositoryRoot()).forEach { item ->
             val objectItem = item.jsonObject
-            assertEquals("NOT_STARTED", objectItem.getValue("status").jsonPrimitive.content, "ID ${validatedId(objectItem)}")
+            val id = validatedId(objectItem)
+            assertEquals(task1aStatuses[id] ?: "NOT_STARTED", objectItem.getValue("status").jsonPrimitive.content, "ID $id")
         }
     }
 

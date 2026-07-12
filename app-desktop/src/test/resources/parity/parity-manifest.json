@@ -5,10 +5,13 @@
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "NOT_STARTED",
+    "status": "SHARED",
     "authoritativeImplementation": "Android authoritative capability #3: 状态管理",
     "desktopImplementation": "Desktop current implementation to characterize and align: 状态管理",
-    "protectionTests": [],
+    "protectionTests": [
+      "domain/src/commonTest/kotlin/mihon/domain/error/AppErrorTest.kt",
+      "domain/src/commonTest/kotlin/mihon/domain/task/TaskStateTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -18,10 +21,12 @@
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "NOT_STARTED",
+    "status": "WIRED",
     "authoritativeImplementation": "Android authoritative capability #4: 依赖注入",
     "desktopImplementation": "Desktop current implementation to characterize and align: 依赖注入",
-    "protectionTests": [],
+    "protectionTests": [
+      "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -31,10 +36,13 @@
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "NOT_STARTED",
+    "status": "WIRED",
     "authoritativeImplementation": "Android authoritative capability #7: 偏好存储",
     "desktopImplementation": "Desktop current implementation to characterize and align: 偏好存储",
-    "protectionTests": [],
+    "protectionTests": [
+      "core/common/src/jvmTest/kotlin/tachiyomi/core/common/preference/DesktopPreferenceStoreTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/settings/DesktopPreferenceMigrationTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },

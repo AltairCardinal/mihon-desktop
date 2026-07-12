@@ -112,11 +112,20 @@ fun initDesktopDI() {
 internal fun initConfigLayer(appDir: File): DesktopPreferenceStore {
     val preferenceStore = DesktopPreferenceStore()
     Injekt.addSingleton<PreferenceStore>(preferenceStore)
-    Injekt.addSingleton(DesktopAppPreferences(preferenceStore))
-    Injekt.addSingleton(LibraryCategoryPrefs(preferenceStore))
+    registerSettings(preferenceStore)
+    registerReader(preferenceStore)
     Injekt.addSingleton<FolderProvider>(DesktopStorageFolderProvider())
     Injekt.addSingleton<PlatformInfo>(DesktopPlatformInfo())
     return preferenceStore
+}
+
+private fun registerSettings(preferenceStore: PreferenceStore) {
+    Injekt.addSingleton(DesktopAppPreferences(preferenceStore))
+    Injekt.addSingleton(LibraryCategoryPrefs(preferenceStore))
+}
+
+private fun registerReader(preferenceStore: PreferenceStore) {
+    Injekt.addSingleton(ReaderPreferences(preferenceStore))
 }
 
 // ── Network layer ─────────────────────────────────────────────────────────────
@@ -296,7 +305,6 @@ internal fun initUILayer(
     val updateChapter = Injekt.get<UpdateChapter>()
     val upsertHistory = Injekt.get<UpsertHistory>()
 
-    Injekt.addSingleton(ReaderPreferences())
     Injekt.addSingleton(paths)
     Injekt.addSingleton(DesktopMangaCoverManager(paths.coversDir))
     val notificationService = DesktopNotificationService()
