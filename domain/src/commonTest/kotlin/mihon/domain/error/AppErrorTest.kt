@@ -24,6 +24,8 @@ class AppErrorTest {
             AppError.Network(),
             AppError.Authentication(),
             AppError.Challenge(),
+            AppError.RateLimited(),
+            AppError.Server(500),
             AppError.Permission(),
             AppError.MalformedData(),
             AppError.Storage(),
@@ -32,6 +34,6 @@ class AppErrorTest {
             AppError.Unknown(),
         )
 
-        assertEquals(9, variants.map { it::class }.distinct().size)
+        assertEquals(11, variants.map { it::class }.distinct().size)
     }
 }

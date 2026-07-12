@@ -164,12 +164,20 @@ class DesktopProductCapabilityContractTest {
     }
 
     @Test
-    fun `manifest records only completed Task 1A foundations`() {
-        val task1aStatuses = mapOf(3 to "SHARED", 4 to "WIRED", 7 to "WIRED")
+    fun `manifest records only evidence-backed completed foundations`() {
+        val completedStatuses = mapOf(
+            3 to "SHARED",
+            4 to "WIRED",
+            7 to "WIRED",
+            8 to "SHARED",
+            10 to "WIRED",
+            11 to "WIRED",
+            61 to "WIRED",
+        )
         manifestItems(repositoryRoot()).forEach { item ->
             val objectItem = item.jsonObject
             val id = validatedId(objectItem)
-            assertEquals(task1aStatuses[id] ?: "NOT_STARTED", objectItem.getValue("status").jsonPrimitive.content, "ID $id")
+            assertEquals(completedStatuses[id] ?: "NOT_STARTED", objectItem.getValue("status").jsonPrimitive.content, "ID $id")
         }
     }
 

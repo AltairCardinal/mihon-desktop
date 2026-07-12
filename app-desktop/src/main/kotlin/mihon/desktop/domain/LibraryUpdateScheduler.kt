@@ -7,6 +7,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import mihon.desktop.settings.DesktopAppPreferences
+import mihon.desktop.task.DesktopTaskScheduler
+import mihon.domain.task.BackgroundTask
+import mihon.domain.task.NotificationEvent
+import mihon.domain.task.TaskCheckpoint
+import mihon.domain.task.TaskConstraint
 import tachiyomi.domain.creator.service.CreatorDiscoveryService
 import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.manga.interactor.GetLibraryManga
@@ -27,6 +32,8 @@ class LibraryUpdateScheduler(
     private val categoryRepository: CategoryRepository? = null,
     private val notificationService: DesktopNotificationService? = null,
     private val creatorDiscoveryService: CreatorDiscoveryService? = null,
+    private val taskScheduler: DesktopTaskScheduler? = null,
+    private val taskNotifier: DesktopSystemNotifier? = null,
     scope: CoroutineScope? = null,
 ) {
     private val scope: CoroutineScope = scope ?: CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -38,8 +45,13 @@ class LibraryUpdateScheduler(
     /** Starts the background scheduler. Safe to call multiple times. */
     fun start() {
         if (schedulerJob?.isActive == true) return
+        taskScheduler?.register(LIBRARY_UPDATE_TASK)
         schedulerJob = scope.launch {
             var lastRun = 0L  // 0 means "never run"
+            if (taskScheduler?.pendingTasks()?.any { it.id == LIBRARY_UPDATE_TASK.id && it.checkpoint != null } == true) {
+                runLibraryUpdate()
+                lastRun = System.currentTimeMillis()
+            }
             while (true) {
                 delay(CHECK_INTERVAL_MS)
                 val intervalMs = appPreferences.libraryUpdateInterval.get().toMillis()
@@ -57,6 +69,12 @@ class LibraryUpdateScheduler(
     fun stop() {
         schedulerJob?.cancel()
         schedulerJob = null
+    }
+
+    fun cancelUpdate(): Boolean {
+        val cancelled = taskScheduler?.cancel(LIBRARY_UPDATE_TASK.id) == true
+        if (cancelled) taskNotifier?.notify(NotificationEvent.Cancelled(LIBRARY_UPDATE_TASK.id, "Library update cancelled"))
+        return cancelled
     }
 
     private fun parseCategoryIds(raw: String): Set<Long> =
@@ -89,13 +107,26 @@ class LibraryUpdateScheduler(
 
             val sources = sourceManager.getCatalogueSources()
             var newChapters = 0
+            val failures = mutableListOf<Throwable>()
+            var completed = 0
             for (manga in allManga) {
                 if (manga.manga.id !in filteredIdSet) continue
                 val source = sources.find { it.id == manga.manga.source } ?: continue
                 runCatching {
                     val result = updateChecker.checkForUpdates(manga.manga, source)
                     newChapters += result.newChapterCount
-                }
+                }.onFailure(failures::add)
+                completed++
+                taskScheduler?.checkpoint(
+                    LIBRARY_UPDATE_TASK.id,
+                    TaskCheckpoint(cursor = manga.manga.id.toString(), completedUnits = completed),
+                )
+            }
+            if (failures.isEmpty()) {
+                taskScheduler?.complete(LIBRARY_UPDATE_TASK.id)
+                taskNotifier?.notify(NotificationEvent.Success(LIBRARY_UPDATE_TASK.id, "Library updated", "$newChapters new chapters found"))
+            } else {
+                taskNotifier?.notify(NotificationEvent.Failure(LIBRARY_UPDATE_TASK.id, "Library update partially failed", "${failures.size} items can be retried"))
             }
             if (newChapters > 0) {
                 notificationService?.post(
@@ -123,5 +154,10 @@ class LibraryUpdateScheduler(
     companion object {
         /** How often the scheduler checks whether an update is due. */
         const val CHECK_INTERVAL_MS = 60_000L
+        val LIBRARY_UPDATE_TASK = BackgroundTask(
+            id = "library-update",
+            idempotencyKey = "library-update:scheduled",
+            constraints = setOf(TaskConstraint.NetworkConnected),
+        )
     }
 }

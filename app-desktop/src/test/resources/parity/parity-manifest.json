@@ -53,10 +53,12 @@
       "SHARE-EXTRACT",
       "PLATFORM-ADAPTER"
     ],
-    "status": "NOT_STARTED",
+    "status": "SHARED",
     "authoritativeImplementation": "Android authoritative capability #8: 网络栈",
     "desktopImplementation": "Desktop current implementation to characterize and align: 网络栈",
-    "protectionTests": [],
+    "protectionTests": [
+      "app-desktop/src/test/kotlin/mihon/desktop/network/NetworkErrorContractTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -80,10 +82,14 @@
     "tags": [
       "PLATFORM-ADAPTER"
     ],
-    "status": "NOT_STARTED",
+    "status": "WIRED",
     "authoritativeImplementation": "Android authoritative capability #10: 后台任务",
     "desktopImplementation": "Desktop current implementation to characterize and align: 后台任务",
-    "protectionTests": [],
+    "protectionTests": [
+      "domain/src/commonTest/kotlin/mihon/domain/task/BackgroundTaskContractTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/task/DesktopTaskSchedulerIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -93,10 +99,13 @@
     "tags": [
       "PLATFORM-ADAPTER"
     ],
-    "status": "NOT_STARTED",
+    "status": "WIRED",
     "authoritativeImplementation": "Android authoritative capability #11: 通知",
     "desktopImplementation": "Desktop current implementation to characterize and align: 通知",
-    "protectionTests": [],
+    "protectionTests": [
+      "domain/src/commonTest/kotlin/mihon/domain/task/BackgroundTaskContractTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopSystemNotifierTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -518,10 +527,13 @@
       "SHARE-EXTRACT",
       "PLATFORM-ADAPTER"
     ],
-    "status": "NOT_STARTED",
+    "status": "WIRED",
     "authoritativeImplementation": "Android authoritative capability #61: 书库更新",
     "desktopImplementation": "Desktop current implementation to characterize and align: 书库更新",
-    "protectionTests": [],
+    "protectionTests": [
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateSchedulerTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/task/DesktopTaskSchedulerIntegrationTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },

@@ -13,6 +13,7 @@ import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.settings.DesktopAppPreferences
+import mihon.desktop.task.DesktopTaskScheduler
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertSame
@@ -35,6 +36,7 @@ class DesktopDiWiringTest {
         assertNotNull(Injekt.get<ReaderPreferences>())
         assertNotNull(Injekt.get<LibraryUpdateScheduler>())
         assertNotNull(Injekt.get<DesktopNetworkHelper>())
+        assertNotNull(Injekt.get<DesktopTaskScheduler>())
         assertNotNull(Injekt.get<DesktopDownloadManager>())
         assertNotNull(Injekt.get<AutoBackupScheduler>())
         assertNotNull(Injekt.get<DesktopExtensionManager>())

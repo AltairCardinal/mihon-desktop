@@ -11,6 +11,9 @@ import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.source.DesktopSourceManager
 import eu.kanade.tachiyomi.network.NetworkHelper
 import mihon.desktop.platform.DesktopNetworkHelper
+import mihon.desktop.task.DesktopTaskScheduler
+import mihon.desktop.task.FileTaskCheckpointStore
+import mihon.desktop.domain.DesktopSystemNotifier
 import mihon.desktop.platform.DesktopPlatformPaths
 import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.settings.DesktopAppPreferences
@@ -381,6 +384,10 @@ private fun registerDesktopLibrary(
     Injekt.addSingleton(DesktopMangaCoverManager(paths.coversDir))
     val notificationService = DesktopNotificationService()
     Injekt.addSingleton(notificationService)
+    val taskScheduler = DesktopTaskScheduler(FileTaskCheckpointStore(paths.configDir.toPath().resolve("background-tasks.json")))
+    val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)
+    Injekt.addSingleton(taskScheduler)
+    Injekt.addSingleton(taskNotifier)
     Injekt.addSingleton(DesktopCategoryManager(categoryRepository))
     Injekt.addSingleton(
         LibraryUpdateScheduler(
@@ -391,6 +398,8 @@ private fun registerDesktopLibrary(
             categoryRepository = categoryRepository,
             notificationService = notificationService,
             creatorDiscoveryService = Injekt.get<CreatorDiscoveryService>(),
+            taskScheduler = taskScheduler,
+            taskNotifier = taskNotifier,
         ),
     )
     Injekt.addSingleton(UpdatesPreferences(preferenceStore))
