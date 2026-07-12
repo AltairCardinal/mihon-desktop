@@ -16,7 +16,9 @@ sealed interface AppError {
     }
     data class PartialFailure(
         val failures: List<AppError>,
+        val failedUnits: List<FailedUnit> = emptyList(),
         override val cause: Throwable? = null,
     ) : AppError
+    data class FailedUnit(val unitId: String, val error: AppError)
     data class Unknown(override val cause: Throwable? = null) : AppError
 }

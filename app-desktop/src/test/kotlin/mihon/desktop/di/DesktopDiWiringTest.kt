@@ -11,6 +11,7 @@ import mihon.desktop.domain.LibraryUpdateScheduler
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.platform.DesktopNetworkHelper
+import mihon.desktop.library.LibraryScreenModelFactory
 import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.task.DesktopTaskScheduler
@@ -40,6 +41,7 @@ class DesktopDiWiringTest {
         assertNotNull(Injekt.get<DesktopDownloadManager>())
         assertNotNull(Injekt.get<AutoBackupScheduler>())
         assertNotNull(Injekt.get<DesktopExtensionManager>())
+        assertNotNull(LibraryScreenModelFactory.create())
 
         val preference = Injekt.get<PreferenceStore>().getString("wiring_observe", "initial")
         val changed = async(start = CoroutineStart.UNDISPATCHED) { preference.changes().drop(1).first() }

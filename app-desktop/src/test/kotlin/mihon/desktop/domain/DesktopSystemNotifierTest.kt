@@ -20,4 +20,15 @@ class DesktopSystemNotifierTest {
         assertEquals("Update failed", notification.await().title)
         assertEquals("Retry from Library", notification.await().message)
     }
+
+    @Test
+    fun `falls back when system adapter throws`() = runTest {
+        val inApp = DesktopNotificationService()
+        val notification = async(start = CoroutineStart.UNDISPATCHED) { inApp.notifications.first() }
+        val notifier = DesktopSystemNotifier(system = { error("native unavailable") }, fallback = inApp)
+
+        notifier.notify(NotificationEvent.Cancelled("library", "Cancelled"))
+
+        assertEquals("Cancelled", notification.await().title)
+    }
 }

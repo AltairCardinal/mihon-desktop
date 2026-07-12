@@ -25,6 +25,21 @@ import tachiyomi.domain.manga.model.Manga
  * Verifies all library UI state lives in a ScreenModel with StateFlow<LibraryState>.
  */
 class LibraryScreenModelTest {
+    @Test
+    fun `library update UI delegates start and cancellation to persistent controller`() = runTest {
+        var started = 0
+        var cancelled = 0
+        val model = LibraryScreenModel(
+            startBackgroundUpdate = { started++; kotlinx.coroutines.Job().also { it.complete() } },
+            cancelBackgroundUpdate = { cancelled++; true },
+        )
+
+        model.refreshLibrary(emptyList())
+        assertTrue(model.cancelLibraryUpdate())
+
+        assertEquals(1, started)
+        assertEquals(1, cancelled)
+    }
 
     // ── Construction ─────────────────────────────────────────────────────────
 

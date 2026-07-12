@@ -30,4 +30,18 @@ class BackgroundTaskContractTest {
 
         assertEquals(4, events.size)
     }
+
+    @Test
+    fun `task states are explicit instead of stringly typed`() {
+        assertEquals(
+            setOf(
+                TaskStatus.Pending,
+                TaskStatus.Running,
+                TaskStatus.Completed,
+                TaskStatus.Failed,
+                TaskStatus.Cancelled,
+            ),
+            TaskStatus.entries.toSet(),
+        )
+    }
 }

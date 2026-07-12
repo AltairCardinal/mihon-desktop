@@ -88,6 +88,7 @@
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/task/BackgroundTaskContractTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/task/DesktopTaskSchedulerIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
     ],
     "platformExemptionEvidence": "NONE",
@@ -104,7 +105,8 @@
     "desktopImplementation": "Desktop current implementation to characterize and align: 通知",
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/task/BackgroundTaskContractTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopSystemNotifierTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopSystemNotifierTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt"
     ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -532,7 +534,8 @@
     "desktopImplementation": "Desktop current implementation to characterize and align: 书库更新",
     "protectionTests": [
       "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateSchedulerTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/task/DesktopTaskSchedulerIntegrationTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt"
     ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"

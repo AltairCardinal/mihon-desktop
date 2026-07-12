@@ -15,6 +15,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.jsonPrimitive
 import mihon.desktop.reader.externalChapterUrl
+import mihon.domain.network.parseNetworkPayload
+import mihon.domain.network.requireSuccessfulHttpResponse
 import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -145,25 +147,23 @@ class MangaDexSource(
     // ── Pages ─────────────────────────────────────────────────────────────────
 
     override suspend fun getPageList(chapter: SChapter): List<Page> = withContext(Dispatchers.IO) {
-        val chapterId = chapter.url.removePrefix("/chapter/")
-        val url = "$baseUrl/at-home/server/$chapterId"
-        val obj = json.parseToJsonElement(fetchMangaDexJson(url)).jsonObject
-        val baseServerUrl = obj["baseUrl"]!!.jsonPrimitive.content
-        val chapterObj = obj["chapter"]!!.jsonObject
-        val hash = chapterObj["hash"]!!.jsonPrimitive.content
-
-        // Prefer full-quality data; fall back to dataSaver if empty.
-        val dataPages = chapterObj["data"]!!.jsonArray
-        if (dataPages.isNotEmpty()) {
-            dataPages.mapIndexed { index, pageEl ->
-                val filename = pageEl.jsonPrimitive.content
-                Page(index, imageUrl = "$baseServerUrl/data/$hash/$filename")
-            }
-        } else {
-            val saverPages = chapterObj["dataSaver"]?.jsonArray ?: return@withContext emptyList()
-            saverPages.mapIndexed { index, pageEl ->
-                val filename = pageEl.jsonPrimitive.content
-                Page(index, imageUrl = "$baseServerUrl/data-saver/$hash/$filename")
+        parseNetworkPayload {
+            val chapterId = chapter.url.removePrefix("/chapter/")
+            val url = "$baseUrl/at-home/server/$chapterId"
+            val obj = json.parseToJsonElement(fetchMangaDexJson(url)).jsonObject
+            val baseServerUrl = obj["baseUrl"]!!.jsonPrimitive.content
+            val chapterObj = obj["chapter"]!!.jsonObject
+            val hash = chapterObj["hash"]!!.jsonPrimitive.content
+            val dataPages = chapterObj["data"]!!.jsonArray
+            if (dataPages.isNotEmpty()) {
+                dataPages.mapIndexed { index, pageEl ->
+                    Page(index, imageUrl = "$baseServerUrl/data/$hash/${pageEl.jsonPrimitive.content}")
+                }
+            } else {
+                val saverPages = chapterObj["dataSaver"]?.jsonArray ?: emptyList()
+                saverPages.mapIndexed { index, pageEl ->
+                    Page(index, imageUrl = "$baseServerUrl/data-saver/$hash/${pageEl.jsonPrimitive.content}")
+                }
             }
         }
     }
@@ -250,8 +250,8 @@ class MangaDexSource(
     private fun fetchMangaDexJsonBlocking(url: String): String {
         val responseBody = client.newCall(mangaDexRequest(url)).execute().use { response ->
             val body = response.body.string()
-            if (response.isSuccessful && !body.isMangaDexUnsupportedBrowserPage()) {
-                return body
+            if (!body.isMangaDexUnsupportedBrowserPage()) {
+                return requireSuccessfulHttpResponse(response.code, body, response.header("Retry-After"))
             }
             body
         }

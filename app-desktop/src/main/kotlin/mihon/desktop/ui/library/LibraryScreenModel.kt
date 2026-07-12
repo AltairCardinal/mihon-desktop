@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Job
 import mihon.desktop.domain.DesktopCategoryManager
 import mihon.desktop.domain.LibraryUpdateChecker
 import mihon.desktop.download.DownloadItem
@@ -60,6 +61,8 @@ class LibraryScreenModel(
     private val downloadPreferences: DesktopDownloadPreferences? = null,
     private val categoryPrefs: LibraryCategoryPrefs? = null,
     private val categoryRepository: CategoryRepository? = null,
+    private val startBackgroundUpdate: (() -> Job)? = null,
+    private val cancelBackgroundUpdate: (() -> Boolean)? = null,
 ) : ScreenModel {
 
     private val _state = MutableStateFlow(LibraryState())
@@ -202,6 +205,21 @@ class LibraryScreenModel(
     }
 
     suspend fun refreshLibrary(items: List<LibraryManga>) {
+        if (_state.value.isUpdating && cancelBackgroundUpdate != null) {
+            cancelLibraryUpdate()
+            return
+        }
+        startBackgroundUpdate?.let { start ->
+            setIsUpdating(true)
+            setUpdateStatusText("Checking for updates...")
+            try {
+                start().join()
+                setUpdateStatusText("Library update finished")
+            } finally {
+                setIsUpdating(false)
+            }
+            return
+        }
         val sourceManager = requireNotNull(sourceManager) { "SourceManager is required" }
         val updateChecker = requireNotNull(updateChecker) { "LibraryUpdateChecker is required" }
         val autoDownload = downloadPreferences?.autoDownloadNewChapters?.get() == true
@@ -237,6 +255,8 @@ class LibraryScreenModel(
             setIsUpdating(false)
         }
     }
+
+    fun cancelLibraryUpdate(): Boolean = cancelBackgroundUpdate?.invoke() == true
 
     suspend fun markMangaRead(mangaId: Long, read: Boolean) {
         val repository = requireNotNull(chapterRepository) { "ChapterRepository is required" }

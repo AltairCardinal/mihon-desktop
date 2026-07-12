@@ -21,7 +21,22 @@ enum class TaskConstraint {
 data class TaskCheckpoint(
     val cursor: String? = null,
     val completedUnits: Int = 0,
-)
+    val progress: Float? = null,
+) {
+    init {
+        require(completedUnits >= 0)
+        require(progress == null || progress in 0f..1f)
+    }
+}
+
+@Serializable
+enum class TaskStatus {
+    Pending,
+    Running,
+    Completed,
+    Failed,
+    Cancelled,
+}
 
 sealed interface NotificationEvent {
     val taskId: String

@@ -36,4 +36,14 @@ class AppErrorTest {
 
         assertEquals(11, variants.map { it::class }.distinct().size)
     }
+
+    @Test
+    fun `partial failure identifies each failed unit`() {
+        val failure = AppError.PartialFailure(
+            failures = listOf(AppError.Network()),
+            failedUnits = listOf(AppError.FailedUnit("manga:42", AppError.Network())),
+        )
+
+        assertEquals("manga:42", failure.failedUnits.single().unitId)
+    }
 }

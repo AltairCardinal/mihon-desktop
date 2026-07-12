@@ -2,6 +2,7 @@ package mihon.desktop.library
 
 import mihon.desktop.domain.DesktopCategoryManager
 import mihon.desktop.domain.LibraryUpdateChecker
+import mihon.desktop.domain.LibraryUpdateScheduler
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.download.DesktopDownloadProvider
@@ -19,6 +20,7 @@ import uy.kohesive.injekt.api.get
 object LibraryScreenModelFactory {
     fun create(): LibraryScreenModel {
         val downloadManager = runCatching { Injekt.get<DesktopDownloadManager>() }.getOrNull()
+        val updateScheduler = Injekt.get<LibraryUpdateScheduler>()
         return LibraryScreenModel(
             getLibraryManga = Injekt.get<GetLibraryManga>(),
             categoryManager = Injekt.get<DesktopCategoryManager>(),
@@ -32,6 +34,8 @@ object LibraryScreenModelFactory {
             downloadPreferences = runCatching { Injekt.get<DesktopDownloadPreferences>() }.getOrNull(),
             categoryPrefs = runCatching { Injekt.get<LibraryCategoryPrefs>() }.getOrNull(),
             categoryRepository = Injekt.get<CategoryRepository>(),
+            startBackgroundUpdate = updateScheduler::runNow,
+            cancelBackgroundUpdate = updateScheduler::cancelUpdate,
         )
     }
 }
