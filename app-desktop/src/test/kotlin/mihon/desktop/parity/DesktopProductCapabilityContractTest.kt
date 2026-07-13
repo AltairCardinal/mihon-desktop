@@ -61,12 +61,40 @@ class DesktopProductCapabilityContractTest {
         )
     private val task3aBehaviorEvidence =
         mapOf(
+            16 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryCategoryBehaviorTest.kt" to
+                        setOf("category dialog intents perform create rename reorder and delete through production DI"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt" to
+                        setOf("测试配置入口使用隔离内存存储并解析实际依赖"),
+                ),
             17 to
                 mapOf(
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/library/LibrarySharedEvaluationWiringTest.kt" to
+                        setOf("Android library production model owns the shared evaluator"),
                     "domain/src/commonTest/kotlin/tachiyomi/domain/library/interactor/EvaluateLibraryTest.kt" to
                         setOf(
                             "all tri-state filters preserve Android IS NOT and disabled semantics",
                             "download global local tracking and multiple flags match Android boundaries",
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt" to
+                        setOf(
+                            "filter intent cycles include exclude any and immediately changes visible items",
+                            "complete filter flags flow from state to visible list including local and tracking boundaries",
+                        ),
+                ),
+            22 to
+                mapOf(
+                    "data/src/jvmTest/kotlin/tachiyomi/data/manga/MangaRepositoryMembershipIntegrationTest.kt" to
+                        setOf(
+                            "membership update commits favorite date and categories together",
+                            "invalid category rolls back every manga membership update",
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseIntegrationTest.kt" to
+                        setOf(
+                            "category failure rolls back source and target migration membership",
+                            "copy categories and replace move real library membership without half state",
+                            "copy categories false and replace false preserve source and recalculate target date",
                         ),
                 ),
             19 to

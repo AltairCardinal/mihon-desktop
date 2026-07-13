@@ -19,6 +19,8 @@ data class LibraryMembershipUpdate(
 
 interface MangaRepository : LibraryMembershipRepository {
 
+    suspend fun updateMembershipsAtomically(updates: List<LibraryMembershipUpdate>)
+
     suspend fun getMangaById(id: Long): Manga
 
     suspend fun getMangaByIdAsFlow(id: Long): Flow<Manga>

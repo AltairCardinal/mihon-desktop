@@ -373,7 +373,6 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
     Injekt.addSingleton(
         DesktopMigrateMangaUseCase(
             saveSourceMangaForDetails = saveSourceMangaForDetails,
-            updateLibraryMembership = updateLibraryMembership,
             getChaptersByMangaId = Injekt.get<GetChaptersByMangaId>(),
             updateChapter = updateChapter,
             getCategories = Injekt.get<GetCategories>(),

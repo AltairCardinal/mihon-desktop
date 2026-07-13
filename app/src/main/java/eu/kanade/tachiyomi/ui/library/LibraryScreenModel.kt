@@ -1,8 +1,6 @@
 package eu.kanade.tachiyomi.ui.library
 
 import androidx.compose.runtime.Immutable
-import androidx.compose.ui.util.fastAny
-import androidx.compose.ui.util.fastFilter
 import androidx.compose.ui.util.fastMap
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
@@ -19,7 +17,6 @@ import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.track.TrackerManager
-import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
 import eu.kanade.tachiyomi.util.removeCovers
@@ -41,7 +38,6 @@ import kotlinx.coroutines.flow.updateAndGet
 import mihon.core.common.utils.mutate
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.TriState
-import tachiyomi.core.common.util.lang.compareToWithCollator
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.launchNonCancellable
 import tachiyomi.domain.category.interactor.GetCategories
@@ -51,6 +47,9 @@ import tachiyomi.domain.chapter.interactor.GetBookmarkedChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.history.interactor.GetNextChapters
+import tachiyomi.domain.library.interactor.EvaluateLibrary
+import tachiyomi.domain.library.interactor.LibraryEvaluationItem
+import tachiyomi.domain.library.interactor.LibraryFilter
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.model.LibrarySort
@@ -59,14 +58,12 @@ import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
-import tachiyomi.domain.manga.model.applyFilter
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.track.interactor.GetTracksPerManga
 import tachiyomi.domain.track.model.Track
 import tachiyomi.source.local.isLocal
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import kotlin.random.Random
 
 class LibraryScreenModel(
     private val getLibraryManga: GetLibraryManga = Injekt.get(),
@@ -86,6 +83,7 @@ class LibraryScreenModel(
     private val downloadCache: DownloadCache = Injekt.get(),
     private val trackerManager: TrackerManager = Injekt.get(),
 ) : StateScreenModel<LibraryScreenModel.State>(State()) {
+    private val evaluateLibrary = EvaluateLibrary()
 
     init {
         mutableState.update { state ->
@@ -186,73 +184,31 @@ class LibraryScreenModel(
         trackingFilter: Map<Long, TriState>,
         preferences: ItemPreferences,
     ): List<LibraryItem> {
-        val downloadedOnly = preferences.globalFilterDownloaded
-        val skipOutsideReleasePeriod = preferences.skipOutsideReleasePeriod
-        val filterDownloaded = if (downloadedOnly) TriState.ENABLED_IS else preferences.filterDownloaded
-        val filterUnread = preferences.filterUnread
-        val filterStarted = preferences.filterStarted
-        val filterBookmarked = preferences.filterBookmarked
-        val filterCompleted = preferences.filterCompleted
-        val filterIntervalCustom = preferences.filterIntervalCustom
-
-        val isNotLoggedInAnyTrack = trackingFilter.isEmpty()
-
-        val excludedTracks = trackingFilter.mapNotNull { if (it.value == TriState.ENABLED_NOT) it.key else null }
-        val includedTracks = trackingFilter.mapNotNull { if (it.value == TriState.ENABLED_IS) it.key else null }
-        val trackFiltersIsIgnored = includedTracks.isEmpty() && excludedTracks.isEmpty()
-
-        val filterFnDownloaded: (LibraryItem) -> Boolean = {
-            applyFilter(filterDownloaded) {
-                it.libraryManga.manga.isLocal() ||
-                    it.downloadCount > 0 ||
-                    downloadManager.getDownloadCount(it.libraryManga.manga) > 0
-            }
+        val byId = associateBy { it.id }
+        val evaluationItems = map { item ->
+            LibraryEvaluationItem(
+                manga = item.libraryManga,
+                downloadCount = item.downloadCount + downloadManager.getDownloadCount(item.libraryManga.manga),
+                isLocal = item.libraryManga.manga.isLocal(),
+                trackerIds = trackMap[item.id].orEmpty().mapTo(mutableSetOf()) { it.trackerId },
+            )
         }
-
-        val filterFnUnread: (LibraryItem) -> Boolean = {
-            applyFilter(filterUnread) { it.libraryManga.unreadCount > 0 }
-        }
-
-        val filterFnStarted: (LibraryItem) -> Boolean = {
-            applyFilter(filterStarted) { it.libraryManga.hasStarted }
-        }
-
-        val filterFnBookmarked: (LibraryItem) -> Boolean = {
-            applyFilter(filterBookmarked) { it.libraryManga.hasBookmarks }
-        }
-
-        val filterFnCompleted: (LibraryItem) -> Boolean = {
-            applyFilter(filterCompleted) { it.libraryManga.manga.status.toInt() == SManga.COMPLETED }
-        }
-
-        val filterFnIntervalCustom: (LibraryItem) -> Boolean = {
-            if (skipOutsideReleasePeriod) {
-                applyFilter(filterIntervalCustom) { it.libraryManga.manga.fetchInterval < 0 }
-            } else {
-                true
-            }
-        }
-
-        val filterFnTracking: (LibraryItem) -> Boolean = tracking@{ item ->
-            if (isNotLoggedInAnyTrack || trackFiltersIsIgnored) return@tracking true
-
-            val mangaTracks = trackMap[item.id].orEmpty().map { it.trackerId }
-
-            val isExcluded = excludedTracks.isNotEmpty() && mangaTracks.fastAny { it in excludedTracks }
-            val isIncluded = includedTracks.isEmpty() || mangaTracks.fastAny { it in includedTracks }
-
-            !isExcluded && isIncluded
-        }
-
-        return fastFilter {
-            filterFnDownloaded(it) &&
-                filterFnUnread(it) &&
-                filterFnStarted(it) &&
-                filterFnBookmarked(it) &&
-                filterFnCompleted(it) &&
-                filterFnIntervalCustom(it) &&
-                filterFnTracking(it)
-        }
+        return evaluateLibrary(
+            evaluationItems,
+            categoryId = null,
+            filter = LibraryFilter(
+                downloaded = preferences.filterDownloaded,
+                unread = preferences.filterUnread,
+                started = preferences.filterStarted,
+                bookmarked = preferences.filterBookmarked,
+                completed = preferences.filterCompleted,
+                intervalCustom = preferences.filterIntervalCustom,
+                globalDownloadedOnly = preferences.globalFilterDownloaded,
+                skipOutsideReleasePeriod = preferences.skipOutsideReleasePeriod,
+                tracking = trackingFilter,
+            ),
+            sort = LibrarySort.default,
+        ).mapNotNull { byId[it.manga.id] }
     }
 
     private fun List<LibraryItem>.applyGrouping(
@@ -274,13 +230,6 @@ class LibraryScreenModel(
         trackMap: Map<Long, List<Track>>,
         loggedInTrackerIds: Set<Long>,
     ): Map<Category, List</* LibraryItem */ Long>> {
-        val sortAlphabetically: (LibraryItem, LibraryItem) -> Int = { manga1, manga2 ->
-            val title1 = manga1.libraryManga.manga.title.lowercase()
-            val title2 = manga2.libraryManga.manga.title.lowercase()
-            title1.compareToWithCollator(title2)
-        }
-
-        val defaultTrackerScoreSortValue = -1.0
         val trackerScores by lazy {
             val trackerMap = trackerManager.getAll(loggedInTrackerIds).associateBy { e -> e.id }
             trackMap.mapValues { entry ->
@@ -294,59 +243,16 @@ class LibraryScreenModel(
             }
         }
 
-        fun LibrarySort.comparator(): Comparator<LibraryItem> = Comparator { manga1, manga2 ->
-            when (this.type) {
-                LibrarySort.Type.Alphabetical -> {
-                    sortAlphabetically(manga1, manga2)
-                }
-                LibrarySort.Type.LastRead -> {
-                    manga1.libraryManga.lastRead.compareTo(manga2.libraryManga.lastRead)
-                }
-                LibrarySort.Type.LastUpdate -> {
-                    manga1.libraryManga.manga.lastUpdate.compareTo(manga2.libraryManga.manga.lastUpdate)
-                }
-                LibrarySort.Type.UnreadCount -> when {
-                    // Ensure unread content comes first
-                    manga1.libraryManga.unreadCount == manga2.libraryManga.unreadCount -> 0
-                    manga1.libraryManga.unreadCount == 0L -> if (this.isAscending) 1 else -1
-                    manga2.libraryManga.unreadCount == 0L -> if (this.isAscending) -1 else 1
-                    else -> manga1.libraryManga.unreadCount.compareTo(manga2.libraryManga.unreadCount)
-                }
-                LibrarySort.Type.TotalChapters -> {
-                    manga1.libraryManga.totalChapters.compareTo(manga2.libraryManga.totalChapters)
-                }
-                LibrarySort.Type.LatestChapter -> {
-                    manga1.libraryManga.latestUpload.compareTo(manga2.libraryManga.latestUpload)
-                }
-                LibrarySort.Type.ChapterFetchDate -> {
-                    manga1.libraryManga.chapterFetchedAt.compareTo(manga2.libraryManga.chapterFetchedAt)
-                }
-                LibrarySort.Type.DateAdded -> {
-                    manga1.libraryManga.manga.dateAdded.compareTo(manga2.libraryManga.manga.dateAdded)
-                }
-                LibrarySort.Type.TrackerMean -> {
-                    val item1Score = trackerScores[manga1.id] ?: defaultTrackerScoreSortValue
-                    val item2Score = trackerScores[manga2.id] ?: defaultTrackerScoreSortValue
-                    item1Score.compareTo(item2Score)
-                }
-                LibrarySort.Type.Random -> {
-                    error("Why Are We Still Here? Just To Suffer?")
-                }
-            }
-        }
-
         return mapValues { (key, value) ->
-            if (key.sort.type == LibrarySort.Type.Random) {
-                return@mapValues value.shuffled(Random(libraryPreferences.randomSortSeed().get()))
-            }
-
-            val manga = value.mapNotNull { favoritesById[it] }
-
-            val comparator = key.sort.comparator()
-                .let { if (key.sort.isAscending) it else it.reversed() }
-                .thenComparator(sortAlphabetically)
-
-            manga.sortedWith(comparator).map { it.id }
+            evaluateLibrary(
+                items = value.mapNotNull { id -> favoritesById[id] }.map { item ->
+                    LibraryEvaluationItem(item.libraryManga, trackerMean = trackerScores[item.id])
+                },
+                categoryId = null,
+                filter = LibraryFilter(),
+                sort = key.sort,
+                randomSeed = libraryPreferences.randomSortSeed().get(),
+            ).map { it.manga.id }
         }
     }
 

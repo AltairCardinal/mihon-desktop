@@ -100,6 +100,8 @@ import mihon.desktop.library.LibraryScreenModelFactory
 import mihon.desktop.ui.reader.DesktopReaderScreen
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.library.model.LibraryManga
+import tachiyomi.domain.library.interactor.LibraryFilter
+import tachiyomi.core.common.preference.TriState
 
 @Composable
 internal fun LibraryToolbar(
@@ -108,11 +110,12 @@ internal fun LibraryToolbar(
     sortMode: SortMode,
     sortAscending: Boolean,
     onSortChange: (SortMode, Boolean) -> Unit,
-    filterUnread: Boolean,
-    filterStarted: Boolean,
-    filterCompleted: Boolean,
-    filterDownloaded: Boolean,
-    onFilterChange: (unread: Boolean, started: Boolean, completed: Boolean, downloaded: Boolean) -> Unit,
+    filter: LibraryFilter,
+    availableTrackerIds: Set<Long>,
+    onToggleFilter: (LibraryFilterField) -> Unit,
+    onToggleTracking: (Long) -> Unit,
+    onToggleGlobalDownloadedOnly: () -> Unit,
+    onToggleSkipOutsideReleasePeriod: () -> Unit,
     isUpdating: Boolean,
     displayMode: LibraryDisplayMode,
     onDisplayModeChange: (LibraryDisplayMode) -> Unit,
@@ -198,21 +201,25 @@ internal fun LibraryToolbar(
                     Icon(Icons.Default.FilterList, contentDescription = "Filter")
                 }
                 DropdownMenu(expanded = showFilterMenu, onDismissRequest = { showFilterMenu = false }) {
+                    filterRows(filter).forEach { (label, value) ->
+                        DropdownMenuItem(
+                            text = { Text("$label: ${value.second.label()}") },
+                            onClick = { onToggleFilter(value.first) },
+                        )
+                    }
+                    availableTrackerIds.forEach { trackerId ->
+                        DropdownMenuItem(
+                            text = { Text("Tracker $trackerId: ${filter.tracking[trackerId].orDisabledForUi().label()}") },
+                            onClick = { onToggleTracking(trackerId) },
+                        )
+                    }
                     DropdownMenuItem(
-                        text = { Text(if (filterUnread) "✓ Unread" else "  Unread") },
-                        onClick = { onFilterChange(!filterUnread, filterStarted, filterCompleted, filterDownloaded) },
+                        text = { Text("Global downloaded only: ${filter.globalDownloadedOnly.onOff()}") },
+                        onClick = onToggleGlobalDownloadedOnly,
                     )
                     DropdownMenuItem(
-                        text = { Text(if (filterStarted) "✓ Started" else "  Started") },
-                        onClick = { onFilterChange(filterUnread, !filterStarted, filterCompleted, filterDownloaded) },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(if (filterCompleted) "✓ Completed" else "  Completed") },
-                        onClick = { onFilterChange(filterUnread, filterStarted, !filterCompleted, filterDownloaded) },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(if (filterDownloaded) "✓ Downloaded" else "  Downloaded") },
-                        onClick = { onFilterChange(filterUnread, filterStarted, filterCompleted, !filterDownloaded) },
+                        text = { Text("Apply custom interval filter: ${filter.skipOutsideReleasePeriod.onOff()}") },
+                        onClick = onToggleSkipOutsideReleasePeriod,
                     )
                 }
             }
@@ -234,26 +241,16 @@ internal fun LibraryToolbar(
             }
         }
 
-        val activeFilters = buildList {
-            if (filterUnread) add("Unread")
-            if (filterStarted) add("Started")
-            if (filterCompleted) add("Completed")
-            if (filterDownloaded) add("Downloaded")
-        }
+        val activeFilters = filterRows(filter).filter { it.second.second != TriState.DISABLED }
         if (activeFilters.isNotEmpty()) {
             Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                activeFilters.forEach { label ->
+                activeFilters.forEach { (label, value) ->
                     FilterChip(
                         selected = true,
                         onClick = {
-                            when (label) {
-                                "Unread" -> onFilterChange(false, filterStarted, filterCompleted, filterDownloaded)
-                                "Started" -> onFilterChange(filterUnread, false, filterCompleted, filterDownloaded)
-                                "Completed" -> onFilterChange(filterUnread, filterStarted, false, filterDownloaded)
-                                "Downloaded" -> onFilterChange(filterUnread, filterStarted, filterCompleted, false)
-                            }
+                            onToggleFilter(value.first)
                         },
-                        label = { Text(label) },
+                        label = { Text("$label: ${value.second.label()}") },
                     )
                 }
             }

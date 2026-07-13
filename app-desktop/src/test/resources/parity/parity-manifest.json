@@ -131,10 +131,13 @@
       "SHARE-DIRECT",
       "SHARE-EXTRACT"
     ],
-    "status": "NOT_STARTED",
+    "status": "SHARED",
     "authoritativeImplementation": "Android authoritative capability #16: 分类",
     "desktopImplementation": "Desktop current implementation to characterize and align: 分类",
-    "protectionTests": [],
+    "protectionTests": [
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryCategoryBehaviorTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -148,8 +151,10 @@
     "authoritativeImplementation": "Android authoritative capability #17: 书库筛选",
     "desktopImplementation": "Desktop current implementation to characterize and align: 书库筛选",
     "protectionTests": [
+      "app/src/test/java/eu/kanade/tachiyomi/ui/library/LibrarySharedEvaluationWiringTest.kt",
       "domain/src/commonTest/kotlin/tachiyomi/domain/library/interactor/EvaluateLibraryTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt"
     ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -175,10 +180,13 @@
     "tags": [
       "SHARE-DIRECT"
     ],
-    "status": "NOT_STARTED",
+    "status": "SHARED",
     "authoritativeImplementation": "Android authoritative capability #22: 收藏与分类联动",
     "desktopImplementation": "Desktop current implementation to characterize and align: 收藏与分类联动",
-    "protectionTests": [],
+    "protectionTests": [
+      "data/src/jvmTest/kotlin/tachiyomi/data/manga/MangaRepositoryMembershipIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseIntegrationTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },

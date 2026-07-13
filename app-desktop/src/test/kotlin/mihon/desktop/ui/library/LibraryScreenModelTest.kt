@@ -17,6 +17,8 @@ import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.core.common.preference.TriState
+import tachiyomi.domain.library.interactor.LibraryFilter
 import mihon.domain.task.TaskStatus
 
 /**
@@ -236,7 +238,7 @@ class LibraryScreenModelTest {
             searchQuery = "test",
             sortMode = SortMode.LAST_READ,
             sortAscending = false,
-            filterUnread = true,
+            filter = LibraryFilter(unread = TriState.ENABLED_IS),
             selectedCategoryIndex = 2,
             isUpdating = true,
             displayMode = LibraryDisplayMode.COMFORTABLE_GRID,
@@ -248,6 +250,50 @@ class LibraryScreenModelTest {
         assertEquals(2, state.selectedCategoryIndex)
         assertTrue(state.isUpdating)
         assertEquals(LibraryDisplayMode.COMFORTABLE_GRID, state.displayMode)
+    }
+
+    @Test
+    fun `filter intent cycles include exclude any and immediately changes visible items`() {
+        val model = LibraryScreenModel()
+        model.setAllItems(
+            listOf(
+                sampleLibraryManga(sampleManga(1)).copy(totalChapters = 2),
+                sampleLibraryManga(sampleManga(2)),
+            ),
+        )
+
+        model.toggleFilter(LibraryFilterField.UNREAD)
+        assertEquals(listOf(1L), model.visibleItems().map { it.id })
+        model.toggleFilter(LibraryFilterField.UNREAD)
+        assertEquals(listOf(2L), model.visibleItems().map { it.id })
+        model.toggleFilter(LibraryFilterField.UNREAD)
+        assertEquals(listOf(1L, 2L), model.visibleItems().map { it.id })
+    }
+
+    @Test
+    fun `complete filter flags flow from state to visible list including local and tracking boundaries`() {
+        val model = LibraryScreenModel()
+        val bookmarked = sampleLibraryManga(sampleManga(1).copy(fetchInterval = -1)).copy(bookmarkCount = 1)
+        val local = sampleLibraryManga(sampleManga(2))
+        model.setAllItems(listOf(bookmarked, local))
+        model.setEvaluationContext(
+            downloadedMangaIds = emptySet(),
+            localMangaIds = setOf(2L),
+            trackerIdsByManga = mapOf(1L to setOf(7L)),
+        )
+        model.setFilter(
+            LibraryFilter(
+                downloaded = TriState.ENABLED_NOT,
+                bookmarked = TriState.ENABLED_IS,
+                intervalCustom = TriState.ENABLED_IS,
+                skipOutsideReleasePeriod = true,
+                tracking = mapOf(7L to TriState.ENABLED_IS),
+            ),
+        )
+
+        assertEquals(listOf(1L), model.visibleItems().map { it.id })
+        model.setFilter(model.state.value.filter.copy(globalDownloadedOnly = true))
+        assertTrue(model.visibleItems().isEmpty())
     }
 
     @Test

@@ -31,6 +31,9 @@ import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.core.common.preference.TriState
+import tachiyomi.domain.library.interactor.LibraryFilter
+import mihon.desktop.domain.LibrarySearchFilter
 
 /**
  * Voyager ScreenModel for [LibraryRootScreen].
@@ -164,15 +167,78 @@ class LibraryScreenModel(
 
     // ── Filters ───────────────────────────────────────────────────────────────
 
+    fun setFilter(filter: LibraryFilter) {
+        _state.update { it.copy(filter = filter) }
+    }
+
     fun setFilters(unread: Boolean, started: Boolean, completed: Boolean, downloaded: Boolean) {
+        setFilter(
+            state.value.filter.copy(
+                unread = unread.asTriState(),
+                started = started.asTriState(),
+                completed = completed.asTriState(),
+                downloaded = downloaded.asTriState(),
+            ),
+        )
+    }
+
+    fun toggleFilter(field: LibraryFilterField) {
+        _state.update { current ->
+            val filter = current.filter
+            current.copy(filter = when (field) {
+                LibraryFilterField.DOWNLOADED -> filter.copy(downloaded = filter.downloaded.next())
+                LibraryFilterField.UNREAD -> filter.copy(unread = filter.unread.next())
+                LibraryFilterField.STARTED -> filter.copy(started = filter.started.next())
+                LibraryFilterField.BOOKMARKED -> filter.copy(bookmarked = filter.bookmarked.next())
+                LibraryFilterField.COMPLETED -> filter.copy(completed = filter.completed.next())
+                LibraryFilterField.INTERVAL_CUSTOM -> filter.copy(intervalCustom = filter.intervalCustom.next())
+            })
+        }
+    }
+
+    fun toggleTrackingFilter(trackerId: Long) {
+        _state.update { current ->
+            val next = current.filter.tracking[trackerId].orDisabled().next()
+            current.copy(filter = current.filter.copy(tracking = current.filter.tracking + (trackerId to next)))
+        }
+    }
+
+    fun toggleGlobalDownloadedOnly() {
+        _state.update { it.copy(filter = it.filter.copy(globalDownloadedOnly = !it.filter.globalDownloadedOnly)) }
+    }
+
+    fun toggleSkipOutsideReleasePeriod() {
+        _state.update {
+            it.copy(filter = it.filter.copy(skipOutsideReleasePeriod = !it.filter.skipOutsideReleasePeriod))
+        }
+    }
+
+    fun setEvaluationContext(
+        downloadedMangaIds: Set<Long>,
+        localMangaIds: Set<Long> = emptySet(),
+        trackerIdsByManga: Map<Long, Set<Long>> = emptyMap(),
+    ) {
         _state.update {
             it.copy(
-                filterUnread = unread,
-                filterStarted = started,
-                filterCompleted = completed,
-                filterDownloaded = downloaded,
+                downloadedMangaIds = downloadedMangaIds,
+                localMangaIds = localMangaIds,
+                trackerIdsByManga = trackerIdsByManga,
+                availableTrackerIds = trackerIdsByManga.values.flatten().toSet(),
             )
         }
+    }
+
+    fun visibleItems(categoryId: Long? = null): List<LibraryManga> = state.value.let {
+        LibrarySearchFilter.apply(
+            items = it.allItems,
+            categoryId = categoryId,
+            searchQuery = it.searchQuery,
+            filter = it.filter,
+            downloadedMangaIds = it.downloadedMangaIds,
+            localMangaIds = it.localMangaIds,
+            trackerIds = it.trackerIdsByManga,
+            sort = LibrarySearchFilter.toSharedSort(it.sortMode, it.sortAscending),
+        )
     }
 
     // ── Category selection ────────────────────────────────────────────────────
@@ -354,3 +420,8 @@ class LibraryScreenModel(
         return repository.getCategoriesByMangaId(mangaId).map { it.id }.toSet()
     }
 }
+
+enum class LibraryFilterField { DOWNLOADED, UNREAD, STARTED, BOOKMARKED, COMPLETED, INTERVAL_CUSTOM }
+
+private fun TriState?.orDisabled() = this ?: TriState.DISABLED
+private fun Boolean.asTriState() = if (this) TriState.ENABLED_IS else TriState.DISABLED

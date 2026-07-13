@@ -10,6 +10,10 @@ import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.manga.repository.LibraryMembershipUpdate
 
 class FakeMangaRepository : MangaRepository {
+    override suspend fun updateMembershipsAtomically(updates: List<LibraryMembershipUpdate>) {
+        updates.forEach { updateAtomically(it) }
+    }
+
     override suspend fun updateAtomically(update: LibraryMembershipUpdate) {
         if (update.mangaId == failCategoryAssignmentFor) error("category assignment failed")
         val manga = store.getValue(update.mangaId)

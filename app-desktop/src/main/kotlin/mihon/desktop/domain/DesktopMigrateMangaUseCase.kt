@@ -7,9 +7,8 @@ import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
+import tachiyomi.domain.manga.repository.LibraryMembershipUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
-import tachiyomi.domain.manga.interactor.LibraryMembershipResult
-import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
 
 /**
  * Lightweight chapter descriptor used for chapter read-status matching.
@@ -59,7 +58,6 @@ data class MigrationOptions(
  */
 class DesktopMigrateMangaUseCase(
     private val saveSourceMangaForDetails: SaveSourceMangaForDetails,
-    private val updateLibraryMembership: UpdateLibraryMembership,
     private val getChaptersByMangaId: GetChaptersByMangaId,
     private val updateChapter: UpdateChapter,
     private val getCategories: GetCategories,
@@ -80,8 +78,8 @@ class DesktopMigrateMangaUseCase(
         } else {
             emptyList()
         }
-        checkMembership(updateLibraryMembership.await(persistedTarget, true, targetCategoryIds))
-        val savedTarget = persistedTarget.copy(favorite = true)
+        val targetDateAdded = if (persistedTarget.favorite) persistedTarget.dateAdded else System.currentTimeMillis()
+        val savedTarget = persistedTarget.copy(favorite = true, dateAdded = targetDateAdded)
 
         // 2. Copy chapter read status
         if (options.copyChapters) {
@@ -106,15 +104,14 @@ class DesktopMigrateMangaUseCase(
             mangaRepository.update(MangaUpdate(id = savedTarget.id, notes = sourceManga.notes))
         }
 
-        // 5. Remove source manga from library if replace=true
-        if (replace) {
-            checkMembership(updateLibraryMembership.await(sourceManga, false))
-        }
+        // 5. Commit target membership and optional source removal in one database transaction.
+        mangaRepository.updateMembershipsAtomically(
+            buildList {
+                add(LibraryMembershipUpdate(savedTarget.id, true, targetDateAdded, targetCategoryIds.distinct()))
+                if (replace) add(LibraryMembershipUpdate(sourceManga.id, false, 0, emptyList()))
+            },
+        )
 
         return savedTarget
     }
-}
-
-private fun checkMembership(result: LibraryMembershipResult) {
-    if (result is LibraryMembershipResult.Failure) error(result.message)
 }

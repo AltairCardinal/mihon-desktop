@@ -3,6 +3,8 @@ package mihon.desktop.ui.library
 import mihon.desktop.domain.SortMode
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.library.model.LibraryManga
+import tachiyomi.core.common.preference.TriState
+import tachiyomi.domain.library.interactor.LibraryFilter
 
 /**
  * All state for [LibraryRootScreen], owned by [LibraryScreenModel].
@@ -21,10 +23,11 @@ data class LibraryState(
     val sortAscending: Boolean = true,
 
     // ── Filter state ──────────────────────────────────────────────────────────
-    val filterUnread: Boolean = false,
-    val filterStarted: Boolean = false,
-    val filterCompleted: Boolean = false,
-    val filterDownloaded: Boolean = false,
+    val filter: LibraryFilter = LibraryFilter(),
+    val downloadedMangaIds: Set<Long> = emptySet(),
+    val localMangaIds: Set<Long> = emptySet(),
+    val trackerIdsByManga: Map<Long, Set<Long>> = emptyMap(),
+    val availableTrackerIds: Set<Long> = emptySet(),
 
     // ── Category tab ──────────────────────────────────────────────────────────
     val selectedCategoryIndex: Int = 0,
@@ -41,4 +44,9 @@ data class LibraryState(
     val contextMenuManga: LibraryManga? = null,
     val showBatchCategoryDialog: Boolean = false,
     val batchCategoryResultMessage: String? = null,
-)
+) {
+    val filterUnread get() = filter.unread == TriState.ENABLED_IS
+    val filterStarted get() = filter.started == TriState.ENABLED_IS
+    val filterCompleted get() = filter.completed == TriState.ENABLED_IS
+    val filterDownloaded get() = filter.downloaded == TriState.ENABLED_IS
+}

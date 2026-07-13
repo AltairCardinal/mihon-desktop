@@ -85,9 +85,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.screen.Screen
-import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.LocalNavigator
-import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabOptions
@@ -120,9 +118,7 @@ object LibraryTab : Tab {
 
     @Composable
     override fun Content() {
-        Navigator(LibraryRootScreen()) {
-            CurrentScreen()
-        }
+        LibraryTabContent(LocalLibraryNavigationHost.current)
     }
 }
 
@@ -144,10 +140,7 @@ class LibraryRootScreen : Screen {
         val searchQuery = state.searchQuery
         val sortMode = state.sortMode
         val sortAscending = state.sortAscending
-        val filterUnread = state.filterUnread
-        val filterStarted = state.filterStarted
-        val filterCompleted = state.filterCompleted
-        val filterDownloaded = state.filterDownloaded
+        val filter = state.filter
         val selectedCategoryIndex = state.selectedCategoryIndex
         val isUpdating = state.isUpdating
         val updateStatusText = state.updateStatusText
@@ -173,10 +166,11 @@ class LibraryRootScreen : Screen {
         val downloadedMangaIds = remember(allItems) {
             model.downloadedMangaIds(allItems)
         }
+        LaunchedEffect(downloadedMangaIds) { model.setEvaluationContext(downloadedMangaIds) }
 
         val displayedItems = remember(
             allItems, searchQuery, sortMode, sortAscending,
-            filterUnread, filterStarted, filterCompleted, filterDownloaded, downloadedMangaIds,
+            filter, downloadedMangaIds,
             selectedCategoryIndex, categoryTabs,
         ) {
             val selectedCategory = categoryTabs.getOrNull(selectedCategoryIndex)
@@ -184,12 +178,7 @@ class LibraryRootScreen : Screen {
                 items = allItems,
                 categoryId = selectedCategory?.id,
                 searchQuery = searchQuery.ifBlank { null },
-                filter = LibraryFilter(
-                    unread = if (filterUnread) TriState.ENABLED_IS else TriState.DISABLED,
-                    started = if (filterStarted) TriState.ENABLED_IS else TriState.DISABLED,
-                    completed = if (filterCompleted) TriState.ENABLED_IS else TriState.DISABLED,
-                    downloaded = if (filterDownloaded) TriState.ENABLED_IS else TriState.DISABLED,
-                ),
+                filter = filter,
                 downloadedMangaIds = downloadedMangaIds,
                 sort = LibrarySearchFilter.toSharedSort(sortMode, sortAscending),
             )
@@ -302,11 +291,12 @@ class LibraryRootScreen : Screen {
                         val cat = categoryTabs.getOrNull(selectedCategoryIndex)
                         model.setSortModeAndDirectionForCategory(cat?.id, mode, asc)
                     },
-                    filterUnread = filterUnread,
-                    filterStarted = filterStarted,
-                    filterCompleted = filterCompleted,
-                    filterDownloaded = filterDownloaded,
-                    onFilterChange = { u, s, c, d -> model.setFilters(u, s, c, d) },
+                    filter = filter,
+                    availableTrackerIds = state.availableTrackerIds,
+                    onToggleFilter = model::toggleFilter,
+                    onToggleTracking = model::toggleTrackingFilter,
+                    onToggleGlobalDownloadedOnly = model::toggleGlobalDownloadedOnly,
+                    onToggleSkipOutsideReleasePeriod = model::toggleSkipOutsideReleasePeriod,
                     isUpdating = isUpdating,
                     displayMode = displayMode,
                     onDisplayModeChange = {
