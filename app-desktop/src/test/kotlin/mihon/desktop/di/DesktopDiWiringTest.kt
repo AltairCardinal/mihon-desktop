@@ -42,6 +42,7 @@ import org.junit.jupiter.api.parallel.Isolated
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.domain.track.repository.TrackRepository
+import tachiyomi.domain.track.service.TrackerSessionProvider
 import tachiyomi.domain.reader.interactor.RecordReadingProgress
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.chapter.model.Chapter
@@ -296,6 +297,8 @@ class DesktopDiWiringTest {
         assertNotNull(Injekt.get<AutoBackupScheduler>())
         assertNotNull(Injekt.get<DesktopExtensionManager>())
         assertNotNull(Injekt.get<TrackRepository>())
+        assertNotNull(Injekt.get<TrackerSessionProvider>())
+        assertEquals(emptySet<Long>(), Injekt.get<TrackerSessionProvider>().loggedInTrackerIds().first())
         assertNotNull(Injekt.get<BackupRestoreScreenModelFactory>())
         assertNotNull(Injekt.get<CreateCategoryWithName>())
         assertNotNull(Injekt.get<GetCategories>())

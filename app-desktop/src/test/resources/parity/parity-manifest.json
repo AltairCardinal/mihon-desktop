@@ -154,7 +154,8 @@
       "app/src/test/java/eu/kanade/tachiyomi/ui/library/LibrarySharedEvaluationWiringTest.kt",
       "domain/src/commonTest/kotlin/tachiyomi/domain/library/interactor/EvaluateLibraryTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryPageCompositionTest.kt"
     ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"

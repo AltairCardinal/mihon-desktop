@@ -81,8 +81,12 @@ class DesktopProductCapabilityContractTest {
                         setOf(
                             "filter intent cycles include exclude any and immediately changes visible items",
                             "complete filter flags flow from state to visible list including local and tracking boundaries",
-                            "production library stream assembles local download tracking menu and tracker means for intents",
+                            "production library stream exposes only logged in tracker rows and reacts to login logout",
                             "production library page projection uses ScreenModel context for tracker menu and visible items",
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryPageCompositionTest.kt" to
+                        setOf(
+                            "LibraryTab page projection follows tracker session local download and multiple flags",
                         ),
                 ),
             22 to

@@ -47,6 +47,7 @@ import mihon.desktop.domain.LibraryUpdateChecker
 import mihon.desktop.domain.LibraryUpdateScheduler
 import mihon.desktop.domain.ReaderModeMemoryCleaner
 import mihon.desktop.domain.ReaderProgressTracker
+import mihon.desktop.domain.DesktopTrackerSessionProvider
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.reader.ReaderPreferences
 import mihon.domain.extensionrepo.interactor.CreateExtensionRepo
@@ -84,6 +85,7 @@ import tachiyomi.domain.history.interactor.RemoveHistory
 import tachiyomi.domain.history.interactor.UpsertHistory
 import tachiyomi.domain.history.repository.HistoryRepository
 import tachiyomi.domain.track.repository.TrackRepository
+import tachiyomi.domain.track.service.TrackerSessionProvider
 import tachiyomi.domain.updates.interactor.GetUpdates
 import tachiyomi.domain.updates.repository.UpdatesRepository
 import tachiyomi.domain.updates.service.UpdatesPreferences
@@ -271,6 +273,7 @@ internal fun initDataLayer(paths: DesktopPlatformPaths): DatabaseHandler {
     Injekt.addSingleton(creatorRepository)
     Injekt.addSingleton(extensionRepoRepository)
     Injekt.addSingleton(trackRepository)
+    Injekt.addSingleton<TrackerSessionProvider>(DesktopTrackerSessionProvider())
     return handler
 }
 

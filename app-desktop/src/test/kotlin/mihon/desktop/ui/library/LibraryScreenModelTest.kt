@@ -1,9 +1,14 @@
 package mihon.desktop.ui.library
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.domain.SortMode
 import mihon.desktop.domain.fakes.FakeChapterRepository
@@ -27,6 +32,7 @@ import tachiyomi.domain.library.interactor.LibraryFilter
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.repository.TrackRepository
+import tachiyomi.domain.track.service.TrackerSessionProvider
 import mihon.domain.task.TaskStatus
 import java.nio.file.Files
 import java.nio.file.Path
@@ -310,7 +316,8 @@ class LibraryScreenModelTest {
     }
 
     @Test
-    fun `production library stream assembles local download tracking menu and tracker means for intents`() = runTest {
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `production library stream exposes only logged in tracker rows and reacts to login logout`() = runTest {
         val repository = FakeMangaRepository().apply {
             libraryManga = listOf(
                 sampleLibraryManga(sampleManga(1).copy(title = "Downloaded", source = 10L)),
@@ -321,23 +328,30 @@ class LibraryScreenModelTest {
         val downloadedChapter = tempDir.resolve("10/Downloaded/Chapter 1")
         Files.createDirectories(downloadedChapter)
         Files.write(downloadedChapter.resolve("page.png"), byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))
-        val tracks = listOf(
+        val tracks = MutableStateFlow(listOf(
             sampleTrack(id = 1L, mangaId = 3L, trackerId = 2L, score = 80.0),
             sampleTrack(id = 2L, mangaId = 3L, trackerId = 7L, score = 6.0),
-        )
+        ))
+        val loggedInTrackerIds = MutableStateFlow(emptySet<Long>())
         val model = LibraryScreenModel(
             getLibraryManga = GetLibraryManga(repository),
             downloadProvider = DesktopDownloadProvider(tempDir.toFile()),
             trackRepository = trackRepositoryOf(tracks),
+            trackerSessionProvider = TrackerSessionProvider { loggedInTrackerIds },
         )
 
-        model.libraryMangaFlow().first()
+        model.libraryMangaFlow().launchIn(backgroundScope)
+        runCurrent()
 
         assertEquals(setOf(1L), model.state.value.downloadedMangaIds)
         assertEquals(setOf(2L), model.state.value.localMangaIds)
-        assertEquals(setOf(2L, 7L), model.state.value.availableTrackerIds)
-        assertEquals(setOf(2L, 7L), model.state.value.trackerIdsByManga.getValue(3L))
-        assertEquals(7.0, model.state.value.trackerMeansByManga.getValue(3L))
+        assertTrue(model.state.value.availableTrackerIds.isEmpty())
+        assertTrue(model.state.value.trackerIdsByManga.isEmpty())
+
+        loggedInTrackerIds.value = setOf(7L)
+        runCurrent()
+        assertEquals(setOf(7L), model.state.value.availableTrackerIds)
+        assertEquals(setOf(7L), model.state.value.trackerIdsByManga.getValue(3L))
 
         model.setFilter(LibraryFilter(downloaded = TriState.ENABLED_IS))
         assertEquals(listOf(1L, 2L), model.visibleItems().map { it.id })
@@ -347,6 +361,13 @@ class LibraryScreenModelTest {
         assertEquals(listOf(3L), model.visibleItems().map { it.id })
         model.setFilter(LibraryFilter(tracking = mapOf(7L to TriState.ENABLED_NOT)))
         assertEquals(listOf(1L, 2L), model.visibleItems().map { it.id })
+
+        loggedInTrackerIds.value = emptySet()
+        runCurrent()
+        assertTrue(model.state.value.availableTrackerIds.isEmpty())
+        assertTrue(model.state.value.trackerIdsByManga.isEmpty())
+        assertTrue(model.state.value.filter.tracking.isEmpty())
+        assertEquals(listOf(1L, 2L, 3L), model.visibleItems().map { it.id })
     }
 
     @Test
@@ -362,7 +383,6 @@ class LibraryScreenModelTest {
             downloadedMangaIds = emptySet(),
             localMangaIds = setOf(2L),
             trackerIdsByManga = mapOf(1L to setOf(7L)),
-            trackerMeansByManga = mapOf(1L to 8.0),
         )
         model.setFilter(
             LibraryFilter(
@@ -516,6 +536,17 @@ class LibraryScreenModelTest {
         override fun getTracksAsFlow(): Flow<List<Track>> = flowOf(tracks)
         override fun getTracksByMangaIdAsFlow(mangaId: Long): Flow<List<Track>> =
             flowOf(tracks.filter { it.mangaId == mangaId })
+        override suspend fun delete(mangaId: Long, trackerId: Long) = Unit
+        override suspend fun insert(track: Track) = Unit
+        override suspend fun insertAll(tracks: List<Track>) = Unit
+    }
+
+    private fun trackRepositoryOf(tracks: StateFlow<List<Track>>) = object : TrackRepository {
+        override suspend fun getTrackById(id: Long) = tracks.value.singleOrNull { it.id == id }
+        override suspend fun getTracksByMangaId(mangaId: Long) = tracks.value.filter { it.mangaId == mangaId }
+        override fun getTracksAsFlow(): Flow<List<Track>> = tracks
+        override fun getTracksByMangaIdAsFlow(mangaId: Long): Flow<List<Track>> =
+            tracks.map { values -> values.filter { it.mangaId == mangaId } }
         override suspend fun delete(mangaId: Long, trackerId: Long) = Unit
         override suspend fun insert(track: Track) = Unit
         override suspend fun insertAll(tracks: List<Track>) = Unit

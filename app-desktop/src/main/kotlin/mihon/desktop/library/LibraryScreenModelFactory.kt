@@ -19,6 +19,7 @@ import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.track.repository.TrackRepository
+import tachiyomi.domain.track.service.TrackerSessionProvider
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -44,6 +45,7 @@ object LibraryScreenModelFactory {
             categoryPrefs = runCatching { Injekt.get<LibraryCategoryPrefs>() }.getOrNull(),
             categoryRepository = Injekt.get<CategoryRepository>(),
             trackRepository = Injekt.get<TrackRepository>(),
+            trackerSessionProvider = Injekt.get<TrackerSessionProvider>(),
             startBackgroundUpdate = updateScheduler::runNow,
             cancelBackgroundUpdate = updateScheduler::cancelUpdate,
             backgroundUpdateStatus = { updateScheduler.taskSnapshot()?.status },

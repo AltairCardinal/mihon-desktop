@@ -95,7 +95,6 @@ import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.library.interactor.LibraryFilter
 import mihon.desktop.ui.library.pickRandomMangaId
 import mihon.desktop.domain.SortMode
-import mihon.desktop.library.LibraryScreenModelFactory
 import mihon.desktop.ui.reader.DesktopReaderScreen
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.library.model.LibraryManga
@@ -129,7 +128,8 @@ class LibraryRootScreen : Screen {
         val scope = rememberCoroutineScope()
         val navigator = LocalNavigator.currentOrThrow
 
-        val model = rememberScreenModel { LibraryScreenModelFactory.create() }
+        val screenModelFactory = LocalLibraryScreenModelFactory.current
+        val model = rememberScreenModel { screenModelFactory() }
         val state by model.state.collectAsState()
         val selectionState = remember { LibrarySelectionState() }
 
@@ -167,12 +167,19 @@ class LibraryRootScreen : Screen {
         val displayedItems = remember(
             allItems, searchQuery, sortMode, sortAscending,
             filter, state.downloadedMangaIds, state.localMangaIds,
-            state.trackerIdsByManga, state.trackerMeansByManga,
+            state.trackerIdsByManga,
             selectedCategoryIndex, categoryTabs,
         ) {
             val selectedCategory = categoryTabs.getOrNull(selectedCategoryIndex)
             libraryPageItems(model, selectedCategory?.id)
         }
+        val pageSnapshot = LibraryPageSnapshot(
+            availableTrackerIds = state.availableTrackerIds,
+            visibleItemIds = displayedItems.map { it.manga.id },
+        )
+        val pageProbe = LocalLibraryPageProbe.current
+        pageProbe?.invoke(pageSnapshot)
+        if (pageProbe != null) return
         val onItemPrimaryClick: (LibraryManga, Boolean) -> Unit = { item, shiftPressed ->
             selectionState.handlePrimaryClick(displayedItems.map { it.manga.id }, item.manga.id, shiftPressed) {
                 navigator.push(MangaDetailScreen(it))
@@ -282,7 +289,7 @@ class LibraryRootScreen : Screen {
                         model.setSortModeAndDirectionForCategory(cat?.id, mode, asc)
                     },
                     filter = filter,
-                    availableTrackerIds = state.availableTrackerIds,
+                    availableTrackerIds = pageSnapshot.availableTrackerIds,
                     onToggleFilter = model::toggleFilter,
                     onToggleTracking = model::toggleTrackingFilter,
                     onToggleGlobalDownloadedOnly = model::toggleGlobalDownloadedOnly,
