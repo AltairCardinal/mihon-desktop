@@ -91,7 +91,6 @@ import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
-import mihon.desktop.domain.LibrarySearchFilter
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.library.interactor.LibraryFilter
 import mihon.desktop.ui.library.pickRandomMangaId
@@ -151,7 +150,7 @@ class LibraryRootScreen : Screen {
         val batchCategoryResultMessage = state.batchCategoryResultMessage
 
         LaunchedEffect(Unit) {
-            launch { model.libraryMangaFlow().collect { model.setAllItems(it) } }
+            launch { model.libraryMangaFlow().collect {} }
             launch { model.refreshCategories() }
         }
 
@@ -163,25 +162,16 @@ class LibraryRootScreen : Screen {
             model.applyCategoryPreferences(cat?.id)
         }
 
-        val downloadedMangaIds = remember(allItems) {
-            model.downloadedMangaIds(allItems)
-        }
-        LaunchedEffect(downloadedMangaIds) { model.setEvaluationContext(downloadedMangaIds) }
+        val downloadedMangaIds = state.downloadedMangaIds
 
         val displayedItems = remember(
             allItems, searchQuery, sortMode, sortAscending,
-            filter, downloadedMangaIds,
+            filter, state.downloadedMangaIds, state.localMangaIds,
+            state.trackerIdsByManga, state.trackerMeansByManga,
             selectedCategoryIndex, categoryTabs,
         ) {
             val selectedCategory = categoryTabs.getOrNull(selectedCategoryIndex)
-            LibrarySearchFilter.apply(
-                items = allItems,
-                categoryId = selectedCategory?.id,
-                searchQuery = searchQuery.ifBlank { null },
-                filter = filter,
-                downloadedMangaIds = downloadedMangaIds,
-                sort = LibrarySearchFilter.toSharedSort(sortMode, sortAscending),
-            )
+            libraryPageItems(model, selectedCategory?.id)
         }
         val onItemPrimaryClick: (LibraryManga, Boolean) -> Unit = { item, shiftPressed ->
             selectionState.handlePrimaryClick(displayedItems.map { it.manga.id }, item.manga.id, shiftPressed) {
@@ -438,5 +428,9 @@ class LibraryRootScreen : Screen {
         }
     }
 }
+
+/** Page-level projection keeps production UI on the ScreenModel's complete evaluation context. */
+internal fun libraryPageItems(model: LibraryScreenModel, categoryId: Long?): List<LibraryManga> =
+    model.visibleItems(categoryId)
 
 // ── Toolbar ───────────────────────────────────────────────────────────────────

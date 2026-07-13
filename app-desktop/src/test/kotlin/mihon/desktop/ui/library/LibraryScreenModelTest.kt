@@ -1,25 +1,35 @@
 package mihon.desktop.ui.library
 
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.domain.SortMode
 import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.domain.fakes.FakeCategoryRepository
 import mihon.desktop.domain.fakes.FakeMangaRepository
 import mihon.desktop.download.DownloadItem
+import mihon.desktop.download.DesktopDownloadProvider
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.library.interactor.LibraryFilter
+import tachiyomi.domain.manga.interactor.GetLibraryManga
+import tachiyomi.domain.track.model.Track
+import tachiyomi.domain.track.repository.TrackRepository
 import mihon.domain.task.TaskStatus
+import java.nio.file.Files
+import java.nio.file.Path
 
 /**
  * Stage 25.2 — LibraryScreenModel tests.
@@ -27,6 +37,9 @@ import mihon.domain.task.TaskStatus
  * Verifies all library UI state lives in a ScreenModel with StateFlow<LibraryState>.
  */
 class LibraryScreenModelTest {
+    @TempDir
+    lateinit var tempDir: Path
+
     @Test
     fun `library update UI delegates start and cancellation to persistent controller`() = runTest {
         var started = 0
@@ -297,6 +310,73 @@ class LibraryScreenModelTest {
     }
 
     @Test
+    fun `production library stream assembles local download tracking menu and tracker means for intents`() = runTest {
+        val repository = FakeMangaRepository().apply {
+            libraryManga = listOf(
+                sampleLibraryManga(sampleManga(1).copy(title = "Downloaded", source = 10L)),
+                sampleLibraryManga(sampleManga(2).copy(title = "Local", source = 0L)),
+                sampleLibraryManga(sampleManga(3).copy(title = "Tracked", source = 30L)),
+            )
+        }
+        val downloadedChapter = tempDir.resolve("10/Downloaded/Chapter 1")
+        Files.createDirectories(downloadedChapter)
+        Files.write(downloadedChapter.resolve("page.png"), byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))
+        val tracks = listOf(
+            sampleTrack(id = 1L, mangaId = 3L, trackerId = 2L, score = 80.0),
+            sampleTrack(id = 2L, mangaId = 3L, trackerId = 7L, score = 6.0),
+        )
+        val model = LibraryScreenModel(
+            getLibraryManga = GetLibraryManga(repository),
+            downloadProvider = DesktopDownloadProvider(tempDir.toFile()),
+            trackRepository = trackRepositoryOf(tracks),
+        )
+
+        model.libraryMangaFlow().first()
+
+        assertEquals(setOf(1L), model.state.value.downloadedMangaIds)
+        assertEquals(setOf(2L), model.state.value.localMangaIds)
+        assertEquals(setOf(2L, 7L), model.state.value.availableTrackerIds)
+        assertEquals(setOf(2L, 7L), model.state.value.trackerIdsByManga.getValue(3L))
+        assertEquals(7.0, model.state.value.trackerMeansByManga.getValue(3L))
+
+        model.setFilter(LibraryFilter(downloaded = TriState.ENABLED_IS))
+        assertEquals(listOf(1L, 2L), model.visibleItems().map { it.id })
+        model.setFilter(LibraryFilter(downloaded = TriState.ENABLED_NOT))
+        assertEquals(listOf(3L), model.visibleItems().map { it.id })
+        model.setFilter(LibraryFilter(tracking = mapOf(7L to TriState.ENABLED_IS)))
+        assertEquals(listOf(3L), model.visibleItems().map { it.id })
+        model.setFilter(LibraryFilter(tracking = mapOf(7L to TriState.ENABLED_NOT)))
+        assertEquals(listOf(1L, 2L), model.visibleItems().map { it.id })
+    }
+
+    @Test
+    fun `production library page projection uses ScreenModel context for tracker menu and visible items`() {
+        val model = LibraryScreenModel()
+        model.setAllItems(
+            listOf(
+                sampleLibraryManga(sampleManga(1).copy(source = 10L)).copy(totalChapters = 2L),
+                sampleLibraryManga(sampleManga(2).copy(source = 0L)).copy(totalChapters = 2L),
+            ),
+        )
+        model.setEvaluationContext(
+            downloadedMangaIds = emptySet(),
+            localMangaIds = setOf(2L),
+            trackerIdsByManga = mapOf(1L to setOf(7L)),
+            trackerMeansByManga = mapOf(1L to 8.0),
+        )
+        model.setFilter(
+            LibraryFilter(
+                downloaded = TriState.ENABLED_NOT,
+                unread = TriState.ENABLED_IS,
+                tracking = mapOf(7L to TriState.ENABLED_IS),
+            ),
+        )
+
+        assertEquals(setOf(7L), model.state.value.availableTrackerIds)
+        assertEquals(listOf(1L), libraryPageItems(model, categoryId = null).map { it.id })
+    }
+
+    @Test
     fun `markMangaRead updates every chapter for the manga`() = runTest {
         val chapterRepository = FakeChapterRepository()
         chapterRepository.addAll(
@@ -412,4 +492,32 @@ class LibraryScreenModelTest {
         chapterFetchedAt = 0L,
         lastRead = 0L,
     )
+
+    private fun sampleTrack(id: Long, mangaId: Long, trackerId: Long, score: Double) = Track(
+        id = id,
+        mangaId = mangaId,
+        trackerId = trackerId,
+        remoteId = id,
+        libraryId = null,
+        title = "Track $id",
+        lastChapterRead = 0.0,
+        totalChapters = 0L,
+        status = 0L,
+        score = score,
+        remoteUrl = "",
+        startDate = 0L,
+        finishDate = 0L,
+        private = false,
+    )
+
+    private fun trackRepositoryOf(tracks: List<Track>) = object : TrackRepository {
+        override suspend fun getTrackById(id: Long) = tracks.singleOrNull { it.id == id }
+        override suspend fun getTracksByMangaId(mangaId: Long) = tracks.filter { it.mangaId == mangaId }
+        override fun getTracksAsFlow(): Flow<List<Track>> = flowOf(tracks)
+        override fun getTracksByMangaIdAsFlow(mangaId: Long): Flow<List<Track>> =
+            flowOf(tracks.filter { it.mangaId == mangaId })
+        override suspend fun delete(mangaId: Long, trackerId: Long) = Unit
+        override suspend fun insert(track: Track) = Unit
+        override suspend fun insertAll(tracks: List<Track>) = Unit
+    }
 }

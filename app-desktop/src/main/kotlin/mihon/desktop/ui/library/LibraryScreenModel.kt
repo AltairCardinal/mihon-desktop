@@ -5,6 +5,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import mihon.desktop.domain.LibraryUpdateChecker
@@ -31,6 +33,8 @@ import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.track.model.Track
+import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.library.interactor.LibraryFilter
 import mihon.desktop.domain.LibrarySearchFilter
@@ -72,6 +76,7 @@ class LibraryScreenModel(
     private val downloadPreferences: DesktopDownloadPreferences? = null,
     private val categoryPrefs: LibraryCategoryPrefs? = null,
     private val categoryRepository: CategoryRepository? = null,
+    private val trackRepository: TrackRepository? = null,
     private val startBackgroundUpdate: (() -> Job)? = null,
     private val cancelBackgroundUpdate: (() -> Boolean)? = null,
     private val backgroundUpdateStatus: (() -> TaskStatus?)? = null,
@@ -82,8 +87,35 @@ class LibraryScreenModel(
 
     // ── Data loading ──────────────────────────────────────────────────────────
 
-    fun libraryMangaFlow(): Flow<List<LibraryManga>> =
-        requireNotNull(getLibraryManga) { "GetLibraryManga is required" }.subscribe()
+    fun libraryMangaFlow(): Flow<List<LibraryManga>> = combine(
+        requireNotNull(getLibraryManga) { "GetLibraryManga is required" }.subscribe(),
+        trackRepository?.getTracksAsFlow() ?: flowOf(emptyList()),
+    ) { items, tracks ->
+        updateLibrarySnapshot(items, tracks)
+        items
+    }
+
+    private fun updateLibrarySnapshot(items: List<LibraryManga>, tracks: List<Track>) {
+        val tracksByManga = tracks.groupBy { it.mangaId }
+        val localMangaIds = items.mapNotNullTo(mutableSetOf()) { item ->
+            item.id.takeIf { item.manga.source == LOCAL_SOURCE_ID }
+        }
+        val trackerIdsByManga = tracksByManga.mapValues { (_, mangaTracks) ->
+            mangaTracks.mapTo(mutableSetOf()) { track -> track.trackerId }
+        }
+        _state.update {
+            it.copy(
+                allItems = items,
+                downloadedMangaIds = downloadedMangaIds(items),
+                localMangaIds = localMangaIds,
+                trackerIdsByManga = trackerIdsByManga,
+                trackerMeansByManga = tracksByManga.mapValues { (_, mangaTracks) ->
+                    mangaTracks.map { track -> track.tenPointScore() }.average()
+                },
+                availableTrackerIds = tracks.mapTo(mutableSetOf()) { track -> track.trackerId },
+            )
+        }
+    }
 
     suspend fun refreshCategories() {
         setCategories(requireNotNull(getCategories) { "GetCategories is required" }.await())
@@ -217,12 +249,14 @@ class LibraryScreenModel(
         downloadedMangaIds: Set<Long>,
         localMangaIds: Set<Long> = emptySet(),
         trackerIdsByManga: Map<Long, Set<Long>> = emptyMap(),
+        trackerMeansByManga: Map<Long, Double> = emptyMap(),
     ) {
         _state.update {
             it.copy(
                 downloadedMangaIds = downloadedMangaIds,
                 localMangaIds = localMangaIds,
                 trackerIdsByManga = trackerIdsByManga,
+                trackerMeansByManga = trackerMeansByManga,
                 availableTrackerIds = trackerIdsByManga.values.flatten().toSet(),
             )
         }
@@ -237,6 +271,7 @@ class LibraryScreenModel(
             downloadedMangaIds = it.downloadedMangaIds,
             localMangaIds = it.localMangaIds,
             trackerIds = it.trackerIdsByManga,
+            trackerMeans = it.trackerMeansByManga,
             sort = LibrarySearchFilter.toSharedSort(it.sortMode, it.sortAscending),
         )
     }
@@ -425,3 +460,8 @@ enum class LibraryFilterField { DOWNLOADED, UNREAD, STARTED, BOOKMARKED, COMPLET
 
 private fun TriState?.orDisabled() = this ?: TriState.DISABLED
 private fun Boolean.asTriState() = if (this) TriState.ENABLED_IS else TriState.DISABLED
+
+private fun Track.tenPointScore() = if (trackerId == ANILIST_TRACKER_ID) score / 10.0 else score
+
+private const val LOCAL_SOURCE_ID = 0L
+private const val ANILIST_TRACKER_ID = 2L

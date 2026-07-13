@@ -81,6 +81,8 @@ class DesktopProductCapabilityContractTest {
                         setOf(
                             "filter intent cycles include exclude any and immediately changes visible items",
                             "complete filter flags flow from state to visible list including local and tracking boundaries",
+                            "production library stream assembles local download tracking menu and tracker means for intents",
+                            "production library page projection uses ScreenModel context for tracker menu and visible items",
                         ),
                 ),
             22 to

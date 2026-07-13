@@ -193,8 +193,8 @@ class LibraryScreenModel(
                 trackerIds = trackMap[item.id].orEmpty().mapTo(mutableSetOf()) { it.trackerId },
             )
         }
-        return evaluateLibrary(
-            evaluationItems,
+        return evaluateLibrary.filter(
+            items = evaluationItems,
             categoryId = null,
             filter = LibraryFilter(
                 downloaded = preferences.filterDownloaded,
@@ -207,7 +207,6 @@ class LibraryScreenModel(
                 skipOutsideReleasePeriod = preferences.skipOutsideReleasePeriod,
                 tracking = trackingFilter,
             ),
-            sort = LibrarySort.default,
         ).mapNotNull { byId[it.manga.id] }
     }
 
@@ -244,14 +243,13 @@ class LibraryScreenModel(
         }
 
         return mapValues { (key, value) ->
-            evaluateLibrary(
+            evaluateLibrary.sortForAndroid(
                 items = value.mapNotNull { id -> favoritesById[id] }.map { item ->
-                    LibraryEvaluationItem(item.libraryManga, trackerMean = trackerScores[item.id])
+                    LibraryEvaluationItem(item.libraryManga)
                 },
-                categoryId = null,
-                filter = LibraryFilter(),
                 sort = key.sort,
                 randomSeed = libraryPreferences.randomSortSeed().get(),
+                trackerMeanProvider = { trackerScores[it.manga.id] },
             ).map { it.manga.id }
         }
     }
@@ -729,4 +727,18 @@ class LibraryScreenModel(
             return LibraryToolbarTitle(title, count)
         }
     }
+}
+
+internal fun EvaluateLibrary.sortForAndroid(
+    items: List<LibraryEvaluationItem>,
+    sort: LibrarySort,
+    randomSeed: Int,
+    trackerMeanProvider: (LibraryEvaluationItem) -> Double?,
+): List<LibraryEvaluationItem> {
+    val sortableItems = if (sort.type == LibrarySort.Type.TrackerMean) {
+        items.map { it.copy(trackerMean = trackerMeanProvider(it)) }
+    } else {
+        items
+    }
+    return sort(sortableItems, sort, randomSeed)
 }

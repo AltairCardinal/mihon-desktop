@@ -2,6 +2,8 @@ package mihon.desktop.ui.library
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
@@ -16,20 +18,23 @@ internal interface LibraryScreenStack {
 
 /** Executable host contract used by [LibraryTab.Content], with a CompositionLocal test seam. */
 internal interface LibraryNavigationHost {
-    val currentStack: LibraryScreenStack?
-
     @Composable
     fun Content(root: Screen)
 }
 
-internal object VoyagerLibraryNavigationHost : LibraryNavigationHost {
-    override var currentStack: LibraryScreenStack? = null
-        private set
+internal class VoyagerLibraryNavigationHost(
+    private val onStackAttached: (LibraryScreenStack) -> Unit = {},
+    private val onStackDetached: (LibraryScreenStack) -> Unit = {},
+) : LibraryNavigationHost {
 
     @Composable
     override fun Content(root: Screen) {
         Navigator(root) { navigator ->
-            currentStack = VoyagerLibraryScreenStack(navigator)
+            val stack = remember(navigator) { VoyagerLibraryScreenStack(navigator) }
+            DisposableEffect(stack) {
+                onStackAttached(stack)
+                onDispose { onStackDetached(stack) }
+            }
             CurrentScreen()
         }
     }
@@ -47,7 +52,7 @@ private class VoyagerLibraryScreenStack(
 }
 
 internal val LocalLibraryNavigationHost = staticCompositionLocalOf<LibraryNavigationHost> {
-    VoyagerLibraryNavigationHost
+    VoyagerLibraryNavigationHost()
 }
 
 @Composable

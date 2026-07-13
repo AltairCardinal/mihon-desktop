@@ -10,6 +10,7 @@ import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.manga.repository.LibraryMembershipUpdate
 
 class FakeMangaRepository : MangaRepository {
+    var libraryManga: List<LibraryManga> = emptyList()
     override suspend fun updateMembershipsAtomically(updates: List<LibraryMembershipUpdate>) {
         updates.forEach { updateAtomically(it) }
     }
@@ -79,8 +80,8 @@ class FakeMangaRepository : MangaRepository {
         flowOf(store.values.find { it.url == url && it.source == sourceId })
     override suspend fun getFavorites(): List<Manga> = store.values.filter { it.favorite }
     override suspend fun getReadMangaNotInLibrary(): List<Manga> = emptyList()
-    override suspend fun getLibraryManga(): List<LibraryManga> = emptyList()
-    override fun getLibraryMangaAsFlow(): Flow<List<LibraryManga>> = flowOf(emptyList())
+    override suspend fun getLibraryManga(): List<LibraryManga> = libraryManga
+    override fun getLibraryMangaAsFlow(): Flow<List<LibraryManga>> = flowOf(libraryManga)
     override fun getFavoritesBySourceId(sourceId: Long): Flow<List<Manga>> = flowOf(emptyList())
     override suspend fun getDuplicateLibraryManga(id: Long, title: String): List<MangaWithChapterCount> = emptyList()
     override suspend fun getUpcomingManga(statuses: Set<Long>): Flow<List<Manga>> = flowOf(emptyList())

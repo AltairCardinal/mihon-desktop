@@ -25,6 +25,9 @@ import mihon.desktop.ui.library.authorDetailScreenOrNull
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertNotSame
 import org.junit.jupiter.api.Assertions.assertTrue
 
 /**
@@ -107,8 +110,15 @@ class NavigationContractTest {
     }
 
     @Test
-    fun `production host exposes the same nested stack consumed from LocalNavigator`() = runTest {
+    fun `production host exposes only the live nested stack and clears it on disposal`() = runTest {
         val root = LocalNavigatorProbeScreen()
+        var observedStack: LibraryScreenStack? = null
+        val host = VoyagerLibraryNavigationHost(
+            onStackAttached = { observedStack = it },
+            onStackDetached = { detached ->
+                if (observedStack === detached) observedStack = null
+            },
+        )
         val frameClock = BroadcastFrameClock()
         val recomposer = Recomposer(coroutineContext + frameClock)
         val composition = Composition(UnitTestApplier(), recomposer)
@@ -116,19 +126,35 @@ class NavigationContractTest {
             recomposer.runRecomposeAndApplyChanges()
         }
 
-        composition.setContent { VoyagerLibraryNavigationHost.Content(root) }
+        composition.setContent { host.Content(root) }
         frameClock.sendFrame(0L)
         recomposer.awaitIdle()
-        composition.dispose()
 
-        root.localNavigator.push(MangaDetailScreen(11L))
-        root.localNavigator.push(AuthorDetailScreen(creatorId = 12L))
+        assertNotNull(observedStack)
+        val firstStack = requireNotNull(observedStack)
+        firstStack.push(MangaDetailScreen(11L))
+        firstStack.push(AuthorDetailScreen(creatorId = 12L))
         assertEquals(
             root.localNavigator.items,
-            VoyagerLibraryNavigationHost.currentStack?.items,
+            firstStack.items,
             "The host contract must consume the Navigator supplied through LocalNavigator",
         )
         assertEquals(listOf(root, MangaDetailScreen(11L), AuthorDetailScreen(12L)), root.localNavigator.items)
+
+        composition.dispose()
+        assertNull(observedStack, "Disposed compositions must not expose their Navigator stack")
+
+        val secondRoot = LocalNavigatorProbeScreen()
+        val secondComposition = Composition(UnitTestApplier(), recomposer)
+        secondComposition.setContent { host.Content(secondRoot) }
+        frameClock.sendFrame(1L)
+        recomposer.awaitIdle()
+        assertNotNull(observedStack)
+        val secondStack = requireNotNull(observedStack)
+        assertNotSame(firstStack, secondStack)
+        assertEquals(listOf(secondRoot), secondStack.items, "A rebuilt host must start with a fresh stack")
+        secondComposition.dispose()
+        assertNull(observedStack)
 
         recomposer.close()
         recomposerJob.cancelAndJoin()
@@ -138,9 +164,6 @@ class NavigationContractTest {
         lateinit var root: Screen
         val stack = RecordingScreenStack()
         var renderCount = 0
-
-        override val currentStack: LibraryScreenStack
-            get() = stack
 
         @Composable
         override fun Content(root: Screen) {

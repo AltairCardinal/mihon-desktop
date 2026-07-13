@@ -35,11 +35,21 @@ class EvaluateLibrary {
         filter: LibraryFilter,
         sort: LibrarySort,
         randomSeed: Int = 0,
+    ): List<LibraryEvaluationItem> = sort(
+        items = filter(items, categoryId, filter),
+        sort = sort,
+        randomSeed = randomSeed,
+    )
+
+    fun filter(
+        items: List<LibraryEvaluationItem>,
+        categoryId: Long?,
+        filter: LibraryFilter,
     ): List<LibraryEvaluationItem> {
         val downloadedFilter = if (filter.globalDownloadedOnly) TriState.ENABLED_IS else filter.downloaded
         val excludedTracks = filter.tracking.filterValues { it == TriState.ENABLED_NOT }.keys
         val includedTracks = filter.tracking.filterValues { it == TriState.ENABLED_IS }.keys
-        val filtered = items.filter { item ->
+        return items.filter { item ->
             (categoryId == null || categoryId in item.manga.categories) &&
                 applyFilter(downloadedFilter) { item.isLocal || item.downloadCount > 0 } &&
                 applyFilter(filter.unread) { item.manga.unreadCount > 0 } &&
@@ -55,7 +65,14 @@ class EvaluateLibrary {
                         item.trackerIds.none { it in excludedTracks }
                     )
         }
-        if (sort.type == LibrarySort.Type.Random) return filtered.shuffled(Random(randomSeed))
+    }
+
+    fun sort(
+        items: List<LibraryEvaluationItem>,
+        sort: LibrarySort,
+        randomSeed: Int = 0,
+    ): List<LibraryEvaluationItem> {
+        if (sort.type == LibrarySort.Type.Random) return items.shuffled(Random(randomSeed))
 
         val titleComparator = Comparator<LibraryEvaluationItem> { left, right ->
             left.manga.manga.title.lowercase().compareToWithCollator(right.manga.manga.title.lowercase())
@@ -79,6 +96,6 @@ class EvaluateLibrary {
                 LibrarySort.Type.Random -> error("Random is shuffled before comparator creation")
             }
         }.let { if (sort.isAscending) it else it.reversed() }.then(titleComparator)
-        return filtered.sortedWith(comparator)
+        return items.sortedWith(comparator)
     }
 }

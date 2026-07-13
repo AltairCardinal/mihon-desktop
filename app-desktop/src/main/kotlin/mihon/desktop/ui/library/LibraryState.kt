@@ -27,6 +27,7 @@ data class LibraryState(
     val downloadedMangaIds: Set<Long> = emptySet(),
     val localMangaIds: Set<Long> = emptySet(),
     val trackerIdsByManga: Map<Long, Set<Long>> = emptyMap(),
+    val trackerMeansByManga: Map<Long, Double> = emptyMap(),
     val availableTrackerIds: Set<Long> = emptySet(),
 
     // ── Category tab ──────────────────────────────────────────────────────────

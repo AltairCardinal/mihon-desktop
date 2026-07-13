@@ -13,6 +13,17 @@ class EvaluateLibraryTest {
     private val evaluator = EvaluateLibrary()
 
     @Test
+    fun `filter only preserves large input order without sorting`() {
+        val items = (1L..1_000L)
+            .map { id -> LibraryEvaluationItem(item(id, title = id.toString().padStart(4, '0'))) }
+            .reversed()
+
+        evaluator.filter(items, categoryId = null, filter = LibraryFilter())
+            .map { it.manga.id }
+            .shouldContainExactly(items.map { it.manga.id })
+    }
+
+    @Test
     fun `all tri-state filters preserve Android IS NOT and disabled semantics`() {
         val match = item(1, unread = 2, read = 1, bookmarks = 1, status = SManga.COMPLETED.toLong(), interval = -1)
         val opposite = item(2)
