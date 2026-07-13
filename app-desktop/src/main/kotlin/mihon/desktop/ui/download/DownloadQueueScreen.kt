@@ -54,6 +54,7 @@ import kotlinx.coroutines.launch
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.download.DownloadStatus
+import mihon.domain.error.AppError
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
@@ -298,7 +299,7 @@ private fun DownloadItemCard(
                 "Downloading\u2026"
             }
         DownloadStatus.DONE -> "Done"
-        DownloadStatus.ERROR -> "Failed"
+        DownloadStatus.ERROR -> item.failure?.let(::downloadFailureMessage) ?: "下载失败，请重试"
         DownloadStatus.CANCELLED -> "Cancelled"
     }
     val statusColor = when (item.status) {
@@ -386,4 +387,16 @@ private fun DownloadItemCard(
             }
         }
     }
+}
+
+internal fun downloadFailureMessage(error: AppError): String = when (error) {
+    is AppError.MalformedData -> "\u6e90\u8fd4\u56de\u7684\u9875\u9762\u6570\u636e\u65e0\u6548\uff0c\u8bf7\u66f4\u65b0\u6e90\u6216\u7a0d\u540e\u91cd\u8bd5"
+    is AppError.Unknown -> "\u6e90\u4e0d\u53ef\u7528\u6216\u53d1\u751f\u672a\u77e5\u9519\u8bef\uff0c\u8bf7\u68c0\u67e5\u6e90\u8bbe\u7f6e\u540e\u91cd\u8bd5"
+    is AppError.Network -> "网络连接失败，请检查网络后重试"
+    is AppError.Authentication -> "服务器拒绝访问，请检查登录或源设置后重试"
+    is AppError.RateLimited -> error.retryAfterSeconds?.let { "请求过于频繁，请在 ${it} 秒后重试" } ?: "请求过于频繁，请稍后重试"
+    is AppError.Server -> "服务器错误（HTTP ${error.statusCode}），请稍后重试"
+    is AppError.Permission -> "没有写入权限，请检查下载路径后重试"
+    is AppError.Storage -> "磁盘空间不足或无法写入，请检查下载路径后重试"
+    else -> "下载失败，请重试"
 }

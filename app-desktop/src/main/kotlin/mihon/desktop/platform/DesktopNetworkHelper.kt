@@ -20,7 +20,7 @@ class DesktopNetworkHelper(
     cookieStorageFile: File = DesktopPlatformPaths.current().cookiesFile,
     dohProvider: DohProvider = DohProvider.OFF,
     challengeManager: CloudflareChallengeManager? = null,
-) {
+) : AutoCloseable {
 
     val cookieJar = DesktopCookieJar(
         storageFile = cookieStorageFile,
@@ -64,6 +64,19 @@ class DesktopNetworkHelper(
             .includeIPv6(false)
             .build()
         baseClient.newBuilder().dns(dns).build()
+    }
+
+    override fun close() {
+        client.dispatcher.cancelAll()
+        client.dispatcher.executorService.shutdown()
+        client.connectionPool.evictAll()
+        client.cache?.close()
+        if (client !== baseClient) {
+            baseClient.dispatcher.cancelAll()
+            baseClient.dispatcher.executorService.shutdown()
+            baseClient.connectionPool.evictAll()
+            baseClient.cache?.close()
+        }
     }
 
     private fun defaultUserAgentProvider(): String = "Mihon Desktop/1.0"

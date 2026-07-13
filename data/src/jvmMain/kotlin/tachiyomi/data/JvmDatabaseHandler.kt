@@ -17,7 +17,15 @@ class JvmDatabaseHandler(
     val db: Database,
     private val driver: SqlDriver,
     val queryDispatcher: CoroutineDispatcher = Dispatchers.IO,
-) : DatabaseHandler {
+) : DatabaseHandler, AutoCloseable {
+    @Volatile
+    private var closed = false
+
+    override fun close() {
+        if (closed) return
+        closed = true
+        driver.close()
+    }
 
     override suspend fun <T> await(inTransaction: Boolean, block: suspend Database.() -> T): T {
         return dispatch(inTransaction, block)
@@ -71,6 +79,7 @@ class JvmDatabaseHandler(
     }
 
     private suspend fun <T> dispatch(inTransaction: Boolean, block: suspend Database.() -> T): T {
+        check(!closed) { "Database handler is closed" }
         if (inTransaction) {
             return withContext(queryDispatcher) {
                 db.transactionWithResult {

@@ -2,6 +2,7 @@ package mihon.desktop.di
 
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import dev.mihon.injekt.patchInjekt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -30,6 +31,9 @@ import tachiyomi.data.JvmDatabaseHandler
 import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
+import tachiyomi.data.download.PersistentDownloadStore
+import tachiyomi.data.reader.SqlDelightReadingProgressRepository
+import tachiyomi.domain.reader.interactor.RecordReadingProgress
 import mihon.data.repository.ExtensionRepoRepositoryImpl
 import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.domain.AddMangaToLibrary
@@ -81,6 +85,8 @@ import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.updates.interactor.GetUpdates
 import tachiyomi.domain.updates.repository.UpdatesRepository
 import tachiyomi.domain.updates.service.UpdatesPreferences
+import tachiyomi.domain.download.service.DownloadPreferences
+import mihon.domain.chapter.interactor.FilterChaptersForDownload
 import tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga
 import tachiyomi.domain.manga.interactor.GetFavorites
 import tachiyomi.domain.manga.interactor.GetLibraryManga
@@ -119,14 +125,66 @@ internal fun initDesktopConfigurationForTest(appDir: File, preferenceStore: Pref
     Injekt.addSingleton<PlatformInfo>(DesktopPlatformInfo())
 }
 
-internal fun initDesktopDIForTest(appDir: File, preferenceStore: PreferenceStore) {
+internal suspend fun initDesktopDIForTest(
+    appDir: File,
+    preferenceStore: PreferenceStore,
+    libraryProvider: (suspend () -> List<tachiyomi.domain.library.model.LibraryManga>)? = null,
+    updateManga: (suspend (tachiyomi.domain.manga.model.Manga) -> LibraryUpdateChecker.UpdateResult)? = null,
+    startDownloadWorker: Boolean = false,
+    downloadFileOperations: mihon.desktop.download.DownloadFileOperations = mihon.desktop.download.DefaultDownloadFileOperations,
+): DesktopTestDIContext {
+    activeDesktopTestDIContext?.closeAndJoin()
+    patchInjekt()
     val paths = desktopPaths(appDir)
     initDesktopConfigurationForTest(appDir, preferenceStore)
     val networkHelper = initNetworkLayer(paths, preferenceStore)
     val handler = initDataLayer(paths)
     initExtensionLayer(paths, networkHelper, handler)
     initDomainLayer(handler)
-    initUILayer(paths, preferenceStore, networkHelper, handler)
+    initUILayer(
+        paths,
+        preferenceStore,
+        networkHelper,
+        handler,
+        libraryProvider,
+        updateManga,
+        startDownloadWorker,
+        downloadFileOperations,
+    )
+    return DesktopTestDIContext(
+        handler = handler as JvmDatabaseHandler,
+        networkHelper = networkHelper,
+        scheduler = Injekt.get(),
+        downloadManager = Injekt.get(),
+    ).also { activeDesktopTestDIContext = it }
+}
+
+private var activeDesktopTestDIContext: DesktopTestDIContext? = null
+
+internal class DesktopTestDIContext(
+    val handler: JvmDatabaseHandler,
+    private val networkHelper: DesktopNetworkHelper,
+    private val scheduler: LibraryUpdateScheduler,
+    private val downloadManager: mihon.desktop.download.DesktopDownloadManager,
+) : AutoCloseable {
+    private var closed = false
+
+    override fun close() {
+        if (closed) return
+        scheduler.stop()
+    }
+
+    suspend fun closeAndJoin() {
+        if (closed) return
+        closed = true
+        scheduler.stopAndJoin()
+        // Cancel calls before joining downloads because OkHttp execute() is blocking.
+        networkHelper.client.dispatcher.cancelAll()
+        downloadManager.stopAndJoin()
+        networkHelper.close()
+        handler.close()
+        if (activeDesktopTestDIContext === this) activeDesktopTestDIContext = null
+    }
 }
 
 // ── Config layer ─────────────────────────────────────────────────────────────
@@ -333,15 +391,16 @@ internal fun initUILayer(
     preferenceStore: PreferenceStore,
     networkHelper: DesktopNetworkHelper,
     handler: DatabaseHandler,
+    libraryProvider: (suspend () -> List<tachiyomi.domain.library.model.LibraryManga>)? = null,
+    updateManga: (suspend (tachiyomi.domain.manga.model.Manga) -> LibraryUpdateChecker.UpdateResult)? = null,
+    startDownloadWorker: Boolean = true,
+    downloadFileOperations: mihon.desktop.download.DownloadFileOperations = mihon.desktop.download.DefaultDownloadFileOperations,
 ) {
     val mangaRepository = Injekt.get<MangaRepository>()
     val chapterRepository = Injekt.get<ChapterRepository>()
     val categoryRepository = Injekt.get<CategoryRepository>()
     val historyRepository = Injekt.get<HistoryRepository>()
     val appPreferences = Injekt.get<DesktopAppPreferences>()
-    val updateChapter = Injekt.get<UpdateChapter>()
-    val upsertHistory = Injekt.get<UpsertHistory>()
-
     Injekt.addSingleton(
         BackupRestoreScreenModelFactory(
             mangaRepository = mangaRepository,
@@ -356,8 +415,48 @@ internal fun initUILayer(
         ),
     )
 
-    val notificationService = registerDesktopLibrary(paths, preferenceStore, categoryRepository, appPreferences)
-    val (downloadPreferences, downloadManager) = registerDesktopDownload(paths, preferenceStore)
+    val database = (handler as JvmDatabaseHandler).db
+    val (downloadPreferences, downloadManager) = registerDesktopDownload(
+        paths,
+        preferenceStore,
+        database,
+        startDownloadWorker,
+        downloadFileOperations,
+    )
+    val readingProgress = RecordReadingProgress(SqlDelightReadingProgressRepository(database))
+    Injekt.addSingleton<mihon.domain.download.DownloadRepository>(downloadManager)
+    Injekt.addSingleton(mihon.domain.download.EnqueueDownload(downloadManager))
+    Injekt.addSingleton(mihon.domain.download.IsChapterDownloaded(downloadManager))
+    Injekt.addSingleton(mihon.domain.download.ObserveDownloadQueue(downloadManager))
+    Injekt.addSingleton(mihon.domain.download.CancelDownload(downloadManager))
+    Injekt.addSingleton(mihon.domain.download.RetryDownload(downloadManager))
+    Injekt.addSingleton(mihon.domain.download.TransitionDownload(downloadManager))
+    Injekt.addSingleton(mihon.domain.download.RecoverDownloads(downloadManager))
+    Injekt.addSingleton(readingProgress)
+    val sharedDownloadPreferences = DownloadPreferences(preferenceStore)
+    if (
+        preferenceStore.getBoolean("auto_download_new_chapters", false).get() &&
+        !sharedDownloadPreferences.downloadNewChapters().get()
+    ) {
+        sharedDownloadPreferences.downloadNewChapters().set(true)
+    }
+    val filterChaptersForDownload = FilterChaptersForDownload(
+        Injekt.get(),
+        sharedDownloadPreferences,
+        Injekt.get(),
+    )
+    Injekt.addSingleton(sharedDownloadPreferences)
+    Injekt.addSingleton(filterChaptersForDownload)
+    val notificationService = registerDesktopLibrary(
+        paths,
+        preferenceStore,
+        categoryRepository,
+        appPreferences,
+        filterChaptersForDownload,
+        Injekt.get(),
+        libraryProvider,
+        updateManga,
+    )
 
     Injekt.addSingleton(DesktopJsEngine())
     Injekt.addSingleton(
@@ -368,8 +467,7 @@ internal fun initUILayer(
     )
     Injekt.addSingleton(
         ReaderProgressTracker(
-            updateChapter = updateChapter,
-            upsertHistory = upsertHistory,
+            recordReadingProgress = readingProgress,
             appPreferences = appPreferences,
             downloadPreferences = downloadPreferences,
             downloadManager = downloadManager,
@@ -398,6 +496,10 @@ private fun registerDesktopLibrary(
     preferenceStore: PreferenceStore,
     categoryRepository: CategoryRepository,
     appPreferences: DesktopAppPreferences,
+    filterChaptersForDownload: FilterChaptersForDownload,
+    enqueueDownload: mihon.domain.download.EnqueueDownload,
+    libraryProvider: (suspend () -> List<tachiyomi.domain.library.model.LibraryManga>)? = null,
+    updateManga: (suspend (tachiyomi.domain.manga.model.Manga) -> LibraryUpdateChecker.UpdateResult)? = null,
 ): DesktopNotificationService {
     Injekt.addSingleton(paths)
     Injekt.addSingleton(DesktopMangaCoverManager(paths.coversDir))
@@ -419,6 +521,24 @@ private fun registerDesktopLibrary(
             creatorDiscoveryService = Injekt.get<CreatorDiscoveryService>(),
             taskScheduler = taskScheduler,
             taskNotifier = taskNotifier,
+            libraryProvider = libraryProvider,
+            updateManga = updateManga,
+            autoDownload = { manga, chapters ->
+                filterChaptersForDownload.await(manga, chapters).forEach { chapter ->
+                    enqueueDownload(
+                        mihon.domain.download.DownloadQueueEntry(
+                            chapterId = chapter.id,
+                            mangaId = manga.id,
+                            sourceId = manga.source,
+                            mangaTitle = manga.title,
+                            chapterName = chapter.name,
+                            chapterUrl = chapter.url,
+                            pageUrls = emptyList(),
+                            position = System.nanoTime(),
+                        ),
+                    )
+                }
+            },
         ),
     )
     Injekt.addSingleton(UpdatesPreferences(preferenceStore))
@@ -428,14 +548,19 @@ private fun registerDesktopLibrary(
 private fun registerDesktopDownload(
     paths: DesktopPlatformPaths,
     preferenceStore: PreferenceStore,
+    database: tachiyomi.data.Database,
+    startWorker: Boolean = true,
+    fileOperations: mihon.desktop.download.DownloadFileOperations = mihon.desktop.download.DefaultDownloadFileOperations,
 ): Pair<DesktopDownloadPreferences, mihon.desktop.download.DesktopDownloadManager> {
     val downloadPreferences = DesktopDownloadPreferences(preferenceStore)
     val downloadProvider = mihon.desktop.download.DesktopDownloadProvider(paths.downloadsDir)
     val downloadManager = mihon.desktop.download.DesktopDownloadManager(
         provider = downloadProvider,
         downloadPreferences = downloadPreferences,
+        store = PersistentDownloadStore(database),
+        fileOperations = fileOperations,
     )
-    downloadManager.start()
+    if (startWorker) downloadManager.start()
     Injekt.addSingleton(downloadPreferences)
     Injekt.addSingleton(downloadProvider)
     Injekt.addSingleton(downloadManager)
@@ -468,9 +593,9 @@ private fun registerDesktopBackup(
  *
  * For a fresh install, creates the schema from scratch (does NOT run Android
  * legacy migrations). For an existing database, migrates incrementally.
- * If migration fails (e.g. corrupted file), deletes the file and recreates.
+ * Migration failures are fatal and preserve the original database for diagnosis/recovery.
  */
-private fun createDriver(dbFile: File): SqlDriver {
+internal fun createDriver(dbFile: File): SqlDriver {
     val schema = tachiyomi.data.Database.Schema
     val isNew = !dbFile.exists() || dbFile.length() == 0L
     val driver = JdbcSqliteDriver("jdbc:sqlite:${dbFile.absolutePath}")
@@ -491,19 +616,51 @@ private fun createDriver(dbFile: File): SqlDriver {
                 binders = null,
             ).value
             if (currentVersion < schema.version) {
-                schema.migrate(driver, currentVersion.toLong(), schema.version)
+                val migrationVersion = recoverInterruptedMigrationVersion(driver, currentVersion)
+                schema.migrate(driver, migrationVersion.toLong(), schema.version)
+                driver.execute(null, "PRAGMA user_version = ${schema.version}", 0, null)
             }
         }
     } catch (e: Exception) {
-        // Corrupted DB: delete and recreate from scratch
-        System.err.println("Database error, recreating: ${e.message}")
         driver.close()
-        dbFile.delete()
-        File(dbFile.path + "-shm").delete()
-        File(dbFile.path + "-wal").delete()
-        return createDriver(dbFile)
+        throw IllegalStateException(
+            "Unable to open or migrate Mihon database at ${dbFile.absolutePath}; the original database was preserved",
+            e,
+        )
     }
     return driver
+}
+
+private fun recoverInterruptedMigrationVersion(driver: SqlDriver, recordedVersion: Int): Int {
+    var recoveredVersion = recordedVersion
+    if (recoveredVersion < 13 && driver.hasTable("download_queue")) recoveredVersion = 13
+    if (recoveredVersion < 14 && driver.hasTable("reading_events")) recoveredVersion = 14
+    if (recoveredVersion < 15 && driver.hasColumn("download_queue", "failure")) recoveredVersion = 15
+    return recoveredVersion
+}
+
+private fun SqlDriver.hasTable(table: String): Boolean = executeQuery(
+    identifier = null,
+    sql = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?)",
+    parameters = 1,
+    mapper = { cursor ->
+        app.cash.sqldelight.db.QueryResult.Value(cursor.next().value && cursor.getLong(0) == 1L)
+    },
+    binders = { bindString(0, table) },
+).value
+
+private fun SqlDriver.hasColumn(table: String, column: String): Boolean {
+    require(table.all { it.isLetterOrDigit() || it == '_' })
+    require(column.all { it.isLetterOrDigit() || it == '_' })
+    return executeQuery(
+        identifier = null,
+        sql = "SELECT EXISTS(SELECT 1 FROM pragma_table_info('$table') WHERE name = '$column')",
+        parameters = 0,
+        mapper = { cursor ->
+            app.cash.sqldelight.db.QueryResult.Value(cursor.next().value && cursor.getLong(0) == 1L)
+        },
+        binders = null,
+    ).value
 }
 
 private fun initDatabase(dbFile: File): DatabaseHandler {

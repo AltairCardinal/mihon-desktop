@@ -15,6 +15,8 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
 import mihon.domain.error.AppError
+import mihon.domain.error.StoredAppError
+import mihon.domain.error.toStoredAppError
 import mihon.domain.task.BackgroundTask
 import mihon.domain.task.TaskCheckpoint
 import mihon.domain.task.TaskStatus
@@ -39,37 +41,6 @@ data class StoredTask(
     val completedUnitIds: Set<Long> = emptySet(),
 )
 
-@Serializable
-data class StoredAppError(
-    val type: String,
-    val statusCode: Int? = null,
-    val retryAfterSeconds: Long? = null,
-    val message: String? = null,
-    val failures: List<StoredAppError> = emptyList(),
-    val failedUnits: List<StoredFailedUnit> = emptyList(),
-) {
-    fun toAppError(): AppError = when (type) {
-        "Network" -> AppError.Network(message?.let(::IllegalStateException))
-        "Authentication" -> AppError.Authentication(message?.let(::IllegalStateException))
-        "Challenge" -> AppError.Challenge(message?.let(::IllegalStateException))
-        "RateLimited" -> AppError.RateLimited(retryAfterSeconds, message?.let(::IllegalStateException))
-        "Server" -> AppError.Server(requireNotNull(statusCode), message?.let(::IllegalStateException))
-        "Permission" -> AppError.Permission(message?.let(::IllegalStateException))
-        "MalformedData" -> AppError.MalformedData(message?.let(::IllegalStateException))
-        "Storage" -> AppError.Storage(message?.let(::IllegalStateException))
-        "Cancelled" -> AppError.Cancelled
-        "PartialFailure" -> AppError.PartialFailure(
-            failures.map(StoredAppError::toAppError),
-            failedUnits.map { AppError.FailedUnit(it.unitId, it.error.toAppError()) },
-            message?.let(::IllegalStateException),
-        )
-        else -> AppError.Unknown(message?.let(::IllegalStateException))
-    }
-}
-
-@Serializable
-data class StoredFailedUnit(val unitId: String, val error: StoredAppError)
-
 object StoredAppErrorCompatSerializer : KSerializer<StoredAppError?> {
     override val descriptor: SerialDescriptor = StoredAppError.serializer().descriptor
 
@@ -91,22 +62,6 @@ object StoredAppErrorCompatSerializer : KSerializer<StoredAppError?> {
         val element = value?.let { encoder.json.encodeToJsonElement(StoredAppError.serializer(), it) } ?: JsonNull
         encoder.encodeJsonElement(element)
     }
-}
-
-private fun AppError.toStored(): StoredAppError = when (this) {
-    is AppError.RateLimited -> StoredAppError(
-        "RateLimited",
-        retryAfterSeconds = retryAfterSeconds,
-        message = cause?.message,
-    )
-    is AppError.Server -> StoredAppError("Server", statusCode = statusCode, message = cause?.message)
-    is AppError.PartialFailure -> StoredAppError(
-        "PartialFailure",
-        message = cause?.message,
-        failures = failures.map(AppError::toStored),
-        failedUnits = failedUnits.map { StoredFailedUnit(it.unitId, it.error.toStored()) },
-    )
-    else -> StoredAppError(this::class.simpleName ?: "Unknown", message = cause?.message)
 }
 
 class FileTaskCheckpointStore(
@@ -219,7 +174,7 @@ class DesktopTaskScheduler(private val store: FileTaskCheckpointStore) {
     fun fail(id: String, error: AppError): Boolean = transition(id) { current ->
         if (current.status !in setOf(TaskStatus.Pending, TaskStatus.Running)) current else current.copy(
             status = TaskStatus.Failed,
-            failure = error.toStored(),
+            failure = error.toStoredAppError(),
             failedUnits = (error as? AppError.PartialFailure)?.failedUnits?.map { it.unitId }.orEmpty(),
         )
     }

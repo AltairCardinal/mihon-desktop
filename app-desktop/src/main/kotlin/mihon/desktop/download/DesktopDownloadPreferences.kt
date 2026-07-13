@@ -11,7 +11,7 @@ class DesktopDownloadPreferences(private val preferenceStore: PreferenceStore) {
     val downloadAsCbz by lazy { preferenceStore.getBoolean("download_as_cbz", false) }
 
     /** When true, newly found chapters are automatically enqueued for download. */
-    val autoDownloadNewChapters by lazy { preferenceStore.getBoolean("auto_download_new_chapters", false) }
+    val autoDownloadNewChapters by lazy { preferenceStore.getBoolean("download_new", false) }
 
     /** When true, downloaded chapter files are deleted after the chapter is marked as read. */
     val deleteAfterRead by lazy { preferenceStore.getBoolean("delete_after_read", false) }

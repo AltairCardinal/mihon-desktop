@@ -1,0 +1,41 @@
+CREATE TABLE download_queue(
+    chapter_id INTEGER NOT NULL PRIMARY KEY,
+    manga_id INTEGER NOT NULL,
+    source_id INTEGER NOT NULL,
+    manga_title TEXT NOT NULL,
+    chapter_name TEXT NOT NULL,
+    chapter_url TEXT NOT NULL,
+    page_urls TEXT NOT NULL,
+    status TEXT NOT NULL,
+    progress INTEGER NOT NULL DEFAULT 0,
+    position INTEGER NOT NULL,
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    failure TEXT
+);
+
+selectAll:
+SELECT * FROM download_queue ORDER BY position;
+
+deleteAll:
+DELETE FROM download_queue;
+
+deleteByChapterId:
+DELETE FROM download_queue WHERE chapter_id = :chapterId;
+
+upsert:
+INSERT INTO download_queue(
+    chapter_id, manga_id, source_id, manga_title, chapter_name, chapter_url,
+    page_urls, status, progress, position, retry_count, failure
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(chapter_id) DO UPDATE SET
+    manga_id = excluded.manga_id,
+    source_id = excluded.source_id,
+    manga_title = excluded.manga_title,
+    chapter_name = excluded.chapter_name,
+    chapter_url = excluded.chapter_url,
+    page_urls = excluded.page_urls,
+    status = excluded.status,
+    progress = excluded.progress,
+    position = excluded.position,
+    retry_count = excluded.retry_count,
+    failure = excluded.failure;

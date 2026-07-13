@@ -121,7 +121,8 @@ class UIFixNavigationContractTest {
         manager.enqueue(makeItem(3L))  // QUEUED
 
         // Simulate error on item 2
-        manager.setItemStatusForTest(chapterId = 2L, status = DownloadStatus.ERROR)
+        manager.transition(2L, mihon.domain.download.DownloadQueueStatus.DOWNLOADING)
+        manager.transition(2L, mihon.domain.download.DownloadQueueStatus.ERROR)
         assertEquals(3, manager.queue.value.size)
 
         manager.clearErrors()
@@ -136,8 +137,10 @@ class UIFixNavigationContractTest {
         val manager = DesktopDownloadManager(provider = provider)
         manager.enqueue(makeItem(1L))
         manager.enqueue(makeItem(2L))
-        manager.setItemStatusForTest(chapterId = 1L, status = DownloadStatus.ERROR)
-        manager.setItemStatusForTest(chapterId = 2L, status = DownloadStatus.ERROR)
+        manager.transition(1L, mihon.domain.download.DownloadQueueStatus.DOWNLOADING)
+        manager.transition(1L, mihon.domain.download.DownloadQueueStatus.ERROR)
+        manager.transition(2L, mihon.domain.download.DownloadQueueStatus.DOWNLOADING)
+        manager.transition(2L, mihon.domain.download.DownloadQueueStatus.ERROR)
 
         manager.retryErrors()
 

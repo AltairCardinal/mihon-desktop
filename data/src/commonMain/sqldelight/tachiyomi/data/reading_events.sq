@@ -1,0 +1,18 @@
+CREATE TABLE reading_events(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    chapter_id INTEGER NOT NULL,
+    event TEXT NOT NULL,
+    page INTEGER NOT NULL,
+    occurred_at INTEGER NOT NULL,
+    FOREIGN KEY(chapter_id) REFERENCES chapters(_id) ON DELETE CASCADE
+);
+
+insertEvent:
+INSERT OR IGNORE INTO reading_events(idempotency_key, chapter_id, event, page, occurred_at) VALUES (?, ?, ?, ?, ?);
+
+lastInsertWasNew:
+SELECT changes();
+
+countByChapter:
+SELECT count(*) FROM reading_events WHERE chapter_id = ?;

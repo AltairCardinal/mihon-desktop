@@ -3,7 +3,10 @@ package mihon.desktop.domain
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
@@ -35,8 +38,7 @@ class LibraryUpdateRecoveryIntegrationTest {
         first.runNow().join()
 
         val second = scheduler(taskStore, calls, this) { UpdateResult(0) }
-        second.start()
-        runCurrent()
+        second.start().join()
 
         assertEquals(listOf(1L, 2L, 2L, 3L), calls)
         assertTrue(second.taskSnapshot()?.status?.isTerminal == true)
@@ -50,10 +52,86 @@ class LibraryUpdateRecoveryIntegrationTest {
         DesktopTaskScheduler(FileTaskCheckpointStore(file)).register(LibraryUpdateScheduler.LIBRARY_UPDATE_TASK)
 
         val scheduler = scheduler(file, calls, this) { UpdateResult(0) }
-        scheduler.start()
-        runCurrent()
+        scheduler.start().join()
 
         assertEquals(listOf(1L, 2L, 3L), calls)
+        scheduler.stop()
+    }
+
+    @Test
+    fun `startup without pending work completes initial recovery immediately`() = runTest {
+        val scheduler = scheduler(directory.resolve("tasks.json"), mutableListOf(), this) { UpdateResult(0) }
+        scheduler.runNow().join()
+
+        val initialRecovery = scheduler.start()
+
+        assertTrue(initialRecovery.isCompleted)
+        assertTrue(scheduler.isRunning)
+        scheduler.stop()
+    }
+
+    @Test
+    fun `stop cancels initial recovery and its update`() = runTest {
+        val file = directory.resolve("tasks.json")
+        DesktopTaskScheduler(FileTaskCheckpointStore(file)).register(LibraryUpdateScheduler.LIBRARY_UPDATE_TASK)
+        val entered = CompletableDeferred<Unit>()
+        val neverRelease = CompletableDeferred<Unit>()
+        val scheduler = scheduler(file, mutableListOf(), this) {
+            entered.complete(Unit)
+            neverRelease.await()
+            UpdateResult(0)
+        }
+        val initialRecovery = scheduler.start()
+        entered.await()
+
+        scheduler.stop()
+        initialRecovery.join()
+
+        assertTrue(initialRecovery.isCancelled)
+        assertTrue(!scheduler.isRunning)
+    }
+
+    @Test
+    fun `stopAndJoin cancels and joins initial recovery`() = runTest {
+        val file = directory.resolve("tasks.json")
+        DesktopTaskScheduler(FileTaskCheckpointStore(file)).register(LibraryUpdateScheduler.LIBRARY_UPDATE_TASK)
+        val entered = CompletableDeferred<Unit>()
+        val neverRelease = CompletableDeferred<Unit>()
+        val schedulerScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+        val scheduler = scheduler(file, mutableListOf(), schedulerScope) {
+            entered.complete(Unit)
+            neverRelease.await()
+            UpdateResult(0)
+        }
+        val initialRecovery = scheduler.start()
+        entered.await()
+
+        scheduler.stopAndJoin()
+
+        assertTrue(initialRecovery.isCancelled)
+        assertTrue(!scheduler.isRunning)
+    }
+
+    @Test
+    fun `runNow during initial recovery shares the recovery occurrence`() = runTest {
+        val file = directory.resolve("tasks.json")
+        DesktopTaskScheduler(FileTaskCheckpointStore(file)).register(LibraryUpdateScheduler.LIBRARY_UPDATE_TASK)
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val scheduler = scheduler(file, mutableListOf(), this) {
+            entered.complete(Unit)
+            release.await()
+            UpdateResult(0)
+        }
+        val initialRecovery = scheduler.start()
+        entered.await()
+
+        val concurrent = scheduler.runNow()
+        release.complete(Unit)
+        initialRecovery.join()
+
+        assertTrue(concurrent.isCompleted)
+        assertEquals(mihon.domain.task.TaskStatus.Completed, scheduler.taskSnapshot()?.status)
         scheduler.stop()
     }
 

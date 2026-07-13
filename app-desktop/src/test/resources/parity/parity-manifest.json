@@ -462,10 +462,10 @@
     "tags": [
       "SHARE-DIRECT"
     ],
-    "status": "NOT_STARTED",
+    "status": "WIRED",
     "authoritativeImplementation": "Android authoritative capability #53: 章节进度",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 章节进度",
-    "protectionTests": [],
+    "desktopImplementation": "Desktop reader submits ReadingProgressEvent to the shared SQLDelight transaction repository",
+    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerIntegrationTest.kt"],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -488,10 +488,10 @@
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "NOT_STARTED",
+    "status": "WIRED",
     "authoritativeImplementation": "Android authoritative capability #56: 下载队列",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 下载队列",
-    "protectionTests": [],
+    "desktopImplementation": "Desktop file adapter consumes the shared queue state machine backed by SQLDelight",
+    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/download/DesktopDownloadRecoveryIntegrationTest.kt"],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -501,10 +501,10 @@
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "NOT_STARTED",
+    "status": "WIRED",
     "authoritativeImplementation": "Android authoritative capability #57: 下载并发",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 下载并发",
-    "protectionTests": [],
+    "desktopImplementation": "Desktop worker consumes shared fair scheduling and Android retry backoff rules",
+    "protectionTests": ["domain/src/commonTest/kotlin/mihon/domain/download/DownloadQueueStateMachineTest.kt"],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -515,10 +515,13 @@
       "SHARE-DIRECT",
       "PLATFORM-ADAPTER"
     ],
-    "status": "NOT_STARTED",
+    "status": "WIRED",
     "authoritativeImplementation": "Android authoritative capability #59: 自动下载",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 自动下载",
-    "protectionTests": [],
+    "desktopImplementation": "Library update forwards new chapters through shared FilterChaptersForDownload into the persistent queue",
+    "protectionTests": [
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/FilterChaptersForDownloadIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -546,10 +549,10 @@
     "tags": [
       "SHARE-DIRECT"
     ],
-    "status": "NOT_STARTED",
+    "status": "WIRED",
     "authoritativeImplementation": "Android authoritative capability #62: 更新列表",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 更新列表",
-    "protectionTests": [],
+    "desktopImplementation": "Desktop UpdatesScreenModel consumes shared GetUpdates and UpdateChapter use cases",
+    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/updates/UpdatesScreenModelTest.kt"],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -559,10 +562,10 @@
     "tags": [
       "SHARE-DIRECT"
     ],
-    "status": "NOT_STARTED",
+    "status": "WIRED",
     "authoritativeImplementation": "Android authoritative capability #64: 历史记录",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 历史记录",
-    "protectionTests": [],
+    "desktopImplementation": "Desktop HistoryScreenModel consumes shared history/chapter/manga use cases",
+    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/history/HistoryScreenModelTest.kt"],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },

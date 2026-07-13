@@ -120,9 +120,8 @@ data class DesktopReaderScreen(
         }
         val state by model.state.collectAsState()
         val focusRequester = remember { FocusRequester() }
-
-        // Lifecycle: set global reader-mode flag + persist progress on leave
-        ReaderLifecycleEffect(state, model, scope, runtime.tracker, chapterId)
+        val readerExitEventId = remember(chapterId, key) { java.util.UUID.randomUUID().toString() }
+        ReaderLifecycleEffect(state, model, scope, runtime.tracker, chapterId, readerExitEventId)
 
         // Background page loading (network / local)
         ReaderPageLoaderEffect(
@@ -281,6 +280,7 @@ private fun ReaderLifecycleEffect(
     scope: kotlinx.coroutines.CoroutineScope,
     tracker: ReaderProgressTracker,
     chapterId: Long,
+    exitEventId: String,
 ) {
     val latestPage by rememberUpdatedState(readerProgressPageForTracking(state))
     val latestUrls by rememberUpdatedState(state.resolvedUrls)
@@ -290,7 +290,7 @@ private fun ReaderLifecycleEffect(
             ReaderModeState.isInReaderMode = false
             if (chapterId != 0L && latestUrls.isNotEmpty()) {
                 scope.launch(NonCancellable) {
-                    tracker.track(chapterId = chapterId, lastPageRead = latestPage, totalPages = latestUrls.size)
+                    tracker.track(exitEventId, chapterId, latestPage, latestUrls.size)
                 }
             }
         }

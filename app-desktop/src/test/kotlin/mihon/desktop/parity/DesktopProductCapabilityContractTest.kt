@@ -172,7 +172,13 @@ class DesktopProductCapabilityContractTest {
             8 to "SHARED",
             10 to "WIRED",
             11 to "WIRED",
+            53 to "WIRED",
+            56 to "WIRED",
+            57 to "WIRED",
+            59 to "WIRED",
             61 to "WIRED",
+            62 to "WIRED",
+            64 to "WIRED",
         )
         manifestItems(repositoryRoot()).forEach { item ->
             val objectItem = item.jsonObject

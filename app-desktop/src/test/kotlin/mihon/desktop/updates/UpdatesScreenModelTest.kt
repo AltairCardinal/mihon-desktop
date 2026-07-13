@@ -5,6 +5,12 @@ import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.domain.fakes.FakeMangaRepository
 import mihon.desktop.domain.fakes.FakeUpdatesRepository
 import mihon.desktop.download.DownloadItem
+import mihon.domain.download.DownloadRepository
+import mihon.domain.download.DownloadQueueStatus
+import kotlinx.coroutines.flow.flowOf
+import mihon.domain.download.DownloadQueueEntry
+import mihon.domain.download.EnqueueDownload
+import mihon.domain.download.IsChapterDownloaded
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -118,6 +124,7 @@ class UpdatesScreenModelTest {
                 mangaTitle = "Title",
                 chapterName = "Chapter 7",
                 chapterId = 7L,
+                mangaId = 10L,
                 chapterUrl = "/ch/7",
             ),
             enqueued.single(),
@@ -136,8 +143,50 @@ class UpdatesScreenModelTest {
             updateChapter = UpdateChapter(chapterRepository),
             getManga = GetManga(mangaRepository),
             updatesPreferences = UpdatesPreferences(InMemoryPreferenceStore()),
-            isDownloaded = isDownloaded,
-            enqueueDownload = enqueueDownload,
+            isChapterDownloaded = IsChapterDownloaded(
+                object : DownloadRepository {
+                    override val queueEntries = flowOf(emptyList<DownloadQueueEntry>())
+                    override fun enqueue(entry: DownloadQueueEntry) {
+                        enqueueDownload(
+                            DownloadItem(
+                                entry.sourceId,
+                                entry.mangaTitle,
+                                entry.chapterName,
+                                entry.chapterId,
+                                entry.mangaId,
+                                entry.chapterUrl,
+                                entry.pageUrls,
+                            ),
+                        )
+                    }
+                    override fun isDownloaded(sourceId: Long, mangaTitle: String, chapterName: String) =
+                        isDownloaded(
+                            sampleUpdate(
+                                chapterId = chapterName.substringAfterLast(' ').toLongOrNull() ?: 0,
+                                sourceId = sourceId,
+                                mangaTitle = mangaTitle,
+                                chapterName = chapterName,
+                            ),
+                        )
+                    override fun cancel(chapterId: Long) = false
+                    override fun retry(chapterId: Long) = false
+                    override fun transition(chapterId: Long, target: DownloadQueueStatus) = false
+                    override fun recover() = emptyList<DownloadQueueEntry>()
+                },
+            ),
+            enqueueDownload = EnqueueDownload(
+                object : DownloadRepository {
+                    override val queueEntries = flowOf(emptyList<DownloadQueueEntry>())
+                    override fun enqueue(entry: DownloadQueueEntry) {
+                        enqueueDownload(DownloadItem(entry.sourceId, entry.mangaTitle, entry.chapterName, entry.chapterId, entry.mangaId, entry.chapterUrl, entry.pageUrls))
+                    }
+                    override fun isDownloaded(sourceId: Long, mangaTitle: String, chapterName: String) = false
+                    override fun cancel(chapterId: Long) = false
+                    override fun retry(chapterId: Long) = false
+                    override fun transition(chapterId: Long, target: DownloadQueueStatus) = false
+                    override fun recover() = emptyList<DownloadQueueEntry>()
+                },
+            ),
         )
     }
 
@@ -147,17 +196,20 @@ class UpdatesScreenModelTest {
         read: Boolean = false,
         lastPageRead: Long = 0L,
         dateFetch: Long = System.currentTimeMillis(),
+        sourceId: Long = 1L,
+        mangaTitle: String = "Title",
+        chapterName: String = "Chapter $chapterId",
     ) = UpdatesWithRelations(
         mangaId = mangaId,
-        mangaTitle = "Title",
+        mangaTitle = mangaTitle,
         chapterId = chapterId,
-        chapterName = "Chapter $chapterId",
+        chapterName = chapterName,
         scanlator = null,
         chapterUrl = "/ch/$chapterId",
         read = read,
         bookmark = false,
         lastPageRead = lastPageRead,
-        sourceId = 1L,
+        sourceId = sourceId,
         dateFetch = dateFetch,
         coverData = MangaCover(
             mangaId = mangaId,

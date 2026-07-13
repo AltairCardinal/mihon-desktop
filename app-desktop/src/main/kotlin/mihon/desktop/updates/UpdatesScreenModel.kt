@@ -6,7 +6,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
-import mihon.desktop.download.DownloadItem
+import mihon.domain.download.DownloadQueueEntry
+import mihon.domain.download.DownloadQueueStatus
+import mihon.domain.download.EnqueueDownload
+import mihon.domain.download.IsChapterDownloaded
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
@@ -49,8 +52,8 @@ class UpdatesScreenModel(
     private val updateChapter: UpdateChapter,
     private val getManga: GetManga,
     private val updatesPreferences: UpdatesPreferences,
-    private val isDownloaded: (UpdatesWithRelations) -> Boolean,
-    private val enqueueDownload: (DownloadItem) -> Unit,
+    private val isChapterDownloaded: IsChapterDownloaded,
+    private val enqueueDownload: EnqueueDownload,
 ) : ScreenModel {
 
     private var rawItems: List<UpdatesWithRelations> = emptyList()
@@ -167,12 +170,16 @@ class UpdatesScreenModel(
 
     fun enqueueDownload(item: UpdatesWithRelations) {
         enqueueDownload(
-            DownloadItem(
+            DownloadQueueEntry(
                 sourceId = item.sourceId,
                 mangaTitle = item.mangaTitle,
                 chapterName = item.chapterName,
                 chapterId = item.chapterId,
+                mangaId = item.mangaId,
                 chapterUrl = item.chapterUrl,
+                pageUrls = emptyList(),
+                status = DownloadQueueStatus.QUEUED,
+                position = Long.MAX_VALUE,
             ),
         )
     }
@@ -183,8 +190,12 @@ class UpdatesScreenModel(
             it.copy(
                 items = when (downloadedFilter) {
                     TriState.DISABLED -> rawItems
-                    TriState.ENABLED_IS -> rawItems.filter { item -> isDownloaded(item) }
-                    TriState.ENABLED_NOT -> rawItems.filterNot { item -> isDownloaded(item) }
+                    TriState.ENABLED_IS -> rawItems.filter { item ->
+                        isChapterDownloaded(item.sourceId, item.mangaTitle, item.chapterName)
+                    }
+                    TriState.ENABLED_NOT -> rawItems.filterNot { item ->
+                        isChapterDownloaded(item.sourceId, item.mangaTitle, item.chapterName)
+                    }
                 },
             )
         }

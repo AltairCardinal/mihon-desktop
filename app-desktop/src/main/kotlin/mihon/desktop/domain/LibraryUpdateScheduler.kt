@@ -10,6 +10,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.joinAll
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.task.DesktopTaskScheduler
 import mihon.desktop.task.StoredTask
@@ -24,6 +25,7 @@ import tachiyomi.domain.creator.service.CreatorDiscoveryService
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.source.service.SourceManager
 
 class LibraryUpdateScheduler(
@@ -40,20 +42,28 @@ class LibraryUpdateScheduler(
     private val libraryProvider: (suspend () -> List<LibraryManga>)? = null,
     private val updateManga: (suspend (Manga) -> LibraryUpdateChecker.UpdateResult)? = null,
     private val discoverCreators: (suspend () -> Unit)? = null,
+    private val autoDownload: (suspend (Manga, List<Chapter>) -> Unit)? = null,
 ) {
     private val scope = scope ?: CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var schedulerJob: Job? = null
+    private var initialRecoveryJob: Job? = null
     private var updateJob: Job? = null
     private val updateLock = Any()
     val isRunning: Boolean get() = schedulerJob?.isActive == true
 
-    fun start() {
-        if (schedulerJob?.isActive == true) return
+    fun start(): Job = synchronized(updateLock) {
+        if (schedulerJob?.isActive == true) return@synchronized requireNotNull(initialRecoveryJob)
         val registered = taskScheduler?.register(LIBRARY_UPDATE_TASK)
+        val needsInitialRecovery = registered?.status in setOf(TaskStatus.Pending, TaskStatus.Running, TaskStatus.Failed)
+        initialRecoveryJob = if (needsInitialRecovery) {
+            scope.launch { runNow().join() }
+        } else {
+            Job().apply { complete() }
+        }
         schedulerJob = scope.launch {
             var lastRun = 0L
-            if (registered?.status in setOf(TaskStatus.Pending, TaskStatus.Running, TaskStatus.Failed)) {
-                runNow().join()
+            if (needsInitialRecovery) {
+                initialRecoveryJob?.join()
                 lastRun = System.currentTimeMillis()
             }
             while (true) {
@@ -67,6 +77,7 @@ class LibraryUpdateScheduler(
                 }
             }
         }
+        requireNotNull(initialRecoveryJob)
     }
 
     fun runNow(): Job = synchronized(updateLock) {
@@ -86,10 +97,24 @@ class LibraryUpdateScheduler(
     }
 
     fun stop() {
+        initialRecoveryJob?.cancel()
         updateJob?.cancel()
         schedulerJob?.cancel()
+        initialRecoveryJob = null
         updateJob = null
         schedulerJob = null
+    }
+
+    suspend fun stopAndJoin() {
+        val jobs = synchronized(updateLock) {
+            listOfNotNull(initialRecoveryJob, updateJob, schedulerJob).distinct().also {
+                initialRecoveryJob = null
+                updateJob = null
+                schedulerJob = null
+            }
+        }
+        jobs.forEach { it.cancel() }
+        jobs.joinAll()
     }
 
     fun cancelUpdate(): Boolean {
@@ -133,6 +158,7 @@ class LibraryUpdateScheduler(
                 val result = runCatching { update(entry.manga) }
                 result.onSuccess { updateResult ->
                     if (updateResult.error == null) {
+                        autoDownload?.invoke(entry.manga, updateResult.newChapters)
                         newChapters += updateResult.newChapterCount
                         completed++
                         taskScheduler?.completeUnit(

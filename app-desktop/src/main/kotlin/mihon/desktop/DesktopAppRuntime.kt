@@ -72,7 +72,9 @@ class DesktopAppRuntime(
 
 private fun LibraryUpdateScheduler.asRuntimeService(): DesktopRuntimeService =
     object : DesktopRuntimeService {
-        override fun start() = this@asRuntimeService.start()
+        override fun start() {
+            this@asRuntimeService.start()
+        }
         override fun stop() = this@asRuntimeService.stop()
     }
 
