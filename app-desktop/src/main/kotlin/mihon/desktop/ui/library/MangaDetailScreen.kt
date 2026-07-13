@@ -94,7 +94,6 @@ import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.externalChapterUrlOrNull
 import mihon.desktop.reader.readingModeFromViewerFlags
 import mihon.desktop.ui.browse.GlobalSearchScreen
-import mihon.desktop.ui.authors.AuthorDetailScreen
 import mihon.desktop.ui.reader.DesktopReaderScreen
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.model.Chapter
@@ -737,19 +736,24 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 item {
                     MangaHeader(
                         manga = manga!!,
+                        coverModel = state.coverModel,
+                        coverLastModified = state.coverLastModified,
+                        coverFeedback = state.coverFeedback,
+                        onEditCover = { scope.launch { model.chooseCustomCover() } },
+                        onDeleteCover = { scope.launch { model.deleteCustomCover() } },
                         sourceName = source?.name,
                         onTagSearch = { tag -> navigator.push(GlobalSearchScreen(initialQuery = tag)) },
                         onTagCopy = ::copyText,
                         onAuthorClick = { author ->
                             scope.launch {
                                 val creatorId = model.linkCreator(author, CreatorRole.AUTHOR)
-                                navigator.push(AuthorDetailScreen(creatorId, collectOnOpen = true))
+                                authorDetailScreenOrNull(author, creatorId)?.let(navigator::push)
                             }
                         },
                         onArtistClick = { artist ->
                             scope.launch {
                                 val creatorId = model.linkCreator(artist, CreatorRole.ARTIST)
-                                navigator.push(AuthorDetailScreen(creatorId, collectOnOpen = true))
+                                authorDetailScreenOrNull(artist, creatorId)?.let(navigator::push)
                             }
                         },
                     )

@@ -14,6 +14,7 @@ import mihon.desktop.backup.AutoBackupScheduler
 import mihon.desktop.backup.BackupRestoreScreenModelFactory
 import mihon.desktop.domain.LibraryUpdateScheduler
 import mihon.desktop.domain.LibraryUpdateChecker
+import mihon.desktop.domain.DesktopCustomCoverStore
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DefaultDownloadFileOperations
 import mihon.desktop.download.DownloadFileOperations
@@ -22,8 +23,10 @@ import mihon.desktop.download.DownloadStatus
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.library.LibraryScreenModelFactory
+import mihon.desktop.library.MangaDetailScreenModelFactory
 import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.settings.DesktopAppPreferences
+import mihon.desktop.ui.more.StatsScreenModel
 import mihon.desktop.task.DesktopTaskScheduler
 import mihon.domain.download.DownloadRepository
 import mihon.domain.download.EnqueueDownload
@@ -43,6 +46,13 @@ import tachiyomi.domain.reader.interactor.RecordReadingProgress
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.library.model.LibraryManga
+import tachiyomi.domain.category.interactor.CreateCategoryWithName
+import tachiyomi.domain.category.interactor.DeleteCategory
+import tachiyomi.domain.category.interactor.GetCategories
+import tachiyomi.domain.category.interactor.RenameCategory
+import tachiyomi.domain.category.interactor.ReorderCategory
+import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
+import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.data.download.PersistentDownloadStore
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.data.JvmDatabaseHandler
@@ -287,7 +297,16 @@ class DesktopDiWiringTest {
         assertNotNull(Injekt.get<DesktopExtensionManager>())
         assertNotNull(Injekt.get<TrackRepository>())
         assertNotNull(Injekt.get<BackupRestoreScreenModelFactory>())
+        assertNotNull(Injekt.get<CreateCategoryWithName>())
+        assertNotNull(Injekt.get<GetCategories>())
+        assertNotNull(Injekt.get<RenameCategory>())
+        assertNotNull(Injekt.get<DeleteCategory>())
+        assertNotNull(Injekt.get<ReorderCategory>())
+        assertNotNull(Injekt.get<UpdateLibraryMembership>())
+        assertNotNull(Injekt.get<DesktopCustomCoverStore>())
         assertNotNull(LibraryScreenModelFactory.create())
+        assertNotNull(MangaDetailScreenModelFactory.create(manga.id))
+        assertNotNull(StatsScreenModel(Injekt.get<GetLibraryManga>().subscribe()))
 
         Injekt.get<LibraryUpdateScheduler>().runNow().join()
         val database = handler.db

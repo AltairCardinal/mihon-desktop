@@ -3,6 +3,7 @@ package mihon.desktop.ui.library
 import eu.kanade.tachiyomi.source.model.SManga
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.model.Manga
+import mihon.domain.task.TaskState
 
 /**
  * All state for [MangaDetailScreen], owned by [MangaDetailScreenModel].
@@ -13,6 +14,10 @@ data class MangaDetailState(
     val manga: Manga? = null,
     val chapters: List<Chapter> = emptyList(),
     val isUpdating: Boolean = false,
+    val coverTask: TaskState<Unit> = TaskState.Idle,
+    val coverFeedback: String? = null,
+    val coverLastModified: Long = 0L,
+    val coverModel: String? = null,
 
     // ── Filter state ─────────────────────────────────────────────────────────
     val filterShowRead: Boolean = true,

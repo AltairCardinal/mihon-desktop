@@ -20,7 +20,11 @@ class DesktopCustomCoverStore(
         source.copyTo(coverFile(mangaId), overwrite = true)
     }
 
-    fun deleteCustomCover(mangaId: Long): Boolean = coverFile(mangaId).delete()
+    override suspend fun delete(mangaId: Long) {
+        check(deleteCustomCover(mangaId)) { "Unable to delete custom cover" }
+    }
+
+    fun deleteCustomCover(mangaId: Long): Boolean = coverFile(mangaId).let { !it.exists() || it.delete() }
 
     fun resolveModel(mangaId: Long, fallbackUrl: String?): String? =
         coverFile(mangaId).takeIf(File::exists)?.absolutePath ?: fallbackUrl

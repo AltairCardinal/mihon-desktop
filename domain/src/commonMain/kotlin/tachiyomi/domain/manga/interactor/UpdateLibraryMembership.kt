@@ -1,14 +1,17 @@
 package tachiyomi.domain.manga.interactor
 
 import tachiyomi.domain.manga.model.Manga
-import tachiyomi.domain.manga.model.MangaUpdate
-import tachiyomi.domain.manga.repository.MangaRepository
+import tachiyomi.domain.manga.repository.LibraryMembershipRepository
+import tachiyomi.domain.manga.repository.LibraryMembershipUpdate
 
 class UpdateLibraryMembership(
-    private val update: suspend (MangaUpdate) -> Boolean,
-    private val setCategories: suspend (Long, List<Long>) -> Unit,
+    private val repository: LibraryMembershipRepository,
 ) {
-    constructor(repository: MangaRepository) : this(repository::update, repository::setMangaCategories)
+    constructor(updateAtomically: suspend (LibraryMembershipUpdate) -> Unit) : this(
+        object : LibraryMembershipRepository {
+            override suspend fun updateAtomically(update: LibraryMembershipUpdate) = updateAtomically(update)
+        },
+    )
 
     suspend fun await(
         manga: Manga,
@@ -16,15 +19,18 @@ class UpdateLibraryMembership(
         categoryIds: List<Long> = emptyList(),
         nowMillis: Long = System.currentTimeMillis(),
     ): LibraryMembershipResult = try {
-        val changed = update(
-            MangaUpdate(
-                id = manga.id,
+        repository.updateAtomically(
+            LibraryMembershipUpdate(
+                mangaId = manga.id,
                 favorite = favorite,
-                dateAdded = if (favorite && !manga.favorite) nowMillis else manga.dateAdded,
+                dateAdded = if (favorite) {
+                    if (!manga.favorite) nowMillis else manga.dateAdded
+                } else {
+                    0L
+                },
+                categoryIds = if (favorite) categoryIds.distinct() else emptyList(),
             ),
         )
-        if (!changed) return LibraryMembershipResult.Failure(manga.id, "Manga update was rejected")
-        setCategories(manga.id, if (favorite) categoryIds.distinct() else emptyList())
         LibraryMembershipResult.Success(manga.id, favorite)
     } catch (e: Exception) {
         LibraryMembershipResult.Failure(manga.id, e.message ?: e::class.simpleName ?: "Unknown error")

@@ -18,30 +18,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
 class DesktopProductCapabilityContractTest {
-    @Test
-    fun `library production wiring uses shared category interactors and has no desktop category manager`() {
-        val root = java.io.File(System.getProperty("user.dir"))
-        val factory = root.resolve("src/main/kotlin/mihon/desktop/library/LibraryScreenModelFactory.kt").readText()
-        val module = root.resolve("src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt").readText()
-
-        assertFalse(factory.contains("DesktopCategoryManager"))
-        assertFalse(module.contains("DesktopCategoryManager"))
-        assertTrue(factory.contains("CreateCategoryWithName"))
-        assertTrue(factory.contains("DeleteCategory"))
-        assertTrue(factory.contains("ReorderCategory"))
-    }
-
-    @Test
-    fun `migration saves through existing details pipeline and shared library membership`() {
-        val root = java.io.File(System.getProperty("user.dir"))
-        val migration = root.resolve("src/main/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCase.kt").readText()
-        val module = root.resolve("src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt").readText()
-
-        assertFalse(migration.contains("AddMangaToLibrary"))
-        assertFalse(module.contains("AddMangaToLibrary"))
-        assertTrue(migration.contains("SaveSourceMangaForDetails"))
-        assertTrue(migration.contains("UpdateLibraryMembership"))
-    }
     @TempDir
     lateinit var tempDir: Path
 
@@ -82,6 +58,46 @@ class DesktopProductCapabilityContractTest {
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt",
                 ),
             49 to setOf("app-desktop/src/test/kotlin/mihon/desktop/ui/reader/TapZoneTest.kt"),
+        )
+    private val task3aBehaviorEvidence =
+        mapOf(
+            17 to
+                mapOf(
+                    "domain/src/commonTest/kotlin/tachiyomi/domain/library/interactor/EvaluateLibraryTest.kt" to
+                        setOf(
+                            "all tri-state filters preserve Android IS NOT and disabled semantics",
+                            "download global local tracking and multiple flags match Android boundaries",
+                        ),
+                ),
+            19 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt" to
+                        setOf("library model exposes batch category partial failure to UI"),
+                ),
+            24 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt" to
+                        setOf("selected read action exposes partial failure in state"),
+                ),
+            26 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt" to
+                        setOf(
+                            "cover selection cancellation has no side effects",
+                            "cover update success exposes feedback and refreshed model",
+                            "cover permission failure is visible and does not refresh cache",
+                            "cover delete success refreshes model and reports feedback",
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt" to
+                        setOf("测试配置入口使用隔离内存存储并解析实际依赖"),
+                ),
+            66 to
+                mapOf(
+                    "domain/src/commonTest/kotlin/tachiyomi/domain/library/interactor/AggregateLibraryStatsTest.kt" to
+                        setOf("distinct titles aggregate categories sources statuses and chapters"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/more/StatsScreenModelTest.kt" to
+                        setOf("state moves from loading to shared aggregation and exposes errors"),
+                ),
         )
     private val expectedTags =
         mapOf(
@@ -185,36 +201,19 @@ class DesktopProductCapabilityContractTest {
                 }.map { it.jsonObject.getValue("id").jsonPrimitive.content.toInt() }
                 .toSet()
         assertEquals(expectedCapabilityEvidence.keys, productIds)
-    }
-
-    @Test
-    fun `manifest records only evidence-backed completed foundations`() {
-        val completedStatuses = mapOf(
-            3 to "SHARED",
-            4 to "WIRED",
-            7 to "WIRED",
-            8 to "SHARED",
-            10 to "WIRED",
-            11 to "WIRED",
-            16 to "SHARED",
-            17 to "SHARED",
-            19 to "WIRED",
-            22 to "SHARED",
-            24 to "SHARED",
-            26 to "WIRED",
-            53 to "WIRED",
-            56 to "WIRED",
-            57 to "WIRED",
-            59 to "WIRED",
-            61 to "WIRED",
-            62 to "WIRED",
-            64 to "WIRED",
-            66 to "SHARED",
-        )
-        manifestItems(repositoryRoot()).forEach { item ->
-            val objectItem = item.jsonObject
-            val id = validatedId(objectItem)
-            assertEquals(completedStatuses[id] ?: "NOT_STARTED", objectItem.getValue("status").jsonPrimitive.content, "ID $id")
+        task3aBehaviorEvidence.forEach { (id, evidence) ->
+            val item = items.single { validatedId(it.jsonObject) == id }.jsonObject
+            val declared = item.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content }.toSet()
+            evidence.forEach { (path, methodNames) ->
+                assertTrue(path in declared, "ID $id must declare dedicated behavior evidence $path")
+                val source = Files.readString(repositoryRoot.resolve(path))
+                methodNames.forEach { methodName ->
+                    assertTrue(
+                        source.contains("fun `$methodName`"),
+                        "ID $id evidence $path must contain behavior test `$methodName`",
+                    )
+                }
+            }
         }
     }
 

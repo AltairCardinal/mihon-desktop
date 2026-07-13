@@ -29,6 +29,7 @@ class UpdateCustomCoverTest {
         val useCase = UpdateCustomCover(
             coverStore = object : CustomCoverStore {
                 override suspend fun write(mangaId: Long, bytes: ByteArray) = error("disk full")
+                override suspend fun delete(mangaId: Long) = Unit
             },
             invalidateCover = { invalidated += it },
         )
@@ -40,12 +41,29 @@ class UpdateCustomCoverTest {
         assertEquals(emptyList<Long>(), invalidated)
     }
 
+    @Test
+    fun `successful delete invalidates cover cache timestamp`() = runTest {
+        val store = RecordingCoverStore()
+        val invalidated = mutableListOf<Long>()
+        val useCase = UpdateCustomCover(store) { invalidated += it }
+
+        val result = useCase.delete(7)
+
+        assertInstanceOf(TaskState.Success::class.java, result)
+        assertEquals(7L, store.deletedMangaId)
+        assertEquals(listOf(7L), invalidated)
+    }
+
     private class RecordingCoverStore : CustomCoverStore {
         var mangaId: Long? = null
         var bytes: ByteArray? = null
+        var deletedMangaId: Long? = null
         override suspend fun write(mangaId: Long, bytes: ByteArray) {
             this.mangaId = mangaId
             this.bytes = bytes
+        }
+        override suspend fun delete(mangaId: Long) {
+            deletedMangaId = mangaId
         }
     }
 }

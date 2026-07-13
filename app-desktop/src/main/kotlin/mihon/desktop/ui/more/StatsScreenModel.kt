@@ -15,27 +15,6 @@ import tachiyomi.domain.library.interactor.AggregateLibraryStats
 import tachiyomi.domain.library.interactor.LibraryStats
 import tachiyomi.domain.library.model.LibraryManga
 
-@Deprecated("Use shared LibraryStats")
-data class StatsData(
-    val mangaCount: Int,
-    val startedCount: Int,
-    val localCount: Int,
-    val totalChapters: Long,
-    val readChapters: Long,
-)
-
-@Deprecated("Use AggregateLibraryStats")
-internal fun calculateStats(items: List<LibraryManga>): StatsData {
-    val shared = AggregateLibraryStats()(items)
-    return StatsData(
-        shared.mangaCount,
-        shared.startedCount,
-        shared.bySource[0L] ?: 0,
-        shared.totalChapters,
-        shared.readChapters,
-    )
-}
-
 sealed interface StatsUiState {
     data object Loading : StatsUiState
     data class Content(val stats: LibraryStats) : StatsUiState

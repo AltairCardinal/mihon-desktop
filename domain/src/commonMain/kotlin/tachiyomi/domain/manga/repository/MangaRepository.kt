@@ -6,7 +6,18 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.model.MangaWithChapterCount
 
-interface MangaRepository {
+interface LibraryMembershipRepository {
+    suspend fun updateAtomically(update: LibraryMembershipUpdate)
+}
+
+data class LibraryMembershipUpdate(
+    val mangaId: Long,
+    val favorite: Boolean,
+    val dateAdded: Long,
+    val categoryIds: List<Long>,
+)
+
+interface MangaRepository : LibraryMembershipRepository {
 
     suspend fun getMangaById(id: Long): Manga
 

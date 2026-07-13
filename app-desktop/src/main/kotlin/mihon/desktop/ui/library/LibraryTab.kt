@@ -94,6 +94,8 @@ import cafe.adriel.voyager.navigator.tab.TabOptions
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.LibrarySearchFilter
+import tachiyomi.core.common.preference.TriState
+import tachiyomi.domain.library.interactor.LibraryFilter
 import mihon.desktop.ui.library.pickRandomMangaId
 import mihon.desktop.domain.SortMode
 import mihon.desktop.library.LibraryScreenModelFactory
@@ -182,13 +184,14 @@ class LibraryRootScreen : Screen {
                 items = allItems,
                 categoryId = selectedCategory?.id,
                 searchQuery = searchQuery.ifBlank { null },
-                unread = filterUnread,
-                started = filterStarted,
-                completed = filterCompleted,
-                downloaded = filterDownloaded,
+                filter = LibraryFilter(
+                    unread = if (filterUnread) TriState.ENABLED_IS else TriState.DISABLED,
+                    started = if (filterStarted) TriState.ENABLED_IS else TriState.DISABLED,
+                    completed = if (filterCompleted) TriState.ENABLED_IS else TriState.DISABLED,
+                    downloaded = if (filterDownloaded) TriState.ENABLED_IS else TriState.DISABLED,
+                ),
                 downloadedMangaIds = downloadedMangaIds,
-                sortMode = sortMode,
-                ascending = sortAscending,
+                sort = LibrarySearchFilter.toSharedSort(sortMode, sortAscending),
             )
         }
         val onItemPrimaryClick: (LibraryManga, Boolean) -> Unit = { item, shiftPressed ->

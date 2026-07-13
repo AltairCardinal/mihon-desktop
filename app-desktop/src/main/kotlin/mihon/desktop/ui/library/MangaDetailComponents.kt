@@ -111,19 +111,18 @@ import androidx.compose.foundation.layout.size as layoutSize
 @Composable
 internal fun MangaHeader(
     manga: Manga,
+    coverModel: String?,
+    coverLastModified: Long,
+    coverFeedback: String?,
+    onEditCover: () -> Unit,
+    onDeleteCover: () -> Unit,
     sourceName: String?,
     onTagSearch: (String) -> Unit,
     onTagCopy: (String) -> Unit,
     onAuthorClick: (String) -> Unit,
     onArtistClick: (String) -> Unit,
 ) {
-    var coverVersion by remember { mutableStateOf(0) }
-    val coverRequestState = rememberMangaCoverRequestState(manga.id, manga.thumbnailUrl, coverVersion)
-    val coverManager = LocalDesktopUiDependencies.current.customCoverStore
-    val coverUpdater = LocalDesktopUiDependencies.current.coverUpdater
-    val scope = rememberCoroutineScope()
-    val coverAdapter = remember(coverUpdater) { MangaCoverAdapter(DesktopCoverFilePicker(), coverUpdater::invoke) }
-    var coverFeedback by remember { mutableStateOf<String?>(null) }
+    val coverRequestState = rememberMangaCoverRequestState(manga.id, coverModel, coverLastModified)
     var showCoverMenu by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
@@ -165,27 +164,15 @@ internal fun MangaHeader(
                         text = { Text("Edit cover") },
                         onClick = {
                             showCoverMenu = false
-                            scope.launch {
-                                when (coverAdapter.chooseAndUpdate(manga.id)) {
-                                    null -> Unit
-                                    is TaskState.Success -> {
-                                        coverVersion++
-                                        coverFeedback = "Cover updated"
-                                    }
-                                    is TaskState.Failure -> coverFeedback = "Unable to update cover"
-                                    TaskState.Idle, TaskState.Cancelled, is TaskState.Running -> Unit
-                                }
-                            }
+                            onEditCover()
                         },
                     )
                     DropdownMenuItem(
                         text = { Text("Delete cover") },
                         onClick = {
                             showCoverMenu = false
-                            coverManager.deleteCustomCover(manga.id)
-                            coverVersion++
+                            onDeleteCover()
                         },
-                        enabled = coverManager.customCoverExists(manga.id),
                     )
                 }
             }

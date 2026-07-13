@@ -14,4 +14,5 @@ class DesktopCoverUpdater(
     }
 
     suspend operator fun invoke(mangaId: Long, bytes: ByteArray): TaskState<Unit> = update(mangaId, bytes)
+    suspend fun delete(mangaId: Long): TaskState<Unit> = update.delete(mangaId)
 }

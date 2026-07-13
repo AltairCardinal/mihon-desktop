@@ -131,13 +131,10 @@
       "SHARE-DIRECT",
       "SHARE-EXTRACT"
     ],
-    "status": "SHARED",
+    "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #16: 分类",
     "desktopImplementation": "Desktop current implementation to characterize and align: 分类",
-    "protectionTests": [
-      "domain/src/commonTest/kotlin/tachiyomi/domain/library/interactor/EvaluateLibraryTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt"
-    ],
+    "protectionTests": [],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -178,13 +175,10 @@
     "tags": [
       "SHARE-DIRECT"
     ],
-    "status": "SHARED",
+    "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #22: 收藏与分类联动",
     "desktopImplementation": "Desktop current implementation to characterize and align: 收藏与分类联动",
-    "protectionTests": [
-      "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/UpdateLibraryMembershipTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt"
-    ],
+    "protectionTests": [],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -216,7 +210,9 @@
     "desktopImplementation": "Desktop current implementation to characterize and align: 封面管理",
     "protectionTests": [
       "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/UpdateCustomCoverTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaCoverAdapterTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaCoverAdapterTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
     ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"

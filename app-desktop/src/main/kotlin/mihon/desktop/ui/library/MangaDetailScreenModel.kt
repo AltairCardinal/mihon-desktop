@@ -35,6 +35,7 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
+import mihon.domain.task.TaskState
 
 /**
  * Voyager ScreenModel for [MangaDetailScreen].
@@ -63,6 +64,9 @@ class MangaDetailScreenModel(
     private val cancelDownload: ((chapterId: Long) -> Unit)? = null,
     private val batchUpdateChapters: BatchUpdateChapters = BatchUpdateChapters(),
     private val updateLibraryMembership: UpdateLibraryMembership? = null,
+    private val coverAdapter: MangaCoverAdapter? = null,
+    private val deleteCover: (suspend (Long) -> TaskState<Unit>)? = null,
+    private val resolveCoverModel: ((Long, String?) -> String?)? = null,
 ) : ScreenModel {
 
     private val _state = MutableStateFlow(MangaDetailState())
@@ -94,6 +98,7 @@ class MangaDetailScreenModel(
             } else {
                 state.copy(
                     manga = manga,
+                    coverModel = resolveCoverModel?.invoke(manga.id, manga.thumbnailUrl) ?: manga.thumbnailUrl,
                     chapterSortMode = chapterSortModeFromManga(manga),
                     chapterSortAscending = !manga.sortDescending(),
                 )
@@ -245,6 +250,42 @@ class MangaDetailScreenModel(
         val useCase = updateLibraryMembership
             ?: UpdateLibraryMembership(requireNotNull(mangaRepository) { "MangaRepository is required" })
         useCase.await(manga, favorite = !manga.favorite, nowMillis = nowMillis)
+    }
+
+    suspend fun chooseCustomCover() {
+        _state.update { it.copy(coverTask = TaskState.Running(), coverFeedback = null) }
+        val result = requireNotNull(coverAdapter) { "Cover adapter is required" }.chooseAndUpdate(mangaId)
+        if (result == null) {
+            _state.update { it.copy(coverTask = TaskState.Idle) }
+            return
+        }
+        applyCoverResult(result, "Cover updated")
+    }
+
+    suspend fun deleteCustomCover() {
+        _state.update { it.copy(coverTask = TaskState.Running(), coverFeedback = null) }
+        val result = requireNotNull(deleteCover) { "Delete cover callback is required" }(mangaId)
+        applyCoverResult(result, "Cover deleted")
+    }
+
+    private fun applyCoverResult(result: TaskState<Unit>, successFeedback: String) {
+        val manga = _state.value.manga
+        _state.update {
+            it.copy(
+                coverTask = result,
+                coverFeedback = when (result) {
+                    is TaskState.Success -> successFeedback
+                    is TaskState.Failure -> result.error.cause?.message ?: "Unable to update cover"
+                    else -> null
+                },
+                coverLastModified = if (result is TaskState.Success) System.currentTimeMillis() else it.coverLastModified,
+                coverModel = if (result is TaskState.Success) {
+                    resolveCoverModel?.invoke(mangaId, manga?.thumbnailUrl) ?: manga?.thumbnailUrl
+                } else {
+                    it.coverModel
+                },
+            )
+        }
     }
 
     suspend fun setFetchInterval(mangaId: Long, interval: Int) {

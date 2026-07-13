@@ -3,6 +3,8 @@ package mihon.desktop.ui
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.tab.Tab
 import mihon.desktop.ui.library.MangaDetailScreen
+import mihon.desktop.ui.library.authorDetailScreenOrNull
+import mihon.desktop.ui.authors.AuthorDetailScreen
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -19,6 +21,19 @@ import org.junit.jupiter.api.Assertions.assertTrue
  * These tests catch ClassCastException bugs at compile-time-equivalent level.
  */
 class NavigationContractTest {
+
+    @Test
+    fun `author entry creates a regular Screen target for the nested navigator`() {
+        val target = authorDetailScreenOrNull("  Jane Doe  ", creatorId = 42L)
+        assertTrue(target is AuthorDetailScreen)
+        assertTrue(target is Screen)
+        assertFalse(target is Tab)
+    }
+
+    @Test
+    fun `blank author does not create a navigation target`() {
+        assertTrue(authorDetailScreenOrNull("   ", creatorId = 42L) == null)
+    }
 
     @Test
     fun `MangaDetailScreen is a Screen not a Tab`() {

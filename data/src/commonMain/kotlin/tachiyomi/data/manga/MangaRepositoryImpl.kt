@@ -10,6 +10,7 @@ import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.model.MangaWithChapterCount
+import tachiyomi.domain.manga.repository.LibraryMembershipUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
 import java.time.LocalDate
 import java.time.ZoneId
@@ -17,6 +18,20 @@ import java.time.ZoneId
 class MangaRepositoryImpl(
     private val handler: DatabaseHandler,
 ) : MangaRepository {
+    override suspend fun updateAtomically(update: LibraryMembershipUpdate) {
+        handler.await(inTransaction = true) {
+            mangasQueries.update(
+                source = null, url = null, artist = null, author = null, description = null,
+                genre = null, title = null, status = null, thumbnailUrl = null,
+                favorite = update.favorite, lastUpdate = null, nextUpdate = null,
+                calculateInterval = null, initialized = null, viewer = null, chapterFlags = null,
+                coverLastModified = null, dateAdded = update.dateAdded, mangaId = update.mangaId,
+                updateStrategy = null, version = null, isSyncing = 0, notes = null,
+            )
+            mangas_categoriesQueries.deleteMangaCategoryByMangaId(update.mangaId)
+            update.categoryIds.forEach { mangas_categoriesQueries.insert(update.mangaId, it) }
+        }
+    }
 
     override suspend fun getMangaById(id: Long): Manga {
         return handler.awaitOne { mangasQueries.getMangaById(id, MangaMapper::mapManga) }

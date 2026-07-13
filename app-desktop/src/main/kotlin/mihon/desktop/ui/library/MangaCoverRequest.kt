@@ -1,18 +1,15 @@
 package mihon.desktop.ui.library
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import coil3.compose.LocalPlatformContext
 import coil3.request.ImageRequest
 import coil3.request.crossfade
-import mihon.desktop.LocalDesktopUiDependencies
 
 internal data class MangaCoverStateKey(
     val mangaId: Long,
     val thumbnailUrl: String?,
-    val coverVersion: Int,
+    val coverVersion: Long,
 )
 
 internal data class MangaCoverRequestState(
@@ -23,7 +20,7 @@ internal data class MangaCoverRequestState(
 internal fun mangaCoverStateKey(
     mangaId: Long,
     thumbnailUrl: String?,
-    coverVersion: Int,
+    coverVersion: Long,
 ): MangaCoverStateKey {
     return MangaCoverStateKey(
         mangaId = mangaId,
@@ -35,7 +32,7 @@ internal fun mangaCoverStateKey(
 internal fun mangaCoverRequestKey(
     mangaId: Long,
     model: String?,
-    coverVersion: Int,
+    coverVersion: Long,
 ): String {
     return "manga-cover:$mangaId:$coverVersion:${model.orEmpty()}"
 }
@@ -43,14 +40,10 @@ internal fun mangaCoverRequestKey(
 @Composable
 internal fun rememberMangaCoverRequestState(
     mangaId: Long,
-    thumbnailUrl: String?,
-    coverVersion: Int,
+    coverModel: String?,
+    coverVersion: Long,
 ): MangaCoverRequestState {
-    val coverManager = LocalDesktopUiDependencies.current.customCoverStore
-    val stateKey = mangaCoverStateKey(mangaId, thumbnailUrl, coverVersion)
-    val coverModel by produceState<String?>(initialValue = null, stateKey) {
-        value = coverManager.resolveModel(mangaId, thumbnailUrl)
-    }
+    val stateKey = mangaCoverStateKey(mangaId, coverModel, coverVersion)
     val requestKey = mangaCoverRequestKey(mangaId, coverModel, coverVersion)
     val platformContext = LocalPlatformContext.current
     val request = remember(requestKey, coverModel, platformContext) {

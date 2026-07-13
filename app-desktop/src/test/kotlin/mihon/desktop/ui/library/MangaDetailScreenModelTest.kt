@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.chapter.model.ChapterUpdate
@@ -23,6 +24,8 @@ import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.chapter.interactor.BatchUpdateChapters
+import mihon.domain.task.TaskState
+import mihon.domain.error.AppError
 
 /**
  * Stage 25.1 — MangaDetailScreenModel tests.
@@ -31,6 +34,76 @@ import tachiyomi.domain.chapter.interactor.BatchUpdateChapters
  * lives in a ScreenModel with StateFlow<MangaDetailState>.
  */
 class MangaDetailScreenModelTest {
+    @Test
+    fun `cover selection cancellation has no side effects`() = runTest {
+        var updates = 0
+        val model = MangaDetailScreenModel(
+            mangaId = 1L,
+            coverAdapter = MangaCoverAdapter(CoverFilePicker { null }) { _, _ -> updates++; TaskState.Success(Unit) },
+            deleteCover = { TaskState.Success(Unit) },
+            resolveCoverModel = { _, fallback -> fallback },
+        )
+
+        model.chooseCustomCover()
+
+        assertEquals(0, updates)
+        assertEquals(TaskState.Idle, model.state.value.coverTask)
+        assertNull(model.state.value.coverFeedback)
+    }
+
+    @Test
+    fun `cover update success exposes feedback and refreshed model`() = runTest {
+        val model = MangaDetailScreenModel(
+            mangaId = 1L,
+            coverAdapter = MangaCoverAdapter(CoverFilePicker { byteArrayOf(1) }) { _, _ -> TaskState.Success(Unit) },
+            deleteCover = { TaskState.Success(Unit) },
+            resolveCoverModel = { _, _ -> "custom-cover" },
+        )
+
+        model.chooseCustomCover()
+
+        assertInstanceOf(TaskState.Success::class.java, model.state.value.coverTask)
+        assertEquals("Cover updated", model.state.value.coverFeedback)
+        assertEquals("custom-cover", model.state.value.coverModel)
+        assertTrue(model.state.value.coverLastModified > 0)
+    }
+
+    @Test
+    fun `cover permission failure is visible and does not refresh cache`() = runTest {
+        val model = MangaDetailScreenModel(
+            mangaId = 1L,
+            coverAdapter = MangaCoverAdapter(CoverFilePicker { byteArrayOf(1) }) { _, _ ->
+                TaskState.Failure(AppError.Permission(SecurityException("denied")))
+            },
+            deleteCover = { TaskState.Success(Unit) },
+            resolveCoverModel = { _, fallback -> fallback },
+        )
+
+        model.chooseCustomCover()
+
+        val failure = assertInstanceOf(TaskState.Failure::class.java, model.state.value.coverTask)
+        assertInstanceOf(AppError.Permission::class.java, failure.error)
+        assertEquals("denied", model.state.value.coverFeedback)
+        assertEquals(0L, model.state.value.coverLastModified)
+    }
+
+    @Test
+    fun `cover delete success refreshes model and reports feedback`() = runTest {
+        val model = MangaDetailScreenModel(
+            mangaId = 1L,
+            coverAdapter = MangaCoverAdapter(CoverFilePicker { null }) { _, _ -> TaskState.Success(Unit) },
+            deleteCover = { TaskState.Success(Unit) },
+            resolveCoverModel = { _, fallback -> fallback },
+        )
+        model.setManga(createFakeManga(id = 1L).copy(thumbnailUrl = "remote"))
+
+        model.deleteCustomCover()
+
+        assertInstanceOf(TaskState.Success::class.java, model.state.value.coverTask)
+        assertEquals("Cover deleted", model.state.value.coverFeedback)
+        assertEquals("remote", model.state.value.coverModel)
+        assertTrue(model.state.value.coverLastModified > 0)
+    }
 
     @Test
     fun `selected read action exposes partial failure in state`() = runTest {
@@ -393,14 +466,16 @@ class MangaDetailScreenModelTest {
     }
 
     @Test
-    fun `toggleLibrary flips favorite and preserves date when removing`() = runTest {
+    fun `toggleLibrary clears favorite date and categories when removing`() = runTest {
         val mangaRepository = FakeMangaRepository()
         mangaRepository.seed(createFakeManga(id = 1L).copy(favorite = true, dateAdded = 123L))
         val model = MangaDetailScreenModel(mangaId = 1L, mangaRepository = mangaRepository)
 
         model.toggleLibrary(mangaRepository.get(1L)!!)
 
-        assertEquals(MangaUpdate(id = 1L, favorite = false, dateAdded = 123L), mangaRepository.updates.single())
+        assertFalse(mangaRepository.get(1L)!!.favorite)
+        assertEquals(0L, mangaRepository.get(1L)!!.dateAdded)
+        assertEquals(emptyList<Long>(), mangaRepository.getMangaCategoryIds(1L))
     }
 
     @Test

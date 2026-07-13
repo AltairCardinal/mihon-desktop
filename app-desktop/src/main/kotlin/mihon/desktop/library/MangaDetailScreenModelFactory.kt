@@ -6,6 +6,10 @@ import mihon.desktop.domain.LibraryUpdateChecker
 import mihon.desktop.domain.SetExcludedScanlators
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.ui.library.MangaDetailScreenModel
+import mihon.desktop.ui.library.MangaCoverAdapter
+import mihon.desktop.ui.library.DesktopCoverFilePicker
+import mihon.desktop.domain.DesktopCoverUpdater
+import mihon.desktop.domain.DesktopCustomCoverStore
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.chapter.repository.ChapterRepository
@@ -20,6 +24,8 @@ import uy.kohesive.injekt.api.get
 object MangaDetailScreenModelFactory {
     fun create(mangaId: Long): MangaDetailScreenModel {
         val downloadManager = runCatching { Injekt.get<DesktopDownloadManager>() }.getOrNull()
+        val coverStore = Injekt.get<DesktopCustomCoverStore>()
+        val coverUpdater = DesktopCoverUpdater(coverStore, Injekt.get())
         return MangaDetailScreenModel(
             mangaId = mangaId,
             getMangaWithChapters = Injekt.get<GetMangaWithChapters>(),
@@ -49,6 +55,9 @@ object MangaDetailScreenModelFactory {
                 { chapterId -> manager.cancel(chapterId) }
             },
             updateLibraryMembership = Injekt.get<UpdateLibraryMembership>(),
+            coverAdapter = MangaCoverAdapter(DesktopCoverFilePicker(), coverUpdater::invoke),
+            deleteCover = coverUpdater::delete,
+            resolveCoverModel = coverStore::resolveModel,
         )
     }
 }
