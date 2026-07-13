@@ -7,11 +7,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
-import mihon.desktop.domain.DesktopCategoryManager
 import mihon.desktop.domain.LibraryUpdateChecker
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.domain.SortMode
-import mihon.desktop.domain.batchSetCategories
 import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.reader.ReaderChapterRef
@@ -19,6 +17,11 @@ import mihon.desktop.reader.ReaderNavigator
 import mihon.desktop.settings.LibraryCategoryPrefs
 import mihon.domain.task.TaskStatus
 import tachiyomi.domain.category.interactor.SetMangaCategories
+import tachiyomi.domain.category.interactor.CreateCategoryWithName
+import tachiyomi.domain.category.interactor.DeleteCategory
+import tachiyomi.domain.category.interactor.GetCategories
+import tachiyomi.domain.category.interactor.RenameCategory
+import tachiyomi.domain.category.interactor.ReorderCategory
 import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.repository.ChapterRepository
@@ -51,7 +54,11 @@ data class LibraryReaderRequest(
 
 class LibraryScreenModel(
     private val getLibraryManga: GetLibraryManga? = null,
-    private val categoryManager: DesktopCategoryManager? = null,
+    private val getCategories: GetCategories? = null,
+    private val createCategory: CreateCategoryWithName? = null,
+    private val renameCategory: RenameCategory? = null,
+    private val deleteCategory: DeleteCategory? = null,
+    private val reorderCategory: ReorderCategory? = null,
     private val updateChecker: LibraryUpdateChecker? = null,
     private val sourceManager: SourceManager? = null,
     private val chapterRepository: ChapterRepository? = null,
@@ -76,26 +83,27 @@ class LibraryScreenModel(
         requireNotNull(getLibraryManga) { "GetLibraryManga is required" }.subscribe()
 
     suspend fun refreshCategories() {
-        setCategories(requireNotNull(categoryManager) { "DesktopCategoryManager is required" }.getAll())
+        setCategories(requireNotNull(getCategories) { "GetCategories is required" }.await())
     }
 
     suspend fun createCategory(name: String) {
-        requireNotNull(categoryManager) { "DesktopCategoryManager is required" }.create(name)
+        requireNotNull(createCategory) { "CreateCategoryWithName is required" }.await(name.trim())
         refreshCategories()
     }
 
     suspend fun renameCategory(categoryId: Long, name: String) {
-        requireNotNull(categoryManager) { "DesktopCategoryManager is required" }.rename(categoryId, name)
+        requireNotNull(renameCategory) { "RenameCategory is required" }.await(categoryId, name.trim())
         refreshCategories()
     }
 
     suspend fun deleteCategory(categoryId: Long) {
-        requireNotNull(categoryManager) { "DesktopCategoryManager is required" }.delete(categoryId)
+        requireNotNull(deleteCategory) { "DeleteCategory is required" }.await(categoryId)
         refreshCategories()
     }
 
     suspend fun reorderCategory(categoryId: Long, newIndex: Int) {
-        requireNotNull(categoryManager) { "DesktopCategoryManager is required" }.reorder(categoryId, newIndex)
+        val category = state.value.categories.firstOrNull { it.id == categoryId } ?: return
+        requireNotNull(reorderCategory) { "ReorderCategory is required" }.await(category, newIndex)
         refreshCategories()
     }
 
@@ -328,11 +336,17 @@ class LibraryScreenModel(
     }
 
     suspend fun setCategoriesForManga(mangaIds: List<Long>, categoryIds: List<Long>) {
-        batchSetCategories(
-            mangaIds = mangaIds,
-            categoryIds = categoryIds,
-            setMangaCategories = requireNotNull(setMangaCategories) { "SetMangaCategories is required" },
-        )
+        val result = requireNotNull(setMangaCategories) { "SetMangaCategories is required" }
+            .awaitBatch(mangaIds, categoryIds)
+        _state.update {
+            it.copy(
+                batchCategoryResultMessage = if (result.failures.isEmpty()) {
+                    "${result.succeededIds.size} updated"
+                } else {
+                    "${result.succeededIds.size} updated, ${result.failures.size} failed"
+                },
+            )
+        }
     }
 
     suspend fun categoryIdsForManga(mangaId: Long): Set<Long> {

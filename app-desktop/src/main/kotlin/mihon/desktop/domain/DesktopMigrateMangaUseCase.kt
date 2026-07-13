@@ -2,13 +2,14 @@ package mihon.desktop.domain
 
 import eu.kanade.tachiyomi.source.model.SChapter
 import tachiyomi.domain.category.interactor.GetCategories
-import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
+import tachiyomi.domain.manga.interactor.LibraryMembershipResult
+import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
 
 /**
  * Lightweight chapter descriptor used for chapter read-status matching.
@@ -50,18 +51,18 @@ data class MigrationOptions(
 
 /**
  * Executes a manga migration on desktop:
- * 1. Saves [target] manga to the DB (via [AddMangaToLibrary])
+ * 1. Saves [target] manga and chapters through [SaveSourceMangaForDetails]
  * 2. Optionally copies chapter read status (by chapter number)
  * 3. Optionally copies category assignments
  * 4. Optionally copies notes
  * 5. If [replace]=true, removes [sourceManga] from the library
  */
 class DesktopMigrateMangaUseCase(
-    private val addMangaToLibrary: AddMangaToLibrary,
+    private val saveSourceMangaForDetails: SaveSourceMangaForDetails,
+    private val updateLibraryMembership: UpdateLibraryMembership,
     private val getChaptersByMangaId: GetChaptersByMangaId,
     private val updateChapter: UpdateChapter,
     private val getCategories: GetCategories,
-    private val setMangaCategories: SetMangaCategories,
     private val mangaRepository: MangaRepository,
 ) {
     suspend fun await(
@@ -73,7 +74,14 @@ class DesktopMigrateMangaUseCase(
         replace: Boolean = true,
     ): Manga {
         // 1. Persist target manga + chapters to DB
-        val savedTarget = addMangaToLibrary.await(targetSManga, targetSourceId, targetChapters)
+        val persistedTarget = saveSourceMangaForDetails.await(targetSManga, targetSourceId, targetChapters)
+        val targetCategoryIds = if (options.copyCategories) {
+            getCategories.await(sourceManga.id).map { it.id }
+        } else {
+            emptyList()
+        }
+        checkMembership(updateLibraryMembership.await(persistedTarget, true, targetCategoryIds))
+        val savedTarget = persistedTarget.copy(favorite = true)
 
         // 2. Copy chapter read status
         if (options.copyChapters) {
@@ -91,12 +99,7 @@ class DesktopMigrateMangaUseCase(
         }
 
         // 3. Copy category assignments
-        if (options.copyCategories) {
-            val categories = getCategories.await(sourceManga.id)
-            if (categories.isNotEmpty()) {
-                setMangaCategories.await(savedTarget.id, categories.map { it.id })
-            }
-        }
+        // Categories were applied by UpdateLibraryMembership with the favorite update.
 
         // 4. Copy notes
         if (options.copyNotes && !sourceManga.notes.isNullOrBlank()) {
@@ -105,11 +108,13 @@ class DesktopMigrateMangaUseCase(
 
         // 5. Remove source manga from library if replace=true
         if (replace) {
-            mangaRepository.update(
-                MangaUpdate(id = sourceManga.id, favorite = false, dateAdded = 0L),
-            )
+            checkMembership(updateLibraryMembership.await(sourceManga, false))
         }
 
         return savedTarget
     }
+}
+
+private fun checkMembership(result: LibraryMembershipResult) {
+    if (result is LibraryMembershipResult.Failure) error(result.message)
 }

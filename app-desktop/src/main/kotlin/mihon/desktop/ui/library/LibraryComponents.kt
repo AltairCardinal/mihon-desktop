@@ -307,7 +307,7 @@ internal fun LibraryGrid(
     selectionState: LibrarySelectionState,
     downloadedMangaIds: Set<Long> = emptySet(),
     onContextMenu: (LibraryManga) -> Unit,
-    onItemClick: (LibraryManga) -> Unit,
+    onItemClick: (LibraryManga, shiftPressed: Boolean) -> Unit,
     onItemLongClick: (LibraryManga) -> Unit,
     onContinueReading: (LibraryManga) -> Unit,
 ) {
@@ -324,7 +324,7 @@ internal fun LibraryGrid(
                 comfortable = comfortable,
                 isSelected = selectionState.isSelected(item.manga.id),
                 isDownloaded = item.id in downloadedMangaIds,
-                onClick = { onItemClick(item) },
+                onClick = { shiftPressed -> onItemClick(item, shiftPressed) },
                 onLongClick = { onItemLongClick(item) },
                 onContinueReading = { onContinueReading(item) },
                 onContextMenu = { onContextMenu(item) },
@@ -341,7 +341,7 @@ internal fun LibraryList(
     items: List<LibraryManga>,
     selectionState: LibrarySelectionState,
     onContextMenu: (LibraryManga) -> Unit,
-    onItemClick: (LibraryManga) -> Unit,
+    onItemClick: (LibraryManga, shiftPressed: Boolean) -> Unit,
     onItemLongClick: (LibraryManga) -> Unit,
 ) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -386,8 +386,8 @@ internal fun LibraryList(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .combinedClickable(
-                        onClick = { onItemClick(item) },
+                    .shiftAwareCombinedClickable(
+                        onClick = { onItemClick(item, it) },
                         onLongClick = { onItemLongClick(item) },
                     )
                     .pointerInput(item.manga.id) {
@@ -420,7 +420,7 @@ internal fun MangaCoverCard(
     comfortable: Boolean,
     isSelected: Boolean,
     isDownloaded: Boolean = false,
-    onClick: () -> Unit,
+    onClick: (shiftPressed: Boolean) -> Unit,
     onLongClick: () -> Unit,
     onContinueReading: () -> Unit,
     onContextMenu: () -> Unit,
@@ -428,7 +428,7 @@ internal fun MangaCoverCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .shiftAwareCombinedClickable(onClick = onClick, onLongClick = onLongClick)
             .pointerInput(item.manga.id) {
                 awaitPointerEventScope {
                     while (true) {

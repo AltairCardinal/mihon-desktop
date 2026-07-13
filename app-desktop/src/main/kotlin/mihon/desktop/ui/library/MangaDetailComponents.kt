@@ -88,7 +88,7 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.launch
-import mihon.desktop.domain.DesktopMangaCoverManager
+import mihon.domain.task.TaskState
 import mihon.desktop.library.MangaDetailScreenModelFactory
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.readingModeFromViewerFlags
@@ -119,9 +119,12 @@ internal fun MangaHeader(
 ) {
     var coverVersion by remember { mutableStateOf(0) }
     val coverRequestState = rememberMangaCoverRequestState(manga.id, manga.thumbnailUrl, coverVersion)
-    val coverManager = LocalDesktopUiDependencies.current.mangaCoverManager
+    val coverManager = LocalDesktopUiDependencies.current.customCoverStore
+    val coverUpdater = LocalDesktopUiDependencies.current.coverUpdater
+    val scope = rememberCoroutineScope()
+    val coverAdapter = remember(coverUpdater) { MangaCoverAdapter(DesktopCoverFilePicker(), coverUpdater::invoke) }
+    var coverFeedback by remember { mutableStateOf<String?>(null) }
     var showCoverMenu by remember { mutableStateOf(false) }
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -162,19 +165,15 @@ internal fun MangaHeader(
                         text = { Text("Edit cover") },
                         onClick = {
                             showCoverMenu = false
-                            SwingUtilities.invokeLater {
-                                val chooser = JFileChooser()
-                                chooser.fileFilter = FileNameExtensionFilter(
-                                    "Image files",
-                                    "jpg",
-                                    "jpeg",
-                                    "png",
-                                    "webp",
-                                    "gif",
-                                )
-                                if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-                                    coverManager.setCustomCover(manga.id, chooser.selectedFile)
-                                    coverVersion++
+                            scope.launch {
+                                when (coverAdapter.chooseAndUpdate(manga.id)) {
+                                    null -> Unit
+                                    is TaskState.Success -> {
+                                        coverVersion++
+                                        coverFeedback = "Cover updated"
+                                    }
+                                    is TaskState.Failure -> coverFeedback = "Unable to update cover"
+                                    TaskState.Idle, TaskState.Cancelled, is TaskState.Running -> Unit
                                 }
                             }
                         },
@@ -192,11 +191,14 @@ internal fun MangaHeader(
             }
         }
         Column(modifier = Modifier.weight(1f)) {
+            coverFeedback?.let {
+                Text(it, color = if (it == "Cover updated") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+            }
             Text(
                 text = manga.title,
                 style = MaterialTheme.typography.titleLarge,
             )
-            manga.author?.let { author ->
+            authorNavigationNameOrNull(manga.author)?.let { author ->
                 Text(
                     text = "Author: $author",
                     style = MaterialTheme.typography.bodyMedium,
@@ -206,7 +208,7 @@ internal fun MangaHeader(
                         .clickable { onAuthorClick(author) },
                 )
             }
-            manga.artist?.takeIf { it != manga.author }?.let { artist ->
+            authorNavigationNameOrNull(manga.artist)?.takeIf { it != authorNavigationNameOrNull(manga.author) }?.let { artist ->
                 Text(
                     text = "Artist: $artist",
                     style = MaterialTheme.typography.bodyMedium,

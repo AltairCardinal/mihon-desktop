@@ -131,10 +131,13 @@
       "SHARE-DIRECT",
       "SHARE-EXTRACT"
     ],
-    "status": "NOT_STARTED",
+    "status": "SHARED",
     "authoritativeImplementation": "Android authoritative capability #16: 分类",
     "desktopImplementation": "Desktop current implementation to characterize and align: 分类",
-    "protectionTests": [],
+    "protectionTests": [
+      "domain/src/commonTest/kotlin/tachiyomi/domain/library/interactor/EvaluateLibraryTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -144,10 +147,13 @@
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "NOT_STARTED",
+    "status": "SHARED",
     "authoritativeImplementation": "Android authoritative capability #17: 书库筛选",
     "desktopImplementation": "Desktop current implementation to characterize and align: 书库筛选",
-    "protectionTests": [],
+    "protectionTests": [
+      "domain/src/commonTest/kotlin/tachiyomi/domain/library/interactor/EvaluateLibraryTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -157,10 +163,12 @@
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "NOT_STARTED",
+    "status": "WIRED",
     "authoritativeImplementation": "Android authoritative capability #19: 书库多选批处理",
     "desktopImplementation": "Desktop current implementation to characterize and align: 书库多选批处理",
-    "protectionTests": [],
+    "protectionTests": [
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -170,10 +178,13 @@
     "tags": [
       "SHARE-DIRECT"
     ],
-    "status": "NOT_STARTED",
+    "status": "SHARED",
     "authoritativeImplementation": "Android authoritative capability #22: 收藏与分类联动",
     "desktopImplementation": "Desktop current implementation to characterize and align: 收藏与分类联动",
-    "protectionTests": [],
+    "protectionTests": [
+      "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/UpdateLibraryMembershipTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -183,10 +194,13 @@
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "NOT_STARTED",
+    "status": "SHARED",
     "authoritativeImplementation": "Android authoritative capability #24: 章节批量操作",
     "desktopImplementation": "Desktop current implementation to characterize and align: 章节批量操作",
-    "protectionTests": [],
+    "protectionTests": [
+      "domain/src/commonTest/kotlin/tachiyomi/domain/chapter/interactor/BatchUpdateChaptersTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -197,10 +211,13 @@
       "SHARE-EXTRACT",
       "PLATFORM-ADAPTER"
     ],
-    "status": "NOT_STARTED",
+    "status": "WIRED",
     "authoritativeImplementation": "Android authoritative capability #26: 封面管理",
     "desktopImplementation": "Desktop current implementation to characterize and align: 封面管理",
-    "protectionTests": [],
+    "protectionTests": [
+      "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/UpdateCustomCoverTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaCoverAdapterTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -576,10 +593,13 @@
       "SHARE-DIRECT",
       "SHARE-EXTRACT"
     ],
-    "status": "NOT_STARTED",
+    "status": "SHARED",
     "authoritativeImplementation": "Android authoritative capability #66: 统计",
     "desktopImplementation": "Desktop current implementation to characterize and align: 统计",
-    "protectionTests": [],
+    "protectionTests": [
+      "domain/src/commonTest/kotlin/tachiyomi/domain/library/interactor/AggregateLibraryStatsTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/more/StatsScreenModelTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },

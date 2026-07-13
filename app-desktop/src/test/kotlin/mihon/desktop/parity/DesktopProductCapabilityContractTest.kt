@@ -18,6 +18,30 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
 class DesktopProductCapabilityContractTest {
+    @Test
+    fun `library production wiring uses shared category interactors and has no desktop category manager`() {
+        val root = java.io.File(System.getProperty("user.dir"))
+        val factory = root.resolve("src/main/kotlin/mihon/desktop/library/LibraryScreenModelFactory.kt").readText()
+        val module = root.resolve("src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt").readText()
+
+        assertFalse(factory.contains("DesktopCategoryManager"))
+        assertFalse(module.contains("DesktopCategoryManager"))
+        assertTrue(factory.contains("CreateCategoryWithName"))
+        assertTrue(factory.contains("DeleteCategory"))
+        assertTrue(factory.contains("ReorderCategory"))
+    }
+
+    @Test
+    fun `migration saves through existing details pipeline and shared library membership`() {
+        val root = java.io.File(System.getProperty("user.dir"))
+        val migration = root.resolve("src/main/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCase.kt").readText()
+        val module = root.resolve("src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt").readText()
+
+        assertFalse(migration.contains("AddMangaToLibrary"))
+        assertFalse(module.contains("AddMangaToLibrary"))
+        assertTrue(migration.contains("SaveSourceMangaForDetails"))
+        assertTrue(migration.contains("UpdateLibraryMembership"))
+    }
     @TempDir
     lateinit var tempDir: Path
 
@@ -172,6 +196,12 @@ class DesktopProductCapabilityContractTest {
             8 to "SHARED",
             10 to "WIRED",
             11 to "WIRED",
+            16 to "SHARED",
+            17 to "SHARED",
+            19 to "WIRED",
+            22 to "SHARED",
+            24 to "SHARED",
+            26 to "WIRED",
             53 to "WIRED",
             56 to "WIRED",
             57 to "WIRED",
@@ -179,6 +209,7 @@ class DesktopProductCapabilityContractTest {
             61 to "WIRED",
             62 to "WIRED",
             64 to "WIRED",
+            66 to "SHARED",
         )
         manifestItems(repositoryRoot()).forEach { item ->
             val objectItem = item.jsonObject

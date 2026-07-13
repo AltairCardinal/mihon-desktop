@@ -34,6 +34,7 @@ data class MangaDetailState(
     val showMigrateSourcePicker: Boolean = false,
     val deleteConfirmChapter: Chapter? = null,
     val markAllReadConfirm: Boolean = false,
+    val batchActionMessage: String? = null,
 
     // ── Migration state ───────────────────────────────────────────────────────
     val migrateSearchResults: List<SManga>? = null,

@@ -15,20 +15,20 @@ class MangaCoverManagerTest {
 
     @Test
     fun `getCustomCoverFile returns file under covers dir`() {
-        val manager = DesktopMangaCoverManager(tempDir)
+        val manager = DesktopCustomCoverStore(tempDir)
         val file = manager.getCustomCoverFile(mangaId = 42L)
         assertEquals(File(tempDir, "42"), file)
     }
 
     @Test
     fun `customCoverExists returns false when no file present`() {
-        val manager = DesktopMangaCoverManager(tempDir)
+        val manager = DesktopCustomCoverStore(tempDir)
         assertFalse(manager.customCoverExists(mangaId = 1L))
     }
 
     @Test
     fun `setCustomCover copies file and customCoverExists returns true`() {
-        val manager = DesktopMangaCoverManager(tempDir)
+        val manager = DesktopCustomCoverStore(tempDir)
         val source = File(tempDir, "input.jpg").also { it.writeBytes(byteArrayOf(1, 2, 3)) }
 
         manager.setCustomCover(mangaId = 5L, source = source)
@@ -38,7 +38,7 @@ class MangaCoverManagerTest {
 
     @Test
     fun `deleteCustomCover removes the file`() {
-        val manager = DesktopMangaCoverManager(tempDir)
+        val manager = DesktopCustomCoverStore(tempDir)
         val source = File(tempDir, "input.jpg").also { it.writeBytes(byteArrayOf(1, 2, 3)) }
         manager.setCustomCover(mangaId = 7L, source = source)
         assertTrue(manager.customCoverExists(mangaId = 7L))
@@ -50,7 +50,7 @@ class MangaCoverManagerTest {
 
     @Test
     fun `resolveModel returns file path when custom cover exists`() {
-        val manager = DesktopMangaCoverManager(tempDir)
+        val manager = DesktopCustomCoverStore(tempDir)
         val source = File(tempDir, "input.jpg").also { it.writeBytes(byteArrayOf(1, 2, 3)) }
         manager.setCustomCover(mangaId = 10L, source = source)
 
@@ -61,7 +61,7 @@ class MangaCoverManagerTest {
 
     @Test
     fun `resolveModel returns fallback URL when no custom cover`() {
-        val manager = DesktopMangaCoverManager(tempDir)
+        val manager = DesktopCustomCoverStore(tempDir)
 
         val model = manager.resolveModel(mangaId = 99L, fallbackUrl = "https://example.com/cover.jpg")
 
@@ -70,7 +70,7 @@ class MangaCoverManagerTest {
 
     @Test
     fun `resolveModel returns null when no custom cover and fallback is null`() {
-        val manager = DesktopMangaCoverManager(tempDir)
+        val manager = DesktopCustomCoverStore(tempDir)
 
         val model = manager.resolveModel(mangaId = 99L, fallbackUrl = null)
 

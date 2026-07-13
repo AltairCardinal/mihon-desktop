@@ -34,7 +34,6 @@ import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import mihon.desktop.domain.DesktopCategoryManager
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.settings.LibraryUpdateInterval
 import tachiyomi.domain.category.model.Category
@@ -46,7 +45,7 @@ class LibrarySettingsScreen : Screen {
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val prefs = LocalDesktopUiDependencies.current.appPreferences
-        val categoryManager = LocalDesktopUiDependencies.current.categoryManager
+        val getCategories = LocalDesktopUiDependencies.current.getCategories
         val updateInterval by prefs.libraryUpdateInterval.changes().collectAsState(
             initial = prefs.libraryUpdateInterval.get(),
         )
@@ -62,7 +61,7 @@ class LibrarySettingsScreen : Screen {
         }
 
         LaunchedEffect(Unit) {
-            categories = categoryManager.getAll()
+            categories = getCategories.await()
         }
 
         Scaffold(

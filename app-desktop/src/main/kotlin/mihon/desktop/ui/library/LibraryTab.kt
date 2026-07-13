@@ -153,6 +153,7 @@ class LibraryRootScreen : Screen {
         val displayMode = state.displayMode
         val contextMenuManga = state.contextMenuManga
         val showBatchCategoryDialog = state.showBatchCategoryDialog
+        val batchCategoryResultMessage = state.batchCategoryResultMessage
 
         LaunchedEffect(Unit) {
             launch { model.libraryMangaFlow().collect { model.setAllItems(it) } }
@@ -189,6 +190,11 @@ class LibraryRootScreen : Screen {
                 sortMode = sortMode,
                 ascending = sortAscending,
             )
+        }
+        val onItemPrimaryClick: (LibraryManga, Boolean) -> Unit = { item, shiftPressed ->
+            selectionState.handlePrimaryClick(displayedItems.map { it.manga.id }, item.manga.id, shiftPressed) {
+                navigator.push(MangaDetailScreen(it))
+            }
         }
 
         if (showCategoryDialog) {
@@ -341,6 +347,15 @@ class LibraryRootScreen : Screen {
                     )
                 }
 
+                if (batchCategoryResultMessage != null) {
+                    Text(
+                        text = batchCategoryResultMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                }
+
                 if (allItems.isEmpty()) {
                     EmptyLibrary()
                 } else if (displayedItems.isEmpty()) {
@@ -360,13 +375,7 @@ class LibraryRootScreen : Screen {
                                 selectionState = selectionState,
                                 downloadedMangaIds = downloadedMangaIds,
                                 onContextMenu = { item -> model.setContextMenuManga(item) },
-                                onItemClick = { item ->
-                                    if (selectionState.isInSelectionMode) {
-                                        selectionState.toggle(item.manga.id)
-                                    } else {
-                                        navigator.push(MangaDetailScreen(item.manga.id))
-                                    }
-                                },
+                                onItemClick = onItemPrimaryClick,
                                 onItemLongClick = { item -> selectionState.toggle(item.manga.id) },
                                 onContinueReading = { item ->
                                     scope.launch {
@@ -398,13 +407,7 @@ class LibraryRootScreen : Screen {
                                 selectionState = selectionState,
                                 downloadedMangaIds = downloadedMangaIds,
                                 onContextMenu = { item -> model.setContextMenuManga(item) },
-                                onItemClick = { item ->
-                                    if (selectionState.isInSelectionMode) {
-                                        selectionState.toggle(item.manga.id)
-                                    } else {
-                                        navigator.push(MangaDetailScreen(item.manga.id))
-                                    }
-                                },
+                                onItemClick = onItemPrimaryClick,
                                 onItemLongClick = { item -> selectionState.toggle(item.manga.id) },
                                 onContinueReading = { item ->
                                     scope.launch {
@@ -433,13 +436,7 @@ class LibraryRootScreen : Screen {
                                 items = displayedItems,
                                 selectionState = selectionState,
                                 onContextMenu = { item -> model.setContextMenuManga(item) },
-                                onItemClick = { item ->
-                                    if (selectionState.isInSelectionMode) {
-                                        selectionState.toggle(item.manga.id)
-                                    } else {
-                                        navigator.push(MangaDetailScreen(item.manga.id))
-                                    }
-                                },
+                                onItemClick = onItemPrimaryClick,
                                 onItemLongClick = { item -> selectionState.toggle(item.manga.id) },
                             )
                     }

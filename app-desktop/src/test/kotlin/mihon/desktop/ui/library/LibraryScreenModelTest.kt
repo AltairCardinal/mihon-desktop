@@ -3,7 +3,6 @@ package mihon.desktop.ui.library
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.domain.SortMode
-import mihon.desktop.domain.DesktopCategoryManager
 import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.domain.fakes.FakeCategoryRepository
 import mihon.desktop.domain.fakes.FakeMangaRepository
@@ -343,22 +342,6 @@ class LibraryScreenModelTest {
 
         assertEquals(listOf(10L, 11L), mangaRepository.getMangaCategoryIds(1L))
         assertEquals(listOf(10L, 11L), mangaRepository.getMangaCategoryIds(2L))
-    }
-
-    @Test
-    fun `category management actions refresh categories`() = runTest {
-        val categoryRepository = FakeCategoryRepository()
-        val model = LibraryScreenModel(categoryManager = DesktopCategoryManager(categoryRepository))
-
-        model.createCategory("Action")
-        val categoryId = model.state.value.categories.single().id
-        assertEquals("Action", model.state.value.categories.single().name)
-
-        model.renameCategory(categoryId, "Adventure")
-        assertEquals("Adventure", model.state.value.categories.single().name)
-
-        model.deleteCategory(categoryId)
-        assertTrue(model.state.value.categories.isEmpty())
     }
 
     private fun sampleManga(

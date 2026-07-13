@@ -2,6 +2,9 @@ package mihon.desktop.domain
 
 import eu.kanade.tachiyomi.source.model.SManga
 import tachiyomi.domain.library.model.LibraryManga
+import tachiyomi.domain.library.interactor.EvaluateLibrary
+import tachiyomi.domain.library.interactor.LibraryFilter
+import tachiyomi.domain.library.model.LibrarySort
 
 /**
  * Sort modes for the library grid.
@@ -20,6 +23,7 @@ enum class SortMode {
  * Every method is stateless — accepts a list and returns a new list.
  */
 object LibrarySearchFilter {
+    private val evaluator = EvaluateLibrary()
 
     /** Filter items whose title contains [query] (case-insensitive). */
     fun applySearch(items: List<LibraryManga>, query: String?): List<LibraryManga> {
@@ -86,11 +90,18 @@ object LibrarySearchFilter {
         sortMode: SortMode = SortMode.TITLE,
         ascending: Boolean = true,
     ): List<LibraryManga> {
-        var result = items
-        if (categoryId != null) result = applyCategory(result, categoryId)
-        result = applySearch(result, searchQuery)
-        result = applyFilters(result, unread = unread, started = started, completed = completed, downloaded = downloaded, downloadedMangaIds = downloadedMangaIds)
-        result = applySort(result, sortMode, ascending)
-        return result
+        val sharedSort = LibrarySort(
+            type = when (sortMode) {
+                SortMode.TITLE -> LibrarySort.Type.Alphabetical
+                SortMode.UNREAD_COUNT -> LibrarySort.Type.UnreadCount
+                SortMode.DATE_ADDED -> LibrarySort.Type.DateAdded
+                SortMode.LAST_READ -> LibrarySort.Type.LastRead
+            },
+            direction = if (ascending) LibrarySort.Direction.Ascending else LibrarySort.Direction.Descending,
+        )
+        return applySearch(
+            evaluator(items, categoryId, LibraryFilter(unread, started, completed, downloaded, downloadedMangaIds), sharedSort),
+            searchQuery,
+        )
     }
 }

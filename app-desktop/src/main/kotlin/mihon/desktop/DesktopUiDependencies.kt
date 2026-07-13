@@ -3,8 +3,8 @@ package mihon.desktop
 import androidx.compose.runtime.compositionLocalOf
 import kotlinx.coroutines.flow.Flow
 import mihon.desktop.backup.BackupRestoreScreenModelFactory
-import mihon.desktop.domain.DesktopCategoryManager
-import mihon.desktop.domain.DesktopMangaCoverManager
+import mihon.desktop.domain.DesktopCoverUpdater
+import mihon.desktop.domain.DesktopCustomCoverStore
 import mihon.desktop.domain.DesktopMigrateMangaUseCase
 import mihon.desktop.domain.DesktopNotificationService
 import mihon.desktop.domain.GetExcludedScanlators
@@ -25,6 +25,7 @@ import mihon.domain.extensionrepo.interactor.ReplaceExtensionRepo
 import mihon.domain.extensionrepo.interactor.UpdateExtensionRepo
 import mihon.domain.upcoming.interactor.GetUpcomingManga
 import tachiyomi.domain.category.repository.CategoryRepository
+import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.creator.service.CreatorDiscoveryService
@@ -44,7 +45,7 @@ import uy.kohesive.injekt.api.get
 data class DesktopUiDependencies(
     val appPreferences: DesktopAppPreferences,
     val backupRestoreScreenModelFactory: BackupRestoreScreenModelFactory,
-    val categoryManager: DesktopCategoryManager,
+    val getCategories: GetCategories,
     val categoryRepository: CategoryRepository,
     val chapterRepository: ChapterRepository,
     val cloudflareChallengeManager: CloudflareChallengeManager,
@@ -64,7 +65,8 @@ data class DesktopUiDependencies(
     val getUpcomingManga: GetUpcomingManga,
     val historyRepository: HistoryRepository,
     val localSourceScanService: LocalSourceScanService,
-    val mangaCoverManager: DesktopMangaCoverManager,
+    val customCoverStore: DesktopCustomCoverStore,
+    val coverUpdater: DesktopCoverUpdater,
     val mangaRepository: MangaRepository,
     val migrateManga: DesktopMigrateMangaUseCase,
     val networkHelper: DesktopNetworkHelper,
@@ -91,7 +93,7 @@ data class DesktopUiDependencies(
             return DesktopUiDependencies(
                 appPreferences = Injekt.get(),
                 backupRestoreScreenModelFactory = Injekt.get(),
-                categoryManager = Injekt.get(),
+                getCategories = Injekt.get(),
                 categoryRepository = Injekt.get(),
                 chapterRepository = Injekt.get(),
                 cloudflareChallengeManager = Injekt.get(),
@@ -111,7 +113,8 @@ data class DesktopUiDependencies(
                 getUpcomingManga = Injekt.get(),
                 historyRepository = Injekt.get(),
                 localSourceScanService = Injekt.get(),
-                mangaCoverManager = Injekt.get(),
+                customCoverStore = Injekt.get(),
+                coverUpdater = DesktopCoverUpdater(Injekt.get(), Injekt.get()),
                 mangaRepository = Injekt.get(),
                 migrateManga = Injekt.get(),
                 networkHelper = Injekt.get(),

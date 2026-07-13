@@ -1,6 +1,10 @@
 package mihon.desktop.library
 
-import mihon.desktop.domain.DesktopCategoryManager
+import tachiyomi.domain.category.interactor.CreateCategoryWithName
+import tachiyomi.domain.category.interactor.DeleteCategory
+import tachiyomi.domain.category.interactor.GetCategories
+import tachiyomi.domain.category.interactor.RenameCategory
+import tachiyomi.domain.category.interactor.ReorderCategory
 import mihon.desktop.domain.LibraryUpdateChecker
 import mihon.desktop.domain.LibraryUpdateScheduler
 import mihon.desktop.download.DesktopDownloadManager
@@ -23,7 +27,11 @@ object LibraryScreenModelFactory {
         val updateScheduler = Injekt.get<LibraryUpdateScheduler>()
         return LibraryScreenModel(
             getLibraryManga = Injekt.get<GetLibraryManga>(),
-            categoryManager = Injekt.get<DesktopCategoryManager>(),
+            getCategories = Injekt.get<GetCategories>(),
+            createCategory = Injekt.get<CreateCategoryWithName>(),
+            renameCategory = Injekt.get<RenameCategory>(),
+            deleteCategory = Injekt.get<DeleteCategory>(),
+            reorderCategory = Injekt.get<ReorderCategory>(),
             updateChecker = Injekt.get<LibraryUpdateChecker>(),
             sourceManager = Injekt.get<SourceManager>(),
             chapterRepository = Injekt.get<ChapterRepository>(),

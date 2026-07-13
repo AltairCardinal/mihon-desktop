@@ -11,6 +11,7 @@ import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.manga.interactor.GetMangaWithChapters
+import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
@@ -47,6 +48,7 @@ object MangaDetailScreenModelFactory {
             cancelDownload = downloadManager?.let { manager ->
                 { chapterId -> manager.cancel(chapterId) }
             },
+            updateLibraryMembership = Injekt.get<UpdateLibraryMembership>(),
         )
     }
 }

@@ -46,7 +46,7 @@ internal fun rememberMangaCoverRequestState(
     thumbnailUrl: String?,
     coverVersion: Int,
 ): MangaCoverRequestState {
-    val coverManager = LocalDesktopUiDependencies.current.mangaCoverManager
+    val coverManager = LocalDesktopUiDependencies.current.customCoverStore
     val stateKey = mangaCoverStateKey(mangaId, thumbnailUrl, coverVersion)
     val coverModel by produceState<String?>(initialValue = null, stateKey) {
         value = coverManager.resolveModel(mangaId, thumbnailUrl)

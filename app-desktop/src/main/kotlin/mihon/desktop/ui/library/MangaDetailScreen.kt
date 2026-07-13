@@ -89,7 +89,6 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.launch
-import mihon.desktop.domain.DesktopMangaCoverManager
 import mihon.desktop.library.MangaDetailScreenModelFactory
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.externalChapterUrlOrNull
@@ -474,15 +473,17 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         },
                         onDownloadOrDelete = {
                             val m = manga ?: return@ChapterSelectionBar
-                            when (selectedDownloadAction) {
-                                ChapterSelectionDownloadAction.DOWNLOAD -> {
-                                    model.enqueueDownloads(m, selectedChapters)
+                            scope.launch {
+                                when (selectedDownloadAction) {
+                                    ChapterSelectionDownloadAction.DOWNLOAD -> {
+                                        model.enqueueDownloadBatch(m, selectedChapters)
+                                    }
+                                    ChapterSelectionDownloadAction.DELETE_DOWNLOAD -> {
+                                        model.deleteDownloadBatch(m, selectedChapters)
+                                    }
                                 }
-                                ChapterSelectionDownloadAction.DELETE_DOWNLOAD -> {
-                                    selectedChapters.forEach { ch -> model.deleteChapterDownload(m, ch) }
-                                }
+                                selectionState.clear()
                             }
-                            selectionState.clear()
                         },
                         onClose = { selectionState.clear() },
                     )

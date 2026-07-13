@@ -40,4 +40,5 @@ data class LibraryState(
     val showCategoryDialog: Boolean = false,
     val contextMenuManga: LibraryManga? = null,
     val showBatchCategoryDialog: Boolean = false,
+    val batchCategoryResultMessage: String? = null,
 )

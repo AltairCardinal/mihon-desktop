@@ -14,6 +14,7 @@ class FakeMangaRepository : MangaRepository {
     private val mangaCategoryMap = mutableMapOf<Long, List<Long>>()
     private var nextId = 1L
     val updates = mutableListOf<MangaUpdate>()
+    var failCategoryAssignmentFor: Long? = null
 
     fun seed(manga: Manga) {
         store[manga.id] = manga
@@ -80,6 +81,7 @@ class FakeMangaRepository : MangaRepository {
         return true
     }
     override suspend fun setMangaCategories(mangaId: Long, categoryIds: List<Long>) {
+        if (mangaId == failCategoryAssignmentFor) error("category assignment failed")
         mangaCategoryMap[mangaId] = categoryIds
     }
 

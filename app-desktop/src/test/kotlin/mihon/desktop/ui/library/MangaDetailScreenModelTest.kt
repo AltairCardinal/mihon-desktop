@@ -22,6 +22,7 @@ import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.chapter.interactor.BatchUpdateChapters
 
 /**
  * Stage 25.1 — MangaDetailScreenModel tests.
@@ -30,6 +31,73 @@ import tachiyomi.domain.manga.model.Manga
  * lives in a ScreenModel with StateFlow<MangaDetailState>.
  */
 class MangaDetailScreenModelTest {
+
+    @Test
+    fun `selected read action exposes partial failure in state`() = runTest {
+        val batch = BatchUpdateChapters()
+        val model = MangaDetailScreenModel(mangaId = 1L, batchUpdateChapters = batch)
+        val chapters = listOf(createFakeChapter(1L), createFakeChapter(2L))
+
+        val result = model.runChapterBatch(chapters) { if (it.id == 2L) error("write failed") }
+
+        assertEquals(listOf(1L), result.succeededIds)
+        assertEquals("1 succeeded, 1 failed", model.state.value.batchActionMessage)
+    }
+
+    @Test
+    fun `download batch returns empty result for empty selection`() = runTest {
+        val model = MangaDetailScreenModel(mangaId = 1L, enqueueDownload = { error("must not run") })
+
+        val result = model.enqueueDownloadBatch(createFakeManga(id = 1L), emptyList())
+
+        assertTrue(result.succeededIds.isEmpty())
+        assertTrue(result.failures.isEmpty())
+        assertEquals("0 succeeded, 0 failed", model.state.value.batchActionMessage)
+    }
+
+    @Test
+    fun `download batch continues after an item fails and exposes partial failure`() = runTest {
+        val enqueued = mutableListOf<Long>()
+        val model = MangaDetailScreenModel(
+            mangaId = 1L,
+            enqueueDownload = { item ->
+                if (item.chapterId == 2L) error("queue failed")
+                enqueued += item.chapterId
+            },
+        )
+
+        val result = model.enqueueDownloadBatch(
+            createFakeManga(id = 1L),
+            listOf(createFakeChapter(1L), createFakeChapter(2L), createFakeChapter(3L)),
+        )
+
+        assertEquals(listOf(1L, 3L), result.succeededIds)
+        assertEquals(listOf(2L), result.failures.map { it.id })
+        assertEquals(listOf(1L, 3L), enqueued)
+        assertEquals("2 succeeded, 1 failed", model.state.value.batchActionMessage)
+    }
+
+    @Test
+    fun `delete download batch continues after an item fails and exposes partial failure`() = runTest {
+        val deleted = mutableListOf<String>()
+        val model = MangaDetailScreenModel(
+            mangaId = 1L,
+            deleteDownload = { _, _, chapterName ->
+                if (chapterName == "Chapter 2") error("delete failed")
+                deleted += chapterName
+            },
+        )
+
+        val result = model.deleteDownloadBatch(
+            createFakeManga(id = 1L),
+            listOf(createFakeChapter(1L), createFakeChapter(2L), createFakeChapter(3L)),
+        )
+
+        assertEquals(listOf(1L, 3L), result.succeededIds)
+        assertEquals(listOf(2L), result.failures.map { it.id })
+        assertEquals(listOf("Chapter 1", "Chapter 3"), deleted)
+        assertEquals("2 succeeded, 1 failed", model.state.value.batchActionMessage)
+    }
 
     // ── Construction ─────────────────────────────────────────────────────────
 

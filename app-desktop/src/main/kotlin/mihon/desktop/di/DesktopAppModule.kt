@@ -36,15 +36,13 @@ import tachiyomi.data.reader.SqlDelightReadingProgressRepository
 import tachiyomi.domain.reader.interactor.RecordReadingProgress
 import mihon.data.repository.ExtensionRepoRepositoryImpl
 import mihon.desktop.extension.DesktopExtensionApi
-import mihon.desktop.domain.AddMangaToLibrary
-import mihon.desktop.domain.DesktopMangaCoverManager
+import mihon.desktop.domain.DesktopCustomCoverStore
 import mihon.desktop.domain.DesktopNotificationService
 import mihon.desktop.domain.DesktopMigrateMangaUseCase
 import mihon.desktop.js.DesktopJsEngine
 import mihon.desktop.domain.GetAvailableScanlators
 import mihon.desktop.domain.GetExcludedScanlators
 import mihon.desktop.domain.SetExcludedScanlators
-import mihon.desktop.domain.DesktopCategoryManager
 import mihon.desktop.domain.LibraryUpdateChecker
 import mihon.desktop.domain.LibraryUpdateScheduler
 import mihon.desktop.domain.ReaderModeMemoryCleaner
@@ -68,7 +66,11 @@ import tachiyomi.data.manga.MangaRepositoryImpl
 import tachiyomi.data.updates.UpdatesRepositoryImpl
 import tachiyomi.data.release.DesktopPlatformInfo
 import tachiyomi.data.release.PlatformInfo
+import tachiyomi.domain.category.interactor.CreateCategoryWithName
+import tachiyomi.domain.category.interactor.DeleteCategory
 import tachiyomi.domain.category.interactor.GetCategories
+import tachiyomi.domain.category.interactor.RenameCategory
+import tachiyomi.domain.category.interactor.ReorderCategory
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.chapter.interactor.GetChapter
@@ -86,6 +88,7 @@ import tachiyomi.domain.updates.interactor.GetUpdates
 import tachiyomi.domain.updates.repository.UpdatesRepository
 import tachiyomi.domain.updates.service.UpdatesPreferences
 import tachiyomi.domain.download.service.DownloadPreferences
+import tachiyomi.domain.library.service.LibraryPreferences
 import mihon.domain.chapter.interactor.FilterChaptersForDownload
 import tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga
 import tachiyomi.domain.manga.interactor.GetFavorites
@@ -94,6 +97,7 @@ import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.interactor.GetMangaWithChapters
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.interactor.UpdateMangaNotes
+import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.repository.SourceRepository
 import tachiyomi.domain.source.service.SourceManager
@@ -359,19 +363,20 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
     Injekt.addSingleton(updateChapter)
     Injekt.addSingleton(upsertHistory)
 
-    val addMangaToLibrary = AddMangaToLibrary(networkToLocalManga, mangaRepository, chapterRepository)
-    Injekt.addSingleton(addMangaToLibrary)
-    Injekt.addSingleton(SaveSourceMangaForDetails(networkToLocalManga, mangaRepository, chapterRepository))
+    val saveSourceMangaForDetails = SaveSourceMangaForDetails(networkToLocalManga, mangaRepository, chapterRepository)
+    Injekt.addSingleton(saveSourceMangaForDetails)
     Injekt.addSingleton(GetFavorites(mangaRepository))
     val setMangaCategories = SetMangaCategories(mangaRepository)
     Injekt.addSingleton(setMangaCategories)
+    val updateLibraryMembership = UpdateLibraryMembership(mangaRepository)
+    Injekt.addSingleton(updateLibraryMembership)
     Injekt.addSingleton(
         DesktopMigrateMangaUseCase(
-            addMangaToLibrary = addMangaToLibrary,
+            saveSourceMangaForDetails = saveSourceMangaForDetails,
+            updateLibraryMembership = updateLibraryMembership,
             getChaptersByMangaId = Injekt.get<GetChaptersByMangaId>(),
             updateChapter = updateChapter,
             getCategories = Injekt.get<GetCategories>(),
-            setMangaCategories = setMangaCategories,
             mangaRepository = mangaRepository,
         ),
     )
@@ -502,14 +507,19 @@ private fun registerDesktopLibrary(
     updateManga: (suspend (tachiyomi.domain.manga.model.Manga) -> LibraryUpdateChecker.UpdateResult)? = null,
 ): DesktopNotificationService {
     Injekt.addSingleton(paths)
-    Injekt.addSingleton(DesktopMangaCoverManager(paths.coversDir))
+    Injekt.addSingleton(DesktopCustomCoverStore(paths.coversDir))
     val notificationService = DesktopNotificationService()
     Injekt.addSingleton(notificationService)
     val taskScheduler = DesktopTaskScheduler(FileTaskCheckpointStore(paths.configDir.toPath().resolve("background-tasks.json")))
     val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)
     Injekt.addSingleton(taskScheduler)
     Injekt.addSingleton(taskNotifier)
-    Injekt.addSingleton(DesktopCategoryManager(categoryRepository))
+    val libraryPreferences = LibraryPreferences(preferenceStore)
+    Injekt.addSingleton(libraryPreferences)
+    Injekt.addSingleton(CreateCategoryWithName(categoryRepository, libraryPreferences))
+    Injekt.addSingleton(RenameCategory(categoryRepository))
+    Injekt.addSingleton(DeleteCategory(categoryRepository, libraryPreferences, Injekt.get()))
+    Injekt.addSingleton(ReorderCategory(categoryRepository))
     Injekt.addSingleton(
         LibraryUpdateScheduler(
             appPreferences = appPreferences,
