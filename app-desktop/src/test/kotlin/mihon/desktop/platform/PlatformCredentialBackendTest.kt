@@ -57,6 +57,26 @@ class PlatformCredentialBackendTest {
     }
 
     @Test
+    fun `macOS removes version prefix from raw ASCII keychain values`() {
+        val backend = PlatformCredentialBackend(
+            OperatingSystem.MACOS,
+            RecordingCommandRunner(CommandResult(0, "mihon-v1:ascii-token\n", "")),
+        )
+
+        assertEquals("ascii-token", backend.load("ascii")?.concatToString())
+    }
+
+    @Test
+    fun `macOS preserves all hexadecimal legacy raw keychain values`() {
+        val backend = PlatformCredentialBackend(
+            OperatingSystem.MACOS,
+            RecordingCommandRunner(CommandResult(0, "746f6b656e\n", "")),
+        )
+
+        assertEquals("746f6b656e", backend.load("legacy-hex")?.concatToString())
+    }
+
+    @Test
     fun `Linux secret service uses stdin and distinguishes absent permission and missing CLI`() {
         val absent = PlatformCredentialBackend(
             OperatingSystem.LINUX,
@@ -131,8 +151,8 @@ class PlatformCredentialBackendTest {
         val key = "integration.${UUID.randomUUID()}"
         val store = DesktopCredentialStore(PlatformCredentialBackend(OperatingSystem.MACOS))
         try {
-            store.save(key, "初始 secret !@#")
-            assertEquals("初始 secret !@#", store.load(key))
+            store.save(key, "initial-secret-!@#")
+            assertEquals("initial-secret-!@#", store.load(key))
             store.save(key, "覆盖 secret /?&")
             assertEquals("覆盖 secret /?&", store.load(key))
             store.delete(key)

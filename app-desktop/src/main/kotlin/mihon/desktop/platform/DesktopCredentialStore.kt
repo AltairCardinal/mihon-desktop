@@ -206,6 +206,9 @@ class PlatformCredentialBackend(
     }
 
     private fun decodeMacValue(storedValue: String): CharArray {
+        if (storedValue.startsWith(MAC_VALUE_PREFIX)) {
+            return storedValue.substring(MAC_VALUE_PREFIX.length).toCharArray()
+        }
         if (storedValue.length % 2 != 0 || storedValue.any { it.digitToIntOrNull(16) == null }) {
             return storedValue.toCharArray()
         }
