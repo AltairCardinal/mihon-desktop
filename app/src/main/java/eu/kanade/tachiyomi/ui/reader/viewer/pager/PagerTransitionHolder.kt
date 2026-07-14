@@ -20,6 +20,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import mihon.domain.reader.ReaderChapterState
+import mihon.domain.reader.ReaderNavigationCommand
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.MR
 
@@ -82,13 +84,19 @@ class PagerTransitionHolder(
     private fun observeStatus(chapter: ReaderChapter) {
         stateJob?.cancel()
         stateJob = scope.launch {
-            chapter.stateFlow
+            chapter.sharedStateFlow
                 .collectLatest { state ->
                     pagesContainer.removeAllViews()
                     when (state) {
-                        is ReaderChapter.State.Loading -> setLoading()
-                        is ReaderChapter.State.Error -> setError(state.error)
-                        is ReaderChapter.State.Wait, is ReaderChapter.State.Loaded -> {
+                        is ReaderChapterState.Loading -> setLoading()
+                        is ReaderChapterState.Error -> {
+                            val retryCommand = state.retryCommand()
+                            setError(
+                                state.error.cause ?: IllegalStateException(state.error.toString()),
+                                (retryCommand as ReaderNavigationCommand.RetryChapter).chapterId,
+                            )
+                        }
+                        is ReaderChapterState.Wait, is ReaderChapterState.Loaded -> {
                             // No additional view is added
                         }
                     }
@@ -115,7 +123,7 @@ class PagerTransitionHolder(
     /**
      * Sets the error state on the pages container.
      */
-    private fun setError(error: Throwable) {
+    private fun setError(error: Throwable, retryTargetChapterId: Long) {
         val textView = AppCompatTextView(context).apply {
             wrapContent()
             text = context.stringResource(MR.strings.transition_pages_error, error.message ?: "")
@@ -126,10 +134,9 @@ class PagerTransitionHolder(
             wrapContent()
             text = context.stringResource(MR.strings.action_retry)
             setOnClickListener {
-                val toChapter = transition.to
-                if (toChapter != null) {
-                    this@PagerTransitionHolder.viewer.activity.requestPreloadChapter(toChapter)
-                }
+                listOfNotNull(transition.to, transition.from)
+                    .firstOrNull { it.chapter.id == retryTargetChapterId }
+                    ?.let(this@PagerTransitionHolder.viewer.activity::requestPreloadChapter)
             }
         }
 

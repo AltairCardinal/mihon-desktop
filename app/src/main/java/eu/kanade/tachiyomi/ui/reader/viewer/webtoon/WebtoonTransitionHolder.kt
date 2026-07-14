@@ -17,6 +17,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import mihon.domain.reader.ReaderChapterState
+import mihon.domain.reader.ReaderNavigationCommand
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.MR
 
@@ -83,13 +85,20 @@ class WebtoonTransitionHolder(
     private fun observeStatus(chapter: ReaderChapter, transition: ChapterTransition) {
         stateJob?.cancel()
         stateJob = scope.launch {
-            chapter.stateFlow
+            chapter.sharedStateFlow
                 .collectLatest { state ->
                     pagesContainer.removeAllViews()
                     when (state) {
-                        is ReaderChapter.State.Loading -> setLoading()
-                        is ReaderChapter.State.Error -> setError(state.error, transition)
-                        is ReaderChapter.State.Wait, is ReaderChapter.State.Loaded -> {
+                        is ReaderChapterState.Loading -> setLoading()
+                        is ReaderChapterState.Error -> {
+                            val retryCommand = state.retryCommand()
+                            setError(
+                                state.error.cause ?: IllegalStateException(state.error.toString()),
+                                transition,
+                                (retryCommand as ReaderNavigationCommand.RetryChapter).chapterId,
+                            )
+                        }
+                        is ReaderChapterState.Wait, is ReaderChapterState.Loaded -> {
                             // No additional view is added
                         }
                     }
@@ -117,7 +126,7 @@ class WebtoonTransitionHolder(
     /**
      * Sets the error state on the pages container.
      */
-    private fun setError(error: Throwable, transition: ChapterTransition) {
+    private fun setError(error: Throwable, transition: ChapterTransition, retryTargetChapterId: Long) {
         val textView = AppCompatTextView(context).apply {
             wrapContent()
             text = context.stringResource(MR.strings.transition_pages_error, error.message ?: "")
@@ -127,10 +136,9 @@ class WebtoonTransitionHolder(
             wrapContent()
             text = context.stringResource(MR.strings.action_retry)
             setOnClickListener {
-                val toChapter = transition.to
-                if (toChapter != null) {
-                    viewer.activity.requestPreloadChapter(toChapter)
-                }
+                listOfNotNull(transition.to, transition.from)
+                    .firstOrNull { it.chapter.id == retryTargetChapterId }
+                    ?.let(viewer.activity::requestPreloadChapter)
             }
         }
 

@@ -93,6 +93,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
 import logcat.LogPriority
+import mihon.domain.reader.ReaderColorFilterParams
 import tachiyomi.core.common.Constants
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.lang.launchIO
@@ -434,10 +435,21 @@ class ReaderActivity : BaseActivity() {
         val colorOverlayBlendMode = remember(colorOverlayMode) {
             ReaderPreferences.ColorFilterMode.getOrNull(colorOverlayMode)?.second
         }
+        val colorFilterParams = remember(colorOverlayEnabled, colorOverlay, state.brightnessOverlayValue) {
+            buildAndroidReaderColorFilterParams(
+                tintEnabled = colorOverlayEnabled,
+                brightnessEnabled = state.brightnessOverlayValue != 0,
+                brightness = state.brightnessOverlayValue / 100f,
+                r = Color.red(colorOverlay),
+                g = Color.green(colorOverlay),
+                b = Color.blue(colorOverlay),
+                alpha = Color.alpha(colorOverlay),
+            ).normalized()
+        }
 
         ReaderContentOverlay(
-            brightness = state.brightnessOverlayValue,
-            color = colorOverlay.takeIf { colorOverlayEnabled },
+            brightness = (colorFilterParams.brightness * 100).toInt(),
+            color = colorOverlay.takeIf { colorFilterParams.tintEnabled },
             colorBlendMode = colorOverlayBlendMode,
         )
 
@@ -814,14 +826,14 @@ class ReaderActivity : BaseActivity() {
      */
     private inner class ReaderConfig {
 
-        private fun getCombinedPaint(grayscale: Boolean, invertedColors: Boolean): Paint {
+        private fun getCombinedPaint(params: ReaderColorFilterParams): Paint {
             return Paint().apply {
                 colorFilter = ColorMatrixColorFilter(
                     ColorMatrix().apply {
-                        if (grayscale) {
+                        if (params.grayscaleEnabled) {
                             setSaturation(0f)
                         }
-                        if (invertedColors) {
+                        if (params.invertEnabled) {
                             postConcat(
                                 ColorMatrix(
                                     floatArrayOf(
@@ -872,10 +884,8 @@ class ReaderActivity : BaseActivity() {
             combine(
                 readerPreferences.grayscale().changes(),
                 readerPreferences.invertedColors().changes(),
-            ) { grayscale, invertedColors -> grayscale to invertedColors }
-                .onEach { (grayscale, invertedColors) ->
-                    setLayerPaint(grayscale, invertedColors)
-                }
+            ) { grayscale, invertedColors -> buildAndroidLayerFilterParams(grayscale, invertedColors) }
+                .onEach(::setLayerPaint)
                 .launchIn(lifecycleScope)
 
             combine(
@@ -964,8 +974,8 @@ class ReaderActivity : BaseActivity() {
 
             viewModel.setBrightnessOverlayValue(value)
         }
-        private fun setLayerPaint(grayscale: Boolean, invertedColors: Boolean) {
-            val paint = if (grayscale || invertedColors) getCombinedPaint(grayscale, invertedColors) else null
+        private fun setLayerPaint(params: ReaderColorFilterParams) {
+            val paint = if (params.isEffective) getCombinedPaint(params.normalized()) else null
             binding.viewerContainer.setLayerType(LAYER_TYPE_HARDWARE, paint)
         }
     }

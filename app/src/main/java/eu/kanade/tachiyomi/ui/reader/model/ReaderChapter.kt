@@ -4,15 +4,21 @@ import eu.kanade.domain.chapter.model.toDbChapter
 import eu.kanade.tachiyomi.data.database.models.Chapter
 import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import mihon.domain.error.AppError
+import mihon.domain.reader.ReaderChapterState
 import tachiyomi.core.common.util.system.logcat
 
 data class ReaderChapter(val chapter: Chapter) {
 
-    val stateFlow = MutableStateFlow<State>(State.Wait)
-    var state: State
-        get() = stateFlow.value
+    private val mutableSharedStateFlow = MutableStateFlow<ReaderChapterState>(ReaderChapterState.Wait)
+    val sharedStateFlow: StateFlow<ReaderChapterState> = mutableSharedStateFlow.asStateFlow()
+
+    var state: State = State.Wait
         set(value) {
-            stateFlow.value = value
+            field = value
+            mutableSharedStateFlow.value = value.toSharedState(checkNotNull(chapter.id))
         }
 
     val pages: List<ReaderPage>?
@@ -48,4 +54,14 @@ data class ReaderChapter(val chapter: Chapter) {
         data class Error(val error: Throwable) : State
         data class Loaded(val pages: List<ReaderPage>) : State
     }
+}
+
+private fun ReaderChapter.State.toSharedState(chapterId: Long): ReaderChapterState = when (this) {
+    ReaderChapter.State.Wait -> ReaderChapterState.Wait
+    ReaderChapter.State.Loading -> ReaderChapterState.Loading
+    is ReaderChapter.State.Loaded -> ReaderChapterState.Loaded(pages.map(ReaderPage::toSharedPageModel))
+    is ReaderChapter.State.Error -> ReaderChapterState.Error(
+        error = AppError.Unknown(error),
+        retryTargetChapterId = chapterId,
+    )
 }

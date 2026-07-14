@@ -55,6 +55,10 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.runBlocking
 import logcat.LogPriority
+import mihon.domain.reader.ChapterSkipPolicy
+import mihon.domain.reader.ReaderChapterEntry
+import mihon.domain.reader.filterChaptersForReader
+import mihon.domain.reader.markDuplicateChapters
 import tachiyomi.core.common.preference.toggle
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.launchNonCancellable
@@ -63,6 +67,7 @@ import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.UpdateChapter
+import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.service.getChapterSort
 import tachiyomi.domain.download.service.DownloadPreferences
@@ -165,62 +170,32 @@ class ReaderViewModel @JvmOverloads constructor(
         val manga = manga!!
         val chapters = getChaptersByMangaId.await(manga.id, applyScanlatorFilter = true)
 
-        val selectedChapter = chapters.find { it.id == chapterId }
+        chapters.find { it.id == chapterId }
             ?: error("Requested chapter of id $chapterId not found in chapter list")
 
-        val chaptersForReader = when {
-            (readerPreferences.skipRead().get() || readerPreferences.skipFiltered().get()) -> {
-                val filteredChapters = chapters.filterNot {
-                    when {
-                        readerPreferences.skipRead().get() && it.read -> true
-                        readerPreferences.skipFiltered().get() -> {
-                            (manga.unreadFilterRaw == Manga.CHAPTER_SHOW_READ && !it.read) ||
-                                (manga.unreadFilterRaw == Manga.CHAPTER_SHOW_UNREAD && it.read) ||
-                                (
-                                    manga.downloadedFilterRaw == Manga.CHAPTER_SHOW_DOWNLOADED &&
-                                        !downloadManager.isChapterDownloaded(
-                                            it.name,
-                                            it.scanlator,
-                                            it.url,
-                                            manga.title,
-                                            manga.source,
-                                        )
-                                    ) ||
-                                (
-                                    manga.downloadedFilterRaw == Manga.CHAPTER_SHOW_NOT_DOWNLOADED &&
-                                        downloadManager.isChapterDownloaded(
-                                            it.name,
-                                            it.scanlator,
-                                            it.url,
-                                            manga.title,
-                                            manga.source,
-                                        )
-                                    ) ||
-                                (manga.bookmarkedFilterRaw == Manga.CHAPTER_SHOW_BOOKMARKED && !it.bookmark) ||
-                                (manga.bookmarkedFilterRaw == Manga.CHAPTER_SHOW_NOT_BOOKMARKED && it.bookmark)
-                        }
-                        else -> false
-                    }
-                }
-
-                if (filteredChapters.any { it.id == chapterId }) {
-                    filteredChapters
-                } else {
-                    filteredChapters + listOf(selectedChapter)
-                }
-            }
-            else -> chapters
+        val skipPolicy = ChapterSkipPolicy(
+            read = readerPreferences.skipRead().get(),
+            filtered = readerPreferences.skipFiltered().get(),
+            duplicate = readerPreferences.skipDupe().get(),
+        )
+        val sortedChapters = chapters.sortedWith(getChapterSort(manga, sortDescending = false))
+        val entries = sortedChapters.map { chapter ->
+            ReaderChapterEntry(
+                id = chapter.id,
+                isRead = chapter.read,
+                isFiltered = skipPolicy.filtered && isChapterFiltered(manga, chapter),
+                chapterNumber = chapter.chapterNumber,
+                scanlator = chapter.scanlator,
+            )
         }
+        val includedIds = filterAndroidReaderChapterEntries(
+            entries = entries,
+            currentChapterId = chapterId,
+            skipPolicy = skipPolicy,
+        ).mapTo(mutableSetOf(), ReaderChapterEntry::id)
 
-        val result = chaptersForReader
-            .sortedWith(getChapterSort(manga, sortDescending = false))
-            .run {
-                if (readerPreferences.skipDupe().get()) {
-                    removeDuplicates(selectedChapter)
-                } else {
-                    this
-                }
-            }
+        val result = sortedChapters
+            .filter { it.id in includedIds }
             .run {
                 if (basePreferences.downloadedOnly().get()) {
                     filterDownloaded(manga)
@@ -233,6 +208,32 @@ class ReaderViewModel @JvmOverloads constructor(
         chapterListCache = result
         return result
     }
+
+    private fun isChapterFiltered(manga: Manga, chapter: Chapter): Boolean =
+        (manga.unreadFilterRaw == Manga.CHAPTER_SHOW_READ && !chapter.read) ||
+            (manga.unreadFilterRaw == Manga.CHAPTER_SHOW_UNREAD && chapter.read) ||
+            (
+                manga.downloadedFilterRaw == Manga.CHAPTER_SHOW_DOWNLOADED &&
+                    !downloadManager.isChapterDownloaded(
+                        chapter.name,
+                        chapter.scanlator,
+                        chapter.url,
+                        manga.title,
+                        manga.source,
+                    )
+                ) ||
+            (
+                manga.downloadedFilterRaw == Manga.CHAPTER_SHOW_NOT_DOWNLOADED &&
+                    downloadManager.isChapterDownloaded(
+                        chapter.name,
+                        chapter.scanlator,
+                        chapter.url,
+                        manga.title,
+                        manga.source,
+                    )
+                ) ||
+            (manga.bookmarkedFilterRaw == Manga.CHAPTER_SHOW_BOOKMARKED && !chapter.bookmark) ||
+            (manga.bookmarkedFilterRaw == Manga.CHAPTER_SHOW_NOT_BOOKMARKED && chapter.bookmark)
 
     private val incognitoMode: Boolean by lazy { getIncognitoState.await(manga?.source) }
     private val downloadAheadAmount = downloadPreferences.autoDownloadWhileReading().get()
@@ -996,4 +997,26 @@ class ReaderViewModel @JvmOverloads constructor(
         data class ShareImage(val uri: Uri, val page: ReaderPage) : Event
         data class CopyImage(val uri: Uri) : Event
     }
+}
+
+internal fun filterAndroidReaderChapterEntries(
+    entries: List<ReaderChapterEntry>,
+    currentChapterId: Long,
+    skipPolicy: ChapterSkipPolicy,
+): List<ReaderChapterEntry> {
+    val duplicateCandidates = filterChaptersForReader(
+        chapters = entries,
+        currentChapterId = currentChapterId,
+        skipPolicy = skipPolicy.copy(duplicate = false),
+    )
+    val markedEntries = if (skipPolicy.duplicate) {
+        markDuplicateChapters(duplicateCandidates, currentChapterId)
+    } else {
+        duplicateCandidates
+    }
+    return filterChaptersForReader(
+        chapters = markedEntries,
+        currentChapterId = currentChapterId,
+        skipPolicy = skipPolicy,
+    )
 }

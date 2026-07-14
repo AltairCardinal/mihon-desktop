@@ -5,7 +5,11 @@ import android.graphics.PointF
 import android.graphics.RectF
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
-import eu.kanade.tachiyomi.util.lang.invert
+import mihon.domain.reader.NavigationInversion
+import mihon.domain.reader.NavigationPreset
+import mihon.domain.reader.NormalizedReaderRegion
+import mihon.domain.reader.ReaderNavigation
+import mihon.domain.reader.ReaderNavigationCommand
 import tachiyomi.i18n.MR
 
 abstract class ViewerNavigation {
@@ -18,37 +22,41 @@ abstract class ViewerNavigation {
         data object RIGHT : NavigationRegion(MR.strings.nav_zone_right, Color.argb(0xCC, 0xA6, 0xCF, 0xD5))
     }
 
-    data class Region(
-        val rectF: RectF,
-        val type: NavigationRegion,
-    ) {
-        fun invert(invertMode: ReaderPreferences.TappingInvertMode): Region {
-            if (invertMode == ReaderPreferences.TappingInvertMode.NONE) return this
-            return this.copy(
-                rectF = this.rectF.invert(invertMode),
-            )
-        }
-    }
+    data class Region(val rectF: RectF, val type: NavigationRegion)
 
-    private var constantMenuRegion: RectF = RectF(0f, 0f, 1f, 0.05f)
+    protected abstract val preset: NavigationPreset
+
+    private val constantMenuRegion = RectF(0f, 0f, 1f, 0.05f)
 
     var invertMode: ReaderPreferences.TappingInvertMode = ReaderPreferences.TappingInvertMode.NONE
 
-    protected abstract var regionList: List<Region>
-
-    /** Returns regions with applied inversion. */
     fun getRegions(): List<Region> {
-        return regionList.map { it.invert(invertMode) }
+        val inversion = when (invertMode) {
+            ReaderPreferences.TappingInvertMode.NONE -> NavigationInversion.NONE
+            ReaderPreferences.TappingInvertMode.HORIZONTAL -> NavigationInversion.HORIZONTAL
+            ReaderPreferences.TappingInvertMode.VERTICAL -> NavigationInversion.VERTICAL
+            ReaderPreferences.TappingInvertMode.BOTH -> NavigationInversion.BOTH
+        }
+        return ReaderNavigation.regions(preset).map { it.inverted(inversion).toAndroidRegion() }
     }
 
     fun getAction(pos: PointF): NavigationRegion {
-        val x = pos.x
-        val y = pos.y
-        val region = getRegions().find { it.rectF.contains(x, y) }
-        return when {
-            region != null -> region.type
-            constantMenuRegion.contains(x, y) -> NavigationRegion.MENU
-            else -> NavigationRegion.MENU
+        val region = getRegions().find { it.rectF.contains(pos.x, pos.y) }
+        return region?.type ?: if (constantMenuRegion.contains(pos.x, pos.y)) {
+            NavigationRegion.MENU
+        } else {
+            NavigationRegion.MENU
         }
     }
+
+    private fun NormalizedReaderRegion.toAndroidRegion(): Region = Region(
+        rectF = RectF(left, top, right, bottom),
+        type = when (command) {
+            ReaderNavigationCommand.Previous -> NavigationRegion.PREV
+            ReaderNavigationCommand.Next -> NavigationRegion.NEXT
+            ReaderNavigationCommand.PhysicalLeft -> NavigationRegion.LEFT
+            ReaderNavigationCommand.PhysicalRight -> NavigationRegion.RIGHT
+            else -> NavigationRegion.MENU
+        },
+    )
 }

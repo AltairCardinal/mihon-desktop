@@ -8,13 +8,18 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.suspendCancellableCoroutine
+import mihon.domain.reader.PreloadJobKey
+import mihon.domain.reader.ReaderPreloadPlanner
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.withIOContext
 import uy.kohesive.injekt.Injekt
@@ -23,7 +28,6 @@ import java.util.concurrent.PriorityBlockingQueue
 import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.concurrent.atomics.incrementAndFetch
-import kotlin.math.min
 
 /**
  * Loader used to load chapters from an online source.
@@ -42,16 +46,19 @@ internal class HttpPageLoader(
     private val queue = PriorityBlockingQueue<PriorityPage>()
 
     private val preloadSize = 4
+    private val preloadPlanner = ReaderPreloadPlanner(windowSize = preloadSize, backwardWindowSize = 0)
+    private val activePreloadJobLock = Any()
+    private var activePreloadJob: ActivePreloadJob? = null
 
     init {
         scope.launchIO {
             flow {
                 while (true) {
-                    emit(runInterruptible { queue.take() }.page)
+                    emit(runInterruptible { queue.take() })
                 }
             }
-                .filter { it.status == Page.State.Queue }
-                .collect(::internalLoadPage)
+                .filter { it.page.status == Page.State.Queue }
+                .collect(::runQueuedPage)
         }
     }
 
@@ -92,11 +99,34 @@ internal class HttpPageLoader(
             page.status = Page.State.Queue
         }
 
-        val queuedPages = mutableListOf<PriorityPage>()
-        if (page.status == Page.State.Queue) {
-            queuedPages += PriorityPage(page, 1).also { queue.offer(it) }
+        val pages = page.chapter.pages.orEmpty()
+        val preloadPlan = synchronized(preloadPlanner) {
+            preloadPlanner.moveTo(page.index, pages.size)
         }
-        queuedPages += preloadNextPages(page, preloadSize)
+        queue.removeIf { queued ->
+            queued.jobKey in preloadPlan.cancelRequests && queued.page.status == Page.State.Queue
+        }
+        synchronized(activePreloadJobLock) {
+            activePreloadJob?.let { active ->
+                cancelAndroidPreloadJob(active.key, active.job, preloadPlan.cancelRequests)
+            }
+        }
+        val queuedPages = mutableListOf<PriorityPage>()
+        queuedPages += preloadPlan.requests
+            .asSequence()
+            .mapNotNull { request ->
+                val candidate = pages[request.pageIndex]
+                if (candidate.status == Page.State.Queue) {
+                    PriorityPage(
+                        page = candidate,
+                        priority = if (request.pageIndex == page.index) 1 else 0,
+                        jobKey = request.jobKey,
+                    ).also(queue::offer)
+                } else {
+                    null
+                }
+            }
+            .toList()
 
         suspendCancellableCoroutine<Nothing> { continuation ->
             continuation.invokeOnCancellation {
@@ -116,7 +146,7 @@ internal class HttpPageLoader(
         if (page.status is Page.State.Error) {
             page.status = Page.State.Queue
         }
-        queue.offer(PriorityPage(page, 2))
+        queue.offer(PriorityPage(page, 2, jobKey = null))
     }
 
     override fun recycle() {
@@ -141,27 +171,6 @@ internal class HttpPageLoader(
     }
 
     /**
-     * Preloads the given [amount] of pages after the [currentPage] with a lower priority.
-     *
-     * @return a list of [PriorityPage] that were added to the [queue]
-     */
-    private fun preloadNextPages(currentPage: ReaderPage, amount: Int): List<PriorityPage> {
-        val pageIndex = currentPage.index
-        val pages = currentPage.chapter.pages ?: return emptyList()
-        if (pageIndex == pages.lastIndex) return emptyList()
-
-        return pages
-            .subList(pageIndex + 1, min(pageIndex + 1 + amount, pages.size))
-            .mapNotNull {
-                if (it.status == Page.State.Queue) {
-                    PriorityPage(it, 0).apply { queue.offer(this) }
-                } else {
-                    null
-                }
-            }
-    }
-
-    /**
      * Loads the page, retrieving the image URL and downloading the image if necessary.
      * Downloaded images are stored in the chapter cache.
      *
@@ -183,14 +192,42 @@ internal class HttpPageLoader(
 
             page.stream = { chapterCache.getImageFile(imageUrl).inputStream() }
             page.status = Page.State.Ready
+        } catch (e: CancellationException) {
+            page.status = Page.State.Queue
+            throw e
         } catch (e: Throwable) {
             page.status = Page.State.Error(e)
-            if (e is CancellationException) {
-                throw e
+        }
+    }
+
+    private suspend fun runQueuedPage(queued: PriorityPage) {
+        val loadJob = scope.launch(start = CoroutineStart.LAZY) { internalLoadPage(queued.page) }
+        val active = queued.jobKey?.let { ActivePreloadJob(it, loadJob) }
+        if (active != null) {
+            synchronized(activePreloadJobLock) { activePreloadJob = active }
+        }
+        try {
+            loadJob.start()
+            loadJob.join()
+        } finally {
+            synchronized(activePreloadJobLock) {
+                if (activePreloadJob === active) activePreloadJob = null
             }
         }
     }
 }
+
+internal fun cancelAndroidPreloadJob(
+    activeKey: PreloadJobKey,
+    activeJob: Job,
+    cancelRequests: Set<PreloadJobKey>,
+): Boolean {
+    if (activeKey !in cancelRequests) return false
+    activeJob.cancel()
+    return true
+}
+
+private data class ActivePreloadJob(val key: PreloadJobKey, val job: Job)
 
 /**
  * Data class used to keep ordering of pages in order to maintain priority.
@@ -199,6 +236,7 @@ internal class HttpPageLoader(
 private class PriorityPage(
     val page: ReaderPage,
     val priority: Int,
+    val jobKey: PreloadJobKey?,
 ) : Comparable<PriorityPage> {
     companion object {
         private val idGenerator = AtomicInt(0)
