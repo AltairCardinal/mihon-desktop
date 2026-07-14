@@ -1,0 +1,14 @@
+{
+  "change": "align-reader-core",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "163e83a92a17adb3e758e9ba37c836a02accadd2247884de0fb1c067669b7671",
+  "files": [
+    { "path": "openspec/changes/align-reader-core/proposal.md", "sha256": "0f2bc159fd32a3c1462837e5ee0da60f66639761b9e59dcc94c8179f45746a26" },
+    { "path": "openspec/changes/align-reader-core/design.md", "sha256": "87faddd7252a7e895940ff93a74576bb7e2163487fd8b1f5d32c5a5acef749d7" },
+    { "path": "openspec/changes/align-reader-core/tasks.md", "sha256": "30c79443df6b124b44331265d4b8a365424a5b9b7852c7fa9add7be7985367b0" },
+    { "path": "openspec/changes/align-reader-core/specs/shared-reader-core/spec.md", "sha256": "bb273255ef12a2136556b86d763630c6c376215008b7ad3b55bbc6ceeb2b5e9d" }
+  ]
+}
