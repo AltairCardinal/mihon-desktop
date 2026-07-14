@@ -1,5 +1,9 @@
 package mihon.domain.reader
 
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
 import mihon.domain.error.AppError
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -430,35 +434,90 @@ class ReaderParityContractTest {
     }
 
     @Test
-    fun `generation-aware cache rejects stale completion and exposes observable revision`() {
+    fun `negative generations are invalid and cache writes require an active generation`() {
         val cache = ByteBudgetPageCache<String>(maxBytes = 8)
+
+        assertNull(cache.generation)
         assertEquals(
             PageCacheCommitResult.REJECTED_STALE_GENERATION,
             cache.commit(PageCacheWrite(pageIndex = 0, generation = 0, value = "before-start", estimatedBytes = 4)),
         )
-        assertEquals(0, cache.revision)
+        assertEquals(
+            PageCacheCommitResult.REJECTED_STALE_GENERATION,
+            cache.commit(PageCacheWrite(pageIndex = 0, generation = 7, value = "before-start", estimatedBytes = 4)),
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            PageDecodeRequest(pageIndex = 0, generation = -1, maxWidth = 1, maxHeight = 1)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            PreloadRequest(pageIndex = 0, priority = PreloadPriority.CURRENT, generation = -1)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            PageDecodeResult.Success(-1, "decoded", width = 1, height = 1, estimatedBytes = 4)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            PageDecodeResult.Failure(-1, AppError.MalformedData())
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            PageCacheWrite(pageIndex = 0, generation = -1, value = "invalid", estimatedBytes = 4)
+        }
+
+        assertTrue(cache.beginGeneration(generation = 0, evictPageIndices = emptySet()))
+        assertEquals(0, cache.generation)
+        assertEquals(
+            PageCacheCommitResult.STORED,
+            cache.commit(PageCacheWrite(pageIndex = 0, generation = 0, value = "current", estimatedBytes = 4)),
+        )
+    }
+
+    @Test
+    fun `cache revision publishes late commits and whole-window evictions only`() = runTest {
+        val cache = ByteBudgetPageCache<String>(maxBytes = 8)
+        val revisions = mutableListOf<Long>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            cache.revision.collect { revisions += it }
+        }
+
+        assertEquals(listOf(0L), revisions)
+        assertEquals(
+            PageCacheCommitResult.REJECTED_STALE_GENERATION,
+            cache.commit(PageCacheWrite(pageIndex = 0, generation = 0, value = "before-start", estimatedBytes = 4)),
+        )
+        assertEquals(listOf(0L), revisions)
         assertTrue(cache.beginGeneration(generation = 1, evictPageIndices = emptySet()))
 
         val stale = cache.commit(PageCacheWrite(pageIndex = 0, generation = 0, value = "stale", estimatedBytes = 4))
         assertEquals(PageCacheCommitResult.REJECTED_STALE_GENERATION, stale)
+        assertEquals(
+            PageCacheCommitResult.REJECTED_OVERSIZED,
+            cache.commit(PageCacheWrite(pageIndex = 0, generation = 1, value = "oversize", estimatedBytes = 9)),
+        )
+        assertFalse(cache.beginGeneration(generation = 1, evictPageIndices = setOf(0)))
+        assertNull(cache.remove(99))
+        cache.clear()
         assertNull(cache.get(0))
-        assertEquals(0, cache.revision)
+        assertEquals(listOf(0L), revisions)
 
-        val stored = cache.commit(PageCacheWrite(pageIndex = 0, generation = 1, value = "fresh", estimatedBytes = 4))
-        assertEquals(PageCacheCommitResult.STORED, stored)
-        assertEquals("fresh", cache.get(0))
-        val storedRevision = cache.revision
-        assertTrue(storedRevision > 0)
+        assertEquals(
+            PageCacheCommitResult.STORED,
+            cache.commit(PageCacheWrite(pageIndex = 0, generation = 1, value = "fresh-0", estimatedBytes = 4)),
+        )
+        assertEquals(
+            PageCacheCommitResult.STORED,
+            cache.commit(PageCacheWrite(pageIndex = 1, generation = 1, value = "fresh-1", estimatedBytes = 4)),
+        )
+        assertEquals("fresh-0", cache.get(0))
+        assertEquals(listOf(0L, 1L, 2L), revisions)
 
-        assertTrue(cache.beginGeneration(generation = 2, evictPageIndices = setOf(0)))
+        assertTrue(cache.beginGeneration(generation = 2, evictPageIndices = setOf(0, 1)))
         assertNull(cache.get(0))
-        assertTrue(cache.revision > storedRevision)
-        val afterEvictionRevision = cache.revision
+        assertNull(cache.get(1))
+        assertEquals(listOf(0L, 1L, 2L, 3L), revisions)
 
         val late = cache.commit(PageCacheWrite(pageIndex = 0, generation = 1, value = "late", estimatedBytes = 4))
         assertEquals(PageCacheCommitResult.REJECTED_STALE_GENERATION, late)
         assertNull(cache.get(0))
-        assertEquals(afterEvictionRevision, cache.revision)
+        assertEquals(listOf(0L, 1L, 2L, 3L), revisions)
     }
 
     @Test
@@ -482,13 +541,13 @@ class ReaderParityContractTest {
         assertEquals(setOf(0, 2), cache.snapshot().keys)
         assertNull(cache.get(1))
         val beforeOversize = cache.snapshot()
-        val beforeOversizeRevision = cache.revision
+        val beforeOversizeRevision = cache.revision.value
         assertEquals(
             PageCacheCommitResult.REJECTED_OVERSIZED,
             cache.commit(PageCacheWrite(pageIndex = 3, generation = 1, value = "oversize", estimatedBytes = 11)),
         )
         assertEquals(beforeOversize, cache.snapshot())
-        assertEquals(beforeOversizeRevision, cache.revision)
+        assertEquals(beforeOversizeRevision, cache.revision.value)
         assertTrue(cache.snapshot().usedBytes <= cache.snapshot().maxBytes)
     }
 

@@ -1,5 +1,8 @@
 package mihon.domain.reader
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import mihon.domain.error.AppError
 
 /** Platform-neutral page metadata consumed by both reader front ends. */
@@ -58,7 +61,11 @@ data class PageDecodeRequest(
     val maxWidth: Int,
     val maxHeight: Int,
     val region: PixelBounds? = null,
-)
+) {
+    init {
+        require(generation >= 0) { "generation must be non-negative" }
+    }
+}
 
 sealed interface PageDecodeResult<out T> {
     val generation: Long
@@ -70,12 +77,20 @@ sealed interface PageDecodeResult<out T> {
         val height: Int,
         val estimatedBytes: Long,
         val isSampled: Boolean = false,
-    ) : PageDecodeResult<T>
+    ) : PageDecodeResult<T> {
+        init {
+            require(generation >= 0) { "generation must be non-negative" }
+        }
+    }
 
     data class Failure(
         override val generation: Long,
         val error: AppError,
-    ) : PageDecodeResult<Nothing>
+    ) : PageDecodeResult<Nothing> {
+        init {
+            require(generation >= 0) { "generation must be non-negative" }
+        }
+    }
 }
 
 /** Platform adapter for bounded full-page decoding. */
@@ -120,14 +135,18 @@ data class PageCacheWrite<T>(
     val generation: Long,
     val value: T,
     val estimatedBytes: Long,
-)
+) {
+    init {
+        require(generation >= 0) { "generation must be non-negative" }
+    }
+}
 
 enum class PageCacheCommitResult { STORED, REJECTED_STALE_GENERATION, REJECTED_OVERSIZED }
 
 /** Generation-aware byte-budgeted cache contract; platform implementations own the decoded value type. */
 interface PageCache<T> {
-    val generation: Long
-    val revision: Long
+    val generation: Long?
+    val revision: StateFlow<Long>
 
     fun get(pageIndex: Int): T?
     fun beginGeneration(generation: Long, evictPageIndices: Set<Int>): Boolean
@@ -145,12 +164,12 @@ class ByteBudgetPageCache<T>(
 
     private val entries = LinkedHashMap<Int, Entry<T>>()
     private var usedBytes = 0L
+    private val mutableRevision = MutableStateFlow(0L)
 
-    override var generation: Long = -1L
+    override var generation: Long? = null
         private set
 
-    override var revision: Long = 0L
-        private set
+    override val revision: StateFlow<Long> = mutableRevision.asStateFlow()
 
     init {
         require(maxBytes >= 0) { "maxBytes must be non-negative" }
@@ -164,7 +183,7 @@ class ByteBudgetPageCache<T>(
 
     override fun beginGeneration(generation: Long, evictPageIndices: Set<Int>): Boolean {
         require(generation >= 0) { "generation must be non-negative" }
-        if (generation <= this.generation) return false
+        if (this.generation?.let { generation <= it } == true) return false
         this.generation = generation
         var changed = false
         evictPageIndices.forEach { pageIndex ->
@@ -173,13 +192,15 @@ class ByteBudgetPageCache<T>(
                 changed = true
             }
         }
-        if (changed) revision++
+        if (changed) publishRevision()
         return true
     }
 
     override fun commit(write: PageCacheWrite<T>): PageCacheCommitResult {
         require(write.estimatedBytes >= 0) { "estimatedBytes must be non-negative" }
-        if (write.generation != generation) return PageCacheCommitResult.REJECTED_STALE_GENERATION
+        if (generation == null || write.generation != generation) {
+            return PageCacheCommitResult.REJECTED_STALE_GENERATION
+        }
         if (write.estimatedBytes > maxBytes) return PageCacheCommitResult.REJECTED_OVERSIZED
 
         entries.remove(write.pageIndex)?.let { usedBytes -= it.estimatedBytes }
@@ -190,14 +211,14 @@ class ByteBudgetPageCache<T>(
         }
         entries[write.pageIndex] = Entry(write.value, write.estimatedBytes)
         usedBytes += write.estimatedBytes
-        revision++
+        publishRevision()
         return PageCacheCommitResult.STORED
     }
 
     override fun remove(pageIndex: Int): T? {
         val removed = entries.remove(pageIndex) ?: return null
         usedBytes -= removed.estimatedBytes
-        revision++
+        publishRevision()
         return removed.value
     }
 
@@ -205,7 +226,7 @@ class ByteBudgetPageCache<T>(
         if (entries.isEmpty()) return
         entries.clear()
         usedBytes = 0L
-        revision++
+        publishRevision()
     }
 
     override fun snapshot(): PageCacheSnapshot = PageCacheSnapshot(
@@ -213,6 +234,10 @@ class ByteBudgetPageCache<T>(
         usedBytes = usedBytes,
         maxBytes = maxBytes,
     )
+
+    private fun publishRevision() {
+        mutableRevision.value++
+    }
 }
 
 enum class PreloadPriority { CURRENT, FORWARD, BACKWARD }
@@ -224,6 +249,10 @@ data class PreloadRequest(
     val priority: PreloadPriority,
     val generation: Long,
 ) {
+    init {
+        require(generation >= 0) { "generation must be non-negative" }
+    }
+
     val jobKey: PreloadJobKey get() = PreloadJobKey(pageIndex, generation)
 }
 
