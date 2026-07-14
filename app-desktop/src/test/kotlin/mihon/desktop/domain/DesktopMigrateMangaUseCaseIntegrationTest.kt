@@ -17,6 +17,7 @@ import tachiyomi.data.manga.MangaRepositoryImpl
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.UpdateChapter
+import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.repository.LibraryMembershipUpdate
@@ -91,10 +92,74 @@ class DesktopMigrateMangaUseCaseIntegrationTest {
         }
     }
 
+    @Test
+    fun `chapter adapter preserves target read progress beyond source and unknown numbers`() = runTest {
+        fixture().use { f ->
+            val source = f.insertManga("/source", sourceId = 1)
+            val target = f.insertManga("/target", sourceId = 2)
+            f.chapters.addAll(
+                listOf(
+                    Chapter.create().copy(
+                        mangaId = source.id,
+                        url = "/source-2",
+                        name = "Source 2",
+                        chapterNumber = 2.0,
+                        read = true,
+                    ),
+                    Chapter.create().copy(
+                        mangaId = target.id,
+                        url = "/target-1",
+                        name = "Target 1",
+                        chapterNumber = 1.0,
+                        read = false,
+                    ),
+                    Chapter.create().copy(
+                        mangaId = target.id,
+                        url = "/target-3",
+                        name = "Target 3",
+                        chapterNumber = 3.0,
+                        read = true,
+                    ),
+                    Chapter.create().copy(
+                        mangaId = target.id,
+                        url = "/target-unknown",
+                        name = "Target unknown",
+                        chapterNumber = -1.0,
+                        read = true,
+                    ),
+                ),
+            )
+
+            f.useCase.await(
+                source,
+                target("/target"),
+                2,
+                listOf(
+                    sourceChapter("/target-1", "Target 1", 1.0),
+                    sourceChapter("/target-3", "Target 3", 3.0),
+                    sourceChapter("/target-unknown", "Target unknown", -1.0),
+                ),
+                replace = false,
+            )
+
+            val readByUrl = f.chapters.getChapterByMangaId(target.id).associate { it.url to it.read }
+            assertEquals(true, readByUrl.getValue("/target-1"))
+            assertEquals(true, readByUrl.getValue("/target-3"))
+            assertEquals(true, readByUrl.getValue("/target-unknown"))
+        }
+    }
+
     private fun target(url: String) = SManga.create().apply {
         this.url = url
         title = "Target"
     }
+
+    private fun sourceChapter(url: String, name: String, number: Double) =
+        eu.kanade.tachiyomi.source.model.SChapter.create().apply {
+            this.url = url
+            this.name = name
+            chapter_number = number.toFloat()
+        }
 
     private fun fixture(faultMembership: Boolean = false): Fixture {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
@@ -114,6 +179,7 @@ class DesktopMigrateMangaUseCaseIntegrationTest {
             driver,
             handler,
             mangas,
+            chapters,
             DesktopMigrateMangaUseCase(
                 SaveSourceMangaForDetails(NetworkToLocalManga(migrationMangas), migrationMangas, chapters),
                 GetChaptersByMangaId(chapters),
@@ -145,10 +211,11 @@ class DesktopMigrateMangaUseCaseIntegrationTest {
         private val driver: JdbcSqliteDriver,
         private val handler: JvmDatabaseHandler,
         val mangas: MangaRepositoryImpl,
+        val chapters: ChapterRepositoryImpl,
         val useCase: DesktopMigrateMangaUseCase,
     ) : AutoCloseable {
-        suspend fun insertManga(url: String): Manga = mangas.insertNetworkManga(
-            listOf(Manga.create().copy(source = 1, url = url, title = url)),
+        suspend fun insertManga(url: String, sourceId: Long = 1): Manga = mangas.insertNetworkManga(
+            listOf(Manga.create().copy(source = sourceId, url = url, title = url)),
         ).single()
 
         suspend fun insertCategory(name: String): Long = handler.await {

@@ -22,6 +22,19 @@ import mihon.desktop.test.state.historyState
 import mihon.desktop.test.state.readerState
 import mihon.desktop.test.state.updatesState
 import java.time.Instant
+import mihon.desktop.migration.BatchMigrationRequest
+import mihon.desktop.migration.DesktopBatchMigrationController
+import mihon.desktop.tracking.TrackingTestModeController
+
+object MigrationBatchTestBridge {
+    @Volatile
+    var controller: DesktopBatchMigrationController? = null
+}
+
+object TrackingTestBridge {
+    @Volatile
+    var controller: TrackingTestModeController? = null
+}
 
 private fun parseJsonBody(body: String): Map<String, String> {
     if (body.isBlank()) return emptyMap()
@@ -63,6 +76,7 @@ fun Application.testHttpServer() {
                 val dlState = downloadState
                 val upState = updatesState
                 val histState = historyState
+                val migrationQueues = MigrationBatchTestBridge.controller?.queues?.value?.size ?: 0
                 """{
                     |"currentScreen": "${state.currentScreen.value ?: "HomeScreen"}",
                     |"isLoading": ${state.isLoading.value},
@@ -75,6 +89,7 @@ fun Application.testHttpServer() {
                     |"updateCount": ${upState.count},
                     |"hasUnreadUpdates": ${upState.hasUnread},
                     |"historyCount": ${histState.count},
+                    |"migrationQueueCount": $migrationQueues,
                     |"timestamp": "${Instant.now()}"
                 |}
                 """.trimMargin()
@@ -124,6 +139,7 @@ fun Application.testHttpServer() {
                     "BackupSettingsScreen" to "open_backup_settings",
                     "ExtensionListScreen" to "open_extensions",
                     "MigrationSearchScreen" to "open_migration",
+                    "TrackingSettingsScreen" to "open_tracking",
                 )
 
                 // DEBUG: Record in action history
@@ -183,6 +199,7 @@ fun Application.testHttpServer() {
             applicationState.recordAction(action, params)
 
             // Process actions
+            var trackingResult: mihon.desktop.tracking.TrackingTestState? = null
             when (action) {
                 // Library actions
                 "search", "filter", "sort" -> { }
@@ -259,6 +276,31 @@ fun Application.testHttpServer() {
                 -> { }
                 // Migration actions
                 "migration_search", "migration_select" -> { }
+                "migration_submit" -> {
+                    val mangaId = params["mangaId"]?.toLongOrNull() ?: 0L
+                    if (mangaId > 0) {
+                        MigrationBatchTestBridge.controller?.submit(
+                            listOf(BatchMigrationRequest(mangaId, params["title"] ?: "Manga $mangaId")),
+                        )
+                    }
+                }
+                "migration_pause" -> params["queueId"]?.let { MigrationBatchTestBridge.controller?.pause(it) }
+                "migration_resume" -> params["queueId"]?.let { MigrationBatchTestBridge.controller?.resume(it) }
+                "migration_cancel_all" -> params["queueId"]?.let { MigrationBatchTestBridge.controller?.cancelAll(it) }
+                "migration_cancel_item" -> {
+                    val mangaId = params["mangaId"]?.toLongOrNull()
+                    val queueId = params["queueId"]
+                    if (mangaId != null && queueId != null) MigrationBatchTestBridge.controller?.cancelItem(queueId, mangaId)
+                }
+                "migration_retry" -> {
+                    val mangaId = params["mangaId"]?.toLongOrNull()
+                    val queueId = params["queueId"]
+                    if (mangaId != null && queueId != null) MigrationBatchTestBridge.controller?.retryItem(queueId, mangaId)
+                }
+                "tracking_login", "tracking_logout", "tracking_search", "tracking_bind",
+                "tracking_update", "tracking_cancel",
+                -> trackingResult = checkNotNull(TrackingTestBridge.controller) { "Tracking test bridge is not initialized" }
+                    .execute(action, params)
                 // Backup actions
                 "backup_create", "backup_restore" -> { }
                 // Manga detail actions
@@ -269,7 +311,10 @@ fun Application.testHttpServer() {
                 contentType = ContentType.Application.Json,
                 status = HttpStatusCode.OK,
             ) {
-                """{"success":true,"action":"$action","timestamp":"${Instant.now()}"}"""
+                val tracking = trackingResult?.let {
+                    ",\"tracking\":{\"trackerId\":${it.trackerId},\"loggedIn\":${it.loggedIn},\"resultCount\":${it.resultCount},\"bound\":${it.track != null}}"
+                }.orEmpty()
+                """{"success":true,"action":"$action"$tracking,"timestamp":"${Instant.now()}"}"""
             }
         }
 

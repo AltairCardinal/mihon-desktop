@@ -20,19 +20,23 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import okhttp3.FormBody
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import tachiyomi.core.common.util.lang.withIOContext
-import uy.kohesive.injekt.injectLazy
+import tachiyomi.domain.track.service.TrackerProviderProtocols
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import tachiyomi.domain.track.model.Track as DomainTrack
 
 class ShikimoriApi(
     private val trackId: Long,
     private val client: OkHttpClient,
-    interceptor: ShikimoriInterceptor,
+    interceptor: Interceptor,
+    private val json: Json = Injekt.get(),
+    private val apiUrl: String = API_URL,
+    private val oauthUrl: String = OAUTH_URL,
 ) {
-
-    private val json: Json by injectLazy()
 
     private val authClient = client.newBuilder().addInterceptor(interceptor).build()
 
@@ -51,7 +55,7 @@ class ShikimoriApi(
                 }
                 authClient.newCall(
                     POST(
-                        "$API_URL/v2/user_rates",
+                        "$apiUrl/v2/user_rates",
                         body = payload.toString().toRequestBody(jsonMime),
                     ),
                 ).awaitSuccess()
@@ -70,14 +74,14 @@ class ShikimoriApi(
     suspend fun deleteLibManga(track: DomainTrack) {
         withIOContext {
             authClient
-                .newCall(DELETE("$API_URL/v2/user_rates/${track.libraryId}"))
+                .newCall(DELETE("$apiUrl/v2/user_rates/${track.libraryId}"))
                 .awaitSuccess()
         }
     }
 
     suspend fun search(search: String): List<TrackSearch> {
         return withIOContext {
-            val url = "$API_URL/mangas".toUri().buildUpon()
+            val url = "$apiUrl/mangas".toUri().buildUpon()
                 .appendQueryParameter("order", "popularity")
                 .appendQueryParameter("search", search)
                 .appendQueryParameter("limit", "20")
@@ -93,7 +97,7 @@ class ShikimoriApi(
 
     suspend fun findLibManga(track: Track, userId: String): Track? {
         return withIOContext {
-            val urlMangas = "$API_URL/mangas".toUri().buildUpon()
+            val urlMangas = "$apiUrl/mangas".toUri().buildUpon()
                 .appendPath(track.remote_id.toString())
                 .build()
             val manga = with(json) {
@@ -102,7 +106,7 @@ class ShikimoriApi(
                     .parseAs<SMManga>()
             }
 
-            val url = "$API_URL/v2/user_rates".toUri().buildUpon()
+            val url = "$apiUrl/v2/user_rates".toUri().buildUpon()
                 .appendQueryParameter("user_id", userId)
                 .appendQueryParameter("target_id", track.remote_id.toString())
                 .appendQueryParameter("target_type", "Manga")
@@ -125,7 +129,7 @@ class ShikimoriApi(
 
     suspend fun getCurrentUser(): Int {
         return with(json) {
-            authClient.newCall(GET("$API_URL/users/whoami"))
+            authClient.newCall(GET("$apiUrl/users/whoami"))
                 .awaitSuccess()
                 .parseAs<SMUser>()
                 .id
@@ -143,14 +147,10 @@ class ShikimoriApi(
     }
 
     private fun accessTokenRequest(code: String) = POST(
-        OAUTH_URL,
-        body = FormBody.Builder()
-            .add("grant_type", "authorization_code")
-            .add("client_id", CLIENT_ID)
-            .add("client_secret", CLIENT_SECRET)
-            .add("code", code)
-            .add("redirect_uri", REDIRECT_URL)
-            .build(),
+        oauthUrl,
+        body = TrackerProviderProtocols.shikimori
+            .authorizationCodeToken(CLIENT_ID, CLIENT_SECRET, code, REDIRECT_URL)
+            .toFormBody(),
     )
 
     companion object {
@@ -164,20 +164,19 @@ class ShikimoriApi(
         private const val CLIENT_ID = "PB9dq8DzI405s7wdtwTdirYqHiyVMh--djnP7lBUqSA"
         private const val CLIENT_SECRET = "NajpZcOBKB9sJtgNcejf8OB9jBN1OYYoo-k4h2WWZus"
 
-        fun authUrl(): Uri = LOGIN_URL.toUri().buildUpon()
-            .appendQueryParameter("client_id", CLIENT_ID)
-            .appendQueryParameter("redirect_uri", REDIRECT_URL)
-            .appendQueryParameter("response_type", "code")
-            .build()
+        fun authUrl(): Uri = LOGIN_URL.toUri().buildUpon().apply {
+            TrackerProviderProtocols.shikimori.authorization(CLIENT_ID, REDIRECT_URL).parameters.forEach {
+                appendQueryParameter(it.key, it.value)
+            }
+        }.build()
 
-        fun refreshTokenRequest(token: String) = POST(
-            OAUTH_URL,
-            body = FormBody.Builder()
-                .add("grant_type", "refresh_token")
-                .add("client_id", CLIENT_ID)
-                .add("client_secret", CLIENT_SECRET)
-                .add("refresh_token", token)
-                .build(),
+        fun refreshTokenRequest(token: String, oauthUrl: String = OAUTH_URL) = POST(
+            oauthUrl,
+            body = TrackerProviderProtocols.shikimori.refreshToken(CLIENT_ID, CLIENT_SECRET, token).toFormBody(),
         )
     }
 }
+
+private fun Map<String, String>.toFormBody() = FormBody.Builder().apply {
+    forEach { (key, value) -> add(key, value) }
+}.build()

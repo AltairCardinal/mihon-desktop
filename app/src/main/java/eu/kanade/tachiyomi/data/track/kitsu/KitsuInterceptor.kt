@@ -6,11 +6,14 @@ import eu.kanade.tachiyomi.data.track.kitsu.dto.isExpired
 import kotlinx.serialization.json.Json
 import okhttp3.Interceptor
 import okhttp3.Response
-import uy.kohesive.injekt.injectLazy
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
-class KitsuInterceptor(private val kitsu: Kitsu) : Interceptor {
-
-    private val json: Json by injectLazy()
+class KitsuInterceptor(
+    private val kitsu: Kitsu,
+    private val json: Json = Injekt.get(),
+    private val tokenUrl: String = "https://kitsu.app/api/oauth/token",
+) : Interceptor {
 
     /**
      * OAuth object used for authenticated requests.
@@ -26,7 +29,7 @@ class KitsuInterceptor(private val kitsu: Kitsu) : Interceptor {
 
         // Refresh access token if expired.
         if (currAuth.isExpired()) {
-            val response = chain.proceed(KitsuApi.refreshTokenRequest(refreshToken))
+            val response = chain.proceed(KitsuApi.refreshTokenRequest(refreshToken, tokenUrl))
             if (response.isSuccessful) {
                 newAuth(json.decodeFromString(response.body.string()))
             } else {

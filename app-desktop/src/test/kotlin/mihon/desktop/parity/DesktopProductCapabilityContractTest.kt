@@ -252,6 +252,24 @@ class DesktopProductCapabilityContractTest {
     }
 
     @Test
+    fun `migration and tracking capabilities declare Android production wiring protection`() {
+        val items = manifestItems(repositoryRoot())
+        val migration = items.single { validatedId(it.jsonObject) == 68 }.jsonObject
+        val tracking = items.single { validatedId(it.jsonObject) == 69 }.jsonObject
+        val migrationTests = migration.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content }
+        val trackingTests = tracking.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content }
+
+        assertTrue(
+            "app/src/test/java/mihon/feature/migration/list/MigrationListScreenModelBatchWiringTest.kt" in migrationTests,
+        )
+        assertTrue(
+            "app/src/test/java/eu/kanade/tachiyomi/data/track/AndroidTrackerApiIntegrationTest.kt" in trackingTests,
+        )
+        assertEquals("WIRED", migration.getValue("status").jsonPrimitive.content)
+        assertEquals("SHARED", tracking.getValue("status").jsonPrimitive.content)
+    }
+
+    @Test
     fun `EXEMPT item accepts real evidence and rejects NONE or missing files`() {
         val evidence = Files.createFile(tempDir.resolve("evidence.md"))
         validateItem(syntheticItem(84, "EXEMPT", evidence.toString()), tempDir)

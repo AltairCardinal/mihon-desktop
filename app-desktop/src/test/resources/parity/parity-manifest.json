@@ -615,10 +615,14 @@
       "SHARE-DIRECT",
       "SHARE-EXTRACT"
     ],
-    "status": "NOT_STARTED",
+    "status": "WIRED",
     "authoritativeImplementation": "Android authoritative capability #67: 单部漫画迁移",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 单部漫画迁移",
-    "protectionTests": [],
+    "desktopImplementation": "Android/Desktop use MigrationOrchestrator; Desktop keeps visible single-copy/migrate flow and atomic library membership updates.",
+    "protectionTests": [
+      "domain/src/commonTest/kotlin/mihon/domain/migration/MigrationOrchestratorTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/migration/DesktopMigrationParityTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseIntegrationTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -628,10 +632,17 @@
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "NOT_STARTED",
+    "status": "WIRED",
     "authoritativeImplementation": "Android authoritative capability #68: 批量迁移",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 批量迁移",
-    "protectionTests": [],
+    "desktopImplementation": "Desktop submits persistent background queues to the shared BatchMigrationOrchestrator. Queue items, selected targets, options, checkpoints, statuses and per-item errors survive restart; RUNNING recovers as QUEUED, WAITING_FOR_USER remains explicit, and UI/TestMode drive pause, resume, retry and cancellation.",
+    "protectionTests": [
+      "domain/src/commonTest/kotlin/mihon/domain/migration/MigrationOrchestratorTest.kt",
+      "app/src/test/java/mihon/feature/migration/list/AndroidBatchMigrationRunnerTest.kt",
+      "app/src/test/java/mihon/feature/migration/list/MigrationListScreenModelBatchWiringTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/migration/DesktopBatchMigrationControllerTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/migration/DesktopBatchMigrationQueueTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/migration/DesktopBatchMigrationTestModeTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -642,10 +653,20 @@
       "SHARE-EXTRACT",
       "PLATFORM-ADAPTER"
     ],
-    "status": "NOT_STARTED",
+    "status": "SHARED",
     "authoritativeImplementation": "Android authoritative capability #69: 追踪服务",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 追踪服务",
-    "protectionTests": [],
+    "desktopImplementation": "Android and Desktop consume shared provider auth/update protocol constructors. Desktop registers all nine profiles, but public OAuth/password clients that require an unproven loopback redirect or external client secret are explicitly unavailable in the production profile; MangaUpdates and configured Enhanced trackers remain available. WIRED requires deployed desktop client registration and secure external secret configuration.",
+    "protectionTests": [
+      "app/src/test/java/eu/kanade/tachiyomi/data/track/AndroidTrackerApiIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopTrackingIntegrationTest.kt",
+      "domain/src/commonTest/kotlin/tachiyomi/domain/track/service/TrackerProviderProtocolTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopProviderTrackerServiceTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopEnhancedTrackerServiceTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/tracking/TrackingScreenModelTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/tracking/TrackingTestModeControllerTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/tracking/TrackingNavigationContractTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopTrackerSessionProviderTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -655,10 +676,14 @@
     "tags": [
       "SHARE-DIRECT"
     ],
-    "status": "NOT_STARTED",
+    "status": "WIRED",
     "authoritativeImplementation": "Android authoritative capability #70: 自动追踪更新",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 自动追踪更新",
-    "protectionTests": [],
+    "desktopImplementation": "Reader completion invokes shared SyncReadingProgressWithTrack for persisted manga bindings whose production provider session is currently logged in, then atomically stores normalized remote progress and persists per-tracker retry checkpoints through DesktopTaskScheduler.",
+    "protectionTests": [
+      "domain/src/commonTest/kotlin/tachiyomi/domain/track/interactor/SyncReadingProgressWithTrackTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopTrackerSyncSchedulerTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },

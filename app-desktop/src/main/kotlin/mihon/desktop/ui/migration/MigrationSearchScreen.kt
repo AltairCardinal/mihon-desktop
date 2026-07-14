@@ -55,6 +55,8 @@ import mihon.desktop.domain.DesktopMigrateMangaUseCase
 import mihon.desktop.extension.SourceCallResult
 import mihon.desktop.extension.safeSourceCall
 import mihon.desktop.domain.MigrationOptions
+import mihon.desktop.migration.BatchMigrationOptions
+import mihon.desktop.migration.BatchMigrationTargetSelection
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.source.service.SourceManager
 
@@ -65,6 +67,7 @@ import tachiyomi.domain.source.service.SourceManager
 data class MigrationSearchScreen(
     val sourceMangaId: Long,
     val sourceMangaTitle: String,
+    val batchQueueId: String? = null,
 ) : Screen {
 
     @OptIn(ExperimentalMaterial3Api::class)
@@ -74,6 +77,7 @@ data class MigrationSearchScreen(
         val sourceManager = LocalDesktopUiDependencies.current.sourceManager
         val getManga = LocalDesktopUiDependencies.current.getManga
         val migrateManga = LocalDesktopUiDependencies.current.migrateManga
+        val batchMigrationController = LocalDesktopUiDependencies.current.batchMigrationController
         val scope = rememberCoroutineScope()
 
         var query by remember { mutableStateOf(sourceMangaTitle) }
@@ -113,6 +117,16 @@ data class MigrationSearchScreen(
                 onDismiss = { confirmTarget = null },
                 onCopy = { options ->
                     confirmTarget = null
+                    if (batchQueueId != null) {
+                        batchMigrationController.selectTarget(
+                            batchQueueId,
+                            sourceMangaId,
+                            targetSManga.toBatchTarget(targetSource.id),
+                            options.toBatchOptions(replace = false),
+                        )
+                        navigator.pop()
+                        return@MigrationConfirmDialog
+                    }
                     scope.launch {
                         val sourceManga = getManga.await(sourceMangaId) ?: return@launch
                         val chaptersResult = safeSourceCall { targetSource.getChapterList(targetSManga) }
@@ -134,6 +148,16 @@ data class MigrationSearchScreen(
                 },
                 onMigrate = { options ->
                     confirmTarget = null
+                    if (batchQueueId != null) {
+                        batchMigrationController.selectTarget(
+                            batchQueueId,
+                            sourceMangaId,
+                            targetSManga.toBatchTarget(targetSource.id),
+                            options.toBatchOptions(replace = true),
+                        )
+                        navigator.pop()
+                        return@MigrationConfirmDialog
+                    }
                     scope.launch {
                         val sourceManga = getManga.await(sourceMangaId) ?: return@launch
                         val chaptersResult = safeSourceCall { targetSource.getChapterList(targetSManga) }
@@ -228,6 +252,25 @@ data class MigrationSearchScreen(
         }
     }
 }
+
+private fun SManga.toBatchTarget(sourceId: Long) = BatchMigrationTargetSelection(
+    sourceId = sourceId,
+    url = url,
+    title = title,
+    thumbnailUrl = thumbnail_url,
+    author = author,
+    artist = artist,
+    description = description,
+    genre = getGenres(),
+    status = status,
+)
+
+private fun MigrationOptions.toBatchOptions(replace: Boolean) = BatchMigrationOptions(
+    copyChapters = copyChapters,
+    copyCategories = copyCategories,
+    copyNotes = copyNotes,
+    replace = replace,
+)
 
 @Composable
 private fun MigrationConfirmDialog(

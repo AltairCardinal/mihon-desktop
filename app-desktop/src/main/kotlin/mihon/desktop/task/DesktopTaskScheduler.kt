@@ -139,6 +139,14 @@ class DesktopTaskScheduler(private val store: FileTaskCheckpointStore) {
         )
     }
 
+    fun replaceCheckpoint(id: String, checkpoint: TaskCheckpoint): Boolean = transition(id) { current ->
+        current.copy(task = current.task.copy(checkpoint = checkpoint))
+    }
+
+    fun reopen(id: String): Boolean = transition(id) { current ->
+        current.copy(status = TaskStatus.Pending, failure = null, failedUnits = emptyList())
+    }
+
     fun setWorkset(id: String, workset: List<Long>): Boolean = transition(id) { current ->
         if (current.status !in setOf(TaskStatus.Pending, TaskStatus.Running) || current.worksetInitialized) {
             current
@@ -157,6 +165,10 @@ class DesktopTaskScheduler(private val store: FileTaskCheckpointStore) {
 
     fun cancel(id: String): Boolean = transition(id) { current ->
         if (current.status !in setOf(TaskStatus.Pending, TaskStatus.Running, TaskStatus.Failed)) current else current.copy(status = TaskStatus.Cancelled)
+    }
+
+    fun pause(id: String): Boolean = transition(id) { current ->
+        if (current.status != TaskStatus.Running) current else current.copy(status = TaskStatus.Pending)
     }
 
     fun start(id: String): Boolean = transition(id) { current ->
@@ -180,6 +192,7 @@ class DesktopTaskScheduler(private val store: FileTaskCheckpointStore) {
     }
 
     fun pendingTasks(): List<BackgroundTask> = store.load().filter { it.status in setOf(TaskStatus.Pending, TaskStatus.Running, TaskStatus.Failed) }.map { it.task }
+    fun allTasks(): List<StoredTask> = store.load()
     fun snapshot(id: String): StoredTask? = store.load().firstOrNull { it.task.id == id }
     fun isCancelled(id: String): Boolean = snapshot(id)?.status == TaskStatus.Cancelled
 

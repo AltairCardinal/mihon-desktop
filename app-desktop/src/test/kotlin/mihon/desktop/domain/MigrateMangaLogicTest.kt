@@ -1,11 +1,14 @@
 package mihon.desktop.domain
 
+import mihon.domain.migration.MigrationChapter
+import mihon.domain.migration.MigrationOrchestrator
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class MigrateMangaLogicTest {
+    private val orchestrator = MigrationOrchestrator()
 
     @Test
     fun `buildReadChapterNumbers returns empty set when no chapters are read`() {
@@ -13,7 +16,7 @@ class MigrateMangaLogicTest {
             makeChapter("Ch 1", 1.0, read = false),
             makeChapter("Ch 2", 2.0, read = false),
         )
-        assertTrue(buildReadChapterNumbers(chapters).isEmpty())
+        assertTrue(orchestrator.chapterUpdates(chapters, chapters).none { it.read == true })
     }
 
     @Test
@@ -23,29 +26,63 @@ class MigrateMangaLogicTest {
             makeChapter("Ch 2", 2.0, read = false),
             makeChapter("Ch 3", 3.0, read = true),
         )
-        assertEquals(setOf(1.0, 3.0), buildReadChapterNumbers(chapters))
+        assertEquals(listOf(null, true, null), orchestrator.chapterUpdates(chapters, chapters).map { it.read })
     }
 
     @Test
     fun `shouldMarkRead returns true when chapter number is in readSet`() {
-        assertTrue(shouldMarkRead(chapterNumber = 5.0, readNumbers = setOf(5.0, 10.0)))
+        assertEquals(
+            true,
+            orchestrator.chapterUpdates(
+                listOf(makeChapter("5", 5.0, true)),
+                listOf(makeChapter("5", 5.0, false)),
+            ).single().read,
+        )
     }
 
     @Test
     fun `shouldMarkRead returns false when chapter number is not in readSet`() {
-        assertFalse(shouldMarkRead(chapterNumber = 7.0, readNumbers = setOf(5.0, 10.0)))
+        assertEquals(
+            null,
+            orchestrator.chapterUpdates(
+                listOf(makeChapter("5", 5.0, true)),
+                listOf(makeChapter("7", 7.0, false)),
+            ).single().read,
+        )
     }
 
     @Test
     fun `shouldMarkRead returns false for negative chapter numbers`() {
-        assertFalse(shouldMarkRead(chapterNumber = -1.0, readNumbers = setOf(-1.0)))
+        assertEquals(
+            null,
+            orchestrator.chapterUpdates(
+                listOf(makeChapter("special", -1.0, true)),
+                listOf(makeChapter("special", -1.0, false)),
+            ).single().read,
+        )
+    }
+
+    @Test
+    fun `Desktop adapter preserves all target read states when source read progress contains NaN`() {
+        val updates = orchestrator.chapterUpdates(
+            listOf(
+                makeChapter("2", 2.0, true),
+                makeChapter("unknown", Double.NaN, true),
+            ),
+            listOf(
+                makeChapter("1", 1.0, false),
+                makeChapter("2", 2.0, false),
+                makeChapter("3", 3.0, true),
+            ),
+        )
+
+        assertEquals(listOf(null, null, null), updates.map { it.read })
     }
 
     // Helper to create a ChapterForMigration test object
     private fun makeChapter(name: String, number: Double, read: Boolean) =
-        ChapterForMigration(
+        MigrationChapter(
             id = name.hashCode().toLong(),
-            name = name,
             chapterNumber = number,
             read = read,
         )

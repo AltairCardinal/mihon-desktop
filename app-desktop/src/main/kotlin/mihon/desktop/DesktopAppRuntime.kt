@@ -20,6 +20,8 @@ class DesktopAppRuntime(
     private val libraryUpdateScheduler: DesktopRuntimeService,
     private val localSourceScanService: DesktopRuntimeService,
     private val autoBackupScheduler: DesktopRuntimeService,
+    private val trackerSyncScheduler: DesktopRuntimeService = NoopRuntimeService,
+    private val batchMigrationController: DesktopRuntimeService = NoopRuntimeService,
     private val startupCleanup: suspend () -> Unit,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) {
@@ -36,12 +38,16 @@ class DesktopAppRuntime(
         libraryUpdateScheduler.start()
         localSourceScanService.start()
         autoBackupScheduler.start()
+        trackerSyncScheduler.start()
+        batchMigrationController.start()
     }
 
     fun stop() {
         if (!isRunning) return
         startupJob?.cancel()
         startupJob = null
+        batchMigrationController.stop()
+        trackerSyncScheduler.stop()
         autoBackupScheduler.stop()
         localSourceScanService.stop()
         libraryUpdateScheduler.stop()
@@ -59,15 +65,24 @@ class DesktopAppRuntime(
             localSourceScanService: LocalSourceScanService,
             autoBackupScheduler: AutoBackupScheduler,
             readerModeMemoryCleaner: ReaderModeMemoryCleaner,
+            trackerSyncScheduler: DesktopRuntimeService = NoopRuntimeService,
+            batchMigrationController: DesktopRuntimeService = NoopRuntimeService,
         ): DesktopAppRuntime {
             return DesktopAppRuntime(
                 libraryUpdateScheduler = libraryUpdateScheduler.asRuntimeService(),
                 localSourceScanService = localSourceScanService.asRuntimeService(),
                 autoBackupScheduler = autoBackupScheduler.asRuntimeService(),
+                trackerSyncScheduler = trackerSyncScheduler,
+                batchMigrationController = batchMigrationController,
                 startupCleanup = { readerModeMemoryCleaner.clearNonFavoriteManga() },
             )
         }
     }
+}
+
+private object NoopRuntimeService : DesktopRuntimeService {
+    override fun start() = Unit
+    override fun stop() = Unit
 }
 
 private fun LibraryUpdateScheduler.asRuntimeService(): DesktopRuntimeService =

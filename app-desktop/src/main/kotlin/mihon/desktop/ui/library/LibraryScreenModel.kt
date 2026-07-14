@@ -426,7 +426,7 @@ class LibraryScreenModel(
             ?: chapters.maxByOrNull { it.sourceOrder }
             ?: return null
         val chapterRefs = chapters.map {
-            ReaderChapterRef(id = it.id, url = it.url, name = it.name, isRead = it.read)
+            ReaderChapterRef(id = it.id, url = it.url, name = it.name, isRead = it.read, chapterNumber = it.chapterNumber)
         }
         return LibraryReaderRequest(
             chapterTitle = target.name,

@@ -105,8 +105,8 @@ class ApkToJarConverterTest {
             0x00, 0x00, 0x00, 0x00,
             // Adler-32 checksum (4 bytes) — not verified by dex2jar
             0x00, 0x00, 0x00, 0x00,
-            // file_size = 120 = 0x78
-            0x78, 0x00, 0x00, 0x00,
+            // file_size = 128 = 0x80
+            0x80, 0x00, 0x00, 0x00,
             // header_size = 112 = 0x70
             0x70, 0x00, 0x00, 0x00,
             // endian_tag = 0x12345678
@@ -141,8 +141,8 @@ class ApkToJarConverterTest {
             0x00, 0x00, 0x00, 0x00,
             // class_defs_off = 0
             0x00, 0x00, 0x00, 0x00,
-            // data_size = 8
-            0x08, 0x00, 0x00, 0x00,
+            // data_size = 16
+            0x10, 0x00, 0x00, 0x00,
             // data_off = 112
             0x70, 0x00, 0x00, 0x00,
             // map list at offset 112: list_size=1, type=TYPE_HEADER_ITEM, size=1, offset=0

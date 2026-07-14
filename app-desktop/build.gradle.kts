@@ -147,6 +147,11 @@ tasks.named("compileKotlinJvm") { dependsOn(generateBuildInfo) }
 tasks.named("compileTestKotlinJvm") { dependsOn(generateBuildInfo) }
 
 tasks.withType<Test> {
+    val testTempDir = layout.buildDirectory.dir("test-tmp").get().asFile
+    doFirst {
+        testTempDir.mkdirs()
+    }
+    systemProperty("java.io.tmpdir", testTempDir.absolutePath)
     useJUnitPlatform {
         val includeIntegrationTests = providers.gradleProperty("includeIntegrationTests")
             .map(String::toBoolean)

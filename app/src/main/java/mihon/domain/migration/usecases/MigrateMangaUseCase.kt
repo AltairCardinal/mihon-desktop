@@ -10,12 +10,15 @@ import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.track.EnhancedTracker
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import kotlinx.coroutines.CancellationException
+import mihon.domain.migration.MigrationChapter
+import mihon.domain.migration.MigrationMangaMetadata
+import mihon.domain.migration.MigrationOrchestrator
 import mihon.domain.migration.models.MigrationFlag
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.UpdateChapter
-import tachiyomi.domain.chapter.model.toChapterUpdate
+import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.source.service.SourceManager
@@ -39,9 +42,11 @@ class MigrateMangaUseCase(
     private val coverCache: CoverCache,
 ) {
     private val enhancedServices by lazy { trackerManager.trackers.filterIsInstance<EnhancedTracker>() }
+    private val orchestrator = MigrationOrchestrator()
 
-    suspend operator fun invoke(current: Manga, target: Manga, replace: Boolean) {
-        val targetSource = sourceManager.get(target.source) ?: return
+    suspend operator fun invoke(current: Manga, target: Manga, replace: Boolean): Result<Unit> {
+        val targetSource = sourceManager.get(target.source)
+            ?: return Result.failure(IllegalStateException("Target source ${target.source} is unavailable"))
         val currentSource = sourceManager.get(current.source)
         val flags = sourcePreferences.migrationFlags().get()
 
@@ -59,40 +64,44 @@ class MigrateMangaUseCase(
                 val prevMangaChapters = getChaptersByMangaId.await(current.id)
                 val mangaChapters = getChaptersByMangaId.await(target.id)
 
-                val maxChapterRead = prevMangaChapters
-                    .filter { it.read }
-                    .maxOfOrNull { it.chapterNumber }
-
-                val updatedMangaChapters = mangaChapters.map { mangaChapter ->
-                    var updatedChapter = mangaChapter
-                    if (updatedChapter.isRecognizedNumber) {
-                        val prevChapter = prevMangaChapters
-                            .find { it.isRecognizedNumber && it.chapterNumber == updatedChapter.chapterNumber }
-
-                        if (prevChapter != null) {
-                            updatedChapter = updatedChapter.copy(
-                                dateFetch = prevChapter.dateFetch,
-                                bookmark = prevChapter.bookmark,
-                            )
-                        }
-
-                        if (maxChapterRead != null && updatedChapter.chapterNumber <= maxChapterRead) {
-                            updatedChapter = updatedChapter.copy(read = true)
-                        }
-                    }
-
-                    updatedChapter
+                val chapterUpdates = orchestrator.chapterUpdates(
+                    prevMangaChapters.map {
+                        MigrationChapter(it.id, it.chapterNumber, it.read, it.bookmark, it.dateFetch)
+                    },
+                    mangaChapters.map { MigrationChapter(it.id, it.chapterNumber, it.read, it.bookmark, it.dateFetch) },
+                ).map { plan ->
+                    ChapterUpdate(
+                        id = plan.id,
+                        read = plan.read,
+                        bookmark = plan.bookmark,
+                        dateFetch = plan.dateFetch,
+                    )
                 }
-
-                val chapterUpdates = updatedMangaChapters.map { it.toChapterUpdate() }
                 updateChapter.awaitAll(chapterUpdates)
             }
 
             // Update categories
-            if (MigrationFlag.CATEGORY in flags) {
-                val categoryIds = getCategories.await(current.id).map { it.id }
-                setMangaCategories.await(target.id, categoryIds)
-            }
+            val libraryPlan = orchestrator.libraryPlan(
+                current = MigrationMangaMetadata(
+                    mangaId = current.id,
+                    categoryIds = if (MigrationFlag.CATEGORY in
+                        flags
+                    ) {
+                        getCategories.await(current.id).map { it.id }
+                    } else {
+                        emptyList()
+                    },
+                    chapterFlags = current.chapterFlags,
+                    viewerFlags = current.viewerFlags,
+                    dateAdded = current.dateAdded,
+                    notes = current.notes,
+                ),
+                targetMangaId = target.id,
+                flags = flags,
+                replace = replace,
+                now = Instant.now().toEpochMilli(),
+            )
+            if (MigrationFlag.CATEGORY in flags) setMangaCategories.await(target.id, libraryPlan.targetCategoryIds)
 
             // Update track
             getTracks.await(current.id).mapNotNull { track ->
@@ -129,17 +138,19 @@ class MigrateMangaUseCase(
             val targetMangaUpdate = MangaUpdate(
                 id = target.id,
                 favorite = true,
-                chapterFlags = current.chapterFlags,
-                viewerFlags = current.viewerFlags,
-                dateAdded = if (replace) current.dateAdded else Instant.now().toEpochMilli(),
-                notes = if (MigrationFlag.NOTES in flags) current.notes else null,
+                chapterFlags = libraryPlan.targetChapterFlags,
+                viewerFlags = libraryPlan.targetViewerFlags,
+                dateAdded = libraryPlan.targetDateAdded,
+                notes = libraryPlan.targetNotes,
             )
 
             updateManga.awaitAll(listOfNotNull(currentMangaUpdate, targetMangaUpdate))
+            return Result.success(Unit)
         } catch (e: Throwable) {
             if (e is CancellationException) {
                 throw e
             }
+            return Result.failure(e)
         }
     }
 }

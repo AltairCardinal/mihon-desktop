@@ -24,6 +24,8 @@ import mihon.desktop.ui.library.MangaDetailScreen
 import mihon.desktop.ui.migration.MigrationMangaScreen
 import mihon.desktop.ui.migration.MigrationSearchScreen
 import mihon.desktop.ui.migration.MigrationSourceScreen
+import mihon.desktop.ui.migration.MigrationBatchQueueScreen
+import mihon.desktop.ui.tracking.TrackingSettingsScreen
 import mihon.desktop.ui.more.MoreTab
 import mihon.desktop.ui.more.StatsScreen
 import mihon.desktop.ui.reader.DesktopReaderScreen
@@ -181,9 +183,23 @@ class ScreenInstantiationSmokeTest {
     }
 
     @Test fun `MigrationSearchScreen is Screen`() {
-        val s = MigrationSearchScreen(sourceMangaId = 1L, sourceMangaTitle = "Test")
+        val s = MigrationSearchScreen(sourceMangaId = 1L, sourceMangaTitle = "Test", batchQueueId = "batch-1")
         assert(s is Screen)
         assert(s !is Tab)
+    }
+
+    @Test fun `TrackingSettingsScreen is Screen not Tab`() {
+        val settings = TrackingSettingsScreen()
+        val manga = TrackingSettingsScreen(mangaId = 42L, mangaTitle = "Manga", totalChapters = 12)
+        assert(settings is Screen)
+        assert(settings !is Tab)
+        assert(manga is Screen)
+    }
+
+    @Test fun `MigrationBatchQueueScreen is Screen`() {
+        val screen = MigrationBatchQueueScreen("batch-1")
+        assert(screen is Screen)
+        assert(screen !is Tab)
     }
 
     // ── More ────────────────────────────────────────────────────────────────

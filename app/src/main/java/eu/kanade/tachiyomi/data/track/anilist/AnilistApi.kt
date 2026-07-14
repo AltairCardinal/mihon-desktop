@@ -20,19 +20,26 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import tachiyomi.core.common.util.lang.withIOContext
-import uy.kohesive.injekt.injectLazy
+import tachiyomi.domain.track.service.ProviderFuzzyDate
+import tachiyomi.domain.track.service.TrackerProviderProtocols
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import kotlin.time.Duration.Companion.minutes
 import tachiyomi.domain.track.model.Track as DomainTrack
 
-class AnilistApi(val client: OkHttpClient, interceptor: AnilistInterceptor) {
-
-    private val json: Json by injectLazy()
+class AnilistApi(
+    val client: OkHttpClient,
+    interceptor: Interceptor,
+    private val json: Json = Injekt.get(),
+    private val apiUrl: String = API_URL,
+) {
 
     private val authClient = client.newBuilder()
         .addInterceptor(interceptor)
@@ -41,28 +48,25 @@ class AnilistApi(val client: OkHttpClient, interceptor: AnilistInterceptor) {
 
     suspend fun addLibManga(track: Track): Track {
         return withIOContext {
-            val query = $$"""
-            |mutation AddManga($mangaId: Int, $progress: Int, $status: MediaListStatus, $private: Boolean) {
-                |SaveMediaListEntry (mediaId: $mangaId, progress: $progress, status: $status, private: $private) {
-                |   id
-                |   status
-                |}
-            |}
-            |
-            """.trimMargin()
+            val bind = TrackerProviderProtocols.aniList.bind(
+                mediaId = track.remote_id,
+                progress = track.last_chapter_read.toInt(),
+                status = track.toApiStatus(),
+                private = track.private,
+            )
             val payload = buildJsonObject {
-                put("query", query)
+                put("query", bind.query)
                 putJsonObject("variables") {
-                    put("mangaId", track.remote_id)
-                    put("progress", track.last_chapter_read.toInt())
-                    put("status", track.toApiStatus())
-                    put("private", track.private)
+                    put("mediaId", bind.mediaId)
+                    put("progress", bind.progress)
+                    put("status", bind.status)
+                    put("private", bind.private)
                 }
             }
             with(json) {
                 authClient.newCall(
                     POST(
-                        API_URL,
+                        apiUrl,
                         body = payload.toString().toRequestBody(jsonMime),
                     ),
                 )
@@ -78,35 +82,28 @@ class AnilistApi(val client: OkHttpClient, interceptor: AnilistInterceptor) {
 
     suspend fun updateLibManga(track: Track): Track {
         return withIOContext {
-            val query = $$"""
-            |mutation UpdateManga(
-                |$listId: Int, $progress: Int, $status: MediaListStatus, $private: Boolean,
-                |$score: Int, $startedAt: FuzzyDateInput, $completedAt: FuzzyDateInput
-            |) {
-                |SaveMediaListEntry(
-                    |id: $listId, progress: $progress, status: $status, private: $private,
-                    |scoreRaw: $score, startedAt: $startedAt, completedAt: $completedAt
-                |) {
-                    |id
-                    |status
-                    |progress
-                |}
-            |}
-            |
-            """.trimMargin()
+            val update = TrackerProviderProtocols.aniList.update(
+                libraryId = requireNotNull(track.library_id),
+                progress = track.last_chapter_read.toInt(),
+                status = track.toApiStatus(),
+                scoreRaw = track.score.toInt(),
+                private = track.private,
+                startedAt = createProviderDate(track.started_reading_date),
+                completedAt = createProviderDate(track.finished_reading_date),
+            )
             val payload = buildJsonObject {
-                put("query", query)
+                put("query", update.query)
                 putJsonObject("variables") {
-                    put("listId", track.library_id)
-                    put("progress", track.last_chapter_read.toInt())
-                    put("status", track.toApiStatus())
-                    put("score", track.score.toInt())
-                    put("startedAt", createDate(track.started_reading_date))
-                    put("completedAt", createDate(track.finished_reading_date))
-                    put("private", track.private)
+                    put("listId", update.libraryId)
+                    put("progress", update.progress)
+                    put("status", update.status)
+                    put("scoreRaw", update.scoreRaw)
+                    put("startedAt", update.startedAt.toJsonObject())
+                    put("completedAt", update.completedAt.toJsonObject())
+                    put("private", update.private)
                 }
             }
-            authClient.newCall(POST(API_URL, body = payload.toString().toRequestBody(jsonMime)))
+            authClient.newCall(POST(apiUrl, body = payload.toString().toRequestBody(jsonMime)))
                 .awaitSuccess()
             track
         }
@@ -128,7 +125,7 @@ class AnilistApi(val client: OkHttpClient, interceptor: AnilistInterceptor) {
                     put("listId", track.libraryId)
                 }
             }
-            authClient.newCall(POST(API_URL, body = payload.toString().toRequestBody(jsonMime)))
+            authClient.newCall(POST(apiUrl, body = payload.toString().toRequestBody(jsonMime)))
                 .awaitSuccess()
         }
     }
@@ -183,7 +180,7 @@ class AnilistApi(val client: OkHttpClient, interceptor: AnilistInterceptor) {
             with(json) {
                 authClient.newCall(
                     POST(
-                        API_URL,
+                        apiUrl,
                         body = payload.toString().toRequestBody(jsonMime),
                     ),
                 )
@@ -262,7 +259,7 @@ class AnilistApi(val client: OkHttpClient, interceptor: AnilistInterceptor) {
             with(json) {
                 authClient.newCall(
                     POST(
-                        API_URL,
+                        apiUrl,
                         body = payload.toString().toRequestBody(jsonMime),
                     ),
                 )
@@ -303,7 +300,7 @@ class AnilistApi(val client: OkHttpClient, interceptor: AnilistInterceptor) {
             with(json) {
                 authClient.newCall(
                     POST(
-                        API_URL,
+                        apiUrl,
                         body = payload.toString().toRequestBody(jsonMime),
                     ),
                 )
@@ -317,20 +314,21 @@ class AnilistApi(val client: OkHttpClient, interceptor: AnilistInterceptor) {
         }
     }
 
-    private fun createDate(dateValue: Long): JsonObject {
+    private fun createProviderDate(dateValue: Long): ProviderFuzzyDate {
         if (dateValue == 0L) {
-            return buildJsonObject {
-                put("year", JsonNull)
-                put("month", JsonNull)
-                put("day", JsonNull)
-            }
+            return ProviderFuzzyDate(null, null, null)
         }
 
         val dateTime = ZonedDateTime.ofInstant(Instant.ofEpochMilli(dateValue), ZoneId.systemDefault())
+        return ProviderFuzzyDate(dateTime.year, dateTime.monthValue, dateTime.dayOfMonth)
+    }
+
+    private fun ProviderFuzzyDate?.toJsonObject(): JsonObject {
+        val date = this
         return buildJsonObject {
-            put("year", dateTime.year)
-            put("month", dateTime.monthValue)
-            put("day", dateTime.dayOfMonth)
+            if (date?.year == null) put("year", JsonNull) else put("year", date.year)
+            if (date?.month == null) put("month", JsonNull) else put("month", date.month)
+            if (date?.day == null) put("day", JsonNull) else put("day", date.day)
         }
     }
 
@@ -344,9 +342,10 @@ class AnilistApi(val client: OkHttpClient, interceptor: AnilistInterceptor) {
             return BASE_MANGA_URL + mediaId
         }
 
-        fun authUrl(): Uri = "${BASE_URL}oauth/authorize".toUri().buildUpon()
-            .appendQueryParameter("client_id", CLIENT_ID)
-            .appendQueryParameter("response_type", "token")
-            .build()
+        fun authUrl(): Uri = "${BASE_URL}oauth/authorize".toUri().buildUpon().apply {
+            TrackerProviderProtocols.aniList.authorization(CLIENT_ID).parameters.forEach {
+                appendQueryParameter(it.key, it.value)
+            }
+        }.build()
     }
 }

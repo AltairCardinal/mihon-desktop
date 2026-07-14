@@ -9,6 +9,7 @@ data class ReaderChapterRef(
     val url: String,
     val name: String,
     val isRead: Boolean = false,
+    val chapterNumber: Double = 0.0,
 )
 
 /**

@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.serialization.json.Json
+import okhttp3.OkHttpClient
 import mihon.desktop.extension.DesktopExtensionLoader
 import mihon.desktop.backup.BackupRestoreScreenModelFactory
 import mihon.desktop.extension.DesktopExtensionManager
@@ -48,6 +49,16 @@ import mihon.desktop.domain.LibraryUpdateScheduler
 import mihon.desktop.domain.ReaderModeMemoryCleaner
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.domain.DesktopTrackerSessionProvider
+import mihon.desktop.platform.DesktopCredentialStore
+import mihon.desktop.tracking.DesktopTrackerServiceRegistry
+import mihon.desktop.tracking.DesktopTrackerSyncScheduler
+import mihon.desktop.migration.DesktopBatchMigrationController
+import mihon.desktop.domain.MigrationOptions
+import mihon.desktop.test.http.MigrationBatchTestBridge
+import mihon.desktop.test.http.TrackingTestBridge
+import mihon.desktop.tracking.TrackingTestModeController
+import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.model.SManga
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.reader.ReaderPreferences
 import mihon.domain.extensionrepo.interactor.CreateExtensionRepo
@@ -86,6 +97,9 @@ import tachiyomi.domain.history.interactor.UpsertHistory
 import tachiyomi.domain.history.repository.HistoryRepository
 import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.TrackerSessionProvider
+import tachiyomi.domain.track.service.TrackerServiceRegistry
+import tachiyomi.domain.track.interactor.ReadingProgressTrackSync
+import tachiyomi.domain.track.interactor.SyncReadingProgressWithTrack
 import tachiyomi.domain.updates.interactor.GetUpdates
 import tachiyomi.domain.updates.repository.UpdatesRepository
 import tachiyomi.domain.updates.service.UpdatesPreferences
@@ -273,7 +287,6 @@ internal fun initDataLayer(paths: DesktopPlatformPaths): DatabaseHandler {
     Injekt.addSingleton(creatorRepository)
     Injekt.addSingleton(extensionRepoRepository)
     Injekt.addSingleton(trackRepository)
-    Injekt.addSingleton<TrackerSessionProvider>(DesktopTrackerSessionProvider())
     return handler
 }
 
@@ -312,6 +325,7 @@ private fun registerDesktopExtension(paths: DesktopPlatformPaths, networkHelper:
     val sourceManager = DesktopSourceManager(extensionManager, Injekt.get())
     Injekt.addSingleton<SourceManager>(sourceManager)
     Injekt.addSingleton(sourceManager)
+    registerDesktopTracking(sourceManager, networkHelper.client)
     Injekt.addSingleton<SourceRepository>(DesktopSourceRepository(sourceManager, handler))
     val extensionRepoRepository = Injekt.get<ExtensionRepoRepository>()
     val extensionRepoService = ExtensionRepoService(Injekt.get<NetworkHelper>(), Injekt.get<Json>())
@@ -328,6 +342,27 @@ private fun registerDesktopExtension(paths: DesktopPlatformPaths, networkHelper:
             extensionRepoRepository = extensionRepoRepository,
         ),
     )
+}
+
+private fun registerDesktopTracking(sourceManager: SourceManager, client: OkHttpClient) {
+    val trackRepository = Injekt.get<TrackRepository>()
+    val credentialStore = DesktopCredentialStore()
+    val enhancedTrackerContexts = mihon.desktop.tracking.DesktopEnhancedTrackerContextProvider().apply {
+        attach(sourceManager)
+    }
+    val trackerRegistry = DesktopTrackerServiceRegistry.production(
+        client = client,
+        json = Injekt.get<Json>(),
+        credentialStore = credentialStore,
+        enhancedContextProvider = enhancedTrackerContexts,
+        sourceClient = enhancedTrackerContexts::sourceClient,
+    )
+    Injekt.addSingleton<TrackerServiceRegistry>(trackerRegistry)
+    TrackingTestBridge.controller = TrackingTestModeController(trackRepository, trackerRegistry)
+    Injekt.addSingleton(credentialStore)
+    Injekt.addSingleton<tachiyomi.domain.track.service.EnhancedTrackerContextProvider>(enhancedTrackerContexts)
+    Injekt.addSingleton(enhancedTrackerContexts)
+    Injekt.addSingleton<TrackerSessionProvider>(DesktopTrackerSessionProvider(trackerRegistry))
 }
 
 // ── Domain layer ──────────────────────────────────────────────────────────────
@@ -465,6 +500,46 @@ internal fun initUILayer(
         updateManga,
     )
 
+    lateinit var trackSync: ReadingProgressTrackSync
+    val trackerSyncScheduler = DesktopTrackerSyncScheduler(Injekt.get<DesktopTaskScheduler>()) { trackSync }
+    trackSync = SyncReadingProgressWithTrack(
+        repository = Injekt.get<TrackRepository>(),
+        registry = Injekt.get<TrackerServiceRegistry>(),
+        retryScheduler = trackerSyncScheduler,
+    )
+    Injekt.addSingleton<ReadingProgressTrackSync>(trackSync)
+    Injekt.addSingleton(trackerSyncScheduler)
+
+    val batchMigrationController = DesktopBatchMigrationController(
+        scheduler = Injekt.get(),
+        executeMigration = { mangaId, target, options ->
+            val sourceManga = Injekt.get<GetManga>().await(mangaId) ?: error("Source manga no longer exists")
+            val targetSource = Injekt.get<SourceManager>().get(target.sourceId) as? CatalogueSource
+                ?: error("Target source is not installed")
+            val targetManga = SManga.create().apply {
+                url = target.url
+                title = target.title
+                thumbnail_url = target.thumbnailUrl
+                author = target.author
+                artist = target.artist
+                description = target.description
+                genre = target.genre?.joinToString(", ")
+                status = target.status
+            }
+            Injekt.get<DesktopMigrateMangaUseCase>().await(
+                sourceManga = sourceManga,
+                targetSManga = targetManga,
+                targetSourceId = target.sourceId,
+                targetChapters = targetSource.getChapterList(targetManga),
+                options = MigrationOptions(options.copyChapters, options.copyCategories, options.copyNotes),
+                replace = options.replace,
+            )
+        },
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    )
+    Injekt.addSingleton(batchMigrationController)
+    MigrationBatchTestBridge.controller = batchMigrationController
+
     Injekt.addSingleton(DesktopJsEngine())
     Injekt.addSingleton(
         LocalSourceScanService(
@@ -478,6 +553,7 @@ internal fun initUILayer(
             appPreferences = appPreferences,
             downloadPreferences = downloadPreferences,
             downloadManager = downloadManager,
+            trackSync = trackSync,
         ),
     )
 
@@ -494,6 +570,8 @@ internal fun initUILayer(
             localSourceScanService = Injekt.get<LocalSourceScanService>(),
             autoBackupScheduler = autoBackupScheduler,
             readerModeMemoryCleaner = Injekt.get<ReaderModeMemoryCleaner>(),
+            trackerSyncScheduler = trackerSyncScheduler,
+            batchMigrationController = batchMigrationController,
         ),
     )
 }

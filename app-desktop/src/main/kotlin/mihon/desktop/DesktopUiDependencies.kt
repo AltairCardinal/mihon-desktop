@@ -15,8 +15,10 @@ import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.network.CloudflareChallengeManager
+import mihon.desktop.migration.DesktopBatchMigrationController
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.settings.DesktopAppPreferences
+import mihon.desktop.tracking.DesktopTrackerServiceRegistry
 import mihon.desktop.source.LocalSourceScanService
 import mihon.domain.extensionrepo.interactor.CreateExtensionRepo
 import mihon.domain.extensionrepo.interactor.DeleteExtensionRepo
@@ -39,6 +41,8 @@ import tachiyomi.domain.source.repository.SourceRepository
 import tachiyomi.domain.source.model.Source
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourceMangaSearchService
+import tachiyomi.domain.track.service.TrackerServiceRegistry
+import tachiyomi.domain.track.repository.TrackRepository
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -68,6 +72,7 @@ data class DesktopUiDependencies(
     val customCoverStore: DesktopCustomCoverStore,
     val coverUpdater: DesktopCoverUpdater,
     val mangaRepository: MangaRepository,
+    val batchMigrationController: DesktopBatchMigrationController,
     val migrateManga: DesktopMigrateMangaUseCase,
     val networkHelper: DesktopNetworkHelper,
     val notificationService: DesktopNotificationService,
@@ -79,6 +84,8 @@ data class DesktopUiDependencies(
     val sourceRepository: SourceRepository,
     val updateExtensionRepo: UpdateExtensionRepo,
     val updateMangaNotes: UpdateMangaNotes,
+    val trackRepository: TrackRepository,
+    val trackerServiceRegistry: TrackerServiceRegistry = DesktopTrackerServiceRegistry(),
 ) {
     suspend fun getMangaTitle(mangaId: Long): String {
         return mangaRepository.getMangaById(mangaId).title
@@ -116,6 +123,7 @@ data class DesktopUiDependencies(
                 customCoverStore = Injekt.get(),
                 coverUpdater = DesktopCoverUpdater(Injekt.get(), Injekt.get()),
                 mangaRepository = Injekt.get(),
+                batchMigrationController = Injekt.get(),
                 migrateManga = Injekt.get(),
                 networkHelper = Injekt.get(),
                 notificationService = Injekt.get(),
@@ -127,6 +135,8 @@ data class DesktopUiDependencies(
                 sourceRepository = Injekt.get(),
                 updateExtensionRepo = Injekt.get(),
                 updateMangaNotes = Injekt.get(),
+                trackRepository = Injekt.get(),
+                trackerServiceRegistry = Injekt.get(),
             )
         }
     }

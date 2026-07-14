@@ -6,11 +6,14 @@ import eu.kanade.tachiyomi.data.track.shikimori.dto.isExpired
 import kotlinx.serialization.json.Json
 import okhttp3.Interceptor
 import okhttp3.Response
-import uy.kohesive.injekt.injectLazy
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
-class ShikimoriInterceptor(private val shikimori: Shikimori) : Interceptor {
-
-    private val json: Json by injectLazy()
+class ShikimoriInterceptor(
+    private val shikimori: Shikimori,
+    private val json: Json = Injekt.get(),
+    private val tokenUrl: String = "https://shikimori.one/oauth/token",
+) : Interceptor {
 
     /**
      * OAuth object used for authenticated requests.
@@ -26,7 +29,7 @@ class ShikimoriInterceptor(private val shikimori: Shikimori) : Interceptor {
 
         // Refresh access token if expired.
         if (currAuth.isExpired()) {
-            val response = chain.proceed(ShikimoriApi.refreshTokenRequest(refreshToken))
+            val response = chain.proceed(ShikimoriApi.refreshTokenRequest(refreshToken, tokenUrl))
             if (response.isSuccessful) {
                 newAuth(json.decodeFromString<SMOAuth>(response.body.string()))
             } else {

@@ -1050,5 +1050,6 @@
     <string name="migrationListScreen.migrateDialog.migrateLabel">Migrate</string>
     <string name="migrationListScreen.migrateDialog.cancelLabel">Cancel</string>
     <string name="migrationListScreen.progressDialog.cancelLabel">Cancel</string>
+    <string name="migrationListScreen.failureDialog.title">Some migrations failed</string>
     <string name="migrationListScreen.matchWithoutChapterToast">No chapters found, this entry cannot be used for migration</string>
 </resources>

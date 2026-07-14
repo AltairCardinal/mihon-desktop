@@ -6,11 +6,14 @@ import eu.kanade.tachiyomi.data.track.bangumi.dto.isExpired
 import kotlinx.serialization.json.Json
 import okhttp3.Interceptor
 import okhttp3.Response
-import uy.kohesive.injekt.injectLazy
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
-class BangumiInterceptor(private val bangumi: Bangumi) : Interceptor {
-
-    private val json: Json by injectLazy()
+class BangumiInterceptor(
+    private val bangumi: Bangumi,
+    private val json: Json = Injekt.get(),
+    private val tokenUrl: String = "https://bgm.tv/oauth/access_token",
+) : Interceptor {
 
     /**
      * OAuth object used for authenticated requests.
@@ -23,7 +26,7 @@ class BangumiInterceptor(private val bangumi: Bangumi) : Interceptor {
         var currAuth: BGMOAuth = oauth ?: throw Exception("Not authenticated with Bangumi")
 
         if (currAuth.isExpired()) {
-            val response = chain.proceed(BangumiApi.refreshTokenRequest(currAuth.refreshToken!!))
+            val response = chain.proceed(BangumiApi.refreshTokenRequest(currAuth.refreshToken!!, tokenUrl))
             if (response.isSuccessful) {
                 currAuth = json.decodeFromString<BGMOAuth>(response.body.string())
                 newAuth(currAuth)

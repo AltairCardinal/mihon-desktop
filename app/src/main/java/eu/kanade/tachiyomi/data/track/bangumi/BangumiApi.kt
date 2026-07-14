@@ -22,25 +22,29 @@ import kotlinx.serialization.json.putJsonObject
 import okhttp3.CacheControl
 import okhttp3.FormBody
 import okhttp3.Headers.Companion.headersOf
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import tachiyomi.core.common.util.lang.withIOContext
-import uy.kohesive.injekt.injectLazy
+import tachiyomi.domain.track.service.TrackerProviderProtocols
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 class BangumiApi(
     private val trackId: Long,
     private val client: OkHttpClient,
-    interceptor: BangumiInterceptor,
+    interceptor: Interceptor,
+    private val json: Json = Injekt.get(),
+    private val apiUrl: String = API_URL,
+    private val oauthUrl: String = OAUTH_URL,
 ) {
-
-    private val json: Json by injectLazy()
 
     private val authClient = client.newBuilder().addInterceptor(interceptor).build()
 
     suspend fun addLibManga(track: Track): Track {
         return withIOContext {
-            val url = "$API_URL/v0/users/-/collections/${track.remote_id}"
+            val url = "$apiUrl/v0/users/-/collections/${track.remote_id}"
             val body = buildJsonObject {
                 put("type", track.toApiStatus())
                 put("rate", track.score.toInt().coerceIn(0, 10))
@@ -58,7 +62,7 @@ class BangumiApi(
 
     suspend fun updateLibManga(track: Track): Track {
         return withIOContext {
-            val url = "$API_URL/v0/users/-/collections/${track.remote_id}"
+            val url = "$apiUrl/v0/users/-/collections/${track.remote_id}"
             val body = buildJsonObject {
                 put("type", track.toApiStatus())
                 put("rate", track.score.toInt().coerceIn(0, 10))
@@ -87,7 +91,7 @@ class BangumiApi(
         // changes to the schema for this endpoint since
         // "实验性 API， 本 schema 和实际的 API 行为都可能随时发生改动"
         return withIOContext {
-            val url = "$API_URL/v0/search/subjects?limit=20"
+            val url = "$apiUrl/v0/search/subjects?limit=20"
             val body = buildJsonObject {
                 put("keyword", search)
                 put("sort", "match")
@@ -112,7 +116,7 @@ class BangumiApi(
 
     suspend fun statusLibManga(track: Track, username: String): Track? {
         return withIOContext {
-            val url = "$API_URL/v0/users/$username/collections/${track.remote_id}"
+            val url = "$apiUrl/v0/users/$username/collections/${track.remote_id}"
             with(json) {
                 try {
                     authClient.newCall(GET(url, cache = CacheControl.FORCE_NETWORK))
@@ -138,15 +142,11 @@ class BangumiApi(
 
     suspend fun accessToken(code: String): BGMOAuth {
         return withIOContext {
-            val body = FormBody.Builder()
-                .add("grant_type", "authorization_code")
-                .add("client_id", CLIENT_ID)
-                .add("client_secret", CLIENT_SECRET)
-                .add("code", code)
-                .add("redirect_uri", REDIRECT_URL)
-                .build()
+            val body = TrackerProviderProtocols.bangumi
+                .authorizationCodeToken(CLIENT_ID, CLIENT_SECRET, code, REDIRECT_URL)
+                .toFormBody()
             with(json) {
-                client.newCall(POST(OAUTH_URL, body = body))
+                client.newCall(POST(oauthUrl, body = body))
                     .awaitSuccess()
                     .parseAs<BGMOAuth>()
             }
@@ -156,7 +156,7 @@ class BangumiApi(
     suspend fun getUsername(): String {
         return withIOContext {
             with(json) {
-                authClient.newCall(GET("$API_URL/v0/me"))
+                authClient.newCall(GET("$apiUrl/v0/me"))
                     .awaitSuccess()
                     .parseAs<BGMUser>()
                     .username
@@ -177,21 +177,24 @@ class BangumiApi(
         private const val APP_JSON = "application/json"
 
         fun authUrl(): Uri =
-            LOGIN_URL.toUri().buildUpon()
-                .appendQueryParameter("client_id", CLIENT_ID)
-                .appendQueryParameter("response_type", "code")
-                .appendQueryParameter("redirect_uri", REDIRECT_URL)
-                .build()
+            LOGIN_URL.toUri().buildUpon().apply {
+                TrackerProviderProtocols.bangumi.authorization(CLIENT_ID, REDIRECT_URL).parameters.forEach {
+                    appendQueryParameter(it.key, it.value)
+                }
+            }.build()
 
-        fun refreshTokenRequest(token: String) = POST(
-            OAUTH_URL,
-            body = FormBody.Builder()
-                .add("grant_type", "refresh_token")
-                .add("client_id", CLIENT_ID)
-                .add("client_secret", CLIENT_SECRET)
-                .add("refresh_token", token)
-                .add("redirect_uri", REDIRECT_URL)
-                .build(),
+        fun refreshTokenRequest(token: String, oauthUrl: String = OAUTH_URL) = POST(
+            oauthUrl,
+            body = TrackerProviderProtocols.bangumi.refreshToken(
+                CLIENT_ID,
+                CLIENT_SECRET,
+                token,
+                REDIRECT_URL,
+            ).toFormBody(),
         )
     }
 }
+
+private fun Map<String, String>.toFormBody() = FormBody.Builder().apply {
+    forEach { (key, value) -> add(key, value) }
+}.build()

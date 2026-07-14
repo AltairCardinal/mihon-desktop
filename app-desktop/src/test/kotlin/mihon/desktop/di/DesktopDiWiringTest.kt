@@ -28,6 +28,7 @@ import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.ui.more.StatsScreenModel
 import mihon.desktop.task.DesktopTaskScheduler
+import mihon.desktop.migration.DesktopBatchMigrationController
 import mihon.domain.download.DownloadRepository
 import mihon.domain.download.EnqueueDownload
 import mihon.domain.download.IsChapterDownloaded
@@ -43,6 +44,10 @@ import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.TrackerSessionProvider
+import tachiyomi.domain.track.service.TrackerServiceRegistry
+import mihon.desktop.platform.DesktopCredentialStore
+import mihon.desktop.tracking.DesktopTrackerSyncScheduler
+import tachiyomi.domain.track.interactor.ReadingProgressTrackSync
 import tachiyomi.domain.reader.interactor.RecordReadingProgress
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.chapter.model.Chapter
@@ -289,6 +294,7 @@ class DesktopDiWiringTest {
         assertNotNull(Injekt.get<LibraryUpdateScheduler>())
         assertNotNull(Injekt.get<DesktopNetworkHelper>())
         assertNotNull(Injekt.get<DesktopTaskScheduler>())
+        assertNotNull(Injekt.get<DesktopBatchMigrationController>())
         assertNotNull(Injekt.get<DesktopDownloadManager>())
         assertNotNull(Injekt.get<DownloadRepository>())
         assertNotNull(Injekt.get<EnqueueDownload>())
@@ -298,6 +304,10 @@ class DesktopDiWiringTest {
         assertNotNull(Injekt.get<DesktopExtensionManager>())
         assertNotNull(Injekt.get<TrackRepository>())
         assertNotNull(Injekt.get<TrackerSessionProvider>())
+        assertNotNull(Injekt.get<TrackerServiceRegistry>())
+        assertNotNull(Injekt.get<DesktopCredentialStore>())
+        assertNotNull(Injekt.get<ReadingProgressTrackSync>())
+        assertNotNull(Injekt.get<DesktopTrackerSyncScheduler>())
         assertEquals(emptySet<Long>(), Injekt.get<TrackerSessionProvider>().loggedInTrackerIds().first())
         assertNotNull(Injekt.get<BackupRestoreScreenModelFactory>())
         assertNotNull(Injekt.get<CreateCategoryWithName>())

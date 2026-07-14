@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -39,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.test.state.applicationState
@@ -46,6 +48,10 @@ import mihon.desktop.ui.extension.ExtensionListScreen
 import mihon.desktop.ui.migration.MigrationSearchScreen
 
 class MoreRootScreen : Screen {
+
+    internal fun onTracking(navigator: Navigator) {
+        mihon.desktop.ui.tracking.pushTrackingSettings(navigator)
+    }
 
     companion object {
         fun backupSettingsDestination(): Screen = BackupSettingsScreen()
@@ -76,6 +82,7 @@ class MoreRootScreen : Screen {
                         "open_migration" -> navigator.push(
                             MigrationSearchScreen(sourceMangaId = 0L, sourceMangaTitle = ""),
                         )
+                        "open_tracking" -> onTracking(navigator)
                     }
                     TestScreenNavigator.clear()
                     hasHandledPending = true
@@ -89,6 +96,15 @@ class MoreRootScreen : Screen {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
             ) {
+                item {
+                    SettingsEntry(
+                        icon = Icons.Default.Sync,
+                        title = "Tracking",
+                        subtitle = "Login and manage tracking services",
+                        onClick = { onTracking(navigator) },
+                    )
+                    HorizontalDivider()
+                }
                 item {
                     SettingsEntry(
                         icon = Icons.Default.Settings,

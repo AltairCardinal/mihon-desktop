@@ -1,6 +1,10 @@
 package mihon.desktop.domain
 
 import eu.kanade.tachiyomi.source.model.SChapter
+import mihon.domain.migration.MigrationChapter
+import mihon.domain.migration.MigrationMangaMetadata
+import mihon.domain.migration.MigrationOrchestrator
+import mihon.domain.migration.models.MigrationFlag
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.UpdateChapter
@@ -9,35 +13,6 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.LibraryMembershipUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
-
-/**
- * Lightweight chapter descriptor used for chapter read-status matching.
- * Decoupled from DB Chapter to allow easy unit testing.
- */
-data class ChapterForMigration(
-    val id: Long,
-    val name: String,
-    val chapterNumber: Double,
-    val read: Boolean,
-)
-
-/**
- * Returns the set of chapter_number values that are marked as read.
- * Excludes negative chapter numbers (specials/extras).
- */
-fun buildReadChapterNumbers(chapters: List<ChapterForMigration>): Set<Double> =
-    chapters
-        .filter { it.read && it.chapterNumber >= 0.0 }
-        .map { it.chapterNumber }
-        .toSet()
-
-/**
- * Returns true if this chapter should be marked read given the source manga's read history.
- */
-fun shouldMarkRead(chapterNumber: Double, readNumbers: Set<Double>): Boolean =
-    chapterNumber >= 0.0 && chapterNumber in readNumbers
-
-// ---------------------------------------------------------------------------
 
 /**
  * Flags controlling which metadata is copied during a migration.
@@ -62,6 +37,7 @@ class DesktopMigrateMangaUseCase(
     private val updateChapter: UpdateChapter,
     private val getCategories: GetCategories,
     private val mangaRepository: MangaRepository,
+    private val orchestrator: MigrationOrchestrator = MigrationOrchestrator(),
 ) {
     suspend fun await(
         sourceManga: Manga,
@@ -73,42 +49,56 @@ class DesktopMigrateMangaUseCase(
     ): Manga {
         // 1. Persist target manga + chapters to DB
         val persistedTarget = saveSourceMangaForDetails.await(targetSManga, targetSourceId, targetChapters)
-        val targetCategoryIds = if (options.copyCategories) {
-            getCategories.await(sourceManga.id).map { it.id }
-        } else {
-            emptyList()
-        }
         val targetDateAdded = if (persistedTarget.favorite) persistedTarget.dateAdded else System.currentTimeMillis()
         val savedTarget = persistedTarget.copy(favorite = true, dateAdded = targetDateAdded)
+        val flags = buildSet {
+            if (options.copyChapters) add(MigrationFlag.CHAPTER)
+            if (options.copyCategories) add(MigrationFlag.CATEGORY)
+            if (options.copyNotes) add(MigrationFlag.NOTES)
+        }
+        val libraryPlan = orchestrator.libraryPlan(
+            current = MigrationMangaMetadata(
+                mangaId = sourceManga.id,
+                categoryIds = if (options.copyCategories) getCategories.await(sourceManga.id).map { it.id } else emptyList(),
+                chapterFlags = sourceManga.chapterFlags,
+                viewerFlags = sourceManga.viewerFlags,
+                dateAdded = sourceManga.dateAdded,
+                notes = sourceManga.notes,
+            ),
+            targetMangaId = savedTarget.id,
+            flags = flags,
+            replace = replace,
+            now = targetDateAdded,
+        )
 
         // 2. Copy chapter read status
         if (options.copyChapters) {
             val sourceChapters = getChaptersByMangaId.await(sourceManga.id).map {
-                ChapterForMigration(it.id, it.name, it.chapterNumber, it.read)
+                MigrationChapter(it.id, it.chapterNumber, it.read, it.bookmark, it.dateFetch)
             }
-            val readNumbers = buildReadChapterNumbers(sourceChapters)
-            if (readNumbers.isNotEmpty()) {
-                val targetDbChapters = getChaptersByMangaId.await(savedTarget.id)
-                val updates = targetDbChapters
-                    .filter { shouldMarkRead(it.chapterNumber, readNumbers) }
-                    .map { ChapterUpdate(id = it.id, read = true) }
-                if (updates.isNotEmpty()) updateChapter.awaitAll(updates)
-            }
+            val targetDbChapters = getChaptersByMangaId.await(savedTarget.id)
+            val updates = orchestrator.chapterUpdates(
+                sourceChapters,
+                targetDbChapters.map { MigrationChapter(it.id, it.chapterNumber, it.read, it.bookmark, it.dateFetch) },
+            ).map { ChapterUpdate(id = it.id, read = it.read, bookmark = it.bookmark, dateFetch = it.dateFetch) }
+            if (updates.isNotEmpty()) updateChapter.awaitAll(updates)
         }
 
         // 3. Copy category assignments
         // Categories were applied by UpdateLibraryMembership with the favorite update.
 
         // 4. Copy notes
-        if (options.copyNotes && !sourceManga.notes.isNullOrBlank()) {
-            mangaRepository.update(MangaUpdate(id = savedTarget.id, notes = sourceManga.notes))
+        if (libraryPlan.targetNotes != null) {
+            mangaRepository.update(MangaUpdate(id = savedTarget.id, notes = libraryPlan.targetNotes))
         }
 
         // 5. Commit target membership and optional source removal in one database transaction.
         mangaRepository.updateMembershipsAtomically(
             buildList {
-                add(LibraryMembershipUpdate(savedTarget.id, true, targetDateAdded, targetCategoryIds.distinct()))
-                if (replace) add(LibraryMembershipUpdate(sourceManga.id, false, 0, emptyList()))
+                add(LibraryMembershipUpdate(savedTarget.id, true, libraryPlan.targetDateAdded, libraryPlan.targetCategoryIds))
+                if (libraryPlan.removeCurrentFromLibrary) {
+                    add(LibraryMembershipUpdate(sourceManga.id, false, 0, emptyList()))
+                }
             },
         )
 

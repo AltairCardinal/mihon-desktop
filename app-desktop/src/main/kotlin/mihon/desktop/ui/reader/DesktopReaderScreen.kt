@@ -19,13 +19,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -46,7 +44,6 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.reader.DesktopReaderRuntimeFactory
@@ -81,6 +78,7 @@ data class DesktopReaderScreen(
     val chapterUrl: String = "",
     val chapterId: Long = 0L,
     val mangaId: Long = 0L,
+    val chapterNumber: Double = 0.0,
     /** All chapters for this manga (desc order = newest first), enables prev/next navigation. */
     val chapters: List<ReaderChapterRef> = emptyList(),
     /** Index of the current chapter within [chapters]. */
@@ -121,7 +119,15 @@ data class DesktopReaderScreen(
         val state by model.state.collectAsState()
         val focusRequester = remember { FocusRequester() }
         val readerExitEventId = remember(chapterId, key) { java.util.UUID.randomUUID().toString() }
-        ReaderLifecycleEffect(state, model, scope, runtime.tracker, chapterId, readerExitEventId)
+        ReaderLifecycleEffect(
+            state,
+            scope,
+            runtime.tracker,
+            chapterId,
+            mangaId,
+            chapters.getOrNull(currentChapterIndex)?.chapterNumber ?: chapterNumber,
+            readerExitEventId,
+        )
 
         // Background page loading (network / local)
         ReaderPageLoaderEffect(
@@ -249,7 +255,7 @@ data class DesktopReaderScreen(
     ) = DesktopReaderScreen(
         chapterTitle = ref.name, mangaTitle = mangaTitle, pageUrls = emptyList(),
         isWebtoon = isWebtoon, sourceId = sourceId, chapterUrl = ref.url, chapterId = ref.id,
-        mangaId = mangaId, mangaViewerFlags = viewerFlags,
+        mangaId = mangaId, chapterNumber = ref.chapterNumber, mangaViewerFlags = viewerFlags,
         chapters = chapters, currentChapterIndex = newIndex, initialPage = initialPage,
         isRtl = isRtl, isDualPage = isDualPage, progressTracker = progressTracker,
     )
@@ -272,30 +278,6 @@ internal fun initialPageForChapterNavigation(direction: ReaderChapterNavigationD
     }
 
 // ── Private helper composables ───────────────────────────────────────────────
-
-@Composable
-private fun ReaderLifecycleEffect(
-    state: ReaderState,
-    model: ReaderScreenModel,
-    scope: kotlinx.coroutines.CoroutineScope,
-    tracker: ReaderProgressTracker,
-    chapterId: Long,
-    exitEventId: String,
-) {
-    val latestPage by rememberUpdatedState(readerProgressPageForTracking(state))
-    val latestUrls by rememberUpdatedState(state.resolvedUrls)
-    DisposableEffect(Unit) {
-        ReaderModeState.isInReaderMode = true
-        onDispose {
-            ReaderModeState.isInReaderMode = false
-            if (chapterId != 0L && latestUrls.isNotEmpty()) {
-                scope.launch(NonCancellable) {
-                    tracker.track(exitEventId, chapterId, latestPage, latestUrls.size)
-                }
-            }
-        }
-    }
-}
 
 internal fun readerProgressPageForTracking(state: ReaderState): Int {
     val pageCount = state.resolvedUrls.size

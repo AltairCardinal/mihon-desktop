@@ -24,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -48,6 +49,7 @@ class MigrationSourceScreen : Screen {
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val desktopDependencies = LocalDesktopUiDependencies.current
+        val migrationQueues by desktopDependencies.batchMigrationController.queues.collectAsState()
 
         // Sources with at least one library manga, sorted descending by count
         val sourcesWithCount by remember {
@@ -62,6 +64,13 @@ class MigrationSourceScreen : Screen {
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                        }
+                    },
+                    actions = {
+                        migrationQueues.values.lastOrNull()?.let { queue ->
+                            TextButton(onClick = { navigator.push(MigrationBatchQueueScreen(queue.id)) }) {
+                                Text("Migration queues (${migrationQueues.size})")
+                            }
                         }
                     },
                 )

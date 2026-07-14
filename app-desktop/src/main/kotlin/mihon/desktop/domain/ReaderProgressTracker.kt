@@ -7,6 +7,8 @@ import tachiyomi.domain.reader.interactor.RecordReadingProgress
 import tachiyomi.domain.reader.model.ReadingProgressEvent
 import tachiyomi.domain.manga.model.Manga
 import java.util.Date
+import tachiyomi.domain.track.interactor.ReadingProgressTrackSync
+import tachiyomi.domain.track.interactor.TrackerSyncRequest
 
 /**
  * Records reading progress when the reader exits or finishes a chapter.
@@ -21,6 +23,7 @@ class ReaderProgressTracker(
     private val appPreferences: DesktopAppPreferences? = null,
     private val downloadPreferences: DesktopDownloadPreferences? = null,
     private val downloadManager: DesktopDownloadManager? = null,
+    private val trackSync: ReadingProgressTrackSync? = null,
 ) {
 
     suspend fun track(
@@ -31,6 +34,7 @@ class ReaderProgressTracker(
         manga: Manga? = null,
         chapterName: String? = null,
         mangaId: Long = 0L,
+        chapterNumber: Double? = null,
         readAt: Date = Date(),
         sessionReadDuration: Long = 0L,
     ) {
@@ -49,6 +53,10 @@ class ReaderProgressTracker(
                 idempotencyKey = eventId,
             ),
         )
+
+        if (isRead && mangaId > 0 && chapterNumber != null && chapterNumber >= 0) {
+            trackSync?.sync(TrackerSyncRequest(eventId, mangaId, chapterNumber))
+        }
 
         // Auto-delete downloaded chapter when fully read
         if (isRead && manga != null && chapterName != null) {

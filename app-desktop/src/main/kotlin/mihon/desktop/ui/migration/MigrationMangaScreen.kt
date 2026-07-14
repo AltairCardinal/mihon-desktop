@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -24,11 +25,13 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
@@ -38,6 +41,7 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
 import tachiyomi.domain.manga.interactor.GetFavorites
+import mihon.desktop.migration.BatchMigrationRequest
 
 /**
  * Lists library manga from a specific source — step 2 of migration flow.
@@ -53,6 +57,8 @@ data class MigrationMangaScreen(
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val getFavorites = LocalDesktopUiDependencies.current.getFavorites
+        val batchMigrationController = LocalDesktopUiDependencies.current.batchMigrationController
+        val selectedIds = remember { mutableStateListOf<Long>() }
 
         val manga by remember(sourceId) {
             getFavorites.subscribe(sourceId)
@@ -65,6 +71,15 @@ data class MigrationMangaScreen(
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                        }
+                    },
+                    actions = {
+                        if (selectedIds.isNotEmpty()) {
+                            TextButton(onClick = {
+                                val queued = manga.orEmpty().filter { it.id in selectedIds }
+                                    .map { BatchMigrationRequest(it.id, it.title) }
+                                navigator.push(MigrationBatchQueueScreen(batchMigrationController.submit(queued)))
+                            }) { Text("Queue (${selectedIds.size})") }
                         }
                     },
                 )
@@ -99,6 +114,14 @@ data class MigrationMangaScreen(
                             },
                             headlineContent = { Text(m.title, maxLines = 2) },
                             supportingContent = m.author?.let { { Text(it) } },
+                            trailingContent = {
+                                Checkbox(
+                                    checked = m.id in selectedIds,
+                                    onCheckedChange = { checked ->
+                                        if (checked) selectedIds.add(m.id) else selectedIds.remove(m.id)
+                                    },
+                                )
+                            },
                             modifier = Modifier.clickable {
                                 navigator.push(
                                     MigrationSearchScreen(

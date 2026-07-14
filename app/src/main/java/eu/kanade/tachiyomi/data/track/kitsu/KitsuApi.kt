@@ -21,43 +21,57 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import okhttp3.FormBody
 import okhttp3.Headers.Companion.headersOf
+import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import tachiyomi.core.common.util.lang.withIOContext
-import uy.kohesive.injekt.injectLazy
+import tachiyomi.domain.track.service.TrackerProviderProtocols
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import tachiyomi.domain.track.model.Track as DomainTrack
 
-class KitsuApi(private val client: OkHttpClient, interceptor: KitsuInterceptor) {
-
-    private val json: Json by injectLazy()
+class KitsuApi(
+    private val client: OkHttpClient,
+    interceptor: Interceptor,
+    private val json: Json = Injekt.get(),
+    private val baseUrl: String = BASE_URL,
+    private val tokenUrl: String = LOGIN_URL,
+) {
 
     private val authClient = client.newBuilder().addInterceptor(interceptor).build()
 
     suspend fun addLibManga(track: Track, userId: String): Track {
         return withIOContext {
+            val bind = TrackerProviderProtocols.kitsu.bind(
+                track.remote_id,
+                userId,
+                track.toApiStatus(),
+                track.last_chapter_read.toInt(),
+                track.private,
+            )
             val data = buildJsonObject {
                 putJsonObject("data") {
                     put("type", "libraryEntries")
                     putJsonObject("attributes") {
-                        put("status", track.toApiStatus())
-                        put("progress", track.last_chapter_read.toInt())
-                        put("private", track.private)
+                        put("status", bind.status)
+                        put("progress", bind.progress)
+                        put("private", bind.private)
                     }
                     putJsonObject("relationships") {
                         putJsonObject("user") {
                             putJsonObject("data") {
-                                put("id", userId)
+                                put("id", bind.userId)
                                 put("type", "users")
                             }
                         }
                         putJsonObject("media") {
                             putJsonObject("data") {
-                                put("id", track.remote_id)
+                                put("id", bind.mediaId)
                                 put("type", "manga")
                             }
                         }
@@ -68,7 +82,7 @@ class KitsuApi(private val client: OkHttpClient, interceptor: KitsuInterceptor) 
             with(json) {
                 authClient.newCall(
                     POST(
-                        "${BASE_URL}library-entries",
+                        "${baseUrl}library-entries",
                         headers = headersOf("Content-Type", VND_API_JSON),
                         body = data.toString().toRequestBody(VND_JSON_MEDIA_TYPE),
                     ),
@@ -85,24 +99,31 @@ class KitsuApi(private val client: OkHttpClient, interceptor: KitsuInterceptor) 
 
     suspend fun updateLibManga(track: Track): Track {
         return withIOContext {
+            val update = TrackerProviderProtocols.kitsu.update(
+                requireNotNull(track.library_id),
+                track.toApiStatus(),
+                track.last_chapter_read.toInt(),
+                track.toApiScore()?.toIntOrNull(),
+                track.private,
+            )
             val data = buildJsonObject {
                 putJsonObject("data") {
                     put("type", "libraryEntries")
-                    put("id", track.library_id)
+                    put("id", update.libraryId)
                     putJsonObject("attributes") {
-                        put("status", track.toApiStatus())
-                        put("progress", track.last_chapter_read.toInt())
-                        put("ratingTwenty", track.toApiScore())
+                        put("status", update.status)
+                        put("progress", update.progress)
+                        put("ratingTwenty", update.ratingTwenty)
                         put("startedAt", KitsuDateHelper.convert(track.started_reading_date))
                         put("finishedAt", KitsuDateHelper.convert(track.finished_reading_date))
-                        put("private", track.private)
+                        put("private", update.private)
                     }
                 }
             }
 
             authClient.newCall(
                 Request.Builder()
-                    .url("${BASE_URL}library-entries/${track.library_id}")
+                    .url("${baseUrl}library-entries/${update.libraryId}")
                     .headers(
                         headersOf("Content-Type", VND_API_JSON),
                     )
@@ -119,7 +140,7 @@ class KitsuApi(private val client: OkHttpClient, interceptor: KitsuInterceptor) 
         withIOContext {
             authClient.newCall(
                 DELETE(
-                    "${BASE_URL}library-entries/${track.libraryId}",
+                    "${baseUrl}library-entries/${track.libraryId}",
                     headers = headersOf("Content-Type", VND_API_JSON),
                 ),
             )
@@ -170,7 +191,7 @@ class KitsuApi(private val client: OkHttpClient, interceptor: KitsuInterceptor) 
 
     suspend fun findLibManga(track: Track, userId: String): Track? {
         return withIOContext {
-            val url = "${BASE_URL}library-entries".toUri().buildUpon()
+            val url = "${baseUrl}library-entries".toUri().buildUpon()
                 .encodedQuery("filter[manga_id]=${track.remote_id}&filter[user_id]=$userId")
                 .appendQueryParameter("include", "manga")
                 .build()
@@ -191,7 +212,7 @@ class KitsuApi(private val client: OkHttpClient, interceptor: KitsuInterceptor) 
 
     suspend fun getLibManga(track: Track): Track {
         return withIOContext {
-            val url = "${BASE_URL}library-entries".toUri().buildUpon()
+            val url = "${baseUrl}library-entries".toUri().buildUpon()
                 .encodedQuery("filter[id]=${track.library_id}")
                 .appendQueryParameter("include", "manga")
                 .build()
@@ -212,15 +233,11 @@ class KitsuApi(private val client: OkHttpClient, interceptor: KitsuInterceptor) 
 
     suspend fun login(username: String, password: String): KitsuOAuth {
         return withIOContext {
-            val formBody: RequestBody = FormBody.Builder()
-                .add("username", username)
-                .add("password", password)
-                .add("grant_type", "password")
-                .add("client_id", CLIENT_ID)
-                .add("client_secret", CLIENT_SECRET)
-                .build()
+            val formBody: RequestBody = TrackerProviderProtocols.kitsu
+                .passwordToken(CLIENT_ID, CLIENT_SECRET, username, password)
+                .toFormBody()
             with(json) {
-                client.newCall(POST(LOGIN_URL, body = formBody))
+                client.newCall(POST(tokenUrl, body = formBody))
                     .awaitSuccess()
                     .parseAs()
             }
@@ -229,7 +246,7 @@ class KitsuApi(private val client: OkHttpClient, interceptor: KitsuInterceptor) 
 
     suspend fun getCurrentUser(): String {
         return withIOContext {
-            val url = "${BASE_URL}users".toUri().buildUpon()
+            val url = "${baseUrl}users".toUri().buildUpon()
                 .encodedQuery("filter[self]=true")
                 .build()
             with(json) {
@@ -264,14 +281,13 @@ class KitsuApi(private val client: OkHttpClient, interceptor: KitsuInterceptor) 
             return BASE_MANGA_URL + remoteId
         }
 
-        fun refreshTokenRequest(token: String) = POST(
-            LOGIN_URL,
-            body = FormBody.Builder()
-                .add("grant_type", "refresh_token")
-                .add("refresh_token", token)
-                .add("client_id", CLIENT_ID)
-                .add("client_secret", CLIENT_SECRET)
-                .build(),
+        fun refreshTokenRequest(token: String, tokenUrl: String = LOGIN_URL) = POST(
+            tokenUrl,
+            body = TrackerProviderProtocols.kitsu.refreshToken(CLIENT_ID, CLIENT_SECRET, token).toFormBody(),
         )
     }
 }
+
+private fun Map<String, String>.toFormBody() = FormBody.Builder().apply {
+    forEach { (key, value) -> add(key, value) }
+}.build()

@@ -85,6 +85,7 @@ import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
 import eu.kanade.tachiyomi.source.model.SManga
@@ -109,6 +110,10 @@ import javax.swing.filechooser.FileNameExtensionFilter
 import androidx.compose.foundation.layout.size as layoutSize
 
 data class MangaDetailScreen(val mangaId: Long) : Screen {
+
+    internal fun onTracking(navigator: Navigator, mangaTitle: String, totalChapters: Long) {
+        mihon.desktop.ui.tracking.pushMangaTracking(navigator, mangaId, mangaTitle, totalChapters)
+    }
 
     override val key: String get() = "MangaDetailScreen-$mangaId"
 
@@ -160,7 +165,6 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         val excludedScanlators = state.excludedScanlators
         var showCategoryDialog by remember { mutableStateOf(false) }
         var showFetchIntervalDialog by remember { mutableStateOf(false) }
-        var showTrackingInfoDialog by remember { mutableStateOf(false) }
         var downloadMenuExpanded by remember { mutableStateOf(false) }
 
         LaunchedEffect(mangaId) {
@@ -585,16 +589,6 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 )
             }
 
-            if (showTrackingInfoDialog) {
-                AlertDialog(
-                    onDismissRequest = { showTrackingInfoDialog = false },
-                    title = { Text("Tracking") },
-                    text = { Text("Tracking services are not available in Mihon Desktop yet.") },
-                    confirmButton = {
-                        TextButton(onClick = { showTrackingInfoDialog = false }) { Text("OK") }
-                    },
-                )
-            }
 
             // ── Migration: source picker ──────────────────────────────────
             if (showMigrateSourcePicker) {
@@ -772,7 +766,9 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         },
                         onEditCategories = { showCategoryDialog = true },
                         onEditFetchInterval = { showFetchIntervalDialog = true },
-                        onTracking = { showTrackingInfoDialog = true },
+                        onTracking = {
+                            onTracking(navigator, manga!!.title, chapters.size.toLong())
+                        },
                         onOpenInBrowser = { mangaUrl?.let(::openExternalLink) },
                         onCopyLink = { mangaUrl?.let(::copyText) },
                         onShare = { mangaUrl?.let(::copyText) },

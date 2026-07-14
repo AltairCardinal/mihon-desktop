@@ -390,7 +390,7 @@ class MangaDetailScreenModel(
         val chapterRefs = chapters
             .filterNot { it.url.externalChapterUrlOrNull() != null }
             .sortedBy { it.sourceOrder }
-            .map { ReaderChapterRef(id = it.id, url = it.url, name = it.name, isRead = it.read) }
+            .map { ReaderChapterRef(id = it.id, url = it.url, name = it.name, isRead = it.read, chapterNumber = it.chapterNumber) }
         return MangaDetailReaderRequest(
             chapterTitle = chapter.name,
             mangaId = manga.id,

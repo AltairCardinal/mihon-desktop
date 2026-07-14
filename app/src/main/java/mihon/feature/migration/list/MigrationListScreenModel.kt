@@ -27,6 +27,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import logcat.LogPriority
+import mihon.domain.migration.BatchMigrationEvent
 import mihon.domain.migration.usecases.MigrateMangaUseCase
 import mihon.feature.migration.list.models.MigratingManga
 import mihon.feature.migration.list.models.MigratingManga.SearchResult
@@ -53,6 +54,7 @@ class MigrationListScreenModel(
     private val syncChaptersWithSource: SyncChaptersWithSource = Injekt.get(),
     private val getChaptersByMangaId: GetChaptersByMangaId = Injekt.get(),
     private val migrateManga: MigrateMangaUseCase = Injekt.get(),
+    private val batchMigrationRunner: AndroidBatchMigrationRunner<MigratingManga> = AndroidBatchMigrationRunner(),
 ) : StateScreenModel<MigrationListScreenModel.State>(State()) {
 
     private val smartSearchEngine = SmartSourceSearchEngine(extraSearchQuery)
@@ -263,38 +265,66 @@ class MigrationListScreenModel(
         migrateMangas(replace = false)
     }
 
-    private fun migrateMangas(replace: Boolean) {
+    private fun migrateMangas(
+        replace: Boolean,
+        batchItems: List<MigratingManga> = items,
+    ) {
         migrateJob = screenModelScope.launchIO {
             mutableState.update { it.copy(dialog = Dialog.Progress(0f)) }
-            val items = items
+            val failures = mutableListOf<BatchFailure>()
             try {
-                items.forEachIndexed { index, manga ->
-                    try {
-                        ensureActive()
-                        val target = manga.searchResult.value.let {
-                            if (it is SearchResult.Success) {
-                                it.manga
+                batchMigrationRunner.run(batchItems) { manga ->
+                    ensureActive()
+                    val target = (manga.searchResult.value as? SearchResult.Success)?.manga
+                    if (target != null) {
+                        migrateManga(current = manga.manga, target = target, replace = replace).getOrThrow()
+                    }
+                }.collect { event ->
+                    when (event) {
+                        is BatchMigrationEvent.Succeeded -> updateBatchProgress(event.index + 1, batchItems.size)
+                        is BatchMigrationEvent.Failed -> {
+                            logcat(LogPriority.WARN) { event.message }
+                            failures += BatchFailure(
+                                manga = event.item,
+                                title = event.item.manga.title,
+                                reason = event.message,
+                            )
+                            updateBatchProgress(event.index + 1, batchItems.size)
+                        }
+                        is BatchMigrationEvent.WaitingForUser -> updateBatchProgress(event.index, batchItems.size)
+                        is BatchMigrationEvent.Completed -> {
+                            if (failures.isEmpty()) {
+                                navigateBack()
                             } else {
-                                null
+                                mutableState.update { it.copy(dialog = Dialog.Failures(failures.toList(), replace)) }
                             }
                         }
-                        if (target != null) {
-                            migrateManga(current = manga.manga, target = target, replace = replace)
-                        }
-                    } catch (e: Exception) {
-                        if (e is CancellationException) throw e
-                        logcat(LogPriority.WARN, throwable = e)
-                    }
-                    mutableState.update {
-                        it.copy(dialog = Dialog.Progress((index.toFloat() / items.size).coerceAtMost(1f)))
                     }
                 }
-
-                navigateBack()
             } finally {
-                mutableState.update { it.copy(dialog = null) }
+                mutableState.update { state ->
+                    if (state.dialog is Dialog.Progress) state.copy(dialog = null) else state
+                }
                 migrateJob = null
             }
+        }
+    }
+
+    fun retryFailedMigrations() {
+        val dialog = state.value.dialog as? Dialog.Failures ?: return
+        migrateMangas(dialog.replace, dialog.failures.map { it.manga })
+    }
+
+    fun finishFailedMigrations() {
+        screenModelScope.launchIO {
+            mutableState.update { it.copy(dialog = null) }
+            navigateBack()
+        }
+    }
+
+    private fun updateBatchProgress(completed: Int, total: Int) {
+        mutableState.update {
+            it.copy(dialog = Dialog.Progress((completed.toFloat() / total).coerceAtMost(1f)))
         }
     }
 
@@ -364,9 +394,16 @@ class MigrationListScreenModel(
         val chapterCount: Int,
     )
 
+    data class BatchFailure(
+        val manga: MigratingManga,
+        val title: String,
+        val reason: String,
+    )
+
     sealed interface Dialog {
         data class Migrate(val copy: Boolean, val totalCount: Int, val skippedCount: Int) : Dialog
         data class Progress(@FloatRange(0.0, 1.0) val progress: Float) : Dialog
+        data class Failures(val failures: List<BatchFailure>, val replace: Boolean) : Dialog
         data object Exit : Dialog
     }
 
