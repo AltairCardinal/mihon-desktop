@@ -136,7 +136,7 @@ fun markDuplicateChapters(
                 ?: sameNumber.firstOrNull()
         }
         .mapTo(mutableSetOf(), ReaderChapterEntry::id)
-    return chapters.map { chapter -> chapter.copy(isDuplicate = chapter.isDuplicate || chapter.id !in retainedIds) }
+    return chapters.map { chapter -> chapter.copy(isDuplicate = chapter.id !in retainedIds) }
 }
 
 data class ChapterSkipPolicy(
