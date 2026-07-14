@@ -105,6 +105,24 @@ class PlatformCredentialBackendTest {
         }
     }
 
+    @Test
+    @Tag("integration")
+    fun `macOS Keychain credential round trip overwrite and delete on current machine`() {
+        if (!System.getProperty("os.name").lowercase(Locale.ROOT).contains("mac")) return
+        val key = "integration.${UUID.randomUUID()}"
+        val store = DesktopCredentialStore(PlatformCredentialBackend(OperatingSystem.MACOS))
+        try {
+            store.save(key, "初始 secret !@#")
+            assertEquals("初始 secret !@#", store.load(key))
+            store.save(key, "覆盖 secret /?&")
+            assertEquals("覆盖 secret /?&", store.load(key))
+            store.delete(key)
+            assertNull(store.load(key))
+        } finally {
+            store.delete(key)
+        }
+    }
+
     private class RecordingCommandRunner(
         vararg results: CommandResult,
         private val failure: RuntimeException? = null,
