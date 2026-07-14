@@ -15,7 +15,7 @@ class PlatformCredentialBackendTest {
     fun `macOS uses generic password service and account with secret only on stdin`() {
         val runner = RecordingCommandRunner(
             CommandResult(0, "", ""),
-            CommandResult(0, "秘密 value !@#\n", ""),
+            CommandResult(0, "6d69686f6e2d76313ae7a798e5af862076616c756520214023\n", ""),
             CommandResult(0, "", ""),
         )
         val backend = PlatformCredentialBackend(OperatingSystem.MACOS, runner)
@@ -26,15 +26,34 @@ class PlatformCredentialBackendTest {
 
         assertEquals(
             listOf(
-                listOf("security", "add-generic-password", "-U", "-a", "provider/账户", "-s", "mihon-desktop-tracker"),
+                listOf(
+                    "security",
+                    "add-generic-password",
+                    "-U",
+                    "-a",
+                    "provider/账户",
+                    "-s",
+                    "mihon-desktop-tracker",
+                    "-w",
+                ),
                 listOf("security", "find-generic-password", "-a", "provider/账户", "-s", "mihon-desktop-tracker", "-w"),
                 listOf("security", "delete-generic-password", "-a", "provider/账户", "-s", "mihon-desktop-tracker"),
             ),
             runner.invocations.map { it.arguments },
         )
-        assertEquals("秘密 value !@#\n", runner.invocations.first().stdin)
+        assertEquals("mihon-v1:秘密 value !@#\nmihon-v1:秘密 value !@#\n", runner.invocations.first().stdin)
         assertTrue(runner.invocations.drop(1).all { it.stdin == null })
         assertTrue(runner.invocations.flattenedArguments().none { it.contains("秘密 value") })
+    }
+
+    @Test
+    fun `macOS preserves legacy raw keychain values`() {
+        val backend = PlatformCredentialBackend(
+            OperatingSystem.MACOS,
+            RecordingCommandRunner(CommandResult(0, "legacy-token-!\n", "")),
+        )
+
+        assertEquals("legacy-token-!", backend.load("legacy")?.concatToString())
     }
 
     @Test

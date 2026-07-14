@@ -1,6 +1,9 @@
 package mihon.desktop.platform
 
 import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.Base64
@@ -169,19 +172,25 @@ class PlatformCredentialBackend(
     }
 
     private fun saveMac(account: String, secret: CharArray) {
-        val stdin = CharArray(secret.size + 1)
-        secret.copyInto(stdin)
+        val payload = CharArray(MAC_VALUE_PREFIX.length + secret.size)
+        MAC_VALUE_PREFIX.toCharArray().copyInto(payload)
+        secret.copyInto(payload, destinationOffset = MAC_VALUE_PREFIX.length)
+        val stdin = CharArray((payload.size + 1) * 2)
+        payload.copyInto(stdin)
+        stdin[payload.size] = '\n'
+        payload.copyInto(stdin, destinationOffset = payload.size + 1)
         stdin[stdin.lastIndex] = '\n'
         try {
             requireSuccess(
                 runCommand(
-                    listOf("security", "add-generic-password", "-U", "-a", account, "-s", SERVICE),
+                    listOf("security", "add-generic-password", "-U", "-a", account, "-s", SERVICE, "-w"),
                     stdin,
                     "save",
                 ),
                 "save",
             )
         } finally {
+            payload.fill('\u0000')
             stdin.fill('\u0000')
         }
     }
@@ -193,7 +202,33 @@ class PlatformCredentialBackend(
         )
         if (result.exitCode == MAC_ITEM_NOT_FOUND) return null
         requireSuccess(result, "load")
-        return result.stdout.trimEnd('\r', '\n').toCharArray()
+        return decodeMacValue(result.stdout.trimEnd('\r', '\n'))
+    }
+
+    private fun decodeMacValue(storedValue: String): CharArray {
+        if (storedValue.length % 2 != 0 || storedValue.any { it.digitToIntOrNull(16) == null }) {
+            return storedValue.toCharArray()
+        }
+        val bytes = ByteArray(storedValue.length / 2) { index ->
+            val offset = index * 2
+            ((storedValue[offset].digitToInt(16) shl 4) or storedValue[offset + 1].digitToInt(16)).toByte()
+        }
+        val decoded = try {
+            StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(bytes))
+                .toString()
+        } catch (_: CharacterCodingException) {
+            return storedValue.toCharArray()
+        } finally {
+            bytes.fill(0)
+        }
+        return if (decoded.startsWith(MAC_VALUE_PREFIX)) {
+            decoded.substring(MAC_VALUE_PREFIX.length).toCharArray()
+        } else {
+            storedValue.toCharArray()
+        }
     }
 
     private fun deleteMac(account: String) {
@@ -269,6 +304,7 @@ class PlatformCredentialBackend(
 
     companion object {
         private const val SERVICE = "mihon-desktop-tracker"
+        private const val MAC_VALUE_PREFIX = "mihon-v1:"
         private const val MAC_ITEM_NOT_FOUND = 44
         private const val PROTECT_SCRIPT =
             "Add-Type -AssemblyName System.Security; " +
