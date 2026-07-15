@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.chapter.model.Chapter
 import java.io.File
+import java.io.IOException
 
 class HttpPageLoaderIntegrationTest {
 
@@ -92,6 +93,8 @@ class HttpPageLoaderIntegrationTest {
         fixture.loader.onPageSelected(fixture.pages[2])
         runCurrent()
 
+        assertEquals(listOf(0, 2), fixture.started)
+
         fixture.release(0)
         runCurrent()
 
@@ -101,9 +104,30 @@ class HttpPageLoaderIntegrationTest {
         fixture.loader.recycle()
     }
 
+    @Test
+    fun `non cooperative stale request cannot publish ordinary failure after a new generation`() = runTest {
+        val fixture = Fixture(
+            scheduler = testScheduler,
+            nonCancellablePages = setOf(0),
+            failingPages = setOf(0),
+        )
+        fixture.loader.onPageSelected(fixture.pages[0])
+        runCurrent()
+        fixture.loader.onPageSelected(fixture.pages[2])
+        runCurrent()
+
+        fixture.release(0)
+        runCurrent()
+
+        assertEquals(Page.State.Queue, fixture.pages[0].status)
+        assertFalse(fixture.pages[0].status is Page.State.Error)
+        fixture.loader.recycle()
+    }
+
     private class Fixture(
         scheduler: TestCoroutineScheduler,
         private val nonCancellablePages: Set<Int> = emptySet(),
+        private val failingPages: Set<Int> = emptySet(),
     ) {
         val started = mutableListOf<Int>()
         val cancelled = mutableListOf<Int>()
@@ -123,11 +147,16 @@ class HttpPageLoaderIntegrationTest {
                 started += page.index
                 try {
                     if (page.index in nonCancellablePages) {
-                        withContext(NonCancellable) { releases[page.index].receive() }
+                        withContext(NonCancellable) {
+                            releases[page.index].receive()
+                            if (page.index in failingPages) throw IOException("stale failure")
+                            response
+                        }
                     } else {
                         releases[page.index].receive()
+                        if (page.index in failingPages) throw IOException("load failure")
+                        response
                     }
-                    response
                 } catch (e: CancellationException) {
                     cancelled += page.index
                     throw e

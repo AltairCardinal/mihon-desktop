@@ -95,6 +95,7 @@ import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
 import logcat.LogPriority
 import mihon.domain.reader.ReaderColorFilterParams
+import mihon.domain.reader.ReaderNavigationCommand
 import tachiyomi.core.common.Constants
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.lang.launchIO
@@ -252,6 +253,9 @@ class ReaderActivity : BaseActivity() {
     private fun ReaderActivityBinding.setComposeOverlay(): Unit = composeOverlay.setComposeContent {
         val state by viewModel.state.collectAsState()
         val showPageNumber by readerPreferences.showPageNumber().collectAsState()
+        val chapterErrorRetryHandler = remember(viewModel) {
+            ReaderChapterErrorRetryHandler(viewModel::retryChapter)
+        }
         val settingsScreenModel = remember {
             ReaderSettingsScreenModel(
                 readerState = viewModel.state,
@@ -298,7 +302,7 @@ class ReaderActivity : BaseActivity() {
                 AlertDialog(
                     onDismissRequest = {},
                     confirmButton = {
-                        TextButton(onClick = { viewModel.retryChapter(errorState.retryCommand()) }) {
+                        TextButton(onClick = { chapterErrorRetryHandler.retry(dialog) }) {
                             Text(stringResource(MR.strings.action_retry))
                         }
                     },
@@ -997,5 +1001,13 @@ class ReaderActivity : BaseActivity() {
             val paint = if (params.isEffective) getCombinedPaint(params.normalized()) else null
             binding.viewerContainer.setLayerType(LAYER_TYPE_HARDWARE, paint)
         }
+    }
+}
+
+internal class ReaderChapterErrorRetryHandler(
+    private val retryChapter: (ReaderNavigationCommand) -> Unit,
+) {
+    fun retry(dialog: ReaderViewModel.Dialog.ChapterError) {
+        retryChapter(dialog.state.retryCommand())
     }
 }

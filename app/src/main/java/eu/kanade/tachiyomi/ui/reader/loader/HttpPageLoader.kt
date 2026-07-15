@@ -57,14 +57,8 @@ internal class HttpPageLoader(
         scope.launch {
             for (signal in queueSignal) {
                 while (true) {
-                    val queued = queue.poll() ?: break
-                    val isRegistered = synchronized(preloadJobLock) {
-                        queuedPreloadJobs.remove(queued.jobKey) === queued &&
-                            queued.jobKey.generation == currentGeneration
-                    }
-                    if (isRegistered && queued.page.status == Page.State.Queue) {
-                        runQueuedPage(queued)
-                    }
+                    val queued = synchronized(preloadJobLock, ::pollNextStartableLocked) ?: break
+                    runQueuedPage(queued)
                 }
             }
         }
@@ -209,11 +203,10 @@ internal class HttpPageLoader(
             if (page.imageUrl.isNullOrEmpty()) {
                 page.status = Page.State.LoadPage
                 val imageUrl = source.getImageUrl(page)
-                if (!accepts(jobKey)) {
-                    page.status = Page.State.Queue
+                if (!publishIfAccepted(jobKey) { page.imageUrl = imageUrl }) {
+                    discardStaleResult(page, jobKey)
                     return
                 }
-                page.imageUrl = imageUrl
             }
             val imageUrl = page.imageUrl!!
 
@@ -223,32 +216,56 @@ internal class HttpPageLoader(
                 chapterCache.putImageToCache(imageUrl, imageResponse)
             }
 
-            if (!accepts(jobKey)) {
-                page.status = Page.State.Queue
+            if (!publishIfAccepted(jobKey) {
+                    page.stream = { chapterCache.getImageFile(imageUrl).inputStream() }
+                    page.status = Page.State.Ready
+                }
+            ) {
+                discardStaleResult(page, jobKey)
                 return
             }
-            page.stream = { chapterCache.getImageFile(imageUrl).inputStream() }
-            page.status = Page.State.Ready
         } catch (e: CancellationException) {
-            page.status = Page.State.Queue
+            discardStaleResult(page, jobKey)
             throw e
         } catch (e: Throwable) {
-            page.status = Page.State.Error(e)
+            if (!publishIfAccepted(jobKey) { page.status = Page.State.Error(e) }) {
+                discardStaleResult(page, jobKey)
+            }
         }
     }
 
-    private suspend fun runQueuedPage(queued: PriorityPage) {
+    private fun runQueuedPage(queued: PriorityPage) {
         val loadJob = scope.launch(start = CoroutineStart.LAZY) { internalLoadPage(queued.page, queued.jobKey) }
         synchronized(preloadJobLock) { activePreloadJobs[queued.jobKey] = loadJob }
-        try {
-            loadJob.start()
-            loadJob.join()
-        } finally {
+        loadJob.invokeOnCompletion {
             synchronized(preloadJobLock) {
                 if (activePreloadJobs[queued.jobKey] === loadJob) {
                     activePreloadJobs.remove(queued.jobKey)
                 }
             }
+            queueSignal.trySend(Unit)
+        }
+        loadJob.start()
+    }
+
+    private fun pollNextStartableLocked(): PriorityPage? {
+        while (true) {
+            val queued = queue.peek() ?: return null
+            val isRegistered = queuedPreloadJobs[queued.jobKey] === queued &&
+                queued.jobKey.generation == currentGeneration
+            if (!isRegistered || queued.page.status != Page.State.Queue) {
+                queue.poll()
+                if (queuedPreloadJobs[queued.jobKey] === queued) {
+                    queuedPreloadJobs.remove(queued.jobKey)
+                }
+                continue
+            }
+            if (activePreloadJobs.keys.any { it.generation == queued.jobKey.generation }) {
+                return null
+            }
+            queue.poll()
+            queuedPreloadJobs.remove(queued.jobKey)
+            return queued
         }
     }
 
@@ -259,6 +276,9 @@ internal class HttpPageLoader(
     ): PriorityPage? {
         if (queuedPreloadJobs.containsKey(key) || activePreloadJobs.containsKey(key)) return null
         if (page.status == Page.State.Ready) return null
+        if (activePreloadJobs.keys.any { it.pageIndex == key.pageIndex && it != key }) {
+            page.status = Page.State.Queue
+        }
         val queued = PriorityPage(page, priority, key)
         queuedPreloadJobs[key] = queued
         queue.offer(queued)
@@ -274,8 +294,26 @@ internal class HttpPageLoader(
         }
     }
 
-    private fun accepts(jobKey: PreloadJobKey): Boolean = synchronized(preloadJobLock) {
-        jobKey.generation == currentGeneration && activePreloadJobs.containsKey(jobKey)
+    private fun publishIfAccepted(jobKey: PreloadJobKey, publish: () -> Unit): Boolean =
+        synchronized(preloadJobLock) {
+            if (jobKey.generation != currentGeneration || !activePreloadJobs.containsKey(jobKey)) {
+                return@synchronized false
+            }
+            publish()
+            true
+        }
+
+    private fun discardStaleResult(page: ReaderPage, jobKey: PreloadJobKey) {
+        synchronized(preloadJobLock) {
+            val hasCurrentReplacement = queuedPreloadJobs.keys.any {
+                it.pageIndex == jobKey.pageIndex && it.generation == currentGeneration && it != jobKey
+            } || activePreloadJobs.keys.any {
+                it.pageIndex == jobKey.pageIndex && it.generation == currentGeneration && it != jobKey
+            }
+            if (!hasCurrentReplacement && page.status != Page.State.Ready && page.status !is Page.State.Error) {
+                page.status = Page.State.Queue
+            }
+        }
     }
 }
 
