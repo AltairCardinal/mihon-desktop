@@ -141,10 +141,12 @@ class DesktopReaderProductRegressionTest {
         )
 
         val autoScrollEffect = bracedBlock(webtoon, "LaunchedEffect(autoScroll, autoScrollSpeed)")
-        assertTrue(autoScrollEffect.contains("webtoonAutoScrollAction("))
+        assertTrue(autoScrollEffect.contains("autoScrollGate.action("))
         assertTrue(autoScrollEffect.contains("enabled = autoScroll"))
         assertTrue(autoScrollEffect.contains("WebtoonAutoScrollAction.Scroll -> listState.scroll { scrollBy(pixelsPerTick) }"))
         assertTrue(autoScrollEffect.contains("WebtoonAutoScrollAction.NextChapter -> onNextChapter?.invoke()"))
+        val autoScrollGate = bracedBlock(webtoon, "internal class WebtoonAutoScrollGate")
+        assertTrue(autoScrollGate.contains("webtoonAutoScrollAction("))
 
         val webtoonContextMenu = callBlock(webtoon, "        PageContextMenu(")
         assertTrue(webtoonContextMenu.contains("pageUrl = url"), "Webtoon right-click must receive the visible URL")
