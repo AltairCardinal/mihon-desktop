@@ -459,7 +459,7 @@
       "SHARE-EXTRACT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt 统一 Wait/Loading/Loaded/Error、相邻章节、缺章数、边界与重试命令；app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt 发布共享状态，app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt 消费 sharedStateFlow",
+    "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt 统一 Wait/Loading/Loaded/Error、相邻章节、缺章数、边界与重试命令；app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt 发布共享状态，app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt 与 app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonTransitionHolder.kt 均消费 sharedStateFlow 并处理 Loading/Error/Loaded",
     "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt 与 app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt 消费共享状态，app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt 提供可操作 Retry、Continue/Dismiss 过渡和章节边界反馈",
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
@@ -500,11 +500,12 @@
     ],
     "status": "WIRED",
     "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt 的 ReaderColorFilterParams 统一亮度、色调、灰度、反色、归一化与 effective 语义；app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderColorFilter.kt 映射参数，app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt 以共享 effective/normalized 驱动 Android 硬件图层",
-    "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderSettingsPanel.kt、app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt 与 app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt 提供持久化开关并以 Compose ColorMatrix 实际渲染灰度/反色",
+    "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderSettingsPanel.kt、app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt 与 app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt 提供持久化开关；app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt 的 readerColorTransform 委托 readerColorMatrix 构建 Compose ColorMatrix 并实际渲染灰度/反色",
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt"
     ],
     "platformExemptionEvidence": "NONE",
@@ -530,7 +531,7 @@
       "SHARE-DIRECT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderNavigation.kt 定义 read、filtered、duplicate 可组合跳过、当前章保留以及 Found/Boundary/InvalidCurrent 明确结果；app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt 实际委托共享筛选策略",
+    "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderNavigation.kt 定义 read、filtered、duplicate 可组合跳过、当前章保留以及 Found/Boundary/InvalidCurrent 明确结果；app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt 的 getChapterList 以 sortedChapters、chapterId、skipPolicy、isFiltered 命名参数实际调用 filterAndroidReaderChapters",
     "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderNavigator.kt 消费共享 findAdjacentChapter，并保留 Desktop 章节引用与界面入口",
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",

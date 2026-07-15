@@ -47,7 +47,17 @@ internal fun ColorFilterOverlay(colorFilter: ReaderColorFilter) {
 }
 
 internal fun Modifier.readerColorTransform(colorFilter: ReaderColorFilter): Modifier {
-    if (!colorFilter.grayscaleEnabled && !colorFilter.invertEnabled) return this
+    val matrix = readerColorMatrix(colorFilter) ?: return this
+    return drawWithContent {
+        val paint = Paint().apply { this.colorFilter = ColorFilter.colorMatrix(matrix) }
+        drawContext.canvas.saveLayer(Rect(0f, 0f, size.width, size.height), paint)
+        drawContent()
+        drawContext.canvas.restore()
+    }
+}
+
+internal fun readerColorMatrix(colorFilter: ReaderColorFilter): ColorMatrix? {
+    if (!colorFilter.grayscaleEnabled && !colorFilter.invertEnabled) return null
     val matrix = ColorMatrix()
     if (colorFilter.grayscaleEnabled) matrix.setToSaturation(0f)
     if (colorFilter.invertEnabled) {
@@ -60,12 +70,7 @@ internal fun Modifier.readerColorTransform(colorFilter: ReaderColorFilter): Modi
             ),
         )
     }
-    return drawWithContent {
-        val paint = Paint().apply { this.colorFilter = ColorFilter.colorMatrix(matrix) }
-        drawContext.canvas.saveLayer(Rect(0f, 0f, size.width, size.height), paint)
-        drawContent()
-        drawContext.canvas.restore()
-    }
+    return matrix
 }
 
 @Composable

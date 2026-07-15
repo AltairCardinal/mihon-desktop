@@ -104,7 +104,6 @@ class DesktopReaderProductRegressionTest {
         assertTrue(filter.invertEnabled)
         assertTrue(readerSource("ReaderSettingsPanel.kt").contains("Grayscale"))
         assertTrue(readerSource("ReaderSettingsPanel.kt").contains("Invert colours"))
-        assertTrue(readerSource("DesktopReaderScreen.kt").contains("readerColorTransform"))
     }
 
     @Test

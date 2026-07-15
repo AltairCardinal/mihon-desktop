@@ -146,6 +146,16 @@ class DesktopProductCapabilityContractTest {
                 mapOf(
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterTransitionIntegrationTest.kt" to
                         mapOf(
+                            "pager and webtoon transition holders subscribe to every shared production state" to
+                                setOf(
+                                    "PagerTransitionHolder.kt",
+                                    "WebtoonTransitionHolder.kt",
+                                    "chapter.sharedStateFlow",
+                                    ".collectLatest { state ->",
+                                    "ReaderChapterState.Loading",
+                                    "ReaderChapterState.Error",
+                                    "ReaderChapterState.Loaded",
+                                ),
                             "previous and next errors retain their own retry target" to
                                 setOf("toSharedTransitionModel", "retryCommand()"),
                             "both chapter edges map to explicit shared boundaries without a target" to
@@ -189,16 +199,31 @@ class DesktopProductCapabilityContractTest {
                             "grayscale and invert survive preference round trip" to
                                 setOf("ReaderPreferences", "saveColorFilter", "loadColorFilter"),
                         ),
-                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt" to
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt" to
                         mapOf(
-                            "grayscale and invert remain effective and persistable reader settings" to
-                                setOf("ReaderColorFilter", "readerColorTransform"),
+                            "disabled grayscale invert and combined color matrices transform pixels" to
+                                setOf("readerColorMatrix", "transform("),
+                            "reader color matrix production chain delegates through the tested helper" to
+                                setOf(
+                                    "ReaderVisualComponents.kt",
+                                    "DesktopReaderScreen.kt",
+                                    "readerColorMatrix(colorFilter)",
+                                    "readerColorTransform(state.colorFilter)",
+                                ),
                         ),
                 ),
             54 to
                 mapOf(
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt" to
                         mapOf(
+                            "Android ReaderViewModel getChapterList delegates the sorted production list to the shared skip filter" to
+                                setOf(
+                                    "filterAndroidReaderChapters(",
+                                    "chapters = sortedChapters",
+                                    "currentChapterId = chapterId",
+                                    "skipPolicy = skipPolicy",
+                                    "isFiltered =",
+                                ),
                             "Android production chapter pipeline maps real chapter metadata before applying shared skip policy" to
                                 setOf("filterAndroidReaderChapters", "ChapterSkipPolicy"),
                         ),
@@ -257,6 +282,8 @@ class DesktopProductCapabilityContractTest {
                         setOf("mutableSharedStateFlow", "ReaderChapterState.Error"),
                     "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt" to
                         setOf("chapter.sharedStateFlow"),
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonTransitionHolder.kt" to
+                        setOf("chapter.sharedStateFlow"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt" to
                         setOf("ReaderChapterTransitionModel("),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt" to
@@ -282,6 +309,8 @@ class DesktopProductCapabilityContractTest {
                         setOf("buildAndroidReaderColorFilterParams(", "buildAndroidLayerFilterParams"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderSettingsPanel.kt" to
                         setOf("grayscaleEnabled", "invertEnabled"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt" to
+                        setOf("val matrix = readerColorMatrix(colorFilter) ?: return this"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt" to
                         setOf("readerColorTransform(state.colorFilter)"),
                 ),
@@ -289,7 +318,7 @@ class DesktopProductCapabilityContractTest {
                 mapOf(
                     "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderNavigation.kt" to setOf("fun findAdjacentChapter"),
                     "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt" to
-                        setOf("filterChaptersForReader("),
+                        setOf("filterAndroidReaderChapters("),
                     "app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderNavigator.kt" to
                         setOf("findAdjacentChapter("),
                 ),

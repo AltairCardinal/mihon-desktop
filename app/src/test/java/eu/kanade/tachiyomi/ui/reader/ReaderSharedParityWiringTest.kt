@@ -33,6 +33,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.download.service.DownloadPreferences
+import java.io.File
 
 class ReaderSharedParityWiringTest {
 
@@ -186,6 +187,21 @@ class ReaderSharedParityWiringTest {
         assertEquals(listOf(42L, 32L, 21L), result.map(Chapter::id))
     }
 
+    @Test
+    fun `Android ReaderViewModel getChapterList delegates the sorted production list to the shared skip filter`() {
+        val readerViewModel = productionSource("app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt")
+        val getChapterList = bracedBlock(readerViewModel, "private suspend fun getChapterList()")
+
+        assertEquals(1, occurrenceCount(getChapterList, "filterAndroidReaderChapters("))
+        val delegate = callBlock(getChapterList, "filterAndroidReaderChapters(")
+        assertTrue(delegate.contains("chapters = sortedChapters"))
+        assertTrue(delegate.contains("currentChapterId = chapterId"))
+        assertTrue(delegate.contains("skipPolicy = skipPolicy"))
+        assertTrue(
+            delegate.contains("isFiltered = { chapter -> skipPolicy.filtered && isChapterFiltered(manga, chapter) }"),
+        )
+    }
+
     private fun chapter(
         id: Long,
         number: Double,
@@ -198,4 +214,50 @@ class ReaderSharedParityWiringTest {
         chapterNumber = number,
         scanlator = scanlator,
     )
+
+    private fun productionSource(path: String): String {
+        var current: File? = File(requireNotNull(System.getProperty("user.dir"))).absoluteFile
+        while (current != null && !current.resolve("settings.gradle.kts").isFile) current = current.parentFile
+        return requireNotNull(current) { "Repository root not found from ${System.getProperty("user.dir")}" }
+            .resolve(path)
+            .readText()
+    }
+
+    private fun bracedBlock(source: String, marker: String): String {
+        val start = source.indexOf(marker)
+        require(start >= 0) { "Missing production block: $marker" }
+        val open = source.indexOf('{', start)
+        var depth = 0
+        for (index in open until source.length) {
+            when (source[index]) {
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) return source.substring(start, index + 1)
+                }
+            }
+        }
+        error("Unclosed production block: $marker")
+    }
+
+    private fun callBlock(source: String, marker: String): String {
+        val start = source.indexOf(marker)
+        require(start >= 0) { "Missing production call: $marker" }
+        val open = source.indexOf('(', start)
+        var depth = 0
+        for (index in open until source.length) {
+            when (source[index]) {
+                '(' -> depth++
+                ')' -> {
+                    depth--
+                    if (depth == 0) return source.substring(start, index + 1)
+                }
+            }
+        }
+        error("Unclosed production call: $marker")
+    }
+
+    private fun occurrenceCount(source: String, marker: String): Int = Regex(
+        Regex.escape(marker),
+    ).findAll(source).count()
 }
