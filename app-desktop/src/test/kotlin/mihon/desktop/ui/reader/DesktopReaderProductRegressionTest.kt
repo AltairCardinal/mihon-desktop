@@ -111,6 +111,7 @@ class DesktopReaderProductRegressionTest {
     fun `reader product wiring retains entry retry transitions auto scroll and context menu`() {
         val detail = source("app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt")
         val reader = readerSource("DesktopReaderScreen.kt")
+        val readerVisuals = readerSource("ReaderVisualComponents.kt")
         val webtoon = readerSource("WebtoonViewer.kt")
         val dual = readerSource("DualPagePagerViewer.kt")
         val page = readerSource("ZoomablePageBox.kt")
@@ -119,7 +120,7 @@ class DesktopReaderProductRegressionTest {
         assertTrue(detail.contains("DesktopReaderScreen("), "Manga detail must remain the reader entry point")
         assertTrue(reader.contains("onRetry"), "Loading errors must expose retry")
         assertTrue(reader.contains("ChapterTransitionFeedback"), "Chapter boundary and missing chapter feedback must be visible")
-        assertTrue(reader.contains("Button(onClick = onContinue"), "A chapter transition must remain visible until the user continues")
+        assertTrue(readerVisuals.contains("Button(onClick = onContinue"), "A chapter transition must remain visible until the user continues")
         assertTrue(reader.contains("loadGeneration = state.loadGeneration"), "Retry must restart the production loading effect")
         assertEquals(1, occurrenceCount(reader, "model.setMatchedPairs("), "ReaderSideEffects must own one matched-pair update")
         val edgeMatchingCall = callBlock(reader, "model.setMatchedPairs(")
