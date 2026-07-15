@@ -18,6 +18,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -79,7 +80,11 @@ fun GlobalSearchLoadingResultItem() {
 }
 
 @Composable
-fun GlobalSearchErrorResultItem(message: String?) {
+fun GlobalSearchErrorResultItem(
+    message: String?,
+    actionLabel: String? = null,
+    onAction: () -> Unit = {},
+) {
     Column(
         modifier = Modifier
             .padding(
@@ -96,5 +101,10 @@ fun GlobalSearchErrorResultItem(message: String?) {
             text = message ?: stringResource(MR.strings.unknown_error),
             textAlign = TextAlign.Center,
         )
+        if (actionLabel != null) {
+            TextButton(onClick = onAction) {
+                Text(actionLabel)
+            }
+        }
     }
 }

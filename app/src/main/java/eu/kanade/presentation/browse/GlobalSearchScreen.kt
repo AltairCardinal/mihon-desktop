@@ -15,8 +15,13 @@ import eu.kanade.tachiyomi.ui.browse.source.globalsearch.SearchItemResult
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.SearchScreenModel
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.SourceFilter
 import eu.kanade.tachiyomi.util.system.LocaleHelper
+import mihon.domain.error.AppError
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.source.service.SourcePageError
+import tachiyomi.domain.source.service.SourceRecoveryAction
+import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Scaffold
+import tachiyomi.presentation.core.i18n.stringResource
 
 @Composable
 fun GlobalSearchScreen(
@@ -30,6 +35,7 @@ fun GlobalSearchScreen(
     onClickSource: (CatalogueSource) -> Unit,
     onClickItem: (Manga) -> Unit,
     onLongClickItem: (Manga) -> Unit,
+    onErrorAction: (CatalogueSource, SourcePageError) -> Unit = { _, _ -> },
 ) {
     Scaffold(
         topBar = { scrollBehavior ->
@@ -56,6 +62,7 @@ fun GlobalSearchScreen(
             onClickSource = onClickSource,
             onClickItem = onClickItem,
             onLongClickItem = onLongClickItem,
+            onErrorAction = onErrorAction,
         )
     }
 }
@@ -68,6 +75,7 @@ internal fun GlobalSearchContent(
     onClickSource: (CatalogueSource) -> Unit,
     onClickItem: (Manga) -> Unit,
     onLongClickItem: (Manga) -> Unit,
+    onErrorAction: (CatalogueSource, SourcePageError) -> Unit = { _, _ -> },
     fromSourceId: Long? = null,
 ) {
     LazyColumn(
@@ -96,7 +104,21 @@ internal fun GlobalSearchContent(
                             )
                         }
                         is SearchItemResult.Error -> {
-                            GlobalSearchErrorResultItem(message = result.throwable.message)
+                            val message = when (result.pageError.error) {
+                                is AppError.Network -> stringResource(MR.strings.exception_offline)
+                                is AppError.Authentication -> stringResource(MR.strings.login)
+                                else -> stringResource(MR.strings.unknown_error)
+                            }
+                            val actionLabel = when (result.pageError.recoveryAction) {
+                                SourceRecoveryAction.OpenLogin -> stringResource(MR.strings.login)
+                                SourceRecoveryAction.Retry -> stringResource(MR.strings.action_retry)
+                                SourceRecoveryAction.None -> null
+                            }
+                            GlobalSearchErrorResultItem(
+                                message = message,
+                                actionLabel = actionLabel,
+                                onAction = { onErrorAction(source, result.pageError) },
+                            )
                         }
                     }
                 }

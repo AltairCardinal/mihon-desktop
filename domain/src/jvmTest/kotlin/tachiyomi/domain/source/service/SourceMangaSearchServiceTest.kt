@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.io.IOException
 
 class SourceMangaSearchServiceTest {
 
@@ -79,6 +80,17 @@ class SourceMangaSearchServiceTest {
         val result = failureFor(AppErrorException(expected))
 
         assertSame(expected, result.error)
+        assertEquals(SourceRecoveryAction.Retry, result.recoveryAction)
+    }
+
+    @Test
+    fun `IO failures map to network error with retry recovery`() = runBlocking {
+        val failure = IOException("offline")
+
+        val result = failureFor(failure)
+
+        assertInstanceOf(AppError.Network::class.java, result.error)
+        assertSame(failure, result.error.cause)
         assertEquals(SourceRecoveryAction.Retry, result.recoveryAction)
     }
 

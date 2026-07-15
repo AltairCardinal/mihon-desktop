@@ -54,6 +54,14 @@ class DesktopExtensionProductBaselineTest {
                 "${item.symbol}: missing protection test ${item.test}",
             )
         }
+        val manhuagui = evidence.single { it.fixture.startsWith(MANHUAGUI_PACKAGE) }
+        assertEquals("$MANHUAGUI_PACKAGE@$MANHUAGUI_VERSION", manhuagui.fixture)
+        assertEquals("unsupported", manhuagui.status)
+        val protection = Files.readString(repositoryRoot().resolve(manhuagui.test))
+        assertTrue(protection.contains("PINNED_MANHUAGUI_PACKAGE = \"$MANHUAGUI_PACKAGE\""))
+        assertTrue(protection.contains("PINNED_MANHUAGUI_VERSION = \"$MANHUAGUI_VERSION\""))
+        assertTrue(protection.contains("DesktopExtensionLoader("))
+        assertTrue(protection.contains("android.app.Application"))
     }
 
     @Test
@@ -133,6 +141,8 @@ class DesktopExtensionProductBaselineTest {
             "ZGV4CjAzNQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAcAAAAHhWNBIAAAAAAAAAAHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAcAAAAAEAAAAAAAAAAQAAAAAAAAA="
         val COMPAT_FIELDS = setOf("symbol", "fixture", "test", "status", "removalCondition")
         val COMPAT_STATUSES = setOf("required", "unsupported")
+        const val MANHUAGUI_PACKAGE = "eu.kanade.tachiyomi.extension.zh.manhuagui"
+        const val MANHUAGUI_VERSION = "1.4.28"
         val REQUIRED_AUTHORITY_SYMBOLS =
             setOf(
                 "eu.kanade.tachiyomi.extension.api.ExtensionApi",

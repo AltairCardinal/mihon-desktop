@@ -69,11 +69,12 @@ import kotlinx.coroutines.launch
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.ui.library.MangaDetailScreen
 import tachiyomi.domain.source.service.SourceManager
-import tachiyomi.domain.source.service.SourceMangaSearchService
-import tachiyomi.domain.source.service.SourcePageRequest
+import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourceQuery
-import tachiyomi.domain.source.service.SourceQueryReducer
 import tachiyomi.domain.source.service.SourceQueryState
+import tachiyomi.domain.source.service.SourceRecoveryAction
+import java.awt.Desktop
+import java.net.URI
 
 data class SourceBrowseScreen(val sourceId: Long) : Screen {
 
@@ -90,12 +91,10 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
         val mangas = remember { mutableStateListOf<SManga>() }
         var isLoading by remember { mutableStateOf(false) }
         var openingMangaUrl by remember { mutableStateOf<String?>(null) }
-        var errorMessage by remember { mutableStateOf<String?>(null) }
+        var queryError by remember { mutableStateOf<SourcePageError?>(null) }
         var currentPage by remember { mutableStateOf(1) }
         var hasNextPage by remember { mutableStateOf(false) }
-        var generation by remember { mutableStateOf(0L) }
-        var queryState by remember { mutableStateOf<SourceQueryState?>(null) }
-        val queryReducer = remember { SourceQueryReducer() }
+        val queryCoordinator = remember { SourceBrowseQueryCoordinator(sourceMangaSearchService) }
 
         // Search state
         var searchQuery by remember { mutableStateOf("") }
@@ -113,25 +112,16 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
 
         fun loadPage(page: Int, query: String = "", mode: BrowseMode = browseMode) {
             if (source == null || (page > 1 && isLoading)) return
-            val request = SourcePageRequest(
-                sourceId = source.id,
-                page = page,
-                generation = if (page == 1) ++generation else generation,
-                query = when {
+            val sourceQuery = when {
                     query.isNotBlank() -> SourceQuery.Search(query, activeFilters)
                     hasActiveFilters(activeFilters) -> SourceQuery.Search("", activeFilters)
                     mode == BrowseMode.LATEST -> SourceQuery.Latest
                     else -> SourceQuery.Popular
-                },
-            )
-            queryState = queryReducer.start(request, queryState)
+                }
             isLoading = true
-            if (page == 1) errorMessage = null
+            if (page == 1) queryError = null
             scope.launch {
-                val result = sourceMangaSearchService.loadPageResult(source, request)
-                val current = queryState ?: return@launch
-                val reduced = queryReducer.reduce(current, result)
-                queryState = reduced
+                val reduced = queryCoordinator.load(source, page, sourceQuery)
                 mangas.clear()
                 mangas.addAll(reduced.items)
                 isLoading = reduced.isLoading
@@ -139,18 +129,31 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
                 when (reduced) {
                     is SourceQueryState.Content -> {
                         hasNextPage = reduced.hasNextPage
-                        errorMessage = reduced.pageError?.error?.let { it::class.simpleName }
+                        queryError = reduced.pageError
                     }
                     is SourceQueryState.Empty -> {
                         hasNextPage = false
-                        errorMessage = null
+                        queryError = null
                     }
                     is SourceQueryState.Failure -> {
                         hasNextPage = false
-                        errorMessage = reduced.error::class.simpleName
+                        queryError = SourcePageError(reduced.error, reduced.recoveryAction)
                     }
                     is SourceQueryState.Loading -> Unit
                 }
+            }
+        }
+
+        fun recover() {
+            when (val intent = source?.let(queryCoordinator::recoveryIntent)) {
+                is DesktopSourceRecoveryIntent.Retry -> loadPage(
+                    intent.request.page,
+                    if (isSearchMode) searchQuery else "",
+                )
+                is DesktopSourceRecoveryIntent.OpenExternalUrl -> runCatching {
+                    Desktop.getDesktop().browse(URI(intent.url))
+                }
+                DesktopSourceRecoveryIntent.None, null -> Unit
             }
         }
 
@@ -263,18 +266,22 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
                         }
                     }
 
-                    errorMessage != null && mangas.isEmpty() -> {
+                    queryError != null && mangas.isEmpty() -> {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
-                                    errorMessage!!,
+                                    desktopSourceErrorMessage(queryError!!.error),
                                     color = MaterialTheme.colorScheme.error,
                                     style = MaterialTheme.typography.bodyMedium,
                                 )
                                 androidx.compose.material3.Button(
-                                    onClick = { loadPage(1, if (isSearchMode) searchQuery else "") },
+                                    onClick = ::recover,
                                     modifier = Modifier.padding(top = 8.dp),
-                                ) { Text("Retry") }
+                                ) {
+                                    Text(
+                                        if (queryError!!.recoveryAction == SourceRecoveryAction.OpenLogin) "Login" else "Retry",
+                                    )
+                                }
                             }
                         }
                     }
@@ -300,6 +307,23 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
                                             saveSourceMangaForDetails.refreshFromSource(catalogueSource, manga)
                                         }
                                         openingMangaUrl = null
+                                    }
+                                }
+                            }
+
+                            queryError?.let { error ->
+                                item {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth().padding(8.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                    ) {
+                                        Text(
+                                            desktopSourceErrorMessage(error.error),
+                                            color = MaterialTheme.colorScheme.error,
+                                        )
+                                        androidx.compose.material3.Button(onClick = ::recover) {
+                                            Text(if (error.recoveryAction == SourceRecoveryAction.OpenLogin) "Login" else "Retry")
+                                        }
                                     }
                                 }
                             }

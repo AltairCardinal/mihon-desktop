@@ -13,8 +13,13 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.core.util.ifSourcesLoaded
 import eu.kanade.presentation.browse.GlobalSearchScreen
 import eu.kanade.presentation.util.Screen
+import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreen
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
+import eu.kanade.tachiyomi.ui.webview.WebViewScreen
+import tachiyomi.domain.source.service.SourcePageError
+import tachiyomi.domain.source.service.SourceRecoveryAction
 import tachiyomi.presentation.core.screens.LoadingScreen
 
 class GlobalSearchScreen(
@@ -74,7 +79,29 @@ class GlobalSearchScreen(
                 },
                 onClickItem = { navigator.push(MangaScreen(it.id, true)) },
                 onLongClickItem = { navigator.push(MangaScreen(it.id, true)) },
+                onErrorAction = { source, pageError ->
+                    when (pageError.recoveryAction) {
+                        SourceRecoveryAction.Retry -> screenModel.retry()
+                        SourceRecoveryAction.OpenLogin -> {
+                            globalSearchRecoveryScreen(source, pageError)?.let(navigator::push)
+                        }
+                        SourceRecoveryAction.None -> Unit
+                    }
+                },
             )
         }
     }
+}
+
+internal fun globalSearchRecoveryScreen(
+    source: CatalogueSource,
+    pageError: SourcePageError,
+): Screen? {
+    if (pageError.recoveryAction != SourceRecoveryAction.OpenLogin) return null
+    val httpSource = source as? HttpSource ?: return null
+    return WebViewScreen(
+        url = httpSource.baseUrl,
+        initialTitle = httpSource.name,
+        sourceId = httpSource.id,
+    )
 }

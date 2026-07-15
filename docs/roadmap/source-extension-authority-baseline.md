@@ -50,7 +50,7 @@ Task base：`d77ef4d2b63e00d8abe3e2da85b6ef4e4351ae58`
 | --- | --- | --- | --- | --- |
 | `minimalDexBytes()` / `MINIMAL_DEX_BASE64` | 最小 DEX v035 | `ApkToJarConverterTest` 与 `DesktopExtensionProductBaselineTest` | 确认 production APK→JAR 转换仍可产出 JVM JAR | 合成结构 fixture，只保护转换机械链路，不证明第三方扩展兼容 |
 | `MinimalTestSource` ServiceLoader JAR | repo test classpath | `ExtensionCompatibilityTest` | 确认 production loader 能发现 `Source` | 确定性 JVM fixture，不代表 Android API 使用面 |
-| `eu.kanade.tachiyomi.extension.zh.manhuagui@1.4.28` | Keiyoushi APK | `https://raw.githubusercontent.com/keiyoushi/extensions/main/index.min.json`，2026-07-15 记录 | `KeiyoushiChineseCompatibilityTest` 下载、转换并经真实 ClassLoader/ServiceLoader 调用 `Source` 合约 | 网络 integration fixture；仓库不保存二进制，版本升级时 evidence 必须显式更新 |
+| `eu.kanade.tachiyomi.extension.zh.manhuagui@1.4.28` | Keiyoushi APK | `https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.min.json`，2026-07-15 记录 | `KeiyoushiChineseCompatibilityTest` 精确校验 package/version，下载并转换后调用 production `DesktopExtensionLoader`（ServiceLoader fast path + manifest sidecar fallback）；当前因缺少 `android.app.Application` compat 绑定而不暴露 `Source` | `unsupported` 网络 integration fixture；只有 Task 4 提供真实 Application adapter 且同一固定 fixture 能由 loader 暴露 `Source` 后才能转为 `required` |
 | 本地 ManHuaGui 构建产物 | 版本由本地构建决定 | `/tmp/extensions-desktop/extensions-source/.../build/libs` | `ManhuaguiLoadTest` 的开发者诊断 | 非 CI 权威，不得单独作为新增 compat stub 的依据 |
 
 ## Compat evidence schema

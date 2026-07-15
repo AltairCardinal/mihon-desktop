@@ -15,12 +15,14 @@ import kotlinx.serialization.json.jsonPrimitive
 import mihon.domain.error.AppError
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
+import mockwebserver3.SocketEffect
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Test
+import java.util.concurrent.TimeUnit
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourcePageRequest
 import tachiyomi.domain.source.service.SourcePageResult
@@ -86,6 +88,32 @@ class SourceHttpParityIntegrationTest {
         assertEquals(SourceRecoveryAction.Retry, result.recoveryAction)
     }
 
+    @Test
+    fun `real HttpSource disconnect returns network error`() = withServer(
+        MockResponse.Builder()
+            .onResponseStart(SocketEffect.CloseSocket())
+            .build(),
+    ) { source ->
+        val result = load(source) as SourcePageResult.Failure
+
+        assertInstanceOf(AppError.Network::class.java, result.error)
+        assertEquals(SourceRecoveryAction.Retry, result.recoveryAction)
+    }
+
+    @Test
+    fun `real HttpSource timeout returns network error`() = withServer(
+        MockResponse.Builder()
+            .headersDelay(1, TimeUnit.SECONDS)
+            .body(SUCCESS_JSON)
+            .build(),
+        client = OkHttpClient.Builder().readTimeout(25, TimeUnit.MILLISECONDS).build(),
+    ) { source ->
+        val result = load(source) as SourcePageResult.Failure
+
+        assertInstanceOf(AppError.Network::class.java, result.error)
+        assertEquals(SourceRecoveryAction.Retry, result.recoveryAction)
+    }
+
     private fun load(source: JsonHttpSource): SourcePageResult = runBlocking {
         SourceMangaSearchService().loadPageResult(
             source,
@@ -98,23 +126,26 @@ class SourceHttpParityIntegrationTest {
         )
     }
 
-    private fun withServer(response: MockResponse, block: (JsonHttpSource) -> Unit) {
+    private fun withServer(
+        response: MockResponse,
+        client: OkHttpClient = OkHttpClient(),
+        block: (JsonHttpSource) -> Unit,
+    ) {
         MockWebServer().use { server ->
             server.enqueue(response)
             server.start()
-            block(JsonHttpSource(server.url("/").toString().removeSuffix("/")))
+            block(JsonHttpSource(server.url("/").toString().removeSuffix("/"), client))
         }
     }
 
     private class JsonHttpSource(
         override val baseUrl: String,
+        override val client: OkHttpClient,
     ) : HttpSource() {
         override val id = 77L
         override val name = "JSON"
         override val lang = "en"
         override val supportsLatest = true
-        override val client = OkHttpClient()
-
         override fun popularMangaRequest(page: Int) = request("popular", page)
         override fun latestUpdatesRequest(page: Int) = request("latest", page)
         override fun searchMangaRequest(page: Int, query: String, filters: FilterList) =

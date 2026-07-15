@@ -31,6 +31,7 @@ import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourceMangaSearchService
+import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourcePageRequest
 import tachiyomi.domain.source.service.SourceQuery
 import tachiyomi.domain.source.service.SourceQueryReducer
@@ -130,6 +131,11 @@ abstract class SearchScreenModel(
         preferences.globalSearchFilterState().toggle()
     }
 
+    fun retry() {
+        lastQuery = null
+        search()
+    }
+
     fun search() {
         val query = state.value.searchQuery
         val sourceFilter = state.value.sourceFilter
@@ -202,7 +208,7 @@ abstract class SearchScreenModel(
                             updateItem(
                                 source,
                                 SearchItemResult.Error(
-                                    reduced.error.cause ?: IllegalStateException(reduced.error::class.simpleName),
+                                    SourcePageError(reduced.error, reduced.recoveryAction),
                                 ),
                             )
                         }
@@ -270,7 +276,7 @@ sealed interface SearchItemResult {
     data object Loading : SearchItemResult
 
     data class Error(
-        val throwable: Throwable,
+        val pageError: SourcePageError,
     ) : SearchItemResult
 
     data class Success(

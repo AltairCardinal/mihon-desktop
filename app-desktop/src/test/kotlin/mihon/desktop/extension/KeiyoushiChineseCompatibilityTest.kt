@@ -8,13 +8,17 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import mihon.desktop.di.initDesktopDIForTest
 import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import java.io.File
-import java.util.ServiceLoader
+import java.util.Base64
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipFile
+import tachiyomi.core.common.preference.DesktopPreferenceStore
 
 /**
  * 对 keiyoushi 仓库中的中文扩展进行实际下载、转换和加载测试，
@@ -56,6 +60,12 @@ class KeiyoushiChineseCompatibilityTest {
         val baseUrl: String = "",
     )
 
+    @Serializable
+    private data class GitHubContent(
+        val content: String,
+        val encoding: String,
+    )
+
     private enum class Status {
         JVM_JAR,         // 已经是 JVM JAR，直接可用
         CONVERTED_OK,    // APK→JAR 转换成功
@@ -74,6 +84,48 @@ class KeiyoushiChineseCompatibilityTest {
         val detail: String = "",
         val sourcesLoaded: Int = 0,
     )
+
+    private data class SourceLoadResult(
+        val count: Int,
+        val failure: String? = null,
+    )
+
+    @Test
+    fun `pinned manhuagui fixture downloads converts and exposes Source`() = runBlocking {
+        val indexUrl =
+            "https://api.github.com/repos/keiyoushi/extensions/contents/index.min.json?ref=repo"
+        val entry = fetchGitHubIndex(indexUrl).singleOrNull {
+            it.pkg == PINNED_MANHUAGUI_PACKAGE && it.version == PINNED_MANHUAGUI_VERSION
+        }
+        assertTrue(
+            entry != null,
+            "Pinned fixture $PINNED_MANHUAGUI_PACKAGE@$PINNED_MANHUAGUI_VERSION is absent from upstream index",
+        )
+        val tempDir = kotlin.io.path.createTempDirectory("manhuagui-pin").toFile()
+        val diContext = initDesktopDIForTest(
+            appDir = File(tempDir, "app"),
+            preferenceStore = DesktopPreferenceStore(),
+        )
+        try {
+            val result = testExtension(
+                requireNotNull(entry),
+                "https://raw.githubusercontent.com/keiyoushi/extensions/repo",
+                tempDir,
+            )
+
+            assertEquals(PINNED_MANHUAGUI_PACKAGE, result.pkg)
+            assertEquals(PINNED_MANHUAGUI_VERSION, result.version)
+            assertEquals(Status.CONVERTED_OK, result.status, result.detail)
+            assertEquals(0, result.sourcesLoaded)
+            assertTrue(
+                result.detail.contains("android.app.Application"),
+                "Expected the known Task 4 Application compat gap, got: ${result.detail}",
+            )
+        } finally {
+            diContext.closeAndJoin()
+            tempDir.deleteRecursively()
+        }
+    }
 
     @Test
     fun `keiyoushi Chinese extension conversion compatibility survey`() = runBlocking {
@@ -195,15 +247,16 @@ class KeiyoushiChineseCompatibilityTest {
                     // JVM JAR，直接尝试加载 Sources
                     val jarFile = File(tempDir, "${ext.pkg}.jar")
                     tmpFile.renameTo(jarFile)
-                    val sourcesLoaded = tryLoadSources(jarFile)
+                    val loadResult = tryLoadSources(jarFile)
                     jarFile.delete()
                     ExtResult(ext.displayName(), ext.pkg, ext.lang, ext.version,
-                        Status.JVM_JAR, "直接加载 $sourcesLoaded 个源", sourcesLoaded)
+                        Status.JVM_JAR, loadResult.failure ?: "直接加载 ${loadResult.count} 个源", loadResult.count)
                 }
                 hasDex -> {
                     // APK，尝试 dex2jar
                     val apkFile = File(tempDir, "${ext.pkg}.apk")
                     tmpFile.renameTo(apkFile)
+                    val manifestClass = ManifestClassExtractor.extractFromApk(apkFile)
                     val converter = ApkToJarConverter()
                     val converted = converter.convert(apkFile, tempDir)
                     apkFile.delete()
@@ -212,11 +265,24 @@ class KeiyoushiChineseCompatibilityTest {
                         ExtResult(ext.displayName(), ext.pkg, ext.lang, ext.version,
                             Status.ANDROID_ONLY, "dex2jar 返回 null")
                     } else {
-                        val sourcesLoaded = tryLoadSources(converted)
+                        writeExtensionMeta(
+                            converted,
+                            ExtensionMeta(
+                                pkgName = ext.pkg,
+                                versionCode = ext.code,
+                                versionName = ext.version,
+                                source = ExtensionOrigin.CONVERTED_APK,
+                                extensionClass = manifestClass,
+                            ),
+                        )
+                        val loadResult = tryLoadSources(converted)
+                        deleteExtensionMeta(converted)
                         converted.delete()
-                        if (sourcesLoaded >= 0) {
+                        if (loadResult.count >= 0) {
                             ExtResult(ext.displayName(), ext.pkg, ext.lang, ext.version,
-                                Status.CONVERTED_OK, "转换后加载 $sourcesLoaded 个源", sourcesLoaded)
+                                Status.CONVERTED_OK,
+                                loadResult.failure ?: "转换后加载 ${loadResult.count} 个源",
+                                loadResult.count)
                         } else {
                             ExtResult(ext.displayName(), ext.pkg, ext.lang, ext.version,
                                 Status.CONVERTED_FAIL, "转换成功但加载失败")
@@ -237,28 +303,32 @@ class KeiyoushiChineseCompatibilityTest {
     }
 
     /**
-     * 尝试通过 ExtensionClassLoader + ServiceLoader 加载 Source 实例。
+     * 尝试通过 production DesktopExtensionLoader 加载 Source 实例。
+     * Loader 会先尝试 ServiceLoader，再使用 APK manifest sidecar 或扫描 fallback。
      * 返回成功加载的源数量，-1 表示加载过程发生异常。
      */
-    private fun tryLoadSources(jarFile: File): Int {
+    private fun tryLoadSources(jarFile: File): SourceLoadResult {
         return try {
-            val cl = ExtensionClassLoader(jarFile.toURI().toURL(), javaClass.classLoader)
-            val iface = cl.loadClass("eu.kanade.tachiyomi.source.Source")
-            @Suppress("UNCHECKED_CAST")
-            val loader = ServiceLoader.load(iface as Class<Any>, cl)
-            var count = 0
-            val iter = loader.iterator()
-            while (iter.hasNext()) {
-                try {
-                    iter.next()
-                    count++
-                } catch (_: Throwable) {
-                    // 单个 Source 加载失败，继续下一个
+            val loaded = DesktopExtensionLoader(jarFile.parentFile).loadFromSingleJar(jarFile)
+            if (loaded.isEmpty()) {
+                val className = readExtensionMeta(jarFile)?.extensionClass
+                if (className != null) {
+                    val classLoader = ExtensionClassLoader(jarFile.toURI().toURL(), javaClass.classLoader)
+                    try {
+                        classLoader.loadClass(className).getDeclaredConstructor().newInstance()
+                        return SourceLoadResult(0)
+                    } catch (error: Throwable) {
+                        val root = generateSequence(error) { it.cause }.last()
+                        return SourceLoadResult(0, "${root::class.qualifiedName}: ${root.message}")
+                    } finally {
+                        classLoader.close()
+                    }
                 }
             }
-            count
-        } catch (_: Throwable) {
-            -1
+            SourceLoadResult(loaded.size)
+        } catch (error: Throwable) {
+            val root = generateSequence(error) { it.cause }.last()
+            SourceLoadResult(-1, "${root::class.qualifiedName}: ${root.message}")
         }
     }
 
@@ -284,6 +354,14 @@ class KeiyoushiChineseCompatibilityTest {
         return json.decodeFromString(body)
     }
 
+    private fun fetchGitHubIndex(url: String): List<ExtEntry> {
+        val response = client.newCall(GET(url)).execute()
+        val metadata = json.decodeFromString<GitHubContent>(response.body.string())
+        check(metadata.encoding == "base64") { "Unexpected GitHub content encoding ${metadata.encoding}" }
+        val body = Base64.getMimeDecoder().decode(metadata.content).decodeToString()
+        return json.decodeFromString(body)
+    }
+
     private fun ExtEntry.extractLibVersion(): Double =
         version.substringBeforeLast('.').toDoubleOrNull() ?: 0.0
 
@@ -292,4 +370,9 @@ class KeiyoushiChineseCompatibilityTest {
 
     private fun pct(n: Int, total: Int): String =
         if (total == 0) "N/A" else "%.1f%%".format(n.toDouble() / total * 100)
+
+    private companion object {
+        const val PINNED_MANHUAGUI_PACKAGE = "eu.kanade.tachiyomi.extension.zh.manhuagui"
+        const val PINNED_MANHUAGUI_VERSION = "1.4.28"
+    }
 }

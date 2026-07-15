@@ -8,6 +8,7 @@ import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.CancellationException
 import mihon.domain.error.AppError
 import mihon.domain.network.AppErrorException
+import java.io.IOException
 
 class SourceMangaSearchService {
 
@@ -29,6 +30,8 @@ class SourceMangaSearchService {
         } catch (error: HttpException) {
             val appError = error.toAppError()
             SourcePageResult.Failure(request, appError, appError.recoveryAction())
+        } catch (error: IOException) {
+            SourcePageResult.Failure(request, AppError.Network(error), SourceRecoveryAction.Retry)
         } catch (error: Exception) {
             SourcePageResult.Failure(
                 request,
