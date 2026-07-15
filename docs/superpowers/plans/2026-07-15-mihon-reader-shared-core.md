@@ -22,7 +22,7 @@ base-ref: 20c56cbc6b62c4607c4d28709734142cc127a8b3
 - [x] Task 4：锁定 Desktop 独有产品能力并清除重复规则
 - [x] Task 5：更新证据、文档并完成静态与集成验证
 - [x] Task 6：有意提交、独立审查与修复
-- [ ] Task 7：Android、Windows 与必要 macOS 运行时验收
+- [x] Task 7：Android、Windows 与必要 macOS 运行时验收
 
 ---
 
