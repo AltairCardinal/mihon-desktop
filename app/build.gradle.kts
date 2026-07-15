@@ -192,6 +192,7 @@ dependencies {
     implementation(androidCompose.animation)
     implementation(androidCompose.animation.graphics)
     debugImplementation(androidCompose.ui.tooling)
+    debugImplementation(androidCompose.ui.test.manifest)
     implementation(androidCompose.ui.tooling.preview)
     implementation(androidCompose.ui.util)
 
@@ -286,7 +287,11 @@ dependencies {
     // Tests
     testImplementation(libs.bundles.test)
     testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(androidx.paging.testing)
     testRuntimeOnly(libs.junit.platform.launcher)
+
+    androidTestImplementation(platform(androidCompose.bom))
+    androidTestImplementation(androidCompose.ui.test.junit4)
 
     // For detecting memory leaks; see https://square.github.io/leakcanary/
     // debugImplementation(libs.leakcanary.android)

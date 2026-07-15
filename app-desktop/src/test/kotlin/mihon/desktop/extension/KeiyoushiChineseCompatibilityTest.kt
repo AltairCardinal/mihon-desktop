@@ -91,7 +91,7 @@ class KeiyoushiChineseCompatibilityTest {
     )
 
     @Test
-    fun `pinned manhuagui fixture downloads converts and exposes Source`() = runBlocking {
+    fun `pinned manhuagui converts but remains unsupported until Application binding`() = runBlocking {
         val indexUrl =
             "https://api.github.com/repos/keiyoushi/extensions/contents/index.min.json?ref=repo"
         val entry = fetchGitHubIndex(indexUrl).singleOrNull {

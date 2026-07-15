@@ -25,6 +25,7 @@ workmanager = "androidx.work:work-runtime:2.11.1"
 
 paging-runtime = { module = "androidx.paging:paging-runtime", version.ref = "paging_version" }
 paging-compose = { module = "androidx.paging:paging-compose", version.ref = "paging_version" }
+paging-testing = { module = "androidx.paging:paging-testing", version.ref = "paging_version" }
 
 interpolator = { group = "androidx.interpolator", name = "interpolator", version.ref = "interpolator_version" }
 

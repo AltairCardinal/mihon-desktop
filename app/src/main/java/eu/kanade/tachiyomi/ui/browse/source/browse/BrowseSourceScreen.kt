@@ -4,9 +4,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Favorite
@@ -32,8 +34,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.paging.compose.LazyPagingItems
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.core.util.ifSourcesLoaded
 import eu.kanade.presentation.browse.BrowseSourceContent
@@ -52,12 +56,15 @@ import eu.kanade.tachiyomi.ui.category.CategoryScreen
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.ui.webview.WebViewScreen
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 import mihon.feature.migration.dialog.MigrateMangaDialog
 import mihon.presentation.core.util.collectAsLazyPagingItems
 import tachiyomi.core.common.Constants
 import tachiyomi.core.common.util.lang.launchIO
+import tachiyomi.domain.library.model.LibraryDisplayMode
+import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourceRecoveryAction
@@ -212,18 +219,15 @@ data class BrowseSourceScreen(
             },
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         ) { paddingValues ->
-            BrowseSourceContent(
-                source = screenModel.source,
+            BrowseSourceScreenContent(
+                source = screenModel.source as CatalogueSource,
                 mangaList = screenModel.mangaPagerFlowFlow.collectAsLazyPagingItems(),
+                navigator = navigator,
                 columns = screenModel.getColumnsPreference(LocalConfiguration.current.orientation),
                 displayMode = screenModel.displayMode,
                 snackbarHostState = snackbarHostState,
                 contentPadding = paddingValues,
                 onWebViewClick = onWebViewClick,
-                onErrorAction = { pageError ->
-                    browseSourceRecoveryScreen(screenModel.source as CatalogueSource, pageError)
-                        ?.let(navigator::push)
-                },
                 onHelpClick = { uriHandler.openUri(Constants.URL_HELP) },
                 onLocalSourceHelpClick = onHelpClick,
                 onMangaClick = { navigator.push((MangaScreen(it.id, true))) },
@@ -318,6 +322,39 @@ data class BrowseSourceScreen(
         class Text(txt: String) : SearchType(txt)
         class Genre(txt: String) : SearchType(txt)
     }
+}
+
+@Composable
+internal fun BrowseSourceScreenContent(
+    source: CatalogueSource,
+    mangaList: LazyPagingItems<StateFlow<Manga>>,
+    navigator: Navigator,
+    columns: GridCells,
+    displayMode: LibraryDisplayMode,
+    snackbarHostState: SnackbarHostState,
+    contentPadding: PaddingValues,
+    onWebViewClick: () -> Unit,
+    onHelpClick: () -> Unit,
+    onLocalSourceHelpClick: () -> Unit,
+    onMangaClick: (Manga) -> Unit,
+    onMangaLongClick: (Manga) -> Unit,
+) {
+    BrowseSourceContent(
+        source = source,
+        mangaList = mangaList,
+        columns = columns,
+        displayMode = displayMode,
+        snackbarHostState = snackbarHostState,
+        contentPadding = contentPadding,
+        onWebViewClick = onWebViewClick,
+        onErrorAction = { pageError ->
+            browseSourceRecoveryScreen(source, pageError)?.let(navigator::push)
+        },
+        onHelpClick = onHelpClick,
+        onLocalSourceHelpClick = onLocalSourceHelpClick,
+        onMangaClick = onMangaClick,
+        onMangaLongClick = onMangaLongClick,
+    )
 }
 
 internal fun browseSourceRecoveryScreen(

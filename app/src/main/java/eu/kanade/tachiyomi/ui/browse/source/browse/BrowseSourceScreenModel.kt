@@ -27,6 +27,7 @@ import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.util.removeCovers
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
@@ -80,12 +81,14 @@ class BrowseSourceScreenModel(
     private val updateManga: UpdateManga = Injekt.get(),
     private val addTracks: AddTracks = Injekt.get(),
     private val getIncognitoState: GetIncognitoState = Injekt.get(),
+    pagerCoroutineScope: CoroutineScope? = null,
 ) : StateScreenModel<BrowseSourceScreenModel.State>(State(Listing.valueOf(listingQuery))) {
 
     var displayMode by sourcePreferences.sourceDisplayMode().asState(screenModelScope)
 
     val source = sourceManager.getOrStub(sourceId)
     private var queryGeneration = 0L
+    private val pagingScope = pagerCoroutineScope ?: ioCoroutineScope
 
     init {
         if (source is CatalogueSource) {
@@ -135,9 +138,9 @@ class BrowseSourceScreenModel(
                 }
                     .filter { !hideInLibraryItems || !it.value.favorite }
             }
-                .cachedIn(ioCoroutineScope)
+                .cachedIn(pagingScope)
         }
-        .stateIn(ioCoroutineScope, SharingStarted.Lazily, emptyFlow())
+        .stateIn(pagingScope, SharingStarted.Lazily, emptyFlow())
 
     fun getColumnsPreference(orientation: Int): GridCells {
         val isLandscape = orientation == Configuration.ORIENTATION_LANDSCAPE
