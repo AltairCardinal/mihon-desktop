@@ -4,13 +4,13 @@
 - Review mode: `thorough`
 - TDD mode: `tdd`
 - Isolation: existing branch `claude/pensive-vaughan`
-- Current task: Task 3 — 完成 Desktop Skia、缓存与三种 viewer 生产接线
-- Mapped OpenSpec tasks: 2.4, 3.1, 3.2
+- Current task: Task 4 — 锁定 Desktop 独有产品能力并清除重复规则
+- Mapped OpenSpec tasks: 1.3, 4.1
 - Stage: implementing
 - Implementer: pending dispatch
-- Base ref: `6a2ec1800`
+- Base ref: `7ab2266c6`
 - RED evidence: pending
 - GREEN evidence: pending
 - Commits: pending
 - Review rounds: batch 0/2, final 0/2
-- Unresolved findings: none; Android emulator runtime remains deferred to Task 7 hard gate
+- Unresolved findings: none; runtime gates remain deferred to Task 7
