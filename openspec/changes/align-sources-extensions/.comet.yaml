@@ -1,6 +1,6 @@
 workflow: full
 phase: build
-context_compression: off
+context_compression: beta
 build_mode: subagent-driven-development
 build_pause: null
 subagent_dispatch: confirmed

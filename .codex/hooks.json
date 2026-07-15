@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash '/Volumes/File/OpenClaw/workspace/mihon/.claude/worktrees/pensive-vaughan/.codex/hooks/enforce-build-script.sh'"
+            "command": "bash .codex/hooks/enforce-build-script.sh"
           }
         ]
       }

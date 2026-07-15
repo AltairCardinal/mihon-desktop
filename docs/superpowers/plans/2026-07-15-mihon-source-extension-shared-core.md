@@ -34,7 +34,9 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - [x] Task 1：权威 fixture、调用链清单与产品保护网
 - [x] Task 2：共享源查询状态、分页与错误语义
 - [ ] Task 3：共享扩展目录、版本、仓库部分失败与信任模型
-- [ ] Task 4：共享安装事务与平台 reload 回滚
+- [ ] Task 4A：共享安装事务状态机
+- [ ] Task 4B：Desktop install port 与 reload 回滚
+- [ ] Task 4C：Android PackageInstaller adapter wiring
 - [ ] Task 5：Desktop 浏览器登录、Cookie 原子回传与 FlareSolverr 显式后备
 - [ ] Task 6：共享 ScreenModel wiring、导航/DI 与 i18n
 - [ ] Task 7：compat 去重、parity 证据、全量审查与跨平台运行时验收
@@ -158,6 +160,12 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **OpenSpec mapping:** 1.3（版本/信任/损坏产物契约部分）、2.2（目录/版本/安全部分）、3.2（信任部分）
 
+**Risk axis:** trust-continuity
+**Platform boundary:** verification
+**Estimated scope:** 17 files, 1332 lines
+**Verification:** 审核既有实现提交 `0502b755fb`，并重跑共享目录/信任契约、Android/Desktop production wiring、版本、更新与兼容性测试。
+**Split waiver:** 实现已作为单一历史提交 `0502b755fb` 存在；事后拆成平台子任务会伪造提交与任务证据边界。Task 继续保持未勾选，直到协调者完成该提交的验证与 checkoff。
+
 **Files:**
 - Create: `domain/src/commonMain/kotlin/mihon/domain/extension/model/ExtensionArtifact.kt`
 - Create: `domain/src/commonMain/kotlin/mihon/domain/extension/model/ExtensionCatalog.kt`
@@ -211,22 +219,19 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
   Commit: `refactor(extension): share catalog version and trust rules`
 
-### Task 4: 共享安装事务与平台 reload 回滚
+### Task 4A: 共享安装事务状态机
 
 **OpenSpec mapping:** 1.3（JAR/APK→JAR/回滚/不兼容 API 部分）、2.2（事务/回滚部分）、2.3、3.1、3.2（原子回滚部分）
+
+**Risk axis:** install-state-machine
+**Platform boundary:** shared
+**Estimated scope:** 3 files, 350 lines
+**Verification:** 运行共享 coordinator 状态机测试，覆盖阶段顺序、取消、互斥、reload 失败回滚与 rollback 失败优先级。
 
 **Files:**
 - Create: `domain/src/commonMain/kotlin/mihon/domain/extension/service/ExtensionInstallCoordinator.kt`
 - Create: `domain/src/commonMain/kotlin/mihon/domain/extension/service/ExtensionInstallPort.kt`
 - Create: `domain/src/jvmTest/kotlin/mihon/domain/extension/ExtensionInstallCoordinatorTest.kt`
-- Modify: `app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionApi.kt`
-- Modify: `app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt`
-- Modify: `app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionManager.kt`
-- Create: `app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt`
-- Create: `app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionInstallTransactionTest.kt`
-- Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt`
-- Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionInstaller.kt`
-- Create: `app/src/test/java/eu/kanade/tachiyomi/extension/ExtensionInstallCoordinatorWiringTest.kt`
 
 **Interfaces:**
 - `ExtensionInstallPort.prepare/validate/commit/reload/rollback/cleanup`；port token 使用共享 opaque ID，不暴露 `File`。
@@ -245,30 +250,105 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
   coordinator 只编排阶段、取消、互斥与错误；不读取文件、不转换 APK、不加载 class。只有 `reload()` 成功才 emit `Installed`；commit 后任何异常必须调用 rollback，并验证旧 runtime 恢复。
 
-- [ ] **Step 4: 写 Desktop 事务集成 RED**
+- [ ] **Step 4: 运行共享 GREEN**
+
+  Run: `./gradlew :domain:jvmTest --tests "mihon.domain.extension.ExtensionInstallCoordinatorTest"`
+  Expected: 全部 PASS；只有 reload 成功后发布 Installed。
+
+- [ ] **Step 5: 提交 Task 4A**
+
+  Commit: `refactor(extension): share install state machine`
+
+### Task 4B: Desktop install port 与 reload 回滚
+
+**OpenSpec mapping:** 1.3（JAR/APK→JAR/回滚/不兼容 API 部分）、2.2、2.3、3.1、3.2（Desktop 原子回滚部分）
+
+**Risk axis:** desktop-artifact-rollback
+**Platform boundary:** shared+desktop
+**Estimated scope:** 5 files, 400 lines
+**Verification:** 运行 Desktop 事务集成、APK→JAR 与原子替换保护测试，确认 reload 失败后旧 artifact、metadata 和 runtime 均恢复。
+
+**Files:**
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionApi.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionManager.kt`
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionInstallTransactionTest.kt`
+
+**Interfaces:**
+- Consumes: Task 4A 的 `ExtensionInstallPort` 与 `ExtensionInstallCoordinator`。
+- Produces: Desktop 文件、APK→JAR、ClassLoader、sidecar 与 runtime 恢复 adapter。
+
+- [ ] **Step 1: 写 Desktop 事务集成 RED**
 
   用临时目录制造 JVM JAR、DEX APK、损坏 ZIP、错误 package、转换失败、摘要错误和 fake loader reload 失败；断言旧 JAR/sidecar hash 不变、无 `.tmp/.backup` 残留、旧 source 可重新获取。
 
-- [ ] **Step 5: 收敛 Desktop installer/loader**
+- [ ] **Step 2: 运行 RED**
 
-  `DesktopExtensionInstallPort` 承担文件、APK→JAR、ClassLoader 和原子 side effect；`DesktopExtensionApi` 只下载/提供 artifact，`DesktopExtensionManager` 只映射共享状态与刷新 runtime，不再自行决定版本、安全或业务状态。
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.extension.DesktopExtensionInstallTransactionTest"`
+  Expected: FAIL，原因是 Desktop 仍自行编排事务或 reload 失败未恢复旧 runtime。
 
-- [ ] **Step 6: 接入 Android adapter 并保护 PackageInstaller 边界**
+- [ ] **Step 3: 收敛 Desktop installer/loader**
 
-  Android adapter 把 PackageInstaller/签名读取映射到同一 port/state。增加 DI/production wiring 测试；禁止把 Android 类型加入 common。
+  `DesktopExtensionInstallPort` 承担文件、APK→JAR、ClassLoader 和原子 side effect；`DesktopExtensionApi` 只下载/提供 artifact，`DesktopExtensionManager` 只映射共享状态与刷新 runtime。
 
-- [ ] **Step 7: 运行 GREEN 与产品保护**
+- [ ] **Step 4: 运行 GREEN 与产品保护**
 
-  Run: `./gradlew :domain:jvmTest --tests "mihon.domain.extension.ExtensionInstallCoordinatorTest" :app-desktop:jvmTest --tests "mihon.desktop.extension.DesktopExtensionInstallTransactionTest" --tests "mihon.desktop.extension.ApkToJarConverterTest" --tests "mihon.desktop.extension.ExtensionArtifactReplacementTest" :app:testReleaseUnitTest --tests "*ExtensionInstall*"`
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.extension.DesktopExtensionInstallTransactionTest" --tests "mihon.desktop.extension.ApkToJarConverterTest" --tests "mihon.desktop.extension.ExtensionArtifactReplacementTest"`
   Expected: 全部 PASS；reload 失败可见且旧版本仍工作。
 
-- [ ] **Step 8: 提交 Task 4**
+- [ ] **Step 5: 提交 Task 4B**
 
-  Commit: `refactor(extension): share transactional install lifecycle`
+  Commit: `refactor(desktop): adapt transactional extension install`
+
+### Task 4C: Android PackageInstaller adapter wiring
+
+**OpenSpec mapping:** 2.2、2.3、3.1、3.2（Android PackageInstaller 与签名边界）
+
+**Risk axis:** android-installer-wiring
+**Platform boundary:** shared+android
+**Estimated scope:** 3 files, 300 lines
+**Verification:** 运行 Android coordinator wiring 测试，确认 PackageInstaller/签名读取留在 adapter 且共享状态机断线会失败。
+
+**Files:**
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionInstaller.kt`
+- Create: `app/src/test/java/eu/kanade/tachiyomi/extension/ExtensionInstallCoordinatorWiringTest.kt`
+
+**Interfaces:**
+- Consumes: Task 4A 共享 port/state/coordinator。
+- Produces: Android PackageInstaller、签名读取与 production DI/wiring adapter。
+
+- [ ] **Step 1: 写 Android wiring RED**
+
+  测试 production `ExtensionManager`/`ExtensionInstaller` 通过共享 coordinator 发布状态，并断言 PackageInstaller 与 Android 签名类型未泄漏到 common。
+
+- [ ] **Step 2: 运行 RED**
+
+  Run: `./gradlew :app:testReleaseUnitTest --tests "*ExtensionInstallCoordinatorWiringTest"`
+  Expected: FAIL，原因是 Android 仍绕过共享 coordinator。
+
+- [ ] **Step 3: 接入 Android adapter**
+
+  把 PackageInstaller/签名读取映射到同一 port/state，增加 production wiring；禁止把 Android 类型加入 common。
+
+- [ ] **Step 4: 运行 GREEN**
+
+  Run: `./gradlew :app:testReleaseUnitTest --tests "*ExtensionInstall*"`
+  Expected: 全部 PASS；PackageInstaller 边界受保护。
+
+- [ ] **Step 5: 提交 Task 4C**
+
+  Commit: `refactor(android): adapt transactional extension install`
 
 ### Task 5: Desktop 浏览器登录、Cookie 原子回传与 FlareSolverr 显式后备
 
 **OpenSpec mapping:** 3.3
+
+**Risk axis:** authentication-session
+**Platform boundary:** shared+desktop
+**Estimated scope:** 8 files, 400 lines
+**Verification:** 运行共享登录会话、Desktop 浏览器 adapter、Cookie 导入和 FlareSolverr 测试，确认取消/超时不写 Cookie 且后备仅由用户显式触发。
 
 **Files:**
 - Create: `domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceLoginSession.kt`
@@ -317,6 +397,12 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 ### Task 6: 共享 ScreenModel wiring、导航/DI 与 i18n
 
 **OpenSpec mapping:** 2.3、3.4、3.5
+
+**Risk axis:** ui-wiring
+**Platform boundary:** shared+desktop
+**Estimated scope:** 16 files, 900 lines
+**Verification:** 运行 Desktop Screen/DI/navigation/i18n/Test Mode 集成测试，确认入口、状态、恢复操作与 production wiring 任一断线都会失败。
+**Split waiver:** Screen 状态消费、Voyager/DI 接线、同批资源 key 与 Test Mode 可观察契约构成单一 UI wiring 迁移；拆开会产生可编译但用户状态无入口、无本地化或自动化不可观察的中间态。
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/BrowseTab.kt`
@@ -373,6 +459,11 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 ### Task 7: compat 去重、parity 证据、全量审查与跨平台运行时验收
 
 **OpenSpec mapping:** 4.1、4.2、4.3、4.4、4.5、4.6
+
+**Risk axis:** parity-evidence
+**Platform boundary:** verification
+**Estimated scope:** 7 files, 350 lines
+**Verification:** 运行 compat 契约、全量 Gradle/桌面测试构建和 Android/Windows/macOS 运行时验收，并完成 thorough 独立审查。
 
 **Files:**
 - Modify/Delete: 由 `compat-evidence.json` 审计确认无调用的 Desktop compat 符号；不得凭猜测删除。
