@@ -62,8 +62,6 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
 import eu.kanade.tachiyomi.source.CatalogueSource
-import mihon.desktop.extension.SourceCallResult
-import mihon.desktop.extension.safeSourceCall
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SManga
@@ -71,8 +69,11 @@ import kotlinx.coroutines.launch
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.ui.library.MangaDetailScreen
 import tachiyomi.domain.source.service.SourceManager
-import tachiyomi.domain.source.service.SourceMangaSearchRequest
 import tachiyomi.domain.source.service.SourceMangaSearchService
+import tachiyomi.domain.source.service.SourcePageRequest
+import tachiyomi.domain.source.service.SourceQuery
+import tachiyomi.domain.source.service.SourceQueryReducer
+import tachiyomi.domain.source.service.SourceQueryState
 
 data class SourceBrowseScreen(val sourceId: Long) : Screen {
 
@@ -92,6 +93,9 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
         var errorMessage by remember { mutableStateOf<String?>(null) }
         var currentPage by remember { mutableStateOf(1) }
         var hasNextPage by remember { mutableStateOf(false) }
+        var generation by remember { mutableStateOf(0L) }
+        var queryState by remember { mutableStateOf<SourceQueryState?>(null) }
+        val queryReducer = remember { SourceQueryReducer() }
 
         // Search state
         var searchQuery by remember { mutableStateOf("") }
@@ -108,34 +112,45 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
         val hasFilters = remember(source) { source?.getFilterList()?.isNotEmpty() == true }
 
         fun loadPage(page: Int, query: String = "", mode: BrowseMode = browseMode) {
-            if (source == null || isLoading) return
+            if (source == null || (page > 1 && isLoading)) return
+            val request = SourcePageRequest(
+                sourceId = source.id,
+                page = page,
+                generation = if (page == 1) ++generation else generation,
+                query = when {
+                    query.isNotBlank() -> SourceQuery.Search(query, activeFilters)
+                    hasActiveFilters(activeFilters) -> SourceQuery.Search("", activeFilters)
+                    mode == BrowseMode.LATEST -> SourceQuery.Latest
+                    else -> SourceQuery.Popular
+                },
+            )
+            queryState = queryReducer.start(request, queryState)
             isLoading = true
-            errorMessage = null
+            if (page == 1) errorMessage = null
             scope.launch {
-                val callResult = safeSourceCall {
-                    sourceMangaSearchService.loadPage(
-                        source = source,
-                        page = page,
-                        request = when {
-                            query.isNotBlank() -> SourceMangaSearchRequest.Search(query, activeFilters)
-                            hasActiveFilters(activeFilters) -> SourceMangaSearchRequest.Search("", activeFilters)
-                            mode == BrowseMode.LATEST -> SourceMangaSearchRequest.Latest
-                            else -> SourceMangaSearchRequest.Popular
-                        },
-                    )
-                }
-                when (callResult) {
-                    is SourceCallResult.Success -> {
-                        val result = callResult.value
-                        if (page == 1) mangas.clear()
-                        mangas.addAll(result.mangas)
-                        hasNextPage = result.hasNextPage
-                        currentPage = page
+                val result = sourceMangaSearchService.loadPageResult(source, request)
+                val current = queryState ?: return@launch
+                val reduced = queryReducer.reduce(current, result)
+                queryState = reduced
+                mangas.clear()
+                mangas.addAll(reduced.items)
+                isLoading = reduced.isLoading
+                currentPage = reduced.request.page
+                when (reduced) {
+                    is SourceQueryState.Content -> {
+                        hasNextPage = reduced.hasNextPage
+                        errorMessage = reduced.pageError?.error?.let { it::class.simpleName }
                     }
-                    is SourceCallResult.Timeout -> errorMessage = "Source timed out"
-                    is SourceCallResult.Error -> errorMessage = callResult.message
+                    is SourceQueryState.Empty -> {
+                        hasNextPage = false
+                        errorMessage = null
+                    }
+                    is SourceQueryState.Failure -> {
+                        hasNextPage = false
+                        errorMessage = reduced.error::class.simpleName
+                    }
+                    is SourceQueryState.Loading -> Unit
                 }
-                isLoading = false
             }
         }
 

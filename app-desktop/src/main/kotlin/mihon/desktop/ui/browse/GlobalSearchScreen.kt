@@ -59,6 +59,11 @@ import kotlinx.coroutines.launch
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.ui.library.MangaDetailScreen
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.source.service.SourceMangaSearchService
+import tachiyomi.domain.source.service.SourcePageRequest
+import tachiyomi.domain.source.service.SourceQuery
+import tachiyomi.domain.source.service.SourceQueryReducer
+import tachiyomi.domain.source.service.SourceQueryState
 
 /** Result group from one source. */
 data class SourceSearchResult(
@@ -75,6 +80,7 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val sourceManager = LocalDesktopUiDependencies.current.sourceManager
+        val sourceMangaSearchService = LocalDesktopUiDependencies.current.sourceMangaSearchService
         val saveSourceMangaForDetails = LocalDesktopUiDependencies.current.saveSourceMangaForDetails
         val scope = rememberCoroutineScope()
 
@@ -82,27 +88,52 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
         var isSearching by remember { mutableStateOf(false) }
         var openingMangaUrl by remember { mutableStateOf<String?>(null) }
         val results = remember { mutableStateListOf<SourceSearchResult>() }
+        val queryStates = remember { mutableMapOf<Long, SourceQueryState>() }
+        val queryReducer = remember { SourceQueryReducer() }
+        var generation by remember { mutableStateOf(0L) }
 
         fun launchSearch(q: String) {
             if (q.isBlank()) return
+            val requestGeneration = ++generation
             scope.launch {
                 results.clear()
                 isSearching = true
                 val sources = sourceManager.getCatalogueSources()
+                val requests = sources.associateWith { source ->
+                    SourcePageRequest(
+                        sourceId = source.id,
+                        page = 1,
+                        generation = requestGeneration,
+                        query = SourceQuery.Search(q, source.getFilterList()),
+                    )
+                }
+                queryStates.clear()
+                queryStates.putAll(requests.values.associate { request -> request.sourceId to queryReducer.start(request) })
                 coroutineScope {
                     sources.map { source ->
                         async {
-                            val res = try {
-                                val page = source.getSearchManga(1, q, source.getFilterList())
-                                SourceSearchResult(source = source, results = page.mangas)
-                            } catch (_: Exception) {
-                                SourceSearchResult(source = source, results = emptyList(), error = "Failed")
+                            val request = requests.getValue(source)
+                            val pageResult = sourceMangaSearchService.loadPageResult(source, request)
+                            val current = queryStates[source.id] ?: return@async
+                            val reduced = queryReducer.reduce(current, pageResult)
+                            queryStates[source.id] = reduced
+                            if (reduced.request.generation != requestGeneration) return@async
+                            val res = when (reduced) {
+                                is SourceQueryState.Content -> SourceSearchResult(source, reduced.items)
+                                is SourceQueryState.Empty -> SourceSearchResult(source, emptyList())
+                                is SourceQueryState.Failure -> SourceSearchResult(
+                                    source,
+                                    emptyList(),
+                                    reduced.error::class.simpleName,
+                                )
+                                is SourceQueryState.Loading -> return@async
                             }
+                            results.removeAll { it.source.id == source.id }
                             results.add(res)
                         }
                     }.awaitAll()
                 }
-                isSearching = false
+                if (generation == requestGeneration) isSearching = false
             }
         }
 

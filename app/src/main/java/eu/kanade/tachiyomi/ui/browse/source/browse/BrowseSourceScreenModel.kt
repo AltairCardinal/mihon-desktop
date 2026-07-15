@@ -8,6 +8,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
+import androidx.paging.PagingSource
+import androidx.paging.PagingState
 import androidx.paging.cachedIn
 import androidx.paging.filter
 import androidx.paging.map
@@ -33,6 +35,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import mihon.domain.manga.model.toDomainManga
+import mihon.domain.network.AppErrorException
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.mapAsCheckboxState
 import tachiyomi.core.common.util.lang.launchIO
@@ -43,11 +47,17 @@ import tachiyomi.domain.chapter.interactor.SetMangaDefaultChapterFlags
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga
 import tachiyomi.domain.manga.interactor.GetManga
+import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaWithChapterCount
 import tachiyomi.domain.manga.model.toMangaUpdate
 import tachiyomi.domain.source.interactor.GetRemoteManga
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.source.service.SourceMangaSearchService
+import tachiyomi.domain.source.service.SourcePageRequest
+import tachiyomi.domain.source.service.SourceQuery
+import tachiyomi.domain.source.service.SourceQueryReducer
+import tachiyomi.domain.source.service.SourceQueryState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.time.Instant
@@ -60,7 +70,8 @@ class BrowseSourceScreenModel(
     sourcePreferences: SourcePreferences = Injekt.get(),
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
     private val coverCache: CoverCache = Injekt.get(),
-    private val getRemoteManga: GetRemoteManga = Injekt.get(),
+    private val sourceMangaSearchService: SourceMangaSearchService = Injekt.get(),
+    private val networkToLocalManga: NetworkToLocalManga = Injekt.get(),
     private val getDuplicateLibraryManga: GetDuplicateLibraryManga = Injekt.get(),
     private val getCategories: GetCategories = Injekt.get(),
     private val setMangaCategories: SetMangaCategories = Injekt.get(),
@@ -74,6 +85,7 @@ class BrowseSourceScreenModel(
     var displayMode by sourcePreferences.sourceDisplayMode().asState(screenModelScope)
 
     val source = sourceManager.getOrStub(sourceId)
+    private var queryGeneration = 0L
 
     init {
         if (source is CatalogueSource) {
@@ -106,8 +118,15 @@ class BrowseSourceScreenModel(
     val mangaPagerFlowFlow = state.map { it.listing }
         .distinctUntilChanged()
         .map { listing ->
+            val generation = ++queryGeneration
             Pager(PagingConfig(pageSize = 25)) {
-                getRemoteManga(sourceId, listing.query ?: "", listing.filters)
+                SharedSourcePagingSource(
+                    source = source as CatalogueSource,
+                    listing = listing,
+                    generation = generation,
+                    sourceMangaSearchService = sourceMangaSearchService,
+                    networkToLocalManga = networkToLocalManga,
+                )
             }.flow.map { pagingData ->
                 pagingData.map { manga ->
                     getManga.subscribe(manga.url, manga.source)
@@ -352,5 +371,62 @@ class BrowseSourceScreenModel(
         val dialog: Dialog? = null,
     ) {
         val isUserQuery get() = listing is Listing.Search && !listing.query.isNullOrEmpty()
+    }
+}
+
+private class SharedSourcePagingSource(
+    private val source: CatalogueSource,
+    private val listing: BrowseSourceScreenModel.Listing,
+    private val generation: Long,
+    private val sourceMangaSearchService: SourceMangaSearchService,
+    private val networkToLocalManga: NetworkToLocalManga,
+) : PagingSource<Long, Manga>() {
+    private val reducer = SourceQueryReducer()
+    private var queryState: SourceQueryState? = null
+
+    override suspend fun load(params: LoadParams<Long>): LoadResult<Long, Manga> {
+        val page = params.key ?: 1L
+        val request = SourcePageRequest(
+            sourceId = source.id,
+            page = page.toInt(),
+            generation = generation,
+            query = when (listing) {
+                BrowseSourceScreenModel.Listing.Popular -> SourceQuery.Popular
+                BrowseSourceScreenModel.Listing.Latest -> SourceQuery.Latest
+                is BrowseSourceScreenModel.Listing.Search -> SourceQuery.Search(
+                    listing.query.orEmpty(),
+                    listing.filters,
+                )
+            },
+        )
+        val previousUrls = queryState?.items?.mapTo(hashSetOf()) { it.url }.orEmpty()
+        val loading = reducer.start(request, queryState)
+        val result = sourceMangaSearchService.loadPageResult(source, request)
+        val reduced = reducer.reduce(loading, result)
+        queryState = reduced
+
+        return when (reduced) {
+            is SourceQueryState.Content -> {
+                reduced.pageError?.let { return LoadResult.Error(AppErrorException(it.error)) }
+                val newItems = reduced.items
+                    .filterNot { it.url in previousUrls }
+                    .map { it.toDomainManga(source.id) }
+                    .let { networkToLocalManga(it) }
+                LoadResult.Page(
+                    data = newItems,
+                    prevKey = null,
+                    nextKey = if (reduced.hasNextPage) page + 1 else null,
+                )
+            }
+            is SourceQueryState.Empty -> LoadResult.Page(emptyList(), prevKey = null, nextKey = null)
+            is SourceQueryState.Failure -> LoadResult.Error(AppErrorException(reduced.error))
+            is SourceQueryState.Loading -> LoadResult.Error(IllegalStateException("Source query did not finish"))
+        }
+    }
+
+    override fun getRefreshKey(state: PagingState<Long, Manga>): Long? {
+        return state.anchorPosition?.let { anchor ->
+            state.closestPageToPosition(anchor)?.let { page -> page.prevKey ?: page.nextKey }
+        }
     }
 }

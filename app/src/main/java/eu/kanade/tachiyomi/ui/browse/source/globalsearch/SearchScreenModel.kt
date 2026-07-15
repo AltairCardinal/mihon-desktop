@@ -30,6 +30,11 @@ import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.source.service.SourceMangaSearchService
+import tachiyomi.domain.source.service.SourcePageRequest
+import tachiyomi.domain.source.service.SourceQuery
+import tachiyomi.domain.source.service.SourceQueryReducer
+import tachiyomi.domain.source.service.SourceQueryState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.util.concurrent.Executors
@@ -42,10 +47,13 @@ abstract class SearchScreenModel(
     private val networkToLocalManga: NetworkToLocalManga = Injekt.get(),
     private val getManga: GetManga = Injekt.get(),
     private val preferences: SourcePreferences = Injekt.get(),
+    private val sourceMangaSearchService: SourceMangaSearchService = Injekt.get(),
 ) : StateScreenModel<SearchScreenModel.State>(initialState) {
 
     private val coroutineDispatcher = Executors.newFixedThreadPool(5).asCoroutineDispatcher()
     private var searchJob: Job? = null
+    private var searchGeneration = 0L
+    private val sourceQueryReducer = SourceQueryReducer()
 
     private val enabledLanguages = sourcePreferences.enabledLanguages().get()
     private val disabledSources = sourcePreferences.disabledSources().get()
@@ -135,6 +143,7 @@ abstract class SearchScreenModel(
         this.lastSourceFilter = sourceFilter
 
         searchJob?.cancel()
+        val generation = ++searchGeneration
 
         val sources = getSelectedSources()
 
@@ -161,23 +170,43 @@ abstract class SearchScreenModel(
                         return@async
                     }
 
-                    try {
-                        val page = withContext(coroutineDispatcher) {
-                            source.getSearchManga(1, query, source.getFilterList())
+                    val request = SourcePageRequest(
+                        sourceId = source.id,
+                        page = 1,
+                        generation = generation,
+                        query = SourceQuery.Search(query, source.getFilterList()),
+                    )
+                    val loading = sourceQueryReducer.start(request)
+                    val result = withContext(coroutineDispatcher) {
+                        sourceMangaSearchService.loadPageResult(source, request)
+                    }
+                    val current = if (generation == searchGeneration) {
+                        loading
+                    } else {
+                        sourceQueryReducer.start(request.copy(generation = searchGeneration))
+                    }
+                    when (val reduced = sourceQueryReducer.reduce(current, result)) {
+                        is SourceQueryState.Content -> {
+                            val titles = reduced.items
+                                .map { it.toDomainManga(source.id) }
+                                .distinctBy { it.url }
+                                .let { networkToLocalManga(it) }
+                            if (isActive && reduced.request.generation == generation) {
+                                updateItem(source, SearchItemResult.Success(titles))
+                            }
                         }
-
-                        val titles = page.mangas
-                            .map { it.toDomainManga(source.id) }
-                            .distinctBy { it.url }
-                            .let { networkToLocalManga(it) }
-
-                        if (isActive) {
-                            updateItem(source, SearchItemResult.Success(titles))
+                        is SourceQueryState.Empty -> if (isActive) {
+                            updateItem(source, SearchItemResult.Success(emptyList()))
                         }
-                    } catch (e: Exception) {
-                        if (isActive) {
-                            updateItem(source, SearchItemResult.Error(e))
+                        is SourceQueryState.Failure -> if (isActive) {
+                            updateItem(
+                                source,
+                                SearchItemResult.Error(
+                                    reduced.error.cause ?: IllegalStateException(reduced.error::class.simpleName),
+                                ),
+                            )
                         }
+                        is SourceQueryState.Loading -> Unit
                     }
                 }
             }
