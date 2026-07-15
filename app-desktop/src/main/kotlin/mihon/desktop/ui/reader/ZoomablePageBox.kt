@@ -141,6 +141,7 @@ internal fun ZoomablePageBox(
     scaleType: ScaleType = ScaleType.FIT_SCREEN,
     navigationMode: NavigationMode = NavigationMode.RightAndLeft,
     isRtl: Boolean = false,
+    handlesTapNavigation: Boolean = true,
     onTapPrevious: (() -> Unit)? = null,
     onTapNext: (() -> Unit)? = null,
     onTapCenter: (() -> Unit)? = null,
@@ -244,7 +245,7 @@ internal fun ZoomablePageBox(
     val innerContent: @Composable () -> Unit = {
         // Unified gesture handler using detectTapGestures for tap detection
         // combined with transform gesture handling in a single pointerInput.
-        val gestureModifier = if (onTapPrevious != null || onTapNext != null || onTapCenter != null) {
+        val gestureModifier = if (handlesTapNavigation && (onTapPrevious != null || onTapNext != null || onTapCenter != null)) {
             Modifier.pointerInput(navigationMode, isRtl) {
                 awaitPointerEventScope {
                     while (true) {
@@ -343,7 +344,7 @@ internal fun ZoomablePageBox(
         }
 
         // Double-tap to reset zoom (only when tap navigation is active)
-        val doubleTapModifier = if (onTapPrevious != null || onTapNext != null || onTapCenter != null) {
+        val doubleTapModifier = if (handlesTapNavigation && (onTapPrevious != null || onTapNext != null || onTapCenter != null)) {
             Modifier.pointerInput(Unit) {
                 var lastTapTime = 0L
                 var lastTapPos = androidx.compose.ui.geometry.Offset.Zero

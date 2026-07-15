@@ -108,11 +108,24 @@ class DesktopReaderProductRegressionTest {
         assertTrue(reader.contains("ChapterTransitionFeedback"), "Chapter boundary and missing chapter feedback must be visible")
         assertTrue(reader.contains("Button(onClick = onContinue"), "A chapter transition must remain visible until the user continues")
         assertTrue(reader.contains("loadGeneration = state.loadGeneration"), "Retry must restart the production loading effect")
+        assertEquals(1, occurrenceCount(reader, "model.setMatchedPairs("), "ReaderSideEffects must own one matched-pair update")
         val edgeMatchingCall = callBlock(reader, "model.setMatchedPairs(")
         assertTrue(edgeMatchingCall.contains("resolveDesktopMatchedPairs("))
         assertTrue(edgeMatchingCall.contains("autoSpreadMatching = state.autoSpreadMatching"))
         assertTrue(edgeMatchingCall.contains("dualPageMode = state.dualPageMode"))
         assertTrue(edgeMatchingCall.contains("pageUrls = state.resolvedUrls"))
+        assertEquals(
+            1,
+            occurrenceCount(reader, "internal suspend fun resolveDesktopMatchedPairs("),
+            "The production matcher adapter must have one authoritative declaration",
+        )
+        val matcherDeclaration = callBlock(reader, "internal suspend fun resolveDesktopMatchedPairs(")
+        assertTrue(
+            matcherDeclaration.contains(
+                "findMatchedPairs: suspend (List<String>) -> Set<Pair<Int, Int>> = { EdgePixelMatcher().findMatchedPairs(it) }",
+            ),
+            "The production default must invoke EdgePixelMatcher rather than only satisfying injected tests",
+        )
 
         val autoScrollEffect = bracedBlock(webtoon, "LaunchedEffect(autoScroll, autoScrollSpeed)")
         assertTrue(autoScrollEffect.contains("webtoonAutoScrollAction("))
@@ -156,10 +169,28 @@ class DesktopReaderProductRegressionTest {
         assertTrue(singlePage.contains("onTapNext = onTapNext"))
         assertTrue(single.contains("ReaderKeyboardAction.forPagerCommand(command, isRtl, pagerState.currentPage, effectivePageCount)"))
 
+        val dualPageBoxes = callBlocks(dual, "ZoomablePageBox(")
+        assertEquals(7, dualPageBoxes.size, "Every cover/split/trailing/leading/paired image branch must be audited")
+        dualPageBoxes.forEachIndexed { index, block ->
+            assertTrue(block.contains("isRtl = isRtl"), "Dual ZoomablePageBox #$index must receive RTL direction")
+            assertTrue(block.contains("onTapPrevious = onTapPrevious"), "Dual ZoomablePageBox #$index must receive logical Previous")
+            assertTrue(block.contains("onTapNext = onTapNext"), "Dual ZoomablePageBox #$index must receive logical Next")
+            assertTrue(block.contains("contextMenuScope = contextMenuScope"), "Dual ZoomablePageBox #$index must retain context menu")
+        }
+        assertEquals(
+            4,
+            dualPageBoxes.count { it.contains("handlesTapNavigation = false") },
+            "Split and paired child images must delegate gestures to their full-spread Row without duplicate handling",
+        )
         assertEquals(2, Regex("readerPrimaryTapInput\\(zoomState\\.scale, navigationMode, isRtl\\)").findAll(dual).count())
         assertTrue(dual.contains("ReaderKeyboardAction.forPagerCommand(command, isRtl, pagerState.currentPage, dualState.groupCount)"))
         assertTrue(dual.contains("pointerInput(zoomScale, navigationMode, isRtl)"))
         assertTrue(page.contains("Modifier.pointerInput(navigationMode, isRtl)"))
+        assertEquals(
+            2,
+            occurrenceCount(page, "if (handlesTapNavigation && (onTapPrevious != null || onTapNext != null || onTapCenter != null))"),
+            "Parent-handled split/pair branches must disable both tap navigation and double-tap handlers",
+        )
         assertTrue(page.contains("tapNavRegion(tapX, tapY, tapWidth, tapHeight, navigationMode, isRtl)"))
         assertTrue(page.contains("TapNavRegion.PREV -> onTapPrevious?.invoke()"))
         assertTrue(page.contains("TapNavRegion.NEXT -> onTapNext?.invoke()"))
@@ -360,4 +391,7 @@ class DesktopReaderProductRegressionTest {
         }
         error("Unclosed production block: $marker")
     }
+
+    private fun occurrenceCount(source: String, marker: String): Int =
+        Regex(Regex.escape(marker)).findAll(source).count()
 }

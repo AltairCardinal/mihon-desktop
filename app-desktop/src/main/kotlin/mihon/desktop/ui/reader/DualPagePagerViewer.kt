@@ -232,6 +232,12 @@ internal fun DualPagePagerViewer(
                                         preloader = preloader,
                                         modifier = Modifier.fillMaxSize(),
                                         imageAlignment = Alignment.CenterEnd,
+                                        navigationMode = navigationMode,
+                                        isRtl = isRtl,
+                                        handlesTapNavigation = false,
+                                        onTapPrevious = onTapPrevious,
+                                        onTapNext = onTapNext,
+                                        onTapCenter = onTapCenter,
                                     )
                                 }
                                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
@@ -248,6 +254,12 @@ internal fun DualPagePagerViewer(
                                         preloader = preloader,
                                         modifier = Modifier.fillMaxSize(),
                                         imageAlignment = Alignment.CenterStart,
+                                        navigationMode = navigationMode,
+                                        isRtl = isRtl,
+                                        handlesTapNavigation = false,
+                                        onTapPrevious = onTapPrevious,
+                                        onTapNext = onTapNext,
+                                        onTapCenter = onTapCenter,
                                     )
                                 }
                             }
@@ -378,6 +390,12 @@ internal fun DualPagePagerViewer(
                                 showLoadingIndicator = loadingPlacement == DualPageLoadingIndicatorPlacement.LeftHalfCenter,
                                 onLoadingStateChange = { leftLoading = it },
                                 onSpreadDetected = { onSpreadDetected(leftPage) },
+                                navigationMode = navigationMode,
+                                isRtl = isRtl,
+                                handlesTapNavigation = false,
+                                onTapPrevious = onTapPrevious,
+                                onTapNext = onTapNext,
+                                onTapCenter = onTapCenter,
                             )
                         }
                         Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
@@ -398,6 +416,12 @@ internal fun DualPagePagerViewer(
                                 showLoadingIndicator = loadingPlacement == DualPageLoadingIndicatorPlacement.RightHalfCenter,
                                 onLoadingStateChange = { rightLoading = it },
                                 onSpreadDetected = { onSpreadDetected(rightPage) },
+                                navigationMode = navigationMode,
+                                isRtl = isRtl,
+                                handlesTapNavigation = false,
+                                onTapPrevious = onTapPrevious,
+                                onTapNext = onTapNext,
+                                onTapCenter = onTapCenter,
                             )
                         }
                     }
