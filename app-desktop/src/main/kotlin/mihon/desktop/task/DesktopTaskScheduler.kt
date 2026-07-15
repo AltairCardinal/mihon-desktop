@@ -21,6 +21,7 @@ import mihon.domain.task.BackgroundTask
 import mihon.domain.task.TaskCheckpoint
 import mihon.domain.task.TaskStatus
 import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.AccessDeniedException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -99,15 +100,31 @@ class FileTaskCheckpointStore(
         val temporary = file.resolveSibling("${file.fileName}.${UUID.randomUUID()}.tmp")
         Files.writeString(temporary, json.encodeToString(tasks))
         try {
-            if (!atomicMove(temporary, file)) {
-                Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING)
-            }
+            replaceWithRetry(temporary)
         } finally {
             Files.deleteIfExists(temporary)
         }
     }
 
+    private fun replaceWithRetry(temporary: Path) {
+        var accessDenied: AccessDeniedException? = null
+        repeat(TRANSIENT_MOVE_ATTEMPTS) { attempt ->
+            try {
+                if (!atomicMove(temporary, file)) {
+                    Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING)
+                }
+                return
+            } catch (error: AccessDeniedException) {
+                accessDenied = error
+                if (attempt + 1 < TRANSIENT_MOVE_ATTEMPTS) Thread.sleep(TRANSIENT_MOVE_RETRY_DELAY_MILLIS)
+            }
+        }
+        throw checkNotNull(accessDenied)
+    }
+
     companion object {
+        private const val TRANSIENT_MOVE_ATTEMPTS = 3
+        private const val TRANSIENT_MOVE_RETRY_DELAY_MILLIS = 10L
         private val locks = ConcurrentHashMap<Path, ReentrantLock>()
 
         private fun moveAtomically(source: Path, target: Path): Boolean = try {

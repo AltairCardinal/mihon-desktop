@@ -20,8 +20,10 @@ import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.MethodSource
+import java.nio.file.AccessDeniedException
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 
 class DesktopTaskSchedulerIntegrationTest {
     @TempDir lateinit var directory: Path
@@ -200,6 +202,23 @@ class DesktopTaskSchedulerIntegrationTest {
 
         scheduler.register(task("one", "one"))
 
+        assertEquals(listOf("one"), DesktopTaskScheduler(FileTaskCheckpointStore(file)).pendingTasks().map { it.id })
+    }
+
+    @Test
+    fun `transient atomic move access denial is retried without losing checkpoint`() {
+        val file = directory.resolve("tasks.json")
+        var attempts = 0
+        val store = FileTaskCheckpointStore(file) { source, target ->
+            attempts++
+            if (attempts == 1) throw AccessDeniedException(source.toString(), target.toString(), "transient lock")
+            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            true
+        }
+
+        DesktopTaskScheduler(store).register(task("one", "one"))
+
+        assertEquals(2, attempts)
         assertEquals(listOf("one"), DesktopTaskScheduler(FileTaskCheckpointStore(file)).pendingTasks().map { it.id })
     }
 
