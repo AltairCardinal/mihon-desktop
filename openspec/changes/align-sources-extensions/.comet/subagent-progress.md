@@ -3,21 +3,25 @@
 - Change: `align-sources-extensions`
 - Plan: `docs/superpowers/plans/2026-07-15-mihon-source-extension-shared-core.md`
 - Review mode: `thorough`
-- Current task: `Task 1：权威 fixture、调用链清单与产品保护网`
-- Plan checkbox: `Task 1：权威 fixture、调用链清单与产品保护网`
+
+## Completed
+
+- Task 1: complete (`15ef2c3e6`; RED 5/2 expected failures; GREEN 19/19; spotlessCheck PASS; authority evidence corrected by `8ba3d4fa1`)
+- Task 2: complete (`2f1d4317a..19675b443`; shared query/reducer, Android/Desktop production wiring, API 36 UI recovery 2/2, independent gate re-review CLEAN 0/0/0, 48/48 focused tests PASS)
+
+## Current
+
+- Current task: `Task 3：共享扩展目录、版本、仓库部分失败与信任模型`
+- Plan checkbox: `Task 3：共享扩展目录、版本、仓库部分失败与信任模型`
 - OpenSpec mappings:
-  - `1.1 盘点 Android/Desktop 源、扩展、compat stub 与真实扩展调用链`
-  - `1.4 固定 Desktop APK→JAR、宽屏源 UI、文件工具与现有扩展产品行为基线`
-- Stage: `done`
-- Task base: `d77ef4d2b63e00d8abe3e2da85b6ef4e4351ae58`
-- Implementer: `/root/align_sources_task1_impl` DONE
-- Implementation commit: `15ef2c3e6a8cb6b04adfee3f58087f31fb0f2a50`
-- Changed files:
-  - `docs/roadmap/source-extension-authority-baseline.md`
-  - `app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionProductBaselineTest.kt`
-  - `app-desktop/src/test/resources/extensions/compat-evidence.json`
-  - `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt`
-- RED evidence: focused baseline test, 5 tests / 2 expected failures (missing authority baseline and compat evidence)
-- GREEN evidence: focused product matrix, 19 tests / 0 failures / 0 errors / 0 skipped; `spotlessCheck` PASS
-- Batch review: pending (round 0/2; Task 1–3 batch or earlier high-risk boundary)
-- Unresolved feedback: none; ManHuaGui live fixture version pin must be updated explicitly when upstream changes
+  - `1.3 为 JAR、APK→JAR、损坏产物、版本替换、回滚与不兼容 API 写 RED 测试`
+  - `2.2 提取扩展发现、版本、安全、安装/更新事务与回滚状态到共享层`
+  - `3.2 实现仓库身份/摘要信任、下载校验与 reload 失败原子回滚`
+- Stage: `ready-for-implementation`
+- Task base: `19675b443ad84373a16c0698a824d601f879d21f`
+- Implementer: pending
+- Implementation commit: pending
+- Changed files: pending
+- RED evidence: pending
+- GREEN evidence: pending
+- Batch review: Task 3 is a high-risk catalog/security boundary and requires a fresh thorough review after implementation.

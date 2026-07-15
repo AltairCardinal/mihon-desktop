@@ -32,7 +32,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 ## 执行状态
 
 - [x] Task 1：权威 fixture、调用链清单与产品保护网
-- [ ] Task 2：共享源查询状态、分页与错误语义
+- [x] Task 2：共享源查询状态、分页与错误语义
 - [ ] Task 3：共享扩展目录、版本、仓库部分失败与信任模型
 - [ ] Task 4：共享安装事务与平台 reload 回滚
 - [ ] Task 5：Desktop 浏览器登录、Cookie 原子回传与 FlareSolverr 显式后备
@@ -114,7 +114,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Produces: `SourceQuery`, `SourcePageRequest(sourceId, page, generation, query)`, `SourcePageResult.Content/Empty/Failure`, `SourceRecoveryAction`。
 - Consumes: existing `SourceMangaSearchRequest`, `CatalogueSource`, `AppError` mapper。
 
-- [ ] **Step 1: 扩充 RED 契约**
+- [x] **Step 1: 扩充 RED 契约**
 
   覆盖 popular/latest/search、第一页空、后续页失败保留旧内容、403→OpenLogin、429/500→Retry、畸形解析→稳定 `AppError`、取消以及旧 generation 结果被丢弃：
 
@@ -128,29 +128,29 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
   }
   ```
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
   Run: `./gradlew :domain:jvmTest --tests "tachiyomi.domain.source.service.SourceMangaSearchServiceTest"`
   Expected: FAIL，缺少共享 result/reducer 或错误映射。
 
-- [ ] **Step 3: 实现最小共享查询核心**
+- [x] **Step 3: 实现最小共享查询核心**
 
   保留 `loadPage()` 为唯一源调用；新增包装方法返回 `SourcePageResult`，异常统一交给现有 `AppError` 映射。`SourceQueryReducer` 只接受等于当前 generation 的结果；后续页失败保留 items 并附带 page error。
 
-- [ ] **Step 4: 写 MockWebServer 真实解析集成测试**
+- [x] **Step 4: 写 MockWebServer 真实解析集成测试**
 
   代表性 `HttpSource` 从服务器读取真实形状 JSON，覆盖 success、empty、403、429、500、malformed；不得 mock parser。断言 HTTP→source parser→共享结果的完整链路。
 
-- [ ] **Step 5: 接入 Android/Desktop production 查询链**
+- [x] **Step 5: 接入 Android/Desktop production 查询链**
 
   Desktop `SourceBrowseScreen`/`GlobalSearchScreen` 移除自行拼接异常字符串和重复翻页终止规则；Android ScreenModel 使用同一 result/reducer。UI 保留现有页面和宽屏布局，只消费 Loading/Content/Empty/Failure 与 recovery action。
 
-- [ ] **Step 6: 运行 GREEN 与 wiring 测试**
+- [x] **Step 6: 运行 GREEN 与 wiring 测试**
 
   Run: `./gradlew :domain:jvmTest --tests "tachiyomi.domain.source.service.SourceMangaSearchServiceTest" :app-desktop:jvmTest --tests "mihon.desktop.source.SourceHttpParityIntegrationTest" --tests "mihon.desktop.ui.browse.*" :app:testReleaseUnitTest --tests "*BrowseSource*" --tests "*GlobalSearch*"`
   Expected: 全部 PASS，HTTP 6 类场景无失败。
 
-- [ ] **Step 7: 提交 Task 2**
+- [x] **Step 7: 提交 Task 2**
 
   Commit: `refactor(source): share query state and errors`
 
