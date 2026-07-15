@@ -3,6 +3,8 @@ package mihon.desktop.reader
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
+import mihon.domain.reader.ChapterListDirection
+import mihon.domain.reader.ChapterNavigationResult
 
 /** RED — ReaderNavigator and ReaderChapterRef do not exist yet. */
 class ReaderNavigatorTest {
@@ -115,5 +117,40 @@ class ReaderNavigatorTest {
         val nav = ReaderNavigator(chaptersWithRead, currentIndex = 1, skipReadChapters = false)
         assertEquals(chaptersWithRead[0], nav.nextToRead)
         assertEquals(chaptersWithRead[2], nav.previousRead)
+    }
+
+    @Test
+    fun `reader navigator combines read filtered and duplicate skip flags`() {
+        val candidates = listOf(
+            ReaderChapterRef(id = 5L, url = "/5", name = "5"),
+            ReaderChapterRef(id = 4L, url = "/4", name = "4", isRead = true),
+            ReaderChapterRef(id = 3L, url = "/3", name = "3", isFiltered = true),
+            ReaderChapterRef(id = 2L, url = "/2", name = "2", isDuplicate = true),
+            ReaderChapterRef(id = 1L, url = "/1", name = "1"),
+        )
+
+        val nav = ReaderNavigator(
+            chapters = candidates,
+            currentIndex = 0,
+            skipReadChapters = true,
+            skipFilteredChapters = true,
+            skipDuplicateChapters = true,
+        )
+
+        assertEquals(candidates[4], nav.previousRead)
+    }
+
+    @Test
+    fun `reader navigator preserves an explicit boundary after skip rules exhaust candidates`() {
+        val candidates = listOf(
+            ReaderChapterRef(id = 2L, url = "/2", name = "2"),
+            ReaderChapterRef(id = 1L, url = "/1", name = "1", isFiltered = true),
+        )
+        val nav = ReaderNavigator(candidates, currentIndex = 0, skipFilteredChapters = true)
+
+        assertEquals(
+            ChapterNavigationResult.Boundary(ChapterListDirection.OLDER),
+            nav.result(ChapterListDirection.OLDER),
+        )
     }
 }

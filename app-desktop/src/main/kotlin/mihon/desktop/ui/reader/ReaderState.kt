@@ -7,6 +7,8 @@ import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.VirtualPage
 import mihon.desktop.reader.WebtoonSidePadding
 import mihon.desktop.reader.ZoomState
+import mihon.domain.reader.ReaderChapterState
+import mihon.domain.reader.ReaderChapterTransitionModel
 
 /**
  * All reader UI and settings state, owned by [ReaderScreenModel].
@@ -20,6 +22,9 @@ data class ReaderState(
     val resolvedUrls: List<String> = emptyList(),
     val isLoadingPages: Boolean = false,
     val errorMessage: String? = null,
+    val chapterState: ReaderChapterState = ReaderChapterState.Wait,
+    val chapterTransition: ReaderChapterTransitionModel? = null,
+    val loadGeneration: Long = 0,
 
     // ── Reading mode ─────────────────────────────────────────────────────────
     val readingMode: ReadingMode = ReadingMode.LTR,
@@ -46,6 +51,8 @@ data class ReaderState(
     val colorFilter: ReaderColorFilter = ReaderColorFilter(),
     val zoomState: ZoomState = ZoomState(),
     val skipReadChapters: Boolean = false,
+    val skipFilteredChapters: Boolean = false,
+    val skipDuplicateChapters: Boolean = false,
 
     // ── UI overlay state ─────────────────────────────────────────────────────
     val showSettings: Boolean = false,

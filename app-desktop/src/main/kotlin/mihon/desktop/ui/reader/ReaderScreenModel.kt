@@ -14,6 +14,13 @@ import mihon.desktop.reader.WebtoonSidePadding
 import mihon.desktop.reader.ZoomState
 import mihon.desktop.reader.dualPageFromViewerFlags
 import mihon.desktop.reader.readingModeFromViewerFlags
+import mihon.domain.error.AppError
+import mihon.domain.reader.ReaderChapterModel
+import mihon.domain.reader.ReaderChapterState
+import mihon.domain.reader.ReaderChapterTransitionModel
+import mihon.domain.reader.ReaderNavigationCommand
+import mihon.domain.reader.ReaderPageModel
+import mihon.domain.reader.ReaderTransitionDirection
 
 /**
  * Voyager ScreenModel for [DesktopReaderScreen].
@@ -30,6 +37,7 @@ class ReaderScreenModel(
     private val chapterTitle: String = "",
     val pageUrls: List<String> = emptyList(),
     val initialPage: Int = 0,
+    private val chapterId: Long = 0L,
     private val isWebtoon: Boolean = false,
     val sourceId: Long = 0L,
     val chapterUrl: String = "",
@@ -46,10 +54,16 @@ class ReaderScreenModel(
             isWebtoon -> ReadingMode.WEBTOON
             else -> readingModeFromViewerFlags(mangaViewerFlags) ?: prefs.readingMode
         }
+        val chapterState = when {
+            pageUrls.isNotEmpty() -> ReaderChapterState.Loaded(pageUrls.toReaderPages())
+            pageUrls.isEmpty() && sourceId != 0L && chapterUrl.isNotBlank() -> ReaderChapterState.Loading
+            else -> ReaderChapterState.Wait
+        }
         return ReaderState(
             currentPage = initialPage.coerceAtLeast(0),
             resolvedUrls = pageUrls,
             isLoadingPages = pageUrls.isEmpty() && sourceId != 0L && chapterUrl.isNotBlank(),
+            chapterState = chapterState,
             readingMode = resolvedMode,
             dualPageMode = dualPageFromViewerFlags(mangaViewerFlags) ?: true,
             autoSplitPages = prefs.autoSplitPages,
@@ -64,6 +78,8 @@ class ReaderScreenModel(
             scaleType = prefs.scaleType,
             colorFilter = prefs.loadColorFilter(),
             skipReadChapters = prefs.skipReadChapters,
+            skipFilteredChapters = prefs.skipFilteredChapters,
+            skipDuplicateChapters = prefs.skipDuplicateChapters,
         )
     }
 
@@ -84,6 +100,7 @@ class ReaderScreenModel(
                 isLoadingPages = false,
                 currentPage = page,
                 errorMessage = null,
+                chapterState = ReaderChapterState.Loaded(urls.toReaderPages()),
             )
         }
     }
@@ -96,6 +113,7 @@ class ReaderScreenModel(
                 isLoadingPages = pageCount > 0,
                 currentPage = initialPage.coerceIn(0, (pageCount - 1).coerceAtLeast(0)),
                 errorMessage = null,
+                chapterState = ReaderChapterState.Loading,
             )
         }
     }
@@ -117,11 +135,95 @@ class ReaderScreenModel(
     fun hasLoadedPage(): Boolean = state.value.resolvedUrls.any { it.isNotBlank() }
 
     fun setLoadError(message: String) {
-        _state.update { it.copy(isLoadingPages = false, errorMessage = message) }
+        _state.update {
+            it.copy(
+                isLoadingPages = false,
+                errorMessage = message,
+                chapterState = ReaderChapterState.Error(
+                    error = AppError.Unknown(IllegalStateException(message)),
+                    retryTargetChapterId = chapterId,
+                ),
+            )
+        }
     }
 
     fun setLoadingDone() {
-        _state.update { it.copy(isLoadingPages = false) }
+        _state.update {
+            it.copy(
+                isLoadingPages = false,
+                chapterState = ReaderChapterState.Loaded(it.resolvedUrls.toReaderPages()),
+            )
+        }
+    }
+
+    fun requestRetry() {
+        _state.update {
+            it.copy(
+                isLoadingPages = true,
+                errorMessage = null,
+                chapterState = ReaderChapterState.Loading,
+                loadGeneration = it.loadGeneration + 1,
+            )
+        }
+    }
+
+    fun showChapterBoundary(
+        direction: ReaderTransitionDirection,
+        chapterId: Long,
+        chapterUrl: String,
+        chapterName: String,
+        chapterNumber: Double,
+    ) {
+        val chapter = ReaderChapterModel(chapterId, chapterUrl, chapterName, chapterNumber)
+        _state.update {
+            it.copy(
+                chapterTransition = ReaderChapterTransitionModel(
+                    direction = direction,
+                    from = chapter,
+                    to = null,
+                ),
+            )
+        }
+    }
+
+    fun showChapterTransition(
+        direction: ReaderTransitionDirection,
+        from: ReaderChapterModel,
+        to: ReaderChapterModel,
+        missingChapterCount: Int,
+    ) {
+        _state.update {
+            it.copy(
+                chapterTransition = ReaderChapterTransitionModel(
+                    direction = direction,
+                    from = from,
+                    to = to,
+                    missingChapterCount = missingChapterCount,
+                    state = ReaderChapterState.Wait,
+                ),
+            )
+        }
+    }
+
+    fun clearChapterTransition() {
+        _state.update { it.copy(chapterTransition = null) }
+    }
+
+    fun setChapterTransitionState(state: ReaderChapterState) {
+        _state.update { current ->
+            current.copy(chapterTransition = current.chapterTransition?.copy(state = state))
+        }
+    }
+
+    fun chapterTransitionCommand(): ReaderNavigationCommand? =
+        state.value.chapterTransition?.retryCommand()
+
+    fun retryChapterTransition(): ReaderNavigationCommand? {
+        val command = chapterTransitionCommand()
+        if (command is ReaderNavigationCommand.RetryChapter) {
+            setChapterTransitionState(ReaderChapterState.Loading)
+        }
+        return command
     }
 
     // ── UI visibility ─────────────────────────────────────────────────────────
@@ -241,8 +343,21 @@ class ReaderScreenModel(
         prefs?.skipReadChapters = skip
     }
 
+    fun setSkipFilteredChapters(skip: Boolean, prefs: ReaderPreferences? = null) {
+        _state.update { it.copy(skipFilteredChapters = skip) }
+        prefs?.skipFilteredChapters = skip
+    }
+
+    fun setSkipDuplicateChapters(skip: Boolean, prefs: ReaderPreferences? = null) {
+        _state.update { it.copy(skipDuplicateChapters = skip) }
+        prefs?.skipDuplicateChapters = skip
+    }
+
     suspend fun persistViewerFlags(mangaId: Long, flags: Long) {
         if (mangaId == 0L) return
         persistViewerFlags.invoke(mangaId, flags)
     }
 }
+
+private fun List<String>.toReaderPages(): List<ReaderPageModel> =
+    mapIndexed { index, url -> ReaderPageModel(index = index, url = url, imageUrl = url.takeIf(String::isNotBlank)) }

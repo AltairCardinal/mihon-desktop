@@ -1,9 +1,12 @@
 package mihon.desktop.reader
 
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
@@ -38,6 +41,7 @@ class PagePreloaderTest {
         val (preloader, store) = makePreloader(windowSize = 2)
         val urls = (0..4).map { "page$it" }
         urls.forEachIndexed { i, url -> store[url] = makePngBytes(i) }
+        val generationBeforeLoad = preloader.cacheGeneration.value
 
         preloader.preload(currentPage = 0, pageUrls = urls)
 
@@ -45,6 +49,7 @@ class PagePreloaderTest {
         assertNotNull(preloader.get(0))
         assertNotNull(preloader.get(1))
         assertNotNull(preloader.get(2))
+        assertTrue(preloader.cacheGeneration.value > generationBeforeLoad)
     }
 
     @Test
@@ -61,6 +66,20 @@ class PagePreloaderTest {
         assertNull(preloader.get(0))   // outside [1..5] → evicted
         assertNotNull(preloader.get(1)) // inside [1..5] → kept
         assertNotNull(preloader.get(3))
+    }
+
+    @Test
+    fun `advancing beyond the whole window evicts every stale page`() = runTest {
+        val (preloader, store) = makePreloader(windowSize = 2)
+        val urls = (0..9).map { "page$it" }
+        urls.forEachIndexed { i, url -> store[url] = makePngBytes(i) }
+
+        preloader.preload(currentPage = 2, pageUrls = urls)
+        assertEquals(setOf(0, 1, 2, 3, 4), preloader.cacheSnapshot().keys)
+
+        preloader.preload(currentPage = 8, pageUrls = urls)
+
+        assertEquals(setOf(6, 7, 8, 9), preloader.cacheSnapshot().keys)
     }
 
     @Test
@@ -101,5 +120,138 @@ class PagePreloaderTest {
         assertNotNull(preloader.get(0))
         assertNull(preloader.get(1))   // not in store → skipped → null in cache
         assertNotNull(preloader.get(2))
+    }
+
+    @Test
+    fun `large pages are downsampled before entering the ordinary cache`() = runTest {
+        val bytes = makePngBytes(1)
+        val preloader = PagePreloader(
+            fetcher = { bytes },
+            windowSize = 0,
+            maxDecodedWidth = 2,
+            maxDecodedHeight = 2,
+            maxCacheBytes = 16,
+            largeImagePixelThreshold = 4,
+        )
+
+        preloader.preload(0, listOf("large"))
+
+        val bitmap = requireNotNull(preloader.get(0))
+        assertEquals(2, bitmap.width)
+        assertEquals(2, bitmap.height)
+        assertEquals(16, preloader.cacheSnapshot().usedBytes)
+        assertTrue(preloader.cacheSnapshot().usedBytes <= preloader.cacheSnapshot().maxBytes)
+    }
+
+    @Test
+    fun `ordinary non large page path still enforces decoded dimension bounds`() = runTest {
+        val bytes = ByteArrayOutputStream().also {
+            ImageIO.write(BufferedImage(300, 200, BufferedImage.TYPE_INT_ARGB), "png", it)
+        }.toByteArray()
+        val preloader = PagePreloader(
+            fetcher = { bytes },
+            windowSize = 0,
+            maxDecodedWidth = 200,
+            maxDecodedHeight = 200,
+            largeImagePixelThreshold = Long.MAX_VALUE,
+        )
+
+        preloader.preload(0, listOf("ordinary"))
+
+        val cached = requireNotNull(preloader.get(0))
+        assertTrue(cached.width <= 200)
+        assertTrue(cached.height <= 200)
+        assertTrue(preloader.cacheSnapshot().usedBytes <= 200L * 200L * 4L)
+    }
+
+    @Test
+    fun `failed decode never pollutes the cache`() = runTest {
+        val preloader = PagePreloader(fetcher = { "invalid".toByteArray() }, windowSize = 0)
+        val generationBeforeLoad = preloader.cacheGeneration.value
+
+        preloader.preload(0, listOf("broken"))
+
+        assertNull(preloader.get(0))
+        assertEquals(0, preloader.cacheSnapshot().usedBytes)
+        assertEquals(generationBeforeLoad, preloader.cacheGeneration.value)
+    }
+
+    @Test
+    fun `fast page change cancels stale preload and prevents a late cache write`() = runTest {
+        val oldRequestStarted = CompletableDeferred<Unit>()
+        val oldRequestReleased = CompletableDeferred<ByteArray?>()
+        val oldRequestFinished = CompletableDeferred<Unit>()
+        val newPageBytes = makePngBytes(2)
+        val preloader = PagePreloader(
+            fetcher = { url ->
+                if (url == "old") {
+                    oldRequestStarted.complete(Unit)
+                    try {
+                        oldRequestReleased.await()
+                    } finally {
+                        oldRequestFinished.complete(Unit)
+                    }
+                } else {
+                    newPageBytes
+                }
+            },
+            windowSize = 0,
+        )
+
+        val oldPreload = async { preloader.preload(0, listOf("old", "new")) }
+        oldRequestStarted.await()
+
+        preloader.preload(1, listOf("old", "new"))
+        oldRequestFinished.await()
+        oldPreload.await()
+
+        assertNull(preloader.get(0))
+        assertNotNull(preloader.get(1))
+        assertEquals(setOf(1), preloader.cacheSnapshot().keys)
+    }
+
+    @Test
+    fun `page change cancels every active or queued old generation request`() = runTest {
+        val firstOld0Started = CompletableDeferred<Unit>()
+        val firstOld1Started = CompletableDeferred<Unit>()
+        val firstOld0Finished = CompletableDeferred<Unit>()
+        val firstOld1Finished = CompletableDeferred<Unit>()
+        val attempts = mutableMapOf<String, Int>()
+        val bytes = makePngBytes(9)
+        val preloader = PagePreloader(
+            fetcher = { url ->
+                val attempt = synchronized(attempts) {
+                    attempts.getOrDefault(url, 0).plus(1).also { attempts[url] = it }
+                }
+                if (attempt == 1 && (url == "old0" || url == "old1")) {
+                    val started = if (url == "old0") firstOld0Started else firstOld1Started
+                    val finished = if (url == "old0") firstOld0Finished else firstOld1Finished
+                    started.complete(Unit)
+                    try {
+                        CompletableDeferred<Unit>().await()
+                    } finally {
+                        finished.complete(Unit)
+                    }
+                }
+                bytes
+            },
+            windowSize = 1,
+        )
+        val urls = listOf("old0", "old1", "new2")
+
+        val oldPreload = async { preloader.preload(0, urls) }
+        firstOld0Started.await()
+        firstOld1Started.await()
+
+        preloader.preload(2, urls)
+        firstOld0Finished.await()
+        firstOld1Finished.await()
+        oldPreload.await()
+
+        assertNull(preloader.get(0))
+        assertNotNull(preloader.get(1))
+        assertNotNull(preloader.get(2))
+        assertEquals(2, attempts["old1"])
+        assertEquals(setOf(1, 2), preloader.cacheSnapshot().keys)
     }
 }

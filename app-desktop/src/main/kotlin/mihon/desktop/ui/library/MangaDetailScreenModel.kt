@@ -10,6 +10,7 @@ import mihon.desktop.domain.LibraryUpdateChecker
 import mihon.desktop.domain.SetExcludedScanlators
 import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.reader.ReaderNavigator
+import mihon.desktop.reader.withDuplicateChapterFlags
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.externalChapterUrlOrNull
 import mihon.desktop.reader.viewerFlagsWithReadingMode
@@ -385,12 +386,28 @@ class MangaDetailScreenModel(
         return isDownloaded?.invoke(manga.source, manga.title, chapter.name) ?: false
     }
 
-    fun readerRequest(manga: Manga, chapters: List<Chapter>, chapter: Chapter): MangaDetailReaderRequest? {
+    fun readerRequest(
+        manga: Manga,
+        chapters: List<Chapter>,
+        chapter: Chapter,
+        visibleChapterIds: Set<Long>? = null,
+    ): MangaDetailReaderRequest? {
         if (chapter.url.externalChapterUrlOrNull() != null) return null
         val chapterRefs = chapters
             .filterNot { it.url.externalChapterUrlOrNull() != null }
             .sortedBy { it.sourceOrder }
-            .map { ReaderChapterRef(id = it.id, url = it.url, name = it.name, isRead = it.read, chapterNumber = it.chapterNumber) }
+            .map {
+                ReaderChapterRef(
+                    id = it.id,
+                    url = it.url,
+                    name = it.name,
+                    isRead = it.read,
+                    chapterNumber = it.chapterNumber,
+                    scanlator = it.scanlator,
+                    isFiltered = visibleChapterIds != null && it.id !in visibleChapterIds,
+                )
+            }
+            .withDuplicateChapterFlags(chapter.id)
         return MangaDetailReaderRequest(
             chapterTitle = chapter.name,
             mangaId = manga.id,

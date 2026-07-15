@@ -76,6 +76,8 @@ fun ReaderSettingsPanel(
     colorFilter: ReaderColorFilter,
     scaleType: ScaleType = ScaleType.FIT_SCREEN,
     skipReadChapters: Boolean = false,
+    skipFilteredChapters: Boolean = false,
+    skipDuplicateChapters: Boolean = false,
     zoomState: ZoomState,
     onModeChange: (ReadingMode) -> Unit,
     onDualPageChange: (Boolean) -> Unit,
@@ -91,6 +93,8 @@ fun ReaderSettingsPanel(
     onColorFilterChange: (ReaderColorFilter) -> Unit,
     onScaleTypeChange: (ScaleType) -> Unit = {},
     onSkipReadChaptersChange: (Boolean) -> Unit = {},
+    onSkipFilteredChaptersChange: (Boolean) -> Unit = {},
+    onSkipDuplicateChaptersChange: (Boolean) -> Unit = {},
     onZoomChange: (ZoomState) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -128,6 +132,8 @@ fun ReaderSettingsPanel(
                             backgroundTheme = backgroundTheme,
                             navigationMode = navigationMode,
                             skipReadChapters = skipReadChapters,
+                            skipFilteredChapters = skipFilteredChapters,
+                            skipDuplicateChapters = skipDuplicateChapters,
                             zoomState = zoomState,
                             onModeChange = onModeChange,
                             onDualPageChange = onDualPageChange,
@@ -136,6 +142,8 @@ fun ReaderSettingsPanel(
                             onBackgroundThemeChange = onBackgroundThemeChange,
                             onNavigationModeChange = onNavigationModeChange,
                             onSkipReadChaptersChange = onSkipReadChaptersChange,
+                            onSkipFilteredChaptersChange = onSkipFilteredChaptersChange,
+                            onSkipDuplicateChaptersChange = onSkipDuplicateChaptersChange,
                             onZoomChange = onZoomChange,
                         )
                         1 -> DisplayTab(
@@ -177,6 +185,8 @@ private fun GeneralTab(
     backgroundTheme: ReaderBackgroundTheme,
     navigationMode: NavigationMode,
     skipReadChapters: Boolean = false,
+    skipFilteredChapters: Boolean = false,
+    skipDuplicateChapters: Boolean = false,
     zoomState: ZoomState,
     onModeChange: (ReadingMode) -> Unit,
     onDualPageChange: (Boolean) -> Unit,
@@ -185,6 +195,8 @@ private fun GeneralTab(
     onBackgroundThemeChange: (ReaderBackgroundTheme) -> Unit,
     onNavigationModeChange: (NavigationMode) -> Unit,
     onSkipReadChaptersChange: (Boolean) -> Unit = {},
+    onSkipFilteredChaptersChange: (Boolean) -> Unit = {},
+    onSkipDuplicateChaptersChange: (Boolean) -> Unit = {},
     onZoomChange: (ZoomState) -> Unit,
 ) {
     // Reading mode
@@ -245,6 +257,16 @@ private fun GeneralTab(
             label = "Skip read chapters",
             checked = skipReadChapters,
             onCheckedChange = onSkipReadChaptersChange,
+        )
+        SwitchRow(
+            label = "Skip filtered chapters",
+            checked = skipFilteredChapters,
+            onCheckedChange = onSkipFilteredChaptersChange,
+        )
+        SwitchRow(
+            label = "Skip duplicate chapters",
+            checked = skipDuplicateChapters,
+            onCheckedChange = onSkipDuplicateChaptersChange,
         )
     }
 
@@ -369,6 +391,11 @@ private fun FilterTab(
 ) {
     // Brightness
     SettingsSection("Brightness") {
+        SwitchRow(
+            label = "Enable brightness",
+            checked = colorFilter.brightnessEnabled,
+            onCheckedChange = { onColorFilterChange(colorFilter.copy(brightnessEnabled = it)) },
+        )
         Text(
             text = "%.0f%%".format(colorFilter.brightness * 100),
             style = MaterialTheme.typography.bodySmall,
@@ -388,17 +415,16 @@ private fun FilterTab(
     SettingsSection("Colour Filter") {
         SwitchRow(
             label = "Enable colour filter",
-            checked = colorFilter.enabled,
-            onCheckedChange = { onColorFilterChange(colorFilter.copy(enabled = it)) },
+            checked = colorFilter.tintEnabled,
+            onCheckedChange = { onColorFilterChange(colorFilter.copy(tintEnabled = it)) },
         )
 
-        if (colorFilter.enabled) {
+        if (colorFilter.tintEnabled) {
             Spacer(Modifier.height(4.dp))
             ColorChannelSlider("R", colorFilter.r) { onColorFilterChange(colorFilter.copy(r = it)) }
             ColorChannelSlider("G", colorFilter.g) { onColorFilterChange(colorFilter.copy(g = it)) }
             ColorChannelSlider("B", colorFilter.b) { onColorFilterChange(colorFilter.copy(b = it)) }
             ColorChannelSlider("A", colorFilter.alpha) { onColorFilterChange(colorFilter.copy(alpha = it)) }
-
             // Preview swatch
             Box(
                 modifier = Modifier
@@ -416,6 +442,16 @@ private fun FilterTab(
                     .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(4.dp)),
             )
         }
+        SwitchRow(
+            label = "Grayscale",
+            checked = colorFilter.grayscaleEnabled,
+            onCheckedChange = { onColorFilterChange(colorFilter.copy(grayscaleEnabled = it)) },
+        )
+        SwitchRow(
+            label = "Invert colours",
+            checked = colorFilter.invertEnabled,
+            onCheckedChange = { onColorFilterChange(colorFilter.copy(invertEnabled = it)) },
+        )
     }
 }
 

@@ -16,6 +16,7 @@ import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.reader.ReaderNavigator
+import mihon.desktop.reader.withDuplicateChapterFlags
 import mihon.desktop.settings.LibraryCategoryPrefs
 import mihon.domain.task.TaskStatus
 import tachiyomi.domain.category.interactor.SetMangaCategories
@@ -426,8 +427,15 @@ class LibraryScreenModel(
             ?: chapters.maxByOrNull { it.sourceOrder }
             ?: return null
         val chapterRefs = chapters.map {
-            ReaderChapterRef(id = it.id, url = it.url, name = it.name, isRead = it.read, chapterNumber = it.chapterNumber)
-        }
+            ReaderChapterRef(
+                id = it.id,
+                url = it.url,
+                name = it.name,
+                isRead = it.read,
+                chapterNumber = it.chapterNumber,
+                scanlator = it.scanlator,
+            )
+        }.withDuplicateChapterFlags(target.id)
         return LibraryReaderRequest(
             chapterTitle = target.name,
             mangaTitle = item.manga.title,

@@ -63,7 +63,11 @@ object SkiaImageDecoder {
         return bitmap.asComposeImageBitmap()
     }
 
-    // Integer ratio: how many source pixels map to one target pixel
-    private fun calculateSampleSize(imgW: Int, imgH: Int, maxW: Int, maxH: Int): Int =
-        maxOf(imgW / maxW, imgH / maxH).coerceAtLeast(1)
+    // Ceiling ratio guarantees the cached decode never exceeds either requested bound.
+    private fun calculateSampleSize(imgW: Int, imgH: Int, maxW: Int, maxH: Int): Int {
+        require(maxW > 0 && maxH > 0) { "decoded bounds must be positive" }
+        val widthRatio = (imgW.toLong() + maxW - 1L) / maxW
+        val heightRatio = (imgH.toLong() + maxH - 1L) / maxH
+        return maxOf(widthRatio, heightRatio, 1L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+    }
 }

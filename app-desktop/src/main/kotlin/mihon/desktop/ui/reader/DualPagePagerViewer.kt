@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import mihon.desktop.reader.DualPageState
+import mihon.desktop.reader.PagePreloader
 import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.SinglePageSide
 import mihon.desktop.reader.ZoomState
@@ -107,6 +108,7 @@ internal fun DualPagePagerViewer(
     chapterTitle: String = "",
     forcedSinglePages: Set<Int> = emptySet(),
     matchedPairs: Set<Pair<Int, Int>> = emptySet(),
+    preloader: PagePreloader? = null,
     scaleType: ScaleType = ScaleType.FIT_SCREEN,
     navigationMode: NavigationMode = NavigationMode.RightAndLeft,
     onPageChange: (Int) -> Unit,
@@ -236,6 +238,7 @@ internal fun DualPagePagerViewer(
                                         mangaTitle = mangaTitle,
                                         chapterTitle = chapterTitle,
                                         pageIndex = pageIndex,
+                                        preloader = preloader,
                                         modifier = Modifier.fillMaxSize(),
                                         imageAlignment = Alignment.CenterEnd,
                                     )
@@ -251,6 +254,7 @@ internal fun DualPagePagerViewer(
                                         mangaTitle = mangaTitle,
                                         chapterTitle = chapterTitle,
                                         pageIndex = pageIndex,
+                                        preloader = preloader,
                                         modifier = Modifier.fillMaxSize(),
                                         imageAlignment = Alignment.CenterStart,
                                     )
@@ -268,6 +272,7 @@ internal fun DualPagePagerViewer(
                                 mangaTitle = mangaTitle,
                                 chapterTitle = chapterTitle,
                                 pageIndex = pageIndex,
+                                preloader = preloader,
                                 onSpreadDetected = { onSpreadDetected(pageIndex) },
                                 navigationMode = navigationMode,
                                 onTapLeft = onTapLeft,
@@ -289,6 +294,7 @@ internal fun DualPagePagerViewer(
                             mangaTitle = mangaTitle,
                             chapterTitle = chapterTitle,
                             pageIndex = pageIndex,
+                            preloader = preloader,
                             modifier = Modifier.fillMaxSize(),
                             imageAlignment = singlePageImageAlignment(SinglePageSide.TRAILING, isRtl),
                             loadingAlignment = Alignment.Center,
@@ -312,6 +318,7 @@ internal fun DualPagePagerViewer(
                             mangaTitle = mangaTitle,
                             chapterTitle = chapterTitle,
                             pageIndex = pageIndex,
+                            preloader = preloader,
                             modifier = Modifier.fillMaxSize(),
                             imageAlignment = singlePageImageAlignment(SinglePageSide.LEADING, isRtl),
                             loadingAlignment = Alignment.Center,
@@ -370,6 +377,7 @@ internal fun DualPagePagerViewer(
                                 mangaTitle = mangaTitle,
                                 chapterTitle = chapterTitle,
                                 pageIndex = leftPage,
+                                preloader = preloader,
                                 modifier = Modifier.fillMaxSize(),
                                 imageAlignment = Alignment.CenterEnd,
                                 loadingAlignment = Alignment.Center,
@@ -389,6 +397,7 @@ internal fun DualPagePagerViewer(
                                 mangaTitle = mangaTitle,
                                 chapterTitle = chapterTitle,
                                 pageIndex = rightPage,
+                                preloader = preloader,
                                 modifier = Modifier.fillMaxSize(),
                                 imageAlignment = Alignment.CenterStart,
                                 loadingAlignment = Alignment.Center,

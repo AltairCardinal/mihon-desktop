@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asSkiaBitmap
 import androidx.compose.ui.layout.ContentScale
 import coil3.compose.AsyncImagePainter
 import coil3.compose.rememberAsyncImagePainter
@@ -29,6 +30,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import mihon.desktop.reader.PagePreloader
 import mihon.desktop.reader.WebtoonSidePadding
 import org.jetbrains.skia.Bitmap as SkiaBitmap
 import org.jetbrains.skia.Canvas as SkiaCanvas
@@ -57,6 +59,7 @@ internal fun WebtoonViewer(
     contextMenuScope: CoroutineScope? = null,
     mangaTitle: String = "",
     chapterTitle: String = "",
+    preloader: PagePreloader? = null,
     onNextChapter: (() -> Unit)? = null,
 ) {
     val paddingFraction = sidePadding.ratio
@@ -101,6 +104,7 @@ internal fun WebtoonViewer(
                 mangaTitle = mangaTitle,
                 chapterTitle = chapterTitle,
                 pageIndex = pageIndex,
+                preloader = preloader,
             )
         }
     }
@@ -128,13 +132,27 @@ private fun WebtoonPageItem(
     mangaTitle: String = "",
     chapterTitle: String = "",
     pageIndex: Int = 0,
+    preloader: PagePreloader? = null,
 ) {
     var croppedBitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
 
-    val painter = rememberAsyncImagePainter(url)
+    val preloadRevision = if (preloader != null) {
+        preloader.cacheRevision.collectAsState().value
+    } else {
+        0L
+    }
+    val preloadedBitmap = remember(url, pageIndex, preloader, preloadRevision) { preloader?.get(pageIndex) }
+
+    val painter = rememberAsyncImagePainter(readerPagePainterModel(url, preloadedBitmap))
     val painterState by painter.state.collectAsState()
 
-    LaunchedEffect(painterState, cropBorders) {
+    LaunchedEffect(painterState, preloadedBitmap, cropBorders) {
+        if (cropBorders && preloadedBitmap != null) {
+            croppedBitmap = withContext(Dispatchers.Default) {
+                cropBordersWebtoon(preloadedBitmap.asSkiaBitmap())
+            }
+            return@LaunchedEffect
+        }
         val s = painterState
         if (cropBorders && s is AsyncImagePainter.State.Success) {
             croppedBitmap = withContext(Dispatchers.Default) {
@@ -147,10 +165,10 @@ private fun WebtoonPageItem(
     }
 
     val pageContent: @Composable () -> Unit = {
-        val cropped = croppedBitmap
-        if (cropped != null) {
+        val bitmap = croppedBitmap ?: preloadedBitmap
+        if (bitmap != null) {
             Image(
-                bitmap = cropped,
+                bitmap = bitmap,
                 contentDescription = null,
                 modifier = modifier,
                 contentScale = ContentScale.FillWidth,

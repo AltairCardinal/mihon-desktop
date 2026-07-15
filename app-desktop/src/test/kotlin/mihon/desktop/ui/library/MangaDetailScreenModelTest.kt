@@ -580,6 +580,29 @@ class MangaDetailScreenModelTest {
     }
 
     @Test
+    fun `readerRequest marks filtered and duplicate chapters for shared reader skip policy`() {
+        val model = MangaDetailScreenModel(mangaId = 1L)
+        val manga = createFakeManga(id = 1L)
+        val current = createFakeChapter(42L).copy(chapterNumber = 4.0, scanlator = "B", sourceOrder = 4L)
+        val duplicate = createFakeChapter(41L).copy(chapterNumber = 4.0, scanlator = "A", sourceOrder = 3L)
+        val filtered = createFakeChapter(3L).copy(chapterNumber = 3.0, sourceOrder = 2L)
+        val visible = createFakeChapter(2L).copy(chapterNumber = 2.0, sourceOrder = 1L)
+
+        val request = requireNotNull(
+            model.readerRequest(
+                manga = manga,
+                chapters = listOf(current, duplicate, filtered, visible),
+                chapter = current,
+                visibleChapterIds = setOf(current.id, visible.id),
+            ),
+        )
+
+        assertTrue(request.chapters.first { it.id == duplicate.id }.isDuplicate)
+        assertTrue(request.chapters.first { it.id == filtered.id }.isFiltered)
+        assertFalse(request.chapters.first { it.id == current.id }.isDuplicate)
+    }
+
+    @Test
     fun `setCategoriesForManga delegates to category interactor`() = runTest {
         val mangaRepository = FakeMangaRepository()
         val model = MangaDetailScreenModel(mangaId = 1L, setMangaCategories = SetMangaCategories(mangaRepository))

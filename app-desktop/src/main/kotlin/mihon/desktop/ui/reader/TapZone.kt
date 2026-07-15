@@ -4,6 +4,10 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventType
+import mihon.domain.reader.NavigationInversion
+import mihon.domain.reader.NavigationPreset
+import mihon.domain.reader.ReaderNavigation
+import mihon.domain.reader.ReaderNavigationCommand
 
 enum class TapZone { LEFT, CENTER, RIGHT }
 
@@ -43,38 +47,27 @@ fun tapNavRegion(
     isRtl: Boolean = false,
 ): TapNavRegion {
     if (width <= 0f || height <= 0f) return TapNavRegion.MENU
-    val nx = x / width  // normalised x  [0, 1]
-    val ny = y / height // normalised y  [0, 1]
-    return when (mode) {
-        NavigationMode.Disabled -> TapNavRegion.MENU
-
-        NavigationMode.RightAndLeft -> when {
-            nx < 0.33f -> if (isRtl) TapNavRegion.NEXT else TapNavRegion.PREV
-            nx > 0.66f -> if (isRtl) TapNavRegion.PREV else TapNavRegion.NEXT
-            else -> TapNavRegion.MENU
-        }
-
-        NavigationMode.L -> when {
-            ny < 0.33f -> TapNavRegion.PREV           // top row (overrides columns)
-            ny > 0.66f -> TapNavRegion.NEXT           // bottom row (overrides columns)
-            nx < 0.33f -> TapNavRegion.PREV           // left column, middle band
-            nx > 0.66f -> TapNavRegion.NEXT           // right column, middle band
-            else -> TapNavRegion.MENU
-        }
-
-        NavigationMode.Kindle -> when {
-            ny < 0.33f -> TapNavRegion.MENU           // top row always opens menu
-            nx < 0.5f -> TapNavRegion.PREV            // left half of non-top area
-            else -> TapNavRegion.NEXT                 // right half of non-top area
-        }
-
-        NavigationMode.Edge -> when {
-            nx < 0.2f -> TapNavRegion.PREV            // left edge
-            nx > 0.8f -> TapNavRegion.NEXT            // right edge
-            ny < 0.2f -> TapNavRegion.PREV            // top edge
-            ny > 0.8f -> TapNavRegion.NEXT            // bottom edge
-            else -> TapNavRegion.MENU
-        }
+    val preset = when (mode) {
+        NavigationMode.RightAndLeft -> NavigationPreset.RIGHT_AND_LEFT
+        NavigationMode.L -> NavigationPreset.L
+        NavigationMode.Kindle -> NavigationPreset.KINDLE
+        NavigationMode.Edge -> NavigationPreset.EDGE
+        NavigationMode.Disabled -> NavigationPreset.DISABLED
+    }
+    val command = ReaderNavigation.commandAt(
+        x = x / width,
+        y = y / height,
+        preset = preset,
+        inversion = if (isRtl && mode == NavigationMode.RightAndLeft) {
+            NavigationInversion.HORIZONTAL
+        } else {
+            NavigationInversion.NONE
+        },
+    )
+    return when (command) {
+        ReaderNavigationCommand.Previous -> TapNavRegion.PREV
+        ReaderNavigationCommand.Next -> TapNavRegion.NEXT
+        else -> TapNavRegion.MENU
     }
 }
 

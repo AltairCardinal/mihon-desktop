@@ -1,5 +1,10 @@
 package mihon.desktop.reader
 
+import mihon.domain.reader.PhysicalDirection
+import mihon.domain.reader.ReaderDirection
+import mihon.domain.reader.ReaderNavigation
+import mihon.domain.reader.ReaderNavigationCommand
+
 /** Result of mapping a key event to a reader action. */
 sealed interface ReaderPageAction {
     data class GoToPage(val page: Int) : ReaderPageAction
@@ -16,10 +21,24 @@ private const val PAGE_SKIP = 5
 object ReaderKeyboardAction {
 
     fun forLeft(isRtl: Boolean, currentPage: Int, totalPages: Int): ReaderPageAction =
-        if (isRtl) advance(currentPage, totalPages) else retreat(currentPage)
+        fromShared(
+            ReaderNavigation.resolvePhysicalPageCommand(
+                PhysicalDirection.LEFT,
+                if (isRtl) ReaderDirection.RTL else ReaderDirection.LTR,
+            ),
+            currentPage,
+            totalPages,
+        )
 
     fun forRight(isRtl: Boolean, currentPage: Int, totalPages: Int): ReaderPageAction =
-        if (isRtl) retreat(currentPage) else advance(currentPage, totalPages)
+        fromShared(
+            ReaderNavigation.resolvePhysicalPageCommand(
+                PhysicalDirection.RIGHT,
+                if (isRtl) ReaderDirection.RTL else ReaderDirection.LTR,
+            ),
+            currentPage,
+            totalPages,
+        )
 
     fun forHome(): ReaderPageAction = ReaderPageAction.GoToPage(0)
 
@@ -48,4 +67,14 @@ object ReaderKeyboardAction {
     private fun retreat(currentPage: Int): ReaderPageAction =
         if (currentPage <= 0) ReaderPageAction.NoPrevPage
         else ReaderPageAction.GoToPage(currentPage - 1)
+
+    private fun fromShared(
+        command: ReaderNavigationCommand,
+        currentPage: Int,
+        totalPages: Int,
+    ): ReaderPageAction = when (command) {
+        ReaderNavigationCommand.Next -> advance(currentPage, totalPages)
+        ReaderNavigationCommand.Previous -> retreat(currentPage)
+        else -> error("Unsupported keyboard page command: $command")
+    }
 }

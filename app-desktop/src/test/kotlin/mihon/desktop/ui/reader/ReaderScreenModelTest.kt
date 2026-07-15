@@ -11,6 +11,10 @@ import mihon.desktop.reader.WebtoonSidePadding
 import mihon.desktop.reader.ZoomState
 import mihon.desktop.reader.viewerFlagsWithDualPage
 import mihon.desktop.reader.viewerFlagsWithReadingMode
+import mihon.domain.reader.ReaderChapterState
+import mihon.domain.reader.ReaderNavigationCommand
+import mihon.domain.reader.ReaderTransitionDirection
+import mihon.domain.error.AppError
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -252,9 +256,30 @@ class ReaderScreenModelTest {
     @Test
     fun `setColorFilter updates colorFilter`() {
         val model = ReaderScreenModel()
-        val filter = ReaderColorFilter(enabled = true, brightness = 0.5f)
+        val filter = ReaderColorFilter(brightnessEnabled = true, brightness = 0.5f)
         model.setColorFilter(filter)
         assertEquals(filter, model.state.value.colorFilter)
+    }
+
+    @Test
+    fun `reader model loads and persists all chapter skip preferences`() {
+        val prefs = ReaderPreferences().apply {
+            skipReadChapters = false
+            skipFilteredChapters = true
+            skipDuplicateChapters = true
+        }
+        val model = ReaderScreenModel(prefs = prefs)
+
+        assertTrue(model.state.value.skipFilteredChapters)
+        assertTrue(model.state.value.skipDuplicateChapters)
+
+        model.setSkipFilteredChapters(false, prefs)
+        model.setSkipDuplicateChapters(false, prefs)
+
+        assertFalse(model.state.value.skipFilteredChapters)
+        assertFalse(model.state.value.skipDuplicateChapters)
+        assertFalse(prefs.skipFilteredChapters)
+        assertFalse(prefs.skipDuplicateChapters)
     }
 
     @Test
@@ -303,12 +328,90 @@ class ReaderScreenModelTest {
     fun `setLoadError sets errorMessage and clears loading flag`() {
         val model = ReaderScreenModel(
             pageUrls = emptyList(),
+            chapterId = 7L,
             sourceId = 1L,
             chapterUrl = "/ch/1",
         )
         model.setLoadError("Network timeout")
         assertFalse(model.state.value.isLoadingPages)
         assertEquals("Network timeout", model.state.value.errorMessage)
+        val error = model.state.value.chapterState as ReaderChapterState.Error
+        assertEquals(ReaderNavigationCommand.RetryChapter(7L), error.retryCommand())
+    }
+
+    @Test
+    fun `retry clears error marks shared chapter state loading and advances request generation`() {
+        val model = ReaderScreenModel(pageUrls = emptyList(), sourceId = 1L, chapterUrl = "/ch/1")
+        model.setLoadError("Network timeout")
+        val previousGeneration = model.state.value.loadGeneration
+
+        model.requestRetry()
+
+        assertNull(model.state.value.errorMessage)
+        assertTrue(model.state.value.isLoadingPages)
+        assertEquals(ReaderChapterState.Loading, model.state.value.chapterState)
+        assertEquals(previousGeneration + 1, model.state.value.loadGeneration)
+    }
+
+    @Test
+    fun `chapter boundary feedback uses shared transition state`() {
+        val model = ReaderScreenModel()
+
+        model.showChapterBoundary(
+            direction = ReaderTransitionDirection.NEXT,
+            chapterId = 1L,
+            chapterUrl = "/1",
+            chapterName = "Chapter 1",
+            chapterNumber = 1.0,
+        )
+
+        assertEquals(ReaderTransitionDirection.NEXT, model.state.value.chapterTransition?.direction)
+        assertNull(model.state.value.chapterTransition?.to)
+        assertEquals(
+            ReaderNavigationCommand.ChapterBoundary(ReaderTransitionDirection.NEXT),
+            model.chapterTransitionCommand(),
+        )
+    }
+
+    @Test
+    fun `chapter transition error exposes target retry command then returns to loading`() {
+        val model = ReaderScreenModel()
+        val from = mihon.domain.reader.ReaderChapterModel(1L, "/1", "Chapter 1", 1.0)
+        val to = mihon.domain.reader.ReaderChapterModel(2L, "/2", "Chapter 2", 2.0)
+        model.showChapterTransition(ReaderTransitionDirection.NEXT, from, to, missingChapterCount = 0)
+        model.setChapterTransitionState(
+            ReaderChapterState.Error(AppError.Network(), retryTargetChapterId = to.id),
+        )
+
+        assertEquals(ReaderNavigationCommand.RetryChapter(to.id), model.chapterTransitionCommand())
+
+        model.retryChapterTransition()
+
+        assertEquals(ReaderChapterState.Loading, model.state.value.chapterTransition?.state)
+    }
+
+    @Test
+    fun `chapter transition presentation distinguishes loading error retry continue and boundary`() {
+        val from = mihon.domain.reader.ReaderChapterModel(1L, "/1", "Chapter 1", 1.0)
+        val to = mihon.domain.reader.ReaderChapterModel(3L, "/3", "Chapter 3", 3.0)
+        val loading = mihon.domain.reader.ReaderChapterTransitionModel(
+            ReaderTransitionDirection.NEXT,
+            from,
+            to,
+            missingChapterCount = 1,
+            state = ReaderChapterState.Loading,
+        )
+        val error = loading.copy(
+            state = ReaderChapterState.Error(AppError.Network(), retryTargetChapterId = to.id),
+        )
+        val ready = loading.copy(state = ReaderChapterState.Wait)
+        val boundary = loading.copy(to = null, missingChapterCount = 0, state = ReaderChapterState.Wait)
+
+        assertTrue(chapterTransitionPresentation(loading).showLoading)
+        assertTrue(chapterTransitionPresentation(error).showRetry)
+        assertTrue(chapterTransitionPresentation(ready).showContinue)
+        assertEquals(1, chapterTransitionPresentation(ready).missingChapterCount)
+        assertTrue(chapterTransitionPresentation(boundary).isBoundary)
     }
 
     @Test

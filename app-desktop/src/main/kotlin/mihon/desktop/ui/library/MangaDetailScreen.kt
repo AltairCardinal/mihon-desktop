@@ -504,7 +504,12 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                 openExternalLink(externalUrl)
                                 return@ExtendedFloatingActionButton
                             }
-                            val request = model.readerRequest(manga!!, chapters, ch) ?: return@ExtendedFloatingActionButton
+                            val request = model.readerRequest(
+                                manga = manga!!,
+                                chapters = chapters,
+                                chapter = ch,
+                                visibleChapterIds = displayedChapters.mapTo(mutableSetOf(), Chapter::id),
+                            ) ?: return@ExtendedFloatingActionButton
                             navigator.push(
                                 DesktopReaderScreen(
                                     chapterTitle = request.chapterTitle,
@@ -859,7 +864,12 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                 openExternalLink(externalUrl)
                                 return@launch
                             }
-                            val request = model.readerRequest(manga!!, chapters, chapter) ?: return@launch
+                            val request = model.readerRequest(
+                                manga = manga!!,
+                                chapters = chapters,
+                                chapter = chapter,
+                                visibleChapterIds = displayedChapters.mapTo(mutableSetOf(), Chapter::id),
+                            ) ?: return@launch
                             navigator.push(
                                 DesktopReaderScreen(
                                     chapterTitle = request.chapterTitle,

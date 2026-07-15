@@ -27,9 +27,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -67,6 +72,11 @@ import mihon.desktop.reader.viewerFlagsWithDualPage
 import mihon.desktop.reader.viewerFlagsWithReadingMode
 import mihon.desktop.reader.firstVirtualIndex
 import mihon.desktop.reader.realPageIndex
+import mihon.domain.reader.ReaderChapterModel
+import mihon.domain.reader.ReaderChapterState
+import mihon.domain.reader.ReaderChapterTransitionModel
+import mihon.domain.reader.ReaderTransitionDirection
+import tachiyomi.domain.chapter.service.calculateChapterGap
 
 @OptIn(ExperimentalMaterial3Api::class)
 data class DesktopReaderScreen(
@@ -109,6 +119,7 @@ data class DesktopReaderScreen(
                 chapterTitle = chapterTitle,
                 pageUrls = pageUrls,
                 initialPage = initialPage,
+                chapterId = chapterId,
                 isWebtoon = isWebtoon,
                 sourceId = sourceId,
                 chapterUrl = chapterUrl,
@@ -140,6 +151,7 @@ data class DesktopReaderScreen(
             mangaTitle = mangaTitle,
             chapterTitle = chapterTitle,
             initialPage = initialPage,
+            loadGeneration = state.loadGeneration,
         )
 
         // Compute: zoom reset, preload, focus, edge-scan, virtual pages
@@ -147,32 +159,76 @@ data class DesktopReaderScreen(
 
         // Chapter navigation lambdas
         val skipRead = state.skipReadChapters
-        val readerNav = remember(chapters, currentChapterIndex, skipRead) {
-            chapters.takeIf { it.isNotEmpty() }?.let { ReaderNavigator(it, currentChapterIndex, skipRead) }
+        val skipFiltered = state.skipFilteredChapters
+        val skipDuplicate = state.skipDuplicateChapters
+        val readerNav = remember(chapters, currentChapterIndex, skipRead, skipFiltered, skipDuplicate) {
+            chapters.takeIf { it.isNotEmpty() }?.let {
+                ReaderNavigator(
+                    chapters = it,
+                    currentIndex = currentChapterIndex,
+                    skipReadChapters = skipRead,
+                    skipFilteredChapters = skipFiltered,
+                    skipDuplicateChapters = skipDuplicate,
+                )
+            }
         }
         fun currentViewerFlags(): Long = viewerFlagsWithReadingMode(
             viewerFlagsWithDualPage(mangaViewerFlags, state.dualPageMode),
             state.readingMode,
         )
         val onPrevChapter: () -> Unit = {
-            readerNav?.previousRead?.let {
-                navigator.replace(
-                    copyForChapter(
-                        ref = it,
-                        newIndex = ReaderNavigator.indexForId(chapters, it.id),
-                        initialPage = initialPageForChapterNavigation(ReaderChapterNavigationDirection.Previous),
-                        viewerFlags = currentViewerFlags(),
-                    ),
+            val target = readerNav?.previousRead
+            if (target != null) {
+                model.showChapterTransition(
+                    direction = ReaderTransitionDirection.PREVIOUS,
+                    from = ReaderChapterModel(chapterId, chapterUrl, chapterTitle, chapterNumber),
+                    to = ReaderChapterModel(target.id, target.url, target.name, target.chapterNumber),
+                    missingChapterCount = chapterGap(chapterNumber, target.chapterNumber),
+                )
+            } else {
+                model.showChapterBoundary(
+                    ReaderTransitionDirection.PREVIOUS,
+                    chapterId,
+                    chapterUrl,
+                    chapterTitle,
+                    chapterNumber,
                 )
             }
         }
         val onNextChapter: () -> Unit = {
-            readerNav?.nextToRead?.let {
+            val target = readerNav?.nextToRead
+            if (target != null) {
+                model.showChapterTransition(
+                    direction = ReaderTransitionDirection.NEXT,
+                    from = ReaderChapterModel(chapterId, chapterUrl, chapterTitle, chapterNumber),
+                    to = ReaderChapterModel(target.id, target.url, target.name, target.chapterNumber),
+                    missingChapterCount = chapterGap(chapterNumber, target.chapterNumber),
+                )
+            } else {
+                model.showChapterBoundary(
+                    ReaderTransitionDirection.NEXT,
+                    chapterId,
+                    chapterUrl,
+                    chapterTitle,
+                    chapterNumber,
+                )
+            }
+        }
+        val onContinueChapter: (ReaderChapterTransitionModel) -> Unit = { transition ->
+            val target = transition.to?.let { destination -> chapters.firstOrNull { it.id == destination.id } }
+            if (target != null) {
+                model.clearChapterTransition()
                 navigator.replace(
                     copyForChapter(
-                        ref = it,
-                        newIndex = ReaderNavigator.indexForId(chapters, it.id),
-                        initialPage = initialPageForChapterNavigation(ReaderChapterNavigationDirection.Next),
+                        ref = target,
+                        newIndex = ReaderNavigator.indexForId(chapters, target.id),
+                        initialPage = initialPageForChapterNavigation(
+                            if (transition.direction == ReaderTransitionDirection.PREVIOUS) {
+                                ReaderChapterNavigationDirection.Previous
+                            } else {
+                                ReaderChapterNavigationDirection.Next
+                            },
+                        ),
                         viewerFlags = currentViewerFlags(),
                     ),
                 )
@@ -188,7 +244,9 @@ data class DesktopReaderScreen(
                 cropBordersPager = state.cropBordersPager, cropBordersWebtoon = state.cropBordersWebtoon,
                 webtoonSidePadding = state.webtoonSidePadding, webtoonAutoScroll = state.webtoonAutoScroll,
                 webtoonAutoScrollSpeed = state.webtoonAutoScrollSpeed, colorFilter = state.colorFilter,
-                scaleType = state.scaleType, skipReadChapters = state.skipReadChapters, zoomState = state.zoomState,
+                scaleType = state.scaleType, skipReadChapters = state.skipReadChapters,
+                skipFilteredChapters = state.skipFilteredChapters,
+                skipDuplicateChapters = state.skipDuplicateChapters, zoomState = state.zoomState,
                 onModeChange = {
                     model.setReadingMode(it, runtime.prefs)
                     scope.launch {
@@ -224,6 +282,8 @@ data class DesktopReaderScreen(
                 onWebtoonAutoScrollSpeedChange = { model.setWebtoonAutoScrollSpeed(it, runtime.prefs) },
                 onColorFilterChange = { model.setColorFilter(it, runtime.prefs) },
                 onSkipReadChaptersChange = { model.setSkipReadChapters(it, runtime.prefs) },
+                onSkipFilteredChaptersChange = { model.setSkipFilteredChapters(it, runtime.prefs) },
+                onSkipDuplicateChaptersChange = { model.setSkipDuplicateChapters(it, runtime.prefs) },
                 onScaleTypeChange = { model.setScaleType(it, runtime.prefs) },
                 onZoomChange = { model.setZoomState(it) },
                 onDismiss = { model.closeSettings() },
@@ -243,6 +303,7 @@ data class DesktopReaderScreen(
             readerNav = readerNav,
             onPrevChapter = onPrevChapter,
             onNextChapter = onNextChapter,
+            onContinueChapter = onContinueChapter,
         )
     }
 
@@ -306,8 +367,9 @@ private fun ReaderPageLoaderEffect(
     mangaTitle: String,
     chapterTitle: String,
     initialPage: Int,
+    loadGeneration: Long,
 ) {
-    LaunchedEffect(sourceId, chapterUrl) {
+    LaunchedEffect(sourceId, chapterUrl, loadGeneration) {
         if (pageUrls.isNotEmpty() || sourceId == 0L || chapterUrl.isBlank()) return@LaunchedEffect
         try {
             pageLoader.load(
@@ -367,6 +429,7 @@ private fun ReaderViewport(
     readerNav: ReaderNavigator?,
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
+    onContinueChapter: (ReaderChapterTransitionModel) -> Unit,
 ) {
     val bgColor = when (state.backgroundTheme) {
         ReaderBackgroundTheme.BLACK -> Color.Black
@@ -393,10 +456,16 @@ private fun ReaderViewport(
         ) {
             when {
                 state.isLoadingPages -> LoadingState()
-                state.errorMessage != null -> ErrorState(state.errorMessage, onBack = { navigator.pop() })
+                state.errorMessage != null -> ErrorState(
+                    state.errorMessage,
+                    onRetry = model::requestRetry,
+                    onBack = { navigator.pop() },
+                )
                 state.resolvedUrls.isEmpty() -> EmptyState(onBack = { navigator.pop() })
                 else -> {
-                    ReaderContent(state, model, navigator, contextMenuScope, mangaTitle, chapterTitle, preloader, readerNav, onPrevChapter, onNextChapter)
+                    Box(Modifier.fillMaxSize().readerColorTransform(state.colorFilter)) {
+                        ReaderContent(state, model, navigator, contextMenuScope, mangaTitle, chapterTitle, preloader, readerNav, onPrevChapter, onNextChapter)
+                    }
                     ColorFilterOverlay(state.colorFilter)
                     if (state.showUI) {
                         ReaderBottomBar(
@@ -413,6 +482,19 @@ private fun ReaderViewport(
                         )
                     }
                 }
+            }
+            state.chapterTransition?.let { transition ->
+                ChapterTransitionFeedback(
+                    transition = transition,
+                    onContinue = transition.to?.let { { onContinueChapter(transition) } },
+                    onRetry = transition.to?.let {
+                        {
+                            model.retryChapterTransition()
+                            onContinueChapter(transition)
+                        }
+                    },
+                    onDismiss = model::clearChapterTransition,
+                )
             }
             if (state.showUI) {
                 TopAppBar(
@@ -534,6 +616,7 @@ private fun ReaderContent(
             pageUrls = state.resolvedUrls, cropBorders = state.cropBordersWebtoon,
             sidePadding = state.webtoonSidePadding, autoScroll = state.webtoonAutoScroll,
             autoScrollSpeed = state.webtoonAutoScrollSpeed, contextMenuScope = contextMenuScope, mangaTitle = mangaTitle, chapterTitle = chapterTitle,
+            preloader = preloader,
             onNextChapter = if (readerNav?.nextToRead != null) onNextChapter else null,
         )
         ReadingMode.LTR, ReadingMode.RTL -> {
@@ -552,8 +635,8 @@ private fun ReaderContent(
                 onSpreadPagesChanged = { model.setSpreadPages(it) },
                 onSpreadDetected = { realIdx -> if (realIdx !in state.spreadPages) model.setSpreadPages(state.spreadPages + realIdx) },
                 onTapCenter = { model.toggleUI() },
-                onPrevChapter = if (readerNav?.previousRead != null) onPrevChapter else null,
-                onNextChapter = if (readerNav?.nextToRead != null) onNextChapter else null,
+                onPrevChapter = onPrevChapter,
+                onNextChapter = onNextChapter,
             )
         }
     }
@@ -562,16 +645,40 @@ private fun ReaderContent(
 @Composable
 private fun ColorFilterOverlay(colorFilter: mihon.desktop.reader.ReaderColorFilter) {
     if (!colorFilter.isEffective) return
-    val overlayColor = if (colorFilter.enabled && colorFilter.alpha > 0) {
+    val overlayColor = if (colorFilter.tintEnabled && colorFilter.alpha > 0) {
         Color(red = colorFilter.r / 255f, green = colorFilter.g / 255f, blue = colorFilter.b / 255f, alpha = colorFilter.alpha / 255f)
     } else Color.Transparent
     val brightnessColor = when {
-        colorFilter.brightness > 0f -> Color.White.copy(alpha = colorFilter.brightness)
-        colorFilter.brightness < 0f -> Color.Black.copy(alpha = -colorFilter.brightness)
+        colorFilter.brightnessEnabled && colorFilter.brightness > 0f -> Color.White.copy(alpha = colorFilter.brightness)
+        colorFilter.brightnessEnabled && colorFilter.brightness < 0f -> Color.Black.copy(alpha = -colorFilter.brightness)
         else -> Color.Transparent
     }
     if (overlayColor != Color.Transparent) Box(Modifier.fillMaxSize().background(overlayColor))
     if (brightnessColor != Color.Transparent) Box(Modifier.fillMaxSize().background(brightnessColor))
+}
+
+internal fun Modifier.readerColorTransform(
+    colorFilter: mihon.desktop.reader.ReaderColorFilter,
+): Modifier {
+    if (!colorFilter.grayscaleEnabled && !colorFilter.invertEnabled) return this
+    val matrix = ColorMatrix()
+    if (colorFilter.grayscaleEnabled) matrix.setToSaturation(0f)
+    if (colorFilter.invertEnabled) {
+        matrix *= ColorMatrix(
+            floatArrayOf(
+                -1f, 0f, 0f, 0f, 255f,
+                0f, -1f, 0f, 0f, 255f,
+                0f, 0f, -1f, 0f, 255f,
+                0f, 0f, 0f, 1f, 0f,
+            ),
+        )
+    }
+    return drawWithContent {
+        val paint = Paint().apply { this.colorFilter = ColorFilter.colorMatrix(matrix) }
+        drawContext.canvas.saveLayer(Rect(0f, 0f, size.width, size.height), paint)
+        drawContent()
+        drawContext.canvas.restore()
+    }
 }
 
 // ── Dispatcher: dual-page vs single-page ─────────────────────────────────────
@@ -608,6 +715,7 @@ private fun ZoomablePagerViewer(
             autoSplitPages = autoSplitPages, cropBorders = cropBorders, contextMenuScope = contextMenuScope,
             mangaTitle = mangaTitle, chapterTitle = chapterTitle, zoomState = zoomState,
             forcedSinglePages = forcedSinglePages, matchedPairs = matchedPairs,
+            preloader = preloader,
             scaleType = scaleType, navigationMode = navigationMode, onPageChange = onPageChange,
             onZoomChange = onZoomChange, onSpreadPagesChanged = onSpreadPagesChanged,
             onTapCenter = onTapCenter, onPrevChapter = onPrevChapter, onNextChapter = onNextChapter,
@@ -638,15 +746,80 @@ private fun LoadingState() {
 }
 
 @Composable
-private fun ErrorState(message: String, onBack: () -> Unit) {
+private fun ErrorState(message: String, onRetry: () -> Unit, onBack: () -> Unit) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
             Text("Failed to load pages", color = Color.White, style = MaterialTheme.typography.titleMedium)
             Text(message, color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
-            Button(onClick = onBack, modifier = Modifier.padding(top = 16.dp)) { Text("Go Back") }
+            Button(onClick = onRetry, modifier = Modifier.padding(top = 16.dp)) { Text("Retry") }
+            Button(onClick = onBack, modifier = Modifier.padding(top = 8.dp)) { Text("Go Back") }
         }
     }
 }
+
+@Composable
+private fun ChapterTransitionFeedback(
+    transition: ReaderChapterTransitionModel,
+    onContinue: (() -> Unit)?,
+    onRetry: (() -> Unit)?,
+    onDismiss: () -> Unit,
+) {
+    val presentation = chapterTransitionPresentation(transition)
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.72f)), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(presentation.message, color = Color.White, style = MaterialTheme.typography.titleMedium)
+            if (presentation.showLoading) {
+                CircularProgressIndicator(color = Color.White, modifier = Modifier.padding(top = 12.dp))
+            }
+            if (presentation.showRetry && onRetry != null) {
+                Button(onClick = onRetry, modifier = Modifier.padding(top = 12.dp)) { Text("Retry") }
+            }
+            if (presentation.showContinue && onContinue != null) {
+                Button(onClick = onContinue, modifier = Modifier.padding(top = 12.dp)) { Text("Continue") }
+            }
+            Button(onClick = onDismiss, modifier = Modifier.padding(top = 12.dp)) { Text("Dismiss") }
+        }
+    }
+}
+
+internal data class ChapterTransitionPresentation(
+    val message: String,
+    val showLoading: Boolean,
+    val showRetry: Boolean,
+    val showContinue: Boolean,
+    val isBoundary: Boolean,
+    val missingChapterCount: Int,
+)
+
+internal fun chapterTransitionPresentation(
+    transition: ReaderChapterTransitionModel,
+): ChapterTransitionPresentation {
+    val direction = if (transition.direction == ReaderTransitionDirection.NEXT) "next" else "previous"
+    val target = transition.to?.name
+    val isBoundary = target == null
+    val state = transition.state
+    val message = when {
+        isBoundary -> "No $direction chapter available"
+        state is ReaderChapterState.Error -> {
+            val error = state.error
+            "Failed to load $target: ${error.cause?.message ?: error}"
+        }
+        transition.missingChapterCount > 0 -> "$target · ${transition.missingChapterCount} missing chapter(s)"
+        else -> target
+    }
+    return ChapterTransitionPresentation(
+        message = message,
+        showLoading = state is ReaderChapterState.Loading,
+        showRetry = state is ReaderChapterState.Error,
+        showContinue = !isBoundary &&
+            (state is ReaderChapterState.Wait || state is ReaderChapterState.Loaded),
+        isBoundary = isBoundary,
+        missingChapterCount = transition.missingChapterCount,
+    )
+}
+
+private fun chapterGap(first: Double, second: Double): Int =
+    calculateChapterGap(maxOf(first, second), minOf(first, second)).coerceAtLeast(0)
 
 @Composable
 private fun EmptyState(onBack: () -> Unit) {

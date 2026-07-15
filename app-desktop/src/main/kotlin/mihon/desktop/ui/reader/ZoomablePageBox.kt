@@ -159,9 +159,14 @@ internal fun ZoomablePageBox(
 
     // Fast path: if the preloader already has this page decoded, use it directly.
     // This eliminates the Coil loading indicator for pre-warmed pages.
-    val preloadedBitmap = remember(url, preloader) { preloader?.get(pageIndex) }
+    val preloadRevision = if (preloader != null) {
+        preloader.cacheRevision.collectAsState().value
+    } else {
+        0L
+    }
+    val preloadedBitmap = remember(url, pageIndex, preloader, preloadRevision) { preloader?.get(pageIndex) }
 
-    val painter = rememberAsyncImagePainter(url)
+    val painter = rememberAsyncImagePainter(readerPagePainterModel(url, preloadedBitmap))
     val painterState by painter.state.collectAsState()
 
     val localBitmap by produceState<ImageBitmap?>(initialValue = null, url, splitHalf, cropBorders) {
@@ -429,6 +434,9 @@ internal fun ZoomablePageBox(
         innerContent()
     }
 }
+
+internal fun readerPagePainterModel(url: String, preloadedBitmap: ImageBitmap?): Any? =
+    url.takeIf { preloadedBitmap == null }
 
 /** Crops the already-decoded Coil image's white borders — no re-download. */
 internal fun cropBordersFromCoilImage(image: CoilImage): ImageBitmap? {

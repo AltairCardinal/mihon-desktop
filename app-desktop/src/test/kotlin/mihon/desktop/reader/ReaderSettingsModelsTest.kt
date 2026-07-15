@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.core.common.preference.DesktopPreferenceStore
+import java.util.prefs.Preferences
 
 /**
  * RED — ReaderBackgroundTheme and ReaderColorFilter do not exist yet.
@@ -39,12 +41,15 @@ class ReaderSettingsModelsTest {
     @Test
     fun `ReaderColorFilter defaults to disabled with zero values`() {
         val filter = ReaderColorFilter()
-        assertFalse(filter.enabled)
+        assertFalse(filter.tintEnabled)
+        assertFalse(filter.brightnessEnabled)
         assertEquals(0f, filter.brightness)
         assertEquals(0, filter.r)
         assertEquals(0, filter.g)
         assertEquals(0, filter.b)
         assertEquals(128, filter.alpha) // mid-opacity by default
+        assertFalse(filter.grayscaleEnabled)
+        assertFalse(filter.invertEnabled)
     }
 
     @Test
@@ -57,20 +62,71 @@ class ReaderSettingsModelsTest {
 
     @Test
     fun `ReaderColorFilter isEffective when enabled`() {
-        val filter = ReaderColorFilter(enabled = true, brightness = 0.5f)
+        val filter = ReaderColorFilter(brightnessEnabled = true, brightness = 0.5f)
         assertTrue(filter.isEffective)
     }
 
     @Test
     fun `ReaderColorFilter is not effective when disabled`() {
-        val filter = ReaderColorFilter(enabled = false, brightness = 0.5f)
+        val filter = ReaderColorFilter(brightnessEnabled = false, brightness = 0.5f)
         assertFalse(filter.isEffective)
     }
 
     @Test
     fun `ReaderColorFilter is not effective when enabled but all zero and no brightness`() {
-        val filter = ReaderColorFilter(enabled = true, brightness = 0f, r = 0, g = 0, b = 0, alpha = 0)
+        val filter = ReaderColorFilter(tintEnabled = true, brightness = 0f, r = 0, g = 0, b = 0, alpha = 0)
         assertFalse(filter.isEffective)
+    }
+
+    @Test
+    fun `grayscale and invert are effective shared filter modes`() {
+        assertTrue(ReaderColorFilter(grayscaleEnabled = true).isEffective)
+        assertTrue(ReaderColorFilter(invertEnabled = true).isEffective)
+    }
+
+    @Test
+    fun `grayscale and invert survive preference round trip`() {
+        val root = Preferences.userRoot().node("/mihon/reader-filter-test/${System.nanoTime()}")
+        try {
+            val store = DesktopPreferenceStore(root.node("store"))
+            val legacy = root.node("legacy")
+            ReaderPreferences(store, legacy).saveColorFilter(
+                ReaderColorFilter(
+                    tintEnabled = true,
+                    alpha = 0,
+                    grayscaleEnabled = true,
+                    invertEnabled = true,
+                ),
+            )
+
+            val restored = ReaderPreferences(store, legacy).loadColorFilter()
+
+            assertTrue(restored.tintEnabled)
+            assertTrue(restored.grayscaleEnabled)
+            assertTrue(restored.invertEnabled)
+        } finally {
+            root.removeNode()
+        }
+    }
+
+    @Test
+    fun `filtered and duplicate chapter skip preferences survive round trip`() {
+        val root = Preferences.userRoot().node("/mihon/reader-skip-test/${System.nanoTime()}")
+        try {
+            val store = DesktopPreferenceStore(root.node("store"))
+            val legacy = root.node("legacy")
+            ReaderPreferences(store, legacy).apply {
+                skipFilteredChapters = true
+                skipDuplicateChapters = true
+            }
+
+            val restored = ReaderPreferences(store, legacy)
+
+            assertTrue(restored.skipFilteredChapters)
+            assertTrue(restored.skipDuplicateChapters)
+        } finally {
+            root.removeNode()
+        }
     }
 
     // ── WebtoonSidePadding ─────────────────────────────────────────────────────

@@ -92,36 +92,32 @@ class NavigationModeTest {
     @Test fun `Kindle - bottom-right returns NEXT`() =
         assertEquals(TapNavRegion.NEXT, tapNavRegion(250f, 250f, W, H, NavigationMode.Kindle))
 
-    @Test fun `Kindle - center-left returns PREV`() =
-        assertEquals(TapNavRegion.PREV, tapNavRegion(100f, 150f, W, H, NavigationMode.Kindle))
+    @Test fun `Kindle - center after first third returns NEXT like Android`() =
+        assertEquals(TapNavRegion.NEXT, tapNavRegion(100f, 150f, W, H, NavigationMode.Kindle))
 
     @Test fun `Kindle - center-right returns NEXT`() =
         assertEquals(TapNavRegion.NEXT, tapNavRegion(200f, 150f, W, H, NavigationMode.Kindle))
 
     // ── Edge ─────────────────────────────────────────────────────────────────
-    // Left edge (nx < 0.2) = PREV
-    // Right edge (nx > 0.8) = NEXT
-    // Top edge (ny < 0.2) = PREV
-    // Bottom edge (ny > 0.8) = NEXT
-    // Center region = MENU
+    // Android Edge preset: both side columns = NEXT, bottom-center = PREV, center/top-center = MENU.
 
-    @Test fun `Edge - left edge returns PREV`() =
-        assertEquals(TapNavRegion.PREV, tapNavRegion(30f, 150f, W, H, NavigationMode.Edge))
+    @Test fun `Edge - left edge returns NEXT like Android`() =
+        assertEquals(TapNavRegion.NEXT, tapNavRegion(30f, 150f, W, H, NavigationMode.Edge))
 
     @Test fun `Edge - right edge returns NEXT`() =
         assertEquals(TapNavRegion.NEXT, tapNavRegion(270f, 150f, W, H, NavigationMode.Edge))
 
-    @Test fun `Edge - top edge returns PREV`() =
-        assertEquals(TapNavRegion.PREV, tapNavRegion(150f, 30f, W, H, NavigationMode.Edge))
+    @Test fun `Edge - top center returns MENU like Android`() =
+        assertEquals(TapNavRegion.MENU, tapNavRegion(150f, 30f, W, H, NavigationMode.Edge))
 
-    @Test fun `Edge - bottom edge returns NEXT`() =
-        assertEquals(TapNavRegion.NEXT, tapNavRegion(150f, 270f, W, H, NavigationMode.Edge))
+    @Test fun `Edge - bottom center returns PREV like Android`() =
+        assertEquals(TapNavRegion.PREV, tapNavRegion(150f, 270f, W, H, NavigationMode.Edge))
 
     @Test fun `Edge - center returns MENU`() =
         assertEquals(TapNavRegion.MENU, tapNavRegion(150f, 150f, W, H, NavigationMode.Edge))
 
-    @Test fun `Edge - top-left corner returns PREV (left edge wins)`() =
-        assertEquals(TapNavRegion.PREV, tapNavRegion(30f, 30f, W, H, NavigationMode.Edge))
+    @Test fun `Edge - top-left corner returns NEXT from side column`() =
+        assertEquals(TapNavRegion.NEXT, tapNavRegion(30f, 30f, W, H, NavigationMode.Edge))
 
     @Test fun `Edge - bottom-right corner returns NEXT (right edge wins)`() =
         assertEquals(TapNavRegion.NEXT, tapNavRegion(270f, 270f, W, H, NavigationMode.Edge))
