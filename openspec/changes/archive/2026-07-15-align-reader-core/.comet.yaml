@@ -19,6 +19,6 @@ verification_report: docs/superpowers/reports/2026-07-15-align-reader-core-verif
 branch_status: handled
 created_at: 2026-07-14
 verified_at: 2026-07-15
-archived: false
+archived: true
 handoff_context: openspec/changes/align-reader-core/.comet/handoff/design-context.json
 handoff_hash: 163e83a92a17adb3e758e9ba37c836a02accadd2247884de0fb1c067669b7671

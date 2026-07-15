@@ -2,6 +2,8 @@
 comet_change: align-reader-core
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-07-15-align-reader-core
+status: final
 ---
 
 # Mihon 阅读器共享核心技术设计

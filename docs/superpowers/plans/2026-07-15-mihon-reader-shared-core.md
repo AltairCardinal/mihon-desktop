@@ -2,6 +2,7 @@
 change: align-reader-core
 design-doc: docs/superpowers/specs/2026-07-15-mihon-reader-shared-core-design.md
 base-ref: 20c56cbc6b62c4607c4d28709734142cc127a8b3
+archived-with: 2026-07-15-align-reader-core
 ---
 
 # Mihon 阅读器共享核心实施计划
@@ -24,6 +25,7 @@ base-ref: 20c56cbc6b62c4607c4d28709734142cc127a8b3
 - [x] Task 6：有意提交、独立审查与修复
 - [x] Task 7：Android、Windows 与必要 macOS 运行时验收
 
+archived-with: 2026-07-15-align-reader-core
 ---
 
 ## Task 1：审计现有 Task 4A 工作树并固定共享契约
