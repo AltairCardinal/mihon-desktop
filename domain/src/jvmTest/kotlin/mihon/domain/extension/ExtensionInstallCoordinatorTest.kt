@@ -1,8 +1,11 @@
 package mihon.domain.extension
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -18,6 +21,8 @@ import mihon.domain.extension.service.ExtensionInstallState
 import mihon.domain.extension.service.PreparedExtensionInstallToken
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class ExtensionInstallCoordinatorTest {
@@ -109,6 +114,58 @@ class ExtensionInstallCoordinatorTest {
     }
 
     @Test
+    fun `commit side effect followed by failure rolls back from pre-commit snapshot`() = runTest {
+        val commitError = AppError.Storage(IllegalStateException("commit failed after replacement"))
+        val port = RecordingInstallPort(failures = mapOf("commit" to commitError))
+
+        val states = ExtensionInstallCoordinator(port, backgroundScope).install(request()).toList()
+
+        assertEquals(commitError, (states.last() as ExtensionInstallState.Failed).error)
+        assertEquals(
+            listOf("prepare", "validate", "commit", "rollback", "reload", "cleanup"),
+            port.events,
+        )
+        assertEquals(1, port.commitSideEffects)
+        assertEquals(1, port.rollbackCalls)
+    }
+
+    @Test
+    fun `cancelling during commit rolls back restores runtime and cleans temporary artifact`() = runTest {
+        val port = RecordingInstallPort(blockFirstCommit = true)
+        val collection = async {
+            ExtensionInstallCoordinator(port, backgroundScope).install(request()).toList()
+        }
+        port.commitStarted.await()
+
+        collection.cancelAndJoin()
+        port.cleanupCompleted.await()
+
+        assertEquals(1, port.commitSideEffects)
+        assertEquals(1, port.rollbackCalls)
+        assertEquals(1, port.reloadCalls)
+        assertEquals(1, port.cleanupCalls)
+    }
+
+    @Test
+    fun `second reload failure preserves triggering and recovery errors`() = runTest {
+        val trigger = AppError.Unknown(IllegalStateException("new runtime failed"))
+        val recovery = AppError.Unknown(IllegalStateException("old runtime failed"))
+        val port = RecordingInstallPort(
+            failures = mapOf("reload-1" to trigger, "reload-2" to recovery),
+        )
+
+        val states = ExtensionInstallCoordinator(port, backgroundScope).install(request()).toList()
+
+        val partial = assertInstanceOf(
+            AppError.PartialFailure::class.java,
+            (states.last() as ExtensionInstallState.Failed).error,
+        )
+        assertEquals(listOf(trigger, recovery), partial.failures)
+        assertEquals(1, port.rollbackCalls)
+        assertEquals(2, port.reloadCalls)
+    }
+
+    @Test
     fun `cancelling the only collector cleans temporary artifact`() = runTest {
         val port = RecordingInstallPort(blockValidation = true)
         val coordinator = ExtensionInstallCoordinator(port, backgroundScope)
@@ -137,6 +194,97 @@ class ExtensionInstallCoordinatorTest {
         assertEquals(first.await(), second.await())
         assertEquals(1, port.prepareCalls)
         assertEquals(1, port.commitCalls)
+    }
+
+    @Test
+    fun `one of two collectors can cancel without cancelling shared transaction`() = runTest {
+        val port = RecordingInstallPort(blockPreparation = true)
+        val coordinator = ExtensionInstallCoordinator(port, backgroundScope)
+        val first = async { coordinator.install(request()).toList() }
+        port.preparationStarted.await()
+        val second = async { coordinator.install(request()).toList() }
+        runCurrent()
+
+        first.cancelAndJoin()
+        port.releasePreparation.complete(Unit)
+
+        assertInstanceOf(ExtensionInstallState.Installed::class.java, second.await().last())
+        assertEquals(1, port.prepareCalls)
+        assertEquals(1, port.commitCalls)
+    }
+
+    @Test
+    fun `cleanup failure is retried deterministically after rollback`() = runTest {
+        val cleanupError = AppError.Storage(IllegalStateException("temporary artifact busy"))
+        val port = RecordingInstallPort(failures = mapOf("cleanup-1" to cleanupError))
+
+        val states = ExtensionInstallCoordinator(port, backgroundScope).install(request()).toList()
+
+        assertEquals(cleanupError, (states.last() as ExtensionInstallState.Failed).error)
+        assertEquals(1, port.rollbackCalls)
+        assertEquals(2, port.reloadCalls)
+        assertEquals(2, port.cleanupCalls)
+        assertEquals(1, port.cleanedTokens.size)
+        assertFalse(states.any { it is ExtensionInstallState.Installed })
+    }
+
+    @Test
+    fun `cancelling blocked cleanup rolls back and completes cleanup in non-cancellable context`() = runTest {
+        val port = RecordingInstallPort(blockFirstCleanup = true)
+        val collection = async {
+            ExtensionInstallCoordinator(port, backgroundScope).install(request()).toList()
+        }
+        port.cleanupStarted.await()
+
+        collection.cancelAndJoin()
+        runCurrent()
+
+        assertEquals(1, port.rollbackCalls)
+        assertEquals(2, port.reloadCalls)
+        assertEquals(2, port.cleanupCalls)
+        assertEquals(1, port.cleanedTokens.size)
+    }
+
+    @Test
+    fun `new same-package install waits for cancelled transaction recovery and cleanup`() = runTest {
+        val port = RecordingInstallPort(blockFirstReload = true, blockFirstRollback = true)
+        val coordinator = ExtensionInstallCoordinator(port, backgroundScope)
+        val first = async { coordinator.install(request()).toList() }
+        port.reloadStarted.await()
+        first.cancelAndJoin()
+        port.rollbackStarted.await()
+
+        val second = async { coordinator.install(request()).toList() }
+        runCurrent()
+        val preparesWhileRecovering = port.prepareCalls
+        port.releaseRollback.complete(Unit)
+
+        assertInstanceOf(ExtensionInstallState.Installed::class.java, second.await().last())
+        assertEquals(1, preparesWhileRecovering)
+        assertEquals(2, port.prepareCalls)
+        assertTrue(port.events.indexOf("cleanup") < port.events.lastIndexOf("prepare"))
+    }
+
+    @Test
+    fun `request started from terminal state creates a new transaction without replaying old artifact`() = runTest {
+        val port = RecordingInstallPort()
+        val coordinator = ExtensionInstallCoordinator(port, backgroundScope)
+        val secondRequest = request("example.extension").copy(
+            artifact = request("example.extension").artifact.copy(versionCode = 2),
+        )
+        var second: Deferred<List<ExtensionInstallState>>? = null
+
+        coordinator.install(request()).onEach { state ->
+            if (state is ExtensionInstallState.Installed) {
+                second = async(start = CoroutineStart.UNDISPATCHED) {
+                    coordinator.install(secondRequest).toList()
+                }
+            }
+        }.toList()
+
+        val secondStates = requireNotNull(second).await()
+        assertEquals(2, port.prepareCalls)
+        assertEquals(secondRequest.artifact, (secondStates.last() as ExtensionInstallState.Installed).artifact)
     }
 
     @Test
@@ -186,6 +334,10 @@ private class RecordingInstallPort(
     private val failures: Map<String, AppError> = emptyMap(),
     private val blockPreparation: Boolean = false,
     private val blockValidation: Boolean = false,
+    private val blockFirstCommit: Boolean = false,
+    private val blockFirstReload: Boolean = false,
+    private val blockFirstRollback: Boolean = false,
+    private val blockFirstCleanup: Boolean = false,
     private val expectedConcurrentPreparations: Int = 1,
 ) : ExtensionInstallPort {
     val events = mutableListOf<String>()
@@ -194,11 +346,22 @@ private class RecordingInstallPort(
     val preparationStarted = CompletableDeferred<Unit>()
     val expectedPreparationsStarted = CompletableDeferred<Unit>()
     val validationStarted = CompletableDeferred<Unit>()
+    val commitStarted = CompletableDeferred<Unit>()
+    val reloadStarted = CompletableDeferred<Unit>()
+    val rollbackStarted = CompletableDeferred<Unit>()
+    val cleanupStarted = CompletableDeferred<Unit>()
     val cleanupCompleted = CompletableDeferred<Unit>()
     val releasePreparation = CompletableDeferred<Unit>()
+    val releaseCommit = CompletableDeferred<Unit>()
+    val releaseReload = CompletableDeferred<Unit>()
+    val releaseRollback = CompletableDeferred<Unit>()
+    val releaseCleanup = CompletableDeferred<Unit>()
     var prepareCalls = 0
     var commitCalls = 0
     var reloadCalls = 0
+    var rollbackCalls = 0
+    var cleanupCalls = 0
+    var commitSideEffects = 0
     var maxConcurrentPreparations = 0
     private var activePreparations = 0
 
@@ -215,33 +378,47 @@ private class RecordingInstallPort(
         return PreparedExtensionInstallToken("prepared")
     }
 
-    override suspend fun validate(token: PreparedExtensionInstallToken) {
+    override suspend fun validate(token: PreparedExtensionInstallToken): ExtensionInstallRollbackToken {
         events += "validate"
         validationStarted.complete(Unit)
         if (blockValidation) CompletableDeferred<Unit>().await()
         failAt("validate")
+        return ExtensionInstallRollbackToken("old-artifact-and-metadata")
     }
 
-    override suspend fun commit(token: PreparedExtensionInstallToken): ExtensionInstallRollbackToken {
+    override suspend fun commit(token: PreparedExtensionInstallToken) {
         events += "commit"
         commitCalls++
-        return ExtensionInstallRollbackToken("old-artifact-and-metadata")
+        commitSideEffects++
+        commitStarted.complete(Unit)
+        if (blockFirstCommit && commitCalls == 1) releaseCommit.await()
+        failAt("commit")
     }
 
     override suspend fun reload(packageName: String) {
         events += "reload"
         reloadCalls++
+        reloadStarted.complete(Unit)
+        if (blockFirstReload && reloadCalls == 1) releaseReload.await()
+        failAt("reload-$reloadCalls")
         if (reloadCalls == 1) failAt("reload")
     }
 
     override suspend fun rollback(token: ExtensionInstallRollbackToken) {
         events += "rollback"
+        rollbackCalls++
         rollbackTokens += token
+        rollbackStarted.complete(Unit)
+        if (blockFirstRollback && rollbackCalls == 1) releaseRollback.await()
         failAt("rollback")
     }
 
     override suspend fun cleanup(token: PreparedExtensionInstallToken) {
         events += "cleanup"
+        cleanupCalls++
+        cleanupStarted.complete(Unit)
+        if (blockFirstCleanup && cleanupCalls == 1) releaseCleanup.await()
+        failAt("cleanup-$cleanupCalls")
         cleanedTokens += token
         cleanupCompleted.complete(Unit)
     }

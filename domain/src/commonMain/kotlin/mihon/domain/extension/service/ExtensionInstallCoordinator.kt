@@ -1,6 +1,7 @@
 package mihon.domain.extension.service
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -36,7 +37,6 @@ class ExtensionInstallCoordinator(
     private val inFlight = mutableMapOf<String, InstallFlight>()
 
     fun install(request: ExtensionInstallRequest): Flow<ExtensionInstallState> = flow {
-        val packageName = request.artifact.packageName
         val flight = acquireFlight(request)
         flight.job.start()
         try {
@@ -44,82 +44,114 @@ class ExtensionInstallCoordinator(
                 .takeWhile { it !is InstallEvent.Complete }
                 .collect { emit((it as InstallEvent.State).value) }
         } finally {
-            releaseFlight(packageName, flight)
+            releaseFlight(flight)
         }
     }
 
-    private suspend fun acquireFlight(request: ExtensionInstallRequest): InstallFlight = mutex.withLock {
+    private suspend fun acquireFlight(request: ExtensionInstallRequest): InstallFlight {
         val packageName = request.artifact.packageName
-        val flight = inFlight[packageName] ?: InstallFlight().also { created ->
+        while (true) {
+            var waitForCompletion: CompletableDeferred<Unit>? = null
+            val flight = mutex.withLock {
+                val current = inFlight[packageName]
+                if (current != null && !current.acceptsSubscribers) {
+                    waitForCompletion = current.completion
+                    null
+                } else {
+                    (current ?: createFlight(request)).also { it.subscribers++ }
+                }
+            }
+            if (flight != null) return flight
+            checkNotNull(waitForCompletion).await()
+        }
+    }
+
+    private fun createFlight(request: ExtensionInstallRequest): InstallFlight {
+        val packageName = request.artifact.packageName
+        return InstallFlight().also { created ->
             created.job = scope.launch(start = CoroutineStart.LAZY) {
+                var terminalState: ExtensionInstallState? = null
                 try {
-                    runInstall(request, created.events)
+                    terminalState = runInstall(request, created.events)
+                } catch (_: CancellationException) {
+                    // Collector cancellation has no terminal state, but cleanup and rollback have completed.
                 } finally {
-                    finishFlight(packageName, created)
+                    finishFlight(packageName, created, terminalState)
                 }
             }
             inFlight[packageName] = created
         }
-        flight.subscribers++
-        flight
     }
 
-    private suspend fun releaseFlight(packageName: String, flight: InstallFlight) {
+    private suspend fun releaseFlight(flight: InstallFlight) {
         val cancel = mutex.withLock {
             flight.subscribers--
-            if (flight.subscribers == 0 && flight.job.isActive) {
-                if (inFlight[packageName] === flight) inFlight.remove(packageName)
-                true
-            } else {
-                false
+            (flight.subscribers == 0 && flight.acceptsSubscribers && flight.job.isActive).also {
+                if (it) flight.acceptsSubscribers = false
             }
         }
         if (cancel) flight.job.cancel()
     }
 
-    private suspend fun finishFlight(packageName: String, flight: InstallFlight) = withContext(NonCancellable) {
-        flight.events.emit(InstallEvent.Complete)
+    private suspend fun finishFlight(
+        packageName: String,
+        flight: InstallFlight,
+        terminalState: ExtensionInstallState?,
+    ) = withContext(NonCancellable) {
         mutex.withLock {
+            flight.acceptsSubscribers = false
             if (inFlight[packageName] === flight) inFlight.remove(packageName)
         }
+        terminalState?.let { flight.events.state(it) }
+        flight.events.emit(InstallEvent.Complete)
+        flight.completion.complete(Unit)
     }
 
     private suspend fun runInstall(
         request: ExtensionInstallRequest,
         events: MutableSharedFlow<InstallEvent>,
-    ) {
+    ): ExtensionInstallState {
         var prepared: PreparedExtensionInstallToken? = null
         var rollback: ExtensionInstallRollbackToken? = null
-        var cleanupAttempted = false
+        var cleanupCompleted = false
+        var transactionFailure: Throwable? = null
+        var error: AppError? = null
         try {
             events.state(ExtensionInstallState.Preparing)
             prepared = port.prepare(request)
             events.state(ExtensionInstallState.Validating)
-            port.validate(prepared)
+            rollback = port.validate(prepared)
             events.state(ExtensionInstallState.Committing)
-            rollback = port.commit(prepared)
+            port.commit(prepared)
             events.state(ExtensionInstallState.Reloading)
             port.reload(request.artifact.packageName)
-            cleanupAttempted = true
             port.cleanup(prepared)
-            events.state(ExtensionInstallState.Installed(request.artifact))
+            cleanupCompleted = true
         } catch (failure: Throwable) {
-            val error = if (rollback == null) {
+            transactionFailure = failure
+            error = if (rollback == null) {
                 failure.toAppError()
             } else {
                 withContext(NonCancellable) {
                     rollbackAndRestore(request.artifact.packageName, rollback, failure.toAppError(), events)
                 }
             }
-            if (failure is CancellationException) throw failure
-            events.state(ExtensionInstallState.Failed(error))
         } finally {
-            if (prepared != null && !cleanupAttempted) {
-                withContext(NonCancellable) {
-                    runCatching { port.cleanup(prepared) }
+            if (prepared != null && !cleanupCompleted) {
+                val cleanupFailure = withContext(NonCancellable) {
+                    runCatching { port.cleanup(prepared) }.exceptionOrNull()
+                }
+                if (cleanupFailure == null) {
+                    cleanupCompleted = true
+                } else {
+                    error = error?.withSecondary(cleanupFailure.toAppError(), cleanupFailure)
+                        ?: cleanupFailure.toAppError()
                 }
             }
         }
+        if (transactionFailure is CancellationException) throw transactionFailure
+        return error?.let(ExtensionInstallState::Failed)
+            ?: ExtensionInstallState.Installed(request.artifact)
     }
 
     private suspend fun rollbackAndRestore(
@@ -132,7 +164,6 @@ class ExtensionInstallCoordinator(
         try {
             port.rollback(token)
         } catch (rollbackFailure: Throwable) {
-            if (rollbackFailure is CancellationException) throw rollbackFailure
             return rollbackFailure.toAppError()
         }
 
@@ -141,7 +172,6 @@ class ExtensionInstallCoordinator(
             port.reload(packageName)
             triggeringError
         } catch (restoreFailure: Throwable) {
-            if (restoreFailure is CancellationException) throw restoreFailure
             AppError.PartialFailure(
                 failures = listOf(triggeringError, restoreFailure.toAppError()),
                 cause = restoreFailure,
@@ -152,8 +182,10 @@ class ExtensionInstallCoordinator(
 
 private class InstallFlight {
     val events = MutableSharedFlow<InstallEvent>(replay = 16)
+    val completion = CompletableDeferred<Unit>()
     lateinit var job: Job
     var subscribers: Int = 0
+    var acceptsSubscribers: Boolean = true
 }
 
 private sealed interface InstallEvent {
@@ -170,3 +202,9 @@ private fun Throwable.toAppError(): AppError = when (this) {
     is CancellationException -> AppError.Cancelled
     else -> AppError.Unknown(this)
 }
+
+private fun AppError.withSecondary(secondary: AppError, secondaryCause: Throwable): AppError.PartialFailure =
+    AppError.PartialFailure(
+        failures = listOf(this, secondary),
+        cause = secondaryCause,
+    )

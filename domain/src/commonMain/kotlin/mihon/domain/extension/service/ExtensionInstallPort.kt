@@ -18,9 +18,14 @@ class ExtensionInstallFailure(val error: AppError) : RuntimeException(error.caus
 interface ExtensionInstallPort {
     suspend fun prepare(request: ExtensionInstallRequest): PreparedExtensionInstallToken
 
-    suspend fun validate(token: PreparedExtensionInstallToken)
+    /**
+     * Validates the prepared artifact and snapshots the installed artifact and metadata.
+     * The returned token must be sufficient to restore both, and must exist before [commit] has any side effect.
+     */
+    suspend fun validate(token: PreparedExtensionInstallToken): ExtensionInstallRollbackToken
 
-    suspend fun commit(token: PreparedExtensionInstallToken): ExtensionInstallRollbackToken
+    /** Applies the prepared artifact and metadata using a snapshot already returned by [validate]. */
+    suspend fun commit(token: PreparedExtensionInstallToken)
 
     suspend fun reload(packageName: String)
 
