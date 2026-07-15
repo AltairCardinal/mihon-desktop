@@ -7,6 +7,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import mihon.desktop.reader.PageSaveHelper
+import mihon.domain.reader.PixelBounds
+import mihon.domain.reader.splitPageBounds
 import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.Transferable
@@ -39,13 +41,15 @@ internal fun PageContextMenu(
     pageIndex: Int,
     scope: CoroutineScope,
     onSetAsCover: (() -> Unit)?,
+    splitHalf: PageSplitHalf? = null,
+    sourceBounds: PixelBounds? = null,
     content: @Composable () -> Unit,
 ) {
     val labels = pageContextMenuLabels(includeSetAsCover = onSetAsCover != null)
     val items = buildList {
         add(ContextMenuItem(labels[0]) {
             scope.launch(Dispatchers.IO) {
-                val img = PageSaveHelper.loadImage(pageUrl) ?: return@launch
+                val img = loadPageContextMenuImage(pageUrl, splitHalf, sourceBounds) ?: return@launch
                 val dir = PageSaveHelper.defaultSaveDirectory()
                 val file = dir.resolve(
                     PageSaveHelper.buildSaveFileName(mangaTitle, chapterTitle, pageIndex),
@@ -59,7 +63,7 @@ internal fun PageContextMenu(
         })
         add(ContextMenuItem(labels[1]) {
             scope.launch(Dispatchers.IO) {
-                val img = PageSaveHelper.loadImage(pageUrl) ?: return@launch
+                val img = loadPageContextMenuImage(pageUrl, splitHalf, sourceBounds) ?: return@launch
                 val transferable = BufferedImageTransferable(img)
                 Toolkit.getDefaultToolkit().systemClipboard.setContents(transferable, null)
             }
@@ -72,6 +76,27 @@ internal fun PageContextMenu(
     ContextMenuArea(items = { items }) {
         content()
     }
+}
+
+internal fun loadPageContextMenuImage(
+    pageUrl: String,
+    splitHalf: PageSplitHalf? = null,
+    sourceBounds: PixelBounds? = null,
+): BufferedImage? {
+    val source = PageSaveHelper.loadImage(pageUrl) ?: return null
+    val bounds = sourceBounds ?: splitHalf?.let { splitPageBounds(source.width, source.height, it) }
+        ?: return source
+    if (
+        bounds.x < 0 ||
+        bounds.y < 0 ||
+        bounds.width <= 0 ||
+        bounds.height <= 0 ||
+        bounds.x + bounds.width > source.width ||
+        bounds.y + bounds.height > source.height
+    ) {
+        return null
+    }
+    return source.getSubimage(bounds.x, bounds.y, bounds.width, bounds.height)
 }
 
 internal fun pageContextMenuLabels(includeSetAsCover: Boolean): List<String> = buildList {

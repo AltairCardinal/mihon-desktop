@@ -33,29 +33,21 @@ class GestureHandlerTest {
     }
 
     @Test
-    fun `tap zone LEFT triggers page backward`() {
-        // Simulate: tap in left third of 900px width
-        val width = 900f
-        val tapX = 100f // well within left third (0-300)
-        val zone = tapZoneFor(tapX, width)
-        assertEquals(TapZone.LEFT, zone, "Tap at x=100 in 900px width should be LEFT zone")
+    fun `tap at left side triggers previous navigation`() {
+        val region = tapNavRegion(100f, 300f, 900f, 900f, NavigationMode.RightAndLeft)
+        assertEquals(TapNavRegion.PREV, region)
     }
 
     @Test
-    fun `tap zone RIGHT triggers page forward`() {
-        // Simulate: tap in right third of 900px width
-        val width = 900f
-        val tapX = 800f // well within right third (600-900)
-        val zone = tapZoneFor(tapX, width)
-        assertEquals(TapZone.RIGHT, zone, "Tap at x=800 in 900px width should be RIGHT zone")
+    fun `tap at right side triggers next navigation`() {
+        val region = tapNavRegion(800f, 300f, 900f, 900f, NavigationMode.RightAndLeft)
+        assertEquals(TapNavRegion.NEXT, region)
     }
 
     @Test
-    fun `tap zone CENTER does not trigger navigation`() {
-        val width = 900f
-        val tapX = 450f // center
-        val zone = tapZoneFor(tapX, width)
-        assertEquals(TapZone.CENTER, zone, "Tap at center should be CENTER zone (no navigation)")
+    fun `tap at center opens menu`() {
+        val region = tapNavRegion(450f, 300f, 900f, 900f, NavigationMode.RightAndLeft)
+        assertEquals(TapNavRegion.MENU, region)
     }
 
     @Test

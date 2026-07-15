@@ -28,6 +28,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import mihon.desktop.reader.DualPageState
 import mihon.desktop.reader.PagePreloader
+import mihon.desktop.reader.ReaderKeyboardAction
+import mihon.desktop.reader.ReaderPageAction
 import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.SinglePageSide
 import mihon.desktop.reader.ZoomState
@@ -178,23 +180,17 @@ internal fun DualPagePagerViewer(
         // Tap-zone navigation: same RTL-aware logic as SinglePagePagerViewer.
         val scope = androidx.compose.runtime.rememberCoroutineScope()
         val onTapLeft: () -> Unit = {
-            when (val action = tapLeftAction(pagerState.currentPage)) {
-                is PageNavAction.ScrollTo -> scope.launch { pagerState.animateScrollToPage(action.pagerIndex) }
-                else -> when (chapterNavForTapLeft(pagerState.currentPage, isRtl)) {
-                    PageNavAction.PrevChapter -> onPrevChapter?.invoke()
-                    PageNavAction.NextChapter -> onNextChapter?.invoke()
-                    else -> Unit
-                }
+            when (val action = ReaderKeyboardAction.forPagerLeft(isRtl, pagerState.currentPage, dualState.groupCount)) {
+                is ReaderPageAction.GoToPage -> scope.launch { pagerState.animateScrollToPage(action.page) }
+                ReaderPageAction.NoPrevPage -> onPrevChapter?.invoke()
+                ReaderPageAction.NoNextPage -> onNextChapter?.invoke()
             }
         }
         val onTapRight: () -> Unit = {
-            when (val action = tapRightAction(pagerState.currentPage, dualState.groupCount)) {
-                is PageNavAction.ScrollTo -> scope.launch { pagerState.animateScrollToPage(action.pagerIndex) }
-                else -> when (chapterNavForTapRight(pagerState.currentPage, dualState.groupCount, isRtl)) {
-                    PageNavAction.NextChapter -> onNextChapter?.invoke()
-                    PageNavAction.PrevChapter -> onPrevChapter?.invoke()
-                    else -> Unit
-                }
+            when (val action = ReaderKeyboardAction.forPagerRight(isRtl, pagerState.currentPage, dualState.groupCount)) {
+                is ReaderPageAction.GoToPage -> scope.launch { pagerState.animateScrollToPage(action.page) }
+                ReaderPageAction.NoPrevPage -> onPrevChapter?.invoke()
+                ReaderPageAction.NoNextPage -> onNextChapter?.invoke()
             }
         }
 

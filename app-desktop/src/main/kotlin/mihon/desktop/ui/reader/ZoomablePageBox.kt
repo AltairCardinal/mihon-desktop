@@ -452,6 +452,8 @@ internal fun ZoomablePageBox(
             pageIndex = pageIndex,
             scope = scope,
             onSetAsCover = onSetAsCover,
+            splitHalf = splitHalf,
+            sourceBounds = sourceBounds,
             content = innerContent,
         )
     } else {

@@ -40,6 +40,16 @@ object ReaderKeyboardAction {
             totalPages,
         )
 
+    /**
+     * Maps physical pager movement while keeping chapter-boundary direction on the shared contract.
+     * Pager indices are always laid out left-to-right, even when their logical page mapping is RTL.
+     */
+    fun forPagerLeft(isRtl: Boolean, currentPagerIndex: Int, totalPages: Int): ReaderPageAction =
+        forPagerDirection(PhysicalDirection.LEFT, isRtl, currentPagerIndex, totalPages)
+
+    fun forPagerRight(isRtl: Boolean, currentPagerIndex: Int, totalPages: Int): ReaderPageAction =
+        forPagerDirection(PhysicalDirection.RIGHT, isRtl, currentPagerIndex, totalPages)
+
     fun forHome(): ReaderPageAction = ReaderPageAction.GoToPage(0)
 
     fun forEnd(totalPages: Int): ReaderPageAction =
@@ -76,5 +86,26 @@ object ReaderKeyboardAction {
         ReaderNavigationCommand.Next -> advance(currentPage, totalPages)
         ReaderNavigationCommand.Previous -> retreat(currentPage)
         else -> error("Unsupported keyboard page command: $command")
+    }
+
+    private fun forPagerDirection(
+        physicalDirection: PhysicalDirection,
+        isRtl: Boolean,
+        currentPagerIndex: Int,
+        totalPages: Int,
+    ): ReaderPageAction {
+        val target = currentPagerIndex + if (physicalDirection == PhysicalDirection.LEFT) -1 else 1
+        if (target in 0 until totalPages) return ReaderPageAction.GoToPage(target)
+
+        return when (
+            ReaderNavigation.resolvePhysicalPageCommand(
+                physicalDirection,
+                if (isRtl) ReaderDirection.RTL else ReaderDirection.LTR,
+            )
+        ) {
+            ReaderNavigationCommand.Previous -> ReaderPageAction.NoPrevPage
+            ReaderNavigationCommand.Next -> ReaderPageAction.NoNextPage
+            else -> error("Unsupported pager boundary command")
+        }
     }
 }

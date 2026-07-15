@@ -8,6 +8,22 @@ import org.junit.jupiter.api.Test
 class ReaderKeyboardNavigationPositionTest {
 
     @Test
+    fun `mouse pager adapter keeps physical scrolling and shared RTL chapter direction`() {
+        assertEquals(
+            ReaderPageAction.GoToPage(1),
+            ReaderKeyboardAction.forPagerRight(isRtl = true, currentPagerIndex = 0, totalPages = 5),
+        )
+        assertEquals(
+            ReaderPageAction.NoNextPage,
+            ReaderKeyboardAction.forPagerLeft(isRtl = true, currentPagerIndex = 0, totalPages = 5),
+        )
+        assertEquals(
+            ReaderPageAction.NoPrevPage,
+            ReaderKeyboardAction.forPagerRight(isRtl = true, currentPagerIndex = 4, totalPages = 5),
+        )
+    }
+
+    @Test
     fun `dual page keyboard position uses display groups at last paired spread`() {
         val state = ReaderState(
             currentPage = 41,

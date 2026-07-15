@@ -10,6 +10,8 @@ import androidx.compose.ui.Modifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import mihon.desktop.reader.PagePreloader
+import mihon.desktop.reader.ReaderKeyboardAction
+import mihon.desktop.reader.ReaderPageAction
 import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.VirtualPage
 import mihon.desktop.reader.ZoomState
@@ -102,23 +104,17 @@ internal fun SinglePagePagerViewer(
     //   LTR: left boundary → PrevChapter, right boundary → NextChapter
     //   RTL: left boundary → NextChapter, right boundary → PrevChapter
     val onTapLeft: () -> Unit = {
-        when (val action = tapLeftAction(pagerState.currentPage)) {
-            is PageNavAction.ScrollTo -> scope.launch { pagerState.animateScrollToPage(action.pagerIndex) }
-            else -> when (chapterNavForTapLeft(pagerState.currentPage, isRtl)) {
-                PageNavAction.PrevChapter -> onPrevChapter?.invoke()
-                PageNavAction.NextChapter -> onNextChapter?.invoke()
-                else -> Unit
-            }
+        when (val action = ReaderKeyboardAction.forPagerLeft(isRtl, pagerState.currentPage, effectivePageCount)) {
+            is ReaderPageAction.GoToPage -> scope.launch { pagerState.animateScrollToPage(action.page) }
+            ReaderPageAction.NoPrevPage -> onPrevChapter?.invoke()
+            ReaderPageAction.NoNextPage -> onNextChapter?.invoke()
         }
     }
     val onTapRight: () -> Unit = {
-        when (val action = tapRightAction(pagerState.currentPage, effectivePageCount)) {
-            is PageNavAction.ScrollTo -> scope.launch { pagerState.animateScrollToPage(action.pagerIndex) }
-            else -> when (chapterNavForTapRight(pagerState.currentPage, effectivePageCount, isRtl)) {
-                PageNavAction.NextChapter -> onNextChapter?.invoke()
-                PageNavAction.PrevChapter -> onPrevChapter?.invoke()
-                else -> Unit
-            }
+        when (val action = ReaderKeyboardAction.forPagerRight(isRtl, pagerState.currentPage, effectivePageCount)) {
+            is ReaderPageAction.GoToPage -> scope.launch { pagerState.animateScrollToPage(action.page) }
+            ReaderPageAction.NoPrevPage -> onPrevChapter?.invoke()
+            ReaderPageAction.NoNextPage -> onNextChapter?.invoke()
         }
     }
 
