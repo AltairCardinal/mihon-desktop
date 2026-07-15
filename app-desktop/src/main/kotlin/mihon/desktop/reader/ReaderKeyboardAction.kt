@@ -41,14 +41,22 @@ object ReaderKeyboardAction {
         )
 
     /**
-     * Maps physical pager movement while keeping chapter-boundary direction on the shared contract.
-     * Pager indices are always laid out left-to-right, even when their logical page mapping is RTL.
+     * Applies a shared logical command, then maps its logical target to the always-LTR pager.
      */
-    fun forPagerLeft(isRtl: Boolean, currentPagerIndex: Int, totalPages: Int): ReaderPageAction =
-        forPagerDirection(PhysicalDirection.LEFT, isRtl, currentPagerIndex, totalPages)
-
-    fun forPagerRight(isRtl: Boolean, currentPagerIndex: Int, totalPages: Int): ReaderPageAction =
-        forPagerDirection(PhysicalDirection.RIGHT, isRtl, currentPagerIndex, totalPages)
+    fun forPagerCommand(
+        command: ReaderNavigationCommand,
+        isRtl: Boolean,
+        currentPagerIndex: Int,
+        totalPages: Int,
+    ): ReaderPageAction {
+        val maxIndex = (totalPages - 1).coerceAtLeast(0)
+        val currentLogicalPage = if (isRtl) maxIndex - currentPagerIndex else currentPagerIndex
+        return when (val action = fromShared(command, currentLogicalPage, totalPages)) {
+            is ReaderPageAction.GoToPage ->
+                ReaderPageAction.GoToPage(if (isRtl) maxIndex - action.page else action.page)
+            else -> action
+        }
+    }
 
     fun forHome(): ReaderPageAction = ReaderPageAction.GoToPage(0)
 
@@ -88,24 +96,4 @@ object ReaderKeyboardAction {
         else -> error("Unsupported keyboard page command: $command")
     }
 
-    private fun forPagerDirection(
-        physicalDirection: PhysicalDirection,
-        isRtl: Boolean,
-        currentPagerIndex: Int,
-        totalPages: Int,
-    ): ReaderPageAction {
-        val target = currentPagerIndex + if (physicalDirection == PhysicalDirection.LEFT) -1 else 1
-        if (target in 0 until totalPages) return ReaderPageAction.GoToPage(target)
-
-        return when (
-            ReaderNavigation.resolvePhysicalPageCommand(
-                physicalDirection,
-                if (isRtl) ReaderDirection.RTL else ReaderDirection.LTR,
-            )
-        ) {
-            ReaderNavigationCommand.Previous -> ReaderPageAction.NoPrevPage
-            ReaderNavigationCommand.Next -> ReaderPageAction.NoNextPage
-            else -> error("Unsupported pager boundary command")
-        }
-    }
 }

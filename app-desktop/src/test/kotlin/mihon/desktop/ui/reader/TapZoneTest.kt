@@ -2,6 +2,7 @@ package mihon.desktop.ui.reader
 
 import mihon.desktop.reader.ReaderKeyboardAction
 import mihon.desktop.reader.ReaderPageAction
+import mihon.domain.reader.ReaderNavigationCommand
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
@@ -24,22 +25,22 @@ class TapZoneTest {
     }
 
     @Test
-    fun `pager input keeps physical movement while shared direction selects the chapter boundary`() {
+    fun `pager input maps shared logical commands to pager storage and chapter boundaries`() {
         assertEquals(
             ReaderPageAction.GoToPage(0),
-            ReaderKeyboardAction.forPagerLeft(isRtl = false, currentPagerIndex = 1, totalPages = 5),
+            ReaderKeyboardAction.forPagerCommand(ReaderNavigationCommand.Previous, false, 1, 5),
         )
         assertEquals(
             ReaderPageAction.NoPrevPage,
-            ReaderKeyboardAction.forPagerLeft(isRtl = false, currentPagerIndex = 0, totalPages = 5),
+            ReaderKeyboardAction.forPagerCommand(ReaderNavigationCommand.Previous, false, 0, 5),
         )
         assertEquals(
             ReaderPageAction.NoNextPage,
-            ReaderKeyboardAction.forPagerLeft(isRtl = true, currentPagerIndex = 0, totalPages = 5),
+            ReaderKeyboardAction.forPagerCommand(ReaderNavigationCommand.Next, true, 0, 5),
         )
         assertEquals(
             ReaderPageAction.NoPrevPage,
-            ReaderKeyboardAction.forPagerRight(isRtl = true, currentPagerIndex = 4, totalPages = 5),
+            ReaderKeyboardAction.forPagerCommand(ReaderNavigationCommand.Previous, true, 4, 5),
         )
     }
 }

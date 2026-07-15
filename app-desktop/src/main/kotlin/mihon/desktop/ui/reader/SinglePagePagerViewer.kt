@@ -15,6 +15,7 @@ import mihon.desktop.reader.ReaderPageAction
 import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.VirtualPage
 import mihon.desktop.reader.ZoomState
+import mihon.domain.reader.ReaderNavigationCommand
 
 /**
  * Standard single-page pager.  Each swipe advances exactly one manga page.
@@ -99,24 +100,15 @@ internal fun SinglePagePagerViewer(
         onPageChange(pagerToPage(pagerState.currentPage))
     }
 
-    // Tap-zone navigation: left tap decreases pager index, right tap increases it.
-    // At chapter boundaries, RTL direction is accounted for:
-    //   LTR: left boundary → PrevChapter, right boundary → NextChapter
-    //   RTL: left boundary → NextChapter, right boundary → PrevChapter
-    val onTapLeft: () -> Unit = {
-        when (val action = ReaderKeyboardAction.forPagerLeft(isRtl, pagerState.currentPage, effectivePageCount)) {
+    fun executeTapCommand(command: ReaderNavigationCommand) {
+        when (val action = ReaderKeyboardAction.forPagerCommand(command, isRtl, pagerState.currentPage, effectivePageCount)) {
             is ReaderPageAction.GoToPage -> scope.launch { pagerState.animateScrollToPage(action.page) }
             ReaderPageAction.NoPrevPage -> onPrevChapter?.invoke()
             ReaderPageAction.NoNextPage -> onNextChapter?.invoke()
         }
     }
-    val onTapRight: () -> Unit = {
-        when (val action = ReaderKeyboardAction.forPagerRight(isRtl, pagerState.currentPage, effectivePageCount)) {
-            is ReaderPageAction.GoToPage -> scope.launch { pagerState.animateScrollToPage(action.page) }
-            ReaderPageAction.NoPrevPage -> onPrevChapter?.invoke()
-            ReaderPageAction.NoNextPage -> onNextChapter?.invoke()
-        }
-    }
+    val onTapPrevious: () -> Unit = { executeTapCommand(ReaderNavigationCommand.Previous) }
+    val onTapNext: () -> Unit = { executeTapCommand(ReaderNavigationCommand.Next) }
 
     HorizontalPager(
         state = pagerState,
@@ -148,8 +140,9 @@ internal fun SinglePagePagerViewer(
             },
             scaleType = scaleType,
             navigationMode = navigationMode,
-            onTapLeft = onTapLeft,
-            onTapRight = onTapRight,
+            isRtl = isRtl,
+            onTapPrevious = onTapPrevious,
+            onTapNext = onTapNext,
             onTapCenter = onTapCenter,
         )
     }

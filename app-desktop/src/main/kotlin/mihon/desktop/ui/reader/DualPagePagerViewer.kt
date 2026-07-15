@@ -34,6 +34,7 @@ import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.SinglePageSide
 import mihon.desktop.reader.ZoomState
 import mihon.desktop.reader.singlePageBoxOnRight
+import mihon.domain.reader.ReaderNavigationCommand
 
 internal enum class DualPageLoadingIndicatorPlacement {
     None,
@@ -177,22 +178,16 @@ internal fun DualPagePagerViewer(
             }
         }
 
-        // Tap-zone navigation: same RTL-aware logic as SinglePagePagerViewer.
         val scope = androidx.compose.runtime.rememberCoroutineScope()
-        val onTapLeft: () -> Unit = {
-            when (val action = ReaderKeyboardAction.forPagerLeft(isRtl, pagerState.currentPage, dualState.groupCount)) {
+        fun executeTapCommand(command: ReaderNavigationCommand) {
+            when (val action = ReaderKeyboardAction.forPagerCommand(command, isRtl, pagerState.currentPage, dualState.groupCount)) {
                 is ReaderPageAction.GoToPage -> scope.launch { pagerState.animateScrollToPage(action.page) }
                 ReaderPageAction.NoPrevPage -> onPrevChapter?.invoke()
                 ReaderPageAction.NoNextPage -> onNextChapter?.invoke()
             }
         }
-        val onTapRight: () -> Unit = {
-            when (val action = ReaderKeyboardAction.forPagerRight(isRtl, pagerState.currentPage, dualState.groupCount)) {
-                is ReaderPageAction.GoToPage -> scope.launch { pagerState.animateScrollToPage(action.page) }
-                ReaderPageAction.NoPrevPage -> onPrevChapter?.invoke()
-                ReaderPageAction.NoNextPage -> onNextChapter?.invoke()
-            }
-        }
+        val onTapPrevious: () -> Unit = { executeTapCommand(ReaderNavigationCommand.Previous) }
+        val onTapNext: () -> Unit = { executeTapCommand(ReaderNavigationCommand.Next) }
 
         // The pager always runs in LTR.  All Alignment values use LTR/physical
         // semantics: CenterEnd = physical RIGHT, CenterStart = physical LEFT.
@@ -214,10 +209,10 @@ internal fun DualPagePagerViewer(
                             Row(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .readerPrimaryTapInput(zoomState.scale, navigationMode) {
+                                    .readerPrimaryTapInput(zoomState.scale, navigationMode, isRtl) {
                                         when (it) {
-                                            TapNavRegion.PREV -> onTapLeft()
-                                            TapNavRegion.NEXT -> onTapRight()
+                                            TapNavRegion.PREV -> onTapPrevious()
+                                            TapNavRegion.NEXT -> onTapNext()
                                             TapNavRegion.MENU -> onTapCenter?.invoke()
                                         }
                                     },
@@ -271,8 +266,9 @@ internal fun DualPagePagerViewer(
                                 preloader = preloader,
                                 onSpreadDetected = { onSpreadDetected(pageIndex) },
                                 navigationMode = navigationMode,
-                                onTapLeft = onTapLeft,
-                                onTapRight = onTapRight,
+                                isRtl = isRtl,
+                                onTapPrevious = onTapPrevious,
+                                onTapNext = onTapNext,
                                 onTapCenter = onTapCenter,
                             )
                         }
@@ -296,8 +292,9 @@ internal fun DualPagePagerViewer(
                             loadingAlignment = Alignment.Center,
                             onSpreadDetected = { onSpreadDetected(pageIndex) },
                             navigationMode = navigationMode,
-                            onTapLeft = onTapLeft,
-                            onTapRight = onTapRight,
+                            isRtl = isRtl,
+                            onTapPrevious = onTapPrevious,
+                            onTapNext = onTapNext,
                             onTapCenter = onTapCenter,
                         )
                     }
@@ -320,8 +317,9 @@ internal fun DualPagePagerViewer(
                             loadingAlignment = Alignment.Center,
                             onSpreadDetected = { onSpreadDetected(pageIndex) },
                             navigationMode = navigationMode,
-                            onTapLeft = onTapLeft,
-                            onTapRight = onTapRight,
+                            isRtl = isRtl,
+                            onTapPrevious = onTapPrevious,
+                            onTapNext = onTapNext,
                             onTapCenter = onTapCenter,
                         )
                     }
@@ -348,10 +346,10 @@ internal fun DualPagePagerViewer(
                     Row(
                         modifier = Modifier
                             .fillMaxSize()
-                            .readerPrimaryTapInput(zoomState.scale, navigationMode) {
+                            .readerPrimaryTapInput(zoomState.scale, navigationMode, isRtl) {
                                 when (it) {
-                                    TapNavRegion.PREV -> onTapLeft()
-                                    TapNavRegion.NEXT -> onTapRight()
+                                    TapNavRegion.PREV -> onTapPrevious()
+                                    TapNavRegion.NEXT -> onTapNext()
                                     TapNavRegion.MENU -> onTapCenter?.invoke()
                                 }
                             },
@@ -412,8 +410,9 @@ internal fun DualPagePagerViewer(
 private fun Modifier.readerPrimaryTapInput(
     zoomScale: Float,
     navigationMode: NavigationMode,
+    isRtl: Boolean,
     onTap: (TapNavRegion) -> Unit,
-): Modifier = pointerInput(zoomScale, navigationMode) {
+): Modifier = pointerInput(zoomScale, navigationMode, isRtl) {
     awaitPointerEventScope {
         while (true) {
             val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -460,6 +459,7 @@ private fun Modifier.readerPrimaryTapInput(
                     width = size.width.toFloat(),
                     height = size.height.toFloat(),
                     mode = navigationMode,
+                    isRtl = isRtl,
                 )?.let(onTap)
             }
         }

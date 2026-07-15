@@ -91,8 +91,8 @@ internal fun loadPageContextMenuImage(
         bounds.y < 0 ||
         bounds.width <= 0 ||
         bounds.height <= 0 ||
-        bounds.x + bounds.width > source.width ||
-        bounds.y + bounds.height > source.height
+        bounds.x.toLong() + bounds.width.toLong() > source.width.toLong() ||
+        bounds.y.toLong() + bounds.height.toLong() > source.height.toLong()
     ) {
         return null
     }

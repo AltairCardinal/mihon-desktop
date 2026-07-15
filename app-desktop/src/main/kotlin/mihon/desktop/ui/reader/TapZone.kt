@@ -6,6 +6,7 @@ import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventType
 import mihon.domain.reader.NavigationInversion
 import mihon.domain.reader.NavigationPreset
+import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderNavigation
 import mihon.domain.reader.ReaderNavigationCommand
 
@@ -34,7 +35,8 @@ enum class NavigationMode(val displayName: String) {
  * [TapNavRegion] using the given [mode].
  *
  * Returns [TapNavRegion.MENU] when [width] or [height] is ≤ 0 to avoid division by zero.
- * In [NavigationMode.RightAndLeft], [isRtl] reverses the PREV/NEXT assignment.
+ * [isRtl] supplies the reading direction for physical left/right regions. Logical regions in the
+ * other presets retain their shared Previous/Next commands.
  */
 fun tapNavRegion(
     x: Float,
@@ -56,11 +58,8 @@ fun tapNavRegion(
         x = x / width,
         y = y / height,
         preset = preset,
-        inversion = if (isRtl && mode == NavigationMode.RightAndLeft) {
-            NavigationInversion.HORIZONTAL
-        } else {
-            NavigationInversion.NONE
-        },
+        inversion = NavigationInversion.NONE,
+        direction = if (isRtl) ReaderDirection.RTL else ReaderDirection.LTR,
     )
     return when (command) {
         ReaderNavigationCommand.Previous -> TapNavRegion.PREV

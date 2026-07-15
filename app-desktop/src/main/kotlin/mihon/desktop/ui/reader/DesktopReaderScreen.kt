@@ -403,8 +403,11 @@ private fun ReaderSideEffects(
     LaunchedEffect(state.showSettings) { if (!state.showSettings) focusRequester.requestFocus() }
     LaunchedEffect(state.resolvedUrls, state.autoSpreadMatching, state.dualPageMode) {
         model.setMatchedPairs(
-            if (state.autoSpreadMatching && state.dualPageMode && state.resolvedUrls.size > 1)
-                EdgePixelMatcher().findMatchedPairs(state.resolvedUrls) else emptySet(),
+            resolveDesktopMatchedPairs(
+                autoSpreadMatching = state.autoSpreadMatching,
+                dualPageMode = state.dualPageMode,
+                pageUrls = state.resolvedUrls,
+            ),
         )
     }
     LaunchedEffect(state.resolvedUrls.size, state.spreadPages, state.autoSplitPages, state.dualPageMode, state.readingMode) {
@@ -416,6 +419,18 @@ private fun ReaderSideEffects(
     }
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(100); focusRequester.requestFocus() }
 }
+
+internal suspend fun resolveDesktopMatchedPairs(
+    autoSpreadMatching: Boolean,
+    dualPageMode: Boolean,
+    pageUrls: List<String>,
+    findMatchedPairs: suspend (List<String>) -> Set<Pair<Int, Int>> = { EdgePixelMatcher().findMatchedPairs(it) },
+): Set<Pair<Int, Int>> =
+    if (autoSpreadMatching && dualPageMode && pageUrls.size > 1) {
+        findMatchedPairs(pageUrls)
+    } else {
+        emptySet()
+    }
 
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalMaterial3Api::class)
 @Composable

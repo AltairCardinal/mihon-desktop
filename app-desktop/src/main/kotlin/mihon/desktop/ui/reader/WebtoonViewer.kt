@@ -74,13 +74,18 @@ internal fun WebtoonViewer(
             delay(tickMs)
             val layoutInfo = listState.layoutInfo
             val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()
-            val atBottom = lastVisible != null &&
-                lastVisible.index == layoutInfo.totalItemsCount - 1 &&
-                lastVisible.offset + lastVisible.size <= layoutInfo.viewportEndOffset
-            if (atBottom) {
-                onNextChapter?.invoke()
-            } else {
-                listState.scroll { scrollBy(pixelsPerTick) }
+            when (
+                webtoonAutoScrollAction(
+                    enabled = autoScroll,
+                    lastVisibleIndex = lastVisible?.index,
+                    totalItemsCount = layoutInfo.totalItemsCount,
+                    lastVisibleBottom = lastVisible?.let { it.offset + it.size },
+                    viewportEnd = layoutInfo.viewportEndOffset,
+                )
+            ) {
+                WebtoonAutoScrollAction.Idle -> Unit
+                WebtoonAutoScrollAction.Scroll -> listState.scroll { scrollBy(pixelsPerTick) }
+                WebtoonAutoScrollAction.NextChapter -> onNextChapter?.invoke()
             }
         }
     }
@@ -108,6 +113,25 @@ internal fun WebtoonViewer(
             )
         }
     }
+}
+
+internal enum class WebtoonAutoScrollAction { Idle, Scroll, NextChapter }
+
+internal fun webtoonAutoScrollAction(
+    enabled: Boolean,
+    lastVisibleIndex: Int?,
+    totalItemsCount: Int,
+    lastVisibleBottom: Int?,
+    viewportEnd: Int,
+): WebtoonAutoScrollAction {
+    if (!enabled) return WebtoonAutoScrollAction.Idle
+    val atBottom =
+        lastVisibleIndex != null &&
+            totalItemsCount > 0 &&
+            lastVisibleIndex == totalItemsCount - 1 &&
+            lastVisibleBottom != null &&
+            lastVisibleBottom <= viewportEnd
+    return if (atBottom) WebtoonAutoScrollAction.NextChapter else WebtoonAutoScrollAction.Scroll
 }
 
 internal fun webtoonPageContextMenuLabels(): List<String> =

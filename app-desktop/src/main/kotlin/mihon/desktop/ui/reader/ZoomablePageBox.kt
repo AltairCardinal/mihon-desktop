@@ -140,8 +140,9 @@ internal fun ZoomablePageBox(
     onSpreadDetected: (() -> Unit)? = null,
     scaleType: ScaleType = ScaleType.FIT_SCREEN,
     navigationMode: NavigationMode = NavigationMode.RightAndLeft,
-    onTapLeft: (() -> Unit)? = null,
-    onTapRight: (() -> Unit)? = null,
+    isRtl: Boolean = false,
+    onTapPrevious: (() -> Unit)? = null,
+    onTapNext: (() -> Unit)? = null,
     onTapCenter: (() -> Unit)? = null,
 ) {
     // Blank URL = page not yet downloaded. Show a loading spinner directly
@@ -243,8 +244,8 @@ internal fun ZoomablePageBox(
     val innerContent: @Composable () -> Unit = {
         // Unified gesture handler using detectTapGestures for tap detection
         // combined with transform gesture handling in a single pointerInput.
-        val gestureModifier = if (onTapLeft != null || onTapRight != null || onTapCenter != null) {
-            Modifier.pointerInput(Unit) {
+        val gestureModifier = if (onTapPrevious != null || onTapNext != null || onTapCenter != null) {
+            Modifier.pointerInput(navigationMode, isRtl) {
                 awaitPointerEventScope {
                     while (true) {
                         val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -326,9 +327,9 @@ internal fun ZoomablePageBox(
                                 val tapWidth = size.width.toFloat()
                                 val tapHeight = size.height.toFloat()
                                 if (latestZoom.scale <= 1f) {
-                                    when (tapNavRegion(tapX, tapY, tapWidth, tapHeight, navigationMode)) {
-                                        TapNavRegion.PREV -> onTapLeft?.invoke()
-                                        TapNavRegion.NEXT -> onTapRight?.invoke()
+                                    when (tapNavRegion(tapX, tapY, tapWidth, tapHeight, navigationMode, isRtl)) {
+                                        TapNavRegion.PREV -> onTapPrevious?.invoke()
+                                        TapNavRegion.NEXT -> onTapNext?.invoke()
                                         TapNavRegion.MENU -> onTapCenter?.invoke()
                                     }
                                 }
@@ -342,7 +343,7 @@ internal fun ZoomablePageBox(
         }
 
         // Double-tap to reset zoom (only when tap navigation is active)
-        val doubleTapModifier = if (onTapLeft != null || onTapRight != null || onTapCenter != null) {
+        val doubleTapModifier = if (onTapPrevious != null || onTapNext != null || onTapCenter != null) {
             Modifier.pointerInput(Unit) {
                 var lastTapTime = 0L
                 var lastTapPos = androidx.compose.ui.geometry.Offset.Zero
