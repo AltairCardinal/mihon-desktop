@@ -2,7 +2,7 @@
 
 - [x] 1.1 归因并审计当前 Task 4A 未提交工作树，记录每轮 RED/GREEN 命令与结果
 - [x] 1.2 用 Android 原版 fixture 完成页面、拆分、配对、导航、跳过、过渡、滤镜和预加载共享契约测试
-- [ ] 1.3 集中保护 Desktop 双页/edge matching、自动滚动、键鼠和右键保存产品行为
+- [x] 1.3 集中保护 Desktop 双页/edge matching、自动滚动、键鼠和右键保存产品行为
 
 ## 2. Shared core 与双端生产接线
 
@@ -20,7 +20,7 @@
 
 ## 4. 去重、追踪与验证
 
-- [ ] 4.1 删除 Desktop 已由 shared core 覆盖的拆页、导航和跳过规则，保留有证据的产品/平台层
+- [x] 4.1 删除 Desktop 已由 shared core 覆盖的拆页、导航和跳过规则，保留有证据的产品/平台层
 - [ ] 4.2 更新 parity 9、43、44、45、47、49、51、54 与 reader 架构文档
 - [ ] 4.3 运行 domain、Android reader、Desktop reader/UI/parity、Test Mode、Spotless 和 diff 检查，并自行部署 Android 模拟器完成 reader 运行时验收
 - [ ] 4.4 提交功能并通过独立规格/代码质量 review，修复全部 Critical/Important 问题
