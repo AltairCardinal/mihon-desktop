@@ -12,8 +12,6 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionArtifact
@@ -33,7 +31,7 @@ class ExtensionInstallCoordinator(
     private val port: ExtensionInstallPort,
     private val scope: CoroutineScope,
 ) {
-    private val mutex = Mutex()
+    private val flightLock = Any()
     private val inFlight = mutableMapOf<String, InstallFlight>()
 
     fun install(request: ExtensionInstallRequest): Flow<ExtensionInstallState> = flow {
@@ -52,7 +50,7 @@ class ExtensionInstallCoordinator(
         val packageName = request.artifact.packageName
         while (true) {
             var waitForCompletion: CompletableDeferred<Unit>? = null
-            val flight = mutex.withLock {
+            val flight = synchronized(flightLock) {
                 val current = inFlight[packageName]
                 if (current != null && !current.acceptsSubscribers) {
                     waitForCompletion = current.completion
@@ -75,16 +73,24 @@ class ExtensionInstallCoordinator(
                     terminalState = runInstall(request, created.events)
                 } catch (_: CancellationException) {
                     // Collector cancellation has no terminal state, but cleanup and rollback have completed.
+                } catch (failure: Throwable) {
+                    terminalState = ExtensionInstallState.Failed(failure.toAppError())
                 } finally {
                     finishFlight(packageName, created, terminalState)
                 }
             }
             inFlight[packageName] = created
+            created.job.invokeOnCompletion { failure ->
+                val terminalState = failure?.let {
+                    ExtensionInstallState.Failed(it.toAppError())
+                }
+                finishFlight(packageName, created, terminalState)
+            }
         }
     }
 
-    private suspend fun releaseFlight(flight: InstallFlight) {
-        val cancel = mutex.withLock {
+    private fun releaseFlight(flight: InstallFlight) {
+        val cancel = synchronized(flightLock) {
             flight.subscribers--
             (flight.subscribers == 0 && flight.acceptsSubscribers && flight.job.isActive).also {
                 if (it) flight.acceptsSubscribers = false
@@ -93,17 +99,21 @@ class ExtensionInstallCoordinator(
         if (cancel) flight.job.cancel()
     }
 
-    private suspend fun finishFlight(
+    private fun finishFlight(
         packageName: String,
         flight: InstallFlight,
         terminalState: ExtensionInstallState?,
-    ) = withContext(NonCancellable) {
-        mutex.withLock {
+    ) {
+        val finish = synchronized(flightLock) {
+            if (flight.finished) return@synchronized false
+            flight.finished = true
             flight.acceptsSubscribers = false
             if (inFlight[packageName] === flight) inFlight.remove(packageName)
+            true
         }
-        terminalState?.let { flight.events.state(it) }
-        flight.events.emit(InstallEvent.Complete)
+        if (!finish) return
+        terminalState?.let { flight.events.tryEmit(InstallEvent.State(it)) }
+        flight.events.tryEmit(InstallEvent.Complete)
         flight.completion.complete(Unit)
     }
 
@@ -186,6 +196,7 @@ private class InstallFlight {
     lateinit var job: Job
     var subscribers: Int = 0
     var acceptsSubscribers: Boolean = true
+    var finished: Boolean = false
 }
 
 private sealed interface InstallEvent {

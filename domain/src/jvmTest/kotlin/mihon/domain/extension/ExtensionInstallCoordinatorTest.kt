@@ -1,14 +1,19 @@
 package mihon.domain.extension
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionArtifact
 import mihon.domain.extension.model.RepositoryIdentity
@@ -24,6 +29,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import kotlin.coroutines.CoroutineContext
 
 class ExtensionInstallCoordinatorTest {
 
@@ -285,6 +291,52 @@ class ExtensionInstallCoordinatorTest {
         val secondStates = requireNotNull(second).await()
         assertEquals(2, port.prepareCalls)
         assertEquals(secondRequest.artifact, (secondStates.last() as ExtensionInstallState.Installed).artifact)
+    }
+
+    @Test
+    fun `cancelled scope terminates flight and same package can install in next lifecycle`() = runTest {
+        val cancelledJob = SupervisorJob().apply { cancel() }
+        var cancelledLifecycle = true
+        val switchableScope = object : CoroutineScope {
+            override val coroutineContext: CoroutineContext
+                get() = if (cancelledLifecycle) {
+                    backgroundScope.coroutineContext + cancelledJob
+                } else {
+                    backgroundScope.coroutineContext
+                }
+        }
+        val port = RecordingInstallPort()
+        val coordinator = ExtensionInstallCoordinator(port, switchableScope)
+
+        val cancelledStates = runCatching {
+            withTimeout(1_000) { coordinator.install(request()).toList() }
+        }.getOrNull()
+        cancelledLifecycle = false
+        val installedStates = runCatching {
+            withTimeout(1_000) { coordinator.install(request()).toList() }
+        }.getOrNull()
+
+        assertEquals(listOf(ExtensionInstallState.Failed(AppError.Cancelled)), cancelledStates)
+        assertInstanceOf(ExtensionInstallState.Installed::class.java, installedStates?.last())
+        assertEquals(1, port.prepareCalls)
+    }
+
+    @Test
+    fun `scope cancelled while lazy flight starts emits one cancelled terminal`() = runTest {
+        val lifecycle = SupervisorJob()
+        val cancelBeforeBody = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                lifecycle.cancel()
+                block.run()
+            }
+        }
+        val port = RecordingInstallPort()
+        val coordinator = ExtensionInstallCoordinator(port, CoroutineScope(lifecycle + cancelBeforeBody))
+
+        val states = withTimeout(1_000) { coordinator.install(request()).toList() }
+
+        assertEquals(listOf(ExtensionInstallState.Failed(AppError.Cancelled)), states)
+        assertEquals(0, port.prepareCalls)
     }
 
     @Test

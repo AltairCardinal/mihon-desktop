@@ -31,5 +31,9 @@ interface ExtensionInstallPort {
 
     suspend fun rollback(token: ExtensionInstallRollbackToken)
 
+    /**
+     * Releases the prepared artifact and the rollback snapshot created by [validate] after either success or failure.
+     * Implementations must be idempotent because cleanup can be retried; already-missing resources are successful.
+     */
     suspend fun cleanup(token: PreparedExtensionInstallToken)
 }
