@@ -34,6 +34,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import mihon.desktop.reader.PagePreloader
+import mihon.desktop.reader.PreloadedPageBitmap
 import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.SkiaImageDecoder
 import mihon.desktop.reader.ZoomState
@@ -166,19 +167,20 @@ internal fun ZoomablePageBox(
     } else {
         0L
     }
-    val preloadedBitmap = remember(url, pageIndex, preloader, preloadRevision) { preloader?.get(pageIndex) }
+    val preloadedPage = remember(url, pageIndex, preloader, preloadRevision) { preloader?.getCachedPage(pageIndex) }
+    val preloadedBitmap = preloadedPage?.bitmap
 
     val transformedPreloadedBitmap by produceState<ImageBitmap?>(
         initialValue = preloadedBitmap.takeIf { splitHalf == null && sourceBounds == null && !cropBorders },
         url,
-        preloadedBitmap,
+        preloadedPage,
         splitHalf,
         sourceBounds,
         cropBorders,
     ) {
-        value = preloadedBitmap?.let { bitmap ->
+        value = preloadedPage?.let { cachedPage ->
             withContext(Dispatchers.Default) {
-                transformCachedPageBitmap(bitmap, splitHalf, sourceBounds, cropBorders)
+                transformCachedPageBitmap(cachedPage, splitHalf, sourceBounds, cropBorders)
             }
         }
     }
@@ -465,15 +467,74 @@ internal fun transformCachedPageBitmap(
     splitHalf: PageSplitHalf? = null,
     sourceBounds: PixelBounds? = null,
     cropBorders: Boolean = false,
+    sourceWidth: Int = bitmap.width,
+    sourceHeight: Int = bitmap.height,
 ): ImageBitmap {
     val skiaBitmap = bitmap.asSkiaBitmap()
     return when {
-        sourceBounds != null -> extractSkiaSubBitmap(skiaBitmap, sourceBounds) ?: bitmap
+        sourceBounds != null -> {
+            val mappedBounds = sourceBounds.mapToBitmap(
+                sourceWidth = sourceWidth,
+                sourceHeight = sourceHeight,
+                bitmapWidth = bitmap.width,
+                bitmapHeight = bitmap.height,
+            )
+            requireNotNull(extractSkiaSubBitmap(skiaBitmap, mappedBounds)) {
+                "Mapped source bounds $mappedBounds exceed cached bitmap ${bitmap.width}x${bitmap.height}"
+            }
+        }
         splitHalf != null -> splitSkiaBitmap(skiaBitmap, splitHalf) ?: bitmap
         cropBorders -> cropBordersFromSkiaBitmap(skiaBitmap) ?: bitmap
         else -> bitmap
     }
 }
+
+internal fun transformCachedPageBitmap(
+    cachedPage: PreloadedPageBitmap,
+    splitHalf: PageSplitHalf? = null,
+    sourceBounds: PixelBounds? = null,
+    cropBorders: Boolean = false,
+): ImageBitmap = transformCachedPageBitmap(
+    bitmap = cachedPage.bitmap,
+    splitHalf = splitHalf,
+    sourceBounds = sourceBounds,
+    cropBorders = cropBorders,
+    sourceWidth = cachedPage.sourceWidth,
+    sourceHeight = cachedPage.sourceHeight,
+)
+
+private fun PixelBounds.mapToBitmap(
+    sourceWidth: Int,
+    sourceHeight: Int,
+    bitmapWidth: Int,
+    bitmapHeight: Int,
+): PixelBounds {
+    require(sourceWidth > 0 && sourceHeight > 0) { "source dimensions must be positive" }
+    require(bitmapWidth > 0 && bitmapHeight > 0) { "bitmap dimensions must be positive" }
+    require(
+        x >= 0 &&
+            y >= 0 &&
+            width > 0 &&
+            height > 0 &&
+            x.toLong() + width <= sourceWidth &&
+            y.toLong() + height <= sourceHeight,
+    ) {
+        "Source bounds $this exceed original image ${sourceWidth}x$sourceHeight"
+    }
+
+    val left = scaleCoordinate(x, sourceWidth, bitmapWidth)
+    val top = scaleCoordinate(y, sourceHeight, bitmapHeight)
+    val right = scaleCoordinate(x + width, sourceWidth, bitmapWidth)
+    val bottom = scaleCoordinate(y + height, sourceHeight, bitmapHeight)
+    require(right > left && bottom > top) {
+        "Source bounds $this collapse in cached bitmap ${bitmapWidth}x$bitmapHeight"
+    }
+    return PixelBounds(left, top, right - left, bottom - top)
+}
+
+private fun scaleCoordinate(coordinate: Int, sourceExtent: Int, bitmapExtent: Int): Int =
+    // Round shared edges identically so odd virtual halves remain contiguous after sampling.
+    ((coordinate.toLong() * bitmapExtent + sourceExtent / 2L) / sourceExtent).toInt()
 
 /** Crops the already-decoded Coil image's white borders — no re-download. */
 internal fun cropBordersFromCoilImage(image: CoilImage): ImageBitmap? {

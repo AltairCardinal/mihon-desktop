@@ -3,12 +3,15 @@ package mihon.desktop.ui.reader
 import androidx.compose.ui.graphics.asSkiaBitmap
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.reader.PagePreloader
+import mihon.desktop.reader.PreloadedPageBitmap
 import mihon.desktop.reader.SkiaImageDecoder
+import mihon.domain.reader.PixelBounds
 import mihon.domain.reader.PageRotation
 import mihon.domain.reader.PageSplitHalf
 import mihon.domain.reader.splitPageBounds
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.awt.image.BufferedImage
@@ -94,7 +97,143 @@ class ReaderPageCacheIntegrationTest {
         assertEquals(BLACK, cropped.asSkiaBitmap().getColor(0, 0))
     }
 
+    @Test
+    fun `downsampled cache maps rotated odd virtual halves in original coordinates`() = runTest {
+        val bytes = pngBytes(
+            width = 8,
+            height = 15,
+            colorAt = { _, y -> if (y < 8) GREEN else MAGENTA },
+        )
+        val preloader = PagePreloader(
+            fetcher = { bytes },
+            windowSize = 0,
+            maxDecodedWidth = 4,
+            maxDecodedHeight = 8,
+            largeImagePixelThreshold = Long.MAX_VALUE,
+        )
+        preloader.preload(0, listOf("rotated-odd"))
+        val cachedPage = requireNotNull(preloader.getCachedPage(0))
+        assertEquals(4, cachedPage.bitmap.width)
+        assertEquals(7, cachedPage.bitmap.height)
+        assertEquals(8, cachedPage.sourceWidth)
+        assertEquals(15, cachedPage.sourceHeight)
+
+        val clockwiseLeft = transformCachedPageBitmap(
+            cachedPage = cachedPage,
+            sourceBounds = requireNotNull(
+                splitPageBounds(8, 15, PageSplitHalf.LEFT, PageRotation.CLOCKWISE_90),
+            ),
+        )
+        val clockwiseRight = transformCachedPageBitmap(
+            cachedPage = cachedPage,
+            sourceBounds = requireNotNull(
+                splitPageBounds(8, 15, PageSplitHalf.RIGHT, PageRotation.CLOCKWISE_90),
+            ),
+        )
+        val counterClockwiseLeft = transformCachedPageBitmap(
+            cachedPage = cachedPage,
+            sourceBounds = requireNotNull(
+                splitPageBounds(8, 15, PageSplitHalf.LEFT, PageRotation.COUNTER_CLOCKWISE_90),
+            ),
+        )
+        val counterClockwiseRight = transformCachedPageBitmap(
+            cachedPage = cachedPage,
+            sourceBounds = requireNotNull(
+                splitPageBounds(8, 15, PageSplitHalf.RIGHT, PageRotation.COUNTER_CLOCKWISE_90),
+            ),
+        )
+
+        assertEquals(3, clockwiseLeft.height)
+        assertEquals(MAGENTA, clockwiseLeft.asSkiaBitmap().getColor(0, clockwiseLeft.height - 1))
+        assertEquals(4, clockwiseRight.height)
+        assertEquals(GREEN, clockwiseRight.asSkiaBitmap().getColor(0, 0))
+        assertEquals(3, counterClockwiseLeft.height)
+        assertEquals(GREEN, counterClockwiseLeft.asSkiaBitmap().getColor(0, 0))
+        assertEquals(4, counterClockwiseRight.height)
+        assertEquals(MAGENTA, counterClockwiseRight.asSkiaBitmap().getColor(0, counterClockwiseRight.height - 1))
+    }
+
+    @Test
+    fun `downsampled cache keeps ordinary split pixels and dimensions`() = runTest {
+        val cachedPage = preloadDownsampled(
+            width = 14,
+            height = 8,
+            maxWidth = 7,
+            maxHeight = 4,
+            colorAt = { x, _ -> if (x < 7) RED else BLUE },
+        )
+
+        val left = transformCachedPageBitmap(cachedPage = cachedPage, splitHalf = PageSplitHalf.LEFT)
+        val right = transformCachedPageBitmap(cachedPage = cachedPage, splitHalf = PageSplitHalf.RIGHT)
+
+        assertEquals(3, left.width)
+        assertEquals(RED, left.asSkiaBitmap().getColor(0, 0))
+        assertEquals(4, right.width)
+        assertEquals(BLUE, right.asSkiaBitmap().getColor(right.width - 1, 0))
+    }
+
+    @Test
+    fun `downsampled cache keeps pager border crop and null painter model`() = runTest {
+        val cachedPage = preloadDownsampled(
+            width = 12,
+            height = 12,
+            maxWidth = 6,
+            maxHeight = 6,
+            colorAt = { x, y -> if (x in 2..9 && y in 4..7) BLACK else WHITE },
+        )
+
+        val cropped = transformCachedPageBitmap(cachedPage = cachedPage, cropBorders = true)
+
+        assertEquals(4, cropped.width)
+        assertEquals(2, cropped.height)
+        assertEquals(BLACK, cropped.asSkiaBitmap().getColor(0, 0))
+        assertNull(readerPagePainterModel("cached-page", cachedPage.bitmap))
+    }
+
+    @Test
+    fun `downsampled cache rejects source bounds outside original dimensions`() = runTest {
+        val cachedPage = preloadDownsampled(
+            width = 8,
+            height = 15,
+            maxWidth = 4,
+            maxHeight = 8,
+            colorAt = { _, _ -> RED },
+        )
+
+        assertThrows(IllegalArgumentException::class.java) {
+            transformCachedPageBitmap(
+                cachedPage = cachedPage,
+                sourceBounds = PixelBounds(0, 0, 8, 16),
+            )
+        }
+    }
+
+    private suspend fun preloadDownsampled(
+        width: Int,
+        height: Int,
+        maxWidth: Int,
+        maxHeight: Int,
+        colorAt: (x: Int, y: Int) -> Int,
+    ): PreloadedPageBitmap {
+        val bytes = pngBytes(width, height, colorAt)
+        val preloader = PagePreloader(
+            fetcher = { bytes },
+            windowSize = 0,
+            maxDecodedWidth = maxWidth,
+            maxDecodedHeight = maxHeight,
+            largeImagePixelThreshold = Long.MAX_VALUE,
+        )
+        preloader.preload(0, listOf("downsampled"))
+        return requireNotNull(preloader.getCachedPage(0))
+    }
+
     private fun decodeBitmap(
+        width: Int,
+        height: Int,
+        colorAt: (x: Int, y: Int) -> Int,
+    ) = SkiaImageDecoder.decode(pngBytes(width, height, colorAt))
+
+    private fun pngBytes(
         width: Int,
         height: Int,
         colorAt: (x: Int, y: Int) -> Int,
@@ -104,7 +243,7 @@ class ReaderPageCacheIntegrationTest {
             repeat(width) { x -> image.setRGB(x, y, colorAt(x, y)) }
         }
         ImageIO.write(image, "png", output)
-        SkiaImageDecoder.decode(output.toByteArray())
+        output.toByteArray()
     }
 
     private companion object {

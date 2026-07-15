@@ -10,6 +10,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.supervisorScope
+import mihon.domain.reader.PageCacheCommitResult
 import mihon.domain.reader.PageCacheSnapshot
 import mihon.domain.reader.PageCacheWrite
 import mihon.domain.reader.PageDecodeRequest
@@ -30,7 +31,14 @@ class PagePreloader(
     maxCacheBytes: Long = DEFAULT_CACHE_BYTES,
     private val largeImagePixelThreshold: Long = DEFAULT_LARGE_IMAGE_PIXELS,
 ) {
-    private data class Decoded(val index: Int, val result: PageDecodeResult<ImageBitmap>)
+    private data class Decoded(
+        val index: Int,
+        val result: PageDecodeResult<ImageBitmap>,
+        val sourceWidth: Int,
+        val sourceHeight: Int,
+    )
+
+    private data class SourceSize(val width: Int, val height: Int)
 
     private val lock = Any()
     private val cache = DesktopPageCache(maxCacheBytes)
@@ -38,6 +46,7 @@ class PagePreloader(
     private val pageDecoder = SkiaPageDecoder()
     private val regionDecoder = SkiaRegionPageDecoder()
     private val activeJobs = mutableMapOf<PreloadJobKey, Deferred<Decoded?>>()
+    private val sourceSizes = mutableMapOf<Int, SourceSize>()
 
     val cacheRevision: StateFlow<Long> = cache.revision
     val cacheGeneration: StateFlow<Long> = cacheRevision
@@ -52,6 +61,7 @@ class PagePreloader(
             planner.moveTo(currentPage, pageUrls.size).also {
                 it.cancelRequests.forEach { jobKey -> activeJobs.remove(jobKey)?.cancel() }
                 check(cache.beginGeneration(it.generation, it.evictPageIndices))
+                sourceSizes.keys.retainAll(cache.snapshot().keys)
             }
         }
         val jobs = synchronized(lock) {
@@ -78,7 +88,7 @@ class PagePreloader(
                             } else {
                                 pageDecoder.decode(bytes, request.copy(region = null))
                             }
-                            Decoded(index, result)
+                            Decoded(index, result, size.first, size.second)
                         }.also { job ->
                             activeJobs[preloadRequest.jobKey] = job
                         }
@@ -100,7 +110,7 @@ class PagePreloader(
                     if (decoded.index in plan.keepPageIndices) {
                         when (val result = decoded.result) {
                             is PageDecodeResult.Success -> {
-                                cache.commit(
+                                val commitResult = cache.commit(
                                     PageCacheWrite(
                                         pageIndex = decoded.index,
                                         generation = result.generation,
@@ -108,6 +118,10 @@ class PagePreloader(
                                         estimatedBytes = result.estimatedBytes,
                                     ),
                                 )
+                                if (commitResult == PageCacheCommitResult.STORED) {
+                                    sourceSizes[decoded.index] = SourceSize(decoded.sourceWidth, decoded.sourceHeight)
+                                }
+                                sourceSizes.keys.retainAll(cache.snapshot().keys)
                             }
                             is PageDecodeResult.Failure -> Unit
                         }
@@ -121,7 +135,15 @@ class PagePreloader(
         }
     }
 
-    fun get(pageIndex: Int): ImageBitmap? = cache.get(pageIndex)
+    fun get(pageIndex: Int): ImageBitmap? = getCachedPage(pageIndex)?.bitmap
+
+    fun getCachedPage(pageIndex: Int): PreloadedPageBitmap? = synchronized(lock) {
+        val bitmap = cache.get(pageIndex) ?: return@synchronized null
+        val sourceSize = checkNotNull(sourceSizes[pageIndex]) {
+            "Missing source dimensions for cached page $pageIndex"
+        }
+        PreloadedPageBitmap(bitmap, sourceSize.width, sourceSize.height)
+    }
 
     fun clear() {
         synchronized(lock) {
@@ -131,6 +153,7 @@ class PagePreloader(
             activeJobs.clear()
             check(cache.beginGeneration(plan.generation, plan.evictPageIndices))
             cache.clear()
+            sourceSizes.clear()
         }
     }
 
@@ -141,5 +164,15 @@ class PagePreloader(
     companion object {
         const val DEFAULT_CACHE_BYTES: Long = 128L * 1024L * 1024L
         const val DEFAULT_LARGE_IMAGE_PIXELS: Long = 16_000_000L
+    }
+}
+
+data class PreloadedPageBitmap(
+    val bitmap: ImageBitmap,
+    val sourceWidth: Int,
+    val sourceHeight: Int,
+) {
+    init {
+        require(sourceWidth > 0 && sourceHeight > 0) { "source dimensions must be positive" }
     }
 }
