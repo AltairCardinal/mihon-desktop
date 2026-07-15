@@ -79,6 +79,21 @@ private fun splitSkiaBitmap(src: SkiaBitmap, half: PageSplitHalf): ImageBitmap? 
     return extractSkiaSubBitmap(src, bounds.x, bounds.y, bounds.width, bounds.height)
 }
 
+internal data class ZoomableGestureCapabilities(
+    val transformEnabled: Boolean,
+    val tapNavigationEnabled: Boolean,
+    val doubleTapResetEnabled: Boolean,
+)
+
+internal fun zoomableGestureCapabilities(
+    handlesTapNavigation: Boolean,
+    hasNavigationCallbacks: Boolean,
+): ZoomableGestureCapabilities = ZoomableGestureCapabilities(
+    transformEnabled = true,
+    tapNavigationEnabled = handlesTapNavigation && hasNavigationCallbacks,
+    doubleTapResetEnabled = true,
+)
+
 /**
  * A single manga page image with pinch-to-zoom, drag-to-pan, double-tap-to-reset,
  * and optional white-border cropping.
@@ -159,6 +174,11 @@ internal fun ZoomablePageBox(
         }
         return
     }
+
+    val gestureCapabilities = zoomableGestureCapabilities(
+        handlesTapNavigation = handlesTapNavigation,
+        hasNavigationCallbacks = onTapPrevious != null || onTapNext != null || onTapCenter != null,
+    )
 
     val latestZoom by rememberUpdatedState(zoomState)
 
@@ -245,8 +265,8 @@ internal fun ZoomablePageBox(
     val innerContent: @Composable () -> Unit = {
         // Unified gesture handler using detectTapGestures for tap detection
         // combined with transform gesture handling in a single pointerInput.
-        val gestureModifier = if (handlesTapNavigation && (onTapPrevious != null || onTapNext != null || onTapCenter != null)) {
-            Modifier.pointerInput(navigationMode, isRtl) {
+        val gestureModifier = if (gestureCapabilities.transformEnabled) {
+            Modifier.pointerInput(navigationMode, isRtl, gestureCapabilities.tapNavigationEnabled) {
                 awaitPointerEventScope {
                     while (true) {
                         val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -322,7 +342,7 @@ internal fun ZoomablePageBox(
                             }
 
                             // Handle tap
-                            if (isTap && !moved) {
+                            if (gestureCapabilities.tapNavigationEnabled && isTap && !moved) {
                                 val tapX = releasePos.x
                                 val tapY = releasePos.y
                                 val tapWidth = size.width.toFloat()
@@ -343,8 +363,8 @@ internal fun ZoomablePageBox(
             Modifier
         }
 
-        // Double-tap to reset zoom (only when tap navigation is active)
-        val doubleTapModifier = if (handlesTapNavigation && (onTapPrevious != null || onTapNext != null || onTapCenter != null)) {
+        // Double-tap reset stays local even when single-tap navigation is delegated to a parent Row.
+        val doubleTapModifier = if (gestureCapabilities.doubleTapResetEnabled) {
             Modifier.pointerInput(Unit) {
                 var lastTapTime = 0L
                 var lastTapPos = androidx.compose.ui.geometry.Offset.Zero

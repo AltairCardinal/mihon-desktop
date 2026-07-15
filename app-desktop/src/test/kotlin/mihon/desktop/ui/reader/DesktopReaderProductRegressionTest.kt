@@ -73,6 +73,19 @@ class DesktopReaderProductRegressionTest {
     }
 
     @Test
+    fun `delegated page navigation keeps transform pan and double tap gestures enabled`() {
+        val delegated = zoomableGestureCapabilities(handlesTapNavigation = false, hasNavigationCallbacks = false)
+        assertTrue(delegated.transformEnabled)
+        assertTrue(delegated.doubleTapResetEnabled)
+        assertFalse(delegated.tapNavigationEnabled)
+
+        val independent = zoomableGestureCapabilities(handlesTapNavigation = true, hasNavigationCallbacks = true)
+        assertTrue(independent.transformEnabled)
+        assertTrue(independent.doubleTapResetEnabled)
+        assertTrue(independent.tapNavigationEnabled)
+    }
+
+    @Test
     fun `virtual pages and keyboard use the same shared direction contract`() {
         val rtlPages = buildVirtualPageList(2, setOf(0), isRtl = true)
 
@@ -171,26 +184,39 @@ class DesktopReaderProductRegressionTest {
 
         val dualPageBoxes = callBlocks(dual, "ZoomablePageBox(")
         assertEquals(7, dualPageBoxes.size, "Every cover/split/trailing/leading/paired image branch must be audited")
-        dualPageBoxes.forEachIndexed { index, block ->
-            assertTrue(block.contains("isRtl = isRtl"), "Dual ZoomablePageBox #$index must receive RTL direction")
-            assertTrue(block.contains("onTapPrevious = onTapPrevious"), "Dual ZoomablePageBox #$index must receive logical Previous")
-            assertTrue(block.contains("onTapNext = onTapNext"), "Dual ZoomablePageBox #$index must receive logical Next")
-            assertTrue(block.contains("contextMenuScope = contextMenuScope"), "Dual ZoomablePageBox #$index must retain context menu")
+        val navigationRows = trailingLambdaCallBlocks(dual, "Row(")
+        assertEquals(2, navigationRows.size, "Split and paired layouts must each own one full-spread navigation Row")
+        navigationRows.forEachIndexed { index, row ->
+            assertTrue(
+                row.contains("readerPrimaryTapInput(zoomState.scale, navigationMode, isRtl)"),
+                "Delegating Row #$index must own the primary-tap handler",
+            )
         }
-        assertEquals(
-            4,
-            dualPageBoxes.count { it.contains("handlesTapNavigation = false") },
-            "Split and paired child images must delegate gestures to their full-spread Row without duplicate handling",
-        )
+        val delegatedPageBoxes = navigationRows.flatMap { callBlocks(it, "ZoomablePageBox(") }
+        assertEquals(4, delegatedPageBoxes.size, "Two split and two paired children must delegate single taps")
+        delegatedPageBoxes.forEachIndexed { index, block ->
+            assertTrue(block.contains("handlesTapNavigation = false"), "Delegated child #$index must disable only local tap navigation")
+            assertTrue(block.contains("isRtl = isRtl"), "Delegated child #$index must retain its reading direction")
+            assertFalse(block.contains("onTapPrevious ="), "Delegated child #$index must not receive an inactive Previous callback")
+            assertFalse(block.contains("onTapNext ="), "Delegated child #$index must not receive an inactive Next callback")
+            assertFalse(block.contains("onTapCenter ="), "Delegated child #$index must not receive an inactive Menu callback")
+        }
+        val independentPageBoxes = dualPageBoxes.filterNot { it in delegatedPageBoxes }
+        assertEquals(3, independentPageBoxes.size, "Landscape, trailing, and leading branches navigate independently")
+        independentPageBoxes.forEachIndexed { index, block ->
+            assertFalse(block.contains("handlesTapNavigation = false"), "Independent child #$index must retain local tap navigation")
+            assertTrue(block.contains("isRtl = isRtl"), "Independent child #$index must receive RTL direction")
+            assertTrue(block.contains("onTapPrevious = onTapPrevious"), "Independent child #$index must receive logical Previous")
+            assertTrue(block.contains("onTapNext = onTapNext"), "Independent child #$index must receive logical Next")
+        }
         assertEquals(2, Regex("readerPrimaryTapInput\\(zoomState\\.scale, navigationMode, isRtl\\)").findAll(dual).count())
         assertTrue(dual.contains("ReaderKeyboardAction.forPagerCommand(command, isRtl, pagerState.currentPage, dualState.groupCount)"))
         assertTrue(dual.contains("pointerInput(zoomScale, navigationMode, isRtl)"))
-        assertTrue(page.contains("Modifier.pointerInput(navigationMode, isRtl)"))
-        assertEquals(
-            2,
-            occurrenceCount(page, "if (handlesTapNavigation && (onTapPrevious != null || onTapNext != null || onTapCenter != null))"),
-            "Parent-handled split/pair branches must disable both tap navigation and double-tap handlers",
-        )
+        assertTrue(page.contains("Modifier.pointerInput(navigationMode, isRtl, gestureCapabilities.tapNavigationEnabled)"))
+        assertTrue(page.contains("val gestureCapabilities = zoomableGestureCapabilities("))
+        assertTrue(page.contains("if (gestureCapabilities.transformEnabled)"))
+        assertTrue(page.contains("gestureCapabilities.tapNavigationEnabled && isTap && !moved"))
+        assertTrue(page.contains("if (gestureCapabilities.doubleTapResetEnabled)"))
         assertTrue(page.contains("tapNavRegion(tapX, tapY, tapWidth, tapHeight, navigationMode, isRtl)"))
         assertTrue(page.contains("TapNavRegion.PREV -> onTapPrevious?.invoke()"))
         assertTrue(page.contains("TapNavRegion.NEXT -> onTapNext?.invoke()"))
@@ -390,6 +416,34 @@ class DesktopReaderProductRegressionTest {
             }
         }
         error("Unclosed production block: $marker")
+    }
+
+    private fun trailingLambdaCallBlocks(source: String, marker: String): List<String> {
+        val blocks = mutableListOf<String>()
+        var offset = 0
+        while (true) {
+            val relative = source.substring(offset).indexOf(marker)
+            if (relative < 0) return blocks
+            val start = offset + relative
+            val call = callBlock(source.substring(start), marker)
+            val lambdaOpen = source.indexOf('{', start + call.length)
+            require(lambdaOpen >= 0) { "Missing trailing lambda for production call: $marker" }
+            var depth = 0
+            for (index in lambdaOpen until source.length) {
+                when (source[index]) {
+                    '{' -> depth++
+                    '}' -> {
+                        depth--
+                        if (depth == 0) {
+                            blocks += source.substring(start, index + 1)
+                            offset = index + 1
+                            break
+                        }
+                    }
+                }
+            }
+            require(offset > start) { "Unclosed trailing lambda for production call: $marker" }
+        }
     }
 
     private fun occurrenceCount(source: String, marker: String): Int =

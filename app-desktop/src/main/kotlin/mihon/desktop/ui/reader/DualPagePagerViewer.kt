@@ -235,9 +235,6 @@ internal fun DualPagePagerViewer(
                                         navigationMode = navigationMode,
                                         isRtl = isRtl,
                                         handlesTapNavigation = false,
-                                        onTapPrevious = onTapPrevious,
-                                        onTapNext = onTapNext,
-                                        onTapCenter = onTapCenter,
                                     )
                                 }
                                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
@@ -257,9 +254,6 @@ internal fun DualPagePagerViewer(
                                         navigationMode = navigationMode,
                                         isRtl = isRtl,
                                         handlesTapNavigation = false,
-                                        onTapPrevious = onTapPrevious,
-                                        onTapNext = onTapNext,
-                                        onTapCenter = onTapCenter,
                                     )
                                 }
                             }
@@ -393,9 +387,6 @@ internal fun DualPagePagerViewer(
                                 navigationMode = navigationMode,
                                 isRtl = isRtl,
                                 handlesTapNavigation = false,
-                                onTapPrevious = onTapPrevious,
-                                onTapNext = onTapNext,
-                                onTapCenter = onTapCenter,
                             )
                         }
                         Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
@@ -419,9 +410,6 @@ internal fun DualPagePagerViewer(
                                 navigationMode = navigationMode,
                                 isRtl = isRtl,
                                 handlesTapNavigation = false,
-                                onTapPrevious = onTapPrevious,
-                                onTapNext = onTapNext,
-                                onTapCenter = onTapCenter,
                             )
                         }
                     }
