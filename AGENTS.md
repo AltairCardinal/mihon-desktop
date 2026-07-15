@@ -8,7 +8,7 @@
 
 ## TDD 强制要求
 
-**所有功能变化（新增、修改、修复）必须严格执行红绿重构流程，无例外。**
+**所有改变产品行为的功能变化（新增、修改、修复）必须严格执行红绿重构流程。**
 
 1. **红**：先写失败测试，并确认它因正确原因失败。
 2. **绿**：写最小实现让测试通过，并确认全绿。
@@ -16,19 +16,21 @@
 
 **没有对应测试的功能代码不允许提交。**
 
+纯文档、纯文案或不改变产品行为的机械配置调整可以直接执行。Comet 的 `tdd_mode: direct` 仅允许用于这类非行为变更；功能性 hotfix 和其他产品行为变更必须使用 `tdd`。
+
 ---
 
 ## 功能规划原则
 
-**规划任何功能时都必须同时考虑用户界面。**
+**规划任何用户可见 capability 时都必须同时考虑用户界面。**
 
-每个后端功能（Use Case、Manager、Repository 等）必须有对应 UI 入口。规划时检查：
+每项用户可见 capability 必须有入口和反馈；内部基础设施不要求独立 UI，但必须被真实产品链路使用并有集成测试。规划时检查：
 
 1. 用户如何触发？（按钮、菜单、快捷键等）
 2. 结果如何反馈？（状态、Toast、对话框等）
 3. 危险操作是否需要确认？（AlertDialog）
 
-**后端有实现但没有 UI 入口 = 用户无法使用 = 功能未完成。**
+**用户可见 capability 没有入口或反馈 = 功能未完成；内部基础设施没有 production wiring 或集成测试 = 功能未完成。**
 
 ### 复用优先
 
@@ -62,7 +64,7 @@ Android 与 Desktop 预期一致的行为必须使用共享契约测试覆盖；
 
 ## 完成报告格式
 
-每轮开发完成后必须按以下结构汇报，不得省略：
+每个面向用户的 change 或迭代最终完成后必须按以下结构汇报，不得省略：
 
 ```markdown
 ## 【功能特性】
@@ -74,15 +76,17 @@ Android 与 Desktop 预期一致的行为必须使用共享契约测试覆盖；
   - 示例：下载队列管理按钮不可见 → 按钮已改为 FAB，始终可见
 
 ## 【验收清单】
-每项均须用户实际操作确认，格式：
+面向用户的验收项使用以下格式：
 - [ ] 操作路径 → 预期结果
 ```
 
 规则：
 
-- 每项都必须描述用户实际可见或可操作的变化，不写纯代码细节。
-- 验收清单必须可执行，用户应能在 5 分钟内逐项验证。
+- 每项都必须描述用户实际可见或可操作的变化，不写纯代码细节作为主要内容。
+- 验收清单必须可执行；可在几分钟内手动完成的行为给出操作路径，其余行为给出自动化验证命令或运行时证据。
 - 必须说明功能边界，例如“仅 QUEUED 状态可取消，DOWNLOADING 不可取消”。
+- 内部重构或 Comet 中间 Task 无需虚构新增 UI；应报告它保护的既有用户行为、production wiring、自动化验证证据和当前功能边界。
+- Comet Task 之间只记录任务状态和验证证据；完整的用户可见完成报告在 change 或迭代最终完成时统一输出。
 
 ## 桌面端构建与部署
 
@@ -94,6 +98,12 @@ Android 与 Desktop 预期一致的行为必须使用共享契约测试覆盖；
 ./scripts/build-desktop.sh stage     # STAGE +1，FEATURE 重置为 0，BUILD 重置为 1
 ./scripts/build-desktop.sh msi       # 显式生成 MSI，最后重新生成并验收未打包应用
 ```
+
+### Comet 工作流中的桌面端验证
+
+通过 `/goal` 或 `/comet` 执行时，实施计划中的普通 Task 只运行与改动范围匹配的定向测试、编译检查，或使用 `./scripts/build-desktop.sh test-only` / `full-tests`；不得因为每个 Task 完成而递增版本或启动分发应用。
+
+仅在 Comet verify、阶段性交付、发布构建，或用户明确要求可运行产物时，执行会递增版本的完整构建脚本，并完成下述 Windows EXE 与适用的 macOS 运行验收。
 
 版本格式：`0.STAGE.FEATURE.BUILD.GIT_HASH`，例如 `0.11.14.3.92dab15`。每次非测试构建都必须产生新的 `BUILD`；`test-only` 和 `full-tests` 不修改版本号。
 
@@ -145,11 +155,13 @@ macOS 构建继续部署到 `/Applications/Mihon Desktop.app`。
 
 ## 架构
 
-Mihon 是多模块 Android 应用，采用分层架构：
+Mihon 是由 Android 应用、Mihon Desktop 和共享 Kotlin 模块组成的多平台代码库，采用分层架构：
 
 | 模块 | 职责 |
 |---|---|
 | `app/` | 表现层：Compose 页面、Activity、DI wiring |
+| `app-desktop/` | Desktop 表现层、平台 adapter、运行时 wiring 与桌面端测试 |
+| `test-desktop/` | Desktop E2E 测试客户端与 Robot API |
 | `domain/` | 业务逻辑：用例、领域模型、仓库接口 |
 | `data/` | 数据层：SQLDelight 数据库、仓库实现、映射 |
 | `presentation-core/` | 跨页面复用的 Compose 组件 |
@@ -165,11 +177,12 @@ Mihon 是多模块 Android 应用，采用分层架构：
 - `eu.kanade.tachiyomi.*`：app 模块和多数旧代码
 - `tachiyomi.domain.*` / `tachiyomi.data.*`：domain 与 data 模块
 - `mihon.domain.*` / `mihon.feature.*`：较新的 Mihon 功能
+- `mihon.desktop.*`：Mihon Desktop 的 UI、平台 adapter、运行时与独有能力
 
 ### 关键模式
 
-- **依赖注入**：使用 Injekt。模块注册在 `app/src/main/java/eu/kanade/tachiyomi/di/`。使用 `Injekt.get<T>()` 获取依赖，使用 `by injectLazy<T>()` 延迟注入。
-- **导航**：使用 Voyager（`cafe.adriel.voyager`）。Screen 实现 `cafe.adriel.voyager.core.screen.Screen`，导航通过 `LocalNavigator`。
+- **依赖注入**：Android 与 Desktop 均使用 Injekt。Android 模块注册在 `app/src/main/java/eu/kanade/tachiyomi/di/`；Desktop wiring 位于 `app-desktop/src/main/kotlin/mihon/desktop/di/` 和 `DesktopUiDependencies.kt`。使用 `Injekt.get<T>()` 获取依赖，使用 `by injectLazy<T>()` 延迟注入。
+- **导航**：Android 与 Desktop 均使用 Voyager（`cafe.adriel.voyager`）。Screen 实现 `cafe.adriel.voyager.core.screen.Screen`，导航通过 `Navigator` / `LocalNavigator`。
 - **数据库**：SQLDelight + 协程。schema 位于 `data/src/main/sqldelight/`，生成查询在 `tachiyomi.data.*.db`。
 - **图片加载**：Coil 3，自定义 fetcher / decoder 位于 `app/src/main/java/eu/kanade/tachiyomi/data/coil/`。
 - **偏好设置**：`tachiyomi.core.common.preference` 封装 AndroidX DataStore / SharedPreferences。
@@ -353,8 +366,16 @@ Mihon Desktop 包含完整 E2E 自动化测试系统。
 
 ### 测试模式启动
 
+Windows 使用本轮已验收的固定未打包 EXE：
+
+```powershell
+& "app-desktop/tmp/mihon-dist/main/app/Mihon Desktop/Mihon Desktop.exe" --test-mode --test-http-port=8080 --headless
+```
+
+macOS 本机或通过 `ssh mbp` / `ssh mbp-lan` 使用应用包内可执行文件：
+
 ```bash
-"/Applications/Mihon Desktop.app" --test-mode --test-http-port=8080 --headless
+"/Applications/Mihon Desktop.app/Contents/MacOS/Mihon Desktop" --test-mode --test-http-port=8080 --headless
 ```
 
 测试模式提供 HTTP API：
