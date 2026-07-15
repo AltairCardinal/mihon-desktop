@@ -1,10 +1,8 @@
 package eu.kanade.tachiyomi.data.coil
 
 import android.graphics.Bitmap
-import coil3.decode.DecodeUtils
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
-import coil3.size.Scale
 import kotlinx.coroutines.CancellationException
 import mihon.domain.error.AppError
 import mihon.domain.reader.PageDecodeCachePolicy
@@ -26,7 +24,6 @@ internal class AndroidTachiyomiPageDecoder(
     private val cropBorders: Boolean,
     private val displayProfile: ByteArray?,
     private val bitmapConfig: Bitmap.Config,
-    private val scale: Scale,
 ) : PageDecoder<BufferedSource, Bitmap> {
 
     override suspend fun decode(
@@ -41,14 +38,11 @@ internal class AndroidTachiyomiPageDecoder(
 
             val sourceWidth = decoder.width
             val sourceHeight = decoder.height
-            val destinationWidth = request.maxWidth.coerceAtMost(sourceWidth)
-            val destinationHeight = request.maxHeight.coerceAtMost(sourceHeight)
-            val sampleSize = DecodeUtils.calculateInSampleSize(
-                srcWidth = sourceWidth,
-                srcHeight = sourceHeight,
-                dstWidth = destinationWidth,
-                dstHeight = destinationHeight,
-                scale = scale,
+            val sampleSize = calculateBoundedReaderSampleSize(
+                sourceWidth = sourceWidth,
+                sourceHeight = sourceHeight,
+                maxWidth = request.maxWidth,
+                maxHeight = request.maxHeight,
             )
             var bitmap = checkNotNull(decoder.decode(sampleSize = sampleSize)) { "Failed to decode image" }
 
@@ -78,6 +72,26 @@ internal class AndroidTachiyomiPageDecoder(
             decoder?.recycle()
         }
     }
+}
+
+/** Returns the smallest integer sample whose ceiling-sized output fits both reader bounds. */
+internal fun calculateBoundedReaderSampleSize(
+    sourceWidth: Int,
+    sourceHeight: Int,
+    maxWidth: Int,
+    maxHeight: Int,
+): Int {
+    require(sourceWidth > 0 && sourceHeight > 0)
+    require(maxWidth > 0 && maxHeight > 0)
+
+    fun requiredSample(source: Int, maximum: Int): Long =
+        (source.toLong() + maximum - 1L) / maximum
+
+    return maxOf(
+        1L,
+        requiredSample(sourceWidth, maxWidth),
+        requiredSample(sourceHeight, maxHeight),
+    ).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
 }
 
 internal data class AndroidReaderCachePolicy(

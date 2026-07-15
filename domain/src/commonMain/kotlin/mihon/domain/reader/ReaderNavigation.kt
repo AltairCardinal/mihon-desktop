@@ -1,5 +1,7 @@
 package mihon.domain.reader
 
+import tachiyomi.domain.manga.model.Manga
+
 enum class ReaderDirection { LTR, RTL, VERTICAL }
 
 enum class PhysicalDirection { LEFT, RIGHT, UP, DOWN }
@@ -158,6 +160,22 @@ fun filterChaptersForReader(
 ): List<ReaderChapterEntry> = chapters.filter { chapter ->
     chapter.id == currentChapterId || !skipPolicy.shouldSkip(chapter)
 }
+
+/** Authoritative manga chapter-filter metadata shared by Android and Desktop reader entries. */
+fun isReaderChapterFiltered(
+    unreadFilterRaw: Long,
+    downloadedFilterRaw: Long,
+    bookmarkedFilterRaw: Long,
+    chapterIsRead: Boolean,
+    chapterIsBookmarked: Boolean,
+    chapterIsDownloaded: Boolean,
+): Boolean =
+    (unreadFilterRaw == Manga.CHAPTER_SHOW_READ && !chapterIsRead) ||
+        (unreadFilterRaw == Manga.CHAPTER_SHOW_UNREAD && chapterIsRead) ||
+        (downloadedFilterRaw == Manga.CHAPTER_SHOW_DOWNLOADED && !chapterIsDownloaded) ||
+        (downloadedFilterRaw == Manga.CHAPTER_SHOW_NOT_DOWNLOADED && chapterIsDownloaded) ||
+        (bookmarkedFilterRaw == Manga.CHAPTER_SHOW_BOOKMARKED && !chapterIsBookmarked) ||
+        (bookmarkedFilterRaw == Manga.CHAPTER_SHOW_NOT_BOOKMARKED && chapterIsBookmarked)
 
 enum class ChapterListDirection { NEWER, OLDER }
 

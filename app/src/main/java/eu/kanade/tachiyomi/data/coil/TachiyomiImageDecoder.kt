@@ -30,7 +30,6 @@ class TachiyomiImageDecoder internal constructor(
         cropBorders = options.cropBorders,
         displayProfile = displayProfile,
         bitmapConfig = options.bitmapConfig,
-        scale = options.scale,
     ),
     private val imageMapper: (Bitmap) -> Image = { it.asImage() },
 ) : Decoder {

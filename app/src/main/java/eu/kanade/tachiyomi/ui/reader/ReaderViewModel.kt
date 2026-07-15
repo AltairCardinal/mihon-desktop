@@ -62,6 +62,7 @@ import mihon.domain.reader.ReaderChapterEntry
 import mihon.domain.reader.ReaderChapterState
 import mihon.domain.reader.ReaderNavigationCommand
 import mihon.domain.reader.filterChaptersForReader
+import mihon.domain.reader.isReaderChapterFiltered
 import mihon.domain.reader.markDuplicateChapters
 import tachiyomi.core.common.preference.toggle
 import tachiyomi.core.common.util.lang.launchIO
@@ -208,30 +209,20 @@ class ReaderViewModel @JvmOverloads constructor(
     }
 
     private fun isChapterFiltered(manga: Manga, chapter: Chapter): Boolean =
-        (manga.unreadFilterRaw == Manga.CHAPTER_SHOW_READ && !chapter.read) ||
-            (manga.unreadFilterRaw == Manga.CHAPTER_SHOW_UNREAD && chapter.read) ||
-            (
-                manga.downloadedFilterRaw == Manga.CHAPTER_SHOW_DOWNLOADED &&
-                    !downloadManager.isChapterDownloaded(
-                        chapter.name,
-                        chapter.scanlator,
-                        chapter.url,
-                        manga.title,
-                        manga.source,
-                    )
-                ) ||
-            (
-                manga.downloadedFilterRaw == Manga.CHAPTER_SHOW_NOT_DOWNLOADED &&
-                    downloadManager.isChapterDownloaded(
-                        chapter.name,
-                        chapter.scanlator,
-                        chapter.url,
-                        manga.title,
-                        manga.source,
-                    )
-                ) ||
-            (manga.bookmarkedFilterRaw == Manga.CHAPTER_SHOW_BOOKMARKED && !chapter.bookmark) ||
-            (manga.bookmarkedFilterRaw == Manga.CHAPTER_SHOW_NOT_BOOKMARKED && chapter.bookmark)
+        isReaderChapterFiltered(
+            unreadFilterRaw = manga.unreadFilterRaw,
+            downloadedFilterRaw = manga.downloadedFilterRaw,
+            bookmarkedFilterRaw = manga.bookmarkedFilterRaw,
+            chapterIsRead = chapter.read,
+            chapterIsBookmarked = chapter.bookmark,
+            chapterIsDownloaded = downloadManager.isChapterDownloaded(
+                chapter.name,
+                chapter.scanlator,
+                chapter.url,
+                manga.title,
+                manga.source,
+            ),
+        )
 
     private val incognitoMode: Boolean by lazy { getIncognitoState.await(manga?.source) }
     private val downloadAheadAmount = downloadPreferences.autoDownloadWhileReading().get()

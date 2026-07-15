@@ -121,4 +121,39 @@ class AndroidReaderPageDecoderContractTest {
         assertEquals(CachePolicy.DISABLED, mapped.memory)
         assertEquals(CachePolicy.DISABLED, mapped.disk)
     }
+
+    @Test
+    fun `Android reader ceiling sample keeps non power of two image within both requested bounds`() {
+        val cases = listOf(
+            BoundedSampleCase(4095, 1000, 2048, 2048, expectedSample = 2),
+            BoundedSampleCase(5000, 1000, 2048, 2048, expectedSample = 3),
+            BoundedSampleCase(1000, 10_001, 2048, 2048, expectedSample = 5),
+            BoundedSampleCase(5000, 5000, 2048, 1024, expectedSample = 5),
+            BoundedSampleCase(1000, 900, 2048, 2048, expectedSample = 1),
+        )
+
+        cases.forEach { case ->
+            val sample = calculateBoundedReaderSampleSize(
+                sourceWidth = case.sourceWidth,
+                sourceHeight = case.sourceHeight,
+                maxWidth = case.maxWidth,
+                maxHeight = case.maxHeight,
+            )
+
+            assertEquals(case.expectedSample, sample)
+            assertTrue(ceilingDivide(case.sourceWidth, sample) <= case.maxWidth)
+            assertTrue(ceilingDivide(case.sourceHeight, sample) <= case.maxHeight)
+        }
+    }
+
+    private data class BoundedSampleCase(
+        val sourceWidth: Int,
+        val sourceHeight: Int,
+        val maxWidth: Int,
+        val maxHeight: Int,
+        val expectedSample: Int,
+    )
+
+    private fun ceilingDivide(value: Int, divisor: Int): Int =
+        ((value.toLong() + divisor - 1L) / divisor).toInt()
 }

@@ -16,9 +16,9 @@ import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.reader.ReaderNavigator
-import mihon.desktop.reader.withDuplicateChapterFlags
 import mihon.desktop.settings.LibraryCategoryPrefs
 import mihon.domain.task.TaskStatus
+import mihon.domain.reader.isReaderChapterFiltered
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.interactor.CreateCategoryWithName
 import tachiyomi.domain.category.interactor.DeleteCategory
@@ -27,6 +27,7 @@ import tachiyomi.domain.category.interactor.RenameCategory
 import tachiyomi.domain.category.interactor.ReorderCategory
 import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.chapter.model.ChapterUpdate
+import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.library.model.LibraryManga
@@ -426,16 +427,26 @@ class LibraryScreenModel(
         val target = chapters.firstOrNull { !it.read }
             ?: chapters.maxByOrNull { it.sourceOrder }
             ?: return null
-        val chapterRefs = chapters.map {
-            ReaderChapterRef(
-                id = it.id,
-                url = it.url,
-                name = it.name,
-                isRead = it.read,
-                chapterNumber = it.chapterNumber,
-                scanlator = it.scanlator,
-            )
-        }.withDuplicateChapterFlags(target.id)
+        val visibleChapterIds = chapters
+            .filterNot { chapter ->
+                isReaderChapterFiltered(
+                    unreadFilterRaw = item.manga.unreadFilterRaw,
+                    downloadedFilterRaw = item.manga.downloadedFilterRaw,
+                    bookmarkedFilterRaw = item.manga.bookmarkedFilterRaw,
+                    chapterIsRead = chapter.read,
+                    chapterIsBookmarked = chapter.bookmark,
+                    chapterIsDownloaded = downloadProvider?.isChapterDownloaded(
+                        item.manga.source,
+                        item.manga.title,
+                        chapter.name,
+                    ) == true,
+                )
+            }
+            .mapTo(mutableSetOf(), Chapter::id)
+        val chapterRefs = chapters.toReaderChapterRefs(
+            currentChapterId = target.id,
+            visibleChapterIds = visibleChapterIds,
+        )
         return LibraryReaderRequest(
             chapterTitle = target.name,
             mangaTitle = item.manga.title,

@@ -387,6 +387,50 @@ class ReaderParityContractTest {
     }
 
     @Test
+    fun `reader filtered metadata follows authoritative manga chapter flags`() {
+        assertTrue(
+            isReaderChapterFiltered(
+                unreadFilterRaw = tachiyomi.domain.manga.model.Manga.CHAPTER_SHOW_UNREAD,
+                downloadedFilterRaw = tachiyomi.domain.manga.model.Manga.SHOW_ALL,
+                bookmarkedFilterRaw = tachiyomi.domain.manga.model.Manga.SHOW_ALL,
+                chapterIsRead = true,
+                chapterIsBookmarked = false,
+                chapterIsDownloaded = false,
+            ),
+        )
+        assertTrue(
+            isReaderChapterFiltered(
+                unreadFilterRaw = tachiyomi.domain.manga.model.Manga.SHOW_ALL,
+                downloadedFilterRaw = tachiyomi.domain.manga.model.Manga.CHAPTER_SHOW_DOWNLOADED,
+                bookmarkedFilterRaw = tachiyomi.domain.manga.model.Manga.SHOW_ALL,
+                chapterIsRead = false,
+                chapterIsBookmarked = false,
+                chapterIsDownloaded = false,
+            ),
+        )
+        assertTrue(
+            isReaderChapterFiltered(
+                unreadFilterRaw = tachiyomi.domain.manga.model.Manga.SHOW_ALL,
+                downloadedFilterRaw = tachiyomi.domain.manga.model.Manga.SHOW_ALL,
+                bookmarkedFilterRaw = tachiyomi.domain.manga.model.Manga.CHAPTER_SHOW_BOOKMARKED,
+                chapterIsRead = false,
+                chapterIsBookmarked = false,
+                chapterIsDownloaded = false,
+            ),
+        )
+        assertFalse(
+            isReaderChapterFiltered(
+                unreadFilterRaw = tachiyomi.domain.manga.model.Manga.CHAPTER_SHOW_UNREAD,
+                downloadedFilterRaw = tachiyomi.domain.manga.model.Manga.CHAPTER_SHOW_DOWNLOADED,
+                bookmarkedFilterRaw = tachiyomi.domain.manga.model.Manga.CHAPTER_SHOW_BOOKMARKED,
+                chapterIsRead = false,
+                chapterIsBookmarked = true,
+                chapterIsDownloaded = true,
+            ),
+        )
+    }
+
+    @Test
     fun `preload planner cancels every old generation job and evicts the complete old window`() {
         val planner = ReaderPreloadPlanner(windowSize = 2)
         val first = planner.moveTo(currentPage = 2, pageCount = 8)

@@ -16,6 +16,7 @@ import mihon.desktop.domain.fakes.FakeCategoryRepository
 import mihon.desktop.domain.fakes.FakeMangaRepository
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.download.DesktopDownloadProvider
+import mihon.desktop.reader.ReaderNavigator
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -480,6 +481,72 @@ class LibraryScreenModelTest {
     }
 
     @Test
+    fun `library continue and detail entry skip the same chapter filtered by manga metadata`() = runTest {
+        val chapterRepository = FakeChapterRepository()
+        val current = Chapter.create().copy(
+            id = 4L,
+            mangaId = 10L,
+            name = "Current",
+            url = "/4",
+            read = false,
+            sourceOrder = 0L,
+            chapterNumber = 4.0,
+        )
+        val filtered = Chapter.create().copy(
+            id = 3L,
+            mangaId = 10L,
+            name = "Filtered read",
+            url = "/3",
+            read = true,
+            sourceOrder = 1L,
+            chapterNumber = 3.0,
+        )
+        val visible = Chapter.create().copy(
+            id = 2L,
+            mangaId = 10L,
+            name = "Visible unread",
+            url = "/2",
+            read = false,
+            sourceOrder = 2L,
+            chapterNumber = 2.0,
+        )
+        val chapters = listOf(current, filtered, visible)
+        chapterRepository.addAll(chapters)
+        val manga = sampleManga(
+            id = 10L,
+            source = 7L,
+            chapterFlags = Manga.CHAPTER_SHOW_UNREAD,
+        )
+        val libraryRequest = requireNotNull(
+            LibraryScreenModel(chapterRepository = chapterRepository)
+                .continueReadingRequest(sampleLibraryManga(manga)),
+        )
+        val detailRequest = requireNotNull(
+            MangaDetailScreenModel(mangaId = manga.id).readerRequest(
+                manga = manga,
+                chapters = chapters,
+                chapter = current,
+                visibleChapterIds = setOf(current.id, visible.id),
+            ),
+        )
+
+        val libraryTarget = ReaderNavigator(
+            chapters = libraryRequest.chapters,
+            currentIndex = libraryRequest.currentChapterIndex,
+            skipFilteredChapters = true,
+        ).previousRead
+        val detailTarget = ReaderNavigator(
+            chapters = detailRequest.chapters,
+            currentIndex = detailRequest.currentChapterIndex,
+            skipFilteredChapters = true,
+        ).previousRead
+
+        assertTrue(libraryRequest.chapters.first { it.id == filtered.id }.isFiltered)
+        assertEquals(visible.id, detailTarget?.id)
+        assertEquals(detailTarget?.id, libraryTarget?.id)
+    }
+
+    @Test
     fun `setCategoriesForManga applies selected categories to all manga ids`() = runTest {
         val mangaRepository = FakeMangaRepository()
         val model = LibraryScreenModel(setMangaCategories = SetMangaCategories(mangaRepository))
@@ -495,11 +562,13 @@ class LibraryScreenModelTest {
         source: Long = 1L,
         title: String = "Manga $id",
         viewerFlags: Long = 0L,
+        chapterFlags: Long = 0L,
     ) = Manga.create().copy(
         id = id,
         source = source,
         title = title,
         viewerFlags = viewerFlags,
+        chapterFlags = chapterFlags,
     )
 
     private fun sampleLibraryManga(manga: Manga) = LibraryManga(
