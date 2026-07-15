@@ -33,7 +33,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 - [x] Task 1：权威 fixture、调用链清单与产品保护网
 - [x] Task 2：共享源查询状态、分页与错误语义
-- [ ] Task 3：共享扩展目录、版本、仓库部分失败与信任模型
+- [x] Task 3：共享扩展目录、版本、仓库部分失败与信任模型
 - [ ] Task 4A：共享安装事务状态机
 - [ ] Task 4B：Desktop install port 与 reload 回滚
 - [ ] Task 4C：Android PackageInstaller adapter wiring
@@ -191,20 +191,20 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Produces: `ExtensionArtifact`, `RepositoryIdentity`, `ExtensionCatalogEntry`, `ExtensionCompatibility`, `RepositoryFetchResult`, `ExtensionTrustDecision`。
 - `ExtensionCatalogService.refresh(repositories, fetch): ExtensionCatalogResult` 保留成功条目并逐仓库返回失败。
 
-- [ ] **Step 1: 写 RED 目录/版本/信任测试**
+- [x] **Step 1: 写 RED 目录/版本/信任测试**
 
   在 `ExtensionSharedContractTest` 构造 `ExtensionArtifact` 并反射断言 common 模型不包含 `File`/Android 类型；同时覆盖相同 index 在 Android/Desktop mapper 结果一致、lib version 边界、更新可用、所有仓库空、多仓库部分失败、摘要不符、仓库身份切换、旧 sidecar 缺身份进入 TrustRequired。
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
   Run: `./gradlew :domain:jvmTest --tests "mihon.domain.extension.ExtensionSharedContractTest" --tests "mihon.domain.extension.ExtensionCatalogServiceTest"`
   Expected: FAIL，原因是共享模型/service/policy 缺失。
 
-- [ ] **Step 3: 实现共享 DTO mapper 与目录聚合**
+- [x] **Step 3: 实现共享 DTO mapper 与目录聚合**
 
   将 Android/Desktop 重复 `ExtensionJsonObject` 映射迁到 common；仓库请求仍由平台 HTTP client 提供。结果必须区分 `entries.isEmpty() && failures.isEmpty()` 与部分失败，不能 catch 后返回 `emptyList()`。
 
-- [ ] **Step 4: 实现明确的信任决策**
+- [x] **Step 4: 实现明确的信任决策**
 
   ```kotlin
   sealed interface ExtensionTrustDecision {
@@ -216,16 +216,16 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
   校验仓库 identity、声明 SHA-256、实际 SHA-256 和已安装来源连续性；Android signature 作为 Android adapter 附加 evidence，Desktop UI 不显示“APK 签名已验证”。
 
-- [ ] **Step 5: Android/Desktop API 改为薄 HTTP/平台 adapter**
+- [x] **Step 5: Android/Desktop API 改为薄 HTTP/平台 adapter**
 
   两端 API 复用共享 mapper、版本与聚合；删除 `DesktopExtensionApi.fetchExtensionsFromRepo()` 的吞错空列表语义。为 production wiring 写回归测试，确保改坏 shared service 时两端测试失败。
 
-- [ ] **Step 6: 运行 GREEN**
+- [x] **Step 6: 运行 GREEN**
 
   Run: `./gradlew :domain:jvmTest --tests "mihon.domain.extension.*" :app-desktop:jvmTest --tests "mihon.desktop.extension.ExtensionVersionMetaTest" --tests "mihon.desktop.extension.ExtensionUpdateDetectionTest" --tests "mihon.desktop.extension.ExtensionCompatibilityTest" :app:testReleaseUnitTest --tests "*ExtensionApi*"`
   Expected: 全部 PASS，部分失败保留成功仓库结果。
 
-- [ ] **Step 7: 提交 Task 3**
+- [x] **Step 7: 提交 Task 3**
 
   Commit: `refactor(extension): share catalog version and trust rules`
 
