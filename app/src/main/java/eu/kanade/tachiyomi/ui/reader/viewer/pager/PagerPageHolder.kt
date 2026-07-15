@@ -171,6 +171,7 @@ class PagerPageHolder(
                         zoomStartPosition = viewer.config.imageZoomType,
                         landscapeZoom = viewer.config.landscapeZoom,
                     ),
+                    page.index,
                 )
                 if (!isAnimated) {
                     pageBackground = background

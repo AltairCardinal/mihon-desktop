@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -276,7 +277,7 @@ class ReaderActivity : BaseActivity() {
         }
 
         val onDismissRequest = viewModel::closeDialog
-        when (state.dialog) {
+        when (val dialog = state.dialog) {
             is ReaderViewModel.Dialog.Loading -> {
                 AlertDialog(
                     onDismissRequest = {},
@@ -289,6 +290,25 @@ class ReaderActivity : BaseActivity() {
                             CircularProgressIndicator()
                             Text(stringResource(MR.strings.loading))
                         }
+                    },
+                )
+            }
+            is ReaderViewModel.Dialog.ChapterError -> {
+                val errorState = dialog.state
+                AlertDialog(
+                    onDismissRequest = {},
+                    confirmButton = {
+                        TextButton(onClick = { viewModel.retryChapter(errorState.retryCommand()) }) {
+                            Text(stringResource(MR.strings.action_retry))
+                        }
+                    },
+                    text = {
+                        Text(
+                            stringResource(
+                                MR.strings.transition_pages_error,
+                                errorState.error.cause?.message.orEmpty(),
+                            ),
+                        )
                     },
                 )
             }
@@ -631,8 +651,7 @@ class ReaderActivity : BaseActivity() {
      */
     private fun setInitialChapterError(error: Throwable) {
         logcat(LogPriority.ERROR, error)
-        finish()
-        toast(error.message)
+        viewModel.showInitialChapterError(error)
     }
 
     /**

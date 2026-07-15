@@ -1,5 +1,7 @@
 package eu.kanade.tachiyomi.data.coil
 
+import android.graphics.Bitmap
+import coil3.Image
 import coil3.ImageLoader
 import coil3.asImage
 import coil3.decode.DecodeResult
@@ -8,8 +10,10 @@ import coil3.decode.ImageSource
 import coil3.fetch.SourceFetchResult
 import coil3.request.Options
 import coil3.request.bitmapConfig
+import kotlinx.coroutines.CancellationException
 import mihon.domain.reader.PageDecodeRequest
 import mihon.domain.reader.PageDecodeResult
+import mihon.domain.reader.PageDecoder
 import okio.BufferedSource
 import tachiyomi.core.common.util.system.ImageUtil
 import tachiyomi.decoder.ImageDecoder
@@ -17,31 +21,40 @@ import tachiyomi.decoder.ImageDecoder
 /**
  * A [Decoder] that uses built-in [ImageDecoder] to decode images that is not supported by the system.
  */
-class TachiyomiImageDecoder(private val resources: ImageSource, private val options: Options) : Decoder {
+class TachiyomiImageDecoder internal constructor(
+    private val resources: ImageSource,
+    private val options: Options,
+    private val identity: DecodeRequestIdentity = options.readerDecodeIdentity
+        ?: CoilDecodeRequestIdentitySource.next(options),
+    private val pageDecoder: PageDecoder<BufferedSource, Bitmap> = AndroidTachiyomiPageDecoder(
+        cropBorders = options.cropBorders,
+        displayProfile = displayProfile,
+        bitmapConfig = options.bitmapConfig,
+        scale = options.scale,
+    ),
+    private val imageMapper: (Bitmap) -> Image = { it.asImage() },
+) : Decoder {
 
     override suspend fun decode(): DecodeResult {
         val request = PageDecodeRequest(
-            pageIndex = UNKNOWN_PAGE_INDEX,
-            generation = INITIAL_DECODE_GENERATION,
+            pageIndex = identity.pageIndex,
+            generation = identity.generation,
             maxWidth = options.size.widthPx(options.scale) { Int.MAX_VALUE },
             maxHeight = options.size.heightPx(options.scale) { Int.MAX_VALUE },
         )
-        val decoder = AndroidTachiyomiPageDecoder(
-            cropBorders = options.cropBorders,
-            displayProfile = displayProfile,
-            bitmapConfig = options.bitmapConfig,
-            scale = options.scale,
-        )
         val result = resources.sourceOrNull()?.use { source ->
-            decodeWithSharedPageDecoder(source, request, decoder)
+            decodeWithSharedPageDecoder(source, request, pageDecoder)
         } ?: error("Failed to open image source")
         val decoded = when (result) {
             is PageDecodeResult.Success -> result
             is PageDecodeResult.Failure -> throw result.error.cause ?: IllegalStateException("Failed to decode image")
         }
+        if (decoded.generation != identity.generation || !identity.isCurrent()) {
+            throw CancellationException("Ignoring stale reader decode generation ${decoded.generation}")
+        }
 
         return DecodeResult(
-            image = decoded.value.asImage(),
+            image = imageMapper(decoded.value),
             isSampled = decoded.isSampled,
         )
     }
@@ -72,8 +85,6 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
     }
 
     companion object {
-        private const val UNKNOWN_PAGE_INDEX = -1
-        private const val INITIAL_DECODE_GENERATION = 0L
         var displayProfile: ByteArray? = null
     }
 }

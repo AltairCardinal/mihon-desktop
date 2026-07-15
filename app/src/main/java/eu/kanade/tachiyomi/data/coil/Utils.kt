@@ -9,6 +9,7 @@ import coil3.size.Scale
 import coil3.size.Size
 import coil3.size.isOriginal
 import coil3.size.pxOrElse
+import java.util.concurrent.atomic.AtomicLong
 
 internal inline fun Size.widthPx(scale: Scale, original: () -> Int): Int {
     return if (isOriginal) original() else width.toPx(scale)
@@ -42,3 +43,43 @@ val Options.customDecoder: Boolean
     get() = getExtra(customDecoderKey)
 
 private val customDecoderKey = Extras.Key(default = false)
+
+internal class DecodeRequestIdentity(
+    val pageIndex: Int,
+    val generation: Long,
+    private val current: () -> Boolean,
+) {
+    fun isCurrent(): Boolean = current()
+}
+
+internal class DecodeRequestIdentitySource {
+    private var generation = 0L
+
+    fun next(pageIndex: Int): DecodeRequestIdentity {
+        val requestGeneration = ++generation
+        return DecodeRequestIdentity(pageIndex, requestGeneration) { generation == requestGeneration }
+    }
+
+    fun invalidate() {
+        generation++
+    }
+}
+
+internal fun ImageRequest.Builder.readerDecodeIdentity(identity: DecodeRequestIdentity) = apply {
+    extras[readerDecodeIdentityKey] = identity
+}
+
+internal val Options.readerDecodeIdentity: DecodeRequestIdentity?
+    get() = getExtra(readerDecodeIdentityKey)
+
+private val readerDecodeIdentityKey = Extras.Key<DecodeRequestIdentity?>(default = null)
+
+internal object CoilDecodeRequestIdentitySource {
+    private val generation = AtomicLong(0L)
+
+    fun next(options: Options): DecodeRequestIdentity {
+        val requestGeneration = generation.incrementAndGet()
+        val requestPageIndex = options.diskCacheKey?.hashCode() ?: requestGeneration.toInt()
+        return DecodeRequestIdentity(requestPageIndex, requestGeneration) { true }
+    }
+}

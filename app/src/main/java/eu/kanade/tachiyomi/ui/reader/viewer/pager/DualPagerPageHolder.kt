@@ -193,7 +193,7 @@ class DualPagerPageHolder(
                 )
 
                 val holder = getOrCreateSubHolder(side, page)
-                holder.setImage(source, isAnimated, config)
+                holder.setImage(source, isAnimated, config, page.index)
                 if (!isAnimated) holder.pageBackground = background
                 removeProgressIndicator()
             }

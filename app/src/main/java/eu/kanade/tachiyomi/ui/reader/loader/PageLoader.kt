@@ -30,6 +30,12 @@ abstract class PageLoader {
     open suspend fun loadPage(page: ReaderPage) {}
 
     /**
+     * Notifies the loader that [page] became the viewer's logical current page.
+     * Holder binding must not be used as a substitute for this position event.
+     */
+    open fun onPageSelected(page: ReaderPage) {}
+
+    /**
      * Retries the given [page] in case it failed to load. This method only makes sense when an
      * online source is used.
      */

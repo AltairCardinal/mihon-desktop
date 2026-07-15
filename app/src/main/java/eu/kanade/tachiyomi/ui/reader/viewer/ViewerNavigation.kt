@@ -30,15 +30,17 @@ abstract class ViewerNavigation {
 
     var invertMode: ReaderPreferences.TappingInvertMode = ReaderPreferences.TappingInvertMode.NONE
 
-    fun getRegions(): List<Region> {
+    internal fun getNormalizedRegions(): List<NormalizedReaderRegion> {
         val inversion = when (invertMode) {
             ReaderPreferences.TappingInvertMode.NONE -> NavigationInversion.NONE
             ReaderPreferences.TappingInvertMode.HORIZONTAL -> NavigationInversion.HORIZONTAL
             ReaderPreferences.TappingInvertMode.VERTICAL -> NavigationInversion.VERTICAL
             ReaderPreferences.TappingInvertMode.BOTH -> NavigationInversion.BOTH
         }
-        return ReaderNavigation.regions(preset).map { it.inverted(inversion).toAndroidRegion() }
+        return ReaderNavigation.regions(preset).map { it.inverted(inversion) }
     }
+
+    fun getRegions(): List<Region> = getNormalizedRegions().map { it.toAndroidRegion() }
 
     fun getAction(pos: PointF): NavigationRegion {
         val region = getRegions().find { it.rectF.contains(pos.x, pos.y) }

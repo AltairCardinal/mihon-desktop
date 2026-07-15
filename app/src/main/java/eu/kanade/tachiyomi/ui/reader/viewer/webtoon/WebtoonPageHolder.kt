@@ -204,6 +204,7 @@ class WebtoonPageHolder(
                         minimumScaleType = SubsamplingScaleImageView.SCALE_TYPE_FIT_WIDTH,
                         cropBorders = viewer.config.imageCropBorders,
                     ),
+                    checkNotNull(page).index,
                 )
                 removeErrorLayout()
             }

@@ -12,6 +12,7 @@ import androidx.appcompat.widget.AppCompatTextView
 import com.google.android.material.progressindicator.CircularProgressIndicator
 import eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
+import eu.kanade.tachiyomi.ui.reader.model.toSharedTransitionModel
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderButton
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderTransitionView
 import eu.kanade.tachiyomi.util.system.dpToPx
@@ -90,7 +91,7 @@ class PagerTransitionHolder(
                     when (state) {
                         is ReaderChapterState.Loading -> setLoading()
                         is ReaderChapterState.Error -> {
-                            val retryCommand = state.retryCommand()
+                            val retryCommand = transition.toSharedTransitionModel(state).retryCommand()
                             setError(
                                 state.error.cause ?: IllegalStateException(state.error.toString()),
                                 (retryCommand as ReaderNavigationCommand.RetryChapter).chapterId,

@@ -1,20 +1,38 @@
 package eu.kanade.tachiyomi.ui.reader
 
-import eu.kanade.tachiyomi.ui.reader.loader.cancelAndroidPreloadJob
+import androidx.lifecycle.SavedStateHandle
+import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
+import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.toSharedPageModel
+import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
+import eu.kanade.tachiyomi.ui.reader.viewer.navigation.DisabledNavigation
+import eu.kanade.tachiyomi.ui.reader.viewer.navigation.EdgeNavigation
+import eu.kanade.tachiyomi.ui.reader.viewer.navigation.KindlishNavigation
+import eu.kanade.tachiyomi.ui.reader.viewer.navigation.LNavigation
+import eu.kanade.tachiyomi.ui.reader.viewer.navigation.RightAndLeftNavigation
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagePairingAlgorithm
-import kotlinx.coroutines.Job
+import io.mockk.every
+import io.mockk.mockk
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
 import mihon.domain.reader.ChapterSkipPolicy
+import mihon.domain.reader.NavigationInversion
+import mihon.domain.reader.NavigationPreset
 import mihon.domain.reader.PageLayout
-import mihon.domain.reader.PreloadJobKey
 import mihon.domain.reader.ReaderChapterEntry
 import mihon.domain.reader.ReaderColorFilterEffect
+import mihon.domain.reader.ReaderNavigation
 import mihon.domain.reader.ReaderPagePairing
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import java.io.File
+import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.download.service.DownloadPreferences
 
 class ReaderSharedParityWiringTest {
 
@@ -40,53 +58,37 @@ class ReaderSharedParityWiringTest {
     }
 
     @Test
-    fun `Android transition holders consume shared chapter state flow`() {
-        val pager = source("app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt")
-        val webtoon =
-            source("app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonTransitionHolder.kt")
-        val navigation = source("app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ViewerNavigation.kt")
+    fun `Android navigation adapters match every shared preset and inversion`() {
+        val adapters = listOf(
+            RightAndLeftNavigation() to NavigationPreset.RIGHT_AND_LEFT,
+            KindlishNavigation() to NavigationPreset.KINDLE,
+            LNavigation() to NavigationPreset.L,
+            EdgeNavigation() to NavigationPreset.EDGE,
+            DisabledNavigation() to NavigationPreset.DISABLED,
+        )
+        val inversions = listOf(
+            ReaderPreferences.TappingInvertMode.NONE to NavigationInversion.NONE,
+            ReaderPreferences.TappingInvertMode.HORIZONTAL to NavigationInversion.HORIZONTAL,
+            ReaderPreferences.TappingInvertMode.VERTICAL to NavigationInversion.VERTICAL,
+            ReaderPreferences.TappingInvertMode.BOTH to NavigationInversion.BOTH,
+        )
 
-        assertTrue(pager.contains("sharedStateFlow"))
-        assertTrue(webtoon.contains("sharedStateFlow"))
-        assertTrue(pager.contains("state.retryCommand()"))
-        assertTrue(webtoon.contains("state.retryCommand()"))
-        assertTrue(navigation.contains("mihon.domain.reader.ReaderNavigation"))
-    }
-
-    @Test
-    fun `Android HTTP page loader consumes the shared forward preload planner`() {
-        val loader = source("app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt")
-
-        assertTrue(loader.contains("ReaderPreloadPlanner"))
-        assertTrue(loader.contains("backwardWindowSize = 0"))
-        assertTrue(loader.contains("cancelRequests"))
-        assertTrue(loader.contains("request.jobKey"))
-        assertTrue(!loader.contains("private fun preloadNextPages"))
-    }
-
-    @Test
-    fun `Android cancels an active preload job only when its generation key is stale`() {
-        val key = PreloadJobKey(pageIndex = 2, generation = 4)
-        val active = Job()
-
-        assertTrue(cancelAndroidPreloadJob(key, active, setOf(key)))
-        assertTrue(active.isCancelled)
-
-        val retained = Job()
-        assertTrue(!cancelAndroidPreloadJob(key, retained, setOf(key.copy(generation = 3))))
-        assertTrue(retained.isActive)
+        adapters.forEach { (adapter, preset) ->
+            inversions.forEach { (androidInversion, sharedInversion) ->
+                adapter.invertMode = androidInversion
+                val expected = ReaderNavigation.regions(preset).map { it.inverted(sharedInversion) }
+                assertEquals(expected, adapter.getNormalizedRegions())
+            }
+        }
     }
 
     @Test
     fun `Android grayscale and invert preferences are mapped to the shared filter contract`() {
         val params = buildAndroidLayerFilterParams(grayscale = true, invertedColors = true)
-        val activity = source("app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt")
 
         assertTrue(params.grayscaleEnabled)
         assertTrue(params.invertEnabled)
         assertTrue(params.isEffective)
-        assertTrue(activity.contains("buildAndroidLayerFilterParams"))
-        assertTrue(activity.contains("params.isEffective"))
     }
 
     @Test
@@ -100,19 +102,51 @@ class ReaderSharedParityWiringTest {
         assertEquals(listOf(ReaderColorFilterEffect.BRIGHTNESS), brightnessOnly.activeEffects)
         assertEquals(listOf(ReaderColorFilterEffect.GRAYSCALE), grayscaleOnly.activeEffects)
         assertEquals(listOf(ReaderColorFilterEffect.INVERT), invertOnly.activeEffects)
-        val activity = source("app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt")
-        assertTrue(activity.contains("buildAndroidReaderColorFilterParams"))
     }
 
     @Test
-    fun `Android reader chapter pipeline delegates read filtered and duplicate skipping to shared policy`() {
-        val viewModel = source("app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt")
+    fun `Android ReaderViewModel forwards the logical page selection to the production loader`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val downloadPreferences = mockk<DownloadPreferences>(relaxed = true)
+            every { downloadPreferences.autoDownloadWhileReading().get() } returns 0
+            val viewModel = ReaderViewModel(
+                savedState = SavedStateHandle(),
+                sourceManager = mockk(relaxed = true),
+                downloadManager = mockk(relaxed = true),
+                downloadProvider = mockk(relaxed = true),
+                imageSaver = mockk(relaxed = true),
+                readerPreferences = mockk(relaxed = true),
+                basePreferences = mockk(relaxed = true),
+                downloadPreferences = downloadPreferences,
+                trackPreferences = mockk(relaxed = true),
+                trackChapter = mockk(relaxed = true),
+                getManga = mockk(relaxed = true),
+                getChaptersByMangaId = mockk(relaxed = true),
+                getNextChapters = mockk(relaxed = true),
+                upsertHistory = mockk(relaxed = true),
+                updateChapter = mockk(relaxed = true),
+                setMangaViewerFlags = mockk(relaxed = true),
+                getIncognitoState = mockk(relaxed = true),
+                libraryPreferences = mockk(relaxed = true),
+            )
+            val chapter = ReaderChapter(Chapter.create().copy(id = 7, mangaId = 1))
+            val page = ReaderPage(index = 2).apply { this.chapter = chapter }
+            var selectedPage: ReaderPage? = null
+            chapter.pageLoader = object : PageLoader() {
+                override var isLocal = false
+                override suspend fun getPages() = emptyList<ReaderPage>()
+                override fun onPageSelected(page: ReaderPage) {
+                    selectedPage = page
+                }
+            }
 
-        assertTrue(viewModel.contains("filterChaptersForReader"))
-        assertTrue(viewModel.contains("markDuplicateChapters"))
-        assertTrue(viewModel.contains("ChapterSkipPolicy("))
-        assertTrue(viewModel.contains("chapters = markedEntries"))
-        assertTrue(!viewModel.contains("readerPreferences.skipRead().get() && it.read -> true"))
+            viewModel.onPageSelected(page)
+
+            assertSame(page, selectedPage)
+        } finally {
+            Dispatchers.resetMain()
+        }
     }
 
     @Test
@@ -132,9 +166,36 @@ class ReaderSharedParityWiringTest {
         assertEquals(setOf(2L, 3L), result.mapTo(mutableSetOf(), ReaderChapterEntry::id))
     }
 
-    private fun source(path: String): String {
-        val cwd = File(System.getProperty("user.dir"))
-        val root = if (File(cwd, "app").exists()) cwd else requireNotNull(cwd.parentFile)
-        return File(root, path).readText()
+    @Test
+    fun `Android production chapter pipeline maps real chapter metadata before applying shared skip policy`() {
+        val chapters = listOf(
+            chapter(id = 41, number = 4.0, scanlator = "A", read = true),
+            chapter(id = 42, number = 4.0, scanlator = "B"),
+            chapter(id = 31, number = 3.0, scanlator = "A"),
+            chapter(id = 32, number = 3.0, scanlator = "B"),
+            chapter(id = 21, number = 2.0, scanlator = "A"),
+        )
+
+        val result = filterAndroidReaderChapters(
+            chapters = chapters,
+            currentChapterId = 42,
+            skipPolicy = ChapterSkipPolicy(read = true, filtered = true, duplicate = true),
+            isFiltered = { it.id == 31L },
+        )
+
+        assertEquals(listOf(42L, 32L, 21L), result.map(Chapter::id))
     }
+
+    private fun chapter(
+        id: Long,
+        number: Double,
+        scanlator: String,
+        read: Boolean = false,
+    ) = Chapter.create().copy(
+        id = id,
+        mangaId = 1,
+        read = read,
+        chapterNumber = number,
+        scanlator = scanlator,
+    )
 }

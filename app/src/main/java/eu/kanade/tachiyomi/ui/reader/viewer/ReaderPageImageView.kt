@@ -34,9 +34,12 @@ import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView.EASE_OUT_QU
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView.SCALE_TYPE_CENTER_INSIDE
 import com.github.chrisbanes.photoview.PhotoView
 import eu.kanade.domain.base.BasePreferences
+import eu.kanade.tachiyomi.data.coil.DecodeRequestIdentity
+import eu.kanade.tachiyomi.data.coil.DecodeRequestIdentitySource
 import eu.kanade.tachiyomi.data.coil.applySharedReaderCachePolicy
 import eu.kanade.tachiyomi.data.coil.cropBorders
 import eu.kanade.tachiyomi.data.coil.customDecoder
+import eu.kanade.tachiyomi.data.coil.readerDecodeIdentity
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonSubsamplingImageView
 import eu.kanade.tachiyomi.util.system.animatorDurationScale
 import eu.kanade.tachiyomi.util.view.isVisibleOnScreen
@@ -69,6 +72,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
     private var pageView: View? = null
 
     private var config: Config? = null
+    private val decodeIdentitySource = DecodeRequestIdentitySource()
 
     var onImageLoaded: (() -> Unit)? = null
     var onImageLoadError: ((Throwable?) -> Unit)? = null
@@ -160,18 +164,20 @@ open class ReaderPageImageView @JvmOverloads constructor(
         }
     }
 
-    fun setImage(source: BufferedSource, isAnimated: Boolean, config: Config) {
+    fun setImage(source: BufferedSource, isAnimated: Boolean, config: Config, pageIndex: Int) {
         this.config = config
+        val identity = decodeIdentitySource.next(pageIndex)
         if (isAnimated) {
             prepareAnimatedImageView()
-            setAnimatedImage(source, config)
+            setAnimatedImage(source, config, identity)
         } else {
             prepareNonAnimatedImageView()
-            setNonAnimatedImage(source, config)
+            setNonAnimatedImage(source, config, identity)
         }
     }
 
     fun recycle() = pageView?.let {
+        decodeIdentitySource.invalidate()
         when (it) {
             is SubsamplingScaleImageView -> it.recycle()
             is AppCompatImageView -> it.dispose()
@@ -278,6 +284,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
     private fun setNonAnimatedImage(
         data: Any,
         config: Config,
+        identity: DecodeRequestIdentity? = null,
     ) = (pageView as? SubsamplingScaleImageView)?.apply {
         setDoubleTapZoomDuration(config.zoomDuration.getSystemScaledDuration())
         setMinimumScaleType(config.minimumScaleType)
@@ -312,6 +319,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
                 ImageRequest.Builder(context)
                     .data(data)
+                    .apply { identity?.let(::readerDecodeIdentity) }
                     .applySharedReaderCachePolicy(PageDecodeCachePolicy.TILED_READER)
                     .target(
                         onSuccess = { result ->
@@ -381,6 +389,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
     private fun setAnimatedImage(
         data: Any,
         config: Config,
+        identity: DecodeRequestIdentity? = null,
     ) = (pageView as? AppCompatImageView)?.apply {
         if (this is PhotoView) {
             setZoomTransitionDuration(config.zoomDuration.getSystemScaledDuration())
@@ -388,6 +397,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
         val request = ImageRequest.Builder(context)
             .data(data)
+            .apply { identity?.let(::readerDecodeIdentity) }
             .memoryCachePolicy(CachePolicy.DISABLED)
             .diskCachePolicy(CachePolicy.DISABLED)
             .target(

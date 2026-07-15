@@ -55,8 +55,11 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.runBlocking
 import logcat.LogPriority
+import mihon.domain.error.AppError
 import mihon.domain.reader.ChapterSkipPolicy
 import mihon.domain.reader.ReaderChapterEntry
+import mihon.domain.reader.ReaderChapterState
+import mihon.domain.reader.ReaderNavigationCommand
 import mihon.domain.reader.filterChaptersForReader
 import mihon.domain.reader.markDuplicateChapters
 import tachiyomi.core.common.preference.toggle
@@ -179,23 +182,14 @@ class ReaderViewModel @JvmOverloads constructor(
             duplicate = readerPreferences.skipDupe().get(),
         )
         val sortedChapters = chapters.sortedWith(getChapterSort(manga, sortDescending = false))
-        val entries = sortedChapters.map { chapter ->
-            ReaderChapterEntry(
-                id = chapter.id,
-                isRead = chapter.read,
-                isFiltered = skipPolicy.filtered && isChapterFiltered(manga, chapter),
-                chapterNumber = chapter.chapterNumber,
-                scanlator = chapter.scanlator,
-            )
-        }
-        val includedIds = filterAndroidReaderChapterEntries(
-            entries = entries,
+        val filteredChapters = filterAndroidReaderChapters(
+            chapters = sortedChapters,
             currentChapterId = chapterId,
             skipPolicy = skipPolicy,
-        ).mapTo(mutableSetOf(), ReaderChapterEntry::id)
+            isFiltered = { chapter -> skipPolicy.filtered && isChapterFiltered(manga, chapter) },
+        )
 
-        val result = sortedChapters
-            .filter { it.id in includedIds }
+        val result = filteredChapters
             .run {
                 if (basePreferences.downloadedOnly().get()) {
                     filterDownloaded(manga)
@@ -298,7 +292,13 @@ class ReaderViewModel @JvmOverloads constructor(
                     val source = sourceManager.getOrStub(manga.source)
                     loader = ChapterLoader(context, downloadManager, downloadProvider, manga, source)
 
-                    loadChapter(loader!!, getChapterList().first { chapterId == it.chapter.id })
+                    val initialChapter = getChapterList().first { chapterId == it.chapter.id }
+                    try {
+                        loadChapter(loader!!, initialChapter)
+                    } catch (e: Throwable) {
+                        showChapterError(initialChapter, e)
+                        throw e
+                    }
                     Result.success(true)
                 } else {
                     // Unlikely but okay
@@ -452,6 +452,8 @@ class ReaderViewModel @JvmOverloads constructor(
         if (page is InsertPage) {
             return
         }
+
+        page.chapter.pageLoader?.onPageSelected(page)
 
         val selectedChapter = page.chapter
         val pages = selectedChapter.pages ?: return
@@ -799,6 +801,47 @@ class ReaderViewModel @JvmOverloads constructor(
         mutableState.update { it.copy(dialog = null) }
     }
 
+    fun showInitialChapterError(error: Throwable) {
+        if (state.value.dialog is Dialog.ChapterError) return
+        mutableState.update {
+            it.copy(
+                dialog = Dialog.ChapterError(
+                    ReaderChapterState.Error(AppError.Unknown(error), retryTargetChapterId = chapterId),
+                ),
+            )
+        }
+    }
+
+    fun retryChapter(command: ReaderNavigationCommand) {
+        val retry = command as? ReaderNavigationCommand.RetryChapter ?: return
+        val chapterLoader = loader ?: return
+        viewModelScope.launchIO {
+            mutableState.update { it.copy(dialog = Dialog.Loading) }
+            val chapter = getChapterList().firstOrNull { it.chapter.id == retry.chapterId }
+            if (chapter == null) {
+                mutableState.update { it.copy(dialog = null) }
+                return@launchIO
+            }
+            try {
+                loadChapter(chapterLoader, chapter)
+                mutableState.update { it.copy(dialog = null) }
+                eventChannel.send(Event.ReloadViewerChapters)
+            } catch (e: Throwable) {
+                if (e is CancellationException) throw e
+                showChapterError(chapter, e)
+            }
+        }
+    }
+
+    private fun showChapterError(chapter: ReaderChapter, error: Throwable) {
+        val sharedError = chapter.sharedStateFlow.value as? ReaderChapterState.Error
+            ?: ReaderChapterState.Error(
+                AppError.Unknown(error),
+                retryTargetChapterId = checkNotNull(chapter.chapter.id),
+            )
+        mutableState.update { it.copy(dialog = Dialog.ChapterError(sharedError)) }
+    }
+
     fun setBrightnessOverlayValue(value: Int) {
         mutableState.update { it.copy(brightnessOverlayValue = value) }
     }
@@ -981,6 +1024,7 @@ class ReaderViewModel @JvmOverloads constructor(
 
     sealed interface Dialog {
         data object Loading : Dialog
+        data class ChapterError(val state: ReaderChapterState.Error) : Dialog
         data object Settings : Dialog
         data object ReadingModeSelect : Dialog
         data object OrientationModeSelect : Dialog
@@ -1019,4 +1063,27 @@ internal fun filterAndroidReaderChapterEntries(
         currentChapterId = currentChapterId,
         skipPolicy = skipPolicy,
     )
+}
+
+internal fun filterAndroidReaderChapters(
+    chapters: List<tachiyomi.domain.chapter.model.Chapter>,
+    currentChapterId: Long,
+    skipPolicy: ChapterSkipPolicy,
+    isFiltered: (tachiyomi.domain.chapter.model.Chapter) -> Boolean,
+): List<tachiyomi.domain.chapter.model.Chapter> {
+    val entries = chapters.map { chapter ->
+        ReaderChapterEntry(
+            id = chapter.id,
+            isRead = chapter.read,
+            isFiltered = isFiltered(chapter),
+            chapterNumber = chapter.chapterNumber,
+            scanlator = chapter.scanlator,
+        )
+    }
+    val includedIds = filterAndroidReaderChapterEntries(
+        entries = entries,
+        currentChapterId = currentChapterId,
+        skipPolicy = skipPolicy,
+    ).mapTo(mutableSetOf(), ReaderChapterEntry::id)
+    return chapters.filter { it.id in includedIds }
 }
