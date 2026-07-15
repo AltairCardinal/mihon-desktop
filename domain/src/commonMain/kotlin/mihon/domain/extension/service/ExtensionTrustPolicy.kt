@@ -108,9 +108,9 @@ class ExtensionTrustPolicy {
 }
 
 private fun String.normalizedRepositoryUrl(): String {
-    val url = trim().removeSuffix("/")
+    val url = trim()
     val schemeEnd = url.indexOf("://")
-    if (schemeEnd < 0) return url
+    if (schemeEnd < 0) return url.removePathSuffix()
 
     val authorityStart = schemeEnd + 3
     val authorityEnd = url.indexOfAny(charArrayOf('/', '?', '#'), authorityStart)
@@ -135,12 +135,19 @@ private fun String.normalizedRepositoryUrl(): String {
         }
         else -> hostAndPort.lowercase()
     }
+    val pathAndSuffix = url.substring(authorityEnd)
 
     return buildString {
         append(url.substring(0, schemeEnd).lowercase())
         append("://")
         append(userInfo)
         append(normalizedHostAndPort)
-        append(url.substring(authorityEnd))
+        append(pathAndSuffix.removePathSuffix())
     }
+}
+
+private fun String.removePathSuffix(): String {
+    val pathEnd = indexOfAny(charArrayOf('?', '#')).takeIf { it >= 0 } ?: length
+    val path = substring(0, pathEnd).removeSuffix("/")
+    return path + substring(pathEnd)
 }

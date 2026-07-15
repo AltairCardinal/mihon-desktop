@@ -27,8 +27,11 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.lang.reflect.GenericArrayType
 import java.lang.reflect.ParameterizedType
 import java.lang.reflect.Type
+import java.lang.reflect.TypeVariable
+import java.lang.reflect.WildcardType
 
 class ExtensionSharedContractTest {
 
@@ -53,11 +56,54 @@ class ExtensionSharedContractTest {
             ExtensionCatalogService::class.java,
             ExtensionTrustPolicy::class.java,
         ).flatMap { it.withNestedClasses() }
-        val fieldTypes = sharedSurface
-            .flatMap { type -> type.declaredFields.flatMap { it.genericType.typeNames() } }
+        val surfaceTypeNames = sharedSurface.flatMap { it.surfaceTypeNames() }
 
         assertEquals("eu.kanade.tachiyomi.extension.en.example", artifact.packageName)
-        assertFalse(fieldTypes.any { it == "java.io.File" || it.startsWith("android.") })
+        assertFalse(surfaceTypeNames.any { it == "java.io.File" || it.startsWith("android.") })
+    }
+
+    @Test
+    fun `platform guard traverses complete API surface and recursive generic type shapes`() {
+        val surfaceTypeNames = PlatformTypeSurfaceFixture::class.java.surfaceTypeNames().toSet()
+
+        assertTrue(
+            surfaceTypeNames.containsAll(
+                setOf(
+                    FieldMarker::class.java.name,
+                    ConstructorMarker::class.java.name,
+                    MethodParameterMarker::class.java.name,
+                    MethodReturnMarker::class.java.name,
+                    InterfaceMarker::class.java.name,
+                    TypeVariableMarker::class.java.name,
+                ),
+            ),
+        )
+
+        val classArray = PlatformTypeSurfaceFixture::class.java.getDeclaredField("classArray").genericType
+        assertTrue(classArray is Class<*> && classArray.isArray)
+        assertTrue(classArray.typeNames().contains(ClassArrayMarker::class.java.name))
+
+        val parameterized = PlatformTypeSurfaceFixture::class.java.getDeclaredField("parameterized").genericType
+        assertInstanceOf(ParameterizedType::class.java, parameterized)
+        assertTrue(parameterized.typeNames().contains(ParameterizedMarker::class.java.name))
+
+        val upperWildcard = PlatformTypeSurfaceFixture::class.java.getDeclaredField("upperWildcard").genericType
+        assertInstanceOf(
+            WildcardType::class.java,
+            (upperWildcard as ParameterizedType).actualTypeArguments.single(),
+        )
+        assertTrue(upperWildcard.typeNames().contains(UpperWildcardMarker::class.java.name))
+
+        val lowerWildcard = PlatformTypeSurfaceFixture::class.java.getDeclaredField("lowerWildcard").genericType
+        assertInstanceOf(
+            WildcardType::class.java,
+            (lowerWildcard as ParameterizedType).actualTypeArguments.single(),
+        )
+        assertTrue(lowerWildcard.typeNames().contains(LowerWildcardMarker::class.java.name))
+
+        val genericArray = PlatformTypeSurfaceFixture::class.java.getDeclaredField("genericArray").genericType
+        assertInstanceOf(GenericArrayType::class.java, genericArray)
+        assertTrue(genericArray.typeNames().contains(TypeVariableMarker::class.java.name))
     }
 
     @Test
@@ -215,6 +261,64 @@ class ExtensionSharedContractTest {
         assertTrue(required.reasons.any { it is TrustMismatch.InstalledOriginChanged })
     }
 
+    @Test
+    fun `repository query value trailing slash change requires explicit confirmation`() {
+        val decision = trustDecision(
+            installedRepository = repository(baseUrl = "https://repo.example/index?channel=stable/").toIdentity(),
+            incomingRepository = repository(baseUrl = "https://repo.example/index?channel=stable").toIdentity(),
+        )
+
+        val required = assertInstanceOf(ExtensionTrustDecision.ConfirmationRequired::class.java, decision)
+        assertTrue(required.reasons.any { it is TrustMismatch.InstalledOriginChanged })
+    }
+
+    @Test
+    fun `repository fragment trailing slash change requires explicit confirmation`() {
+        val decision = trustDecision(
+            installedRepository = repository(baseUrl = "https://repo.example/index#stable/").toIdentity(),
+            incomingRepository = repository(baseUrl = "https://repo.example/index#stable").toIdentity(),
+        )
+
+        val required = assertInstanceOf(ExtensionTrustDecision.ConfirmationRequired::class.java, decision)
+        assertTrue(required.reasons.any { it is TrustMismatch.InstalledOriginChanged })
+    }
+
+    @Test
+    fun `repository path trailing slash remains equivalent before query and fragment`() {
+        val decision = trustDecision(
+            installedRepository = repository(
+                baseUrl = "https://repo.example/index/?channel=stable#catalog",
+            ).toIdentity(),
+            incomingRepository = repository(
+                baseUrl = "https://repo.example/index?channel=stable#catalog",
+            ).toIdentity(),
+        )
+
+        assertEquals(ExtensionTrustDecision.Trusted, decision)
+    }
+
+    @Test
+    fun `repository user info change requires explicit confirmation`() {
+        val decision = trustDecision(
+            installedRepository = repository(baseUrl = "https://reader:secret@repo.example/index").toIdentity(),
+            incomingRepository = repository(baseUrl = "https://reader:changed@repo.example/index").toIdentity(),
+        )
+
+        val required = assertInstanceOf(ExtensionTrustDecision.ConfirmationRequired::class.java, decision)
+        assertTrue(required.reasons.any { it is TrustMismatch.InstalledOriginChanged })
+    }
+
+    @Test
+    fun `repository port change requires explicit confirmation`() {
+        val decision = trustDecision(
+            installedRepository = repository(baseUrl = "https://repo.example:8443/index").toIdentity(),
+            incomingRepository = repository(baseUrl = "https://repo.example:9443/index").toIdentity(),
+        )
+
+        val required = assertInstanceOf(ExtensionTrustDecision.ConfirmationRequired::class.java, decision)
+        assertTrue(required.reasons.any { it is TrustMismatch.InstalledOriginChanged })
+    }
+
     private fun trustDecision(
         installedRepository: RepositoryIdentity?,
         incomingRepository: RepositoryIdentity,
@@ -271,8 +375,69 @@ class ExtensionSharedContractTest {
 private fun Class<*>.withNestedClasses(): List<Class<*>> =
     listOf(this) + declaredClasses.flatMap { it.withNestedClasses() }
 
-private fun Type.typeNames(): List<String> = when (this) {
-    is Class<*> -> listOf(name)
-    is ParameterizedType -> rawType.typeNames() + actualTypeArguments.flatMap { it.typeNames() }
-    else -> listOf(typeName)
+private fun Class<*>.surfaceTypeNames(): List<String> = buildList<Type> {
+    addAll(typeParameters)
+    addAll(genericInterfaces)
+    genericSuperclass?.let(::add)
+    declaredFields.forEach { add(it.genericType) }
+    declaredConstructors.forEach { constructor ->
+        addAll(constructor.typeParameters)
+        addAll(constructor.genericParameterTypes)
+        addAll(constructor.genericExceptionTypes)
+    }
+    declaredMethods.forEach { method ->
+        addAll(method.typeParameters)
+        add(method.genericReturnType)
+        addAll(method.genericParameterTypes)
+        addAll(method.genericExceptionTypes)
+    }
+}.flatMap { it.typeNames() }
+
+private fun Type.typeNames(): List<String> = typeNames(mutableSetOf())
+
+private fun Type.typeNames(visited: MutableSet<Type>): List<String> {
+    if (!visited.add(this)) return emptyList()
+
+    return when (this) {
+        is Class<*> -> listOf(name) + if (isArray) componentType.typeNames(visited) else emptyList()
+        is ParameterizedType -> {
+            rawType.typeNames(visited) +
+                listOfNotNull(ownerType).flatMap { it.typeNames(visited) } +
+                actualTypeArguments.flatMap { it.typeNames(visited) }
+        }
+        is WildcardType -> {
+            lowerBounds.flatMap { it.typeNames(visited) } + upperBounds.flatMap { it.typeNames(visited) }
+        }
+        is GenericArrayType -> genericComponentType.typeNames(visited)
+        is TypeVariable<*> -> bounds.flatMap { it.typeNames(visited) }
+        else -> listOf(typeName)
+    }
+}
+
+private interface PlatformSurfaceInterface<T>
+
+private open class TypeVariableMarker
+private class FieldMarker
+private class ConstructorMarker
+private class MethodParameterMarker
+private class MethodReturnMarker
+private class InterfaceMarker
+private class ClassArrayMarker
+private class ParameterizedMarker
+private class UpperWildcardMarker
+private class LowerWildcardMarker
+
+private class PlatformTypeSurfaceFixture<T : TypeVariableMarker> : PlatformSurfaceInterface<InterfaceMarker> {
+    lateinit var field: FieldMarker
+    lateinit var classArray: Array<ClassArrayMarker>
+    lateinit var parameterized: List<ParameterizedMarker>
+    lateinit var upperWildcard: List<@JvmWildcard UpperWildcardMarker>
+    lateinit var lowerWildcard: MutableList<in LowerWildcardMarker>
+    lateinit var genericArray: Array<T>
+
+    constructor(@Suppress("UNUSED_PARAMETER") marker: ConstructorMarker)
+
+    fun service(@Suppress("UNUSED_PARAMETER") parameter: MethodParameterMarker): MethodReturnMarker {
+        return MethodReturnMarker()
+    }
 }

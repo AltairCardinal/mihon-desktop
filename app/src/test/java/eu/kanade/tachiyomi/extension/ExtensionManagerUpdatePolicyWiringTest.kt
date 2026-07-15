@@ -50,6 +50,36 @@ class ExtensionManagerUpdatePolicyWiringTest {
         assertEquals(listOf(listOf(10L, 1.4, 10L, 1.4)), evaluatedVersions)
     }
 
+    @Test
+    fun `Android production manager defaults to shared lib version update policy`() = runBlocking {
+        val installed = installedExtension()
+        val existingPendingUpdate = installed.copy(pkgName = "pending.extension", hasUpdate = true)
+        val context = mockk<Context>(relaxed = true)
+        val enabledLanguages = mockk<Preference<Set<String>>>()
+        val extensionUpdatesCount = mockk<Preference<Int>>(relaxed = true)
+        val preferences = mockk<SourcePreferences> {
+            every { enabledLanguages() } returns enabledLanguages
+            every { extensionUpdatesCount() } returns extensionUpdatesCount
+        }
+        every { enabledLanguages.isSet() } returns true
+        val manager = ExtensionManager(
+            context = context,
+            preferences = preferences,
+            trustExtension = mockk<TrustExtension>(relaxed = true),
+            installedExtensionsLoader = {
+                listOf(LoadResult.Success(installed), LoadResult.Success(existingPendingUpdate))
+            },
+            availableExtensionsProvider = { listOf(availableExtension(libVersion = 1.5)) },
+            installReceiverRegistrar = {},
+        )
+        manager.isInitialized.first { it }
+
+        manager.findAvailableExtensions()
+
+        val refreshed = manager.installedExtensionsFlow.first { it.isNotEmpty() }
+        assertTrue(refreshed.first { it.pkgName == installed.pkgName }.hasUpdate)
+    }
+
     private fun installedExtension() = Extension.Installed(
         name = "Example",
         pkgName = "example.extension",
@@ -64,12 +94,12 @@ class ExtensionManagerUpdatePolicyWiringTest {
         isShared = false,
     )
 
-    private fun availableExtension() = Extension.Available(
+    private fun availableExtension(libVersion: Double = 1.4) = Extension.Available(
         name = "Example",
         pkgName = "example.extension",
         versionName = "1.4.1",
         versionCode = 10,
-        libVersion = 1.4,
+        libVersion = libVersion,
         lang = "en",
         isNsfw = false,
         sources = emptyList(),

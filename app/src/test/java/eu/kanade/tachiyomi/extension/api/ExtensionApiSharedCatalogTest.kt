@@ -85,6 +85,21 @@ class ExtensionApiSharedCatalogTest {
         assertEquals(listOf(listOf(10L, 1.4, 10L, 1.4)), evaluatedVersions)
     }
 
+    @Test
+    fun `Android production API defaults to shared lib version update policy`() = runBlocking {
+        val installed = installedExtension()
+        val api = ExtensionApi(
+            refreshRepositories = {},
+            availableExtensionsForUpdate = { listOf(availableExtension(libVersion = 1.5)) },
+            installedExtensions = { listOf(installed) },
+            notifyUpdates = { _, _ -> },
+        )
+
+        val updates = api.checkForUpdates(context = mockk<Context>(relaxed = true), fromAvailableExtensionList = true)
+
+        assertEquals(listOf(installed), updates)
+    }
+
     private fun installedExtension() = Extension.Installed(
         name = "Example",
         pkgName = "example.extension",
@@ -99,12 +114,12 @@ class ExtensionApiSharedCatalogTest {
         isShared = false,
     )
 
-    private fun availableExtension() = Extension.Available(
+    private fun availableExtension(libVersion: Double = 1.4) = Extension.Available(
         name = "Example",
         pkgName = "example.extension",
         versionName = "1.4.1",
         versionCode = 10,
-        libVersion = 1.4,
+        libVersion = libVersion,
         lang = "en",
         isNsfw = false,
         sources = emptyList(),
