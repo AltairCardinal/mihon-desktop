@@ -18,7 +18,6 @@ import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.reader.ReaderNavigator
 import mihon.desktop.settings.LibraryCategoryPrefs
 import mihon.domain.task.TaskStatus
-import mihon.domain.reader.isReaderChapterFiltered
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.interactor.CreateCategoryWithName
 import tachiyomi.domain.category.interactor.DeleteCategory
@@ -427,25 +426,16 @@ class LibraryScreenModel(
         val target = chapters.firstOrNull { !it.read }
             ?: chapters.maxByOrNull { it.sourceOrder }
             ?: return null
-        val visibleChapterIds = chapters
-            .filterNot { chapter ->
-                isReaderChapterFiltered(
-                    unreadFilterRaw = item.manga.unreadFilterRaw,
-                    downloadedFilterRaw = item.manga.downloadedFilterRaw,
-                    bookmarkedFilterRaw = item.manga.bookmarkedFilterRaw,
-                    chapterIsRead = chapter.read,
-                    chapterIsBookmarked = chapter.bookmark,
-                    chapterIsDownloaded = downloadProvider?.isChapterDownloaded(
-                        item.manga.source,
-                        item.manga.title,
-                        chapter.name,
-                    ) == true,
-                )
-            }
-            .mapTo(mutableSetOf(), Chapter::id)
         val chapterRefs = chapters.toReaderChapterRefs(
             currentChapterId = target.id,
-            visibleChapterIds = visibleChapterIds,
+            manga = item.manga,
+            isChapterDownloaded = { chapter ->
+                downloadProvider?.isChapterDownloaded(
+                    item.manga.source,
+                    item.manga.title,
+                    chapter.name,
+                ) == true
+            },
         )
         return LibraryReaderRequest(
             chapterTitle = target.name,

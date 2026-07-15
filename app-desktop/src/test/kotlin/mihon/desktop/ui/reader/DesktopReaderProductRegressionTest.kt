@@ -336,12 +336,15 @@ class DesktopReaderProductRegressionTest {
         val screen = readerSource("DesktopReaderScreen.kt")
         val settings = readerSource("ReaderSettingsPanel.kt")
         val detail = source("app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt")
+        val chapterRefs = source("app-desktop/src/main/kotlin/mihon/desktop/ui/library/ReaderChapterRefs.kt")
 
         assertTrue(screen.contains("skipFilteredChapters = state.skipFilteredChapters"))
         assertTrue(screen.contains("skipDuplicateChapters = state.skipDuplicateChapters"))
         assertTrue(settings.contains("Skip filtered chapters"))
         assertTrue(settings.contains("Skip duplicate chapters"))
-        assertTrue(detail.contains("visibleChapterIds = displayedChapters"))
+        assertFalse(detail.contains("visibleChapterIds = displayedChapters"))
+        assertTrue(chapterRefs.contains("isReaderChapterFiltered("))
+        assertTrue(chapterRefs.contains("unreadFilterRaw = manga.unreadFilterRaw"))
     }
 
     private fun readerSource(name: String): String =

@@ -508,7 +508,6 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                 manga = manga!!,
                                 chapters = chapters,
                                 chapter = ch,
-                                visibleChapterIds = displayedChapters.mapTo(mutableSetOf(), Chapter::id),
                             ) ?: return@ExtendedFloatingActionButton
                             navigator.push(
                                 DesktopReaderScreen(
@@ -868,7 +867,6 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                 manga = manga!!,
                                 chapters = chapters,
                                 chapter = chapter,
-                                visibleChapterIds = displayedChapters.mapTo(mutableSetOf(), Chapter::id),
                             ) ?: return@launch
                             navigator.push(
                                 DesktopReaderScreen(

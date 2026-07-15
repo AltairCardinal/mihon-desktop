@@ -96,9 +96,22 @@ class MangaDetailScreenModel(
             if (manga == null) {
                 state.copy(manga = null)
             } else {
+                val initializeFilters = state.manga?.id != manga.id
                 state.copy(
                     manga = manga,
                     coverModel = resolveCoverModel?.invoke(manga.id, manga.thumbnailUrl) ?: manga.thumbnailUrl,
+                    filterShowRead = if (initializeFilters) manga.unreadFilterRaw != Manga.CHAPTER_SHOW_UNREAD else state.filterShowRead,
+                    filterShowUnread = if (initializeFilters) manga.unreadFilterRaw != Manga.CHAPTER_SHOW_READ else state.filterShowUnread,
+                    filterShowBookmarked = if (initializeFilters) {
+                        manga.bookmarkedFilterRaw == Manga.CHAPTER_SHOW_BOOKMARKED
+                    } else {
+                        state.filterShowBookmarked
+                    },
+                    filterShowDownloaded = if (initializeFilters) {
+                        manga.downloadedFilterRaw == Manga.CHAPTER_SHOW_DOWNLOADED
+                    } else {
+                        state.filterShowDownloaded
+                    },
                     chapterSortMode = chapterSortModeFromManga(manga),
                     chapterSortAscending = !manga.sortDescending(),
                 )
@@ -389,7 +402,6 @@ class MangaDetailScreenModel(
         manga: Manga,
         chapters: List<Chapter>,
         chapter: Chapter,
-        visibleChapterIds: Set<Long>? = null,
     ): MangaDetailReaderRequest? {
         if (chapter.url.externalChapterUrlOrNull() != null) return null
         val readerChapters = chapters
@@ -397,7 +409,8 @@ class MangaDetailScreenModel(
             .sortedBy { it.sourceOrder }
         val chapterRefs = readerChapters.toReaderChapterRefs(
             currentChapterId = chapter.id,
-            visibleChapterIds = visibleChapterIds ?: readerChapters.mapTo(mutableSetOf(), Chapter::id),
+            manga = manga,
+            isChapterDownloaded = { readerChapter -> isChapterDownloaded(manga, readerChapter) },
         )
         return MangaDetailReaderRequest(
             chapterTitle = chapter.name,

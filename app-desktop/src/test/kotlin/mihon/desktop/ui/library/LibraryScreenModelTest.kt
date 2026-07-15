@@ -521,12 +521,28 @@ class LibraryScreenModelTest {
             LibraryScreenModel(chapterRepository = chapterRepository)
                 .continueReadingRequest(sampleLibraryManga(manga)),
         )
+        val detailModel = MangaDetailScreenModel(mangaId = manga.id)
+        detailModel.setManga(manga)
+        detailModel.setChapters(chapters)
+        val detailState = detailModel.state.value
+        assertFalse(detailState.filterShowRead)
+        assertTrue(detailState.filterShowUnread)
         val detailRequest = requireNotNull(
-            MangaDetailScreenModel(mangaId = manga.id).readerRequest(
-                manga = manga,
-                chapters = chapters,
+            detailModel.readerRequest(
+                manga = requireNotNull(detailState.manga),
+                chapters = detailState.chapters,
                 chapter = current,
-                visibleChapterIds = setOf(current.id, visible.id),
+            ),
+        )
+
+        detailModel.setFilterShowRead(true)
+        detailModel.setManga(manga.copy(title = "Updated title"))
+        assertTrue(detailModel.state.value.filterShowRead)
+        val requestAfterTemporaryUiChange = requireNotNull(
+            detailModel.readerRequest(
+                manga = requireNotNull(detailModel.state.value.manga),
+                chapters = detailModel.state.value.chapters,
+                chapter = current,
             ),
         )
 
@@ -542,6 +558,8 @@ class LibraryScreenModelTest {
         ).previousRead
 
         assertTrue(libraryRequest.chapters.first { it.id == filtered.id }.isFiltered)
+        assertTrue(detailRequest.chapters.first { it.id == filtered.id }.isFiltered)
+        assertTrue(requestAfterTemporaryUiChange.chapters.first { it.id == filtered.id }.isFiltered)
         assertEquals(visible.id, detailTarget?.id)
         assertEquals(detailTarget?.id, libraryTarget?.id)
     }
