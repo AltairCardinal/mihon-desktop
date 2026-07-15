@@ -15,20 +15,21 @@ class ExtensionUpdateDetectionTest {
 
     private fun jar(name: String) = File(tmpDir.toFile(), "$name.jar").also { it.createNewFile() }
 
-    private fun installedExt(pkgName: String, versionCode: Long) =
+    private fun installedExt(pkgName: String, versionCode: Long, versionName: String = "1.4.0") =
         InstalledExtension(
             jarFile = jar(pkgName),
             sources = emptyList(),
             versionCode = versionCode,
-            versionName = "1.0.0",
+            versionName = versionName,
         )
 
-    private fun availableExt(pkgName: String, versionCode: Long) =
+    private fun availableExt(pkgName: String, versionCode: Long, libVersion: Double = 1.4) =
         DesktopAvailableExtension(
             name = pkgName,
             pkgName = pkgName,
             versionCode = versionCode,
-            versionName = "1.0.0",
+            versionName = "$libVersion.1",
+            libVersion = libVersion,
             lang = "en",
             isNsfw = false,
             jarUrl = "https://example.com/$pkgName.jar",
@@ -51,6 +52,16 @@ class ExtensionUpdateDetectionTest {
         val available = listOf(availableExt("eu.kanade.ext.b", versionCode = 10L))
         val updates = findUpdatableExtensions(installed, available)
         assertTrue(updates.isEmpty())
+    }
+
+    @Test
+    fun `findUpdatableExtensions returns extension when shared lib version is newer`() {
+        val installed = listOf(installedExt("eu.kanade.ext.lib", versionCode = 10L, versionName = "1.4.9"))
+        val available = listOf(availableExt("eu.kanade.ext.lib", versionCode = 10L, libVersion = 1.5))
+
+        val updates = findUpdatableExtensions(installed, available)
+
+        assertEquals(listOf("eu.kanade.ext.lib"), updates.map { it.pkgName })
     }
 
     @Test

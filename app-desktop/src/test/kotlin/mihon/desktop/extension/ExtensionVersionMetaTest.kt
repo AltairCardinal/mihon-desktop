@@ -116,11 +116,11 @@ class ExtensionVersionMetaTest {
     }
 
     @Test
-    fun `repository identity change is rejected but legacy metadata can adopt identity`() {
+    fun `repository identity change or missing identity requires confirmation`() {
         assertEquals(true, repositoryIdentityConflicts("ABC", "DEF"))
         assertEquals(false, repositoryIdentityConflicts("ABC", "abc"))
-        assertEquals(false, repositoryIdentityConflicts("", "DEF"))
-        assertEquals(false, repositoryIdentityConflicts("ABC", ""))
+        assertEquals(true, repositoryIdentityConflicts("", "DEF"))
+        assertEquals(true, repositoryIdentityConflicts("ABC", ""))
     }
 
     @Test

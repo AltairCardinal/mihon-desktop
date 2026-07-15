@@ -1,5 +1,8 @@
 package mihon.desktop.extension
 
+import mihon.domain.extension.model.extractExtensionLibVersion
+import mihon.domain.extension.model.isExtensionUpdateAvailable
+
 /**
  * Returns the subset of [available] extensions that have a newer version than what is installed.
  */
@@ -11,7 +14,12 @@ fun findUpdatableExtensions(
     return available.filter { avail ->
         if (avail.pkgName in BUNDLED_EXTENSION_PACKAGE_NAMES) return@filter false
         val inst = installedByPkg[avail.pkgName]
-        inst != null && avail.versionCode > inst.versionCode
+        inst != null && isExtensionUpdateAvailable(
+            availableVersionCode = avail.versionCode,
+            availableLibVersion = avail.libVersion,
+            installedVersionCode = inst.versionCode,
+            installedLibVersion = extractExtensionLibVersion(inst.versionName) ?: 0.0,
+        )
     }
 }
 

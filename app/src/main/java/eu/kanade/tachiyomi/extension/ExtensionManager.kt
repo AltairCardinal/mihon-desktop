@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import logcat.LogPriority
+import mihon.domain.extension.model.isExtensionUpdateAvailable
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.source.model.StubSource
@@ -364,7 +365,12 @@ class ExtensionManager(
             ?: availableExtensionMapFlow.value[pkgName]
             ?: return false
 
-        return (availableExt.versionCode > versionCode || availableExt.libVersion > libVersion)
+        return isExtensionUpdateAvailable(
+            availableVersionCode = availableExt.versionCode,
+            availableLibVersion = availableExt.libVersion,
+            installedVersionCode = versionCode,
+            installedLibVersion = libVersion,
+        )
     }
 
     private fun updatePendingUpdatesCount() {

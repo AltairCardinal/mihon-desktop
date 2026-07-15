@@ -8,6 +8,7 @@ data class DesktopAvailableExtension(
     val pkgName: String,
     val versionName: String,
     val versionCode: Long,
+    val libVersion: Double = 0.0,
     val lang: String,
     val isNsfw: Boolean,
     /** URL to download the JAR file. */
@@ -16,6 +17,7 @@ data class DesktopAvailableExtension(
     val repoUrl: String,
     val repoName: String = "",
     val repoFingerprint: String = "",
+    val declaredSha256: String? = null,
     val sources: List<DesktopAvailableSource> = emptyList(),
 )
 

@@ -63,4 +63,4 @@ private fun metaFileFor(jarFile: File): File =
     File(jarFile.parent, "${jarFile.nameWithoutExtension}.meta.json")
 
 internal fun repositoryIdentityConflicts(existing: String, incoming: String): Boolean =
-    existing.isNotBlank() && incoming.isNotBlank() && !existing.equals(incoming, ignoreCase = true)
+    existing.isBlank() || incoming.isBlank() || !existing.equals(incoming, ignoreCase = true)

@@ -3,15 +3,26 @@ package mihon.desktop.extension
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.awaitSuccess
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import logcat.LogPriority
-import mihon.domain.extensionrepo.repository.ExtensionRepoRepository
+import mihon.domain.extension.model.ExtensionCatalogResult
+import mihon.domain.extension.model.ExtensionCompatibility
+import mihon.domain.extension.model.ExtensionArtifact
+import mihon.domain.extension.model.ExtensionSourceDescriptor
+import mihon.domain.extension.model.InstalledExtensionTrustRecord
+import mihon.domain.extension.model.RepositoryIdentity
+import mihon.domain.extension.model.toIdentity
+import mihon.domain.extension.service.ExtensionCatalogService
+import mihon.domain.extension.service.ExtensionTrustDecision
+import mihon.domain.extension.service.ExtensionTrustPolicy
+import mihon.domain.extension.service.ExtensionTrustRequest
+import mihon.domain.extension.service.RepositoryFetchResult
 import mihon.domain.extensionrepo.model.ExtensionRepo
+import mihon.domain.extensionrepo.repository.ExtensionRepoRepository
+import mihon.domain.extensionrepo.service.ExtensionRepoIndexEntryDto
+import mihon.domain.extensionrepo.service.toCatalogEntry
 import okhttp3.OkHttpClient
 import tachiyomi.core.common.util.system.logcat
 import java.io.File
@@ -30,6 +41,8 @@ class DesktopExtensionApi(
     private val json: Json,
     private val extensionRepoRepository: ExtensionRepoRepository,
     private val apkConverter: ApkToJarConverter = ApkToJarConverter(),
+    private val catalogService: ExtensionCatalogService = ExtensionCatalogService(),
+    private val trustPolicy: ExtensionTrustPolicy = ExtensionTrustPolicy(),
 ) {
 
     suspend fun loadExtensionIcon(iconUrl: String): ByteArray? = withContext(Dispatchers.IO) {
@@ -43,25 +56,41 @@ class DesktopExtensionApi(
         }.getOrNull()
     }
 
-    suspend fun findAvailableExtensions(): List<DesktopAvailableExtension> = coroutineScope {
-        extensionRepoRepository.getAll()
-            .map { repo -> async { fetchExtensionsFromRepo(repo) } }
-            .awaitAll()
-            .flatten()
+    suspend fun findAvailableExtensions(): List<DesktopAvailableExtension> = refreshCatalog().entries
+        .filter { it.compatibility == ExtensionCompatibility.Compatible }
+        .map { entry ->
+            val artifact = entry.artifact
+            DesktopAvailableExtension(
+                name = artifact.name,
+                pkgName = artifact.packageName,
+                versionName = artifact.versionName,
+                versionCode = artifact.versionCode,
+                libVersion = artifact.libVersion,
+                lang = artifact.language,
+                isNsfw = artifact.isNsfw,
+                jarUrl = artifact.downloadUrl,
+                iconUrl = artifact.iconUrl,
+                repoUrl = artifact.repository.baseUrl,
+                repoName = artifact.repository.name,
+                repoFingerprint = artifact.repository.signingKeyFingerprint,
+                declaredSha256 = artifact.declaredSha256,
+                sources = artifact.sources.map {
+                    DesktopAvailableSource(it.id, it.language, it.name, it.baseUrl)
+                },
+            )
+        }
+
+    suspend fun refreshCatalog(): ExtensionCatalogResult = coroutineScope {
+        catalogService.refresh(extensionRepoRepository.getAll(), ::fetchRepository)
     }
 
-    private suspend fun fetchExtensionsFromRepo(repo: ExtensionRepo): List<DesktopAvailableExtension> {
-        return try {
-            val response = client
-                .newCall(GET("${repo.baseUrl}/index.min.json"))
-                .awaitSuccess()
-            val body = response.body.string()
-            json.decodeFromString<List<ExtensionJsonObject>>(body)
-                .toDesktopExtensions(repo)
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "Failed to fetch extensions from ${repo.baseUrl}" }
-            emptyList()
-        }
+    private suspend fun fetchRepository(repo: ExtensionRepo): RepositoryFetchResult {
+        val response = client
+            .newCall(GET("${repo.baseUrl}/index.min.json"))
+            .awaitSuccess()
+        val entries = json.decodeFromString<List<ExtensionRepoIndexEntryDto>>(response.body.string())
+            .map { it.toCatalogEntry(repo) }
+        return RepositoryFetchResult.Success(repo.toIdentity(), entries)
     }
 
     /**
@@ -76,19 +105,31 @@ class DesktopExtensionApi(
             targetDir.mkdirs()
             val installedJar = File(targetDir, "${extension.pkgName}.jar")
             val existingMeta = readExtensionMeta(installedJar)
-            if (repositoryIdentityConflicts(existingMeta?.repoFingerprint.orEmpty(), extension.repoFingerprint)) {
-                return@withContext InstallResult.TrustRequired(
-                    existingFingerprint = existingMeta?.repoFingerprint.orEmpty(),
-                    incomingFingerprint = extension.repoFingerprint,
-                )
-            }
+            trustFailure(
+                trustPolicy.evaluate(extension.trustRequest(installedJar, existingMeta)),
+                existingMeta,
+                extension,
+            )?.let { return@withContext it }
             // Download to a .tmp file first so we can inspect the content type
             val downloadedFile = File.createTempFile("${extension.pkgName}.", ".download", targetDir)
             val response = client.newCall(GET(extension.jarUrl)).awaitSuccess()
             response.body.byteStream().use { input ->
                 downloadedFile.outputStream().use { output -> input.copyTo(output) }
             }
-
+            trustFailure(
+                trustPolicy.evaluate(
+                    extension.trustRequest(
+                        installedJar = installedJar,
+                        existingMeta = existingMeta,
+                        downloadedArtifactSha256 = downloadedFile.sha256(),
+                    ),
+                ),
+                existingMeta,
+                extension,
+            )?.let {
+                downloadedFile.delete()
+                return@withContext it
+            }
             // Determine content type by scanning ZIP entries
             val (hasJvmClasses, hasDex) = try {
                 ZipFile(downloadedFile).use { zip ->
@@ -179,29 +220,6 @@ class DesktopExtensionApi(
         }
     }
 
-    private fun List<ExtensionJsonObject>.toDesktopExtensions(
-        repo: ExtensionRepo,
-    ): List<DesktopAvailableExtension> = this
-        .filter { it.extractLibVersion() in LIB_VERSION_MIN..LIB_VERSION_MAX }
-        .map { obj ->
-            DesktopAvailableExtension(
-                name = obj.name.substringAfter("Tachiyomi: "),
-                pkgName = obj.pkg,
-                versionName = obj.version,
-                versionCode = obj.code,
-                lang = obj.lang,
-                isNsfw = obj.nsfw == 1,
-                jarUrl = "${repo.baseUrl}/apk/${obj.apk}",
-                iconUrl = "${repo.baseUrl}/icon/${obj.pkg}.png",
-                repoUrl = repo.baseUrl,
-                repoName = repo.name,
-                repoFingerprint = repo.signingKeyFingerprint,
-                sources = obj.sources.orEmpty().map {
-                    DesktopAvailableSource(it.id, it.lang, it.name, it.baseUrl)
-                },
-            )
-        }
-
     private fun File.sha256(): String = inputStream().use { input ->
         val digest = java.security.MessageDigest.getInstance("SHA-256")
         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
@@ -213,8 +231,55 @@ class DesktopExtensionApi(
         digest.digest().joinToString("") { "%02x".format(it) }
     }
 
-    private fun ExtensionJsonObject.extractLibVersion(): Double =
-        version.substringBeforeLast('.').toDoubleOrNull() ?: 0.0
+    private fun DesktopAvailableExtension.trustRequest(
+        installedJar: File,
+        existingMeta: ExtensionMeta?,
+        downloadedArtifactSha256: String? = null,
+    ): ExtensionTrustRequest {
+        val installed = installedJar.takeIf(File::exists)?.let {
+            InstalledExtensionTrustRecord(
+                repository = existingMeta?.takeIf {
+                    it.repoUrl.isNotBlank() && it.repoFingerprint.isNotBlank()
+                }?.let {
+                    RepositoryIdentity(it.repoUrl, it.repoName, it.repoFingerprint)
+                },
+                artifactSha256 = existingMeta?.artifactSha256,
+            )
+        }
+        return ExtensionTrustRequest(
+            incomingArtifact = ExtensionArtifact(
+                name = name,
+                packageName = pkgName,
+                versionName = versionName,
+                versionCode = versionCode,
+                language = lang,
+                isNsfw = isNsfw,
+                sources = sources.map {
+                    ExtensionSourceDescriptor(it.id, it.lang, it.name, it.baseUrl)
+                },
+                repository = RepositoryIdentity(repoUrl, repoName, repoFingerprint),
+                downloadUrl = jarUrl,
+                iconUrl = iconUrl,
+                declaredSha256 = declaredSha256,
+            ),
+            downloadedArtifactSha256 = downloadedArtifactSha256,
+            installed = installed,
+            installedArtifactSha256 = installedJar.takeIf(File::exists)?.sha256(),
+        )
+    }
+
+    private fun trustFailure(
+        decision: ExtensionTrustDecision,
+        existingMeta: ExtensionMeta?,
+        extension: DesktopAvailableExtension,
+    ): InstallResult? = when (decision) {
+        ExtensionTrustDecision.Trusted -> null
+        is ExtensionTrustDecision.ConfirmationRequired -> InstallResult.TrustRequired(
+            existingFingerprint = existingMeta?.repoFingerprint.orEmpty(),
+            incomingFingerprint = extension.repoFingerprint,
+        )
+        is ExtensionTrustDecision.Rejected -> InstallResult.Error("Extension artifact integrity validation failed")
+    }
 
     sealed interface InstallResult {
         data class Success(val file: File) : InstallResult
@@ -226,31 +291,9 @@ class DesktopExtensionApi(
     }
 
     companion object {
-        private const val LIB_VERSION_MIN = 1.2
-        private const val LIB_VERSION_MAX = 1.5
         private const val MAX_ICON_BYTES = 2 * 1024 * 1024
     }
 }
-
-@Serializable
-private data class ExtensionJsonObject(
-    val name: String,
-    val pkg: String,
-    val apk: String,
-    val lang: String,
-    val code: Long,
-    val version: String,
-    val nsfw: Int,
-    val sources: List<ExtensionSourceJsonObject>? = null,
-)
-
-@Serializable
-private data class ExtensionSourceJsonObject(
-    val id: Long,
-    val lang: String,
-    val name: String,
-    val baseUrl: String,
-)
 
 internal fun replaceExtensionArtifact(candidate: File, destination: File) {
     val backup = File(destination.parentFile, "${destination.name}.backup")
