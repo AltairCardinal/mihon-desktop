@@ -19,21 +19,55 @@ internal suspend fun <S, T> decodeWithSharedPageDecoder(
     decoder: PageDecoder<S, T>,
 ): PageDecodeResult<T> = decoder.decode(encoded, request)
 
+internal interface AndroidReaderNativeDecoder {
+    val width: Int
+    val height: Int
+
+    fun decode(sampleSize: Int): Bitmap?
+    fun recycle()
+}
+
+internal fun interface AndroidReaderNativeDecoderFactory {
+    fun create(
+        encoded: BufferedSource,
+        cropBorders: Boolean,
+        displayProfile: ByteArray?,
+    ): AndroidReaderNativeDecoder?
+}
+
+private class TachiyomiReaderNativeDecoder(
+    private val delegate: ImageDecoder,
+) : AndroidReaderNativeDecoder {
+    override val width: Int = delegate.width
+    override val height: Int = delegate.height
+
+    override fun decode(sampleSize: Int): Bitmap? = delegate.decode(sampleSize = sampleSize)
+
+    override fun recycle() = delegate.recycle()
+}
+
+private val defaultAndroidReaderNativeDecoderFactory =
+    AndroidReaderNativeDecoderFactory { encoded, cropBorders, displayProfile ->
+        ImageDecoder.newInstance(encoded.inputStream(), cropBorders, displayProfile)
+            ?.let(::TachiyomiReaderNativeDecoder)
+    }
+
 /** Android adapter around the upstream native decoder; encoded input remains streaming. */
 internal class AndroidTachiyomiPageDecoder(
     private val cropBorders: Boolean,
     private val displayProfile: ByteArray?,
     private val bitmapConfig: Bitmap.Config,
+    private val nativeDecoderFactory: AndroidReaderNativeDecoderFactory = defaultAndroidReaderNativeDecoderFactory,
 ) : PageDecoder<BufferedSource, Bitmap> {
 
     override suspend fun decode(
         encoded: BufferedSource,
         request: PageDecodeRequest,
     ): PageDecodeResult<Bitmap> {
-        var decoder: ImageDecoder? = null
+        var decoder: AndroidReaderNativeDecoder? = null
         return try {
             require(request.maxWidth > 0 && request.maxHeight > 0)
-            decoder = ImageDecoder.newInstance(encoded.inputStream(), cropBorders, displayProfile)
+            decoder = nativeDecoderFactory.create(encoded, cropBorders, displayProfile)
             check(decoder != null && decoder.width > 0 && decoder.height > 0) { "Failed to initialize decoder" }
 
             val sourceWidth = decoder.width

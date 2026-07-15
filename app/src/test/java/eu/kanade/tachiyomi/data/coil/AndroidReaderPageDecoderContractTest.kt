@@ -160,6 +160,58 @@ class AndroidReaderPageDecoderContractTest {
         }
     }
 
+    @Test
+    fun `Android production page decoder passes bounded power of two samples to native decoder`() = runTest {
+        val cases = listOf(
+            BoundedSampleCase(5000, 1000, 2048, 2048, expectedSample = 4),
+            BoundedSampleCase(1000, 10_001, 2048, 2048, expectedSample = 8),
+        )
+
+        cases.forEach { case ->
+            val bitmap = mockk<Bitmap>()
+            every { bitmap.width } returns ceilingDivide(case.sourceWidth, case.expectedSample)
+            every { bitmap.height } returns ceilingDivide(case.sourceHeight, case.expectedSample)
+            every { bitmap.allocationByteCount } returns 1024
+            val nativeDecoder = FakeAndroidReaderNativeDecoder(case.sourceWidth, case.sourceHeight, bitmap)
+            val decoder = AndroidTachiyomiPageDecoder(
+                cropBorders = false,
+                displayProfile = null,
+                bitmapConfig = Bitmap.Config.ARGB_8888,
+                nativeDecoderFactory = AndroidReaderNativeDecoderFactory { _, _, _ -> nativeDecoder },
+            )
+
+            val result = decoder.decode(
+                Buffer().writeUtf8("encoded"),
+                PageDecodeRequest(0, 1L, case.maxWidth, case.maxHeight),
+            )
+
+            assertInstanceOf(PageDecodeResult.Success::class.java, result)
+            assertEquals(listOf(case.expectedSample), nativeDecoder.decodeSamples)
+            assertEquals(1, Integer.bitCount(nativeDecoder.decodeSamples.single()))
+            assertEquals(1, nativeDecoder.recycleCalls)
+        }
+    }
+
+    @Test
+    fun `Android production page decoder rejects unrepresentable sample without invoking native decode`() = runTest {
+        val nativeDecoder = FakeAndroidReaderNativeDecoder(Int.MAX_VALUE, 1, mockk())
+        val decoder = AndroidTachiyomiPageDecoder(
+            cropBorders = false,
+            displayProfile = null,
+            bitmapConfig = Bitmap.Config.ARGB_8888,
+            nativeDecoderFactory = AndroidReaderNativeDecoderFactory { _, _, _ -> nativeDecoder },
+        )
+
+        val result = decoder.decode(
+            Buffer().writeUtf8("encoded"),
+            PageDecodeRequest(0, 1L, maxWidth = 1, maxHeight = 1),
+        )
+
+        assertInstanceOf(PageDecodeResult.Failure::class.java, result)
+        assertTrue(nativeDecoder.decodeSamples.isEmpty())
+        assertEquals(1, nativeDecoder.recycleCalls)
+    }
+
     private data class BoundedSampleCase(
         val sourceWidth: Int,
         val sourceHeight: Int,
@@ -170,4 +222,22 @@ class AndroidReaderPageDecoderContractTest {
 
     private fun ceilingDivide(value: Int, divisor: Int): Int =
         ((value.toLong() + divisor - 1L) / divisor).toInt()
+
+    private class FakeAndroidReaderNativeDecoder(
+        override val width: Int,
+        override val height: Int,
+        private val bitmap: Bitmap,
+    ) : AndroidReaderNativeDecoder {
+        val decodeSamples = mutableListOf<Int>()
+        var recycleCalls = 0
+
+        override fun decode(sampleSize: Int): Bitmap {
+            decodeSamples += sampleSize
+            return bitmap
+        }
+
+        override fun recycle() {
+            recycleCalls++
+        }
+    }
 }
