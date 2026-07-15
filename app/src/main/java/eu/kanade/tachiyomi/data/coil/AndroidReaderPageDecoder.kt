@@ -74,7 +74,7 @@ internal class AndroidTachiyomiPageDecoder(
     }
 }
 
-/** Returns the smallest integer sample whose ceiling-sized output fits both reader bounds. */
+/** Returns the smallest power-of-two sample whose ceiling-sized output fits both reader bounds. */
 internal fun calculateBoundedReaderSampleSize(
     sourceWidth: Int,
     sourceHeight: Int,
@@ -87,11 +87,17 @@ internal fun calculateBoundedReaderSampleSize(
     fun requiredSample(source: Int, maximum: Int): Long =
         (source.toLong() + maximum - 1L) / maximum
 
-    return maxOf(
+    val requiredSample = maxOf(
         1L,
         requiredSample(sourceWidth, maxWidth),
         requiredSample(sourceHeight, maxHeight),
-    ).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+    )
+    var sampleSize = 1L
+    while (sampleSize < requiredSample) {
+        sampleSize = sampleSize shl 1
+    }
+    require(sampleSize <= Int.MAX_VALUE) { "Required sample size cannot be represented as a positive Int" }
+    return sampleSize.toInt()
 }
 
 internal data class AndroidReaderCachePolicy(

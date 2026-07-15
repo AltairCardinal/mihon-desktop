@@ -21,6 +21,7 @@ import okio.FileSystem
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -123,12 +124,12 @@ class AndroidReaderPageDecoderContractTest {
     }
 
     @Test
-    fun `Android reader ceiling sample keeps non power of two image within both requested bounds`() {
+    fun `Android reader sample is a power of two that keeps output within both requested bounds`() {
         val cases = listOf(
             BoundedSampleCase(4095, 1000, 2048, 2048, expectedSample = 2),
-            BoundedSampleCase(5000, 1000, 2048, 2048, expectedSample = 3),
-            BoundedSampleCase(1000, 10_001, 2048, 2048, expectedSample = 5),
-            BoundedSampleCase(5000, 5000, 2048, 1024, expectedSample = 5),
+            BoundedSampleCase(5000, 1000, 2048, 2048, expectedSample = 4),
+            BoundedSampleCase(1000, 10_001, 2048, 2048, expectedSample = 8),
+            BoundedSampleCase(5000, 5000, 2048, 1024, expectedSample = 8),
             BoundedSampleCase(1000, 900, 2048, 2048, expectedSample = 1),
         )
 
@@ -141,8 +142,21 @@ class AndroidReaderPageDecoderContractTest {
             )
 
             assertEquals(case.expectedSample, sample)
+            assertEquals(1, Integer.bitCount(sample))
             assertTrue(ceilingDivide(case.sourceWidth, sample) <= case.maxWidth)
             assertTrue(ceilingDivide(case.sourceHeight, sample) <= case.maxHeight)
+        }
+    }
+
+    @Test
+    fun `Android reader sample rejects bounds that require an unrepresentable power of two`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            calculateBoundedReaderSampleSize(
+                sourceWidth = Int.MAX_VALUE,
+                sourceHeight = 1,
+                maxWidth = 1,
+                maxHeight = 1,
+            )
         }
     }
 
