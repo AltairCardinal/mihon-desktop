@@ -3,13 +3,21 @@ package mihon.domain.extension
 import kotlinx.serialization.json.Json
 import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionArtifact
+import mihon.domain.extension.model.ExtensionCatalogEntry
+import mihon.domain.extension.model.ExtensionCatalogResult
 import mihon.domain.extension.model.ExtensionCompatibility
+import mihon.domain.extension.model.ExtensionSourceDescriptor
 import mihon.domain.extension.model.InstalledExtensionTrustRecord
+import mihon.domain.extension.model.RepositoryCatalogFailure
 import mihon.domain.extension.model.RepositoryIdentity
 import mihon.domain.extension.model.toIdentity
+import mihon.domain.extension.service.ExtensionCatalogService
 import mihon.domain.extension.service.ExtensionTrustDecision
 import mihon.domain.extension.service.ExtensionTrustPolicy
 import mihon.domain.extension.service.ExtensionTrustRequest
+import mihon.domain.extension.service.ExtensionUpdatePolicy
+import mihon.domain.extension.service.RepositoryFetchResult
+import mihon.domain.extension.service.SharedExtensionUpdatePolicy
 import mihon.domain.extension.service.TrustMismatch
 import mihon.domain.extensionrepo.model.ExtensionRepo
 import mihon.domain.extensionrepo.service.ExtensionRepoIndexEntryDto
@@ -19,17 +27,34 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.lang.reflect.ParameterizedType
+import java.lang.reflect.Type
 
 class ExtensionSharedContractTest {
 
     @Test
-    fun `shared artifact model contains no File or Android platform types`() {
+    fun `shared extension model and service surface contains no File or Android platform types`() {
         val artifact = artifact()
-
-        val fieldTypes = buildList {
-            addAll(ExtensionArtifact::class.java.declaredFields.map { it.type.name })
-            addAll(RepositoryIdentity::class.java.declaredFields.map { it.type.name })
-        }
+        val sharedSurface = listOf(
+            ExtensionArtifact::class.java,
+            RepositoryIdentity::class.java,
+            ExtensionSourceDescriptor::class.java,
+            InstalledExtensionTrustRecord::class.java,
+            ExtensionCatalogEntry::class.java,
+            ExtensionCatalogResult::class.java,
+            RepositoryCatalogFailure::class.java,
+            ExtensionCompatibility::class.java,
+            RepositoryFetchResult::class.java,
+            ExtensionTrustDecision::class.java,
+            TrustMismatch::class.java,
+            ExtensionTrustRequest::class.java,
+            ExtensionUpdatePolicy::class.java,
+            SharedExtensionUpdatePolicy::class.java,
+            ExtensionCatalogService::class.java,
+            ExtensionTrustPolicy::class.java,
+        ).flatMap { it.withNestedClasses() }
+        val fieldTypes = sharedSurface
+            .flatMap { type -> type.declaredFields.flatMap { it.genericType.typeNames() } }
 
         assertEquals("eu.kanade.tachiyomi.extension.en.example", artifact.packageName)
         assertFalse(fieldTypes.any { it == "java.io.File" || it.startsWith("android.") })
@@ -78,6 +103,18 @@ class ExtensionSharedContractTest {
         assertTrue(newerCode.isUpdateAvailable(installedVersionCode = 10, installedLibVersion = 1.4))
         assertTrue(newerLib.isUpdateAvailable(installedVersionCode = 10, installedLibVersion = 1.4))
         assertFalse(same.isUpdateAvailable(installedVersionCode = 10, installedLibVersion = 1.4))
+    }
+
+    @Test
+    fun `default update policy executes the shared version rule`() {
+        assertTrue(
+            SharedExtensionUpdatePolicy.isUpdateAvailable(
+                availableVersionCode = 10,
+                availableLibVersion = 1.5,
+                installedVersionCode = 10,
+                installedLibVersion = 1.4,
+            ),
+        )
     }
 
     @Test
@@ -146,11 +183,36 @@ class ExtensionSharedContractTest {
     @Test
     fun `matching identity digests and installed origin are trusted`() {
         val decision = trustDecision(
-            installedRepository = repository(baseUrl = "https://repo.example/").toIdentity(),
-            incomingRepository = repository(fingerprint = "repo-fingerprint").toIdentity(),
+            installedRepository = repository(baseUrl = "HTTPS://REPO.EXAMPLE/").toIdentity(),
+            incomingRepository = repository(
+                baseUrl = "https://repo.example",
+                fingerprint = "repo-fingerprint",
+            ).toIdentity(),
         )
 
         assertEquals(ExtensionTrustDecision.Trusted, decision)
+    }
+
+    @Test
+    fun `repository path case change requires explicit confirmation`() {
+        val decision = trustDecision(
+            installedRepository = repository(baseUrl = "https://repo.example/Trusted").toIdentity(),
+            incomingRepository = repository(baseUrl = "https://repo.example/trusted").toIdentity(),
+        )
+
+        val required = assertInstanceOf(ExtensionTrustDecision.ConfirmationRequired::class.java, decision)
+        assertTrue(required.reasons.any { it is TrustMismatch.InstalledOriginChanged })
+    }
+
+    @Test
+    fun `repository query case change requires explicit confirmation`() {
+        val decision = trustDecision(
+            installedRepository = repository(baseUrl = "https://repo.example/index?Channel=Stable").toIdentity(),
+            incomingRepository = repository(baseUrl = "https://repo.example/index?Channel=stable").toIdentity(),
+        )
+
+        val required = assertInstanceOf(ExtensionTrustDecision.ConfirmationRequired::class.java, decision)
+        assertTrue(required.reasons.any { it is TrustMismatch.InstalledOriginChanged })
     }
 
     private fun trustDecision(
@@ -204,4 +266,13 @@ class ExtensionSharedContractTest {
         const val INDEX_JSON =
             """[{"name":"Tachiyomi: Example","pkg":"eu.kanade.tachiyomi.extension.en.example","apk":"example.apk","lang":"en","code":42,"version":"1.4.7","nsfw":0,"sha256":"0123456789abcdef","sources":[{"id":7,"lang":"en","name":"Example Source","baseUrl":"https://source.example"}]}]"""
     }
+}
+
+private fun Class<*>.withNestedClasses(): List<Class<*>> =
+    listOf(this) + declaredClasses.flatMap { it.withNestedClasses() }
+
+private fun Type.typeNames(): List<String> = when (this) {
+    is Class<*> -> listOf(name)
+    is ParameterizedType -> rawType.typeNames() + actualTypeArguments.flatMap { it.typeNames() }
+    else -> listOf(typeName)
 }

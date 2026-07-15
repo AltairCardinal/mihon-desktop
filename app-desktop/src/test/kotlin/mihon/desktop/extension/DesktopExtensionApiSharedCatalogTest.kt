@@ -5,6 +5,7 @@ import kotlinx.serialization.json.Json
 import mihon.desktop.domain.fakes.FakeExtensionRepoRepository
 import mihon.domain.error.AppError
 import mihon.domain.extension.service.ExtensionCatalogService
+import mihon.domain.extension.service.TrustMismatch
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.OkHttpClient
@@ -95,8 +96,72 @@ class DesktopExtensionApiSharedCatalogTest {
 
             val result = api().installExtension(available, tempDir.toFile())
 
-            assertInstanceOf(DesktopExtensionApi.InstallResult.TrustRequired::class.java, result)
+            val trustRequired =
+                assertInstanceOf(DesktopExtensionApi.InstallResult.TrustRequired::class.java, result)
+            assertEquals(setOf(TrustMismatch.LegacyMetadataMissingRepositoryIdentity), trustRequired.reasons)
         }
+    }
+
+    @Test
+    fun `Desktop production result preserves missing artifact digest reason`() = runBlocking {
+        val installedJar = installedExtension(
+            repositoryUrl = "https://repo.example",
+            repositoryFingerprint = "repo-fingerprint",
+            recordedDigest = "",
+        )
+
+        val result = api().installExtension(availableExtension(), tempDir.toFile())
+
+        val trustRequired = assertInstanceOf(DesktopExtensionApi.InstallResult.TrustRequired::class.java, result)
+        assertEquals(setOf(TrustMismatch.LegacyMetadataMissingArtifactDigest), trustRequired.reasons)
+        assertTrue(installedJar.exists())
+    }
+
+    @Test
+    fun `Desktop production result preserves repository origin change reason`() = runBlocking {
+        installedExtension(
+            repositoryUrl = "https://old.example",
+            repositoryFingerprint = "repo-fingerprint",
+        )
+
+        val result = api().installExtension(availableExtension(), tempDir.toFile())
+
+        val trustRequired = assertInstanceOf(DesktopExtensionApi.InstallResult.TrustRequired::class.java, result)
+        assertEquals(
+            setOf(TrustMismatch.InstalledOriginChanged("https://old.example", "https://repo.example")),
+            trustRequired.reasons,
+        )
+    }
+
+    @Test
+    fun `Desktop production result preserves repository fingerprint change reason`() = runBlocking {
+        installedExtension(
+            repositoryUrl = "https://repo.example",
+            repositoryFingerprint = "old-fingerprint",
+        )
+
+        val result = api().installExtension(availableExtension(), tempDir.toFile())
+
+        val trustRequired = assertInstanceOf(DesktopExtensionApi.InstallResult.TrustRequired::class.java, result)
+        assertEquals(
+            setOf(TrustMismatch.RepositoryIdentityChanged("old-fingerprint", "repo-fingerprint")),
+            trustRequired.reasons,
+        )
+    }
+
+    @Test
+    fun `Desktop production result preserves installed digest rejection error`() = runBlocking {
+        installedExtension(
+            repositoryUrl = "https://repo.example",
+            repositoryFingerprint = "repo-fingerprint",
+            recordedDigest = "not-the-installed-digest",
+        )
+
+        val result = api().installExtension(availableExtension(), tempDir.toFile())
+
+        val rejected = assertInstanceOf(DesktopExtensionApi.InstallResult.Error::class.java, result)
+        assertInstanceOf(AppError.MalformedData::class.java, rejected.error)
+        assertEquals("Installed extension digest mismatch", rejected.error?.cause?.message)
     }
 
     @Test
@@ -122,8 +187,46 @@ class DesktopExtensionApiSharedCatalogTest {
 
             val error = assertInstanceOf(DesktopExtensionApi.InstallResult.Error::class.java, result)
             assertEquals("Extension artifact integrity validation failed", error.message)
+            assertInstanceOf(AppError.MalformedData::class.java, error.error)
+            assertEquals("Downloaded extension digest mismatch", error.error?.cause?.message)
         }
     }
+
+    private fun installedExtension(
+        repositoryUrl: String,
+        repositoryFingerprint: String,
+        recordedDigest: String? = null,
+    ): File {
+        val installedJar = File(tempDir.toFile(), "example.extension.jar").also { it.writeText("installed") }
+        writeExtensionMeta(
+            installedJar,
+            ExtensionMeta(
+                pkgName = "example.extension",
+                versionCode = 1,
+                versionName = "1.4.1",
+                repoUrl = repositoryUrl,
+                repoName = "repository",
+                repoFingerprint = repositoryFingerprint,
+                artifactSha256 = recordedDigest ?: installedJar.readBytes().sha256(),
+            ),
+        )
+        return installedJar
+    }
+
+    private fun availableExtension() = DesktopAvailableExtension(
+        name = "Example",
+        pkgName = "example.extension",
+        versionName = "1.4.2",
+        versionCode = 2,
+        libVersion = 1.4,
+        lang = "en",
+        isNsfw = false,
+        jarUrl = "https://repo.example/apk/example.apk",
+        iconUrl = "",
+        repoUrl = "https://repo.example",
+        repoName = "repository",
+        repoFingerprint = "repo-fingerprint",
+    )
 
     private suspend fun assertFailure(response: MockResponse, expected: Class<out AppError>) {
         withServer(response) { server ->

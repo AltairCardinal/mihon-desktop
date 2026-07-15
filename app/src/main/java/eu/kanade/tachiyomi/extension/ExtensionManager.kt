@@ -25,7 +25,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import logcat.LogPriority
-import mihon.domain.extension.model.isExtensionUpdateAvailable
+import mihon.domain.extension.service.ExtensionUpdatePolicy
+import mihon.domain.extension.service.SharedExtensionUpdatePolicy
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.source.model.StubSource
@@ -41,10 +42,16 @@ import java.util.Locale
  * signature is trusted, otherwise the user will be prompted with a warning to trust it before being
  * loaded.
  */
-class ExtensionManager(
+class ExtensionManager internal constructor(
     private val context: Context,
     private val preferences: SourcePreferences = Injekt.get(),
     private val trustExtension: TrustExtension = Injekt.get(),
+    private val updatePolicy: ExtensionUpdatePolicy = SharedExtensionUpdatePolicy,
+    private val installedExtensionsLoader: suspend (Context) -> List<LoadResult> = ExtensionLoader::loadExtensions,
+    private val availableExtensionsProvider: (suspend () -> List<Extension.Available>)? = null,
+    private val installReceiverRegistrar: (ExtensionInstallReceiver.Listener) -> Unit = { listener ->
+        ExtensionInstallReceiver(listener).register(context)
+    },
 ) {
 
     val scope = CoroutineScope(SupervisorJob())
@@ -75,7 +82,7 @@ class ExtensionManager(
 
     init {
         initExtensions()
-        ExtensionInstallReceiver(InstallationListener()).register(context)
+        installReceiverRegistrar(InstallationListener())
     }
 
     private var subLanguagesEnabledOnFirstRun = preferences.enabledLanguages().isSet()
@@ -121,7 +128,7 @@ class ExtensionManager(
      */
     private fun initExtensions() {
         scope.launch {
-            val extensions = ExtensionLoader.loadExtensions(context)
+            val extensions = installedExtensionsLoader(context)
 
             installedExtensionMapFlow.value = extensions
                 .filterIsInstance<LoadResult.Success>()
@@ -140,7 +147,7 @@ class ExtensionManager(
      */
     suspend fun findAvailableExtensions() {
         val extensions: List<Extension.Available> = try {
-            api.findExtensions()
+            availableExtensionsProvider?.invoke() ?: api.findExtensions()
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             withUIContext { context.toast(MR.strings.extension_api_error) }
@@ -365,7 +372,7 @@ class ExtensionManager(
             ?: availableExtensionMapFlow.value[pkgName]
             ?: return false
 
-        return isExtensionUpdateAvailable(
+        return updatePolicy.isUpdateAvailable(
             availableVersionCode = availableExt.versionCode,
             availableLibVersion = availableExt.libVersion,
             installedVersionCode = versionCode,

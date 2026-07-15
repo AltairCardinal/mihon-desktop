@@ -116,14 +116,6 @@ class ExtensionVersionMetaTest {
     }
 
     @Test
-    fun `repository identity change or missing identity requires confirmation`() {
-        assertEquals(true, repositoryIdentityConflicts("ABC", "DEF"))
-        assertEquals(false, repositoryIdentityConflicts("ABC", "abc"))
-        assertEquals(true, repositoryIdentityConflicts("", "DEF"))
-        assertEquals(true, repositoryIdentityConflicts("ABC", ""))
-    }
-
-    @Test
     fun `removeExtension also removes meta file`(@TempDir tmpDir: Path) {
         val dir = tmpDir.toFile()
         val jar = File(dir, "eu.kanade.tachiyomi.extension.en.test.jar").also { it.createNewFile() }

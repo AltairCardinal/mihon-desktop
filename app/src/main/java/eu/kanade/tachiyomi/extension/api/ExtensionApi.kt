@@ -12,10 +12,11 @@ import eu.kanade.tachiyomi.network.parseAs
 import kotlinx.serialization.json.Json
 import mihon.domain.extension.model.ExtensionCatalogResult
 import mihon.domain.extension.model.ExtensionCompatibility
-import mihon.domain.extension.model.isExtensionUpdateAvailable
 import mihon.domain.extension.model.toIdentity
 import mihon.domain.extension.service.ExtensionCatalogService
+import mihon.domain.extension.service.ExtensionUpdatePolicy
 import mihon.domain.extension.service.RepositoryFetchResult
+import mihon.domain.extension.service.SharedExtensionUpdatePolicy
 import mihon.domain.extensionrepo.interactor.GetExtensionRepo
 import mihon.domain.extensionrepo.interactor.UpdateExtensionRepo
 import mihon.domain.extensionrepo.model.ExtensionRepo
@@ -34,6 +35,11 @@ internal class ExtensionApi(
     private val json: Json? = null,
     private val repositories: (suspend () -> List<ExtensionRepo>)? = null,
     private val catalogService: ExtensionCatalogService = ExtensionCatalogService(),
+    private val updatePolicy: ExtensionUpdatePolicy = SharedExtensionUpdatePolicy,
+    private val refreshRepositories: (suspend () -> Unit)? = null,
+    private val availableExtensionsForUpdate: (suspend () -> List<Extension.Available>)? = null,
+    private val installedExtensions: (suspend (Context) -> List<Extension.Installed>)? = null,
+    private val notifyUpdates: ((Context, List<String>) -> Unit)? = null,
 ) {
 
     private val networkService: NetworkHelper by injectLazy()
@@ -103,15 +109,15 @@ internal class ExtensionApi(
         }
 
         // Update extension repo details
-        updateExtensionRepo.awaitAll()
+        refreshRepositories?.invoke() ?: updateExtensionRepo.awaitAll()
 
-        val extensions = if (fromAvailableExtensionList) {
+        val extensions = availableExtensionsForUpdate?.invoke() ?: if (fromAvailableExtensionList) {
             extensionManager.availableExtensionsFlow.value
         } else {
             findExtensions().also { lastExtCheck.set(Instant.now().toEpochMilli()) }
         }
 
-        val installedExtensions = ExtensionLoader.loadExtensions(context)
+        val installedExtensions = installedExtensions?.invoke(context) ?: ExtensionLoader.loadExtensions(context)
             .filterIsInstance<LoadResult.Success>()
             .map { it.extension }
 
@@ -119,7 +125,7 @@ internal class ExtensionApi(
         for (installedExt in installedExtensions) {
             val pkgName = installedExt.pkgName
             val availableExt = extensions.find { it.pkgName == pkgName } ?: continue
-            val hasUpdate = isExtensionUpdateAvailable(
+            val hasUpdate = updatePolicy.isUpdateAvailable(
                 availableVersionCode = availableExt.versionCode,
                 availableLibVersion = availableExt.libVersion,
                 installedVersionCode = installedExt.versionCode,
@@ -131,7 +137,8 @@ internal class ExtensionApi(
         }
 
         if (extensionsWithUpdate.isNotEmpty()) {
-            ExtensionUpdateNotifier(context).promptUpdates(extensionsWithUpdate.map { it.name })
+            val names = extensionsWithUpdate.map { it.name }
+            notifyUpdates?.invoke(context, names) ?: ExtensionUpdateNotifier(context).promptUpdates(names)
         }
 
         return extensionsWithUpdate

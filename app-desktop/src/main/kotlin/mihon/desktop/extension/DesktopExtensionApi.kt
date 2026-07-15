@@ -7,6 +7,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import logcat.LogPriority
+import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionCatalogResult
 import mihon.domain.extension.model.ExtensionCompatibility
 import mihon.domain.extension.model.ExtensionArtifact
@@ -19,6 +20,7 @@ import mihon.domain.extension.service.ExtensionTrustDecision
 import mihon.domain.extension.service.ExtensionTrustPolicy
 import mihon.domain.extension.service.ExtensionTrustRequest
 import mihon.domain.extension.service.RepositoryFetchResult
+import mihon.domain.extension.service.TrustMismatch
 import mihon.domain.extensionrepo.model.ExtensionRepo
 import mihon.domain.extensionrepo.repository.ExtensionRepoRepository
 import mihon.domain.extensionrepo.service.ExtensionRepoIndexEntryDto
@@ -277,16 +279,21 @@ class DesktopExtensionApi(
         is ExtensionTrustDecision.ConfirmationRequired -> InstallResult.TrustRequired(
             existingFingerprint = existingMeta?.repoFingerprint.orEmpty(),
             incomingFingerprint = extension.repoFingerprint,
+            reasons = decision.reasons,
         )
-        is ExtensionTrustDecision.Rejected -> InstallResult.Error("Extension artifact integrity validation failed")
+        is ExtensionTrustDecision.Rejected -> InstallResult.Error(
+            message = "Extension artifact integrity validation failed",
+            error = decision.error,
+        )
     }
 
     sealed interface InstallResult {
         data class Success(val file: File) : InstallResult
-        data class Error(val message: String) : InstallResult
+        data class Error(val message: String, val error: AppError? = null) : InstallResult
         data class TrustRequired(
             val existingFingerprint: String,
             val incomingFingerprint: String,
+            val reasons: Set<TrustMismatch>,
         ) : InstallResult
     }
 

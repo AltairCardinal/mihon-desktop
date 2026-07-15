@@ -1,10 +1,13 @@
 package eu.kanade.tachiyomi.extension.api
 
+import android.content.Context
+import eu.kanade.tachiyomi.extension.model.Extension
+import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import mihon.domain.error.AppError
-import mihon.domain.extension.model.isExtensionUpdateAvailable
 import mihon.domain.extension.service.ExtensionCatalogService
+import mihon.domain.extension.service.ExtensionUpdatePolicy
 import mihon.domain.extensionrepo.model.ExtensionRepo
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
@@ -61,16 +64,54 @@ class ExtensionApiSharedCatalogTest {
     }
 
     @Test
-    fun `Android update rule detects a newer shared lib version`() {
-        assertTrue(
-            isExtensionUpdateAvailable(
-                availableVersionCode = 10,
-                availableLibVersion = 1.5,
-                installedVersionCode = 10,
-                installedLibVersion = 1.4,
-            ),
+    fun `Android production API update check delegates to shared version policy`() = runBlocking {
+        val evaluatedVersions = mutableListOf<List<Number>>()
+        val installed = installedExtension()
+        val available = availableExtension()
+        val api = ExtensionApi(
+            updatePolicy = ExtensionUpdatePolicy { availableCode, availableLib, installedCode, installedLib ->
+                evaluatedVersions += listOf(availableCode, availableLib, installedCode, installedLib)
+                true
+            },
+            refreshRepositories = {},
+            availableExtensionsForUpdate = { listOf(available) },
+            installedExtensions = { listOf(installed) },
+            notifyUpdates = { _, _ -> },
         )
+
+        val updates = api.checkForUpdates(context = mockk<Context>(relaxed = true), fromAvailableExtensionList = true)
+
+        assertEquals(listOf(installed), updates)
+        assertEquals(listOf(listOf(10L, 1.4, 10L, 1.4)), evaluatedVersions)
     }
+
+    private fun installedExtension() = Extension.Installed(
+        name = "Example",
+        pkgName = "example.extension",
+        versionName = "1.4.1",
+        versionCode = 10,
+        libVersion = 1.4,
+        lang = "en",
+        isNsfw = false,
+        pkgFactory = null,
+        sources = emptyList(),
+        icon = null,
+        isShared = false,
+    )
+
+    private fun availableExtension() = Extension.Available(
+        name = "Example",
+        pkgName = "example.extension",
+        versionName = "1.4.1",
+        versionCode = 10,
+        libVersion = 1.4,
+        lang = "en",
+        isNsfw = false,
+        sources = emptyList(),
+        apkName = "example.apk",
+        iconUrl = "https://repo.example/icon.png",
+        repoUrl = "https://repo.example",
+    )
 
     private suspend fun assertFailure(response: MockResponse, expected: Class<out AppError>) {
         withServer(response) { server ->

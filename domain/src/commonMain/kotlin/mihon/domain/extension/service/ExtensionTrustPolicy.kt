@@ -107,4 +107,40 @@ class ExtensionTrustPolicy {
     )
 }
 
-private fun String.normalizedRepositoryUrl(): String = trim().trimEnd('/').lowercase()
+private fun String.normalizedRepositoryUrl(): String {
+    val url = trim().removeSuffix("/")
+    val schemeEnd = url.indexOf("://")
+    if (schemeEnd < 0) return url
+
+    val authorityStart = schemeEnd + 3
+    val authorityEnd = url.indexOfAny(charArrayOf('/', '?', '#'), authorityStart)
+        .takeIf { it >= 0 }
+        ?: url.length
+    val authority = url.substring(authorityStart, authorityEnd)
+    val userInfoEnd = authority.lastIndexOf('@')
+    val userInfo = authority.take(userInfoEnd + 1)
+    val hostAndPort = authority.drop(userInfoEnd + 1)
+    val normalizedHostAndPort = when {
+        hostAndPort.startsWith('[') -> {
+            val hostEnd = hostAndPort.indexOf(']')
+            if (hostEnd >= 0) {
+                hostAndPort.substring(0, hostEnd + 1).lowercase() + hostAndPort.substring(hostEnd + 1)
+            } else {
+                hostAndPort.lowercase()
+            }
+        }
+        hostAndPort.count { it == ':' } <= 1 -> {
+            val portStart = hostAndPort.lastIndexOf(':').takeIf { it >= 0 } ?: hostAndPort.length
+            hostAndPort.substring(0, portStart).lowercase() + hostAndPort.substring(portStart)
+        }
+        else -> hostAndPort.lowercase()
+    }
+
+    return buildString {
+        append(url.substring(0, schemeEnd).lowercase())
+        append("://")
+        append(userInfo)
+        append(normalizedHostAndPort)
+        append(url.substring(authorityEnd))
+    }
+}
