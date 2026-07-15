@@ -54,10 +54,245 @@ class DesktopProductCapabilityContractTest {
             40 to setOf("app-desktop/src/test/kotlin/mihon/desktop/network/FlareSolverrClientTest.kt"),
             43 to
                 setOf(
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt",
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt",
                 ),
-            49 to setOf("app-desktop/src/test/kotlin/mihon/desktop/ui/reader/TapZoneTest.kt"),
+            49 to
+                setOf(
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/TapZoneTest.kt",
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderKeyboardNavigationPositionTest.kt",
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt",
+                ),
+        )
+    private val readerBehaviorEvidence =
+        mapOf(
+            9 to
+                mapOf(
+                    "app/src/test/java/eu/kanade/tachiyomi/data/coil/AndroidReaderPageDecoderContractTest.kt" to
+                        mapOf(
+                            "production Tachiyomi decoder forwards reader request identity through decode" to
+                                setOf("TachiyomiImageDecoder(", "decoder.decode()"),
+                            "Android reader cache adapter keeps tiled pages out of Coil decoded caches" to
+                                setOf("mapAndroidReaderCachePolicy", "PageDecodeCachePolicy.TILED_READER"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt" to
+                        mapOf(
+                            "Skia region adapter returns pixels from the requested PNG region" to
+                                setOf("SkiaRegionPageDecoder().decodeRegion", "result.value.asSkiaBitmap()"),
+                            "byte budgeted page cache rejects oversized decoded values without evicting entries" to
+                                setOf("DesktopPageCache", "PageCacheCommitResult.REJECTED_OVERSIZED"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt" to
+                        mapOf(
+                            "large pages are downsampled before entering the ordinary cache" to
+                                setOf("PagePreloader(", "preloader.cacheSnapshot()"),
+                        ),
+                ),
+            43 to
+                mapOf(
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt" to
+                        mapOf(
+                            "Android pairing adapter and shared default produce the same authoritative vectors" to
+                                setOf("PagePairingAlgorithm.buildPairings", "ReaderPagePairing.build"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt" to
+                        mapOf(
+                            "LTR single spread produces LEFT then RIGHT" to
+                                setOf("buildVirtualPageList", "PageSplitHalf.LEFT", "PageSplitHalf.RIGHT"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt" to
+                        mapOf(
+                            "shared pairing keeps cover edge matching adjust and landscape parity enhancements" to
+                                setOf("DualPageState(", "matchedPairs", "forcedSinglePages"),
+                        ),
+                ),
+            44 to
+                mapOf(
+                    "app/src/test/java/eu/kanade/tachiyomi/data/coil/AndroidReaderPageDecoderContractTest.kt" to
+                        mapOf(
+                            "Android reader cache adapter keeps tiled pages out of Coil decoded caches" to
+                                setOf("mapAndroidReaderCachePolicy", "PageDecodeCachePolicy.TILED_READER"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt" to
+                        mapOf(
+                            "Skia region adapter decodes only the requested tile" to
+                                setOf("SkiaRegionPageDecoder().decodeRegion", "PixelBounds"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt" to
+                        mapOf(
+                            "ordinary non large page path still enforces decoded dimension bounds" to
+                                setOf("PagePreloader(", "maxDecodedWidth", "cacheSnapshot().usedBytes"),
+                        ),
+                ),
+            45 to
+                mapOf(
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoaderIntegrationTest.kt" to
+                        mapOf(
+                            "rapid zero one two selection cancels stale jobs without error and reorders current first" to
+                                setOf("fixture.loader.onPageSelected", "fixture.cancelled"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt" to
+                        mapOf(
+                            "fast page change cancels stale preload and prevents a late cache write" to
+                                setOf("preloader.preload", "preloader.cacheSnapshot().keys"),
+                            "page change cancels every active or queued old generation request" to
+                                setOf("PagePreloader(", "firstOld0Finished", "firstOld1Finished"),
+                        ),
+                ),
+            47 to
+                mapOf(
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterTransitionIntegrationTest.kt" to
+                        mapOf(
+                            "previous and next errors retain their own retry target" to
+                                setOf("toSharedTransitionModel", "retryCommand()"),
+                            "both chapter edges map to explicit shared boundaries without a target" to
+                                setOf("ChapterTransition.Prev", "ChapterTransition.Next", "ChapterBoundary"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to
+                        mapOf(
+                            "production adjacent chain publishes loading error retry loaded and navigates with loaded pages" to
+                                setOf("requestAdjacentChapterTransition", "retryChapterTransition", "destinationForChapterTransition"),
+                            "both adjacent boundaries never invoke the production loader" to
+                                setOf("requestAdjacentChapterTransition", "ChapterBoundary", "loadCalls"),
+                        ),
+                ),
+            49 to
+                mapOf(
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt" to
+                        mapOf(
+                            "Android navigation adapters match every shared preset and inversion" to
+                                setOf("ReaderNavigation.regions", "adapter.getNormalizedRegions()"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/TapZoneTest.kt" to
+                        mapOf(
+                            "tap regions delegate to the shared navigation presets" to
+                                setOf("tapNavRegion", "NavigationMode.RightAndLeft", "TapNavRegion.MENU"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderKeyboardNavigationPositionTest.kt" to
+                        mapOf(
+                            "all tap presets move logical pages before mapping to LTR pager storage" to
+                                setOf("tapNavRegion", "ReaderKeyboardAction.forPagerCommand"),
+                        ),
+                ),
+            51 to
+                mapOf(
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt" to
+                        mapOf(
+                            "Android grayscale and invert preferences are mapped to the shared filter contract" to
+                                setOf("buildAndroidLayerFilterParams", "params.isEffective"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt" to
+                        mapOf(
+                            "grayscale and invert survive preference round trip" to
+                                setOf("ReaderPreferences", "saveColorFilter", "loadColorFilter"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt" to
+                        mapOf(
+                            "grayscale and invert remain effective and persistable reader settings" to
+                                setOf("ReaderColorFilter", "readerColorTransform"),
+                        ),
+                ),
+            54 to
+                mapOf(
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt" to
+                        mapOf(
+                            "Android production chapter pipeline maps real chapter metadata before applying shared skip policy" to
+                                setOf("filterAndroidReaderChapters", "ChapterSkipPolicy"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderNavigatorTest.kt" to
+                        mapOf(
+                            "reader navigator combines read filtered and duplicate skip flags" to
+                                setOf("ReaderNavigator(", "skipFilteredChapters", "skipDuplicateChapters"),
+                            "reader navigator preserves an explicit boundary after skip rules exhaust candidates" to
+                                setOf("nav.result", "ChapterNavigationResult.Boundary"),
+                        ),
+                ),
+        )
+    private val readerProductionDelegates =
+        mapOf(
+            9 to
+                mapOf(
+                    "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt" to setOf("interface PageDecoder"),
+                    "app/src/main/java/eu/kanade/tachiyomi/data/coil/TachiyomiImageDecoder.kt" to
+                        setOf("decodeWithSharedPageDecoder"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt" to
+                        setOf("SkiaRegionPageDecoder", "DesktopPageCache"),
+                ),
+            43 to
+                mapOf(
+                    "domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt" to setOf("object ReaderPagePairing"),
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagePairingAlgorithm.kt" to
+                        setOf("ReaderPagePairing.build"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/reader/VirtualPageList.kt" to
+                        setOf("buildVirtualReaderPages"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/reader/DualPageState.kt" to
+                        setOf("ReaderPairingState", "PagePairingOptions"),
+                ),
+            44 to
+                mapOf(
+                    "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt" to setOf("interface RegionDecoder"),
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ReaderPageImageView.kt" to
+                        setOf("applySharedReaderCachePolicy(PageDecodeCachePolicy.TILED_READER)"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopPageDecoders.kt" to
+                        setOf("class SkiaRegionPageDecoder", "ceilDiv"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt" to
+                        setOf("regionDecoder.decodeRegion"),
+                ),
+            45 to
+                mapOf(
+                    "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt" to setOf("class ReaderPreloadPlanner"),
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt" to
+                        setOf("preloadPlanner.moveTo"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt" to
+                        setOf("planner.moveTo", "activeJobs"),
+                ),
+            47 to
+                mapOf(
+                    "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt" to
+                        setOf("data class ReaderChapterTransitionModel"),
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt" to
+                        setOf("mutableSharedStateFlow", "ReaderChapterState.Error"),
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt" to
+                        setOf("chapter.sharedStateFlow"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt" to
+                        setOf("ReaderChapterTransitionModel("),
+                    "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt" to
+                        setOf("ChapterTransitionFeedback(", "retryChapterTransition"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt" to
+                        setOf("chapterTransitionPresentation", "Button(onClick = onContinue"),
+                ),
+            49 to
+                mapOf(
+                    "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderNavigation.kt" to setOf("object ReaderNavigation"),
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ViewerNavigation.kt" to
+                        setOf("ReaderNavigation.regions"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/TapZone.kt" to
+                        setOf("ReaderNavigation.commandAt"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderKeyboardAction.kt" to
+                        setOf("ReaderNavigation.resolvePhysicalPageCommand"),
+                ),
+            51 to
+                mapOf(
+                    "domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt" to
+                        setOf("data class ReaderColorFilterParams"),
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt" to
+                        setOf("buildAndroidReaderColorFilterParams(", "buildAndroidLayerFilterParams"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderSettingsPanel.kt" to
+                        setOf("grayscaleEnabled", "invertEnabled"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt" to
+                        setOf("readerColorTransform(state.colorFilter)"),
+                ),
+            54 to
+                mapOf(
+                    "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderNavigation.kt" to setOf("fun findAdjacentChapter"),
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt" to
+                        setOf("filterChaptersForReader("),
+                    "app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderNavigator.kt" to
+                        setOf("findAdjacentChapter("),
+                ),
         )
     private val task3aBehaviorEvidence =
         mapOf(
@@ -270,6 +505,84 @@ class DesktopProductCapabilityContractTest {
     }
 
     @Test
+    fun `reader parity entries report only evidenced shared and wired states`() {
+        val items = manifestItems(repositoryRoot()).associateBy { validatedId(it.jsonObject) }
+        val expectedStatuses = mapOf(
+            9 to "WIRED",
+            43 to "WIRED",
+            44 to "WIRED",
+            45 to "WIRED",
+            47 to "WIRED",
+            49 to "WIRED",
+            51 to "WIRED",
+            54 to "WIRED",
+        )
+
+        expectedStatuses.forEach { (id, expectedStatus) ->
+            val item = items.getValue(id).jsonObject
+            assertEquals(expectedStatus, item.getValue("status").jsonPrimitive.content, "ID $id status")
+            assertTrue(
+                item.getValue("authoritativeImplementation").jsonPrimitive.content.contains("domain/src/commonMain"),
+                "ID $id must name its shared authoritative implementation",
+            )
+            assertTrue(
+                item.getValue("desktopImplementation").jsonPrimitive.content.contains("app-desktop/src/main"),
+                "ID $id must name the production Desktop consumer",
+            )
+            assertTrue(item.getValue("protectionTests").jsonArray.isNotEmpty(), "ID $id must declare protection evidence")
+        }
+    }
+
+    @Test
+    fun `reader parity protection evidence executes production behavior instead of naming symbols`() {
+        val repositoryRoot = repositoryRoot()
+        val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
+
+        readerBehaviorEvidence.forEach { (id, evidenceByPath) ->
+            val declared =
+                items.getValue(id).jsonObject.getValue("protectionTests").jsonArray
+                    .map { it.jsonPrimitive.content }
+                    .toSet()
+            evidenceByPath.forEach { (path, behaviorMethods) ->
+                assertTrue(path in declared, "ID $id must declare production behavior evidence $path")
+                val source = Files.readString(repositoryRoot.resolve(path))
+                behaviorMethods.forEach { (methodName, productionMarkers) ->
+                    val method = kotlinTestMethod(source, methodName, "ID $id evidence $path")
+                    productionMarkers.forEach { marker ->
+                        assertTrue(
+                            marker in method,
+                            "ID $id behavior `$methodName` must execute production marker `$marker` in $path",
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `reader parity implementation paths resolve to production delegates`() {
+        val repositoryRoot = repositoryRoot()
+        val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
+
+        readerProductionDelegates.forEach { (id, delegates) ->
+            val item = items.getValue(id).jsonObject
+            val declaredImplementations =
+                item.getValue("authoritativeImplementation").jsonPrimitive.content +
+                    "\n" +
+                    item.getValue("desktopImplementation").jsonPrimitive.content
+            delegates.forEach { (path, delegateMarkers) ->
+                assertTrue(path in declaredImplementations, "ID $id must name production delegate $path")
+                val productionPath = repositoryRoot.resolve(path)
+                assertTrue(Files.isRegularFile(productionPath), "ID $id production delegate must exist: $path")
+                val source = Files.readString(productionPath)
+                delegateMarkers.forEach { marker ->
+                    assertTrue(marker in source, "ID $id production delegate $path must consume `$marker`")
+                }
+            }
+        }
+    }
+
+    @Test
     fun `EXEMPT item accepts real evidence and rejects NONE or missing files`() {
         val evidence = Files.createFile(tempDir.resolve("evidence.md"))
         validateItem(syntheticItem(84, "EXEMPT", evidence.toString()), tempDir)
@@ -336,6 +649,18 @@ class DesktopProductCapabilityContractTest {
             put("status", status)
             put("platformExemptionEvidence", evidence)
         }
+
+    private fun kotlinTestMethod(
+        source: String,
+        methodName: String,
+        context: String,
+    ): String {
+        val marker = "fun `$methodName`"
+        val start = source.indexOf(marker)
+        assertTrue(start >= 0, "$context must contain behavior test `$methodName`")
+        val nextTest = source.indexOf("\n    @Test", start + marker.length).takeIf { it >= 0 } ?: source.length
+        return source.substring(start, nextTest)
+    }
 
     private fun repositoryRoot() =
         generateSequence(Path.of("").toAbsolutePath()) { it.parent }

@@ -69,10 +69,15 @@
       "SHARE-EXTRACT",
       "PLATFORM-ADAPTER"
     ],
-    "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #9: 图片加载与解码",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 图片加载与解码",
-    "protectionTests": [],
+    "status": "WIRED",
+    "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt 定义 PageDecoder、RegionDecoder、PageCache、采样结果与缓存策略；app/src/main/java/eu/kanade/tachiyomi/data/coil/AndroidReaderPageDecoder.kt 与 app/src/main/java/eu/kanade/tachiyomi/data/coil/TachiyomiImageDecoder.kt 在 Android 生产解码链实际委托共享请求/结果，app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ReaderPageImageView.kt 映射共享缓存策略",
+    "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopPageDecoders.kt、app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopPageCache.kt 与 app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt 以 Skia ImageBitmap 消费共享解码/缓存契约",
+    "protectionTests": [
+      "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/data/coil/AndroidReaderPageDecoderContractTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -399,12 +404,14 @@
       "SHARE-EXTRACT",
       "DESKTOP-PRODUCT"
     ],
-    "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #43: 宽页拆分",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 宽页拆分",
+    "status": "WIRED",
+    "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt 提供旋转后宽页判断、奇数像素拆分边界、虚拟页映射与 Android 权威配对默认值；app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagePairingAlgorithm.kt 直接委托共享配对",
+    "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/reader/VirtualPageList.kt、app-desktop/src/main/kotlin/mihon/desktop/reader/DualPageState.kt 与 app-desktop/src/main/kotlin/mihon/desktop/ui/reader/PageSplitHalf.kt 消费共享变换，并显式叠加封面、edge matching、landscape parity 增强",
     "protectionTests": [
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt"
     ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -415,10 +422,15 @@
     "tags": [
       "PLATFORM-ADAPTER"
     ],
-    "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #44: 大图与缩放",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 大图与缩放",
-    "protectionTests": [],
+    "status": "WIRED",
+    "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt 定义区域解码请求、结果尺寸和缓存字节预算；app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ReaderPageImageView.kt 将 Android tile reader 映射为共享无重复完整解码缓存策略",
+    "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopPageDecoders.kt 通过 SkiaRegionPageDecoder 物化有界输出，app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt 禁止超大完整 bitmap 长驻普通缓存",
+    "protectionTests": [
+      "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/data/coil/AndroidReaderPageDecoderContractTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -428,10 +440,15 @@
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #45: 图片预加载",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 图片预加载",
-    "protectionTests": [],
+    "status": "WIRED",
+    "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt 的 ReaderPreloadPlanner 统一窗口、优先级、generation、取消与淘汰；app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt 消费同一规划器并保留 Android 前向 4 页权威配置",
+    "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt 消费共享规划器并取消旧协程、拒绝过期回填、淘汰旧窗口",
+    "protectionTests": [
+      "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoaderIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -441,10 +458,17 @@
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #47: 页面过渡",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 页面过渡",
-    "protectionTests": [],
+    "status": "WIRED",
+    "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt 统一 Wait/Loading/Loaded/Error、相邻章节、缺章数、边界与重试命令；app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt 发布共享状态，app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt 消费 sharedStateFlow",
+    "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt 与 app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt 消费共享状态，app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt 提供可操作 Retry、Continue/Dismiss 过渡和章节边界反馈",
+    "protectionTests": [
+      "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterTransitionIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderScreenModelTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -455,11 +479,14 @@
       "SHARE-DIRECT",
       "DESKTOP-PRODUCT"
     ],
-    "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #49: 点击区域方案",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 点击区域方案",
+    "status": "WIRED",
+    "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderNavigation.kt 固化 Android RightAndLeft、L、Kindle、Edge、Disabled 区域及横向/纵向反转语义；app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ViewerNavigation.kt 从共享区域构建 Android RectF",
+    "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/TapZone.kt 与 app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderKeyboardAction.kt 把鼠标/键盘映射到共享命令",
     "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/TapZoneTest.kt"
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/TapZoneTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderKeyboardNavigationPositionTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt"
     ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -471,10 +498,15 @@
       "SHARE-EXTRACT",
       "PLATFORM-ADAPTER"
     ],
-    "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #51: 色彩处理",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 色彩处理",
-    "protectionTests": [],
+    "status": "WIRED",
+    "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt 的 ReaderColorFilterParams 统一亮度、色调、灰度、反色、归一化与 effective 语义；app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderColorFilter.kt 映射参数，app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt 以共享 effective/normalized 驱动 Android 硬件图层",
+    "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderSettingsPanel.kt、app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt 与 app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt 提供持久化开关并以 Compose ColorMatrix 实际渲染灰度/反色",
+    "protectionTests": [
+      "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -497,10 +529,14 @@
     "tags": [
       "SHARE-DIRECT"
     ],
-    "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #54: 跳过规则",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 跳过规则",
-    "protectionTests": [],
+    "status": "WIRED",
+    "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderNavigation.kt 定义 read、filtered、duplicate 可组合跳过、当前章保留以及 Found/Boundary/InvalidCurrent 明确结果；app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt 实际委托共享筛选策略",
+    "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderNavigator.kt 消费共享 findAdjacentChapter，并保留 Desktop 章节引用与界面入口",
+    "protectionTests": [
+      "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderNavigatorTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
