@@ -56,6 +56,12 @@ class ReaderScreenModel(
     },
 ) : ScreenModel {
 
+    private data class TransitionLoadKey(val targetChapterId: Long, val generation: Long)
+
+    private val transitionLoadLock = Any()
+    private var transitionGeneration = 0L
+    private val transitionLoadsInFlight = mutableSetOf<TransitionLoadKey>()
+
     private val _state = MutableStateFlow(buildInitialState(prefs))
     val state: StateFlow<ReaderState> = _state.asStateFlow()
 
@@ -185,14 +191,17 @@ class ReaderScreenModel(
         chapterNumber: Double,
     ) {
         val chapter = ReaderChapterModel(chapterId, chapterUrl, chapterName, chapterNumber)
-        _state.update {
-            it.copy(
-                chapterTransition = ReaderChapterTransitionModel(
-                    direction = direction,
-                    from = chapter,
-                    to = null,
-                ),
-            )
+        synchronized(transitionLoadLock) {
+            transitionGeneration++
+            _state.update {
+                it.copy(
+                    chapterTransition = ReaderChapterTransitionModel(
+                        direction = direction,
+                        from = chapter,
+                        to = null,
+                    ),
+                )
+            }
         }
     }
 
@@ -202,21 +211,35 @@ class ReaderScreenModel(
         to: ReaderChapterModel,
         missingChapterCount: Int,
     ) {
-        _state.update {
-            it.copy(
-                chapterTransition = ReaderChapterTransitionModel(
-                    direction = direction,
-                    from = from,
-                    to = to,
-                    missingChapterCount = missingChapterCount,
-                    state = ReaderChapterState.Loading,
-                ),
-            )
+        synchronized(transitionLoadLock) {
+            val current = _state.value.chapterTransition
+            val duplicatesActiveRequest =
+                current?.direction == direction &&
+                    current.from.id == from.id &&
+                    current.to?.id == to.id &&
+                    current.state == ReaderChapterState.Loading
+            if (duplicatesActiveRequest) return
+
+            transitionGeneration++
+            _state.update {
+                it.copy(
+                    chapterTransition = ReaderChapterTransitionModel(
+                        direction = direction,
+                        from = from,
+                        to = to,
+                        missingChapterCount = missingChapterCount,
+                        state = ReaderChapterState.Loading,
+                    ),
+                )
+            }
         }
     }
 
     fun clearChapterTransition() {
-        _state.update { it.copy(chapterTransition = null) }
+        synchronized(transitionLoadLock) {
+            transitionGeneration++
+            _state.update { it.copy(chapterTransition = null) }
+        }
     }
 
     fun setChapterTransitionState(state: ReaderChapterState) {
@@ -229,10 +252,18 @@ class ReaderScreenModel(
         state.value.chapterTransition?.retryCommand()
 
     suspend fun loadChapterTransition(targetChapterId: Long? = null): ReaderChapterState? {
-        val transition = state.value.chapterTransition ?: return null
-        val target = transition.to ?: return null
-        if (targetChapterId != null && target.id != targetChapterId) return null
-        setChapterTransitionState(ReaderChapterState.Loading)
+        val request = synchronized(transitionLoadLock) {
+            val transition = _state.value.chapterTransition ?: return null
+            val target = transition.to ?: return null
+            if (targetChapterId != null && target.id != targetChapterId) return null
+            val key = TransitionLoadKey(target.id, transitionGeneration)
+            if (!transitionLoadsInFlight.add(key)) return transition.state
+            _state.update { current ->
+                current.copy(chapterTransition = current.chapterTransition?.copy(state = ReaderChapterState.Loading))
+            }
+            key to target
+        }
+        val (loadKey, target) = request
         val result = try {
             adjacentChapterLoader.load(target)
         } catch (error: Exception) {
@@ -241,12 +272,18 @@ class ReaderScreenModel(
                 retryTargetChapterId = target.id,
             )
         }
-        _state.update { current ->
-            val activeTransition = current.chapterTransition
-            if (activeTransition?.to?.id == target.id) {
-                current.copy(chapterTransition = activeTransition.copy(state = result))
-            } else {
-                current
+        synchronized(transitionLoadLock) {
+            transitionLoadsInFlight.remove(loadKey)
+            _state.update { current ->
+                val activeTransition = current.chapterTransition
+                if (
+                    loadKey.generation == transitionGeneration &&
+                    activeTransition?.to?.id == target.id
+                ) {
+                    current.copy(chapterTransition = activeTransition.copy(state = result))
+                } else {
+                    current
+                }
             }
         }
         return result

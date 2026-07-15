@@ -25,4 +25,26 @@ class WebtoonAutoScrollTest {
             assertTrue(speed.pixelsPerSecond > 0f, "${speed.name} must have positive speed")
         }
     }
+
+    @Test
+    fun `production auto scroll gate requests next chapter once per stay at bottom`() {
+        val gate = WebtoonAutoScrollGate()
+
+        assertEquals(
+            WebtoonAutoScrollAction.NextChapter,
+            gate.action(enabled = true, lastVisibleIndex = 1, totalItemsCount = 2, lastVisibleBottom = 100, viewportEnd = 100),
+        )
+        assertEquals(
+            WebtoonAutoScrollAction.Idle,
+            gate.action(enabled = true, lastVisibleIndex = 1, totalItemsCount = 2, lastVisibleBottom = 100, viewportEnd = 100),
+        )
+        assertEquals(
+            WebtoonAutoScrollAction.Scroll,
+            gate.action(enabled = true, lastVisibleIndex = 0, totalItemsCount = 2, lastVisibleBottom = 100, viewportEnd = 100),
+        )
+        assertEquals(
+            WebtoonAutoScrollAction.NextChapter,
+            gate.action(enabled = true, lastVisibleIndex = 1, totalItemsCount = 2, lastVisibleBottom = 100, viewportEnd = 100),
+        )
+    }
 }

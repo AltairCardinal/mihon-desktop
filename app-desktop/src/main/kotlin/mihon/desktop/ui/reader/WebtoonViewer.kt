@@ -64,10 +64,14 @@ internal fun WebtoonViewer(
 ) {
     val paddingFraction = sidePadding.ratio
     val listState = rememberLazyListState()
+    val autoScrollGate = remember { WebtoonAutoScrollGate() }
 
     // Auto-scroll: advances by pixelsPerSecond, triggers onNextChapter at bottom
     LaunchedEffect(autoScroll, autoScrollSpeed) {
-        if (!autoScroll) return@LaunchedEffect
+        if (!autoScroll) {
+            autoScrollGate.reset()
+            return@LaunchedEffect
+        }
         val tickMs = 16L // ~60 fps
         val pixelsPerTick = autoScrollSpeed.pixelsPerSecond * tickMs / 1000f
         while (true) {
@@ -75,7 +79,7 @@ internal fun WebtoonViewer(
             val layoutInfo = listState.layoutInfo
             val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()
             when (
-                webtoonAutoScrollAction(
+                autoScrollGate.action(
                     enabled = autoScroll,
                     lastVisibleIndex = lastVisible?.index,
                     totalItemsCount = layoutInfo.totalItemsCount,
@@ -116,6 +120,48 @@ internal fun WebtoonViewer(
 }
 
 internal enum class WebtoonAutoScrollAction { Idle, Scroll, NextChapter }
+
+/** Prevents the 60 fps auto-scroll loop from repeatedly requesting the same adjacent chapter. */
+internal class WebtoonAutoScrollGate {
+    private var requestedAtBottom = false
+
+    fun action(
+        enabled: Boolean,
+        lastVisibleIndex: Int?,
+        totalItemsCount: Int,
+        lastVisibleBottom: Int?,
+        viewportEnd: Int,
+    ): WebtoonAutoScrollAction = when (
+        val action = webtoonAutoScrollAction(
+            enabled = enabled,
+            lastVisibleIndex = lastVisibleIndex,
+            totalItemsCount = totalItemsCount,
+            lastVisibleBottom = lastVisibleBottom,
+            viewportEnd = viewportEnd,
+        )
+    ) {
+        WebtoonAutoScrollAction.NextChapter -> {
+            if (requestedAtBottom) {
+                WebtoonAutoScrollAction.Idle
+            } else {
+                requestedAtBottom = true
+                action
+            }
+        }
+        WebtoonAutoScrollAction.Scroll -> {
+            requestedAtBottom = false
+            action
+        }
+        WebtoonAutoScrollAction.Idle -> {
+            requestedAtBottom = false
+            action
+        }
+    }
+
+    fun reset() {
+        requestedAtBottom = false
+    }
+}
 
 internal fun webtoonAutoScrollAction(
     enabled: Boolean,

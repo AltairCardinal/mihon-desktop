@@ -114,10 +114,11 @@ class DesktopReaderPageLoader(
                 }
             }.awaitAll()
         }
-        return if (urls.any(String::isNotBlank)) {
+        return if (urls.all(String::isNotBlank)) {
             PageLoadResult.Loaded(urls)
         } else {
-            PageLoadResult.Error("Failed to load any page images")
+            val failedPage = urls.indexOfFirst(String::isBlank) + 1
+            PageLoadResult.Error("Failed to load page $failedPage of ${urls.size}")
         }
     }
 
