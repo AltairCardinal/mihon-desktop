@@ -1,0 +1,9 @@
+[
+  {
+    "symbol": "eu.kanade.tachiyomi.source.Source",
+    "fixture": "eu.kanade.tachiyomi.extension.zh.manhuagui@1.4.28",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/KeiyoushiChineseCompatibilityTest.kt",
+    "status": "required",
+    "removalCondition": "Remove only when supported extension artifacts no longer expose Source through the production ExtensionClassLoader and ServiceLoader path."
+  }
+]

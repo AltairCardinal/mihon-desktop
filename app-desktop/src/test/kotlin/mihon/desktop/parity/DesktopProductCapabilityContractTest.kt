@@ -516,6 +516,25 @@ class DesktopProductCapabilityContractTest {
     }
 
     @Test
+    fun `extension install and Cloudflare product protection tests are real files`() {
+        val repositoryRoot = repositoryRoot()
+        val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
+
+        setOf(34, 40).forEach { id ->
+            val declared =
+                items.getValue(id).jsonObject.getValue("protectionTests").jsonArray
+                    .map { it.jsonPrimitive.content }
+                    .toSet()
+            assertEquals(expectedCapabilityEvidence.getValue(id), declared, "ID $id: unexpected product protection")
+            declared.forEach { path ->
+                val testFile = repositoryRoot.resolve(path)
+                assertTrue(Files.isRegularFile(testFile), "ID $id: missing product protection test $path")
+                assertTrue(Files.readString(testFile).contains("@Test"), "ID $id: product protection must be a test file")
+            }
+        }
+    }
+
+    @Test
     fun `migration and tracking capabilities declare Android production wiring protection`() {
         val items = manifestItems(repositoryRoot())
         val migration = items.single { validatedId(it.jsonObject) == 68 }.jsonObject
