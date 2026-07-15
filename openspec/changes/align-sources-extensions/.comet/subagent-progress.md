@@ -1,0 +1,23 @@
+# Subagent Progress
+
+- Change: `align-sources-extensions`
+- Plan: `docs/superpowers/plans/2026-07-15-mihon-source-extension-shared-core.md`
+- Review mode: `thorough`
+- Current task: `Task 1：权威 fixture、调用链清单与产品保护网`
+- Plan checkbox: `Task 1：权威 fixture、调用链清单与产品保护网`
+- OpenSpec mappings:
+  - `1.1 盘点 Android/Desktop 源、扩展、compat stub 与真实扩展调用链`
+  - `1.4 固定 Desktop APK→JAR、宽屏源 UI、文件工具与现有扩展产品行为基线`
+- Stage: `done`
+- Task base: `d77ef4d2b63e00d8abe3e2da85b6ef4e4351ae58`
+- Implementer: `/root/align_sources_task1_impl` DONE
+- Implementation commit: `15ef2c3e6a8cb6b04adfee3f58087f31fb0f2a50`
+- Changed files:
+  - `docs/roadmap/source-extension-authority-baseline.md`
+  - `app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionProductBaselineTest.kt`
+  - `app-desktop/src/test/resources/extensions/compat-evidence.json`
+  - `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt`
+- RED evidence: focused baseline test, 5 tests / 2 expected failures (missing authority baseline and compat evidence)
+- GREEN evidence: focused product matrix, 19 tests / 0 failures / 0 errors / 0 skipped; `spotlessCheck` PASS
+- Batch review: pending (round 0/2; Task 1–3 batch or earlier high-risk boundary)
+- Unresolved feedback: none; ManHuaGui live fixture version pin must be updated explicitly when upstream changes

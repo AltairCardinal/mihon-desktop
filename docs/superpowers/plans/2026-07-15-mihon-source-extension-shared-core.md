@@ -31,7 +31,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 ## 执行状态
 
-- [ ] Task 1：权威 fixture、调用链清单与产品保护网
+- [x] Task 1：权威 fixture、调用链清单与产品保护网
 - [ ] Task 2：共享源查询状态、分页与错误语义
 - [ ] Task 3：共享扩展目录、版本、仓库部分失败与信任模型
 - [ ] Task 4：共享安装事务与平台 reload 回滚
@@ -57,7 +57,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Produces: 真实 Android/Desktop 权威类映射、代表性 JAR/APK fixture 清单、compat evidence schema、后续共享类型的测试输入。
 - Evidence JSON shape: `{"symbol":"fully.qualified.Api","fixture":"path-or-package@version","test":"repo/test/path","status":"required|unsupported","removalCondition":"text"}`。
 
-- [ ] **Step 1: 写会失败的权威证据与产品基线测试**
+- [x] **Step 1: 写会失败的权威证据与产品基线测试**
 
   `DesktopExtensionProductBaselineTest` 先要求尚不存在的 authority baseline 与 compat evidence 资源，并直接调用 production 的 APK→JAR、原子替换和扩展详情路由/文件工具逻辑：
 
@@ -73,25 +73,25 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
   }
   ```
 
-- [ ] **Step 2: 运行 RED 并记录正确失败原因**
+- [x] **Step 2: 运行 RED 并记录正确失败原因**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.extension.DesktopExtensionProductBaselineTest"`
   Expected: FAIL，原因是 authority baseline/evidence 文件尚不存在或缺必要映射；不得因 Gradle 配置或测试初始化失败。
 
-- [ ] **Step 3: 锁定 Desktop 产品基线与 compat 证据 schema**
+- [x] **Step 3: 锁定 Desktop 产品基线与 compat 证据 schema**
 
   `DesktopExtensionProductBaselineTest` 必须直接实例化或调用 production 的 APK→JAR、原子替换、扩展详情路由/文件工具逻辑；`DesktopProductCapabilityContractTest` 校验 manifest #34/#40 的保护测试真实存在。`compat-evidence.json` 首批只列现有真实 fixture 已触达 API，禁止预填“未来可能需要”的符号。
 
-- [ ] **Step 4: 写权威实现清单**
+- [x] **Step 4: 写权威实现清单**
 
   文档逐项记录 Android `ExtensionApi`/`ExtensionManager`/`ExtensionLoader`、Sources/GlobalSearch/Extensions ScreenModel 与 Desktop 对应类、可直接复用能力、必须抽取能力、必须平台适配能力及真实 fixture 来源。
 
-- [ ] **Step 5: 运行产品保护测试**
+- [x] **Step 5: 运行产品保护测试**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.extension.ApkToJarConverterTest" --tests "mihon.desktop.extension.ExtensionArtifactReplacementTest" --tests "mihon.desktop.extension.DesktopExtensionProductBaselineTest" --tests "mihon.desktop.parity.DesktopProductCapabilityContractTest"`
   Expected: 全部 GREEN；分支上不保留待后续任务修复的失败测试。
 
-- [ ] **Step 6: 提交 Task 1**
+- [x] **Step 6: 提交 Task 1**
 
   Commit: `test(extension): characterize source and extension authority`
 

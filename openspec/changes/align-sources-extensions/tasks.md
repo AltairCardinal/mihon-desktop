@@ -1,9 +1,9 @@
 ## 1. 权威 fixture 与保护网
 
-- [ ] 1.1 盘点 Android/Desktop 源、扩展、compat stub 与真实扩展调用链
+- [x] 1.1 盘点 Android/Desktop 源、扩展、compat stub 与真实扩展调用链
 - [ ] 1.2 为源分页成功/空/403/429/500/畸形响应写共享与 MockWebServer RED 测试
 - [ ] 1.3 为 JAR、APK→JAR、损坏产物、版本替换、回滚与不兼容 API 写 RED 测试
-- [ ] 1.4 固定 Desktop APK→JAR、宽屏源 UI、文件工具与现有扩展产品行为基线
+- [x] 1.4 固定 Desktop APK→JAR、宽屏源 UI、文件工具与现有扩展产品行为基线
 
 ## 2. 共享源与扩展核心
 
