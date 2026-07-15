@@ -17,7 +17,7 @@ base-ref: 20c56cbc6b62c4607c4d28709734142cc127a8b3
 ## 执行状态
 
 - [x] Task 1：审计现有 Task 4A 工作树并固定共享契约
-- [ ] Task 2：完成 Android 薄适配与生产接线
+- [x] Task 2：完成 Android 薄适配与生产接线
 - [ ] Task 3：完成 Desktop Skia、缓存与三种 viewer 生产接线
 - [ ] Task 4：锁定 Desktop 独有产品能力并清除重复规则
 - [ ] Task 5：更新证据、文档并完成静态与集成验证

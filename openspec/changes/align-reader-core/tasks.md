@@ -8,7 +8,7 @@
 
 - [ ] 2.1 完成 common 页面/章节/过渡、PageTransform、ReaderNavigation 与 skip policy
 - [ ] 2.2 完成 PageDecoder、RegionDecoder、PageCache、预加载代次/取消/淘汰与字节预算契约
-- [ ] 2.3 让 Android pairing、transition、navigation、filter、skip、preload 和 decoder/cache 生产路径委托 shared core
+- [x] 2.3 让 Android pairing、transition、navigation、filter、skip、preload 和 decoder/cache 生产路径委托 shared core
 - [ ] 2.4 让 Desktop 三种 viewer、ScreenModel、设置和 Skia decoder/cache 生产路径委托 shared core
 
 ## 3. 内存、错误与用户体验
