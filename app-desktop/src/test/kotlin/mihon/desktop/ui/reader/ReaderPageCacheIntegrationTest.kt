@@ -98,6 +98,41 @@ class ReaderPageCacheIntegrationTest {
     }
 
     @Test
+    fun `split and source bounds are applied before border crop for ordinary and cached rendering`() {
+        val borderedSpread = decodeBitmap(
+            width = 10,
+            height = 6,
+            colorAt = { x, y ->
+                val xWithinHalf = x % 5
+                if (xWithinHalf in 1..3 && y in 1..4) BLACK else WHITE
+            },
+        )
+        val cachedPage = PreloadedPageBitmap(
+            bitmap = borderedSpread,
+            sourceWidth = borderedSpread.width,
+            sourceHeight = borderedSpread.height,
+        )
+
+        val ordinarySplit = transformCachedPageBitmap(
+            bitmap = borderedSpread,
+            splitHalf = PageSplitHalf.LEFT,
+            cropBorders = true,
+        )
+        val cachedBounds = transformCachedPageBitmap(
+            cachedPage = cachedPage,
+            sourceBounds = PixelBounds(x = 5, y = 0, width = 5, height = 6),
+            cropBorders = true,
+        )
+
+        listOf(ordinarySplit, cachedBounds).forEach { transformed ->
+            assertEquals(3, transformed.width)
+            assertEquals(4, transformed.height)
+            assertEquals(BLACK, transformed.asSkiaBitmap().getColor(0, 0))
+            assertEquals(BLACK, transformed.asSkiaBitmap().getColor(2, 3))
+        }
+    }
+
+    @Test
     fun `downsampled cache maps rotated odd virtual halves in original coordinates`() = runTest {
         val bytes = pngBytes(
             width = 8,

@@ -89,7 +89,7 @@ class ReaderPreferences(
         alpha = colorFilterAlpha,
         grayscaleEnabled = colorFilterGrayscale,
         invertEnabled = colorFilterInvert,
-    )
+    ).normalized()
     fun saveColorFilter(filter: ReaderColorFilter) {
         colorFilterEnabled = filter.tintEnabled
         colorFilterBrightnessEnabled = filter.brightnessEnabled

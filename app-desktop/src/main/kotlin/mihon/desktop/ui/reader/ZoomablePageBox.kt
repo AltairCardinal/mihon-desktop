@@ -232,25 +232,19 @@ internal fun ZoomablePageBox(
                 onSpreadDetected()
             }
 
-            when {
-                sourceBounds != null -> {
-                    croppedBitmap = s.result.image.toSkiaBitmap()?.let { bitmap ->
-                        extractSkiaSubBitmap(bitmap, sourceBounds)
+            croppedBitmap = if (sourceBounds != null || splitHalf != null || cropBorders) {
+                withContext(Dispatchers.Default) {
+                    s.result.image.toSkiaBitmap()?.let { bitmap ->
+                        transformCachedPageBitmap(
+                            bitmap = bitmap.asComposeImageBitmap(),
+                            splitHalf = splitHalf,
+                            sourceBounds = sourceBounds,
+                            cropBorders = cropBorders,
+                        )
                     }
                 }
-                // Split half: crop the already-decoded Coil image — no re-download
-                splitHalf != null -> {
-                    croppedBitmap = withContext(Dispatchers.Default) {
-                        splitHalfFromCoilImage(s.result.image, splitHalf)
-                    }
-                }
-                // Crop borders: scan the already-decoded Coil image — no re-download
-                cropBorders -> {
-                    croppedBitmap = withContext(Dispatchers.Default) {
-                        cropBordersFromCoilImage(s.result.image)
-                    }
-                }
-                else -> croppedBitmap = null
+            } else {
+                null
             }
         }
     }
@@ -495,7 +489,7 @@ internal fun transformCachedPageBitmap(
     sourceHeight: Int = bitmap.height,
 ): ImageBitmap {
     val skiaBitmap = bitmap.asSkiaBitmap()
-    return when {
+    val bounded = when {
         sourceBounds != null -> {
             val mappedBounds = sourceBounds.mapToBitmap(
                 sourceWidth = sourceWidth,
@@ -508,8 +502,12 @@ internal fun transformCachedPageBitmap(
             }
         }
         splitHalf != null -> splitSkiaBitmap(skiaBitmap, splitHalf) ?: bitmap
-        cropBorders -> cropBordersFromSkiaBitmap(skiaBitmap) ?: bitmap
         else -> bitmap
+    }
+    return if (cropBorders) {
+        cropBordersFromSkiaBitmap(bounded.asSkiaBitmap()) ?: bounded
+    } else {
+        bounded
     }
 }
 

@@ -213,4 +213,3 @@ Desktop 阅读器 MUST 在共享迁移后保留双页 edge matching、Webtoon �
 - **WHEN** shared reader core 完成 JVM/Android 单元测试
 - **THEN** 自动化在模拟器安装当前 APK，并验证章节打开、翻页、滤镜、错误重试、章节边界和代表性大图路径
 ```
-

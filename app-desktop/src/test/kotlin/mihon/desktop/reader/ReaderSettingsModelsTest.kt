@@ -110,6 +110,54 @@ class ReaderSettingsModelsTest {
     }
 
     @Test
+    fun `loading legacy out of range filter values normalizes every shared bound`() {
+        val root = Preferences.userRoot().node("/mihon/reader-filter-corrupt/${System.nanoTime()}")
+        try {
+            val preferences = ReaderPreferences(DesktopPreferenceStore(root.node("store")), root.node("legacy")).apply {
+                colorFilterBrightness = 5f
+                colorFilterR = -10
+                colorFilterG = 300
+                colorFilterB = 999
+                colorFilterAlpha = -1
+            }
+
+            val loaded = preferences.loadColorFilter()
+
+            assertEquals(ReaderColorFilter.BRIGHTNESS_MAX, loaded.brightness)
+            assertEquals(0, loaded.r)
+            assertEquals(255, loaded.g)
+            assertEquals(255, loaded.b)
+            assertEquals(0, loaded.alpha)
+        } finally {
+            root.removeNode()
+        }
+    }
+
+    @Test
+    fun `loading valid UI filter values keeps them unchanged`() {
+        val root = Preferences.userRoot().node("/mihon/reader-filter-valid/${System.nanoTime()}")
+        try {
+            val expected = ReaderColorFilter(
+                tintEnabled = true,
+                brightnessEnabled = true,
+                brightness = 0.25f,
+                r = 12,
+                g = 34,
+                b = 56,
+                alpha = 78,
+                grayscaleEnabled = true,
+                invertEnabled = true,
+            )
+            val preferences = ReaderPreferences(DesktopPreferenceStore(root.node("store")), root.node("legacy"))
+            preferences.saveColorFilter(expected)
+
+            assertEquals(expected, preferences.loadColorFilter())
+        } finally {
+            root.removeNode()
+        }
+    }
+
+    @Test
     fun `filtered and duplicate chapter skip preferences survive round trip`() {
         val root = Preferences.userRoot().node("/mihon/reader-skip-test/${System.nanoTime()}")
         try {
