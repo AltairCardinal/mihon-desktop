@@ -130,6 +130,7 @@ internal fun SinglePagePagerViewer(
         val vp = virtualPages?.get(page)
         val realIndex = vp?.realIndex ?: page
         val splitHalf = vp?.splitHalf
+        val sourceBounds = vp?.sourceBounds
         ZoomablePageBox(
             url = pageUrls[realIndex],
             pageLabel = "Page ${realIndex + 1}",
@@ -137,6 +138,7 @@ internal fun SinglePagePagerViewer(
             onZoomChange = onZoomChange,
             cropBorders = cropBorders,
             splitHalf = splitHalf,
+            sourceBounds = sourceBounds,
             contextMenuScope = contextMenuScope,
             mangaTitle = mangaTitle,
             chapterTitle = chapterTitle,

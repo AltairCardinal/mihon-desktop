@@ -123,8 +123,10 @@ data class DesktopReaderScreen(
                 isWebtoon = isWebtoon,
                 sourceId = sourceId,
                 chapterUrl = chapterUrl,
+                mangaTitle = mangaTitle,
                 mangaViewerFlags = mangaViewerFlags,
                 prefs = runtime.prefs,
+                pageLoader = runtime.pageLoader,
             )
         }
         val state by model.state.collectAsState()
@@ -143,7 +145,6 @@ data class DesktopReaderScreen(
         // Background page loading (network / local)
         ReaderPageLoaderEffect(
             model = model,
-            scope = scope,
             pageLoader = runtime.pageLoader,
             pageUrls = pageUrls,
             sourceId = sourceId,
@@ -177,61 +178,19 @@ data class DesktopReaderScreen(
             state.readingMode,
         )
         val onPrevChapter: () -> Unit = {
-            val target = readerNav?.previousRead
-            if (target != null) {
-                model.showChapterTransition(
-                    direction = ReaderTransitionDirection.PREVIOUS,
-                    from = ReaderChapterModel(chapterId, chapterUrl, chapterTitle, chapterNumber),
-                    to = ReaderChapterModel(target.id, target.url, target.name, target.chapterNumber),
-                    missingChapterCount = chapterGap(chapterNumber, target.chapterNumber),
-                )
-            } else {
-                model.showChapterBoundary(
-                    ReaderTransitionDirection.PREVIOUS,
-                    chapterId,
-                    chapterUrl,
-                    chapterTitle,
-                    chapterNumber,
-                )
+            scope.launch {
+                requestAdjacentChapterTransition(ReaderTransitionDirection.PREVIOUS, model, readerNav)
             }
         }
         val onNextChapter: () -> Unit = {
-            val target = readerNav?.nextToRead
-            if (target != null) {
-                model.showChapterTransition(
-                    direction = ReaderTransitionDirection.NEXT,
-                    from = ReaderChapterModel(chapterId, chapterUrl, chapterTitle, chapterNumber),
-                    to = ReaderChapterModel(target.id, target.url, target.name, target.chapterNumber),
-                    missingChapterCount = chapterGap(chapterNumber, target.chapterNumber),
-                )
-            } else {
-                model.showChapterBoundary(
-                    ReaderTransitionDirection.NEXT,
-                    chapterId,
-                    chapterUrl,
-                    chapterTitle,
-                    chapterNumber,
-                )
+            scope.launch {
+                requestAdjacentChapterTransition(ReaderTransitionDirection.NEXT, model, readerNav)
             }
         }
         val onContinueChapter: (ReaderChapterTransitionModel) -> Unit = { transition ->
-            val target = transition.to?.let { destination -> chapters.firstOrNull { it.id == destination.id } }
-            if (target != null) {
+            destinationForChapterTransition(transition, currentViewerFlags())?.let { destination ->
                 model.clearChapterTransition()
-                navigator.replace(
-                    copyForChapter(
-                        ref = target,
-                        newIndex = ReaderNavigator.indexForId(chapters, target.id),
-                        initialPage = initialPageForChapterNavigation(
-                            if (transition.direction == ReaderTransitionDirection.PREVIOUS) {
-                                ReaderChapterNavigationDirection.Previous
-                            } else {
-                                ReaderChapterNavigationDirection.Next
-                            },
-                        ),
-                        viewerFlags = currentViewerFlags(),
-                    ),
-                )
+                navigator.replace(destination)
             }
         }
 
@@ -307,14 +266,59 @@ data class DesktopReaderScreen(
         )
     }
 
+    internal suspend fun requestAdjacentChapterTransition(
+        direction: ReaderTransitionDirection,
+        model: ReaderScreenModel,
+        readerNavigator: ReaderNavigator?,
+    ) {
+        val target = when (direction) {
+            ReaderTransitionDirection.PREVIOUS -> readerNavigator?.previousRead
+            ReaderTransitionDirection.NEXT -> readerNavigator?.nextToRead
+        }
+        if (target == null) {
+            model.showChapterBoundary(direction, chapterId, chapterUrl, chapterTitle, chapterNumber)
+            return
+        }
+        model.showChapterTransition(
+            direction = direction,
+            from = ReaderChapterModel(chapterId, chapterUrl, chapterTitle, chapterNumber),
+            to = ReaderChapterModel(target.id, target.url, target.name, target.chapterNumber),
+            missingChapterCount = chapterGap(chapterNumber, target.chapterNumber),
+        )
+        model.loadChapterTransition(target.id)
+    }
+
+    internal fun destinationForChapterTransition(
+        transition: ReaderChapterTransitionModel,
+        viewerFlags: Long,
+    ): DesktopReaderScreen? {
+        val loaded = transition.state as? ReaderChapterState.Loaded ?: return null
+        val target = transition.to?.let { destination -> chapters.firstOrNull { it.id == destination.id } }
+            ?: return null
+        return copyForChapter(
+            ref = target,
+            newIndex = ReaderNavigator.indexForId(chapters, target.id),
+            initialPage = initialPageForChapterNavigation(
+                if (transition.direction == ReaderTransitionDirection.PREVIOUS) {
+                    ReaderChapterNavigationDirection.Previous
+                } else {
+                    ReaderChapterNavigationDirection.Next
+                },
+            ),
+            viewerFlags = viewerFlags,
+            loadedPageUrls = loaded.pages.map { page -> page.imageUrl ?: page.url },
+        )
+    }
+
     /** Creates a replacement screen for a sibling chapter, preserving context. */
     private fun copyForChapter(
         ref: ReaderChapterRef,
         newIndex: Int,
         initialPage: Int,
         viewerFlags: Long,
+        loadedPageUrls: List<String>,
     ) = DesktopReaderScreen(
-        chapterTitle = ref.name, mangaTitle = mangaTitle, pageUrls = emptyList(),
+        chapterTitle = ref.name, mangaTitle = mangaTitle, pageUrls = loadedPageUrls,
         isWebtoon = isWebtoon, sourceId = sourceId, chapterUrl = ref.url, chapterId = ref.id,
         mangaId = mangaId, chapterNumber = ref.chapterNumber, mangaViewerFlags = viewerFlags,
         chapters = chapters, currentChapterIndex = newIndex, initialPage = initialPage,
@@ -359,7 +363,6 @@ internal fun readerProgressPageForTracking(state: ReaderState): Int {
 @Composable
 private fun ReaderPageLoaderEffect(
     model: ReaderScreenModel,
-    scope: kotlinx.coroutines.CoroutineScope,
     pageLoader: DesktopReaderPageLoader,
     pageUrls: List<String>,
     sourceId: Long,
@@ -374,7 +377,6 @@ private fun ReaderPageLoaderEffect(
         try {
             pageLoader.load(
                 model = model,
-                scope = scope,
                 sourceId = sourceId,
                 chapterUrl = chapterUrl,
                 mangaTitle = mangaTitle,
@@ -489,8 +491,7 @@ private fun ReaderViewport(
                     onContinue = transition.to?.let { { onContinueChapter(transition) } },
                     onRetry = transition.to?.let {
                         {
-                            model.retryChapterTransition()
-                            onContinueChapter(transition)
+                            contextMenuScope.launch { model.retryChapterTransition() }
                         }
                     },
                     onDismiss = model::clearChapterTransition,

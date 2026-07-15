@@ -374,7 +374,7 @@ class ReaderScreenModelTest {
     }
 
     @Test
-    fun `chapter transition error exposes target retry command then returns to loading`() {
+    fun `chapter transition error exposes target retry command`() {
         val model = ReaderScreenModel()
         val from = mihon.domain.reader.ReaderChapterModel(1L, "/1", "Chapter 1", 1.0)
         val to = mihon.domain.reader.ReaderChapterModel(2L, "/2", "Chapter 2", 2.0)
@@ -384,10 +384,6 @@ class ReaderScreenModelTest {
         )
 
         assertEquals(ReaderNavigationCommand.RetryChapter(to.id), model.chapterTransitionCommand())
-
-        model.retryChapterTransition()
-
-        assertEquals(ReaderChapterState.Loading, model.state.value.chapterTransition?.state)
     }
 
     @Test

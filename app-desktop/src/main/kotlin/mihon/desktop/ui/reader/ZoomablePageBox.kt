@@ -37,6 +37,7 @@ import mihon.desktop.reader.PagePreloader
 import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.SkiaImageDecoder
 import mihon.desktop.reader.ZoomState
+import mihon.domain.reader.PixelBounds
 import org.jetbrains.skia.Bitmap as SkiaBitmap
 import org.jetbrains.skia.Canvas as SkiaCanvas
 import org.jetbrains.skia.Image as SkiaImage
@@ -128,6 +129,7 @@ internal fun ZoomablePageBox(
     pageIndex: Int = 0,
     onSetAsCover: (() -> Unit)? = null,
     splitHalf: PageSplitHalf? = null,
+    sourceBounds: PixelBounds? = null,
     preloader: PagePreloader? = null,
     modifier: Modifier = Modifier.fillMaxSize(),
     imageAlignment: Alignment = Alignment.Center,
@@ -166,26 +168,37 @@ internal fun ZoomablePageBox(
     }
     val preloadedBitmap = remember(url, pageIndex, preloader, preloadRevision) { preloader?.get(pageIndex) }
 
-    val painter = rememberAsyncImagePainter(readerPagePainterModel(url, preloadedBitmap))
-    val painterState by painter.state.collectAsState()
-
-    val localBitmap by produceState<ImageBitmap?>(initialValue = null, url, splitHalf, cropBorders) {
-        value = withContext(Dispatchers.IO) {
-            val bitmap = loadLocalPageBitmap(url) ?: return@withContext null
-            when {
-                splitHalf != null -> splitSkiaBitmap(bitmap.asSkiaBitmap(), splitHalf)
-                cropBorders -> cropBordersFromSkiaBitmap(bitmap.asSkiaBitmap())
-                else -> bitmap
+    val transformedPreloadedBitmap by produceState<ImageBitmap?>(
+        initialValue = preloadedBitmap.takeIf { splitHalf == null && sourceBounds == null && !cropBorders },
+        url,
+        preloadedBitmap,
+        splitHalf,
+        sourceBounds,
+        cropBorders,
+    ) {
+        value = preloadedBitmap?.let { bitmap ->
+            withContext(Dispatchers.Default) {
+                transformCachedPageBitmap(bitmap, splitHalf, sourceBounds, cropBorders)
             }
         }
     }
 
-    // Cropped bitmap: non-null when cropBorders is enabled and crop was applied.
-    // Keyed on url so it resets when the page changes.
-    var croppedBitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
+    val painter = rememberAsyncImagePainter(readerPagePainterModel(url, preloadedBitmap))
+    val painterState by painter.state.collectAsState()
+
+    val localBitmap by produceState<ImageBitmap?>(initialValue = null, url, splitHalf, sourceBounds, cropBorders) {
+        value = withContext(Dispatchers.IO) {
+            val bitmap = loadLocalPageBitmap(url) ?: return@withContext null
+            transformCachedPageBitmap(bitmap, splitHalf, sourceBounds, cropBorders)
+        }
+    }
+
+    // Transformed Coil bitmap. Reset for every virtual half/bounds change so pager slot reuse
+    // cannot briefly display the previous half of the same source URL.
+    var croppedBitmap by remember(url, splitHalf, sourceBounds, cropBorders) { mutableStateOf<ImageBitmap?>(null) }
 
     // Detect spread pages and optionally apply crop borders after Coil decodes the image.
-    LaunchedEffect(painterState, cropBorders, splitHalf) {
+    LaunchedEffect(painterState, cropBorders, splitHalf, sourceBounds) {
         val s = painterState
         if (s is AsyncImagePainter.State.Success) {
             val img = s.result.image
@@ -196,6 +209,11 @@ internal fun ZoomablePageBox(
             }
 
             when {
+                sourceBounds != null -> {
+                    croppedBitmap = s.result.image.toSkiaBitmap()?.let { bitmap ->
+                        extractSkiaSubBitmap(bitmap, sourceBounds)
+                    }
+                }
                 // Split half: crop the already-decoded Coil image — no re-download
                 splitHalf != null -> {
                     croppedBitmap = withContext(Dispatchers.Default) {
@@ -360,7 +378,11 @@ internal fun ZoomablePageBox(
             // Loading indicator — suppressed when preloaded bitmap or crop is ready
             val isLoading = painterState is AsyncImagePainter.State.Loading ||
                 painterState is AsyncImagePainter.State.Empty
-            val shouldShowLoading = isLoading && croppedBitmap == null && preloadedBitmap == null && localBitmap == null
+            val isCachedTransformLoading = preloadedBitmap != null && transformedPreloadedBitmap == null
+            val shouldShowLoading =
+                (isLoading && preloadedBitmap == null || isCachedTransformLoading) &&
+                    croppedBitmap == null &&
+                    localBitmap == null
             LaunchedEffect(shouldShowLoading) {
                 onLoadingStateChange?.invoke(shouldShowLoading)
             }
@@ -390,7 +412,7 @@ internal fun ZoomablePageBox(
                 }
             }
 
-            val displayBitmap = croppedBitmap ?: preloadedBitmap ?: localBitmap
+            val displayBitmap = croppedBitmap ?: transformedPreloadedBitmap ?: localBitmap
             val imageModifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer(
@@ -437,6 +459,21 @@ internal fun ZoomablePageBox(
 
 internal fun readerPagePainterModel(url: String, preloadedBitmap: ImageBitmap?): Any? =
     url.takeIf { preloadedBitmap == null }
+
+internal fun transformCachedPageBitmap(
+    bitmap: ImageBitmap,
+    splitHalf: PageSplitHalf? = null,
+    sourceBounds: PixelBounds? = null,
+    cropBorders: Boolean = false,
+): ImageBitmap {
+    val skiaBitmap = bitmap.asSkiaBitmap()
+    return when {
+        sourceBounds != null -> extractSkiaSubBitmap(skiaBitmap, sourceBounds) ?: bitmap
+        splitHalf != null -> splitSkiaBitmap(skiaBitmap, splitHalf) ?: bitmap
+        cropBorders -> cropBordersFromSkiaBitmap(skiaBitmap) ?: bitmap
+        else -> bitmap
+    }
+}
 
 /** Crops the already-decoded Coil image's white borders — no re-download. */
 internal fun cropBordersFromCoilImage(image: CoilImage): ImageBitmap? {
@@ -512,4 +549,18 @@ private fun extractSkiaSubBitmap(src: SkiaBitmap, x: Int, y: Int, w: Int, h: Int
         SkiaRect.makeWH(w.toFloat(), h.toFloat()),
     )
     return dst.asComposeImageBitmap()
+}
+
+private fun extractSkiaSubBitmap(src: SkiaBitmap, bounds: PixelBounds): ImageBitmap? {
+    if (
+        bounds.x < 0 ||
+        bounds.y < 0 ||
+        bounds.width <= 0 ||
+        bounds.height <= 0 ||
+        bounds.x + bounds.width > src.width ||
+        bounds.y + bounds.height > src.height
+    ) {
+        return null
+    }
+    return extractSkiaSubBitmap(src, bounds.x, bounds.y, bounds.width, bounds.height)
 }

@@ -40,8 +40,10 @@ object DesktopReaderRuntimeFactory {
         isWebtoon: Boolean,
         sourceId: Long,
         chapterUrl: String,
+        mangaTitle: String,
         mangaViewerFlags: Long,
         prefs: ReaderPreferences,
+        pageLoader: DesktopReaderPageLoader,
     ): ReaderScreenModel {
         val mangaRepository = runCatching { Injekt.get<MangaRepository>() }.getOrNull()
         return ReaderScreenModel(
@@ -54,6 +56,13 @@ object DesktopReaderRuntimeFactory {
             chapterUrl = chapterUrl,
             mangaViewerFlags = mangaViewerFlags,
             prefs = prefs,
+            adjacentChapterLoader = { chapter ->
+                pageLoader.loadAdjacentChapter(
+                    chapter = chapter,
+                    sourceId = sourceId,
+                    mangaTitle = mangaTitle,
+                )
+            },
             persistViewerFlags = { mangaId, flags ->
                 mangaRepository?.update(MangaUpdate(id = mangaId, viewerFlags = flags))
             },

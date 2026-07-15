@@ -22,6 +22,10 @@ import mihon.domain.reader.ReaderNavigationCommand
 import mihon.domain.reader.ReaderPageModel
 import mihon.domain.reader.ReaderTransitionDirection
 
+fun interface AdjacentChapterLoader {
+    suspend fun load(chapter: ReaderChapterModel): ReaderChapterState
+}
+
 /**
  * Voyager ScreenModel for [DesktopReaderScreen].
  *
@@ -44,6 +48,12 @@ class ReaderScreenModel(
     val mangaViewerFlags: Long = 0L,
     prefs: ReaderPreferences = ReaderPreferences(),
     private val persistViewerFlags: suspend (mangaId: Long, flags: Long) -> Unit = { _, _ -> },
+    private val adjacentChapterLoader: AdjacentChapterLoader = AdjacentChapterLoader { chapter ->
+        ReaderChapterState.Error(
+            error = AppError.Unknown(IllegalStateException("Adjacent chapter loader is unavailable")),
+            retryTargetChapterId = chapter.id,
+        )
+    },
 ) : ScreenModel {
 
     private val _state = MutableStateFlow(buildInitialState(prefs))
@@ -199,7 +209,7 @@ class ReaderScreenModel(
                     from = from,
                     to = to,
                     missingChapterCount = missingChapterCount,
-                    state = ReaderChapterState.Wait,
+                    state = ReaderChapterState.Loading,
                 ),
             )
         }
@@ -218,10 +228,34 @@ class ReaderScreenModel(
     fun chapterTransitionCommand(): ReaderNavigationCommand? =
         state.value.chapterTransition?.retryCommand()
 
-    fun retryChapterTransition(): ReaderNavigationCommand? {
+    suspend fun loadChapterTransition(targetChapterId: Long? = null): ReaderChapterState? {
+        val transition = state.value.chapterTransition ?: return null
+        val target = transition.to ?: return null
+        if (targetChapterId != null && target.id != targetChapterId) return null
+        setChapterTransitionState(ReaderChapterState.Loading)
+        val result = try {
+            adjacentChapterLoader.load(target)
+        } catch (error: Exception) {
+            ReaderChapterState.Error(
+                error = AppError.Unknown(error),
+                retryTargetChapterId = target.id,
+            )
+        }
+        _state.update { current ->
+            val activeTransition = current.chapterTransition
+            if (activeTransition?.to?.id == target.id) {
+                current.copy(chapterTransition = activeTransition.copy(state = result))
+            } else {
+                current
+            }
+        }
+        return result
+    }
+
+    suspend fun retryChapterTransition(): ReaderNavigationCommand? {
         val command = chapterTransitionCommand()
         if (command is ReaderNavigationCommand.RetryChapter) {
-            setChapterTransitionState(ReaderChapterState.Loading)
+            loadChapterTransition(command.chapterId)
         }
         return command
     }
