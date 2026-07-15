@@ -38,7 +38,9 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - [ ] Task 4B：Desktop install port 与 reload 回滚
 - [ ] Task 4C：Android PackageInstaller adapter wiring
 - [ ] Task 5：Desktop 浏览器登录、Cookie 原子回传与 FlareSolverr 显式后备
-- [ ] Task 6：共享 ScreenModel wiring、导航/DI 与 i18n
+- [ ] Task 6A：Browse 共享状态 wiring
+- [ ] Task 6B：Extension UI、DI 与 i18n wiring
+- [ ] Task 6C：Test Mode、导航与自动化观察
 - [ ] Task 7：compat 去重、parity 证据、全量审查与跨平台运行时验收
 
 ---
@@ -174,8 +176,16 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Create: `domain/src/jvmTest/kotlin/mihon/domain/extension/ExtensionSharedContractTest.kt`
 - Create: `domain/src/jvmTest/kotlin/mihon/domain/extension/ExtensionCatalogServiceTest.kt`
 - Modify: `domain/src/commonMain/kotlin/mihon/domain/extensionrepo/service/ExtensionRepoDto.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopAvailableExtension.kt`
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/api/ExtensionApi.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionApi.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/extension/ExtensionMeta.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/extension/ExtensionUpdateUtils.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionApiSharedCatalogTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/extension/ExtensionUpdateDetectionTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/extension/ExtensionVersionMetaTest.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt`
+- Create: `app/src/test/java/eu/kanade/tachiyomi/extension/api/ExtensionApiSharedCatalogTest.kt`
 
 **Interfaces:**
 - Produces: `ExtensionArtifact`, `RepositoryIdentity`, `ExtensionCatalogEntry`, `ExtensionCompatibility`, `RepositoryFetchResult`, `ExtensionTrustDecision`。
@@ -394,67 +404,140 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
   Commit: `feat(desktop): add recoverable source browser login`
 
-### Task 6: 共享 ScreenModel wiring、导航/DI 与 i18n
+### Task 6A: Browse 共享状态 wiring
 
-**OpenSpec mapping:** 2.3、3.4、3.5
+**OpenSpec mapping:** 3.4、3.5（源浏览、全局搜索、恢复反馈部分）
 
-**Risk axis:** ui-wiring
+**Risk axis:** source-browse-wiring
 **Platform boundary:** shared+desktop
-**Estimated scope:** 16 files, 900 lines
-**Verification:** 运行 Desktop Screen/DI/navigation/i18n/Test Mode 集成测试，确认入口、状态、恢复操作与 production wiring 任一断线都会失败。
-**Split waiver:** Screen 状态消费、Voyager/DI 接线、同批资源 key 与 Test Mode 可观察契约构成单一 UI wiring 迁移；拆开会产生可编译但用户状态无入口、无本地化或自动化不可观察的中间态。
+**Estimated scope:** 4 files, 320 lines
+**Verification:** 运行 Browse ScreenModel 与 `SourceSharedStateWiringTest`，确认 Loading、Empty、分页保留内容、403 登录和 Retry 均来自共享状态。
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/BrowseTab.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/GlobalSearchScreen.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceSharedStateWiringTest.kt`
+
+**Interfaces:**
+- Consumes: Task 2 共享 query/page/error state 与 Task 5 登录 intent。
+- Produces: Browse UI intents（`Retry`、`OpenLogin`、`OpenSettings`）和既有宽屏入口。
+
+- [ ] **Step 1: 写 Browse wiring RED**
+
+  实例化 Browse/Source/Global Search 页面并驱动共享状态，覆盖 Loading、真正 Empty、翻页失败保留内容、403 登录、缺配置设置入口和 Retry。
+
+- [ ] **Step 2: 运行 RED**
+
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.browse.SourceSharedStateWiringTest" --tests "*Source*ScreenModelTest"`
+  Expected: FAIL，原因是 Browse UI 仍自行维护状态或直接查询 repository/network。
+
+- [ ] **Step 3: 最小接线 Browse 状态与 intents**
+
+  ScreenModel 只组合共享 state 和发送 intent；Composable 保留现有导航入口与宽屏布局，不直接访问 repository/network。
+
+- [ ] **Step 4: 运行 GREEN**
+
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.browse.*"`
+  Expected: 全部 PASS；共享状态或 Browse production wiring 断线会失败。
+
+- [ ] **Step 5: 提交 Task 6A**
+
+  Commit: `refactor(desktop): wire shared browse state`
+
+### Task 6B: Extension UI、DI 与 i18n wiring
+
+**OpenSpec mapping:** 2.3、3.4、3.5（扩展状态、安装反馈、DI 与本地化部分）
+
+**Risk axis:** extension-ui-wiring
+**Platform boundary:** shared+desktop
+**Estimated scope:** 8 files, 400 lines
+**Verification:** 运行 Extension shared-state 与 Desktop DI wiring 测试，确认部分仓库失败、TrustRequired、安装失败旧版本可用及本地化恢复操作均由 production wiring 提供。
+
+**Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionListScreen.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionDetailsScreen.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/SourcePreferencesScreen.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt`
-- Modify: `app-desktop/src/main/kotlin/mihon/desktop/test/state/TestState.kt`
-- Modify: `app-desktop/src/main/kotlin/mihon/desktop/test/http/TestHttpServer.kt`
 - Modify: `i18n/src/commonMain/moko-resources/base/strings.xml`
 - Modify: `i18n/src/commonMain/moko-resources/zh-rCN/strings.xml`
-- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceSharedStateWiringTest.kt`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionSharedStateWiringTest.kt`
-- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/SourceExtensionNavigationContractTest.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt`
+
+**Interfaces:**
+- Consumes: Tasks 3–5 catalog/trust/install/login state。
+- Produces: Extension UI intents（`Install`、`CancelInstall`、`ConfirmTrust`、`Retry`）与可解析的 Desktop DI bindings。
+
+- [ ] **Step 1: 写 Extension UI/DI/i18n RED**
+
+  覆盖 Screen 实例化、所有新增 DI 类型解析、部分仓库失败、TrustRequired、安装失败后旧版本仍可用，以及 base/zh-rCN 恢复操作 key 可加载。
+
+- [ ] **Step 2: 运行 RED**
+
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionSharedStateWiringTest" --tests "mihon.desktop.di.DesktopDiWiringTest"`
+  Expected: FAIL，原因是 Extension UI 仍绕过共享状态、DI 缺绑定或资源 key 缺失。
+
+- [ ] **Step 3: 接线 Extension 状态与 DI**
+
+  Composable 只消费共享 state/intent，保留扩展列表、详情和源偏好入口；注册 production bindings，错误状态提供 Retry、设置或信任确认。
+
+- [ ] **Step 4: 迁移本切片文案**
+
+  将触达的源/扩展/挑战恢复文案同时加入 base 与 zh-rCN，禁止在上述 Kotlin 文件新增硬编码业务提示。
+
+- [ ] **Step 5: 运行 GREEN**
+
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.*" --tests "mihon.desktop.di.DesktopDiWiringTest"`
+  Expected: 全部 PASS；共享状态、DI 或资源 wiring 任一断线会失败。
+
+- [ ] **Step 6: 提交 Task 6B**
+
+  Commit: `refactor(desktop): wire extension UI and DI`
+
+### Task 6C: Test Mode、导航与自动化观察
+
+**OpenSpec mapping:** 2.3、3.4、3.5（导航类型、Test Mode 与自动化观察部分）
+
+**Risk axis:** automation-observability
+**Platform boundary:** desktop
+**Estimated scope:** 4 files, 280 lines
+**Verification:** 运行导航、i18n 约束与 Test Mode 客户端集成测试，确认 source/extension 状态、安装失败和登录取消可通过真实 HTTP 测试接口观察。
+
+**Files:**
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/test/state/TestState.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/test/http/TestHttpServer.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/SourceExtensionNavigationContractTest.kt`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/i18n/DesktopSourceExtensionI18nTest.kt`
 
 **Interfaces:**
-- Consumes: Tasks 2–5 shared query/catalog/install/login state。
-- Produces: UI intents only (`Retry`, `OpenLogin`, `OpenSettings`, `Install`, `CancelInstall`, `ConfirmTrust`) and stable Test Mode state/actions。
+- Consumes: Tasks 6A/6B 的 Screen、intents、DI 与资源 key。
+- Produces: 类型安全导航契约及稳定 Test Mode source/extension state/actions。
 
-- [ ] **Step 1: 先写 UI wiring RED 测试**
+- [ ] **Step 1: 写导航/Test Mode/i18n RED**
 
-  测试每个 Screen 可实例化、Voyager push 类型正确、所有新 DI 类型可解析；状态测试覆盖 Loading、真正 Empty、部分仓库失败、翻页失败保留内容、TrustRequired、安装失败旧版本可用、登录取消/超时。
+  验证每个 Screen 可实例化、Voyager push 类型正确；通过真实 Test HTTP server 观察导航、安装失败、登录取消；扫描触达 Kotlin 文件的硬编码业务文案和资源完整性。
 
-- [ ] **Step 2: 写 i18n 缺 key RED 测试**
+- [ ] **Step 2: 运行 RED**
 
-  资源完整性测试扫描本 change 触达的 key，并扫描上述 Kotlin 文件中的新增硬编码业务文案；缺 key 或新增中英文提示字面量时失败。
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.SourceExtensionNavigationContractTest" --tests "mihon.desktop.i18n.DesktopSourceExtensionI18nTest" :test-desktop:test`
+  Expected: FAIL，原因是导航契约、Test Mode 状态/action 或 i18n 约束尚未覆盖新链路。
 
-- [ ] **Step 3: 运行 RED**
+- [ ] **Step 3: 接入 Test Mode 状态与动作**
 
-  Run: `./gradlew :app-desktop:jvmTest --tests "*Source*ScreenModelTest" --tests "*Extension*ScreenModelTest" --tests "*Navigation*ContractTest" --tests "mihon.desktop.di.DesktopDiWiringTest" --tests "*I18n*"`
-  Expected: FAIL，原因是旧 UI 仍自行维护状态/硬编码文案或 DI 缺绑定。
+  增加或调整 source/extension 可观察状态与动作，复用 production Screen/intents，不在测试 server 复制业务逻辑。
 
-- [ ] **Step 4: 最小接线共享状态与 intents**
+- [ ] **Step 4: 补齐导航和 i18n 契约**
 
-  ScreenModel 只组合共享 state 和发送 intent；Composable 不直接查询 repository/network/manager。保留现有导航入口和宽屏布局；缺扩展提供安装入口，403 提供登录，缺配置提供设置，错误提供 Retry/脱敏诊断。
+  直接实例化 Screen 并验证导航上下文；资源测试对 Tasks 6A/6B 的文件与 key 执行完整性检查。
 
-- [ ] **Step 5: 迁移触达文案与 Test Mode**
+- [ ] **Step 5: 运行 GREEN 与自动化集成**
 
-  将源/扩展/挑战登录触达文案加入 base 与 zh-rCN 资源，按项目 fallback 规则使用；Test Mode 增加或调整 source/extension 状态与动作，使导航、安装失败、登录取消可自动化观察。
+  Run: `./gradlew :app-desktop:jvmTest --tests "*Navigation*ContractTest" --tests "*I18n*" :test-desktop:test`
+  Expected: 全部 PASS；Screen/navigation/Test Mode/i18n 任一断线都会失败。
 
-- [ ] **Step 6: 运行 GREEN 与全链集成**
+- [ ] **Step 6: 提交 Task 6C**
 
-  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.browse.*" --tests "mihon.desktop.ui.extension.*" --tests "mihon.desktop.di.DesktopDiWiringTest" --tests "*I18n*" :test-desktop:test`
-  Expected: 全部 PASS；Screen/DI/navigation/Test Mode 断线均会导致测试失败。
-
-- [ ] **Step 7: 提交 Task 6**
-
-  Commit: `refactor(desktop): wire shared source and extension state`
+  Commit: `test(desktop): expose source extension workflow state`
 
 ### Task 7: compat 去重、parity 证据、全量审查与跨平台运行时验收
 

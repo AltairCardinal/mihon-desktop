@@ -23,6 +23,7 @@
 ## Comet 项目执行约束
 
 - 执行计划前运行 `bash scripts/comet-project-guard.sh plan <plan-file>`；门禁只检查顶部总览中未完成 Task 的结构，不判断内容语义。
+- Desktop 构建 hook 只拦截常见的 Gradle 分发任务直接调用，并要求改用 `scripts/build-desktop.sh`；它是工作流提示与门禁，不是不可绕过的 shell 安全沙箱。
 - 每个待办 Task 必须声明单个 `Risk axis` slug（只含字母、数字、`-` 或 `_`，不使用多值分隔符）、允许的 `Platform boundary`、`Estimated scope: N files, M lines` 和非空 `Verification`。边界仅允许 `shared`、`android`、`desktop`、`shared+android`、`shared+desktop`、`verification`、`docs`、`tooling`，禁止 `android+desktop`。
 - Task 预计超过 8 个文件或 400 行时应继续拆分；确实不可拆时必须写具体、非空的 `Split waiver`，说明不可独立调度的原因。
 - Subagent 只接收完成当前 Task 所需的最小上下文；同一 Task 只设一个实现者和一个审查者。修复后复审最多一轮，仍未通过则停止并重新规划。

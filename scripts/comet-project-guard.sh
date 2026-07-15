@@ -17,126 +17,179 @@ if [ ! -f "$PLAN_FILE" ]; then
   exit 2
 fi
 
-awk '
-function error(task, message) {
-  printf "ERROR: Task %s: %s\n", task, message > "/dev/stderr"
-  errors++
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON_BIN="$(command -v python3)"
+elif command -v python >/dev/null 2>&1; then
+  PYTHON_BIN="$(command -v python)"
+else
+  echo "ERROR: plan guard requires python3 or python" >&2
+  exit 2
+fi
+
+"$PYTHON_BIN" - "$PLAN_FILE" <<'PY'
+from collections import Counter, defaultdict
+from pathlib import Path
+import re
+import sys
+
+
+plan_file = Path(sys.argv[1])
+try:
+    source_lines = plan_file.read_text(encoding="utf-8").splitlines()
+except (OSError, UnicodeError) as exc:
+    print(f"ERROR: cannot read plan as UTF-8: {plan_file}: {exc}", file=sys.stderr)
+    raise SystemExit(2)
+
+
+def visible_markdown(lines):
+    in_comment = False
+    fence_char = None
+    fence_length = 0
+
+    for line_number, raw_line in enumerate(lines, start=1):
+        if fence_char is not None:
+            closing = re.match(r"^ {0,3}([`~]+)[ \t]*$", raw_line)
+            if closing and closing.group(1)[0] == fence_char and len(closing.group(1)) >= fence_length:
+                fence_char = None
+                fence_length = 0
+            continue
+
+        visible = ""
+        cursor = 0
+        while cursor < len(raw_line):
+            if in_comment:
+                end = raw_line.find("-->", cursor)
+                if end < 0:
+                    cursor = len(raw_line)
+                else:
+                    in_comment = False
+                    cursor = end + 3
+            else:
+                start = raw_line.find("<!--", cursor)
+                if start < 0:
+                    visible += raw_line[cursor:]
+                    cursor = len(raw_line)
+                else:
+                    visible += raw_line[cursor:start]
+                    in_comment = True
+                    cursor = start + 4
+
+        opening = re.match(r"^ {0,3}(`{3,}|~{3,}).*$", visible)
+        if opening:
+            fence_char = opening.group(1)[0]
+            fence_length = len(opening.group(1))
+            continue
+        yield line_number, visible
+
+
+heading_pattern = re.compile(r"^ {0,3}(#{1,6})[ \t]+(.*?)[ \t]*#*[ \t]*$")
+task_title_pattern = re.compile(r"^Task[ \t]+([0-9]+[A-Za-z]?)(?=[^0-9A-Za-z]|$)")
+overview_pattern = re.compile(r"^ {0,3}-[ \t]+\[([ xX])\][ \t]+Task[ \t]+([0-9]+[A-Za-z]?)(?=[^0-9A-Za-z]|$)")
+metadata_pattern = re.compile(
+    r"^ {0,3}\*\*(Risk axis|Platform boundary|Estimated scope|Verification|Split waiver):\*\*[ \t]*(.*?)[ \t]*$"
+)
+
+overview_count = Counter()
+pending = set()
+body_count = Counter()
+metadata_count = Counter()
+metadata_value = {}
+current_task = None
+saw_task_body = False
+
+for line_number, line in visible_markdown(source_lines):
+    heading = heading_pattern.match(line)
+    if heading:
+        level = len(heading.group(1))
+        if level <= 3:
+            current_task = None
+        task_title = task_title_pattern.match(heading.group(2)) if level == 3 else None
+        if task_title:
+            task = task_title.group(1)
+            body_count[task] += 1
+            current_task = task
+            saw_task_body = True
+        continue
+
+    if not saw_task_body:
+        overview = overview_pattern.match(line)
+        if overview:
+            state, task = overview.groups()
+            overview_count[task] += 1
+            if state == " ":
+                pending.add(task)
+            continue
+
+    if current_task is not None:
+        metadata = metadata_pattern.match(line)
+        if metadata:
+            field, value = metadata.groups()
+            metadata_count[(current_task, field)] += 1
+            metadata_value[(current_task, field)] = value.strip()
+
+errors = []
+
+
+def error(task, message):
+    errors.append(f"ERROR: Task {task}: {message}")
+
+
+if not overview_count:
+    errors.append("ERROR: no visible top-level Task overview found before Task bodies")
+
+for task, count in overview_count.items():
+    if count != 1:
+        error(task, "appears more than once in the visible top-level overview")
+
+required_fields = ("Risk axis", "Platform boundary", "Estimated scope", "Verification")
+allowed_boundaries = {
+    "shared",
+    "android",
+    "desktop",
+    "shared+android",
+    "shared+desktop",
+    "verification",
+    "docs",
+    "tooling",
 }
 
-function task_id(line, value) {
-  value = line
-  sub(/^.*Task[[:space:]]+/, "", value)
-  sub(/[^0-9A-Za-z].*$/, "", value)
-  return value
-}
+for task in sorted(pending):
+    if body_count[task] != 1:
+        error(task, "must map to exactly one visible Task 正文")
+        continue
 
-function metadata(line, task, field, value) {
-  value = line
-  sub("^\\*\\*" field ":\\*\\*[[:space:]]*", "", value)
-  count[task, field]++
-  data[task, field] = value
-}
+    for field in required_fields:
+        count = metadata_count[(task, field)]
+        value = metadata_value.get((task, field), "")
+        if count != 1 or not value:
+            error(task, f"requires exactly one non-empty **{field}:** field in its Task 正文")
 
-BEGIN {
-  in_bodies = 0
-  current = ""
-  pending_count = 0
-}
+    risk = metadata_value.get((task, "Risk axis"), "")
+    if risk and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", risk):
+        error(task, "Risk axis 必须是单个非空 slug（只含字母、数字、_ 或 -，不得使用多值分隔符）")
 
-/^### Task[[:space:]]+[0-9]+[A-Za-z]?([^0-9A-Za-z]|$)/ {
-  in_bodies = 1
-  current = task_id($0)
-  body_count[current]++
-  next
-}
+    boundary = metadata_value.get((task, "Platform boundary"), "")
+    if boundary and boundary not in allowed_boundaries:
+        error(task, "Platform boundary must be one allowed value; android+desktop is forbidden")
 
-!in_bodies && /^- \[[ xX]\] Task[[:space:]]+[0-9]+[A-Za-z]?([^0-9A-Za-z]|$)/ {
-  id = task_id($0)
-  overview_count[id]++
-  if ($0 ~ /^- \[[xX]\]/) {
-    completed[id] = 1
-  } else {
-    pending[id] = 1
-    pending_count++
-  }
-  next
-}
+    scope = metadata_value.get((task, "Estimated scope"), "")
+    scope_match = re.fullmatch(r"([0-9]+) files, ([0-9]+) lines", scope)
+    if scope and not scope_match:
+        error(task, "Estimated scope must use: N files, M lines")
+    elif scope_match:
+        files, lines = map(int, scope_match.groups())
+        if files > 8 or lines > 400:
+            waiver_count = metadata_count[(task, "Split waiver")]
+            waiver = metadata_value.get((task, "Split waiver"), "")
+            if waiver_count != 1 or not waiver:
+                error(task, "scope exceeds 8 files or 400 lines and requires one non-empty **Split waiver:**")
 
-in_bodies && current != "" {
-  if ($0 ~ /^\*\*Risk axis:\*\*/) {
-    metadata($0, current, "Risk axis")
-  } else if ($0 ~ /^\*\*Platform boundary:\*\*/) {
-    metadata($0, current, "Platform boundary")
-  } else if ($0 ~ /^\*\*Estimated scope:\*\*/) {
-    metadata($0, current, "Estimated scope")
-  } else if ($0 ~ /^\*\*Verification:\*\*/) {
-    metadata($0, current, "Verification")
-  } else if ($0 ~ /^\*\*Split waiver:\*\*/) {
-    metadata($0, current, "Split waiver")
-  }
-}
+    if metadata_count[(task, "Split waiver")] > 1:
+        error(task, "Split waiver may appear at most once")
 
-END {
-  if (pending_count == 0) {
-    found_overview = 0
-    for (id in overview_count) found_overview = 1
-    if (!found_overview) {
-      print "ERROR: no top-level Task overview found before Task bodies" > "/dev/stderr"
-      errors++
-    }
-  }
+if errors:
+    print("\n".join(errors), file=sys.stderr)
+    raise SystemExit(1)
 
-  for (id in overview_count) {
-    if (overview_count[id] != 1) error(id, "appears more than once in the top-level overview")
-  }
-
-  for (id in pending) {
-    if (body_count[id] != 1) {
-      error(id, "must map to exactly one Task body")
-      continue
-    }
-
-    required[1] = "Risk axis"
-    required[2] = "Platform boundary"
-    required[3] = "Estimated scope"
-    required[4] = "Verification"
-    for (i = 1; i <= 4; i++) {
-      field = required[i]
-      if (count[id, field] != 1 || data[id, field] == "") {
-        error(id, "requires exactly one non-empty **" field ":** field")
-      }
-    }
-
-    risk = data[id, "Risk axis"]
-    if (risk != "" && risk !~ /^[A-Za-z0-9][A-Za-z0-9_-]*$/) {
-      error(id, "Risk axis 必须是单个非空 slug（只含字母、数字、_ 或 -，不得使用多值分隔符）")
-    }
-
-    boundary = data[id, "Platform boundary"]
-    if (boundary != "" && boundary !~ /^(shared|android|desktop|shared\+android|shared\+desktop|verification|docs|tooling)$/) {
-      error(id, "Platform boundary must be one allowed value; android+desktop is forbidden")
-    }
-
-    scope = data[id, "Estimated scope"]
-    if (scope != "" && scope !~ /^[0-9]+ files, [0-9]+ lines$/) {
-      error(id, "Estimated scope must use: N files, M lines")
-    } else if (scope != "") {
-      files = scope
-      sub(/ files,.*$/, "", files)
-      lines = scope
-      sub(/^[0-9]+ files, /, "", lines)
-      sub(/ lines$/, "", lines)
-      if ((files + 0 > 8 || lines + 0 > 400) && (count[id, "Split waiver"] != 1 || data[id, "Split waiver"] == "")) {
-        error(id, "scope exceeds 8 files or 400 lines and requires one non-empty **Split waiver:**")
-      }
-    }
-
-    if (count[id, "Split waiver"] > 1) {
-      error(id, "Split waiver may appear at most once")
-    }
-  }
-
-  if (errors > 0) exit 1
-  printf "PASS: 已检查 %d 个待办 Task 正文：%s\n", pending_count, FILENAME
-}
-' "$PLAN_FILE"
+print(f"PASS: 已检查 {len(pending)} 个待办 Task 正文：{plan_file}")
+PY

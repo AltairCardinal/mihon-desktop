@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .codex/hooks/enforce-build-script.sh"
+            "command": "bash -lc 'exec bash \"$(git rev-parse --show-toplevel)/.codex/hooks/enforce-build-script.sh\"'"
           }
         ]
       }
