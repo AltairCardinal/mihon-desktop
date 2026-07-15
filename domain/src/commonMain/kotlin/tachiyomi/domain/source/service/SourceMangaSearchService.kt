@@ -8,7 +8,7 @@ import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.CancellationException
 import mihon.domain.error.AppError
 import mihon.domain.network.AppErrorException
-import java.io.IOException
+import okio.IOException
 
 class SourceMangaSearchService {
 

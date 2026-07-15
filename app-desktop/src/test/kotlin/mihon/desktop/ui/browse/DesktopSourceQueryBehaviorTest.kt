@@ -23,14 +23,44 @@ import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourceQuery
 import tachiyomi.domain.source.service.SourceQueryState
 import tachiyomi.domain.source.service.SourceRecoveryAction
+import tachiyomi.i18n.MR
+import java.io.File
+import java.util.Locale
 
 class DesktopSourceQueryBehaviorTest {
 
     @Test
     fun `desktop source errors use stable i18n messages instead of class names`() {
-        assertEquals("No Internet connection", desktopSourceErrorMessage(AppError.Network()))
-        assertEquals("Login", desktopSourceErrorMessage(AppError.Authentication()))
-        assertEquals("Unknown error", desktopSourceErrorMessage(AppError.Server(500)))
+        assertEquals(
+            MR.strings.exception_offline.localized(Locale.ENGLISH),
+            desktopSourceErrorMessage(AppError.Network(), Locale.ENGLISH),
+        )
+        assertEquals(
+            MR.strings.login.localized(Locale.SIMPLIFIED_CHINESE),
+            desktopSourceErrorMessage(AppError.Authentication(), Locale.SIMPLIFIED_CHINESE),
+        )
+        assertEquals(
+            MR.strings.unknown_error.localized(Locale.ENGLISH),
+            desktopSourceErrorMessage(AppError.Server(500), Locale.ENGLISH),
+        )
+        assertEquals(
+            MR.strings.action_retry.localized(Locale.SIMPLIFIED_CHINESE),
+            desktopSourceRecoveryActionLabel(SourceRecoveryAction.Retry, Locale.SIMPLIFIED_CHINESE),
+        )
+    }
+
+    @Test
+    fun `desktop source recovery Kotlin has no hardcoded user messages`() {
+        val root = repositoryRoot()
+        val source = listOf(
+            "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceQueryCoordinators.kt",
+            "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt",
+            "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/GlobalSearchScreen.kt",
+        ).joinToString("\n") { root.resolve(it).readText() }
+
+        listOf("No Internet connection", "Login", "Unknown error", "Retry").forEach { message ->
+            assertEquals(false, source.contains("\"$message\""), "recovery text must come from MR: $message")
+        }
     }
 
     @Test
@@ -156,6 +186,12 @@ class DesktopSourceQueryBehaviorTest {
     }
 
     private companion object {
+        fun repositoryRoot(): File {
+            var current: File? = File(requireNotNull(System.getProperty("user.dir"))).absoluteFile
+            while (current != null && !current.resolve("settings.gradle.kts").isFile) current = current.parentFile
+            return requireNotNull(current)
+        }
+
         fun manga(url: String, title: String) = SManga.create().apply {
             this.url = url
             this.title = title

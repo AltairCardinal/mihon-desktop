@@ -13,6 +13,8 @@ import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.mutate
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentMap
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
@@ -49,9 +51,11 @@ abstract class SearchScreenModel(
     private val getManga: GetManga = Injekt.get(),
     private val preferences: SourcePreferences = Injekt.get(),
     private val sourceMangaSearchService: SourceMangaSearchService = Injekt.get(),
+    workerScope: CoroutineScope? = null,
+    private val coroutineDispatcher: CoroutineDispatcher = Executors.newFixedThreadPool(5).asCoroutineDispatcher(),
 ) : StateScreenModel<SearchScreenModel.State>(initialState) {
 
-    private val coroutineDispatcher = Executors.newFixedThreadPool(5).asCoroutineDispatcher()
+    private val workerScope = workerScope ?: ioCoroutineScope
     private var searchJob: Job? = null
     private var searchGeneration = 0L
     private val sourceQueryReducer = SourceQueryReducer()
@@ -169,7 +173,7 @@ abstract class SearchScreenModel(
             )
         }
 
-        searchJob = ioCoroutineScope.launch {
+        searchJob = workerScope.launch {
             sources.map { source ->
                 async {
                     if (state.value.items[source] !is SearchItemResult.Loading) {

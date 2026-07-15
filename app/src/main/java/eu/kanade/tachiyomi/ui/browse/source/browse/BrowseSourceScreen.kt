@@ -59,6 +59,8 @@ import mihon.presentation.core.util.collectAsLazyPagingItems
 import tachiyomi.core.common.Constants
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.domain.source.model.StubSource
+import tachiyomi.domain.source.service.SourcePageError
+import tachiyomi.domain.source.service.SourceRecoveryAction
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.components.material.padding
@@ -218,6 +220,10 @@ data class BrowseSourceScreen(
                 snackbarHostState = snackbarHostState,
                 contentPadding = paddingValues,
                 onWebViewClick = onWebViewClick,
+                onErrorAction = { pageError ->
+                    browseSourceRecoveryScreen(screenModel.source as CatalogueSource, pageError)
+                        ?.let(navigator::push)
+                },
                 onHelpClick = { uriHandler.openUri(Constants.URL_HELP) },
                 onLocalSourceHelpClick = onHelpClick,
                 onMangaClick = { navigator.push((MangaScreen(it.id, true))) },
@@ -312,4 +318,17 @@ data class BrowseSourceScreen(
         class Text(txt: String) : SearchType(txt)
         class Genre(txt: String) : SearchType(txt)
     }
+}
+
+internal fun browseSourceRecoveryScreen(
+    source: CatalogueSource,
+    pageError: SourcePageError,
+): Screen? {
+    if (pageError.recoveryAction != SourceRecoveryAction.OpenLogin) return null
+    val httpSource = source as? HttpSource ?: return null
+    return WebViewScreen(
+        url = httpSource.baseUrl,
+        initialTitle = httpSource.name,
+        sourceId = httpSource.id,
+    )
 }

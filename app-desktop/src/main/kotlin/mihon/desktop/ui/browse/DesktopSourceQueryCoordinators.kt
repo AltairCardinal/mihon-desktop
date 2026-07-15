@@ -12,6 +12,8 @@ import tachiyomi.domain.source.service.SourceQuery
 import tachiyomi.domain.source.service.SourceQueryReducer
 import tachiyomi.domain.source.service.SourceQueryState
 import tachiyomi.domain.source.service.SourceRecoveryAction
+import tachiyomi.i18n.MR
+import java.util.Locale
 
 sealed interface DesktopSourceRecoveryIntent {
     data class Retry(val request: SourcePageRequest) : DesktopSourceRecoveryIntent
@@ -19,10 +21,19 @@ sealed interface DesktopSourceRecoveryIntent {
     data object None : DesktopSourceRecoveryIntent
 }
 
-internal fun desktopSourceErrorMessage(error: AppError): String = when (error) {
-    is AppError.Network -> "No Internet connection"
-    is AppError.Authentication -> "Login"
-    else -> "Unknown error"
+internal fun desktopSourceErrorMessage(error: AppError, locale: Locale = Locale.getDefault()): String = when (error) {
+    is AppError.Network -> MR.strings.exception_offline.localized(locale)
+    is AppError.Authentication -> MR.strings.login.localized(locale)
+    else -> MR.strings.unknown_error.localized(locale)
+}
+
+internal fun desktopSourceRecoveryActionLabel(
+    recoveryAction: SourceRecoveryAction,
+    locale: Locale = Locale.getDefault(),
+): String? = when (recoveryAction) {
+    SourceRecoveryAction.OpenLogin -> MR.strings.login.localized(locale)
+    SourceRecoveryAction.Retry -> MR.strings.action_retry.localized(locale)
+    SourceRecoveryAction.None -> null
 }
 
 class SourceBrowseQueryCoordinator(

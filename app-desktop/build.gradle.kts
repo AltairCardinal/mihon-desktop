@@ -77,7 +77,7 @@ kotlin {
                 implementation(projects.domain)
                 implementation(projects.data)
                 implementation(projects.coreMetadata)
-                // implementation(projects.i18n) // excluded in worktree
+                implementation(projects.i18n)
 
                 // Network
                 implementation(libs.okhttp.core)

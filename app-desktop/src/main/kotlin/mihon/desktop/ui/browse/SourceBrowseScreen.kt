@@ -274,13 +274,13 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
                                     color = MaterialTheme.colorScheme.error,
                                     style = MaterialTheme.typography.bodyMedium,
                                 )
-                                androidx.compose.material3.Button(
-                                    onClick = ::recover,
-                                    modifier = Modifier.padding(top = 8.dp),
-                                ) {
-                                    Text(
-                                        if (queryError!!.recoveryAction == SourceRecoveryAction.OpenLogin) "Login" else "Retry",
-                                    )
+                                desktopSourceRecoveryActionLabel(queryError!!.recoveryAction)?.let { label ->
+                                    androidx.compose.material3.Button(
+                                        onClick = ::recover,
+                                        modifier = Modifier.padding(top = 8.dp),
+                                    ) {
+                                        Text(label)
+                                    }
                                 }
                             }
                         }
@@ -321,8 +321,10 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
                                             desktopSourceErrorMessage(error.error),
                                             color = MaterialTheme.colorScheme.error,
                                         )
-                                        androidx.compose.material3.Button(onClick = ::recover) {
-                                            Text(if (error.recoveryAction == SourceRecoveryAction.OpenLogin) "Login" else "Retry")
+                                        desktopSourceRecoveryActionLabel(error.recoveryAction)?.let { label ->
+                                            androidx.compose.material3.Button(onClick = ::recover) {
+                                                Text(label)
+                                            }
                                         }
                                     }
                                 }

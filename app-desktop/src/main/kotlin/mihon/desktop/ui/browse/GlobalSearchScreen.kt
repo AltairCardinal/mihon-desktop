@@ -212,8 +212,10 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
                                     desktopSourceErrorMessage(error.error),
                                     color = MaterialTheme.colorScheme.error,
                                 )
-                                androidx.compose.material3.TextButton(onClick = { recover(sourceResult) }) {
-                                    Text(if (error.recoveryAction == SourceRecoveryAction.OpenLogin) "Login" else "Retry")
+                                desktopSourceRecoveryActionLabel(error.recoveryAction)?.let { label ->
+                                    androidx.compose.material3.TextButton(onClick = { recover(sourceResult) }) {
+                                        Text(label)
+                                    }
                                 }
                             }
                         }

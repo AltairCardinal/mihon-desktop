@@ -22,12 +22,17 @@ import eu.kanade.presentation.browse.components.BrowseSourceList
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.ui.browse.source.browse.SourcePageException
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.flow.StateFlow
+import mihon.domain.error.AppError
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.model.StubSource
+import tachiyomi.domain.source.service.SourcePageError
+import tachiyomi.domain.source.service.SourceRecoveryAction
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
@@ -45,6 +50,7 @@ fun BrowseSourceContent(
     snackbarHostState: SnackbarHostState,
     contentPadding: PaddingValues,
     onWebViewClick: () -> Unit,
+    onErrorAction: (SourcePageError) -> Unit = {},
     onHelpClick: () -> Unit,
     onLocalSourceHelpClick: () -> Unit,
     onMangaClick: (Manga) -> Unit,
@@ -54,21 +60,37 @@ fun BrowseSourceContent(
 
     val errorState = mangaList.loadState.refresh.takeIf { it is LoadState.Error }
         ?: mangaList.loadState.append.takeIf { it is LoadState.Error }
+    val pageError = (errorState as? LoadState.Error)?.error
+        ?.let { it as? SourcePageException }
+        ?.pageError
 
     val getErrorMessage: (LoadState.Error) -> String = { state ->
-        with(context) { state.error.formattedMessage }
+        when (val error = (state.error as? SourcePageException)?.pageError?.error) {
+            is AppError.Network -> context.stringResource(MR.strings.exception_offline)
+            is AppError.Authentication -> context.stringResource(MR.strings.login)
+            null -> with(context) { state.error.formattedMessage }
+            else -> context.stringResource(MR.strings.unknown_error)
+        }
     }
 
     LaunchedEffect(errorState) {
         if (mangaList.itemCount > 0 && errorState != null && errorState is LoadState.Error) {
             val result = snackbarHostState.showSnackbar(
                 message = getErrorMessage(errorState),
-                actionLabel = context.stringResource(MR.strings.action_retry),
+                actionLabel = when (pageError?.recoveryAction) {
+                    SourceRecoveryAction.OpenLogin -> context.stringResource(MR.strings.login)
+                    SourceRecoveryAction.None -> null
+                    SourceRecoveryAction.Retry, null -> context.stringResource(MR.strings.action_retry)
+                },
                 duration = SnackbarDuration.Indefinite,
             )
             when (result) {
                 SnackbarResult.Dismissed -> snackbarHostState.currentSnackbarData?.dismiss()
-                SnackbarResult.ActionPerformed -> mangaList.retry()
+                SnackbarResult.ActionPerformed -> performBrowseSourceRecovery(
+                    pageError = pageError,
+                    retry = mangaList::retry,
+                    openLogin = onErrorAction,
+                )
             }
         }
     }
@@ -94,12 +116,22 @@ fun BrowseSourceContent(
                     ),
                 )
             } else {
-                persistentListOf(
-                    EmptyScreenAction(
-                        stringRes = MR.strings.action_retry,
-                        icon = Icons.Outlined.Refresh,
-                        onClick = mangaList::refresh,
-                    ),
+                listOfNotNull(
+                    when (pageError?.recoveryAction) {
+                        SourceRecoveryAction.OpenLogin -> EmptyScreenAction(
+                            stringRes = MR.strings.login,
+                            icon = Icons.Outlined.Public,
+                            onClick = {
+                                performBrowseSourceRecovery(pageError, mangaList::retry, onErrorAction)
+                            },
+                        )
+                        SourceRecoveryAction.None -> null
+                        SourceRecoveryAction.Retry, null -> EmptyScreenAction(
+                            stringRes = MR.strings.action_retry,
+                            icon = Icons.Outlined.Refresh,
+                            onClick = mangaList::retry,
+                        )
+                    },
                     EmptyScreenAction(
                         stringRes = MR.strings.action_open_in_web_view,
                         icon = Icons.Outlined.Public,
@@ -110,7 +142,7 @@ fun BrowseSourceContent(
                         icon = Icons.AutoMirrored.Outlined.HelpOutline,
                         onClick = onHelpClick,
                     ),
-                )
+                ).toPersistentList()
             },
         )
 
@@ -144,6 +176,18 @@ fun BrowseSourceContent(
                 onMangaLongClick = onMangaLongClick,
             )
         }
+    }
+}
+
+internal fun performBrowseSourceRecovery(
+    pageError: SourcePageError?,
+    retry: () -> Unit,
+    openLogin: (SourcePageError) -> Unit,
+) {
+    when (pageError?.recoveryAction) {
+        SourceRecoveryAction.OpenLogin -> openLogin(pageError)
+        SourceRecoveryAction.None -> Unit
+        SourceRecoveryAction.Retry, null -> retry()
     }
 }
 

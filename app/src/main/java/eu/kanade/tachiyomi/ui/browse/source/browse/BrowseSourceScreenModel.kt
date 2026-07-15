@@ -36,7 +36,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import mihon.domain.manga.model.toDomainManga
-import mihon.domain.network.AppErrorException
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.mapAsCheckboxState
 import tachiyomi.core.common.util.lang.launchIO
@@ -54,6 +53,7 @@ import tachiyomi.domain.manga.model.toMangaUpdate
 import tachiyomi.domain.source.interactor.GetRemoteManga
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourceMangaSearchService
+import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourcePageRequest
 import tachiyomi.domain.source.service.SourceQuery
 import tachiyomi.domain.source.service.SourceQueryReducer
@@ -374,7 +374,11 @@ class BrowseSourceScreenModel(
     }
 }
 
-private class SharedSourcePagingSource(
+internal class SourcePageException(
+    val pageError: SourcePageError,
+) : RuntimeException(pageError.error::class.simpleName, pageError.error.cause)
+
+internal class SharedSourcePagingSource(
     private val source: CatalogueSource,
     private val listing: BrowseSourceScreenModel.Listing,
     private val generation: Long,
@@ -407,7 +411,7 @@ private class SharedSourcePagingSource(
 
         return when (reduced) {
             is SourceQueryState.Content -> {
-                reduced.pageError?.let { return LoadResult.Error(AppErrorException(it.error)) }
+                reduced.pageError?.let { return LoadResult.Error(SourcePageException(it)) }
                 val newItems = reduced.items
                     .filterNot { it.url in previousUrls }
                     .map { it.toDomainManga(source.id) }
@@ -419,7 +423,9 @@ private class SharedSourcePagingSource(
                 )
             }
             is SourceQueryState.Empty -> LoadResult.Page(emptyList(), prevKey = null, nextKey = null)
-            is SourceQueryState.Failure -> LoadResult.Error(AppErrorException(reduced.error))
+            is SourceQueryState.Failure -> LoadResult.Error(
+                SourcePageException(SourcePageError(reduced.error, reduced.recoveryAction)),
+            )
             is SourceQueryState.Loading -> LoadResult.Error(IllegalStateException("Source query did not finish"))
         }
     }
