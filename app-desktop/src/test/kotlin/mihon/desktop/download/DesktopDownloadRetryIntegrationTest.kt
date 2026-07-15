@@ -63,9 +63,10 @@ class DesktopDownloadRetryIntegrationTest {
             awaitError(manager)
             case.errorType.java.isInstance(manager.queue.value.single().failure) shouldBe true
             delivered.size shouldBe 1
+            manager.stopAndJoin()
             manager.retryItem(chapter.chapterId)
             manager.queue.value.single().failure shouldBe null
-            job.cancel()
+            job.join()
         }
     }
 
