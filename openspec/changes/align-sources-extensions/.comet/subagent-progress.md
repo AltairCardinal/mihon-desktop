@@ -45,5 +45,3 @@
 - Blocking finding: after the worker body has started, external scope cancellation lets the body `finally` win exactly-once finalization with `terminalState == null`; the later completion handler cannot publish `Failed(AppError.Cancelled)`, so an independent active collector ends without a terminal state.
 - Exhausted review budget: thorough repair/re-review rounds 2/2 used. Comet requires an explicit user decision before a third repair round or task replan.
 - Review/fix round: 2/2
-- Batch review: Task 4A starts the install-state-machine risk boundary; review after implementation before 4B.
-- Review/fix round: 0/2
