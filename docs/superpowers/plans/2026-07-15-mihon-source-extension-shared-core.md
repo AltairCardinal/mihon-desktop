@@ -1,0 +1,440 @@
+---
+change: align-sources-extensions
+design-doc: docs/superpowers/specs/2026-07-15-mihon-source-extension-shared-core-design.md
+base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
+---
+
+# Mihon 源与扩展共享核心实施计划
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** 让 Android 与 Desktop 的源查询、扩展目录、版本/信任、安装事务和错误反馈使用同一套共享业务实现，只保留必要的平台 adapter，并保护 Desktop 独有产品能力。
+
+**Architecture:** 复用 `SourceMangaSearchService`、`AppError`、`ExtensionRepoRepository` 和现有平台 loader，把共享状态/规则放入 domain common；Android 保留 PackageManager/PackageInstaller/WebView，Desktop 保留目录、ClassLoader、APK→JAR、浏览器会话和系统文件操作。迁移期用同 fixture 双轨比较，production wiring 通过后删除旧业务路径。
+
+**Tech Stack:** Kotlin Multiplatform、Coroutines/Flow、OkHttp MockWebServer、kotlinx.serialization、Voyager、Compose Multiplatform、Injekt、JUnit/Kotest/AssertJ、Android Emulator、Skiko/JVM。
+
+## Global Constraints
+
+- 所有功能变化严格执行 RED → GREEN → REFACTOR；没有对应测试的功能代码不得提交。
+- 优先复用现有 `SourceMangaSearchService`、`AppError`、`ExtensionRepoRepository`、`DesktopExtensionApi`/loader adapter、`DesktopCookieJar` 与现有 Screen/导航入口，禁止另起第二套实现。
+- Android 与 Desktop 共享源列表、单源浏览、全局搜索、分页、空状态和错误语义。
+- 安装/更新遵循 `prepare → validate → commit → reload → rollback`；只有 reload 成功后才能发布 Installed。
+- Desktop 仓库身份/摘要连续性不得冒充 Android APK 签名等价。
+- compat stub 必须有真实受支持扩展调用证据与回归测试；无证据 API 不得扩张。
+- FlareSolverr 仅为用户显式选择的后备，不得静默接管正常请求。
+- 保留 Desktop APK→JAR、宽屏源 UI、扩展详情/文件工具、键鼠交互与 Test Mode，且保护测试必须在回退时失败。
+- 本 change 触达的源、扩展和挑战登录业务文案必须进入 i18n，Kotlin 不新增硬编码业务提示。
+- UI 必须覆盖入口、加载、空、错误、取消、权限/数据缺失和可执行恢复反馈。
+- Desktop 非测试构建只能使用 `./scripts/build-desktop.sh`，Windows 验收固定未打包 EXE；Android 运行时由当前任务自行部署模拟器验证。
+- 每个 Task 单独提交；implementer 不勾选本计划或 OpenSpec tasks，勾选与进度提交由主协调者完成。
+
+## 执行状态
+
+- [ ] Task 1：权威 fixture、调用链清单与产品保护网
+- [ ] Task 2：共享源查询状态、分页与错误语义
+- [ ] Task 3：共享扩展目录、版本、仓库部分失败与信任模型
+- [ ] Task 4：共享安装事务与平台 reload 回滚
+- [ ] Task 5：Desktop 浏览器登录、Cookie 原子回传与 FlareSolverr 显式后备
+- [ ] Task 6：共享 ScreenModel wiring、导航/DI 与 i18n
+- [ ] Task 7：compat 去重、parity 证据、全量审查与跨平台运行时验收
+
+---
+
+### Task 1: 权威 fixture、调用链清单与产品保护网
+
+**OpenSpec mapping:** 1.1、1.4
+
+**Files:**
+- Create: `docs/roadmap/source-extension-authority-baseline.md`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionProductBaselineTest.kt`
+- Create: `app-desktop/src/test/resources/extensions/compat-evidence.json`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt`
+- Reuse: `app-desktop/src/test/kotlin/mihon/desktop/extension/ApkToJarConverterTest.kt`
+- Reuse: `app-desktop/src/test/kotlin/mihon/desktop/extension/ExtensionArtifactReplacementTest.kt`
+
+**Interfaces:**
+- Produces: 真实 Android/Desktop 权威类映射、代表性 JAR/APK fixture 清单、compat evidence schema、后续共享类型的测试输入。
+- Evidence JSON shape: `{"symbol":"fully.qualified.Api","fixture":"path-or-package@version","test":"repo/test/path","status":"required|unsupported","removalCondition":"text"}`。
+
+- [ ] **Step 1: 写会失败的权威证据与产品基线测试**
+
+  `DesktopExtensionProductBaselineTest` 先要求尚不存在的 authority baseline 与 compat evidence 资源，并直接调用 production 的 APK→JAR、原子替换和扩展详情路由/文件工具逻辑：
+
+  ```kotlin
+  @Test
+  fun `每个 compat API 都有真实 fixture 和保护测试`() {
+      val evidence = loadCompatEvidence("extensions/compat-evidence.json")
+      assertThat(evidence).isNotEmpty
+      evidence.forEach {
+          assertThat(repoFile(it.test)).exists()
+          assertThat(it.fixture).isNotBlank()
+      }
+  }
+  ```
+
+- [ ] **Step 2: 运行 RED 并记录正确失败原因**
+
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.extension.DesktopExtensionProductBaselineTest"`
+  Expected: FAIL，原因是 authority baseline/evidence 文件尚不存在或缺必要映射；不得因 Gradle 配置或测试初始化失败。
+
+- [ ] **Step 3: 锁定 Desktop 产品基线与 compat 证据 schema**
+
+  `DesktopExtensionProductBaselineTest` 必须直接实例化或调用 production 的 APK→JAR、原子替换、扩展详情路由/文件工具逻辑；`DesktopProductCapabilityContractTest` 校验 manifest #34/#40 的保护测试真实存在。`compat-evidence.json` 首批只列现有真实 fixture 已触达 API，禁止预填“未来可能需要”的符号。
+
+- [ ] **Step 4: 写权威实现清单**
+
+  文档逐项记录 Android `ExtensionApi`/`ExtensionManager`/`ExtensionLoader`、Sources/GlobalSearch/Extensions ScreenModel 与 Desktop 对应类、可直接复用能力、必须抽取能力、必须平台适配能力及真实 fixture 来源。
+
+- [ ] **Step 5: 运行产品保护测试**
+
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.extension.ApkToJarConverterTest" --tests "mihon.desktop.extension.ExtensionArtifactReplacementTest" --tests "mihon.desktop.extension.DesktopExtensionProductBaselineTest" --tests "mihon.desktop.parity.DesktopProductCapabilityContractTest"`
+  Expected: 全部 GREEN；分支上不保留待后续任务修复的失败测试。
+
+- [ ] **Step 6: 提交 Task 1**
+
+  Commit: `test(extension): characterize source and extension authority`
+
+### Task 2: 共享源查询状态、分页与错误语义
+
+**OpenSpec mapping:** 1.2、2.1
+
+**Files:**
+- Modify: `domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaSearchService.kt`
+- Create: `domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceQueryState.kt`
+- Modify: `domain/src/jvmTest/kotlin/tachiyomi/domain/source/service/SourceMangaSearchServiceTest.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/source/SourceHttpParityIntegrationTest.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/GlobalSearchScreen.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModel.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/SearchScreenModel.kt`
+- Create: `app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/SourceSharedQueryWiringTest.kt`
+
+**Interfaces:**
+- Produces: `SourceQuery`, `SourcePageRequest(sourceId, page, generation, query)`, `SourcePageResult.Content/Empty/Failure`, `SourceRecoveryAction`。
+- Consumes: existing `SourceMangaSearchRequest`, `CatalogueSource`, `AppError` mapper。
+
+- [ ] **Step 1: 扩充 RED 契约**
+
+  覆盖 popular/latest/search、第一页空、后续页失败保留旧内容、403→OpenLogin、429/500→Retry、畸形解析→稳定 `AppError`、取消以及旧 generation 结果被丢弃：
+
+  ```kotlin
+  @Test
+  fun `晚到的旧 generation 不覆盖新查询`() = runTest {
+      val reducer = SourceQueryReducer()
+      val current = reducer.start(SourcePageRequest(1, 1, 2, SourceQuery.Search("new")))
+      val stale = reducer.reduce(current, generation = 1, page = MangasPage(listOf(old), false))
+      assertThat(stale).isEqualTo(current)
+  }
+  ```
+
+- [ ] **Step 2: 运行 RED**
+
+  Run: `./gradlew :domain:jvmTest --tests "tachiyomi.domain.source.service.SourceMangaSearchServiceTest"`
+  Expected: FAIL，缺少共享 result/reducer 或错误映射。
+
+- [ ] **Step 3: 实现最小共享查询核心**
+
+  保留 `loadPage()` 为唯一源调用；新增包装方法返回 `SourcePageResult`，异常统一交给现有 `AppError` 映射。`SourceQueryReducer` 只接受等于当前 generation 的结果；后续页失败保留 items 并附带 page error。
+
+- [ ] **Step 4: 写 MockWebServer 真实解析集成测试**
+
+  代表性 `HttpSource` 从服务器读取真实形状 JSON，覆盖 success、empty、403、429、500、malformed；不得 mock parser。断言 HTTP→source parser→共享结果的完整链路。
+
+- [ ] **Step 5: 接入 Android/Desktop production 查询链**
+
+  Desktop `SourceBrowseScreen`/`GlobalSearchScreen` 移除自行拼接异常字符串和重复翻页终止规则；Android ScreenModel 使用同一 result/reducer。UI 保留现有页面和宽屏布局，只消费 Loading/Content/Empty/Failure 与 recovery action。
+
+- [ ] **Step 6: 运行 GREEN 与 wiring 测试**
+
+  Run: `./gradlew :domain:jvmTest --tests "tachiyomi.domain.source.service.SourceMangaSearchServiceTest" :app-desktop:jvmTest --tests "mihon.desktop.source.SourceHttpParityIntegrationTest" --tests "mihon.desktop.ui.browse.*" :app:testReleaseUnitTest --tests "*BrowseSource*" --tests "*GlobalSearch*"`
+  Expected: 全部 PASS，HTTP 6 类场景无失败。
+
+- [ ] **Step 7: 提交 Task 2**
+
+  Commit: `refactor(source): share query state and errors`
+
+### Task 3: 共享扩展目录、版本、仓库部分失败与信任模型
+
+**OpenSpec mapping:** 1.3（版本/信任/损坏产物契约部分）、2.2（目录/版本/安全部分）、3.2（信任部分）
+
+**Files:**
+- Create: `domain/src/commonMain/kotlin/mihon/domain/extension/model/ExtensionArtifact.kt`
+- Create: `domain/src/commonMain/kotlin/mihon/domain/extension/model/ExtensionCatalog.kt`
+- Create: `domain/src/commonMain/kotlin/mihon/domain/extension/service/ExtensionCatalogService.kt`
+- Create: `domain/src/commonMain/kotlin/mihon/domain/extension/service/ExtensionTrustPolicy.kt`
+- Create: `domain/src/jvmTest/kotlin/mihon/domain/extension/ExtensionSharedContractTest.kt`
+- Create: `domain/src/jvmTest/kotlin/mihon/domain/extension/ExtensionCatalogServiceTest.kt`
+- Modify: `domain/src/commonMain/kotlin/mihon/domain/extensionrepo/service/ExtensionRepoDto.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/api/ExtensionApi.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionApi.kt`
+
+**Interfaces:**
+- Produces: `ExtensionArtifact`, `RepositoryIdentity`, `ExtensionCatalogEntry`, `ExtensionCompatibility`, `RepositoryFetchResult`, `ExtensionTrustDecision`。
+- `ExtensionCatalogService.refresh(repositories, fetch): ExtensionCatalogResult` 保留成功条目并逐仓库返回失败。
+
+- [ ] **Step 1: 写 RED 目录/版本/信任测试**
+
+  在 `ExtensionSharedContractTest` 构造 `ExtensionArtifact` 并反射断言 common 模型不包含 `File`/Android 类型；同时覆盖相同 index 在 Android/Desktop mapper 结果一致、lib version 边界、更新可用、所有仓库空、多仓库部分失败、摘要不符、仓库身份切换、旧 sidecar 缺身份进入 TrustRequired。
+
+- [ ] **Step 2: 运行 RED**
+
+  Run: `./gradlew :domain:jvmTest --tests "mihon.domain.extension.ExtensionSharedContractTest" --tests "mihon.domain.extension.ExtensionCatalogServiceTest"`
+  Expected: FAIL，原因是共享模型/service/policy 缺失。
+
+- [ ] **Step 3: 实现共享 DTO mapper 与目录聚合**
+
+  将 Android/Desktop 重复 `ExtensionJsonObject` 映射迁到 common；仓库请求仍由平台 HTTP client 提供。结果必须区分 `entries.isEmpty() && failures.isEmpty()` 与部分失败，不能 catch 后返回 `emptyList()`。
+
+- [ ] **Step 4: 实现明确的信任决策**
+
+  ```kotlin
+  sealed interface ExtensionTrustDecision {
+      data object Trusted : ExtensionTrustDecision
+      data class ConfirmationRequired(val reasons: Set<TrustMismatch>) : ExtensionTrustDecision
+      data class Rejected(val error: AppError) : ExtensionTrustDecision
+  }
+  ```
+
+  校验仓库 identity、声明 SHA-256、实际 SHA-256 和已安装来源连续性；Android signature 作为 Android adapter 附加 evidence，Desktop UI 不显示“APK 签名已验证”。
+
+- [ ] **Step 5: Android/Desktop API 改为薄 HTTP/平台 adapter**
+
+  两端 API 复用共享 mapper、版本与聚合；删除 `DesktopExtensionApi.fetchExtensionsFromRepo()` 的吞错空列表语义。为 production wiring 写回归测试，确保改坏 shared service 时两端测试失败。
+
+- [ ] **Step 6: 运行 GREEN**
+
+  Run: `./gradlew :domain:jvmTest --tests "mihon.domain.extension.*" :app-desktop:jvmTest --tests "mihon.desktop.extension.ExtensionVersionMetaTest" --tests "mihon.desktop.extension.ExtensionUpdateDetectionTest" --tests "mihon.desktop.extension.ExtensionCompatibilityTest" :app:testReleaseUnitTest --tests "*ExtensionApi*"`
+  Expected: 全部 PASS，部分失败保留成功仓库结果。
+
+- [ ] **Step 7: 提交 Task 3**
+
+  Commit: `refactor(extension): share catalog version and trust rules`
+
+### Task 4: 共享安装事务与平台 reload 回滚
+
+**OpenSpec mapping:** 1.3（JAR/APK→JAR/回滚/不兼容 API 部分）、2.2（事务/回滚部分）、2.3、3.1、3.2（原子回滚部分）
+
+**Files:**
+- Create: `domain/src/commonMain/kotlin/mihon/domain/extension/service/ExtensionInstallCoordinator.kt`
+- Create: `domain/src/commonMain/kotlin/mihon/domain/extension/service/ExtensionInstallPort.kt`
+- Create: `domain/src/jvmTest/kotlin/mihon/domain/extension/ExtensionInstallCoordinatorTest.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionApi.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionManager.kt`
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionInstallTransactionTest.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionInstaller.kt`
+- Create: `app/src/test/java/eu/kanade/tachiyomi/extension/ExtensionInstallCoordinatorWiringTest.kt`
+
+**Interfaces:**
+- `ExtensionInstallPort.prepare/validate/commit/reload/rollback/cleanup`；port token 使用共享 opaque ID，不暴露 `File`。
+- `ExtensionInstallCoordinator.install(request): Flow<ExtensionInstallState>`；同 package 单飞，不同 package 可并行。
+
+- [ ] **Step 1: 写 RED 状态机测试**
+
+  覆盖成功阶段顺序、Prepare/Validate 失败不提交、Commit 后 reload 失败回滚旧 artifact+metadata、rollback 失败高优先级错误、取消临时文件清理、同 package 去重、不同 package 并行。
+
+- [ ] **Step 2: 运行 RED**
+
+  Run: `./gradlew :domain:jvmTest --tests "mihon.domain.extension.ExtensionInstallCoordinatorTest"`
+  Expected: FAIL，缺少 coordinator/port/state。
+
+- [ ] **Step 3: 实现最小共享 coordinator**
+
+  coordinator 只编排阶段、取消、互斥与错误；不读取文件、不转换 APK、不加载 class。只有 `reload()` 成功才 emit `Installed`；commit 后任何异常必须调用 rollback，并验证旧 runtime 恢复。
+
+- [ ] **Step 4: 写 Desktop 事务集成 RED**
+
+  用临时目录制造 JVM JAR、DEX APK、损坏 ZIP、错误 package、转换失败、摘要错误和 fake loader reload 失败；断言旧 JAR/sidecar hash 不变、无 `.tmp/.backup` 残留、旧 source 可重新获取。
+
+- [ ] **Step 5: 收敛 Desktop installer/loader**
+
+  `DesktopExtensionInstallPort` 承担文件、APK→JAR、ClassLoader 和原子 side effect；`DesktopExtensionApi` 只下载/提供 artifact，`DesktopExtensionManager` 只映射共享状态与刷新 runtime，不再自行决定版本、安全或业务状态。
+
+- [ ] **Step 6: 接入 Android adapter 并保护 PackageInstaller 边界**
+
+  Android adapter 把 PackageInstaller/签名读取映射到同一 port/state。增加 DI/production wiring 测试；禁止把 Android 类型加入 common。
+
+- [ ] **Step 7: 运行 GREEN 与产品保护**
+
+  Run: `./gradlew :domain:jvmTest --tests "mihon.domain.extension.ExtensionInstallCoordinatorTest" :app-desktop:jvmTest --tests "mihon.desktop.extension.DesktopExtensionInstallTransactionTest" --tests "mihon.desktop.extension.ApkToJarConverterTest" --tests "mihon.desktop.extension.ExtensionArtifactReplacementTest" :app:testReleaseUnitTest --tests "*ExtensionInstall*"`
+  Expected: 全部 PASS；reload 失败可见且旧版本仍工作。
+
+- [ ] **Step 8: 提交 Task 4**
+
+  Commit: `refactor(extension): share transactional install lifecycle`
+
+### Task 5: Desktop 浏览器登录、Cookie 原子回传与 FlareSolverr 显式后备
+
+**OpenSpec mapping:** 3.3
+
+**Files:**
+- Create: `domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceLoginSession.kt`
+- Create: `domain/src/jvmTest/kotlin/tachiyomi/domain/source/service/SourceLoginSessionTest.kt`
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/network/DesktopBrowserLoginAdapter.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/network/DesktopBrowserLoginAdapterTest.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/network/DesktopCookieJar.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/network/DesktopCloudflareInterceptor.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/cloudflare/CloudflareBypassDialog.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/home/HomeScreen.kt`
+
+**Interfaces:**
+- Produces: `SourceLoginRequest`, `SourceLoginState`, `AuthenticatedSession`, `BrowserLoginAdapter.open(request)`。
+- Cookie commit 接受完整 session cookie set；取消/超时调用不得写入 jar。
+
+- [ ] **Step 1: 写 RED 会话状态测试**
+
+  覆盖 success、cancel、timeout、browser unavailable、Cookie 域过滤、原子提交、已有 Cookie 在失败时保持不变、日志/诊断脱敏。
+
+- [ ] **Step 2: 运行 RED**
+
+  Run: `./gradlew :domain:jvmTest --tests "tachiyomi.domain.source.service.SourceLoginSessionTest" :app-desktop:jvmTest --tests "mihon.desktop.network.DesktopBrowserLoginAdapterTest"`
+  Expected: FAIL，缺少 shared session 与 Desktop adapter。
+
+- [ ] **Step 3: 实现共享状态与 Desktop adapter**
+
+  adapter 可取消并使用有界 timeout；只有获取目标域所需 Cookie 后构造 `AuthenticatedSession` 并一次性写 jar。取消/超时返回可恢复状态，不改已有 Cookie。
+
+- [ ] **Step 4: 将 FlareSolverr 改为显式后备**
+
+  正常 403/挑战先发布 OpenLogin；仅当用户设置启用且在错误 UI 选择“使用 FlareSolverr 后备”时调用 client。不得在 interceptor 内静默自动求解。
+
+- [ ] **Step 5: 接入 UI 反馈**
+
+  对话框展示目标域、登录进度、取消、超时、重试、手动 Cookie 导入和可选 FlareSolverr；错误不泄漏 Cookie 值。
+
+- [ ] **Step 6: 运行 GREEN**
+
+  Run: `./gradlew :domain:jvmTest --tests "tachiyomi.domain.source.service.SourceLoginSessionTest" :app-desktop:jvmTest --tests "mihon.desktop.network.DesktopBrowserLoginAdapterTest" --tests "mihon.desktop.network.CloudflareCookieImportTest" --tests "mihon.desktop.network.FlareSolverrClientTest"`
+  Expected: 全部 PASS，取消/超时写入次数为 0。
+
+- [ ] **Step 7: 提交 Task 5**
+
+  Commit: `feat(desktop): add recoverable source browser login`
+
+### Task 6: 共享 ScreenModel wiring、导航/DI 与 i18n
+
+**OpenSpec mapping:** 2.3、3.4、3.5
+
+**Files:**
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/BrowseTab.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/GlobalSearchScreen.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionListScreen.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionDetailsScreen.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/SourcePreferencesScreen.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/test/state/TestState.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/test/http/TestHttpServer.kt`
+- Modify: `i18n/src/commonMain/moko-resources/base/strings.xml`
+- Modify: `i18n/src/commonMain/moko-resources/zh-rCN/strings.xml`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceSharedStateWiringTest.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionSharedStateWiringTest.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/SourceExtensionNavigationContractTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/i18n/DesktopSourceExtensionI18nTest.kt`
+
+**Interfaces:**
+- Consumes: Tasks 2–5 shared query/catalog/install/login state。
+- Produces: UI intents only (`Retry`, `OpenLogin`, `OpenSettings`, `Install`, `CancelInstall`, `ConfirmTrust`) and stable Test Mode state/actions。
+
+- [ ] **Step 1: 先写 UI wiring RED 测试**
+
+  测试每个 Screen 可实例化、Voyager push 类型正确、所有新 DI 类型可解析；状态测试覆盖 Loading、真正 Empty、部分仓库失败、翻页失败保留内容、TrustRequired、安装失败旧版本可用、登录取消/超时。
+
+- [ ] **Step 2: 写 i18n 缺 key RED 测试**
+
+  资源完整性测试扫描本 change 触达的 key，并扫描上述 Kotlin 文件中的新增硬编码业务文案；缺 key 或新增中英文提示字面量时失败。
+
+- [ ] **Step 3: 运行 RED**
+
+  Run: `./gradlew :app-desktop:jvmTest --tests "*Source*ScreenModelTest" --tests "*Extension*ScreenModelTest" --tests "*Navigation*ContractTest" --tests "mihon.desktop.di.DesktopDiWiringTest" --tests "*I18n*"`
+  Expected: FAIL，原因是旧 UI 仍自行维护状态/硬编码文案或 DI 缺绑定。
+
+- [ ] **Step 4: 最小接线共享状态与 intents**
+
+  ScreenModel 只组合共享 state 和发送 intent；Composable 不直接查询 repository/network/manager。保留现有导航入口和宽屏布局；缺扩展提供安装入口，403 提供登录，缺配置提供设置，错误提供 Retry/脱敏诊断。
+
+- [ ] **Step 5: 迁移触达文案与 Test Mode**
+
+  将源/扩展/挑战登录触达文案加入 base 与 zh-rCN 资源，按项目 fallback 规则使用；Test Mode 增加或调整 source/extension 状态与动作，使导航、安装失败、登录取消可自动化观察。
+
+- [ ] **Step 6: 运行 GREEN 与全链集成**
+
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.browse.*" --tests "mihon.desktop.ui.extension.*" --tests "mihon.desktop.di.DesktopDiWiringTest" --tests "*I18n*" :test-desktop:test`
+  Expected: 全部 PASS；Screen/DI/navigation/Test Mode 断线均会导致测试失败。
+
+- [ ] **Step 7: 提交 Task 6**
+
+  Commit: `refactor(desktop): wire shared source and extension state`
+
+### Task 7: compat 去重、parity 证据、全量审查与跨平台运行时验收
+
+**OpenSpec mapping:** 4.1、4.2、4.3、4.4、4.5、4.6
+
+**Files:**
+- Modify/Delete: 由 `compat-evidence.json` 审计确认无调用的 Desktop compat 符号；不得凭猜测删除。
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/extension/CompatEvidenceContractTest.kt`
+- Modify: `app-desktop/src/test/resources/parity/parity-manifest.json`
+- Modify: `docs/desktop-parity/PARITY_TRACKER.md`
+- Modify: `docs/roadmap/extension-diagnostics-baseline.md`
+- Modify: `docs/automation/TASK_TRACKER.md`（仅当 Test Mode 场景变化）
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/AppVersion.kt`（只由 build script 自动更新）
+
+**Interfaces:**
+- Consumes: 全部 Tasks 1–6 production/test evidence。
+- Produces: parity 28–40、87 的真实状态/实现路径/保护测试，Windows/macOS/Android 运行时证据，完整独立审查结论。
+
+- [ ] **Step 1: 写 compat public surface RED 测试**
+
+  扫描 compat 包 public 符号，要求每个符号在 `compat-evidence.json` 恰有一项，fixture/test 路径存在，`required` 项测试可触发真实调用；清单外 public API 或不存在测试必须失败。
+
+- [ ] **Step 2: 运行 RED 并删除无证据重复实现**
+
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.extension.CompatEvidenceContractTest"`
+  Expected: 初次 FAIL 并列出清单外/无证据项。逐项用 production 引用和真实 fixture 判定：有证据则补测试，确认无调用才删除；同时删除已经由共享 core 覆盖的搜索、版本、错误字符串和事务规则。
+
+- [ ] **Step 3: 更新 parity 28–40、87**
+
+  manifest 的 `authoritativeImplementation`、`desktopImplementation` 与 `protectionTests` 必须引用真实 production/test 路径；状态只提升到证据支持的 CHARACTERIZED/SHARED/WIRED/VERIFIED，不把平台 adapter 当作业务豁免。
+
+- [ ] **Step 4: 运行全量自动验证**
+
+  Run:
+
+  ```bash
+  ./gradlew spotlessCheck
+  ./gradlew :domain:allTests
+  ./gradlew :app:testReleaseUnitTest
+  ./gradlew :app-desktop:jvmTest
+  ./gradlew :test-desktop:test
+  ./scripts/build-desktop.sh test-only
+  ```
+
+  Expected: 全部 BUILD SUCCESSFUL；报告精确测试数、失败数与既有 skipped，不用缓存结果冒充 fresh evidence。
+
+- [ ] **Step 5: Android 模拟器运行时验收**
+
+  自行启动 API 36 x86_64 AVD，`assembleDebug` 后安装匹配 ABI APK 与代表性纯 HTTP 扩展。验收：扩展发现/安装/加载、源列表、单源浏览、全局搜索、空/403/失败反馈和设置入口；收集 UI dump、截图与 logcat，FATAL/OOM/SIGSEGV 必须为 0。
+
+- [ ] **Step 6: Windows 固定 EXE 与 macOS 验收**
+
+  Windows 只运行 `./scripts/build-desktop.sh`，启动 `D:\Shell\Github\mihon\app-desktop\tmp\mihon-dist\main\app\Mihon Desktop\Mihon Desktop.exe`，核对窗口完整版本、mtime、安装/更新/失败回滚、浏览/搜索、登录后备和文件工具；运行 `./scripts/desktop-smoke-test.sh`。通过 `ssh mbp` 在安全临时 clone 运行相关测试/构建，部署并启动 `/Applications/Mihon Desktop.app`，不覆盖远端用户仓库。
+
+- [ ] **Step 7: 独立批次与最终审查**
+
+  `review_mode: thorough`：每个高风险边界或最多 3 个 Task 运行合并 spec+quality review，最后对 `852221f42..HEAD` 运行完整审查。Critical/Important 必须修复并重新运行覆盖测试；Minor 记录到持久进度并交最终审查裁定。
+
+- [ ] **Step 8: 提交 Task 7**
+
+  Commit: `chore(extension): verify cross-platform source parity`
+
+## 完成门槛
+
+- 本计划与 `openspec/changes/align-sources-extensions/tasks.md` 全部勾选并通过 Comet task-checkoff。
+- OpenSpec strict validation 0 issue；独立最终审查 0 Critical/Important。
+- Android 与 Desktop production wiring 都消费共享业务类型，旧并行规则与无证据 compat stub 已删除。
+- Windows 报告完整版本与固定 EXE 绝对路径；macOS 与 Android 运行时证据可追溯。
+- 用户可从 Browse/Extensions 实际完成浏览、搜索、安装/更新、错误恢复、设置与登录挑战；空、加载、错误、取消和数据缺失均有明确反馈。
