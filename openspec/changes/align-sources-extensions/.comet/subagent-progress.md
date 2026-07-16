@@ -122,7 +122,7 @@
 - Review result: Spec Compliance `CHANGES_REQUIRED`; Task quality `NEEDS_FIXES`; Critical 0 / Important 5 / Minor 0. Report: `.superpowers/sdd/align-sources-task-5a-review.md`.
 - Finding evaluation: all five are technically valid: timeout currently includes suspend commit; external cancellation leaves a nonterminal shared state; completion IDs are discoverable rather than initiator-bound; jar load/persistence loses Cookie matching/hostOnly semantics; and production committer persistence-failure plus single-lock visibility are not protected by integration/mutation tests.
 - Repair decision: one focused TDD round is sufficient within the existing six-file `login-session-atomicity` boundary. Timeout must end before atomic commit; caller cancellation must publish an honest terminal, while a commit already started must finish as one non-cancellable transaction with its real outcome. Completion handles must be delivered directly to their initiating Desktop flow, not guessed from a global ID set.
-- Fix agent: pending fresh implementation agent; review/fix round 1/2.
+- Fix agent: `/root/task5a_fix1` (fresh TDD repair agent; complete all five Important findings within the six-file boundary); review/fix round 1/2.
 
 ## Task 4D Review History
 
