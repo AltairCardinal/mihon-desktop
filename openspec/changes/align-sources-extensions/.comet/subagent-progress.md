@@ -101,7 +101,7 @@
 - Current task: `Task 4D: Android 信任、receiver 可见性与精确回滚`
 - Plan checkbox: pending
 - OpenSpec mappings: `2.2`, `2.3`, `3.1`, `3.2` (Android artifact trust, PackageInstaller/signing boundary, receiver visibility, and exact rollback topology; do not check off shared mappings until all mapped work is complete).
-- Stage: `race-closure-fix`
+- Stage: `final-closure-review`
 - Task base: `5a17935c1c5241c163c26de5e8bf742121b8b659`
 - Implementer: `/root/task4d_impl` (fresh TDD agent; one implementation task only).
 - Brief: `.superpowers/sdd/align-sources-task-4d-brief.md`
@@ -160,6 +160,11 @@
 - Race-closure requirements: add a deterministic stale-child-read RED (read old child, allow map removal + child lifecycle complete, then continue lookup) and fall back to the parent `HANDED_OFF` lifecycle without clearing parent cancellation; restore a valid standalone bridge path without creating an unbounded orphan parent lifecycle, and rerun the entire Lifecycle class after the final production edit.
 - Review/fix round: 4/4 (user-authorized override).
 - Race-closure fix agent: `/root/task4d_fix4` (fresh TDD implementer; bounded to `ExtensionInstaller.kt`, lifecycle production-wiring tests, and the Task report).
+- Race-closure fix commit: `4c43f3d00385718fc619b4815f1334a3de79c07b` (`fix(android): preserve cancellation across child teardown`).
+- Race RED/GREEN: standalone coordinator bridge failed before creating a child under the hard parent-lifecycle precondition; deterministic stale-child read failed Installed after teardown. GREEN focused 3/3 covers missing and COMPLETE child fallback plus standalone distinct commit/restore children.
+- Race mutations: removing COMPLETE fallback failed 1/2 parameterized stale-child cases; restoring the old missing-child tombstone clear-and-return failed 2/2. Both were restored.
+- Race verification: fresh full Lifecycle 25/25; fresh Security 21 + Wiring 9 + Manager 2 = 32/32; 0 failures/errors/skips. App Spotless+unit-test compile rerun and root Spotless BUILD SUCCESSFUL; diff check PASS.
+- Final cumulative product/test scope from `bb4c235bd` to `4c43f3d00`: 7 Android files, +2680/-246 (2926 changed lines); plan/brief waiver updated.
 
 ## Task 4C Review History
 
