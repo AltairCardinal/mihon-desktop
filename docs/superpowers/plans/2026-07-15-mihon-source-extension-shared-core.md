@@ -35,7 +35,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - [x] Task 2：共享源查询状态、分页与错误语义
 - [x] Task 3：共享扩展目录、版本、仓库部分失败与信任模型
 - [x] Task 4A：共享安装事务状态机
-- [ ] Task 4B：Desktop install port 与 reload 回滚
+- [x] Task 4B：Desktop install port 与 reload 回滚
 - [ ] Task 4C：Android PackageInstaller adapter wiring
 - [ ] Task 5：Desktop 浏览器登录、Cookie 原子回传与 FlareSolverr 显式后备
 - [ ] Task 6A：Browse 共享状态 wiring
@@ -275,8 +275,9 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **Risk axis:** desktop-artifact-rollback
 **Platform boundary:** shared+desktop
-**Estimated scope:** 5 files, 400 lines
+**Estimated scope:** 11 files, 2383 lines
 **Verification:** 运行 Desktop 事务集成、APK→JAR 与原子替换保护测试，确认 reload 失败后旧 artifact、metadata 和 runtime 均恢复。
+**Split waiver:** thorough review 证明原 5 文件边界无法同时满足“API 只提供 artifact”与“真实 DI Manager 在共享事务内 reload/rollback”；API 签名、DI 单例、UI 调用、长生命周期 coordinator、路径/文件 journal 及其 production wiring 测试必须原子迁移才能保持编译与产品链有效。拆成独立 Task 会产生临时 Manager、事务外 reload、未接线 adapter 或不能击穿 production wiring 的测试半成品，无法独立调度与验收；因此保留为同一 `desktop-artifact-rollback` 风险轴的 review repair。
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionApi.kt`
@@ -284,30 +285,36 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionManager.kt`
 - Create: `app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionInstallTransactionTest.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionListScreen.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionApiSharedCatalogTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/extension/ExtensionArtifactReplacementTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionProductBaselineTest.kt`
 
 **Interfaces:**
 - Consumes: Task 4A 的 `ExtensionInstallPort` 与 `ExtensionInstallCoordinator`。
 - Produces: Desktop 文件、APK→JAR、ClassLoader、sidecar 与 runtime 恢复 adapter。
 
-- [ ] **Step 1: 写 Desktop 事务集成 RED**
+- [x] **Step 1: 写 Desktop 事务集成 RED**
 
   用临时目录制造 JVM JAR、DEX APK、损坏 ZIP、错误 package、转换失败、摘要错误和 fake loader reload 失败；断言旧 JAR/sidecar hash 不变、无 `.tmp/.backup` 残留、旧 source 可重新获取。
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.extension.DesktopExtensionInstallTransactionTest"`
   Expected: FAIL，原因是 Desktop 仍自行编排事务或 reload 失败未恢复旧 runtime。
 
-- [ ] **Step 3: 收敛 Desktop installer/loader**
+- [x] **Step 3: 收敛 Desktop installer/loader**
 
   `DesktopExtensionInstallPort` 承担文件、APK→JAR、ClassLoader 和原子 side effect；`DesktopExtensionApi` 只下载/提供 artifact，`DesktopExtensionManager` 只映射共享状态与刷新 runtime。
 
-- [ ] **Step 4: 运行 GREEN 与产品保护**
+- [x] **Step 4: 运行 GREEN 与产品保护**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.extension.DesktopExtensionInstallTransactionTest" --tests "mihon.desktop.extension.ApkToJarConverterTest" --tests "mihon.desktop.extension.ExtensionArtifactReplacementTest"`
   Expected: 全部 PASS；reload 失败可见且旧版本仍工作。
 
-- [ ] **Step 5: 提交 Task 4B**
+- [x] **Step 5: 提交 Task 4B**
 
   Commit: `refactor(desktop): adapt transactional extension install`
 
