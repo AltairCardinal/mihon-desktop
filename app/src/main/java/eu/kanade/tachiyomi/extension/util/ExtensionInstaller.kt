@@ -25,6 +25,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,7 +33,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import logcat.LogPriority
 import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionArtifact
@@ -132,8 +135,11 @@ internal class ExtensionInstaller(
                 )
             }
         } catch (error: TimeoutCancellationException) {
-            Installer.cancelInstallQueue(context, transactionId)
+            awaitPlatformCleanup(transactionId)
             throw ExtensionInstallFailure(AppError.Unknown(IllegalStateException("Android package install timed out")))
+        } catch (error: CancellationException) {
+            awaitPlatformCleanup(transactionId)
+            throw error
         } finally {
             platformResults.remove(transactionId, result)
         }
@@ -141,6 +147,13 @@ internal class ExtensionInstaller(
 
     private suspend fun awaitPlatformResult(result: CompletableDeferred<InstallStep>): InstallStep =
         withTimeout(INSTALL_TIMEOUT_MILLIS) { result.await() }
+
+    private suspend fun awaitPlatformCleanup(transactionId: String) {
+        val acknowledgement = Installer.cancelInstallQueue(context, transactionId)
+        withContext(NonCancellable) {
+            withTimeoutOrNull(CLEANUP_TIMEOUT_MILLIS) { acknowledgement.await() }
+        }
+    }
 
     private fun installApk(transactionId: String, tempFile: File) {
         when (val installer = extensionInstaller.get()) {
@@ -371,6 +384,7 @@ internal class ExtensionInstaller(
 
         private const val EXTENSION_FEATURE = "tachiyomi.extension"
         private const val INSTALL_TIMEOUT_MILLIS = 2 * 60 * 1000L
+        private const val CLEANUP_TIMEOUT_MILLIS = 10 * 1000L
 
         @Suppress("DEPRECATION")
         private val PACKAGE_FLAGS = PackageManager.GET_CONFIGURATIONS or

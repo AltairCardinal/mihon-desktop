@@ -18,6 +18,7 @@ import eu.kanade.tachiyomi.util.system.getParcelableExtraCompat
 import eu.kanade.tachiyomi.util.system.getUriSize
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
@@ -67,6 +68,7 @@ class PackageInstallerInstaller(private val service: Service) : Installer(servic
     }
 
     private val activeSession = AtomicReference<ActiveSession?>(null)
+    private val receiverRegistered = AtomicBoolean(true)
 
     // Always ready
     override var ready = true
@@ -123,13 +125,23 @@ class PackageInstallerInstaller(private val service: Service) : Installer(servic
 
     override fun onDestroy() {
         activeSession.exchange(null)?.let { packageInstaller.abandonSession(it.sessionId) }
-        service.unregisterReceiver(packageActionReceiver)
+        unregisterPackageReceiver()
         super.onDestroy()
+    }
+
+    override fun onCancellationCleanup() {
+        unregisterPackageReceiver()
     }
 
     private fun finishSession(active: ActiveSession, step: InstallStep) {
         if (activeSession.compareAndSet(active, null)) {
             continueQueue(active.entry.transactionId, step)
+        }
+    }
+
+    private fun unregisterPackageReceiver() {
+        if (receiverRegistered.compareAndSet(true, false)) {
+            service.unregisterReceiver(packageActionReceiver)
         }
     }
 

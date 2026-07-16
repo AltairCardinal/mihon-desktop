@@ -1,29 +1,41 @@
 package eu.kanade.tachiyomi.extension
 
+import android.app.PendingIntent
 import android.app.Service
 import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import androidx.core.content.IntentSanitizer
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import com.hippo.unifile.UniFile
+import eu.kanade.domain.base.BasePreferences
+import eu.kanade.domain.base.ExtensionInstallerPreference
 import eu.kanade.tachiyomi.extension.installer.Installer
 import eu.kanade.tachiyomi.extension.installer.PackageInstallerInstaller
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.extension.util.ExtensionInstaller
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
+import io.mockk.mockkConstructor
 import io.mockk.mockkStatic
+import io.mockk.runs
+import io.mockk.slot
+import io.mockk.unmockkConstructor
 import io.mockk.unmockkStatic
 import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import mihon.domain.extension.service.ExtensionInstallFailure
 import mihon.domain.extension.service.ExtensionInstallPort
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -33,6 +45,9 @@ import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.File
 import java.util.UUID
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
@@ -42,11 +57,63 @@ import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 @OptIn(ExperimentalAtomicApi::class)
 class ExtensionInstallSessionLifecycleTest {
 
+    private val capturedStringExtras = mutableMapOf<String, String>()
+    private val capturedIntExtras = mutableMapOf<String, Int>()
+    private var committedIdentity: CallbackIdentity? = null
+    private lateinit var localBroadcastManager: LocalBroadcastManager
+    private val cancelReceivers = mutableListOf<BroadcastReceiver>()
+    private val cancelIntents = mutableListOf<Intent>()
+
     @BeforeEach
     fun interceptLocalBroadcastManager() {
+        capturedStringExtras.clear()
+        capturedIntExtras.clear()
+        committedIdentity = null
+        cancelReceivers.clear()
+        cancelIntents.clear()
+        mockkConstructor(Intent::class)
+        every { anyConstructed<Intent>().putExtra(any<String>(), any<String>()) } answers {
+            capturedStringExtras[firstArg()] = secondArg()
+            self as Intent
+        }
+        every { anyConstructed<Intent>().putExtra(any<String>(), any<Int>()) } answers {
+            capturedIntExtras[firstArg()] = secondArg()
+            self as Intent
+        }
+        every {
+            anyConstructed<Intent>().putExtra(any<String>(), any<java.io.Serializable>())
+        } answers { self as Intent }
+        every { anyConstructed<Intent>().setPackage(any()) } answers { self as Intent }
+        every { anyConstructed<Intent>().setDataAndType(any(), any()) } answers { self as Intent }
+        every { anyConstructed<Intent>().getStringExtra(any()) } answers { capturedStringExtras[firstArg()] }
+        mockkConstructor(PackageInstaller.SessionParams::class)
+        every { anyConstructed<PackageInstaller.SessionParams>().setSize(any()) } just runs
+        mockkStatic(PendingIntent::class)
+        val pendingIntent = mockk<PendingIntent> {
+            every { intentSender } returns mockk()
+        }
+        every { PendingIntent.getBroadcast(any(), any(), any(), any()) } answers {
+            committedIdentity = CallbackIdentity(
+                transactionId = checkNotNull(capturedStringExtras[ExtensionInstaller.EXTRA_TRANSACTION_ID]),
+                sessionId = checkNotNull(capturedIntExtras[PackageInstaller.EXTRA_SESSION_ID]),
+            )
+            pendingIntent
+        }
+        mockkStatic(UniFile::class)
+        every { UniFile.fromUri(any(), any()) } returns mockk {
+            every { length() } returns 1L
+        }
         mockkStatic(LocalBroadcastManager::class)
         mockkStatic(ContextCompat::class)
-        every { LocalBroadcastManager.getInstance(any()) } returns mockk(relaxed = true)
+        localBroadcastManager = mockk(relaxed = true)
+        every { LocalBroadcastManager.getInstance(any()) } returns localBroadcastManager
+        every { localBroadcastManager.registerReceiver(any<BroadcastReceiver>(), any()) } answers {
+            cancelReceivers += firstArg<BroadcastReceiver>()
+        }
+        every { localBroadcastManager.sendBroadcast(any<Intent>()) } answers {
+            cancelIntents += firstArg<Intent>()
+            true
+        }
         every {
             ContextCompat.registerReceiver(any(), any(), any(), ContextCompat.RECEIVER_NOT_EXPORTED)
         } returns null
@@ -54,6 +121,10 @@ class ExtensionInstallSessionLifecycleTest {
 
     @AfterEach
     fun restoreLocalBroadcastManager() {
+        unmockkStatic(UniFile::class)
+        unmockkStatic(PendingIntent::class)
+        unmockkConstructor(PackageInstaller.SessionParams::class)
+        unmockkConstructor(Intent::class)
         unmockkStatic(LocalBroadcastManager::class)
         unmockkStatic(ContextCompat::class)
     }
@@ -67,9 +138,9 @@ class ExtensionInstallSessionLifecycleTest {
         ).forEach { (status, expected) ->
             val harness = packageInstallerHarness()
 
-            harness.activate(TRANSACTION_ONE, SESSION_ONE)
-            harness.callback(status, TRANSACTION_ONE, SESSION_ONE)
-            harness.callback(status, TRANSACTION_ONE, SESSION_ONE)
+            harness.enqueue(TRANSACTION_ONE)
+            harness.callback(status)
+            harness.callback(status)
 
             verify(exactly = 1) { harness.manager.updateInstallStep(TRANSACTION_ONE, expected) }
         }
@@ -78,7 +149,7 @@ class ExtensionInstallSessionLifecycleTest {
     @Test
     fun `pending user action is accepted only for the active transaction and session`() {
         val harness = packageInstallerHarness()
-        harness.activate(TRANSACTION_ONE, SESSION_ONE)
+        harness.enqueue(TRANSACTION_ONE)
 
         harness.callback(
             PackageInstaller.STATUS_PENDING_USER_ACTION,
@@ -94,14 +165,49 @@ class ExtensionInstallSessionLifecycleTest {
         verify(exactly = 0) { harness.service.startActivity(any()) }
         verify(exactly = 0) { harness.manager.updateInstallStep(any(), any()) }
         assertTrue(harness.isActive(TRANSACTION_ONE, SESSION_ONE))
+
+        val userAction = mockk<Intent>(relaxed = true) {
+            every { action } returns "android.content.pm.action.CONFIRM_INSTALL"
+        }
+        mockkConstructor(IntentSanitizer.Builder::class)
+        val sanitizer = mockk<IntentSanitizer> {
+            every { sanitizeByFiltering(any()) } returns userAction
+        }
+        every { anyConstructed<IntentSanitizer.Builder>().allowAction(any<String>()) } answers {
+            self as IntentSanitizer.Builder
+        }
+        every {
+            anyConstructed<IntentSanitizer.Builder>().allowExtra(
+                any<String>(),
+                any<androidx.core.util.Predicate<Any>>(),
+            )
+        } answers { self as IntentSanitizer.Builder }
+        every { anyConstructed<IntentSanitizer.Builder>().allowAnyComponent() } answers {
+            self as IntentSanitizer.Builder
+        }
+        every {
+            anyConstructed<IntentSanitizer.Builder>().allowPackage(any<androidx.core.util.Predicate<String>>())
+        } answers {
+            self as IntentSanitizer.Builder
+        }
+        every { anyConstructed<IntentSanitizer.Builder>().build() } returns sanitizer
+        try {
+            harness.callback(PackageInstaller.STATUS_PENDING_USER_ACTION, userAction = userAction)
+        } finally {
+            unmockkConstructor(IntentSanitizer.Builder::class)
+        }
+
+        verify(exactly = 1) { harness.service.startActivity(userAction) }
+        assertTrue(harness.isActive(TRANSACTION_ONE, SESSION_ONE))
     }
 
     @Test
     fun `late callback from a same-package retry cannot terminate the new transaction`() {
         val harness = packageInstallerHarness()
-        harness.activate(TRANSACTION_ONE, SESSION_ONE)
-        harness.callback(PackageInstaller.STATUS_FAILURE_ABORTED, TRANSACTION_ONE, SESSION_ONE)
-        harness.activate(TRANSACTION_TWO, SESSION_TWO)
+        harness.enqueue(TRANSACTION_ONE)
+        harness.callback(PackageInstaller.STATUS_FAILURE_ABORTED)
+        harness.useSession(SESSION_TWO)
+        harness.enqueue(TRANSACTION_TWO)
 
         harness.callback(PackageInstaller.STATUS_SUCCESS, TRANSACTION_ONE, SESSION_ONE)
 
@@ -112,7 +218,7 @@ class ExtensionInstallSessionLifecycleTest {
     @Test
     fun `callback must match both active transaction and session`() {
         val harness = packageInstallerHarness()
-        harness.activate(TRANSACTION_ONE, SESSION_ONE)
+        harness.enqueue(TRANSACTION_ONE)
 
         harness.callback(PackageInstaller.STATUS_SUCCESS, TRANSACTION_TWO, SESSION_ONE)
         harness.callback(PackageInstaller.STATUS_SUCCESS, TRANSACTION_ONE, SESSION_TWO)
@@ -123,9 +229,10 @@ class ExtensionInstallSessionLifecycleTest {
 
     @Test
     fun `cancel before enqueue leaves a tombstone and never processes the entry`() {
-        val harness = queueHarness()
+        val context = mockk<Context>(relaxed = true)
 
-        harness.cancel(TRANSACTION_ONE)
+        Installer.cancelInstallQueue(context, TRANSACTION_ONE)
+        val harness = queueHarness()
         harness.installer.addToQueue(TRANSACTION_ONE, mockk())
 
         assertEquals(emptyList<String>(), harness.processed)
@@ -134,7 +241,7 @@ class ExtensionInstallSessionLifecycleTest {
     @Test
     fun `cancelling active package session abandons it and publishes idle exactly once`() {
         val harness = packageInstallerHarness()
-        harness.activate(TRANSACTION_ONE, SESSION_ONE)
+        harness.enqueue(TRANSACTION_ONE)
 
         harness.cancelActive()
         harness.callback(PackageInstaller.STATUS_SUCCESS, TRANSACTION_ONE, SESSION_ONE)
@@ -145,9 +252,44 @@ class ExtensionInstallSessionLifecycleTest {
     }
 
     @Test
+    fun `cancel acknowledgement completes only after active package cleanup`() {
+        val harness = packageInstallerHarness()
+        harness.enqueue(TRANSACTION_ONE)
+
+        val acknowledgement = Installer.cancelInstallQueue(harness.service, TRANSACTION_ONE)
+
+        assertFalse(acknowledgement.isCompleted)
+        harness.deliverCancellation()
+        assertTrue(acknowledgement.isCompleted)
+        verify(exactly = 1) { harness.packageInstaller.abandonSession(SESSION_ONE) }
+        verify(exactly = 1) { harness.service.unregisterReceiver(any()) }
+        verify(exactly = 1) { harness.service.stopSelf() }
+        assertFalse(harness.isActive(TRANSACTION_ONE, SESSION_ONE))
+    }
+
+    @Test
+    fun `cancelling active package keeps callback receiver for the next queued entry`() {
+        val harness = packageInstallerHarness()
+        harness.enqueue(TRANSACTION_ONE)
+        harness.useSession(SESSION_TWO)
+        harness.installer.addToQueue(TRANSACTION_TWO, mockk())
+
+        val acknowledgement = Installer.cancelInstallQueue(harness.service, TRANSACTION_ONE)
+        harness.deliverCancellation()
+
+        assertTrue(acknowledgement.isCompleted)
+        verify(exactly = 0) { harness.service.unregisterReceiver(any()) }
+        assertEquals(CallbackIdentity(TRANSACTION_TWO, SESSION_TWO), committedIdentity)
+        assertTrue(harness.isActive(TRANSACTION_TWO, SESSION_TWO))
+
+        harness.callback(PackageInstaller.STATUS_SUCCESS)
+        verify(exactly = 1) { harness.manager.updateInstallStep(TRANSACTION_TWO, InstallStep.Installed) }
+    }
+
+    @Test
     fun `service destroy without callback abandons the session and publishes one error terminal`() {
         val harness = packageInstallerHarness()
-        harness.activate(TRANSACTION_ONE, SESSION_ONE)
+        harness.enqueue(TRANSACTION_ONE)
 
         harness.installer.onDestroy()
 
@@ -181,22 +323,104 @@ class ExtensionInstallSessionLifecycleTest {
     }
 
     @Test
-    fun `platform wait times out when PackageInstaller never calls back`() = runTest {
+    fun `platform timeout waits for package cleanup before failing the transaction`() = runTest {
+        val harness = packageInstallerHarness()
+        val context = mockk<Context>(relaxed = true) {
+            every { packageName } returns "eu.kanade.tachiyomi"
+        }
         val installer = ExtensionInstaller(
-            context = mockk(relaxed = true),
+            context = context,
             scope = backgroundScope,
             installPort = mockk<ExtensionInstallPort>(relaxed = true),
         )
+        val preference = mockk<ExtensionInstallerPreference> {
+            every { get() } returns BasePreferences.ExtensionInstaller.PACKAGEINSTALLER
+        }
+        ExtensionInstaller::class.java.getDeclaredField("extensionInstaller\$delegate").apply {
+            isAccessible = true
+            set(installer, lazyOf(preference))
+        }
+        mockkStatic(FileProvider::class)
+        every { FileProvider.getUriForFile(any(), any(), any()) } returns mockk()
+        every { ContextCompat.startForegroundService(context, any()) } answers {
+            harness.enqueue(TRANSACTION_ONE)
+            mockk()
+        }
         val waiting = async {
-            runCatching { awaitPlatformResult(installer, CompletableDeferred()) }.exceptionOrNull()
+            runCatching { installPrepared(installer, TRANSACTION_ONE, File("extension.apk")) }.exceptionOrNull()
         }
 
-        runCurrent()
-        advanceTimeBy(2 * 60 * 1000L)
-        runCurrent()
+        try {
+            runCurrent()
+            advanceTimeBy(2 * 60 * 1000L)
+            runCurrent()
 
-        assertTrue(waiting.isCompleted)
-        assertInstanceOf(TimeoutCancellationException::class.java, waiting.await())
+            val earlyFailure = waiting.takeIf { it.isCompleted }?.await()
+            assertFalse(
+                waiting.isCompleted,
+                "earlyFailure=$earlyFailure target=" +
+                    "${(earlyFailure as? java.lang.reflect.InvocationTargetException)?.targetException} " +
+                    "cancelIntents=${cancelIntents.size} active=" +
+                    harness.isActive(TRANSACTION_ONE, SESSION_ONE),
+            )
+            verify(exactly = 0) { harness.packageInstaller.abandonSession(SESSION_ONE) }
+            harness.deliverCancellation()
+            runCurrent()
+
+            assertTrue(waiting.isCompleted)
+            assertInstanceOf(ExtensionInstallFailure::class.java, waiting.await())
+            verify(exactly = 1) { harness.packageInstaller.abandonSession(SESSION_ONE) }
+            assertTrue(platformResults(installer).isEmpty())
+        } finally {
+            unmockkStatic(FileProvider::class)
+        }
+    }
+
+    @Test
+    fun `platform cancellation waits for package cleanup before completing`() = runTest {
+        val harness = packageInstallerHarness()
+        val context = mockk<Context>(relaxed = true) {
+            every { packageName } returns "eu.kanade.tachiyomi"
+        }
+        val installer = ExtensionInstaller(
+            context = context,
+            scope = backgroundScope,
+            installPort = mockk<ExtensionInstallPort>(relaxed = true),
+        )
+        val preference = mockk<ExtensionInstallerPreference> {
+            every { get() } returns BasePreferences.ExtensionInstaller.PACKAGEINSTALLER
+        }
+        ExtensionInstaller::class.java.getDeclaredField("extensionInstaller\$delegate").apply {
+            isAccessible = true
+            set(installer, lazyOf(preference))
+        }
+        mockkStatic(FileProvider::class)
+        every { FileProvider.getUriForFile(any(), any(), any()) } returns mockk()
+        every { ContextCompat.startForegroundService(context, any()) } answers {
+            harness.enqueue(TRANSACTION_ONE)
+            mockk()
+        }
+        val waiting = async {
+            installPrepared(installer, TRANSACTION_ONE, File("extension.apk"))
+        }
+
+        try {
+            runCurrent()
+            waiting.cancel()
+            runCurrent()
+
+            assertFalse(waiting.isCompleted)
+            assertEquals(1, cancelIntents.size)
+            verify(exactly = 0) { harness.packageInstaller.abandonSession(SESSION_ONE) }
+            harness.deliverCancellation()
+            runCurrent()
+
+            assertTrue(waiting.isCompleted)
+            verify(exactly = 1) { harness.packageInstaller.abandonSession(SESSION_ONE) }
+            assertTrue(platformResults(installer).isEmpty())
+        } finally {
+            unmockkStatic(FileProvider::class)
+        }
     }
 
     private fun activeTransactionIds(installer: ExtensionInstaller): Map<String, String> {
@@ -208,19 +432,25 @@ class ExtensionInstallSessionLifecycleTest {
         }.mapKeys { (key, _) -> key as String }
     }
 
-    private suspend fun awaitPlatformResult(
+    private suspend fun installPrepared(
         installer: ExtensionInstaller,
-        result: CompletableDeferred<InstallStep>,
-    ): InstallStep = suspendCoroutineUninterceptedOrReturn { continuation ->
+        transactionId: String,
+        file: File,
+    ): Unit = suspendCoroutineUninterceptedOrReturn { continuation ->
         val method = ExtensionInstaller::class.java.getDeclaredMethod(
-            "awaitPlatformResult",
-            CompletableDeferred::class.java,
+            "installPrepared",
+            String::class.java,
+            File::class.java,
             kotlin.coroutines.Continuation::class.java,
         ).apply { isAccessible = true }
-        val returned = method.invoke(installer, result, continuation)
-        @Suppress("UNCHECKED_CAST")
-        if (returned === COROUTINE_SUSPENDED) COROUTINE_SUSPENDED else returned as InstallStep
+        val returned = method.invoke(installer, transactionId, file, continuation)
+        if (returned === COROUTINE_SUSPENDED) COROUTINE_SUSPENDED else Unit
     }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun platformResults(installer: ExtensionInstaller): Map<String, CompletableDeferred<InstallStep>> =
+        ExtensionInstaller::class.java.getDeclaredField("platformResults").apply { isAccessible = true }
+            .get(installer) as Map<String, CompletableDeferred<InstallStep>>
 
     private fun availableExtension(packageName: String) =
         Extension.Available(
@@ -239,20 +469,31 @@ class ExtensionInstallSessionLifecycleTest {
 
     private fun packageInstallerHarness(): PackageHarness {
         val packageInstaller = mockk<PackageInstaller>(relaxed = true)
+        val session = mockk<PackageInstaller.Session>(relaxed = true) {
+            every { openWrite(any(), any(), any()) } returns ByteArrayOutputStream()
+        }
+        every { packageInstaller.createSession(any()) } returns SESSION_ONE
+        every { packageInstaller.openSession(any()) } returns session
         val packageManager = mockk<PackageManager> {
             every { this@mockk.packageInstaller } returns packageInstaller
         }
         val service = mockk<Service>(relaxed = true) {
             every { this@mockk.packageManager } returns packageManager
             every { applicationContext } returns this@mockk
+            every { packageName } returns "eu.kanade.tachiyomi"
+            every { contentResolver.openInputStream(any()) } returns ByteArrayInputStream(byteArrayOf(1))
         }
         val manager = mockk<ExtensionManager>(relaxed = true)
+        val receiver = slot<BroadcastReceiver>()
+        every {
+            ContextCompat.registerReceiver(service, capture(receiver), any(), ContextCompat.RECEIVER_NOT_EXPORTED)
+        } returns null
         val installer = PackageInstallerInstaller(service)
         Installer::class.java.getDeclaredField("extensionManager\$delegate").apply {
             isAccessible = true
             set(installer, lazyOf(manager))
         }
-        return PackageHarness(service, packageInstaller, manager, installer)
+        return PackageHarness(service, packageInstaller, manager, installer, receiver.captured)
     }
 
     private fun queueHarness(): QueueHarness {
@@ -270,36 +511,33 @@ class ExtensionInstallSessionLifecycleTest {
         return QueueHarness(installer, processed)
     }
 
-    private class PackageHarness(
+    private inner class PackageHarness(
         val service: Service,
         val packageInstaller: PackageInstaller,
         val manager: ExtensionManager,
         val installer: PackageInstallerInstaller,
+        private val receiver: BroadcastReceiver,
     ) {
-        @Suppress("UNCHECKED_CAST")
-        fun activate(transactionId: String, sessionId: Int) {
-            val entry = Installer.Entry(transactionId, mockk<Uri>())
-            Installer::class.java.getDeclaredField("waitingInstall").apply {
-                isAccessible = true
-                @Suppress("UNCHECKED_CAST")
-                (get(installer) as AtomicReference<Installer.Entry?>).store(entry)
-            }
-            val activeType = PackageInstallerInstaller::class.java.declaredClasses.single {
-                it.simpleName == "ActiveSession"
-            }
-            val active = activeType.declaredConstructors.single().apply { isAccessible = true }
-                .newInstance(entry, sessionId)
-            val reference = PackageInstallerInstaller::class.java.getDeclaredField("activeSession").apply {
-                isAccessible = true
-            }.get(installer) as AtomicReference<Any?>
-            reference.store(active)
+        private var expectedSessionId = SESSION_ONE
+
+        fun useSession(sessionId: Int) {
+            expectedSessionId = sessionId
+            every { packageInstaller.createSession(any()) } returns sessionId
+        }
+
+        fun enqueue(transactionId: String) {
+            capturedStringExtras.clear()
+            capturedIntExtras.clear()
+            committedIdentity = null
+            installer.addToQueue(transactionId, mockk())
+            assertEquals(CallbackIdentity(transactionId, expectedSessionId), committedIdentity)
         }
 
         @Suppress("DEPRECATION")
         fun callback(
             status: Int,
-            transactionId: String,
-            sessionId: Int,
+            transactionId: String = checkNotNull(committedIdentity).transactionId,
+            sessionId: Int = checkNotNull(committedIdentity).sessionId,
             userAction: Intent? = null,
         ) {
             val intent = mockk<Intent>(relaxed = true) {
@@ -310,15 +548,17 @@ class ExtensionInstallSessionLifecycleTest {
                 every { getStringExtra(ExtensionInstaller.EXTRA_TRANSACTION_ID) } returns transactionId
                 every { getParcelableExtra<Intent>(Intent.EXTRA_INTENT) } returns userAction
             }
-            receiver().onReceive(service, intent)
+            receiver.onReceive(service, intent)
         }
 
         fun cancelActive() {
-            PackageInstallerInstaller::class.java.getDeclaredMethod("cancelEntry", Installer.Entry::class.java)
-                .invoke(installer, activeEntry())
-            Installer::class.java.getDeclaredMethod("cancelQueue", String::class.java)
-                .apply { isAccessible = true }
-                .invoke(installer, TRANSACTION_ONE)
+            Installer.cancelInstallQueue(service, TRANSACTION_ONE)
+            deliverCancellation()
+        }
+
+        fun deliverCancellation() {
+            val intent = cancelIntents.removeLast()
+            cancelReceivers.last().onReceive(service, intent)
         }
 
         fun isActive(transactionId: String, sessionId: Int): Boolean {
@@ -331,21 +571,9 @@ class ExtensionInstallSessionLifecycleTest {
             val activeSessionId = type.getDeclaredField("sessionId").apply { isAccessible = true }.getInt(active)
             return entry.transactionId == transactionId && activeSessionId == sessionId
         }
-
-        private fun activeEntry(): Installer.Entry {
-            val reference = PackageInstallerInstaller::class.java.getDeclaredField("activeSession").apply {
-                isAccessible = true
-            }.get(installer) as AtomicReference<*>
-            val active = checkNotNull(reference.load())
-            return active.javaClass.getDeclaredField("entry").apply { isAccessible = true }
-                .get(active) as Installer.Entry
-        }
-
-        private fun receiver(): BroadcastReceiver = PackageInstallerInstaller::class.java
-            .getDeclaredField("packageActionReceiver")
-            .apply { isAccessible = true }
-            .get(installer) as BroadcastReceiver
     }
+
+    private data class CallbackIdentity(val transactionId: String, val sessionId: Int)
 
     private class QueueHarness(
         val installer: Installer,

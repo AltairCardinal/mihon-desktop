@@ -10,6 +10,8 @@ import androidx.annotation.CallSuper
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.InstallStep
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 import uy.kohesive.injekt.injectLazy
 import java.util.Collections
 import java.util.UUID
@@ -52,8 +54,23 @@ abstract class Installer(private val service: Service) {
      */
     fun addToQueue(transactionId: String, uri: Uri) {
         pruneTombstones()
-        if (canceledTransactions.containsKey(transactionId) || completedTransactions.containsKey(transactionId)) return
-        queue.add(Entry(transactionId, uri))
+        var cancellation: CancellationRequest? = null
+        synchronized(pendingCancellations) {
+            prunePendingCancellations()
+            cancellation = pendingCancellations.remove(transactionId)
+            if (cancellation != null ||
+                canceledTransactions.containsKey(transactionId) ||
+                completedTransactions.containsKey(transactionId)
+            ) {
+                return@synchronized
+            }
+            queue.add(Entry(transactionId, uri))
+        }
+        cancellation?.let {
+            checkQueue()
+            it.acknowledgement.complete(Unit)
+            return
+        }
         checkQueue()
     }
 
@@ -136,6 +153,8 @@ abstract class Installer(private val service: Service) {
 
     protected fun getActiveEntry(): Entry? = waitingInstall.load()
 
+    protected open fun onCancellationCleanup() = Unit
+
     /**
      * Cancels queue for the provided transaction ID if it exists.
      *
@@ -147,14 +166,21 @@ abstract class Installer(private val service: Service) {
         val waitingInstall = this.waitingInstall.load()
         val toCancel = queue.find { it.transactionId == transactionId }
             ?: waitingInstall?.takeIf { it.transactionId == transactionId }
-            ?: return
+            ?: run {
+                completeCancellation(transactionId)
+                return
+            }
         if (cancelEntry(toCancel)) {
             queue.remove(toCancel)
             if (waitingInstall == toCancel && this.waitingInstall.compareAndSet(toCancel, null)) {
                 // Currently processing removed entry, continue queue
+                if (queue.isEmpty()) {
+                    onCancellationCleanup()
+                }
                 checkQueue()
             }
             completeQueued(toCancel, InstallStep.Idle)
+            completeCancellation(transactionId)
         }
     }
 
@@ -168,6 +194,10 @@ abstract class Installer(private val service: Service) {
         val cutoff = System.nanoTime() - TOMBSTONE_TTL_NANOS
         canceledTransactions.entries.removeIf { it.value < cutoff }
         completedTransactions.entries.removeIf { it.value < cutoff }
+    }
+
+    private fun completeCancellation(transactionId: String) {
+        pendingCancellations.remove(transactionId)?.acknowledgement?.complete(Unit)
     }
 
     /**
@@ -193,17 +223,39 @@ abstract class Installer(private val service: Service) {
         private const val ACTION_CANCEL_QUEUE = "Installer.action.CANCEL_QUEUE"
         private const val EXTRA_TRANSACTION_ID = "Installer.extra.TRANSACTION_ID"
         private const val TOMBSTONE_TTL_NANOS = 5L * 60L * 1_000_000_000L
+        private val pendingCancellations = ConcurrentHashMap<String, CancellationRequest>()
 
         /**
          * Attempts to cancel the installation entry for the provided transaction ID.
          *
          * @param transactionId UUID shared by the install request and platform callback.
          */
-        fun cancelInstallQueue(context: Context, transactionId: String) {
+        fun cancelInstallQueue(context: Context, transactionId: String): Deferred<Unit> {
+            val request = synchronized(pendingCancellations) {
+                prunePendingCancellations()
+                pendingCancellations.getOrPut(transactionId) {
+                    CancellationRequest(System.nanoTime(), CompletableDeferred())
+                }
+            }
             val intent = Intent(ACTION_CANCEL_QUEUE)
             intent.putExtra(EXTRA_TRANSACTION_ID, transactionId)
             LocalBroadcastManager.getInstance(context).sendBroadcast(intent)
+            return request.acknowledgement
         }
+
+        private fun prunePendingCancellations() {
+            val cutoff = System.nanoTime() - TOMBSTONE_TTL_NANOS
+            pendingCancellations.entries.removeIf { (_, request) ->
+                (request.createdAtNanos < cutoff).also { expired ->
+                    if (expired) request.acknowledgement.complete(Unit)
+                }
+            }
+        }
+
+        private data class CancellationRequest(
+            val createdAtNanos: Long,
+            val acknowledgement: CompletableDeferred<Unit>,
+        )
     }
 }
 
