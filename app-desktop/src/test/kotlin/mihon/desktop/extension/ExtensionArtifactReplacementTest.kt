@@ -4,6 +4,7 @@ import eu.kanade.tachiyomi.source.Source
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
+import java.nio.file.AtomicMoveNotSupportedException
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.runBlocking
@@ -20,6 +21,23 @@ import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
 
 class ExtensionArtifactReplacementTest {
+    @Test
+    fun `atomic move unsupported fails without replacing destination`(@TempDir directory: Path) {
+        val destination = directory.resolve("extension.jar").toFile().also { it.writeText("old") }
+        val snapshot = directory.resolve("candidate.jar").toFile().also { it.writeText("new") }
+        val fileSystem = NioDesktopExtensionFileSystem { source, target ->
+            throw AtomicMoveNotSupportedException(source.toString(), target.toString(), "injected")
+        }
+
+        assertThrows(AtomicMoveNotSupportedException::class.java) {
+            fileSystem.replaceFromSnapshot(snapshot, destination)
+        }
+
+        assertEquals("old", destination.readText())
+        assertEquals("new", snapshot.readText())
+        assertTrue(directory.toFile().listFiles().orEmpty().none { it.name.endsWith(".replace.tmp") })
+    }
+
     @Test
     fun `snapshot replacement overwrites destination without consuming snapshot`(@TempDir directory: Path) {
         val destination = directory.resolve("extension.jar").toFile().also { it.writeText("old") }

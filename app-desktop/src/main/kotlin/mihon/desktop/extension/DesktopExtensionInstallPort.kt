@@ -1,15 +1,24 @@
 package mihon.desktop.extension
 
+import java.io.DataInputStream
+import java.io.DataOutputStream
 import java.io.File
 import java.io.IOException
-import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
+import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Semaphore
+import java.util.concurrent.locks.ReentrantLock
 import java.util.zip.ZipFile
+import kotlin.concurrent.withLock
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionArtifact
 import mihon.domain.extension.service.ExtensionInstallFailure
@@ -28,7 +37,17 @@ interface DesktopExtensionFileSystem {
     fun deleteTree(directory: File)
 }
 
-internal object DefaultDesktopExtensionFileSystem : DesktopExtensionFileSystem {
+internal class NioDesktopExtensionFileSystem(
+    private val atomicMove: (Path, Path) -> Unit = { source, destination ->
+        Files.move(
+            source,
+            destination,
+            StandardCopyOption.REPLACE_EXISTING,
+            StandardCopyOption.ATOMIC_MOVE,
+        )
+        Unit
+    },
+) : DesktopExtensionFileSystem {
     override fun createDirectories(directory: File) {
         Files.createDirectories(directory.toPath())
     }
@@ -41,16 +60,7 @@ internal object DefaultDesktopExtensionFileSystem : DesktopExtensionFileSystem {
         val replacement = File(destination.parentFile, ".${destination.name}.${UUID.randomUUID()}.replace.tmp")
         try {
             Files.copy(snapshot.toPath(), replacement.toPath(), StandardCopyOption.REPLACE_EXISTING)
-            try {
-                Files.move(
-                    replacement.toPath(),
-                    destination.toPath(),
-                    StandardCopyOption.REPLACE_EXISTING,
-                    StandardCopyOption.ATOMIC_MOVE,
-                )
-            } catch (_: AtomicMoveNotSupportedException) {
-                Files.move(replacement.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING)
-            }
+            atomicMove(replacement.toPath(), destination.toPath())
         } finally {
             Files.deleteIfExists(replacement.toPath())
         }
@@ -64,6 +74,56 @@ internal object DefaultDesktopExtensionFileSystem : DesktopExtensionFileSystem {
         if (!directory.exists()) return
         Files.walk(directory.toPath()).use { paths ->
             paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
+        }
+    }
+}
+
+internal object DefaultDesktopExtensionFileSystem : DesktopExtensionFileSystem by NioDesktopExtensionFileSystem()
+
+internal class DesktopExtensionLifecycleGate {
+    private val permit = Semaphore(1, true)
+    private val activityLock = ReentrantLock(true)
+    private val idle = activityLock.newCondition()
+    private var activeTransactions = 0
+    private var closing = false
+
+    fun transactionStarted() {
+        activityLock.withLock {
+            if (closing) throw CancellationException("Extension manager is closing")
+            activeTransactions++
+        }
+    }
+
+    fun transactionEnded() {
+        activityLock.withLock {
+            check(activeTransactions > 0) { "No active extension transaction to finish" }
+            activeTransactions--
+            if (activeTransactions == 0) idle.signalAll()
+        }
+    }
+
+    fun closeAndAwait(cancelInstalls: () -> Unit) {
+        activityLock.withLock { closing = true }
+        cancelInstalls()
+        activityLock.withLock {
+            while (activeTransactions > 0) idle.awaitUninterruptibly()
+        }
+    }
+
+    fun enterInstallWindow() {
+        permit.acquireUninterruptibly()
+    }
+
+    fun exitInstallWindow() {
+        permit.release()
+    }
+
+    fun <T> withPublicOperation(operation: () -> T): T {
+        permit.acquireUninterruptibly()
+        return try {
+            operation()
+        } finally {
+            permit.release()
         }
     }
 }
@@ -97,24 +157,49 @@ internal class DesktopExtensionInstallPort(
     private val releaseRuntime: (String) -> Unit,
     private val reloadRuntime: (String, Set<Long>?) -> Unit,
     private val fileSystem: DesktopExtensionFileSystem = DefaultDesktopExtensionFileSystem,
+    private val lifecycleGate: DesktopExtensionLifecycleGate = DesktopExtensionLifecycleGate(),
 ) : ExtensionInstallPort {
     private val prepared = ConcurrentHashMap<String, PreparedInstall>()
     private val rollbacks = ConcurrentHashMap<String, PreparedInstall>()
 
-    override suspend fun prepare(request: ExtensionInstallRequest): PreparedExtensionInstallToken = storageBoundary {
-        requireValidExtensionPackageName(request.artifact.packageName)
-        fileSystem.createDirectories(extensionsDirectory)
-        val id = UUID.randomUUID().toString()
-        val transactionDirectory = containedTransactionDirectory(id)
-        fileSystem.createDirectories(transactionDirectory)
-        val download = File(transactionDirectory, "download.bin")
+    override suspend fun prepare(request: ExtensionInstallRequest): PreparedExtensionInstallToken {
+        lifecycleGate.transactionStarted()
+        var handedOff = false
         try {
-            artifactProvider(request.artifact, download)
-            prepared[id] = PreparedInstall(id, request.artifact, transactionDirectory, download)
-            PreparedExtensionInstallToken(id)
-        } catch (error: Throwable) {
-            runCatching { fileSystem.deleteTree(transactionDirectory) }
-            throw error
+            return storageBoundary {
+                requireValidExtensionPackageName(request.artifact.packageName)
+                fileSystem.createDirectories(extensionsDirectory)
+                val id = UUID.randomUUID().toString()
+                val transactionDirectory = containedTransactionDirectory(id)
+                fileSystem.createDirectories(transactionDirectory)
+                val download = File(transactionDirectory, "download.bin")
+                try {
+                    artifactProvider(request.artifact, download)
+                    prepared[id] = PreparedInstall(
+                        id = id,
+                        artifact = request.artifact,
+                        transactionDirectory = transactionDirectory,
+                        download = download,
+                        recoveryArchive = containedRecoveryArchive(id),
+                    )
+                    PreparedExtensionInstallToken(id).also { handedOff = true }
+                } catch (error: Throwable) {
+                    val cleanupFailure = withContext(NonCancellable) {
+                        runCatching { fileSystem.deleteTree(transactionDirectory) }.exceptionOrNull()
+                    }
+                    if (cleanupFailure != null) {
+                        throw ExtensionInstallFailure(
+                            AppError.PartialFailure(
+                                failures = listOf(error.toInstallError(), cleanupFailure.toStorageError()),
+                                cause = cleanupFailure,
+                            ),
+                        )
+                    }
+                    throw error
+                }
+            }
+        } finally {
+            if (!handedOff) lifecycleGate.transactionEnded()
         }
     }
 
@@ -146,10 +231,7 @@ internal class DesktopExtensionInstallPort(
         install.metadata = extensionArtifactFile(extensionsDirectory, install.artifact.packageName, "meta.json")
         install.jarExisted = install.destination.isFile
         install.metaExisted = install.metadata.isFile
-        install.jarBackup = File(install.transactionDirectory, "installed.jar.snapshot")
-        install.metaBackup = File(install.transactionDirectory, "installed.meta.snapshot")
-        if (install.jarExisted) fileSystem.copy(install.destination, install.jarBackup)
-        if (install.metaExisted) fileSystem.copy(install.metadata, install.metaBackup)
+        writeRecoveryArchive(install)
 
         writeExtensionMeta(
             candidate,
@@ -171,12 +253,18 @@ internal class DesktopExtensionInstallPort(
         validateRuntimeProvider(install)
 
         val rollback = UUID.randomUUID().toString()
+        install.rollbackReady = true
         rollbacks[rollback] = install
         ExtensionInstallRollbackToken(rollback)
     }
 
     override suspend fun commit(token: PreparedExtensionInstallToken) = storageBoundary {
         val install = prepared[token.value] ?: failStorage("Unknown prepared extension token")
+        if (!install.windowHeld) {
+            lifecycleGate.enterInstallWindow()
+            install.windowHeld = true
+        }
+        currentCoroutineContext().ensureActive()
         releaseRuntime(install.artifact.packageName)
         fileSystem.replaceFromSnapshot(install.candidate, install.destination)
         fileSystem.replaceFromSnapshot(install.stagedMetadata, install.metadata)
@@ -187,20 +275,39 @@ internal class DesktopExtensionInstallPort(
             ?: failStorage("Missing prepared extension for $packageName")
         val expected = if (install.restoring) null else install.artifact.sources.map { it.id }.toSet()
         reloadRuntime(packageName, expected)
+        currentCoroutineContext().ensureActive()
     }
 
     override suspend fun rollback(token: ExtensionInstallRollbackToken) = storageBoundary {
         val install = rollbacks[token.value] ?: failStorage("Unknown rollback token")
-        restore(install.jarBackup, install.destination, install.jarExisted)
-        restore(install.metaBackup, install.metadata, install.metaExisted)
         install.restoring = true
+        releaseRuntime(install.artifact.packageName)
+        val recovery = readRecoveryArchive(install)
+        restore(recovery.jar, install.destination, recovery.jarExisted)
+        restore(recovery.metadata, install.metadata, recovery.metaExisted)
     }
 
     override suspend fun cleanup(token: PreparedExtensionInstallToken) = storageBoundary {
         val install = prepared[token.value] ?: return@storageBoundary
-        fileSystem.deleteTree(install.transactionDirectory)
-        prepared.remove(token.value)
+        try {
+            fileSystem.deleteTree(install.transactionDirectory)
+            currentCoroutineContext().ensureActive()
+            fileSystem.delete(install.recoveryArchive)
+        } catch (error: Throwable) {
+            if (install.restoring || !install.rollbackReady) finishInstall(install)
+            throw error
+        }
+        finishInstall(install)
+    }
+
+    private fun finishInstall(install: PreparedInstall) {
+        prepared.remove(install.id)
         rollbacks.entries.removeAll { it.value === install }
+        if (install.windowHeld) {
+            install.windowHeld = false
+            lifecycleGate.exitInstallWindow()
+        }
+        lifecycleGate.transactionEnded()
     }
 
     private fun validateRuntimeProvider(install: PreparedInstall) {
@@ -240,8 +347,45 @@ internal class DesktopExtensionInstallPort(
         }
     }
 
-    private fun restore(snapshot: File, destination: File, existed: Boolean) {
-        if (existed) fileSystem.replaceFromSnapshot(snapshot, destination) else fileSystem.delete(destination)
+    private fun writeRecoveryArchive(install: PreparedInstall) {
+        DataOutputStream(install.recoveryArchive.outputStream().buffered()).use { output ->
+            output.writeInt(RECOVERY_MAGIC)
+            output.writeSnapshot(install.destination, install.jarExisted)
+            output.writeSnapshot(install.metadata, install.metaExisted)
+        }
+    }
+
+    private fun readRecoveryArchive(install: PreparedInstall): RecoveryMaterial {
+        fileSystem.createDirectories(install.transactionDirectory)
+        return DataInputStream(install.recoveryArchive.inputStream().buffered()).use { input ->
+            if (input.readInt() != RECOVERY_MAGIC) throw IOException("Invalid extension recovery archive")
+            val jar = input.readSnapshot(File(install.transactionDirectory, "rollback.jar.snapshot"))
+            val metadata = input.readSnapshot(File(install.transactionDirectory, "rollback.meta.snapshot"))
+            RecoveryMaterial(jar.first, metadata.first, jar.second, metadata.second)
+        }
+    }
+
+    private fun DataOutputStream.writeSnapshot(source: File, existed: Boolean) {
+        writeBoolean(existed)
+        if (!existed) return
+        val bytes = source.readBytes()
+        writeInt(bytes.size)
+        write(bytes)
+    }
+
+    private fun DataInputStream.readSnapshot(destination: File): Pair<Boolean, File?> {
+        val existed = readBoolean()
+        if (!existed) return false to null
+        val size = readInt()
+        if (size < 0 || size > MAX_RECOVERY_ENTRY_BYTES) throw IOException("Invalid extension recovery entry size")
+        val bytes = readNBytes(size)
+        if (bytes.size != size) throw IOException("Truncated extension recovery archive")
+        destination.writeBytes(bytes)
+        return true to destination
+    }
+
+    private fun restore(snapshot: File?, destination: File, existed: Boolean) {
+        if (existed) fileSystem.replaceFromSnapshot(checkNotNull(snapshot), destination) else fileSystem.delete(destination)
     }
 
     private fun containedTransactionDirectory(id: String): File {
@@ -249,6 +393,13 @@ internal class DesktopExtensionInstallPort(
         val transaction = root.resolve(".install-$id.tmp").normalize()
         if (!transaction.startsWith(root) || transaction == root) failStorage("Invalid transaction directory")
         return transaction.toFile()
+    }
+
+    private fun containedRecoveryArchive(id: String): File {
+        val root = extensionsDirectory.toPath().toAbsolutePath().normalize()
+        val recovery = root.resolve(".recovery-$id.bin").normalize()
+        if (!recovery.startsWith(root) || recovery == root) failStorage("Invalid recovery archive")
+        return recovery.toFile()
     }
 
     private fun File.sha256(): String = inputStream().use { input ->
@@ -267,22 +418,46 @@ internal class DesktopExtensionInstallPort(
         val hasDex: Boolean,
     )
 
+    private data class RecoveryMaterial(
+        val jarExisted: Boolean,
+        val metaExisted: Boolean,
+        val jar: File?,
+        val metadata: File?,
+    )
+
     private data class PreparedInstall(
         val id: String,
         val artifact: ExtensionArtifact,
         val transactionDirectory: File,
         val download: File,
+        val recoveryArchive: File,
         var candidate: File = download,
         var destination: File = download,
         var metadata: File = download,
         var stagedMetadata: File = download,
-        var jarBackup: File = download,
-        var metaBackup: File = download,
         var jarExisted: Boolean = false,
         var metaExisted: Boolean = false,
         var extensionClass: String? = null,
         var restoring: Boolean = false,
+        var rollbackReady: Boolean = false,
+        var windowHeld: Boolean = false,
     )
+
+    private companion object {
+        const val RECOVERY_MAGIC = 0x4D484E52
+        const val MAX_RECOVERY_ENTRY_BYTES = 512 * 1024 * 1024
+    }
+}
+
+private fun Throwable.toInstallError(): AppError = when (this) {
+    is ExtensionInstallFailure -> error
+    is CancellationException -> AppError.Cancelled
+    else -> AppError.Unknown(this)
+}
+
+private fun Throwable.toStorageError(): AppError.Storage = when (this) {
+    is ExtensionInstallFailure -> error as? AppError.Storage ?: AppError.Storage(this)
+    else -> AppError.Storage(this)
 }
 
 private suspend inline fun <T> storageBoundary(crossinline block: suspend () -> T): T = try {

@@ -11,11 +11,16 @@ import java.nio.file.Path
 import java.security.MessageDigest
 import java.util.Base64
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.CountDownLatch
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import mihon.desktop.domain.fakes.FakeExtensionRepoRepository
@@ -276,6 +281,261 @@ class DesktopExtensionInstallTransactionTest {
     }
 
     @Test
+    fun `cleanup failure after candidate reload releases new runtime before restoring old snapshot`(@TempDir directory: Path) = runBlocking {
+        val snapshot = installedSnapshot(directory)
+        val fileSystem = CleanupFailureFileSystem()
+        val manager = DesktopExtensionManager(
+            loader = DesktopExtensionLoader(directory.toFile()),
+            artifactProvider = { _, destination -> destination.writeBytes(sourceJar(FixtureNewSource::class.java)) },
+            fileSystem = fileSystem,
+        ).also { it.loadAll() }
+        fileSystem.manager = manager
+
+        try {
+            val terminal = manager.installExtension(artifact(FixtureNewSource.ID))
+            val failure = assertInstanceOf(ExtensionInstallState.Failed::class.java, terminal)
+            assertInstanceOf(AppError.Storage::class.java, failure.error)
+            snapshot.assertUnchanged()
+            assertNotNull(manager.getSource(FixtureOldSource.ID))
+            assertNull(manager.getSource(FixtureNewSource.ID))
+            assertNoTransactionFiles(directory)
+        } finally {
+            manager.close()
+        }
+    }
+
+    @Test
+    fun `public reload waits for full install lifecycle window`(@TempDir directory: Path) = runBlocking {
+        assertPublicOperationWaits(directory.resolve("reload")) { manager, _ -> manager.reloadAll() }
+    }
+
+    @Test
+    fun `public remove waits for full install lifecycle window`(@TempDir directory: Path) = runBlocking {
+        assertPublicOperationWaits(directory.resolve("remove")) { manager, extension ->
+            manager.removeExtensionWithMeta(extension)
+        }
+    }
+
+    @Test
+    fun `public close waits for full install lifecycle window`(@TempDir directory: Path) = runBlocking {
+        assertPublicOperationWaits(directory.resolve("close")) { manager, _ -> manager.close() }
+    }
+
+    @Test
+    fun `partial cleanup cannot consume rollback material`(@TempDir directory: Path) = runBlocking {
+        val snapshot = installedSnapshot(directory)
+        val manager = DesktopExtensionManager(
+            loader = DesktopExtensionLoader(directory.toFile()),
+            artifactProvider = { _, destination -> destination.writeBytes(sourceJar(FixtureNewSource::class.java)) },
+            fileSystem = PartiallyDeletingCleanupFileSystem(),
+        ).also { it.loadAll() }
+
+        try {
+            val terminal = manager.installExtension(artifact(FixtureNewSource.ID))
+            assertInstanceOf(ExtensionInstallState.Failed::class.java, terminal)
+            snapshot.assertUnchanged()
+            assertNotNull(manager.getSource(FixtureOldSource.ID))
+            assertNoTransactionFiles(directory)
+        } finally {
+            manager.close()
+        }
+    }
+
+    @Test
+    fun `prepare failure and cleanup failure return Network plus Storage partial failure`(@TempDir directory: Path) = runBlocking {
+        val manager = DesktopExtensionManager(
+            loader = DesktopExtensionLoader(directory.toFile()),
+            artifactProvider = { _, destination ->
+                destination.writeText("partial")
+                throw ExtensionInstallFailure(AppError.Network(IOException("network interrupted")))
+            },
+            fileSystem = AlwaysFailingCleanupFileSystem(),
+        )
+
+        val terminal = try {
+            manager.installExtension(artifact(FixtureNewSource.ID))
+        } finally {
+            manager.close()
+        }
+
+        val failure = assertInstanceOf(ExtensionInstallState.Failed::class.java, terminal)
+        val partial = assertInstanceOf(AppError.PartialFailure::class.java, failure.error)
+        assertTrue(partial.failures.any { it is AppError.Network })
+        assertTrue(partial.failures.any { it is AppError.Storage })
+    }
+
+    @Test
+    fun `real cancellation during prepare removes partial transaction`(@TempDir directory: Path) = runBlocking {
+        val providerStarted = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val manager = DesktopExtensionManager(
+            loader = DesktopExtensionLoader(directory.toFile()),
+            artifactProvider = { _, destination ->
+                destination.writeText("partial")
+                providerStarted.complete(Unit)
+                awaitCancellation()
+            },
+        )
+        val install = async { manager.installExtension(artifact(FixtureNewSource.ID)) }
+        providerStarted.await()
+
+        install.cancel()
+        install.join()
+        waitUntil { directory.toFile().listFiles().orEmpty().none { it.name.startsWith(".install-") } }
+
+        assertTrue(directory.toFile().listFiles().orEmpty().isEmpty())
+        manager.close()
+    }
+
+    @Test
+    fun `public close waits for cancelled prepare cleanup`(@TempDir directory: Path) = runBlocking {
+        val providerStarted = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val fileSystem = BlockingCleanupFileSystem()
+        val manager = DesktopExtensionManager(
+            loader = DesktopExtensionLoader(directory.toFile()),
+            artifactProvider = { _, destination ->
+                destination.writeText("partial")
+                providerStarted.complete(Unit)
+                awaitCancellation()
+            },
+            fileSystem = fileSystem,
+        )
+        val install = async { manager.installExtension(artifact(FixtureNewSource.ID)) }
+        providerStarted.await()
+        val close = async(Dispatchers.IO) { manager.close() }
+        fileSystem.cleanupEntered.awaitLatch()
+
+        try {
+            delay(200)
+            assertFalse(close.isCompleted, "close returned before cancelled prepare cleanup completed")
+        } finally {
+            fileSystem.allowCleanup.countDown()
+            withTimeout(2_000) { close.await() }
+            withTimeout(2_000) { install.join() }
+        }
+
+        assertTrue(directory.toFile().listFiles().orEmpty().isEmpty())
+    }
+
+    @Test
+    fun `real cancellation during reload restores old runtime and files`(@TempDir directory: Path) = runBlocking {
+        val snapshot = installedSnapshot(directory)
+        val loader = BlockingReloadLoader(directory.toFile())
+        val manager = DesktopExtensionManager(
+            loader = loader,
+            artifactProvider = { _, destination -> destination.writeBytes(sourceJar(FixtureNewSource::class.java)) },
+        ).also { it.loadAll() }
+        loader.blockNextReload = true
+        val install = async { manager.installExtension(artifact(FixtureNewSource.ID)) }
+        loader.reloadEntered.awaitLatch()
+
+        install.cancel()
+        loader.allowReload.countDown()
+        install.join()
+        waitUntil { manager.getSource(FixtureOldSource.ID) != null }
+
+        snapshot.assertUnchanged()
+        assertNotNull(manager.getSource(FixtureOldSource.ID))
+        assertNull(manager.getSource(FixtureNewSource.ID))
+        assertNoTransactionFiles(directory)
+        manager.close()
+    }
+
+    @Test
+    fun `real cancellation during cleanup restores old runtime and files`(@TempDir directory: Path) = runBlocking {
+        val snapshot = installedSnapshot(directory)
+        val fileSystem = BlockingCleanupFileSystem()
+        val manager = DesktopExtensionManager(
+            loader = DesktopExtensionLoader(directory.toFile()),
+            artifactProvider = { _, destination -> destination.writeBytes(sourceJar(FixtureNewSource::class.java)) },
+            fileSystem = fileSystem,
+        ).also { it.loadAll() }
+        val install = async { manager.installExtension(artifact(FixtureNewSource.ID)) }
+        fileSystem.cleanupEntered.awaitLatch()
+
+        install.cancel()
+        fileSystem.allowCleanup.countDown()
+        install.join()
+        waitUntil { manager.getSource(FixtureOldSource.ID) != null }
+
+        snapshot.assertUnchanged()
+        assertNotNull(manager.getSource(FixtureOldSource.ID))
+        assertNull(manager.getSource(FixtureNewSource.ID))
+        assertNoTransactionFiles(directory)
+        manager.close()
+    }
+
+    @Test
+    fun `local write failure maps to Storage`(@TempDir directory: Path) = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(MockResponse.Builder().body("artifact").build())
+            val api = api()
+            val destination = directory.resolve("destination-directory").toFile().also(File::mkdirs)
+
+            val failure = org.junit.jupiter.api.Assertions.assertThrows(ExtensionInstallFailure::class.java) {
+                runBlocking { api.downloadArtifact(artifact(FixtureNewSource.ID).copy(downloadUrl = server.url("/artifact").toString()), destination) }
+            }
+
+            assertInstanceOf(AppError.Storage::class.java, failure.error)
+            Unit
+        }
+    }
+
+    @Test
+    fun `installed hash read failure maps to Storage`(@TempDir directory: Path) = runBlocking {
+        directory.resolve("$PACKAGE.jar").toFile().mkdirs()
+        val api = api()
+        val manager = manager(api, directory.toFile())
+        try {
+            val result = api.installExtension(availableWithoutServer(PACKAGE), manager)
+            val failure = assertInstanceOf(DesktopExtensionApi.InstallResult.Error::class.java, result)
+            assertInstanceOf(AppError.Storage::class.java, failure.error)
+        } finally {
+            manager.close()
+        }
+        Unit
+    }
+
+    @Test
+    fun `http 404 maps to Server with status code`(@TempDir directory: Path) = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(MockResponse.Builder().code(404).build())
+            val api = api()
+            val manager = manager(api, directory.toFile())
+            try {
+                val result = api.installExtension(available(server, FixtureNewSource.ID, null), manager)
+                val failure = assertInstanceOf(DesktopExtensionApi.InstallResult.Error::class.java, result)
+                val error = assertInstanceOf(AppError.Server::class.java, failure.error)
+                assertEquals(404, error.statusCode)
+            } finally {
+                manager.close()
+            }
+        }
+    }
+
+    @Test
+    fun `runtime rejection maps to MalformedData`(@TempDir directory: Path) = runBlocking {
+        installedSnapshot(directory)
+        val loader = EmptyOnceReloadLoader(directory.toFile())
+        val manager = DesktopExtensionManager(
+            loader = loader,
+            artifactProvider = { _, destination -> destination.writeBytes(sourceJar(FixtureNewSource::class.java)) },
+        ).also { it.loadAll() }
+        loader.emptyNextReload = true
+
+        val terminal = try {
+            manager.installExtension(artifact(FixtureNewSource.ID))
+        } finally {
+            manager.close()
+        }
+
+        val failure = assertInstanceOf(ExtensionInstallState.Failed::class.java, terminal)
+        assertInstanceOf(AppError.MalformedData::class.java, failure.error)
+        Unit
+    }
+
+    @Test
     fun `jvm jar installs through production api loader and manager`(@TempDir directory: Path) = runBlocking {
         val bytes = sourceJar(FixtureNewSource::class.java)
 
@@ -369,6 +629,44 @@ class DesktopExtensionInstallTransactionTest {
             assertNoTransactionFiles(directory)
         } finally {
             manager.close()
+        }
+    }
+
+    private suspend fun assertPublicOperationWaits(
+        directory: Path,
+        operation: (DesktopExtensionManager, InstalledExtension) -> Unit,
+    ) = coroutineScope {
+        val snapshot = installedSnapshot(directory)
+        val fileSystem = BlockingFirstReplaceFileSystem()
+        val manager = DesktopExtensionManager(
+            loader = DesktopExtensionLoader(directory.toFile()),
+            artifactProvider = { _, destination -> destination.writeBytes(sourceJar(FixtureNewSource::class.java)) },
+            fileSystem = fileSystem,
+        ).also { it.loadAll() }
+        val installed = manager.getInstalledExtensions().single()
+        val install = async(Dispatchers.IO) { manager.installExtension(artifact(FixtureNewSource.ID)) }
+        fileSystem.replaceEntered.awaitLatch()
+        val publicOperation = async(Dispatchers.IO) { operation(manager, installed) }
+        try {
+            delay(200)
+            assertFalse(publicOperation.isCompleted, "public lifecycle operation crossed active install window")
+        } finally {
+            fileSystem.allowReplace.countDown()
+            runCatching { withTimeout(2_000) { install.await() } }
+            runCatching { withTimeout(2_000) { publicOperation.await() } }
+            manager.close()
+        }
+    }
+
+    private suspend fun CountDownLatch.awaitLatch() {
+        withContext(Dispatchers.IO) {
+            check(await(2, TimeUnit.SECONDS)) { "timed out waiting for injected lifecycle phase" }
+        }
+    }
+
+    private suspend fun waitUntil(condition: () -> Boolean) {
+        withTimeout(2_000) {
+            while (!condition()) delay(25)
         }
     }
 
@@ -539,6 +837,100 @@ class DesktopExtensionInstallTransactionTest {
             if (failNextReload) {
                 failNextReload = false
                 error("fake reload failure")
+            }
+            return super.loadPackage(packageName)
+        }
+    }
+
+    private class CleanupFailureFileSystem : DesktopExtensionFileSystem by DefaultDesktopExtensionFileSystem {
+        lateinit var manager: DesktopExtensionManager
+        private var cleanupCalls = 0
+        private var jarReplaceCalls = 0
+
+        override fun replaceFromSnapshot(snapshot: File, destination: File) {
+            if (destination.name == "$PACKAGE.jar" && ++jarReplaceCalls > 1 && manager.getSource(FixtureNewSource.ID) != null) {
+                throw IOException("new runtime still owns destination during rollback")
+            }
+            DefaultDesktopExtensionFileSystem.replaceFromSnapshot(snapshot, destination)
+        }
+
+        override fun deleteTree(directory: File) {
+            if (++cleanupCalls == 1) throw IOException("injected cleanup failure after runtime reload")
+            DefaultDesktopExtensionFileSystem.deleteTree(directory)
+        }
+    }
+
+    private class BlockingFirstReplaceFileSystem : DesktopExtensionFileSystem by DefaultDesktopExtensionFileSystem {
+        val replaceEntered = CountDownLatch(1)
+        val allowReplace = CountDownLatch(1)
+        private var replaceCalls = 0
+
+        override fun replaceFromSnapshot(snapshot: File, destination: File) {
+            if (++replaceCalls == 1) {
+                replaceEntered.countDown()
+                check(allowReplace.await(2, TimeUnit.SECONDS)) { "timed out releasing replace" }
+            }
+            DefaultDesktopExtensionFileSystem.replaceFromSnapshot(snapshot, destination)
+        }
+    }
+
+    private class PartiallyDeletingCleanupFileSystem : DesktopExtensionFileSystem by DefaultDesktopExtensionFileSystem {
+        private var cleanupCalls = 0
+
+        override fun deleteTree(directory: File) {
+            if (++cleanupCalls == 1) {
+                val victim = directory.walkTopDown().firstOrNull {
+                    it.isFile && (it.name.contains("meta.snapshot") || it.name.contains("recovery"))
+                } ?: directory.walkTopDown().first { it.isFile }
+                check(victim.delete()) { "unable to inject partial cleanup" }
+                throw IOException("injected failure after partial cleanup")
+            }
+            DefaultDesktopExtensionFileSystem.deleteTree(directory)
+        }
+    }
+
+    private class AlwaysFailingCleanupFileSystem : DesktopExtensionFileSystem by DefaultDesktopExtensionFileSystem {
+        override fun deleteTree(directory: File) {
+            throw IOException("injected cleanup failure")
+        }
+    }
+
+    private class BlockingCleanupFileSystem : DesktopExtensionFileSystem by DefaultDesktopExtensionFileSystem {
+        val cleanupEntered = CountDownLatch(1)
+        val allowCleanup = CountDownLatch(1)
+        private var cleanupCalls = 0
+
+        override fun deleteTree(directory: File) {
+            if (++cleanupCalls == 1) {
+                cleanupEntered.countDown()
+                check(allowCleanup.await(2, TimeUnit.SECONDS)) { "timed out releasing cleanup" }
+            }
+            DefaultDesktopExtensionFileSystem.deleteTree(directory)
+        }
+    }
+
+    private class BlockingReloadLoader(directory: File) : DesktopExtensionLoader(directory) {
+        val reloadEntered = CountDownLatch(1)
+        val allowReload = CountDownLatch(1)
+        var blockNextReload = false
+
+        override fun loadPackage(packageName: String): List<LoadedExtension> {
+            if (blockNextReload) {
+                blockNextReload = false
+                reloadEntered.countDown()
+                check(allowReload.await(2, TimeUnit.SECONDS)) { "timed out releasing reload" }
+            }
+            return super.loadPackage(packageName)
+        }
+    }
+
+    private class EmptyOnceReloadLoader(directory: File) : DesktopExtensionLoader(directory) {
+        var emptyNextReload = false
+
+        override fun loadPackage(packageName: String): List<LoadedExtension> {
+            if (emptyNextReload) {
+                emptyNextReload = false
+                return emptyList()
             }
             return super.loadPackage(packageName)
         }

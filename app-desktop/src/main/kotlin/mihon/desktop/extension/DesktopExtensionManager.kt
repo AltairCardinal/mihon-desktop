@@ -6,8 +6,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.last
+import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionArtifact
 import mihon.domain.extension.service.ExtensionInstallCoordinator
+import mihon.domain.extension.service.ExtensionInstallFailure
 import mihon.domain.extension.service.ExtensionInstallRequest
 import mihon.domain.extension.service.ExtensionInstallState
 
@@ -25,6 +27,7 @@ class DesktopExtensionManager(
 
     private val loadedExtensions = mutableListOf<LoadedExtension>()
     private val runtimeLock = Any()
+    private val lifecycleGate = DesktopExtensionLifecycleGate()
     private val installScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val installPort = DesktopExtensionInstallPort(
         extensionsDirectory = loader.extensionsDirectory,
@@ -34,19 +37,22 @@ class DesktopExtensionManager(
         releaseRuntime = ::releaseRuntime,
         reloadRuntime = ::reloadRuntime,
         fileSystem = fileSystem,
+        lifecycleGate = lifecycleGate,
     )
     private val installCoordinator = ExtensionInstallCoordinator(installPort, installScope)
 
     /** Loads all extensions from the extensions directory. */
     fun loadAll() {
-        val replacements = loader.loadExtensions()
-        val previous = synchronized(runtimeLock) {
-            loadedExtensions.toList().also {
-                loadedExtensions.clear()
-                loadedExtensions.addAll(replacements)
+        lifecycleGate.withPublicOperation {
+            val replacements = loader.loadExtensions()
+            val previous = synchronized(runtimeLock) {
+                loadedExtensions.toList().also {
+                    loadedExtensions.clear()
+                    loadedExtensions.addAll(replacements)
+                }
             }
+            closeLoaders(previous)
         }
-        closeLoaders(previous)
     }
 
     /** Returns all loaded sources. */
@@ -86,8 +92,10 @@ class DesktopExtensionManager(
      * @return true if the JAR was deleted successfully.
      */
     fun removeExtension(extension: InstalledExtension): Boolean {
-        releaseRuntime(extension.pkgName)
-        return extension.jarFile.delete()
+        return lifecycleGate.withPublicOperation {
+            releaseRuntime(extension.pkgName)
+            extension.jarFile.delete()
+        }
     }
 
     /**
@@ -95,9 +103,11 @@ class DesktopExtensionManager(
      * @return true if the JAR was deleted successfully.
      */
     fun removeExtensionWithMeta(extension: InstalledExtension): Boolean {
-        releaseRuntime(extension.pkgName)
-        deleteExtensionMeta(extension.jarFile)
-        return extension.jarFile.delete()
+        return lifecycleGate.withPublicOperation {
+            releaseRuntime(extension.pkgName)
+            deleteExtensionMeta(extension.jarFile)
+            extension.jarFile.delete()
+        }
     }
 
     /** Re-scans the extensions directory and reloads all extensions. */
@@ -125,7 +135,9 @@ class DesktopExtensionManager(
         }
         if (!valid) {
             closeLoaders(replacements)
-            error("Extension runtime reload failed for $packageName")
+            throw ExtensionInstallFailure(
+                AppError.MalformedData(IllegalStateException("Extension runtime reload failed for $packageName")),
+            )
         }
 
         val previous = synchronized(runtimeLock) {
@@ -138,11 +150,13 @@ class DesktopExtensionManager(
     }
 
     override fun close() {
-        installScope.cancel()
-        val previous = synchronized(runtimeLock) {
-            loadedExtensions.toList().also { loadedExtensions.clear() }
+        lifecycleGate.closeAndAwait { installScope.cancel() }
+        lifecycleGate.withPublicOperation {
+            val previous = synchronized(runtimeLock) {
+                loadedExtensions.toList().also { loadedExtensions.clear() }
+            }
+            closeLoaders(previous)
         }
-        closeLoaders(previous)
     }
 
     private fun closeLoaders(extensions: List<LoadedExtension>) {

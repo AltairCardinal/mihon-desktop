@@ -107,20 +107,33 @@ class DesktopExtensionApi(
     }
 
     internal suspend fun downloadArtifact(artifact: ExtensionArtifact, destination: File) {
-        try {
-            client.newCall(GET(artifact.downloadUrl)).awaitSuccess().use { response ->
-                response.body.byteStream().use { input ->
-                    destination.outputStream().use { output -> input.copyTo(output) }
-                }
-            }
+        val response = try {
+            client.newCall(GET(artifact.downloadUrl)).awaitSuccess()
         } catch (failure: CancellationException) {
-            throw failure
-        } catch (failure: mihon.domain.extension.service.ExtensionInstallFailure) {
             throw failure
         } catch (failure: HttpException) {
             throw mihon.domain.extension.service.ExtensionInstallFailure(failure.toDownloadError())
         } catch (failure: IOException) {
             throw mihon.domain.extension.service.ExtensionInstallFailure(AppError.Network(failure))
+        }
+        response.use {
+            val input = networkIo { response.body.byteStream() }
+            try {
+                val output = storageIo { destination.outputStream() }
+                try {
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        val read = networkIo { input.read(buffer) }
+                        if (read < 0) break
+                        storageIo { output.write(buffer, 0, read) }
+                    }
+                    storageIo { output.flush() }
+                } finally {
+                    storageIo { output.close() }
+                }
+            } finally {
+                networkIo { input.close() }
+            }
         }
     }
 
@@ -151,19 +164,24 @@ class DesktopExtensionApi(
     private fun HttpException.toDownloadError(): AppError = when (code) {
         401, 403 -> AppError.Authentication(this)
         429 -> AppError.RateLimited(cause = this)
-        in 500..599 -> AppError.Server(code, this)
-        else -> AppError.Network(this)
+        else -> AppError.Server(code, this)
     }
 
-    private fun File.sha256(): String = inputStream().use { input ->
-        val digest = java.security.MessageDigest.getInstance("SHA-256")
-        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-        while (true) {
-            val read = input.read(buffer)
-            if (read < 0) break
-            digest.update(buffer, 0, read)
+    private fun File.sha256(): String = try {
+        inputStream().use { input ->
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                digest.update(buffer, 0, read)
+            }
+            digest.digest().joinToString("") { "%02x".format(it) }
         }
-        digest.digest().joinToString("") { "%02x".format(it) }
+    } catch (failure: IOException) {
+        throw mihon.domain.extension.service.ExtensionInstallFailure(AppError.Storage(failure))
+    } catch (failure: SecurityException) {
+        throw mihon.domain.extension.service.ExtensionInstallFailure(AppError.Storage(failure))
     }
 
     private fun DesktopAvailableExtension.trustRequest(
@@ -225,6 +243,26 @@ class DesktopExtensionApi(
             val incomingFingerprint: String,
             val reasons: Set<TrustMismatch>,
         ) : InstallResult
+    }
+
+    private inline fun <T> networkIo(operation: () -> T): T = try {
+        operation()
+    } catch (failure: CancellationException) {
+        throw failure
+    } catch (failure: mihon.domain.extension.service.ExtensionInstallFailure) {
+        throw failure
+    } catch (failure: IOException) {
+        throw mihon.domain.extension.service.ExtensionInstallFailure(AppError.Network(failure))
+    }
+
+    private inline fun <T> storageIo(operation: () -> T): T = try {
+        operation()
+    } catch (failure: mihon.domain.extension.service.ExtensionInstallFailure) {
+        throw failure
+    } catch (failure: IOException) {
+        throw mihon.domain.extension.service.ExtensionInstallFailure(AppError.Storage(failure))
+    } catch (failure: SecurityException) {
+        throw mihon.domain.extension.service.ExtensionInstallFailure(AppError.Storage(failure))
     }
 
     companion object {
