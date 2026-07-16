@@ -101,7 +101,7 @@
 - Current task: `Task 5A: 共享登录会话与 Desktop Cookie 原子提交`
 - Plan checkbox: pending
 - OpenSpec mapping: `3.3` partial (do not check off until Tasks 5A-5C complete).
-- Stage: `spec-review`
+- Stage: `final-fix`
 - Task base: `fdb81e127`
 - Brief: `.superpowers/sdd/align-sources-task-5a-brief.md`
 - Risk axis: `login-session-atomicity`
@@ -119,6 +119,10 @@
 - Report: `.superpowers/sdd/align-sources-task-5a-report.md`.
 - Review package: `.superpowers/sdd/align-sources-task-5a-review.diff` (cumulative base `fdb81e127`, product head `3b9deaa7a`).
 - Reviewer: `/root/task5a_review` (fresh independent read-only thorough review; no test rerun).
+- Review result: Spec Compliance `CHANGES_REQUIRED`; Task quality `NEEDS_FIXES`; Critical 0 / Important 5 / Minor 0. Report: `.superpowers/sdd/align-sources-task-5a-review.md`.
+- Finding evaluation: all five are technically valid: timeout currently includes suspend commit; external cancellation leaves a nonterminal shared state; completion IDs are discoverable rather than initiator-bound; jar load/persistence loses Cookie matching/hostOnly semantics; and production committer persistence-failure plus single-lock visibility are not protected by integration/mutation tests.
+- Repair decision: one focused TDD round is sufficient within the existing six-file `login-session-atomicity` boundary. Timeout must end before atomic commit; caller cancellation must publish an honest terminal, while a commit already started must finish as one non-cancellable transaction with its real outcome. Completion handles must be delivered directly to their initiating Desktop flow, not guessed from a global ID set.
+- Fix agent: pending fresh implementation agent; review/fix round 1/2.
 
 ## Task 4D Review History
 
