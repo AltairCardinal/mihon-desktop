@@ -425,8 +425,9 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **Risk axis:** login-session-atomicity
 **Platform boundary:** shared+desktop
-**Estimated scope:** 6 files, 400 lines
+**Estimated scope:** 6 files, 794 lines
 **Verification:** 运行共享登录会话、Desktop browser adapter 与真实 `DesktopCookieJar` 行为测试；确认 success 只提交目标域完整 Cookie set 一次，cancel/timeout/browser unavailable 不写 jar 且保留旧 Cookie。
+**Split waiver:** 实际 794 changed lines（+761/-33）中，622 行是新 shared session、Desktop controlled-completion adapter 及其行为矩阵，172 行是既有 `DesktopCookieJar` 的事务持久化与回归。共享 success/cancel/timeout 状态只有穿过真实 jar 的整组验证、内存替换、临时文件原子落盘和失败恢复后才构成可交付能力；若拆开，shared/adapter 子任务可独立全绿但仍无法证明取消或持久化失败不会半写凭据。超额来自同一 `login-session-atomicity` 风险轴的生产链路与 mutation 保护，而非 UI、challenge policy 或无关重构。
 
 **Files:**
 - Create: `domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceLoginSession.kt`

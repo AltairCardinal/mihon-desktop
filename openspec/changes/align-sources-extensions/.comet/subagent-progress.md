@@ -101,7 +101,7 @@
 - Current task: `Task 5A: 共享登录会话与 Desktop Cookie 原子提交`
 - Plan checkbox: pending
 - OpenSpec mapping: `3.3` partial (do not check off until Tasks 5A-5C complete).
-- Stage: `implementing`
+- Stage: `spec-review`
 - Task base: `fdb81e127`
 - Brief: `.superpowers/sdd/align-sources-task-5a-brief.md`
 - Risk axis: `login-session-atomicity`
@@ -111,6 +111,12 @@
 - Replan note: the original Task 5 assumed a nonexistent Desktop cookie-jar path and omitted the required FlareSolverr enable setting/production UI wiring. It is split sequentially into 5A session atomicity, 5B explicit challenge policy, and 5C settings/UI wiring so each task stays within one risk axis and the Comet scope gate. OpenSpec 3.3 remains one aggregate capability.
 - Implementer: `/root/task5a_impl` (fresh TDD agent; one implementation task only).
 - Review mode: `thorough`; review/fix round: 0/2.
+- Implementation commit: `3b9deaa7a271b2b2aa1d8f32da1142be413ee4e7` (`feat(desktop): add atomic source login sessions`).
+- RED evidence: shared request/state/browser/committer types, Desktop controlled-completion adapter, and jar atomic session commit were absent; later cancellation-during-commit RED proved broad failure mapping swallowed `CancellationException` before the focused fix.
+- GREEN evidence: fresh SourceLoginSession 9 + Desktop adapter 5 + CookieJar 13 + persistence 8 = 35/35 PASS, 0 failures/errors/skips; root Spotless 97 executed tasks PASS; diff check PASS.
+- Mutation evidence: required-cookie, domain filter, cancel, timeout, per-cookie writes, and direct-target persistence mutations each failed a named behavior test and were restored.
+- Actual scope: 6 planned product/test files, +761/-33 (794 changed lines); plan/brief contain a concrete single-atomicity-boundary waiver.
+- Report: `.superpowers/sdd/align-sources-task-5a-report.md`.
 
 ## Task 4D Review History
 
