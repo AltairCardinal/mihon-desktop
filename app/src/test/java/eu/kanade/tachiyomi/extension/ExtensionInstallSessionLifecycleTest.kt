@@ -30,6 +30,7 @@ import io.mockk.slot
 import io.mockk.unmockkConstructor
 import io.mockk.unmockkStatic
 import io.mockk.verify
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -591,6 +592,228 @@ class ExtensionInstallSessionLifecycleTest {
     }
 
     @Test
+    fun `public cancellation after platform result waits for coordinator finishing`() = runTest {
+        val harness = packageInstallerHarness()
+        val context = mockk<Context>(relaxed = true) {
+            every { packageName } returns "eu.kanade.tachiyomi"
+        }
+        val reloadStarted = CountDownLatch(1)
+        val allowReload = CountDownLatch(1)
+        val rollbackStarted = CountDownLatch(1)
+        val allowRollback = CountDownLatch(1)
+        val platformCommitted = CountDownLatch(1)
+        val installerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val calls = Collections.synchronizedList(mutableListOf<String>())
+        lateinit var installer: ExtensionInstaller
+        val port = object : ExtensionInstallPort {
+            override suspend fun prepare(request: ExtensionInstallRequest): PreparedExtensionInstallToken {
+                calls += "prepare"
+                return PreparedExtensionInstallToken(
+                    checkNotNull(activeTransactionIds(installer)[request.artifact.packageName]),
+                )
+            }
+
+            override suspend fun validate(token: PreparedExtensionInstallToken): ExtensionInstallRollbackToken {
+                calls += "validate"
+                return ExtensionInstallRollbackToken(token.value)
+            }
+
+            override suspend fun commit(token: PreparedExtensionInstallToken) {
+                calls += "commit"
+                installPrepared(installer, token.value, File("extension.apk"))
+            }
+
+            override suspend fun reload(packageName: String) {
+                calls += "reload"
+                reloadStarted.countDown()
+                allowReload.await(10, TimeUnit.SECONDS)
+            }
+
+            override suspend fun rollback(token: ExtensionInstallRollbackToken) {
+                calls += "rollback"
+                rollbackStarted.countDown()
+                allowRollback.await(10, TimeUnit.SECONDS)
+            }
+
+            override suspend fun cleanup(token: PreparedExtensionInstallToken) {
+                calls += "cleanup"
+            }
+        }
+        installer = ExtensionInstaller(context, scope = installerScope, installPort = port)
+        every { harness.manager.updateInstallStep(any(), any()) } answers {
+            installer.updateInstallStep(firstArg(), secondArg())
+        }
+        val preference = mockk<ExtensionInstallerPreference> {
+            every { get() } returns BasePreferences.ExtensionInstaller.PACKAGEINSTALLER
+        }
+        ExtensionInstaller::class.java.getDeclaredField("extensionInstaller\$delegate").apply {
+            isAccessible = true
+            set(installer, lazyOf(preference))
+        }
+        mockkStatic(FileProvider::class)
+        every { FileProvider.getUriForFile(any(), any(), any()) } returns mockk()
+        every { ContextCompat.startForegroundService(context, any()) } answers {
+            harness.enqueue(activeTransactionIds(installer).values.single())
+            platformCommitted.countDown()
+            mockk()
+        }
+        val extension = availableExtension("extension.package.finishing-race")
+        val terminalSteps = Collections.synchronizedList(mutableListOf<InstallStep>())
+        val terminal = async {
+            installer.downloadAndInstall("https://repo.example/extension.apk", extension)
+                .first(InstallStep::isCompleted)
+                .also(terminalSteps::add)
+        }
+
+        try {
+            runCurrent()
+            assertTrue(platformCommitted.await(10, TimeUnit.SECONDS))
+            val transactionId = activeTransactionIds(installer).getValue(extension.pkgName)
+            harness.callback(PackageInstaller.STATUS_SUCCESS)
+            assertTrue(reloadStarted.await(10, TimeUnit.SECONDS))
+
+            assertTrue(platformResults(installer).isEmpty(), "platform result must already be consumed")
+            assertTrue(coordinatorFlights(installer).isNotEmpty())
+            installer.cancelInstall(extension.pkgName)
+            runCurrent()
+
+            assertFalse(terminal.isCompleted, "Idle must not precede rollback/cleanup/flight completion")
+            assertTrue(activeTransactionIds(installer).containsKey(extension.pkgName))
+            assertTrue(activeJobs(installer).isNotEmpty())
+            assertTrue(coordinatorFlights(installer).isNotEmpty())
+
+            allowReload.countDown()
+            assertTrue(rollbackStarted.await(10, TimeUnit.SECONDS))
+            assertFalse(terminal.isCompleted, "Idle must not precede rollback completion")
+            assertTrue(coordinatorFlights(installer).isNotEmpty())
+
+            allowRollback.countDown()
+            assertEquals(InstallStep.Idle, terminal.await())
+            assertEquals(listOf(InstallStep.Idle), terminalSteps)
+            assertEquals(listOf("prepare", "validate", "commit", "reload", "rollback", "reload", "cleanup"), calls)
+            assertTrue(platformResults(installer).isEmpty())
+            assertTrue(activeTransactionIds(installer).isEmpty())
+            assertTrue(activeJobs(installer).isEmpty())
+            assertTrue(coordinatorFlights(installer).isEmpty())
+            assertFalse(transactionLifecycles(installer).containsKey(transactionId))
+        } finally {
+            allowReload.countDown()
+            allowRollback.countDown()
+            installerScope.cancel()
+            unmockkStatic(FileProvider::class)
+        }
+    }
+
+    @Test
+    fun `expired tombstone is retained while its transaction job is active`() = runTest {
+        val prepareStarted = CompletableDeferred<Unit>()
+        val allowPrepare = CompletableDeferred<Unit>()
+        val port = object : ExtensionInstallPort {
+            override suspend fun prepare(request: ExtensionInstallRequest): PreparedExtensionInstallToken {
+                prepareStarted.complete(Unit)
+                allowPrepare.await()
+                throw CancellationException("test complete")
+            }
+
+            override suspend fun validate(token: PreparedExtensionInstallToken) = error("unexpected")
+            override suspend fun commit(token: PreparedExtensionInstallToken) = error("unexpected")
+            override suspend fun reload(packageName: String) = error("unexpected")
+            override suspend fun rollback(token: ExtensionInstallRollbackToken) = error("unexpected")
+            override suspend fun cleanup(token: PreparedExtensionInstallToken) = Unit
+        }
+        val installer = ExtensionInstaller(
+            context = mockk(relaxed = true),
+            scope = backgroundScope,
+            installPort = port,
+        )
+        val extension = availableExtension("extension.package.active-job-pruning")
+        installer.downloadAndInstall("https://repo.example/extension.apk", extension)
+        prepareStarted.await()
+        val transactionId = activeTransactionIds(installer).getValue(extension.pkgName)
+
+        installer.updateInstallStep(transactionId, InstallStep.Installed)
+        activeTransactions(installer).clear()
+        activeSteps(installer).clear()
+        transactionLifecycles(installer).clear()
+        ageCompletedTransactions(installer)
+        installer.updateInstallStep(UUID.randomUUID().toString(), InstallStep.Installed)
+
+        assertTrue(completedTransactions(installer).containsKey(transactionId))
+        allowPrepare.complete(Unit)
+    }
+
+    @Test
+    fun `expired tombstone is retained while lifecycle is finishing`() = runTest {
+        val harness = packageInstallerHarness()
+        val context = mockk<Context>(relaxed = true) {
+            every { packageName } returns "eu.kanade.tachiyomi"
+        }
+        val reloadStarted = CompletableDeferred<Unit>()
+        val allowReload = CompletableDeferred<Unit>()
+        lateinit var installer: ExtensionInstaller
+        val port = object : ExtensionInstallPort {
+            override suspend fun prepare(request: ExtensionInstallRequest) = PreparedExtensionInstallToken(
+                checkNotNull(activeTransactionIds(installer)[request.artifact.packageName]),
+            )
+
+            override suspend fun validate(token: PreparedExtensionInstallToken) =
+                ExtensionInstallRollbackToken(token.value)
+
+            override suspend fun commit(token: PreparedExtensionInstallToken) {
+                installPrepared(installer, token.value, File("extension.apk"))
+            }
+
+            override suspend fun reload(packageName: String) {
+                reloadStarted.complete(Unit)
+                allowReload.await()
+            }
+
+            override suspend fun rollback(token: ExtensionInstallRollbackToken) = Unit
+            override suspend fun cleanup(token: PreparedExtensionInstallToken) = Unit
+        }
+        installer = ExtensionInstaller(context, scope = backgroundScope, installPort = port)
+        every { harness.manager.updateInstallStep(any(), any()) } answers {
+            installer.updateInstallStep(firstArg(), secondArg())
+        }
+        val preference = mockk<ExtensionInstallerPreference> {
+            every { get() } returns BasePreferences.ExtensionInstaller.PACKAGEINSTALLER
+        }
+        ExtensionInstaller::class.java.getDeclaredField("extensionInstaller\$delegate").apply {
+            isAccessible = true
+            set(installer, lazyOf(preference))
+        }
+        mockkStatic(FileProvider::class)
+        every { FileProvider.getUriForFile(any(), any(), any()) } returns mockk()
+        every { ContextCompat.startForegroundService(context, any()) } answers {
+            harness.enqueue(activeTransactionIds(installer).values.single())
+            mockk()
+        }
+        val extension = availableExtension("extension.package.finishing-pruning")
+        installer.downloadAndInstall("https://repo.example/extension.apk", extension)
+
+        try {
+            runCurrent()
+            val transactionId = activeTransactionIds(installer).getValue(extension.pkgName)
+            harness.callback(PackageInstaller.STATUS_SUCCESS)
+            reloadStarted.await()
+            val activeJob = activeJobsMutable(installer).remove(extension.pkgName)
+            val activeTransaction = activeTransactions(installer).remove(extension.pkgName)
+            val activeStep = activeSteps(installer).remove(transactionId)
+            ageCompletedTransactions(installer)
+            installer.updateInstallStep(UUID.randomUUID().toString(), InstallStep.Installed)
+
+            assertTrue(completedTransactions(installer).containsKey(transactionId))
+
+            checkNotNull(activeJob).also { activeJobsMutable(installer)[extension.pkgName] = it }
+            checkNotNull(activeTransaction).also { activeTransactions(installer)[extension.pkgName] = it }
+            checkNotNull(activeStep).also { activeSteps(installer)[transactionId] = it }
+        } finally {
+            allowReload.complete(Unit)
+            unmockkStatic(FileProvider::class)
+        }
+    }
+
+    @Test
     fun `completed transaction tombstones are pruned after expiry`() {
         val installer = ExtensionInstaller(
             context = mockk(relaxed = true),
@@ -670,9 +893,24 @@ class ExtensionInstallSessionLifecycleTest {
     }
 
     @Suppress("UNCHECKED_CAST")
+    private fun activeTransactions(installer: ExtensionInstaller): MutableMap<String, Any> =
+        ExtensionInstaller::class.java.getDeclaredField("activeTransactions").apply { isAccessible = true }
+            .get(installer) as MutableMap<String, Any>
+
+    @Suppress("UNCHECKED_CAST")
     private fun activeJobs(installer: ExtensionInstaller): Map<String, Any> =
         ExtensionInstaller::class.java.getDeclaredField("activeJobs").apply { isAccessible = true }
             .get(installer) as Map<String, Any>
+
+    @Suppress("UNCHECKED_CAST")
+    private fun activeJobsMutable(installer: ExtensionInstaller): MutableMap<String, Any> =
+        ExtensionInstaller::class.java.getDeclaredField("activeJobs").apply { isAccessible = true }
+            .get(installer) as MutableMap<String, Any>
+
+    @Suppress("UNCHECKED_CAST")
+    private fun transactionLifecycles(installer: ExtensionInstaller): MutableMap<String, Any> =
+        ExtensionInstaller::class.java.getDeclaredField("transactionLifecycles").apply { isAccessible = true }
+            .get(installer) as MutableMap<String, Any>
 
     private suspend fun installPrepared(
         installer: ExtensionInstaller,

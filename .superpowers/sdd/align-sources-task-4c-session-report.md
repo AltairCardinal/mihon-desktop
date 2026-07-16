@@ -206,3 +206,39 @@ Task 4C 的实现、测试、mutation obligations、相关回归与格式检查�
 
 - 普通 JVM 仍不能证明 Android 系统把 `startForegroundService` 调度到 `Service.onStartCommand/onDestroy` 的设备级时序；本轮 seam 确定性验证 production 高层线性化、真实 shared Installer owner/session/commit/cleanup 与 coordinator 收尾顺序，但不替代设备级 framework 验收。
 - durable base tombstone、PackageInstaller/Shizuku cleanup 与 commit-sensitive wiring 均保持原实现；本轮产品与测试改动严格限于 `ExtensionInstaller.kt` 和 `ExtensionInstallSessionLifecycleTest.kt`，另仅追加本报告。开始时协调 HEAD 已由指派中的 `b3dbb5c9b` 推进到 `44d643795`，tracked 工作区无冲突改动，未回滚任何协调提交。
+
+## Review repair round 4
+
+### 状态
+
+`DONE`
+
+本轮关闭 extra-final review 的 1 项 Important 与 1 项 Minor。每个 transaction 现在持有显式 `NEW -> HANDED_OFF -> FINISHING -> COMPLETE` CAS phase：平台 result 注册与 `installApk` 成功交接后永久进入 `HANDED_OFF`，result 消费后进入 `FINISHING`，只有 coordinator flight 已移除并发布 terminal 后才进入 `COMPLETE` 并移除 lifecycle。public cancel 仅允许真正 `NEW` 的事务 direct terminal；`HANDED_OFF`/`FINISHING` 一律等待平台 acknowledgement，并由 cancellation-aware coordinator port 在 commit/reload 边界触发 rollback、runtime restore、cleanup 与唯一 terminal。
+
+completed tombstone pruning 现在同时保护 transaction-aware active job 与未 `COMPLETE` lifecycle。即使 tombstone 已超过 5 分钟，只要 coordinator job 尚活或 transaction 仍在 `FINISHING`，late duplicate 都不能清除 tombstone并重开事务；只有 lifecycle 已 `COMPLETE` 且不存在 job/step/transaction/platform result 引用时才允许惰性清扫。
+
+### TDD：确定性 RED / GREEN
+
+- post-result FINISHING race：真实执行 `downloadAndInstall -> coordinator -> installPrepared -> PackageInstaller queue/session/commit -> callback`，success callback 消费 platform result 后用 latch 阻塞 runtime reload，再从 public `cancelInstall` 取消；rollback 另设 latch。旧的 `platformResult == null` direct 判定会在 rollback/cleanup/maps/flight 收口前发布 `Idle`，focused 1/1 failed。修复后 reload 与 rollback 阻塞期间 terminal 均未完成，最终调用顺序为 `prepare -> validate -> commit -> reload -> rollback -> reload -> cleanup`，只发布一个 `Idle`，且 platform result、active maps、lifecycle 与 coordinator flight 全部释放。
+- active job pruning：在真实 coordinator prepare job 尚活时老化 terminal tombstone，并移除其他测试侧 active 引用以隔离 job 保护。旧 pruning 忽略 `activeJobs`，focused 1/1 assertion failed；transaction-aware active job 加入 active-safe 判定后通过。
+- FINISHING lifecycle pruning：真实 PackageInstaller success callback 后阻塞 reload，使 lifecycle 已 `FINISHING`；测试移除 job/transaction/step 引用后老化 tombstone。旧 lifecycle 为空 monitor、pruning 不检查 phase，focused 1/1 assertion failed；未 `COMPLETE` lifecycle 纳入 active-safe 判定后通过。
+- 三个新增 focused 用例最终 3/3 passed；完整 lifecycle + coordinator wiring 最终 25/25 passed（18 lifecycle + 7 wiring），保留前 22 项并新增 3 项。
+
+### Mutation 证据
+
+- 临时把 public cancel direct 条件从 `phase == NEW` 改回 `platformResult == null`：post-result FINISHING race 1/1 failed，证明测试能杀死 result 消费后回退 no-platform 的旧实现；随后恢复。
+- 临时把 result 消费后的 `FINISHING` 提前改成 `COMPLETE`：FINISHING tombstone pruning 1/1 failed，证明 lifecycle 不能在 coordinator flight 前完成；随后恢复。
+- 临时移除 active job pruning 引用：active-job tombstone pruning 1/1 failed，证明 TTL 清扫必须保留 transaction-aware job；随后恢复。
+- 所有 mutation 均已恢复，最终 diff 不包含 mutation。
+
+### 最终验证
+
+- `$env:ANDROID_HOME=(Resolve-Path '.android-sdk').Path; $env:ANDROID_SDK_ROOT=$env:ANDROID_HOME; .\gradlew.bat :app:testReleaseUnitTest --tests "*ExtensionInstallSessionLifecycleTest" --tests "*ExtensionInstallCoordinatorWiringTest"`：`BUILD SUCCESSFUL`，25/25 passed。
+- `$env:ANDROID_HOME=(Resolve-Path '.android-sdk').Path; $env:ANDROID_SDK_ROOT=$env:ANDROID_HOME; .\gradlew.bat :app:testReleaseUnitTest --tests "*ExtensionManager*" --tests "*PackageInstaller*" --tests "*Shizuku*"`：`BUILD SUCCESSFUL`，实际命中 3/3 passed；真实 PackageInstaller session/commit 路径由 lifecycle suite 覆盖。
+- `$env:ANDROID_HOME=(Resolve-Path '.android-sdk').Path; $env:ANDROID_SDK_ROOT=$env:ANDROID_HOME; .\gradlew.bat spotlessCheck`：`BUILD SUCCESSFUL`，61 tasks 无格式违规。
+- `git diff --check`：通过；产品/测试改动严格限于 `ExtensionInstaller.kt` 与 `ExtensionInstallSessionLifecycleTest.kt`，另仅追加本报告。
+
+### 边界
+
+- `NEW` direct cancel 仍可立即向用户发布 `Idle`，但 cancellation tombstone 与 lifecycle 会保留到其 active job 完成后再 exactly-once CAS `COMPLETE`/remove，避免迟到协程重建 lifecycle 或越过 guard。
+- 普通 JVM seam 验证 production 高层 phase、真实 shared Installer/PackageInstaller session/commit/callback 与 coordinator rollback/cleanup/flight 顺序，不替代 Android 设备对 foreground service 调度时序的验收；Package、Shizuku、commit identity、startup latch 与 5 分钟 TTL 既有语义保持不变。

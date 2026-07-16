@@ -57,6 +57,7 @@ import uy.kohesive.injekt.api.get
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicReference
 
 /** Android adapter for downloading and installing extension APKs. */
 internal class ExtensionInstaller(
@@ -66,7 +67,7 @@ internal class ExtensionInstaller(
     installPort: ExtensionInstallPort? = null,
 ) {
 
-    private val activeJobs = ConcurrentHashMap<String, Job>()
+    private val activeJobs = ConcurrentHashMap<String, ActiveInstallJob>()
     private val activeTransactions = ConcurrentHashMap<String, ActiveTransaction>()
     private val activeSteps = ConcurrentHashMap<String, MutableStateFlow<InstallStep>>()
     private val platformResults = ConcurrentHashMap<String, CompletableDeferred<InstallStep>>()
@@ -75,7 +76,10 @@ internal class ExtensionInstaller(
     private val cancelledTransactions = ConcurrentHashMap.newKeySet<String>()
     private val extensionInstaller by lazy { Injekt.get<BasePreferences>().extensionInstaller() }
     private val httpClient: OkHttpClient by lazy { Injekt.get<NetworkHelper>().client }
-    private val coordinator = ExtensionInstallCoordinator(installPort ?: AndroidInstallPort(), scope)
+    private val coordinator = ExtensionInstallCoordinator(
+        LifecycleInstallPort(installPort ?: AndroidInstallPort()),
+        scope,
+    )
 
     fun downloadAndInstall(url: String, extension: Extension.Available): Flow<InstallStep> {
         cancelActiveInstall(extension.pkgName)
@@ -90,30 +94,40 @@ internal class ExtensionInstaller(
                 coordinator.install(ExtensionInstallRequest(extension.toArtifact(url))).collect { state ->
                     val installStep = state.toInstallStep()
                     if (installStep.isCompleted()) {
-                        activeJobs.remove(extension.pkgName, coroutineContext.job)
+                        activeJobs.remove(
+                            extension.pkgName,
+                            ActiveInstallJob(transactionId, coroutineContext.job),
+                        )
                         activeTransactions.remove(
                             extension.pkgName,
                             ActiveTransaction(transactionId, step),
                         )
                         activeSteps.remove(transactionId, step)
                         cancelledTransactions -= transactionId
-                        transactionLifecycles.remove(transactionId)
+                        transactionLifecycles[transactionId]?.let { lifecycle ->
+                            if (lifecycle.complete()) {
+                                transactionLifecycles.remove(transactionId, lifecycle)
+                            }
+                        }
                     }
                     step.value = installStep
                 }
             } finally {
-                activeJobs.remove(extension.pkgName, coroutineContext.job)
+                activeJobs.remove(
+                    extension.pkgName,
+                    ActiveInstallJob(transactionId, coroutineContext.job),
+                )
                 activeTransactions.remove(extension.pkgName, ActiveTransaction(transactionId, step))
             }
         }
-        activeJobs[extension.pkgName] = job
+        val activeJob = ActiveInstallJob(transactionId, job)
+        activeJobs[extension.pkgName] = activeJob
         job.start()
 
         return step.asStateFlow().onCompletion {
-            activeJobs.remove(extension.pkgName, job)
+            activeJobs.remove(extension.pkgName, activeJob)
             activeTransactions.remove(extension.pkgName, ActiveTransaction(transactionId, step))
             activeSteps.remove(transactionId, step)
-            transactionLifecycles.remove(transactionId)
             job.cancel()
         }
     }
@@ -154,8 +168,14 @@ internal class ExtensionInstaller(
                 }
                 platformResults[transactionId] = result
                 installApk(transactionId, file)
+                lifecycle.markHandedOff()
             }
-            when (awaitPlatformResult(result)) {
+            val platformStep = try {
+                awaitPlatformResult(result)
+            } finally {
+                lifecycle.markFinishing()
+            }
+            when (platformStep) {
                 InstallStep.Installed -> Unit
                 InstallStep.Idle -> throw CancellationException("Extension install cancelled")
                 else -> throw ExtensionInstallFailure(
@@ -171,7 +191,9 @@ internal class ExtensionInstaller(
         } finally {
             platformResults.remove(transactionId, result)
             if (!activeSteps.containsKey(transactionId)) {
-                transactionLifecycles.remove(transactionId, lifecycle)
+                if (lifecycle.complete()) {
+                    transactionLifecycles.remove(transactionId, lifecycle)
+                }
             }
         }
     }
@@ -226,26 +248,39 @@ internal class ExtensionInstaller(
 
     private fun requestCancellation(pkgName: String, active: ActiveTransaction) {
         if (!cancelledTransactions.add(active.transactionId)) return
-        val job = activeJobs[pkgName]
-        val lifecycle = transactionLifecycles.computeIfAbsent(active.transactionId) { TransactionLifecycle() }
-        val platformResult = synchronized(lifecycle) {
-            platformResults[active.transactionId]
+        val activeJob = activeJobs[pkgName]?.takeIf { it.transactionId == active.transactionId }
+        val lifecycle = transactionLifecycles[active.transactionId] ?: run {
+            cancelledTransactions -= active.transactionId
+            return
         }
-        if (platformResult == null) {
-            job?.cancel()
-            if (job != null) activeJobs.remove(pkgName, job)
+        val cancellationTarget = synchronized(lifecycle) {
+            CancellationTarget(lifecycle.phase(), platformResults[active.transactionId])
+        }
+        if (cancellationTarget.phase == TransactionPhase.COMPLETE) {
+            cancelledTransactions -= active.transactionId
+            return
+        }
+        if (cancellationTarget.phase == TransactionPhase.NEW) {
+            activeJob?.job?.cancel()
             activeTransactions.remove(pkgName, active)
             activeSteps.remove(active.transactionId, active.step)
-            cancelledTransactions -= active.transactionId
-            transactionLifecycles.remove(active.transactionId, lifecycle)
             active.step.value = InstallStep.Idle
             Installer.cancelInstallQueue(context, active.transactionId)
+            if (activeJob == null) {
+                completeLifecycle(active.transactionId, lifecycle)
+            } else {
+                scope.launch {
+                    activeJob.job.join()
+                    activeJobs.remove(pkgName, activeJob)
+                    completeLifecycle(active.transactionId, lifecycle)
+                }
+            }
             return
         }
         val acknowledgement = Installer.cancelInstallQueue(context, active.transactionId)
         scope.launch {
             acknowledgement.await()
-            platformResult.complete(InstallStep.Idle)
+            cancellationTarget.platformResult?.complete(InstallStep.Idle)
         }
     }
 
@@ -281,7 +316,58 @@ internal class ExtensionInstaller(
     private fun isTransactionActive(transactionId: String): Boolean =
         platformResults.containsKey(transactionId) ||
             activeSteps.containsKey(transactionId) ||
-            activeTransactions.values.any { it.transactionId == transactionId }
+            activeTransactions.values.any { it.transactionId == transactionId } ||
+            activeJobs.values.any { it.transactionId == transactionId } ||
+            transactionLifecycles[transactionId]?.isActive() == true
+
+    private fun completeLifecycle(transactionId: String, lifecycle: TransactionLifecycle) {
+        cancelledTransactions -= transactionId
+        if (lifecycle.complete()) {
+            transactionLifecycles.remove(transactionId, lifecycle)
+        }
+    }
+
+    private inner class LifecycleInstallPort(
+        private val delegate: ExtensionInstallPort,
+    ) : ExtensionInstallPort {
+        private val transactionsByPackage = ConcurrentHashMap<String, String>()
+
+        override suspend fun prepare(request: ExtensionInstallRequest): PreparedExtensionInstallToken =
+            delegate.prepare(request).also { token ->
+                transactionsByPackage[request.artifact.packageName] = token.value
+            }
+
+        override suspend fun validate(token: PreparedExtensionInstallToken): ExtensionInstallRollbackToken =
+            delegate.validate(token).also { ensureNotCancelled(token.value) }
+
+        override suspend fun commit(token: PreparedExtensionInstallToken) {
+            delegate.commit(token)
+            ensureNotCancelled(token.value)
+        }
+
+        override suspend fun reload(packageName: String) {
+            delegate.reload(packageName)
+            transactionsByPackage[packageName]?.let(::ensureNotCancelled)
+        }
+
+        override suspend fun rollback(token: ExtensionInstallRollbackToken) {
+            delegate.rollback(token)
+        }
+
+        override suspend fun cleanup(token: PreparedExtensionInstallToken) {
+            try {
+                delegate.cleanup(token)
+            } finally {
+                transactionsByPackage.entries.removeIf { it.value == token.value }
+            }
+        }
+
+        private fun ensureNotCancelled(transactionId: String) {
+            if (cancelledTransactions.contains(transactionId)) {
+                throw CancellationException("Extension install cancelled")
+            }
+        }
+    }
 
     private inner class AndroidInstallPort : ExtensionInstallPort {
         private val prepared = ConcurrentHashMap<String, AndroidPreparedInstall>()
@@ -437,7 +523,46 @@ internal class ExtensionInstaller(
         val step: MutableStateFlow<InstallStep>,
     )
 
-    private class TransactionLifecycle
+    private data class ActiveInstallJob(
+        val transactionId: String,
+        val job: Job,
+    )
+
+    private data class CancellationTarget(
+        val phase: TransactionPhase,
+        val platformResult: CompletableDeferred<InstallStep>?,
+    )
+
+    private class TransactionLifecycle {
+        private val phase = AtomicReference(TransactionPhase.NEW)
+
+        fun phase(): TransactionPhase = phase.get()
+
+        fun markHandedOff() {
+            check(phase.compareAndSet(TransactionPhase.NEW, TransactionPhase.HANDED_OFF))
+        }
+
+        fun markFinishing() {
+            phase.compareAndSet(TransactionPhase.HANDED_OFF, TransactionPhase.FINISHING)
+        }
+
+        fun complete(): Boolean {
+            while (true) {
+                val current = phase.get()
+                if (current == TransactionPhase.COMPLETE) return false
+                if (phase.compareAndSet(current, TransactionPhase.COMPLETE)) return true
+            }
+        }
+
+        fun isActive(): Boolean = phase.get() != TransactionPhase.COMPLETE
+    }
+
+    private enum class TransactionPhase {
+        NEW,
+        HANDED_OFF,
+        FINISHING,
+        COMPLETE,
+    }
 
     private fun failMalformed(message: String): Nothing =
         throw ExtensionInstallFailure(AppError.MalformedData(IllegalArgumentException(message)))
