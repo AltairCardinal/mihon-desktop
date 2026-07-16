@@ -98,6 +98,19 @@
 
 ## Current
 
+- Current task: `Task 4D: Android 信任、receiver 可见性与精确回滚`
+- Plan checkbox: pending
+- OpenSpec mappings: `2.2`, `2.3`, `3.1`, `3.2` (Android artifact trust, PackageInstaller/signing boundary, receiver visibility, and exact rollback topology; do not check off shared mappings until all mapped work is complete).
+- Stage: `implementing`
+- Task base: `5a17935c1c5241c163c26de5e8bf742121b8b659`
+- Implementer: `/root/task4d_impl` (fresh TDD agent; one implementation task only).
+- Brief: `.superpowers/sdd/align-sources-task-4d-brief.md`
+- Report: `.superpowers/sdd/align-sources-task-4d-report.md`
+- Review mode: `thorough`; review/fix round: 0/2.
+- Dependency contract: reuse completed Task 4C UUID/session/flight completion and system install/restore primitives; do not reopen lifecycle work or expand into Task 5/6.
+
+## Task 4C Review History
+
 - Current task: `Task 4C: Android 安装事务/session 生命周期`
 - Plan checkbox: complete
 - Stage: `complete`
