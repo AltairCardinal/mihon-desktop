@@ -38,7 +38,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - [x] Task 4B：Desktop install port 与 reload 回滚
 - [x] Task 4C：Android 安装事务/session 生命周期
 - [x] Task 4D：Android 信任、receiver 可见性与精确回滚
-- [ ] Task 5A：共享登录会话与 Desktop Cookie 原子提交
+- [x] Task 5A：共享登录会话与 Desktop Cookie 原子提交
 - [ ] Task 5B：Desktop 挑战恢复策略与 FlareSolverr 显式后备
 - [ ] Task 5C：Desktop 登录设置、UI 与 production wiring
 - [ ] Task 6A：Browse 共享状态 wiring
@@ -441,11 +441,11 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Produces: `SourceLoginRequest`、`SourceLoginState`、`AuthenticatedSession`、`BrowserLoginAdapter.open(request)`；Desktop 外部浏览器无法读取浏览器私有 Cookie，adapter 通过受控 completion seam 接收 UI/平台捕获的完整 session。
 - `DesktopCookieJar` 提供目标域 session 的一次性验证与原子替换；磁盘持久化失败不得留下内存半提交或覆盖既有 Cookie。
 
-- [ ] **Step 1: 写 shared session 与 Cookie 原子性 RED**
-- [ ] **Step 2: 运行 RED 并确认 success/cancel/timeout/unavailable/domain-filter/atomic-persist 的失败原因**
-- [ ] **Step 3: 实现最小 shared session、Desktop adapter 与 jar 原子提交**
-- [ ] **Step 4: 运行 GREEN、旧 Cookie jar 持久化回归与 mutation**
-- [ ] **Step 5: 提交 Task 5A**
+- [x] **Step 1: 写 shared session 与 Cookie 原子性 RED**
+- [x] **Step 2: 运行 RED 并确认 success/cancel/timeout/unavailable/domain-filter/atomic-persist 的失败原因**
+- [x] **Step 3: 实现最小 shared session、Desktop adapter 与 jar 原子提交**
+- [x] **Step 4: 运行 GREEN、旧 Cookie jar 持久化回归与 mutation**
+- [x] **Step 5: 提交 Task 5A**
 
   Run: `./gradlew :domain:jvmTest --tests "tachiyomi.domain.source.service.SourceLoginSessionTest" :app-desktop:jvmTest --tests "mihon.desktop.network.DesktopBrowserLoginAdapterTest" :core:common:jvmTest --tests "eu.kanade.tachiyomi.network.DesktopCookieJarTest"`
   Commit: `feat(desktop): add atomic source login sessions`

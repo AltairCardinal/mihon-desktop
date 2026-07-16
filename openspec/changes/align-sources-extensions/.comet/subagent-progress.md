@@ -99,9 +99,9 @@
 ## Current
 
 - Current task: `Task 5A: 共享登录会话与 Desktop Cookie 原子提交`
-- Plan checkbox: pending
+- Plan checkbox: complete
 - OpenSpec mapping: `3.3` partial (do not check off until Tasks 5A-5C complete).
-- Stage: `final-closure-review`
+- Stage: `complete`
 - Task base: `fdb81e127`
 - Brief: `.superpowers/sdd/align-sources-task-5a-brief.md`
 - Risk axis: `login-session-atomicity`
@@ -167,6 +167,9 @@
 - PSL-closure verification: SourceLoginSession 15 + Desktop adapter 6 + CookieJar 21 + persistence 8 = 50/50 PASS, 0 failures/errors/skips; root Spotless 97 executed tasks PASS; diff/scope checks PASS.
 - Final cumulative scope: 6 planned product/test files, +1389/-41 (1430 changed lines); plan/brief waiver updated for PSL security and child-domain preservation closure.
 - Final closure reviewer: `/root/task5a_final_closure_review` (fresh independent read-only cumulative review; no test rerun).
+- Final closure result: Spec Compliance `APPROVED`; Task quality `APPROVED`; Critical/Important/Minor = 0/0/0. All ten review findings are CLOSED and Task 5A is approved for checkoff. Report: `.superpowers/sdd/align-sources-task-5a-final-closure-review.md`.
+- Coordinator forced verification: fresh combined `--rerun-tasks --no-parallel` completed `BUILD SUCCESSFUL in 1m 28s` with 97 executed tasks. JUnit XML: SourceLoginSession 15 + Desktop adapter 6 + CookieJar 21 + persistence 8 = 50/50 PASS, 0 failures/errors/skips. Root Spotless ran in the same successful invocation; `git diff --check` PASS.
+- Final Task 5A result: complete at product head `2720bdfdd`; cumulative independent review approved with no open Critical, Important, or Minor findings. OpenSpec 3.3 remains partial until Tasks 5B and 5C complete.
 
 ## Task 4D Review History
 
