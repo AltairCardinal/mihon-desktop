@@ -101,7 +101,7 @@
 - Current task: `Task 5B: Desktop 挑战恢复策略与 FlareSolverr 显式后备`
 - Plan checkbox: pending
 - OpenSpec mapping: `3.3` partial (do not check off until Tasks 5B and 5C complete).
-- Stage: `review`
+- Stage: `repair`
 - Task base: `1d5b6cc9b`
 - Brief: `.superpowers/sdd/align-sources-task-5b-brief.md`
 - Risk axis: `challenge-recovery-policy`
@@ -119,6 +119,11 @@
 - Actual scope: 5 planned files, +899/-72 (971 changed lines); plan/brief contain a concrete single-policy-axis Split waiver.
 - Reported handoff boundary: Task 5C must remove HomeScreen legacy latch/direct-jar wiring and inject recovery intents/settings. Review must decide whether FlareSolverr clearance requires applying its returned User-Agent rather than cookies alone; no User-Agent bypass was added in Task 5B.
 - Reviewer: `/root/task5b_review` (fresh independent read-only thorough review; cumulative `1d5b6cc9b..86e78cf7c`, no test rerun).
+- Review result: Spec Compliance `CHANGES_REQUIRED`; Task quality `NEEDS_FIXES`; Critical 0 / Important 5 / Minor 0. Report: `.superpowers/sdd/align-sources-task-5b-review.md`.
+- Findings: (1) solver User-Agent is parsed but discarded, so retry/future same-scope requests use the incompatible default UA; (2) cancel/timeout can publish before an already-claimed Task 5A non-cancellable commit writes, producing a false terminal; (3) terminal/state/action registration is non-atomic, permitting cancel-before-register solver launch, post-deadline slow failure, and state split; (4) a named but blank required Cookie passes shared validation; (5) HTTP 403/429/missing-solution plus findings 1-4 lack production-chain/mutation coverage.
+- Finding evaluation: all five are technically valid. Findings 1-3/5 stay in the original Desktop files. Finding 4 must be fixed once in Task 5A shared validation for browser/manual/solver parity, so the repair boundary expands to 7 files and `shared+desktop`; duplicating the rule in solver would create new platform debt.
+- Repair requirements: persist/apply nonblank solver UA to the single retry and later matching requests; atomically arbitrate action registration, deadline/cancel, commit claim and terminal/state so pre-claim cancellation wins with zero writes while post-claim cancellation waits for the real atomic outcome; reject blank required values in shared validation; cover 403/429/500/missing solution, blank UA/value, cancel-before-register, deadline/slow failure, blocking commit in both race directions, and UA request headers with mutations.
+- Review/fix round: 1/2.
 
 ## Task 5A Review History
 

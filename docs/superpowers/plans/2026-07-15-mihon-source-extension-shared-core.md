@@ -455,10 +455,10 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 **OpenSpec mapping:** 3.3（挑战恢复动作与显式后备策略）
 
 **Risk axis:** challenge-recovery-policy
-**Platform boundary:** desktop
-**Estimated scope:** 5 files, 971 lines
+**Platform boundary:** shared+desktop
+**Estimated scope:** 7 files, 1500 lines
 **Verification:** 运行真实 interceptor/challenge manager 策略测试，确认 403/503 只发布登录请求；browser、手动 Cookie 和 FlareSolverr 均由显式用户 intent 触发，取消/超时不清除或写入凭据，solver 从不由 interceptor 自动调用。
-**Split waiver:** 实际 971 changed lines（+899/-72）严格分布在 5 个计划文件：454 行是 challenge 状态、exactly-once terminal、active-job 抢占、有界 timeout、显式 recovery intents、interceptor 单次重试与 cancellable FlareSolverr HTTP/完整 Cookie 属性转换；517 行是同一真实链路的 11 项 MockWebServer→OkHttp interceptor→manager→Task 5A validation/atomic committer→DesktopCookieJar 集成矩阵。clear-first、自动 solver、共享 committer 旁路、重复 retry、cancel/timeout/late completion 和阻塞 socket cancellation 共同定义一个 `challenge-recovery-policy` 风险轴；拆开会留下自动/旁路凭据写入、不可抢占 solver 或无法穿透 production interceptor/committer 的中间状态，不能独立验收。Task 5C 的 UI/设置/DI production entry wiring 未混入本 Task。
+**Split waiver:** 初始实现 971 changed lines（+899/-72）严格分布在 5 个 Desktop 计划文件；thorough review 要求再扩展 2 个 Task 5A shared session 文件，以统一拒绝 browser/manual/solver 任一路径中名称存在但 value 空白的 required Cookie，避免在 Desktop 复制提交规则。Desktop 部分的 challenge 状态、commit-point、exactly-once terminal、active-job 抢占、有界 timeout、UA 绑定、显式 recovery intents、interceptor 单次重试与 cancellable FlareSolverr HTTP，必须与同一条 MockWebServer→OkHttp interceptor→manager→Task 5A validation/atomic committer→DesktopCookieJar 集成矩阵共同闭环。clear-first、自动 solver、共享 committer 旁路、重复 retry、cancel/timeout/late completion、阻塞 socket、UA 不匹配和空 required Cookie 共同决定恢复是否会误写/泄露凭据；拆开会留下虚假 terminal、不可用 clearance、共享/平台规则分叉或无法穿透 production 链的中间状态，不能独立验收。Task 5C 的 UI/设置/DI production entry wiring 未混入本 Task。
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/network/CloudflareChallenge.kt`
@@ -466,6 +466,8 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/network/DesktopCloudflareInterceptor.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/network/FlareSolverrClient.kt`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/network/DesktopChallengeRecoveryPolicyTest.kt`
+- Modify: `domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceLoginSession.kt`
+- Modify: `domain/src/jvmTest/kotlin/tachiyomi/domain/source/service/SourceLoginSessionTest.kt`
 
 **Interfaces:**
 - Consumes: Task 5A `SourceLoginRequest`/session completion；produces explicit `OpenBrowser`、`SubmitManualCookies`、`UseFlareSolverr`、`Cancel`/`Retry` intents。
