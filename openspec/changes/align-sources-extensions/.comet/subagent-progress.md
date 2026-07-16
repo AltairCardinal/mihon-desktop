@@ -135,6 +135,7 @@
 - Finding evaluation: both findings are technically valid and remain inside the existing `login-session-atomicity` risk axis and six-file boundary. A narrow second TDD repair is sufficient, so continue without a user decision point.
 - Closure repair requirements: use a canonical cookie identity including name/domain/path, preserve valid same-name different-path cookies, make the authenticated session's value deterministically replace stale identical identities across buckets, and restore exact prior disk bytes/existence when replacement throws after the target has already changed. Add deterministic RED, production-path, and rollback mutation evidence.
 - Review/fix round: 2/2 (user-authorized engineering continuation when one narrow repair is sufficient).
+- Closure fix agent: `/root/task5a_fix2` (fresh TDD implementer; bounded Cookie identity and late-replace rollback repair only).
 
 ## Task 4D Review History
 
