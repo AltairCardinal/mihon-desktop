@@ -118,6 +118,7 @@
 - Final implementation verification: fresh app policy 11 + FlareSolverr 2 + cookie import 7 + Task 5A adapter 6 = 26/26 PASS after the final HTTP cancellation change; adjacent unchanged shared session 15 + jar 21 = 36/36 PASS, 62/62 total; root Spotless and diff/scope checks PASS.
 - Actual scope: 5 planned files, +899/-72 (971 changed lines); plan/brief contain a concrete single-policy-axis Split waiver.
 - Reported handoff boundary: Task 5C must remove HomeScreen legacy latch/direct-jar wiring and inject recovery intents/settings. Review must decide whether FlareSolverr clearance requires applying its returned User-Agent rather than cookies alone; no User-Agent bypass was added in Task 5B.
+- Reviewer: `/root/task5b_review` (fresh independent read-only thorough review; cumulative `1d5b6cc9b..86e78cf7c`, no test rerun).
 
 ## Task 5A Review History
 
