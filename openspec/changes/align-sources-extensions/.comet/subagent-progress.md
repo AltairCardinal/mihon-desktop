@@ -141,6 +141,7 @@
 - Closure production-chain evidence: the Desktop adapter integration now injects an atomic move followed by `IOException` through SourceLoginSession → production committer → real jar and observes honest failure with old memory/file restored.
 - Closure mutations: ignoring path in identity, removing cross-bucket identity replacement, or removing late-failure disk restoration each failed its named regression and was restored. Root Spotless completed 97 executed tasks; diff/scope checks PASS.
 - Final cumulative scope: 6 planned product/test files, +1235/-41 (1276 changed lines); plan/brief waiver updated for canonical identity and late-replace rollback closure.
+- Closure reviewer: `/root/task5a_closure_review` (fresh independent read-only reviewer; cumulative `fdb81e127..9bf837b91`, no test rerun).
 
 ## Task 4D Review History
 
