@@ -117,7 +117,7 @@
 - Review result: Spec Compliance `CHANGES_REQUIRED`; Task quality `NEEDS_FIXES`; Critical 0 / Important 4 / Minor 0. Report: `.superpowers/sdd/align-sources-task-4c-session-review.md`.
 - Verified repair requirements: (1) make pre-service cancel process-wide/durable and enqueue check/consume linearized; (2) make cancel/timeout await a bounded cleanup acknowledgement before rollback/terminal, covering abandon, unregister, service stop and queue/flight/deferred release; (3) replace reflection-written active state with a narrow Android framework gateway seam driven from production queue/process/session/PendingIntent wiring; (4) add valid PendingUserAction positive path while retaining mismatched-identity rejection.
 - Repair decision: all four findings are technically valid and remain within the single `android-install-session-lifecycle` risk axis and existing seven-file boundary; one fresh repair round is assessed sufficient, so continue without user pause.
-- Fix agent: `/root/task4c_session_fix1` (fresh agent; TDD repair of all four Important findings).
+- Fix agent: `/root/task4c_session_fix1_resume` (fresh replacement after the prior background agent was terminated by a thread-wait interruption; it inherited only the in-scope 9-line test-fixture RED draft and must resume before any production edit).
 - Review/fix round: 1/2
 - Implementation commit: `9965e22577746c31e59435cdd35f4b30e677c020` (`refactor(android): adapt transactional extension install`).
 - Scope: 3 brief-listed files, +572/-85 (657 changed lines); the plan records a concrete Split waiver for the inseparable Android production wiring, platform transaction adapter, and integration test.
