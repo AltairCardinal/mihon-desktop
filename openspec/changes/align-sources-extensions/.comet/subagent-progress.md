@@ -100,11 +100,12 @@
 
 - Current task: `Task 4C: Android 安装事务/session 生命周期`
 - Plan checkbox: pending（原 4C 实现提交作为本 Task 的基线，未通过审查，不视为已完成）
-- Stage: `replanning`
-- Task base: `905a8d5c120b337c5c77f8bbe064111c9ed1ba9c`
-- Implementer: `/root/task4c_impl`
-- Brief: `.superpowers/sdd/align-sources-task-4c-brief.md`
-- Report: `.superpowers/sdd/align-sources-task-4c-report.md`
+- Stage: `implementing`
+- Task execution base: `53758e118d8024a593d72645f3aa6034de193a46`
+- Original Task 4C base: `905a8d5c120b337c5c77f8bbe064111c9ed1ba9c`
+- Implementer: `/root/task4c_session_impl`
+- Brief: `.superpowers/sdd/align-sources-task-4c-session-brief.md`
+- Report: `.superpowers/sdd/align-sources-task-4c-session-report.md`
 - Implementation commit: `9965e22577746c31e59435cdd35f4b30e677c020` (`refactor(android): adapt transactional extension install`).
 - Scope: 3 brief-listed files, +572/-85 (657 changed lines); the plan records a concrete Split waiver for the inseparable Android production wiring, platform transaction adapter, and integration test.
 - RED evidence: initial wiring 2/3 expected failures; fresh-install rollback 1/4 expected failure; existing-private rollback 1/6 expected failure; explicit cancellation 1/1 expected failure.
