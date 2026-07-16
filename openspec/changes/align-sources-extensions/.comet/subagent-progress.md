@@ -98,6 +98,22 @@
 
 ## Current
 
+- Current task: `Task 5A: 共享登录会话与 Desktop Cookie 原子提交`
+- Plan checkbox: pending
+- OpenSpec mapping: `3.3` partial (do not check off until Tasks 5A-5C complete).
+- Stage: `implementing`
+- Task base: `fdb81e127`
+- Brief: `.superpowers/sdd/align-sources-task-5a-brief.md`
+- Risk axis: `login-session-atomicity`
+- Platform boundary: `shared+desktop`
+- Scope: 6 files, 400 lines; shared session contract, Desktop external-browser completion adapter, and atomic `DesktopCookieJar` session commit only.
+- Verification contract: success exactly-once; complete required-cookie/domain filtering; cancel/timeout/unavailable zero writes; persistence failure restores old memory and file; diagnostics never expose cookie values.
+- Replan note: the original Task 5 assumed a nonexistent Desktop cookie-jar path and omitted the required FlareSolverr enable setting/production UI wiring. It is split sequentially into 5A session atomicity, 5B explicit challenge policy, and 5C settings/UI wiring so each task stays within one risk axis and the Comet scope gate. OpenSpec 3.3 remains one aggregate capability.
+- Implementer: `/root/task5a_impl` (fresh TDD agent; one implementation task only).
+- Review mode: `thorough`; review/fix round: 0/2.
+
+## Task 4D Review History
+
 - Current task: `Task 4D: Android 信任、receiver 可见性与精确回滚`
 - Plan checkbox: pending
 - OpenSpec mappings: `2.2`, `2.3`, `3.1`, `3.2` (Android artifact trust, PackageInstaller/signing boundary, receiver visibility, and exact rollback topology; do not check off shared mappings until all mapped work is complete).
