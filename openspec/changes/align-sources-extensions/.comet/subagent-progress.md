@@ -128,6 +128,8 @@
 - Repair mutations: production committer downgraded to `saveFromResponse` failed the real session→committer→stored-jar test; removing reader lock failed the persistence barrier visibility test. Earlier required/domain/cancel/timeout/per-cookie/direct-target mutations remain covered.
 - Final fix verification: fresh SourceLoginSession 13 + Desktop adapter 6 + CookieJar 16 + persistence 8 = 43/43 PASS, 0 failures/errors/skips; root Spotless 97 executed tasks PASS; diff check PASS.
 - Final cumulative scope: 6 planned product/test files, +1060/-35 (1095 changed lines); plan/brief waiver updated for the review-expanded atomicity matrix.
+- Re-review package: `.superpowers/sdd/align-sources-task-5a-rereview.diff` (cumulative base `fdb81e127`, product head `1e9bd472b`).
+- Re-reviewer: `/root/task5a_rereview` (fresh independent read-only closure review; no test rerun).
 
 ## Task 4D Review History
 
