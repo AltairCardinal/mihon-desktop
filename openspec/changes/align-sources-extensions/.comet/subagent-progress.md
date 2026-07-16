@@ -101,7 +101,7 @@
 - Current task: `Task 5A: 共享登录会话与 Desktop Cookie 原子提交`
 - Plan checkbox: pending
 - OpenSpec mapping: `3.3` partial (do not check off until Tasks 5A-5C complete).
-- Stage: `psl-closure-fix`
+- Stage: `final-closure-review`
 - Task base: `fdb81e127`
 - Brief: `.superpowers/sdd/align-sources-task-5a-brief.md`
 - Risk axis: `login-session-atomicity`
@@ -160,6 +160,12 @@
 - PSL-closure requirements: reject public-suffix domain cookies before commit with zero writes while retaining valid registrable parent domains; add `com` and multi-label suffix coverage if supported by the dependency. Extend persisted jar regression with a child-domain cookie and prove a bidirectional/over-clearing mutation fails.
 - Review/fix round: 4/4 (user-authorized engineering continuation for narrow same-axis closure).
 - PSL-closure fix agent: `/root/task5a_psl_fix` (fresh TDD implementer; authoritative public-suffix validation plus child-domain preservation coverage).
+- PSL-closure fix commit: `2720bdfdd5153d24f6114c2d0a5c5d1d23288c63` (`fix(login): reject public suffix session cookies`).
+- PSL RED/GREEN: the old implementation committed `Domain=com`; GREEN uses OkHttp's public common `HttpUrl.topPrivateDomain()` backed by its packaged PSL to reject `com`/`co.uk` with `InvalidCookies` and zero commits, retain valid `example.com`, preserve host-only localhost/IP exact matches, and reject their domain-cookie forms.
+- Boundary coverage: the complete-set persisted regression now proves a child-domain cookie survives both live memory and restart while stale parent scope is removed and sibling host-only/unrelated scope remains.
+- PSL/boundary mutations: removing the PSL check failed the public-suffix transaction test; changing jar cleanup to bidirectional domain clearing failed the child-domain persisted test. Both were restored.
+- PSL-closure verification: SourceLoginSession 15 + Desktop adapter 6 + CookieJar 21 + persistence 8 = 50/50 PASS, 0 failures/errors/skips; root Spotless 97 executed tasks PASS; diff/scope checks PASS.
+- Final cumulative scope: 6 planned product/test files, +1389/-41 (1430 changed lines); plan/brief waiver updated for PSL security and child-domain preservation closure.
 
 ## Task 4D Review History
 

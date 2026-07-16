@@ -425,9 +425,9 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **Risk axis:** login-session-atomicity
 **Platform boundary:** shared+desktop
-**Estimated scope:** 6 files, 1337 lines
+**Estimated scope:** 6 files, 1430 lines
 **Verification:** 运行共享登录会话、Desktop browser adapter 与真实 `DesktopCookieJar` 行为测试；确认 success 只提交目标域完整 Cookie set 一次，cancel/timeout/browser unavailable 不写 jar 且保留旧 Cookie。
-**Split waiver:** 实际 1337 changed lines（+1296/-41）中，808 行是新 shared session、initiator-bound Desktop completion ticket 及其状态/并发行为矩阵，529 行是既有 `DesktopCookieJar` 的 canonical identity、Cookie.matches/hostOnly、完整 target delivery-scope 跨 bucket 替换、事务持久化、late-replace 精确回滚与 barrier 回归。共享 success/cancel/timeout/commit 边界只有穿过真实 committer 与 jar 的整组验证、内存替换、临时文件原子落盘、失败恢复和锁可见性后才构成可交付能力；若拆开，shared/adapter 子任务可独立全绿但仍无法证明取消、持久化失败或并发读取不会半写/暴露凭据。超额来自同一 `login-session-atomicity` 风险轴及三轮审查要求关闭的 8 个 Important，而非 UI、challenge policy 或无关重构。
+**Split waiver:** 实际 1430 changed lines（+1389/-41）中，898 行是 shared session、initiator-bound Desktop completion ticket、PSL-aware domain validation 及其状态/并发/安全行为矩阵，532 行是既有 `DesktopCookieJar` 的 canonical identity、Cookie.matches/hostOnly、完整 target delivery-scope 跨 bucket 替换、事务持久化、late-replace 精确回滚与 barrier 回归。共享 success/cancel/timeout/commit 边界只有穿过真实 committer 与 jar 的整组验证、内存替换、临时文件原子落盘、失败恢复和锁可见性后才构成可交付能力；若拆开，shared/adapter 子任务可独立全绿但仍无法证明 public-suffix 凭据不会跨源泄漏，或取消、持久化失败、并发读取不会半写/暴露凭据。超额来自同一 `login-session-atomicity` 风险轴及四轮审查要求关闭的 10 个 Important，而非 UI、challenge policy 或无关重构。
 
 **Files:**
 - Create: `domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceLoginSession.kt`
