@@ -37,7 +37,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - [x] Task 4A：共享安装事务状态机
 - [x] Task 4B：Desktop install port 与 reload 回滚
 - [x] Task 4C：Android 安装事务/session 生命周期
-- [ ] Task 4D：Android 信任、receiver 可见性与精确回滚
+- [x] Task 4D：Android 信任、receiver 可见性与精确回滚
 - [ ] Task 5：Desktop 浏览器登录、Cookie 原子回传与 FlareSolverr 显式后备
 - [ ] Task 6A：Browse 共享状态 wiring
 - [ ] Task 6B：Extension UI、DI 与 i18n wiring
@@ -393,27 +393,27 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Produces: 无损 `ExtensionArtifact` 身份；基于 `ExtensionTrustPolicy`/`SharedExtensionUpdatePolicy` 的校验；真实 Android package/file/runtime gateway seam；双侧 `InstallPreState` 与幂等精确回滚。
 - Boundary: 用户手动信任 untrusted 扩展仍由既有 UI 入口处理；`ConfirmationRequired` 不得被静默转换为安装成功。
 
-- [ ] **Step 1: 写信任、可见性与拓扑回滚 RED**
+- [x] **Step 1: 写信任、可见性与拓扑回滚 RED**
 
   从真实 MockWebServer catalog 响应断言 fingerprint、repo name、declared SHA 和 download URL 保留到 install request。用 production Android port seam 覆盖 repo/SHA/signer、Untrusted、receiver 提前广播、fresh-private、fresh-system、existing-system、private→system、system→private、双安装、system downgrade、expected-absent、readonly、copy/delete failure retry、恶意 path、403/429/500/断网/写盘失败。
 
-- [ ] **Step 2: 运行 RED 并确认失败原因**
+- [x] **Step 2: 运行 RED 并确认失败原因**
 
   Run: `./gradlew :app:testReleaseUnitTest --tests "*AndroidExtensionInstallSecurityRollbackTest" --tests "*ExtensionInstallCoordinatorWiringTest" --tests "*ExtensionApiSharedCatalogTest"`
   Expected: 至少 catalog metadata 和一个混合拓扑用例因 production 行为失败，不得靠反射向 private map 注入 token 制造 RED。
 
-- [ ] **Step 3: 实现信任校验、receiver gate 和精确回滚**
+- [x] **Step 3: 实现信任校验、receiver gate 和精确回滚**
 
   `Extension.Available` 无损保存 repository identity 与 declared SHA；validate 校验 downloaded SHA、repository continuity、APK package/version/signers 与共享版本策略。下载只落 UUID 事务目录并校验 canonical containment，HTTP 复用 auth/rate/server taxonomy，本地 IO 映射 `AppError.Storage`。`InstallPreState` 记录 private/system 两侧存在性、只读 APK snapshot、version/signers、loader origin、commit target 与 expected-absent；private 用 temp → readonly → atomic replace，system 复用 Task 4C 受控 session。active transaction 的 package/private 广播不得直接修改 runtime map，仅 `LoadResult.Success` 可发布 Installed。
 
-- [ ] **Step 4: 运行 GREEN、回归与 mutation 义务**
+- [x] **Step 4: 运行 GREEN、回归与 mutation 义务**
 
   Run: `./gradlew :app:testReleaseUnitTest --tests "*AndroidExtensionInstallSecurityRollbackTest" --tests "*ExtensionInstallCoordinatorWiringTest" --tests "*ExtensionApiSharedCatalogTest"`
   Run: `./gradlew :app:testReleaseUnitTest --tests "*ExtensionManager*" --tests "*ExtensionInstallSessionLifecycleTest"`
   Run: `./gradlew spotlessCheck`
   Mutations: 丢弃 fingerprint/SHA/signer 校验、将 Untrusted 当成功、允许 receiver 提前改 map、token 退化为单 snapshot、遗漏 fresh 侧删除/system downgrade、将 expected-absent 当 loader error、忽略 delete=false/readonly/containment，或把 HTTP/本地 IO 错误折叠为 Network/Unknown，对应行为测试必须失败。
 
-- [ ] **Step 5: 提交 Task 4D**
+- [x] **Step 5: 提交 Task 4D**
 
   Commit: `fix(android): enforce trusted atomic extension installs`
 
