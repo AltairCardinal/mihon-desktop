@@ -101,7 +101,7 @@
 - Current task: `Task 4D: Android 信任、receiver 可见性与精确回滚`
 - Plan checkbox: pending
 - OpenSpec mappings: `2.2`, `2.3`, `3.1`, `3.2` (Android artifact trust, PackageInstaller/signing boundary, receiver visibility, and exact rollback topology; do not check off shared mappings until all mapped work is complete).
-- Stage: `closure-review`
+- Stage: `race-closure-fix`
 - Task base: `5a17935c1c5241c163c26de5e8bf742121b8b659`
 - Implementer: `/root/task4d_impl` (fresh TDD agent; one implementation task only).
 - Brief: `.superpowers/sdd/align-sources-task-4d-brief.md`
@@ -154,6 +154,11 @@
 - Final cumulative product/test scope from `bb4c235bd` to `3726d389c`: 7 Android files, +2496/-246 (2742 changed lines); plan/brief waiver updated for the complete review-expanded matrix.
 - Closure review package: `.superpowers/sdd/align-sources-task-4d-closure-review.diff` (cumulative base `bb4c235bd`, product head `3726d389c`).
 - Closure reviewer: `/root/task4d_closure_review` (fresh independent read-only final gate; no test rerun).
+- Closure review result: Spec Compliance `CHANGES_REQUIRED`; Task quality `NEEDS_FIXES`; Critical 0 / Important 2 / Minor 0. APK identity/feature is CLOSED; teardown remains OPEN for stale-child reads, and the late `checkNotNull(parent lifecycle)` breaks the existing standalone coordinator→system bridge test. Report: `.superpowers/sdd/align-sources-task-4d-closure-review.md`.
+- Finding evaluation: both findings are technically valid. Cancellation can read a child ID before teardown, then observe its removed/completed lifecycle and currently clears both tombstones; the post-remove hook exercises the opposite read order. The parent `checkNotNull` was added after the full 44/44 run and only the new focused 2/2 was rerun, so the historical full result is stale for the standalone bridge path.
+- Engineering decision: continue one bounded TDD race-closure repair under the user's explicit instruction not to pause for mechanical review limits. Keep the already closed identity/feature and uninstall behavior unchanged; do not replan.
+- Race-closure requirements: add a deterministic stale-child-read RED (read old child, allow map removal + child lifecycle complete, then continue lookup) and fall back to the parent `HANDED_OFF` lifecycle without clearing parent cancellation; restore a valid standalone bridge path without creating an unbounded orphan parent lifecycle, and rerun the entire Lifecycle class after the final production edit.
+- Review/fix round: 4/4 (user-authorized override).
 
 ## Task 4C Review History
 
