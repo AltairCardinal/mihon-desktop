@@ -100,7 +100,7 @@
 
 - Current task: `Task 4C: Android 安装事务/session 生命周期`
 - Plan checkbox: pending（原 4C 实现提交作为本 Task 的基线，未通过审查，不视为已完成）
-- Stage: `spec-review`
+- Stage: `final-fix`
 - Task execution base: `53758e118d8024a593d72645f3aa6034de193a46`
 - Original Task 4C base: `905a8d5c120b337c5c77f8bbe064111c9ed1ba9c`
 - Implementer: `/root/task4c_session_impl`
@@ -163,6 +163,10 @@
 - Phase final review package: `.superpowers/sdd/align-sources-task-4c-session-phase-final-review.diff` (cumulative base `b645e4af9`, head `fc41f0d87`).
 - Phase final reviewer: `/root/task4c_phase_closure_review` (fresh independent read-only replacement after the first reviewer failed to return within the bounded review window; no test rerun).
 - Phase closure review package: `.superpowers/sdd/align-sources-task-4c-session-phase-fix-only-review.diff` (repair delta `f02ac6b15..fc41f0d87`; prior cumulative review supplies the already-reviewed baseline).
+- Phase closure review result: Spec Compliance `CHANGES_REQUIRED`; Task quality `NEEDS_FIXES`; Critical 0 / Important 1 / Minor 0. The post-result public-cancel finding is closed, but production unsubscribe can either complete lifecycle before coordinator rollback/cleanup/flight ends or leave lifecycle permanently `FINISHING` after the terminal collector is cancelled. Report: `.superpowers/sdd/align-sources-task-4c-session-phase-final-review.md`.
+- Finding evaluation: technically valid. `Flow.onCompletion` removes active maps and cancels the subscriber job, while lifecycle completion still depends on `activeSteps` or delivery to that cancelled collector rather than the coordinator flight's real completion. This is the same `android-install-session-lifecycle` risk axis and is narrow enough for one further TDD repair without replanning.
+- Unsubscribe fix agent: pending fresh dispatch; must bind lifecycle completion to coordinator flight completion and add deterministic production-wiring cancellation tests in both platform-await and post-result-reload windows.
+- Review/fix round: 5/5 (user-authorized engineering override of the mechanical review limit).
 - Review/fix round: 3/3
 - Review/fix round: 2/2
 - Implementation commit: `9965e22577746c31e59435cdd35f4b30e677c020` (`refactor(android): adapt transactional extension install`).
