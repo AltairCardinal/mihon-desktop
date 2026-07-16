@@ -36,7 +36,8 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - [x] Task 3：共享扩展目录、版本、仓库部分失败与信任模型
 - [x] Task 4A：共享安装事务状态机
 - [x] Task 4B：Desktop install port 与 reload 回滚
-- [ ] Task 4C：Android PackageInstaller adapter wiring
+- [ ] Task 4C：Android 安装事务/session 生命周期
+- [ ] Task 4D：Android 信任、receiver 可见性与精确回滚
 - [ ] Task 5：Desktop 浏览器登录、Cookie 原子回传与 FlareSolverr 显式后备
 - [ ] Task 6A：Browse 共享状态 wiring
 - [ ] Task 6B：Extension UI、DI 与 i18n wiring
@@ -318,45 +319,101 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
   Commit: `refactor(desktop): adapt transactional extension install`
 
-### Task 4C: Android PackageInstaller adapter wiring
+### Task 4C: Android 安装事务/session 生命周期
 
-**OpenSpec mapping:** 2.2、2.3、3.1、3.2（Android PackageInstaller 与签名边界）
+**OpenSpec mapping:** 2.3、3.1、3.2（Android PackageInstaller 事务关联、取消与有界结束）
 
-**Risk axis:** android-installer-wiring
-**Platform boundary:** shared+android
-**Estimated scope:** 3 files, 300 lines
-**Verification:** 运行 Android coordinator wiring 测试，确认 PackageInstaller/签名读取留在 adapter 且共享状态机断线会失败。
+**Risk axis:** android-install-session-lifecycle
+**Platform boundary:** android
+**Estimated scope:** 7 files, 390 lines
+**Verification:** 执行真实 Android session/callback seam，覆盖 success、error、abort、PendingUserAction、duplicate/late callback、cancel-before-enqueue、service destroy、timeout、同包重试与 hash collision；每个事务只能有一个 terminal，超时/取消后 session、receiver 和 flight 必须释放。
 
 **Files:**
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt`
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionInstaller.kt`
-- Create: `app/src/test/java/eu/kanade/tachiyomi/extension/ExtensionInstallCoordinatorWiringTest.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionInstallService.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/installer/Installer.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/installer/PackageInstallerInstaller.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionInstallActivity.kt`
+- Create: `app/src/test/java/eu/kanade/tachiyomi/extension/ExtensionInstallSessionLifecycleTest.kt`
 
 **Interfaces:**
-- Consumes: Task 4A 共享 port/state/coordinator。
-- Produces: Android PackageInstaller、签名读取与 production DI/wiring adapter。
+- Consumes: 当前 Task 4C 基线提交 `9965e2257` 已接入的共享 coordinator/Android install port。
+- Produces: 贯穿 intent、queue、session、deferred 和 callback 的 UUID transaction ID；同时匹配 transaction/session 的 exactly-once terminal；有界 wait、abandon/unregister 与 cancel tombstone。Task 4D 必须复用该 system install/restore 原语。
+- Boundary: Shizuku AIDL callback 协议不在本 Task 扩展，但基类 queue entry 必须兼容现有 Shizuku 串行路径。
 
-- [ ] **Step 1: 写 Android wiring RED**
+- [ ] **Step 1: 用 production seam 写 session 生命周期 RED**
 
-  测试 production `ExtensionManager`/`ExtensionInstaller` 通过共享 coordinator 发布状态，并断言 PackageInstaller 与 Android 签名类型未泄漏到 common。
+  新建 `ExtensionInstallSessionLifecycleTest`，覆盖 success、error、abort、PendingUserAction、duplicate、late-after-cancel、cancel-before-enqueue、service destroy/no callback、timeout、同包重试和两个 hash-collision 包。断言取消后不再出现 Installing，每个事务只有一个 terminal。
 
-- [ ] **Step 2: 运行 RED**
+- [ ] **Step 2: 运行 RED 并确认失败原因**
 
-  Run: `./gradlew :app:testReleaseUnitTest --tests "*ExtensionInstallCoordinatorWiringTest"`
-  Expected: FAIL，原因是 Android 仍绕过共享 coordinator。
+  Run: `./gradlew :app:testReleaseUnitTest --tests "*ExtensionInstallSessionLifecycleTest" --tests "*ExtensionInstallCoordinatorWiringTest"`
+  Expected: 至少因同包迟到回调或 cancel-before-enqueue 失败，不得是夹具初始化错误。
 
-- [ ] **Step 3: 接入 Android adapter**
+- [ ] **Step 3: 实现 transaction/session 关联与有界终止**
 
-  把 PackageInstaller/签名读取映射到同一 port/state，增加 production wiring；禁止把 Android 类型加入 common。
+  用 UUID 取代 `packageName.hashCode()`；intent、queue entry、cancel broadcast、legacy activity result 和 PackageInstaller callback 全程携带 transaction ID。PackageInstaller terminal/PendingUserAction 同时匹配 active transaction ID 与 session ID；duplicate/late callback 忽略。超时、取消或 service destroy 时通过 exactly-once CAS 完成并 abandon session、注销 receiver；enqueue 前检查短期 cancel/complete tombstone。
 
-- [ ] **Step 4: 运行 GREEN**
+- [ ] **Step 4: 运行 GREEN、回归与 mutation 义务**
 
-  Run: `./gradlew :app:testReleaseUnitTest --tests "*ExtensionInstall*"`
-  Expected: 全部 PASS；PackageInstaller 边界受保护。
+  Run: `./gradlew :app:testReleaseUnitTest --tests "*ExtensionInstallSessionLifecycleTest" --tests "*ExtensionInstallCoordinatorWiringTest"`
+  Run: `./gradlew :app:testReleaseUnitTest --tests "*ExtensionManager*" --tests "*PackageInstaller*" --tests "*ShizukuInstaller*"`
+  Run: `./gradlew spotlessCheck`
+  Mutations: UUID 改回 package hash、去掉 transaction/session 任一校验、去掉 timeout/abandon、删除 cancel tombstone、绕过 terminal CAS，对应 collision/late/no-callback/cancel-before-enqueue/terminal-count 测试必须失败。
 
 - [ ] **Step 5: 提交 Task 4C**
 
-  Commit: `refactor(android): adapt transactional extension install`
+  Commit: `fix(android): bind extension install sessions to transactions`
+
+### Task 4D: Android 信任、receiver 可见性与精确回滚
+
+**OpenSpec mapping:** 2.2、2.3、3.1、3.2（Android artifact 信任、PackageInstaller/签名边界与原子回滚）
+
+**Risk axis:** android-install-trust-rollback
+**Platform boundary:** android
+**Estimated scope:** 8 files, 620 lines
+**Verification:** 执行真实 `AndroidInstallPort` 与 Manager/receiver production wiring，验证 repository fingerprint、declared/downloaded SHA、APK signer、Untrusted 终态、receiver 可见性，以及 fresh/private/system/双安装/跨侧切换/downgrade/expected-absent 的物理与 runtime 精确回滚。
+**Split waiver:** 本 Task 的同一 commit 前 `InstallPreState` 同时决定旧 metadata 的信任连续性、receiver 是否可暴露新 runtime、private/system 哪一侧需删除或恢复，以及 restore reload 应期待旧包还是无包。再拆分 trust/visibility 与 rollback/storage 会产生两种不安全的中间 production 状态：信任失败会触发尚不精确的拓扑回滚，或 receiver 在回滚完成前已暴露未提交 runtime。超额行数主要来自必须在同一 seam 上验证的信任、五类拓扑与故障注入矩阵，而非无关重构。
+
+**Files:**
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/model/Extension.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/api/ExtensionApi.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionInstallReceiver.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionInstaller.kt`
+- Modify: `app/src/test/java/eu/kanade/tachiyomi/extension/ExtensionInstallCoordinatorWiringTest.kt`
+- Create: `app/src/test/java/eu/kanade/tachiyomi/extension/AndroidExtensionInstallSecurityRollbackTest.kt`
+- Modify: `app/src/test/java/eu/kanade/tachiyomi/extension/api/ExtensionApiSharedCatalogTest.kt`
+
+**Interfaces:**
+- Consumes: Task 4C 的 transaction ID、有界 session wait、abandon/unregister 与 system restore 原语。
+- Produces: 无损 `ExtensionArtifact` 身份；基于 `ExtensionTrustPolicy`/`SharedExtensionUpdatePolicy` 的校验；真实 Android package/file/runtime gateway seam；双侧 `InstallPreState` 与幂等精确回滚。
+- Boundary: 用户手动信任 untrusted 扩展仍由既有 UI 入口处理；`ConfirmationRequired` 不得被静默转换为安装成功。
+
+- [ ] **Step 1: 写信任、可见性与拓扑回滚 RED**
+
+  从真实 MockWebServer catalog 响应断言 fingerprint、repo name、declared SHA 和 download URL 保留到 install request。用 production Android port seam 覆盖 repo/SHA/signer、Untrusted、receiver 提前广播、fresh-private、fresh-system、existing-system、private→system、system→private、双安装、system downgrade、expected-absent、readonly、copy/delete failure retry、恶意 path、403/429/500/断网/写盘失败。
+
+- [ ] **Step 2: 运行 RED 并确认失败原因**
+
+  Run: `./gradlew :app:testReleaseUnitTest --tests "*AndroidExtensionInstallSecurityRollbackTest" --tests "*ExtensionInstallCoordinatorWiringTest" --tests "*ExtensionApiSharedCatalogTest"`
+  Expected: 至少 catalog metadata 和一个混合拓扑用例因 production 行为失败，不得靠反射向 private map 注入 token 制造 RED。
+
+- [ ] **Step 3: 实现信任校验、receiver gate 和精确回滚**
+
+  `Extension.Available` 无损保存 repository identity 与 declared SHA；validate 校验 downloaded SHA、repository continuity、APK package/version/signers 与共享版本策略。下载只落 UUID 事务目录并校验 canonical containment，HTTP 复用 auth/rate/server taxonomy，本地 IO 映射 `AppError.Storage`。`InstallPreState` 记录 private/system 两侧存在性、只读 APK snapshot、version/signers、loader origin、commit target 与 expected-absent；private 用 temp → readonly → atomic replace，system 复用 Task 4C 受控 session。active transaction 的 package/private 广播不得直接修改 runtime map，仅 `LoadResult.Success` 可发布 Installed。
+
+- [ ] **Step 4: 运行 GREEN、回归与 mutation 义务**
+
+  Run: `./gradlew :app:testReleaseUnitTest --tests "*AndroidExtensionInstallSecurityRollbackTest" --tests "*ExtensionInstallCoordinatorWiringTest" --tests "*ExtensionApiSharedCatalogTest"`
+  Run: `./gradlew :app:testReleaseUnitTest --tests "*ExtensionManager*" --tests "*ExtensionInstallSessionLifecycleTest"`
+  Run: `./gradlew spotlessCheck`
+  Mutations: 丢弃 fingerprint/SHA/signer 校验、将 Untrusted 当成功、允许 receiver 提前改 map、token 退化为单 snapshot、遗漏 fresh 侧删除/system downgrade、将 expected-absent 当 loader error、忽略 delete=false/readonly/containment，或把 HTTP/本地 IO 错误折叠为 Network/Unknown，对应行为测试必须失败。
+
+- [ ] **Step 5: 提交 Task 4D**
+
+  Commit: `fix(android): enforce trusted atomic extension installs`
 
 ### Task 5: Desktop 浏览器登录、Cookie 原子回传与 FlareSolverr 显式后备
 

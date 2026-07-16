@@ -98,6 +98,21 @@
 
 ## Current
 
-- Current task: `Task 4C: Android PackageInstaller adapter wiring`
-- Plan checkbox: pending
-- Stage: `ready`
+- Current task: `Task 4C: Android 安装事务/session 生命周期`
+- Plan checkbox: pending（原 4C 实现提交作为本 Task 的基线，未通过审查，不视为已完成）
+- Stage: `replanning`
+- Task base: `905a8d5c120b337c5c77f8bbe064111c9ed1ba9c`
+- Implementer: `/root/task4c_impl`
+- Brief: `.superpowers/sdd/align-sources-task-4c-brief.md`
+- Report: `.superpowers/sdd/align-sources-task-4c-report.md`
+- Implementation commit: `9965e22577746c31e59435cdd35f4b30e677c020` (`refactor(android): adapt transactional extension install`).
+- Scope: 3 brief-listed files, +572/-85 (657 changed lines); the plan records a concrete Split waiver for the inseparable Android production wiring, platform transaction adapter, and integration test.
+- RED evidence: initial wiring 2/3 expected failures; fresh-install rollback 1/4 expected failure; existing-private rollback 1/6 expected failure; explicit cancellation 1/1 expected failure.
+- GREEN evidence: final Android install/manager/catalog matrix 14/14; `:app:spotlessCheck` and diff check PASS. Coordinator bypass mutation caused 3 production wiring tests to fail and was restored.
+- Review package: `.superpowers/sdd/align-sources-task-4c-review.diff` (base `905a8d5c1`, head `9965e2257`).
+- Reviewer: `/root/task4c_review` (independent, read-only).
+- Review result: Spec compliance CHANGES_REQUIRED; Code quality CHANGES_REQUIRED; Critical 3 / Important 4 / Minor 1. Report: `.superpowers/sdd/align-sources-task-4c-review.md`.
+- Replan decision: the findings span two independent risk axes that cannot remain a single 3-file/657-line repair without recreating rushed platform debt: (A) trust/receiver visibility plus exact private/system rollback topology and storage/error boundaries; (B) transaction/session IDs, PackageInstaller callback timeout/exactly-once/cancel-before-enqueue and late-callback isolation. Keep the same OpenSpec change and split the repair into Task 4C then Task 4D.
+- Replan report: `.superpowers/sdd/align-sources-task-4c-replan.md`; all C1-C3, I1-I4 and M1 findings verified against production code and accepted as technically valid.
+- Execution order: Task 4C `android-install-session-lifecycle` (7 files, 390 lines, Android) → Task 4D `android-install-trust-rollback` (8 files, 620 lines, Android, concrete Split waiver). Task 4D depends on Task 4C's bounded transaction/session primitive; no parallel Gradle or implementation.
+- Next stage after coordination checkpoint: `implementing` Task 4C from baseline `9965e22577746c31e59435cdd35f4b30e677c020`.
