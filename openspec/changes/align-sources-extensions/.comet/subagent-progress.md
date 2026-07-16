@@ -101,7 +101,7 @@
 - Current task: `Task 4D: Android 信任、receiver 可见性与精确回滚`
 - Plan checkbox: pending
 - OpenSpec mappings: `2.2`, `2.3`, `3.1`, `3.2` (Android artifact trust, PackageInstaller/signing boundary, receiver visibility, and exact rollback topology; do not check off shared mappings until all mapped work is complete).
-- Stage: `final-fix`
+- Stage: `spec-review`
 - Task base: `5a17935c1c5241c163c26de5e8bf742121b8b659`
 - Implementer: `/root/task4d_impl` (fresh TDD agent; one implementation task only).
 - Brief: `.superpowers/sdd/align-sources-task-4d-brief.md`
@@ -120,6 +120,12 @@
 - Repair scope: remain within `android-install-trust-rollback`; one fresh TDD fixer must address the complete finding set together because session-attempt identity, pre-state, sidecar, cleanup journal and production wiring share the same transaction rollback boundary.
 - Fix agent: `/root/task4d_fix1` (fresh TDD repair agent; complete 1 Critical + 6 Important set, including real Default gateway/Task 4C system bridge coverage).
 - Review/fix round: 1/2.
+- Fix commit: `351cffea5635e4677a5108ccb6c48792a9e209a4` (`fix(android): harden extension install rollback`).
+- Repair evidence: parent transaction now owns distinct commit/restore child UUIDs and cancellation follows the active child; both installed sides enforce repository/digest/signer continuity; installer target is frozen at prepare; expected-absent survives retry until cleanup; sidecar/canonical/copy/readonly/delete failures map to typed storage errors with atomic rollback and retry journals.
+- Production-wiring evidence: real `ExtensionApi -> ExtensionManager -> ExtensionInstallCoordinator -> AndroidInstallPort -> DefaultAndroidInstallGateway` private install and real Task 4C PackageInstaller commit/reload-failure/restore bridge execute in JVM seams; parent cancel targets the child, waits for Task 4C cleanup, and rejects late callbacks.
+- Fix verification: focused security/wiring/catalog 30/30 PASS; Manager/session lifecycle 24/24 PASS; `:app:spotlessCheck :app:compileReleaseUnitTestKotlin` and root `spotlessCheck` BUILD SUCCESSFUL; `git diff --check` PASS.
+- Cumulative product/test scope from `bb4c235bd` to `351cffea5`: 7 Android files, +2001/-252 (2253 changed lines); plan and brief record the concrete review-expanded single-risk-axis waiver.
+- Re-review requirement: a fresh read-only reviewer must close the original 1 Critical + 6 Important findings against the cumulative diff and inspect newly introduced transaction identity, cleanup journal, sidecar atomicity, frozen plan and production seam risks before Task checkoff.
 
 ## Task 4C Review History
 

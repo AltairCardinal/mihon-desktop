@@ -375,19 +375,18 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **Risk axis:** android-install-trust-rollback
 **Platform boundary:** android
-**Estimated scope:** 6 files, 1360 lines
+**Estimated scope:** 7 files, 2253 lines
 **Verification:** 执行真实 `AndroidInstallPort` 与 Manager/receiver production wiring，验证 repository fingerprint、declared/downloaded SHA、APK signer、Untrusted 终态、receiver 可见性，以及 fresh/private/system/双安装/跨侧切换/downgrade/expected-absent 的物理与 runtime 精确回滚。
-**Split waiver:** 实际 1360 changed lines 中，463 行是同一 production gateway 的 trust/topology/failure matrix，519 行来自承载共享 trust policy、双侧 `InstallPreState`、private 原子替换、Task 4C system session 复用、分侧 trust sidecar 与结构化错误的单一 Android gateway seam。本 Task 的同一 commit 前状态同时决定旧 metadata 的信任连续性、receiver 是否可暴露新 runtime、private/system 哪一侧需删除或恢复，以及 restore reload 应期待旧包还是无包。再拆分 trust/visibility 与 rollback/storage 会产生两种不安全的中间 production 状态：信任失败会触发尚不精确的拓扑回滚，或 receiver 在回滚完成前已暴露未提交 runtime。超额行数来自必须共同验证的信任、七类拓扑与故障注入矩阵，而非无关重构。
+**Split waiver:** 实际 2253 changed lines（+2001/-252）分布在 7 个 Android 产品/测试文件：917 行承载共享 trust policy、双侧 `InstallPreState`、冻结 commit plan、private 原子替换、Task 4C parent/child system session、分侧 trust sidecar、cleanup journal 与结构化错误的单一 production gateway 链路；1336 行是同一链路的 trust/topology/storage/session/failure production-wiring 测试矩阵。本 Task 的同一 commit 前状态同时决定旧 metadata 的信任连续性、receiver 是否可暴露新 runtime、private/system 哪一侧需删除或恢复，以及 restore reload 应期待旧包还是无包。再拆分 trust/visibility、session identity 与 rollback/storage 会产生不安全的中间 production 状态，或无法用真实 Default gateway 证明 Task 4C bridge 与物理回滚属于同一事务。超额行数来自审查要求补齐的 1 Critical + 6 Important 闭环和可杀死这些缺陷的生产链路测试，而非无关重构。
 
 **Files:**
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/model/Extension.kt`
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/api/ExtensionApi.kt`
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt`
-- Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionInstallReceiver.kt`
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionInstaller.kt`
 - Modify: `app/src/test/java/eu/kanade/tachiyomi/extension/ExtensionInstallCoordinatorWiringTest.kt`
 - Create: `app/src/test/java/eu/kanade/tachiyomi/extension/AndroidExtensionInstallSecurityRollbackTest.kt`
-- Modify: `app/src/test/java/eu/kanade/tachiyomi/extension/api/ExtensionApiSharedCatalogTest.kt`
+- Modify: `app/src/test/java/eu/kanade/tachiyomi/extension/ExtensionInstallSessionLifecycleTest.kt`
 
 **Interfaces:**
 - Consumes: Task 4C 的 transaction ID、有界 session wait、abandon/unregister 与 system restore 原语。
