@@ -118,7 +118,7 @@
 - Review result: Spec Compliance `CHANGES_REQUIRED`; Task quality `NEEDS_FIXES`; Critical 1 / Important 6 / Minor 0. Report: `.superpowers/sdd/align-sources-task-4d-review.md`.
 - Finding evaluation: all seven findings are technically valid against production code. System commit/restore currently reuses one inner token/session and is disconnected from the outer active UUID; target-side trust continuity, sidecar storage/containment, frozen commit target, expected-absent retry, cleanup retry/typed I/O, and Default gateway/Task 4C bridge production tests are incomplete.
 - Repair scope: remain within `android-install-trust-rollback`; one fresh TDD fixer must address the complete finding set together because session-attempt identity, pre-state, sidecar, cleanup journal and production wiring share the same transaction rollback boundary.
-- Fix agent: pending fresh dispatch.
+- Fix agent: `/root/task4d_fix1` (fresh TDD repair agent; complete 1 Critical + 6 Important set, including real Default gateway/Task 4C system bridge coverage).
 - Review/fix round: 1/2.
 
 ## Task 4C Review History
