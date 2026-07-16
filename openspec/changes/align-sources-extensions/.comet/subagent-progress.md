@@ -166,6 +166,7 @@
 - PSL/boundary mutations: removing the PSL check failed the public-suffix transaction test; changing jar cleanup to bidirectional domain clearing failed the child-domain persisted test. Both were restored.
 - PSL-closure verification: SourceLoginSession 15 + Desktop adapter 6 + CookieJar 21 + persistence 8 = 50/50 PASS, 0 failures/errors/skips; root Spotless 97 executed tasks PASS; diff/scope checks PASS.
 - Final cumulative scope: 6 planned product/test files, +1389/-41 (1430 changed lines); plan/brief waiver updated for PSL security and child-domain preservation closure.
+- Final closure reviewer: `/root/task5a_final_closure_review` (fresh independent read-only cumulative review; no test rerun).
 
 ## Task 4D Review History
 
