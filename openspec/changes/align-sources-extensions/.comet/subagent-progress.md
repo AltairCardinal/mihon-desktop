@@ -101,7 +101,7 @@
 - Current task: `Task 4D: Android 信任、receiver 可见性与精确回滚`
 - Plan checkbox: pending
 - OpenSpec mappings: `2.2`, `2.3`, `3.1`, `3.2` (Android artifact trust, PackageInstaller/signing boundary, receiver visibility, and exact rollback topology; do not check off shared mappings until all mapped work is complete).
-- Stage: `spec-review`
+- Stage: `final-fix`
 - Task base: `5a17935c1c5241c163c26de5e8bf742121b8b659`
 - Implementer: `/root/task4d_impl` (fresh TDD agent; one implementation task only).
 - Brief: `.superpowers/sdd/align-sources-task-4d-brief.md`
@@ -128,6 +128,11 @@
 - Re-review requirement: a fresh read-only reviewer must close the original 1 Critical + 6 Important findings against the cumulative diff and inspect newly introduced transaction identity, cleanup journal, sidecar atomicity, frozen plan and production seam risks before Task checkoff.
 - Re-review package: `.superpowers/sdd/align-sources-task-4d-rereview.diff` (cumulative base `bb4c235bd`, product head `351cffea5`).
 - Re-reviewer: `/root/task4d_rereview` (fresh independent read-only reviewer; no test rerun).
+- Re-review result: Spec Compliance `CHANGES_REQUIRED`; Task quality `NEEDS_FIXES`; Critical 0 / Important 3 / Minor 0. Original Critical and Important 1-5 are CLOSED; original Important 6 remains partially OPEN. Report: `.superpowers/sdd/align-sources-task-4d-rereview.md`.
+- Remaining findings: (1) `removeSystem()` has an unbounded uninstall callback wait and cannot retry system sidecar deletion once the package is absent; (2) child lifecycle removal before parent→child mapping removal creates a deterministic lost-cancellation window; (3) physically present private/system APKs whose metadata inspection fails are treated as absent and therefore not protected as pre-state.
+- Finding evaluation: all three are technically valid and remain within `android-install-trust-rollback`; one final focused TDD repair can close them without reopening Task 4C design or expanding into Task 5/6.
+- Final repair scope: `ExtensionInstaller.kt` plus the existing security rollback and session lifecycle production-wiring tests; add real Default gateway timeout/metadata retry/invalid-existing-artifact coverage and deterministic teardown-race coverage. No unrelated product files.
+- Review/fix round: 2/2.
 
 ## Task 4C Review History
 
