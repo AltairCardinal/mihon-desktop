@@ -139,6 +139,8 @@
 - Final mutations: restoring unbounded/early-return `removeSystem`, restoring the old lifecycle-before-parent-map teardown order, or removing either inspect-null guard each failed or hung its production-wiring test and was restored.
 - Final fix verification: fresh `--rerun-tasks` Security 20 + Lifecycle 23 + Wiring 9 + Manager 2 = 54/54 PASS with 0 failures/errors/skips; app Spotless+unit-test compile and root Spotless BUILD SUCCESSFUL; diff check PASS.
 - Final cumulative product/test scope from `bb4c235bd` to `f1a9b7ef1`: 7 Android files, +2378/-246 (2624 changed lines); plan/brief waiver updated for the review-expanded production matrix.
+- Final review package: `.superpowers/sdd/align-sources-task-4d-final-review.diff` (cumulative base `bb4c235bd`, product head `f1a9b7ef1`).
+- Final reviewer: `/root/task4d_final_review` (fresh independent read-only closure review; no test rerun).
 
 ## Task 4C Review History
 
