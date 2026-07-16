@@ -2,20 +2,23 @@ package mihon.desktop.extension
 
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.awaitSuccess
+import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
-import logcat.LogPriority
 import mihon.domain.error.AppError
+import mihon.domain.extension.model.ExtensionArtifact
 import mihon.domain.extension.model.ExtensionCatalogResult
 import mihon.domain.extension.model.ExtensionCompatibility
-import mihon.domain.extension.model.ExtensionArtifact
 import mihon.domain.extension.model.ExtensionSourceDescriptor
 import mihon.domain.extension.model.InstalledExtensionTrustRecord
 import mihon.domain.extension.model.RepositoryIdentity
 import mihon.domain.extension.model.toIdentity
 import mihon.domain.extension.service.ExtensionCatalogService
+import mihon.domain.extension.service.ExtensionInstallState
 import mihon.domain.extension.service.ExtensionTrustDecision
 import mihon.domain.extension.service.ExtensionTrustPolicy
 import mihon.domain.extension.service.ExtensionTrustRequest
@@ -26,18 +29,8 @@ import mihon.domain.extensionrepo.repository.ExtensionRepoRepository
 import mihon.domain.extensionrepo.service.ExtensionRepoIndexEntryDto
 import mihon.domain.extensionrepo.service.toCatalogEntry
 import okhttp3.OkHttpClient
-import tachiyomi.core.common.util.system.logcat
-import java.io.File
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
-import java.util.zip.ZipFile
 
-/**
- * Fetches and parses available extensions from all registered repositories,
- * and handles JAR download/installation.
- *
- * lib version range accepted: 1.2 – 1.5  (mirrors Android ExtensionLoader constants)
- */
+/** Fetches Desktop extension catalogs and provides downloaded artifacts to the install manager. */
 class DesktopExtensionApi(
     private val client: OkHttpClient,
     private val json: Json,
@@ -46,7 +39,6 @@ class DesktopExtensionApi(
     private val catalogService: ExtensionCatalogService = ExtensionCatalogService(),
     private val trustPolicy: ExtensionTrustPolicy = ExtensionTrustPolicy(),
 ) {
-
     suspend fun loadExtensionIcon(iconUrl: String): ByteArray? = withContext(Dispatchers.IO) {
         if (iconUrl.isBlank()) return@withContext null
         runCatching {
@@ -87,139 +79,56 @@ class DesktopExtensionApi(
     }
 
     private suspend fun fetchRepository(repo: ExtensionRepo): RepositoryFetchResult {
-        val response = client
-            .newCall(GET("${repo.baseUrl}/index.min.json"))
-            .awaitSuccess()
+        val response = client.newCall(GET("${repo.baseUrl}/index.min.json")).awaitSuccess()
         val entries = json.decodeFromString<List<ExtensionRepoIndexEntryDto>>(response.body.string())
             .map { it.toCatalogEntry(repo) }
         return RepositoryFetchResult.Success(repo.toIdentity(), entries)
     }
 
-    /**
-     * Downloads and installs an extension JAR into [targetDir].
-     * The JAR URL is derived from the [DesktopAvailableExtension.jarUrl] field.
-     */
     suspend fun installExtension(
         extension: DesktopAvailableExtension,
         targetDir: File,
     ): InstallResult = withContext(Dispatchers.IO) {
-        return@withContext try {
-            targetDir.mkdirs()
-            val installedJar = File(targetDir, "${extension.pkgName}.jar")
-            val existingMeta = readExtensionMeta(installedJar)
-            trustFailure(
-                trustPolicy.evaluate(extension.trustRequest(installedJar, existingMeta)),
-                existingMeta,
-                extension,
-            )?.let { return@withContext it }
-            // Download to a .tmp file first so we can inspect the content type
-            val downloadedFile = File.createTempFile("${extension.pkgName}.", ".download", targetDir)
-            val response = client.newCall(GET(extension.jarUrl)).awaitSuccess()
-            response.body.byteStream().use { input ->
-                downloadedFile.outputStream().use { output -> input.copyTo(output) }
-            }
-            trustFailure(
-                trustPolicy.evaluate(
-                    extension.trustRequest(
-                        installedJar = installedJar,
-                        existingMeta = existingMeta,
-                        downloadedArtifactSha256 = downloadedFile.sha256(),
-                    ),
-                ),
-                existingMeta,
-                extension,
-            )?.let {
-                downloadedFile.delete()
-                return@withContext it
-            }
-            // Determine content type by scanning ZIP entries
-            val (hasJvmClasses, hasDex) = try {
-                ZipFile(downloadedFile).use { zip ->
-                    var classes = false
-                    var dex = false
-                    zip.entries().asSequence().forEach { entry ->
-                        if (entry.name.endsWith(".class")) classes = true
-                        if (entry.name.matches(Regex("classes\\d*\\.dex"))) dex = true
-                    }
-                    Pair(classes, dex)
-                }
-            } catch (_: Exception) {
-                Pair(false, false)
-            }
+        targetDir.mkdirs()
+        val installedJar = File(targetDir, "${extension.pkgName}.jar")
+        val existingMeta = readExtensionMeta(installedJar)
+        val trustRequest = extension.trustRequest(installedJar, existingMeta)
+        trustFailure(trustPolicy.evaluate(trustRequest), existingMeta, extension)?.let { return@withContext it }
 
-            when {
-                hasJvmClasses -> {
-                    // Pre-compiled JVM JAR — rename and install directly
-                    val destFile = File(targetDir, "${extension.pkgName}.jar")
-                    replaceExtensionArtifact(downloadedFile, destFile)
-                    writeExtensionMeta(
-                        destFile,
-                        ExtensionMeta(
-                            pkgName = extension.pkgName,
-                            versionCode = extension.versionCode,
-                            versionName = extension.versionName,
-                            iconUrl = extension.iconUrl,
-                            repoUrl = extension.repoUrl,
-                            repoName = extension.repoName,
-                            repoFingerprint = extension.repoFingerprint,
-                            installedAt = System.currentTimeMillis(),
-                            artifactSha256 = destFile.sha256(),
-                            source = ExtensionOrigin.COMPILED_JAR,
-                        ),
-                    )
-                    InstallResult.Success(destFile)
-                }
-                hasDex -> {
-                    // Android APK — attempt DEX→JAR conversion via dex2jar
-                    val apkFile = File(targetDir, "${extension.pkgName}.apk")
-                    downloadedFile.renameTo(apkFile)
-                    // Extract extension class from manifest BEFORE deleting the APK
-                    val manifestClass = ManifestClassExtractor.extractFromApk(apkFile)
-                    val convertedJar = apkConverter.convert(apkFile, targetDir)
-                    apkFile.delete()
-                    if (convertedJar == null) {
-                        InstallResult.Error(
-                            "APK convert failed: could not translate DEX bytecode to JVM. " +
-                                "This extension may reference APIs not yet supported on desktop.",
-                        )
-                    } else {
-                        // Ensure final JAR is named by package name
-                        val finalJar = File(targetDir, "${extension.pkgName}.jar")
-                        if (convertedJar.canonicalPath != finalJar.canonicalPath) {
-                            replaceExtensionArtifact(convertedJar, finalJar)
-                        }
-                        writeExtensionMeta(
-                            finalJar,
-                            ExtensionMeta(
-                                pkgName = extension.pkgName,
-                                versionCode = extension.versionCode,
-                                versionName = extension.versionName,
-                                iconUrl = extension.iconUrl,
-                                repoUrl = extension.repoUrl,
-                                repoName = extension.repoName,
-                                repoFingerprint = extension.repoFingerprint,
-                                installedAt = System.currentTimeMillis(),
-                                artifactSha256 = finalJar.sha256(),
-                                source = ExtensionOrigin.CONVERTED_APK,
-                                extensionClass = manifestClass,
-                            ),
-                        )
-                        InstallResult.Success(finalJar)
-                    }
-                }
-                else -> {
-                    downloadedFile.delete()
-                    InstallResult.Error(
-                        "Android-only extension: this extension is compiled for Android (DEX) " +
-                            "and cannot run on the desktop JVM. " +
-                            "Only JVM-compatible extension JARs can be installed.",
-                    )
-                }
+        val manager = DesktopExtensionManager(DesktopExtensionLoader(targetDir)).also { it.loadAll() }
+        try {
+            when (
+                val terminal = manager.installExtension(
+                    artifact = trustRequest.incomingArtifact,
+                    artifactProvider = ::downloadArtifact,
+                    apkConverter = apkConverter,
+                )
+            ) {
+                is ExtensionInstallState.Installed -> InstallResult.Success(installedJar)
+                is ExtensionInstallState.Failed -> terminal.error.toInstallResult()
+                else -> InstallResult.Error("Extension install ended before reaching a terminal state")
             }
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "Failed to install extension ${extension.pkgName}" }
-            InstallResult.Error(e.message ?: "Unknown error")
+        } finally {
+            manager.close()
         }
+    }
+
+    private suspend fun downloadArtifact(artifact: ExtensionArtifact, destination: File) {
+        client.newCall(GET(artifact.downloadUrl)).awaitSuccess().use { response ->
+            response.body.byteStream().use { input ->
+                destination.outputStream().use { output -> input.copyTo(output) }
+            }
+        }
+    }
+
+    private fun AppError.toInstallResult(): InstallResult.Error {
+        val detail = cause?.message ?: "Unknown error"
+        val message = if (detail == "Downloaded extension digest mismatch") {
+            "Extension artifact integrity validation failed"
+        } else {
+            detail
+        }
+        return InstallResult.Error(message, this)
     }
 
     private fun File.sha256(): String = inputStream().use { input ->
@@ -236,7 +145,6 @@ class DesktopExtensionApi(
     private fun DesktopAvailableExtension.trustRequest(
         installedJar: File,
         existingMeta: ExtensionMeta?,
-        downloadedArtifactSha256: String? = null,
     ): ExtensionTrustRequest {
         val installed = installedJar.takeIf(File::exists)?.let {
             InstalledExtensionTrustRecord(
@@ -256,15 +164,13 @@ class DesktopExtensionApi(
                 versionCode = versionCode,
                 language = lang,
                 isNsfw = isNsfw,
-                sources = sources.map {
-                    ExtensionSourceDescriptor(it.id, it.lang, it.name, it.baseUrl)
-                },
+                sources = sources.map { ExtensionSourceDescriptor(it.id, it.lang, it.name, it.baseUrl) },
                 repository = RepositoryIdentity(repoUrl, repoName, repoFingerprint),
                 downloadUrl = jarUrl,
                 iconUrl = iconUrl,
                 declaredSha256 = declaredSha256,
             ),
-            downloadedArtifactSha256 = downloadedArtifactSha256,
+            downloadedArtifactSha256 = null,
             installed = installed,
             installedArtifactSha256 = installedJar.takeIf(File::exists)?.sha256(),
         )

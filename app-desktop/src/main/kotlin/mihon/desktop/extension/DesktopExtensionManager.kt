@@ -1,20 +1,29 @@
 package mihon.desktop.extension
 
 import eu.kanade.tachiyomi.source.Source
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.last
+import mihon.domain.extension.model.ExtensionArtifact
+import mihon.domain.extension.service.ExtensionInstallCoordinator
+import mihon.domain.extension.service.ExtensionInstallRequest
+import mihon.domain.extension.service.ExtensionInstallState
 
 /**
  * Manages desktop extensions lifecycle: loading, tracking, and providing access to sources.
  */
 class DesktopExtensionManager(
     private val loader: DesktopExtensionLoader = DesktopExtensionLoader(),
-) {
+) : AutoCloseable {
 
     private val loadedExtensions = mutableListOf<LoadedExtension>()
 
     /** Loads all extensions from the extensions directory. */
     fun loadAll() {
+        val replacements = loader.loadExtensions()
+        val previous = loadedExtensions.toList()
         loadedExtensions.clear()
-        loadedExtensions.addAll(loader.loadExtensions())
+        loadedExtensions.addAll(replacements)
+        previous.map { it.classLoader }.distinct().forEach { (it as? AutoCloseable)?.close() }
     }
 
     /** Returns all loaded sources. */
@@ -70,6 +79,43 @@ class DesktopExtensionManager(
 
     /** Re-scans the extensions directory and reloads all extensions. */
     fun reloadAll() = loadAll()
+
+    internal suspend fun installExtension(
+        artifact: ExtensionArtifact,
+        artifactProvider: DesktopArtifactProvider,
+        apkConverter: ApkToJarConverter = ApkToJarConverter(),
+    ): ExtensionInstallState = coroutineScope {
+        val port = DesktopExtensionInstallPort(
+            extensionsDirectory = loader.extensionsDirectory,
+            artifactProvider = artifactProvider,
+            apkConverter = apkConverter,
+            reloadRuntime = ::reloadRuntime,
+        )
+        ExtensionInstallCoordinator(port, this)
+            .install(ExtensionInstallRequest(artifact))
+            .last()
+    }
+
+    private fun reloadRuntime(packageName: String, expectedSourceIds: Set<Long>?) {
+        val replacements = loader.loadPackage(packageName)
+        val jarExists = java.io.File(loader.extensionsDirectory, "$packageName.jar").isFile
+        val valid = when {
+            expectedSourceIds == null -> !jarExists || replacements.isNotEmpty()
+            expectedSourceIds.isEmpty() -> true
+            else -> replacements.any { it.source.id in expectedSourceIds }
+        }
+        check(valid) { "Extension runtime reload failed for $packageName" }
+
+        val previous = loadedExtensions.filter { it.jarFile.nameWithoutExtension == packageName }
+        loadedExtensions.removeAll(previous.toSet())
+        loadedExtensions.addAll(replacements)
+        previous.map { it.classLoader }.distinct().forEach { (it as? AutoCloseable)?.close() }
+    }
+
+    override fun close() {
+        loadedExtensions.map { it.classLoader }.distinct().forEach { (it as? AutoCloseable)?.close() }
+        loadedExtensions.clear()
+    }
 
     /** Returns the directory where extensions should be placed. */
     val extensionsDirectory get() = loader.extensionsDirectory
