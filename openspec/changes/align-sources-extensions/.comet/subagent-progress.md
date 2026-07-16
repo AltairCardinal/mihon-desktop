@@ -101,7 +101,7 @@
 - Current task: `Task 5A: 共享登录会话与 Desktop Cookie 原子提交`
 - Plan checkbox: pending
 - OpenSpec mapping: `3.3` partial (do not check off until Tasks 5A-5C complete).
-- Stage: `final-fix`
+- Stage: `final-review`
 - Task base: `fdb81e127`
 - Brief: `.superpowers/sdd/align-sources-task-5a-brief.md`
 - Risk axis: `login-session-atomicity`
@@ -123,6 +123,11 @@
 - Finding evaluation: all five are technically valid: timeout currently includes suspend commit; external cancellation leaves a nonterminal shared state; completion IDs are discoverable rather than initiator-bound; jar load/persistence loses Cookie matching/hostOnly semantics; and production committer persistence-failure plus single-lock visibility are not protected by integration/mutation tests.
 - Repair decision: one focused TDD round is sufficient within the existing six-file `login-session-atomicity` boundary. Timeout must end before atomic commit; caller cancellation must publish an honest terminal, while a commit already started must finish as one non-cancellable transaction with its real outcome. Completion handles must be delivered directly to their initiating Desktop flow, not guessed from a global ID set.
 - Fix agent: `/root/task5a_fix1` (fresh TDD repair agent; complete all five Important findings within the six-file boundary); review/fix round 1/2.
+- Fix commit: `1e9bd472b36134846ef03782965a6954f1797f82` (`fix(desktop): harden atomic login sessions`).
+- Repair evidence: browser timeout ends before commit; open/await cancellation publishes Cancelled; an entered commit finishes non-cancellably with its real terminal. Each open delivers an initiator-bound opaque ticket, including same-host concurrent reverse completion. Jar loads via full `Cookie.matches`/expiry across buckets and persists hostOnly; production committer persistence failure restores old memory/file and barrier tests protect shared-lock visibility.
+- Repair mutations: production committer downgraded to `saveFromResponse` failed the real session→committer→stored-jar test; removing reader lock failed the persistence barrier visibility test. Earlier required/domain/cancel/timeout/per-cookie/direct-target mutations remain covered.
+- Final fix verification: fresh SourceLoginSession 13 + Desktop adapter 6 + CookieJar 16 + persistence 8 = 43/43 PASS, 0 failures/errors/skips; root Spotless 97 executed tasks PASS; diff check PASS.
+- Final cumulative scope: 6 planned product/test files, +1060/-35 (1095 changed lines); plan/brief waiver updated for the review-expanded atomicity matrix.
 
 ## Task 4D Review History
 
