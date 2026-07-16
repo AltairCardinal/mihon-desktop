@@ -100,7 +100,7 @@
 
 - Current task: `Task 4C: Android 安装事务/session 生命周期`
 - Plan checkbox: pending（原 4C 实现提交作为本 Task 的基线，未通过审查，不视为已完成）
-- Stage: `final-fix`
+- Stage: `spec-review`
 - Task execution base: `53758e118d8024a593d72645f3aa6034de193a46`
 - Original Task 4C base: `905a8d5c120b337c5c77f8bbe064111c9ed1ba9c`
 - Implementer: `/root/task4c_session_impl`
@@ -156,6 +156,12 @@
 - User override: continue one narrow phase-state repair rather than stop at a mechanical round limit; this extends the same per-transaction lifecycle introduced in round 3 and does not require replanning.
 - Phase fix agent: `/root/task4c_session_fix4` (fresh agent; persistent handoff/finishing phase and active-flight-safe pruning).
 - Review/fix round: 4/4
+- Phase fix commit: `fc41f0d87c91dd6d2503014c6858aca19e3b24c4` (`fix(android): retain extension install finishing state`).
+- Phase fix evidence: deterministic post-result FINISHING cancellation RED, active-job TTL RED, and FINISHING lifecycle TTL RED; GREEN lifecycle/coordinator wiring 25/25, related Manager/PackageInstaller/Shizuku 3/3, root Spotless 61 tasks, and diff check PASS.
+- Phase fix mutations: restoring the old `platformResult == null` direct-cancel condition, completing lifecycle before coordinator flight, or omitting activeJobs from pruning each failed its focused test and was restored.
+- Cumulative product scope: 7 files, +1638/-97 (1735 changed lines); 1147 added test lines form the single production-wiring lifecycle matrix.
+- Phase final review package: `.superpowers/sdd/align-sources-task-4c-session-phase-final-review.diff` (cumulative base `b645e4af9`, head `fc41f0d87`).
+- Phase final reviewer: pending fresh independent read-only dispatch.
 - Review/fix round: 3/3
 - Review/fix round: 2/2
 - Implementation commit: `9965e22577746c31e59435cdd35f4b30e677c020` (`refactor(android): adapt transactional extension install`).

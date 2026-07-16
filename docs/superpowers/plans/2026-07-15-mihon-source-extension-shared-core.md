@@ -325,9 +325,9 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **Risk axis:** android-install-session-lifecycle
 **Platform boundary:** android
-**Estimated scope:** 7 files, 1364 lines
+**Estimated scope:** 7 files, 1735 lines
 **Verification:** 执行真实 Android session/callback seam，覆盖 success、error、abort、PendingUserAction、duplicate/late callback、cancel-before-enqueue、service destroy、timeout、同包重试与 hash collision；每个事务只能有一个 terminal，超时/取消后 session、receiver 和 flight 必须释放。
-**Split waiver:** 三轮审查修复后累计 1364 changed lines 中，909 行是同一 lifecycle 契约矩阵及 JVM Android framework seam 夹具。production UUID 必须原子贯穿 manager → intent/activity/service → base queue → PackageInstaller session → callback/deferred；process-wide durable tombstone、queue 线性化、startup cancellation/platform handoff 原子交接、PackageInstaller commit identity、cleanup acknowledgement 与 Shizuku 延迟 callback 又必须在同一事务生命周期内共同收口。把任一段拆成独立 Task 会产生旧 Long/hash 与新 UUID 混用，或 rollback 早于 session/receiver/flight 释放，或取消后延迟平台 callback 重新发布 terminal，或 guard 已通过但 platform owner 未注册时提前 Idle 的不可运行中间态。collision、late callback、tombstone/TTL、timeout、abandon、PendingUserAction、Shizuku 与 terminal CAS 共同定义单一 session-lifecycle 风险轴，测试矩阵不能在不丢失端到端 production-wiring mutation 审查闭环的前提下再独立调度。
+**Split waiver:** 四轮审查修复后累计 1735 changed lines 中，1147 行是同一 lifecycle 契约矩阵及 JVM Android framework seam 夹具。production UUID 必须原子贯穿 manager → intent/activity/service → base queue → PackageInstaller session → callback/deferred；process-wide durable tombstone、queue 线性化、startup cancellation/platform handoff 原子交接、`NEW → HANDED_OFF → FINISHING → COMPLETE` 持久阶段、PackageInstaller commit identity、cleanup acknowledgement 与 Shizuku 延迟 callback 又必须在同一事务生命周期内共同收口。把任一段拆成独立 Task 会产生旧 Long/hash 与新 UUID 混用，或 rollback 早于 session/receiver/flight 释放，或取消后延迟平台 callback 重新发布 terminal，或 result 已消费但 coordinator 仍在 reload/rollback 时提前 Idle 的不可运行中间态。collision、late callback、tombstone/TTL、timeout、abandon、PendingUserAction、Shizuku 与 terminal CAS 共同定义单一 session-lifecycle 风险轴，测试矩阵不能在不丢失端到端 production-wiring mutation 审查闭环的前提下再独立调度。
 
 **Files:**
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt`
