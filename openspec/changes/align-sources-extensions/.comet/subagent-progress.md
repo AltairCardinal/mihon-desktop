@@ -101,7 +101,7 @@
 - Current task: `Task 4D: Android 信任、receiver 可见性与精确回滚`
 - Plan checkbox: pending
 - OpenSpec mappings: `2.2`, `2.3`, `3.1`, `3.2` (Android artifact trust, PackageInstaller/signing boundary, receiver visibility, and exact rollback topology; do not check off shared mappings until all mapped work is complete).
-- Stage: `spec-review`
+- Stage: `final-fix`
 - Task base: `5a17935c1c5241c163c26de5e8bf742121b8b659`
 - Implementer: `/root/task4d_impl` (fresh TDD agent; one implementation task only).
 - Brief: `.superpowers/sdd/align-sources-task-4d-brief.md`
@@ -115,7 +115,11 @@
 - Changed scope: 6 plan-listed Android product/test files, +1118/-242 (1360 changed lines); concrete Split waiver updated for the inseparable 519-line gateway seam and 463-line production matrix.
 - Review package: `.superpowers/sdd/align-sources-task-4d-review.diff` (base `bb4c235bd`, product head `8733aa805`).
 - Reviewer: `/root/task4d_review` (fresh independent read-only thorough review; no test rerun).
-- Review/fix round: 0/2.
+- Review result: Spec Compliance `CHANGES_REQUIRED`; Task quality `NEEDS_FIXES`; Critical 1 / Important 6 / Minor 0. Report: `.superpowers/sdd/align-sources-task-4d-review.md`.
+- Finding evaluation: all seven findings are technically valid against production code. System commit/restore currently reuses one inner token/session and is disconnected from the outer active UUID; target-side trust continuity, sidecar storage/containment, frozen commit target, expected-absent retry, cleanup retry/typed I/O, and Default gateway/Task 4C bridge production tests are incomplete.
+- Repair scope: remain within `android-install-trust-rollback`; one fresh TDD fixer must address the complete finding set together because session-attempt identity, pre-state, sidecar, cleanup journal and production wiring share the same transaction rollback boundary.
+- Fix agent: pending fresh dispatch.
+- Review/fix round: 1/2.
 
 ## Task 4C Review History
 
