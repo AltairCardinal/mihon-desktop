@@ -165,7 +165,7 @@
 - Phase closure review package: `.superpowers/sdd/align-sources-task-4c-session-phase-fix-only-review.diff` (repair delta `f02ac6b15..fc41f0d87`; prior cumulative review supplies the already-reviewed baseline).
 - Phase closure review result: Spec Compliance `CHANGES_REQUIRED`; Task quality `NEEDS_FIXES`; Critical 0 / Important 1 / Minor 0. The post-result public-cancel finding is closed, but production unsubscribe can either complete lifecycle before coordinator rollback/cleanup/flight ends or leave lifecycle permanently `FINISHING` after the terminal collector is cancelled. Report: `.superpowers/sdd/align-sources-task-4c-session-phase-final-review.md`.
 - Finding evaluation: technically valid. `Flow.onCompletion` removes active maps and cancels the subscriber job, while lifecycle completion still depends on `activeSteps` or delivery to that cancelled collector rather than the coordinator flight's real completion. This is the same `android-install-session-lifecycle` risk axis and is narrow enough for one further TDD repair without replanning.
-- Unsubscribe fix agent: pending fresh dispatch; must bind lifecycle completion to coordinator flight completion and add deterministic production-wiring cancellation tests in both platform-await and post-result-reload windows.
+- Unsubscribe fix agent: `/root/task4c_unsubscribe_fix` (fresh TDD implementer; binds lifecycle completion to coordinator flight completion and adds deterministic production-wiring cancellation tests in both platform-await and post-result-reload windows).
 - Review/fix round: 5/5 (user-authorized engineering override of the mechanical review limit).
 - Review/fix round: 3/3
 - Review/fix round: 2/2
