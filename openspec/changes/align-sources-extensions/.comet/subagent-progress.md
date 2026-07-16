@@ -125,7 +125,7 @@
 - Final fix verification: lifecycle+wiring 19/19 PASS; related filtered regression 2/2 PASS; root Spotless 61 tasks PASS.
 - Cumulative product scope: 7 files, +843/-90 (933 changed lines); plan/brief waiver updated for the review-expanded single lifecycle risk axis.
 - Re-review package: `.superpowers/sdd/align-sources-task-4c-session-rereview.diff` (cumulative base `b645e4af9`, head `c38a82069`).
-- Re-reviewer: pending fresh read-only reviewer.
+- Re-reviewer: `/root/task4c_session_rereview` (fresh independent read-only reviewer; validates closure of all four original Important findings and newly introduced lifecycle risks).
 - Implementation commit: `9965e22577746c31e59435cdd35f4b30e677c020` (`refactor(android): adapt transactional extension install`).
 - Scope: 3 brief-listed files, +572/-85 (657 changed lines); the plan records a concrete Split waiver for the inseparable Android production wiring, platform transaction adapter, and integration test.
 - RED evidence: initial wiring 2/3 expected failures; fresh-install rollback 1/4 expected failure; existing-private rollback 1/6 expected failure; explicit cancellation 1/1 expected failure.
