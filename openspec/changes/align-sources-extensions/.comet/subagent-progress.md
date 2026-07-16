@@ -117,6 +117,8 @@
 - Mutation evidence: required-cookie, domain filter, cancel, timeout, per-cookie writes, and direct-target persistence mutations each failed a named behavior test and were restored.
 - Actual scope: 6 planned product/test files, +761/-33 (794 changed lines); plan/brief contain a concrete single-atomicity-boundary waiver.
 - Report: `.superpowers/sdd/align-sources-task-5a-report.md`.
+- Review package: `.superpowers/sdd/align-sources-task-5a-review.diff` (cumulative base `fdb81e127`, product head `3b9deaa7a`).
+- Reviewer: `/root/task5a_review` (fresh independent read-only thorough review; no test rerun).
 
 ## Task 4D Review History
 
