@@ -165,6 +165,8 @@
 - Race mutations: removing COMPLETE fallback failed 1/2 parameterized stale-child cases; restoring the old missing-child tombstone clear-and-return failed 2/2. Both were restored.
 - Race verification: fresh full Lifecycle 25/25; fresh Security 21 + Wiring 9 + Manager 2 = 32/32; 0 failures/errors/skips. App Spotless+unit-test compile rerun and root Spotless BUILD SUCCESSFUL; diff check PASS.
 - Final cumulative product/test scope from `bb4c235bd` to `4c43f3d00`: 7 Android files, +2680/-246 (2926 changed lines); plan/brief waiver updated.
+- Final race closure package: `.superpowers/sdd/align-sources-task-4d-final-closure-review.diff` (cumulative base `bb4c235bd`, product head `4c43f3d00`).
+- Final race closure reviewer: `/root/task4d_race_closure_review` (fresh independent read-only final gate; no test rerun).
 
 ## Task 4C Review History
 
