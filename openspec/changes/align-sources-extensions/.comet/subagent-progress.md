@@ -101,7 +101,7 @@
 - Current task: `Task 5A: 共享登录会话与 Desktop Cookie 原子提交`
 - Plan checkbox: pending
 - OpenSpec mapping: `3.3` partial (do not check off until Tasks 5A-5C complete).
-- Stage: `closure-fix`
+- Stage: `closure-review`
 - Task base: `fdb81e127`
 - Brief: `.superpowers/sdd/align-sources-task-5a-brief.md`
 - Risk axis: `login-session-atomicity`
@@ -136,6 +136,11 @@
 - Closure repair requirements: use a canonical cookie identity including name/domain/path, preserve valid same-name different-path cookies, make the authenticated session's value deterministically replace stale identical identities across buckets, and restore exact prior disk bytes/existence when replacement throws after the target has already changed. Add deterministic RED, production-path, and rollback mutation evidence.
 - Review/fix round: 2/2 (user-authorized engineering continuation when one narrow repair is sufficient).
 - Closure fix agent: `/root/task5a_fix2` (fresh TDD implementer; bounded Cookie identity and late-replace rollback repair only).
+- Closure fix commit: `9bf837b9131c2afce7e21b44c3b4aae12306d8a4` (`fix(desktop): close cookie login transaction gaps`).
+- Closure RED/GREEN: four deterministic RED failures covered same-name/different-path preservation, stale identical identity in another bucket, late move-then-throw exact old-file restoration, and old-file-absent restoration; final Task 5A matrix SourceLoginSession 13 + Desktop adapter 6 + CookieJar 20 + persistence 8 = 47/47 PASS.
+- Closure production-chain evidence: the Desktop adapter integration now injects an atomic move followed by `IOException` through SourceLoginSession → production committer → real jar and observes honest failure with old memory/file restored.
+- Closure mutations: ignoring path in identity, removing cross-bucket identity replacement, or removing late-failure disk restoration each failed its named regression and was restored. Root Spotless completed 97 executed tasks; diff/scope checks PASS.
+- Final cumulative scope: 6 planned product/test files, +1235/-41 (1276 changed lines); plan/brief waiver updated for canonical identity and late-replace rollback closure.
 
 ## Task 4D Review History
 
