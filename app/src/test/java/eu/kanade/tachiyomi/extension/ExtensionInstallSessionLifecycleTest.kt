@@ -356,6 +356,107 @@ class ExtensionInstallSessionLifecycleTest {
         }
     }
 
+    @Test
+    fun `parent cancellation during child teardown remains durable and cannot publish installed`(
+        @TempDir directory: Path,
+    ) = runTest {
+        val harness = packageInstallerHarness()
+        val cacheDirectory = directory.resolve("cache").toFile().apply(File::mkdirs)
+        val filesDirectory = directory.resolve("files").toFile().apply(File::mkdirs)
+        val packageManager = mockk<PackageManager>(relaxed = true) {
+            every { getPackageInfo(PACKAGE_NAME, any<Int>()) } throws PackageManager.NameNotFoundException()
+            every { getApplicationInfo(PACKAGE_NAME, any<Int>()) } throws PackageManager.NameNotFoundException()
+        }
+        val context = mockk<Context>(relaxed = true) {
+            every { packageName } returns "eu.kanade.tachiyomi"
+            every { cacheDir } returns cacheDirectory
+            every { filesDir } returns filesDirectory
+            every { this@mockk.packageManager } returns packageManager
+        }
+        val removalStarted = CountDownLatch(1)
+        val allowRemoval = CountDownLatch(1)
+        val childStarted = CountDownLatch(1)
+        val installerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        lateinit var bridge: ExtensionInstaller
+        val childAttempts = Collections.synchronizedList(mutableListOf<String>())
+        val gateway = DefaultAndroidInstallGateway(
+            context = context,
+            installSystem = { transactionId, file, installer ->
+                bridge.installSystemAttempt(transactionId, file, installer)
+            },
+            commitPlanProvider = {
+                AndroidCommitPlan(
+                    AndroidInstallLocation.SYSTEM,
+                    BasePreferences.ExtensionInstaller.PACKAGEINSTALLER,
+                )
+            },
+            apkInspector = {
+                AndroidApk(PACKAGE_NAME, "1.4.2", 2, setOf("signer-a"), isExtension = true)
+            },
+        )
+        bridge = ExtensionInstaller(
+            context = context,
+            runtimeReloader = {},
+            scope = installerScope,
+            gateway = gateway,
+            client = OkHttpClient(),
+            installerProvider = { BasePreferences.ExtensionInstaller.PACKAGEINSTALLER },
+        )
+        ExtensionInstaller::class.java.getDeclaredField("systemAttemptsByParent").apply {
+            isAccessible = true
+            set(bridge, BlockingSystemAttempts(removalStarted, allowRemoval))
+        }
+        every { harness.manager.updateInstallStep(any(), any()) } answers {
+            bridge.updateInstallStep(firstArg(), secondArg())
+        }
+        mockkStatic(FileProvider::class)
+        every { FileProvider.getUriForFile(any(), any(), any()) } returns mockk()
+        every { ContextCompat.startForegroundService(context, any()) } answers {
+            childAttempts += checkNotNull(capturedStringExtras[ExtensionInstaller.EXTRA_TRANSACTION_ID])
+            harness.enqueue(childAttempts.single())
+            childStarted.countDown()
+            mockk()
+        }
+
+        MockWebServer().also { it.start() }.use { server ->
+            val candidate = "candidate-system".toByteArray()
+            server.enqueue(MockResponse(body = candidate.decodeToString()))
+            val extension = availableExtension(PACKAGE_NAME).copy(
+                versionName = "1.4.2",
+                versionCode = 2,
+                repoName = REPOSITORY.name,
+                repoFingerprint = REPOSITORY.signingKeyFingerprint,
+                declaredSha256 = Hash.sha256(candidate),
+            )
+            val terminal = async(start = CoroutineStart.UNDISPATCHED) {
+                bridge.downloadAndInstall(server.url("/example.apk").toString(), extension)
+                    .first(InstallStep::isCompleted)
+            }
+
+            try {
+                assertTrue(
+                    childStarted.await(10, TimeUnit.SECONDS),
+                    "terminal=${terminal.takeIf { it.isCompleted }?.await()} active=${activeTransactionIds(bridge)}",
+                )
+                harness.callback(PackageInstaller.STATUS_SUCCESS)
+                harness.installer.onDestroy()
+                assertTrue(removalStarted.await(10, TimeUnit.SECONDS))
+
+                bridge.cancelInstall(PACKAGE_NAME)
+                allowRemoval.countDown()
+
+                assertEquals(InstallStep.Idle, terminal.await())
+                assertTrue(activeTransactionIds(bridge).isEmpty())
+                bridge.updateInstallStep(childAttempts.single(), InstallStep.Installed)
+                assertTrue(activeTransactionIds(bridge).isEmpty())
+            } finally {
+                allowRemoval.countDown()
+                installerScope.cancel()
+                unmockkStatic(FileProvider::class)
+            }
+        }
+    }
+
     @BeforeEach
     fun interceptLocalBroadcastManager() {
         TRANSACTION_ONE = UUID.randomUUID().toString()
@@ -1633,6 +1734,17 @@ class ExtensionInstallSessionLifecycleTest {
             registrationStarted.countDown()
             check(allowRegistration.await(10, TimeUnit.SECONDS))
             return super.put(key, value)
+        }
+    }
+
+    private class BlockingSystemAttempts(
+        private val removalStarted: CountDownLatch,
+        private val allowRemoval: CountDownLatch,
+    ) : ConcurrentHashMap<String, String>() {
+        override fun remove(key: String, value: String): Boolean {
+            removalStarted.countDown()
+            check(allowRemoval.await(10, TimeUnit.SECONDS))
+            return super.remove(key, value)
         }
     }
 

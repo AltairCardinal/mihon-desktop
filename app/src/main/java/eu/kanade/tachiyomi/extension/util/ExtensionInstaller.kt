@@ -231,8 +231,11 @@ internal class ExtensionInstaller private constructor(
         try {
             installPrepared(attemptId, file, installer)
         } finally {
-            completeLifecycle(attemptId, lifecycle)
-            systemAttemptsByParent.remove(parentTransactionId, attemptId)
+            try {
+                systemAttemptsByParent.remove(parentTransactionId, attemptId)
+            } finally {
+                completeLifecycle(attemptId, lifecycle)
+            }
         }
     }
 
@@ -925,10 +928,14 @@ internal class DefaultAndroidInstallGateway(
         val privateFile = File(context.filesDir, "exts/$packageName.ext")
         val privatePackage = privateFile.takeIf(File::isFile)?.let {
             installedPackage(it, packageName, AndroidInstallLocation.PRIVATE)
+                ?: failMalformed("Installed private extension APK cannot be inspected")
         }
         val systemPackage = try {
             context.packageManager.getPackageInfo(packageName, PACKAGE_FLAGS)?.applicationInfo?.sourceDir
-                ?.let(::File)?.let { installedPackage(it, packageName, AndroidInstallLocation.SYSTEM) }
+                ?.let(::File)?.let {
+                    installedPackage(it, packageName, AndroidInstallLocation.SYSTEM)
+                        ?: failMalformed("Installed system extension APK cannot be inspected")
+                }
         } catch (_: PackageManager.NameNotFoundException) {
             null
         }
@@ -996,33 +1003,35 @@ internal class DefaultAndroidInstallGateway(
     }
 
     override suspend fun removeSystem(packageName: String) {
-        if (!context.isPackageInstalled(packageName)) return
-        val action = "${context.packageName}.EXTENSION_ROLLBACK.${UUID.randomUUID()}"
-        val result = CompletableDeferred<Int>()
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context, intent: Intent) {
-                result.complete(intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE))
+        if (context.isPackageInstalled(packageName)) {
+            val action = "${context.packageName}.EXTENSION_ROLLBACK.${UUID.randomUUID()}"
+            val result = CompletableDeferred<Int>()
+            val receiver = object : BroadcastReceiver() {
+                override fun onReceive(context: Context, intent: Intent) {
+                    result.complete(intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE))
+                }
+            }
+            ContextCompat.registerReceiver(context, receiver, IntentFilter(action), ContextCompat.RECEIVER_NOT_EXPORTED)
+            try {
+                val sender = PendingIntent.getBroadcast(
+                    context,
+                    packageName.hashCode(),
+                    Intent(action).setPackage(context.packageName),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
+                ).intentSender
+                context.packageManager.packageInstaller.uninstall(packageName, sender)
+                val status = try {
+                    withTimeout(SYSTEM_UNINSTALL_TIMEOUT_MILLIS) { result.await() }
+                } catch (_: TimeoutCancellationException) {
+                    failStorage("Timed out removing system extension")
+                }
+                if (status != PackageInstaller.STATUS_SUCCESS) failStorage("Failed to remove system extension")
+            } finally {
+                context.unregisterReceiver(receiver)
             }
         }
-        ContextCompat.registerReceiver(context, receiver, IntentFilter(action), ContextCompat.RECEIVER_NOT_EXPORTED)
-        try {
-            val sender = PendingIntent.getBroadcast(
-                context,
-                packageName.hashCode(),
-                Intent(action).setPackage(context.packageName),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
-            ).intentSender
-            context.packageManager.packageInstaller.uninstall(packageName, sender)
-            if (result.await() != PackageInstaller.STATUS_SUCCESS) failStorage("Failed to remove system extension")
-            if (!deleteTrust(
-                    packageName,
-                    AndroidInstallLocation.SYSTEM,
-                )
-            ) {
-                failStorage("Failed to remove system trust metadata")
-            }
-        } finally {
-            context.unregisterReceiver(receiver)
+        if (!deleteTrust(packageName, AndroidInstallLocation.SYSTEM)) {
+            failStorage("Failed to remove system trust metadata")
         }
     }
 
@@ -1129,6 +1138,8 @@ internal class DefaultAndroidInstallGateway(
             (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) PackageManager.GET_SIGNING_CERTIFICATES else 0)
     }
 }
+
+private const val SYSTEM_UNINSTALL_TIMEOUT_MILLIS = 2 * 60 * 1000L
 
 private fun failMalformed(message: String): Nothing =
     throw ExtensionInstallFailure(AppError.MalformedData(IllegalArgumentException(message)))

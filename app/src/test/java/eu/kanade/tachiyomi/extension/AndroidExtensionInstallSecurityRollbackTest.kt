@@ -1,7 +1,14 @@
 package eu.kanade.tachiyomi.extension
 
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageInfo
+import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.tachiyomi.extension.util.AndroidApk
 import eu.kanade.tachiyomi.extension.util.AndroidCommitPlan
@@ -15,8 +22,16 @@ import eu.kanade.tachiyomi.extension.util.DefaultAndroidInstallGateway
 import eu.kanade.tachiyomi.util.lang.Hash
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkConstructor
+import io.mockk.mockkStatic
+import io.mockk.unmockkConstructor
+import io.mockk.unmockkStatic
+import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.last
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionArtifact
@@ -440,6 +455,215 @@ class AndroidExtensionInstallSecurityRollbackTest {
     }
 
     @Test
+    fun `coordinator system rollback times out and unregisters the default gateway receiver`(@TempDir directory: Path) =
+        runTest {
+            val filesDirectory = directory.resolve("files").toFile().apply(File::mkdirs)
+            val cacheDirectory = directory.resolve("cache").toFile().apply(File::mkdirs)
+            var installed = false
+            val packageInstaller = mockk<PackageInstaller>(relaxed = true)
+            val packageManager = mockk<PackageManager>(relaxed = true)
+            every { packageManager.getPackageInfo(PACKAGE_NAME, any<Int>()) } throws
+                PackageManager.NameNotFoundException()
+            every { packageManager.getApplicationInfo(PACKAGE_NAME, any<Int>()) } answers {
+                if (installed) ApplicationInfo() else throw PackageManager.NameNotFoundException()
+            }
+            every { packageManager.packageInstaller } returns packageInstaller
+            val context = gatewayContext(filesDirectory, cacheDirectory, packageManager)
+            every { context.packageName } returns "eu.kanade.tachiyomi"
+            val gateway = DefaultAndroidInstallGateway(
+                context = context,
+                installSystem = { _, _, _ -> installed = true },
+                commitPlanProvider = {
+                    AndroidCommitPlan(
+                        AndroidInstallLocation.SYSTEM,
+                        BasePreferences.ExtensionInstaller.PACKAGEINSTALLER,
+                    )
+                },
+                apkInspector = {
+                    AndroidApk(PACKAGE_NAME, "1.4.2", 2, setOf("signer-a"), true)
+                },
+            )
+
+            withServer(CANDIDATE_BYTES) { server ->
+                withUninstallCallbacks(context) {
+                    val terminal = async {
+                        coordinator(
+                            AndroidInstallPort(
+                                gateway = gateway,
+                                client = OkHttpClient(),
+                                runtimeReloader = { error("reload failed") },
+                            ),
+                            this,
+                        ).install(ExtensionInstallRequest(artifact(server))).last()
+                    }
+                    runCurrent()
+                    advanceTimeBy(SYSTEM_UNINSTALL_TIMEOUT_MILLIS)
+                    runCurrent()
+
+                    assertTrue(terminal.isCompleted, "coordinator rollback must finish after bounded platform wait")
+                    val failure = terminal.await()
+                    assertInstanceOf(ExtensionInstallState.Failed::class.java, failure)
+                    assertInstanceOf(AppError.Storage::class.java, (failure as ExtensionInstallState.Failed).error)
+                    verify(exactly = 1) { context.unregisterReceiver(any()) }
+                }
+            }
+        }
+
+    @Test
+    fun `default gateway removes system trust metadata when package is already absent`(@TempDir directory: Path) =
+        runTest {
+            val filesDirectory = directory.resolve("files").toFile().apply(File::mkdirs)
+            val cacheDirectory = directory.resolve("cache").toFile().apply(File::mkdirs)
+            val metadataFile = filesDirectory.resolve("extension-install-metadata/system-$PACKAGE_NAME.properties")
+                .apply {
+                    parentFile?.mkdirs()
+                    writeText("stale-system-trust")
+                }
+            val context = gatewayContext(filesDirectory, cacheDirectory)
+
+            defaultGateway(context).removeSystem(PACKAGE_NAME)
+
+            assertFalse(metadataFile.exists())
+        }
+
+    @Test
+    fun `default gateway retries system trust cleanup after successful uninstall`(@TempDir directory: Path) =
+        runTest {
+            val filesDirectory = directory.resolve("files").toFile().apply(File::mkdirs)
+            val cacheDirectory = directory.resolve("cache").toFile().apply(File::mkdirs)
+            val metadataFile = filesDirectory.resolve("extension-install-metadata/system-$PACKAGE_NAME.properties")
+                .apply {
+                    parentFile?.mkdirs()
+                    writeText("candidate-system-trust")
+                }
+            var installed = true
+            var receiver: BroadcastReceiver? = null
+            var failMetadataDelete = true
+            val packageInstaller = mockk<PackageInstaller>(relaxed = true)
+            val packageManager = mockk<PackageManager>(relaxed = true)
+            every { packageManager.getApplicationInfo(PACKAGE_NAME, any<Int>()) } answers {
+                if (installed) ApplicationInfo() else throw PackageManager.NameNotFoundException()
+            }
+            every { packageManager.packageInstaller } returns packageInstaller
+            val context = gatewayContext(filesDirectory, cacheDirectory, packageManager)
+            every { context.packageName } returns "eu.kanade.tachiyomi"
+            val gateway = defaultGateway(
+                context,
+                deleteFile = { file ->
+                    if (file == metadataFile && failMetadataDelete) {
+                        failMetadataDelete = false
+                        false
+                    } else {
+                        !file.exists() || file.delete()
+                    }
+                },
+            )
+
+            withUninstallCallbacks(
+                context = context,
+                packageInstaller = packageInstaller,
+                onRegistered = { receiver = it },
+                onUninstall = {
+                    installed = false
+                    receiver?.onReceive(
+                        context,
+                        mockk {
+                            every {
+                                getIntExtra(PackageInstaller.EXTRA_STATUS, any())
+                            } returns PackageInstaller.STATUS_SUCCESS
+                        },
+                    )
+                },
+            ) {
+                val firstFailure = runCatching { gateway.removeSystem(PACKAGE_NAME) }.exceptionOrNull()
+                gateway.removeSystem(PACKAGE_NAME)
+
+                assertInstanceOf(AppError.Storage::class.java, firstFailure.installError())
+                assertFalse(metadataFile.exists())
+                verify(exactly = 1) { packageInstaller.uninstall(PACKAGE_NAME, any()) }
+            }
+        }
+
+    @Test
+    fun `default gateway rejects physically present private and system APKs that cannot be inspected`(
+        @TempDir directory: Path,
+    ) = runTest {
+        listOf(AndroidInstallLocation.PRIVATE, AndroidInstallLocation.SYSTEM).forEach { location ->
+            val caseDirectory = directory.resolve(location.name.lowercase())
+            val filesDirectory = caseDirectory.resolve("files").toFile().apply(File::mkdirs)
+            val cacheDirectory = caseDirectory.resolve("cache").toFile().apply(File::mkdirs)
+            val installedApk = when (location) {
+                AndroidInstallLocation.PRIVATE -> filesDirectory.resolve("exts/$PACKAGE_NAME.ext")
+                AndroidInstallLocation.SYSTEM -> caseDirectory.resolve("installed-system.apk").toFile()
+            }.apply {
+                parentFile?.mkdirs()
+                writeText("uninspectable-old-${location.name.lowercase()}")
+            }
+            val metadataFile = filesDirectory.resolve(
+                "extension-install-metadata/${location.name.lowercase()}-$PACKAGE_NAME.properties",
+            )
+            writeTrustMetadata(metadataFile, installedApk)
+            val oldBytes = installedApk.readBytes()
+            val oldMetadata = metadataFile.readBytes()
+            val packageManager = mockk<PackageManager>(relaxed = true) {
+                every { getPackageArchiveInfo(any<String>(), any<Int>()) } returns null
+                if (location == AndroidInstallLocation.SYSTEM) {
+                    every { getPackageInfo(any<String>(), any<Int>()) } returns PackageInfo().apply {
+                        packageName = PACKAGE_NAME
+                        applicationInfo = ApplicationInfo().apply { sourceDir = installedApk.absolutePath }
+                    }
+                    every {
+                        getPackageInfo(any<String>(), any<PackageManager.PackageInfoFlags>())
+                    } returns PackageInfo().apply {
+                        packageName = PACKAGE_NAME
+                        applicationInfo = ApplicationInfo().apply { sourceDir = installedApk.absolutePath }
+                    }
+                } else {
+                    every { getPackageInfo(any<String>(), any<Int>()) } throws PackageManager.NameNotFoundException()
+                    every {
+                        getPackageInfo(any<String>(), any<PackageManager.PackageInfoFlags>())
+                    } throws PackageManager.NameNotFoundException()
+                }
+            }
+            val context = gatewayContext(filesDirectory, cacheDirectory, packageManager)
+            val gateway = DefaultAndroidInstallGateway(
+                context = context,
+                installSystem = { _, _, _ -> error("commit must not run") },
+                commitPlanProvider = {
+                    AndroidCommitPlan(
+                        location,
+                        BasePreferences.ExtensionInstaller.PACKAGEINSTALLER.takeIf {
+                            location == AndroidInstallLocation.SYSTEM
+                        },
+                    )
+                },
+                apkInspector = { file ->
+                    if (file.readText().startsWith("candidate")) {
+                        AndroidApk(PACKAGE_NAME, "1.4.2", 2, setOf("signer-a"), true)
+                    } else {
+                        null
+                    }
+                },
+            )
+
+            withServer(CANDIDATE_BYTES) { server ->
+                val port = AndroidInstallPort(gateway, OkHttpClient())
+                val token = port.prepare(ExtensionInstallRequest(artifact(server)))
+
+                val failure = runCatching { port.validate(token) }.exceptionOrNull()
+
+                assertInstanceOf(
+                    AppError.MalformedData::class.java,
+                    failure.installError(),
+                    "$location failure=$failure cause=${failure?.cause}",
+                )
+                assertTrue(oldBytes.contentEquals(installedApk.readBytes()), location.name)
+                assertTrue(oldMetadata.contentEquals(metadataFile.readBytes()), location.name)
+            }
+        }
+    }
+
+    @Test
     fun `storage and containment failures stay structured`(@TempDir directory: Path) = runTest {
         withServer(CANDIDATE_BYTES) { server ->
             val gateway = FakeGateway(directory.toFile(), AndroidInstallLocation.PRIVATE).apply {
@@ -526,15 +750,19 @@ class AndroidExtensionInstallSecurityRollbackTest {
 
     private fun coordinator(port: AndroidInstallPort, scope: CoroutineScope) = ExtensionInstallCoordinator(port, scope)
 
-    private fun gatewayContext(filesDirectory: File, cacheDirectory: File): Context {
-        val packageManager = mockk<PackageManager> {
+    private fun gatewayContext(
+        filesDirectory: File,
+        cacheDirectory: File,
+        packageManager: PackageManager = mockk<PackageManager> {
             every { getPackageInfo(any<String>(), any<Int>()) } throws PackageManager.NameNotFoundException()
-        }
-        return mockk(relaxed = true) {
-            every { filesDir } returns filesDirectory
-            every { cacheDir } returns cacheDirectory
-            every { this@mockk.packageManager } returns packageManager
-        }
+            every { getApplicationInfo(any<String>(), any<Int>()) } throws PackageManager.NameNotFoundException()
+        },
+    ): Context {
+        val context = mockk<Context>(relaxed = true)
+        every { context.filesDir } returns filesDirectory
+        every { context.cacheDir } returns cacheDirectory
+        every { context.packageManager } returns packageManager
+        return context
     }
 
     private fun defaultGateway(
@@ -567,6 +795,37 @@ class AndroidExtensionInstallSecurityRollbackTest {
         deleteFile = deleteFile,
         trustInput = trustInput,
     )
+
+    private suspend fun withUninstallCallbacks(
+        context: Context,
+        packageInstaller: PackageInstaller? = null,
+        onRegistered: (BroadcastReceiver) -> Unit = {},
+        onUninstall: () -> Unit = {},
+        block: suspend () -> Unit,
+    ) {
+        mockkConstructor(Intent::class)
+        mockkStatic(PendingIntent::class)
+        mockkStatic(ContextCompat::class)
+        val pendingIntent = mockk<PendingIntent> { every { intentSender } returns mockk() }
+        every { anyConstructed<Intent>().setPackage(any()) } answers { self as Intent }
+        every { PendingIntent.getBroadcast(any(), any(), any(), any()) } returns pendingIntent
+        every {
+            ContextCompat.registerReceiver(context, any(), any(), ContextCompat.RECEIVER_NOT_EXPORTED)
+        } answers {
+            onRegistered(secondArg())
+            null
+        }
+        packageInstaller?.let { installer ->
+            every { installer.uninstall(PACKAGE_NAME, any()) } answers { onUninstall() }
+        }
+        try {
+            block()
+        } finally {
+            unmockkStatic(ContextCompat::class)
+            unmockkStatic(PendingIntent::class)
+            unmockkConstructor(Intent::class)
+        }
+    }
 
     private fun writeTrustMetadata(file: File, apk: File) {
         file.parentFile?.mkdirs()
@@ -782,6 +1041,7 @@ class AndroidExtensionInstallSecurityRollbackTest {
 
     private companion object {
         const val PACKAGE_NAME = "example.extension"
+        const val SYSTEM_UNINSTALL_TIMEOUT_MILLIS = 2 * 60 * 1000L
         val CANDIDATE_BYTES = "candidate-v2".toByteArray()
         val REPOSITORY = RepositoryIdentity("https://repo.example", "Official", "fingerprint")
     }
