@@ -101,7 +101,7 @@
 - Current task: `Task 5A: 共享登录会话与 Desktop Cookie 原子提交`
 - Plan checkbox: pending
 - OpenSpec mapping: `3.3` partial (do not check off until Tasks 5A-5C complete).
-- Stage: `closure-review`
+- Stage: `scope-closure-fix`
 - Task base: `fdb81e127`
 - Brief: `.superpowers/sdd/align-sources-task-5a-brief.md`
 - Risk axis: `login-session-atomicity`
@@ -142,6 +142,11 @@
 - Closure mutations: ignoring path in identity, removing cross-bucket identity replacement, or removing late-failure disk restoration each failed its named regression and was restored. Root Spotless completed 97 executed tasks; diff/scope checks PASS.
 - Final cumulative scope: 6 planned product/test files, +1235/-41 (1276 changed lines); plan/brief waiver updated for canonical identity and late-replace rollback closure.
 - Closure reviewer: `/root/task5a_closure_review` (fresh independent read-only reviewer; cumulative `fdb81e127..9bf837b91`, no test rerun).
+- Closure review result: Spec Compliance `CHANGES_REQUIRED`; Task quality `NEEDS_FIXES`; Critical 0 / Important 1 / Minor 0. All seven prior findings are CLOSED; report: `.superpowers/sdd/align-sources-task-5a-closure-review.md`.
+- Remaining finding: `commitAuthenticatedSession` removes only the target host bucket and identical incoming identities. A differently named parent-domain cookie stored under another response-host bucket still matches the target host, survives persistence, and can mix old/new account credentials despite the complete-session contract.
+- Finding evaluation: technically valid and localized to complete target-scope replacement in the existing jar transaction. Continue one narrow TDD repair without replanning or user pause.
+- Scope-closure requirement: before inserting the complete authenticated set, remove across all buckets every old cookie whose delivery scope applies to the target host (host-only exact target or domain-cookie parent match), while retaining sibling-host-only and unrelated cookies; prove memory and restart behavior with a differently named stale parent-domain cookie and mutation coverage.
+- Review/fix round: 3/3 (user-authorized engineering continuation for a narrow same-axis repair).
 
 ## Task 4D Review History
 
