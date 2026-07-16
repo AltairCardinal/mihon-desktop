@@ -47,8 +47,15 @@ class DesktopCookieJar(
     }
 
     override fun loadForRequest(url: HttpUrl): List<Cookie> {
-        val domain = url.host
-        return synchronized(mutationLock) { cookieStore[domain]?.values?.toList() ?: emptyList() }
+        val now = System.currentTimeMillis()
+        return synchronized(mutationLock) {
+            cookieStore.values
+                .asSequence()
+                .flatMap { it.values.asSequence() }
+                .filter { it.expiresAt > now && it.matches(url) }
+                .distinctBy { Triple(it.name, it.domain, it.path) }
+                .toList()
+        }
     }
 
     fun get(url: HttpUrl): List<Cookie> = loadForRequest(url)
@@ -184,11 +191,12 @@ private data class PersistedCookie(
     val expiresAt: Long,
     val secure: Boolean,
     val httpOnly: Boolean,
+    val hostOnly: Boolean = false,
 ) {
     fun toCookie(): Cookie = Cookie.Builder()
         .name(name)
         .value(value)
-        .domain(domain)
+        .apply { if (hostOnly) hostOnlyDomain(domain) else domain(domain) }
         .path(path)
         .expiresAt(expiresAt)
         .apply { if (secure) secure() }
@@ -204,6 +212,7 @@ private data class PersistedCookie(
             expiresAt = cookie.expiresAt,
             secure = cookie.secure,
             httpOnly = cookie.httpOnly,
+            hostOnly = cookie.hostOnly,
         )
     }
 }

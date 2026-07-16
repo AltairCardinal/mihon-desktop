@@ -13,56 +13,63 @@ import tachiyomi.domain.source.service.BrowserOpenResult
 import tachiyomi.domain.source.service.SourceLoginRequest
 import java.awt.Desktop
 import java.net.URI
-import java.util.UUID
 
 fun interface DesktopBrowserOpener {
-    fun open(uri: URI): Boolean
+    fun open(uri: URI, completion: DesktopBrowserLoginTicket): Boolean
+}
+
+interface DesktopBrowserLoginTicket {
+    fun complete(session: AuthenticatedSession): Boolean
+    fun cancel(): Boolean
 }
 
 class DesktopBrowserLoginCompletion {
-    private val pending = linkedMapOf<String, CompletableDeferred<BrowserLoginResult>>()
-
-    internal fun register(sessionId: String): BrowserLoginSession {
+    internal fun register(): RegisteredBrowserLogin {
         val result = CompletableDeferred<BrowserLoginResult>()
-        synchronized(pending) {
-            check(pending.put(sessionId, result) == null) { "Duplicate browser login session" }
-        }
-        return ControlledBrowserLoginSession(sessionId, result, this)
+        val ticket = ControlledBrowserLoginTicket(result)
+        return RegisteredBrowserLogin(ticket, ControlledBrowserLoginSession(result, ticket))
     }
 
-    fun complete(sessionId: String, session: AuthenticatedSession): Boolean =
-        take(sessionId)?.complete(BrowserLoginResult.Completed(session)) == true
-
-    fun cancel(sessionId: String): Boolean =
-        take(sessionId)?.complete(BrowserLoginResult.Cancelled) == true
-
-    fun pendingSessionIds(): Set<String> = synchronized(pending) { pending.keys.toSet() }
-
-    private fun take(sessionId: String): CompletableDeferred<BrowserLoginResult>? =
-        synchronized(pending) { pending.remove(sessionId) }
-
     private class ControlledBrowserLoginSession(
-        private val sessionId: String,
         private val result: CompletableDeferred<BrowserLoginResult>,
-        private val completion: DesktopBrowserLoginCompletion,
+        private val ticket: DesktopBrowserLoginTicket,
     ) : BrowserLoginSession {
         override suspend fun awaitResult(): BrowserLoginResult = result.await()
 
         override fun cancel() {
-            completion.cancel(sessionId)
+            ticket.cancel()
         }
     }
+
+    private class ControlledBrowserLoginTicket(
+        private val result: CompletableDeferred<BrowserLoginResult>,
+    ) : DesktopBrowserLoginTicket {
+        override fun complete(session: AuthenticatedSession): Boolean =
+            result.complete(BrowserLoginResult.Completed(session))
+
+        override fun cancel(): Boolean = result.complete(BrowserLoginResult.Cancelled)
+
+        override fun toString(): String = "DesktopBrowserLoginTicket(<opaque>)"
+    }
 }
+
+internal data class RegisteredBrowserLogin(
+    val ticket: DesktopBrowserLoginTicket,
+    val session: BrowserLoginSession,
+)
 
 class DesktopBrowserLoginAdapter(
     private val browserOpener: DesktopBrowserOpener = SystemDesktopBrowserOpener,
     private val completion: DesktopBrowserLoginCompletion,
 ) : BrowserLoginAdapter {
     override suspend fun open(request: SourceLoginRequest): BrowserOpenResult {
-        val opened = runCatching { browserOpener.open(request.url.toUri()) }.getOrDefault(false)
-        if (!opened) return BrowserOpenResult.Unavailable
-        val sessionId = UUID.randomUUID().toString()
-        return BrowserOpenResult.Opened(completion.register(sessionId))
+        val registered = completion.register()
+        val opened = runCatching { browserOpener.open(request.url.toUri(), registered.ticket) }.getOrDefault(false)
+        if (!opened) {
+            registered.ticket.cancel()
+            return BrowserOpenResult.Unavailable
+        }
+        return BrowserOpenResult.Opened(registered.session)
     }
 }
 
@@ -75,7 +82,7 @@ class DesktopAuthenticatedSessionCommitter(
 }
 
 private object SystemDesktopBrowserOpener : DesktopBrowserOpener {
-    override fun open(uri: URI): Boolean {
+    override fun open(uri: URI, completion: DesktopBrowserLoginTicket): Boolean {
         if (!Desktop.isDesktopSupported()) return false
         val desktop = Desktop.getDesktop()
         if (!desktop.isSupported(Desktop.Action.BROWSE)) return false

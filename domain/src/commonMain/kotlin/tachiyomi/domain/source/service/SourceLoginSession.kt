@@ -1,10 +1,12 @@
 package tachiyomi.domain.source.service
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import okhttp3.HttpUrl
 
@@ -89,26 +91,32 @@ class SourceLoginSession(
     suspend fun login(request: SourceLoginRequest): SourceLoginState {
         mutableState.value = SourceLoginState.OpeningBrowser
         var browserSession: BrowserLoginSession? = null
-        return try {
+        val browserPhase = try {
             withTimeout(request.timeoutMillis) {
                 when (val opened = browserAdapter.open(request)) {
-                    BrowserOpenResult.Unavailable -> finish(SourceLoginState.BrowserUnavailable)
+                    BrowserOpenResult.Unavailable -> BrowserPhase.Unavailable
                     is BrowserOpenResult.Opened -> {
                         browserSession = opened.session
                         mutableState.value = SourceLoginState.AwaitingCookies
                         when (val result = opened.session.awaitResult()) {
-                            BrowserLoginResult.Cancelled -> finish(SourceLoginState.Cancelled)
-                            is BrowserLoginResult.Completed -> commitValidated(request, result.session)
+                            BrowserLoginResult.Cancelled -> BrowserPhase.Cancelled
+                            is BrowserLoginResult.Completed -> BrowserPhase.Completed(result.session)
                         }
                     }
                 }
             }
         } catch (_: TimeoutCancellationException) {
             browserSession?.cancel()
-            finish(SourceLoginState.TimedOut)
+            return finish(SourceLoginState.TimedOut)
         } catch (error: CancellationException) {
             browserSession?.cancel()
+            finish(SourceLoginState.Cancelled)
             throw error
+        }
+        return when (browserPhase) {
+            BrowserPhase.Unavailable -> finish(SourceLoginState.BrowserUnavailable)
+            BrowserPhase.Cancelled -> finish(SourceLoginState.Cancelled)
+            is BrowserPhase.Completed -> commitValidated(request, browserPhase.session)
         }
     }
 
@@ -124,13 +132,13 @@ class SourceLoginSession(
             return finish(SourceLoginState.InvalidCookies(missing.toSortedSet(), rejected))
         }
 
-        return try {
-            committer.commit(request, session)
-            finish(SourceLoginState.Authenticated(session.cookieNames, session.cookies.size))
-        } catch (error: CancellationException) {
-            throw error
-        } catch (_: Exception) {
-            finish(SourceLoginState.CommitFailed)
+        return withContext(NonCancellable) {
+            try {
+                committer.commit(request, session)
+                finish(SourceLoginState.Authenticated(session.cookieNames, session.cookies.size))
+            } catch (_: Exception) {
+                finish(SourceLoginState.CommitFailed)
+            }
         }
     }
 
@@ -138,6 +146,12 @@ class SourceLoginSession(
         mutableState.value = terminal
         return terminal
     }
+}
+
+private sealed interface BrowserPhase {
+    data object Unavailable : BrowserPhase
+    data object Cancelled : BrowserPhase
+    data class Completed(val session: AuthenticatedSession) : BrowserPhase
 }
 
 private fun AuthenticatedCookie.matches(requestHost: String): Boolean {

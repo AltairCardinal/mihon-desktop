@@ -3,6 +3,7 @@ package tachiyomi.domain.source.service
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -139,6 +140,35 @@ class SourceLoginSessionTest {
     }
 
     @Test
+    fun `deadline stops at browser result and cannot report timeout after atomic commit starts`() = runTest {
+        val browserSession = TestBrowserSession()
+        val commitStarted = CompletableDeferred<Unit>()
+        val releaseCommit = CompletableDeferred<Unit>()
+        var commits = 0
+        val login = SourceLoginSession(
+            browserAdapter = BrowserLoginAdapter { BrowserOpenResult.Opened(browserSession) },
+            committer = AuthenticatedSessionCommitter { _, _ ->
+                commitStarted.complete(Unit)
+                releaseCommit.await()
+                commits += 1
+            },
+        )
+        val result = async { login.login(request(timeoutMillis = 1_000)) }
+        runCurrent()
+        browserSession.complete(AuthenticatedSession(listOf(cookie("session", "secret", "reader.example.com"))))
+        commitStarted.await()
+
+        advanceTimeBy(1_001)
+        runCurrent()
+
+        assertFalse(result.isCompleted, "an in-flight atomic commit must finish with its real outcome")
+        assertFalse(login.state.value is SourceLoginState.TimedOut)
+        releaseCommit.complete(Unit)
+        assertInstanceOf(SourceLoginState.Authenticated::class.java, result.await())
+        assertEquals(1, commits)
+    }
+
+    @Test
     fun `browser unavailable performs zero commits`() = runTest {
         var commits = 0
         val login = SourceLoginSession(
@@ -170,18 +200,89 @@ class SourceLoginSessionTest {
     }
 
     @Test
-    fun `coroutine cancellation during commit is propagated`() = runTest {
+    fun `caller cancellation while opening publishes cancelled`() = runTest {
+        val openStarted = CompletableDeferred<Unit>()
+        val login = SourceLoginSession(
+            browserAdapter = BrowserLoginAdapter {
+                openStarted.complete(Unit)
+                awaitCancellation()
+            },
+            committer = AuthenticatedSessionCommitter { _, _ -> error("must not commit") },
+        )
+        val result = async { login.login(request()) }
+        openStarted.await()
+
+        result.cancel()
+        runCurrent()
+
+        assertEquals(SourceLoginState.Cancelled, login.state.value)
+    }
+
+    @Test
+    fun `caller cancellation while awaiting cookies publishes cancelled and rejects late completion`() = runTest {
         val browserSession = TestBrowserSession()
+        var commits = 0
+        val login = session(browserSession) { commits += 1 }
+        val result = async { login.login(request()) }
+        runCurrent()
+
+        result.cancel()
+        runCurrent()
+        browserSession.complete(AuthenticatedSession(listOf(cookie("late", "secret", "reader.example.com"))))
+        runCurrent()
+
+        assertEquals(SourceLoginState.Cancelled, login.state.value)
+        assertTrue(browserSession.cancelled)
+        assertEquals(0, commits)
+    }
+
+    @Test
+    fun `caller cancellation after atomic commit starts waits for authenticated outcome`() = runTest {
+        val browserSession = TestBrowserSession()
+        val commitStarted = CompletableDeferred<Unit>()
+        val releaseCommit = CompletableDeferred<Unit>()
         val login = SourceLoginSession(
             browserAdapter = BrowserLoginAdapter { BrowserOpenResult.Opened(browserSession) },
-            committer = AuthenticatedSessionCommitter { _, _ -> throw CancellationException("cancelled") },
+            committer = AuthenticatedSessionCommitter { _, _ ->
+                commitStarted.complete(Unit)
+                releaseCommit.await()
+            },
         )
         val result = async { login.login(request()) }
         runCurrent()
 
         browserSession.complete(AuthenticatedSession(listOf(cookie("session", "secret", "reader.example.com"))))
+        commitStarted.await()
+        result.cancel(CancellationException("caller cancelled"))
+        releaseCommit.complete(Unit)
+        runCurrent()
 
-        assertTrue(runCatching { result.await() }.exceptionOrNull() is CancellationException)
+        assertInstanceOf(SourceLoginState.Authenticated::class.java, login.state.value)
+    }
+
+    @Test
+    fun `caller cancellation after atomic commit starts waits for commit failed outcome`() = runTest {
+        val browserSession = TestBrowserSession()
+        val commitStarted = CompletableDeferred<Unit>()
+        val releaseCommit = CompletableDeferred<Unit>()
+        val login = SourceLoginSession(
+            browserAdapter = BrowserLoginAdapter { BrowserOpenResult.Opened(browserSession) },
+            committer = AuthenticatedSessionCommitter { _, _ ->
+                commitStarted.complete(Unit)
+                releaseCommit.await()
+                error("persistence failed")
+            },
+        )
+        val result = async { login.login(request()) }
+        runCurrent()
+
+        browserSession.complete(AuthenticatedSession(listOf(cookie("session", "secret", "reader.example.com"))))
+        commitStarted.await()
+        result.cancel(CancellationException("caller cancelled"))
+        releaseCommit.complete(Unit)
+        runCurrent()
+
+        assertEquals(SourceLoginState.CommitFailed, login.state.value)
     }
 
     private fun session(
