@@ -114,7 +114,8 @@
 - Verification: root Spotless and `git diff --check` PASS. Device-level PackageInstaller instrumentation remains a stated runtime boundary, not a JVM completion claim.
 - Changed scope: 6 plan-listed Android product/test files, +1118/-242 (1360 changed lines); concrete Split waiver updated for the inseparable 519-line gateway seam and 463-line production matrix.
 - Review package: `.superpowers/sdd/align-sources-task-4d-review.diff` (base `bb4c235bd`, product head `8733aa805`).
-- Reviewer: pending fresh independent read-only thorough review.
+- Reviewer: `/root/task4d_review` (fresh independent read-only thorough review; no test rerun).
+- Review/fix round: 0/2.
 
 ## Task 4C Review History
 
