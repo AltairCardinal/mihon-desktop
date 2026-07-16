@@ -38,7 +38,9 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - [x] Task 4B：Desktop install port 与 reload 回滚
 - [x] Task 4C：Android 安装事务/session 生命周期
 - [x] Task 4D：Android 信任、receiver 可见性与精确回滚
-- [ ] Task 5：Desktop 浏览器登录、Cookie 原子回传与 FlareSolverr 显式后备
+- [ ] Task 5A：共享登录会话与 Desktop Cookie 原子提交
+- [ ] Task 5B：Desktop 挑战恢复策略与 FlareSolverr 显式后备
+- [ ] Task 5C：Desktop 登录设置、UI 与 production wiring
 - [ ] Task 6A：Browse 共享状态 wiring
 - [ ] Task 6B：Extension UI、DI 与 i18n wiring
 - [ ] Task 6C：Test Mode、导航与自动化观察
@@ -417,58 +419,95 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
   Commit: `fix(android): enforce trusted atomic extension installs`
 
-### Task 5: Desktop 浏览器登录、Cookie 原子回传与 FlareSolverr 显式后备
+### Task 5A: 共享登录会话与 Desktop Cookie 原子提交
 
-**OpenSpec mapping:** 3.3
+**OpenSpec mapping:** 3.3（会话状态、取消/超时、Cookie 回传原子性）
 
-**Risk axis:** authentication-session
+**Risk axis:** login-session-atomicity
 **Platform boundary:** shared+desktop
-**Estimated scope:** 8 files, 400 lines
-**Verification:** 运行共享登录会话、Desktop 浏览器 adapter、Cookie 导入和 FlareSolverr 测试，确认取消/超时不写 Cookie 且后备仅由用户显式触发。
+**Estimated scope:** 6 files, 400 lines
+**Verification:** 运行共享登录会话、Desktop browser adapter 与真实 `DesktopCookieJar` 行为测试；确认 success 只提交目标域完整 Cookie set 一次，cancel/timeout/browser unavailable 不写 jar 且保留旧 Cookie。
 
 **Files:**
 - Create: `domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceLoginSession.kt`
 - Create: `domain/src/jvmTest/kotlin/tachiyomi/domain/source/service/SourceLoginSessionTest.kt`
 - Create: `app-desktop/src/main/kotlin/mihon/desktop/network/DesktopBrowserLoginAdapter.kt`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/network/DesktopBrowserLoginAdapterTest.kt`
-- Modify: `app-desktop/src/main/kotlin/mihon/desktop/network/DesktopCookieJar.kt`
-- Modify: `app-desktop/src/main/kotlin/mihon/desktop/network/DesktopCloudflareInterceptor.kt`
-- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/cloudflare/CloudflareBypassDialog.kt`
-- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/home/HomeScreen.kt`
+- Modify: `core/common/src/jvmMain/kotlin/eu/kanade/tachiyomi/network/DesktopCookieJar.kt`
+- Modify: `core/common/src/jvmTest/kotlin/eu/kanade/tachiyomi/network/DesktopCookieJarTest.kt`
 
 **Interfaces:**
-- Produces: `SourceLoginRequest`, `SourceLoginState`, `AuthenticatedSession`, `BrowserLoginAdapter.open(request)`。
-- Cookie commit 接受完整 session cookie set；取消/超时调用不得写入 jar。
+- Produces: `SourceLoginRequest`、`SourceLoginState`、`AuthenticatedSession`、`BrowserLoginAdapter.open(request)`；Desktop 外部浏览器无法读取浏览器私有 Cookie，adapter 通过受控 completion seam 接收 UI/平台捕获的完整 session。
+- `DesktopCookieJar` 提供目标域 session 的一次性验证与原子替换；磁盘持久化失败不得留下内存半提交或覆盖既有 Cookie。
 
-- [ ] **Step 1: 写 RED 会话状态测试**
+- [ ] **Step 1: 写 shared session 与 Cookie 原子性 RED**
+- [ ] **Step 2: 运行 RED 并确认 success/cancel/timeout/unavailable/domain-filter/atomic-persist 的失败原因**
+- [ ] **Step 3: 实现最小 shared session、Desktop adapter 与 jar 原子提交**
+- [ ] **Step 4: 运行 GREEN、旧 Cookie jar 持久化回归与 mutation**
+- [ ] **Step 5: 提交 Task 5A**
 
-  覆盖 success、cancel、timeout、browser unavailable、Cookie 域过滤、原子提交、已有 Cookie 在失败时保持不变、日志/诊断脱敏。
+  Run: `./gradlew :domain:jvmTest --tests "tachiyomi.domain.source.service.SourceLoginSessionTest" :app-desktop:jvmTest --tests "mihon.desktop.network.DesktopBrowserLoginAdapterTest" :core:common:jvmTest --tests "eu.kanade.tachiyomi.network.DesktopCookieJarTest"`
+  Commit: `feat(desktop): add atomic source login sessions`
 
-- [ ] **Step 2: 运行 RED**
+### Task 5B: Desktop 挑战恢复策略与 FlareSolverr 显式后备
 
-  Run: `./gradlew :domain:jvmTest --tests "tachiyomi.domain.source.service.SourceLoginSessionTest" :app-desktop:jvmTest --tests "mihon.desktop.network.DesktopBrowserLoginAdapterTest"`
-  Expected: FAIL，缺少 shared session 与 Desktop adapter。
+**OpenSpec mapping:** 3.3（挑战恢复动作与显式后备策略）
 
-- [ ] **Step 3: 实现共享状态与 Desktop adapter**
+**Risk axis:** challenge-recovery-policy
+**Platform boundary:** desktop
+**Estimated scope:** 5 files, 320 lines
+**Verification:** 运行真实 interceptor/challenge manager 策略测试，确认 403/503 只发布登录请求；browser、手动 Cookie 和 FlareSolverr 均由显式用户 intent 触发，取消/超时不清除或写入凭据，solver 从不由 interceptor 自动调用。
 
-  adapter 可取消并使用有界 timeout；只有获取目标域所需 Cookie 后构造 `AuthenticatedSession` 并一次性写 jar。取消/超时返回可恢复状态，不改已有 Cookie。
+**Files:**
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/network/CloudflareChallenge.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/network/CloudflareChallengeManager.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/network/DesktopCloudflareInterceptor.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/network/FlareSolverrClient.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/network/DesktopChallengeRecoveryPolicyTest.kt`
 
-- [ ] **Step 4: 将 FlareSolverr 改为显式后备**
+**Interfaces:**
+- Consumes: Task 5A `SourceLoginRequest`/session completion；produces explicit `OpenBrowser`、`SubmitManualCookies`、`UseFlareSolverr`、`Cancel`/`Retry` intents。
+- Interceptor 只检测挑战、等待有界 session terminal 并重试一次；不得删除已有 clearance Cookie 后再等待失败，也不得直接持有或调用 solver。
 
-  正常 403/挑战先发布 OpenLogin；仅当用户设置启用且在错误 UI 选择“使用 FlareSolverr 后备”时调用 client。不得在 interceptor 内静默自动求解。
+- [ ] **Step 1: 写 challenge policy/旧 Cookie 保留/solver 非自动调用 RED**
+- [ ] **Step 2: 运行 RED 并确认现有 latch/clear-first 行为失败**
+- [ ] **Step 3: 实现显式恢复 intents 与有界 terminal**
+- [ ] **Step 4: 运行 GREEN、FlareSolverr HTTP 回归与 mutation**
+- [ ] **Step 5: 提交 Task 5B**
 
-- [ ] **Step 5: 接入 UI 反馈**
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.network.DesktopChallengeRecoveryPolicyTest" --tests "mihon.desktop.network.FlareSolverrClientTest"`
+  Commit: `refactor(desktop): require explicit challenge recovery`
 
-  对话框展示目标域、登录进度、取消、超时、重试、手动 Cookie 导入和可选 FlareSolverr；错误不泄漏 Cookie 值。
+### Task 5C: Desktop 登录设置、UI 与 production wiring
 
-- [ ] **Step 6: 运行 GREEN**
+**OpenSpec mapping:** 3.3、3.5（登录 UI、用户设置、脱敏与 i18n）
 
-  Run: `./gradlew :domain:jvmTest --tests "tachiyomi.domain.source.service.SourceLoginSessionTest" :app-desktop:jvmTest --tests "mihon.desktop.network.DesktopBrowserLoginAdapterTest" --tests "mihon.desktop.network.CloudflareCookieImportTest" --tests "mihon.desktop.network.FlareSolverrClientTest"`
-  Expected: 全部 PASS，取消/超时写入次数为 0。
+**Risk axis:** challenge-login-ui-wiring
+**Platform boundary:** desktop
+**Estimated scope:** 7 files, 400 lines
+**Verification:** 运行 UI/DI production-wiring 测试，确认对话框展示目标域、进度、取消、超时、重试、手动导入；仅在设置启用且 URL 有效时显示并执行 FlareSolverr，所有日志/状态不包含 Cookie 值，触达文案使用 i18n。
 
-- [ ] **Step 7: 提交 Task 5**
+**Files:**
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/settings/DesktopAppPreferences.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreen.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/cloudflare/CloudflareBypassDialog.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/home/HomeScreen.kt`
+- Modify: `i18n/src/commonMain/moko-resources/base/strings.xml`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/cloudflare/DesktopChallengeLoginWiringTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt`
 
-  Commit: `feat(desktop): add recoverable source browser login`
+**Interfaces:**
+- Consumes: Task 5A/5B session、recovery intents、Cookie commit 与 solver client；production UI 是所有用户可见 recovery intent 的唯一触发入口。
+- FlareSolverr 默认关闭；启用开关与 URL 都持久化，URL 无效时 UI 给出可执行反馈而不发网络请求。
+
+- [ ] **Step 1: 写设置、UI 状态、DI 与脱敏 production-wiring RED**
+- [ ] **Step 2: 运行 RED 并确认入口/反馈/显式后备缺失**
+- [ ] **Step 3: 实现 i18n 设置与对话框 intents，接通 HomeScreen production session**
+- [ ] **Step 4: 运行 GREEN、Screen/DI/资源完整性与 mutation**
+- [ ] **Step 5: 提交 Task 5C**
+
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.cloudflare.DesktopChallengeLoginWiringTest" --tests "mihon.desktop.di.DesktopDiWiringTest" --tests "mihon.desktop.network.CloudflareCookieImportTest" --tests "mihon.desktop.network.FlareSolverrClientTest"`
+  Commit: `feat(desktop): wire recoverable source browser login`
 
 ### Task 6A: Browse 共享状态 wiring
 
