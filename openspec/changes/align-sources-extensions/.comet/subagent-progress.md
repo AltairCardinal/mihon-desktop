@@ -124,6 +124,7 @@
 - Finding evaluation: all five are technically valid. Findings 1-3/5 stay in the original Desktop files. Finding 4 must be fixed once in Task 5A shared validation for browser/manual/solver parity, so the repair boundary expands to 7 files and `shared+desktop`; duplicating the rule in solver would create new platform debt.
 - Repair requirements: persist/apply nonblank solver UA to the single retry and later matching requests; atomically arbitrate action registration, deadline/cancel, commit claim and terminal/state so pre-claim cancellation wins with zero writes while post-claim cancellation waits for the real atomic outcome; reject blank required values in shared validation; cover 403/429/500/missing solution, blank UA/value, cancel-before-register, deadline/slow failure, blocking commit in both race directions, and UA request headers with mutations.
 - Review/fix round: 1/2.
+- Fix agent: `/root/task5b_fix1` (fresh TDD repair agent; five review findings within the approved 7-file shared+desktop boundary).
 
 ## Task 5A Review History
 
