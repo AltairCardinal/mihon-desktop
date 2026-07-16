@@ -25,6 +25,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import logcat.LogPriority
+import mihon.domain.error.AppError
+import mihon.domain.extension.service.ExtensionInstallFailure
 import mihon.domain.extension.service.ExtensionUpdatePolicy
 import mihon.domain.extension.service.SharedExtensionUpdatePolicy
 import tachiyomi.core.common.util.lang.withUIContext
@@ -67,7 +69,7 @@ class ExtensionManager internal constructor(
     /**
      * The installer which installs, updates and uninstalls the extensions.
      */
-    private val installer by lazy { ExtensionInstaller(context) }
+    private val installer by lazy { ExtensionInstaller(context, ::reloadInstalledExtension) }
 
     private val iconMap = mutableMapOf<String, Drawable>()
 
@@ -315,6 +317,24 @@ class ExtensionManager internal constructor(
      */
     private fun registerUpdatedExtension(extension: Extension.Installed) {
         installedExtensionMapFlow.value += extension
+    }
+
+    private suspend fun reloadInstalledExtension(pkgName: String) {
+        when (val result = ExtensionLoader.loadExtensionFromPkgName(context, pkgName)) {
+            is LoadResult.Success -> {
+                untrustedExtensionMapFlow.value -= pkgName
+                registerUpdatedExtension(result.extension.withUpdateCheck())
+                updatePendingUpdatesCount()
+            }
+            is LoadResult.Untrusted -> {
+                installedExtensionMapFlow.value -= pkgName
+                untrustedExtensionMapFlow.value += result.extension
+                updatePendingUpdatesCount()
+            }
+            else -> throw ExtensionInstallFailure(
+                AppError.MalformedData(IllegalStateException("Installed extension could not be reloaded: $pkgName")),
+            )
+        }
     }
 
     /**
