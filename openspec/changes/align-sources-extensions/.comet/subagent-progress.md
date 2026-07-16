@@ -101,7 +101,7 @@
 - Current task: `Task 5A: 共享登录会话与 Desktop Cookie 原子提交`
 - Plan checkbox: pending
 - OpenSpec mapping: `3.3` partial (do not check off until Tasks 5A-5C complete).
-- Stage: `scope-closure-fix`
+- Stage: `scope-closure-review`
 - Task base: `fdb81e127`
 - Brief: `.superpowers/sdd/align-sources-task-5a-brief.md`
 - Risk axis: `login-session-atomicity`
@@ -148,6 +148,11 @@
 - Scope-closure requirement: before inserting the complete authenticated set, remove across all buckets every old cookie whose delivery scope applies to the target host (host-only exact target or domain-cookie parent match), while retaining sibling-host-only and unrelated cookies; prove memory and restart behavior with a differently named stale parent-domain cookie and mutation coverage.
 - Review/fix round: 3/3 (user-authorized engineering continuation for a narrow same-axis repair).
 - Scope-closure fix agent: `/root/task5a_scope_fix` (fresh TDD implementer; target-host delivery-scope cleanup only).
+- Scope-closure fix commit: `19431644f` (`fix(desktop): replace complete login cookie scope`).
+- Scope-closure RED/GREEN: `/legacy/account` deterministically returned both `legacy_session=old-secret` and `session=new-secret`, with the old secret also persisted; GREEN removes every cookie deliverable to the login target across buckets before inserting the complete set, while preserving sibling host-only and unrelated cookies in memory and after restart.
+- Scope-closure mutation: reverting to target-bucket-only deletion reproduced the named RED and was restored.
+- Scope-closure verification: SourceLoginSession 13 + Desktop adapter 6 + CookieJar 21 + persistence 8 = 48/48 PASS, 0 failures/errors/skips; root Spotless 97 executed tasks PASS; diff/scope checks PASS.
+- Final cumulative scope: 6 planned product/test files, +1296/-41 (1337 changed lines); plan/brief waiver updated for complete target delivery-scope replacement.
 
 ## Task 4D Review History
 
