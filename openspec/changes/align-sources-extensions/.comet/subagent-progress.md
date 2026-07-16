@@ -101,7 +101,7 @@
 - Current task: `Task 5A: 共享登录会话与 Desktop Cookie 原子提交`
 - Plan checkbox: pending
 - OpenSpec mapping: `3.3` partial (do not check off until Tasks 5A-5C complete).
-- Stage: `final-review`
+- Stage: `closure-fix`
 - Task base: `fdb81e127`
 - Brief: `.superpowers/sdd/align-sources-task-5a-brief.md`
 - Risk axis: `login-session-atomicity`
@@ -130,6 +130,11 @@
 - Final cumulative scope: 6 planned product/test files, +1060/-35 (1095 changed lines); plan/brief waiver updated for the review-expanded atomicity matrix.
 - Re-review package: `.superpowers/sdd/align-sources-task-5a-rereview.diff` (cumulative base `fdb81e127`, product head `1e9bd472b`).
 - Re-reviewer: `/root/task5a_rereview` (fresh independent read-only closure review; no test rerun).
+- Re-review result: Spec Compliance `CHANGES_REQUIRED`; Task quality `NEEDS_FIXES`; Critical 0 / Important 2 / Minor 0. Original timeout, cancellation, initiator-ticket, Cookie matching/hostOnly, production-chain, and lock-barrier concerns are closed; two narrower jar transaction defects remain. Report: `.superpowers/sdd/align-sources-task-5a-rereview.md`.
+- Remaining findings: (1) cookie storage is still keyed/deduplicated by name, so same-name different-path cookies collapse and an old duplicate identity in another bucket may win nondeterministically after login; (2) a replace callback that moves the new file successfully and then throws restores memory only, leaving new credentials on disk while reporting `CommitFailed`.
+- Finding evaluation: both findings are technically valid and remain inside the existing `login-session-atomicity` risk axis and six-file boundary. A narrow second TDD repair is sufficient, so continue without a user decision point.
+- Closure repair requirements: use a canonical cookie identity including name/domain/path, preserve valid same-name different-path cookies, make the authenticated session's value deterministically replace stale identical identities across buckets, and restore exact prior disk bytes/existence when replacement throws after the target has already changed. Add deterministic RED, production-path, and rollback mutation evidence.
+- Review/fix round: 2/2 (user-authorized engineering continuation when one narrow repair is sufficient).
 
 ## Task 4D Review History
 
