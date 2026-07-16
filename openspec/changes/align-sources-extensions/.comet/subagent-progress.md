@@ -100,7 +100,7 @@
 
 - Current task: `Task 4C: Android 安装事务/session 生命周期`
 - Plan checkbox: pending（原 4C 实现提交作为本 Task 的基线，未通过审查，不视为已完成）
-- Stage: `final-fix`
+- Stage: `spec-review`
 - Task execution base: `53758e118d8024a593d72645f3aa6034de193a46`
 - Original Task 4C base: `905a8d5c120b337c5c77f8bbe064111c9ed1ba9c`
 - Implementer: `/root/task4c_session_impl`
@@ -143,6 +143,13 @@
 - Remaining Minor: high-level `completedTransactions` is an unbounded UUID set; replace it with a bounded TTL/active-lifecycle-safe exactly-once tombstone and prove pruning does not admit duplicate terminals for active/recent transactions.
 - User override: the user explicitly rejected mechanical review-round stops when one further narrow repair is sufficient. Both remaining findings are localized to the same high-level transaction lifecycle and are assessed as closable in one extra TDD repair/re-review without replanning.
 - Extra fix agent: `/root/task4c_session_fix3` (fresh agent; deterministic startup-cancel linearization plus bounded high-level terminal tombstones).
+- Extra fix commit: `f02ac6b15965183885f89e2dd2d29521086b3a0f` (`fix(android): linearize extension install startup cancellation`).
+- Extra fix evidence: deterministic latch-based RED pauses after cancellation guard but before platformResults registration and observes premature Idle; pruning RED demonstrates unbounded 512+ UUID history; per-transaction lifecycle lock and active-safe five-minute completed tombstones make both GREEN.
+- Extra mutations: removing shared synchronization reproduces the startup race; disabling completed-tombstone pruning exceeds the bounded history assertion. Both were restored.
+- Extra verification: lifecycle+wiring 22/22 PASS; related Manager/PackageInstaller/Shizuku filter 3/3 PASS; root Spotless 61 tasks PASS; diff check PASS.
+- Cumulative product scope: 7 files, +1271/-93 (1364 changed lines); plan/brief waiver updated for deterministic startup-cancel and TTL coverage.
+- Extra final review package: `.superpowers/sdd/align-sources-task-4c-session-extra-final-review.diff` (cumulative base `b645e4af9`, head `f02ac6b15`).
+- Extra final reviewer: pending fresh independent reviewer.
 - Review/fix round: 3/3
 - Review/fix round: 2/2
 - Implementation commit: `9965e22577746c31e59435cdd35f4b30e677c020` (`refactor(android): adapt transactional extension install`).
