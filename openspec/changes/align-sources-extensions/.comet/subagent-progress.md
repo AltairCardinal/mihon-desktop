@@ -154,7 +154,7 @@
 - Remaining Important: the shared lock closes guard-before-registration, but lifecycle has no persistent handoff phase. After platform result is consumed and `platformResults` removed while coordinator reload/rollback/cleanup/flight is still active, public cancel can again take the no-platform direct-Idle branch. Add explicit `NEW/HANDED_OFF/FINISHING/COMPLETE` phase/CAS and allow direct terminal only for genuinely never-handed-off work.
 - Remaining Minor: completed-tombstone pruning must explicitly protect active job/coordinator flight through a lifecycle reference and test active-flight expiry, not infer safety from only activeSteps/platformResults/activeTransactions.
 - User override: continue one narrow phase-state repair rather than stop at a mechanical round limit; this extends the same per-transaction lifecycle introduced in round 3 and does not require replanning.
-- Phase fix agent: pending fresh agent.
+- Phase fix agent: `/root/task4c_session_fix4` (fresh agent; persistent handoff/finishing phase and active-flight-safe pruning).
 - Review/fix round: 4/4
 - Review/fix round: 3/3
 - Review/fix round: 2/2
