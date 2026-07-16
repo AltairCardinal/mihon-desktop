@@ -137,7 +137,7 @@
 - Final concern: JVM cannot instantiate the real Shizuku Binder class because Android stub `Binder.attachInterface` fails during static initialization; test executes the real shared `Installer` production lifecycle with Shizuku's exact `cancelEntry=false` and delayed-callback semantics, and the mutation kills the erroneous terminal path. No Shizuku/AIDL production change.
 - Cumulative product scope: 7 files, +1038/-93 (1131 changed lines); plan/brief waiver updated for the final reviewed lifecycle matrix.
 - Final review package: `.superpowers/sdd/align-sources-task-4c-session-final-review.diff` (cumulative base `b645e4af9`, head `dfa440822`).
-- Final reviewer: pending fresh independent reviewer.
+- Final reviewer: `/root/task4c_session_final_review` (fresh independent read-only reviewer; final closure gate after repair round 2/2).
 - Review/fix round: 2/2
 - Implementation commit: `9965e22577746c31e59435cdd35f4b30e677c020` (`refactor(android): adapt transactional extension install`).
 - Scope: 3 brief-listed files, +572/-85 (657 changed lines); the plan records a concrete Split waiver for the inseparable Android production wiring, platform transaction adapter, and integration test.
