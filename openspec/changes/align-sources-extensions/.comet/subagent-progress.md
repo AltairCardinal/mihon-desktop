@@ -172,7 +172,8 @@
 - Unsubscribe verification: Android lifecycle+wiring 27/27; shared coordinator 21/21; Manager filter 2/2 plus Shizuku lifecycle 1/1; root Spotless 61 tasks and diff check PASS.
 - Scope expansion: the existing coordinator exposed no true flight-completion signal to the Android adapter. A minimal shared internal sequencing change now makes only the last subscriber wait non-cancellably for the existing completion after rollback/restore/cleanup and inFlight removal; multi-subscriber cancellation remains immediate. No public capability or Desktop port behavior was added.
 - Cumulative product scope: 9 shared+Android files, +1916/-100 (2016 changed lines); plan/brief boundary and concrete waiver updated.
-- Unsubscribe closure reviewer: pending fresh independent read-only dispatch.
+- Unsubscribe closure reviewer: `/root/task4c_unsubscribe_review` (fresh independent read-only review of the bounded repair delta; no test rerun).
+- Unsubscribe review package: `.superpowers/sdd/align-sources-task-4c-session-unsubscribe-review.diff` (`fc41f0d87..4f1f3854e`).
 - Review/fix round: 3/3
 - Review/fix round: 2/2
 - Implementation commit: `9965e22577746c31e59435cdd35f4b30e677c020` (`refactor(android): adapt transactional extension install`).
