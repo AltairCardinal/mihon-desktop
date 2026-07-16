@@ -146,6 +146,7 @@
 - User-authorized engineering override: do not stop at the mechanical 2/2 review limit when one narrow repair is sufficient. Continue one closure TDD repair within the same `android-install-trust-rollback` axis and the same three-file boundary, without replanning or user pause.
 - Closure repair requirements: atomically represent/hand off system attempt teardown so cancellation cannot publish Idle or drop receiver gating before outer rollback/cleanup; add a deterministic post-map-removal/pre-lifecycle-complete RED. Reject private/system installed APK package mismatch and non-extension metadata before commit, preserving physical APK and sidecar bytes; add real Default gateway parameterized REDs.
 - Review/fix round: 3/3 (explicit user override of mechanical limit).
+- Closure fix agent: `/root/task4d_fix3` (fresh TDD implementer; bounded to `ExtensionInstaller.kt` and the two existing production-wiring test files).
 
 ## Task 4C Review History
 
