@@ -101,7 +101,7 @@
 - Current task: `Task 4D: Android 信任、receiver 可见性与精确回滚`
 - Plan checkbox: pending
 - OpenSpec mappings: `2.2`, `2.3`, `3.1`, `3.2` (Android artifact trust, PackageInstaller/signing boundary, receiver visibility, and exact rollback topology; do not check off shared mappings until all mapped work is complete).
-- Stage: `final-review`
+- Stage: `closure-fix`
 - Task base: `5a17935c1c5241c163c26de5e8bf742121b8b659`
 - Implementer: `/root/task4d_impl` (fresh TDD agent; one implementation task only).
 - Brief: `.superpowers/sdd/align-sources-task-4d-brief.md`
@@ -141,6 +141,11 @@
 - Final cumulative product/test scope from `bb4c235bd` to `f1a9b7ef1`: 7 Android files, +2378/-246 (2624 changed lines); plan/brief waiver updated for the review-expanded production matrix.
 - Final review package: `.superpowers/sdd/align-sources-task-4d-final-review.diff` (cumulative base `bb4c235bd`, product head `f1a9b7ef1`).
 - Final reviewer: `/root/task4d_final_review` (fresh independent read-only closure review; no test rerun).
+- Final review result: Spec Compliance `CHANGES_REQUIRED`; Task quality `NEEDS_FIXES`; Critical 0 / Important 2 / Minor 0. Prior uninstall finding and inspect-null finding are CLOSED; teardown cancellation remains OPEN in the post-map-removal window, and APK identity/extension-feature metadata cross-wiring is newly OPEN. Report: `.superpowers/sdd/align-sources-task-4d-final-review.md`.
+- Finding evaluation: both findings are technically valid. The deterministic map hook blocks before `super.remove()`, while production still has a map-absent/child-lifecycle-active window that misroutes cancellation to the parent `NEW` branch; `installedPackage()` also reads the requested package sidecar without verifying the inspected APK package/feature and rollback derives its target from the mismatched APK.
+- User-authorized engineering override: do not stop at the mechanical 2/2 review limit when one narrow repair is sufficient. Continue one closure TDD repair within the same `android-install-trust-rollback` axis and the same three-file boundary, without replanning or user pause.
+- Closure repair requirements: atomically represent/hand off system attempt teardown so cancellation cannot publish Idle or drop receiver gating before outer rollback/cleanup; add a deterministic post-map-removal/pre-lifecycle-complete RED. Reject private/system installed APK package mismatch and non-extension metadata before commit, preserving physical APK and sidecar bytes; add real Default gateway parameterized REDs.
+- Review/fix round: 3/3 (explicit user override of mechanical limit).
 
 ## Task 4C Review History
 
