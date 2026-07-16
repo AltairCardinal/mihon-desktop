@@ -172,3 +172,37 @@ Task 4C 的实现、测试、mutation obligations、相关回归与格式检查�
 
 - 普通 JVM 加载真实 `ShizukuInstaller` 时，Shizuku Binder 静态初始化会调用 Android stub 的 `Binder.attachInterface`，无法在该测试环境实例化。测试因此执行真实共享 `Installer` production lifecycle，并精确使用 Shizuku 的 `cancelEntry(entry) = getActiveEntry() != entry` 语义、延迟 callback 与 service destroy；对应 mutation 已证明该测试能杀死取消后错误发布 terminal 的实现。未修改 Shizuku AIDL 或 `ShizukuInstaller` production 文件。
 - 本轮只修改 3 个 tracked 代码/测试文件并追加本报告；工作区既有未跟踪文件保持未暂存、未修改。
+
+## Review repair round 3
+
+### 状态
+
+`DONE_WITH_CONCERNS`
+
+本轮关闭最终审查的 1 项 Important 与 1 项 Minor。`installPrepared` 的 cancellation guard、`platformResults` 注册和平台启动 handoff 现在与 public cancel 的 direct-terminal 判定共用单个 per-transaction lifecycle 临界区；取消不能再从 guard 已通过、platform result 尚未注册的窗口提前发布 `Idle`。高层 completed terminal registry 改为 5 分钟 TTL tombstone，并且只清理已过期且不在 `activeTransactions`、`activeSteps` 或 `platformResults` 中的 UUID，仍在 flight/platform lifecycle 的事务不会因 TTL 被重开。
+
+### TDD：focused RED / GREEN
+
+- startup race RED：测试侧用 `BlockingPlatformResults` 在 production guard 已通过、`platformResults.put` 尚未完成时通过 `CountDownLatch` 确定性暂停；随后从真实 public `cancelInstall` 入口取消。旧实现立即发布 `Idle`，focused 1/1 failed（`ExtensionInstallSessionLifecycleTest.kt:494`）。无 sleep 或仅靠调度时序的断言。
+- tombstone pruning RED：写入 512 个完成 UUID、把可带时间戳 registry 老化并触发 production `updateInstallStep`。旧无界 Set 无法老化或清扫，focused 1/1 failed（当时 `ExtensionInstallSessionLifecycleTest.kt:570`）。
+- GREEN：每 UUID `TransactionLifecycle` 只包围非 suspend 的 guard → result registration → `installApk` handoff，以及 cancel 对 `platformResults == null` 的判定；锁不跨 `awaitPlatformResult`、cleanup acknowledgement、rollback 或其他 suspend 点。两个 focused 测试 2/2 passed。
+- race 用例放行后同步进入真实 PackageInstaller queue/session/commit owner；destroy 前断言无 terminal/rollback，destroy 后断言唯一 `Idle`，且调用顺序为 `prepare -> validate -> commit -> rollback -> reload -> cleanup`，`platformResults`、active jobs/transactions 与 coordinator `inFlight` 均已清空。
+- pruning 用例断言近期 terminal 的重复 terminal 不会刷新或替换 tombstone；已过期但仍在 `activeSteps` 的 transaction 继续拒绝非 terminal 更新；移除最后 active/platform 引用并再次老化后才允许清扫；长期已完成 UUID 不再无限增长。
+
+### Mutation 证据
+
+- 临时去掉 `installPrepared` 与 `requestCancellation` 的共同 lifecycle 临界区：startup race focused 1/1 failed（最终测试行 496），证明测试能杀死 check-register/cancel 非原子实现；随后恢复。
+- 临时禁用 `pruneCompletedTransactions()`：pruning focused 1/1 failed（最终测试行 619），证明内存边界测试依赖真实 production pruning；随后恢复。
+- 两项 mutation 均已恢复；恢复后 `:app:spotlessApply` 与两个 focused GREEN 2/2 passed。
+
+### 最终验证
+
+- `$env:ANDROID_HOME=(Resolve-Path '.android-sdk').Path; $env:ANDROID_SDK_ROOT=$env:ANDROID_HOME; .\gradlew.bat :app:testReleaseUnitTest --tests "*ExtensionInstallSessionLifecycleTest" --tests "*ExtensionInstallCoordinatorWiringTest"`：`BUILD SUCCESSFUL`，22/22 passed（15 lifecycle + 7 wiring；保留既有 20 项并新增 2 项）。
+- `$env:ANDROID_HOME=(Resolve-Path '.android-sdk').Path; $env:ANDROID_SDK_ROOT=$env:ANDROID_HOME; .\gradlew.bat :app:testReleaseUnitTest --tests "*ExtensionManager*" --tests "*PackageInstaller*" --tests "*Shizuku*"`：`BUILD SUCCESSFUL`，实际命中 3/3 passed（2 个 ExtensionManager wiring + 1 个 Shizuku lifecycle）；真实 PackageInstaller session/commit 链路由上一命令的 lifecycle 用例覆盖。
+- `$env:ANDROID_HOME=(Resolve-Path '.android-sdk').Path; $env:ANDROID_SDK_ROOT=$env:ANDROID_HOME; .\gradlew.bat spotlessCheck`：`BUILD SUCCESSFUL`，61 tasks 无格式违规。
+- `git diff --check`：通过；mutation 均已恢复。
+
+### 顾虑与边界
+
+- 普通 JVM 仍不能证明 Android 系统把 `startForegroundService` 调度到 `Service.onStartCommand/onDestroy` 的设备级时序；本轮 seam 确定性验证 production 高层线性化、真实 shared Installer owner/session/commit/cleanup 与 coordinator 收尾顺序，但不替代设备级 framework 验收。
+- durable base tombstone、PackageInstaller/Shizuku cleanup 与 commit-sensitive wiring 均保持原实现；本轮产品与测试改动严格限于 `ExtensionInstaller.kt` 和 `ExtensionInstallSessionLifecycleTest.kt`，另仅追加本报告。开始时协调 HEAD 已由指派中的 `b3dbb5c9b` 推进到 `44d643795`，tracked 工作区无冲突改动，未回滚任何协调提交。

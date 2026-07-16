@@ -31,7 +31,11 @@ import io.mockk.unmockkConstructor
 import io.mockk.unmockkStatic
 import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -52,9 +56,14 @@ import org.junit.jupiter.api.Test
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.Collections
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.concurrent.thread
 import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
 import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 
@@ -484,6 +493,134 @@ class ExtensionInstallSessionLifecycleTest {
     }
 
     @Test
+    fun `public cancellation cannot publish terminal while platform startup handoff is blocked`() = runTest {
+        val harness = packageInstallerHarness()
+        val context = mockk<Context>(relaxed = true) {
+            every { packageName } returns "eu.kanade.tachiyomi"
+        }
+        val platformRegistrationStarted = CountDownLatch(1)
+        val allowPlatformRegistration = CountDownLatch(1)
+        val blockedResults = BlockingPlatformResults(platformRegistrationStarted, allowPlatformRegistration)
+        val cancellationLookup = CountDownLatch(1)
+        val cancellationReturned = CountDownLatch(1)
+        val installerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        lateinit var installer: ExtensionInstaller
+        val calls = Collections.synchronizedList(mutableListOf<String>())
+        val port = object : ExtensionInstallPort {
+            override suspend fun prepare(request: ExtensionInstallRequest): PreparedExtensionInstallToken {
+                calls += "prepare"
+                return PreparedExtensionInstallToken(
+                    checkNotNull(activeTransactionIds(installer)[request.artifact.packageName]),
+                )
+            }
+
+            override suspend fun validate(token: PreparedExtensionInstallToken): ExtensionInstallRollbackToken {
+                calls += "validate"
+                return ExtensionInstallRollbackToken(token.value)
+            }
+
+            override suspend fun commit(token: PreparedExtensionInstallToken) {
+                calls += "commit"
+                installPrepared(installer, token.value, File("extension.apk"))
+            }
+
+            override suspend fun reload(packageName: String) {
+                calls += "reload"
+            }
+
+            override suspend fun rollback(token: ExtensionInstallRollbackToken) {
+                calls += "rollback"
+            }
+
+            override suspend fun cleanup(token: PreparedExtensionInstallToken) {
+                calls += "cleanup"
+            }
+        }
+        installer = ExtensionInstaller(context, scope = installerScope, installPort = port)
+        ExtensionInstaller::class.java.getDeclaredField("platformResults").apply {
+            isAccessible = true
+            set(installer, blockedResults)
+        }
+        ExtensionInstaller::class.java.getDeclaredField("activeTransactions").apply {
+            isAccessible = true
+            set(installer, CancellationObservedTransactions(cancellationLookup))
+        }
+        val preference = mockk<ExtensionInstallerPreference> {
+            every { get() } returns BasePreferences.ExtensionInstaller.PACKAGEINSTALLER
+        }
+        ExtensionInstaller::class.java.getDeclaredField("extensionInstaller\$delegate").apply {
+            isAccessible = true
+            set(installer, lazyOf(preference))
+        }
+        mockkStatic(FileProvider::class)
+        every { FileProvider.getUriForFile(any(), any(), any()) } returns mockk()
+        every { ContextCompat.startForegroundService(context, any()) } answers {
+            harness.enqueue(activeTransactionIds(installer).values.single())
+            mockk()
+        }
+        val extension = availableExtension("extension.package.startup-race")
+        val steps = installer.downloadAndInstall("https://repo.example/extension.apk", extension)
+        val terminal = async { steps.first(InstallStep::isCompleted) }
+
+        try {
+            assertTrue(platformRegistrationStarted.await(10, TimeUnit.SECONDS))
+            thread {
+                installer.cancelInstall(extension.pkgName)
+                cancellationReturned.countDown()
+            }
+            assertTrue(cancellationLookup.await(10, TimeUnit.SECONDS))
+            allowPlatformRegistration.countDown()
+            assertTrue(cancellationReturned.await(10, TimeUnit.SECONDS))
+            runCurrent()
+
+            assertFalse(terminal.isCompleted, "Idle must wait until the committed platform owner is destroyed")
+            assertEquals(listOf("prepare", "validate", "commit"), calls)
+
+            harness.installer.onDestroy()
+            assertEquals(InstallStep.Idle, terminal.await())
+            assertEquals(listOf("prepare", "validate", "commit", "rollback", "reload", "cleanup"), calls)
+            assertTrue(platformResults(installer).isEmpty())
+            assertTrue(activeTransactionIds(installer).isEmpty())
+            assertTrue(activeJobs(installer).isEmpty())
+            assertTrue(coordinatorFlights(installer).isEmpty())
+        } finally {
+            allowPlatformRegistration.countDown()
+            installerScope.cancel()
+            unmockkStatic(FileProvider::class)
+        }
+    }
+
+    @Test
+    fun `completed transaction tombstones are pruned after expiry`() {
+        val installer = ExtensionInstaller(
+            context = mockk(relaxed = true),
+            installPort = mockk(relaxed = true),
+        )
+        val activeTransaction = UUID.randomUUID().toString()
+        val activeStep = kotlinx.coroutines.flow.MutableStateFlow(InstallStep.Pending)
+        activeSteps(installer)[activeTransaction] = activeStep
+        installer.updateInstallStep(activeTransaction, InstallStep.Installed)
+        ageCompletedTransactions(installer)
+        repeat(512) { installer.updateInstallStep(UUID.randomUUID().toString(), InstallStep.Installed) }
+        ageCompletedTransactions(installer)
+
+        val recentTransaction = UUID.randomUUID().toString()
+        installer.updateInstallStep(recentTransaction, InstallStep.Installed)
+        val recentCompletedAt = completedTransactions(installer).getValue(recentTransaction)
+        installer.updateInstallStep(recentTransaction, InstallStep.Error)
+        installer.updateInstallStep(activeTransaction, InstallStep.Installing)
+
+        assertEquals(recentCompletedAt, completedTransactions(installer).getValue(recentTransaction))
+        assertEquals(InstallStep.Pending, activeStep.value, "active tombstone must still reject duplicate updates")
+        assertTrue(completedTransactions(installer).containsKey(activeTransaction))
+        activeSteps(installer).remove(activeTransaction)
+        ageCompletedTransactions(installer)
+        installer.updateInstallStep(UUID.randomUUID().toString(), InstallStep.Installed)
+        assertFalse(completedTransactions(installer).containsKey(activeTransaction))
+        assertTrue(completedTransactionCount(installer) <= 2)
+    }
+
+    @Test
     fun `active Shizuku cancellation waits for its delayed callback and service destroy`() {
         val transactionId = UUID.randomUUID().toString()
         val manager = mockk<ExtensionManager>(relaxed = true)
@@ -556,6 +693,51 @@ class ExtensionInstallSessionLifecycleTest {
     private fun platformResults(installer: ExtensionInstaller): Map<String, CompletableDeferred<InstallStep>> =
         ExtensionInstaller::class.java.getDeclaredField("platformResults").apply { isAccessible = true }
             .get(installer) as Map<String, CompletableDeferred<InstallStep>>
+
+    private fun ageCompletedTransactions(installer: ExtensionInstaller) {
+        val completed = ExtensionInstaller::class.java.getDeclaredField("completedTransactions")
+            .apply { isAccessible = true }
+            .get(installer)
+        if (completed is ConcurrentHashMap<*, *>) {
+            @Suppress("UNCHECKED_CAST")
+            (completed as ConcurrentHashMap<String, Long>).replaceAll { _, _ -> Long.MIN_VALUE }
+        }
+    }
+
+    private fun completedTransactionCount(installer: ExtensionInstaller): Int {
+        val completed = ExtensionInstaller::class.java.getDeclaredField("completedTransactions")
+            .apply { isAccessible = true }
+            .get(installer)
+        return when (completed) {
+            is Map<*, *> -> completed.size
+            is Set<*> -> completed.size
+            else -> error("Unsupported completed transaction registry: ${completed.javaClass}")
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun completedTransactions(installer: ExtensionInstaller): Map<String, Long> =
+        ExtensionInstaller::class.java.getDeclaredField("completedTransactions")
+            .apply { isAccessible = true }
+            .get(installer) as Map<String, Long>
+
+    @Suppress("UNCHECKED_CAST")
+    private fun activeSteps(
+        installer: ExtensionInstaller,
+    ): MutableMap<String, kotlinx.coroutines.flow.MutableStateFlow<InstallStep>> =
+        ExtensionInstaller::class.java.getDeclaredField("activeSteps")
+            .apply { isAccessible = true }
+            .get(installer) as MutableMap<String, kotlinx.coroutines.flow.MutableStateFlow<InstallStep>>
+
+    @Suppress("UNCHECKED_CAST")
+    private fun coordinatorFlights(installer: ExtensionInstaller): Map<String, Any> {
+        val coordinator = ExtensionInstaller::class.java.getDeclaredField("coordinator")
+            .apply { isAccessible = true }
+            .get(installer)
+        return coordinator.javaClass.getDeclaredField("inFlight")
+            .apply { isAccessible = true }
+            .get(coordinator) as Map<String, Any>
+    }
 
     private fun availableExtension(packageName: String) =
         Extension.Available(
@@ -687,6 +869,27 @@ class ExtensionInstallSessionLifecycleTest {
     }
 
     private data class CallbackIdentity(val transactionId: String, val sessionId: Int)
+
+    private class BlockingPlatformResults(
+        private val registrationStarted: CountDownLatch,
+        private val allowRegistration: CountDownLatch,
+    ) : ConcurrentHashMap<String, CompletableDeferred<InstallStep>>() {
+        override fun put(key: String, value: CompletableDeferred<InstallStep>): CompletableDeferred<InstallStep>? {
+            registrationStarted.countDown()
+            check(allowRegistration.await(10, TimeUnit.SECONDS))
+            return super.put(key, value)
+        }
+    }
+
+    private class CancellationObservedTransactions(
+        private val cancellationLookup: CountDownLatch,
+    ) : ConcurrentHashMap<String, Any>() {
+        override fun get(key: String): Any? {
+            return super.get(key).also { value ->
+                if (value != null) cancellationLookup.countDown()
+            }
+        }
+    }
 
     private class QueueHarness(
         val installer: Installer,
