@@ -12,18 +12,26 @@ import android.os.Build
 import androidx.core.content.ContextCompat
 import androidx.core.content.IntentSanitizer
 import eu.kanade.tachiyomi.extension.model.InstallStep
+import eu.kanade.tachiyomi.extension.util.ExtensionInstaller
 import eu.kanade.tachiyomi.util.lang.use
 import eu.kanade.tachiyomi.util.system.getParcelableExtraCompat
 import eu.kanade.tachiyomi.util.system.getUriSize
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
+import kotlin.concurrent.atomics.AtomicReference
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
+@OptIn(ExperimentalAtomicApi::class)
 class PackageInstallerInstaller(private val service: Service) : Installer(service) {
 
     private val packageInstaller = service.packageManager.packageInstaller
 
     private val packageActionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
+            val transactionId = intent.getStringExtra(ExtensionInstaller.EXTRA_TRANSACTION_ID) ?: return
+            val sessionId = intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, -1)
+            val active = activeSession.load()
+            if (active?.entry?.transactionId != transactionId || active.sessionId != sessionId) return
             when (intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
                 PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                     val userAction = intent.getParcelableExtraCompat<Intent>(Intent.EXTRA_INTENT)
@@ -32,7 +40,7 @@ class PackageInstallerInstaller(private val service: Service) : Installer(servic
                             // But the warnings can't be suppressed without this
                             IntentSanitizer.Builder()
                                 .allowAction(this.action!!)
-                                .allowExtra(PackageInstaller.EXTRA_SESSION_ID) { id -> id == activeSession?.second }
+                                .allowExtra(PackageInstaller.EXTRA_SESSION_ID) { id -> id == active.sessionId }
                                 .allowAnyComponent()
                                 .allowPackage {
                                     // There is no way to check the actual installer name so allow all.
@@ -43,40 +51,41 @@ class PackageInstallerInstaller(private val service: Service) : Installer(servic
                         }
                     if (userAction == null) {
                         logcat(LogPriority.ERROR) { "Fatal error for $intent" }
-                        continueQueue(InstallStep.Error)
+                        finishSession(active, InstallStep.Error)
                         return
                     }
                     userAction.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     service.startActivity(userAction)
                 }
                 PackageInstaller.STATUS_FAILURE_ABORTED -> {
-                    continueQueue(InstallStep.Idle)
+                    finishSession(active, InstallStep.Idle)
                 }
-                PackageInstaller.STATUS_SUCCESS -> continueQueue(InstallStep.Installed)
-                else -> continueQueue(InstallStep.Error)
+                PackageInstaller.STATUS_SUCCESS -> finishSession(active, InstallStep.Installed)
+                else -> finishSession(active, InstallStep.Error)
             }
         }
     }
 
-    private var activeSession: Pair<Entry, Int>? = null
+    private val activeSession = AtomicReference<ActiveSession?>(null)
 
     // Always ready
     override var ready = true
 
     override fun processEntry(entry: Entry) {
         super.processEntry(entry)
-        activeSession = null
+        activeSession.store(null)
         try {
             val installParams = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 installParams.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
             }
-            activeSession = entry to packageInstaller.createSession(installParams)
+            val active = ActiveSession(entry, packageInstaller.createSession(installParams))
+            activeSession.store(active)
             val fileSize = service.getUriSize(entry.uri) ?: throw IllegalStateException()
             installParams.setSize(fileSize)
 
             val inputStream = service.contentResolver.openInputStream(entry.uri) ?: throw IllegalStateException()
-            val session = packageInstaller.openSession(activeSession!!.second)
+            val session = packageInstaller.openSession(active.sessionId)
             val outputStream = session.openWrite(entry.downloadId.toString(), 0, fileSize)
             session.use {
                 arrayOf(inputStream, outputStream).use {
@@ -87,8 +96,11 @@ class PackageInstallerInstaller(private val service: Service) : Installer(servic
 
                 val intentSender = PendingIntent.getBroadcast(
                     service,
-                    activeSession!!.second,
-                    Intent(INSTALL_ACTION).setPackage(service.packageName),
+                    active.sessionId,
+                    Intent(INSTALL_ACTION)
+                        .setPackage(service.packageName)
+                        .putExtra(ExtensionInstaller.EXTRA_TRANSACTION_ID, entry.transactionId)
+                        .putExtra(PackageInstaller.EXTRA_SESSION_ID, active.sessionId),
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0,
                 ).intentSender
                 @SuppressLint("RequestInstallPackagesPolicy")
@@ -96,27 +108,32 @@ class PackageInstallerInstaller(private val service: Service) : Installer(servic
             }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Failed to install extension ${entry.downloadId} ${entry.uri}" }
-            activeSession?.let { (_, sessionId) ->
-                packageInstaller.abandonSession(sessionId)
-            }
-            continueQueue(InstallStep.Error)
+            activeSession.exchange(null)?.let { packageInstaller.abandonSession(it.sessionId) }
+            continueQueue(entry.transactionId, InstallStep.Error)
         }
     }
 
     override fun cancelEntry(entry: Entry): Boolean {
-        activeSession?.let { (activeEntry, sessionId) ->
-            if (activeEntry == entry) {
-                packageInstaller.abandonSession(sessionId)
-                return false
-            }
+        val active = activeSession.load()
+        if (active?.entry == entry && activeSession.compareAndSet(active, null)) {
+            packageInstaller.abandonSession(active.sessionId)
         }
         return true
     }
 
     override fun onDestroy() {
+        activeSession.exchange(null)?.let { packageInstaller.abandonSession(it.sessionId) }
         service.unregisterReceiver(packageActionReceiver)
         super.onDestroy()
     }
+
+    private fun finishSession(active: ActiveSession, step: InstallStep) {
+        if (activeSession.compareAndSet(active, null)) {
+            continueQueue(active.entry.transactionId, step)
+        }
+    }
+
+    private data class ActiveSession(val entry: Entry, val sessionId: Int)
 
     init {
         ContextCompat.registerReceiver(

@@ -29,6 +29,10 @@ class ExtensionInstallActivity : Activity() {
         val installIntent = Intent(Intent.ACTION_INSTALL_PACKAGE)
             .setDataAndType(intent.data, intent.type)
             .putExtra(Intent.EXTRA_RETURN_RESULT, true)
+            .putExtra(
+                ExtensionInstaller.EXTRA_TRANSACTION_ID,
+                intent.getStringExtra(ExtensionInstaller.EXTRA_TRANSACTION_ID),
+            )
             .setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
         if (hasMiuiPackageInstaller) {
@@ -70,14 +74,14 @@ class ExtensionInstallActivity : Activity() {
     }
 
     private fun checkInstallationResult(resultCode: Int) {
-        val downloadId = intent.extras!!.getLong(ExtensionInstaller.EXTRA_DOWNLOAD_ID)
+        val transactionId = intent.getStringExtra(ExtensionInstaller.EXTRA_TRANSACTION_ID) ?: return
         val extensionManager = Injekt.get<ExtensionManager>()
         val newStep = when (resultCode) {
             RESULT_OK -> InstallStep.Installed
             RESULT_CANCELED -> InstallStep.Idle
             else -> InstallStep.Error
         }
-        extensionManager.updateInstallStep(downloadId, newStep)
+        extensionManager.updateInstallStep(transactionId, newStep)
     }
 }
 

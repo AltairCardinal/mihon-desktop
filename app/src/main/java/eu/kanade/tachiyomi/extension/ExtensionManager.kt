@@ -263,14 +263,14 @@ class ExtensionManager internal constructor(
     /**
      * Sets to "installing" status of an extension installation.
      *
-     * @param downloadId The id of the download.
+     * @param transactionId The id of the install transaction.
      */
-    fun setInstalling(downloadId: Long) {
-        installer.updateInstallStep(downloadId, InstallStep.Installing)
+    fun setInstalling(transactionId: String) {
+        installer.updateInstallStep(transactionId, InstallStep.Installing)
     }
 
-    fun updateInstallStep(downloadId: Long, step: InstallStep) {
-        installer.updateInstallStep(downloadId, step)
+    fun updateInstallStep(transactionId: String, step: InstallStep) {
+        installer.updateInstallStep(transactionId, step)
     }
 
     /**

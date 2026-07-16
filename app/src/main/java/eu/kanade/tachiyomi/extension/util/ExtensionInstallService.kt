@@ -11,7 +11,7 @@ import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.extension.installer.Installer
 import eu.kanade.tachiyomi.extension.installer.PackageInstallerInstaller
 import eu.kanade.tachiyomi.extension.installer.ShizukuInstaller
-import eu.kanade.tachiyomi.extension.util.ExtensionInstaller.Companion.EXTRA_DOWNLOAD_ID
+import eu.kanade.tachiyomi.extension.util.ExtensionInstaller.Companion.EXTRA_TRANSACTION_ID
 import eu.kanade.tachiyomi.util.system.getSerializableExtraCompat
 import eu.kanade.tachiyomi.util.system.notificationBuilder
 import logcat.LogPriority
@@ -37,9 +37,9 @@ class ExtensionInstallService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val uri = intent?.data
-        val id = intent?.getLongExtra(EXTRA_DOWNLOAD_ID, -1)?.takeIf { it != -1L }
+        val transactionId = intent?.getStringExtra(EXTRA_TRANSACTION_ID)
         val installerUsed = intent?.getSerializableExtraCompat<BasePreferences.ExtensionInstaller>(EXTRA_INSTALLER)
-        if (uri == null || id == null || installerUsed == null) {
+        if (uri == null || transactionId == null || installerUsed == null) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -55,7 +55,7 @@ class ExtensionInstallService : Service() {
                 }
             }
         }
-        installer!!.addToQueue(id, uri)
+        installer!!.addToQueue(transactionId, uri)
         return START_NOT_STICKY
     }
 
@@ -71,13 +71,13 @@ class ExtensionInstallService : Service() {
 
         fun getIntent(
             context: Context,
-            downloadId: Long,
+            transactionId: String,
             uri: Uri,
             installer: BasePreferences.ExtensionInstaller,
         ): Intent {
             return Intent(context, ExtensionInstallService::class.java)
                 .setDataAndType(uri, ExtensionInstaller.APK_MIME)
-                .putExtra(EXTRA_DOWNLOAD_ID, downloadId)
+                .putExtra(EXTRA_TRANSACTION_ID, transactionId)
                 .putExtra(EXTRA_INSTALLER, installer)
         }
     }

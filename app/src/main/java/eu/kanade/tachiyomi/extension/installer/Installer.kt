@@ -12,6 +12,8 @@ import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.InstallStep
 import uy.kohesive.injekt.injectLazy
 import java.util.Collections
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
@@ -25,11 +27,13 @@ abstract class Installer(private val service: Service) {
 
     private var waitingInstall = AtomicReference<Entry?>(null)
     private val queue = Collections.synchronizedList(mutableListOf<Entry>())
+    private val canceledTransactions = ConcurrentHashMap<String, Long>()
+    private val completedTransactions = ConcurrentHashMap<String, Long>()
 
     private val cancelReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            val downloadId = intent.getLongExtra(EXTRA_DOWNLOAD_ID, -1).takeIf { it >= 0 } ?: return
-            cancelQueue(downloadId)
+            val transactionId = intent.getStringExtra(EXTRA_TRANSACTION_ID) ?: return
+            cancelQueue(transactionId)
         }
     }
 
@@ -43,11 +47,13 @@ abstract class Installer(private val service: Service) {
     /**
      * Add an item to install queue.
      *
-     * @param downloadId Download ID as known by [ExtensionManager]
+     * @param transactionId UUID shared by the install request and platform callback.
      * @param uri Uri of APK to install
      */
-    fun addToQueue(downloadId: Long, uri: Uri) {
-        queue.add(Entry(downloadId, uri))
+    fun addToQueue(transactionId: String, uri: Uri) {
+        pruneTombstones()
+        if (canceledTransactions.containsKey(transactionId) || completedTransactions.containsKey(transactionId)) return
+        queue.add(Entry(transactionId, uri))
         checkQueue()
     }
 
@@ -60,7 +66,7 @@ abstract class Installer(private val service: Service) {
      */
     @CallSuper
     open fun processEntry(entry: Entry) {
-        extensionManager.setInstalling(entry.downloadId)
+        extensionManager.setInstalling(entry.transactionId)
     }
 
     /**
@@ -81,11 +87,19 @@ abstract class Installer(private val service: Service) {
      * @see waitingInstall
      */
     fun continueQueue(resultStep: InstallStep) {
-        val completedEntry = waitingInstall.exchange(null)
-        if (completedEntry != null) {
-            extensionManager.updateInstallStep(completedEntry.downloadId, resultStep)
-            checkQueue()
+        waitingInstall.load()?.let { continueQueue(it.transactionId, resultStep) }
+    }
+
+    protected fun continueQueue(transactionId: String, resultStep: InstallStep) {
+        val completedEntry = waitingInstall.load() ?: return
+        if (completedEntry.transactionId != transactionId ||
+            !waitingInstall.compareAndSet(completedEntry, null) ||
+            completedTransactions.putIfAbsent(transactionId, System.nanoTime()) != null
+        ) {
+            return
         }
+        extensionManager.updateInstallStep(transactionId, resultStep)
+        checkQueue()
     }
 
     /**
@@ -115,39 +129,60 @@ abstract class Installer(private val service: Service) {
     @CallSuper
     open fun onDestroy() {
         LocalBroadcastManager.getInstance(service).unregisterReceiver(cancelReceiver)
-        queue.forEach { extensionManager.updateInstallStep(it.downloadId, InstallStep.Error) }
+        queue.forEach { completeQueued(it, InstallStep.Error) }
         queue.clear()
-        waitingInstall.store(null)
+        waitingInstall.exchange(null)?.let { completeQueued(it, InstallStep.Error) }
     }
 
     protected fun getActiveEntry(): Entry? = waitingInstall.load()
 
     /**
-     * Cancels queue for the provided download ID if exists.
+     * Cancels queue for the provided transaction ID if it exists.
      *
-     * @param downloadId Download ID as known by [ExtensionManager]
+     * @param transactionId UUID shared by the install request and platform callback.
      */
-    private fun cancelQueue(downloadId: Long) {
+    private fun cancelQueue(transactionId: String) {
+        pruneTombstones()
+        canceledTransactions[transactionId] = System.nanoTime()
         val waitingInstall = this.waitingInstall.load()
-        val toCancel = queue.find { it.downloadId == downloadId } ?: waitingInstall ?: return
+        val toCancel = queue.find { it.transactionId == transactionId }
+            ?: waitingInstall?.takeIf { it.transactionId == transactionId }
+            ?: return
         if (cancelEntry(toCancel)) {
             queue.remove(toCancel)
-            if (waitingInstall == toCancel) {
+            if (waitingInstall == toCancel && this.waitingInstall.compareAndSet(toCancel, null)) {
                 // Currently processing removed entry, continue queue
-                this.waitingInstall.store(null)
                 checkQueue()
             }
-            extensionManager.updateInstallStep(downloadId, InstallStep.Idle)
+            completeQueued(toCancel, InstallStep.Idle)
         }
+    }
+
+    private fun completeQueued(entry: Entry, step: InstallStep) {
+        if (completedTransactions.putIfAbsent(entry.transactionId, System.nanoTime()) == null) {
+            extensionManager.updateInstallStep(entry.transactionId, step)
+        }
+    }
+
+    private fun pruneTombstones() {
+        val cutoff = System.nanoTime() - TOMBSTONE_TTL_NANOS
+        canceledTransactions.entries.removeIf { it.value < cutoff }
+        completedTransactions.entries.removeIf { it.value < cutoff }
     }
 
     /**
      * Install item to queue.
      *
-     * @param downloadId Download ID as known by [ExtensionManager]
+     * @param transactionId UUID shared by the install request and platform callback.
      * @param uri Uri of APK to install
      */
-    data class Entry(val downloadId: Long, val uri: Uri)
+    data class Entry(val transactionId: String, val downloadId: Long, val uri: Uri) {
+        constructor(transactionId: String, uri: Uri) : this(
+            transactionId,
+            transactionDownloadId(transactionId),
+            uri,
+        )
+    }
 
     init {
         val filter = IntentFilter(ACTION_CANCEL_QUEUE)
@@ -156,17 +191,22 @@ abstract class Installer(private val service: Service) {
 
     companion object {
         private const val ACTION_CANCEL_QUEUE = "Installer.action.CANCEL_QUEUE"
-        private const val EXTRA_DOWNLOAD_ID = "Installer.extra.DOWNLOAD_ID"
+        private const val EXTRA_TRANSACTION_ID = "Installer.extra.TRANSACTION_ID"
+        private const val TOMBSTONE_TTL_NANOS = 5L * 60L * 1_000_000_000L
 
         /**
-         * Attempts to cancel the installation entry for the provided download ID.
+         * Attempts to cancel the installation entry for the provided transaction ID.
          *
-         * @param downloadId Download ID as known by [ExtensionManager]
+         * @param transactionId UUID shared by the install request and platform callback.
          */
-        fun cancelInstallQueue(context: Context, downloadId: Long) {
+        fun cancelInstallQueue(context: Context, transactionId: String) {
             val intent = Intent(ACTION_CANCEL_QUEUE)
-            intent.putExtra(EXTRA_DOWNLOAD_ID, downloadId)
+            intent.putExtra(EXTRA_TRANSACTION_ID, transactionId)
             LocalBroadcastManager.getInstance(context).sendBroadcast(intent)
         }
     }
 }
+
+private fun transactionDownloadId(transactionId: String): Long =
+    runCatching { UUID.fromString(transactionId).mostSignificantBits and Long.MAX_VALUE }
+        .getOrElse { transactionId.hashCode().toLong() and Long.MAX_VALUE }

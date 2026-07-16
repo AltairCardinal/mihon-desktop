@@ -25,12 +25,14 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import logcat.LogPriority
 import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionArtifact
@@ -61,18 +63,21 @@ internal class ExtensionInstaller(
 ) {
 
     private val activeJobs = ConcurrentHashMap<String, Job>()
-    private val activeSteps = ConcurrentHashMap<Long, MutableStateFlow<InstallStep>>()
-    private val platformResults = ConcurrentHashMap<Long, CompletableDeferred<InstallStep>>()
+    private val activeTransactions = ConcurrentHashMap<String, ActiveTransaction>()
+    private val activeSteps = ConcurrentHashMap<String, MutableStateFlow<InstallStep>>()
+    private val platformResults = ConcurrentHashMap<String, CompletableDeferred<InstallStep>>()
+    private val completedTransactions = ConcurrentHashMap.newKeySet<String>()
     private val extensionInstaller by lazy { Injekt.get<BasePreferences>().extensionInstaller() }
     private val httpClient: OkHttpClient by lazy { Injekt.get<NetworkHelper>().client }
     private val coordinator = ExtensionInstallCoordinator(installPort ?: AndroidInstallPort(), scope)
 
     fun downloadAndInstall(url: String, extension: Extension.Available): Flow<InstallStep> {
-        val downloadId = extension.pkgName.hashCode().toLong()
         cancelActiveInstall(extension.pkgName)
 
+        val transactionId = UUID.randomUUID().toString()
         val step = MutableStateFlow(InstallStep.Pending)
-        activeSteps[downloadId] = step
+        activeSteps[transactionId] = step
+        activeTransactions[extension.pkgName] = ActiveTransaction(transactionId, step)
         val job = scope.launch {
             coordinator.install(ExtensionInstallRequest(extension.toArtifact(url))).collect { state ->
                 step.value = state.toInstallStep()
@@ -82,7 +87,8 @@ internal class ExtensionInstaller(
 
         return step.asStateFlow().onCompletion {
             activeJobs.remove(extension.pkgName, job)
-            activeSteps.remove(downloadId, step)
+            activeTransactions.remove(extension.pkgName, ActiveTransaction(transactionId, step))
+            activeSteps.remove(transactionId, step)
             job.cancel()
         }
     }
@@ -113,29 +119,35 @@ internal class ExtensionInstaller(
         is ExtensionInstallState.Failed -> if (error == AppError.Cancelled) InstallStep.Idle else InstallStep.Error
     }
 
-    private suspend fun installPrepared(downloadId: Long, file: File) {
+    private suspend fun installPrepared(transactionId: String, file: File) {
         val result = CompletableDeferred<InstallStep>()
-        platformResults[downloadId] = result
+        platformResults[transactionId] = result
         try {
-            installApk(downloadId, file)
-            when (result.await()) {
+            installApk(transactionId, file)
+            when (awaitPlatformResult(result)) {
                 InstallStep.Installed -> Unit
                 InstallStep.Idle -> throw CancellationException("Extension install cancelled")
                 else -> throw ExtensionInstallFailure(
                     AppError.Unknown(IllegalStateException("Android package installer failed")),
                 )
             }
+        } catch (error: TimeoutCancellationException) {
+            Installer.cancelInstallQueue(context, transactionId)
+            throw ExtensionInstallFailure(AppError.Unknown(IllegalStateException("Android package install timed out")))
         } finally {
-            platformResults.remove(downloadId, result)
+            platformResults.remove(transactionId, result)
         }
     }
 
-    private fun installApk(downloadId: Long, tempFile: File) {
+    private suspend fun awaitPlatformResult(result: CompletableDeferred<InstallStep>): InstallStep =
+        withTimeout(INSTALL_TIMEOUT_MILLIS) { result.await() }
+
+    private fun installApk(transactionId: String, tempFile: File) {
         when (val installer = extensionInstaller.get()) {
             BasePreferences.ExtensionInstaller.LEGACY -> {
                 val intent = Intent(context, ExtensionInstallActivity::class.java)
                     .setDataAndType(tempFile.getUriCompat(context), APK_MIME)
-                    .putExtra(EXTRA_DOWNLOAD_ID, downloadId)
+                    .putExtra(EXTRA_TRANSACTION_ID, transactionId)
                     .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 context.startActivity(intent)
             }
@@ -143,13 +155,13 @@ internal class ExtensionInstaller(
                 val installed = runCatching { ExtensionLoader.installPrivateExtensionFile(context, tempFile) }
                     .onFailure { logcat(LogPriority.ERROR, it) { "Failed to read downloaded extension file." } }
                     .getOrDefault(false)
-                updateInstallStep(downloadId, if (installed) InstallStep.Installed else InstallStep.Error)
+                updateInstallStep(transactionId, if (installed) InstallStep.Installed else InstallStep.Error)
                 tempFile.delete()
             }
             else -> {
                 val intent = ExtensionInstallService.getIntent(
                     context,
-                    downloadId,
+                    transactionId,
                     tempFile.getUriCompat(context),
                     installer,
                 )
@@ -159,16 +171,17 @@ internal class ExtensionInstaller(
     }
 
     fun cancelInstall(pkgName: String) {
-        activeSteps[pkgName.hashCode().toLong()]?.value = InstallStep.Idle
+        val active = activeTransactions.remove(pkgName) ?: return
+        active.step.value = InstallStep.Idle
         activeJobs.remove(pkgName)?.cancel()
-        Installer.cancelInstallQueue(context, pkgName.hashCode().toLong())
+        Installer.cancelInstallQueue(context, active.transactionId)
     }
 
     private fun cancelActiveInstall(pkgName: String) {
-        val job = activeJobs.remove(pkgName) ?: return
-        activeSteps[pkgName.hashCode().toLong()]?.value = InstallStep.Idle
-        job.cancel()
-        Installer.cancelInstallQueue(context, pkgName.hashCode().toLong())
+        val active = activeTransactions.remove(pkgName) ?: return
+        active.step.value = InstallStep.Idle
+        activeJobs.remove(pkgName)?.cancel()
+        Installer.cancelInstallQueue(context, active.transactionId)
     }
 
     fun uninstallApk(pkgName: String) {
@@ -183,12 +196,12 @@ internal class ExtensionInstaller(
         }
     }
 
-    fun updateInstallStep(downloadId: Long, step: InstallStep) {
-        val result = platformResults[downloadId]
-        if (step.isCompleted() && result != null) {
-            result.complete(step)
-        } else {
-            activeSteps[downloadId]?.value = step
+    fun updateInstallStep(transactionId: String, step: InstallStep) {
+        if (step.isCompleted()) {
+            if (!completedTransactions.add(transactionId)) return
+            platformResults[transactionId]?.complete(step)
+        } else if (!completedTransactions.contains(transactionId)) {
+            activeSteps[transactionId]?.value = step
         }
     }
 
@@ -196,7 +209,7 @@ internal class ExtensionInstaller(
         private val prepared = ConcurrentHashMap<String, AndroidPreparedInstall>()
 
         override suspend fun prepare(request: ExtensionInstallRequest): PreparedExtensionInstallToken {
-            val id = UUID.randomUUID().toString()
+            val id = activeTransactions[request.artifact.packageName]?.transactionId ?: UUID.randomUUID().toString()
             val file = File(context.cacheDir, "extension_${request.artifact.packageName}_$id.apk")
             try {
                 val response = httpClient.newCall(Request.Builder().url(request.artifact.downloadUrl).build()).execute()
@@ -241,7 +254,7 @@ internal class ExtensionInstaller(
 
         override suspend fun commit(token: PreparedExtensionInstallToken) {
             val install = prepared[token.value] ?: failStorage("Unknown Android extension install")
-            installPrepared(install.artifact.packageName.hashCode().toLong(), install.download)
+            installPrepared(token.value, install.download)
         }
 
         override suspend fun reload(packageName: String) {
@@ -260,7 +273,7 @@ internal class ExtensionInstaller(
                         throw ExtensionInstallFailure(AppError.Storage(error))
                     }
                 } else {
-                    installPrepared(install.artifact.packageName.hashCode().toLong(), snapshot)
+                    installPrepared(UUID.randomUUID().toString(), snapshot)
                 }
             } else {
                 removeFreshInstall(install.artifact.packageName)
@@ -341,6 +354,11 @@ internal class ExtensionInstaller(
         var rollback: File? = null,
     )
 
+    private data class ActiveTransaction(
+        val transactionId: String,
+        val step: MutableStateFlow<InstallStep>,
+    )
+
     private fun failMalformed(message: String): Nothing =
         throw ExtensionInstallFailure(AppError.MalformedData(IllegalArgumentException(message)))
 
@@ -349,9 +367,10 @@ internal class ExtensionInstaller(
 
     companion object {
         const val APK_MIME = "application/vnd.android.package-archive"
-        const val EXTRA_DOWNLOAD_ID = "ExtensionInstaller.extra.DOWNLOAD_ID"
+        const val EXTRA_TRANSACTION_ID = "ExtensionInstaller.extra.TRANSACTION_ID"
 
         private const val EXTENSION_FEATURE = "tachiyomi.extension"
+        private const val INSTALL_TIMEOUT_MILLIS = 2 * 60 * 1000L
 
         @Suppress("DEPRECATION")
         private val PACKAGE_FLAGS = PackageManager.GET_CONFIGURATIONS or
