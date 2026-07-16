@@ -126,7 +126,7 @@ class SourceLoginSession(
     ): SourceLoginState {
         val missing = request.requiredCookieNames - session.cookieNames
         val rejected = session.cookies
-            .filterNot { it.matches(request.url.host) }
+            .filterNot { it.matches(request.url) }
             .mapTo(sortedSetOf()) { it.name }
         if (missing.isNotEmpty() || rejected.isNotEmpty()) {
             return finish(SourceLoginState.InvalidCookies(missing.toSortedSet(), rejected))
@@ -154,13 +154,24 @@ private sealed interface BrowserPhase {
     data class Completed(val session: AuthenticatedSession) : BrowserPhase
 }
 
-private fun AuthenticatedCookie.matches(requestHost: String): Boolean {
-    val host = requestHost.lowercase().trimEnd('.')
+private fun AuthenticatedCookie.matches(requestUrl: HttpUrl): Boolean {
+    val host = requestUrl.host.lowercase().trimEnd('.')
     val cookieDomain = domain.lowercase().trim().trimStart('.').trimEnd('.')
     if (cookieDomain.isBlank()) return false
     return if (hostOnly) {
         host == cookieDomain
     } else {
-        host == cookieDomain || host.endsWith(".$cookieDomain")
+        isRegistrableDomain(cookieDomain) && (host == cookieDomain || host.endsWith(".$cookieDomain"))
     }
 }
+
+private fun isRegistrableDomain(domain: String): Boolean =
+    try {
+        HttpUrl.Builder()
+            .scheme("https")
+            .host(domain)
+            .build()
+            .topPrivateDomain() != null
+    } catch (_: IllegalArgumentException) {
+        false
+    }

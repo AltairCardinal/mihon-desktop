@@ -110,6 +110,81 @@ class SourceLoginSessionTest {
     }
 
     @Test
+    fun `public suffix domain cookies reject the whole session without leaking values`() = runTest {
+        val cases = listOf(
+            Triple("https://reader.example.com/login", "com", "public-com"),
+            Triple("https://reader.example.co.uk/login", "co.uk", "public-co-uk"),
+        )
+
+        cases.forEach { (requestUrl, publicSuffix, cookieName) ->
+            val commits = mutableListOf<AuthenticatedSession>()
+            val browserSession = TestBrowserSession()
+            val login = session(browserSession) { commits += it }
+            val request = SourceLoginRequest(
+                url = requestUrl.toHttpUrl(),
+                timeoutMillis = 30_000,
+            )
+            val result = async { login.login(request) }
+            runCurrent()
+            browserSession.complete(
+                AuthenticatedSession(
+                    listOf(cookie(cookieName, "secret-$cookieName", publicSuffix, hostOnly = false)),
+                ),
+            )
+
+            val state = assertInstanceOf(SourceLoginState.InvalidCookies::class.java, result.await())
+            assertEquals(setOf(cookieName), state.rejectedCookieNames)
+            assertTrue(commits.isEmpty())
+            assertFalse(state.toString().contains("secret-$cookieName"))
+            assertFalse(login.state.value.toString().contains("secret-$cookieName"))
+        }
+    }
+
+    @Test
+    fun `host-only localhost and IP cookies remain valid while domain forms are rejected`() = runTest {
+        listOf("localhost", "127.0.0.1").forEach { host ->
+            val acceptedSession = TestBrowserSession()
+            val acceptedCommits = mutableListOf<AuthenticatedSession>()
+            val accepted = session(acceptedSession) { acceptedCommits += it }
+            val acceptedResult = async {
+                accepted.login(
+                    SourceLoginRequest(
+                        url = "http://$host/login".toHttpUrl(),
+                        timeoutMillis = 30_000,
+                    ),
+                )
+            }
+            runCurrent()
+            acceptedSession.complete(
+                AuthenticatedSession(listOf(cookie("host-only", "secret", host, hostOnly = true))),
+            )
+
+            assertInstanceOf(SourceLoginState.Authenticated::class.java, acceptedResult.await())
+            assertEquals(1, acceptedCommits.size)
+
+            val rejectedSession = TestBrowserSession()
+            val rejectedCommits = mutableListOf<AuthenticatedSession>()
+            val rejected = session(rejectedSession) { rejectedCommits += it }
+            val rejectedResult = async {
+                rejected.login(
+                    SourceLoginRequest(
+                        url = "http://$host/login".toHttpUrl(),
+                        timeoutMillis = 30_000,
+                    ),
+                )
+            }
+            runCurrent()
+            rejectedSession.complete(
+                AuthenticatedSession(listOf(cookie("domain", "secret", host, hostOnly = false))),
+            )
+
+            val state = assertInstanceOf(SourceLoginState.InvalidCookies::class.java, rejectedResult.await())
+            assertEquals(setOf("domain"), state.rejectedCookieNames)
+            assertTrue(rejectedCommits.isEmpty())
+        }
+    }
+
+    @Test
     fun `cancelled login performs zero commits`() = runTest {
         val browserSession = TestBrowserSession()
         var commits = 0

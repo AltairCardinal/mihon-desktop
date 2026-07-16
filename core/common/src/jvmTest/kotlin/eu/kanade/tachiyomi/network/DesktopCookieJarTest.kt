@@ -279,6 +279,7 @@ class DesktopCookieJarTest {
         val authUrl = "https://auth.example.com/login".toHttpUrl()
         val readerUrl = "https://reader.example.com/".toHttpUrl()
         val readerLegacyUrl = "https://reader.example.com/legacy/account".toHttpUrl()
+        val childUrl = "https://child.reader.example.com/".toHttpUrl()
         val unrelatedUrl = "https://unrelated.test/".toHttpUrl()
         DesktopCookieJar(file).apply {
             saveFromResponse(
@@ -287,6 +288,10 @@ class DesktopCookieJarTest {
                     persistentCookie("legacy_session", "old-secret", "example.com", path = "/legacy"),
                     persistentHostOnlyCookie("auth-only", "keep-auth", authUrl.host),
                 ),
+            )
+            saveFromResponse(
+                childUrl,
+                listOf(persistentCookie("child-domain", "keep-child", childUrl.host)),
             )
             saveFromResponse(
                 unrelatedUrl,
@@ -302,11 +307,13 @@ class DesktopCookieJarTest {
 
         assertEquals(listOf("session" to "new-secret"), jar.get(readerLegacyUrl).map { it.name to it.value })
         assertEquals(listOf("auth-only" to "keep-auth"), jar.get(authUrl).map { it.name to it.value })
+        assertEquals("keep-child", jar.get(childUrl).single { it.name == "child-domain" }.value)
         assertEquals(listOf("unrelated" to "keep-other"), jar.get(unrelatedUrl).map { it.name to it.value })
 
         val restored = DesktopCookieJar(file)
         assertEquals(listOf("session" to "new-secret"), restored.get(readerLegacyUrl).map { it.name to it.value })
         assertEquals(listOf("auth-only" to "keep-auth"), restored.get(authUrl).map { it.name to it.value })
+        assertEquals("keep-child", restored.get(childUrl).single { it.name == "child-domain" }.value)
         assertEquals(listOf("unrelated" to "keep-other"), restored.get(unrelatedUrl).map { it.name to it.value })
         assertTrue("old-secret" !in file.readText(), "stale target-domain credentials must not remain persisted")
     }
