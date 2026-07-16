@@ -135,6 +135,27 @@ class DesktopCookieJarTest {
     }
 
     @Test
+    fun `same-name cookies with different paths are preserved`() {
+        val url = "https://example.com/account/settings".toHttpUrl()
+        jar.saveFromResponse(
+            url,
+            listOf(
+                Cookie.Builder().name("session").value("root").domain("example.com").path("/").build(),
+                Cookie.Builder().name("session").value("account").domain("example.com").path("/account").build(),
+            ),
+        )
+
+        assertEquals(
+            listOf("/account" to "account", "/" to "root"),
+            jar.loadForRequest(url).map { it.path to it.value },
+        )
+        assertEquals(
+            listOf("root"),
+            jar.loadForRequest("https://example.com/public".toHttpUrl()).map { it.value },
+        )
+    }
+
+    @Test
     fun `clear removes all cookies`() {
         val url = "https://example.com/".toHttpUrl()
         val cookie = Cookie.Builder().name("k").value("v").domain("example.com").build()
@@ -232,6 +253,27 @@ class DesktopCookieJarTest {
     }
 
     @Test
+    fun `authenticated session globally replaces an old cookie identity from another bucket`(@TempDir tempDir: Path) {
+        val file = tempDir.resolve("cookies.json").toFile()
+        val authUrl = "https://auth.example.com/login".toHttpUrl()
+        val readerUrl = "https://reader.example.com/".toHttpUrl()
+        DesktopCookieJar(file).saveFromResponse(
+            authUrl,
+            listOf(persistentCookie("session", "old-secret", "example.com")),
+        )
+        val jar = DesktopCookieJar(file)
+
+        jar.commitAuthenticatedSession(
+            readerUrl,
+            listOf(persistentCookie("session", "new-secret", "example.com")),
+        )
+
+        assertEquals(listOf("new-secret"), jar.get(readerUrl).map { it.value })
+        assertEquals(listOf("new-secret"), DesktopCookieJar(file).get(readerUrl).map { it.value })
+        assertTrue("old-secret" !in file.readText(), "superseded credentials must not remain persisted")
+    }
+
+    @Test
     fun `failed authenticated session persistence preserves old memory and old file`(@TempDir tempDir: Path) {
         val file = tempDir.resolve("cookies.json").toFile()
         val url = "https://reader.example.com/".toHttpUrl()
@@ -248,6 +290,50 @@ class DesktopCookieJarTest {
 
         assertEquals(listOf("old"), jar.get(url).map { it.name })
         assertEquals(oldFile, file.readText())
+        assertTrue(tempDir.toFile().listFiles().orEmpty().none { it.name.endsWith(".tmp") })
+    }
+
+    @Test
+    fun `late persistence failure restores exact old memory and file bytes`(@TempDir tempDir: Path) {
+        val file = tempDir.resolve("cookies.json").toFile()
+        val url = "https://reader.example.com/".toHttpUrl()
+        DesktopCookieJar(file).saveFromResponse(url, listOf(persistentCookie("old", "old-value", url.host)))
+        val oldFile = file.readBytes()
+        val jar = DesktopCookieJar(file) { source, target ->
+            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            throw IOException("replace reported failure after moving target")
+        }
+
+        assertThrows(IOException::class.java) {
+            jar.commitAuthenticatedSession(
+                url,
+                listOf(persistentCookie("session", "new-secret", url.host)),
+            )
+        }
+
+        assertEquals(listOf("old-value"), jar.get(url).map { it.value })
+        assertTrue(oldFile.contentEquals(file.readBytes()))
+        assertTrue(tempDir.toFile().listFiles().orEmpty().none { it.name.endsWith(".tmp") })
+    }
+
+    @Test
+    fun `late persistence failure restores an absent target as absent`(@TempDir tempDir: Path) {
+        val file = tempDir.resolve("cookies.json").toFile()
+        val url = "https://reader.example.com/".toHttpUrl()
+        val jar = DesktopCookieJar(file) { source, target ->
+            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            throw IOException("replace reported failure after creating target")
+        }
+
+        assertThrows(IOException::class.java) {
+            jar.commitAuthenticatedSession(
+                url,
+                listOf(persistentCookie("session", "new-secret", url.host)),
+            )
+        }
+
+        assertTrue(jar.get(url).isEmpty())
+        assertTrue(!file.exists())
         assertTrue(tempDir.toFile().listFiles().orEmpty().none { it.name.endsWith(".tmp") })
     }
 

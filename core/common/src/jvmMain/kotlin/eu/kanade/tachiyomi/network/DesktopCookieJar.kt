@@ -6,6 +6,7 @@ import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
 import java.io.File
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -28,7 +29,7 @@ class DesktopCookieJar(
     },
 ) : CookieJar {
 
-    private val cookieStore = ConcurrentHashMap<String, MutableMap<String, Cookie>>()
+    private val cookieStore = ConcurrentHashMap<String, MutableMap<CookieIdentity, Cookie>>()
     private val mutationLock = Any()
 
     init {
@@ -37,10 +38,8 @@ class DesktopCookieJar(
 
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
         synchronized(mutationLock) {
-            val domain = url.host
-            val domainCookies = cookieStore.getOrPut(domain) { mutableMapOf() }
             for (cookie in cookies) {
-                domainCookies[cookie.name] = cookie
+                putCookie(url.host, cookie)
             }
             persistToDisk()
         }
@@ -53,7 +52,12 @@ class DesktopCookieJar(
                 .asSequence()
                 .flatMap { it.values.asSequence() }
                 .filter { it.expiresAt > now && it.matches(url) }
-                .distinctBy { Triple(it.name, it.domain, it.path) }
+                .sortedWith(
+                    compareByDescending<Cookie> { it.path.length }
+                        .thenBy { it.name }
+                        .thenBy { it.domain }
+                        .thenBy { it.path },
+                )
                 .toList()
         }
     }
@@ -65,8 +69,9 @@ class DesktopCookieJar(
             val domain = url.host
             val domainCookies = cookieStore[domain] ?: return
             for (name in cookieNames) {
-                domainCookies.remove(name)
+                domainCookies.keys.removeAll { it.name == name }
             }
+            if (domainCookies.isEmpty()) cookieStore.remove(domain)
             persistToDisk()
         }
     }
@@ -80,8 +85,7 @@ class DesktopCookieJar(
             .expiresAt(System.currentTimeMillis() + 365L * 24 * 3600 * 1000) // 1 year
             .build()
         synchronized(mutationLock) {
-            val domainCookies = cookieStore.getOrPut(url.host) { mutableMapOf() }
-            domainCookies[name] = cookie
+            putCookie(url.host, cookie)
             persistToDisk()
         }
     }
@@ -111,19 +115,37 @@ class DesktopCookieJar(
     fun commitAuthenticatedSession(url: HttpUrl, cookies: List<Cookie>) {
         synchronized(mutationLock) {
             val domain = url.host
-            val previous = cookieStore[domain]?.toMutableMap()
-            if (cookies.isEmpty()) {
-                cookieStore.remove(domain)
-            } else {
-                cookieStore[domain] = cookies.associateByTo(linkedMapOf()) { it.name }
-            }
+            val previousStore = snapshotCookieStore()
+            val previousFile = snapshotStorageFile()
+            cookieStore.remove(domain)
+            cookies.forEach { putCookie(domain, it) }
             try {
                 persistToDiskOrThrow()
             } catch (error: Exception) {
-                if (previous == null) cookieStore.remove(domain) else cookieStore[domain] = previous
+                restoreCookieStore(previousStore)
+                try {
+                    restoreStorageFile(previousFile)
+                } catch (rollbackError: Exception) {
+                    error.addSuppressed(rollbackError)
+                }
                 throw error
             }
         }
+    }
+
+    private fun putCookie(bucket: String, cookie: Cookie) {
+        val identity = CookieIdentity.from(cookie)
+        cookieStore.values.forEach { it.remove(identity) }
+        cookieStore.entries.removeIf { it.value.isEmpty() }
+        cookieStore.getOrPut(bucket) { linkedMapOf() }[identity] = cookie
+    }
+
+    private fun snapshotCookieStore(): Map<String, MutableMap<CookieIdentity, Cookie>> =
+        cookieStore.mapValues { (_, cookies) -> cookies.toMutableMap() }
+
+    private fun restoreCookieStore(snapshot: Map<String, MutableMap<CookieIdentity, Cookie>>) {
+        cookieStore.clear()
+        snapshot.forEach { (domain, cookies) -> cookieStore[domain] = cookies.toMutableMap() }
     }
 
     // ── Persistence ────────────────────────────────────────────────────────────
@@ -135,14 +157,10 @@ class DesktopCookieJar(
             val persisted = json.decodeFromString<Map<String, List<PersistedCookie>>>(file.readText())
             val now = System.currentTimeMillis()
             for ((domain, cookies) in persisted) {
-                val domainMap = mutableMapOf<String, Cookie>()
                 for (pc in cookies) {
                     if (pc.expiresAt > now) { // skip expired
-                        domainMap[pc.name] = pc.toCookie()
+                        putCookie(domain, pc.toCookie())
                     }
-                }
-                if (domainMap.isNotEmpty()) {
-                    cookieStore[domain] = domainMap
                 }
             }
         } catch (_: Exception) {
@@ -177,10 +195,68 @@ class DesktopCookieJar(
         }
     }
 
+    private fun snapshotStorageFile(): StorageFileSnapshot? {
+        val file = storageFile ?: return null
+        val target = file.toPath()
+        return if (Files.exists(target)) {
+            StorageFileSnapshot(existed = true, bytes = Files.readAllBytes(target))
+        } else {
+            StorageFileSnapshot(existed = false)
+        }
+    }
+
+    private fun restoreStorageFile(snapshot: StorageFileSnapshot?) {
+        val file = storageFile ?: return
+        val state = snapshot ?: return
+        val target = file.toPath()
+        if (!state.existed) {
+            Files.deleteIfExists(target)
+            return
+        }
+
+        val parent = file.absoluteFile.parentFile
+        parent?.mkdirs()
+        val temporary = File.createTempFile("${file.name}.rollback.", ".tmp", parent)
+        try {
+            Files.write(temporary.toPath(), checkNotNull(state.bytes))
+            try {
+                Files.move(
+                    temporary.toPath(),
+                    target,
+                    StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE,
+                )
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(temporary.toPath(), target, StandardCopyOption.REPLACE_EXISTING)
+            }
+        } finally {
+            temporary.delete()
+        }
+    }
+
     companion object {
         private val json = Json { ignoreUnknownKeys = true }
     }
 }
+
+private data class CookieIdentity(
+    val name: String,
+    val domain: String,
+    val path: String,
+) {
+    companion object {
+        fun from(cookie: Cookie) = CookieIdentity(
+            name = cookie.name,
+            domain = cookie.domain.lowercase().trimStart('.'),
+            path = cookie.path,
+        )
+    }
+}
+
+private data class StorageFileSnapshot(
+    val existed: Boolean,
+    val bytes: ByteArray? = null,
+)
 
 @Serializable
 private data class PersistedCookie(

@@ -22,7 +22,9 @@ import tachiyomi.domain.source.service.SourceLoginSession
 import tachiyomi.domain.source.service.SourceLoginState
 import java.io.IOException
 import java.net.URI
+import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DesktopBrowserLoginAdapterTest {
@@ -136,7 +138,9 @@ class DesktopBrowserLoginAdapterTest {
     }
 
     @Test
-    fun `production committer persistence failure publishes commit failed and preserves old jar`(@TempDir tempDir: Path) =
+    fun `production committer late persistence failure publishes commit failed and restores old jar and file`(
+        @TempDir tempDir: Path,
+    ) =
         runTest {
             val file = tempDir.resolve("cookies.json").toFile()
             val request = request()
@@ -148,8 +152,11 @@ class DesktopBrowserLoginAdapterTest {
                 .expiresAt(System.currentTimeMillis() + 3_600_000)
                 .build()
             DesktopCookieJar(file).saveFromResponse(request.url, listOf(oldCookie))
-            val oldFile = file.readText()
-            val jar = DesktopCookieJar(file) { _, _ -> throw IOException("replace failed") }
+            val oldFile = file.readBytes()
+            val jar = DesktopCookieJar(file) { source, target ->
+                Files.move(source, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+                throw IOException("replace reported failure after moving target")
+            }
             lateinit var ticket: DesktopBrowserLoginTicket
             val login = SourceLoginSession(
                 DesktopBrowserLoginAdapter(
@@ -165,7 +172,7 @@ class DesktopBrowserLoginAdapterTest {
 
             assertEquals(SourceLoginState.CommitFailed, result.await())
             assertEquals(listOf("old"), jar.get(request.url).map { it.name })
-            assertEquals(oldFile, file.readText())
+            assertTrue(oldFile.contentEquals(file.readBytes()))
         }
 
     private fun request(required: Set<String> = emptySet()) = SourceLoginRequest(
