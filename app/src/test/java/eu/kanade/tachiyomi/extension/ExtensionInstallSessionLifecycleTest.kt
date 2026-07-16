@@ -73,6 +73,8 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -348,6 +350,7 @@ class ExtensionInstallSessionLifecycleTest {
                 assertEquals(InstallStep.Idle, terminal.await())
                 assertTrue(activeTransactionIds(bridge).isEmpty())
                 assertTrue(platformResults(bridge).isEmpty())
+                assertTrue(cancelledTransactionIds(bridge).isEmpty())
                 bridge.updateInstallStep(child, InstallStep.Installed)
                 assertTrue(activeTransactionIds(bridge).isEmpty())
             } finally {
@@ -460,6 +463,145 @@ class ExtensionInstallSessionLifecycleTest {
                 assertTrue(activeTransactionIds(bridge).isEmpty())
             } finally {
                 allowRemoval.countDown()
+                installerScope.cancel()
+                unmockkStatic(FileProvider::class)
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = [false, true])
+    fun `parent cancellation with stale or completed child state survives teardown`(
+        childLifecycleCompletesAfterLookup: Boolean,
+        @TempDir directory: Path,
+    ) = runTest {
+        val harness = packageInstallerHarness()
+        val cacheDirectory = directory.resolve("cache").toFile().apply(File::mkdirs)
+        val filesDirectory = directory.resolve("files").toFile().apply(File::mkdirs)
+        val packageManager = mockk<PackageManager>(relaxed = true) {
+            every { getPackageInfo(PACKAGE_NAME, any<Int>()) } throws PackageManager.NameNotFoundException()
+            every { getApplicationInfo(PACKAGE_NAME, any<Int>()) } throws PackageManager.NameNotFoundException()
+        }
+        val context = mockk<Context>(relaxed = true) {
+            every { packageName } returns "eu.kanade.tachiyomi"
+            every { cacheDir } returns cacheDirectory
+            every { filesDir } returns filesDirectory
+            every { this@mockk.packageManager } returns packageManager
+        }
+        val staleChildRead = CountDownLatch(1)
+        val allowLifecycleLookup = CountDownLatch(1)
+        val cancellationReturned = CountDownLatch(1)
+        val childStarted = CountDownLatch(1)
+        val installerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        lateinit var bridge: ExtensionInstaller
+        val childAttempts = Collections.synchronizedList(mutableListOf<String>())
+        val gateway = DefaultAndroidInstallGateway(
+            context = context,
+            installSystem = { transactionId, file, installer ->
+                bridge.installSystemAttempt(transactionId, file, installer)
+            },
+            commitPlanProvider = {
+                AndroidCommitPlan(
+                    AndroidInstallLocation.SYSTEM,
+                    BasePreferences.ExtensionInstaller.PACKAGEINSTALLER,
+                )
+            },
+            apkInspector = {
+                AndroidApk(PACKAGE_NAME, "1.4.2", 2, setOf("signer-a"), isExtension = true)
+            },
+        )
+        bridge = ExtensionInstaller(
+            context = context,
+            runtimeReloader = {},
+            scope = installerScope,
+            gateway = gateway,
+            client = OkHttpClient(),
+            installerProvider = { BasePreferences.ExtensionInstaller.PACKAGEINSTALLER },
+        )
+        if (childLifecycleCompletesAfterLookup) {
+            ExtensionInstaller::class.java.getDeclaredField("transactionLifecycles").apply {
+                isAccessible = true
+                set(
+                    bridge,
+                    LifecycleReadDuringTeardown(
+                        childId = { childAttempts.singleOrNull() },
+                        staleChildRead = staleChildRead,
+                        allowLifecycleLookup = allowLifecycleLookup,
+                    ),
+                )
+            }
+        } else {
+            ExtensionInstaller::class.java.getDeclaredField("systemAttemptsByParent").apply {
+                isAccessible = true
+                set(bridge, StaleReadSystemAttempts(staleChildRead, allowLifecycleLookup))
+            }
+        }
+        every { harness.manager.updateInstallStep(any(), any()) } answers {
+            bridge.updateInstallStep(firstArg(), secondArg())
+        }
+        mockkStatic(FileProvider::class)
+        every { FileProvider.getUriForFile(any(), any(), any()) } returns mockk()
+        every { ContextCompat.startForegroundService(context, any()) } answers {
+            childAttempts += checkNotNull(capturedStringExtras[ExtensionInstaller.EXTRA_TRANSACTION_ID])
+            harness.enqueue(childAttempts.single())
+            childStarted.countDown()
+            mockk()
+        }
+
+        MockWebServer().also { it.start() }.use { server ->
+            val candidate = "candidate-system".toByteArray()
+            server.enqueue(MockResponse(body = candidate.decodeToString()))
+            val extension = availableExtension(PACKAGE_NAME).copy(
+                versionName = "1.4.2",
+                versionCode = 2,
+                repoName = REPOSITORY.name,
+                repoFingerprint = REPOSITORY.signingKeyFingerprint,
+                declaredSha256 = Hash.sha256(candidate),
+            )
+            val terminal = async(start = CoroutineStart.UNDISPATCHED) {
+                bridge.downloadAndInstall(server.url("/example.apk").toString(), extension)
+                    .first(InstallStep::isCompleted)
+            }
+
+            try {
+                assertTrue(childStarted.await(10, TimeUnit.SECONDS))
+                val parent = activeTransactionIds(bridge).getValue(PACKAGE_NAME)
+                val child = childAttempts.single()
+                thread {
+                    bridge.cancelInstall(PACKAGE_NAME)
+                    cancellationReturned.countDown()
+                }
+                assertTrue(staleChildRead.await(10, TimeUnit.SECONDS))
+
+                harness.callback(PackageInstaller.STATUS_SUCCESS)
+                harness.installer.onDestroy()
+                val teardownDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+                while (
+                    transactionLifecycles(bridge).containsKey(child) &&
+                    System.nanoTime() < teardownDeadline
+                ) {
+                    Thread.yield()
+                }
+                assertFalse(systemAttemptIds(bridge).containsKey(parent))
+                assertFalse(transactionLifecycles(bridge).containsKey(child))
+
+                allowLifecycleLookup.countDown()
+                assertTrue(cancellationReturned.await(10, TimeUnit.SECONDS))
+                runCurrent()
+
+                val cancellationExtra = Installer::class.java.getDeclaredField("EXTRA_TRANSACTION_ID").apply {
+                    isAccessible = true
+                }.get(null) as String
+                assertEquals(parent, capturedStringExtras[cancellationExtra])
+                assertFalse(terminal.isCompleted, "cancellation must wait for outer rollback and cleanup")
+                assertTrue(activeTransactionIds(bridge).containsKey(PACKAGE_NAME))
+                assertEquals(InstallStep.Idle, terminal.await())
+                assertTrue(activeTransactionIds(bridge).isEmpty())
+                assertTrue(platformResults(bridge).isEmpty())
+                bridge.updateInstallStep(child, InstallStep.Installed)
+                assertTrue(activeTransactionIds(bridge).isEmpty())
+            } finally {
+                allowLifecycleLookup.countDown()
                 installerScope.cancel()
                 unmockkStatic(FileProvider::class)
             }
@@ -1560,6 +1702,11 @@ class ExtensionInstallSessionLifecycleTest {
             .get(installer) as Map<String, CompletableDeferred<InstallStep>>
 
     @Suppress("UNCHECKED_CAST")
+    private fun cancelledTransactionIds(installer: ExtensionInstaller): Set<String> =
+        ExtensionInstaller::class.java.getDeclaredField("cancelledTransactions").apply { isAccessible = true }
+            .get(installer) as Set<String>
+
+    @Suppress("UNCHECKED_CAST")
     private fun systemAttemptIds(installer: ExtensionInstaller): Map<String, String> =
         ExtensionInstaller::class.java.getDeclaredField("systemAttemptsByParent")
             .apply { isAccessible = true }
@@ -1761,6 +1908,35 @@ class ExtensionInstallSessionLifecycleTest {
             removalStarted.countDown()
             check(allowRemoval.await(10, TimeUnit.SECONDS))
             return removed
+        }
+    }
+
+    private class StaleReadSystemAttempts(
+        private val staleChildRead: CountDownLatch,
+        private val allowLifecycleLookup: CountDownLatch,
+    ) : ConcurrentHashMap<String, String>() {
+        override fun get(key: String): String? {
+            val child = super.get(key)
+            if (child != null && staleChildRead.count > 0) {
+                staleChildRead.countDown()
+                check(allowLifecycleLookup.await(10, TimeUnit.SECONDS))
+            }
+            return child
+        }
+    }
+
+    private class LifecycleReadDuringTeardown(
+        private val childId: () -> String?,
+        private val staleChildRead: CountDownLatch,
+        private val allowLifecycleLookup: CountDownLatch,
+    ) : ConcurrentHashMap<String, Any>() {
+        override fun get(key: String): Any? {
+            val lifecycle = super.get(key)
+            if (key == childId() && lifecycle != null && staleChildRead.count > 0) {
+                staleChildRead.countDown()
+                check(allowLifecycleLookup.await(10, TimeUnit.SECONDS))
+            }
+            return lifecycle
         }
     }
 

@@ -112,3 +112,32 @@
 
 - Round 3 产品/测试变更为 3 个文件、123 changed lines（+123/-5）；另追加本报告。未修改计划、OpenSpec、progress 或无关未跟踪文件。
 - JVM 测试已穿过真实 Default gateway 与 Task 4C PackageInstaller harness；真实 Android 厂商 PackageInstaller 的 instrumentation 差异仍需设备级验证。
+
+## 最终竞态闭环 Round 4
+
+### 实现
+
+- parent 取消读取到 system child 后，不再把“child lifecycle 已被 teardown 删除”误判为整个安装已结束。child lifecycle 缺失或已进入 `COMPLETE` 时，仅清理 child tombstone，并保留 parent cancellation，回退到外层 `HANDED_OFF` lifecycle；终态和 receiver gate 继续由 shared coordinator 在 rollback、cleanup 与 outer flight 完成后收口。
+- `installSystemAttempt()` 只在调用方确实提供外层 parent lifecycle 时提升其 handoff 状态。`downloadAndInstall()` 生产入口仍建立并提升 parent lifecycle；合法 standalone coordinator→Default gateway→Task 4C bridge seam 不再因不存在伪造 parent lifecycle 而在 child session 建立前失败，也不会创建遗留 lifecycle。
+- 新参数化竞态测试覆盖两种确定性交错：取消已读到旧 child mapping 后 child lifecycle 被完整删除，以及取消已取得 child lifecycle 对象但该对象随后进入 `COMPLETE`。两者都要求取消目标安全回退到 parent、terminal/gate 等待 outer rollback/cleanup、迟到 child Installed 被拒绝。
+
+### RED / GREEN 与 mutation
+
+- standalone bridge RED：既有 `production system commit reload failure restores through a distinct child session` 1/1 失败；当前硬前置条件使 system child 从未建立，`extension-installs` 目录为空，精确命中审查 finding。
+- stale-child RED：取消线程先读取旧 child ID，再由 teardown 真正 remove mapping 并 complete/remove child lifecycle，最后放行 lifecycle lookup；1/1 失败，期望 `Idle`、实际 `Installed`。
+- 定向 GREEN：standalone bridge + stale missing child + lifecycle-object-then-`COMPLETE` 共 **3/3 PASS**；commit/restore 使用两个不同 child session，并与 parent、迟到 callback 隔离。
+- mutation 1：移除 child `COMPLETE` 识别后，参数化竞态 1/2 失败，完成的 child 被错误用作取消目标而不是 parent；mutation 已恢复。
+- mutation 2：恢复旧的“child missing 时同时撤销 parent/child tombstone并返回”行为后，参数化竞态 **2/2 失败**；mutation 已恢复。
+
+### 最终验证
+
+- fresh Lifecycle 全类（`--rerun-tasks`）：**25/25 PASS**，0 failures/errors/skips。
+- fresh Security + Wiring + Manager（`--rerun-tasks`）：21 + 9 + 2 = **32/32 PASS**，0 failures/errors/skips。
+- `./gradlew :app:spotlessCheck :app:compileReleaseUnitTestKotlin --rerun-tasks --no-parallel`：`BUILD SUCCESSFUL`。
+- `./gradlew spotlessCheck --no-parallel`：`BUILD SUCCESSFUL`。
+- `git diff --check`：exit 0、无输出。
+
+### 范围与剩余风险
+
+- Round 4 产品/测试变更严格限定为 2 个获准文件，共 208 changed lines（+196/-12），另追加本报告；未修改计划、OpenSpec、progress 或无关未跟踪文件。
+- JVM 测试已覆盖真实 shared coordinator、Default Android gateway 与 Task 4C PackageInstaller harness 的 commit/reload-failure/restore、取消及 teardown 交错；真实 Android 厂商 PackageInstaller 的回调时序差异仍需设备级 instrumentation 验收。

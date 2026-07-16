@@ -224,7 +224,7 @@ internal class ExtensionInstaller private constructor(
         installer: BasePreferences.ExtensionInstaller,
     ) {
         check(installer != BasePreferences.ExtensionInstaller.PRIVATE)
-        checkNotNull(transactionLifecycles[parentTransactionId]).markHandedOffIfNew()
+        transactionLifecycles[parentTransactionId]?.markHandedOffIfNew()
         val attemptId = UUID.randomUUID().toString()
         val lifecycle = TransactionLifecycle()
         transactionLifecycles[attemptId] = lifecycle
@@ -337,11 +337,27 @@ internal class ExtensionInstaller private constructor(
         if (!cancelledTransactions.add(active.transactionId)) return
         val activeJob = activeJobs[pkgName]?.takeIf { it.transactionId == active.transactionId }
         val systemAttempt = systemAttemptsByParent[active.transactionId]
-        val cancellationId = systemAttempt ?: active.transactionId
-        if (systemAttempt != null) cancelledTransactions += systemAttempt
+        val systemTarget = systemAttempt?.let { attemptId ->
+            cancelledTransactions += attemptId
+            transactionLifecycles[attemptId]?.let { lifecycle ->
+                synchronized(lifecycle) {
+                    CancellationTarget(lifecycle.phase(), platformResults[attemptId])
+                }.takeUnless { it.phase == TransactionPhase.COMPLETE }
+            }
+        }
+        if (systemAttempt != null && systemTarget != null) {
+            val acknowledgement = Installer.cancelInstallQueue(context, systemAttempt)
+            scope.launch {
+                acknowledgement.await()
+                systemTarget.platformResult?.complete(InstallStep.Idle)
+            }
+            return
+        }
+        systemAttempt?.let(cancelledTransactions::remove)
+
+        val cancellationId = active.transactionId
         val lifecycle = transactionLifecycles[cancellationId] ?: run {
             cancelledTransactions -= active.transactionId
-            systemAttempt?.let(cancelledTransactions::remove)
             return
         }
         val cancellationTarget = synchronized(lifecycle) {
@@ -349,14 +365,6 @@ internal class ExtensionInstaller private constructor(
         }
         if (cancellationTarget.phase == TransactionPhase.COMPLETE) {
             cancelledTransactions -= active.transactionId
-            return
-        }
-        if (systemAttempt != null) {
-            val acknowledgement = Installer.cancelInstallQueue(context, systemAttempt)
-            scope.launch {
-                acknowledgement.await()
-                cancellationTarget.platformResult?.complete(InstallStep.Idle)
-            }
             return
         }
         if (cancellationTarget.phase == TransactionPhase.NEW) {
