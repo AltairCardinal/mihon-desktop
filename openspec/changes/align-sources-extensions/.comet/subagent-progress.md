@@ -159,6 +159,7 @@
 - Finding evaluation: both are technically valid, deterministic, and remain within the existing shared validation/jar test boundary. Continue one focused TDD repair without user pause; use an authoritative PSL-aware API already supplied by the dependency rather than a hard-coded suffix list.
 - PSL-closure requirements: reject public-suffix domain cookies before commit with zero writes while retaining valid registrable parent domains; add `com` and multi-label suffix coverage if supported by the dependency. Extend persisted jar regression with a child-domain cookie and prove a bidirectional/over-clearing mutation fails.
 - Review/fix round: 4/4 (user-authorized engineering continuation for narrow same-axis closure).
+- PSL-closure fix agent: `/root/task5a_psl_fix` (fresh TDD implementer; authoritative public-suffix validation plus child-domain preservation coverage).
 
 ## Task 4D Review History
 
