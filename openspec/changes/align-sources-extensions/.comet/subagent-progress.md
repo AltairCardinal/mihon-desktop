@@ -161,7 +161,8 @@
 - Phase fix mutations: restoring the old `platformResult == null` direct-cancel condition, completing lifecycle before coordinator flight, or omitting activeJobs from pruning each failed its focused test and was restored.
 - Cumulative product scope: 7 files, +1638/-97 (1735 changed lines); 1147 added test lines form the single production-wiring lifecycle matrix.
 - Phase final review package: `.superpowers/sdd/align-sources-task-4c-session-phase-final-review.diff` (cumulative base `b645e4af9`, head `fc41f0d87`).
-- Phase final reviewer: `/root/task4c_phase_final_review` (fresh independent read-only closure review; no test rerun).
+- Phase final reviewer: `/root/task4c_phase_closure_review` (fresh independent read-only replacement after the first reviewer failed to return within the bounded review window; no test rerun).
+- Phase closure review package: `.superpowers/sdd/align-sources-task-4c-session-phase-fix-only-review.diff` (repair delta `f02ac6b15..fc41f0d87`; prior cumulative review supplies the already-reviewed baseline).
 - Review/fix round: 3/3
 - Review/fix round: 2/2
 - Implementation commit: `9965e22577746c31e59435cdd35f4b30e677c020` (`refactor(android): adapt transactional extension install`).
