@@ -142,7 +142,7 @@
 - Remaining Important: public cancel can observe `platformResults == null` after `installPrepared` passes its cancellation guard but before result/owner registration, take the no-platform early-Idle branch, then allow the already-started commit to launch a tombstoned service. Repair requires one lifecycle state/CAS or shared lock that atomically hands off cancellation-check/platform-registration versus direct no-platform terminal.
 - Remaining Minor: high-level `completedTransactions` is an unbounded UUID set; replace it with a bounded TTL/active-lifecycle-safe exactly-once tombstone and prove pruning does not admit duplicate terminals for active/recent transactions.
 - User override: the user explicitly rejected mechanical review-round stops when one further narrow repair is sufficient. Both remaining findings are localized to the same high-level transaction lifecycle and are assessed as closable in one extra TDD repair/re-review without replanning.
-- Extra fix agent: pending fresh agent.
+- Extra fix agent: `/root/task4c_session_fix3` (fresh agent; deterministic startup-cancel linearization plus bounded high-level terminal tombstones).
 - Review/fix round: 3/3
 - Review/fix round: 2/2
 - Implementation commit: `9965e22577746c31e59435cdd35f4b30e677c020` (`refactor(android): adapt transactional extension install`).
