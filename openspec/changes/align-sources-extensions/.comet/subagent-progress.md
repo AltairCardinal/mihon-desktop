@@ -149,7 +149,7 @@
 - Extra verification: lifecycle+wiring 22/22 PASS; related Manager/PackageInstaller/Shizuku filter 3/3 PASS; root Spotless 61 tasks PASS; diff check PASS.
 - Cumulative product scope: 7 files, +1271/-93 (1364 changed lines); plan/brief waiver updated for deterministic startup-cancel and TTL coverage.
 - Extra final review package: `.superpowers/sdd/align-sources-task-4c-session-extra-final-review.diff` (cumulative base `b645e4af9`, head `f02ac6b15`).
-- Extra final reviewer: pending fresh independent reviewer.
+- Extra final reviewer: `/root/task4c_session_extra_final_review` (fresh independent read-only reviewer; user-authorized extra closure gate).
 - Review/fix round: 3/3
 - Review/fix round: 2/2
 - Implementation commit: `9965e22577746c31e59435cdd35f4b30e677c020` (`refactor(android): adapt transactional extension install`).
