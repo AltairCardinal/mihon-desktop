@@ -224,6 +224,7 @@ internal class ExtensionInstaller private constructor(
         installer: BasePreferences.ExtensionInstaller,
     ) {
         check(installer != BasePreferences.ExtensionInstaller.PRIVATE)
+        checkNotNull(transactionLifecycles[parentTransactionId]).markHandedOffIfNew()
         val attemptId = UUID.randomUUID().toString()
         val lifecycle = TransactionLifecycle()
         transactionLifecycles[attemptId] = lifecycle
@@ -490,6 +491,10 @@ internal class ExtensionInstaller private constructor(
 
         fun markHandedOff() {
             check(phase.compareAndSet(TransactionPhase.NEW, TransactionPhase.HANDED_OFF))
+        }
+
+        fun markHandedOffIfNew() {
+            phase.compareAndSet(TransactionPhase.NEW, TransactionPhase.HANDED_OFF)
         }
 
         fun markFinishing() {
@@ -1041,8 +1046,10 @@ internal class DefaultAndroidInstallGateway(
         file: File,
         packageName: String,
         location: AndroidInstallLocation,
-    ): AndroidInstalledPackage? = inspect(file)?.let {
-        AndroidInstalledPackage(file, it.versionName, it.versionCode, it.signers, readTrust(packageName, location))
+    ): AndroidInstalledPackage? = inspect(file)?.let { apk ->
+        if (apk.packageName != packageName) failMalformed("Installed extension APK package does not match request")
+        if (!apk.isExtension) failMalformed("Installed APK does not declare the extension feature")
+        AndroidInstalledPackage(file, apk.versionName, apk.versionCode, apk.signers, readTrust(packageName, location))
     }
 
     private fun metadataPackage(file: File): String = inspect(file)?.packageName ?: error("Invalid extension APK")

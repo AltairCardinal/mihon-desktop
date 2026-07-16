@@ -441,8 +441,17 @@ class ExtensionInstallSessionLifecycleTest {
                 harness.callback(PackageInstaller.STATUS_SUCCESS)
                 harness.installer.onDestroy()
                 assertTrue(removalStarted.await(10, TimeUnit.SECONDS))
+                assertTrue(systemAttemptIds(bridge).isEmpty(), "parent-to-child mapping must already be removed")
 
                 bridge.cancelInstall(PACKAGE_NAME)
+                runCurrent()
+
+                assertFalse(terminal.isCompleted, "cancellation must wait for rollback and cleanup")
+                assertTrue(
+                    activeTransactionIds(bridge).containsKey(PACKAGE_NAME),
+                    "receiver gate must remain active during child teardown",
+                )
+
                 allowRemoval.countDown()
 
                 assertEquals(InstallStep.Idle, terminal.await())
@@ -1550,6 +1559,12 @@ class ExtensionInstallSessionLifecycleTest {
         ExtensionInstaller::class.java.getDeclaredField("platformResults").apply { isAccessible = true }
             .get(installer) as Map<String, CompletableDeferred<InstallStep>>
 
+    @Suppress("UNCHECKED_CAST")
+    private fun systemAttemptIds(installer: ExtensionInstaller): Map<String, String> =
+        ExtensionInstaller::class.java.getDeclaredField("systemAttemptsByParent")
+            .apply { isAccessible = true }
+            .get(installer) as Map<String, String>
+
     private fun ageCompletedTransactions(installer: ExtensionInstaller) {
         val completed = ExtensionInstaller::class.java.getDeclaredField("completedTransactions")
             .apply { isAccessible = true }
@@ -1742,9 +1757,10 @@ class ExtensionInstallSessionLifecycleTest {
         private val allowRemoval: CountDownLatch,
     ) : ConcurrentHashMap<String, String>() {
         override fun remove(key: String, value: String): Boolean {
+            val removed = super.remove(key, value)
             removalStarted.countDown()
             check(allowRemoval.await(10, TimeUnit.SECONDS))
-            return super.remove(key, value)
+            return removed
         }
     }
 

@@ -82,3 +82,33 @@
 
 - 3 个任务文件共 +419/-36（455 changed lines），另追加本报告；未触碰既有无关 untracked 文件。
 - JVM 测试已覆盖真实 Default gateway、coordinator rollback 与 Task 4C PackageInstaller harness；真实设备厂商 PackageInstaller 的回调差异仍需 instrumentation/实机验收，但无回调现已被本地 timeout 有界化。
+
+## 最终审查闭环 Round 3
+
+### 实现
+
+- system child attempt 开始时将外层 parent lifecycle 从 `NEW` 提升为 `HANDED_OFF`；即使 parent→child mapping 已删除、child lifecycle 尚在 teardown，取消也不会走 pre-handoff 快速 Idle，而是由外层 shared coordinator 在 rollback/cleanup 完成后发布终态并解除 receiver gate。
+- teardown 回归的阻塞点移到 `ConcurrentHashMap.remove()` 真正完成之后，并显式断言 mapping 已空、terminal 未完成、active transaction gate 仍存在；外层回滚后才得到 Idle，迟到 child Installed 仍被拒绝。
+- `DefaultAndroidInstallGateway.installedPackage()` 在读取 requested package sidecar 前验证 inspected APK 的 package identity 与 extension feature；private/system 的 package mismatch 和 non-extension 都在 topology/validate 阶段以 `MalformedData` 失败，不会进入 commit 或写入错误目标。
+- 将既有 sidecar atomic rollback 测试从比较 `Properties.store()` 自动生成的时间戳注释改为比较解析后的 Properties 字段，消除跨秒造成的非语义抖动，不改变产品行为。
+
+### RED / GREEN 与 mutation
+
+- 初始定向 RED：2/2 失败，0 errors。post-map-removal 取消错误地提前完成 terminal；private package mismatch 未返回失败，均精确命中审查 finding。
+- 定向 GREEN：2/2 PASS。
+- mutation 1：移除 parent lifecycle 的 handoff 状态提升，teardown 回归 1/1 稳定失败。
+- mutation 2：仅移除 package identity guard，identity cross-wire 回归 1/1 稳定失败。
+- mutation 3：恢复 package guard、仅移除 extension-feature guard，同一回归 1/1 稳定失败。三组 mutation 后均恢复生产实现。
+
+### 最终验证
+
+- fresh Security + Lifecycle（`--rerun-tasks`）：21 + 23 = **44/44 PASS**，0 failures/errors/skips。
+- fresh Wiring + Manager（`--rerun-tasks`）：9 + 2 = **11/11 PASS**，0 failures/errors/skips。
+- `./gradlew :app:spotlessCheck :app:compileReleaseUnitTestKotlin --rerun-tasks --no-parallel`：`BUILD SUCCESSFUL`。
+- `./gradlew spotlessCheck --no-parallel`：`BUILD SUCCESSFUL`。
+- `git diff --check`：exit 0、无输出。
+
+### 范围与剩余风险
+
+- Round 3 产品/测试变更为 3 个文件、123 changed lines（+123/-5）；另追加本报告。未修改计划、OpenSpec、progress 或无关未跟踪文件。
+- JVM 测试已穿过真实 Default gateway 与 Task 4C PackageInstaller harness；真实 Android 厂商 PackageInstaller 的 instrumentation 差异仍需设备级验证。

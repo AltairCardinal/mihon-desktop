@@ -397,7 +397,7 @@ class AndroidExtensionInstallSecurityRollbackTest {
             }
             val metadataFile = filesDirectory.resolve("extension-install-metadata/private-$PACKAGE_NAME.properties")
             writeTrustMetadata(metadataFile, privateApk)
-            val oldMetadata = metadataFile.readText()
+            val oldMetadata = readProperties(metadataFile)
             var failNextSidecarMove = true
             val gateway = defaultGateway(
                 gatewayContext(filesDirectory, cacheDirectory),
@@ -422,7 +422,7 @@ class AndroidExtensionInstallSecurityRollbackTest {
                 assertInstanceOf(ExtensionInstallState.Failed::class.java, terminal)
                 assertInstanceOf(AppError.Storage::class.java, (terminal as ExtensionInstallState.Failed).error)
                 assertEquals("old-private", privateApk.readText())
-                assertEquals(oldMetadata, metadataFile.readText())
+                assertEquals(oldMetadata, readProperties(metadataFile))
             }
         }
 
@@ -664,6 +664,98 @@ class AndroidExtensionInstallSecurityRollbackTest {
     }
 
     @Test
+    fun `default gateway rejects installed APK identity cross wiring before commit`(
+        @TempDir directory: Path,
+    ) = runTest {
+        data class InvalidInstalledApk(
+            val location: AndroidInstallLocation,
+            val packageName: String,
+            val isExtension: Boolean,
+        )
+
+        listOf(
+            InvalidInstalledApk(AndroidInstallLocation.PRIVATE, "evil.package", true),
+            InvalidInstalledApk(AndroidInstallLocation.PRIVATE, PACKAGE_NAME, false),
+            InvalidInstalledApk(AndroidInstallLocation.SYSTEM, "evil.package", true),
+            InvalidInstalledApk(AndroidInstallLocation.SYSTEM, PACKAGE_NAME, false),
+        ).forEachIndexed { index, invalid ->
+            val caseDirectory = directory.resolve("case-$index")
+            val filesDirectory = caseDirectory.resolve("files").toFile().apply(File::mkdirs)
+            val cacheDirectory = caseDirectory.resolve("cache").toFile().apply(File::mkdirs)
+            val installedApk = when (invalid.location) {
+                AndroidInstallLocation.PRIVATE -> filesDirectory.resolve("exts/$PACKAGE_NAME.ext")
+                AndroidInstallLocation.SYSTEM -> caseDirectory.resolve("installed-system.apk").toFile()
+            }.apply {
+                parentFile?.mkdirs()
+                writeText("installed-old-$index")
+            }
+            val metadataFile = filesDirectory.resolve(
+                "extension-install-metadata/${invalid.location.name.lowercase()}-$PACKAGE_NAME.properties",
+            )
+            writeTrustMetadata(metadataFile, installedApk)
+            val oldBytes = installedApk.readBytes()
+            val oldMetadata = metadataFile.readBytes()
+            val packageManager = mockk<PackageManager>(relaxed = true) {
+                if (invalid.location == AndroidInstallLocation.SYSTEM) {
+                    every { getPackageInfo(any<String>(), any<Int>()) } returns PackageInfo().apply {
+                        packageName = PACKAGE_NAME
+                        applicationInfo = ApplicationInfo().apply { sourceDir = installedApk.absolutePath }
+                    }
+                    every {
+                        getPackageInfo(any<String>(), any<PackageManager.PackageInfoFlags>())
+                    } returns PackageInfo().apply {
+                        packageName = PACKAGE_NAME
+                        applicationInfo = ApplicationInfo().apply { sourceDir = installedApk.absolutePath }
+                    }
+                } else {
+                    every { getPackageInfo(any<String>(), any<Int>()) } throws PackageManager.NameNotFoundException()
+                    every {
+                        getPackageInfo(any<String>(), any<PackageManager.PackageInfoFlags>())
+                    } throws PackageManager.NameNotFoundException()
+                }
+            }
+            val context = gatewayContext(filesDirectory, cacheDirectory, packageManager)
+            var systemCommitRan = false
+            val gateway = DefaultAndroidInstallGateway(
+                context = context,
+                installSystem = { _, _, _ -> systemCommitRan = true },
+                commitPlanProvider = {
+                    AndroidCommitPlan(
+                        invalid.location,
+                        BasePreferences.ExtensionInstaller.PACKAGEINSTALLER.takeIf {
+                            invalid.location == AndroidInstallLocation.SYSTEM
+                        },
+                    )
+                },
+                apkInspector = { file ->
+                    if (file.readText().startsWith("candidate")) {
+                        AndroidApk(PACKAGE_NAME, "1.4.2", 2, setOf("signer-a"), true)
+                    } else {
+                        AndroidApk(invalid.packageName, "1.4.1", 1, setOf("signer-a"), invalid.isExtension)
+                    }
+                },
+            )
+
+            withServer(CANDIDATE_BYTES) { server ->
+                val port = AndroidInstallPort(gateway, OkHttpClient())
+                val token = port.prepare(ExtensionInstallRequest(artifact(server)))
+
+                val failure = runCatching { port.validate(token) }.exceptionOrNull()
+
+                assertInstanceOf(
+                    AppError.MalformedData::class.java,
+                    failure.installError(),
+                    "${invalid.location} package=${invalid.packageName} extension=${invalid.isExtension} failure=$failure",
+                )
+                assertTrue(oldBytes.contentEquals(installedApk.readBytes()), invalid.toString())
+                assertTrue(oldMetadata.contentEquals(metadataFile.readBytes()), invalid.toString())
+                assertFalse(systemCommitRan, invalid.toString())
+                assertFalse(filesDirectory.resolve("exts/evil.package.ext").exists(), invalid.toString())
+            }
+        }
+    }
+
+    @Test
     fun `storage and containment failures stay structured`(@TempDir directory: Path) = runTest {
         withServer(CANDIDATE_BYTES) { server ->
             val gateway = FakeGateway(directory.toFile(), AndroidInstallLocation.PRIVATE).apply {
@@ -836,6 +928,9 @@ class AndroidExtensionInstallSecurityRollbackTest {
             setProperty("artifact.sha256", Hash.sha256(apk.readBytes()))
         }.also { values -> file.outputStream().use { values.store(it, null) } }
     }
+
+    private fun readProperties(file: File): Properties =
+        Properties().also { values -> file.inputStream().use(values::load) }
 
     private fun artifact(
         server: MockWebServer,
