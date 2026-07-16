@@ -147,6 +147,7 @@
 - Finding evaluation: technically valid and localized to complete target-scope replacement in the existing jar transaction. Continue one narrow TDD repair without replanning or user pause.
 - Scope-closure requirement: before inserting the complete authenticated set, remove across all buckets every old cookie whose delivery scope applies to the target host (host-only exact target or domain-cookie parent match), while retaining sibling-host-only and unrelated cookies; prove memory and restart behavior with a differently named stale parent-domain cookie and mutation coverage.
 - Review/fix round: 3/3 (user-authorized engineering continuation for a narrow same-axis repair).
+- Scope-closure fix agent: `/root/task5a_scope_fix` (fresh TDD implementer; target-host delivery-scope cleanup only).
 
 ## Task 4D Review History
 
