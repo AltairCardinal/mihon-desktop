@@ -159,6 +159,7 @@
 - Engineering decision: continue one bounded TDD race-closure repair under the user's explicit instruction not to pause for mechanical review limits. Keep the already closed identity/feature and uninstall behavior unchanged; do not replan.
 - Race-closure requirements: add a deterministic stale-child-read RED (read old child, allow map removal + child lifecycle complete, then continue lookup) and fall back to the parent `HANDED_OFF` lifecycle without clearing parent cancellation; restore a valid standalone bridge path without creating an unbounded orphan parent lifecycle, and rerun the entire Lifecycle class after the final production edit.
 - Review/fix round: 4/4 (user-authorized override).
+- Race-closure fix agent: `/root/task4d_fix4` (fresh TDD implementer; bounded to `ExtensionInstaller.kt`, lifecycle production-wiring tests, and the Task report).
 
 ## Task 4C Review History
 
