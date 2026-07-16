@@ -101,7 +101,7 @@
 - Current task: `Task 4D: Android 信任、receiver 可见性与精确回滚`
 - Plan checkbox: pending
 - OpenSpec mappings: `2.2`, `2.3`, `3.1`, `3.2` (Android artifact trust, PackageInstaller/signing boundary, receiver visibility, and exact rollback topology; do not check off shared mappings until all mapped work is complete).
-- Stage: `closure-fix`
+- Stage: `closure-review`
 - Task base: `5a17935c1c5241c163c26de5e8bf742121b8b659`
 - Implementer: `/root/task4d_impl` (fresh TDD agent; one implementation task only).
 - Brief: `.superpowers/sdd/align-sources-task-4d-brief.md`
@@ -147,6 +147,11 @@
 - Closure repair requirements: atomically represent/hand off system attempt teardown so cancellation cannot publish Idle or drop receiver gating before outer rollback/cleanup; add a deterministic post-map-removal/pre-lifecycle-complete RED. Reject private/system installed APK package mismatch and non-extension metadata before commit, preserving physical APK and sidecar bytes; add real Default gateway parameterized REDs.
 - Review/fix round: 3/3 (explicit user override of mechanical limit).
 - Closure fix agent: `/root/task4d_fix3` (fresh TDD implementer; bounded to `ExtensionInstaller.kt` and the two existing production-wiring test files).
+- Closure fix commit: `3726d389ce33eafd1b1d1c7340f9d0bded64b9df` (`fix(android): close extension teardown trust gaps`).
+- Closure RED/GREEN: two focused tests failed for the exact post-map-removal early terminal and private package-identity acceptance, then passed after parent lifecycle handoff and installed APK identity/feature validation.
+- Closure mutations: removing parent handoff, package identity validation, or extension-feature validation each made its production-wiring test fail and was restored.
+- Closure verification: fresh Security 21 + Lifecycle 23 + Wiring 9 + Manager 2 = 55/55 PASS with 0 failures/errors/skips; final focused 2/2 PASS after tightening parent lifecycle lookup; app Spotless+unit-test compile and root Spotless BUILD SUCCESSFUL; diff check PASS.
+- Final cumulative product/test scope from `bb4c235bd` to `3726d389c`: 7 Android files, +2496/-246 (2742 changed lines); plan/brief waiver updated for the complete review-expanded matrix.
 
 ## Task 4C Review History
 
