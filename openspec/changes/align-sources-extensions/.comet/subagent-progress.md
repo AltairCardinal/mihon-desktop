@@ -100,7 +100,7 @@
 
 - Current task: `Task 4C: Android 安装事务/session 生命周期`
 - Plan checkbox: pending（原 4C 实现提交作为本 Task 的基线，未通过审查，不视为已完成）
-- Stage: `spec-review`
+- Stage: `final-fix`
 - Task execution base: `53758e118d8024a593d72645f3aa6034de193a46`
 - Original Task 4C base: `905a8d5c120b337c5c77f8bbe064111c9ed1ba9c`
 - Implementer: `/root/task4c_session_impl`
@@ -150,6 +150,12 @@
 - Cumulative product scope: 7 files, +1271/-93 (1364 changed lines); plan/brief waiver updated for deterministic startup-cancel and TTL coverage.
 - Extra final review package: `.superpowers/sdd/align-sources-task-4c-session-extra-final-review.diff` (cumulative base `b645e4af9`, head `f02ac6b15`).
 - Extra final reviewer: `/root/task4c_session_extra_final_review` (fresh independent read-only reviewer; user-authorized extra closure gate).
+- Extra final review result: Spec Compliance `CHANGES_REQUIRED`; Task quality `NEEDS_FIXES`; Critical 0 / Important 1 / Minor 1. Report: `.superpowers/sdd/align-sources-task-4c-session-extra-final-review.md`.
+- Remaining Important: the shared lock closes guard-before-registration, but lifecycle has no persistent handoff phase. After platform result is consumed and `platformResults` removed while coordinator reload/rollback/cleanup/flight is still active, public cancel can again take the no-platform direct-Idle branch. Add explicit `NEW/HANDED_OFF/FINISHING/COMPLETE` phase/CAS and allow direct terminal only for genuinely never-handed-off work.
+- Remaining Minor: completed-tombstone pruning must explicitly protect active job/coordinator flight through a lifecycle reference and test active-flight expiry, not infer safety from only activeSteps/platformResults/activeTransactions.
+- User override: continue one narrow phase-state repair rather than stop at a mechanical round limit; this extends the same per-transaction lifecycle introduced in round 3 and does not require replanning.
+- Phase fix agent: pending fresh agent.
+- Review/fix round: 4/4
 - Review/fix round: 3/3
 - Review/fix round: 2/2
 - Implementation commit: `9965e22577746c31e59435cdd35f4b30e677c020` (`refactor(android): adapt transactional extension install`).
