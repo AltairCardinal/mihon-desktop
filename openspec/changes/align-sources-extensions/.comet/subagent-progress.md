@@ -98,6 +98,22 @@
 
 ## Current
 
+- Current task: `Task 5B: Desktop 挑战恢复策略与 FlareSolverr 显式后备`
+- Plan checkbox: pending
+- OpenSpec mapping: `3.3` partial (do not check off until Tasks 5B and 5C complete).
+- Stage: `implementing`
+- Task base: `1d5b6cc9b`
+- Brief: `.superpowers/sdd/align-sources-task-5b-brief.md`
+- Risk axis: `challenge-recovery-policy`
+- Platform boundary: `desktop`
+- Scope: 5 files, 320 lines; challenge model/manager/interceptor, solver client adaptation, and one production-policy test only.
+- Verification contract: challenge detection publishes request only; browser/manual/solver require explicit intent; cancel/timeout/failure preserve old credentials; successful solver reuses Task 5A validation and atomic commit; interceptor retries at most once and never auto-invokes solver.
+- Plan guard: PASS for all 6 remaining task bodies after Task 5A checkoff.
+- Implementer: `/root/task5b_impl` (fresh TDD agent; one Task 5B implementation only).
+- Review mode: `thorough`; review/fix round: 0/2.
+
+## Task 5A Review History
+
 - Current task: `Task 5A: 共享登录会话与 Desktop Cookie 原子提交`
 - Plan checkbox: complete
 - OpenSpec mapping: `3.3` partial (do not check off until Tasks 5A-5C complete).
