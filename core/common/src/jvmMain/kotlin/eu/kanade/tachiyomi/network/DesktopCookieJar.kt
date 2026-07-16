@@ -117,7 +117,7 @@ class DesktopCookieJar(
             val domain = url.host
             val previousStore = snapshotCookieStore()
             val previousFile = snapshotStorageFile()
-            cookieStore.remove(domain)
+            removeCookiesDeliverableToHost(domain)
             cookies.forEach { putCookie(domain, it) }
             try {
                 persistToDiskOrThrow()
@@ -138,6 +138,21 @@ class DesktopCookieJar(
         cookieStore.values.forEach { it.remove(identity) }
         cookieStore.entries.removeIf { it.value.isEmpty() }
         cookieStore.getOrPut(bucket) { linkedMapOf() }[identity] = cookie
+    }
+
+    private fun removeCookiesDeliverableToHost(targetHost: String) {
+        val normalizedTarget = targetHost.lowercase().trimStart('.')
+        cookieStore.values.forEach { cookies ->
+            cookies.values.removeAll { cookie ->
+                val cookieDomain = cookie.domain.lowercase().trimStart('.')
+                if (cookie.hostOnly) {
+                    normalizedTarget == cookieDomain
+                } else {
+                    normalizedTarget == cookieDomain || normalizedTarget.endsWith(".$cookieDomain")
+                }
+            }
+        }
+        cookieStore.entries.removeIf { it.value.isEmpty() }
     }
 
     private fun snapshotCookieStore(): Map<String, MutableMap<CookieIdentity, Cookie>> =

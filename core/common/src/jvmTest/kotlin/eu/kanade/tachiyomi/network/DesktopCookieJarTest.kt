@@ -274,6 +274,44 @@ class DesktopCookieJarTest {
     }
 
     @Test
+    fun `authenticated session removes every old cookie deliverable to the target host`(@TempDir tempDir: Path) {
+        val file = tempDir.resolve("cookies.json").toFile()
+        val authUrl = "https://auth.example.com/login".toHttpUrl()
+        val readerUrl = "https://reader.example.com/".toHttpUrl()
+        val readerLegacyUrl = "https://reader.example.com/legacy/account".toHttpUrl()
+        val unrelatedUrl = "https://unrelated.test/".toHttpUrl()
+        DesktopCookieJar(file).apply {
+            saveFromResponse(
+                authUrl,
+                listOf(
+                    persistentCookie("legacy_session", "old-secret", "example.com", path = "/legacy"),
+                    persistentHostOnlyCookie("auth-only", "keep-auth", authUrl.host),
+                ),
+            )
+            saveFromResponse(
+                unrelatedUrl,
+                listOf(persistentCookie("unrelated", "keep-other", unrelatedUrl.host)),
+            )
+        }
+        val jar = DesktopCookieJar(file)
+
+        jar.commitAuthenticatedSession(
+            readerUrl,
+            listOf(persistentCookie("session", "new-secret", readerUrl.host)),
+        )
+
+        assertEquals(listOf("session" to "new-secret"), jar.get(readerLegacyUrl).map { it.name to it.value })
+        assertEquals(listOf("auth-only" to "keep-auth"), jar.get(authUrl).map { it.name to it.value })
+        assertEquals(listOf("unrelated" to "keep-other"), jar.get(unrelatedUrl).map { it.name to it.value })
+
+        val restored = DesktopCookieJar(file)
+        assertEquals(listOf("session" to "new-secret"), restored.get(readerLegacyUrl).map { it.name to it.value })
+        assertEquals(listOf("auth-only" to "keep-auth"), restored.get(authUrl).map { it.name to it.value })
+        assertEquals(listOf("unrelated" to "keep-other"), restored.get(unrelatedUrl).map { it.name to it.value })
+        assertTrue("old-secret" !in file.readText(), "stale target-domain credentials must not remain persisted")
+    }
+
+    @Test
     fun `failed authenticated session persistence preserves old memory and old file`(@TempDir tempDir: Path) {
         val file = tempDir.resolve("cookies.json").toFile()
         val url = "https://reader.example.com/".toHttpUrl()
@@ -398,10 +436,18 @@ class DesktopCookieJarTest {
         }
     }
 
-    private fun persistentCookie(name: String, value: String, domain: String) = Cookie.Builder()
+    private fun persistentCookie(name: String, value: String, domain: String, path: String = "/") = Cookie.Builder()
         .name(name)
         .value(value)
         .domain(domain)
+        .path(path)
+        .expiresAt(System.currentTimeMillis() + 3_600_000)
+        .build()
+
+    private fun persistentHostOnlyCookie(name: String, value: String, domain: String) = Cookie.Builder()
+        .name(name)
+        .value(value)
+        .hostOnlyDomain(domain)
         .path("/")
         .expiresAt(System.currentTimeMillis() + 3_600_000)
         .build()
