@@ -324,10 +324,10 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 **OpenSpec mapping:** 2.3、3.1、3.2（Android PackageInstaller 事务关联、取消与有界结束）
 
 **Risk axis:** android-install-session-lifecycle
-**Platform boundary:** android
-**Estimated scope:** 7 files, 1735 lines
+**Platform boundary:** shared+android
+**Estimated scope:** 9 files, 2016 lines
 **Verification:** 执行真实 Android session/callback seam，覆盖 success、error、abort、PendingUserAction、duplicate/late callback、cancel-before-enqueue、service destroy、timeout、同包重试与 hash collision；每个事务只能有一个 terminal，超时/取消后 session、receiver 和 flight 必须释放。
-**Split waiver:** 四轮审查修复后累计 1735 changed lines 中，1147 行是同一 lifecycle 契约矩阵及 JVM Android framework seam 夹具。production UUID 必须原子贯穿 manager → intent/activity/service → base queue → PackageInstaller session → callback/deferred；process-wide durable tombstone、queue 线性化、startup cancellation/platform handoff 原子交接、`NEW → HANDED_OFF → FINISHING → COMPLETE` 持久阶段、PackageInstaller commit identity、cleanup acknowledgement 与 Shizuku 延迟 callback 又必须在同一事务生命周期内共同收口。把任一段拆成独立 Task 会产生旧 Long/hash 与新 UUID 混用，或 rollback 早于 session/receiver/flight 释放，或取消后延迟平台 callback 重新发布 terminal，或 result 已消费但 coordinator 仍在 reload/rollback 时提前 Idle 的不可运行中间态。collision、late callback、tombstone/TTL、timeout、abandon、PendingUserAction、Shizuku 与 terminal CAS 共同定义单一 session-lifecycle 风险轴，测试矩阵不能在不丢失端到端 production-wiring mutation 审查闭环的前提下再独立调度。
+**Split waiver:** 五轮审查修复后累计 2016 changed lines 中，1396 行是同一 Android lifecycle production-wiring 契约矩阵；另 36 行为 shared coordinator 的最后订阅者取消/flight completion 契约及测试。production UUID 必须原子贯穿 manager → intent/activity/service → base queue → PackageInstaller session → callback/deferred；process-wide durable tombstone、queue 线性化、startup cancellation/platform handoff 原子交接、`NEW → HANDED_OFF → FINISHING → COMPLETE` 持久阶段、PackageInstaller commit identity、cleanup acknowledgement、Shizuku 延迟 callback 与最后订阅者等待真实 flight completion 必须在同一事务生命周期内共同收口。shared 改动仅强化最后订阅者的内部取消完成时序，不新增业务 capability；若留在独立 Task，Android lifecycle 仍会在 rollback/cleanup/flight 完成前提前 COMPLETE 或永久 FINISHING，无法独立验收。collision、late callback、tombstone/TTL、timeout、abandon、PendingUserAction、Shizuku、unsubscribe 与 terminal CAS 共同定义单一 session-lifecycle 风险轴，测试矩阵不能在不丢失端到端 production-wiring mutation 审查闭环的前提下再独立调度。
 
 **Files:**
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt`
@@ -337,6 +337,8 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/installer/PackageInstallerInstaller.kt`
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionInstallActivity.kt`
 - Create: `app/src/test/java/eu/kanade/tachiyomi/extension/ExtensionInstallSessionLifecycleTest.kt`
+- Modify: `domain/src/commonMain/kotlin/mihon/domain/extension/service/ExtensionInstallCoordinator.kt`
+- Modify: `domain/src/jvmTest/kotlin/mihon/domain/extension/ExtensionInstallCoordinatorTest.kt`
 
 **Interfaces:**
 - Consumes: 当前 Task 4C 基线提交 `9965e2257` 已接入的共享 coordinator/Android install port。

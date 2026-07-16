@@ -100,7 +100,7 @@
 
 - Current task: `Task 4C: Android 安装事务/session 生命周期`
 - Plan checkbox: pending（原 4C 实现提交作为本 Task 的基线，未通过审查，不视为已完成）
-- Stage: `final-fix`
+- Stage: `spec-review`
 - Task execution base: `53758e118d8024a593d72645f3aa6034de193a46`
 - Original Task 4C base: `905a8d5c120b337c5c77f8bbe064111c9ed1ba9c`
 - Implementer: `/root/task4c_session_impl`
@@ -167,6 +167,12 @@
 - Finding evaluation: technically valid. `Flow.onCompletion` removes active maps and cancels the subscriber job, while lifecycle completion still depends on `activeSteps` or delivery to that cancelled collector rather than the coordinator flight's real completion. This is the same `android-install-session-lifecycle` risk axis and is narrow enough for one further TDD repair without replanning.
 - Unsubscribe fix agent: `/root/task4c_unsubscribe_fix` (fresh TDD implementer; binds lifecycle completion to coordinator flight completion and adds deterministic production-wiring cancellation tests in both platform-await and post-result-reload windows).
 - Review/fix round: 5/5 (user-authorized engineering override of the mechanical review limit).
+- Unsubscribe fix commit: `4f1f3854ed40f8b90e59b5e643778045d6ef6a1b` (`fix(android): bind unsubscribe lifecycle to install flight`).
+- Unsubscribe RED/GREEN: three deterministic RED failures covered platform-await early COMPLETE, post-result permanent FINISHING, and last-subscriber return before cleanup; focused GREEN 3/3. Two mutations restoring activeSteps early completion or removing flight completion wait were killed and restored.
+- Unsubscribe verification: Android lifecycle+wiring 27/27; shared coordinator 21/21; Manager filter 2/2 plus Shizuku lifecycle 1/1; root Spotless 61 tasks and diff check PASS.
+- Scope expansion: the existing coordinator exposed no true flight-completion signal to the Android adapter. A minimal shared internal sequencing change now makes only the last subscriber wait non-cancellably for the existing completion after rollback/restore/cleanup and inFlight removal; multi-subscriber cancellation remains immediate. No public capability or Desktop port behavior was added.
+- Cumulative product scope: 9 shared+Android files, +1916/-100 (2016 changed lines); plan/brief boundary and concrete waiver updated.
+- Unsubscribe closure reviewer: pending fresh independent read-only dispatch.
 - Review/fix round: 3/3
 - Review/fix round: 2/2
 - Implementation commit: `9965e22577746c31e59435cdd35f4b30e677c020` (`refactor(android): adapt transactional extension install`).
