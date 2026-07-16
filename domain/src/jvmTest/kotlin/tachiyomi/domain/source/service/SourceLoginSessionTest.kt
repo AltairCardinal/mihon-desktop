@@ -1,0 +1,240 @@
+package tachiyomi.domain.source.service
+
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+
+class SourceLoginSessionTest {
+
+    @Test
+    fun `successful login validates and commits the complete session exactly once`() = runTest {
+        val browserSession = TestBrowserSession()
+        val commits = mutableListOf<AuthenticatedSession>()
+        val login = SourceLoginSession(
+            browserAdapter = BrowserLoginAdapter { BrowserOpenResult.Opened(browserSession) },
+            committer = AuthenticatedSessionCommitter { _, session -> commits += session },
+        )
+        val request = request(required = setOf("session", "clearance"))
+        val result = async { login.login(request) }
+        runCurrent()
+
+        browserSession.complete(
+            AuthenticatedSession(
+                listOf(
+                    cookie("session", "session-secret", "reader.example.com"),
+                    cookie("clearance", "clearance-secret", "example.com", hostOnly = false),
+                ),
+            ),
+        )
+
+        assertEquals(
+            SourceLoginState.Authenticated(setOf("clearance", "session"), cookieCount = 2),
+            result.await(),
+        )
+        assertEquals(1, commits.size)
+        assertEquals(setOf("session", "clearance"), commits.single().cookies.map { it.name }.toSet())
+    }
+
+    @Test
+    fun `missing required cookie rejects the whole session without commit`() = runTest {
+        val commits = mutableListOf<AuthenticatedSession>()
+        val browserSession = TestBrowserSession()
+        val login = session(browserSession) { commits += it }
+        val result = async { login.login(request(required = setOf("session", "clearance"))) }
+        runCurrent()
+
+        browserSession.complete(AuthenticatedSession(listOf(cookie("session", "secret", "reader.example.com"))))
+
+        assertInstanceOf(SourceLoginState.InvalidCookies::class.java, result.await())
+        assertTrue(commits.isEmpty())
+    }
+
+    @Test
+    fun `unrelated and child-domain cookies reject the whole session`() = runTest {
+        val commits = mutableListOf<AuthenticatedSession>()
+        val browserSession = TestBrowserSession()
+        val login = session(browserSession) { commits += it }
+        val result = async { login.login(request()) }
+        runCurrent()
+
+        browserSession.complete(
+            AuthenticatedSession(
+                listOf(
+                    cookie("valid", "one", "reader.example.com"),
+                    cookie("unrelated", "two", "other.test", hostOnly = false),
+                    cookie("child", "three", "auth.reader.example.com", hostOnly = false),
+                ),
+            ),
+        )
+
+        val state = assertInstanceOf(SourceLoginState.InvalidCookies::class.java, result.await())
+        assertEquals(setOf("child", "unrelated"), state.rejectedCookieNames)
+        assertTrue(commits.isEmpty())
+    }
+
+    @Test
+    fun `parent-domain cookie is accepted while host-only parent cookie is rejected`() = runTest {
+        val acceptedSession = TestBrowserSession()
+        val acceptedCommits = mutableListOf<AuthenticatedSession>()
+        val accepted = session(acceptedSession) { acceptedCommits += it }
+        val acceptedResult = async { accepted.login(request()) }
+        runCurrent()
+        acceptedSession.complete(
+            AuthenticatedSession(listOf(cookie("parent", "secret", "example.com", hostOnly = false))),
+        )
+
+        assertInstanceOf(SourceLoginState.Authenticated::class.java, acceptedResult.await())
+        assertEquals(1, acceptedCommits.size)
+
+        val rejectedSession = TestBrowserSession()
+        val rejectedCommits = mutableListOf<AuthenticatedSession>()
+        val rejected = session(rejectedSession) { rejectedCommits += it }
+        val rejectedResult = async { rejected.login(request()) }
+        runCurrent()
+        rejectedSession.complete(
+            AuthenticatedSession(listOf(cookie("parent", "secret", "example.com", hostOnly = true))),
+        )
+
+        assertInstanceOf(SourceLoginState.InvalidCookies::class.java, rejectedResult.await())
+        assertTrue(rejectedCommits.isEmpty())
+    }
+
+    @Test
+    fun `cancelled login performs zero commits`() = runTest {
+        val browserSession = TestBrowserSession()
+        var commits = 0
+        val result = async { session(browserSession) { commits += 1 }.login(request()) }
+        runCurrent()
+
+        browserSession.cancelFromUser()
+
+        assertEquals(SourceLoginState.Cancelled, result.await())
+        assertEquals(0, commits)
+    }
+
+    @Test
+    fun `timeout under virtual time cancels browser session and performs zero commits`() = runTest {
+        val browserSession = TestBrowserSession()
+        var commits = 0
+        val result = async {
+            session(browserSession) { commits += 1 }.login(request(timeoutMillis = 1_000))
+        }
+        runCurrent()
+
+        advanceTimeBy(1_001)
+        runCurrent()
+
+        assertEquals(SourceLoginState.TimedOut, result.await())
+        assertTrue(browserSession.cancelled)
+        assertEquals(0, commits)
+    }
+
+    @Test
+    fun `browser unavailable performs zero commits`() = runTest {
+        var commits = 0
+        val login = SourceLoginSession(
+            browserAdapter = BrowserLoginAdapter { BrowserOpenResult.Unavailable },
+            committer = AuthenticatedSessionCommitter { _, _ -> commits += 1 },
+        )
+
+        assertEquals(SourceLoginState.BrowserUnavailable, login.login(request()))
+        assertEquals(0, commits)
+    }
+
+    @Test
+    fun `commit failure is recoverable and does not expose cookie values`() = runTest {
+        val browserSession = TestBrowserSession()
+        val login = SourceLoginSession(
+            browserAdapter = BrowserLoginAdapter { BrowserOpenResult.Opened(browserSession) },
+            committer = AuthenticatedSessionCommitter { _, _ -> error("disk failed for secret-value") },
+        )
+        val result = async { login.login(request()) }
+        runCurrent()
+        val authenticated = AuthenticatedSession(listOf(cookie("session", "secret-value", "reader.example.com")))
+
+        browserSession.complete(authenticated)
+
+        assertEquals(SourceLoginState.CommitFailed, result.await())
+        assertFalse(authenticated.toString().contains("secret-value"))
+        assertFalse(login.state.value.toString().contains("secret-value"))
+        assertTrue(login.state.value.toString().contains("CommitFailed"))
+    }
+
+    @Test
+    fun `coroutine cancellation during commit is propagated`() = runTest {
+        val browserSession = TestBrowserSession()
+        val login = SourceLoginSession(
+            browserAdapter = BrowserLoginAdapter { BrowserOpenResult.Opened(browserSession) },
+            committer = AuthenticatedSessionCommitter { _, _ -> throw CancellationException("cancelled") },
+        )
+        val result = async { login.login(request()) }
+        runCurrent()
+
+        browserSession.complete(AuthenticatedSession(listOf(cookie("session", "secret", "reader.example.com"))))
+
+        assertTrue(runCatching { result.await() }.exceptionOrNull() is CancellationException)
+    }
+
+    private fun session(
+        browserSession: TestBrowserSession,
+        commit: (AuthenticatedSession) -> Unit,
+    ) = SourceLoginSession(
+        browserAdapter = BrowserLoginAdapter { BrowserOpenResult.Opened(browserSession) },
+        committer = AuthenticatedSessionCommitter { _, authenticated -> commit(authenticated) },
+    )
+
+    private fun request(
+        required: Set<String> = emptySet(),
+        timeoutMillis: Long = 30_000,
+    ) = SourceLoginRequest(
+        url = "https://reader.example.com/login".toHttpUrl(),
+        requiredCookieNames = required,
+        timeoutMillis = timeoutMillis,
+    )
+
+    private fun cookie(
+        name: String,
+        value: String,
+        domain: String,
+        hostOnly: Boolean = true,
+    ) = AuthenticatedCookie(
+        name = name,
+        value = value,
+        domain = domain,
+        hostOnly = hostOnly,
+        path = "/",
+        expiresAt = null,
+        secure = true,
+        httpOnly = true,
+    )
+
+    private class TestBrowserSession : BrowserLoginSession {
+        private val result = CompletableDeferred<BrowserLoginResult>()
+        var cancelled = false
+            private set
+
+        override suspend fun awaitResult(): BrowserLoginResult = result.await()
+
+        override fun cancel() {
+            cancelled = true
+            result.complete(BrowserLoginResult.Cancelled)
+        }
+
+        fun complete(session: AuthenticatedSession) {
+            result.complete(BrowserLoginResult.Completed(session))
+        }
+
+        fun cancelFromUser() {
+            result.complete(BrowserLoginResult.Cancelled)
+        }
+    }
+}

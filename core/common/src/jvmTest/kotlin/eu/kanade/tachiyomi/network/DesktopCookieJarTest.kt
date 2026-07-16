@@ -3,9 +3,15 @@ package eu.kanade.tachiyomi.network
 import okhttp3.Cookie
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 
 class DesktopCookieJarTest {
 
@@ -156,4 +162,56 @@ class DesktopCookieJarTest {
         assertEquals(1, cookies.size)
         assertEquals("new", cookies[0].value)
     }
+
+    @Test
+    fun `authenticated session replaces the complete host set with one atomic persistence`(@TempDir tempDir: Path) {
+        val file = tempDir.resolve("cookies.json").toFile()
+        val url = "https://reader.example.com/".toHttpUrl()
+        DesktopCookieJar(file).saveFromResponse(url, listOf(persistentCookie("old", "old-value", "reader.example.com")))
+        var replacements = 0
+        val jar = DesktopCookieJar(file) { source, target ->
+            replacements += 1
+            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+        }
+
+        jar.commitAuthenticatedSession(
+            url,
+            listOf(
+                persistentCookie("session", "new-value", "reader.example.com"),
+                persistentCookie("clearance", "clear-value", "example.com"),
+            ),
+        )
+
+        assertEquals(1, replacements)
+        assertEquals(setOf("clearance", "session"), jar.get(url).map { it.name }.toSet())
+        assertEquals(setOf("clearance", "session"), DesktopCookieJar(file).get(url).map { it.name }.toSet())
+    }
+
+    @Test
+    fun `failed authenticated session persistence preserves old memory and old file`(@TempDir tempDir: Path) {
+        val file = tempDir.resolve("cookies.json").toFile()
+        val url = "https://reader.example.com/".toHttpUrl()
+        DesktopCookieJar(file).saveFromResponse(url, listOf(persistentCookie("old", "old-value", "reader.example.com")))
+        val oldFile = file.readText()
+        val jar = DesktopCookieJar(file) { _, _ -> throw IOException("replace failed") }
+
+        assertThrows(IOException::class.java) {
+            jar.commitAuthenticatedSession(
+                url,
+                listOf(persistentCookie("session", "new-secret", "reader.example.com")),
+            )
+        }
+
+        assertEquals(listOf("old"), jar.get(url).map { it.name })
+        assertEquals(oldFile, file.readText())
+        assertTrue(tempDir.toFile().listFiles().orEmpty().none { it.name.endsWith(".tmp") })
+    }
+
+    private fun persistentCookie(name: String, value: String, domain: String) = Cookie.Builder()
+        .name(name)
+        .value(value)
+        .domain(domain)
+        .path("/")
+        .expiresAt(System.currentTimeMillis() + 3_600_000)
+        .build()
 }

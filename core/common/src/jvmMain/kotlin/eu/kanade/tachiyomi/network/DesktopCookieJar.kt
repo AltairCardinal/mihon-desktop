@@ -6,6 +6,9 @@ import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -15,42 +18,50 @@ import java.util.concurrent.ConcurrentHashMap
  * restored on construction.  Session-only cookies (no explicit expiry) and
  * already-expired cookies are never persisted.
  *
- * Thread-safety: mutations are synchronised on [cookieStore] before the
- * optional disk flush; reads use the concurrent map directly.
+ * Thread-safety: reads and mutations share one lock so a complete login
+ * session cannot be observed or persisted partially.
  */
 class DesktopCookieJar(
     private val storageFile: File? = null,
+    private val persistenceReplace: (source: Path, target: Path) -> Unit = { source, target ->
+        Files.move(source, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+    },
 ) : CookieJar {
 
     private val cookieStore = ConcurrentHashMap<String, MutableMap<String, Cookie>>()
+    private val mutationLock = Any()
 
     init {
         if (storageFile != null) loadFromDisk()
     }
 
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-        val domain = url.host
-        val domainCookies = cookieStore.getOrPut(domain) { mutableMapOf() }
-        for (cookie in cookies) {
-            domainCookies[cookie.name] = cookie
+        synchronized(mutationLock) {
+            val domain = url.host
+            val domainCookies = cookieStore.getOrPut(domain) { mutableMapOf() }
+            for (cookie in cookies) {
+                domainCookies[cookie.name] = cookie
+            }
+            persistToDisk()
         }
-        persistToDisk()
     }
 
     override fun loadForRequest(url: HttpUrl): List<Cookie> {
         val domain = url.host
-        return cookieStore[domain]?.values?.toList() ?: emptyList()
+        return synchronized(mutationLock) { cookieStore[domain]?.values?.toList() ?: emptyList() }
     }
 
     fun get(url: HttpUrl): List<Cookie> = loadForRequest(url)
 
     fun remove(url: HttpUrl, cookieNames: List<String>) {
-        val domain = url.host
-        val domainCookies = cookieStore[domain] ?: return
-        for (name in cookieNames) {
-            domainCookies.remove(name)
+        synchronized(mutationLock) {
+            val domain = url.host
+            val domainCookies = cookieStore[domain] ?: return
+            for (name in cookieNames) {
+                domainCookies.remove(name)
+            }
+            persistToDisk()
         }
-        persistToDisk()
     }
 
     fun addManual(url: HttpUrl, name: String, value: String) {
@@ -61,25 +72,51 @@ class DesktopCookieJar(
             .path("/")
             .expiresAt(System.currentTimeMillis() + 365L * 24 * 3600 * 1000) // 1 year
             .build()
-        val domainCookies = cookieStore.getOrPut(url.host) { mutableMapOf() }
-        domainCookies[name] = cookie
-        persistToDisk()
+        synchronized(mutationLock) {
+            val domainCookies = cookieStore.getOrPut(url.host) { mutableMapOf() }
+            domainCookies[name] = cookie
+            persistToDisk()
+        }
     }
 
     fun clear() {
-        cookieStore.clear()
-        persistToDisk()
+        synchronized(mutationLock) {
+            cookieStore.clear()
+            persistToDisk()
+        }
     }
 
     /** Removes all cookies for the supplied hosts and their subdomains. */
     fun clearDomains(domains: Set<String>): Int {
-        val normalized = domains.map { it.lowercase().trimStart('.') }.filter { it.isNotBlank() }.toSet()
-        val matching = cookieStore.keys.filter { stored ->
-            normalized.any { domain -> stored.equals(domain, true) || stored.endsWith(".$domain", true) }
+        return synchronized(mutationLock) {
+            val normalized = domains.map { it.lowercase().trimStart('.') }.filter { it.isNotBlank() }.toSet()
+            val matching = cookieStore.keys.filter { stored ->
+                normalized.any { domain -> stored.equals(domain, true) || stored.endsWith(".$domain", true) }
+            }
+            matching.forEach(cookieStore::remove)
+            if (matching.isNotEmpty()) persistToDisk()
+            matching.size
         }
-        matching.forEach(cookieStore::remove)
-        if (matching.isNotEmpty()) persistToDisk()
-        return matching.size
+    }
+
+    /** Replaces a login target's complete cookie set and persists it as one transaction. */
+    @Throws(Exception::class)
+    fun commitAuthenticatedSession(url: HttpUrl, cookies: List<Cookie>) {
+        synchronized(mutationLock) {
+            val domain = url.host
+            val previous = cookieStore[domain]?.toMutableMap()
+            if (cookies.isEmpty()) {
+                cookieStore.remove(domain)
+            } else {
+                cookieStore[domain] = cookies.associateByTo(linkedMapOf()) { it.name }
+            }
+            try {
+                persistToDiskOrThrow()
+            } catch (error: Exception) {
+                if (previous == null) cookieStore.remove(domain) else cookieStore[domain] = previous
+                throw error
+            }
+        }
     }
 
     // ── Persistence ────────────────────────────────────────────────────────────
@@ -107,18 +144,29 @@ class DesktopCookieJar(
     }
 
     private fun persistToDisk() {
-        val file = storageFile ?: return
         try {
-            file.parentFile?.mkdirs()
-            val now = System.currentTimeMillis()
-            val toSave = cookieStore.entries.associate { (domain, cookies) ->
-                domain to cookies.values
-                    .filter { it.persistent && it.expiresAt > now }
-                    .map { PersistedCookie.from(it) }
-            }.filterValues { it.isNotEmpty() }
-            file.writeText(json.encodeToString(toSave))
+            persistToDiskOrThrow()
         } catch (_: Exception) {
             // Best-effort: ignore I/O failures silently
+        }
+    }
+
+    private fun persistToDiskOrThrow() {
+        val file = storageFile ?: return
+        val parent = file.absoluteFile.parentFile
+        parent?.mkdirs()
+        val now = System.currentTimeMillis()
+        val toSave = cookieStore.entries.associate { (domain, cookies) ->
+            domain to cookies.values
+                .filter { it.persistent && it.expiresAt > now }
+                .map { PersistedCookie.from(it) }
+        }.filterValues { it.isNotEmpty() }
+        val temporary = File.createTempFile("${file.name}.", ".tmp", parent)
+        try {
+            temporary.writeText(json.encodeToString(toSave))
+            persistenceReplace(temporary.toPath(), file.toPath())
+        } finally {
+            temporary.delete()
         }
     }
 
