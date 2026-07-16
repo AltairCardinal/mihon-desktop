@@ -10,8 +10,10 @@ import java.io.IOException
 import java.nio.file.Path
 import java.security.MessageDigest
 import java.util.Base64
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.Dispatchers
@@ -322,6 +324,152 @@ class DesktopExtensionInstallTransactionTest {
     }
 
     @Test
+    fun `remove waits from installed snapshot through failed install rollback`(@TempDir directory: Path) = runBlocking {
+        installedSnapshot(directory)
+        val loader = FailOnceLoader(directory.toFile())
+        val manager = DesktopExtensionManager(
+            loader = loader,
+            artifactProvider = { _, destination -> destination.writeBytes(sourceJar(BlockingValidationSource::class.java)) },
+        ).also { it.loadAll() }
+        val installed = manager.getInstalledExtensions().single()
+        BlockingValidationSource.blockNextValidation()
+        loader.failNextReload = true
+        val install = async(Dispatchers.IO) { manager.installExtension(artifact(BlockingValidationSource.ID)) }
+        BlockingValidationSource.validationEntered.awaitLatch()
+        val remove = async(Dispatchers.IO) { manager.removeExtensionWithMeta(installed) }
+
+        try {
+            delay(200)
+            val removeCrossedSnapshotWindow = remove.isCompleted
+            BlockingValidationSource.allowValidation.countDown()
+            val terminal = withTimeout(2_000) { install.await() }
+            val removed = withTimeout(2_000) { remove.await() }
+
+            assertFalse(removeCrossedSnapshotWindow, "remove crossed the installed snapshot rollback window")
+            assertInstanceOf(ExtensionInstallState.Failed::class.java, terminal)
+            assertTrue(removed)
+            assertFalse(directory.resolve("$PACKAGE.jar").toFile().exists())
+            assertFalse(directory.resolve("$PACKAGE.meta.json").toFile().exists())
+            assertNull(manager.getSource(FixtureOldSource.ID))
+            assertNull(manager.getSource(BlockingValidationSource.ID))
+            assertNoTransactionFiles(directory)
+        } finally {
+            BlockingValidationSource.allowValidation.countDown()
+            manager.close()
+        }
+    }
+
+    @Test
+    fun `validation failure after install window releases public lifecycle`(@TempDir directory: Path) = runBlocking {
+        val snapshot = installedSnapshot(directory)
+        val manager = DesktopExtensionManager(
+            loader = DesktopExtensionLoader(directory.toFile()),
+            artifactProvider = { _, destination -> destination.writeBytes(classOnlyJar(DesktopExtensionInstallTransactionTest::class.java)) },
+        ).also { it.loadAll() }
+
+        try {
+            val terminal = manager.installExtension(artifact(FixtureNewSource.ID))
+            assertInstanceOf(ExtensionInstallState.Failed::class.java, terminal)
+            withTimeout(2_000) { withContext(Dispatchers.IO) { manager.reloadAll() } }
+            snapshot.assertUnchanged()
+            assertNotNull(manager.getSource(FixtureOldSource.ID))
+            assertNoTransactionFiles(directory)
+        } finally {
+            manager.close()
+        }
+    }
+
+    @Test
+    fun `install after close is Cancelled without artifacts`(@TempDir directory: Path) = runBlocking {
+        val downloads = AtomicInteger()
+        val manager = DesktopExtensionManager(
+            loader = DesktopExtensionLoader(directory.toFile()),
+            artifactProvider = { _, destination ->
+                downloads.incrementAndGet()
+                destination.writeBytes(sourceJar(FixtureNewSource::class.java))
+            },
+        )
+        manager.close()
+
+        val terminal = withTimeout(2_000) { manager.installExtension(artifact(FixtureNewSource.ID)) }
+
+        val failure = assertInstanceOf(ExtensionInstallState.Failed::class.java, terminal)
+        assertEquals(AppError.Cancelled, failure.error)
+        assertEquals(0, downloads.get())
+        assertTrue(directory.toFile().listFiles().orEmpty().isEmpty())
+    }
+
+    @Test
+    fun `load after close is rejected without reviving runtime`(@TempDir directory: Path) {
+        val snapshot = installedSnapshot(directory)
+        val manager = DesktopExtensionManager(loader = DesktopExtensionLoader(directory.toFile())).also { it.loadAll() }
+        manager.close()
+
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException::class.java) { manager.loadAll() }
+
+        assertNull(manager.getSource(FixtureOldSource.ID))
+        snapshot.assertUnchanged()
+    }
+
+    @Test
+    fun `reload after close is rejected without reviving runtime`(@TempDir directory: Path) {
+        val snapshot = installedSnapshot(directory)
+        val manager = DesktopExtensionManager(loader = DesktopExtensionLoader(directory.toFile())).also { it.loadAll() }
+        manager.close()
+
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException::class.java) { manager.reloadAll() }
+
+        assertNull(manager.getSource(FixtureOldSource.ID))
+        snapshot.assertUnchanged()
+    }
+
+    @Test
+    fun `remove after close is rejected without changing artifacts`(@TempDir directory: Path) {
+        val snapshot = installedSnapshot(directory)
+        val manager = DesktopExtensionManager(loader = DesktopExtensionLoader(directory.toFile())).also { it.loadAll() }
+        val installed = manager.getInstalledExtensions().single()
+        manager.close()
+
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException::class.java) {
+            manager.removeExtensionWithMeta(installed)
+        }
+
+        assertNull(manager.getSource(FixtureOldSource.ID))
+        snapshot.assertUnchanged()
+    }
+
+    @Test
+    fun `public operation queued before close is rejected after install window releases`(@TempDir directory: Path) = runBlocking {
+        installedSnapshot(directory)
+        val manager = DesktopExtensionManager(
+            loader = DesktopExtensionLoader(directory.toFile()),
+            artifactProvider = { _, destination -> destination.writeBytes(sourceJar(BlockingValidationSource::class.java)) },
+        ).also { it.loadAll() }
+        BlockingValidationSource.blockNextValidation()
+        val install = async(Dispatchers.IO) { manager.installExtension(artifact(BlockingValidationSource.ID)) }
+        BlockingValidationSource.validationEntered.awaitLatch()
+        val reload = async(Dispatchers.IO) { runCatching { manager.reloadAll() }.exceptionOrNull() }
+        delay(100)
+        val reloadCrossedInstallWindow = reload.isCompleted
+        val close = async(Dispatchers.IO) { manager.close() }
+
+        try {
+            BlockingValidationSource.allowValidation.countDown()
+            val reloadFailure = withTimeout(2_000) { reload.await() }
+            withTimeout(2_000) { close.await() }
+            withTimeout(2_000) { install.join() }
+
+            assertFalse(reloadCrossedInstallWindow, "queued reload crossed active install window")
+            assertInstanceOf(IllegalStateException::class.java, reloadFailure)
+            assertNull(manager.getSource(FixtureOldSource.ID))
+            assertNull(manager.getSource(BlockingValidationSource.ID))
+        } finally {
+            BlockingValidationSource.allowValidation.countDown()
+            runCatching { manager.close() }
+        }
+    }
+
+    @Test
     fun `partial cleanup cannot consume rollback material`(@TempDir directory: Path) = runBlocking {
         val snapshot = installedSnapshot(directory)
         val manager = DesktopExtensionManager(
@@ -338,6 +486,42 @@ class DesktopExtensionInstallTransactionTest {
             assertNoTransactionFiles(directory)
         } finally {
             manager.close()
+        }
+    }
+
+    @Test
+    fun `recovery archive delete failure is reported then removed by rollback cleanup`(@TempDir directory: Path) = runBlocking {
+        val snapshot = installedSnapshot(directory)
+        val fileSystem = FailOnceFileSystem(
+            deleteFailure = { destination, occurrence ->
+                destination.name.startsWith(".recovery-") && occurrence == 1
+            },
+        )
+        val manager = DesktopExtensionManager(
+            loader = DesktopExtensionLoader(directory.toFile()),
+            artifactProvider = { _, destination -> destination.writeBytes(sourceJar(FixtureNewSource::class.java)) },
+            fileSystem = fileSystem,
+        ).also { it.loadAll() }
+
+        try {
+            val terminal = manager.installExtension(artifact(FixtureNewSource.ID))
+            val failure = assertInstanceOf(ExtensionInstallState.Failed::class.java, terminal)
+            assertInstanceOf(AppError.Storage::class.java, failure.error)
+            snapshot.assertUnchanged()
+            assertNotNull(manager.getSource(FixtureOldSource.ID))
+            assertNull(manager.getSource(FixtureNewSource.ID))
+            assertNoTransactionFiles(directory)
+        } finally {
+            manager.close()
+        }
+    }
+
+    @Test
+    fun `transaction residue assertion detects recovery archive`(@TempDir directory: Path) {
+        directory.resolve(".recovery-orphan.bin").toFile().writeText("orphan")
+
+        org.junit.jupiter.api.Assertions.assertThrows(AssertionError::class.java) {
+            assertNoTransactionFiles(directory)
         }
     }
 
@@ -807,7 +991,10 @@ class DesktopExtensionInstallTransactionTest {
     private fun assertNoTransactionFiles(directory: Path) {
         assertTrue(
             directory.toFile().walkTopDown().none {
-                ".tmp" in it.name || ".backup" in it.name || it.name.startsWith(".install-")
+                ".tmp" in it.name ||
+                    ".backup" in it.name ||
+                    it.name.startsWith(".install-") ||
+                    it.name.startsWith(".recovery-")
             },
         )
     }
@@ -996,4 +1183,39 @@ class FixtureNewSource : Source {
     override suspend fun getPageList(chapter: SChapter) = emptyList<Page>()
 
     companion object { const val ID = 7002L }
+}
+
+class BlockingValidationSource : Source {
+    init {
+        if (blockNext.compareAndSet(true, false)) {
+            validationEntered.countDown()
+            check(allowValidation.await(2, TimeUnit.SECONDS)) { "timed out releasing candidate validation" }
+        }
+    }
+
+    override val id = ID
+    override val name = "Blocking validation"
+    override val lang = "en"
+    override suspend fun getMangaDetails(manga: SManga) = manga
+    override suspend fun getChapterList(manga: SManga) = emptyList<SChapter>()
+    override suspend fun getPageList(chapter: SChapter) = emptyList<Page>()
+
+    companion object {
+        const val ID = 7003L
+        private val blockNext = AtomicBoolean()
+
+        @Volatile
+        var validationEntered = CountDownLatch(0)
+            private set
+
+        @Volatile
+        var allowValidation = CountDownLatch(0)
+            private set
+
+        fun blockNextValidation() {
+            validationEntered = CountDownLatch(1)
+            allowValidation = CountDownLatch(1)
+            blockNext.set(true)
+        }
+    }
 }

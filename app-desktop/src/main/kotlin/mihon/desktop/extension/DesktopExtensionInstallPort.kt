@@ -121,6 +121,18 @@ internal class DesktopExtensionLifecycleGate {
     fun <T> withPublicOperation(operation: () -> T): T {
         permit.acquireUninterruptibly()
         return try {
+            activityLock.withLock {
+                check(!closing) { "Extension manager is closed" }
+            }
+            operation()
+        } finally {
+            permit.release()
+        }
+    }
+
+    fun <T> withShutdownOperation(operation: () -> T): T {
+        permit.acquireUninterruptibly()
+        return try {
             operation()
         } finally {
             permit.release()
@@ -229,6 +241,11 @@ internal class DesktopExtensionInstallPort(
         install.candidate = candidate
         install.destination = extensionArtifactFile(extensionsDirectory, install.artifact.packageName, "jar")
         install.metadata = extensionArtifactFile(extensionsDirectory, install.artifact.packageName, "meta.json")
+        if (!install.windowHeld) {
+            lifecycleGate.enterInstallWindow()
+            install.windowHeld = true
+        }
+        currentCoroutineContext().ensureActive()
         install.jarExisted = install.destination.isFile
         install.metaExisted = install.metadata.isFile
         writeRecoveryArchive(install)
@@ -260,10 +277,6 @@ internal class DesktopExtensionInstallPort(
 
     override suspend fun commit(token: PreparedExtensionInstallToken) = storageBoundary {
         val install = prepared[token.value] ?: failStorage("Unknown prepared extension token")
-        if (!install.windowHeld) {
-            lifecycleGate.enterInstallWindow()
-            install.windowHeld = true
-        }
         currentCoroutineContext().ensureActive()
         releaseRuntime(install.artifact.packageName)
         fileSystem.replaceFromSnapshot(install.candidate, install.destination)

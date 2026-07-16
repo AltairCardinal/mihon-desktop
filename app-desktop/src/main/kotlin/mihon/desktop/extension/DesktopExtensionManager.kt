@@ -151,7 +151,7 @@ class DesktopExtensionManager(
 
     override fun close() {
         lifecycleGate.closeAndAwait { installScope.cancel() }
-        lifecycleGate.withPublicOperation {
+        lifecycleGate.withShutdownOperation {
             val previous = synchronized(runtimeLock) {
                 loadedExtensions.toList().also { loadedExtensions.clear() }
             }
