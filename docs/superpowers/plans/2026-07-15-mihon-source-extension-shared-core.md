@@ -456,8 +456,9 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **Risk axis:** challenge-recovery-policy
 **Platform boundary:** desktop
-**Estimated scope:** 5 files, 320 lines
+**Estimated scope:** 5 files, 971 lines
 **Verification:** 运行真实 interceptor/challenge manager 策略测试，确认 403/503 只发布登录请求；browser、手动 Cookie 和 FlareSolverr 均由显式用户 intent 触发，取消/超时不清除或写入凭据，solver 从不由 interceptor 自动调用。
+**Split waiver:** 实际 971 changed lines（+899/-72）严格分布在 5 个计划文件：454 行是 challenge 状态、exactly-once terminal、active-job 抢占、有界 timeout、显式 recovery intents、interceptor 单次重试与 cancellable FlareSolverr HTTP/完整 Cookie 属性转换；517 行是同一真实链路的 11 项 MockWebServer→OkHttp interceptor→manager→Task 5A validation/atomic committer→DesktopCookieJar 集成矩阵。clear-first、自动 solver、共享 committer 旁路、重复 retry、cancel/timeout/late completion 和阻塞 socket cancellation 共同定义一个 `challenge-recovery-policy` 风险轴；拆开会留下自动/旁路凭据写入、不可抢占 solver 或无法穿透 production interceptor/committer 的中间状态，不能独立验收。Task 5C 的 UI/设置/DI production entry wiring 未混入本 Task。
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/network/CloudflareChallenge.kt`

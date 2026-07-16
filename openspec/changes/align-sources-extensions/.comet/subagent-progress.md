@@ -101,7 +101,7 @@
 - Current task: `Task 5B: Desktop 挑战恢复策略与 FlareSolverr 显式后备`
 - Plan checkbox: pending
 - OpenSpec mapping: `3.3` partial (do not check off until Tasks 5B and 5C complete).
-- Stage: `implementing`
+- Stage: `review`
 - Task base: `1d5b6cc9b`
 - Brief: `.superpowers/sdd/align-sources-task-5b-brief.md`
 - Risk axis: `challenge-recovery-policy`
@@ -111,6 +111,13 @@
 - Plan guard: PASS for all 6 remaining task bodies after Task 5A checkoff.
 - Implementer: `/root/task5b_impl` (fresh TDD agent; one Task 5B implementation only).
 - Review mode: `thorough`; review/fix round: 0/2.
+- Implementation commit: `86e78cf7c` (`refactor(desktop): require explicit challenge recovery`).
+- RED evidence: the initial real interceptor cancellation test failed because clear-first removed the old clearance cookie; the desired policy API then failed to compile while absent. Focused RED/GREEN also covered cancel blocked behind solver, timeout not cancelling solver, browser-unavailable precedence, and blocking HTTP cancellation.
+- GREEN behavior: 403/503 publish a challenge and wait for a bounded exactly-once terminal; browser/manual/solver require their explicit intents; cancel/timeout/failure preserve credentials; successful solver cookies use Task 5A validation/atomic committer; interceptor never owns solver and retries at most once; HTTP call cancellation is prompt via the project's cancellable `Call.await()`.
+- Mutation evidence: auto-invoking solver, restoring clear-first, bypassing the shared committer, or allowing repeated retry each failed a named production behavior test and was restored.
+- Final implementation verification: fresh app policy 11 + FlareSolverr 2 + cookie import 7 + Task 5A adapter 6 = 26/26 PASS after the final HTTP cancellation change; adjacent unchanged shared session 15 + jar 21 = 36/36 PASS, 62/62 total; root Spotless and diff/scope checks PASS.
+- Actual scope: 5 planned files, +899/-72 (971 changed lines); plan/brief contain a concrete single-policy-axis Split waiver.
+- Reported handoff boundary: Task 5C must remove HomeScreen legacy latch/direct-jar wiring and inject recovery intents/settings. Review must decide whether FlareSolverr clearance requires applying its returned User-Agent rather than cookies alone; no User-Agent bypass was added in Task 5B.
 
 ## Task 5A Review History
 
