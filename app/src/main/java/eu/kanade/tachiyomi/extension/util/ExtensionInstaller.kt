@@ -86,7 +86,8 @@ internal class ExtensionInstaller(
 
         val transactionId = UUID.randomUUID().toString()
         val step = MutableStateFlow(InstallStep.Pending)
-        transactionLifecycles[transactionId] = TransactionLifecycle()
+        val lifecycle = TransactionLifecycle()
+        transactionLifecycles[transactionId] = lifecycle
         activeSteps[transactionId] = step
         activeTransactions[extension.pkgName] = ActiveTransaction(transactionId, step)
         val job = scope.launch(start = CoroutineStart.LAZY) {
@@ -104,11 +105,6 @@ internal class ExtensionInstaller(
                         )
                         activeSteps.remove(transactionId, step)
                         cancelledTransactions -= transactionId
-                        transactionLifecycles[transactionId]?.let { lifecycle ->
-                            if (lifecycle.complete()) {
-                                transactionLifecycles.remove(transactionId, lifecycle)
-                            }
-                        }
                     }
                     step.value = installStep
                 }
@@ -118,6 +114,8 @@ internal class ExtensionInstaller(
                     ActiveInstallJob(transactionId, coroutineContext.job),
                 )
                 activeTransactions.remove(extension.pkgName, ActiveTransaction(transactionId, step))
+                activeSteps.remove(transactionId, step)
+                completeLifecycle(transactionId, lifecycle)
             }
         }
         val activeJob = ActiveInstallJob(transactionId, job)
@@ -190,11 +188,6 @@ internal class ExtensionInstaller(
             throw error
         } finally {
             platformResults.remove(transactionId, result)
-            if (!activeSteps.containsKey(transactionId)) {
-                if (lifecycle.complete()) {
-                    transactionLifecycles.remove(transactionId, lifecycle)
-                }
-            }
         }
     }
 

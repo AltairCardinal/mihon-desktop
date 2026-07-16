@@ -37,7 +37,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -705,6 +708,247 @@ class ExtensionInstallSessionLifecycleTest {
     }
 
     @Test
+    fun `unsubscribing during package platform await retains lifecycle until flight cleanup completes`() = runTest {
+        val harness = packageInstallerHarness()
+        val context = mockk<Context>(relaxed = true) {
+            every { packageName } returns "eu.kanade.tachiyomi"
+        }
+        val rollbackStarted = CompletableDeferred<Unit>()
+        val allowRollback = CompletableDeferred<Unit>()
+        val cleanupStarted = CompletableDeferred<Unit>()
+        val allowCleanup = CompletableDeferred<Unit>()
+        val calls = mutableListOf<String>()
+        lateinit var installer: ExtensionInstaller
+        val port = object : ExtensionInstallPort {
+            override suspend fun prepare(request: ExtensionInstallRequest): PreparedExtensionInstallToken {
+                calls += "prepare"
+                return PreparedExtensionInstallToken(
+                    checkNotNull(activeTransactionIds(installer)[request.artifact.packageName]),
+                )
+            }
+
+            override suspend fun validate(token: PreparedExtensionInstallToken): ExtensionInstallRollbackToken {
+                calls += "validate"
+                return ExtensionInstallRollbackToken(token.value)
+            }
+
+            override suspend fun commit(token: PreparedExtensionInstallToken) {
+                calls += "commit"
+                installPrepared(installer, token.value, File("extension.apk"))
+            }
+
+            override suspend fun reload(packageName: String) {
+                calls += "reload"
+            }
+
+            override suspend fun rollback(token: ExtensionInstallRollbackToken) {
+                calls += "rollback"
+                rollbackStarted.complete(Unit)
+                allowRollback.await()
+            }
+
+            override suspend fun cleanup(token: PreparedExtensionInstallToken) {
+                calls += "cleanup"
+                cleanupStarted.complete(Unit)
+                allowCleanup.await()
+            }
+        }
+        installer = ExtensionInstaller(context, scope = backgroundScope, installPort = port)
+        val preference = mockk<ExtensionInstallerPreference> {
+            every { get() } returns BasePreferences.ExtensionInstaller.PACKAGEINSTALLER
+        }
+        ExtensionInstaller::class.java.getDeclaredField("extensionInstaller\$delegate").apply {
+            isAccessible = true
+            set(installer, lazyOf(preference))
+        }
+        mockkStatic(FileProvider::class)
+        every { FileProvider.getUriForFile(any(), any(), any()) } returns mockk()
+        every { ContextCompat.startForegroundService(context, any()) } answers {
+            harness.enqueue(activeTransactionIds(installer).values.single())
+            mockk()
+        }
+        val extension = availableExtension("extension.package.unsubscribe-platform-await")
+        val steps = installer.downloadAndInstall("https://repo.example/extension.apk", extension)
+        val collector = backgroundScope.launch { steps.collect() }
+
+        try {
+            runCurrent()
+            val transactionId = activeTransactionIds(installer).getValue(extension.pkgName)
+            val lifecycle = transactionLifecycles(installer).getValue(transactionId)
+            assertEquals("HANDED_OFF", lifecyclePhase(lifecycle))
+
+            collector.cancelAndJoin()
+            runCurrent()
+            assertTrue(platformResults(installer).containsKey(transactionId))
+            assertTrue(coordinatorFlights(installer).isNotEmpty())
+
+            harness.installer.onDestroy()
+            rollbackStarted.await()
+            installer.updateInstallStep(transactionId, InstallStep.Idle)
+            ageCompletedTransactions(installer)
+            installer.updateInstallStep(UUID.randomUUID().toString(), InstallStep.Installed)
+
+            assertEquals("FINISHING", lifecyclePhase(lifecycle))
+            assertTrue(transactionLifecycles(installer).containsKey(transactionId))
+            assertTrue(completedTransactions(installer).containsKey(transactionId))
+            assertTrue(coordinatorFlights(installer).isNotEmpty())
+
+            allowRollback.complete(Unit)
+            cleanupStarted.await()
+            ageCompletedTransactions(installer)
+            installer.updateInstallStep(UUID.randomUUID().toString(), InstallStep.Installed)
+
+            assertEquals("FINISHING", lifecyclePhase(lifecycle))
+            assertTrue(completedTransactions(installer).containsKey(transactionId))
+            assertTrue(coordinatorFlights(installer).isNotEmpty())
+
+            allowCleanup.complete(Unit)
+            runCurrent()
+
+            assertEquals("COMPLETE", lifecyclePhase(lifecycle))
+            assertFalse(transactionLifecycles(installer).containsKey(transactionId))
+            assertTrue(platformResults(installer).isEmpty())
+            assertTrue(activeTransactionIds(installer).isEmpty())
+            assertTrue(activeJobs(installer).isEmpty())
+            assertTrue(activeSteps(installer).isEmpty())
+            assertTrue(coordinatorFlights(installer).isEmpty())
+            assertEquals(listOf("prepare", "validate", "commit", "rollback", "reload", "cleanup"), calls)
+
+            ageCompletedTransactions(installer)
+            installer.updateInstallStep(UUID.randomUUID().toString(), InstallStep.Installed)
+            assertFalse(completedTransactions(installer).containsKey(transactionId))
+        } finally {
+            allowRollback.complete(Unit)
+            allowCleanup.complete(Unit)
+            unmockkStatic(FileProvider::class)
+        }
+    }
+
+    @Test
+    fun `unsubscribing after package result retains finishing lifecycle until flight completes`() = runTest {
+        val harness = packageInstallerHarness()
+        val context = mockk<Context>(relaxed = true) {
+            every { packageName } returns "eu.kanade.tachiyomi"
+        }
+        val reloadStarted = CompletableDeferred<Unit>()
+        val allowReload = CompletableDeferred<Unit>()
+        val rollbackStarted = CompletableDeferred<Unit>()
+        val allowRollback = CompletableDeferred<Unit>()
+        val cleanupStarted = CompletableDeferred<Unit>()
+        val allowCleanup = CompletableDeferred<Unit>()
+        val calls = mutableListOf<String>()
+        var reloadCalls = 0
+        lateinit var installer: ExtensionInstaller
+        val port = object : ExtensionInstallPort {
+            override suspend fun prepare(request: ExtensionInstallRequest): PreparedExtensionInstallToken {
+                calls += "prepare"
+                return PreparedExtensionInstallToken(
+                    checkNotNull(activeTransactionIds(installer)[request.artifact.packageName]),
+                )
+            }
+
+            override suspend fun validate(token: PreparedExtensionInstallToken): ExtensionInstallRollbackToken {
+                calls += "validate"
+                return ExtensionInstallRollbackToken(token.value)
+            }
+
+            override suspend fun commit(token: PreparedExtensionInstallToken) {
+                calls += "commit"
+                installPrepared(installer, token.value, File("extension.apk"))
+            }
+
+            override suspend fun reload(packageName: String) {
+                calls += "reload"
+                reloadCalls++
+                if (reloadCalls == 1) {
+                    reloadStarted.complete(Unit)
+                    allowReload.await()
+                }
+            }
+
+            override suspend fun rollback(token: ExtensionInstallRollbackToken) {
+                calls += "rollback"
+                rollbackStarted.complete(Unit)
+                allowRollback.await()
+            }
+
+            override suspend fun cleanup(token: PreparedExtensionInstallToken) {
+                calls += "cleanup"
+                cleanupStarted.complete(Unit)
+                allowCleanup.await()
+            }
+        }
+        installer = ExtensionInstaller(context, scope = backgroundScope, installPort = port)
+        every { harness.manager.updateInstallStep(any(), any()) } answers {
+            installer.updateInstallStep(firstArg(), secondArg())
+        }
+        val preference = mockk<ExtensionInstallerPreference> {
+            every { get() } returns BasePreferences.ExtensionInstaller.PACKAGEINSTALLER
+        }
+        ExtensionInstaller::class.java.getDeclaredField("extensionInstaller\$delegate").apply {
+            isAccessible = true
+            set(installer, lazyOf(preference))
+        }
+        mockkStatic(FileProvider::class)
+        every { FileProvider.getUriForFile(any(), any(), any()) } returns mockk()
+        every { ContextCompat.startForegroundService(context, any()) } answers {
+            harness.enqueue(activeTransactionIds(installer).values.single())
+            mockk()
+        }
+        val extension = availableExtension("extension.package.unsubscribe-reload")
+        val steps = installer.downloadAndInstall("https://repo.example/extension.apk", extension)
+        val collector = backgroundScope.launch { steps.collect() }
+
+        try {
+            runCurrent()
+            val transactionId = activeTransactionIds(installer).getValue(extension.pkgName)
+            val lifecycle = transactionLifecycles(installer).getValue(transactionId)
+            harness.callback(PackageInstaller.STATUS_SUCCESS)
+            reloadStarted.await()
+
+            assertTrue(platformResults(installer).isEmpty())
+            assertEquals("FINISHING", lifecyclePhase(lifecycle))
+            assertTrue(completedTransactions(installer).containsKey(transactionId))
+
+            collector.cancelAndJoin()
+            rollbackStarted.await()
+            ageCompletedTransactions(installer)
+            installer.updateInstallStep(UUID.randomUUID().toString(), InstallStep.Installed)
+
+            assertEquals("FINISHING", lifecyclePhase(lifecycle))
+            assertTrue(transactionLifecycles(installer).containsKey(transactionId))
+            assertTrue(completedTransactions(installer).containsKey(transactionId))
+            assertTrue(coordinatorFlights(installer).isNotEmpty())
+
+            allowRollback.complete(Unit)
+            cleanupStarted.await()
+            assertEquals("FINISHING", lifecyclePhase(lifecycle))
+            assertTrue(coordinatorFlights(installer).isNotEmpty())
+
+            allowCleanup.complete(Unit)
+            runCurrent()
+
+            assertEquals("COMPLETE", lifecyclePhase(lifecycle))
+            assertFalse(transactionLifecycles(installer).containsKey(transactionId))
+            assertTrue(platformResults(installer).isEmpty())
+            assertTrue(activeTransactionIds(installer).isEmpty())
+            assertTrue(activeJobs(installer).isEmpty())
+            assertTrue(activeSteps(installer).isEmpty())
+            assertTrue(coordinatorFlights(installer).isEmpty())
+            assertEquals(listOf("prepare", "validate", "commit", "reload", "rollback", "reload", "cleanup"), calls)
+
+            ageCompletedTransactions(installer)
+            installer.updateInstallStep(UUID.randomUUID().toString(), InstallStep.Installed)
+            assertFalse(completedTransactions(installer).containsKey(transactionId))
+        } finally {
+            allowReload.complete(Unit)
+            allowRollback.complete(Unit)
+            allowCleanup.complete(Unit)
+            unmockkStatic(FileProvider::class)
+        }
+    }
+
+    @Test
     fun `expired tombstone is retained while its transaction job is active`() = runTest {
         val prepareStarted = CompletableDeferred<Unit>()
         val allowPrepare = CompletableDeferred<Unit>()
@@ -911,6 +1155,11 @@ class ExtensionInstallSessionLifecycleTest {
     private fun transactionLifecycles(installer: ExtensionInstaller): MutableMap<String, Any> =
         ExtensionInstaller::class.java.getDeclaredField("transactionLifecycles").apply { isAccessible = true }
             .get(installer) as MutableMap<String, Any>
+
+    private fun lifecyclePhase(lifecycle: Any): String =
+        checkNotNull(
+            lifecycle.javaClass.getDeclaredMethod("phase").apply { isAccessible = true }.invoke(lifecycle),
+        ).toString()
 
     private suspend fun installPrepared(
         installer: ExtensionInstaller,

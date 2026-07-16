@@ -257,18 +257,44 @@ class ExtensionInstallCoordinatorTest {
         val coordinator = ExtensionInstallCoordinator(port, backgroundScope)
         val first = async { coordinator.install(request()).toList() }
         port.reloadStarted.await()
-        first.cancelAndJoin()
+        first.cancel()
         port.rollbackStarted.await()
 
         val second = async { coordinator.install(request()).toList() }
         runCurrent()
         val preparesWhileRecovering = port.prepareCalls
         port.releaseRollback.complete(Unit)
+        first.join()
 
         assertInstanceOf(ExtensionInstallState.Installed::class.java, second.await().last())
         assertEquals(1, preparesWhileRecovering)
         assertEquals(2, port.prepareCalls)
         assertTrue(port.events.indexOf("cleanup") < port.events.lastIndexOf("prepare"))
+    }
+
+    @Test
+    fun `cancelling last collector returns only after flight cleanup and permits immediate retry`() = runTest {
+        val port = RecordingInstallPort(blockFirstReload = true, blockFirstRollback = true)
+        val coordinator = ExtensionInstallCoordinator(port, backgroundScope)
+        val first = async { coordinator.install(request()).toList() }
+        port.reloadStarted.await()
+
+        first.cancel()
+        port.rollbackStarted.await()
+
+        assertFalse(first.isCompleted, "collector cancellation must wait for flight recovery and cleanup")
+
+        port.releaseRollback.complete(Unit)
+        first.join()
+
+        assertEquals(1, port.cleanupCalls)
+        assertTrue(port.cleanupCompleted.isCompleted)
+
+        val second = async { coordinator.install(request()).toList() }
+        runCurrent()
+
+        assertEquals(2, port.prepareCalls, "completed flight must not delay a same-package retry")
+        assertInstanceOf(ExtensionInstallState.Installed::class.java, second.await().last())
     }
 
     @Test

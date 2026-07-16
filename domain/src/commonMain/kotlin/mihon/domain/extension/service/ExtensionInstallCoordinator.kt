@@ -42,7 +42,11 @@ class ExtensionInstallCoordinator(
                 .takeWhile { it !is InstallEvent.Complete }
                 .collect { emit((it as InstallEvent.State).value) }
         } finally {
-            releaseFlight(flight)
+            if (releaseFlight(flight)) {
+                withContext(NonCancellable) {
+                    flight.completion.await()
+                }
+            }
         }
     }
 
@@ -89,14 +93,17 @@ class ExtensionInstallCoordinator(
         }
     }
 
-    private fun releaseFlight(flight: InstallFlight) {
+    private fun releaseFlight(flight: InstallFlight): Boolean {
+        var lastSubscriber = false
         val cancel = synchronized(flightLock) {
             flight.subscribers--
+            lastSubscriber = flight.subscribers == 0
             (flight.subscribers == 0 && flight.acceptsSubscribers && flight.job.isActive).also {
                 if (it) flight.acceptsSubscribers = false
             }
         }
         if (cancel) flight.job.cancel()
+        return lastSubscriber
     }
 
     private fun finishFlight(

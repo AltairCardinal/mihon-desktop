@@ -242,3 +242,44 @@ completed tombstone pruning 现在同时保护 transaction-aware active job 与�
 
 - `NEW` direct cancel 仍可立即向用户发布 `Idle`，但 cancellation tombstone 与 lifecycle 会保留到其 active job 完成后再 exactly-once CAS `COMPLETE`/remove，避免迟到协程重建 lifecycle 或越过 guard。
 - 普通 JVM seam 验证 production 高层 phase、真实 shared Installer/PackageInstaller session/commit/callback 与 coordinator rollback/cleanup/flight 顺序，不替代 Android 设备对 foreground service 调度时序的验收；Package、Shizuku、commit identity、startup latch 与 5 分钟 TTL 既有语义保持不变。
+
+## Review repair round 5：unsubscribe lifecycle 绑定真实 flight completion
+
+### 状态与修复
+
+`DONE`。公开安装 Flow 的最后一个 subscriber 取消后，shared coordinator 现在会在 `NonCancellable` 中等待既有 `flight.completion`；该 completion 仍只在 rollback/runtime restore/cleanup 完成、`inFlight` 移除、terminal/complete event 发布之后完成。Android `TransactionLifecycle` 不再由 `activeSteps` 或仍存活的 terminal collector 决定，而是在 coordinator collector 真正返回后的 job `finally` 中 exactly-once `COMPLETE`/remove。多个 subscriber 共享 flight 时，取消其中一个仍立即返回且不取消共享事务；只有最后一个 subscriber 才等待 flight 收口。
+
+### RED / GREEN 证据
+
+- Shared RED：`./gradlew.bat :domain:jvmTest --tests "mihon.domain.extension.ExtensionInstallCoordinatorTest.cancelling last collector returns only after flight cleanup and permits immediate retry"`。旧实现 1/1 failed 于 `ExtensionInstallCoordinatorTest.kt:275`：rollback 被 latch 阻塞时 collector 已错误完成，证明取消返回早于 flight cleanup。
+- Android RED：`./gradlew.bat :app:testReleaseUnitTest --tests "*ExtensionInstallSessionLifecycleTest.unsubscribing*"`。旧实现 2/2 failed：platform-await 路径在 rollback 前得到 `COMPLETE`；success callback 已消费且 reload 被 latch 阻塞的路径在 flight 完成后仍为 `FINISHING`。
+- Focused GREEN：上述 shared 用例 1/1 passed；两个 Android production-wiring 用例 2/2 passed。两条 Android 用例均真正执行 `downloadAndInstall -> coordinator -> installPrepared -> PackageInstaller queue/session/commit/callback`，没有 sleep、源码扫描、复制 production 逻辑或手动删除 active maps。
+- REFACTOR 回归：首版等待覆盖所有 subscriber，既有 `one of two collectors can cancel without cancelling shared transaction` 确定性超时；实现收紧为仅最后 subscriber 等待后，该用例与新增 last-subscriber 用例 2/2 passed。既有同包 recovery 测试同步改为 `cancel -> 验证第二事务等待 -> 释放 rollback -> join`，与新取消返回契约一致。
+
+### Mutation
+
+- 临时恢复 `installPrepared.finally` 中 `!activeSteps.containsKey(transactionId)` 的 early-complete 分支：platform-await unsubscribe 用例 1/1 failed，实际观测 `FINISHING` 预期却得到 `COMPLETE`。
+- 临时移除 `flight.completion.await()`：shared last-subscriber 契约 1/1 failed 于 rollback 尚阻塞但 collector 已完成。
+- 两项 mutation 均已恢复；最终 diff 不包含 mutation。
+
+### 文件与规模
+
+- `ExtensionInstaller.kt`：+4/-11；移除 terminal collector 与 `activeSteps` 驱动的 lifecycle 收口，统一到 coordinator collector job finally。
+- `ExtensionInstallSessionLifecycleTest.kt`：+249/-0；新增 platform-await 与 post-result reload 两条确定性 production-wiring unsubscribe 契约及 phase/TTL/resource 断言。
+- `ExtensionInstallCoordinator.kt`：+9/-2；最后 subscriber release 等待既有 flight completion，非最后 subscriber 保持立即释放。
+- `ExtensionInstallCoordinatorTest.kt`：+27/-1；新增 last-subscriber 完整收口/立即同包重试契约，并更新既有 recovery 测试时序。
+- 本轮代码/测试合计 +289/-14（4 个文件）；另追加本报告。
+
+### 最终验证
+
+- `:app:testReleaseUnitTest --tests "*ExtensionInstallSessionLifecycleTest" --tests "*ExtensionInstallCoordinatorWiringTest"`：`BUILD SUCCESSFUL`，27/27 passed（20 lifecycle + 7 wiring）。
+- `:domain:jvmTest --tests "mihon.domain.extension.ExtensionInstallCoordinatorTest"`：`BUILD SUCCESSFUL`，21/21 passed。
+- `:app:testReleaseUnitTest --tests "*ExtensionManager*" --tests "*PackageInstaller*" --tests "*ShizukuInstaller*"`：`BUILD SUCCESSFUL`，名称过滤实际命中 2/2 ExtensionManager tests；真实 PackageInstaller 链路由 lifecycle suite 覆盖。
+- 追加 `:app:testReleaseUnitTest --tests "*Shizuku*"`：`BUILD SUCCESSFUL`，1/1 lifecycle test passed。
+- 根目录 `spotlessCheck`：`BUILD SUCCESSFUL`，61 tasks；`git diff --check`：通过。
+
+### 自审与顾虑
+
+- 自审确认 completion 顺序保持为 recovery/cleanup -> `inFlight.remove` -> terminal/complete event -> `flight.completion.complete`，Android lifecycle 只能在最后一步之后收口；过期 tombstone 在 flight 活跃期间由未 COMPLETE lifecycle 保护，flight 结束后可按 TTL 清理。
+- shared 改动未新增公开业务 capability，未改变 Desktop 安装 port 的 stage/rollback/cleanup 语义；仅强化最后 subscriber 的取消返回契约。多 subscriber、不同包并发、scope cancellation 与同包立即重试均由完整 coordinator suite 覆盖。
+- 普通 JVM seam 仍不替代 Android 设备级 foreground service 调度验收；本轮未修改 Task 4D trust/receiver/topology，也未触碰既有未跟踪文件。
