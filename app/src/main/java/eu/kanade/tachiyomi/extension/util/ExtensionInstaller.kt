@@ -71,12 +71,31 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 
 /** Android adapter for downloading and installing extension APKs. */
-internal class ExtensionInstaller(
+internal class ExtensionInstaller private constructor(
     private val context: Context,
-    private val runtimeReloader: suspend (String) -> Unit = {},
-    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO),
-    installPort: ExtensionInstallPort? = null,
+    private val runtimeReloader: suspend (String) -> Unit,
+    private val scope: CoroutineScope,
+    installPort: ExtensionInstallPort?,
+    gateway: AndroidInstallGateway?,
+    client: OkHttpClient?,
+    private val installerProvider: (() -> BasePreferences.ExtensionInstaller)?,
 ) {
+
+    internal constructor(
+        context: Context,
+        runtimeReloader: suspend (String) -> Unit = {},
+        scope: CoroutineScope = CoroutineScope(Dispatchers.IO),
+        installPort: ExtensionInstallPort? = null,
+    ) : this(context, runtimeReloader, scope, installPort, null, null, null)
+
+    internal constructor(
+        context: Context,
+        runtimeReloader: suspend (String) -> Unit,
+        scope: CoroutineScope,
+        gateway: AndroidInstallGateway,
+        client: OkHttpClient,
+        installerProvider: () -> BasePreferences.ExtensionInstaller,
+    ) : this(context, runtimeReloader, scope, null, gateway, client, installerProvider)
 
     private val activeJobs = ConcurrentHashMap<String, ActiveInstallJob>()
     private val activeTransactions = ConcurrentHashMap<String, ActiveTransaction>()
@@ -85,24 +104,31 @@ internal class ExtensionInstaller(
     private val transactionLifecycles = ConcurrentHashMap<String, TransactionLifecycle>()
     private val completedTransactions = ConcurrentHashMap<String, Long>()
     private val cancelledTransactions = ConcurrentHashMap.newKeySet<String>()
+    private val systemAttemptsByParent = ConcurrentHashMap<String, String>()
     private val extensionInstaller by lazy { Injekt.get<BasePreferences>().extensionInstaller() }
     private val httpClient: OkHttpClient by lazy { Injekt.get<NetworkHelper>().client }
+    private val selectsAndroidInstaller = installPort == null
+    private fun selectedInstaller() = installerProvider?.invoke() ?: extensionInstaller.get()
     private val coordinator = ExtensionInstallCoordinator(
         LifecycleInstallPort(
             installPort ?: AndroidInstallPort(
-                gateway = DefaultAndroidInstallGateway(
+                gateway = gateway ?: DefaultAndroidInstallGateway(
                     context = context,
-                    installSystem = ::installPrepared,
-                    commitTargetProvider = {
-                        if (extensionInstaller.get() == BasePreferences.ExtensionInstaller.PRIVATE) {
-                            AndroidInstallLocation.PRIVATE
+                    installSystem = ::installSystemAttempt,
+                    commitPlanProvider = { packageName ->
+                        val installer = activeTransactions[packageName]?.installer ?: selectedInstaller()
+                        if (installer == BasePreferences.ExtensionInstaller.PRIVATE) {
+                            AndroidCommitPlan(AndroidInstallLocation.PRIVATE)
                         } else {
-                            AndroidInstallLocation.SYSTEM
+                            AndroidCommitPlan(AndroidInstallLocation.SYSTEM, installer)
                         }
                     },
                 ),
-                client = httpClient,
+                client = client ?: httpClient,
                 runtimeReloader = runtimeReloader,
+                transactionIdProvider = { packageName ->
+                    activeTransactions[packageName]?.transactionId
+                },
             ),
         ),
         scope,
@@ -114,9 +140,14 @@ internal class ExtensionInstaller(
         val transactionId = UUID.randomUUID().toString()
         val step = MutableStateFlow(InstallStep.Pending)
         val lifecycle = TransactionLifecycle()
+        val activeTransaction = ActiveTransaction(
+            transactionId,
+            step,
+            if (selectsAndroidInstaller) selectedInstaller() else null,
+        )
         transactionLifecycles[transactionId] = lifecycle
         activeSteps[transactionId] = step
-        activeTransactions[extension.pkgName] = ActiveTransaction(transactionId, step)
+        activeTransactions[extension.pkgName] = activeTransaction
         val job = scope.launch(start = CoroutineStart.LAZY) {
             try {
                 coordinator.install(ExtensionInstallRequest(extension.toArtifact(url))).collect { state ->
@@ -128,7 +159,7 @@ internal class ExtensionInstaller(
                         )
                         activeTransactions.remove(
                             extension.pkgName,
-                            ActiveTransaction(transactionId, step),
+                            activeTransaction,
                         )
                         activeSteps.remove(transactionId, step)
                         cancelledTransactions -= transactionId
@@ -140,7 +171,7 @@ internal class ExtensionInstaller(
                     extension.pkgName,
                     ActiveInstallJob(transactionId, coroutineContext.job),
                 )
-                activeTransactions.remove(extension.pkgName, ActiveTransaction(transactionId, step))
+                activeTransactions.remove(extension.pkgName, activeTransaction)
                 activeSteps.remove(transactionId, step)
                 completeLifecycle(transactionId, lifecycle)
             }
@@ -151,7 +182,7 @@ internal class ExtensionInstaller(
 
         return step.asStateFlow().onCompletion {
             activeJobs.remove(extension.pkgName, activeJob)
-            activeTransactions.remove(extension.pkgName, ActiveTransaction(transactionId, step))
+            activeTransactions.remove(extension.pkgName, activeTransaction)
             activeSteps.remove(transactionId, step)
             job.cancel()
         }
@@ -184,6 +215,32 @@ internal class ExtensionInstaller(
     }
 
     private suspend fun installPrepared(transactionId: String, file: File) {
+        installPrepared(transactionId, file, extensionInstaller.get())
+    }
+
+    internal suspend fun installSystemAttempt(
+        parentTransactionId: String,
+        file: File,
+        installer: BasePreferences.ExtensionInstaller,
+    ) {
+        check(installer != BasePreferences.ExtensionInstaller.PRIVATE)
+        val attemptId = UUID.randomUUID().toString()
+        val lifecycle = TransactionLifecycle()
+        transactionLifecycles[attemptId] = lifecycle
+        check(systemAttemptsByParent.putIfAbsent(parentTransactionId, attemptId) == null)
+        try {
+            installPrepared(attemptId, file, installer)
+        } finally {
+            completeLifecycle(attemptId, lifecycle)
+            systemAttemptsByParent.remove(parentTransactionId, attemptId)
+        }
+    }
+
+    private suspend fun installPrepared(
+        transactionId: String,
+        file: File,
+        installer: BasePreferences.ExtensionInstaller,
+    ) {
         val lifecycle = transactionLifecycles.computeIfAbsent(transactionId) { TransactionLifecycle() }
         val result = CompletableDeferred<InstallStep>()
         try {
@@ -192,7 +249,7 @@ internal class ExtensionInstaller(
                     throw CancellationException("Extension install cancelled")
                 }
                 platformResults[transactionId] = result
-                installApk(transactionId, file)
+                installApk(transactionId, file, installer)
                 lifecycle.markHandedOff()
             }
             val platformStep = try {
@@ -228,8 +285,12 @@ internal class ExtensionInstaller(
         }
     }
 
-    private fun installApk(transactionId: String, tempFile: File) {
-        when (val installer = extensionInstaller.get()) {
+    private fun installApk(
+        transactionId: String,
+        tempFile: File,
+        installer: BasePreferences.ExtensionInstaller,
+    ) {
+        when (installer) {
             BasePreferences.ExtensionInstaller.LEGACY -> {
                 val intent = Intent(context, ExtensionInstallActivity::class.java)
                     .setDataAndType(tempFile.getUriCompat(context), APK_MIME)
@@ -271,15 +332,27 @@ internal class ExtensionInstaller(
     private fun requestCancellation(pkgName: String, active: ActiveTransaction) {
         if (!cancelledTransactions.add(active.transactionId)) return
         val activeJob = activeJobs[pkgName]?.takeIf { it.transactionId == active.transactionId }
-        val lifecycle = transactionLifecycles[active.transactionId] ?: run {
+        val systemAttempt = systemAttemptsByParent[active.transactionId]
+        val cancellationId = systemAttempt ?: active.transactionId
+        if (systemAttempt != null) cancelledTransactions += systemAttempt
+        val lifecycle = transactionLifecycles[cancellationId] ?: run {
             cancelledTransactions -= active.transactionId
+            systemAttempt?.let(cancelledTransactions::remove)
             return
         }
         val cancellationTarget = synchronized(lifecycle) {
-            CancellationTarget(lifecycle.phase(), platformResults[active.transactionId])
+            CancellationTarget(lifecycle.phase(), platformResults[cancellationId])
         }
         if (cancellationTarget.phase == TransactionPhase.COMPLETE) {
             cancelledTransactions -= active.transactionId
+            return
+        }
+        if (systemAttempt != null) {
+            val acknowledgement = Installer.cancelInstallQueue(context, systemAttempt)
+            scope.launch {
+                acknowledgement.await()
+                cancellationTarget.platformResult?.complete(InstallStep.Idle)
+            }
             return
         }
         if (cancellationTarget.phase == TransactionPhase.NEW) {
@@ -394,6 +467,7 @@ internal class ExtensionInstaller(
     private data class ActiveTransaction(
         val transactionId: String,
         val step: MutableStateFlow<InstallStep>,
+        val installer: BasePreferences.ExtensionInstaller?,
     )
 
     private data class ActiveInstallJob(
@@ -463,6 +537,11 @@ internal enum class AndroidInstallLocation { PRIVATE, SYSTEM }
 
 internal enum class AndroidLoaderOrigin { PRIVATE, SYSTEM, ABSENT }
 
+internal data class AndroidCommitPlan(
+    val location: AndroidInstallLocation,
+    val systemInstaller: BasePreferences.ExtensionInstaller? = null,
+)
+
 internal data class AndroidApk(
     val packageName: String,
     val versionName: String,
@@ -487,8 +566,8 @@ internal data class AndroidInstallTopology(
 
 internal interface AndroidInstallGateway {
     val transactionRoot: File
-    val commitTarget: AndroidInstallLocation
 
+    fun commitPlan(packageName: String): AndroidCommitPlan
     fun canonical(file: File): File
     fun writeDownload(input: InputStream, destination: File)
     fun inspect(file: File): AndroidApk?
@@ -496,7 +575,12 @@ internal interface AndroidInstallGateway {
     fun copy(source: File, destination: File): Boolean
     fun makeReadOnly(file: File): Boolean
     fun installPrivate(file: File, metadata: AndroidInstalledPackage): Boolean
-    suspend fun installSystem(transactionId: String, file: File, metadata: AndroidInstalledPackage)
+    suspend fun installSystem(
+        parentTransactionId: String,
+        file: File,
+        metadata: AndroidInstalledPackage,
+        installer: BasePreferences.ExtensionInstaller,
+    )
     fun removePrivate(packageName: String): Boolean
     suspend fun removeSystem(packageName: String)
     fun delete(file: File): Boolean
@@ -508,15 +592,18 @@ internal class AndroidInstallPort(
     private val runtimeReloader: suspend (String) -> Unit = {},
     private val trustPolicy: ExtensionTrustPolicy = ExtensionTrustPolicy(),
     private val updatePolicy: ExtensionUpdatePolicy = SharedExtensionUpdatePolicy,
+    private val transactionIdProvider: (String) -> String? = { null },
 ) : ExtensionInstallPort {
     private val prepared = ConcurrentHashMap<String, PreparedInstall>()
+    private val failedPreparationCleanup = ConcurrentHashMap<String, List<File>>()
     private val expectedAbsentAfterRollback = ConcurrentHashMap.newKeySet<String>()
 
     override suspend fun prepare(request: ExtensionInstallRequest): PreparedExtensionInstallToken {
-        val id = UUID.randomUUID().toString()
-        val root = gateway.transactionRoot.canonicalFile
-        val directory = gateway.canonical(File(root, id))
-        val download = gateway.canonical(File(directory, "candidate.apk"))
+        retryFailedPreparationCleanup()
+        val id = transactionIdProvider(request.artifact.packageName) ?: UUID.randomUUID().toString()
+        val root = storage { gateway.transactionRoot.canonicalFile }
+        val directory = storage { gateway.canonical(File(root, id)) }
+        val download = storage { gateway.canonical(File(directory, "candidate.apk")) }
         ensureContained(root, directory)
         ensureContained(root, download)
         if (!directory.mkdirs() &&
@@ -540,18 +627,25 @@ internal class AndroidInstallPort(
                     throw ExtensionInstallFailure(AppError.Storage(error))
                 }
             }
-            prepared[id] = PreparedInstall(request.artifact, directory, download)
+            prepared[id] = PreparedInstall(
+                artifact = request.artifact,
+                directory = directory,
+                download = download,
+                commitPlan = storage { gateway.commitPlan(request.artifact.packageName) },
+            )
             return PreparedExtensionInstallToken(id)
         } catch (failure: Throwable) {
-            runCatching { gateway.delete(download) }
-            runCatching { gateway.delete(directory) }
+            cleanupFailures(listOf(download, directory)).takeIf { it.isNotEmpty() }?.let { remaining ->
+                failedPreparationCleanup[id] = remaining
+            }
             throw failure
         }
     }
 
     override suspend fun validate(token: PreparedExtensionInstallToken): ExtensionInstallRollbackToken {
         val install = prepared[token.value] ?: failStorage("Unknown Android extension install")
-        val candidate = gateway.inspect(install.download) ?: failMalformed("Downloaded file is not an APK")
+        val candidate = storage { gateway.inspect(install.download) }
+            ?: failMalformed("Downloaded file is not an APK")
         if (!candidate.isExtension || candidate.packageName != install.artifact.packageName ||
             candidate.versionName != install.artifact.versionName ||
             candidate.versionCode != install.artifact.versionCode
@@ -561,22 +655,33 @@ internal class AndroidInstallPort(
         if (candidate.signers.isEmpty()) failMalformed("Downloaded extension is unsigned")
 
         val downloadedSha = digest(install.download)
-        val topology = gateway.topology(candidate.packageName)
+        val topology = storage { gateway.topology(candidate.packageName) }
         val selected = topology.selected()
-        val trustDecision = trustPolicy.evaluate(
-            ExtensionTrustRequest(
-                incomingArtifact = install.artifact,
-                downloadedArtifactSha256 = downloadedSha,
-                installed = selected?.trust,
-                installedArtifactSha256 = selected?.let { digest(it.apk) },
-            ),
-        )
-        when (trustDecision) {
-            ExtensionTrustDecision.Trusted -> Unit
-            is ExtensionTrustDecision.Rejected -> throw ExtensionInstallFailure(trustDecision.error)
-            is ExtensionTrustDecision.ConfirmationRequired -> throw ExtensionInstallFailure(
-                AppError.Authentication(TrustConfirmationRequiredException(trustDecision)),
-            )
+        val installedPackages = topology.allPackages()
+        val trustContinuityPackages = if (installedPackages.isEmpty()) {
+            listOf<AndroidInstalledPackage?>(null)
+        } else {
+            installedPackages
+        }
+        trustContinuityPackages.forEach { installed ->
+            when (
+                val trustDecision = trustPolicy.evaluate(
+                    ExtensionTrustRequest(
+                        incomingArtifact = install.artifact,
+                        downloadedArtifactSha256 = downloadedSha,
+                        installed = installed?.trust ?: installed?.let {
+                            InstalledExtensionTrustRecord(repository = null, artifactSha256 = null)
+                        },
+                        installedArtifactSha256 = installed?.let { digest(it.apk) },
+                    ),
+                )
+            ) {
+                ExtensionTrustDecision.Trusted -> Unit
+                is ExtensionTrustDecision.Rejected -> throw ExtensionInstallFailure(trustDecision.error)
+                is ExtensionTrustDecision.ConfirmationRequired -> throw ExtensionInstallFailure(
+                    AppError.Authentication(TrustConfirmationRequiredException(trustDecision)),
+                )
+            }
         }
 
         topology.allPackages().forEach { installed ->
@@ -599,12 +704,16 @@ internal class AndroidInstallPort(
             }
         }
 
-        val target = gateway.commitTarget
+        val target = install.commitPlan.location
         fun snapshot(location: AndroidInstallLocation, current: AndroidInstalledPackage?): AndroidInstalledPackage? =
             current?.let {
                 File(install.directory, "rollback-${location.name.lowercase()}.apk").also { destination ->
-                    if (!gateway.copy(it.apk, destination)) failStorage("Failed to snapshot installed extension")
-                    if (!gateway.makeReadOnly(destination)) failStorage("Failed to make extension snapshot read-only")
+                    if (!storage { gateway.copy(it.apk, destination) }) {
+                        failStorage("Failed to snapshot installed extension")
+                    }
+                    if (!storage { gateway.makeReadOnly(destination) }) {
+                        failStorage("Failed to make extension snapshot read-only")
+                    }
                 }.let { destination -> it.copy(apk = destination) }
             }
         val privateSnapshot = snapshot(AndroidInstallLocation.PRIVATE, topology.privatePackage)
@@ -614,6 +723,7 @@ internal class AndroidInstallPort(
             systemPackage = systemSnapshot,
             loaderOrigin = topology.loaderOrigin,
             commitTarget = target,
+            systemInstaller = install.commitPlan.systemInstaller,
             expectedAbsent = topology.loaderOrigin == AndroidLoaderOrigin.ABSENT,
         )
         install.downloadedSha = downloadedSha
@@ -623,7 +733,8 @@ internal class AndroidInstallPort(
     override suspend fun commit(token: PreparedExtensionInstallToken) {
         val install = prepared[token.value] ?: failStorage("Unknown Android extension install")
         val preState = install.preState ?: failStorage("Android extension was not validated")
-        val candidate = gateway.inspect(install.download) ?: failMalformed("Downloaded file is not an APK")
+        val candidate = storage { gateway.inspect(install.download) }
+            ?: failMalformed("Downloaded file is not an APK")
         val metadata = AndroidInstalledPackage(
             apk = install.download,
             versionName = candidate.versionName,
@@ -635,13 +746,18 @@ internal class AndroidInstallPort(
             AndroidInstallLocation.PRIVATE -> if (!gateway.installPrivate(install.download, metadata)) {
                 failStorage("Failed to atomically replace private extension")
             }
-            AndroidInstallLocation.SYSTEM -> gateway.installSystem(token.value, install.download, metadata)
+            AndroidInstallLocation.SYSTEM -> gateway.installSystem(
+                parentTransactionId = token.value,
+                file = install.download,
+                metadata = metadata,
+                installer = checkNotNull(preState.systemInstaller),
+            )
         }
     }
 
     override suspend fun reload(packageName: String) {
-        if (expectedAbsentAfterRollback.remove(packageName)) {
-            if (gateway.topology(packageName).loaderOrigin == AndroidLoaderOrigin.ABSENT) return
+        if (expectedAbsentAfterRollback.contains(packageName)) {
+            if (storage { gateway.topology(packageName) }.loaderOrigin == AndroidLoaderOrigin.ABSENT) return
             failStorage("Expected rolled back extension to be absent")
         }
         runtimeReloader(packageName)
@@ -669,7 +785,12 @@ internal class AndroidInstallPort(
                 if (snapshot == null) {
                     gateway.removeSystem(install.artifact.packageName)
                 } else {
-                    gateway.installSystem(token.value, snapshot.apk, snapshot)
+                    gateway.installSystem(
+                        parentTransactionId = token.value,
+                        file = snapshot.apk,
+                        metadata = snapshot,
+                        installer = checkNotNull(state.systemInstaller),
+                    )
                 }
             }
         }
@@ -677,7 +798,7 @@ internal class AndroidInstallPort(
     }
 
     override suspend fun cleanup(token: PreparedExtensionInstallToken) {
-        val install = prepared.remove(token.value) ?: return
+        val install = prepared[token.value] ?: return
         val failures = listOf(
             install.download,
             install.preState?.privatePackage?.apk,
@@ -685,8 +806,10 @@ internal class AndroidInstallPort(
             install.directory,
         )
             .filterNotNull()
-            .filterNot(gateway::delete)
+            .filterNot { storage { gateway.delete(it) } }
         if (failures.isNotEmpty()) failStorage("Failed to clean extension transaction files")
+        prepared.remove(token.value, install)
+        expectedAbsentAfterRollback -= install.artifact.packageName
     }
 
     private fun digest(file: File): String = try {
@@ -697,6 +820,32 @@ internal class AndroidInstallPort(
 
     private fun ensureContained(root: File, child: File) {
         if (!child.toPath().startsWith(root.toPath())) failStorage("Extension transaction escaped cache root")
+    }
+
+    private fun retryFailedPreparationCleanup() {
+        failedPreparationCleanup.entries.forEach { (id, files) ->
+            val remaining = cleanupFailures(files)
+            if (remaining.isEmpty()) {
+                failedPreparationCleanup.remove(id, files)
+            } else {
+                failedPreparationCleanup.replace(id, files, remaining)
+                failStorage("Failed to clean previous extension transaction files")
+            }
+        }
+    }
+
+    private fun cleanupFailures(files: List<File>): List<File> = files.filter { file ->
+        runCatching { gateway.delete(file) }.getOrDefault(false).not()
+    }
+
+    private inline fun <T> storage(block: () -> T): T = try {
+        block()
+    } catch (failure: ExtensionInstallFailure) {
+        throw failure
+    } catch (failure: CancellationException) {
+        throw failure
+    } catch (failure: Throwable) {
+        throw ExtensionInstallFailure(AppError.Storage(failure))
     }
 
     private fun okhttp3.Response.toDownloadError(): AppError = when (code) {
@@ -710,6 +859,7 @@ internal class AndroidInstallPort(
         val artifact: ExtensionArtifact,
         val directory: File,
         val download: File,
+        val commitPlan: AndroidCommitPlan,
         var downloadedSha: String? = null,
         var preState: InstallPreState? = null,
     )
@@ -720,6 +870,7 @@ internal data class InstallPreState(
     val systemPackage: AndroidInstalledPackage?,
     val loaderOrigin: AndroidLoaderOrigin,
     val commitTarget: AndroidInstallLocation,
+    val systemInstaller: BasePreferences.ExtensionInstaller?,
     val expectedAbsent: Boolean,
 )
 
@@ -735,13 +886,24 @@ private fun AndroidInstallTopology.selected(): AndroidInstalledPackage? = when (
 private fun AndroidInstallTopology.allPackages(): List<AndroidInstalledPackage> =
     listOfNotNull(privatePackage, systemPackage)
 
-private class DefaultAndroidInstallGateway(
+internal class DefaultAndroidInstallGateway(
     private val context: Context,
-    private val installSystem: suspend (String, File) -> Unit,
-    private val commitTargetProvider: () -> AndroidInstallLocation,
+    private val installSystem: suspend (String, File, BasePreferences.ExtensionInstaller) -> Unit,
+    private val commitPlanProvider: (String) -> AndroidCommitPlan,
+    private val apkInspector: ((File) -> AndroidApk?)? = null,
+    private val atomicReplace: (File, File) -> Unit = { source, target ->
+        Files.move(
+            source.toPath(),
+            target.toPath(),
+            StandardCopyOption.ATOMIC_MOVE,
+            StandardCopyOption.REPLACE_EXISTING,
+        )
+    },
+    private val deleteFile: (File) -> Boolean = { file -> !file.exists() || file.delete() },
+    private val trustInput: (File) -> InputStream = File::inputStream,
 ) : AndroidInstallGateway {
     override val transactionRoot: File get() = File(context.cacheDir, "extension-installs")
-    override val commitTarget: AndroidInstallLocation get() = commitTargetProvider()
+    override fun commitPlan(packageName: String): AndroidCommitPlan = commitPlanProvider(packageName)
 
     override fun canonical(file: File): File = file.canonicalFile
 
@@ -749,7 +911,7 @@ private class DefaultAndroidInstallGateway(
         destination.outputStream().use { input.copyTo(it) }
     }
 
-    override fun inspect(file: File): AndroidApk? = packageInfo(file)?.let { info ->
+    override fun inspect(file: File): AndroidApk? = apkInspector?.invoke(file) ?: packageInfo(file)?.let { info ->
         AndroidApk(
             packageName = info.packageName,
             versionName = info.versionName.orEmpty(),
@@ -796,18 +958,30 @@ private class DefaultAndroidInstallGateway(
         val temporary = File(directory, ".${target.name}.${UUID.randomUUID()}.tmp")
         file.copyTo(temporary, overwrite = true)
         if (!temporary.setReadOnly()) error("Failed to make private extension read-only")
-        Files.move(
-            temporary.toPath(),
-            target.toPath(),
-            StandardCopyOption.ATOMIC_MOVE,
-            StandardCopyOption.REPLACE_EXISTING,
-        )
+        val targetWasReadOnly = target.isFile && !target.canWrite()
+        if (targetWasReadOnly && !target.setWritable(true, true)) {
+            error("Failed to unlock existing private extension")
+        }
+        try {
+            atomicReplace(temporary, target)
+        } catch (failure: Throwable) {
+            if (targetWasReadOnly && target.exists()) target.setReadOnly()
+            throw failure
+        } finally {
+            if (temporary.exists()) deleteFile(temporary)
+        }
+        if (!target.setReadOnly()) error("Failed to keep private extension read-only")
         writeTrust(packageName, AndroidInstallLocation.PRIVATE, metadata.trust)
         ExtensionInstallReceiver.notifyReplaced(context, packageName)
     }.isSuccess
 
-    override suspend fun installSystem(transactionId: String, file: File, metadata: AndroidInstalledPackage) {
-        installSystem(transactionId, file)
+    override suspend fun installSystem(
+        parentTransactionId: String,
+        file: File,
+        metadata: AndroidInstalledPackage,
+        installer: BasePreferences.ExtensionInstaller,
+    ) {
+        installSystem(parentTransactionId, file, installer)
         try {
             writeTrust(metadataPackage(file), AndroidInstallLocation.SYSTEM, metadata.trust)
         } catch (error: Throwable) {
@@ -817,7 +991,7 @@ private class DefaultAndroidInstallGateway(
 
     override fun removePrivate(packageName: String): Boolean {
         val file = File(context.filesDir, "exts/$packageName.ext")
-        val removed = !file.exists() || file.delete()
+        val removed = deleteFile(file)
         return removed && deleteTrust(packageName, AndroidInstallLocation.PRIVATE)
     }
 
@@ -852,7 +1026,7 @@ private class DefaultAndroidInstallGateway(
         }
     }
 
-    override fun delete(file: File): Boolean = !file.exists() || file.delete()
+    override fun delete(file: File): Boolean = deleteFile(file)
 
     private fun installedPackage(
         file: File,
@@ -866,16 +1040,25 @@ private class DefaultAndroidInstallGateway(
 
     private fun readTrust(packageName: String, location: AndroidInstallLocation): InstalledExtensionTrustRecord? {
         val file = trustFile(packageName, location)
-        if (!file.isFile) return null
-        return runCatching {
-            val properties = Properties().also { values -> file.inputStream().use(values::load) }
-            val repository = RepositoryIdentity(
-                baseUrl = properties.getProperty("repository.baseUrl") ?: return null,
-                name = properties.getProperty("repository.name") ?: return null,
-                signingKeyFingerprint = properties.getProperty("repository.fingerprint") ?: return null,
-            )
-            InstalledExtensionTrustRecord(repository, properties.getProperty("artifact.sha256"))
-        }.getOrNull()
+        if (!file.exists()) return null
+        if (!file.isFile) failMalformed("Extension trust metadata is not a regular file")
+        val properties = try {
+            Properties().also { values -> trustInput(file).use(values::load) }
+        } catch (failure: IllegalArgumentException) {
+            failMalformed("Extension trust metadata is malformed")
+        } catch (failure: Throwable) {
+            throw ExtensionInstallFailure(AppError.Storage(failure))
+        }
+        fun required(key: String): String = properties.getProperty(key)?.takeIf(String::isNotBlank)
+            ?: failMalformed("Extension trust metadata is missing $key")
+        return InstalledExtensionTrustRecord(
+            repository = RepositoryIdentity(
+                baseUrl = required("repository.baseUrl"),
+                name = required("repository.name"),
+                signingKeyFingerprint = required("repository.fingerprint"),
+            ),
+            artifactSha256 = required("artifact.sha256"),
+        )
     }
 
     private fun writeTrust(
@@ -892,27 +1075,34 @@ private class DefaultAndroidInstallGateway(
         if (!parent.mkdirs() && !parent.isDirectory) error("Failed to create trust metadata directory")
         val temporary = File(parent, ".${target.name}.${UUID.randomUUID()}.tmp")
         val repository = requireNotNull(trust.repository)
-        Properties().apply {
-            setProperty("repository.baseUrl", repository.baseUrl)
-            setProperty("repository.name", repository.name)
-            setProperty("repository.fingerprint", repository.signingKeyFingerprint)
-            setProperty("artifact.sha256", trust.artifactSha256.orEmpty())
-        }.also { values -> temporary.outputStream().use { values.store(it, null) } }
-        Files.move(
-            temporary.toPath(),
-            target.toPath(),
-            StandardCopyOption.ATOMIC_MOVE,
-            StandardCopyOption.REPLACE_EXISTING,
-        )
+        try {
+            Properties().apply {
+                setProperty("repository.baseUrl", repository.baseUrl)
+                setProperty("repository.name", repository.name)
+                setProperty("repository.fingerprint", repository.signingKeyFingerprint)
+                setProperty("artifact.sha256", trust.artifactSha256.orEmpty())
+            }.also { values -> temporary.outputStream().use { values.store(it, null) } }
+            atomicReplace(temporary, target)
+        } finally {
+            if (temporary.exists()) deleteFile(temporary)
+        }
     }
 
     private fun deleteTrust(packageName: String, location: AndroidInstallLocation): Boolean {
         val file = trustFile(packageName, location)
-        return !file.exists() || file.delete()
+        return deleteFile(file)
     }
 
-    private fun trustFile(packageName: String, location: AndroidInstallLocation) =
-        File(context.filesDir, "extension-install-metadata/${location.name.lowercase()}-$packageName.properties")
+    private fun trustFile(packageName: String, location: AndroidInstallLocation): File = try {
+        val root = File(context.filesDir, "extension-install-metadata").canonicalFile
+        val target = File(root, "${location.name.lowercase()}-$packageName.properties").canonicalFile
+        if (!target.toPath().startsWith(root.toPath())) failStorage("Extension trust metadata escaped root")
+        target
+    } catch (failure: ExtensionInstallFailure) {
+        throw failure
+    } catch (failure: Throwable) {
+        throw ExtensionInstallFailure(AppError.Storage(failure))
+    }
 
     @Suppress("DEPRECATION")
     private fun packageInfo(file: File): PackageInfo? = context.packageManager.getPackageArchiveInfo(

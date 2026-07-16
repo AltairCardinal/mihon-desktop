@@ -19,7 +19,13 @@ import eu.kanade.tachiyomi.extension.installer.Installer
 import eu.kanade.tachiyomi.extension.installer.PackageInstallerInstaller
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
+import eu.kanade.tachiyomi.extension.util.AndroidApk
+import eu.kanade.tachiyomi.extension.util.AndroidCommitPlan
+import eu.kanade.tachiyomi.extension.util.AndroidInstallLocation
+import eu.kanade.tachiyomi.extension.util.AndroidInstallPort
+import eu.kanade.tachiyomi.extension.util.DefaultAndroidInstallGateway
 import eu.kanade.tachiyomi.extension.util.ExtensionInstaller
+import eu.kanade.tachiyomi.util.lang.Hash
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
@@ -33,6 +39,7 @@ import io.mockk.verify
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -40,15 +47,23 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import mihon.domain.error.AppError
+import mihon.domain.extension.model.ExtensionArtifact
+import mihon.domain.extension.model.RepositoryIdentity
+import mihon.domain.extension.service.ExtensionInstallCoordinator
 import mihon.domain.extension.service.ExtensionInstallFailure
 import mihon.domain.extension.service.ExtensionInstallPort
 import mihon.domain.extension.service.ExtensionInstallRequest
 import mihon.domain.extension.service.ExtensionInstallRollbackToken
 import mihon.domain.extension.service.PreparedExtensionInstallToken
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
+import okhttp3.OkHttpClient
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -57,10 +72,13 @@ import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.nio.file.Path
 import java.util.Collections
+import java.util.Properties
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
@@ -87,6 +105,256 @@ class ExtensionInstallSessionLifecycleTest {
 
     @Suppress("PropertyName")
     private lateinit var TRANSACTION_TWO: String
+
+    @Test
+    fun `production system commit reload failure restores through a distinct child session`(
+        @TempDir directory: Path,
+    ) = runTest {
+        var harness = packageInstallerHarness()
+        val cacheDirectory = directory.resolve("cache").toFile().apply(File::mkdirs)
+        val filesDirectory = directory.resolve("files").toFile().apply(File::mkdirs)
+        val installedSystem = directory.resolve("installed-system.apk").toFile().apply { writeText("old-system") }
+        val packageManager = mockk<PackageManager>(relaxed = true) {
+            every { getPackageInfo(PACKAGE_NAME, any<Int>()) } answers {
+                android.content.pm.PackageInfo().apply {
+                    packageName = PACKAGE_NAME
+                    versionName = "1.4.1"
+                    applicationInfo = android.content.pm.ApplicationInfo().apply {
+                        sourceDir = installedSystem.absolutePath
+                    }
+                }
+            }
+        }
+        val context = mockk<Context>(relaxed = true) {
+            every { packageName } returns "eu.kanade.tachiyomi"
+            every { cacheDir } returns cacheDirectory
+            every { filesDir } returns filesDirectory
+            every { this@mockk.packageManager } returns packageManager
+        }
+        val bridge = ExtensionInstaller(
+            context = context,
+            scope = backgroundScope,
+            installPort = mockk(relaxed = true),
+        )
+        val preference = mockk<ExtensionInstallerPreference> {
+            every { get() } returns BasePreferences.ExtensionInstaller.PACKAGEINSTALLER
+        }
+        ExtensionInstaller::class.java.getDeclaredField("extensionInstaller\$delegate").apply {
+            isAccessible = true
+            set(bridge, lazyOf(preference))
+        }
+        fun connectCallbacks() {
+            every { harness.manager.updateInstallStep(any(), any()) } answers {
+                bridge.updateInstallStep(firstArg(), secondArg())
+            }
+        }
+        connectCallbacks()
+        val committedAttempts = mutableListOf<String>()
+        mockkStatic(FileProvider::class)
+        every { FileProvider.getUriForFile(any(), any(), any()) } returns mockk()
+        every { ContextCompat.startForegroundService(context, any()) } answers {
+            val attempt = checkNotNull(capturedStringExtras[ExtensionInstaller.EXTRA_TRANSACTION_ID])
+            committedAttempts += attempt
+            harness.enqueue(attempt)
+            mockk()
+        }
+
+        val metadataDirectory = filesDirectory.resolve("extension-install-metadata").apply(File::mkdirs)
+        Properties().apply {
+            setProperty("repository.baseUrl", REPOSITORY.baseUrl)
+            setProperty("repository.name", REPOSITORY.name)
+            setProperty("repository.fingerprint", REPOSITORY.signingKeyFingerprint)
+            setProperty("artifact.sha256", Hash.sha256(installedSystem.readBytes()))
+        }.also { values ->
+            metadataDirectory.resolve("system-$PACKAGE_NAME.properties").outputStream().use { values.store(it, null) }
+        }
+
+        MockWebServer().also { it.start() }.use { server ->
+            server.enqueue(MockResponse(body = "candidate-system"))
+            val gateway = DefaultAndroidInstallGateway(
+                context = context,
+                installSystem = { transactionId, file, installer ->
+                    bridge.installSystemAttempt(transactionId, file, installer)
+                    file.copyTo(installedSystem, overwrite = true)
+                },
+                commitPlanProvider = {
+                    AndroidCommitPlan(
+                        AndroidInstallLocation.SYSTEM,
+                        BasePreferences.ExtensionInstaller.PACKAGEINSTALLER,
+                    )
+                },
+                apkInspector = { file ->
+                    val candidate = file.readText().startsWith("candidate")
+                    AndroidApk(
+                        packageName = PACKAGE_NAME,
+                        versionName = if (candidate) "1.4.2" else "1.4.1",
+                        versionCode = if (candidate) 2 else 1,
+                        signers = setOf("signer-a"),
+                        isExtension = true,
+                    )
+                },
+            )
+            var reloads = 0
+            val coordinator = ExtensionInstallCoordinator(
+                AndroidInstallPort(
+                    gateway = gateway,
+                    client = OkHttpClient(),
+                    runtimeReloader = {
+                        if (reloads++ == 0) throw ExtensionInstallFailure(AppError.MalformedData())
+                    },
+                ),
+                backgroundScope,
+            )
+            val states = async(start = CoroutineStart.UNDISPATCHED) {
+                coordinator.install(
+                    ExtensionInstallRequest(
+                        ExtensionArtifact(
+                            name = "Example",
+                            packageName = PACKAGE_NAME,
+                            versionName = "1.4.2",
+                            versionCode = 2,
+                            language = "en",
+                            isNsfw = false,
+                            sources = emptyList(),
+                            repository = REPOSITORY,
+                            downloadUrl = server.url("/example.apk").toString(),
+                            iconUrl = "",
+                            declaredSha256 = Hash.sha256("candidate-system".toByteArray()),
+                        ),
+                    ),
+                ).toList()
+            }
+
+            try {
+                runCurrent()
+                val parentTransaction = checkNotNull(cacheDirectory.resolve("extension-installs").listFiles())
+                    .single().name
+                check(committedAttempts.isNotEmpty()) {
+                    "system commit was not handed off; states=" +
+                        if (states.isCompleted) states.await().toString() else "still-running"
+                }
+                harness.callback(PackageInstaller.STATUS_SUCCESS)
+                harness.installer.onDestroy()
+                harness = packageInstallerHarness().also { it.useSession(SESSION_TWO) }
+                connectCallbacks()
+                runCurrent()
+                if (committedAttempts.size == 2) {
+                    bridge.updateInstallStep(committedAttempts.first(), InstallStep.Installed)
+                    runCurrent()
+                    assertFalse(states.isCompleted, "late commit callback must not complete the restore attempt")
+                    harness.callback(PackageInstaller.STATUS_SUCCESS)
+                    harness.installer.onDestroy()
+                    runCurrent()
+                }
+
+                val terminal = states.await().last()
+                assertInstanceOf(mihon.domain.extension.service.ExtensionInstallState.Failed::class.java, terminal)
+                assertEquals(2, committedAttempts.size)
+                assertNotEquals(parentTransaction, committedAttempts[0])
+                assertNotEquals(parentTransaction, committedAttempts[1])
+                assertNotEquals(committedAttempts[0], committedAttempts[1])
+                assertEquals("old-system", installedSystem.readText())
+            } finally {
+                unmockkStatic(FileProvider::class)
+            }
+        }
+    }
+
+    @Test
+    fun `parent cancellation targets the active production child session and rejects its late callback`(
+        @TempDir directory: Path,
+    ) = runTest {
+        val harness = packageInstallerHarness()
+        val cacheDirectory = directory.resolve("cache").toFile().apply(File::mkdirs)
+        val filesDirectory = directory.resolve("files").toFile().apply(File::mkdirs)
+        val packageManager = mockk<PackageManager>(relaxed = true) {
+            every { getPackageInfo(PACKAGE_NAME, any<Int>()) } throws PackageManager.NameNotFoundException()
+            every { getApplicationInfo(PACKAGE_NAME, any<Int>()) } throws PackageManager.NameNotFoundException()
+        }
+        val context = mockk<Context>(relaxed = true) {
+            every { packageName } returns "eu.kanade.tachiyomi"
+            every { cacheDir } returns cacheDirectory
+            every { filesDir } returns filesDirectory
+            every { this@mockk.packageManager } returns packageManager
+        }
+        lateinit var bridge: ExtensionInstaller
+        val childAttempts = mutableListOf<String>()
+        val gateway = DefaultAndroidInstallGateway(
+            context = context,
+            installSystem = { transactionId, file, installer ->
+                bridge.installSystemAttempt(transactionId, file, installer)
+            },
+            commitPlanProvider = {
+                AndroidCommitPlan(
+                    AndroidInstallLocation.SYSTEM,
+                    BasePreferences.ExtensionInstaller.PACKAGEINSTALLER,
+                )
+            },
+            apkInspector = {
+                AndroidApk(PACKAGE_NAME, "1.4.2", 2, setOf("signer-a"), isExtension = true)
+            },
+        )
+        bridge = ExtensionInstaller(
+            context = context,
+            runtimeReloader = {},
+            scope = backgroundScope,
+            gateway = gateway,
+            client = OkHttpClient(),
+            installerProvider = { BasePreferences.ExtensionInstaller.PACKAGEINSTALLER },
+        )
+        every { harness.manager.updateInstallStep(any(), any()) } answers {
+            bridge.updateInstallStep(firstArg(), secondArg())
+        }
+        mockkStatic(FileProvider::class)
+        every { FileProvider.getUriForFile(any(), any(), any()) } returns mockk()
+        every { ContextCompat.startForegroundService(context, any()) } answers {
+            val child = checkNotNull(capturedStringExtras[ExtensionInstaller.EXTRA_TRANSACTION_ID])
+            childAttempts += child
+            harness.enqueue(child)
+            mockk()
+        }
+
+        MockWebServer().also { it.start() }.use { server ->
+            val candidate = "candidate-system".toByteArray()
+            server.enqueue(MockResponse(body = candidate.decodeToString()))
+            val extension = availableExtension(PACKAGE_NAME).copy(
+                versionName = "1.4.2",
+                versionCode = 2,
+                repoName = REPOSITORY.name,
+                repoFingerprint = REPOSITORY.signingKeyFingerprint,
+                declaredSha256 = Hash.sha256(candidate),
+            )
+            val terminal = async {
+                bridge.downloadAndInstall(server.url("/example.apk").toString(), extension)
+                    .first(InstallStep::isCompleted)
+            }
+
+            try {
+                runCurrent()
+                val parent = activeTransactionIds(bridge).getValue(PACKAGE_NAME)
+                val child = childAttempts.single()
+                assertNotEquals(parent, child)
+
+                bridge.cancelInstall(PACKAGE_NAME)
+                runCurrent()
+
+                assertEquals(child, capturedStringExtras[ExtensionInstaller.EXTRA_TRANSACTION_ID])
+                assertFalse(terminal.isCompleted)
+                assertTrue(activeTransactionIds(bridge).containsKey(PACKAGE_NAME))
+
+                harness.installer.onDestroy()
+                runCurrent()
+
+                assertEquals(InstallStep.Idle, terminal.await())
+                assertTrue(activeTransactionIds(bridge).isEmpty())
+                assertTrue(platformResults(bridge).isEmpty())
+                bridge.updateInstallStep(child, InstallStep.Installed)
+                assertTrue(activeTransactionIds(bridge).isEmpty())
+            } finally {
+                unmockkStatic(FileProvider::class)
+            }
+        }
+    }
 
     @BeforeEach
     fun interceptLocalBroadcastManager() {
@@ -1390,6 +1658,8 @@ class ExtensionInstallSessionLifecycleTest {
     }
 
     private companion object {
+        const val PACKAGE_NAME = "example.extension"
+        val REPOSITORY = RepositoryIdentity("https://repo.example", "Official", "fingerprint")
         const val SESSION_ONE = 101
         const val SESSION_TWO = 202
     }

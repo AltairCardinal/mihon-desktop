@@ -1,67 +1,51 @@
-# Task 4D 实施与验证报告
+# Task 4D 审查修复报告
 
 ## 结论
 
-- 状态：`DONE_WITH_CONCERNS`
+- 状态：`DONE`
 - 风险轴：`android-install-trust-rollback`
 - 平台边界：`android`
-- 用户可见边界：安装只有在目录身份、摘要、APK 元数据、签名与共享更新策略全部通过且 runtime reload 成功后才发布；`ConfirmationRequired`/`Untrusted` 保持显式失败终态，仍由既有手动信任入口处理。
+- 本轮关闭：1 项 Critical、6 项 Important。
+- 用户边界不变：只有目录身份、SHA、APK 元数据、签名、共享更新策略、提交、runtime reload 全部成功后才发布安装成功；`ConfirmationRequired` / `Untrusted` 仍是显式失败。
 
-## Production wiring
+## 修复内容
 
-1. MockWebServer 形状的目录响应经 `ExtensionCatalogService` 和 production `ExtensionApi` 转为 `Extension.Available`，repository base URL/name/fingerprint、declared SHA 与精确 download URL 无损进入 `ExtensionInstallRequest`。
-2. `ExtensionManager` 继续通过 production `ExtensionInstaller` 和共享 `ExtensionInstallCoordinator` 安装；receiver 回调在同包事务活跃期间不能提前写 installed/untrusted runtime map。
-3. `AndroidInstallPort` 使用共享 `ExtensionTrustPolicy` 与 `SharedExtensionUpdatePolicy`，校验 downloaded SHA、repository continuity、package/version/lib/signers，并把 `ConfirmationRequired` 映射为显式 authentication failure。
-4. production gateway 使用 `cacheDir/extension-installs/<UUID>/candidate.apk`、canonical containment、private temp -> readonly -> atomic move；system commit/restore 复用 Task 4C 的受控 session。
-5. `InstallPreState` 同时保存 private/system 只读 APK snapshot、版本/签名/信任、loader origin、commit target 与 expected-absent；失败时只恢复实际改动侧，双安装另一侧保持原样，fresh 安装删除，restore reload 幂等。
-6. repository trust sidecar 按 private/system 分侧原子持久化，随安装、恢复和删除同步更新。
+1. system commit 与 restore 各自使用独立 child transaction UUID，并保持到同一 parent transaction 的映射；取消命中当前真实 PackageInstaller child session，旧 child 的迟到回调不能结束 restore。
+2. private/system 双安装拓扑的两侧都执行 repository、digest 与 signer continuity；缺失旧 trust sidecar 不再允许候选包自证明可信。
+3. installer preference 与 commit target 在事务 prepare 时冻结；prepare 后从 system 切换为 private 仍按已冻结的 system plan 提交和回滚。
+4. expected-absent 标记保留到 cleanup；重复 reload 与首次 topology I/O 失败后重试仍保持幂等。
+5. canonical、copy、readonly、delete、sidecar 读写及原子移动失败统一映射为 `AppError.Storage`；missing、malformed、I/O sidecar 被明确区分。
+6. private APK 与 private/system trust sidecar 均使用临时文件和原子替换；写失败时 coordinator 恢复旧 APK 与旧 metadata，不静默降级非原子移动。
+7. cleanup 只有在全部删除成功后才移除 prepared token；prepare 失败的残留写入清理 journal，并在下一事务前重试。
+8. 新增无反射生产 seam，覆盖 `ExtensionApi -> ExtensionManager -> ExtensionInstallCoordinator -> AndroidInstallPort -> DefaultAndroidInstallGateway` 的真实下载、校验、私有原子安装和 sidecar 持久化。
 
 ## TDD 证据
 
 ### RED
 
-- 初始 focused 命令：`./gradlew :app:testReleaseUnitTest --tests "*AndroidExtensionInstallSecurityRollbackTest" --tests "*ExtensionInstallCoordinatorWiringTest" --tests "*ExtensionApiSharedCatalogTest"`：13 项中 1 项因 repository name 未保留而失败。
-- receiver gate：回调仍提前发布 installed map，断言失败。
-- Android gateway seam：新增 production seam 前编译失败；最小 seam 后拓扑用例暴露 readonly 前置条件并完成测试校准。
-- Untrusted reload：预期 `InstallStep.Error`，实际得到 `Installed`。
-- 双安装 snapshot：预期 copy/readonly 各 2 次，实际各 1 次。
-- 自审新增共享更新策略用例：相同 versionCode 的 extension lib `1.5 -> 1.4` 预期拒绝，修复前断言失败。
+- 双侧 trust / expected-absent / cleanup：11 个定向用例中 3 个因错误接受非 selected target、marker 提前消费、delete 后 token 丢失而失败。
+- 真实 Task 4C bridge：首次 system commit 与 restore 复用身份，parent 与 child UUID 相同的断言失败。
+- production sidecar：3 个用例中 2 个因 missing sidecar 被接受、sidecar 原子写失败后旧 APK 未恢复而失败。
+- full production wiring：先因缺少 gateway/client/installerProvider seam 编译失败；加入 seam 后暴露 JVM 广播边界，隔离该 Android framework 边界后真实文件链路转绿。
+- prepare cleanup journal：第二次 prepare 前仍残留 `failed-prepare` 目录，预期 `[retry-prepare]`、实际 `[failed-prepare, retry-prepare]`。
+- 组合回归曾捕获 7 个显式 custom port 测试误读 Injekt preference；修复为仅默认 Android port 冻结 preference。
 
-### GREEN（最终 fresh）
+### GREEN
 
-- focused：21/21 PASS，`BUILD SUCCESSFUL`。
-- regression：`*ExtensionManager*` + `*ExtensionInstallSessionLifecycleTest`，22/22 PASS，`BUILD SUCCESSFUL`。
-- formatting：根 `./gradlew spotlessCheck`，`BUILD SUCCESSFUL`。
-- whitespace：`git diff --check`，exit 0、无输出。
+- focused：`./gradlew :app:testReleaseUnitTest --tests "*AndroidExtensionInstallSecurityRollbackTest" --tests "*ExtensionInstallCoordinatorWiringTest" --tests "*ExtensionApiSharedCatalogTest" --no-parallel` → 30/30 PASS。
+- lifecycle / manager：`./gradlew :app:testReleaseUnitTest --tests "*ExtensionManager*" --tests "*ExtensionInstallSessionLifecycleTest" --no-parallel` → 24/24 PASS。
+- 最终编译与 app 格式：`./gradlew :app:spotlessCheck :app:compileReleaseUnitTestKotlin --no-parallel` → `BUILD SUCCESSFUL`。
+- 根格式：`./gradlew spotlessCheck --no-parallel` → `BUILD SUCCESSFUL`。
+- whitespace：`git diff --check` → exit 0、无输出。
 
-## Mutation 审计
+## Production wiring 与 mutation
 
-所有临时变异均由行为测试杀死并恢复：
+- 完整 production 测试从 MockWebServer catalog 读取 repository base URL/name/fingerprint、declared SHA 与精确 download URL，经 Manager 和 shared coordinator 写入真实 private APK 与分侧 trust sidecar。
+- 真实 system 测试执行 `DefaultAndroidInstallGateway -> installSystemAttempt -> PackageInstallerInstaller session/commit/callback -> reload failure -> 新 child restore`；两次 child UUID 与 parent 均不同，旧 system bytes 恢复。
+- 父取消测试证明 cancel 广播携带当前 child UUID，Task 4C `onDestroy` 前不发布 Idle，清理确认后终止，并拒绝迟到 Installed。
+- mutation 覆盖 fingerprint/SHA/signer、双侧 trust、installer preference 切换、Untrusted、receiver active gate、双侧 snapshot、fresh 删除、system downgrade、expected-absent、delete/readonly/containment、sidecar missing/malformed/I/O/atomic failure、HTTP 403/429/5xx/断网和写盘失败。
 
-1. 丢弃 repository fingerprint/name。
-2. 跳过 declared/downloaded SHA 校验。
-3. 跳过 APK signer continuity。
-4. 把 `Untrusted` 当作成功发布。
-5. 允许 receiver 在 active transaction 期间提前改 runtime map。
-6. 把双侧 `InstallPreState` 退化为单 snapshot。
-7. 遗漏 fresh private 删除。
-8. 遗漏 system downgrade/失败后的旧包恢复。
-9. 把 expected-absent restore reload 当作 loader error。
-10. 忽略 `delete=false`。
-11. 忽略 `readonly=false`。
-12. 忽略 canonical containment。
-13. 把 403/429/500/断网 taxonomy 折叠为单一 Network。
-14. 把本地写盘失败折叠为 Unknown/Network。
-15. 用候选 lib 代替 installed lib 执行共享更新策略，放过同 versionCode 的 lib downgrade。
+## 范围与剩余风险
 
-## 变更范围
-
-- 实际产品/测试文件：6 个（允许列表 8 个中的子集）；未修改 receiver 源文件和既有 API 测试文件。
-- diff：1118 additions / 242 deletions；超过 620 行估算。
-- 超额原因：主要来自一个 production gateway seam（519 行）和完整的 trust/topology/failure matrix（463 行）；这与任务 brief 的 Split waiver 一致，拆分会产生 trust 已生效但 rollback/receiver 尚未精确的中间 production 状态。
-- 未触碰或暂存工作区内其他用户改动、SDK、缓存、Desktop 临时产物、OpenSpec progress 或计划文件。
-
-## 自审与剩余关注
-
-- 自审中发现并修复了 installed lib 参数错误；新增 RED/GREEN 防止相同 versionCode 的 lib downgrade。
-- 本轮验证是 JVM production wiring + MockWebServer + 可故障注入 Android gateway seam；未在真实 Android 设备上执行 PackageInstaller/文件系统 instrumentation。Task 4C session lifecycle 回归 20 项已通过，但设备厂商 PackageInstaller 行为仍是剩余运行时风险。
+- 本轮产品/测试变更限定为 `ExtensionInstaller.kt`、三个 Android extension 测试文件及本报告；未触碰工作区其他未跟踪文件。
+- 本轮为 JVM production wiring、MockWebServer 与 Task 4C session harness 验证；没有在真实 Android 设备上执行厂商 PackageInstaller instrumentation，厂商差异仍是运行时剩余风险。

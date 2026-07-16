@@ -1,16 +1,27 @@
 package eu.kanade.tachiyomi.extension
 
 import android.content.Context
+import android.content.pm.PackageManager
+import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.extension.interactor.TrustExtension
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.api.ExtensionApi
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.extension.model.LoadResult
+import eu.kanade.tachiyomi.extension.util.AndroidApk
+import eu.kanade.tachiyomi.extension.util.AndroidCommitPlan
+import eu.kanade.tachiyomi.extension.util.AndroidInstallLocation
+import eu.kanade.tachiyomi.extension.util.DefaultAndroidInstallGateway
 import eu.kanade.tachiyomi.extension.util.ExtensionInstallReceiver
 import eu.kanade.tachiyomi.extension.util.ExtensionInstaller
+import eu.kanade.tachiyomi.util.lang.Hash
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
+import io.mockk.mockkObject
+import io.mockk.runs
+import io.mockk.unmockkObject
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.first
@@ -35,9 +46,86 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import tachiyomi.core.common.preference.Preference
+import java.io.File
+import java.nio.file.Path
+import java.util.Properties
 
 class ExtensionInstallCoordinatorWiringTest {
+
+    @Test
+    fun `catalog manager coordinator and default gateway install the catalog artifact unchanged`(
+        @TempDir directory: Path,
+    ) = runTest {
+        val candidate = "production-candidate".toByteArray()
+        mockkObject(ExtensionInstallReceiver.Companion)
+        every { ExtensionInstallReceiver.notifyReplaced(any(), any()) } just runs
+        try {
+            MockWebServer().also { it.start() }.use { server ->
+                val index = INDEX_JSON.replace(DECLARED_SHA, Hash.sha256(candidate))
+                server.enqueue(MockResponse(body = index))
+                server.enqueue(MockResponse(body = candidate.decodeToString()))
+                val repository = ExtensionRepo(
+                    baseUrl = server.url("/").toString().removeSuffix("/"),
+                    name = "Official extensions",
+                    shortName = "official",
+                    website = server.url("/about").toString(),
+                    signingKeyFingerprint = "AB:CD:EF",
+                )
+                val api = ExtensionApi(
+                    client = OkHttpClient(),
+                    json = Json { ignoreUnknownKeys = true },
+                    repositories = { listOf(repository) },
+                    catalogService = ExtensionCatalogService(),
+                )
+                val packageManager = mockk<PackageManager> {
+                    every { getPackageInfo(any<String>(), any<Int>()) } throws PackageManager.NameNotFoundException()
+                }
+                val context = mockk<Context>(relaxed = true) {
+                    every { cacheDir } returns directory.resolve("cache").toFile().apply { mkdirs() }
+                    every { filesDir } returns directory.resolve("files").toFile().apply { mkdirs() }
+                    every { this@mockk.packageManager } returns packageManager
+                }
+                val gateway = DefaultAndroidInstallGateway(
+                    context = context,
+                    installSystem = { _, _, _ -> error("private install must not use PackageInstaller") },
+                    commitPlanProvider = { AndroidCommitPlan(AndroidInstallLocation.PRIVATE) },
+                    apkInspector = {
+                        AndroidApk(PACKAGE_NAME, "1.4.1", 1, setOf("signer-a"), isExtension = true)
+                    },
+                )
+                val installer = ExtensionInstaller(
+                    context = context,
+                    runtimeReloader = {},
+                    scope = this,
+                    gateway = gateway,
+                    client = OkHttpClient(),
+                    installerProvider = { BasePreferences.ExtensionInstaller.PRIVATE },
+                )
+                val manager = managerWith(installer)
+
+                val available = api.findExtensions().single()
+                val terminal = manager.installExtension(available).first(InstallStep::isCompleted)
+
+                assertEquals(InstallStep.Installed, terminal)
+                assertEquals(
+                    candidate.decodeToString(),
+                    directory.resolve("files/exts/$PACKAGE_NAME.ext").toFile().readText(),
+                )
+                val trust = Properties().apply {
+                    directory.resolve("files/extension-install-metadata/private-$PACKAGE_NAME.properties")
+                        .toFile().inputStream().use(::load)
+                }
+                assertEquals(repository.baseUrl, trust.getProperty("repository.baseUrl"))
+                assertEquals(repository.name, trust.getProperty("repository.name"))
+                assertEquals(repository.signingKeyFingerprint, trust.getProperty("repository.fingerprint"))
+                assertEquals(Hash.sha256(candidate), trust.getProperty("artifact.sha256"))
+            }
+        } finally {
+            unmockkObject(ExtensionInstallReceiver.Companion)
+        }
+    }
 
     @Test
     fun `catalog repository identity digest and download URL reach Android install request unchanged`() = runTest {

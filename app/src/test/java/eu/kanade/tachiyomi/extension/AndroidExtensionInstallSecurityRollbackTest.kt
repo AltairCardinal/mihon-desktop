@@ -1,13 +1,20 @@
 package eu.kanade.tachiyomi.extension
 
+import android.content.Context
+import android.content.pm.PackageManager
+import eu.kanade.domain.base.BasePreferences
 import eu.kanade.tachiyomi.extension.util.AndroidApk
+import eu.kanade.tachiyomi.extension.util.AndroidCommitPlan
 import eu.kanade.tachiyomi.extension.util.AndroidInstallGateway
 import eu.kanade.tachiyomi.extension.util.AndroidInstallLocation
 import eu.kanade.tachiyomi.extension.util.AndroidInstallPort
 import eu.kanade.tachiyomi.extension.util.AndroidInstallTopology
 import eu.kanade.tachiyomi.extension.util.AndroidInstalledPackage
 import eu.kanade.tachiyomi.extension.util.AndroidLoaderOrigin
+import eu.kanade.tachiyomi.extension.util.DefaultAndroidInstallGateway
 import eu.kanade.tachiyomi.util.lang.Hash
+import io.mockk.every
+import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.test.runTest
@@ -28,8 +35,10 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.io.IOException
 import java.io.InputStream
 import java.nio.file.Path
+import java.util.Properties
 
 class AndroidExtensionInstallSecurityRollbackTest {
 
@@ -198,6 +207,239 @@ class AndroidExtensionInstallSecurityRollbackTest {
     }
 
     @Test
+    fun `dual install validates non-selected commit target repository and digest`(@TempDir directory: Path) = runTest {
+        withServer(CANDIDATE_BYTES) { server ->
+            val gateway = FakeGateway(directory.resolve("fingerprint").toFile(), AndroidInstallLocation.PRIVATE).apply {
+                privatePackage = installed(
+                    directory,
+                    "target-private",
+                    REPOSITORY.copy(signingKeyFingerprint = "different-fingerprint"),
+                    versionCode = 1,
+                )
+                systemPackage = installed(directory, "selected-system", REPOSITORY, versionCode = 2)
+                candidate = candidate.copy(versionCode = 3)
+            }
+            val port = port(gateway, server)
+            val token = port.prepare(ExtensionInstallRequest(artifact(server, versionCode = 3)))
+
+            val failure = runCatching { port.validate(token) }.exceptionOrNull()
+
+            assertInstanceOf(AppError.Authentication::class.java, failure.installError())
+        }
+        withServer(CANDIDATE_BYTES) { server ->
+            val gateway = FakeGateway(directory.resolve("digest").toFile(), AndroidInstallLocation.PRIVATE).apply {
+                privatePackage = installed(directory, "target-private-digest", REPOSITORY, versionCode = 1).let {
+                    it.copy(trust = it.trust?.copy(artifactSha256 = "recorded-wrong-digest"))
+                }
+                systemPackage = installed(directory, "selected-system-digest", REPOSITORY, versionCode = 2)
+                candidate = candidate.copy(versionCode = 3)
+            }
+            val port = port(gateway, server)
+            val token = port.prepare(ExtensionInstallRequest(artifact(server, versionCode = 3)))
+
+            val failure = runCatching { port.validate(token) }.exceptionOrNull()
+
+            assertInstanceOf(AppError.MalformedData::class.java, failure.installError())
+        }
+    }
+
+    @Test
+    fun `expected absent restore remains stable across topology failure and repeated reload`(@TempDir directory: Path) =
+        runTest {
+            withServer(CANDIDATE_BYTES) { server ->
+                val gateway = FakeGateway(directory.toFile(), AndroidInstallLocation.PRIVATE)
+                val port = port(gateway, server)
+                val token = port.prepare(ExtensionInstallRequest(artifact(server)))
+                val rollback = port.validate(token)
+                port.commit(token)
+                port.rollback(rollback)
+                gateway.failTopologyOnce = true
+
+                val firstFailure = runCatching { port.reload(PACKAGE_NAME) }.exceptionOrNull()
+                port.reload(PACKAGE_NAME)
+                port.reload(PACKAGE_NAME)
+
+                assertInstanceOf(AppError.Storage::class.java, firstFailure.installError())
+                assertEquals(0, gateway.runtimeReloads)
+            }
+        }
+
+    @Test
+    fun `cleanup and canonical storage failures retain retryable state`(@TempDir directory: Path) = runTest {
+        withServer(CANDIDATE_BYTES) { server ->
+            val gateway = FakeGateway(directory.resolve("cleanup").toFile(), AndroidInstallLocation.PRIVATE)
+            val port = port(gateway, server)
+            val token = port.prepare(ExtensionInstallRequest(artifact(server)))
+            gateway.failNextDelete = true
+
+            val firstFailure = runCatching { port.cleanup(token) }.exceptionOrNull()
+            port.cleanup(token)
+
+            assertInstanceOf(AppError.Storage::class.java, firstFailure.installError())
+            assertFalse(gateway.transactionRoot.resolve(token.value).exists())
+        }
+        withServer(CANDIDATE_BYTES) { server ->
+            val gateway = FakeGateway(directory.resolve("canonical").toFile(), AndroidInstallLocation.PRIVATE).apply {
+                canonicalFailure = IOException("canonical unavailable")
+            }
+
+            val failure = runCatching {
+                port(gateway, server).prepare(ExtensionInstallRequest(artifact(server)))
+            }.exceptionOrNull()
+
+            assertInstanceOf(AppError.Storage::class.java, failure.installError())
+        }
+    }
+
+    @Test
+    fun `failed prepare cleanup is journaled and retried before the next transaction`(@TempDir directory: Path) =
+        runTest {
+            withServer(CANDIDATE_BYTES) { server ->
+                server.enqueue(MockResponse(body = CANDIDATE_BYTES.decodeToString()))
+                val gateway = FakeGateway(directory.toFile(), AndroidInstallLocation.PRIVATE).apply {
+                    failWrite = true
+                    failDeleteAttempts = 2
+                }
+                var transactionId = "failed-prepare"
+                val port = AndroidInstallPort(
+                    gateway = gateway,
+                    client = OkHttpClient(),
+                    transactionIdProvider = { transactionId.also { transactionId = "retry-prepare" } },
+                )
+
+                val failure = runCatching {
+                    port.prepare(ExtensionInstallRequest(artifact(server)))
+                }.exceptionOrNull()
+                gateway.failWrite = false
+                val retry = port.prepare(ExtensionInstallRequest(artifact(server)))
+
+                assertInstanceOf(AppError.Storage::class.java, failure.installError())
+                assertEquals("retry-prepare", retry.value)
+                assertEquals(listOf("retry-prepare"), gateway.transactionRoot.list()?.sorted())
+                port.cleanup(retry)
+            }
+        }
+
+    @Test
+    fun `commit plan remains frozen when installer preference changes after prepare`(@TempDir directory: Path) =
+        runTest {
+            withServer(CANDIDATE_BYTES) { server ->
+                val gateway = FakeGateway(directory.toFile(), AndroidInstallLocation.SYSTEM)
+                val port = port(gateway, server)
+                val token = port.prepare(ExtensionInstallRequest(artifact(server)))
+
+                gateway.commitTarget = AndroidInstallLocation.PRIVATE
+                port.validate(token)
+                port.commit(token)
+
+                assertEquals(null, gateway.privatePackage)
+                assertEquals(CANDIDATE_BYTES.decodeToString(), gateway.systemPackage?.apk?.readText())
+                port.cleanup(token)
+            }
+        }
+
+    @Test
+    fun `default gateway distinguishes missing malformed and IO sidecars`(@TempDir directory: Path) = runTest {
+        val filesDirectory = directory.resolve("files").toFile().apply(File::mkdirs)
+        val cacheDirectory = directory.resolve("cache").toFile().apply(File::mkdirs)
+        val privateApk = filesDirectory.resolve("exts/$PACKAGE_NAME.ext").apply {
+            parentFile?.mkdirs()
+            writeText("old-private")
+        }
+        val context = gatewayContext(filesDirectory, cacheDirectory)
+        val metadataFile = filesDirectory.resolve("extension-install-metadata/private-$PACKAGE_NAME.properties")
+
+        withServer(CANDIDATE_BYTES) { server ->
+            val gateway = defaultGateway(context)
+            val port = AndroidInstallPort(gateway, OkHttpClient())
+            val token = port.prepare(ExtensionInstallRequest(artifact(server)))
+
+            val missingFailure = runCatching { port.validate(token) }.exceptionOrNull()
+
+            assertInstanceOf(AppError.Authentication::class.java, missingFailure.installError())
+        }
+
+        metadataFile.parentFile?.mkdirs()
+        metadataFile.writeText("repository.baseUrl=https://repo.example\n")
+        val malformedFailure = runCatching { defaultGateway(context).topology(PACKAGE_NAME) }.exceptionOrNull()
+        assertInstanceOf(AppError.MalformedData::class.java, malformedFailure.installError())
+
+        writeTrustMetadata(metadataFile, privateApk)
+        val ioFailure = runCatching {
+            defaultGateway(context, trustInput = { throw IOException("metadata read failed") }).topology(PACKAGE_NAME)
+        }.exceptionOrNull()
+        assertInstanceOf(AppError.Storage::class.java, ioFailure.installError())
+    }
+
+    @Test
+    fun `default gateway sidecar atomic failure rolls back bytes and preserves old metadata`(@TempDir directory: Path) =
+        runTest {
+            val filesDirectory = directory.resolve("files").toFile().apply(File::mkdirs)
+            val cacheDirectory = directory.resolve("cache").toFile().apply(File::mkdirs)
+            val privateApk = filesDirectory.resolve("exts/$PACKAGE_NAME.ext").apply {
+                parentFile?.mkdirs()
+                writeText("old-private")
+            }
+            val metadataFile = filesDirectory.resolve("extension-install-metadata/private-$PACKAGE_NAME.properties")
+            writeTrustMetadata(metadataFile, privateApk)
+            val oldMetadata = metadataFile.readText()
+            var failNextSidecarMove = true
+            val gateway = defaultGateway(
+                gatewayContext(filesDirectory, cacheDirectory),
+                atomicReplace = { source, target ->
+                    if (target.extension == "properties" && failNextSidecarMove) {
+                        failNextSidecarMove = false
+                        throw java.nio.file.AtomicMoveNotSupportedException(source.path, target.path, "unsupported")
+                    }
+                    java.nio.file.Files.move(
+                        source.toPath(),
+                        target.toPath(),
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    )
+                },
+            )
+            withServer(CANDIDATE_BYTES) { server ->
+                val terminal = ExtensionInstallCoordinator(AndroidInstallPort(gateway, OkHttpClient()), this)
+                    .install(ExtensionInstallRequest(artifact(server)))
+                    .last()
+
+                assertInstanceOf(ExtensionInstallState.Failed::class.java, terminal)
+                assertInstanceOf(AppError.Storage::class.java, (terminal as ExtensionInstallState.Failed).error)
+                assertEquals("old-private", privateApk.readText())
+                assertEquals(oldMetadata, metadataFile.readText())
+            }
+        }
+
+    @Test
+    fun `default gateway sidecar deletion is retryable`(@TempDir directory: Path) {
+        val filesDirectory = directory.resolve("files").toFile().apply(File::mkdirs)
+        val cacheDirectory = directory.resolve("cache").toFile().apply(File::mkdirs)
+        val privateApk = filesDirectory.resolve("exts/$PACKAGE_NAME.ext").apply {
+            parentFile?.mkdirs()
+            writeText("old-private")
+        }
+        val metadataFile = filesDirectory.resolve("extension-install-metadata/private-$PACKAGE_NAME.properties")
+        writeTrustMetadata(metadataFile, privateApk)
+        var failMetadataDelete = true
+        val gateway = defaultGateway(
+            gatewayContext(filesDirectory, cacheDirectory),
+            deleteFile = { file ->
+                if (file == metadataFile && failMetadataDelete) {
+                    failMetadataDelete = false
+                    false
+                } else {
+                    !file.exists() || file.delete()
+                }
+            },
+        )
+
+        assertFalse(gateway.removePrivate(PACKAGE_NAME))
+        assertTrue(gateway.removePrivate(PACKAGE_NAME))
+        assertFalse(metadataFile.exists())
+    }
+
+    @Test
     fun `storage and containment failures stay structured`(@TempDir directory: Path) = runTest {
         withServer(CANDIDATE_BYTES) { server ->
             val gateway = FakeGateway(directory.toFile(), AndroidInstallLocation.PRIVATE).apply {
@@ -284,6 +526,58 @@ class AndroidExtensionInstallSecurityRollbackTest {
 
     private fun coordinator(port: AndroidInstallPort, scope: CoroutineScope) = ExtensionInstallCoordinator(port, scope)
 
+    private fun gatewayContext(filesDirectory: File, cacheDirectory: File): Context {
+        val packageManager = mockk<PackageManager> {
+            every { getPackageInfo(any<String>(), any<Int>()) } throws PackageManager.NameNotFoundException()
+        }
+        return mockk(relaxed = true) {
+            every { filesDir } returns filesDirectory
+            every { cacheDir } returns cacheDirectory
+            every { this@mockk.packageManager } returns packageManager
+        }
+    }
+
+    private fun defaultGateway(
+        context: Context,
+        atomicReplace: (File, File) -> Unit = { source, target ->
+            java.nio.file.Files.move(
+                source.toPath(),
+                target.toPath(),
+                java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+            )
+        },
+        deleteFile: (File) -> Boolean = { !it.exists() || it.delete() },
+        trustInput: (File) -> InputStream = File::inputStream,
+    ) = DefaultAndroidInstallGateway(
+        context = context,
+        installSystem = { _, _, _ -> },
+        commitPlanProvider = { AndroidCommitPlan(AndroidInstallLocation.PRIVATE) },
+        apkInspector = { file ->
+            val candidate = file.readText().startsWith("candidate")
+            AndroidApk(
+                PACKAGE_NAME,
+                if (candidate) "1.4.2" else "1.4.1",
+                if (candidate) 2 else 1,
+                setOf("signer-a"),
+                true,
+            )
+        },
+        atomicReplace = atomicReplace,
+        deleteFile = deleteFile,
+        trustInput = trustInput,
+    )
+
+    private fun writeTrustMetadata(file: File, apk: File) {
+        file.parentFile?.mkdirs()
+        Properties().apply {
+            setProperty("repository.baseUrl", REPOSITORY.baseUrl)
+            setProperty("repository.name", REPOSITORY.name)
+            setProperty("repository.fingerprint", REPOSITORY.signingKeyFingerprint)
+            setProperty("artifact.sha256", Hash.sha256(apk.readBytes()))
+        }.also { values -> file.outputStream().use { values.store(it, null) } }
+    }
+
     private fun artifact(
         server: MockWebServer,
         declaredSha: String = Hash.sha256(CANDIDATE_BYTES),
@@ -359,7 +653,7 @@ class AndroidExtensionInstallSecurityRollbackTest {
 
     private class FakeGateway(
         override val transactionRoot: File,
-        override var commitTarget: AndroidInstallLocation = AndroidInstallLocation.PRIVATE,
+        var commitTarget: AndroidInstallLocation = AndroidInstallLocation.PRIVATE,
     ) : AndroidInstallGateway {
         var privatePackage: AndroidInstalledPackage? = null
         var systemPackage: AndroidInstalledPackage? = null
@@ -370,17 +664,27 @@ class AndroidExtensionInstallSecurityRollbackTest {
         var failWrite = false
         var failCopy = false
         var failRemove = false
+        var failNextDelete = false
+        var failDeleteAttempts = 0
+        var failTopologyOnce = false
+        var canonicalFailure: IOException? = null
         var copyCount = 0
         var readonlyCount = 0
 
-        override fun canonical(file: File): File = if (canonicalEscape && file.name == "candidate.apk") {
-            File(
-                transactionRoot.parentFile,
-                "escape.apk",
-            )
-        } else {
-            file.canonicalFile
-        }
+        override fun commitPlan(packageName: String) = AndroidCommitPlan(
+            location = commitTarget,
+            systemInstaller = BasePreferences.ExtensionInstaller.PACKAGEINSTALLER,
+        )
+
+        override fun canonical(file: File): File = canonicalFailure?.let { throw it }
+            ?: if (canonicalEscape && file.name == "candidate.apk") {
+                File(
+                    transactionRoot.parentFile,
+                    "escape.apk",
+                )
+            } else {
+                file.canonicalFile
+            }
 
         override fun writeDownload(input: InputStream, destination: File) {
             if (failWrite) error("disk full")
@@ -403,20 +707,26 @@ class AndroidExtensionInstallSecurityRollbackTest {
             )
         }
 
-        override fun topology(packageName: String): AndroidInstallTopology = AndroidInstallTopology(
-            privatePackage = privatePackage,
-            systemPackage = systemPackage,
-            loaderOrigin = when {
-                privatePackage == null && systemPackage == null -> AndroidLoaderOrigin.ABSENT
-                privatePackage != null &&
-                    (
-                        systemPackage == null ||
-                            requireNotNull(privatePackage).versionCode > requireNotNull(systemPackage).versionCode
-                        ) ->
-                    AndroidLoaderOrigin.PRIVATE
-                else -> AndroidLoaderOrigin.SYSTEM
-            },
-        )
+        override fun topology(packageName: String): AndroidInstallTopology {
+            if (failTopologyOnce) {
+                failTopologyOnce = false
+                throw IOException("topology unavailable")
+            }
+            return AndroidInstallTopology(
+                privatePackage = privatePackage,
+                systemPackage = systemPackage,
+                loaderOrigin = when {
+                    privatePackage == null && systemPackage == null -> AndroidLoaderOrigin.ABSENT
+                    privatePackage != null &&
+                        (
+                            systemPackage == null ||
+                                requireNotNull(privatePackage).versionCode > requireNotNull(systemPackage).versionCode
+                            ) ->
+                        AndroidLoaderOrigin.PRIVATE
+                    else -> AndroidLoaderOrigin.SYSTEM
+                },
+            )
+        }
 
         override fun copy(source: File, destination: File): Boolean = !failCopy && runCatching {
             copyCount++
@@ -435,7 +745,12 @@ class AndroidExtensionInstallSecurityRollbackTest {
             return true
         }
 
-        override suspend fun installSystem(transactionId: String, file: File, metadata: AndroidInstalledPackage) {
+        override suspend fun installSystem(
+            parentTransactionId: String,
+            file: File,
+            metadata: AndroidInstalledPackage,
+            installer: BasePreferences.ExtensionInstaller,
+        ) {
             systemPackage =
                 metadata.copy(apk = file.copyTo(File(transactionRoot, "installed-system.apk"), overwrite = true))
         }
@@ -450,7 +765,17 @@ class AndroidExtensionInstallSecurityRollbackTest {
             systemPackage = null
         }
 
-        override fun delete(file: File): Boolean = !file.exists() || file.delete()
+        override fun delete(file: File): Boolean {
+            if (failDeleteAttempts > 0) {
+                failDeleteAttempts--
+                return false
+            }
+            if (failNextDelete) {
+                failNextDelete = false
+                return false
+            }
+            return !file.exists() || file.delete()
+        }
 
         fun physicalState() = PhysicalState(privatePackage?.apk?.readText(), systemPackage?.apk?.readText())
     }
