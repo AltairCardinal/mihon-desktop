@@ -36,7 +36,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - [x] Task 3：共享扩展目录、版本、仓库部分失败与信任模型
 - [x] Task 4A：共享安装事务状态机
 - [x] Task 4B：Desktop install port 与 reload 回滚
-- [ ] Task 4C：Android 安装事务/session 生命周期
+- [x] Task 4C：Android 安装事务/session 生命周期
 - [ ] Task 4D：Android 信任、receiver 可见性与精确回滚
 - [ ] Task 5：Desktop 浏览器登录、Cookie 原子回传与 FlareSolverr 显式后备
 - [ ] Task 6A：Browse 共享状态 wiring
@@ -345,27 +345,27 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Produces: 贯穿 intent、queue、session、deferred 和 callback 的 UUID transaction ID；同时匹配 transaction/session 的 exactly-once terminal；有界 wait、abandon/unregister 与 cancel tombstone。Task 4D 必须复用该 system install/restore 原语。
 - Boundary: Shizuku AIDL callback 协议不在本 Task 扩展，但基类 queue entry 必须兼容现有 Shizuku 串行路径。
 
-- [ ] **Step 1: 用 production seam 写 session 生命周期 RED**
+- [x] **Step 1: 用 production seam 写 session 生命周期 RED**
 
   新建 `ExtensionInstallSessionLifecycleTest`，覆盖 success、error、abort、PendingUserAction、duplicate、late-after-cancel、cancel-before-enqueue、service destroy/no callback、timeout、同包重试和两个 hash-collision 包。断言取消后不再出现 Installing，每个事务只有一个 terminal。
 
-- [ ] **Step 2: 运行 RED 并确认失败原因**
+- [x] **Step 2: 运行 RED 并确认失败原因**
 
   Run: `./gradlew :app:testReleaseUnitTest --tests "*ExtensionInstallSessionLifecycleTest" --tests "*ExtensionInstallCoordinatorWiringTest"`
   Expected: 至少因同包迟到回调或 cancel-before-enqueue 失败，不得是夹具初始化错误。
 
-- [ ] **Step 3: 实现 transaction/session 关联与有界终止**
+- [x] **Step 3: 实现 transaction/session 关联与有界终止**
 
   用 UUID 取代 `packageName.hashCode()`；intent、queue entry、cancel broadcast、legacy activity result 和 PackageInstaller callback 全程携带 transaction ID。PackageInstaller terminal/PendingUserAction 同时匹配 active transaction ID 与 session ID；duplicate/late callback 忽略。超时、取消或 service destroy 时通过 exactly-once CAS 完成并 abandon session、注销 receiver；enqueue 前检查短期 cancel/complete tombstone。
 
-- [ ] **Step 4: 运行 GREEN、回归与 mutation 义务**
+- [x] **Step 4: 运行 GREEN、回归与 mutation 义务**
 
   Run: `./gradlew :app:testReleaseUnitTest --tests "*ExtensionInstallSessionLifecycleTest" --tests "*ExtensionInstallCoordinatorWiringTest"`
   Run: `./gradlew :app:testReleaseUnitTest --tests "*ExtensionManager*" --tests "*PackageInstaller*" --tests "*ShizukuInstaller*"`
   Run: `./gradlew spotlessCheck`
   Mutations: UUID 改回 package hash、去掉 transaction/session 任一校验、去掉 timeout/abandon、删除 cancel tombstone、绕过 terminal CAS，对应 collision/late/no-callback/cancel-before-enqueue/terminal-count 测试必须失败。
 
-- [ ] **Step 5: 提交 Task 4C**
+- [x] **Step 5: 提交 Task 4C**
 
   Commit: `fix(android): bind extension install sessions to transactions`
 

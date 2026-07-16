@@ -99,8 +99,8 @@
 ## Current
 
 - Current task: `Task 4C: Android 安装事务/session 生命周期`
-- Plan checkbox: pending（原 4C 实现提交作为本 Task 的基线，未通过审查，不视为已完成）
-- Stage: `spec-review`
+- Plan checkbox: complete
+- Stage: `complete`
 - Task execution base: `53758e118d8024a593d72645f3aa6034de193a46`
 - Original Task 4C base: `905a8d5c120b337c5c77f8bbe064111c9ed1ba9c`
 - Implementer: `/root/task4c_session_impl`
@@ -174,6 +174,9 @@
 - Cumulative product scope: 9 shared+Android files, +1916/-100 (2016 changed lines); plan/brief boundary and concrete waiver updated.
 - Unsubscribe closure reviewer: `/root/task4c_unsubscribe_review` (fresh independent read-only review of the bounded repair delta; no test rerun).
 - Unsubscribe review package: `.superpowers/sdd/align-sources-task-4c-session-unsubscribe-review.diff` (`fc41f0d87..4f1f3854e`).
+- Unsubscribe closure review result: Spec Compliance `APPROVED`; Task quality `APPROVED`; Critical/Important/Minor = 0/0/0. The prior unsubscribe lifecycle Important is CLOSED. Report: `.superpowers/sdd/align-sources-task-4c-session-unsubscribe-review.md`.
+- Coordinator forced verification: fresh combined `--rerun-tasks` invocation completed `BUILD SUCCESSFUL` in 3m15s; Android lifecycle 20/20 + Android coordinator wiring 7/7 + Manager wiring 2/2 + shared coordinator 21/21 = 50/50, with 0 failures/errors/skips. Root Spotless ran in the same successful 272-task invocation; `git diff --check` PASS.
+- Final Task 4C result: complete at product head `4f1f3854e`; cumulative review approved with no open Critical, Important, or Minor findings.
 - Review/fix round: 3/3
 - Review/fix round: 2/2
 - Implementation commit: `9965e22577746c31e59435cdd35f4b30e677c020` (`refactor(android): adapt transactional extension install`).
