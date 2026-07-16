@@ -4,11 +4,12 @@ import eu.kanade.tachiyomi.network.DesktopCookieJar
 import okhttp3.Interceptor
 import okhttp3.Response
 import org.jsoup.Jsoup
+import tachiyomi.domain.source.service.SourceLoginRequest
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 class DesktopCloudflareInterceptor(
-    private val cookieJar: DesktopCookieJar,
+    @Suppress("UNUSED_PARAMETER") cookieJar: DesktopCookieJar,
     private val challengeManager: CloudflareChallengeManager,
 ) : Interceptor {
 
@@ -19,14 +20,14 @@ class DesktopCloudflareInterceptor(
         if (!shouldIntercept(response)) return response
 
         response.close()
-        cookieJar.remove(request.url, COOKIE_NAMES)
-
-        val challenge = CloudflareChallenge(url = request.url.toString())
-        challengeManager.emit(challenge)
-
-        challenge.latch.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)
-
-        if (!challenge.resolved) {
+        val challenge = challengeManager.publish(
+            SourceLoginRequest(
+                url = request.url,
+                requiredCookieNames = setOf(CF_CLEARANCE_COOKIE_NAME),
+                timeoutMillis = TimeUnit.SECONDS.toMillis(TIMEOUT_SECONDS),
+            ),
+        )
+        if (challenge.awaitTerminal() != ChallengeRecoveryTerminal.Recovered) {
             throw IOException("Cloudflare bypass failed or timed out")
         }
 
@@ -47,7 +48,6 @@ class DesktopCloudflareInterceptor(
     companion object {
         private val ERROR_CODES = listOf(403, 503)
         private val SERVER_CHECK = arrayOf("cloudflare-nginx", "cloudflare")
-        private val COOKIE_NAMES = listOf("cf_clearance")
         internal const val TIMEOUT_SECONDS = 120L
     }
 }

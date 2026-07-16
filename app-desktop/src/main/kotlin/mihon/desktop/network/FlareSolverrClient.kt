@@ -1,85 +1,89 @@
 package mihon.desktop.network
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import eu.kanade.tachiyomi.network.await
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
-/**
- * Result returned by [FlareSolverrClient.solve].
- */
 data class FlareSolverrResult(
     val userAgent: String,
     val cookies: List<FlareSolverrCookie>,
-)
+) {
+    override fun toString(): String =
+        "FlareSolverrResult(userAgentPresent=${userAgent.isNotBlank()}, cookieNames=${cookies.map { it.name }}, cookieCount=${cookies.size})"
+}
 
-/**
- * A single cookie from the FlareSolverr response.
- */
 data class FlareSolverrCookie(
     val name: String,
     val value: String,
     val domain: String,
-)
+    val hostOnly: Boolean = !domain.startsWith('.'),
+    val path: String = "/",
+    val expiresAt: Long? = null,
+    val secure: Boolean = false,
+    val httpOnly: Boolean = false,
+) {
+    override fun toString(): String =
+        "FlareSolverrCookie(name=$name, domain=$domain, hostOnly=$hostOnly, path=$path, value=<redacted>)"
+}
 
-/**
- * HTTP client for the FlareSolverr proxy service.
- *
- * Submits a `request.get` command to the FlareSolverr `/v1` endpoint and returns
- * the solved cookies and User-Agent, or null if the request cannot be completed.
- *
- * @param flareSolverrUrl Base URL of the FlareSolverr instance (e.g. "http://localhost:8191").
- * @param client OkHttpClient to use for requests.
- */
+/** Explicit FlareSolverr fallback. It is never called by the network interceptor. */
 class FlareSolverrClient(
-    private val flareSolverrUrl: String,
+    flareSolverrUrl: String,
     private val client: OkHttpClient = OkHttpClient(),
 ) {
-
+    private val endpoint = "${flareSolverrUrl.trimEnd('/')}/v1"
     private val json = Json { ignoreUnknownKeys = true }
 
-    /**
-     * Asks FlareSolverr to solve a Cloudflare challenge for [url].
-     *
-     * @return [FlareSolverrResult] on success, null if FlareSolverr is unreachable,
-     *         returns an error status, or the response body is malformed.
-     */
-    suspend fun solve(url: String): FlareSolverrResult? = withContext(Dispatchers.IO) {
-        try {
-            val bodyJson = """{"cmd":"request.get","url":"$url","maxTimeout":60000}"""
-            val requestBody = bodyJson.toRequestBody("application/json".toMediaType())
-
-            val request = Request.Builder()
-                .url("$flareSolverrUrl/v1")
-                .post(requestBody)
-                .build()
-
-            val responseBody = client.newCall(request).execute().use { resp ->
-                resp.body?.string()
-            } ?: return@withContext null
-
-            val parsed = json.decodeFromString<FlareSolverrResponse>(responseBody)
-            if (parsed.status != "ok") return@withContext null
-
-            val solution = parsed.solution ?: return@withContext null
-            FlareSolverrResult(
-                userAgent = solution.userAgent,
-                cookies = solution.cookies.map { c ->
-                    FlareSolverrCookie(name = c.name, value = c.value, domain = c.domain)
-                },
-            )
-        } catch (_: Throwable) {
-            null
+    suspend fun solve(url: String): FlareSolverrResult? = try {
+        val requestBody = json.encodeToString(
+            FlareSolverrRequest(url = url),
+        ).toRequestBody(JSON_MEDIA_TYPE)
+        val request = Request.Builder().url(endpoint).post(requestBody).build()
+        val responseBody = client.newCall(request).await().use { response ->
+            if (!response.isSuccessful) return null
+            response.body.string()
         }
+        val parsed = json.decodeFromString<FlareSolverrResponse>(responseBody)
+        if (parsed.status != "ok") return null
+        val solution = parsed.solution ?: return null
+        FlareSolverrResult(
+            userAgent = solution.userAgent,
+            cookies = solution.cookies.map { cookie ->
+                FlareSolverrCookie(
+                    name = cookie.name,
+                    value = cookie.value,
+                    domain = cookie.domain,
+                    path = cookie.path.ifBlank { "/" },
+                    expiresAt = cookie.expires?.takeIf { it > 0 }?.times(1_000)?.toLong(),
+                    secure = cookie.secure,
+                    httpOnly = cookie.httpOnly,
+                )
+            },
+        )
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Exception) {
+        null
+    }
+
+    private companion object {
+        val JSON_MEDIA_TYPE = "application/json".toMediaType()
     }
 }
 
-// ── Internal serialization models ─────────────────────────────────────────────
+@Serializable
+private data class FlareSolverrRequest(
+    val cmd: String = "request.get",
+    val url: String,
+    val maxTimeout: Long = 60_000,
+)
 
 @Serializable
 private data class FlareSolverrResponse(
@@ -98,4 +102,8 @@ private data class FlareSolverrCookieJson(
     val name: String,
     val value: String,
     val domain: String,
+    val path: String = "/",
+    val expires: Double? = null,
+    val secure: Boolean = false,
+    @SerialName("httpOnly") val httpOnly: Boolean = false,
 )
