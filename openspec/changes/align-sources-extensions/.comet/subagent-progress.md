@@ -126,6 +126,8 @@
 - Fix verification: focused security/wiring/catalog 30/30 PASS; Manager/session lifecycle 24/24 PASS; `:app:spotlessCheck :app:compileReleaseUnitTestKotlin` and root `spotlessCheck` BUILD SUCCESSFUL; `git diff --check` PASS.
 - Cumulative product/test scope from `bb4c235bd` to `351cffea5`: 7 Android files, +2001/-252 (2253 changed lines); plan and brief record the concrete review-expanded single-risk-axis waiver.
 - Re-review requirement: a fresh read-only reviewer must close the original 1 Critical + 6 Important findings against the cumulative diff and inspect newly introduced transaction identity, cleanup journal, sidecar atomicity, frozen plan and production seam risks before Task checkoff.
+- Re-review package: `.superpowers/sdd/align-sources-task-4d-rereview.diff` (cumulative base `bb4c235bd`, product head `351cffea5`).
+- Re-reviewer: `/root/task4d_rereview` (fresh independent read-only reviewer; no test rerun).
 
 ## Task 4C Review History
 
