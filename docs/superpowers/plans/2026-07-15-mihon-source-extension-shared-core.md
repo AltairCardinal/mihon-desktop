@@ -325,9 +325,9 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **Risk axis:** android-install-session-lifecycle
 **Platform boundary:** android
-**Estimated scope:** 7 files, 625 lines
+**Estimated scope:** 7 files, 933 lines
 **Verification:** 执行真实 Android session/callback seam，覆盖 success、error、abort、PendingUserAction、duplicate/late callback、cancel-before-enqueue、service destroy、timeout、同包重试与 hash collision；每个事务只能有一个 terminal，超时/取消后 session、receiver 和 flight 必须释放。
-**Split waiver:** 实际 625 changed lines 中，367 行是同一 lifecycle 契约矩阵及 JVM Android framework seam 夹具。production UUID 必须原子贯穿 manager → intent/activity/service → base queue → PackageInstaller session → callback/deferred；把任一段拆成独立 Task 会产生旧 Long/hash 与新 UUID 混用的不可运行中间态。collision、late callback、tombstone、timeout、abandon 与 terminal CAS 共同定义单一 session-lifecycle 风险轴，测试矩阵不能在不丢失端到端 mutation 审查闭环的前提下再独立调度。
+**Split waiver:** 审查修复后累计 933 changed lines 中，595 行是同一 lifecycle 契约矩阵及 JVM Android framework seam 夹具。production UUID 必须原子贯穿 manager → intent/activity/service → base queue → PackageInstaller session → callback/deferred；process-wide cancel registry、queue 线性化与 cleanup acknowledgement 又必须在同一事务生命周期内共同收口。把任一段拆成独立 Task 会产生旧 Long/hash 与新 UUID 混用，或 rollback 早于 session/receiver/flight 释放的不可运行中间态。collision、late callback、tombstone、timeout、abandon、PendingUserAction 与 terminal CAS 共同定义单一 session-lifecycle 风险轴，测试矩阵不能在不丢失端到端 production-wiring mutation 审查闭环的前提下再独立调度。
 
 **Files:**
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt`
