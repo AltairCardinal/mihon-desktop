@@ -9,18 +9,19 @@
 - Task 1: complete (`15ef2c3e6`; RED 5/2 expected failures; GREEN 19/19; spotlessCheck PASS; authority evidence corrected by `8ba3d4fa1`)
 - Task 2: complete (`2f1d4317a..19675b443`; shared query/reducer, Android/Desktop production wiring, API 36 UI recovery 2/2, independent gate re-review CLEAN 0/0/0, 48/48 focused tests PASS)
 - Task 3: complete (`0502b755fb`, fixes `3ba6171f0` + `b6345f989`; final independent thorough review APPROVED/APPROVED, 0 Critical/Important/Minor; final forced matrix 70/70 PASS; spotless/diff checks PASS)
+- Task 4A: complete (`5b18fc74b`, fixes `b2e299657` + `ce81eec65` + `7cd8a609c`; final independent thorough review APPROVED/APPROVED, 0 Critical/Important/Minor; forced 39/39 PASS; Spotless/diff/platform checks PASS)
 
-## Current
+## Task 4A Review History
 
-- Current task: `Task 4A：共享安装事务状态机`
-- Plan checkbox: `Task 4A：共享安装事务状态机`
+- Reviewed task: `Task 4A：共享安装事务状态机`
+- Plan checkbox: complete
 - OpenSpec mappings:
   - `1.3 为 JAR、APK→JAR、损坏产物、版本替换、回滚与不兼容 API 写 RED 测试`（事务/回滚部分）
   - `2.2 提取扩展发现、版本、安全、安装/更新事务与回滚状态到共享层`（事务/回滚部分）
   - `2.3 定义共享模型、状态机、port 和平台 adapter 边界`
   - `3.1 对 Android/Desktop 安装更新建立一致的事务状态`
   - `3.2 实现仓库身份/摘要信任、下载校验与 reload 失败原子回滚`（原子回滚部分）
-- Stage: `blocked`
+- Stage: `complete`
 - Task base: `209439e8769c983beec244a6fef4e93d247a2ac8`
 - Implementer: `/root/align_sources_task4a_impl`
 - Implementation commit: `5b18fc74bc10d2b963525d972392fe0d6d1e73a0`
@@ -43,5 +44,17 @@
 - Final review package: `.superpowers/sdd/align-sources-task-4a-final-review.diff`
 - Final review result: `CHANGES_REQUIRED`; previous dead-flight Important and cleanup Minor closed, but a new Important remains. Full report: `.superpowers/sdd/align-sources-task-4a-final-review.md`.
 - Blocking finding: after the worker body has started, external scope cancellation lets the body `finally` win exactly-once finalization with `terminalState == null`; the later completion handler cannot publish `Failed(AppError.Cancelled)`, so an independent active collector ends without a terminal state.
-- Exhausted review budget: thorough repair/re-review rounds 2/2 used. Comet requires an explicit user decision before a third repair round or task replan.
-- Review/fix round: 2/2
+- User override: explicitly authorized one additional repair/re-review round because the remaining cancellation race is narrowly scoped and assessed as fixable without replanning.
+- Round 3 required fix: add a deterministic RED case where the worker body has entered a suspending port call, the coordinator scope is cancelled while an independent collector remains active, and the collector must receive exactly one `Failed(AppError.Cancelled)` before finite completion; then make cancellation participate in the exactly-once terminal decision.
+- Round 3 fix commit: `7cd8a609c3b032164edc2055440082aa58fb82f8` (`fix(extension): emit cancelled install terminal`).
+- Round 3 evidence: deterministic RED 1/1 failed with only `[Preparing, Validating]`; GREEN Task 4A 20/20 + shared contract 19/19 = 39/39 PASS; domain Spotless, diff check, and platform-boundary scan PASS.
+- Extra re-review package: `.superpowers/sdd/align-sources-task-4a-extra-review.diff` (base `33ca9aa49`, head `7cd8a609c`).
+- Extra re-review result: Spec compliance APPROVED; Code quality APPROVED; Critical/Important/Minor = 0/0/0. The prior remaining Important is CLOSED. Report: `.superpowers/sdd/align-sources-task-4a-extra-review.md`.
+- Coordinator forced verification: `:domain:spotlessCheck` plus Task 4A 20/20 and shared contract 19/19 passed with `--rerun-tasks` (39/39 total).
+- Review/fix round: 3/3
+
+## Current
+
+- Current task: `Task 4B: Desktop install port 与 reload 回滚`
+- Plan checkbox: pending
+- Stage: `ready`

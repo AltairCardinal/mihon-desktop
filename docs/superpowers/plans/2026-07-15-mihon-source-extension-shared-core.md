@@ -34,7 +34,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - [x] Task 1：权威 fixture、调用链清单与产品保护网
 - [x] Task 2：共享源查询状态、分页与错误语义
 - [x] Task 3：共享扩展目录、版本、仓库部分失败与信任模型
-- [ ] Task 4A：共享安装事务状态机
+- [x] Task 4A：共享安装事务状态机
 - [ ] Task 4B：Desktop install port 与 reload 回滚
 - [ ] Task 4C：Android PackageInstaller adapter wiring
 - [ ] Task 5：Desktop 浏览器登录、Cookie 原子回传与 FlareSolverr 显式后备
@@ -247,25 +247,25 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - `ExtensionInstallPort.prepare/validate/commit/reload/rollback/cleanup`；port token 使用共享 opaque ID，不暴露 `File`。
 - `ExtensionInstallCoordinator.install(request): Flow<ExtensionInstallState>`；同 package 单飞，不同 package 可并行。
 
-- [ ] **Step 1: 写 RED 状态机测试**
+- [x] **Step 1: 写 RED 状态机测试**
 
   覆盖成功阶段顺序、Prepare/Validate 失败不提交、Commit 后 reload 失败回滚旧 artifact+metadata、rollback 失败高优先级错误、取消临时文件清理、同 package 去重、不同 package 并行。
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
   Run: `./gradlew :domain:jvmTest --tests "mihon.domain.extension.ExtensionInstallCoordinatorTest"`
   Expected: FAIL，缺少 coordinator/port/state。
 
-- [ ] **Step 3: 实现最小共享 coordinator**
+- [x] **Step 3: 实现最小共享 coordinator**
 
   coordinator 只编排阶段、取消、互斥与错误；不读取文件、不转换 APK、不加载 class。只有 `reload()` 成功才 emit `Installed`；commit 后任何异常必须调用 rollback，并验证旧 runtime 恢复。
 
-- [ ] **Step 4: 运行共享 GREEN**
+- [x] **Step 4: 运行共享 GREEN**
 
   Run: `./gradlew :domain:jvmTest --tests "mihon.domain.extension.ExtensionInstallCoordinatorTest"`
   Expected: 全部 PASS；只有 reload 成功后发布 Installed。
 
-- [ ] **Step 5: 提交 Task 4A**
+- [x] **Step 5: 提交 Task 4A**
 
   Commit: `refactor(extension): share install state machine`
 
