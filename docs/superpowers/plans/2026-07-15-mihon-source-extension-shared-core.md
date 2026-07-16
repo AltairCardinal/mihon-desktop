@@ -375,9 +375,9 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **Risk axis:** android-install-trust-rollback
 **Platform boundary:** android
-**Estimated scope:** 7 files, 2253 lines
+**Estimated scope:** 7 files, 2624 lines
 **Verification:** 执行真实 `AndroidInstallPort` 与 Manager/receiver production wiring，验证 repository fingerprint、declared/downloaded SHA、APK signer、Untrusted 终态、receiver 可见性，以及 fresh/private/system/双安装/跨侧切换/downgrade/expected-absent 的物理与 runtime 精确回滚。
-**Split waiver:** 实际 2253 changed lines（+2001/-252）分布在 7 个 Android 产品/测试文件：917 行承载共享 trust policy、双侧 `InstallPreState`、冻结 commit plan、private 原子替换、Task 4C parent/child system session、分侧 trust sidecar、cleanup journal 与结构化错误的单一 production gateway 链路；1336 行是同一链路的 trust/topology/storage/session/failure production-wiring 测试矩阵。本 Task 的同一 commit 前状态同时决定旧 metadata 的信任连续性、receiver 是否可暴露新 runtime、private/system 哪一侧需删除或恢复，以及 restore reload 应期待旧包还是无包。再拆分 trust/visibility、session identity 与 rollback/storage 会产生不安全的中间 production 状态，或无法用真实 Default gateway 证明 Task 4C bridge 与物理回滚属于同一事务。超额行数来自审查要求补齐的 1 Critical + 6 Important 闭环和可杀死这些缺陷的生产链路测试，而非无关重构。
+**Split waiver:** 实际 2624 changed lines（+2378/-246）分布在 7 个 Android 产品/测试文件：916 行承载共享 trust policy、双侧 `InstallPreState`、冻结 commit plan、private 原子替换、Task 4C parent/child system session、有界 system uninstall、分侧 trust sidecar、cleanup journal 与结构化错误的单一 production gateway 链路；1708 行是同一链路的 trust/topology/storage/session/failure production-wiring 测试矩阵。本 Task 的同一 commit 前状态同时决定旧 metadata 的信任连续性、receiver 是否可暴露新 runtime、private/system 哪一侧需删除或恢复，以及 restore reload 应期待旧包还是无包。再拆分 trust/visibility、session identity 与 rollback/storage 会产生不安全的中间 production 状态，或无法用真实 Default gateway 证明 Task 4C bridge、卸载超时与物理回滚属于同一事务。超额行数来自两轮审查中 1 Critical + 9 Important 的闭环和可杀死这些缺陷的生产链路测试，而非无关重构。
 
 **Files:**
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/model/Extension.kt`

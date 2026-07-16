@@ -101,7 +101,7 @@
 - Current task: `Task 4D: Android 信任、receiver 可见性与精确回滚`
 - Plan checkbox: pending
 - OpenSpec mappings: `2.2`, `2.3`, `3.1`, `3.2` (Android artifact trust, PackageInstaller/signing boundary, receiver visibility, and exact rollback topology; do not check off shared mappings until all mapped work is complete).
-- Stage: `final-fix`
+- Stage: `final-review`
 - Task base: `5a17935c1c5241c163c26de5e8bf742121b8b659`
 - Implementer: `/root/task4d_impl` (fresh TDD agent; one implementation task only).
 - Brief: `.superpowers/sdd/align-sources-task-4d-brief.md`
@@ -134,6 +134,11 @@
 - Final repair scope: `ExtensionInstaller.kt` plus the existing security rollback and session lifecycle production-wiring tests; add real Default gateway timeout/metadata retry/invalid-existing-artifact coverage and deterministic teardown-race coverage. No unrelated product files.
 - Review/fix round: 2/2.
 - Final fix agent: `/root/task4d_fix2` (fresh TDD implementer; closes only the three re-review Important findings and commits the bounded product/test repair).
+- Final fix commit: `f1a9b7ef15bcdc40a4f7552a28772a08850832b1` (`fix(android): close extension rollback lifecycle gaps`).
+- Final repair evidence: real Default gateway uninstall is bounded to two minutes with receiver cleanup; absent-package metadata deletion and delete retry are idempotent; parent cancellation during deterministic child teardown yields Idle rather than Installed; physically present but uninspectable private/system APKs fail before commit with bytes and sidecar unchanged.
+- Final mutations: restoring unbounded/early-return `removeSystem`, restoring the old lifecycle-before-parent-map teardown order, or removing either inspect-null guard each failed or hung its production-wiring test and was restored.
+- Final fix verification: fresh `--rerun-tasks` Security 20 + Lifecycle 23 + Wiring 9 + Manager 2 = 54/54 PASS with 0 failures/errors/skips; app Spotless+unit-test compile and root Spotless BUILD SUCCESSFUL; diff check PASS.
+- Final cumulative product/test scope from `bb4c235bd` to `f1a9b7ef1`: 7 Android files, +2378/-246 (2624 changed lines); plan/brief waiver updated for the review-expanded production matrix.
 
 ## Task 4C Review History
 
