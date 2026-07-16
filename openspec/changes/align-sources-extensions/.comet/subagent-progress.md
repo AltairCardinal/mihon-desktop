@@ -100,7 +100,7 @@
 
 - Current task: `Task 4C: Android 安装事务/session 生命周期`
 - Plan checkbox: pending（原 4C 实现提交作为本 Task 的基线，未通过审查，不视为已完成）
-- Stage: `spec-review`
+- Stage: `final-fix`
 - Task execution base: `53758e118d8024a593d72645f3aa6034de193a46`
 - Original Task 4C base: `905a8d5c120b337c5c77f8bbe064111c9ed1ba9c`
 - Implementer: `/root/task4c_session_impl`
@@ -138,6 +138,12 @@
 - Cumulative product scope: 7 files, +1038/-93 (1131 changed lines); plan/brief waiver updated for the final reviewed lifecycle matrix.
 - Final review package: `.superpowers/sdd/align-sources-task-4c-session-final-review.diff` (cumulative base `b645e4af9`, head `dfa440822`).
 - Final reviewer: `/root/task4c_session_final_review` (fresh independent read-only reviewer; final closure gate after repair round 2/2).
+- Final review result: Spec Compliance `CHANGES_REQUIRED`; Task quality `NEEDS_FIXES`; Critical 0 / Important 1 / Minor 1. Previous three findings: CLOSED / OPEN / CLOSED. Report: `.superpowers/sdd/align-sources-task-4c-session-final-review.md`.
+- Remaining Important: public cancel can observe `platformResults == null` after `installPrepared` passes its cancellation guard but before result/owner registration, take the no-platform early-Idle branch, then allow the already-started commit to launch a tombstoned service. Repair requires one lifecycle state/CAS or shared lock that atomically hands off cancellation-check/platform-registration versus direct no-platform terminal.
+- Remaining Minor: high-level `completedTransactions` is an unbounded UUID set; replace it with a bounded TTL/active-lifecycle-safe exactly-once tombstone and prove pruning does not admit duplicate terminals for active/recent transactions.
+- User override: the user explicitly rejected mechanical review-round stops when one further narrow repair is sufficient. Both remaining findings are localized to the same high-level transaction lifecycle and are assessed as closable in one extra TDD repair/re-review without replanning.
+- Extra fix agent: pending fresh agent.
+- Review/fix round: 3/3
 - Review/fix round: 2/2
 - Implementation commit: `9965e22577746c31e59435cdd35f4b30e677c020` (`refactor(android): adapt transactional extension install`).
 - Scope: 3 brief-listed files, +572/-85 (657 changed lines); the plan records a concrete Split waiver for the inseparable Android production wiring, platform transaction adapter, and integration test.
