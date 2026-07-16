@@ -32,11 +32,15 @@ import io.mockk.unmockkStatic
 import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import mihon.domain.extension.service.ExtensionInstallFailure
 import mihon.domain.extension.service.ExtensionInstallPort
+import mihon.domain.extension.service.ExtensionInstallRequest
+import mihon.domain.extension.service.ExtensionInstallRollbackToken
+import mihon.domain.extension.service.PreparedExtensionInstallToken
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -59,15 +63,25 @@ class ExtensionInstallSessionLifecycleTest {
 
     private val capturedStringExtras = mutableMapOf<String, String>()
     private val capturedIntExtras = mutableMapOf<String, Int>()
+    private var pendingIdentity: CallbackIdentity? = null
     private var committedIdentity: CallbackIdentity? = null
     private lateinit var localBroadcastManager: LocalBroadcastManager
     private val cancelReceivers = mutableListOf<BroadcastReceiver>()
     private val cancelIntents = mutableListOf<Intent>()
 
+    @Suppress("PropertyName")
+    private lateinit var TRANSACTION_ONE: String
+
+    @Suppress("PropertyName")
+    private lateinit var TRANSACTION_TWO: String
+
     @BeforeEach
     fun interceptLocalBroadcastManager() {
+        TRANSACTION_ONE = UUID.randomUUID().toString()
+        TRANSACTION_TWO = UUID.randomUUID().toString()
         capturedStringExtras.clear()
         capturedIntExtras.clear()
+        pendingIdentity = null
         committedIdentity = null
         cancelReceivers.clear()
         cancelIntents.clear()
@@ -93,7 +107,7 @@ class ExtensionInstallSessionLifecycleTest {
             every { intentSender } returns mockk()
         }
         every { PendingIntent.getBroadcast(any(), any(), any(), any()) } answers {
-            committedIdentity = CallbackIdentity(
+            pendingIdentity = CallbackIdentity(
                 transactionId = checkNotNull(capturedStringExtras[ExtensionInstaller.EXTRA_TRANSACTION_ID]),
                 sessionId = checkNotNull(capturedIntExtras[PackageInstaller.EXTRA_SESSION_ID]),
             )
@@ -228,26 +242,30 @@ class ExtensionInstallSessionLifecycleTest {
     }
 
     @Test
-    fun `cancel before enqueue leaves a tombstone and never processes the entry`() {
+    fun `public cancel remains a durable tombstone after the first enqueue consumes its acknowledgement`() {
         val context = mockk<Context>(relaxed = true)
+        val transactionId = UUID.randomUUID().toString()
 
-        Installer.cancelInstallQueue(context, TRANSACTION_ONE)
+        val acknowledgement = Installer.cancelInstallQueue(context, transactionId)
         val harness = queueHarness()
-        harness.installer.addToQueue(TRANSACTION_ONE, mockk())
+        harness.installer.addToQueue(transactionId, mockk())
+        harness.installer.addToQueue(transactionId, mockk())
 
+        assertTrue(acknowledgement.isCompleted)
         assertEquals(emptyList<String>(), harness.processed)
     }
 
     @Test
-    fun `cancelling active package session abandons it and publishes idle exactly once`() {
+    fun `cancelling active package session abandons it without accepting a late callback`() {
         val harness = packageInstallerHarness()
         harness.enqueue(TRANSACTION_ONE)
 
         harness.cancelActive()
+        harness.installer.onDestroy()
         harness.callback(PackageInstaller.STATUS_SUCCESS, TRANSACTION_ONE, SESSION_ONE)
 
         verify(exactly = 1) { harness.packageInstaller.abandonSession(SESSION_ONE) }
-        verify(exactly = 1) { harness.manager.updateInstallStep(TRANSACTION_ONE, InstallStep.Idle) }
+        verify(exactly = 0) { harness.manager.updateInstallStep(TRANSACTION_ONE, InstallStep.Idle) }
         verify(exactly = 0) { harness.manager.updateInstallStep(TRANSACTION_ONE, InstallStep.Installed) }
     }
 
@@ -260,6 +278,8 @@ class ExtensionInstallSessionLifecycleTest {
 
         assertFalse(acknowledgement.isCompleted)
         harness.deliverCancellation()
+        assertFalse(acknowledgement.isCompleted)
+        harness.installer.onDestroy()
         assertTrue(acknowledgement.isCompleted)
         verify(exactly = 1) { harness.packageInstaller.abandonSession(SESSION_ONE) }
         verify(exactly = 1) { harness.service.unregisterReceiver(any()) }
@@ -363,8 +383,8 @@ class ExtensionInstallSessionLifecycleTest {
                     "cancelIntents=${cancelIntents.size} active=" +
                     harness.isActive(TRANSACTION_ONE, SESSION_ONE),
             )
-            verify(exactly = 0) { harness.packageInstaller.abandonSession(SESSION_ONE) }
-            harness.deliverCancellation()
+            verify(exactly = 1) { harness.packageInstaller.abandonSession(SESSION_ONE) }
+            harness.installer.onDestroy()
             runCurrent()
 
             assertTrue(waiting.isCompleted)
@@ -377,15 +397,47 @@ class ExtensionInstallSessionLifecycleTest {
     }
 
     @Test
-    fun `platform cancellation waits for package cleanup before completing`() = runTest {
+    fun `public cancellation waits for package destroy before rollback and terminal cleanup`() = runTest {
         val harness = packageInstallerHarness()
         val context = mockk<Context>(relaxed = true) {
             every { packageName } returns "eu.kanade.tachiyomi"
         }
-        val installer = ExtensionInstaller(
+        val calls = mutableListOf<String>()
+        lateinit var installer: ExtensionInstaller
+        val port = object : ExtensionInstallPort {
+            override suspend fun prepare(request: ExtensionInstallRequest): PreparedExtensionInstallToken {
+                calls += "prepare"
+                return PreparedExtensionInstallToken(
+                    checkNotNull(activeTransactionIds(installer)[request.artifact.packageName]),
+                )
+            }
+
+            override suspend fun validate(token: PreparedExtensionInstallToken): ExtensionInstallRollbackToken {
+                calls += "validate"
+                return ExtensionInstallRollbackToken(token.value)
+            }
+
+            override suspend fun commit(token: PreparedExtensionInstallToken) {
+                calls += "commit"
+                installPrepared(installer, token.value, File("extension.apk"))
+            }
+
+            override suspend fun reload(packageName: String) {
+                calls += "reload"
+            }
+
+            override suspend fun rollback(token: ExtensionInstallRollbackToken) {
+                calls += "rollback"
+            }
+
+            override suspend fun cleanup(token: PreparedExtensionInstallToken) {
+                calls += "cleanup"
+            }
+        }
+        installer = ExtensionInstaller(
             context = context,
             scope = backgroundScope,
-            installPort = mockk<ExtensionInstallPort>(relaxed = true),
+            installPort = port,
         )
         val preference = mockk<ExtensionInstallerPreference> {
             every { get() } returns BasePreferences.ExtensionInstaller.PACKAGEINSTALLER
@@ -397,30 +449,78 @@ class ExtensionInstallSessionLifecycleTest {
         mockkStatic(FileProvider::class)
         every { FileProvider.getUriForFile(any(), any(), any()) } returns mockk()
         every { ContextCompat.startForegroundService(context, any()) } answers {
-            harness.enqueue(TRANSACTION_ONE)
+            val transactionId = activeTransactionIds(installer).values.single()
+            harness.enqueue(transactionId)
             mockk()
         }
-        val waiting = async {
-            installPrepared(installer, TRANSACTION_ONE, File("extension.apk"))
-        }
+        val extension = availableExtension("extension.package.cleanup")
+        val steps = installer.downloadAndInstall("https://repo.example/extension.apk", extension)
+        val terminal = async { steps.first(InstallStep::isCompleted) }
 
         try {
             runCurrent()
-            waiting.cancel()
+            val transactionId = activeTransactionIds(installer).getValue(extension.pkgName)
+            installer.cancelInstall(extension.pkgName)
             runCurrent()
 
-            assertFalse(waiting.isCompleted)
+            assertFalse(terminal.isCompleted)
             assertEquals(1, cancelIntents.size)
-            verify(exactly = 0) { harness.packageInstaller.abandonSession(SESSION_ONE) }
-            harness.deliverCancellation()
+            assertEquals(listOf("prepare", "validate", "commit"), calls)
+            assertTrue(activeTransactionIds(installer).containsKey(extension.pkgName))
+            assertTrue(platformResults(installer).containsKey(transactionId))
+
+            harness.installer.onDestroy()
             runCurrent()
 
-            assertTrue(waiting.isCompleted)
+            assertEquals(InstallStep.Idle, terminal.await())
             verify(exactly = 1) { harness.packageInstaller.abandonSession(SESSION_ONE) }
             assertTrue(platformResults(installer).isEmpty())
+            assertTrue(activeTransactionIds(installer).isEmpty())
+            assertTrue(activeJobs(installer).isEmpty())
+            assertEquals(listOf("prepare", "validate", "commit", "rollback", "reload", "cleanup"), calls)
         } finally {
             unmockkStatic(FileProvider::class)
         }
+    }
+
+    @Test
+    fun `active Shizuku cancellation waits for its delayed callback and service destroy`() {
+        val transactionId = UUID.randomUUID().toString()
+        val manager = mockk<ExtensionManager>(relaxed = true)
+        val service = mockk<Service>(relaxed = true) {
+            every { applicationContext } returns this@mockk
+        }
+        val installer = object : Installer(service) {
+            override var ready = true
+
+            // Matches ShizukuInstaller: an active platform install cannot be abandoned.
+            override fun cancelEntry(entry: Entry): Boolean = getActiveEntry() != entry
+
+            fun deliverPlatformCallback() = continueQueue(InstallStep.Installed)
+
+            fun hasActiveEntry(): Boolean = getActiveEntry() != null
+        }.also {
+            Installer::class.java.getDeclaredField("extensionManager\$delegate").apply {
+                isAccessible = true
+                set(it, lazyOf(manager))
+            }
+        }
+
+        installer.addToQueue(transactionId, mockk())
+        val acknowledgement = Installer.cancelInstallQueue(service, transactionId)
+        cancelReceivers.last().onReceive(service, cancelIntents.removeLast())
+
+        assertFalse(acknowledgement.isCompleted)
+        verify(exactly = 0) { manager.updateInstallStep(transactionId, any()) }
+
+        installer.deliverPlatformCallback()
+        verify(exactly = 0) { manager.updateInstallStep(transactionId, any()) }
+
+        installer.onDestroy()
+
+        assertTrue(acknowledgement.isCompleted)
+        assertFalse(installer.hasActiveEntry())
+        verify(exactly = 0) { manager.updateInstallStep(transactionId, any()) }
     }
 
     private fun activeTransactionIds(installer: ExtensionInstaller): Map<String, String> {
@@ -431,6 +531,11 @@ class ExtensionInstallSessionLifecycleTest {
                 .get(value) as String
         }.mapKeys { (key, _) -> key as String }
     }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun activeJobs(installer: ExtensionInstaller): Map<String, Any> =
+        ExtensionInstaller::class.java.getDeclaredField("activeJobs").apply { isAccessible = true }
+            .get(installer) as Map<String, Any>
 
     private suspend fun installPrepared(
         installer: ExtensionInstaller,
@@ -471,6 +576,9 @@ class ExtensionInstallSessionLifecycleTest {
         val packageInstaller = mockk<PackageInstaller>(relaxed = true)
         val session = mockk<PackageInstaller.Session>(relaxed = true) {
             every { openWrite(any(), any(), any()) } returns ByteArrayOutputStream()
+            every { commit(any()) } answers {
+                committedIdentity = checkNotNull(pendingIdentity)
+            }
         }
         every { packageInstaller.createSession(any()) } returns SESSION_ONE
         every { packageInstaller.openSession(any()) } returns session
@@ -493,7 +601,7 @@ class ExtensionInstallSessionLifecycleTest {
             isAccessible = true
             set(installer, lazyOf(manager))
         }
-        return PackageHarness(service, packageInstaller, manager, installer, receiver.captured)
+        return PackageHarness(service, packageInstaller, session, manager, installer, receiver.captured)
     }
 
     private fun queueHarness(): QueueHarness {
@@ -514,11 +622,13 @@ class ExtensionInstallSessionLifecycleTest {
     private inner class PackageHarness(
         val service: Service,
         val packageInstaller: PackageInstaller,
+        private val session: PackageInstaller.Session,
         val manager: ExtensionManager,
         val installer: PackageInstallerInstaller,
         private val receiver: BroadcastReceiver,
     ) {
         private var expectedSessionId = SESSION_ONE
+        private var expectedCommitCount = 0
 
         fun useSession(sessionId: Int) {
             expectedSessionId = sessionId
@@ -528,8 +638,11 @@ class ExtensionInstallSessionLifecycleTest {
         fun enqueue(transactionId: String) {
             capturedStringExtras.clear()
             capturedIntExtras.clear()
+            pendingIdentity = null
             committedIdentity = null
             installer.addToQueue(transactionId, mockk())
+            expectedCommitCount++
+            verify(exactly = expectedCommitCount) { session.commit(any()) }
             assertEquals(CallbackIdentity(transactionId, expectedSessionId), committedIdentity)
         }
 
@@ -589,7 +702,5 @@ class ExtensionInstallSessionLifecycleTest {
     private companion object {
         const val SESSION_ONE = 101
         const val SESSION_TWO = 202
-        val TRANSACTION_ONE: String = UUID.randomUUID().toString()
-        val TRANSACTION_TWO: String = UUID.randomUUID().toString()
     }
 }

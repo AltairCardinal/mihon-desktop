@@ -29,8 +29,9 @@ abstract class Installer(private val service: Service) {
 
     private var waitingInstall = AtomicReference<Entry?>(null)
     private val queue = Collections.synchronizedList(mutableListOf<Entry>())
-    private val canceledTransactions = ConcurrentHashMap<String, Long>()
     private val completedTransactions = ConcurrentHashMap<String, Long>()
+    private val ownedTransactions = ConcurrentHashMap.newKeySet<String>()
+    private val cancellationsAwaitingDestroy = ConcurrentHashMap.newKeySet<String>()
 
     private val cancelReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -55,20 +56,22 @@ abstract class Installer(private val service: Service) {
     fun addToQueue(transactionId: String, uri: Uri) {
         pruneTombstones()
         var cancellation: CancellationRequest? = null
+        var cancelled = false
         synchronized(pendingCancellations) {
             prunePendingCancellations()
             cancellation = pendingCancellations.remove(transactionId)
-            if (cancellation != null ||
-                canceledTransactions.containsKey(transactionId) ||
+            cancelled = cancellationTombstones.containsKey(transactionId) ||
                 completedTransactions.containsKey(transactionId)
-            ) {
+            if (cancelled) {
                 return@synchronized
             }
             queue.add(Entry(transactionId, uri))
+            activeInstallers[transactionId] = this
+            ownedTransactions += transactionId
         }
-        cancellation?.let {
+        if (cancelled) {
             checkQueue()
-            it.acknowledgement.complete(Unit)
+            cancellation?.acknowledgement?.complete(Unit)
             return
         }
         checkQueue()
@@ -115,6 +118,18 @@ abstract class Installer(private val service: Service) {
         ) {
             return
         }
+        activeInstallers.remove(transactionId, this)
+        ownedTransactions -= transactionId
+        if (cancellationTombstones.containsKey(transactionId)) {
+            if (queue.isEmpty()) {
+                cancellationsAwaitingDestroy += transactionId
+            }
+            checkQueue()
+            if (!cancellationsAwaitingDestroy.contains(transactionId)) {
+                completeCancellation(transactionId)
+            }
+            return
+        }
         extensionManager.updateInstallStep(transactionId, resultStep)
         checkQueue()
     }
@@ -146,9 +161,29 @@ abstract class Installer(private val service: Service) {
     @CallSuper
     open fun onDestroy() {
         LocalBroadcastManager.getInstance(service).unregisterReceiver(cancelReceiver)
-        queue.forEach { completeQueued(it, InstallStep.Error) }
+        val destroyedEntries = queue.toMutableList()
         queue.clear()
-        waitingInstall.exchange(null)?.let { completeQueued(it, InstallStep.Error) }
+        waitingInstall.exchange(null)?.let(destroyedEntries::add)
+        destroyedEntries.forEach { entry ->
+            activeInstallers.remove(entry.transactionId, this)
+            ownedTransactions -= entry.transactionId
+            if (cancellationTombstones.containsKey(entry.transactionId)) {
+                cancellationsAwaitingDestroy += entry.transactionId
+            } else {
+                completeQueued(entry, InstallStep.Error)
+            }
+        }
+        ownedTransactions.toList().forEach { transactionId ->
+            activeInstallers.remove(transactionId, this)
+            ownedTransactions -= transactionId
+            if (cancellationTombstones.containsKey(transactionId)) {
+                cancellationsAwaitingDestroy += transactionId
+            }
+        }
+        cancellationsAwaitingDestroy.toList().forEach { transactionId ->
+            completeCancellation(transactionId)
+            cancellationsAwaitingDestroy -= transactionId
+        }
     }
 
     protected fun getActiveEntry(): Entry? = waitingInstall.load()
@@ -162,25 +197,31 @@ abstract class Installer(private val service: Service) {
      */
     private fun cancelQueue(transactionId: String) {
         pruneTombstones()
-        canceledTransactions[transactionId] = System.nanoTime()
+        cancellationTombstones[transactionId] = System.nanoTime()
         val waitingInstall = this.waitingInstall.load()
         val toCancel = queue.find { it.transactionId == transactionId }
             ?: waitingInstall?.takeIf { it.transactionId == transactionId }
             ?: run {
-                completeCancellation(transactionId)
+                if (!cancellationsAwaitingDestroy.contains(transactionId)) {
+                    completeCancellation(transactionId)
+                }
                 return
             }
         if (cancelEntry(toCancel)) {
             queue.remove(toCancel)
+            activeInstallers.remove(transactionId, this)
+            ownedTransactions -= transactionId
             if (waitingInstall == toCancel && this.waitingInstall.compareAndSet(toCancel, null)) {
                 // Currently processing removed entry, continue queue
                 if (queue.isEmpty()) {
                     onCancellationCleanup()
+                    cancellationsAwaitingDestroy += transactionId
                 }
                 checkQueue()
             }
-            completeQueued(toCancel, InstallStep.Idle)
-            completeCancellation(transactionId)
+            if (!cancellationsAwaitingDestroy.contains(transactionId)) {
+                completeCancellation(transactionId)
+            }
         }
     }
 
@@ -192,12 +233,12 @@ abstract class Installer(private val service: Service) {
 
     private fun pruneTombstones() {
         val cutoff = System.nanoTime() - TOMBSTONE_TTL_NANOS
-        canceledTransactions.entries.removeIf { it.value < cutoff }
+        synchronized(pendingCancellations) {
+            cancellationTombstones.entries.removeIf { (transactionId, createdAtNanos) ->
+                createdAtNanos < cutoff && !pendingCancellations.containsKey(transactionId)
+            }
+        }
         completedTransactions.entries.removeIf { it.value < cutoff }
-    }
-
-    private fun completeCancellation(transactionId: String) {
-        pendingCancellations.remove(transactionId)?.acknowledgement?.complete(Unit)
     }
 
     /**
@@ -224,6 +265,8 @@ abstract class Installer(private val service: Service) {
         private const val EXTRA_TRANSACTION_ID = "Installer.extra.TRANSACTION_ID"
         private const val TOMBSTONE_TTL_NANOS = 5L * 60L * 1_000_000_000L
         private val pendingCancellations = ConcurrentHashMap<String, CancellationRequest>()
+        private val cancellationTombstones = ConcurrentHashMap<String, Long>()
+        private val activeInstallers = ConcurrentHashMap<String, Installer>()
 
         /**
          * Attempts to cancel the installation entry for the provided transaction ID.
@@ -231,12 +274,15 @@ abstract class Installer(private val service: Service) {
          * @param transactionId UUID shared by the install request and platform callback.
          */
         fun cancelInstallQueue(context: Context, transactionId: String): Deferred<Unit> {
-            val request = synchronized(pendingCancellations) {
+            val (request, installer) = synchronized(pendingCancellations) {
                 prunePendingCancellations()
-                pendingCancellations.getOrPut(transactionId) {
-                    CancellationRequest(System.nanoTime(), CompletableDeferred())
+                cancellationTombstones[transactionId] = System.nanoTime()
+                val request = pendingCancellations.getOrPut(transactionId) {
+                    CancellationRequest(CompletableDeferred())
                 }
+                request to activeInstallers[transactionId]
             }
+            installer?.cancelQueue(transactionId) ?: completeCancellation(transactionId)
             val intent = Intent(ACTION_CANCEL_QUEUE)
             intent.putExtra(EXTRA_TRANSACTION_ID, transactionId)
             LocalBroadcastManager.getInstance(context).sendBroadcast(intent)
@@ -244,16 +290,14 @@ abstract class Installer(private val service: Service) {
         }
 
         private fun prunePendingCancellations() {
-            val cutoff = System.nanoTime() - TOMBSTONE_TTL_NANOS
-            pendingCancellations.entries.removeIf { (_, request) ->
-                (request.createdAtNanos < cutoff).also { expired ->
-                    if (expired) request.acknowledgement.complete(Unit)
-                }
-            }
+            pendingCancellations.entries.removeIf { (_, request) -> request.acknowledgement.isCompleted }
+        }
+
+        private fun completeCancellation(transactionId: String) {
+            pendingCancellations.remove(transactionId)?.acknowledgement?.complete(Unit)
         }
 
         private data class CancellationRequest(
-            val createdAtNanos: Long,
             val acknowledgement: CompletableDeferred<Unit>,
         )
     }

@@ -136,3 +136,39 @@ Task 4C 的实现、测试、mutation obligations、相关回归与格式检查�
 - lifecycle + coordinator wiring：`BUILD SUCCESSFUL`，19/19 tests passed（12 lifecycle + 7 wiring）。
 - ExtensionManager / PackageInstaller / Shizuku 过滤回归：`BUILD SUCCESSFUL`；当前名称过滤器实际命中 2/2 tests，均为 `ExtensionManagerUpdatePolicyWiringTest`。PackageInstaller 与 Shizuku 未有额外名称匹配测试，生命周期中的真实 PackageInstaller 链路已由上一命令覆盖；Shizuku production 未修改。
 - 根目录 `spotlessCheck`：`BUILD SUCCESSFUL`，61 tasks 无格式违规。
+
+## Review repair round 2
+
+### 状态
+
+`DONE_WITH_CONCERNS`
+
+本轮关闭了 durable cancellation tombstone、cleanup/terminal 线性化、真实 `PackageInstaller.Session.commit` 覆盖和 Shizuku 延迟 callback 四项 review 问题。用户取消不再在平台清理前发布 `Idle`；PackageInstaller 会先 abandon session、注销 callback receiver 并销毁 service，随后 coordinator 才 rollback/reload/cleanup；Shizuku 活跃安装会等待其延迟 callback 与 service destroy，取消后的 callback 不再发布错误 terminal。
+
+### TDD 与 mutation 证据
+
+- durable tombstone：测试改为同一 UUID 在 public cancel 后连续 enqueue 两次；旧实现第一次 enqueue 会消费取消记录，第二次错误进入 `processEntry`，focused RED 1/1 failed。改为进程级 durable tombstone 后 focused GREEN。
+- PackageInstaller 端到端：测试从真实 `downloadAndInstall`、coordinator port、production `installPrepared` 一直执行到 queue/session/`Session.commit`。旧实现会在 service destroy 前发布 `Idle`，focused RED 1/1 failed；修复后测试确认 destroy 前 terminal 未完成、session 未 rollback，destroy 后才按 `prepare -> validate -> commit -> rollback -> reload -> cleanup` 收尾，且 active maps 全部释放。
+- commit wiring mutation：测试夹具把 PendingIntent identity 与 `Session.commit` identity 分离，并要求 commit 精确调用一次；临时删除 production `session.commit(intentSender)` 后 focused 测试失败，恢复后通过。
+- 过早 Idle mutation：临时在 public cancel 入口立即写入 `InstallStep.Idle`，端到端 package 测试在第 396 行失败；恢复后通过。
+- Shizuku 延迟 callback mutation：临时绕过 `Installer.continueQueue` 的 cancellation tombstone 分支，focused 测试在第 513 行失败；恢复后通过。
+- 所有临时 mutation 均已恢复，最终 diff 不包含 mutation。
+
+### Cleanup 线性化与资源边界
+
+- public cancel 会先持久记录 transaction tombstone，再通过当前 owner 直接触发 cleanup；LocalBroadcast 仅保留兼容通知，因此广播丢失或延迟不会漏掉活跃安装清理。
+- cancellation acknowledgement 不再使用 10 秒兜底提前放行。活跃 PackageInstaller/Shizuku transaction 只有在 session/callback receiver/service 生命周期安全结束后才完成 acknowledgement，coordinator 之后才允许 rollback 和 terminal。
+- `pendingCancellations` 的已完成 deferred 会清扫；未完成 deferred 不会被 TTL 删除。tombstone 仅在没有 pending acknowledgement 时按 5 分钟 TTL 惰性清扫，避免 deferred 泄漏或取消意图在 cleanup 前失效。
+- coordinator terminal collector 会先移除 `activeJobs`、`activeTransactions`、`activeSteps` 与取消集合，再发布 terminal；取消完成后 `platformResults` 也已释放。
+
+### 最终验证
+
+- `$env:ANDROID_HOME=(Resolve-Path '.android-sdk').Path; $env:ANDROID_SDK_ROOT=$env:ANDROID_HOME; .\gradlew.bat :app:testReleaseUnitTest --tests "*ExtensionInstallSessionLifecycleTest" --tests "*ExtensionInstallCoordinatorWiringTest"`：`BUILD SUCCESSFUL`，20/20 passed（13 lifecycle + 7 wiring）。
+- `$env:ANDROID_HOME=(Resolve-Path '.android-sdk').Path; $env:ANDROID_SDK_ROOT=$env:ANDROID_HOME; .\gradlew.bat :app:testReleaseUnitTest --tests "*ExtensionManager*" --tests "*PackageInstaller*" --tests "*Shizuku*"`：`BUILD SUCCESSFUL`，实际命中 3/3 passed（2 个 `ExtensionManagerUpdatePolicyWiringTest` + 1 个 Shizuku lifecycle）。PackageInstaller 没有独立类名匹配项，其真实 session/commit 路径由上一命令的 13 个 lifecycle 测试覆盖。
+- `$env:ANDROID_HOME=(Resolve-Path '.android-sdk').Path; $env:ANDROID_SDK_ROOT=$env:ANDROID_HOME; .\gradlew.bat spotlessCheck`：`BUILD SUCCESSFUL`，61 tasks 无格式违规。
+- `git diff --check`：通过，无空白错误。
+
+### 顾虑与技术边界
+
+- 普通 JVM 加载真实 `ShizukuInstaller` 时，Shizuku Binder 静态初始化会调用 Android stub 的 `Binder.attachInterface`，无法在该测试环境实例化。测试因此执行真实共享 `Installer` production lifecycle，并精确使用 Shizuku 的 `cancelEntry(entry) = getActiveEntry() != entry` 语义、延迟 callback 与 service destroy；对应 mutation 已证明该测试能杀死取消后错误发布 terminal 的实现。未修改 Shizuku AIDL 或 `ShizukuInstaller` production 文件。
+- 本轮只修改 3 个 tracked 代码/测试文件并追加本报告；工作区既有未跟踪文件保持未暂存、未修改。

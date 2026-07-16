@@ -23,6 +23,7 @@ import eu.kanade.tachiyomi.util.system.isPackageInstalled
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -32,10 +33,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.withTimeoutOrNull
 import logcat.LogPriority
 import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionArtifact
@@ -70,6 +71,7 @@ internal class ExtensionInstaller(
     private val activeSteps = ConcurrentHashMap<String, MutableStateFlow<InstallStep>>()
     private val platformResults = ConcurrentHashMap<String, CompletableDeferred<InstallStep>>()
     private val completedTransactions = ConcurrentHashMap.newKeySet<String>()
+    private val cancelledTransactions = ConcurrentHashMap.newKeySet<String>()
     private val extensionInstaller by lazy { Injekt.get<BasePreferences>().extensionInstaller() }
     private val httpClient: OkHttpClient by lazy { Injekt.get<NetworkHelper>().client }
     private val coordinator = ExtensionInstallCoordinator(installPort ?: AndroidInstallPort(), scope)
@@ -81,12 +83,28 @@ internal class ExtensionInstaller(
         val step = MutableStateFlow(InstallStep.Pending)
         activeSteps[transactionId] = step
         activeTransactions[extension.pkgName] = ActiveTransaction(transactionId, step)
-        val job = scope.launch {
-            coordinator.install(ExtensionInstallRequest(extension.toArtifact(url))).collect { state ->
-                step.value = state.toInstallStep()
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            try {
+                coordinator.install(ExtensionInstallRequest(extension.toArtifact(url))).collect { state ->
+                    val installStep = state.toInstallStep()
+                    if (installStep.isCompleted()) {
+                        activeJobs.remove(extension.pkgName, coroutineContext.job)
+                        activeTransactions.remove(
+                            extension.pkgName,
+                            ActiveTransaction(transactionId, step),
+                        )
+                        activeSteps.remove(transactionId, step)
+                        cancelledTransactions -= transactionId
+                    }
+                    step.value = installStep
+                }
+            } finally {
+                activeJobs.remove(extension.pkgName, coroutineContext.job)
+                activeTransactions.remove(extension.pkgName, ActiveTransaction(transactionId, step))
             }
         }
         activeJobs[extension.pkgName] = job
+        job.start()
 
         return step.asStateFlow().onCompletion {
             activeJobs.remove(extension.pkgName, job)
@@ -123,6 +141,9 @@ internal class ExtensionInstaller(
     }
 
     private suspend fun installPrepared(transactionId: String, file: File) {
+        if (cancelledTransactions.contains(transactionId)) {
+            throw CancellationException("Extension install cancelled")
+        }
         val result = CompletableDeferred<InstallStep>()
         platformResults[transactionId] = result
         try {
@@ -151,7 +172,7 @@ internal class ExtensionInstaller(
     private suspend fun awaitPlatformCleanup(transactionId: String) {
         val acknowledgement = Installer.cancelInstallQueue(context, transactionId)
         withContext(NonCancellable) {
-            withTimeoutOrNull(CLEANUP_TIMEOUT_MILLIS) { acknowledgement.await() }
+            acknowledgement.await()
         }
     }
 
@@ -184,17 +205,34 @@ internal class ExtensionInstaller(
     }
 
     fun cancelInstall(pkgName: String) {
-        val active = activeTransactions.remove(pkgName) ?: return
-        active.step.value = InstallStep.Idle
-        activeJobs.remove(pkgName)?.cancel()
-        Installer.cancelInstallQueue(context, active.transactionId)
+        val active = activeTransactions[pkgName] ?: return
+        requestCancellation(pkgName, active)
     }
 
     private fun cancelActiveInstall(pkgName: String) {
-        val active = activeTransactions.remove(pkgName) ?: return
-        active.step.value = InstallStep.Idle
-        activeJobs.remove(pkgName)?.cancel()
-        Installer.cancelInstallQueue(context, active.transactionId)
+        val active = activeTransactions[pkgName] ?: return
+        requestCancellation(pkgName, active)
+    }
+
+    private fun requestCancellation(pkgName: String, active: ActiveTransaction) {
+        if (!cancelledTransactions.add(active.transactionId)) return
+        val job = activeJobs[pkgName]
+        val platformResult = platformResults[active.transactionId]
+        if (platformResult == null) {
+            job?.cancel()
+            if (job != null) activeJobs.remove(pkgName, job)
+            activeTransactions.remove(pkgName, active)
+            activeSteps.remove(active.transactionId, active.step)
+            cancelledTransactions -= active.transactionId
+            active.step.value = InstallStep.Idle
+            Installer.cancelInstallQueue(context, active.transactionId)
+            return
+        }
+        val acknowledgement = Installer.cancelInstallQueue(context, active.transactionId)
+        scope.launch {
+            acknowledgement.await()
+            platformResult.complete(InstallStep.Idle)
+        }
     }
 
     fun uninstallApk(pkgName: String) {
@@ -384,7 +422,6 @@ internal class ExtensionInstaller(
 
         private const val EXTENSION_FEATURE = "tachiyomi.extension"
         private const val INSTALL_TIMEOUT_MILLIS = 2 * 60 * 1000L
-        private const val CLEANUP_TIMEOUT_MILLIS = 10 * 1000L
 
         @Suppress("DEPRECATION")
         private val PACKAGE_FLAGS = PackageManager.GET_CONFIGURATIONS or
