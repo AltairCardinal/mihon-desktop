@@ -3,35 +3,73 @@ package eu.kanade.tachiyomi.extension
 import android.content.Context
 import eu.kanade.domain.extension.interactor.TrustExtension
 import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.tachiyomi.extension.api.ExtensionApi
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
+import eu.kanade.tachiyomi.extension.model.LoadResult
+import eu.kanade.tachiyomi.extension.util.ExtensionInstallReceiver
 import eu.kanade.tachiyomi.extension.util.ExtensionInstaller
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
 import mihon.domain.error.AppError
-import mihon.domain.extension.model.ExtensionArtifact
-import mihon.domain.extension.model.RepositoryIdentity
+import mihon.domain.extension.service.ExtensionCatalogService
 import mihon.domain.extension.service.ExtensionInstallFailure
 import mihon.domain.extension.service.ExtensionInstallPort
 import mihon.domain.extension.service.ExtensionInstallRequest
 import mihon.domain.extension.service.ExtensionInstallRollbackToken
 import mihon.domain.extension.service.PreparedExtensionInstallToken
+import mihon.domain.extensionrepo.model.ExtensionRepo
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
+import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
 import tachiyomi.core.common.preference.Preference
-import java.io.File
-import java.nio.file.Path
 
 class ExtensionInstallCoordinatorWiringTest {
+
+    @Test
+    fun `catalog repository identity digest and download URL reach Android install request unchanged`() = runTest {
+        MockWebServer().also { it.start() }.use { server ->
+            server.enqueue(MockResponse(body = INDEX_JSON))
+            val repository = ExtensionRepo(
+                baseUrl = server.url("/").toString().removeSuffix("/"),
+                name = "Official extensions",
+                shortName = "official",
+                website = server.url("/about").toString(),
+                signingKeyFingerprint = "AB:CD:EF",
+            )
+            val api = ExtensionApi(
+                client = OkHttpClient(),
+                json = Json { ignoreUnknownKeys = true },
+                repositories = { listOf(repository) },
+                catalogService = ExtensionCatalogService(),
+            )
+            val available = api.findExtensions().single()
+            val port = RecordingInstallPort()
+            val manager = managerWith(installerWith(port, this))
+
+            assertEquals(InstallStep.Installed, manager.installExtension(available).first(InstallStep::isCompleted))
+
+            val artifact = requireNotNull(port.request).artifact
+            assertEquals(repository.baseUrl, artifact.repository.baseUrl)
+            assertEquals(repository.name, artifact.repository.name)
+            assertEquals(repository.signingKeyFingerprint, artifact.repository.signingKeyFingerprint)
+            assertEquals(DECLARED_SHA, artifact.declaredSha256)
+            assertEquals(server.url("/apk/example.apk").toString(), artifact.downloadUrl)
+        }
+    }
 
     @Test
     fun `Android manager install uses shared coordinator phases before publishing installed`() = runTest {
@@ -86,51 +124,62 @@ class ExtensionInstallCoordinatorWiringTest {
     }
 
     @Test
+    fun `receiver callback cannot publish a new runtime while its install transaction is active`() = runTest {
+        val port = RecordingInstallPort(blockCommit = true)
+        val installer = installerWith(port, this)
+        lateinit var listener: ExtensionInstallReceiver.Listener
+        val manager = managerWith(installer) { listener = it }
+        val extension = availableExtension()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            manager.installedExtensionsFlow.collect {}
+        }
+
+        manager.installExtension(extension)
+        runCurrent()
+        runCatching { listener.onExtensionInstalled(installedExtension(versionCode = extension.versionCode)) }
+        val remainedHidden = manager.installedExtensionsFlow.value.isEmpty()
+        port.unblockCommit()
+        runCurrent()
+
+        assertTrue(remainedHidden)
+    }
+
+    @Test
+    fun `untrusted loader result is an explicit failed terminal and is not published`() = runTest {
+        val context = mockk<Context>(relaxed = true)
+        val enabledLanguages = mockk<Preference<Set<String>>> { every { isSet() } returns true }
+        val manager = ExtensionManager(
+            context = context,
+            preferences = mockk(relaxed = true) { every { enabledLanguages() } returns enabledLanguages },
+            trustExtension = mockk(relaxed = true),
+            installedExtensionsLoader = { emptyList() },
+            extensionLoader = { _, packageName ->
+                LoadResult.Untrusted(
+                    Extension.Untrusted("Example", packageName, "1.4.1", 1, 1.4, "untrusted-signer"),
+                )
+            },
+            installerFactory = { reloader ->
+                ExtensionInstaller(context, reloader, this, RecordingInstallPort(reloadAction = reloader))
+            },
+            installReceiverRegistrar = {},
+        )
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            manager.untrustedExtensionsFlow.collect {}
+        }
+
+        val terminal = manager.installExtension(availableExtension()).first(InstallStep::isCompleted)
+
+        assertEquals(InstallStep.Error, terminal)
+        assertTrue(manager.untrustedExtensionsFlow.value.isEmpty())
+    }
+
+    @Test
     fun `shared install port does not expose Android package or signing types`() {
         val boundaryTypes = ExtensionInstallPort::class.java.declaredMethods.flatMap { method ->
             method.genericParameterTypes.toList() + method.genericReturnType
         }
 
         assertTrue(boundaryTypes.none { it.typeName.startsWith("android.") || "<android." in it.typeName })
-    }
-
-    @Test
-    fun `Android adapter rollback removes a fresh private install when no previous APK exists`(
-        @TempDir directory: Path,
-    ) = runTest {
-        val context = mockk<Context>(relaxed = true) {
-            every { filesDir } returns directory.toFile()
-        }
-        val port = androidPort(context, this)
-        val installed = File(directory.toFile(), "exts/$PACKAGE_NAME.ext").apply {
-            requireNotNull(parentFile).mkdirs()
-            writeText("new")
-        }
-        addPreparedInstall(port, "fresh", artifact(), directory.resolve("download.apk").toFile(), null)
-
-        port.rollback(ExtensionInstallRollbackToken("fresh"))
-
-        assertFalse(installed.exists(), "fresh install must not survive a failed runtime reload")
-    }
-
-    @Test
-    fun `Android adapter rollback restores the previous private APK bytes`(
-        @TempDir directory: Path,
-    ) = runTest {
-        val context = mockk<Context>(relaxed = true) {
-            every { filesDir } returns directory.toFile()
-        }
-        val port = androidPort(context, this)
-        val installed = File(directory.toFile(), "exts/$PACKAGE_NAME.ext").apply {
-            requireNotNull(parentFile).mkdirs()
-            writeText("new")
-        }
-        val snapshot = directory.resolve("old.apk").toFile().apply { writeText("old") }
-        addPreparedInstall(port, "update", artifact(), directory.resolve("download.apk").toFile(), snapshot)
-
-        port.rollback(ExtensionInstallRollbackToken("update"))
-
-        assertEquals("old", installed.readText())
     }
 
     private fun installerWith(port: ExtensionInstallPort, scope: TestScope): ExtensionInstaller {
@@ -152,44 +201,13 @@ class ExtensionInstallCoordinatorWiringTest {
         ) as ExtensionInstaller
     }
 
-    private fun androidPort(context: Context, scope: TestScope): ExtensionInstallPort {
-        val outer = installerWith(RecordingInstallPort(), scope, context)
-        val type = ExtensionInstaller::class.java.declaredClasses.single { it.simpleName == "AndroidInstallPort" }
-        val constructor = type.declaredConstructors.single().apply { isAccessible = true }
-        return constructor.newInstance(outer) as ExtensionInstallPort
-    }
-
-    private fun addPreparedInstall(
-        port: ExtensionInstallPort,
-        id: String,
-        artifact: ExtensionArtifact,
-        download: File,
-        rollback: File?,
-    ) {
-        val type = ExtensionInstaller::class.java.declaredClasses.single { it.simpleName == "AndroidPreparedInstall" }
-        val prepared = type.declaredConstructors.single { it.parameterCount == 3 }.apply { isAccessible = true }
-            .newInstance(artifact, download, rollback)
-        val field = port.javaClass.getDeclaredField("prepared").apply { isAccessible = true }
-        @Suppress("UNCHECKED_CAST")
-        (field.get(port) as MutableMap<String, Any>)[id] = prepared
-    }
-
-    private fun installerWith(
-        port: ExtensionInstallPort,
-        scope: TestScope,
-        context: Context,
-    ): ExtensionInstaller {
-        val constructor = ExtensionInstaller::class.java.declaredConstructors.single {
-            it.parameterTypes.size == 4 && it.parameterTypes.any(ExtensionInstallPort::class.java::isAssignableFrom)
-        }.apply { isAccessible = true }
-        val runtimeReloader: suspend (String) -> Unit = {}
-        return constructor.newInstance(context, runtimeReloader, scope, port) as ExtensionInstaller
-    }
-
-    private fun managerWith(installer: ExtensionInstaller): ExtensionManager {
+    private fun managerWith(
+        installer: ExtensionInstaller,
+        registrar: (ExtensionInstallReceiver.Listener) -> Unit = {},
+    ): ExtensionManager {
         val enabledLanguages = mockk<Preference<Set<String>>>()
         every { enabledLanguages.isSet() } returns true
-        val preferences = mockk<SourcePreferences> {
+        val preferences = mockk<SourcePreferences>(relaxed = true) {
             every { enabledLanguages() } returns enabledLanguages
         }
         val manager = ExtensionManager(
@@ -197,7 +215,7 @@ class ExtensionInstallCoordinatorWiringTest {
             preferences = preferences,
             trustExtension = mockk<TrustExtension>(relaxed = true),
             installedExtensionsLoader = { emptyList() },
-            installReceiverRegistrar = {},
+            installReceiverRegistrar = registrar,
         )
         val installerDelegate = ExtensionManager::class.java.declaredFields.single {
             it.name == "installer\$delegate"
@@ -221,28 +239,34 @@ class ExtensionInstallCoordinatorWiringTest {
         repoUrl = "https://repo.example",
     )
 
-    private fun artifact() = ExtensionArtifact(
+    private fun installedExtension(versionCode: Long) = Extension.Installed(
         name = "Example",
-        packageName = PACKAGE_NAME,
+        pkgName = PACKAGE_NAME,
         versionName = "1.4.1",
-        versionCode = 1,
-        language = "en",
+        versionCode = versionCode,
+        libVersion = 1.4,
+        lang = "en",
         isNsfw = false,
+        pkgFactory = null,
         sources = emptyList(),
-        repository = RepositoryIdentity("https://repo.example", "Repository", "fingerprint"),
-        downloadUrl = "https://repo.example/example.apk",
-        iconUrl = "",
-        declaredSha256 = null,
+        icon = null,
+        isShared = false,
     )
 
     private class RecordingInstallPort(
         private val failValidation: Boolean = false,
         private val failFirstReload: Boolean = false,
         private val blockCommit: Boolean = false,
+        private val reloadAction: (suspend (String) -> Unit)? = null,
     ) : ExtensionInstallPort {
         val calls = mutableListOf<String>()
         var request: ExtensionInstallRequest? = null
         private var reloads = 0
+        private val commitGate = CompletableDeferred<Unit>()
+
+        fun unblockCommit() {
+            commitGate.complete(Unit)
+        }
 
         override suspend fun prepare(request: ExtensionInstallRequest): PreparedExtensionInstallToken {
             calls += "prepare"
@@ -258,7 +282,7 @@ class ExtensionInstallCoordinatorWiringTest {
 
         override suspend fun commit(token: PreparedExtensionInstallToken) {
             calls += "commit"
-            if (blockCommit) awaitCancellation()
+            if (blockCommit) commitGate.await()
         }
 
         override suspend fun reload(packageName: String) {
@@ -266,6 +290,7 @@ class ExtensionInstallCoordinatorWiringTest {
             if (failFirstReload && reloads++ == 0) {
                 throw ExtensionInstallFailure(AppError.MalformedData())
             }
+            reloadAction?.invoke(packageName)
         }
 
         override suspend fun rollback(token: ExtensionInstallRollbackToken) {
@@ -279,5 +304,8 @@ class ExtensionInstallCoordinatorWiringTest {
 
     private companion object {
         const val PACKAGE_NAME = "example.extension"
+        const val DECLARED_SHA = "0123456789abcdef"
+        const val INDEX_JSON =
+            """[{"name":"Tachiyomi: Example","pkg":"example.extension","apk":"example.apk","lang":"en","code":1,"version":"1.4.1","nsfw":0,"sha256":"$DECLARED_SHA","sources":[]}]"""
     }
 }

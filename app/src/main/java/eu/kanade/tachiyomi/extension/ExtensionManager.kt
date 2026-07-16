@@ -50,7 +50,9 @@ class ExtensionManager internal constructor(
     private val trustExtension: TrustExtension = Injekt.get(),
     private val updatePolicy: ExtensionUpdatePolicy = SharedExtensionUpdatePolicy,
     private val installedExtensionsLoader: suspend (Context) -> List<LoadResult> = ExtensionLoader::loadExtensions,
+    private val extensionLoader: suspend (Context, String) -> LoadResult = ExtensionLoader::loadExtensionFromPkgName,
     private val availableExtensionsProvider: (suspend () -> List<Extension.Available>)? = null,
+    private val installerFactory: (((suspend (String) -> Unit)) -> ExtensionInstaller)? = null,
     private val installReceiverRegistrar: (ExtensionInstallReceiver.Listener) -> Unit = { listener ->
         ExtensionInstallReceiver(listener).register(context)
     },
@@ -69,7 +71,9 @@ class ExtensionManager internal constructor(
     /**
      * The installer which installs, updates and uninstalls the extensions.
      */
-    private val installer by lazy { ExtensionInstaller(context, ::reloadInstalledExtension) }
+    private val installer by lazy {
+        installerFactory?.invoke(::reloadInstalledExtension) ?: ExtensionInstaller(context, ::reloadInstalledExtension)
+    }
 
     private val iconMap = mutableMapOf<String, Drawable>()
 
@@ -320,16 +324,18 @@ class ExtensionManager internal constructor(
     }
 
     private suspend fun reloadInstalledExtension(pkgName: String) {
-        when (val result = ExtensionLoader.loadExtensionFromPkgName(context, pkgName)) {
+        when (val result = extensionLoader(context, pkgName)) {
             is LoadResult.Success -> {
                 untrustedExtensionMapFlow.value -= pkgName
                 registerUpdatedExtension(result.extension.withUpdateCheck())
                 updatePendingUpdatesCount()
             }
             is LoadResult.Untrusted -> {
-                installedExtensionMapFlow.value -= pkgName
-                untrustedExtensionMapFlow.value += result.extension
-                updatePendingUpdatesCount()
+                throw ExtensionInstallFailure(
+                    AppError.Authentication(
+                        IllegalStateException("Installed extension requires explicit trust confirmation: $pkgName"),
+                    ),
+                )
             }
             else -> throw ExtensionInstallFailure(
                 AppError.MalformedData(IllegalStateException("Installed extension could not be reloaded: $pkgName")),
@@ -354,22 +360,26 @@ class ExtensionManager internal constructor(
     private inner class InstallationListener : ExtensionInstallReceiver.Listener {
 
         override fun onExtensionInstalled(extension: Extension.Installed) {
+            if (installer.isInstallTransactionActive(extension.pkgName)) return
             registerNewExtension(extension.withUpdateCheck())
             updatePendingUpdatesCount()
         }
 
         override fun onExtensionUpdated(extension: Extension.Installed) {
+            if (installer.isInstallTransactionActive(extension.pkgName)) return
             registerUpdatedExtension(extension.withUpdateCheck())
             updatePendingUpdatesCount()
         }
 
         override fun onExtensionUntrusted(extension: Extension.Untrusted) {
+            if (installer.isInstallTransactionActive(extension.pkgName)) return
             installedExtensionMapFlow.value -= extension.pkgName
             untrustedExtensionMapFlow.value += extension
             updatePendingUpdatesCount()
         }
 
         override fun onPackageUninstalled(pkgName: String) {
+            if (installer.isInstallTransactionActive(pkgName)) return
             ExtensionLoader.uninstallPrivateExtension(context, pkgName)
             unregisterExtension(pkgName)
             updatePendingUpdatesCount()

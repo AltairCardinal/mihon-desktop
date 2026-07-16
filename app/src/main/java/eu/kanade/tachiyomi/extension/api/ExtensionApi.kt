@@ -77,6 +77,10 @@ internal class ExtensionApi(
                     apkName = artifact.downloadUrl.substringAfterLast('/'),
                     iconUrl = artifact.iconUrl,
                     repoUrl = artifact.repository.baseUrl,
+                    repoName = artifact.repository.name,
+                    repoFingerprint = artifact.repository.signingKeyFingerprint,
+                    declaredSha256 = artifact.declaredSha256,
+                    downloadUrl = artifact.downloadUrl,
                 )
             }
     }
@@ -145,6 +149,6 @@ internal class ExtensionApi(
     }
 
     fun getApkUrl(extension: Extension.Available): String {
-        return "${extension.repoUrl}/apk/${extension.apkName}"
+        return extension.downloadUrl
     }
 }
