@@ -112,7 +112,8 @@
 - GREEN evidence: lifecycle+wiring 16/16 PASS; related Manager/PackageInstaller/Shizuku regression 3/3 PASS; root Spotless 61 tasks PASS.
 - Mutation evidence: UUID/hash collision, transaction validation, session validation, timeout, abandon, cancel tombstone and terminal CAS mutations each caused the named behavior test to fail and were restored before final verification.
 - Implementer concern: the JVM test uses limited reflection to connect the Android framework container seam to real production queue/session state; independent review must determine whether this remains valid production-wiring evidence rather than accepting the report's claim.
-- Reviewer: pending fresh read-only reviewer.
+- Review package: `.superpowers/sdd/align-sources-task-4c-session-review.diff` (base `b645e4af9`, head `d02b64279`).
+- Reviewer: `/root/task4c_session_review` (fresh independent read-only reviewer).
 - Review/fix round: 0/2
 - Implementation commit: `9965e22577746c31e59435cdd35f4b30e677c020` (`refactor(android): adapt transactional extension install`).
 - Scope: 3 brief-listed files, +572/-85 (657 changed lines); the plan records a concrete Split waiver for the inseparable Android production wiring, platform transaction adapter, and integration test.
