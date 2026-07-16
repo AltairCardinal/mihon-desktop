@@ -340,6 +340,31 @@ class ExtensionInstallCoordinatorTest {
     }
 
     @Test
+    fun `scope cancelled while worker is suspended emits one cancelled terminal`() = runTest {
+        val lifecycle = SupervisorJob()
+        val port = RecordingInstallPort(blockValidation = true)
+        val coordinator = ExtensionInstallCoordinator(
+            port,
+            CoroutineScope(backgroundScope.coroutineContext + lifecycle),
+        )
+        val collection = async {
+            withTimeout(1_000) { coordinator.install(request()).toList() }
+        }
+        port.validationStarted.await()
+
+        lifecycle.cancel()
+
+        assertEquals(
+            listOf(
+                ExtensionInstallState.Preparing,
+                ExtensionInstallState.Validating,
+                ExtensionInstallState.Failed(AppError.Cancelled),
+            ),
+            collection.await(),
+        )
+    }
+
+    @Test
     fun `different packages install in parallel`() = runTest {
         val port = RecordingInstallPort(blockPreparation = true, expectedConcurrentPreparations = 2)
         val coordinator = ExtensionInstallCoordinator(port, backgroundScope)

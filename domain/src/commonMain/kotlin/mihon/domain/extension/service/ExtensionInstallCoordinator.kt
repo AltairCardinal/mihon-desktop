@@ -71,8 +71,8 @@ class ExtensionInstallCoordinator(
                 var terminalState: ExtensionInstallState? = null
                 try {
                     terminalState = runInstall(request, created.events)
-                } catch (_: CancellationException) {
-                    // Collector cancellation has no terminal state, but cleanup and rollback have completed.
+                } catch (failure: CancellationException) {
+                    terminalState = ExtensionInstallState.Failed(failure.toAppError())
                 } catch (failure: Throwable) {
                     terminalState = ExtensionInstallState.Failed(failure.toAppError())
                 } finally {
