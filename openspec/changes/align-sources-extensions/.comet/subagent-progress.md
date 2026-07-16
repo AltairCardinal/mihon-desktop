@@ -101,7 +101,7 @@
 - Current task: `Task 5A: 共享登录会话与 Desktop Cookie 原子提交`
 - Plan checkbox: pending
 - OpenSpec mapping: `3.3` partial (do not check off until Tasks 5A-5C complete).
-- Stage: `scope-closure-review`
+- Stage: `psl-closure-fix`
 - Task base: `fdb81e127`
 - Brief: `.superpowers/sdd/align-sources-task-5a-brief.md`
 - Risk axis: `login-session-atomicity`
@@ -154,6 +154,11 @@
 - Scope-closure verification: SourceLoginSession 13 + Desktop adapter 6 + CookieJar 21 + persistence 8 = 48/48 PASS, 0 failures/errors/skips; root Spotless 97 executed tasks PASS; diff/scope checks PASS.
 - Final cumulative scope: 6 planned product/test files, +1296/-41 (1337 changed lines); plan/brief waiver updated for complete target delivery-scope replacement.
 - Scope-closure reviewer: `/root/task5a_scope_review` (fresh independent read-only cumulative review; no test rerun).
+- Scope-closure review result: Spec Compliance `CHANGES_REQUIRED`; Task quality `NEEDS_FIXES`; Critical 0 / Important 2 / Minor 0. Historical findings 1-7 are CLOSED; finding 8 production behavior is correct but its child-domain preservation boundary remains insufficiently protected. Report: `.superpowers/sdd/align-sources-task-5a-scope-closure-review.md`.
+- Remaining findings: (1) shared textual domain validation accepts public-suffix domain cookies such as `com`/`co.uk`, and OkHttp's programmatic Cookie builder/matcher can then deliver them across unrelated registrable sites; (2) the complete-set regression does not prove child-domain cookies survive in memory and after restart, so a bidirectional over-clearing mutation could pass.
+- Finding evaluation: both are technically valid, deterministic, and remain within the existing shared validation/jar test boundary. Continue one focused TDD repair without user pause; use an authoritative PSL-aware API already supplied by the dependency rather than a hard-coded suffix list.
+- PSL-closure requirements: reject public-suffix domain cookies before commit with zero writes while retaining valid registrable parent domains; add `com` and multi-label suffix coverage if supported by the dependency. Extend persisted jar regression with a child-domain cookie and prove a bidirectional/over-clearing mutation fails.
+- Review/fix round: 4/4 (user-authorized engineering continuation for narrow same-axis closure).
 
 ## Task 4D Review History
 
