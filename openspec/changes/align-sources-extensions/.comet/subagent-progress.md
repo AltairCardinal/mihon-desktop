@@ -153,6 +153,7 @@
 - Scope-closure mutation: reverting to target-bucket-only deletion reproduced the named RED and was restored.
 - Scope-closure verification: SourceLoginSession 13 + Desktop adapter 6 + CookieJar 21 + persistence 8 = 48/48 PASS, 0 failures/errors/skips; root Spotless 97 executed tasks PASS; diff/scope checks PASS.
 - Final cumulative scope: 6 planned product/test files, +1296/-41 (1337 changed lines); plan/brief waiver updated for complete target delivery-scope replacement.
+- Scope-closure reviewer: `/root/task5a_scope_review` (fresh independent read-only cumulative review; no test rerun).
 
 ## Task 4D Review History
 
