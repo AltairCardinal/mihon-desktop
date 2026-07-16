@@ -1,7 +1,10 @@
 package mihon.desktop.extension
 
 import eu.kanade.tachiyomi.source.Source
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.last
 import mihon.domain.extension.model.ExtensionArtifact
 import mihon.domain.extension.service.ExtensionInstallCoordinator
@@ -13,25 +16,45 @@ import mihon.domain.extension.service.ExtensionInstallState
  */
 class DesktopExtensionManager(
     private val loader: DesktopExtensionLoader = DesktopExtensionLoader(),
+    artifactProvider: DesktopArtifactProvider = { _, _ ->
+        error("This extension manager was created without an artifact provider")
+    },
+    apkConverter: ApkToJarConverter = ApkToJarConverter(),
+    fileSystem: DesktopExtensionFileSystem = DefaultDesktopExtensionFileSystem,
 ) : AutoCloseable {
 
     private val loadedExtensions = mutableListOf<LoadedExtension>()
+    private val runtimeLock = Any()
+    private val installScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val installPort = DesktopExtensionInstallPort(
+        extensionsDirectory = loader.extensionsDirectory,
+        artifactProvider = artifactProvider,
+        apkConverter = apkConverter,
+        loader = loader,
+        releaseRuntime = ::releaseRuntime,
+        reloadRuntime = ::reloadRuntime,
+        fileSystem = fileSystem,
+    )
+    private val installCoordinator = ExtensionInstallCoordinator(installPort, installScope)
 
     /** Loads all extensions from the extensions directory. */
     fun loadAll() {
         val replacements = loader.loadExtensions()
-        val previous = loadedExtensions.toList()
-        loadedExtensions.clear()
-        loadedExtensions.addAll(replacements)
-        previous.map { it.classLoader }.distinct().forEach { (it as? AutoCloseable)?.close() }
+        val previous = synchronized(runtimeLock) {
+            loadedExtensions.toList().also {
+                loadedExtensions.clear()
+                loadedExtensions.addAll(replacements)
+            }
+        }
+        closeLoaders(previous)
     }
 
     /** Returns all loaded sources. */
-    fun getInstalledSources(): List<Source> = loadedExtensions.map { it.source }
+    fun getInstalledSources(): List<Source> = synchronized(runtimeLock) { loadedExtensions.map { it.source } }
 
     /** Returns a source by its ID, or null if not found. */
     fun getSource(sourceId: Long): Source? =
-        loadedExtensions.find { it.source.id == sourceId }?.source
+        synchronized(runtimeLock) { loadedExtensions.find { it.source.id == sourceId }?.source }
 
     /**
      * Returns installed extensions grouped by JAR file.
@@ -39,7 +62,7 @@ class DesktopExtensionManager(
      * Version info is read from the sidecar meta file when available.
      */
     fun getInstalledExtensions(): List<InstalledExtension> =
-        loadedExtensions
+        synchronized(runtimeLock) { loadedExtensions.toList() }
             .groupBy { it.jarFile }
             .map { (jarFile, exts) ->
                 val meta = readExtensionMeta(jarFile)
@@ -63,7 +86,7 @@ class DesktopExtensionManager(
      * @return true if the JAR was deleted successfully.
      */
     fun removeExtension(extension: InstalledExtension): Boolean {
-        loadedExtensions.removeAll { it.jarFile == extension.jarFile }
+        releaseRuntime(extension.pkgName)
         return extension.jarFile.delete()
     }
 
@@ -72,7 +95,7 @@ class DesktopExtensionManager(
      * @return true if the JAR was deleted successfully.
      */
     fun removeExtensionWithMeta(extension: InstalledExtension): Boolean {
-        loadedExtensions.removeAll { it.jarFile == extension.jarFile }
+        releaseRuntime(extension.pkgName)
         deleteExtensionMeta(extension.jarFile)
         return extension.jarFile.delete()
     }
@@ -80,20 +103,15 @@ class DesktopExtensionManager(
     /** Re-scans the extensions directory and reloads all extensions. */
     fun reloadAll() = loadAll()
 
-    internal suspend fun installExtension(
-        artifact: ExtensionArtifact,
-        artifactProvider: DesktopArtifactProvider,
-        apkConverter: ApkToJarConverter = ApkToJarConverter(),
-    ): ExtensionInstallState = coroutineScope {
-        val port = DesktopExtensionInstallPort(
-            extensionsDirectory = loader.extensionsDirectory,
-            artifactProvider = artifactProvider,
-            apkConverter = apkConverter,
-            reloadRuntime = ::reloadRuntime,
-        )
-        ExtensionInstallCoordinator(port, this)
-            .install(ExtensionInstallRequest(artifact))
-            .last()
+    internal suspend fun installExtension(artifact: ExtensionArtifact): ExtensionInstallState =
+        installCoordinator.install(ExtensionInstallRequest(artifact)).last()
+
+    private fun releaseRuntime(packageName: String) {
+        val previous = synchronized(runtimeLock) {
+            loadedExtensions.filter { it.jarFile.nameWithoutExtension == packageName }
+                .also { loadedExtensions.removeAll(it.toSet()) }
+        }
+        closeLoaders(previous)
     }
 
     private fun reloadRuntime(packageName: String, expectedSourceIds: Set<Long>?) {
@@ -101,20 +119,34 @@ class DesktopExtensionManager(
         val jarExists = java.io.File(loader.extensionsDirectory, "$packageName.jar").isFile
         val valid = when {
             expectedSourceIds == null -> !jarExists || replacements.isNotEmpty()
+            replacements.isEmpty() -> false
             expectedSourceIds.isEmpty() -> true
-            else -> replacements.any { it.source.id in expectedSourceIds }
+            else -> replacements.map { it.source.id }.toSet().containsAll(expectedSourceIds)
         }
-        check(valid) { "Extension runtime reload failed for $packageName" }
+        if (!valid) {
+            closeLoaders(replacements)
+            error("Extension runtime reload failed for $packageName")
+        }
 
-        val previous = loadedExtensions.filter { it.jarFile.nameWithoutExtension == packageName }
-        loadedExtensions.removeAll(previous.toSet())
-        loadedExtensions.addAll(replacements)
-        previous.map { it.classLoader }.distinct().forEach { (it as? AutoCloseable)?.close() }
+        val previous = synchronized(runtimeLock) {
+            loadedExtensions.filter { it.jarFile.nameWithoutExtension == packageName }.also {
+                loadedExtensions.removeAll(it.toSet())
+                loadedExtensions.addAll(replacements)
+            }
+        }
+        closeLoaders(previous)
     }
 
     override fun close() {
-        loadedExtensions.map { it.classLoader }.distinct().forEach { (it as? AutoCloseable)?.close() }
-        loadedExtensions.clear()
+        installScope.cancel()
+        val previous = synchronized(runtimeLock) {
+            loadedExtensions.toList().also { loadedExtensions.clear() }
+        }
+        closeLoaders(previous)
+    }
+
+    private fun closeLoaders(extensions: List<LoadedExtension>) {
+        extensions.map { it.classLoader }.distinct().forEach { (it as? AutoCloseable)?.close() }
     }
 
     /** Returns the directory where extensions should be placed. */

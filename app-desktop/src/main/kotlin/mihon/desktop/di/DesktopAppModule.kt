@@ -176,6 +176,7 @@ internal suspend fun initDesktopDIForTest(
         networkHelper = networkHelper,
         scheduler = Injekt.get(),
         downloadManager = Injekt.get(),
+        extensionManager = Injekt.get(),
     ).also { activeDesktopTestDIContext = it }
 }
 
@@ -186,6 +187,7 @@ internal class DesktopTestDIContext(
     private val networkHelper: DesktopNetworkHelper,
     private val scheduler: LibraryUpdateScheduler,
     private val downloadManager: mihon.desktop.download.DesktopDownloadManager,
+    private val extensionManager: DesktopExtensionManager,
 ) : AutoCloseable {
     private var closed = false
 
@@ -201,6 +203,7 @@ internal class DesktopTestDIContext(
         // Cancel calls before joining downloads because OkHttp execute() is blocking.
         networkHelper.client.dispatcher.cancelAll()
         downloadManager.stopAndJoin()
+        extensionManager.close()
         networkHelper.close()
         handler.close()
         if (activeDesktopTestDIContext === this) activeDesktopTestDIContext = null
@@ -317,17 +320,24 @@ internal fun initExtensionLayer(paths: DesktopPlatformPaths, networkHelper: Desk
 }
 
 private fun registerDesktopExtension(paths: DesktopPlatformPaths, networkHelper: DesktopNetworkHelper, handler: DatabaseHandler) {
+    val extensionRepoRepository = Injekt.get<ExtensionRepoRepository>()
+    val extensionApi = DesktopExtensionApi(
+        client = networkHelper.client,
+        json = Injekt.get<Json>(),
+        extensionRepoRepository = extensionRepoRepository,
+    )
     val extensionManager = DesktopExtensionManager(
-        DesktopExtensionLoader(paths.extensionsDir),
+        loader = DesktopExtensionLoader(paths.extensionsDir),
+        artifactProvider = extensionApi::downloadArtifact,
     )
     extensionManager.loadAll()
     Injekt.addSingleton(extensionManager)
+    Injekt.addSingleton(extensionApi)
     val sourceManager = DesktopSourceManager(extensionManager, Injekt.get())
     Injekt.addSingleton<SourceManager>(sourceManager)
     Injekt.addSingleton(sourceManager)
     registerDesktopTracking(sourceManager, networkHelper.client)
     Injekt.addSingleton<SourceRepository>(DesktopSourceRepository(sourceManager, handler))
-    val extensionRepoRepository = Injekt.get<ExtensionRepoRepository>()
     val extensionRepoService = ExtensionRepoService(Injekt.get<NetworkHelper>(), Injekt.get<Json>())
     Injekt.addSingleton(extensionRepoService)
     Injekt.addSingleton(GetExtensionRepo(extensionRepoRepository))
@@ -335,13 +345,6 @@ private fun registerDesktopExtension(paths: DesktopPlatformPaths, networkHelper:
     Injekt.addSingleton(DeleteExtensionRepo(extensionRepoRepository))
     Injekt.addSingleton(ReplaceExtensionRepo(extensionRepoRepository))
     Injekt.addSingleton(UpdateExtensionRepo(extensionRepoRepository, extensionRepoService))
-    Injekt.addSingleton(
-        DesktopExtensionApi(
-            client = networkHelper.client,
-            json = Injekt.get<Json>(),
-            extensionRepoRepository = extensionRepoRepository,
-        ),
-    )
 }
 
 private fun registerDesktopTracking(sourceManager: SourceManager, client: OkHttpClient) {

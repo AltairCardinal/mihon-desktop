@@ -94,7 +94,7 @@ class DesktopExtensionApiSharedCatalogTest {
                 repoFingerprint = "incoming-fingerprint",
             )
 
-            val result = api().installExtension(available, tempDir.toFile())
+            val result = install(api(), available)
 
             val trustRequired =
                 assertInstanceOf(DesktopExtensionApi.InstallResult.TrustRequired::class.java, result)
@@ -110,7 +110,7 @@ class DesktopExtensionApiSharedCatalogTest {
             recordedDigest = "",
         )
 
-        val result = api().installExtension(availableExtension(), tempDir.toFile())
+        val result = install(api(), availableExtension())
 
         val trustRequired = assertInstanceOf(DesktopExtensionApi.InstallResult.TrustRequired::class.java, result)
         assertEquals(setOf(TrustMismatch.LegacyMetadataMissingArtifactDigest), trustRequired.reasons)
@@ -124,7 +124,7 @@ class DesktopExtensionApiSharedCatalogTest {
             repositoryFingerprint = "repo-fingerprint",
         )
 
-        val result = api().installExtension(availableExtension(), tempDir.toFile())
+        val result = install(api(), availableExtension())
 
         val trustRequired = assertInstanceOf(DesktopExtensionApi.InstallResult.TrustRequired::class.java, result)
         assertEquals(
@@ -140,7 +140,7 @@ class DesktopExtensionApiSharedCatalogTest {
             repositoryFingerprint = "old-fingerprint",
         )
 
-        val result = api().installExtension(availableExtension(), tempDir.toFile())
+        val result = install(api(), availableExtension())
 
         val trustRequired = assertInstanceOf(DesktopExtensionApi.InstallResult.TrustRequired::class.java, result)
         assertEquals(
@@ -157,7 +157,7 @@ class DesktopExtensionApiSharedCatalogTest {
             recordedDigest = "not-the-installed-digest",
         )
 
-        val result = api().installExtension(availableExtension(), tempDir.toFile())
+        val result = install(api(), availableExtension())
 
         val rejected = assertInstanceOf(DesktopExtensionApi.InstallResult.Error::class.java, result)
         assertInstanceOf(AppError.MalformedData::class.java, rejected.error)
@@ -183,7 +183,7 @@ class DesktopExtensionApiSharedCatalogTest {
                 declaredSha256 = "0000",
             )
 
-            val result = api().installExtension(available, tempDir.toFile())
+            val result = install(api(), available)
 
             val error = assertInstanceOf(DesktopExtensionApi.InstallResult.Error::class.java, result)
             assertEquals("Extension artifact integrity validation failed", error.message)
@@ -249,6 +249,21 @@ class DesktopExtensionApiSharedCatalogTest {
             extensionRepoRepository = repository,
             catalogService = ExtensionCatalogService(),
         )
+    }
+
+    private suspend fun install(
+        api: DesktopExtensionApi,
+        extension: DesktopAvailableExtension,
+    ): DesktopExtensionApi.InstallResult {
+        val manager = DesktopExtensionManager(
+            loader = DesktopExtensionLoader(tempDir.toFile()),
+            artifactProvider = api::downloadArtifact,
+        ).also { it.loadAll() }
+        return try {
+            api.installExtension(extension, manager)
+        } finally {
+            manager.close()
+        }
     }
 
     private fun repository(server: MockWebServer, name: String) = TestRepository(

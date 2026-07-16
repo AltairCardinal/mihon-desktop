@@ -261,11 +261,10 @@ class ExtensionListScreen : Screen {
                         installStates[ext.pkgName] = ExtensionInstallUiState.INSTALLING
                         installJobs[ext.pkgName] = scope.launch {
                             snackbarHostState.showSnackbar("Installing ${ext.name}…")
-                            val result = api.installExtension(ext, manager.extensionsDirectory)
+                            val result = api.installExtension(ext, manager)
                             when (result) {
                                 is DesktopExtensionApi.InstallResult.Success -> {
                                     installStates.remove(ext.pkgName)
-                                    manager.reloadAll()
                                     installedExtensions = manager.getInstalledExtensions()
                                     snackbarHostState.showSnackbar("${ext.name} installed")
                                 }
@@ -306,10 +305,9 @@ class ExtensionListScreen : Screen {
                             snackbarHostState.showSnackbar("Updating ${toUpdate.size} extension(s)…")
                             var successCount = 0
                             toUpdate.forEach { ext ->
-                                val result = api.installExtension(ext, manager.extensionsDirectory)
+                                val result = api.installExtension(ext, manager)
                                 if (result is DesktopExtensionApi.InstallResult.Success) successCount++
                             }
-                            manager.reloadAll()
                             installedExtensions = manager.getInstalledExtensions()
                             snackbarHostState.showSnackbar("Updated $successCount/${toUpdate.size} extension(s)")
                         }

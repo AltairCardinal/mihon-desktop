@@ -21,6 +21,10 @@ import mihon.desktop.download.DownloadFileOperations
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.download.DownloadStatus
 import mihon.desktop.extension.DesktopExtensionManager
+import mihon.desktop.extension.DesktopExtensionApi
+import mihon.desktop.extension.DesktopAvailableExtension
+import mihon.desktop.extension.DesktopAvailableSource
+import mihon.desktop.extension.FixtureNewSource
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.library.LibraryScreenModelFactory
 import mihon.desktop.library.MangaDetailScreenModelFactory
@@ -69,9 +73,74 @@ import java.net.ServerSocket
 import okhttp3.Response
 import java.util.UUID
 import java.util.prefs.Preferences
+import java.io.ByteArrayOutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
+import okio.Buffer
 
 @Isolated
 class DesktopDiWiringTest {
+    @Test
+    fun `extension install uses DI manager and updates its runtime inside transaction`(@TempDir tempDir: File) = runBlocking {
+        val context = initDesktopDIForTest(
+            tempDir,
+            DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")),
+        )
+        try {
+            val manager = Injekt.get<DesktopExtensionManager>()
+            val api = Injekt.get<DesktopExtensionApi>()
+            MockWebServer().use { server ->
+                server.start()
+                server.enqueue(MockResponse.Builder().body(Buffer().write(sourceJar())).build())
+                val extension = DesktopAvailableExtension(
+                    name = "Fixture",
+                    pkgName = "mihon.desktop.extension",
+                    versionName = "1.0",
+                    versionCode = 1,
+                    libVersion = 1.4,
+                    lang = "en",
+                    isNsfw = false,
+                    jarUrl = server.url("/fixture.jar").toString(),
+                    iconUrl = "",
+                    repoUrl = "https://repo.example",
+                    repoName = "Fixture repo",
+                    repoFingerprint = "fixture-key",
+                    sources = listOf(DesktopAvailableSource(FixtureNewSource.ID, "en", "Fixture", "https://example.com")),
+                )
+
+                val result = api.installExtension(extension, manager)
+
+                assertNotNull(result as? DesktopExtensionApi.InstallResult.Success)
+                assertSame(manager, Injekt.get<DesktopExtensionManager>())
+                assertNotNull(manager.getSource(FixtureNewSource.ID))
+                assertEquals(1, server.requestCount)
+            }
+        } finally {
+            context.closeAndJoin()
+        }
+    }
+
+    private fun sourceJar(): ByteArray {
+        val source = FixtureNewSource::class.java
+        val path = source.name.replace('.', '/') + ".class"
+        val classBytes = checkNotNull(source.classLoader.getResourceAsStream(path)).use { it.readBytes() }
+        return ByteArrayOutputStream().use { bytes ->
+            ZipOutputStream(bytes).use { zip ->
+                listOf(
+                    path to classBytes,
+                    "META-INF/services/eu.kanade.tachiyomi.source.Source" to source.name.toByteArray(),
+                ).forEach { (name, content) ->
+                    zip.putNextEntry(ZipEntry(name))
+                    zip.write(content)
+                    zip.closeEntry()
+                }
+            }
+            bytes.toByteArray()
+        }
+    }
+
     @Test
     fun `reinitializing test DI replaces every binding and scheduler context`(@TempDir tempDir: File) = runBlocking {
         val firstManga = Manga.create().copy(id = 101, source = 9, title = "First manga", favorite = true)

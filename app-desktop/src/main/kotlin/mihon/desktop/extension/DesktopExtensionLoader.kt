@@ -47,7 +47,7 @@ open class DesktopExtensionLoader(
 
     /** Loads one installed package without disturbing the manager's current runtime snapshot. */
     open fun loadPackage(packageName: String): List<LoadedExtension> {
-        val jarFile = File(extensionsDirectory, "$packageName.jar")
+        val jarFile = extensionArtifactFile(extensionsDirectory, packageName, "jar")
         return if (jarFile.isFile) loadFromJar(jarFile) else emptyList()
     }
 

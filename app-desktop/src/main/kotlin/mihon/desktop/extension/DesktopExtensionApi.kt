@@ -1,10 +1,11 @@
 package mihon.desktop.extension
 
 import eu.kanade.tachiyomi.network.GET
+import eu.kanade.tachiyomi.network.HttpException
 import eu.kanade.tachiyomi.network.awaitSuccess
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
+import java.io.IOException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
@@ -35,7 +36,6 @@ class DesktopExtensionApi(
     private val client: OkHttpClient,
     private val json: Json,
     private val extensionRepoRepository: ExtensionRepoRepository,
-    private val apkConverter: ApkToJarConverter = ApkToJarConverter(),
     private val catalogService: ExtensionCatalogService = ExtensionCatalogService(),
     private val trustPolicy: ExtensionTrustPolicy = ExtensionTrustPolicy(),
 ) {
@@ -87,48 +87,72 @@ class DesktopExtensionApi(
 
     suspend fun installExtension(
         extension: DesktopAvailableExtension,
-        targetDir: File,
+        manager: DesktopExtensionManager,
     ): InstallResult = withContext(Dispatchers.IO) {
-        targetDir.mkdirs()
-        val installedJar = File(targetDir, "${extension.pkgName}.jar")
-        val existingMeta = readExtensionMeta(installedJar)
-        val trustRequest = extension.trustRequest(installedJar, existingMeta)
-        trustFailure(trustPolicy.evaluate(trustRequest), existingMeta, extension)?.let { return@withContext it }
-
-        val manager = DesktopExtensionManager(DesktopExtensionLoader(targetDir)).also { it.loadAll() }
         try {
+            val installedJar = extensionArtifactFile(manager.extensionsDirectory, extension.pkgName, "jar")
+            val existingMeta = readExtensionMeta(installedJar)
+            val trustRequest = extension.trustRequest(installedJar, existingMeta)
+            trustFailure(trustPolicy.evaluate(trustRequest), existingMeta, extension)?.let { return@withContext it }
             when (
-                val terminal = manager.installExtension(
-                    artifact = trustRequest.incomingArtifact,
-                    artifactProvider = ::downloadArtifact,
-                    apkConverter = apkConverter,
-                )
+                val terminal = manager.installExtension(trustRequest.incomingArtifact)
             ) {
                 is ExtensionInstallState.Installed -> InstallResult.Success(installedJar)
                 is ExtensionInstallState.Failed -> terminal.error.toInstallResult()
                 else -> InstallResult.Error("Extension install ended before reaching a terminal state")
             }
-        } finally {
-            manager.close()
+        } catch (failure: mihon.domain.extension.service.ExtensionInstallFailure) {
+            failure.error.toInstallResult()
         }
     }
 
-    private suspend fun downloadArtifact(artifact: ExtensionArtifact, destination: File) {
-        client.newCall(GET(artifact.downloadUrl)).awaitSuccess().use { response ->
-            response.body.byteStream().use { input ->
-                destination.outputStream().use { output -> input.copyTo(output) }
+    internal suspend fun downloadArtifact(artifact: ExtensionArtifact, destination: File) {
+        try {
+            client.newCall(GET(artifact.downloadUrl)).awaitSuccess().use { response ->
+                response.body.byteStream().use { input ->
+                    destination.outputStream().use { output -> input.copyTo(output) }
+                }
             }
+        } catch (failure: CancellationException) {
+            throw failure
+        } catch (failure: mihon.domain.extension.service.ExtensionInstallFailure) {
+            throw failure
+        } catch (failure: HttpException) {
+            throw mihon.domain.extension.service.ExtensionInstallFailure(failure.toDownloadError())
+        } catch (failure: IOException) {
+            throw mihon.domain.extension.service.ExtensionInstallFailure(AppError.Network(failure))
         }
     }
 
     private fun AppError.toInstallResult(): InstallResult.Error {
-        val detail = cause?.message ?: "Unknown error"
-        val message = if (detail == "Downloaded extension digest mismatch") {
-            "Extension artifact integrity validation failed"
-        } else {
-            detail
+        val message = when (this) {
+            is AppError.Network -> cause?.message ?: "Network error while downloading extension"
+            is AppError.Authentication -> "Extension download was rejected by the server"
+            is AppError.Challenge -> "Extension download requires an unsupported challenge"
+            is AppError.RateLimited -> "Extension download was rate limited"
+            is AppError.Server -> "Extension server returned HTTP $statusCode"
+            is AppError.Permission -> cause?.message ?: "Permission denied while installing extension"
+            is AppError.MalformedData -> if (cause?.message == "Downloaded extension digest mismatch") {
+                "Extension artifact integrity validation failed"
+            } else {
+                cause?.message ?: "Extension artifact is malformed"
+            }
+            is AppError.Storage -> cause?.message ?: "Unable to store extension artifact"
+            AppError.Cancelled -> "Extension installation was cancelled"
+            is AppError.PartialFailure -> failures.joinToString(
+                prefix = "Extension installation partially failed: ",
+                separator = "; ",
+            ) { it.toInstallResult().message }
+            is AppError.Unknown -> cause?.message ?: "Unknown extension installation error"
         }
         return InstallResult.Error(message, this)
+    }
+
+    private fun HttpException.toDownloadError(): AppError = when (code) {
+        401, 403 -> AppError.Authentication(this)
+        429 -> AppError.RateLimited(cause = this)
+        in 500..599 -> AppError.Server(code, this)
+        else -> AppError.Network(this)
     }
 
     private fun File.sha256(): String = inputStream().use { input ->
@@ -205,27 +229,5 @@ class DesktopExtensionApi(
 
     companion object {
         private const val MAX_ICON_BYTES = 2 * 1024 * 1024
-    }
-}
-
-internal fun replaceExtensionArtifact(candidate: File, destination: File) {
-    val backup = File(destination.parentFile, "${destination.name}.backup")
-    backup.delete()
-    if (destination.exists()) {
-        Files.move(destination.toPath(), backup.toPath(), StandardCopyOption.REPLACE_EXISTING)
-    }
-    try {
-        Files.move(
-            candidate.toPath(),
-            destination.toPath(),
-            StandardCopyOption.REPLACE_EXISTING,
-            StandardCopyOption.ATOMIC_MOVE,
-        )
-        backup.delete()
-    } catch (error: Exception) {
-        if (backup.exists()) {
-            Files.move(backup.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING)
-        }
-        throw error
     }
 }

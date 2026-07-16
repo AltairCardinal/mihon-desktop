@@ -84,11 +84,11 @@ class DesktopExtensionProductBaselineTest {
         val destination = directory.resolve("extension.jar").toFile().also { it.writeText("installed") }
         val candidate = directory.resolve("candidate.jar").toFile().also { it.writeText("update") }
 
-        replaceExtensionArtifact(candidate, destination)
+        DefaultDesktopExtensionFileSystem.replaceFromSnapshot(candidate, destination)
 
         assertEquals("update", destination.readText())
-        assertFalse(candidate.exists())
-        assertFalse(directory.resolve("extension.jar.backup").exists())
+        assertEquals("update", candidate.readText())
+        assertFalse(directory.toFile().listFiles().orEmpty().any { it.name.endsWith(".replace.tmp") })
     }
 
     @Test
