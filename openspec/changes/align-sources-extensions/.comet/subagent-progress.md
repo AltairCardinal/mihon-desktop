@@ -100,7 +100,7 @@
 
 - Current task: `Task 4C: Android 安装事务/session 生命周期`
 - Plan checkbox: pending（原 4C 实现提交作为本 Task 的基线，未通过审查，不视为已完成）
-- Stage: `spec-review`
+- Stage: `final-fix`
 - Task execution base: `53758e118d8024a593d72645f3aa6034de193a46`
 - Original Task 4C base: `905a8d5c120b337c5c77f8bbe064111c9ed1ba9c`
 - Implementer: `/root/task4c_session_impl`
@@ -126,6 +126,11 @@
 - Cumulative product scope: 7 files, +843/-90 (933 changed lines); plan/brief waiver updated for the review-expanded single lifecycle risk axis.
 - Re-review package: `.superpowers/sdd/align-sources-task-4c-session-rereview.diff` (cumulative base `b645e4af9`, head `c38a82069`).
 - Re-reviewer: `/root/task4c_session_rereview` (fresh independent read-only reviewer; validates closure of all four original Important findings and newly introduced lifecycle risks).
+- Re-review result: Spec Compliance `CHANGES_REQUIRED`; Task quality `NEEDS_FIXES`; Critical 0 / Important 3 / Minor 0. Original findings closure: OPEN / OPEN / OPEN / CLOSED. Report: `.superpowers/sdd/align-sources-task-4c-session-rereview.md`.
+- Final repair requirements: (1) retain a durable TTL cancellation tombstone after first enqueue consumes the pending ack so same-transaction re-entry and lost/delayed broadcast remain rejected; (2) move user-visible Idle/terminal and coordinator completion behind a bounded end-to-end cleanup protocol covering PackageInstaller and non-cancellable Shizuku completion/destroy, plus platformResults/deferred/activeTransactions/activeJobs/flight and service/cancel receiver lifecycle; a timeout may report cleanup failure but must not let rollback race an active platform install; (3) bind callback eligibility to actual `Session.commit(intentSender)` exactly once and make removal of commit fail the production wiring test.
+- Final repair decision: all three findings are technically valid and remain one `android-install-session-lifecycle` risk axis; perform one final fresh TDD repair/re-review round without pausing. Shizuku AIDL must remain unchanged; prefer fixing the shared base cancellation lifecycle, modifying `ShizukuInstaller.kt` only if production callback completion cannot otherwise close the ack.
+- Final fix agent: pending fresh agent.
+- Review/fix round: 2/2
 - Implementation commit: `9965e22577746c31e59435cdd35f4b30e677c020` (`refactor(android): adapt transactional extension install`).
 - Scope: 3 brief-listed files, +572/-85 (657 changed lines); the plan records a concrete Split waiver for the inseparable Android production wiring, platform transaction adapter, and integration test.
 - RED evidence: initial wiring 2/3 expected failures; fresh-install rollback 1/4 expected failure; existing-private rollback 1/6 expected failure; explicit cancellation 1/1 expected failure.
