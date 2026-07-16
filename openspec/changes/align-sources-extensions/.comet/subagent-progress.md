@@ -100,12 +100,20 @@
 
 - Current task: `Task 4C: Android 安装事务/session 生命周期`
 - Plan checkbox: pending（原 4C 实现提交作为本 Task 的基线，未通过审查，不视为已完成）
-- Stage: `implementing`
+- Stage: `spec-review`
 - Task execution base: `53758e118d8024a593d72645f3aa6034de193a46`
 - Original Task 4C base: `905a8d5c120b337c5c77f8bbe064111c9ed1ba9c`
 - Implementer: `/root/task4c_session_impl`
 - Brief: `.superpowers/sdd/align-sources-task-4c-session-brief.md`
 - Report: `.superpowers/sdd/align-sources-task-4c-session-report.md`
+- Implementation commit: `d02b64279ab25fabd7952bb75cdf15326708de68` (`fix(android): bind extension install sessions to transactions`).
+- Changed files: 7 brief-listed files, +536/-89 (625 changed lines); plan updated with a concrete single-risk-axis Split waiver.
+- RED evidence: valid Android SDK run entered 15 tests with 6 expected production assertion failures covering late/same-package callbacks, transaction/session mismatch, PendingUserAction mismatch, active cancel, service destroy and cancel-before-enqueue; SDK configuration and JVM framework-stub failures were diagnosed and excluded from TDD evidence.
+- GREEN evidence: lifecycle+wiring 16/16 PASS; related Manager/PackageInstaller/Shizuku regression 3/3 PASS; root Spotless 61 tasks PASS.
+- Mutation evidence: UUID/hash collision, transaction validation, session validation, timeout, abandon, cancel tombstone and terminal CAS mutations each caused the named behavior test to fail and were restored before final verification.
+- Implementer concern: the JVM test uses limited reflection to connect the Android framework container seam to real production queue/session state; independent review must determine whether this remains valid production-wiring evidence rather than accepting the report's claim.
+- Reviewer: pending fresh read-only reviewer.
+- Review/fix round: 0/2
 - Implementation commit: `9965e22577746c31e59435cdd35f4b30e677c020` (`refactor(android): adapt transactional extension install`).
 - Scope: 3 brief-listed files, +572/-85 (657 changed lines); the plan records a concrete Split waiver for the inseparable Android production wiring, platform transaction adapter, and integration test.
 - RED evidence: initial wiring 2/3 expected failures; fresh-install rollback 1/4 expected failure; existing-private rollback 1/6 expected failure; explicit cancellation 1/1 expected failure.
