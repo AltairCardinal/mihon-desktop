@@ -137,6 +137,7 @@
 - Finding evaluation: all five are technically valid and remain within the existing 7-file shared+desktop boundary. Perform the final focused TDD repair without expanding into Task 5C UI/DI/settings.
 - Final repair requirements: bind UA to clearance identity/expiry and atomically clear it on successful non-solver replacement; preserve old pairing on failure/rollback; run the local finite atomic committer on IO and document that post-claim honesty requires its no-network finite completion contract; use active-action completion for browser cancellation; implement per-required-name existence of a domain-valid nonblank candidate; let Retry reset a recoverable failed attempt and prove real persistence failure→old credentials preserved→Retry→one successful commit→Recovered.
 - Review/fix round: 2/2.
+- Final fix agent: `/root/task5b_fix2` (fresh TDD repair agent; UA lifecycle, IO/finite-commit contract, self-cancel, required-value quantifier, and Failed→Retry closure).
 
 ## Task 5A Review History
 
