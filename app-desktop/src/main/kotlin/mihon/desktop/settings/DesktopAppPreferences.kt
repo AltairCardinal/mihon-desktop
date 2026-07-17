@@ -1,7 +1,10 @@
 package mihon.desktop.settings
 
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
+import java.net.URI
 import java.util.prefs.Preferences
 
 enum class ThemeMode { LIGHT, DARK, SYSTEM }
@@ -9,6 +12,8 @@ enum class ReaderDefaultMode { PAGER, WEBTOON }
 
 /** DNS over HTTPS provider. [OFF] uses system DNS. */
 enum class DohProvider { OFF, GOOGLE, CLOUDFLARE, ADGUARD }
+
+data class FlareSolverrRuntimeConfig(val baseUrl: HttpUrl)
 
 /** Interval for automatic library updates. [OFF] disables automatic updates. */
 enum class LibraryUpdateInterval(val hours: Long) {
@@ -104,6 +109,23 @@ class DesktopAppPreferences(
             serializer = { it.name },
             deserializer = { DohProvider.valueOf(it) },
         ).migrate("doh_provider") { runCatching { DohProvider.valueOf(it) }.getOrNull() }
+    }
+
+    val flareSolverrEnabled: Preference<Boolean> by lazy {
+        boolean(key = "flare_solverr_enabled", default = false)
+    }
+
+    val flareSolverrUrl: Preference<String> by lazy {
+        string(key = "flare_solverr_url", default = "")
+    }
+
+    fun flareSolverrRuntimeConfig(): FlareSolverrRuntimeConfig? {
+        if (!flareSolverrEnabled.get()) return null
+        val rawUrl = flareSolverrUrl.get().trim()
+        val uri = runCatching { URI(rawUrl) }.getOrNull() ?: return null
+        if (!uri.isAbsolute || uri.host.isNullOrBlank() || uri.scheme.lowercase() !in setOf("http", "https")) return null
+        val baseUrl = rawUrl.toHttpUrlOrNull() ?: return null
+        return FlareSolverrRuntimeConfig(baseUrl)
     }
 
     /** Category IDs to include in library updates (comma-separated). Empty = all. */

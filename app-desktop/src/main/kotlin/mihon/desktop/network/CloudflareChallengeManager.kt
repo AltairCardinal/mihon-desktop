@@ -39,6 +39,9 @@ class CloudflareChallengeManager(
     private val commitDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val currentTimeMillis: () -> Long = System::currentTimeMillis,
     private val authenticatedCookieLookup: AuthenticatedCookieLookup = AuthenticatedCookieLookup { emptyList() },
+    private val browserAdapterProvider: ((CloudflareChallenge) -> BrowserLoginAdapter)? = null,
+    private val committerProvider: (() -> AuthenticatedSessionCommitter)? = null,
+    private val flareSolverrClientProvider: (() -> FlareSolverrClient?)? = null,
 ) {
     private val _challenges = MutableSharedFlow<CloudflareChallenge>(
         extraBufferCapacity = 1,
@@ -162,7 +165,7 @@ class CloudflareChallengeManager(
                     -> error("non-action intent reached action execution")
                     ChallengeRecoveryIntent.OpenBrowser -> recoverWithSession(
                         challenge = challenge,
-                        adapter = browserAdapter,
+                        adapter = browserAdapterProvider?.invoke(challenge) ?: browserAdapter,
                         invalidFailure = ChallengeRecoveryFailure.InvalidCookies,
                     )
                     is ChallengeRecoveryIntent.SubmitManualCookies -> recoverWithSession(
@@ -179,7 +182,7 @@ class CloudflareChallengeManager(
     }
 
     private suspend fun recoverWithSolver(challenge: CloudflareChallenge): ChallengeRecoveryState {
-        val solver = flareSolverrClient
+        val solver = flareSolverrClient ?: flareSolverrClientProvider?.invoke()
             ?: return challenge.fail(ChallengeRecoveryFailure.SolverUnavailable)
         val solved = try {
             withContext(Dispatchers.IO) {
@@ -224,7 +227,6 @@ class CloudflareChallengeManager(
         invalidFailure: ChallengeRecoveryFailure,
         solverUserAgent: String? = null,
     ): ChallengeRecoveryState {
-        val delegate = committer ?: MissingAuthenticatedSessionCommitter
         val request = challenge.request.copy(timeoutMillis = challenge.remainingMillis().coerceAtLeast(1))
         val guardedCommitter = AuthenticatedSessionCommitter { loginRequest, session ->
             // Claim and the final result bracket one local atomic commit. Once claimed, cancellation
@@ -234,7 +236,8 @@ class CloudflareChallengeManager(
                 val host = loginRequest.url.host.lowercase()
                 hostCommitLock(host).withLock {
                     withContext(commitDispatcher) {
-                        delegate.commit(loginRequest, session)
+                        (committer ?: committerProvider?.invoke() ?: MissingAuthenticatedSessionCommitter)
+                            .commit(loginRequest, session)
                     }
                     if (solverUserAgent == null) {
                         solverUserAgents.remove(host)

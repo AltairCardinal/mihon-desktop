@@ -13,6 +13,7 @@ import tachiyomi.domain.source.service.BrowserOpenResult
 import tachiyomi.domain.source.service.SourceLoginRequest
 import java.awt.Desktop
 import java.net.URI
+import java.util.IdentityHashMap
 
 fun interface DesktopBrowserOpener {
     fun open(uri: URI, completion: DesktopBrowserLoginTicket): Boolean
@@ -24,9 +25,9 @@ interface DesktopBrowserLoginTicket {
 }
 
 class DesktopBrowserLoginCompletion {
-    internal fun register(): RegisteredBrowserLogin {
+    internal fun register(onTerminal: (DesktopBrowserLoginTicket) -> Unit = {}): RegisteredBrowserLogin {
         val result = CompletableDeferred<BrowserLoginResult>()
-        val ticket = ControlledBrowserLoginTicket(result)
+        val ticket = ControlledBrowserLoginTicket(result, onTerminal)
         return RegisteredBrowserLogin(ticket, ControlledBrowserLoginSession(result, ticket))
     }
 
@@ -43,11 +44,17 @@ class DesktopBrowserLoginCompletion {
 
     private class ControlledBrowserLoginTicket(
         private val result: CompletableDeferred<BrowserLoginResult>,
+        private val onTerminal: (DesktopBrowserLoginTicket) -> Unit,
     ) : DesktopBrowserLoginTicket {
-        override fun complete(session: AuthenticatedSession): Boolean =
-            result.complete(BrowserLoginResult.Completed(session))
+        override fun complete(session: AuthenticatedSession): Boolean = finish(BrowserLoginResult.Completed(session))
 
-        override fun cancel(): Boolean = result.complete(BrowserLoginResult.Cancelled)
+        override fun cancel(): Boolean = finish(BrowserLoginResult.Cancelled)
+
+        private fun finish(terminal: BrowserLoginResult): Boolean {
+            val completed = result.complete(terminal)
+            if (completed) onTerminal(this)
+            return completed
+        }
 
         override fun toString(): String = "DesktopBrowserLoginTicket(<opaque>)"
     }
@@ -61,9 +68,15 @@ internal data class RegisteredBrowserLogin(
 class DesktopBrowserLoginAdapter(
     private val browserOpener: DesktopBrowserOpener = SystemDesktopBrowserOpener,
     private val completion: DesktopBrowserLoginCompletion,
+    private val onTicketRegistered: (DesktopBrowserLoginTicket) -> Boolean = { true },
+    private val onTicketTerminal: (DesktopBrowserLoginTicket) -> Unit = {},
 ) : BrowserLoginAdapter {
     override suspend fun open(request: SourceLoginRequest): BrowserOpenResult {
-        val registered = completion.register()
+        val registered = completion.register(onTicketTerminal)
+        if (!onTicketRegistered(registered.ticket)) {
+            registered.ticket.cancel()
+            return BrowserOpenResult.Unavailable
+        }
         val opened = runCatching { browserOpener.open(request.url.toUri(), registered.ticket) }.getOrDefault(false)
         if (!opened) {
             registered.ticket.cancel()
@@ -71,6 +84,38 @@ class DesktopBrowserLoginAdapter(
         }
         return BrowserOpenResult.Opened(registered.session)
     }
+}
+
+class DesktopChallengeBrowserLoginBridge(
+    private val completion: DesktopBrowserLoginCompletion = DesktopBrowserLoginCompletion(),
+    browserOpener: DesktopBrowserOpener? = null,
+) {
+    private val browserOpener = browserOpener ?: SystemDesktopBrowserOpener
+    private val pending = IdentityHashMap<CloudflareChallenge, DesktopBrowserLoginTicket>()
+
+    fun adapterFor(challenge: CloudflareChallenge): BrowserLoginAdapter = DesktopBrowserLoginAdapter(
+        browserOpener = browserOpener,
+        completion = completion,
+        onTicketRegistered = { ticket ->
+            synchronized(pending) {
+                if (pending.containsKey(challenge)) false else true.also { pending[challenge] = ticket }
+            }
+        },
+        onTicketTerminal = { ticket ->
+            synchronized(pending) {
+                if (pending[challenge] === ticket) pending.remove(challenge)
+            }
+        },
+    )
+
+    fun complete(challenge: CloudflareChallenge, session: AuthenticatedSession): Boolean =
+        synchronized(pending) { pending[challenge] }?.complete(session) ?: false
+
+    fun cancel(challenge: CloudflareChallenge): Boolean =
+        synchronized(pending) { pending[challenge] }?.cancel() ?: false
+
+    override fun toString(): String =
+        "DesktopChallengeBrowserLoginBridge(pending=${synchronized(pending) { pending.size }})"
 }
 
 class DesktopAuthenticatedSessionCommitter(

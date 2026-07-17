@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.backup.AutoBackupScheduler
 import mihon.desktop.backup.BackupRestoreScreenModelFactory
 import mihon.desktop.domain.LibraryUpdateScheduler
@@ -33,6 +34,13 @@ import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.ui.more.StatsScreenModel
 import mihon.desktop.task.DesktopTaskScheduler
 import mihon.desktop.migration.DesktopBatchMigrationController
+import mihon.desktop.network.ChallengeRecoveryFailure
+import mihon.desktop.network.ChallengeRecoveryIntent
+import mihon.desktop.network.ChallengeRecoveryState
+import mihon.desktop.network.CloudflareChallengeManager
+import mihon.desktop.network.DesktopAuthenticatedSessionCommitter
+import mihon.desktop.network.DesktopBrowserOpener
+import mihon.desktop.network.DesktopChallengeBrowserLoginBridge
 import mihon.domain.download.DownloadRepository
 import mihon.domain.download.EnqueueDownload
 import mihon.domain.download.IsChapterDownloaded
@@ -41,6 +49,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
@@ -52,6 +61,9 @@ import tachiyomi.domain.track.service.TrackerServiceRegistry
 import mihon.desktop.platform.DesktopCredentialStore
 import mihon.desktop.tracking.DesktopTrackerSyncScheduler
 import tachiyomi.domain.track.interactor.ReadingProgressTrackSync
+import tachiyomi.domain.source.service.AuthenticatedCookie
+import tachiyomi.domain.source.service.AuthenticatedSession
+import tachiyomi.domain.source.service.SourceLoginRequest
 import tachiyomi.domain.reader.interactor.RecordReadingProgress
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.chapter.model.Chapter
@@ -71,6 +83,7 @@ import uy.kohesive.injekt.api.get
 import java.io.File
 import java.net.ServerSocket
 import okhttp3.Response
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.util.UUID
 import java.util.prefs.Preferences
 import java.io.ByteArrayOutputStream
@@ -82,6 +95,72 @@ import okio.Buffer
 
 @Isolated
 class DesktopDiWiringTest {
+    @Test
+    fun `challenge DI uses one bridge manager committer and helper jar for all explicit success paths`(
+        @TempDir tempDir: File,
+    ) = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            val store = DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}"))
+            val preferences = DesktopAppPreferences(store)
+            val context = initDesktopDIForTest(
+                tempDir,
+                store,
+                startDownloadWorker = false,
+                browserOpener = DesktopBrowserOpener { _, _ -> true },
+            )
+            try {
+                val manager = Injekt.get<CloudflareChallengeManager>()
+                val bridge = Injekt.get<DesktopChallengeBrowserLoginBridge>()
+                val helper = Injekt.get<DesktopNetworkHelper>()
+                val ui = DesktopUiDependencies.fromInjekt()
+                assertEquals(listOf(manager, bridge, helper), listOf(ui.cloudflareChallengeManager, ui.challengeBrowserLoginBridge, ui.networkHelper))
+                Injekt.get<DesktopAuthenticatedSessionCommitter>()
+                assertEquals(0, server.requestCount, "runtime providers must not be observed while the helper is built")
+
+                val manual = manager.publish(loginRequest())
+                assertTrue(
+                    manager.recover(manual, ChallengeRecoveryIntent.SubmitManualCookies(loginSession("manual-secret"))) is
+                        ChallengeRecoveryState.Recovered,
+                )
+                assertEquals("manual-secret", helper.cookieJar.get(loginRequest().url).single().value)
+
+                val browser = manager.publish(loginRequest())
+                val browserRecovery = async(start = CoroutineStart.UNDISPATCHED) {
+                    manager.recover(browser, ChallengeRecoveryIntent.OpenBrowser)
+                }
+                assertTrue(bridge.complete(browser, loginSession("browser-secret")))
+                assertTrue(browserRecovery.await() is ChallengeRecoveryState.Recovered)
+                assertEquals("browser-secret", helper.cookieJar.get(loginRequest().url).single().value)
+                assertEquals(0, server.requestCount)
+
+                assertEquals(
+                    ChallengeRecoveryState.RecoverableFailure(ChallengeRecoveryFailure.SolverUnavailable),
+                    manager.recover(manager.publish(loginRequest()), ChallengeRecoveryIntent.UseFlareSolverr),
+                )
+                preferences.flareSolverrEnabled.set(true)
+                preferences.flareSolverrUrl.set("ftp://invalid")
+                manager.recover(manager.publish(loginRequest()), ChallengeRecoveryIntent.UseFlareSolverr)
+                assertEquals(0, server.requestCount)
+
+                server.enqueue(
+                    MockResponse(
+                        body = """{"status":"ok","solution":{"userAgent":"solver-agent","cookies":[{"name":"cf_clearance","value":"solver-secret","domain":"reader.example.com","secure":true}]}}""",
+                    ),
+                )
+                preferences.flareSolverrUrl.set(server.url("/").toString())
+                assertTrue(
+                    manager.recover(manager.publish(loginRequest()), ChallengeRecoveryIntent.UseFlareSolverr) is
+                        ChallengeRecoveryState.Recovered,
+                )
+                assertEquals(1, server.requestCount)
+                assertEquals("solver-secret", helper.cookieJar.get(loginRequest().url).single().value)
+            } finally {
+                context.closeAndJoin()
+            }
+        }
+    }
+
     @Test
     fun `extension install uses DI manager and updates its runtime inside transaction`(@TempDir tempDir: File) = runBlocking {
         val context = initDesktopDIForTest(
@@ -338,6 +417,16 @@ class DesktopDiWiringTest {
             }
         }
     }
+
+    private fun loginRequest() = SourceLoginRequest(
+        url = "https://reader.example.com/chapter".toHttpUrl(),
+        requiredCookieNames = setOf("cf_clearance"),
+        timeoutMillis = 30_000,
+    )
+
+    private fun loginSession(value: String) = AuthenticatedSession(
+        listOf(AuthenticatedCookie("cf_clearance", value, "reader.example.com", true, "/", null, true, true)),
+    )
 
     @Test
     fun `测试配置入口使用隔离内存存储并解析实际依赖`(@TempDir tempDir: File) = runBlocking {

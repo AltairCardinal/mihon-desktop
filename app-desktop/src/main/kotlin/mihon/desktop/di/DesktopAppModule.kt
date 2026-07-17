@@ -54,6 +54,10 @@ import mihon.desktop.tracking.DesktopTrackerServiceRegistry
 import mihon.desktop.tracking.DesktopTrackerSyncScheduler
 import mihon.desktop.migration.DesktopBatchMigrationController
 import mihon.desktop.domain.MigrationOptions
+import mihon.desktop.network.DesktopAuthenticatedSessionCommitter
+import mihon.desktop.network.DesktopBrowserOpener
+import mihon.desktop.network.DesktopChallengeBrowserLoginBridge
+import mihon.desktop.network.FlareSolverrClient
 import mihon.desktop.test.http.MigrationBatchTestBridge
 import mihon.desktop.test.http.TrackingTestBridge
 import mihon.desktop.tracking.TrackingTestModeController
@@ -152,12 +156,13 @@ internal suspend fun initDesktopDIForTest(
     updateManga: (suspend (tachiyomi.domain.manga.model.Manga) -> LibraryUpdateChecker.UpdateResult)? = null,
     startDownloadWorker: Boolean = false,
     downloadFileOperations: mihon.desktop.download.DownloadFileOperations = mihon.desktop.download.DefaultDownloadFileOperations,
+    browserOpener: DesktopBrowserOpener? = null,
 ): DesktopTestDIContext {
     activeDesktopTestDIContext?.closeAndJoin()
     patchInjekt()
     val paths = desktopPaths(appDir)
     initDesktopConfigurationForTest(appDir, preferenceStore)
-    val networkHelper = initNetworkLayer(paths, preferenceStore)
+    val networkHelper = initNetworkLayer(paths, preferenceStore, browserOpener)
     val handler = initDataLayer(paths)
     initExtensionLayer(paths, networkHelper, handler)
     initDomainLayer(handler)
@@ -237,25 +242,49 @@ private fun registerDesktopReader(preferenceStore: PreferenceStore) {
 // HTTP client, JSON serializer, DoH, Cloudflare bypass.
 // Depends on: config layer (preferenceStore for DoH setting).
 
-internal fun initNetworkLayer(paths: DesktopPlatformPaths, preferenceStore: PreferenceStore): DesktopNetworkHelper {
-    return registerDesktopNetwork(paths, preferenceStore)
+internal fun initNetworkLayer(
+    paths: DesktopPlatformPaths,
+    preferenceStore: PreferenceStore,
+    browserOpener: DesktopBrowserOpener? = null,
+): DesktopNetworkHelper {
+    return registerDesktopNetwork(paths, preferenceStore, browserOpener)
 }
 
-private fun registerDesktopNetwork(paths: DesktopPlatformPaths, preferenceStore: PreferenceStore): DesktopNetworkHelper {
+private fun registerDesktopNetwork(
+    paths: DesktopPlatformPaths,
+    preferenceStore: PreferenceStore,
+    browserOpener: DesktopBrowserOpener?,
+): DesktopNetworkHelper {
     val dohProvider = preferenceStore.getObjectFromString(
         key = "doh_provider",
         defaultValue = mihon.desktop.settings.DohProvider.OFF,
         serializer = { it.name },
         deserializer = { mihon.desktop.settings.DohProvider.valueOf(it) },
     ).get()
-    val challengeManager = mihon.desktop.network.CloudflareChallengeManager()
-    Injekt.addSingleton(challengeManager)
-    val networkHelper = DesktopNetworkHelper(
+    val appPreferences = Injekt.get<DesktopAppPreferences>()
+    val browserBridge = DesktopChallengeBrowserLoginBridge(browserOpener = browserOpener)
+    lateinit var networkHelper: DesktopNetworkHelper
+    lateinit var authenticatedSessionCommitter: DesktopAuthenticatedSessionCommitter
+    val challengeManager = mihon.desktop.network.CloudflareChallengeManager(
+        browserAdapterProvider = browserBridge::adapterFor,
+        committerProvider = { authenticatedSessionCommitter },
+        flareSolverrClientProvider = {
+            appPreferences.flareSolverrRuntimeConfig()?.let { config ->
+                FlareSolverrClient(config.baseUrl.toString(), networkHelper.client)
+            }
+        },
+    )
+    networkHelper = DesktopNetworkHelper(
         cacheDir = paths.networkCacheDir,
         cookieStorageFile = paths.cookiesFile,
         dohProvider = dohProvider,
         challengeManager = challengeManager,
     )
+    authenticatedSessionCommitter = DesktopAuthenticatedSessionCommitter(networkHelper.cookieJar)
+    Injekt.addSingleton(browserBridge)
+    Injekt.addSingleton(challengeManager)
+    Injekt.addSingleton(authenticatedSessionCommitter)
+    Injekt.addSingleton<tachiyomi.domain.source.service.AuthenticatedSessionCommitter>(authenticatedSessionCommitter)
     Injekt.addSingleton(networkHelper)
     Injekt.addSingleton(networkHelper.client)
     Injekt.addSingleton(NetworkHelper(networkHelper.client))
