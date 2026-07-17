@@ -101,7 +101,7 @@
 - Current task: `Task 5B: Desktop 挑战恢复策略与 FlareSolverr 显式后备`
 - Plan checkbox: pending
 - OpenSpec mapping: `3.3` partial (do not check off until Tasks 5B and 5C complete).
-- Stage: `final-repair`
+- Stage: `final-review`
 - Task base: `1d5b6cc9b`
 - Brief: `.superpowers/sdd/align-sources-task-5b-brief.md`
 - Risk axis: `challenge-recovery-policy`
@@ -138,6 +138,12 @@
 - Final repair requirements: bind UA to clearance identity/expiry and atomically clear it on successful non-solver replacement; preserve old pairing on failure/rollback; run the local finite atomic committer on IO and document that post-claim honesty requires its no-network finite completion contract; use active-action completion for browser cancellation; implement per-required-name existence of a domain-valid nonblank candidate; let Retry reset a recoverable failed attempt and prove real persistence failure→old credentials preserved→Retry→one successful commit→Recovered.
 - Review/fix round: 2/2.
 - Final fix agent: `/root/task5b_fix2` (fresh TDD repair agent; UA lifecycle, IO/finite-commit contract, self-cancel, required-value quantifier, and Failed→Retry closure).
+- Final fix commit: `f8dc0d5af1f7eb902d4eac80a037dbd48c6e60a2` (`fix(desktop): close challenge recovery lifecycle gaps`).
+- Final repair behavior: UA binding carries clearance identity/expiry, expires lazily, clears after successful browser/manual replacement, preserves old UA+Cookie on solver/browser/manual failure or jar rollback, and serializes same-host commit/binding updates by real completion order. Real local atomic commit runs on an injected IO dispatcher under the documented finite/no-network committer contract. Browser-originated cancellation completes without self-cancelling. Shared validation accepts a required name iff at least one domain-valid nonblank candidate exists. Failed commit attempts keep their old waiter immutable while explicit Retry alone creates a new attempt that can reach Recovered.
+- Final repair RED/GREEN: deterministic cases covered blank+valid/nonrequired/invalid-domain candidates, browser self-cancel, named caller versus commit-IO thread, UA expiry/replacement/failure/rollback/concurrent order, post-claim truth, and real jar persistence failure→old credentials preserved→Failed waiter→Retry→one successful new commit.
+- Final repair mutations: permanent UA, caller-thread commit, generic self-cancelling Cancelled completion, any-blank rejection, or placing the terminal gate before Retry each failed a named test and was restored.
+- Final repair verification: fresh policy 30 + client 2 + import 7 + adapter 6 + session 19 + jar 21 + persistence 8 = 93/93 PASS, 0 failures/errors/skips; root Spotless 97/97 tasks in the same `BUILD SUCCESSFUL in 1m26s`; diff/scope checks PASS.
+- Final cumulative scope: 7 planned files, +2041/-72 (2113 changed lines); plan/brief waiver updated for the second review closure.
 
 ## Task 5A Review History
 
