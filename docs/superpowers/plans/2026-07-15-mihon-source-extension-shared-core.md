@@ -544,6 +544,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 **Split waiver:** 顶层 5 files/620 lines 是两个独立 TDD、提交和审查单元的聚合值，不是单个实现者一次调度范围；6A1 与 6A2 均低于 8 文件/400 行。单源 coordinator/projector/action 必须先独立全绿，Global 与 Browse 再消费同一契约；把三 Screen 状态删除压入一个 320 行任务会迫使删除行为测试或保留复制状态，违反有效验证和共享状态唯一事实源要求。
 
 - [ ] **Task 6A1: 单源共享状态、exact recovery 与 production action wiring**
+  - [ ] **Task 6A1R: 审查闭环——区分通用登录与 Cloudflare，并证明 Screen 重放 exact request**
 - [ ] **Task 6A2: Global 共享状态消费与 Browse 缺源入口**
 
 **Files:**
