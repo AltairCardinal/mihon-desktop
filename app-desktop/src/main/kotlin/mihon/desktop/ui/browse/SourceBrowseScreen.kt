@@ -45,7 +45,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -67,34 +66,82 @@ import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.SaveSourceMangaForDetails
+import mihon.desktop.network.CloudflareChallengeManager
 import mihon.desktop.ui.library.MangaDetailScreen
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourceQuery
 import tachiyomi.domain.source.service.SourceQueryState
-import tachiyomi.domain.source.service.SourceRecoveryAction
-import java.awt.Desktop
-import java.net.URI
+import tachiyomi.domain.source.service.SourceLoginRequest
+import tachiyomi.i18n.MR
+
+data class SourceBrowseUiState(
+    val items: List<SManga> = emptyList(),
+    val loading: Boolean = false,
+    val empty: Boolean = false,
+    val request: tachiyomi.domain.source.service.SourcePageRequest? = null,
+    val hasNextPage: Boolean = false,
+    val pageError: SourcePageError? = null,
+)
+
+object SourceBrowseStateProjector {
+    fun project(state: SourceQueryState?): SourceBrowseUiState = when (state) {
+        null -> SourceBrowseUiState()
+        is SourceQueryState.Loading -> SourceBrowseUiState(state.items, true, request = state.request)
+        is SourceQueryState.Empty -> SourceBrowseUiState(empty = true, request = state.request)
+        is SourceQueryState.Failure -> SourceBrowseUiState(
+            request = state.request,
+            pageError = SourcePageError(state.error, state.recoveryAction),
+        )
+        is SourceQueryState.Content -> SourceBrowseUiState(
+            items = state.items,
+            loading = state.isLoading,
+            request = state.request,
+            hasNextPage = state.hasNextPage,
+            pageError = state.pageError,
+        )
+    }
+}
+
+class DesktopSourceRecoveryActionAdapter(
+    private val challengeManager: CloudflareChallengeManager,
+) {
+    suspend fun execute(
+        intent: DesktopSourceRecoveryIntent,
+        retry: suspend (tachiyomi.domain.source.service.SourcePageRequest) -> Unit,
+    ) {
+        when (intent) {
+            is DesktopSourceRecoveryIntent.Retry -> retry(intent.request)
+            is DesktopSourceRecoveryIntent.OpenLogin -> intent.url.toHttpUrlOrNull()?.let {
+                challengeManager.publish(SourceLoginRequest(it, setOf("cf_clearance"), 120_000))
+            }
+            DesktopSourceRecoveryIntent.None -> Unit
+        }
+    }
+}
 
 data class SourceBrowseScreen(val sourceId: Long) : Screen {
+
+    internal fun projectState(state: SourceQueryState?): SourceBrowseUiState =
+        SourceBrowseStateProjector.project(state)
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val sourceManager = LocalDesktopUiDependencies.current.sourceManager
-        val sourceMangaSearchService = LocalDesktopUiDependencies.current.sourceMangaSearchService
-        val saveSourceMangaForDetails = LocalDesktopUiDependencies.current.saveSourceMangaForDetails
+        val dependencies = LocalDesktopUiDependencies.current
+        val sourceManager = dependencies.sourceManager
+        val sourceMangaSearchService = dependencies.sourceMangaSearchService
+        val saveSourceMangaForDetails = dependencies.saveSourceMangaForDetails
         val source = remember { sourceManager.getCatalogueSources().find { it.id == sourceId } }
         val scope = rememberCoroutineScope()
 
-        val mangas = remember { mutableStateListOf<SManga>() }
-        var isLoading by remember { mutableStateOf(false) }
+        var queryState by remember { mutableStateOf<SourceQueryState?>(null) }
+        val queryUiState = projectState(queryState)
         var openingMangaUrl by remember { mutableStateOf<String?>(null) }
-        var queryError by remember { mutableStateOf<SourcePageError?>(null) }
-        var currentPage by remember { mutableStateOf(1) }
-        var hasNextPage by remember { mutableStateOf(false) }
         val queryCoordinator = remember { SourceBrowseQueryCoordinator(sourceMangaSearchService) }
+        val recoveryActions = remember { DesktopSourceRecoveryActionAdapter(dependencies.cloudflareChallengeManager) }
 
         // Search state
         var searchQuery by remember { mutableStateOf("") }
@@ -111,49 +158,24 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
         val hasFilters = remember(source) { source?.getFilterList()?.isNotEmpty() == true }
 
         fun loadPage(page: Int, query: String = "", mode: BrowseMode = browseMode) {
-            if (source == null || (page > 1 && isLoading)) return
+            if (source == null || (page > 1 && queryUiState.loading)) return
             val sourceQuery = when {
                     query.isNotBlank() -> SourceQuery.Search(query, activeFilters)
                     hasActiveFilters(activeFilters) -> SourceQuery.Search("", activeFilters)
                     mode == BrowseMode.LATEST -> SourceQuery.Latest
                     else -> SourceQuery.Popular
                 }
-            isLoading = true
-            if (page == 1) queryError = null
             scope.launch {
-                val reduced = queryCoordinator.load(source, page, sourceQuery)
-                mangas.clear()
-                mangas.addAll(reduced.items)
-                isLoading = reduced.isLoading
-                currentPage = reduced.request.page
-                when (reduced) {
-                    is SourceQueryState.Content -> {
-                        hasNextPage = reduced.hasNextPage
-                        queryError = reduced.pageError
-                    }
-                    is SourceQueryState.Empty -> {
-                        hasNextPage = false
-                        queryError = null
-                    }
-                    is SourceQueryState.Failure -> {
-                        hasNextPage = false
-                        queryError = SourcePageError(reduced.error, reduced.recoveryAction)
-                    }
-                    is SourceQueryState.Loading -> Unit
-                }
+                queryCoordinator.load(source, page, sourceQuery) { queryState = it }
             }
         }
 
         fun recover() {
-            when (val intent = source?.let(queryCoordinator::recoveryIntent)) {
-                is DesktopSourceRecoveryIntent.Retry -> loadPage(
-                    intent.request.page,
-                    if (isSearchMode) searchQuery else "",
-                )
-                is DesktopSourceRecoveryIntent.OpenExternalUrl -> runCatching {
-                    Desktop.getDesktop().browse(URI(intent.url))
+            val catalogueSource = source ?: return
+            scope.launch {
+                recoveryActions.execute(queryCoordinator.recoveryIntent(catalogueSource)) {
+                    queryCoordinator.retry(catalogueSource) { queryState = it }
                 }
-                DesktopSourceRecoveryIntent.None, null -> Unit
             }
         }
 
@@ -260,21 +282,27 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
                 }
 
                 when {
-                    isLoading && mangas.isEmpty() -> {
+                    queryUiState.loading && queryUiState.items.isEmpty() -> {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator()
                         }
                     }
 
-                    queryError != null && mangas.isEmpty() -> {
+                    queryUiState.empty -> {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(MR.strings.source_empty_screen.localized())
+                        }
+                    }
+
+                    queryUiState.pageError != null && queryUiState.items.isEmpty() -> {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
-                                    desktopSourceErrorMessage(queryError!!.error),
+                                    desktopSourceErrorMessage(queryUiState.pageError.error),
                                     color = MaterialTheme.colorScheme.error,
                                     style = MaterialTheme.typography.bodyMedium,
                                 )
-                                desktopSourceRecoveryActionLabel(queryError!!.recoveryAction)?.let { label ->
+                                desktopSourceRecoveryActionLabel(queryUiState.pageError.recoveryAction)?.let { label ->
                                     androidx.compose.material3.Button(
                                         onClick = ::recover,
                                         modifier = Modifier.padding(top = 8.dp),
@@ -294,7 +322,7 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxSize(),
                         ) {
-                            items(mangas, key = { it.url }) { manga ->
+                            items(queryUiState.items, key = { it.url }) { manga ->
                                 MangaCard(manga = manga) {
                                     val catalogueSource = source ?: return@MangaCard
                                     if (openingMangaUrl != null) return@MangaCard
@@ -311,7 +339,7 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
                                 }
                             }
 
-                            queryError?.let { error ->
+                            queryUiState.pageError?.let { error ->
                                 item {
                                     Column(
                                         modifier = Modifier.fillMaxWidth().padding(8.dp),
@@ -331,11 +359,11 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
                             }
 
                             // Load-more trigger
-                            if (hasNextPage) {
+                            if (queryUiState.hasNextPage) {
                                 item {
-                                    LaunchedEffect(mangas.size) {
+                                    LaunchedEffect(queryUiState.items.size) {
                                         loadPage(
-                                            currentPage + 1,
+                                            (queryUiState.request?.page ?: 0) + 1,
                                             if (isSearchMode) searchQuery else "",
                                         )
                                     }

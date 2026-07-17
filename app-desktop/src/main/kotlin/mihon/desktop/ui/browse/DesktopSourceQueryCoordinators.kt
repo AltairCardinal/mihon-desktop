@@ -17,8 +17,13 @@ import java.util.Locale
 
 sealed interface DesktopSourceRecoveryIntent {
     data class Retry(val request: SourcePageRequest) : DesktopSourceRecoveryIntent
-    data class OpenExternalUrl(val url: String) : DesktopSourceRecoveryIntent
+    data class OpenLogin(val url: String) : DesktopSourceRecoveryIntent
     data object None : DesktopSourceRecoveryIntent
+
+    companion object {
+        @Deprecated("Use OpenLogin; opening is delegated to the platform login flow")
+        fun OpenExternalUrl(url: String): DesktopSourceRecoveryIntent = OpenLogin(url)
+    }
 }
 
 internal fun desktopSourceErrorMessage(error: AppError, locale: Locale = Locale.getDefault()): String = when (error) {
@@ -51,41 +56,64 @@ class SourceBrowseQueryCoordinator(
         source: CatalogueSource,
         page: Int,
         query: SourceQuery,
+        onState: (SourceQueryState) -> Unit = {},
     ): SourceQueryState {
         val request = synchronized(lock) {
             if (page == 1) generation += 1
-            SourcePageRequest(source.id, page, generation, query).also { request ->
-                state = reducer.start(request, state)
-            }
+            SourcePageRequest(source.id, page, generation, query)
         }
+        return load(source, request, onState)
+    }
+
+    private suspend fun load(
+        source: CatalogueSource,
+        request: SourcePageRequest,
+        onState: (SourceQueryState) -> Unit,
+    ): SourceQueryState {
+        val started = synchronized(lock) { reducer.start(request, state).also { state = it } }
+        onState(started)
         val result = service.loadPageResult(source, request)
         return synchronized(lock) {
             reducer.reduce(state ?: reducer.start(request), result).also { state = it }
-        }
+        }.also(onState)
     }
 
-    suspend fun retry(source: CatalogueSource): SourceQueryState {
+    suspend fun retry(
+        source: CatalogueSource,
+        onState: (SourceQueryState) -> Unit = {},
+    ): SourceQueryState {
         val request = requireNotNull(state?.request) { "No source request to retry" }
         require(recoveryAction() == SourceRecoveryAction.Retry) { "Current source error is not retryable" }
-        return load(source, request.page, request.query)
+        return load(source, request, onState)
     }
 
-    fun recoveryIntent(source: CatalogueSource): DesktopSourceRecoveryIntent = when (recoveryAction()) {
-        SourceRecoveryAction.Retry -> state?.request?.let(DesktopSourceRecoveryIntent::Retry)
-            ?: DesktopSourceRecoveryIntent.None
-        SourceRecoveryAction.OpenLogin -> (source as? HttpSource)
-            ?.baseUrl
-            ?.takeIf { it.startsWith("http") }
-            ?.let(DesktopSourceRecoveryIntent::OpenExternalUrl)
-            ?: DesktopSourceRecoveryIntent.None
-        SourceRecoveryAction.None, null -> DesktopSourceRecoveryIntent.None
-    }
+    fun recoveryIntent(source: CatalogueSource): DesktopSourceRecoveryIntent =
+        desktopSourceRecoveryIntent(source, state)
 
     private fun recoveryAction(): SourceRecoveryAction? = when (val current = state) {
         is SourceQueryState.Content -> current.pageError?.recoveryAction
         is SourceQueryState.Failure -> current.recoveryAction
         else -> null
     }
+}
+
+private fun desktopSourceRecoveryIntent(
+    source: CatalogueSource,
+    state: SourceQueryState?,
+): DesktopSourceRecoveryIntent = when (state.recoveryAction()) {
+    SourceRecoveryAction.Retry -> state?.request?.let(DesktopSourceRecoveryIntent::Retry)
+        ?: DesktopSourceRecoveryIntent.None
+    SourceRecoveryAction.OpenLogin -> (source as? HttpSource)?.baseUrl
+        ?.takeIf { it.startsWith("http") }
+        ?.let(DesktopSourceRecoveryIntent::OpenLogin)
+        ?: DesktopSourceRecoveryIntent.None
+    SourceRecoveryAction.None, null -> DesktopSourceRecoveryIntent.None
+}
+
+private fun SourceQueryState?.recoveryAction(): SourceRecoveryAction? = when (this) {
+    is SourceQueryState.Content -> pageError?.recoveryAction
+    is SourceQueryState.Failure -> recoveryAction
+    else -> null
 }
 
 data class DesktopGlobalSearchState(
@@ -148,4 +176,5 @@ class DesktopGlobalSearchCoordinator(
         }
         completed?.let(onState)
     }
+
 }
