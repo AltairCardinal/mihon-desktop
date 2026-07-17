@@ -684,7 +684,7 @@ class DesktopChallengeRecoveryPolicyTest {
         try {
             server.enqueue(
                 MockResponse.Builder()
-                    .headersDelay(250, TimeUnit.MILLISECONDS)
+                    .headersDelay(30, TimeUnit.SECONDS)
                     .body(solvedBody("example.com", "late-secret"))
                     .build(),
             )
@@ -696,10 +696,11 @@ class DesktopChallengeRecoveryPolicyTest {
                     OkHttpClient(),
                 ),
             )
-            val challenge = manager.publish(loginRequest(timeoutMillis = 50))
+            val challenge = manager.publish(loginRequest(timeoutMillis = 5_000))
             val recovery = async(Dispatchers.IO) {
                 manager.recover(challenge, ChallengeRecoveryIntent.UseFlareSolverr)
             }
+            server.takeRequest(5, TimeUnit.SECONDS) ?: error("solver request was not sent")
 
             val terminal = withContext(Dispatchers.IO) { challenge.awaitTerminal() }
             withTimeout(5_000) { recovery.join() }
