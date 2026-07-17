@@ -575,12 +575,15 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
       - [x] **Task 6A2B2R: 动态 source 列表与真实 Content collect/dispose wiring**
     - [x] **Task 6A2B3: Global generic login Dialog、反馈与删除 AWT 路径**
   - [ ] **Task 6A2C: Browse 缺失 source 的 ExtensionListScreen 导航入口**
+    - [ ] **Task 6A2CR: 真实 BrowseTab nested Navigator 黑盒保护**
 
 **6A2B1R2 scope adjustment:** 原 70 changed lines 估算遗漏了移除旧全局 observer 与 direct callback 路径本身产生的约 28 行删除；最小 production 替换约 62 changed lines，真实 duplicate/cross-session/recovery RED 约 39 行。该行为闭环不可再独立拆分，调整为 2 files/110 changed lines，仍远低于项目 400 行拆分门槛；不得为满足旧估算压缩掉行为断言。
 
 **6A2B1R3 review closure:** B1R2 为判断 accepted winner 把 `StateFlow.value` 写入放回 global monitor，可能同步恢复 collector 并与跨线程 `coordinatorFor/search` 重入死锁。新子任务仍仅 coordinator+测试两文件、≤90 changed lines：global lock 内只接受/盖章 immutable candidate，锁外用 ordinal-aware `MutableStateFlow.compareAndSet` 或等价 stamped publisher 原子选 winner，且只有 winner 调 session callback。必须以 Unconfined/阻塞 collector + 另一线程重入的确定性测试击穿锁内 setter mutation。
 
 **6A2B2R review closure:** B2 首轮审查确认无 key `remember` 固化 source 列表，且 helper-only 测试无法在删除 `Content()` 的 Flow collect 或 `DisposableEffect` 时失败。修复仍限制 `GlobalSearchScreen.kt` 与 `SourceSharedStateWiringTest.kt`；真实 Compose A→B、Loading/result semantics、dispose close 及动态 source fixture 的最小可读实现为 289 changed lines，因此 B2 聚合范围调整为 2 files/300 changed lines，仍低于项目 400 行拆分门槛：后续搜索必须读取当前 installed sources；测试使用真实 Compose `GlobalSearchScreen.Content`、可注入 coordinator factory 与 production dependencies，证明状态 collect 和 dispose close。不得以源码扫描或仅调用 helper 代替。
+
+**6A2CR review closure:** 6A2C 首轮测试手工创建 `Navigator(BrowseSourceListScreen())`，删除 production `BrowseTab.Content()` 的 nested Navigator 后仍会通过；唯一修复轮又以 Voyager child 反射观察层级，并被无关既有测试抢先失败，未形成有效 RED。重规划为仅测试文件、≤70 changed lines 的黑盒保护：只提供 `TabNavigator(BrowseTab)`，通过 `CurrentTab()` 调用真实 `BrowseTab.Content()`，点击空源 Extensions action 后观察 `ExtensionListScreen` 的真实 UI；mutation 精确运行该测试并删除 production nested Navigator，此时必须因缺失普通 `LocalNavigator` 而失败。禁止反射 navigator children、测试自建等价普通 Navigator 或 test-only production seam。
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceQueryCoordinators.kt`
