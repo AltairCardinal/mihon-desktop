@@ -7,6 +7,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.network.ChallengeRecoveryIntent
+import mihon.desktop.network.ChallengeRecoveryAction
 import mihon.desktop.network.ChallengeRecoveryState
 import mihon.desktop.network.CloudflareChallenge
 import mihon.desktop.network.CloudflareChallengeManager
@@ -24,17 +25,130 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.i18n.MR
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.domain.source.service.AuthenticatedCookie
 import tachiyomi.domain.source.service.AuthenticatedSession
 import tachiyomi.domain.source.service.SourceLoginRequest
 import java.util.UUID
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.prefs.Preferences
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DesktopChallengeLoginWiringTest {
+    @Test
+    fun `controller opens a bound browser ticket and completes it without direct jar access`() = runTest {
+        val jar = DesktopCookieJar()
+        val bridge = DesktopChallengeBrowserLoginBridge(
+            browserOpener = DesktopBrowserOpener { _, _ -> true },
+        )
+        val manager = CloudflareChallengeManager(
+            browserAdapterProvider = bridge::adapterFor,
+            committer = DesktopAuthenticatedSessionCommitter(jar),
+        )
+        val controller = DesktopChallengeLoginController(manager, bridge, DesktopAppPreferences(InMemoryPreferenceStore()))
+        val challenge = manager.publish(request())
+
+        val recovery = async { controller.dispatch(challenge, ChallengeRecoveryIntent.OpenBrowser) }
+        runCurrent()
+        val running = controller.uiState(challenge)
+        assertEquals(ChallengeRecoveryAction.Browser, running.runningAction)
+        assertFalse(running.allowConflictingActions)
+        controller.submitClearance(challenge, "browser-secret")
+
+        assertTrue(recovery.await() is ChallengeRecoveryState.Recovered)
+        val cookie = jar.get(request().url).single()
+        assertEquals(listOf("reader.example.com", true, "/chapter", true, true), listOf(cookie.domain, cookie.hostOnly, cookie.path, cookie.secure, cookie.httpOnly))
+        assertEquals("browser-secret", cookie.value)
+    }
+
+    @Test
+    fun `controller manual solver cancel and retry actions obey state and current resolver`() = runTest {
+        MockWebServer().use { solverServer ->
+            solverServer.start()
+            val preferences = DesktopAppPreferences(InMemoryPreferenceStore())
+            val bridge = DesktopChallengeBrowserLoginBridge(
+                browserOpener = DesktopBrowserOpener { _, _ -> true },
+            )
+            val jar = DesktopCookieJar()
+            val solverCalls = AtomicInteger()
+            val manager = CloudflareChallengeManager(
+                browserAdapterProvider = bridge::adapterFor,
+                committer = DesktopAuthenticatedSessionCommitter(jar),
+                flareSolverrClientProvider = {
+                    solverCalls.incrementAndGet()
+                    preferences.flareSolverrRuntimeConfig()?.let { FlareSolverrClient(it.baseUrl.toString(), OkHttpClient()) }
+                },
+            )
+            val controller = DesktopChallengeLoginController(manager, bridge, preferences)
+            val manual = manager.publish(request())
+            assertTrue(controller.submitClearance(manual, "manual-secret") is ChallengeRecoveryState.Recovered)
+            assertEquals("manual-secret", jar.get(request().url).single().value)
+
+            val disabled = manager.publish(request())
+            assertFalse(controller.uiState(disabled).showSolver)
+            assertEquals(ChallengeRecoveryState.AwaitingUserAction, controller.dispatch(disabled, ChallengeRecoveryIntent.UseFlareSolverr))
+            assertEquals(0, solverServer.requestCount)
+            assertEquals(0, solverCalls.get())
+            preferences.flareSolverrEnabled.set(true)
+            preferences.flareSolverrUrl.set("not a URL")
+            assertFalse(controller.uiState(disabled).showSolver)
+            assertEquals(ChallengeRecoveryState.AwaitingUserAction, controller.dispatch(disabled, ChallengeRecoveryIntent.UseFlareSolverr))
+            assertEquals(0, solverServer.requestCount)
+
+            preferences.flareSolverrUrl.set(solverServer.url("/").toString())
+            val running = manager.publish(request())
+            val browserRecovery = async { controller.dispatch(running, ChallengeRecoveryIntent.OpenBrowser) }
+            runCurrent()
+            assertTrue(controller.uiState(running).showSolver)
+            assertEquals(ChallengeRecoveryState.Running(ChallengeRecoveryAction.Browser), controller.dispatch(running, ChallengeRecoveryIntent.UseFlareSolverr))
+            assertEquals(0, solverServer.requestCount)
+            assertEquals(ChallengeRecoveryState.Cancelled, controller.dispatch(running, ChallengeRecoveryIntent.Cancel))
+            assertTrue(browserRecovery.isCancelled || browserRecovery.await() == ChallengeRecoveryState.Cancelled)
+
+            val failed = manager.publish(request())
+            solverServer.enqueue(MockResponse(body = "{}"))
+            assertTrue(controller.dispatch(failed, ChallengeRecoveryIntent.UseFlareSolverr) is ChallengeRecoveryState.RecoverableFailure)
+            assertEquals(ChallengeRecoveryState.AwaitingUserAction, controller.dispatch(failed, ChallengeRecoveryIntent.Retry))
+        }
+    }
+
+    @Test
+    fun `controller feedback is domain only redacted and stale completion cannot dismiss a new challenge`() = runTest {
+        val preferences = DesktopAppPreferences(InMemoryPreferenceStore())
+        val manager = CloudflareChallengeManager(
+            committer = DesktopAuthenticatedSessionCommitter(DesktopCookieJar()),
+        )
+        val controller = DesktopChallengeLoginController(manager, DesktopChallengeBrowserLoginBridge(), preferences, Locale.ENGLISH)
+        val old = manager.publish(request())
+        controller.submitClearance(old, "never-display-this-secret")
+        val fresh = manager.publish(request())
+
+        val state = controller.uiState(old)
+        assertEquals("reader.example.com", state.targetHost)
+        assertTrue(state.dismiss)
+        assertTrue(state.feedback.isNotBlank())
+        assertFalse(state.toString().contains("/chapter"))
+        assertFalse(state.toString().contains("never-display-this-secret"))
+        assertFalse(controller.shouldDismiss(fresh, old, old.state.value))
+        assertTrue(controller.shouldDismiss(old, old, old.state.value))
+    }
+
+    @Test
+    fun `base challenge resources resolve through MR`() {
+        val resolved = listOf(
+            MR.strings.desktop_challenge_title,
+            MR.strings.desktop_challenge_open_browser,
+            MR.strings.desktop_challenge_manual_submit,
+            MR.strings.desktop_challenge_solver_disabled,
+            MR.strings.desktop_challenge_timed_out,
+            MR.strings.desktop_challenge_recovered,
+        ).map { it.localized(Locale.ENGLISH) }
+        assertTrue(resolved.all(String::isNotBlank))
+    }
+
     @Test
     fun `FlareSolverr preferences persist and resolve only enabled absolute http URLs dynamically`() {
         val node = Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")

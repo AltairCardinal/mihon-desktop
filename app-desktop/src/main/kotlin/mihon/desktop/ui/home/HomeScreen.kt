@@ -16,11 +16,13 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import cafe.adriel.voyager.core.screen.Screen
@@ -32,13 +34,17 @@ import cafe.adriel.voyager.navigator.tab.LocalTabNavigator
 import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabNavigator
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import mihon.desktop.domain.DesktopNotificationService
 import mihon.desktop.network.CloudflareChallenge
-import mihon.desktop.network.CloudflareChallengeManager
+import mihon.desktop.network.ChallengeRecoveryAction
+import mihon.desktop.network.ChallengeRecoveryIntent
 import mihon.desktop.test.navigation.TestNavigationController
 import mihon.desktop.ui.browse.BrowseTab
 import mihon.desktop.ui.authors.AuthorsTab
 import mihon.desktop.ui.cloudflare.CloudflareBypassDialog
+import mihon.desktop.ui.cloudflare.DesktopChallengeLoginController
 import mihon.desktop.ui.extension.ExtensionListScreen
 import mihon.desktop.ui.history.HistoryTab
 import mihon.desktop.ui.library.LibraryTab
@@ -50,20 +56,34 @@ import mihon.desktop.ui.settings.DownloadSettingsScreen
 import mihon.desktop.ui.settings.GeneralSettingsScreen
 import mihon.desktop.ui.settings.MoreRootScreen
 import mihon.desktop.ui.updates.UpdatesTab
-import okhttp3.HttpUrl.Companion.toHttpUrl
 
 class HomeScreen : Screen {
 
     @Composable
     override fun Content() {
         var activeChallenge by remember { mutableStateOf<CloudflareChallenge?>(null) }
-        val challengeManager = LocalDesktopUiDependencies.current.cloudflareChallengeManager
-        val notificationService = LocalDesktopUiDependencies.current.notificationService
+        val dependencies = LocalDesktopUiDependencies.current
+        val challengeManager = dependencies.cloudflareChallengeManager
+        val notificationService = dependencies.notificationService
+        val controller = remember(challengeManager, dependencies.challengeBrowserLoginBridge, dependencies.appPreferences) {
+            DesktopChallengeLoginController(
+                challengeManager,
+                dependencies.challengeBrowserLoginBridge,
+                dependencies.appPreferences,
+            )
+        }
+        val scope = rememberCoroutineScope()
+        var actionJob by remember { mutableStateOf<Job?>(null) }
         val snackbarHostState = remember { SnackbarHostState() }
+
+        DisposableEffect(Unit) {
+            onDispose { actionJob?.cancel() }
+        }
 
         // Cloudflare challenges
         LaunchedEffect(Unit) {
             challengeManager.challenges.collect { challenge ->
+                actionJob?.cancel()
                 activeChallenge = challenge
             }
         }
@@ -81,23 +101,39 @@ class HomeScreen : Screen {
         }
 
         activeChallenge?.let { challenge ->
-            val networkHelper = LocalDesktopUiDependencies.current.networkHelper
+            val recoveryState by challenge.state.collectAsState()
+            val uiState = controller.uiState(challenge)
+            LaunchedEffect(challenge, recoveryState) {
+                if (controller.shouldDismiss(activeChallenge, challenge, recoveryState)) activeChallenge = null
+            }
+            val runIntent: (ChallengeRecoveryIntent) -> Unit = { intent ->
+                val block: suspend () -> Unit = {
+                    val result = controller.dispatch(challenge, intent)
+                    if (controller.shouldDismiss(activeChallenge, challenge, result)) activeChallenge = null
+                }
+                if (intent == ChallengeRecoveryIntent.Cancel) {
+                    scope.launch { block() }
+                } else {
+                    actionJob?.cancel()
+                    actionJob = scope.launch { block() }
+                }
+            }
             CloudflareBypassDialog(
-                url = challenge.url,
+                state = uiState,
+                onIntent = runIntent,
                 onCookieSubmit = { cookieValue ->
-                    networkHelper.cookieJar.addManual(
-                        challenge.url.toHttpUrl(),
-                        "cf_clearance",
-                        cookieValue,
-                    )
-                    challenge.resolved = true
-                    challenge.latch.countDown()
-                    activeChallenge = null
+                    val submit = suspend {
+                        val result = controller.submitClearance(challenge, cookieValue)
+                        if (controller.shouldDismiss(activeChallenge, challenge, result)) activeChallenge = null
+                    }
+                    if (uiState.runningAction == ChallengeRecoveryAction.Browser) {
+                        scope.launch { submit() }
+                    } else {
+                        actionJob?.cancel()
+                        actionJob = scope.launch { submit() }
+                    }
                 },
-                onCancel = {
-                    challenge.latch.countDown()
-                    activeChallenge = null
-                },
+                onDismiss = { runIntent(ChallengeRecoveryIntent.Cancel) },
             )
         }
 
