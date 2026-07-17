@@ -150,6 +150,7 @@
 - Finding evaluation: all findings are technically valid and localized to the existing 7-file shared+desktop boundary. Under the user's standing engineering override, perform one extra TDD closure round rather than stop at the mechanical 2/2 limit.
 - Extra closure requirements: derive UA binding from the normalized, actually committed nonblank clearance set and verify it against current jar state; rebuild every proceed from the untouched original request and current binding. Shared validation must pass a normalized commit session that removes blank required losers and makes canonical winners order-safe. Each attempt must own its immutable latch/terminal/deadline and Retry must create a full new timeout without changing old waiters. Replace the unbounded host-lock map with fixed stripes or safe refcounted cleanup.
 - Review/fix round: 3/3 (user-authorized engineering override for narrow closure).
+- Extra closure fix agent: `/root/task5b_fix3` (fresh TDD agent; normalized commit session, jar-validated UA binding, immutable attempt isolation/new deadline, and bounded striped host locks).
 
 ## Task 5A Review History
 
