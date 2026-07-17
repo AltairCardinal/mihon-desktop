@@ -554,6 +554,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
       - [x] **Task 6A1R2b2a: Source login DI、generic/Cloudflare 路由与 Screen production seam**
       - [ ] **Task 6A1R2b2b: Source login 对话框、MR、取消与终态反馈**
         - [ ] **Task 6A1R2b2b1: Source login UI state/action lifecycle**
+          - [ ] **Task 6A1R2b2b1R: attempt-aware start/completion race closure**
         - [ ] **Task 6A1R2b2b2: Source login Compose Dialog、MR 与 Screen render wiring**
 - [ ] **Task 6A2: Global 共享状态消费与 Browse 缺源入口**
 
