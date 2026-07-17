@@ -82,8 +82,9 @@ class SourceSharedStateWiringTest {
                 copy.commitFailed, copy.submit, copy.cancel, copy.close,
             ),
         )
-        assertEquals("token-4", copy.feedback(DesktopSourceLoginFeedback.InvalidHeader))
-        assertEquals("token-8", copy.feedback(DesktopSourceLoginFeedback.CommitFailed))
+        DesktopSourceLoginFeedback.entries.forEachIndexed { index, feedback ->
+            assertEquals("token-${index + 4}", copy.feedback(feedback))
+        }
     }
 
     @Test
