@@ -492,10 +492,10 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **Risk axis:** challenge-login-ui-wiring
 **Platform boundary:** desktop
-**Estimated scope:** 11 files, 1050 lines
+**Estimated scope:** 11 files, 1150 lines
 **Verification:** 运行 UI/DI production-wiring 测试，确认对话框展示目标域、进度、取消、超时、重试、手动导入；仅在设置启用且 URL 有效时显示并执行 FlareSolverr，所有日志/状态不包含 Cookie 值，触达文案使用 i18n。
-**Execution split:** 原 7 文件估算遗漏了既有 Task 5A initiator-bound browser completion seam、Task 5B 动态 solver provider、真实 CookieJar committer 与 `DesktopUiDependencies` 接点。为满足每个调度单元不超过 8 文件/400 行，Task 5C 连续拆为：5C-A `challenge-login-runtime-wiring`（desktop，7 files/400 lines：偏好契约、per-challenge browser bridge、动态 solver provider、真实 jar committer 与 DI）；5C-B `challenge-login-dialog-flow`（desktop，4 files/400 lines：Home/Dialog 状态与所有恢复动作、基础 i18n、行为测试）；5C-C `challenge-login-settings-i18n`（desktop，3 files/250 lines：Advanced 设置入口、持久反馈、资源完整性与回归）。三者全部通过独立审查后才勾选本 Task；OpenSpec 3.3/3.5 也只在三者完成后 checkoff。
-**Split waiver:** 本 Task 顶层的 11 files/1050 lines 是三个已独立调度、独立 TDD、独立提交和独立审查的子任务聚合值，并非交给一个实现者的实际 scope；5C-A 为 7/400、5C-B 为 4/400、5C-C 为 3/250，均未超过门槛。保留一个顶层 Task 是因为三者共同交付同一个 OpenSpec 3.3/3.5 用户能力且只能在全部 production wiring、UI 与设置资源完成后 checkoff；将任一子任务单独视为完整 capability 会产生无入口的基础设施或无真实 committer/provider 的假 UI。
+**Execution split:** 原 7 文件估算遗漏了既有 Task 5A initiator-bound browser completion seam、Task 5B 动态 solver provider、真实 CookieJar committer 与 `DesktopUiDependencies` 接点。为满足每个调度单元不超过 8 文件/400 行，Task 5C 连续拆为：5C-A1 `challenge-login-runtime-wiring`（desktop，7 files/400 lines：偏好契约、per-challenge browser bridge、动态 solver provider、真实 jar committer 与 DI）；5C-A2 `challenge-login-runtime-review-closure`（desktop，3 files/100 lines：独立审查要求的 exact-jar credential lookup、真实 outbound Cookie/UA、IDN canonical URL 与 interface identity）；5C-B `challenge-login-dialog-flow`（desktop，4 files/400 lines：Home/Dialog 状态与所有恢复动作、基础 i18n、行为测试）；5C-C `challenge-login-settings-i18n`（desktop，3 files/250 lines：Advanced 设置入口、持久反馈、资源完整性与回归）。全部通过独立审查后才勾选本 Task；OpenSpec 3.3/3.5 也只在全部完成后 checkoff。
+**Split waiver:** 本 Task 顶层的 11 files/1150 lines 是四个已独立调度、独立 TDD/修复验证、独立提交和独立审查的单元聚合值，并非交给一个实现者的实际 scope；5C-A1 为 7/400、5C-A2 为 3/100、5C-B 为 4/400、5C-C 为 3/250，均未超过门槛。保留一个顶层 Task 是因为这些单元共同交付同一个 OpenSpec 3.3/3.5 用户能力且只能在全部 production wiring、UI 与设置资源完成后 checkoff；将任一单元单独视为完整 capability 会产生无入口的基础设施或无真实 committer/provider 的假 UI。
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/settings/DesktopAppPreferences.kt`
