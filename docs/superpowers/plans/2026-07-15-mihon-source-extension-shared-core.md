@@ -563,6 +563,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
               - [x] **Task 6A1R2b2b2bR2: cancel 拒绝保留当前 UI 状态契约**
 - [ ] **Task 6A2: Global 共享状态消费与 Browse 缺源入口**
   - [ ] **Task 6A2A: Global StateFlow 聚合与 per-source coordinator 复用**
+    - [ ] **Task 6A2AR: cancellation-safe session retirement 与独立发布门禁验证**
   - [ ] **Task 6A2B: Global Search production projector、exact recovery 与 Dialog wiring**
   - [ ] **Task 6A2C: Browse 缺失 source 的 ExtensionListScreen 导航入口**
 
