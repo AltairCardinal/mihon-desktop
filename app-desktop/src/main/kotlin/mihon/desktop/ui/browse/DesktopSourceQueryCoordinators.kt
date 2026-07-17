@@ -22,12 +22,20 @@ import java.util.Locale
 
 sealed interface DesktopSourceRecoveryIntent {
     data class Retry(val request: SourcePageRequest) : DesktopSourceRecoveryIntent
-    data class OpenLogin(val url: String) : DesktopSourceRecoveryIntent
+    class OpenLogin(
+        val url: String,
+        val request: SourcePageRequest,
+    ) : DesktopSourceRecoveryIntent {
+        override fun equals(other: Any?): Boolean = other is OpenLogin && url == other.url
+        override fun hashCode(): Int = url.hashCode()
+        override fun toString(): String = "OpenLogin(url=$url, request=$request)"
+    }
     data object None : DesktopSourceRecoveryIntent
 
     companion object {
         @Deprecated("Use OpenLogin; opening is delegated to the platform login flow")
-        fun OpenExternalUrl(url: String): DesktopSourceRecoveryIntent = OpenLogin(url)
+        fun OpenExternalUrl(url: String): DesktopSourceRecoveryIntent =
+            OpenLogin(url, SourcePageRequest(Long.MIN_VALUE, 1, Long.MIN_VALUE, SourceQuery.Popular))
     }
 }
 
@@ -107,10 +115,21 @@ class SourceBrowseQueryCoordinator(
     suspend fun retry(
         source: CatalogueSource,
         request: SourcePageRequest,
+    ): SourceQueryState? = restart(source, request, SourceRecoveryAction.Retry)
+
+    suspend fun retryAfterLogin(
+        source: CatalogueSource,
+        request: SourcePageRequest,
+    ): SourceQueryState? = restart(source, request, SourceRecoveryAction.OpenLogin)
+
+    private suspend fun restart(
+        source: CatalogueSource,
+        request: SourcePageRequest,
+        expectedAction: SourceRecoveryAction,
     ): SourceQueryState? {
         val started = synchronized(lock) {
             val current = authoritativeState
-            if (current?.request != request || current.recoveryAction() != SourceRecoveryAction.Retry) {
+            if (current?.request != request || current.recoveryAction() != expectedAction) {
                 return@synchronized null
             }
             commitLocked(reducer.start(request, current))
@@ -152,7 +171,7 @@ private fun desktopSourceRecoveryIntent(
         ?: DesktopSourceRecoveryIntent.None
     SourceRecoveryAction.OpenLogin -> (source as? HttpSource)?.baseUrl
         ?.takeIf { it.startsWith("http") }
-        ?.let(DesktopSourceRecoveryIntent::OpenLogin)
+        ?.let { url -> state?.request?.let { request -> DesktopSourceRecoveryIntent.OpenLogin(url, request) } }
         ?: DesktopSourceRecoveryIntent.None
     SourceRecoveryAction.None, null -> DesktopSourceRecoveryIntent.None
 }

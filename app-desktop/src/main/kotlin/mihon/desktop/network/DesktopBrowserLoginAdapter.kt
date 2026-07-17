@@ -11,6 +11,7 @@ import tachiyomi.domain.source.service.BrowserLoginResult
 import tachiyomi.domain.source.service.BrowserLoginSession
 import tachiyomi.domain.source.service.BrowserOpenResult
 import tachiyomi.domain.source.service.SourceLoginRequest
+import tachiyomi.domain.source.service.SourceLoginSession
 import java.awt.Desktop
 import java.net.URI
 import java.util.IdentityHashMap
@@ -84,6 +85,20 @@ class DesktopBrowserLoginAdapter(
         }
         return BrowserOpenResult.Opened(registered.session)
     }
+}
+
+class DesktopSourceLoginSessionFactory(
+    val committer: AuthenticatedSessionCommitter,
+    private val browserOpener: DesktopBrowserOpener = SystemDesktopBrowserOpener,
+    private val completion: DesktopBrowserLoginCompletion = DesktopBrowserLoginCompletion(),
+) {
+    fun create(
+        onTicketRegistered: (DesktopBrowserLoginTicket) -> Boolean,
+        onTicketTerminal: (DesktopBrowserLoginTicket) -> Unit,
+    ): SourceLoginSession = SourceLoginSession(
+        DesktopBrowserLoginAdapter(browserOpener, completion, onTicketRegistered, onTicketTerminal),
+        committer,
+    )
 }
 
 class DesktopChallengeBrowserLoginBridge(

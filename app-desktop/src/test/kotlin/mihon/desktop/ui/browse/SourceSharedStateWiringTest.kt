@@ -1,6 +1,7 @@
 package mihon.desktop.ui.browse
 
 import eu.kanade.tachiyomi.network.HttpException
+import eu.kanade.tachiyomi.network.DesktopCookieJar
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -14,16 +15,26 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import mihon.desktop.network.DesktopBrowserOpener
+import mihon.desktop.network.CloudflareChallengeManager
+import mihon.desktop.network.DesktopAuthenticatedSessionCommitter
+import mihon.desktop.network.DesktopSourceLoginSessionFactory
 import mihon.domain.error.AppError
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourcePageRequest
 import tachiyomi.domain.source.service.SourceQuery
 import tachiyomi.domain.source.service.SourceQueryState
+import tachiyomi.domain.source.service.AuthenticatedCookie
+import tachiyomi.domain.source.service.AuthenticatedSession
+import tachiyomi.domain.source.service.AuthenticatedSessionCommitter
+import tachiyomi.domain.source.service.SourceLoginState
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -90,22 +101,119 @@ class SourceSharedStateWiringTest {
     }
 
     @Test
-    fun `generic source login never publishes a Cloudflare challenge`() = runBlocking {
-        val source = NamedSource(9, "Login")
-        var opened: Pair<Long, String>? = null
-        val adapter = DesktopSourceRecoveryActionAdapter { sourceId, url ->
-            opened = sourceId to url.toString()
-            true
-        }
-        val request = SourcePageRequest(9, 3, 11, SourceQuery.Search("old", FilterList()))
-        var replayed: SourcePageRequest? = null
+    fun `authenticated login keeps its captured request and never retries a newer generation`() = runBlocking {
+        val source = QueryFailureSource()
+        val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
+        coordinator.load(source, 1, SourceQuery.Search("old", FilterList()))
+        val captured = coordinator.state!!.request
+        val intent = DesktopSourceRecoveryIntent.OpenLogin("https://example.com/path", captured)
+        coordinator.load(source, 1, SourceQuery.Search("new", FilterList()))
+        val factory = DesktopSourceLoginSessionFactory(
+            committer = AuthenticatedSessionCommitter { _, _ -> },
+            browserOpener = DesktopBrowserOpener { _, ticket ->
+                ticket.complete(session("session", "secret"))
+                true
+            },
+        )
+        val controller = DesktopSourceLoginController(factory, coordinator)
 
-        adapter.execute(source, DesktopSourceRecoveryIntent.Retry(request)) { replayed = it }
-        adapter.execute(source, DesktopSourceRecoveryIntent.OpenLogin("https://example.com/path")) {}
+        val result = controller.login(source, intent)
 
-        assertEquals(request, replayed)
-        assertEquals(9L to "https://example.com/path", opened)
+        assertEquals(SourceLoginState.Authenticated(setOf("session"), 1), result)
+        assertEquals(captured, intent.request)
+        assertEquals(listOf("old", "new"), source.queries)
     }
+
+    @Test
+    fun `cookie header commits through the real jar before exact source retry`() = runBlocking {
+        val jar = DesktopCookieJar()
+        val source = CookieQuerySource(jar)
+        val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
+        coordinator.load(source, 1, SourceQuery.Search("captured", FilterList()))
+        val captured = coordinator.state!!.request
+        val factory = DesktopSourceLoginSessionFactory(
+            DesktopAuthenticatedSessionCommitter(jar),
+            DesktopBrowserOpener { _, _ -> true },
+        )
+        val controller = DesktopSourceLoginController(factory, coordinator)
+        val login = async(start = CoroutineStart.UNDISPATCHED) {
+            controller.login(source, DesktopSourceRecoveryIntent.OpenLogin(source.url.toString(), captured))
+        }
+
+        assertTrue(controller.submitCookies("session=secret; auth_token=token"))
+
+        assertEquals(SourceLoginState.Authenticated(setOf("auth_token", "session"), 2), login.await())
+        assertEquals(listOf("auth_token", "session"), jar.get(source.url).map { it.name }.sorted())
+        assertEquals(listOf(1, 1), source.requests.map { it.page })
+        assertEquals(listOf("captured", "captured"), source.requests.map { (it.query as SourceQuery.Search).query })
+        assertSame((captured.query as SourceQuery.Search).filters, source.filters.last())
+        assertEquals(captured, coordinator.state!!.request)
+        assertEquals(setOf("auth_token", "session"), source.cookies.last())
+        assertEquals(null, CloudflareChallengeManager().tryReceive())
+    }
+
+    @Test
+    fun `cookie header parser rejects unsafe input without exposing values`() {
+        val url = "https://example.com/path".toHttpUrl()
+        listOf("", "missing", "=secret", "session=", "session=one; session=two", "bad name=secret")
+            .forEach { assertEquals(null, DesktopSourceCookieHeaderParser.parse(it, url)) }
+        val parsed = requireNotNull(DesktopSourceCookieHeaderParser.parse("session=secret", url))
+        assertFalse(parsed.toString().contains("secret"))
+    }
+
+    @Test
+    fun `non authenticated login outcomes never retry the source`() = runBlocking {
+        suspend fun outcome(
+            opener: DesktopBrowserOpener,
+            committer: AuthenticatedSessionCommitter = AuthenticatedSessionCommitter { _, _ -> },
+            timeout: Long = 100,
+        ): SourceLoginState {
+            val source = QueryFailureSource()
+            val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
+            coordinator.load(source, 1, SourceQuery.Search("once", FilterList()))
+            val intent = DesktopSourceRecoveryIntent.OpenLogin("https://example.com", coordinator.state!!.request)
+            val result = DesktopSourceLoginController(
+                DesktopSourceLoginSessionFactory(committer, opener),
+                coordinator,
+                timeout,
+            ).login(source, intent)
+            assertEquals(listOf("once"), source.queries)
+            return result
+        }
+
+        assertEquals(SourceLoginState.BrowserUnavailable, outcome(DesktopBrowserOpener { _, _ -> false }))
+        assertEquals(SourceLoginState.Cancelled, outcome(DesktopBrowserOpener { _, ticket -> ticket.cancel(); true }))
+        assertEquals(SourceLoginState.TimedOut, outcome(DesktopBrowserOpener { _, _ -> true }, timeout = 1))
+        assertInstanceOf(
+            SourceLoginState.InvalidCookies::class.java,
+            outcome(DesktopBrowserOpener { _, ticket ->
+                ticket.complete(session("session", "secret").copy(cookies = session("session", "secret").cookies.map { it.copy(domain = "evil.test") }))
+                true
+            }),
+        )
+        assertEquals(
+            SourceLoginState.CommitFailed,
+            outcome(
+                DesktopBrowserOpener { _, ticket -> ticket.complete(session("session", "secret")); true },
+                AuthenticatedSessionCommitter { _, _ -> error("commit failed") },
+            ),
+        )
+    }
+
+    private fun session(name: String, value: String) = AuthenticatedSession(
+        listOf(
+            AuthenticatedCookie(
+                name,
+                value,
+                "example.com",
+                true,
+                "/",
+                null,
+                secure = true,
+                httpOnly = false,
+            ),
+        ),
+    )
 
     @Test
     fun `screen recovery never retries a newer request than its intent`() = runBlocking {
@@ -236,6 +344,21 @@ class SourceSharedStateWiringTest {
                 releaseOldResult.await(5, TimeUnit.SECONDS)
             }
             return MangasPage(listOf(manga("/$query")), false)
+        }
+    }
+
+    private class CookieQuerySource(val jar: DesktopCookieJar) : NamedSource(5, "Cookies") {
+        val url = "https://example.com/path".toHttpUrl()
+        val requests = mutableListOf<SourcePageRequest>()
+        val cookies = mutableListOf<Set<String>>()
+        val filters = mutableListOf<FilterList>()
+        override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
+            val names = jar.get(url).mapTo(sortedSetOf()) { it.name }
+            cookies += names
+            requests += SourcePageRequest(id, page, 1, SourceQuery.Search(query, filters))
+            this.filters += filters
+            if (names.isEmpty()) throw HttpException(403)
+            return MangasPage(listOf(manga("/authenticated")), false)
         }
     }
 
