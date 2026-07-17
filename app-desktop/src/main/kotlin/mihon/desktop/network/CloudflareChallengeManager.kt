@@ -404,18 +404,32 @@ private fun pathMatches(requestPath: String, cookiePath: String): Boolean =
 private fun parseOutboundCookies(cookieHeaders: List<String>): List<OutboundCookie>? {
     if (cookieHeaders.size != 1) return emptyList<OutboundCookie>().takeIf { cookieHeaders.isEmpty() }
     val header = cookieHeaders.single()
-    if (header.isBlank()) return emptyList()
-    return header.split(';').map { pair ->
+    if (header.isEmpty()) return null
+    return header.split("; ").map { pair ->
         val separator = pair.indexOf('=')
         if (separator <= 0) return null
-        val name = pair.substring(0, separator).trim()
-        if (name.isEmpty()) return null
+        val name = pair.substring(0, separator)
+        val value = pair.substring(separator + 1)
+        if (!name.all(Char::isCookieNameToken) || !value.all(Char::isCookieOctet)) return null
         OutboundCookie(
             name = name,
-            valueFingerprint = pair.substring(separator + 1).trim().fingerprint(),
+            valueFingerprint = value.fingerprint(),
         )
     }
 }
+
+private fun Char.isCookieNameToken(): Boolean =
+    this in '0'..'9' ||
+        this in 'A'..'Z' ||
+        this in 'a'..'z' ||
+        this in "!#$%&'*+-.^_`|~"
+
+private fun Char.isCookieOctet(): Boolean =
+    this == '\u0021' ||
+        this in '\u0023'..'\u002B' ||
+        this in '\u002D'..'\u003A' ||
+        this in '\u003C'..'\u005B' ||
+        this in '\u005D'..'\u007E'
 
 private fun String.fingerprint(): String =
     MessageDigest.getInstance("SHA-256")

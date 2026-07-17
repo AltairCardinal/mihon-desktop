@@ -1543,6 +1543,201 @@ class DesktopChallengeRecoveryPolicyTest {
     }
 
     @Test
+    fun `desktop network helper publishes a challenge and retries once after explicit recovery`(
+        @TempDir tempDir: Path,
+    ) = runBlocking {
+        val sourceServer = MockWebServer().also { it.start() }
+        val jarRef = AtomicReference<DesktopCookieJar>()
+        try {
+            sourceServer.enqueue(cloudflareChallenge(503))
+            sourceServer.enqueue(MockResponse(code = 200, body = "recovered"))
+            val manager = CloudflareChallengeManager(
+                committer = AuthenticatedSessionCommitter { request, session ->
+                    DesktopAuthenticatedSessionCommitter(jarRef.get()).commit(request, session)
+                },
+                authenticatedCookieLookup = AuthenticatedCookieLookup { url ->
+                    desktopCookieLookup(jarRef.get()).loadForRequest(url)
+                },
+            )
+            DesktopNetworkHelper(
+                cacheDir = tempDir.resolve("challenge-wiring-cache").toFile(),
+                cookieStorageFile = tempDir.resolve("challenge-wiring-cookies.json").toFile(),
+                challengeManager = manager,
+            ).use { helper ->
+                jarRef.set(helper.cookieJar)
+                val call = executeAsync(helper.client, sourceServer)
+                val challenge = awaitChallenge(manager)
+
+                assertInstanceOf(
+                    ChallengeRecoveryState.Recovered::class.java,
+                    manager.recover(
+                        challenge,
+                        ChallengeRecoveryIntent.SubmitManualCookies(
+                            authenticatedSession(
+                                value = "manual-clearance",
+                                domain = sourceServer.url("/").host,
+                                secure = false,
+                            ),
+                        ),
+                    ),
+                )
+
+                assertEquals(200, call.get(5, TimeUnit.SECONDS))
+                val requests = List(2) {
+                    sourceServer.takeRequest(5, TimeUnit.SECONDS) ?: error("missing source request")
+                }
+                assertNull(requests[0].headers["Cookie"])
+                assertTrue(requests[1].headers["Cookie"]?.contains("manual-clearance") == true)
+                assertEquals(2, sourceServer.requestCount)
+            }
+        } finally {
+            sourceServer.close()
+        }
+    }
+
+    @Test
+    fun `caller cookie matching a cleared jar binding never revives the solver user agent`(
+        @TempDir tempDir: Path,
+    ) = runBlocking {
+        val sourceServer = MockWebServer().also { it.start() }
+        val solverServer = MockWebServer().also { it.start() }
+        val jarRef = AtomicReference<DesktopCookieJar>()
+        try {
+            sourceServer.enqueue(MockResponse(code = 200, body = "explicit"))
+            solverServer.enqueue(
+                solvedResponse(sourceServer.url("/").host, "old-clearance", secure = false, userAgent = "old-agent"),
+            )
+            val manager = productionManager(
+                jarRef,
+                FlareSolverrClient(solverServer.url("/").toString().removeSuffix("/"), OkHttpClient()),
+            )
+            DesktopNetworkHelper(
+                cacheDir = tempDir.resolve("matching-explicit-cache").toFile(),
+                cookieStorageFile = tempDir.resolve("matching-explicit-cookies.json").toFile(),
+                challengeManager = manager,
+            ).use { helper ->
+                jarRef.set(helper.cookieJar)
+                manager.recover(
+                    manager.publish(loginRequest(url = sourceServer.url("/seed").toString())),
+                    ChallengeRecoveryIntent.UseFlareSolverr,
+                )
+                helper.cookieJar.clear()
+
+                helper.client.newCall(
+                    Request.Builder()
+                        .url(sourceServer.url("/explicit"))
+                        .header("Cookie", "cf_clearance=old-clearance")
+                        .header("User-Agent", "caller-agent")
+                        .build(),
+                ).execute().close()
+
+                val observed = sourceServer.takeRequest(5, TimeUnit.SECONDS) ?: error("missing explicit request")
+                assertEquals("cf_clearance=old-clearance", observed.headers["Cookie"])
+                assertEquals("caller-agent", observed.headers["User-Agent"])
+            }
+        } finally {
+            solverServer.close()
+            sourceServer.close()
+        }
+    }
+
+    @Test
+    fun `caller cookie mismatch preserves the jar backed binding for the next normal request`(
+        @TempDir tempDir: Path,
+    ) = runBlocking {
+        val sourceServer = MockWebServer().also { it.start() }
+        val solverServer = MockWebServer().also { it.start() }
+        val jarRef = AtomicReference<DesktopCookieJar>()
+        try {
+            sourceServer.enqueue(MockResponse(code = 200, body = "explicit"))
+            sourceServer.enqueue(MockResponse(code = 200, body = "normal"))
+            solverServer.enqueue(
+                solvedResponse(sourceServer.url("/").host, "bound-clearance", secure = false, userAgent = "bound-agent"),
+            )
+            val manager = productionManager(
+                jarRef,
+                FlareSolverrClient(solverServer.url("/").toString().removeSuffix("/"), OkHttpClient()),
+            )
+            DesktopNetworkHelper(
+                cacheDir = tempDir.resolve("mismatching-explicit-cache").toFile(),
+                cookieStorageFile = tempDir.resolve("mismatching-explicit-cookies.json").toFile(),
+                challengeManager = manager,
+            ).use { helper ->
+                jarRef.set(helper.cookieJar)
+                manager.recover(
+                    manager.publish(loginRequest(url = sourceServer.url("/seed").toString())),
+                    ChallengeRecoveryIntent.UseFlareSolverr,
+                )
+
+                helper.client.newCall(
+                    Request.Builder()
+                        .url(sourceServer.url("/explicit"))
+                        .header("Cookie", "cf_clearance=caller-clearance")
+                        .header("User-Agent", "caller-agent")
+                        .build(),
+                ).execute().close()
+                helper.client.newCall(
+                    Request.Builder()
+                        .url(sourceServer.url("/normal"))
+                        .header("User-Agent", "default-agent")
+                        .build(),
+                ).execute().close()
+
+                val explicit = sourceServer.takeRequest(5, TimeUnit.SECONDS) ?: error("missing explicit request")
+                val normal = sourceServer.takeRequest(5, TimeUnit.SECONDS) ?: error("missing normal request")
+                assertEquals("cf_clearance=caller-clearance", explicit.headers["Cookie"])
+                assertEquals("caller-agent", explicit.headers["User-Agent"])
+                assertTrue(normal.headers["Cookie"]?.contains("bound-clearance") == true)
+                assertEquals("bound-agent", normal.headers["User-Agent"])
+            }
+        } finally {
+            solverServer.close()
+            sourceServer.close()
+        }
+    }
+
+    @Test
+    fun `outbound cookie parser rejects non Bridge shapes without pruning the binding`() = runBlocking {
+        val solverServer = MockWebServer().also { it.start() }
+        try {
+            solverServer.enqueue(solvedResponse("example.com", "strict=value==", userAgent = "strict-agent"))
+            val backingCookie = authenticatedCookie(value = "strict=value==")
+            val manager = CloudflareChallengeManager(
+                committer = RecordingCommitter(),
+                flareSolverrClient = FlareSolverrClient(
+                    solverServer.url("/").toString().removeSuffix("/"),
+                    OkHttpClient(),
+                ),
+                authenticatedCookieLookup = AuthenticatedCookieLookup { listOf(backingCookie) },
+            )
+            val url = "https://example.com/chapter".toHttpUrl()
+            manager.recover(manager.publish(loginRequest()), ChallengeRecoveryIntent.UseFlareSolverr)
+            val malformedHeaders = listOf(
+                listOf("cf_clearance =strict=value=="),
+                listOf("cf_clearance= strict=value=="),
+                listOf("\tcf_clearance=strict=value=="),
+                listOf("cf_clearance=strict=value==;other=value"),
+                listOf("cf_clearance=strict=value==; ; other=value"),
+                listOf("cf_clearance=strict=value==; bad@name=value"),
+                listOf("cf_clearance=strict=value==; other=bad value"),
+                listOf("cf_clearance=strict=value==", "other=value"),
+                listOf("cf_clearance=strict=value==; cf_clearance=strict=value=="),
+            )
+
+            malformedHeaders.forEach { headers ->
+                assertNull(manager.solverUserAgentForOutboundRequest(url, headers), "malformed header was accepted")
+                assertEquals("strict-agent", manager.solverUserAgentFor(url), "malformed header pruned the binding")
+            }
+            assertEquals(
+                "strict-agent",
+                manager.solverUserAgentForOutboundRequest(url, listOf("cf_clearance=strict=value==")),
+            )
+        } finally {
+            solverServer.close()
+        }
+    }
+
+    @Test
     fun `explicit or missing outbound clearance never receives a stale solver user agent`(
         @TempDir tempDir: Path,
     ) = runBlocking {

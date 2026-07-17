@@ -13,7 +13,15 @@ class DesktopCloudflareInterceptor(
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
-        val response = chain.proceed(originalRequest)
+        val explicitCookieHeaders = originalRequest.headers("Cookie")
+        val requestWithCookieProvenance = if (explicitCookieHeaders.isEmpty()) {
+            originalRequest
+        } else {
+            originalRequest.newBuilder()
+                .tag(ExplicitCookieProvenance::class.java, ExplicitCookieProvenance(explicitCookieHeaders))
+                .build()
+        }
+        val response = chain.proceed(requestWithCookieProvenance)
 
         if (!shouldIntercept(response)) return response
 
@@ -29,7 +37,7 @@ class DesktopCloudflareInterceptor(
             throw IOException("Cloudflare bypass failed or timed out")
         }
 
-        return chain.proceed(originalRequest)
+        return chain.proceed(requestWithCookieProvenance)
     }
 
     internal fun shouldIntercept(response: Response): Boolean {
@@ -56,6 +64,15 @@ class DesktopCloudflareCredentialInterceptor(
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
+        originalRequest.tag(ExplicitCookieProvenance::class.java)?.let { provenance ->
+            val explicitRequest = originalRequest.newBuilder()
+                .removeHeader("Cookie")
+                .apply {
+                    provenance.headers.forEach { addHeader("Cookie", it) }
+                }
+                .build()
+            return chain.proceed(explicitRequest)
+        }
         val solverUserAgent = challengeManager.solverUserAgentForOutboundRequest(
             originalRequest.url,
             originalRequest.headers("Cookie"),
@@ -67,3 +84,7 @@ class DesktopCloudflareCredentialInterceptor(
         )
     }
 }
+
+private class ExplicitCookieProvenance(
+    val headers: List<String>,
+)
