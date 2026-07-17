@@ -29,11 +29,13 @@ class DesktopSourceLoginController(
         source: CatalogueSource,
         intent: DesktopSourceRecoveryIntent.OpenLogin,
         attempt: DesktopSourceLoginAttempt,
+        onAttemptAccepted: (DesktopSourceLoginAttempt) -> Unit = {},
     ): SourceLoginState {
         val request = intent.request
         val url = intent.url.toHttpUrlOrNull() ?: return SourceLoginState.BrowserUnavailable
         if (!claim(attempt, url, request)) return SourceLoginState.BrowserUnavailable
         return try {
+            onAttemptAccepted(attempt)
             val login = factory.create(
                 onTicketRegistered = { ticket -> register(attempt, ticket) },
                 onTicketTerminal = { ticket -> markTerminal(attempt, ticket) },
@@ -137,7 +139,7 @@ class DesktopSourceLoginUiActions(
     private val cancel: (DesktopSourceLoginAttempt) -> Boolean,
 ) {
     fun open(attempt: DesktopSourceLoginAttempt, url: String): DesktopSourceLoginUiState =
-        DesktopSourceLoginUiState(attempt, url.toHttpUrlOrNull()?.host ?: url)
+        DesktopSourceLoginUiState(attempt, url.toHttpUrlOrNull()?.host.orEmpty())
 
     fun editHeader(state: DesktopSourceLoginUiState, header: String): DesktopSourceLoginUiState =
         state.copy(cookieHeader = header, feedback = null)
@@ -154,13 +156,20 @@ class DesktopSourceLoginUiActions(
         return null
     }
 
-    fun complete(state: DesktopSourceLoginUiState, result: SourceLoginState?): DesktopSourceLoginUiState? = when (result) {
-        is SourceLoginState.Authenticated, SourceLoginState.Cancelled -> null
-        SourceLoginState.BrowserUnavailable -> state.terminal(DesktopSourceLoginFeedback.BrowserUnavailable)
-        SourceLoginState.TimedOut -> state.terminal(DesktopSourceLoginFeedback.TimedOut)
-        is SourceLoginState.InvalidCookies -> state.terminal(DesktopSourceLoginFeedback.InvalidCookies)
-        SourceLoginState.CommitFailed -> state.terminal(DesktopSourceLoginFeedback.CommitFailed)
-        else -> state
+    fun complete(
+        state: DesktopSourceLoginUiState,
+        completedAttempt: DesktopSourceLoginAttempt,
+        result: SourceLoginState?,
+    ): DesktopSourceLoginUiState? {
+        if (state.attempt !== completedAttempt) return state
+        return when (result) {
+            is SourceLoginState.Authenticated, SourceLoginState.Cancelled -> null
+            SourceLoginState.BrowserUnavailable -> state.terminal(DesktopSourceLoginFeedback.BrowserUnavailable)
+            SourceLoginState.TimedOut -> state.terminal(DesktopSourceLoginFeedback.TimedOut)
+            is SourceLoginState.InvalidCookies -> state.terminal(DesktopSourceLoginFeedback.InvalidCookies)
+            SourceLoginState.CommitFailed -> state.terminal(DesktopSourceLoginFeedback.CommitFailed)
+            else -> state
+        }
     }
 
     private fun DesktopSourceLoginUiState.terminal(feedback: DesktopSourceLoginFeedback) =

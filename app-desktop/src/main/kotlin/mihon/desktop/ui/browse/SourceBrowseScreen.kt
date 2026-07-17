@@ -119,8 +119,7 @@ class SourceBrowseRecoveryController(
         }
         is DesktopSourceRecoveryIntent.OpenLogin -> {
             val attempt = loginController.newAttempt()
-            onLoginStarted(attempt)
-            loginController.login(source, intent, attempt)
+            loginController.login(source, intent, attempt, onLoginStarted)
         }
         DesktopSourceRecoveryIntent.None -> null
     }
@@ -203,16 +202,22 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
             val catalogueSource = source ?: return
             val intent = queryCoordinator.recoveryIntent(catalogueSource)
             scope.launch {
+                var acceptedAttempt: DesktopSourceLoginAttempt? = null
                 val result = recover(
                     recoveryController,
                     catalogueSource,
                     intent,
                 ) { attempt ->
+                    acceptedAttempt = attempt
                     (intent as? DesktopSourceRecoveryIntent.OpenLogin)?.let { loginIntent ->
                         sourceLoginUiState = loginUiActions.open(attempt, loginIntent.url)
                     }
                 }
-                sourceLoginUiState = sourceLoginUiState?.let { loginUiActions.complete(it, result) }
+                acceptedAttempt?.let { completedAttempt ->
+                    sourceLoginUiState = sourceLoginUiState?.let {
+                        loginUiActions.complete(it, completedAttempt, result)
+                    }
+                }
             }
         }
 

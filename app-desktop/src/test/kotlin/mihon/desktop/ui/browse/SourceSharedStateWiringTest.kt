@@ -265,6 +265,10 @@ class SourceSharedStateWiringTest {
         assertEquals(null, actions.submit(rejected).feedback)
         assertEquals(null, actions.cancel(rejected))
         assertSame(attempt, cancelledAttempt)
+
+        val invalid = actions.open(DesktopSourceLoginAttempt(), "http://[invalid")
+        assertEquals("", invalid.host)
+        assertFalse(invalid.toString().contains("[invalid"))
     }
 
     @Test
@@ -279,12 +283,106 @@ class SourceSharedStateWiringTest {
         )
 
         failures.forEach { (result, expected) ->
-            val terminal = requireNotNull(actions.complete(active, result))
+            val terminal = requireNotNull(actions.complete(active, active.attempt, result))
             assertTrue(terminal.terminal)
             assertEquals(expected, terminal.feedback)
         }
-        assertEquals(null, actions.complete(active, SourceLoginState.Authenticated(setOf("session"), 1)))
-        assertEquals(null, actions.complete(active, SourceLoginState.Cancelled))
+        assertEquals(null, actions.complete(active, active.attempt, SourceLoginState.Authenticated(setOf("session"), 1)))
+        assertEquals(null, actions.complete(active, active.attempt, SourceLoginState.Cancelled))
+    }
+
+    @Test
+    fun `late completion from another attempt preserves the current login for every outcome`() {
+        val actions = DesktopSourceLoginUiActions({ _, _ -> true }, { true })
+        val stale = DesktopSourceLoginAttempt()
+        val current = actions.open(DesktopSourceLoginAttempt(), "https://current.example.com")
+        val staleResults = listOf(
+            SourceLoginState.Authenticated(setOf("session"), 1),
+            SourceLoginState.Cancelled,
+            SourceLoginState.BrowserUnavailable,
+            SourceLoginState.TimedOut,
+            SourceLoginState.InvalidCookies(emptySet(), setOf("session")),
+            SourceLoginState.CommitFailed,
+        )
+
+        staleResults.forEach { result ->
+            assertSame(current, actions.complete(current, stale, result))
+        }
+    }
+
+    @Test
+    fun `rejected login cannot replace accepted UI and late completion cannot close its successor`() = runBlocking {
+        val source = QueryFailureSource()
+        val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
+        val intent = DesktopSourceRecoveryIntent.OpenLogin(
+            "https://example.com",
+            SourcePageRequest(source.id, 1, 1, SourceQuery.Popular),
+        )
+        val recovery = SourceBrowseRecoveryController(
+            coordinator,
+            DesktopSourceLoginController(
+                DesktopSourceLoginSessionFactory(
+                    AuthenticatedSessionCommitter { _, _ -> },
+                    DesktopBrowserOpener { _, _ -> true },
+                ),
+                coordinator,
+            ),
+        )
+        val actions = DesktopSourceLoginUiActions(recovery::submitCookies, recovery::cancel)
+        var ui: DesktopSourceLoginUiState? = null
+        lateinit var firstAttempt: DesktopSourceLoginAttempt
+        val first = async(start = CoroutineStart.UNDISPATCHED) {
+            recovery.recover(source, intent) { accepted ->
+                firstAttempt = accepted
+                ui = actions.open(accepted, intent.url)
+            }
+        }
+        val firstUi = requireNotNull(ui)
+        var rejectedPublished = false
+
+        assertEquals(SourceLoginState.BrowserUnavailable, recovery.recover(source, intent) { rejectedPublished = true })
+        assertFalse(rejectedPublished)
+        assertSame(firstAttempt, ui?.attempt)
+
+        assertTrue(recovery.cancel(firstAttempt))
+        val lateFirstResult = first.await()
+        lateinit var secondAttempt: DesktopSourceLoginAttempt
+        val second = async(start = CoroutineStart.UNDISPATCHED) {
+            recovery.recover(source, intent) { accepted ->
+                secondAttempt = accepted
+                ui = actions.open(accepted, intent.url)
+            }
+        }
+        val secondUi = requireNotNull(ui)
+        assertFalse(firstUi.attempt === secondUi.attempt)
+
+        ui = actions.complete(secondUi, firstAttempt, lateFirstResult)
+        assertSame(secondAttempt, ui?.attempt)
+        assertEquals(null, actions.cancel(requireNotNull(ui)))
+        assertEquals(SourceLoginState.Cancelled, second.await())
+    }
+
+    @Test
+    fun `accepted callback failure releases the claimed login attempt`() = runBlocking {
+        val source = QueryFailureSource()
+        val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
+        val intent = DesktopSourceRecoveryIntent.OpenLogin(
+            "https://example.com",
+            SourcePageRequest(source.id, 1, 1, SourceQuery.Popular),
+        )
+        val controller = DesktopSourceLoginController(
+            DesktopSourceLoginSessionFactory(
+                AuthenticatedSessionCommitter { _, _ -> },
+                DesktopBrowserOpener { _, _ -> true },
+            ),
+            coordinator,
+        )
+
+        assertTrue(runCatching { controller.login(source, intent, controller.newAttempt()) { error("UI failed") } }.isFailure)
+        val fresh = controller.newAttempt()
+        val running = async(start = CoroutineStart.UNDISPATCHED) { controller.login(source, intent, fresh) }
+        assertTrue(controller.cancel(fresh))
+        assertEquals(SourceLoginState.Cancelled, running.await())
     }
 
     @Test
