@@ -194,18 +194,23 @@ class DesktopGlobalSearchCoordinator(
         val generation: Long,
         val coordinators: Map<Long, SourceBrowseQueryCoordinator>,
     ) {
+        private class Retirement(val token: Any) : CancellationException()
         private val lock = Any()
         private val jobs = mutableListOf<Job>()
+        private val retirementToken = Any()
+        private val retirementCause = Retirement(retirementToken)
         private var retired = false
 
         fun register(job: Job) = synchronized(lock) { if (retired) job.cancel() else jobs += job }
+        fun owns(error: CancellationException): Boolean = generateSequence<Throwable>(error) { it.cause }
+            .any { it is Retirement && it.token === retirementToken }
 
         fun retire() {
             val active = synchronized(lock) {
                 retired = true
                 jobs.toList().also { jobs.clear() }
             }
-            active.forEach(Job::cancel)
+            active.forEach { it.cancel(retirementCause) }
         }
     }
 
@@ -254,7 +259,7 @@ class DesktopGlobalSearchCoordinator(
             }
             completedNormally = true
         } catch (error: CancellationException) {
-            if (synchronized(lock) { activeSession === session }) throw error
+            if (!session.owns(error)) throw error
         } finally {
             session.retire()
             val completed = synchronized(lock) {

@@ -16,6 +16,7 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsNode
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -309,6 +310,7 @@ class SourceSharedStateWiringTest {
         val running = launch { coordinator.search(listOf(source), "old") }
         source.oldStarted.await()
         running.cancelAndJoin()
+        assertTrue(running.isCancelled)
         assertFalse(coordinator.states.value.isSearching)
         assertEquals(null, coordinator.coordinatorFor(source.id))
         withTimeout(2_000) { source.oldCancelled.await() }
@@ -321,6 +323,28 @@ class SourceSharedStateWiringTest {
         assertInstanceOf(SourceQueryState.Empty::class.java, coordinator.states.value.queryStates[source.id])
         assertFalse(coordinator.states.value.isSearching)
         assertEquals(coordinator.states.value.queryStates[source.id]?.request, coordinator.coordinatorFor(source.id)?.state?.request)
+    }
+
+    @Test
+    fun `current global callback cancellation propagates after cleanup`() = runBlocking {
+        val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+        val result = runCatching {
+            coordinator.search(listOf(NamedSource(25, "Cancel callback")), "cancel") { throw CancellationException("callback") }
+        }.exceptionOrNull()
+        assertInstanceOf(CancellationException::class.java, result)
+        assertFalse(coordinator.states.value.isSearching)
+        assertEquals(null, coordinator.coordinatorFor(25))
+    }
+
+    @Test
+    fun `global callback error propagates after cleanup`() = runBlocking {
+        val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+        val result = runCatching {
+            coordinator.search(listOf(NamedSource(26, "Error callback")), "error") { throw AssertionError("callback") }
+        }.exceptionOrNull()
+        assertInstanceOf(AssertionError::class.java, result)
+        assertFalse(coordinator.states.value.isSearching)
+        assertEquals(null, coordinator.coordinatorFor(26))
     }
 
     @Test
@@ -351,9 +375,10 @@ class SourceSharedStateWiringTest {
             coordinator.search(listOf(source), "outer") {
                 CompletableFuture.supplyAsync { coordinator.coordinatorFor(source.id) }.get(1, TimeUnit.SECONDS)
                 if (!reentered) runBlocking { reentered = true; coordinator.search(emptyList(), "inner") }
+                throw CancellationException("outer callback")
             }
         }.exceptionOrNull()
-        assertEquals(null, result)
+        assertInstanceOf(CancellationException::class.java, result)
         assertEquals(2, coordinator.states.value.generation)
         assertFalse(coordinator.states.value.isSearching)
     }
