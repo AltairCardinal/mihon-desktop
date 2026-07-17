@@ -492,11 +492,17 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **Risk axis:** challenge-login-ui-wiring
 **Platform boundary:** desktop
-**Estimated scope:** 7 files, 400 lines
+**Estimated scope:** 11 files, 1050 lines
 **Verification:** 运行 UI/DI production-wiring 测试，确认对话框展示目标域、进度、取消、超时、重试、手动导入；仅在设置启用且 URL 有效时显示并执行 FlareSolverr，所有日志/状态不包含 Cookie 值，触达文案使用 i18n。
+**Execution split:** 原 7 文件估算遗漏了既有 Task 5A initiator-bound browser completion seam、Task 5B 动态 solver provider、真实 CookieJar committer 与 `DesktopUiDependencies` 接点。为满足每个调度单元不超过 8 文件/400 行，Task 5C 连续拆为：5C-A `challenge-login-runtime-wiring`（desktop，7 files/400 lines：偏好契约、per-challenge browser bridge、动态 solver provider、真实 jar committer 与 DI）；5C-B `challenge-login-dialog-flow`（desktop，4 files/400 lines：Home/Dialog 状态与所有恢复动作、基础 i18n、行为测试）；5C-C `challenge-login-settings-i18n`（desktop，3 files/250 lines：Advanced 设置入口、持久反馈、资源完整性与回归）。三者全部通过独立审查后才勾选本 Task；OpenSpec 3.3/3.5 也只在三者完成后 checkoff。
+**Split waiver:** 本 Task 顶层的 11 files/1050 lines 是三个已独立调度、独立 TDD、独立提交和独立审查的子任务聚合值，并非交给一个实现者的实际 scope；5C-A 为 7/400、5C-B 为 4/400、5C-C 为 3/250，均未超过门槛。保留一个顶层 Task 是因为三者共同交付同一个 OpenSpec 3.3/3.5 用户能力且只能在全部 production wiring、UI 与设置资源完成后 checkoff；将任一子任务单独视为完整 capability 会产生无入口的基础设施或无真实 committer/provider 的假 UI。
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/settings/DesktopAppPreferences.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/network/CloudflareChallengeManager.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/network/DesktopBrowserLoginAdapter.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/DesktopUiDependencies.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreen.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/cloudflare/CloudflareBypassDialog.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/home/HomeScreen.kt`
@@ -507,6 +513,8 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 **Interfaces:**
 - Consumes: Task 5A/5B session、recovery intents、Cookie commit 与 solver client；production UI 是所有用户可见 recovery intent 的唯一触发入口。
 - FlareSolverr 默认关闭；启用开关与 URL 都持久化，URL 无效时 UI 给出可执行反馈而不发网络请求。
+- AWT 外部浏览器不能读取其私有 Cookie store；`OpenBrowser` 必须通过 Task 5A initiator-bound ticket 与具体 `CloudflareChallenge` 绑定，UI 提交完整 session 时只完成该 challenge 的 ticket。相同 host 并发不得按 URL 或“latest”查找而串线，取消/超时必须移除 pending ticket，late completion 必须失败。
+- DI 必须让 browser/manual/solver 三条成功路径复用同一 `DesktopAuthenticatedSessionCommitter` 和 `DesktopNetworkHelper.cookieJar`；FlareSolverr client 在每次显式 intent 时从当前偏好动态解析，禁用或 URL 非法时不得创建请求。
 
 - [ ] **Step 1: 写设置、UI 状态、DI 与脱敏 production-wiring RED**
 - [ ] **Step 2: 运行 RED 并确认入口/反馈/显式后备缺失**
