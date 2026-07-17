@@ -545,6 +545,8 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 - [ ] **Task 6A1: 单源共享状态、exact recovery 与 production action wiring**
   - [ ] **Task 6A1R: 审查闭环——区分通用登录与 Cloudflare，并证明 Screen 重放 exact request**
+  - [ ] **Task 6A1R2a: 重规划——以 StateFlow 无锁外部回调保证 generation 发布顺序**
+  - [ ] **Task 6A1R2b: 重规划——真实 Desktop WebView 登录、Cookie 回传与 exact retry**
 - [ ] **Task 6A2: Global 共享状态消费与 Browse 缺源入口**
 
 **Files:**
