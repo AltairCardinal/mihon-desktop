@@ -131,6 +131,7 @@
 - Repair mutations: discarding UA, letting cancel ignore commit claim, removing beginAction terminal guard, removing shared blank-required validation, or ignoring HTTP status each failed a named production-chain test and was restored.
 - Final repair verification: fresh policy 21 + client 2 + import 7 + adapter 6 + session 16 + jar 21 + persistence 8 = 81/81 PASS, 0 failures/errors/skips; root Spotless 97 tasks in the same 1m29s invocation; diff/scope checks PASS.
 - Final cumulative scope: 7 planned files, +1459/-74 (1533 changed lines); plan/brief waiver updated for the review-expanded shared+desktop closure.
+- Re-reviewer: `/root/task5b_rereview` (fresh independent read-only cumulative review; no test rerun).
 
 ## Task 5A Review History
 
