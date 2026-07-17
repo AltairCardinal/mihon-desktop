@@ -30,13 +30,15 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -53,25 +55,96 @@ import coil3.compose.AsyncImage
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.flow.StateFlow
 import mihon.desktop.domain.SaveSourceMangaForDetails
+import mihon.desktop.network.DesktopSourceLoginSessionFactory
 import mihon.desktop.ui.library.MangaDetailScreen
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourceQueryState
 import tachiyomi.domain.source.service.SourceRecoveryAction
 import eu.kanade.tachiyomi.source.online.HttpSource
-import java.awt.Desktop
-import java.net.URI
 
 /** Result group from one source. */
 data class SourceSearchResult(
     val source: CatalogueSource,
     val results: List<SManga>,
     val error: SourcePageError? = null,
+    val recoveryIntent: DesktopSourceRecoveryIntent = DesktopSourceRecoveryIntent.None,
 )
+
+internal data class GlobalSearchUiState(val loading: Boolean = false, val empty: Boolean = false, val results: List<SourceSearchResult> = emptyList())
+
+internal object GlobalSearchStateProjector {
+    fun project(sources: List<CatalogueSource>, state: DesktopGlobalSearchState): GlobalSearchUiState {
+        val sourcesById = sources.associateBy(CatalogueSource::id)
+        val results = state.queryStates.mapNotNull { (sourceId, queryState) ->
+            val source = sourcesById[sourceId] ?: return@mapNotNull null
+            when (queryState) {
+                is SourceQueryState.Loading -> SourceSearchResult(source, queryState.items)
+                is SourceQueryState.Empty -> null
+                is SourceQueryState.Content -> SourceSearchResult(
+                    source,
+                    queryState.items,
+                    queryState.pageError,
+                    recoveryIntent(source, queryState.request, queryState.pageError?.recoveryAction),
+                )
+                is SourceQueryState.Failure -> SourceSearchResult(
+                    source,
+                    emptyList(),
+                    SourcePageError(queryState.error, queryState.recoveryAction),
+                    recoveryIntent(source, queryState.request, queryState.recoveryAction),
+                )
+            }
+        }.filter { it.results.isNotEmpty() || it.error != null }
+            .sortedByDescending { it.results.size }
+        val loading = state.isSearching || state.queryStates.values.any(SourceQueryState::isLoading)
+        return GlobalSearchUiState(loading, state.generation > 0 && !loading && results.isEmpty(), results)
+    }
+
+    private fun recoveryIntent(
+        source: CatalogueSource,
+        request: tachiyomi.domain.source.service.SourcePageRequest,
+        action: SourceRecoveryAction?,
+    ): DesktopSourceRecoveryIntent = when (action) {
+        SourceRecoveryAction.Retry -> DesktopSourceRecoveryIntent.Retry(request)
+        SourceRecoveryAction.OpenLogin -> (source as? HttpSource)?.baseUrl
+            ?.let { DesktopSourceRecoveryIntent.OpenLogin(it, request) }
+            ?: DesktopSourceRecoveryIntent.None
+        SourceRecoveryAction.None, null -> DesktopSourceRecoveryIntent.None
+    }
+}
+
+internal val LocalGlobalSearchCoordinatorFactory = staticCompositionLocalOf<(SourceMangaSearchService) -> DesktopGlobalSearchCoordinator> {
+    { service -> DesktopGlobalSearchCoordinator(service) }
+}
 
 /** Searches all installed sources simultaneously, grouped by source. */
 class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
+
+    internal suspend fun search(
+        sourceManager: SourceManager,
+        coordinator: DesktopGlobalSearchCoordinator,
+        query: String,
+        onStarted: (Long, List<CatalogueSource>) -> Unit,
+    ) {
+        val sources = sourceManager.getCatalogueSources()
+        onStarted(coordinator.state.generation + 1, sources)
+        coordinator.search(sources, query)
+    }
+
+    internal suspend fun retry(
+        coordinator: DesktopGlobalSearchCoordinator,
+        source: CatalogueSource,
+        intent: DesktopSourceRecoveryIntent,
+        sessionFactory: DesktopSourceLoginSessionFactory,
+    ) {
+        if (intent !is DesktopSourceRecoveryIntent.Retry) return
+        val child = coordinator.coordinatorFor(source.id) ?: return
+        SourceBrowseRecoveryController(child, DesktopSourceLoginController(sessionFactory, child)).recover(source, intent)
+    }
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
@@ -80,47 +153,35 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
         val sourceManager = LocalDesktopUiDependencies.current.sourceManager
         val sourceMangaSearchService = LocalDesktopUiDependencies.current.sourceMangaSearchService
         val saveSourceMangaForDetails = LocalDesktopUiDependencies.current.saveSourceMangaForDetails
+        val sourceLoginSessionFactory = LocalDesktopUiDependencies.current.sourceLoginSessionFactory
         val scope = rememberCoroutineScope()
 
         var query by remember { mutableStateOf(initialQuery) }
-        var isSearching by remember { mutableStateOf(false) }
         var openingMangaUrl by remember { mutableStateOf<String?>(null) }
-        val results = remember { mutableStateListOf<SourceSearchResult>() }
-        val queryCoordinator = remember { DesktopGlobalSearchCoordinator(sourceMangaSearchService) }
+        val coordinatorFactory = LocalGlobalSearchCoordinatorFactory.current
+        val queryCoordinator = remember(sourceMangaSearchService, coordinatorFactory) { coordinatorFactory(sourceMangaSearchService) }
+        val searchState by queryCoordinator.states.collectAsState()
+        var sourcesByGeneration by remember { mutableStateOf(emptyMap<Long, List<CatalogueSource>>()) }
+        val searchUiState = GlobalSearchStateProjector.project(sourcesByGeneration[searchState.generation].orEmpty(), searchState)
+
+        DisposableEffect(queryCoordinator) {
+            onDispose { queryCoordinator.close() }
+        }
 
         fun launchSearch(q: String) {
             if (q.isBlank()) return
-            scope.launch {
-                val sources = sourceManager.getCatalogueSources()
-                queryCoordinator.search(sources, q) { state ->
-                    isSearching = state.isSearching
-                    val visible = state.queryStates.mapNotNull { (sourceId, queryState) ->
-                        val source = sources.firstOrNull { it.id == sourceId } ?: return@mapNotNull null
-                        when (queryState) {
-                            is SourceQueryState.Content -> SourceSearchResult(source, queryState.items, queryState.pageError)
-                            is SourceQueryState.Empty -> SourceSearchResult(source, emptyList())
-                            is SourceQueryState.Failure -> SourceSearchResult(
-                                source,
-                                emptyList(),
-                                SourcePageError(queryState.error, queryState.recoveryAction),
-                            )
-                            is SourceQueryState.Loading -> null
-                        }
-                    }
-                    results.clear()
-                    results.addAll(visible)
+            scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                search(sourceManager, queryCoordinator, q) { generation, sources ->
+                    sourcesByGeneration = mapOf(generation to sources)
                 }
             }
         }
 
         fun recover(sourceResult: SourceSearchResult) {
-            when (sourceResult.error?.recoveryAction) {
-                SourceRecoveryAction.Retry -> launchSearch(query)
-                SourceRecoveryAction.OpenLogin -> {
-                    val url = (sourceResult.source as? HttpSource)?.baseUrl ?: return
-                    runCatching { Desktop.getDesktop().browse(URI(url)) }
+            if (sourceResult.recoveryIntent is DesktopSourceRecoveryIntent.Retry) {
+                scope.launch {
+                    retry(queryCoordinator, sourceResult.source, sourceResult.recoveryIntent, sourceLoginSessionFactory)
                 }
-                SourceRecoveryAction.None, null -> Unit
             }
         }
 
@@ -175,7 +236,7 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
                     }
                 }
 
-                if (isSearching) {
+                if (searchUiState.loading) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                         horizontalArrangement = Arrangement.Center,
@@ -190,10 +251,12 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
                     }
                 }
 
-                // Results grouped by source, sorted by result count descending
-                val sortedResults = results.filter { it.results.isNotEmpty() || it.error != null }
-                    .sortedByDescending { it.results.size }
+                if (searchUiState.empty) {
+                    Text("No results found", modifier = Modifier.padding(16.dp))
+                }
 
+                // Results grouped by source, sorted by result count descending
+                val sortedResults = searchUiState.results
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(sortedResults, key = { it.source.id }) { sourceResult ->
                         Text(
@@ -212,7 +275,9 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
                                     desktopSourceErrorMessage(error.error),
                                     color = MaterialTheme.colorScheme.error,
                                 )
-                                desktopSourceRecoveryActionLabel(error.recoveryAction)?.let { label ->
+                                desktopSourceRecoveryActionLabel(error.recoveryAction)
+                                    ?.takeIf { sourceResult.recoveryIntent is DesktopSourceRecoveryIntent.Retry }
+                                    ?.let { label ->
                                     androidx.compose.material3.TextButton(onClick = { recover(sourceResult) }) {
                                         Text(label)
                                     }

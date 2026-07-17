@@ -14,6 +14,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.text.AnnotatedString
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import kotlinx.coroutines.CancellationException
@@ -25,6 +27,8 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.delay
@@ -55,6 +59,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.domain.source.service.SourceMangaSearchService
+import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourcePageRequest
 import tachiyomi.domain.source.service.SourceQuery
 import tachiyomi.domain.source.service.SourceQueryState
@@ -208,6 +213,127 @@ class SourceSharedStateWiringTest {
         assertTrue(screen.projectState(SourceQueryState.Loading(request)).loading)
         assertFalse(screen.projectState(SourceQueryState.Empty(request)).loading)
         assertTrue(screen.projectState(SourceQueryState.Empty(request)).empty)
+    }
+
+    @Test
+    fun `global projector preserves partial content failure actions and true empty`() {
+        val content = NamedSource(40, "Content")
+        val failure = NamedSource(41, "Failure")
+        val empty = NamedSource(42, "Empty")
+        val contentRequest = SourcePageRequest(content.id, 1, 3, SourceQuery.Popular)
+        val failureRequest = SourcePageRequest(failure.id, 1, 3, SourceQuery.Latest)
+        val ui = GlobalSearchStateProjector.project(
+            listOf(content, failure, empty),
+            DesktopGlobalSearchState(
+                generation = 3,
+                isSearching = true,
+                queryStates = mapOf(
+                    content.id to SourceQueryState.Content(contentRequest, listOf(manga("/kept")), false),
+                    failure.id to SourceQueryState.Failure(failureRequest, AppError.Server(500), tachiyomi.domain.source.service.SourceRecoveryAction.Retry),
+                    empty.id to SourceQueryState.Empty(SourcePageRequest(empty.id, 1, 3, SourceQuery.Popular)),
+                ),
+            ),
+        )
+
+        assertTrue(ui.loading)
+        assertFalse(ui.empty)
+        assertEquals(listOf("Content", "Failure"), ui.results.map { it.source.name })
+        assertEquals(listOf("/kept"), ui.results.first().results.map(SManga::url))
+        assertInstanceOf(AppError.Server::class.java, ui.results.last().error?.error)
+        assertEquals(DesktopSourceRecoveryIntent.Retry(failureRequest), ui.results.last().recoveryIntent)
+        assertTrue(
+            GlobalSearchStateProjector.project(
+                listOf(empty),
+                DesktopGlobalSearchState(4, false, mapOf(empty.id to SourceQueryState.Empty(SourcePageRequest(empty.id, 1, 4, SourceQuery.Popular)))),
+            ).empty,
+        )
+    }
+    @Test
+    fun `global retry reuses the session child and exact failed request`() = runBlocking {
+        val source = QueryFailureSource()
+        val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+        coordinator.search(listOf(source), "same-query")
+        val child = requireNotNull(coordinator.coordinatorFor(source.id))
+        val failed = requireNotNull(GlobalSearchStateProjector.project(listOf(source), coordinator.state).results.single().recoveryIntent)
+        val factory = DesktopSourceLoginSessionFactory(AuthenticatedSessionCommitter { _, _ -> }, DesktopBrowserOpener { _, _ -> false })
+        GlobalSearchScreen().retry(coordinator, source, failed, factory)
+
+        assertSame(child, coordinator.coordinatorFor(source.id))
+        assertEquals((failed as DesktopSourceRecoveryIntent.Retry).request, child.state?.request)
+        assertEquals(listOf("same-query", "same-query"), source.queries)
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `global search content collects state and closes its coordinator on disposal`() = runBlocking {
+        val firstCompleted = CompletableDeferred<Unit>()
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val first = object : NamedSource(52, "First source") {
+            val queries = mutableListOf<String>()
+            override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
+                queries += query
+                firstCompleted.complete(Unit)
+                return MangasPage(listOf(manga("/first")), false)
+            }
+        }
+        val second = object : NamedSource(53, "Second source") {
+            val queries = mutableListOf<String>()
+            override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
+                queries += query
+                started.complete(Unit)
+                release.await()
+                return MangasPage(listOf(manga("/second")), false)
+            }
+        }
+        val dynamicSourceManager = MutableSourceManager(listOf(first))
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { sourceManager } returns dynamicSourceManager
+            every { sourceMangaSearchService } returns SourceMangaSearchService()
+            every { saveSourceMangaForDetails } returns mockk(relaxed = true)
+            every { sourceLoginSessionFactory } returns DesktopSourceLoginSessionFactory(
+                AuthenticatedSessionCommitter { _, _ -> },
+                DesktopBrowserOpener { _, _ -> false },
+            )
+        }
+        var coordinator: DesktopGlobalSearchCoordinator? = null
+        val factory: (SourceMangaSearchService) -> DesktopGlobalSearchCoordinator = { service ->
+            DesktopGlobalSearchCoordinator(service).also { coordinator = it }
+        }
+        val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
+        fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+        fun nodes(): List<SemanticsNode> = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+        fun semantics(): String = nodes().joinToString { it.config.toString() }
+
+        scene.setContent {
+            CompositionLocalProvider(
+                LocalDesktopUiDependencies provides dependencies,
+                LocalGlobalSearchCoordinatorFactory provides factory,
+            ) { Navigator(GlobalSearchScreen("visible")) { CurrentScreen() } }
+        }
+        scene.render()
+        withTimeout(2_000) { firstCompleted.await() }
+        withTimeout(2_000) { requireNotNull(coordinator).states.first { it.generation == 1L && !it.isSearching } }
+        scene.render()
+        dynamicSourceManager.sources = listOf(second)
+        val input = nodes().first { it.config.contains(SemanticsActions.SetText) }
+        assertTrue(requireNotNull(input.config[SemanticsActions.SetText].action).invoke(AnnotatedString("second")))
+        scene.render()
+        val button = nodes().first { it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains("Search") }
+        assertTrue(requireNotNull(button.config[SemanticsActions.OnClick].action).invoke())
+        withTimeout(2_000) { started.await() }
+        scene.render()
+        assertTrue(semantics().contains("Searching"))
+
+        release.complete(Unit)
+        withTimeout(2_000) { requireNotNull(coordinator).states.first { it.generation == 2L && !it.isSearching } }
+        scene.render()
+        assertEquals(listOf("visible"), first.queries)
+        assertEquals(listOf("second"), second.queries)
+        assertTrue(semantics().contains("Second source (1)"))
+
+        scene.close()
+        assertEquals(null, requireNotNull(coordinator).coordinatorFor(second.id))
     }
 
     @Test
@@ -1164,6 +1290,17 @@ class SourceSharedStateWiringTest {
         override suspend fun getMangaDetails(manga: SManga) = manga
         override suspend fun getChapterList(manga: SManga) = emptyList<SChapter>()
         override suspend fun getPageList(chapter: SChapter) = emptyList<Page>()
+    }
+
+    private class MutableSourceManager(var sources: List<CatalogueSource>) : SourceManager {
+        override val isInitialized = MutableStateFlow(true)
+        override val catalogueSources get() = flowOf(sources)
+        override fun getCatalogueSources() = sources
+        override fun getOnlineSources() = sources.filterIsInstance<HttpSource>()
+        override fun getStubSources() = emptyList<tachiyomi.domain.source.model.StubSource>()
+        override fun get(sourceKey: Long) = sources.find { it.id == sourceKey }
+        override fun getOrStub(sourceKey: Long): eu.kanade.tachiyomi.source.Source =
+            sources.find { it.id == sourceKey } ?: tachiyomi.domain.source.model.StubSource(sourceKey, "", "")
     }
 
     private companion object {
