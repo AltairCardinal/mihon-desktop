@@ -456,7 +456,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **Risk axis:** challenge-recovery-policy
 **Platform boundary:** shared+desktop
-**Estimated scope:** 7 files, 2113 lines
+**Estimated scope:** 7 files, 2450 lines
 **Verification:** 运行真实 interceptor/challenge manager 策略测试，确认 403/503 只发布登录请求；browser、手动 Cookie 和 FlareSolverr 均由显式用户 intent 触发，取消/超时不清除或写入凭据，solver 从不由 interceptor 自动调用。
 **Split waiver:** 实际 2113 changed lines（+2041/-72）分布在 7 个 shared+desktop 文件：644 行是 challenge/manager/interceptor/client 的 per-attempt completion、commit-point、单调 terminal/state、active-job 抢占、有界 timeout、UA+clearance identity/expiry 生命周期、同 host commit 序列化、IO dispatcher、显式 recovery intents、单次重试和 cancellable HTTP；101 行是 Task 5A shared required Cookie 非空量词、有限本地 committer 契约及测试；1368 行是同一真实链路的 30 项 MockWebServer→OkHttp interceptor→manager→Task 5A validation/atomic committer→DesktopCookieJar 策略/并发/HTTP/安全矩阵。shared 改动统一保护 browser/manual/solver 三条入口，避免 Desktop 复制提交规则。clear-first、自动 solver、committer 旁路、重复 retry、cancel/timeout/late completion、commit claim 双向竞态、register/self-cancel 窗口、阻塞 socket/UI dispatcher、UA 不匹配/过期/替换、HTTP 403/429/500/缺 solution、空 required Cookie 和真实持久化失败→Retry 共同决定恢复是否会误写/泄露凭据；拆开会留下虚假 terminal、不可用 clearance、共享/平台规则分叉或无法穿透 production 链的中间状态，不能独立验收。Task 5C 的 UI/设置/DI production entry wiring 未混入本 Task。
 

@@ -101,7 +101,7 @@
 - Current task: `Task 5B: Desktop 挑战恢复策略与 FlareSolverr 显式后备`
 - Plan checkbox: pending
 - OpenSpec mapping: `3.3` partial (do not check off until Tasks 5B and 5C complete).
-- Stage: `final-review`
+- Stage: `extra-closure-fix`
 - Task base: `1d5b6cc9b`
 - Brief: `.superpowers/sdd/align-sources-task-5b-brief.md`
 - Risk axis: `challenge-recovery-policy`
@@ -145,6 +145,11 @@
 - Final repair verification: fresh policy 30 + client 2 + import 7 + adapter 6 + session 19 + jar 21 + persistence 8 = 93/93 PASS, 0 failures/errors/skips; root Spotless 97/97 tasks in the same `BUILD SUCCESSFUL in 1m26s`; diff/scope checks PASS.
 - Final cumulative scope: 7 planned files, +2041/-72 (2113 changed lines); plan/brief waiver updated for the second review closure.
 - Final reviewer: `/root/task5b_final_review` (fresh independent read-only cumulative closure review; no test rerun).
+- Final review result: Spec Compliance `CHANGES_REQUIRED`; Task quality `NEEDS_FIXES`; Critical 0 / Important 3 / Minor 1. The initial five findings are CLOSED; second-review findings 1/4/5 remain OPEN while 2/3 are CLOSED. Report: `.superpowers/sdd/align-sources-task-5b-final-review.md`.
+- Remaining findings: (1) UA binding selects an arbitrary first same-name input, does not validate its identity against the actual surviving jar clearance, and the retry rebuilds from an already UA-overwritten request; (2) shared nonblank quantifier still passes the original unnormalized session, so a later blank duplicate of the same canonical identity can win in the real jar while reporting Recovered; (3) old waiters can dynamically switch to a Retry attempt's latch/terminal and Retry inherits an exhausted challenge-wide deadline; (4) per-host commit Mutex keys grow without bound.
+- Finding evaluation: all findings are technically valid and localized to the existing 7-file shared+desktop boundary. Under the user's standing engineering override, perform one extra TDD closure round rather than stop at the mechanical 2/2 limit.
+- Extra closure requirements: derive UA binding from the normalized, actually committed nonblank clearance set and verify it against current jar state; rebuild every proceed from the untouched original request and current binding. Shared validation must pass a normalized commit session that removes blank required losers and makes canonical winners order-safe. Each attempt must own its immutable latch/terminal/deadline and Retry must create a full new timeout without changing old waiters. Replace the unbounded host-lock map with fixed stripes or safe refcounted cleanup.
+- Review/fix round: 3/3 (user-authorized engineering override for narrow closure).
 
 ## Task 5A Review History
 
