@@ -237,6 +237,54 @@ class SourceSharedStateWiringTest {
     }
 
     @Test
+    fun `global coordinator stateflow aggregates partial source outcomes and exact child identity`() = runBlocking {
+        val success = object : NamedSource(20, "Success") {
+            override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
+                delay(25)
+                return MangasPage(listOf(manga("/success")), false)
+            }
+        }
+        val failure = QueryFailureSource()
+        val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+        val observed = mutableListOf<DesktopGlobalSearchState>()
+        val collector = launch(Dispatchers.Unconfined, start = CoroutineStart.UNDISPATCHED) {
+            coordinator.states.collect(observed::add)
+        }
+
+        assertTrue(coordinator.states.value.queryStates.isEmpty())
+        coordinator.search(listOf(success, failure), "shared")
+        collector.cancelAndJoin()
+
+        val state = coordinator.states.value
+        assertInstanceOf(SourceQueryState.Content::class.java, state.queryStates[success.id])
+        assertInstanceOf(SourceQueryState.Failure::class.java, state.queryStates[failure.id])
+        val child = requireNotNull(coordinator.coordinatorFor(success.id))
+        assertSame(child, coordinator.coordinatorFor(success.id))
+        assertEquals(child.state?.request, state.queryStates.getValue(success.id).request)
+        assertTrue(observed.any { it.isSearching && it.queryStates.values.any(SourceQueryState::isLoading) })
+    }
+
+    @Test
+    fun `global coordinator rejects late generation state and retires its child coordinator`() = runBlocking {
+        val source = InterleavingSource()
+        val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+        val old = async(Dispatchers.Default) { coordinator.search(listOf(source), "old") }
+        assertTrue(source.oldRequestStarted.await(5, TimeUnit.SECONDS))
+        val oldChild = requireNotNull(coordinator.coordinatorFor(source.id))
+
+        coordinator.search(listOf(source), "new")
+        val currentChild = requireNotNull(coordinator.coordinatorFor(source.id))
+        source.releaseOldResult.countDown()
+        old.await()
+
+        assertFalse(oldChild === currentChild)
+        assertSame(currentChild, coordinator.coordinatorFor(source.id))
+        val result = assertInstanceOf(SourceQueryState.Content::class.java, coordinator.states.value.queryStates[source.id])
+        assertEquals("new", (result.request.query as SourceQuery.Search).query)
+        assertEquals(listOf("/new"), result.items.map(SManga::url))
+    }
+
+    @Test
     fun `authenticated login keeps its captured request and never retries a newer generation`() = runBlocking {
         val source = QueryFailureSource()
         val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
