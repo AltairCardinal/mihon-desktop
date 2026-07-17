@@ -179,6 +179,13 @@
 - Outbound pair mutations: restoring application-stage UA selection made the manual replacement race fail; removing `DesktopNetworkHelper` paired network-interceptor wiring made the real helper wiring test fail. Both were restored.
 - Outbound pair verification: fresh policy 51 + FlareSolverr 2 + browser adapter 6 + shared SourceLoginSession 27 = 86/86 PASS, 0 failures/errors/skips; root Spotless 61 tasks PASS; diff check PASS.
 - Final cumulative Task 5B product/test scope: 8 planned shared+desktop files, +3657/-88 (3745 changed lines). The eighth file is the inseparable production network-interceptor wiring; Task 5C UI/DI/settings remain untouched.
+- Outbound pair final reviewer: `/root/task5b_outbound_pair_final_review` (fresh independent read-only cumulative review; no test rerun).
+- Outbound pair final review result: Spec Compliance `CHANGES_REQUIRED`; Task quality `NEEDS_FIXES`; Critical 0 / Important 2 / Minor 0. The prior old-UA/new-clearance snapshot finding is CLOSED. Report: `.superpowers/sdd/align-sources-task-5b-outbound-pair-final-review.md`.
+- Remaining findings: (1) final-header validation cannot distinguish caller-explicit Cookie from Bridge jar Cookie, and permissive trimming can normalize malformed headers into a match; an explicit mismatch can also CAS-evict a still-valid jar-backed binding. (2) the real `DesktopNetworkHelper` test kills removal of the paired network interceptor but not removal of the application challenge interceptor.
+- Finding evaluation: both are technically valid and remain in the same four Desktop files and single `challenge-recovery-policy` risk axis. Continue one bounded provenance/parser/production-wiring TDD closure; no Task 5C or core/common expansion.
+- Provenance closure requirements: mark caller-explicit Cookie at the application boundary with an internal request tag preserved across the one retry. The network interceptor must leave explicit Cookie/default UA unchanged and must not prune jar-backed bindings. Bridge-generated headers must be parsed with a strict canonical grammar that rejects multiple headers, empty segments, OWS around `=`, illegal token/value characters and ambiguous duplicates while preserving legal `=` inside values. Add real helper 503-to-200 challenge/recovery/retry coverage that fails when application wiring is removed, and mutations for provenance, permissive trim, and both helper interceptor wirings.
+- Review/fix round: 6/6 (user-authorized engineering override for localized provenance and production-wiring closure).
+- Provenance closure fix agent: `/root/task5b_fix6` (fresh TDD implementer; bounded to the existing eight-file scope, expected four-file delta).
 
 ## Task 5A Review History
 
