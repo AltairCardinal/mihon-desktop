@@ -63,6 +63,7 @@ import mihon.desktop.tracking.DesktopTrackerSyncScheduler
 import tachiyomi.domain.track.interactor.ReadingProgressTrackSync
 import tachiyomi.domain.source.service.AuthenticatedCookie
 import tachiyomi.domain.source.service.AuthenticatedSession
+import tachiyomi.domain.source.service.AuthenticatedSessionCommitter
 import tachiyomi.domain.source.service.SourceLoginRequest
 import tachiyomi.domain.reader.interactor.RecordReadingProgress
 import tachiyomi.domain.manga.model.Manga
@@ -83,8 +84,11 @@ import uy.kohesive.injekt.api.get
 import java.io.File
 import java.net.ServerSocket
 import okhttp3.Response
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.Request
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 import java.util.prefs.Preferences
 import java.io.ByteArrayOutputStream
 import java.util.zip.ZipEntry
@@ -99,8 +103,10 @@ class DesktopDiWiringTest {
     fun `challenge DI uses one bridge manager committer and helper jar for all explicit success paths`(
         @TempDir tempDir: File,
     ) = runBlocking {
-        MockWebServer().use { server ->
-            server.start()
+        MockWebServer().use { solverServer ->
+            solverServer.start()
+            val sourceServer = MockWebServer().also { it.start() }
+            val sourceUrl = sourceServer.url("/chapter")
             val store = DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}"))
             val preferences = DesktopAppPreferences(store)
             val context = initDesktopDIForTest(
@@ -115,48 +121,54 @@ class DesktopDiWiringTest {
                 val helper = Injekt.get<DesktopNetworkHelper>()
                 val ui = DesktopUiDependencies.fromInjekt()
                 assertEquals(listOf(manager, bridge, helper), listOf(ui.cloudflareChallengeManager, ui.challengeBrowserLoginBridge, ui.networkHelper))
-                Injekt.get<DesktopAuthenticatedSessionCommitter>()
-                assertEquals(0, server.requestCount, "runtime providers must not be observed while the helper is built")
+                assertSame(Injekt.get<DesktopAuthenticatedSessionCommitter>(), Injekt.get<AuthenticatedSessionCommitter>())
+                assertEquals(0, solverServer.requestCount, "runtime providers must not be observed while the helper is built")
 
-                val manual = manager.publish(loginRequest())
+                val manual = manager.publish(loginRequest(sourceUrl))
                 assertTrue(
-                    manager.recover(manual, ChallengeRecoveryIntent.SubmitManualCookies(loginSession("manual-secret"))) is
+                    manager.recover(manual, ChallengeRecoveryIntent.SubmitManualCookies(loginSession("manual-secret", sourceUrl))) is
                         ChallengeRecoveryState.Recovered,
                 )
-                assertEquals("manual-secret", helper.cookieJar.get(loginRequest().url).single().value)
+                assertEquals("manual-secret", helper.cookieJar.get(sourceUrl).single().value)
 
-                val browser = manager.publish(loginRequest())
+                val browser = manager.publish(loginRequest(sourceUrl))
                 val browserRecovery = async(start = CoroutineStart.UNDISPATCHED) {
                     manager.recover(browser, ChallengeRecoveryIntent.OpenBrowser)
                 }
-                assertTrue(bridge.complete(browser, loginSession("browser-secret")))
+                assertTrue(bridge.complete(browser, loginSession("browser-secret", sourceUrl)))
                 assertTrue(browserRecovery.await() is ChallengeRecoveryState.Recovered)
-                assertEquals("browser-secret", helper.cookieJar.get(loginRequest().url).single().value)
-                assertEquals(0, server.requestCount)
+                assertEquals("browser-secret", helper.cookieJar.get(sourceUrl).single().value)
+                assertEquals(0, solverServer.requestCount)
 
                 assertEquals(
                     ChallengeRecoveryState.RecoverableFailure(ChallengeRecoveryFailure.SolverUnavailable),
-                    manager.recover(manager.publish(loginRequest()), ChallengeRecoveryIntent.UseFlareSolverr),
+                    manager.recover(manager.publish(loginRequest(sourceUrl)), ChallengeRecoveryIntent.UseFlareSolverr),
                 )
                 preferences.flareSolverrEnabled.set(true)
                 preferences.flareSolverrUrl.set("ftp://invalid")
-                manager.recover(manager.publish(loginRequest()), ChallengeRecoveryIntent.UseFlareSolverr)
-                assertEquals(0, server.requestCount)
+                manager.recover(manager.publish(loginRequest(sourceUrl)), ChallengeRecoveryIntent.UseFlareSolverr)
+                assertEquals(0, solverServer.requestCount)
 
-                server.enqueue(
+                solverServer.enqueue(
                     MockResponse(
-                        body = """{"status":"ok","solution":{"userAgent":"solver-agent","cookies":[{"name":"cf_clearance","value":"solver-secret","domain":"reader.example.com","secure":true}]}}""",
+                        body = """{"status":"ok","solution":{"userAgent":"solver-agent","cookies":[{"name":"cf_clearance","value":"solver-secret","domain":"${sourceUrl.host}"}]}}""",
                     ),
                 )
-                preferences.flareSolverrUrl.set(server.url("/").toString())
+                preferences.flareSolverrUrl.set(solverServer.url("/").toString())
                 assertTrue(
-                    manager.recover(manager.publish(loginRequest()), ChallengeRecoveryIntent.UseFlareSolverr) is
+                    manager.recover(manager.publish(loginRequest(sourceUrl)), ChallengeRecoveryIntent.UseFlareSolverr) is
                         ChallengeRecoveryState.Recovered,
                 )
-                assertEquals(1, server.requestCount)
-                assertEquals("solver-secret", helper.cookieJar.get(loginRequest().url).single().value)
+                assertEquals("solver-secret", helper.cookieJar.get(sourceUrl).single().value)
+                assertEquals("solver-agent", manager.solverUserAgentFor(sourceUrl))
+                sourceServer.enqueue(MockResponse(body = "ok"))
+                helper.client.newCall(Request.Builder().url(sourceUrl).build()).execute().close()
+                val outbound = sourceServer.takeRequest(5, TimeUnit.SECONDS) ?: error("source request missing")
+                assertEquals("cf_clearance=solver-secret", outbound.headers["Cookie"])
+                assertEquals("solver-agent", outbound.headers["User-Agent"])
             } finally {
                 context.closeAndJoin()
+                sourceServer.close()
             }
         }
     }
@@ -418,14 +430,14 @@ class DesktopDiWiringTest {
         }
     }
 
-    private fun loginRequest() = SourceLoginRequest(
-        url = "https://reader.example.com/chapter".toHttpUrl(),
+    private fun loginRequest(url: HttpUrl = "https://reader.example.com/chapter".toHttpUrl()) = SourceLoginRequest(
+        url = url,
         requiredCookieNames = setOf("cf_clearance"),
         timeoutMillis = 30_000,
     )
 
-    private fun loginSession(value: String) = AuthenticatedSession(
-        listOf(AuthenticatedCookie("cf_clearance", value, "reader.example.com", true, "/", null, true, true)),
+    private fun loginSession(value: String, url: HttpUrl = loginRequest().url) = AuthenticatedSession(
+        listOf(AuthenticatedCookie("cf_clearance", value, url.host, true, "/", null, url.isHttps, true)),
     )
 
     @Test

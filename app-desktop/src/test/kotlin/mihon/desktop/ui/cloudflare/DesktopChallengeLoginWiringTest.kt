@@ -49,6 +49,8 @@ class DesktopChallengeLoginWiringTest {
             first.flareSolverrUrl.set("HTTPS://solver.example/base/")
             val restored = DesktopAppPreferences(DesktopPreferenceStore(node), node)
             assertEquals(listOf(true, "https://solver.example/base/"), listOf(restored.flareSolverrEnabled.get(), restored.flareSolverrRuntimeConfig()?.baseUrl.toString()))
+            restored.flareSolverrUrl.set("https://例子.测试/")
+            assertEquals("https://xn--fsqu00a.xn--0zwm56d/", restored.flareSolverrRuntimeConfig()?.baseUrl.toString())
             restored.flareSolverrEnabled.set(false)
             assertNull(restored.flareSolverrRuntimeConfig())
         } finally {

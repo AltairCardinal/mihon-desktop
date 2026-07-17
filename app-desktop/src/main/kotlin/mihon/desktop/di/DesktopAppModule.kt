@@ -54,6 +54,7 @@ import mihon.desktop.tracking.DesktopTrackerServiceRegistry
 import mihon.desktop.tracking.DesktopTrackerSyncScheduler
 import mihon.desktop.migration.DesktopBatchMigrationController
 import mihon.desktop.domain.MigrationOptions
+import mihon.desktop.network.AuthenticatedCookieLookup
 import mihon.desktop.network.DesktopAuthenticatedSessionCommitter
 import mihon.desktop.network.DesktopBrowserOpener
 import mihon.desktop.network.DesktopChallengeBrowserLoginBridge
@@ -122,6 +123,7 @@ import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.repository.SourceRepository
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourceMangaSearchService
+import tachiyomi.domain.source.service.AuthenticatedCookie
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.api.get
@@ -271,6 +273,20 @@ private fun registerDesktopNetwork(
         flareSolverrClientProvider = {
             appPreferences.flareSolverrRuntimeConfig()?.let { config ->
                 FlareSolverrClient(config.baseUrl.toString(), networkHelper.client)
+            }
+        },
+        authenticatedCookieLookup = AuthenticatedCookieLookup { url ->
+            networkHelper.cookieJar.get(url).map { cookie ->
+                AuthenticatedCookie(
+                    name = cookie.name,
+                    value = cookie.value,
+                    domain = cookie.domain,
+                    hostOnly = cookie.hostOnly,
+                    path = cookie.path,
+                    expiresAt = cookie.expiresAt,
+                    secure = cookie.secure,
+                    httpOnly = cookie.httpOnly,
+                )
             }
         },
     )

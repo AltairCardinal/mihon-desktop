@@ -123,7 +123,7 @@ class DesktopAppPreferences(
         if (!flareSolverrEnabled.get()) return null
         val rawUrl = flareSolverrUrl.get().trim()
         val uri = runCatching { URI(rawUrl) }.getOrNull() ?: return null
-        if (!uri.isAbsolute || uri.host.isNullOrBlank() || uri.scheme.lowercase() !in setOf("http", "https")) return null
+        if (!uri.isAbsolute || uri.rawAuthority.isNullOrBlank()) return null
         val baseUrl = rawUrl.toHttpUrlOrNull() ?: return null
         return FlareSolverrRuntimeConfig(baseUrl)
     }
