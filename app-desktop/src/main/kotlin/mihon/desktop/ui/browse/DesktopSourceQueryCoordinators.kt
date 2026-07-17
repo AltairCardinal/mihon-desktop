@@ -338,20 +338,27 @@ class DesktopGlobalSearchCoordinator(
     internal fun aggregateCandidate(generation: Long, sourceId: Long, coordinator: SourceBrowseQueryCoordinator, state: SourceQueryState) =
         aggregate(generation, sourceId, coordinator, state)
 
-    internal fun publishCandidate(state: DesktopGlobalSearchState) = publish(state)
+    internal fun publishCandidate(
+        state: DesktopGlobalSearchState,
+        onAccepted: ((DesktopGlobalSearchState) -> Unit)? = null,
+    ) = publish(state, onAccepted = onAccepted)
 
-    private fun publish(state: DesktopGlobalSearchState, session: SearchSession? = null) {
-        val accepted = synchronized(lock) {
-            if (state.publicationOrdinal <= publications.value.publicationOrdinal) false else {
-                publications.value = state
-                true
+    private fun publish(
+        state: DesktopGlobalSearchState,
+        session: SearchSession? = null,
+        onAccepted: ((DesktopGlobalSearchState) -> Unit)? = null,
+    ) {
+        var current = publications.value
+        while (state.publicationOrdinal > current.publicationOrdinal) {
+            if (publications.compareAndSet(current, state)) {
+                try {
+                    (session?.callback ?: onAccepted)?.invoke(state)
+                } catch (error: Exception) {
+                    if (error is CancellationException) throw error
+                }
+                return
             }
-        }
-        if (!accepted) return
-        try {
-            session?.callback?.invoke(state)
-        } catch (error: Exception) {
-            if (error is CancellationException) throw error
+            current = publications.value
         }
     }
 

@@ -473,11 +473,41 @@ class SourceSharedStateWiringTest {
     }
 
     @Test
-    fun `global publication rejects an older ordinal candidate`() {
+    fun `concurrent global publication keeps the newest ordinal and rejects loser callback`() {
         val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
-        coordinator.publishCandidate(DesktopGlobalSearchState(generation = 2, publicationOrdinal = 2))
-        coordinator.publishCandidate(DesktopGlobalSearchState(generation = 1, publicationOrdinal = 1))
+        val release = CountDownLatch(1)
+        val publications = listOf(
+            DesktopGlobalSearchState(generation = 1, publicationOrdinal = 1),
+            DesktopGlobalSearchState(generation = 2, publicationOrdinal = 2),
+        ).map { candidate ->
+            CompletableFuture.runAsync { release.await(); coordinator.publishCandidate(candidate) }
+        }
+        release.countDown()
+        CompletableFuture.allOf(*publications.toTypedArray()).get(2, TimeUnit.SECONDS)
         assertEquals(2, coordinator.states.value.generation)
+        val loserCallbacks = mutableListOf<DesktopGlobalSearchState>()
+        coordinator.publishCandidate(DesktopGlobalSearchState(generation = 1, publicationOrdinal = 1), loserCallbacks::add)
+        assertTrue(loserCallbacks.isEmpty())
+    }
+
+    @Test
+    fun `global publication resumes reentrant collectors outside the coordinator lock`() = runBlocking {
+        val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+        val reentered = CompletableDeferred<Boolean>()
+        val collector = launch(Dispatchers.Unconfined, start = CoroutineStart.UNDISPATCHED) {
+            coordinator.states.first { state ->
+                if (state.generation == 0L) return@first false
+                val crossThread = CompletableFuture.supplyAsync { coordinator.coordinatorFor(-1) }
+                reentered.complete(runCatching { crossThread.get(250, TimeUnit.MILLISECONDS) }.isSuccess)
+                true
+            }
+        }
+        val callbacks = mutableListOf<DesktopGlobalSearchState>()
+        coordinator.search(emptyList(), "reentrant", callbacks::add)
+        collector.join()
+
+        assertTrue(reentered.await(), "StateFlow resumed its collector while the global monitor was held")
+        assertEquals(listOf(1L, 1L), callbacks.map { it.generation })
     }
 
     @Test
