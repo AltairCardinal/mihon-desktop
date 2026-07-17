@@ -543,24 +543,24 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 **Execution split:** 删除三 Screen 各自复制的 query/loading/items/error/page 状态本身会同时产生大量删除与替换，实际完整实现无法在 320 changed lines 内保持有效 production-wiring 测试。Task 连续拆为：6A1 `source-browse-shared-state`（shared+desktop，3 files/360 lines：coordinator start/final、exact retry、单源 projector/action adapter/消费及其测试）；6A2 `global-browse-state-consumption`（desktop，3 files/260 lines：Global projector/消费、Browse 缺源入口及增量测试）。
 **Split waiver:** 顶层 5 files/620 lines 是两个独立 TDD、提交和审查单元的聚合值，不是单个实现者一次调度范围；6A1 与 6A2 均低于 8 文件/400 行。单源 coordinator/projector/action 必须先独立全绿，Global 与 Browse 再消费同一契约；把三 Screen 状态删除压入一个 320 行任务会迫使删除行为测试或保留复制状态，违反有效验证和共享状态唯一事实源要求。
 
-- [ ] **Task 6A1: 单源共享状态、exact recovery 与 production action wiring**
-  - [ ] **Task 6A1R: 审查闭环——区分通用登录与 Cloudflare，并证明 Screen 重放 exact request**
+- [x] **Task 6A1: 单源共享状态、exact recovery 与 production action wiring**
+  - [x] **Task 6A1R: 审查闭环——区分通用登录与 Cloudflare，并证明 Screen 重放 exact request**
   - [x] **Task 6A1R2a: 重规划——以 StateFlow 无锁外部回调保证 generation 发布顺序**
     - [x] **Task 6A1R2aR: 审查闭环——stamped StateFlow 锁外单调发布**
-  - [ ] **Task 6A1R2b: 重规划——真实 Desktop WebView 登录、Cookie 回传与 exact retry**
+  - [x] **Task 6A1R2b: 重规划——真实 Desktop WebView 登录、Cookie 回传与 exact retry**
     - [x] **Task 6A1R2b1: 通用登录会话核心、Cookie Header 与真实 CookieJar**
       - [x] **Task 6A1R2b1R: 审查闭环——intent identity、attempt lifecycle 与真实出站 Cookie**
-    - [ ] **Task 6A1R2b2: Source Browse 登录 UI、DI、MR 与 production wiring**
+    - [x] **Task 6A1R2b2: Source Browse 登录 UI、DI、MR 与 production wiring**
       - [x] **Task 6A1R2b2a: Source login DI、generic/Cloudflare 路由与 Screen production seam**
-      - [ ] **Task 6A1R2b2b: Source login 对话框、MR、取消与终态反馈**
+      - [x] **Task 6A1R2b2b: Source login 对话框、MR、取消与终态反馈**
         - [x] **Task 6A1R2b2b1: Source login UI state/action lifecycle**
           - [x] **Task 6A1R2b2b1R: attempt-aware start/completion race closure**
-        - [ ] **Task 6A1R2b2b2: Source login Compose Dialog、MR 与 Screen render wiring**
+        - [x] **Task 6A1R2b2b2: Source login Compose Dialog、MR 与 Screen render wiring**
           - [x] **Task 6A1R2b2b2a: Source login MR copy 与反馈映射**
             - [x] **Task 6A1R2b2b2aR: 五类终态反馈映射测试闭环**
-          - [ ] **Task 6A1R2b2b2b: Source login Compose Host 与 Screen 事件 wiring**
-            - [ ] **Task 6A1R2b2b2bR: stale attempt 事件隔离与真实 Dialog/Screen wiring 测试闭环**
-              - [ ] **Task 6A1R2b2b2bR2: cancel 拒绝保留当前 UI 状态契约**
+          - [x] **Task 6A1R2b2b2b: Source login Compose Host 与 Screen 事件 wiring**
+            - [x] **Task 6A1R2b2b2bR: stale attempt 事件隔离与真实 Dialog/Screen wiring 测试闭环**
+              - [x] **Task 6A1R2b2b2bR2: cancel 拒绝保留当前 UI 状态契约**
 - [ ] **Task 6A2: Global 共享状态消费与 Browse 缺源入口**
 
 **Files:**
