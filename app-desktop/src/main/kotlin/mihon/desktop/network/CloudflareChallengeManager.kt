@@ -1,6 +1,7 @@
 package mihon.desktop.network
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
@@ -8,6 +9,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -29,6 +31,8 @@ class CloudflareChallengeManager(
     private val browserAdapter: BrowserLoginAdapter = UnavailableBrowserLoginAdapter,
     private val committer: AuthenticatedSessionCommitter? = null,
     private val flareSolverrClient: FlareSolverrClient? = null,
+    private val commitDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val currentTimeMillis: () -> Long = System::currentTimeMillis,
 ) {
     private val _challenges = MutableSharedFlow<CloudflareChallenge>(
         extraBufferCapacity = 1,
@@ -37,9 +41,15 @@ class CloudflareChallengeManager(
     val challenges: SharedFlow<CloudflareChallenge> = _challenges
 
     private val recentChallenges = ConcurrentLinkedQueue<CloudflareChallenge>()
-    private val solverUserAgents = ConcurrentHashMap<String, String>()
+    private val solverUserAgents = ConcurrentHashMap<String, SolverUserAgentBinding>()
+    private val hostCommitLocks = ConcurrentHashMap<String, Mutex>()
 
-    internal fun solverUserAgentFor(url: HttpUrl): String? = solverUserAgents[url.host.lowercase()]
+    internal fun solverUserAgentFor(url: HttpUrl): String? {
+        val host = url.host.lowercase()
+        return solverUserAgents.computeIfPresent(host) { _, binding ->
+            binding.takeUnless { it.isExpired(currentTimeMillis()) }
+        }?.userAgent
+    }
 
     internal fun publish(request: SourceLoginRequest): CloudflareChallenge =
         CloudflareChallenge(request).also(::emit)
@@ -61,10 +71,10 @@ class CloudflareChallengeManager(
         }
 
         return challenge.actionMutex.withLock {
-            challenge.stateAfterTerminal()?.let { return@withLock it }
             if (intent == ChallengeRecoveryIntent.Retry) {
-                return@withLock challenge.transition(ChallengeRecoveryState.AwaitingUserAction)
+                return@withLock challenge.retry()
             }
+            challenge.stateAfterTerminal()?.let { return@withLock it }
             val actionJob = currentCoroutineContext()[Job]
             val action = when (intent) {
                 ChallengeRecoveryIntent.OpenBrowser -> ChallengeRecoveryAction.Browser
@@ -147,10 +157,33 @@ class CloudflareChallengeManager(
         val delegate = committer ?: MissingAuthenticatedSessionCommitter
         val request = challenge.request.copy(timeoutMillis = challenge.remainingMillis().coerceAtLeast(1))
         val guardedCommitter = AuthenticatedSessionCommitter { loginRequest, session ->
+            // Claim and the final result bracket one local atomic commit. Once claimed, cancellation
+            // cannot manufacture a timeout while persistence is still able to complete later.
             if (!challenge.claimCommit()) throw ChallengeExpiredException()
             try {
-                delegate.commit(loginRequest, session)
-                solverUserAgent?.let { solverUserAgents[loginRequest.url.host.lowercase()] = it }
+                val host = loginRequest.url.host.lowercase()
+                hostCommitLocks.computeIfAbsent(host) { Mutex() }.withLock {
+                    withContext(commitDispatcher) {
+                        delegate.commit(loginRequest, session)
+                    }
+                    if (solverUserAgent == null) {
+                        solverUserAgents.remove(host)
+                    } else {
+                        val clearance = checkNotNull(
+                            session.cookies.firstOrNull { it.name == CF_CLEARANCE_COOKIE_NAME },
+                        )
+                        solverUserAgents[host] = SolverUserAgentBinding(
+                            userAgent = solverUserAgent,
+                            clearanceIdentity = ClearanceCookieIdentity(
+                                name = clearance.name,
+                                domain = clearance.domain.lowercase().trimStart('.'),
+                                hostOnly = clearance.hostOnly,
+                                path = clearance.path,
+                            ),
+                            expiresAt = clearance.expiresAt,
+                        )
+                    }
+                }
                 challenge.complete(
                     ChallengeRecoveryTerminal.Recovered,
                     ChallengeRecoveryState.Recovered(session.cookieNames, session.cookies.size),
@@ -176,7 +209,10 @@ class CloudflareChallengeManager(
             SourceLoginState.CommitFailed ->
                 challenge.stateAfterTerminal() ?: challenge.fail(ChallengeRecoveryFailure.CommitFailed)
             SourceLoginState.Cancelled -> {
-                challenge.complete(ChallengeRecoveryTerminal.Cancelled, ChallengeRecoveryState.Cancelled)
+                challenge.completeFromActiveAction(
+                    ChallengeRecoveryTerminal.Cancelled,
+                    ChallengeRecoveryState.Cancelled,
+                )
                 challenge.stateAfterTerminal() ?: ChallengeRecoveryState.Cancelled
             }
             SourceLoginState.TimedOut -> {
@@ -222,3 +258,18 @@ private object MissingAuthenticatedSessionCommitter : AuthenticatedSessionCommit
 }
 
 private class ChallengeExpiredException : IllegalStateException("challenge recovery expired before commit")
+
+private data class SolverUserAgentBinding(
+    val userAgent: String,
+    val clearanceIdentity: ClearanceCookieIdentity,
+    val expiresAt: Long?,
+) {
+    fun isExpired(nowMillis: Long): Boolean = expiresAt?.let { it <= nowMillis } == true
+}
+
+private data class ClearanceCookieIdentity(
+    val name: String,
+    val domain: String,
+    val hostOnly: Boolean,
+    val path: String,
+)

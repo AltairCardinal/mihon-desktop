@@ -62,6 +62,12 @@ interface BrowserLoginSession {
     fun cancel()
 }
 
+/**
+ * Atomically commits a validated session using local, finite work only.
+ *
+ * Implementations must not perform network calls and must eventually return the real persisted success or failure.
+ * The caller may deliberately finish a claimed commit despite cancellation, so cancellation is not a timeout signal.
+ */
 fun interface AuthenticatedSessionCommitter {
     suspend fun commit(request: SourceLoginRequest, session: AuthenticatedSession)
 }
@@ -125,13 +131,14 @@ class SourceLoginSession(
         session: AuthenticatedSession,
     ): SourceLoginState {
         val missing = request.requiredCookieNames - session.cookieNames
-        val blankRequired = session.cookies
-            .filter { it.name in request.requiredCookieNames && it.value.isBlank() }
-            .mapTo(sortedSetOf()) { it.name }
+        val satisfiedRequired = session.cookies
+            .filter { it.name in request.requiredCookieNames && it.value.isNotBlank() && it.matches(request.url) }
+            .mapTo(hashSetOf()) { it.name }
+        val unsatisfiedRequired = request.requiredCookieNames - missing - satisfiedRequired
         val rejected = session.cookies
             .filterNot { it.matches(request.url) }
             .mapTo(sortedSetOf()) { it.name }
-            .apply { addAll(blankRequired) }
+            .apply { addAll(unsatisfiedRequired) }
         if (missing.isNotEmpty() || rejected.isNotEmpty()) {
             return finish(SourceLoginState.InvalidCookies(missing.toSortedSet(), rejected))
         }

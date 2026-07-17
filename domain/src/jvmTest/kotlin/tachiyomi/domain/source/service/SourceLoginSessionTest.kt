@@ -86,6 +86,70 @@ class SourceLoginSessionTest {
     }
 
     @Test
+    fun `required cookie accepts one domain-valid nonblank candidate alongside blank duplicate`() = runTest {
+        val commits = mutableListOf<AuthenticatedSession>()
+        val browserSession = TestBrowserSession()
+        val login = session(browserSession) { commits += it }
+        val result = async { login.login(request(required = setOf("clearance"))) }
+        runCurrent()
+
+        browserSession.complete(
+            AuthenticatedSession(
+                listOf(
+                    cookie("clearance", "", "reader.example.com"),
+                    cookie("clearance", "valid-secret", "example.com", hostOnly = false),
+                ),
+            ),
+        )
+
+        assertInstanceOf(SourceLoginState.Authenticated::class.java, result.await())
+        assertEquals(1, commits.size)
+    }
+
+    @Test
+    fun `non-required blank cookie remains compatible`() = runTest {
+        val commits = mutableListOf<AuthenticatedSession>()
+        val browserSession = TestBrowserSession()
+        val login = session(browserSession) { commits += it }
+        val result = async { login.login(request(required = setOf("clearance"))) }
+        runCurrent()
+
+        browserSession.complete(
+            AuthenticatedSession(
+                listOf(
+                    cookie("clearance", "valid-secret", "reader.example.com"),
+                    cookie("optional", "", "reader.example.com"),
+                ),
+            ),
+        )
+
+        assertInstanceOf(SourceLoginState.Authenticated::class.java, result.await())
+        assertEquals(1, commits.size)
+    }
+
+    @Test
+    fun `invalid-domain nonblank candidate does not satisfy required cookie`() = runTest {
+        val commits = mutableListOf<AuthenticatedSession>()
+        val browserSession = TestBrowserSession()
+        val login = session(browserSession) { commits += it }
+        val result = async { login.login(request(required = setOf("clearance"))) }
+        runCurrent()
+
+        browserSession.complete(
+            AuthenticatedSession(
+                listOf(
+                    cookie("clearance", "", "reader.example.com"),
+                    cookie("clearance", "not-for-this-source", "other.test", hostOnly = false),
+                ),
+            ),
+        )
+
+        val state = assertInstanceOf(SourceLoginState.InvalidCookies::class.java, result.await())
+        assertEquals(setOf("clearance"), state.rejectedCookieNames)
+        assertTrue(commits.isEmpty())
+    }
+
+    @Test
     fun `unrelated and child-domain cookies reject the whole session`() = runTest {
         val commits = mutableListOf<AuthenticatedSession>()
         val browserSession = TestBrowserSession()

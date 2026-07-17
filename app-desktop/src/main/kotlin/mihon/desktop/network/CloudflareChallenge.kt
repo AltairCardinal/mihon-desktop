@@ -57,11 +57,13 @@ class CloudflareChallenge internal constructor(
     val url: String = request.url.toString()
 
     // Kept until Task 5C moves the existing dialog to recovery intents.
-    val latch: CountDownLatch = CountDownLatch(1)
+    val latch: CountDownLatch
+        get() = synchronized(lifecycleLock) { currentAttempt.latch }
     @Volatile var resolved: Boolean = false
 
     private val deadlineNanos = nanoTime() + TimeUnit.MILLISECONDS.toNanos(request.timeoutMillis)
     private val lifecycleLock = Any()
+    private var currentAttempt = ChallengeAttempt()
     private var terminalValue: ChallengeRecoveryTerminal? = null
     private var activeAction: Job? = null
     private var commitClaimed = false
@@ -164,6 +166,32 @@ class CloudflareChallenge internal constructor(
         terminalValue?.let { mutableState.value }
     }
 
+    internal fun retry(): ChallengeRecoveryState = synchronized(lifecycleLock) {
+        when (terminalValue) {
+            null -> {
+                if (mutableState.value is ChallengeRecoveryState.RecoverableFailure) {
+                    mutableState.value = ChallengeRecoveryState.AwaitingUserAction
+                }
+            }
+            ChallengeRecoveryTerminal.Failed -> {
+                if (
+                    mutableState.value ==
+                    ChallengeRecoveryState.RecoverableFailure(ChallengeRecoveryFailure.CommitFailed)
+                ) {
+                    terminalValue = null
+                    currentAttempt = ChallengeAttempt()
+                    resolved = false
+                    mutableState.value = ChallengeRecoveryState.AwaitingUserAction
+                }
+            }
+            ChallengeRecoveryTerminal.Recovered,
+            ChallengeRecoveryTerminal.Cancelled,
+            ChallengeRecoveryTerminal.TimedOut,
+            -> Unit
+        }
+        mutableState.value
+    }
+
     internal fun clearAction(job: Job?) {
         synchronized(lifecycleLock) {
             if (activeAction == job && !commitClaimed) activeAction = null
@@ -171,9 +199,10 @@ class CloudflareChallenge internal constructor(
     }
 
     internal fun awaitTerminal(): ChallengeRecoveryTerminal {
-        terminal?.let { return it }
-        val completed = latch.await(remainingMillis(), TimeUnit.MILLISECONDS)
-        terminal?.let { return it }
+        val attempt = synchronized(lifecycleLock) { currentAttempt }
+        attempt.terminal?.let { return it }
+        val completed = attempt.latch.await(remainingMillis(), TimeUnit.MILLISECONDS)
+        attempt.terminal?.let { return it }
         if (completed && resolved) {
             complete(
                 ChallengeRecoveryTerminal.Recovered,
@@ -201,10 +230,16 @@ class CloudflareChallenge internal constructor(
         state: ChallengeRecoveryState,
     ) {
         terminalValue = terminal
+        currentAttempt.terminal = terminal
         commitClaimed = false
         activeAction = null
         if (terminal == ChallengeRecoveryTerminal.Recovered) resolved = true
         mutableState.value = state
-        latch.countDown()
+        currentAttempt.latch.countDown()
     }
 }
+
+private class ChallengeAttempt(
+    val latch: CountDownLatch = CountDownLatch(1),
+    @Volatile var terminal: ChallengeRecoveryTerminal? = null,
+)
