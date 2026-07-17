@@ -101,7 +101,7 @@
 - Current task: `Task 5B: Desktop 挑战恢复策略与 FlareSolverr 显式后备`
 - Plan checkbox: pending
 - OpenSpec mapping: `3.3` partial (do not check off until Tasks 5B and 5C complete).
-- Stage: `re-review`
+- Stage: `final-repair`
 - Task base: `1d5b6cc9b`
 - Brief: `.superpowers/sdd/align-sources-task-5b-brief.md`
 - Risk axis: `challenge-recovery-policy`
@@ -132,6 +132,11 @@
 - Final repair verification: fresh policy 21 + client 2 + import 7 + adapter 6 + session 16 + jar 21 + persistence 8 = 81/81 PASS, 0 failures/errors/skips; root Spotless 97 tasks in the same 1m29s invocation; diff/scope checks PASS.
 - Final cumulative scope: 7 planned files, +1459/-74 (1533 changed lines); plan/brief waiver updated for the review-expanded shared+desktop closure.
 - Re-reviewer: `/root/task5b_rereview` (fresh independent read-only cumulative review; no test rerun).
+- Re-review result: Spec Compliance `CHANGES_REQUIRED`; Task quality `NEEDS_FIXES`; Critical 0 / Important 5 / Minor 0. Original findings status: OPEN / CLOSED / OPEN / OPEN / CLOSED. Report: `.superpowers/sdd/align-sources-task-5b-rereview.md`.
+- Remaining findings: (1) per-host solver UA outlives successful browser/manual replacement and clearance expiry; (2) the real synchronous jar commit still runs on the caller dispatcher and post-claim termination lacks an explicit local finite-operation contract; (3) browser-originated `SourceLoginState.Cancelled` self-cancels the current recovery Job; (4) shared validation rejects any blank duplicate instead of accepting a required name with at least one domain-valid nonblank value; (5) commit failure publishes terminal Failed while exposing RecoverableFailure, so the terminal gate makes explicit Retry unreachable.
+- Finding evaluation: all five are technically valid and remain within the existing 7-file shared+desktop boundary. Perform the final focused TDD repair without expanding into Task 5C UI/DI/settings.
+- Final repair requirements: bind UA to clearance identity/expiry and atomically clear it on successful non-solver replacement; preserve old pairing on failure/rollback; run the local finite atomic committer on IO and document that post-claim honesty requires its no-network finite completion contract; use active-action completion for browser cancellation; implement per-required-name existence of a domain-valid nonblank candidate; let Retry reset a recoverable failed attempt and prove real persistence failure→old credentials preserved→Retry→one successful commit→Recovered.
+- Review/fix round: 2/2.
 
 ## Task 5A Review History
 
