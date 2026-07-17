@@ -53,6 +53,7 @@ enum class ChallengeRecoveryTerminal {
 class CloudflareChallenge internal constructor(
     val request: SourceLoginRequest,
     private val nanoTime: () -> Long = System::nanoTime,
+    private val afterAttemptCompletionObserved: () -> Unit = {},
 ) {
     val url: String = request.url.toString()
 
@@ -61,29 +62,26 @@ class CloudflareChallenge internal constructor(
         get() = synchronized(lifecycleLock) { currentAttempt.latch }
     @Volatile var resolved: Boolean = false
 
-    private val deadlineNanos = nanoTime() + TimeUnit.MILLISECONDS.toNanos(request.timeoutMillis)
     private val lifecycleLock = Any()
-    private var currentAttempt = ChallengeAttempt()
-    private var terminalValue: ChallengeRecoveryTerminal? = null
-    private var activeAction: Job? = null
-    private var commitClaimed = false
+    private var currentAttempt = newAttempt()
     private val mutableState = MutableStateFlow<ChallengeRecoveryState>(ChallengeRecoveryState.AwaitingUserAction)
     internal val actionMutex = Mutex()
 
     val state: StateFlow<ChallengeRecoveryState> = mutableState.asStateFlow()
     val terminal: ChallengeRecoveryTerminal?
-        get() = synchronized(lifecycleLock) { terminalValue }
+        get() = synchronized(lifecycleLock) { currentAttempt.terminal }
 
     internal fun beginAction(job: Job?, state: ChallengeRecoveryState.Running): ChallengeRecoveryState? {
         var jobToCancel: Job? = null
         val result = synchronized(lifecycleLock) {
-            terminalValue?.let { return@synchronized mutableState.value }
-            if (remainingMillis() <= 0) {
-                jobToCancel = activeAction
-                finishLocked(ChallengeRecoveryTerminal.TimedOut, ChallengeRecoveryState.TimedOut)
+            val attempt = currentAttempt
+            attempt.terminal?.let { return@synchronized mutableState.value }
+            if (remainingMillis(attempt) <= 0) {
+                jobToCancel = attempt.activeAction
+                finishLocked(attempt, ChallengeRecoveryTerminal.TimedOut, ChallengeRecoveryState.TimedOut)
                 return@synchronized ChallengeRecoveryState.TimedOut
             }
-            activeAction = job
+            attempt.activeAction = job
             mutableState.value = state
             null
         }
@@ -91,16 +89,16 @@ class CloudflareChallenge internal constructor(
         return result
     }
 
-    internal fun remainingMillis(): Long =
-        TimeUnit.NANOSECONDS.toMillis((deadlineNanos - nanoTime()).coerceAtLeast(0))
+    internal fun remainingMillis(): Long = synchronized(lifecycleLock) { remainingMillis(currentAttempt) }
 
     internal fun transition(state: ChallengeRecoveryState): ChallengeRecoveryState {
         var jobToCancel: Job? = null
         val result = synchronized(lifecycleLock) {
-            terminalValue?.let { return@synchronized mutableState.value }
-            if (!commitClaimed && remainingMillis() <= 0) {
-                jobToCancel = activeAction
-                finishLocked(ChallengeRecoveryTerminal.TimedOut, ChallengeRecoveryState.TimedOut)
+            val attempt = currentAttempt
+            attempt.terminal?.let { return@synchronized mutableState.value }
+            if (!attempt.commitClaimed && remainingMillis(attempt) <= 0) {
+                jobToCancel = attempt.activeAction
+                finishLocked(attempt, ChallengeRecoveryTerminal.TimedOut, ChallengeRecoveryState.TimedOut)
                 ChallengeRecoveryState.TimedOut
             } else {
                 mutableState.value = state
@@ -113,12 +111,13 @@ class CloudflareChallenge internal constructor(
 
     internal fun claimCommit(): Boolean {
         return synchronized(lifecycleLock) {
-            if (terminalValue != null) return@synchronized false
-            if (remainingMillis() <= 0) {
-                finishLocked(ChallengeRecoveryTerminal.TimedOut, ChallengeRecoveryState.TimedOut)
+            val attempt = currentAttempt
+            if (attempt.terminal != null) return@synchronized false
+            if (remainingMillis(attempt) <= 0) {
+                finishLocked(attempt, ChallengeRecoveryTerminal.TimedOut, ChallengeRecoveryState.TimedOut)
                 return@synchronized false
             }
-            commitClaimed = true
+            attempt.commitClaimed = true
             true
         }
     }
@@ -129,11 +128,12 @@ class CloudflareChallenge internal constructor(
     ): Boolean {
         var jobToCancel: Job? = null
         val completed = synchronized(lifecycleLock) {
-            if (terminalValue != null) return@synchronized false
+            val attempt = currentAttempt
+            if (attempt.terminal != null) return@synchronized false
             if (terminal == ChallengeRecoveryTerminal.Cancelled || terminal == ChallengeRecoveryTerminal.TimedOut) {
-                jobToCancel = activeAction
+                jobToCancel = attempt.activeAction
             }
-            finishLocked(terminal, state)
+            finishLocked(attempt, terminal, state)
             true
         }
         jobToCancel?.cancel()
@@ -144,18 +144,20 @@ class CloudflareChallenge internal constructor(
         terminal: ChallengeRecoveryTerminal,
         state: ChallengeRecoveryState,
     ): Boolean = synchronized(lifecycleLock) {
-        if (terminalValue != null) return@synchronized false
-        finishLocked(terminal, state)
+        val attempt = currentAttempt
+        if (attempt.terminal != null) return@synchronized false
+        finishLocked(attempt, terminal, state)
         true
     }
 
     internal fun cancelOrAwaitCommit(): Boolean {
         var jobToCancel: Job? = null
         val waitForCommit = synchronized(lifecycleLock) {
-            if (terminalValue != null) return@synchronized false
-            if (commitClaimed) return@synchronized true
-            jobToCancel = activeAction
-            finishLocked(ChallengeRecoveryTerminal.Cancelled, ChallengeRecoveryState.Cancelled)
+            val attempt = currentAttempt
+            if (attempt.terminal != null) return@synchronized false
+            if (attempt.commitClaimed) return@synchronized true
+            jobToCancel = attempt.activeAction
+            finishLocked(attempt, ChallengeRecoveryTerminal.Cancelled, ChallengeRecoveryState.Cancelled)
             false
         }
         jobToCancel?.cancel()
@@ -163,11 +165,11 @@ class CloudflareChallenge internal constructor(
     }
 
     internal fun stateAfterTerminal(): ChallengeRecoveryState? = synchronized(lifecycleLock) {
-        terminalValue?.let { mutableState.value }
+        currentAttempt.terminal?.let { mutableState.value }
     }
 
     internal fun retry(): ChallengeRecoveryState = synchronized(lifecycleLock) {
-        when (terminalValue) {
+        when (currentAttempt.terminal) {
             null -> {
                 if (mutableState.value is ChallengeRecoveryState.RecoverableFailure) {
                     mutableState.value = ChallengeRecoveryState.AwaitingUserAction
@@ -178,8 +180,7 @@ class CloudflareChallenge internal constructor(
                     mutableState.value ==
                     ChallengeRecoveryState.RecoverableFailure(ChallengeRecoveryFailure.CommitFailed)
                 ) {
-                    terminalValue = null
-                    currentAttempt = ChallengeAttempt()
+                    currentAttempt = newAttempt()
                     resolved = false
                     mutableState.value = ChallengeRecoveryState.AwaitingUserAction
                 }
@@ -194,52 +195,70 @@ class CloudflareChallenge internal constructor(
 
     internal fun clearAction(job: Job?) {
         synchronized(lifecycleLock) {
-            if (activeAction == job && !commitClaimed) activeAction = null
+            val attempt = currentAttempt
+            if (attempt.activeAction == job && !attempt.commitClaimed) attempt.activeAction = null
         }
     }
 
     internal fun awaitTerminal(): ChallengeRecoveryTerminal {
         val attempt = synchronized(lifecycleLock) { currentAttempt }
         attempt.terminal?.let { return it }
-        val completed = attempt.latch.await(remainingMillis(), TimeUnit.MILLISECONDS)
+        val completed = attempt.latch.await(remainingMillis(attempt), TimeUnit.MILLISECONDS)
+        if (completed) afterAttemptCompletionObserved()
         attempt.terminal?.let { return it }
-        if (completed && resolved) {
+        if (completed && resolved && synchronized(lifecycleLock) { currentAttempt === attempt }) {
             complete(
                 ChallengeRecoveryTerminal.Recovered,
                 ChallengeRecoveryState.Recovered(emptySet(), 0),
             )
-        } else if (completed) {
+        } else if (completed && synchronized(lifecycleLock) { currentAttempt === attempt }) {
             complete(ChallengeRecoveryTerminal.Cancelled, ChallengeRecoveryState.Cancelled)
         } else {
             var jobToCancel: Job? = null
             val waitForCommit = synchronized(lifecycleLock) {
-                if (terminalValue != null) return@synchronized false
-                if (commitClaimed) return@synchronized true
-                jobToCancel = activeAction
-                finishLocked(ChallengeRecoveryTerminal.TimedOut, ChallengeRecoveryState.TimedOut)
+                if (attempt.terminal != null) return@synchronized false
+                if (attempt.commitClaimed) return@synchronized true
+                if (currentAttempt !== attempt) return@synchronized false
+                jobToCancel = attempt.activeAction
+                finishLocked(attempt, ChallengeRecoveryTerminal.TimedOut, ChallengeRecoveryState.TimedOut)
                 false
             }
             jobToCancel?.cancel()
-            if (waitForCommit) latch.await()
+            if (waitForCommit) {
+                attempt.latch.await()
+                afterAttemptCompletionObserved()
+            }
         }
-        return checkNotNull(terminal)
+        return checkNotNull(attempt.terminal)
     }
 
     private fun finishLocked(
+        attempt: ChallengeAttempt,
         terminal: ChallengeRecoveryTerminal,
         state: ChallengeRecoveryState,
     ) {
-        terminalValue = terminal
-        currentAttempt.terminal = terminal
-        commitClaimed = false
-        activeAction = null
-        if (terminal == ChallengeRecoveryTerminal.Recovered) resolved = true
-        mutableState.value = state
-        currentAttempt.latch.countDown()
+        attempt.terminal = terminal
+        attempt.commitClaimed = false
+        attempt.activeAction = null
+        if (currentAttempt === attempt) {
+            if (terminal == ChallengeRecoveryTerminal.Recovered) resolved = true
+            mutableState.value = state
+        }
+        attempt.latch.countDown()
     }
+
+    private fun remainingMillis(attempt: ChallengeAttempt): Long =
+        TimeUnit.NANOSECONDS.toMillis((attempt.deadlineNanos - nanoTime()).coerceAtLeast(0))
+
+    private fun newAttempt() = ChallengeAttempt(
+        deadlineNanos = nanoTime() + TimeUnit.MILLISECONDS.toNanos(request.timeoutMillis),
+    )
 }
 
 private class ChallengeAttempt(
+    val deadlineNanos: Long,
     val latch: CountDownLatch = CountDownLatch(1),
     @Volatile var terminal: ChallengeRecoveryTerminal? = null,
+    var activeAction: Job? = null,
+    var commitClaimed: Boolean = false,
 )

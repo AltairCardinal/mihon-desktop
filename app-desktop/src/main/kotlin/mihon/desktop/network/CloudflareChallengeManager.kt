@@ -26,6 +26,11 @@ import tachiyomi.domain.source.service.SourceLoginSession
 import tachiyomi.domain.source.service.SourceLoginState
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.security.MessageDigest
+
+fun interface AuthenticatedCookieLookup {
+    fun loadForRequest(url: HttpUrl): List<AuthenticatedCookie>
+}
 
 class CloudflareChallengeManager(
     private val browserAdapter: BrowserLoginAdapter = UnavailableBrowserLoginAdapter,
@@ -33,6 +38,7 @@ class CloudflareChallengeManager(
     private val flareSolverrClient: FlareSolverrClient? = null,
     private val commitDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val currentTimeMillis: () -> Long = System::currentTimeMillis,
+    private val authenticatedCookieLookup: AuthenticatedCookieLookup = AuthenticatedCookieLookup { emptyList() },
 ) {
     private val _challenges = MutableSharedFlow<CloudflareChallenge>(
         extraBufferCapacity = 1,
@@ -42,13 +48,23 @@ class CloudflareChallengeManager(
 
     private val recentChallenges = ConcurrentLinkedQueue<CloudflareChallenge>()
     private val solverUserAgents = ConcurrentHashMap<String, SolverUserAgentBinding>()
-    private val hostCommitLocks = ConcurrentHashMap<String, Mutex>()
+    private val hostCommitLocks = List(COMMIT_LOCK_STRIPES) { Mutex() }
+    internal val commitLockCount: Int
+        get() = hostCommitLocks.size
 
     internal fun solverUserAgentFor(url: HttpUrl): String? {
         val host = url.host.lowercase()
-        return solverUserAgents.computeIfPresent(host) { _, binding ->
-            binding.takeUnless { it.isExpired(currentTimeMillis()) }
-        }?.userAgent
+        repeat(BINDING_LOOKUP_RETRIES) {
+            val binding = solverUserAgents[host] ?: return null
+            val actualCookies = runCatching { authenticatedCookieLookup.loadForRequest(url) }.getOrDefault(emptyList())
+            if (solverUserAgents[host] !== binding) return@repeat
+            if (!binding.isBackedBy(actualCookies, currentTimeMillis())) {
+                if (solverUserAgents.remove(host, binding)) return null
+                return@repeat
+            }
+            return binding.userAgent
+        }
+        return null
     }
 
     internal fun publish(request: SourceLoginRequest): CloudflareChallenge =
@@ -162,25 +178,20 @@ class CloudflareChallengeManager(
             if (!challenge.claimCommit()) throw ChallengeExpiredException()
             try {
                 val host = loginRequest.url.host.lowercase()
-                hostCommitLocks.computeIfAbsent(host) { Mutex() }.withLock {
+                hostCommitLock(host).withLock {
                     withContext(commitDispatcher) {
                         delegate.commit(loginRequest, session)
                     }
                     if (solverUserAgent == null) {
                         solverUserAgents.remove(host)
                     } else {
-                        val clearance = checkNotNull(
-                            session.cookies.firstOrNull { it.name == CF_CLEARANCE_COOKIE_NAME },
-                        )
+                        val clearances = session.cookies.filter {
+                            it.name == CF_CLEARANCE_COOKIE_NAME && it.value.isNotBlank()
+                        }
+                        check(clearances.isNotEmpty())
                         solverUserAgents[host] = SolverUserAgentBinding(
                             userAgent = solverUserAgent,
-                            clearanceIdentity = ClearanceCookieIdentity(
-                                name = clearance.name,
-                                domain = clearance.domain.lowercase().trimStart('.'),
-                                hostOnly = clearance.hostOnly,
-                                path = clearance.path,
-                            ),
-                            expiresAt = clearance.expiresAt,
+                            credentials = clearances.map { it.toBoundCredential() },
                         )
                     }
                 }
@@ -231,6 +242,14 @@ class CloudflareChallengeManager(
 
     /** For tests and the Task 5C UI adapter: poll one pending recovery request. */
     internal fun tryReceive(): CloudflareChallenge? = recentChallenges.poll()
+
+    private fun hostCommitLock(host: String): Mutex =
+        hostCommitLocks[Math.floorMod(host.lowercase().hashCode(), hostCommitLocks.size)]
+
+    private companion object {
+        const val COMMIT_LOCK_STRIPES = 64
+        const val BINDING_LOOKUP_RETRIES = 3
+    }
 }
 
 private fun CloudflareChallenge.fail(reason: ChallengeRecoveryFailure): ChallengeRecoveryState {
@@ -261,15 +280,48 @@ private class ChallengeExpiredException : IllegalStateException("challenge recov
 
 private data class SolverUserAgentBinding(
     val userAgent: String,
-    val clearanceIdentity: ClearanceCookieIdentity,
-    val expiresAt: Long?,
+    val credentials: List<BoundClearanceCredential>,
 ) {
-    fun isExpired(nowMillis: Long): Boolean = expiresAt?.let { it <= nowMillis } == true
+    fun isBackedBy(actualCookies: List<AuthenticatedCookie>, nowMillis: Long): Boolean {
+        val liveCredentials = credentials.filterNot { it.isExpired(nowMillis) }
+        return liveCredentials.any { credential ->
+            actualCookies.any { cookie ->
+                cookie.value.isNotBlank() &&
+                    cookie.toIdentity() == credential.identity &&
+                    cookie.value.fingerprint() == credential.valueFingerprint &&
+                    cookie.expiresAt?.let { it > nowMillis } != false
+            }
+        }
+    }
 }
 
 private data class ClearanceCookieIdentity(
     val name: String,
     val domain: String,
-    val hostOnly: Boolean,
     val path: String,
 )
+
+private data class BoundClearanceCredential(
+    val identity: ClearanceCookieIdentity,
+    val valueFingerprint: String,
+    val expiresAt: Long?,
+) {
+    fun isExpired(nowMillis: Long): Boolean = expiresAt?.let { it <= nowMillis } == true
+}
+
+private fun AuthenticatedCookie.toBoundCredential() = BoundClearanceCredential(
+    identity = toIdentity(),
+    valueFingerprint = value.fingerprint(),
+    expiresAt = expiresAt,
+)
+
+private fun AuthenticatedCookie.toIdentity() = ClearanceCookieIdentity(
+    name = name,
+    domain = domain.lowercase().trim().trimStart('.').trimEnd('.'),
+    path = path.ifBlank { "/" },
+)
+
+private fun String.fingerprint(): String =
+    MessageDigest.getInstance("SHA-256")
+        .digest(toByteArray(Charsets.UTF_8))
+        .joinToString(separator = "") { byte -> "%02x".format(byte) }

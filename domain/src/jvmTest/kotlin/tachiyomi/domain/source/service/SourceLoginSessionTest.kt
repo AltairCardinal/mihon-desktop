@@ -104,6 +104,40 @@ class SourceLoginSessionTest {
 
         assertInstanceOf(SourceLoginState.Authenticated::class.java, result.await())
         assertEquals(1, commits.size)
+        assertEquals(listOf("valid-secret"), commits.single().cookies.map { it.value })
+        assertEquals(SourceLoginState.Authenticated(setOf("clearance"), 1), login.state.value)
+    }
+
+    @Test
+    fun `required cookie normalization is order safe and preserves distinct canonical identities`() = runTest {
+        val orders = listOf(
+            listOf("valid-secret", ""),
+            listOf("", "valid-secret"),
+        )
+
+        orders.forEach { values ->
+            val commits = mutableListOf<AuthenticatedSession>()
+            val browserSession = TestBrowserSession()
+            val login = session(browserSession) { commits += it }
+            val result = async { login.login(request(required = setOf("clearance"))) }
+            runCurrent()
+            browserSession.complete(
+                AuthenticatedSession(
+                    values.map { cookie("clearance", it, "READER.EXAMPLE.COM") } +
+                        cookie("clearance", "parent-secret", ".EXAMPLE.COM", hostOnly = false, path = "/reader"),
+                ),
+            )
+
+            assertEquals(SourceLoginState.Authenticated(setOf("clearance"), 2), result.await())
+            assertEquals(1, commits.size)
+            assertEquals(
+                setOf(
+                    Triple("reader.example.com", "/", "valid-secret"),
+                    Triple("example.com", "/reader", "parent-secret"),
+                ),
+                commits.single().cookies.map { Triple(it.domain, it.path, it.value) }.toSet(),
+            )
+        }
     }
 
     @Test
@@ -472,12 +506,13 @@ class SourceLoginSessionTest {
         value: String,
         domain: String,
         hostOnly: Boolean = true,
+        path: String = "/",
     ) = AuthenticatedCookie(
         name = name,
         value = value,
         domain = domain,
         hostOnly = hostOnly,
-        path = "/",
+        path = path,
         expiresAt = null,
         secure = true,
         httpOnly = true,

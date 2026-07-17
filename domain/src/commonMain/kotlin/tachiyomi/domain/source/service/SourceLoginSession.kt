@@ -130,23 +130,25 @@ class SourceLoginSession(
         request: SourceLoginRequest,
         session: AuthenticatedSession,
     ): SourceLoginState {
+        val invalidDomainCookies = session.cookies.filterNot { it.matches(request.url) }
         val missing = request.requiredCookieNames - session.cookieNames
         val satisfiedRequired = session.cookies
             .filter { it.name in request.requiredCookieNames && it.value.isNotBlank() && it.matches(request.url) }
             .mapTo(hashSetOf()) { it.name }
         val unsatisfiedRequired = request.requiredCookieNames - missing - satisfiedRequired
-        val rejected = session.cookies
-            .filterNot { it.matches(request.url) }
+        val rejected = invalidDomainCookies
             .mapTo(sortedSetOf()) { it.name }
             .apply { addAll(unsatisfiedRequired) }
         if (missing.isNotEmpty() || rejected.isNotEmpty()) {
             return finish(SourceLoginState.InvalidCookies(missing.toSortedSet(), rejected))
         }
 
+        val normalizedSession = session.normalizedForCommit(request.requiredCookieNames, satisfiedRequired)
+
         return withContext(NonCancellable) {
             try {
-                committer.commit(request, session)
-                finish(SourceLoginState.Authenticated(session.cookieNames, session.cookies.size))
+                committer.commit(request, normalizedSession)
+                finish(SourceLoginState.Authenticated(normalizedSession.cookieNames, normalizedSession.cookies.size))
             } catch (_: Exception) {
                 finish(SourceLoginState.CommitFailed)
             }
@@ -186,3 +188,38 @@ private fun isRegistrableDomain(domain: String): Boolean =
     } catch (_: IllegalArgumentException) {
         false
     }
+
+private fun AuthenticatedSession.normalizedForCommit(
+    requiredCookieNames: Set<String>,
+    satisfiedRequired: Set<String>,
+): AuthenticatedSession {
+    val candidates = cookies
+        .asSequence()
+        .filterNot { it.name in satisfiedRequired && it.name in requiredCookieNames && it.value.isBlank() }
+        .map { cookie ->
+            cookie.copy(
+                domain = cookie.domain.lowercase().trim().trimStart('.').trimEnd('.'),
+                path = cookie.path.ifBlank { "/" },
+            )
+        }
+        .groupBy { CanonicalCookieIdentity(it.name, it.domain, it.path) }
+        .values
+        .map { duplicates -> checkNotNull(duplicates.maxWithOrNull(AUTHENTICATED_COOKIE_PREFERENCE)) }
+        .sortedWith(compareBy({ it.name }, { it.domain }, { it.path }))
+    return AuthenticatedSession(candidates)
+}
+
+private data class CanonicalCookieIdentity(
+    val name: String,
+    val domain: String,
+    val path: String,
+)
+
+private val AUTHENTICATED_COOKIE_PREFERENCE = compareBy<AuthenticatedCookie>(
+    { it.value.isNotBlank() },
+    { it.hostOnly },
+    { it.secure },
+    { it.httpOnly },
+    { it.expiresAt ?: Long.MAX_VALUE },
+    { it.value },
+)

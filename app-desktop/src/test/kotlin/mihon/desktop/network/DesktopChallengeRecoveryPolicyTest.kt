@@ -42,6 +42,7 @@ import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -174,6 +175,7 @@ class DesktopChallengeRecoveryPolicyTest {
                     server.url("/").toString().removeSuffix("/"),
                     OkHttpClient(),
                 ),
+                authenticatedCookieLookup = desktopCookieLookup(jar),
             )
             val challenge = manager.publish(loginRequest(url = "https://example.com/reader/chapter"))
 
@@ -1003,6 +1005,7 @@ class DesktopChallengeRecoveryPolicyTest {
                 solvedResponse(
                     domain = sourceServer.url("/").host,
                     value = "solver-clearance",
+                    secure = false,
                     userAgent = "solver-agent",
                 ),
             )
@@ -1013,6 +1016,7 @@ class DesktopChallengeRecoveryPolicyTest {
                     solverServer.url("/").toString().removeSuffix("/"),
                     OkHttpClient(),
                 ),
+                authenticatedCookieLookup = desktopCookieLookup(jar),
             )
             val client = OkHttpClient.Builder()
                 .cookieJar(jar)
@@ -1059,24 +1063,27 @@ class DesktopChallengeRecoveryPolicyTest {
 
     @Test
     fun `solver user agent binding expires with its clearance cookie`() = runTest {
-        val nowMillis = AtomicLong(1_000)
+        val nowMillis = AtomicLong(System.currentTimeMillis())
         val solverServer = MockWebServer().also { it.start() }
         try {
+            val expiresAt = nowMillis.get() + TimeUnit.MINUTES.toMillis(1)
             solverServer.enqueue(
                 solvedResponse(
                     domain = "example.com",
                     value = "solver-clearance",
-                    expires = 2.0,
+                    expires = expiresAt / 1_000.0,
                     userAgent = "solver-agent",
                 ),
             )
+            val jar = DesktopCookieJar()
             val manager = CloudflareChallengeManager(
-                committer = RecordingCommitter(),
+                committer = DesktopAuthenticatedSessionCommitter(jar),
                 flareSolverrClient = FlareSolverrClient(
                     solverServer.url("/").toString().removeSuffix("/"),
                     OkHttpClient(),
                 ),
                 currentTimeMillis = nowMillis::get,
+                authenticatedCookieLookup = desktopCookieLookup(jar),
             )
             val challenge = manager.publish(loginRequest())
 
@@ -1086,7 +1093,7 @@ class DesktopChallengeRecoveryPolicyTest {
             )
             assertEquals("solver-agent", manager.solverUserAgentFor(loginRequest().url))
 
-            nowMillis.set(2_000)
+            nowMillis.set(expiresAt)
             assertNull(manager.solverUserAgentFor(loginRequest().url))
             assertNull(manager.solverUserAgentFor(loginRequest().url), "expired binding must stay evicted")
         } finally {
@@ -1107,15 +1114,17 @@ class DesktopChallengeRecoveryPolicyTest {
                     ),
                 )
             }
+            val jar = DesktopCookieJar()
             val manager = CloudflareChallengeManager(
                 browserAdapter = BrowserLoginAdapter {
                     BrowserOpenResult.Opened(completedBrowserSession(authenticatedSession("browser-clearance")))
                 },
-                committer = RecordingCommitter(),
+                committer = DesktopAuthenticatedSessionCommitter(jar),
                 flareSolverrClient = FlareSolverrClient(
                     solverServer.url("/").toString().removeSuffix("/"),
                     OkHttpClient(),
                 ),
+                authenticatedCookieLookup = desktopCookieLookup(jar),
             )
 
             manager.recover(manager.publish(loginRequest()), ChallengeRecoveryIntent.UseFlareSolverr)
@@ -1178,6 +1187,7 @@ class DesktopChallengeRecoveryPolicyTest {
                     solverServer.url("/").toString().removeSuffix("/"),
                     OkHttpClient(),
                 ),
+                authenticatedCookieLookup = desktopCookieLookup(jar),
             )
             val url = loginRequest().url
 
@@ -1223,19 +1233,23 @@ class DesktopChallengeRecoveryPolicyTest {
             val releaseFirstCommit = CountDownLatch(1)
             val secondCommitEntered = CountDownLatch(1)
             val commitOrdinal = AtomicInteger()
+            val jar = DesktopCookieJar()
+            val delegate = DesktopAuthenticatedSessionCommitter(jar)
             val manager = CloudflareChallengeManager(
-                committer = AuthenticatedSessionCommitter { _, _ ->
+                committer = AuthenticatedSessionCommitter { request, session ->
                     if (commitOrdinal.incrementAndGet() == 1) {
                         firstCommitEntered.countDown()
                         check(releaseFirstCommit.await(5, TimeUnit.SECONDS))
                     } else {
                         secondCommitEntered.countDown()
                     }
+                    delegate.commit(request, session)
                 },
                 flareSolverrClient = FlareSolverrClient(
                     solverServer.url("/").toString().removeSuffix("/"),
                     OkHttpClient(),
                 ),
+                authenticatedCookieLookup = desktopCookieLookup(jar),
             )
             val firstChallenge = manager.publish(loginRequest())
             val secondChallenge = manager.publish(loginRequest())
@@ -1259,6 +1273,245 @@ class DesktopChallengeRecoveryPolicyTest {
         } finally {
             solverServer.close()
         }
+    }
+
+    @Test
+    fun `shared normalization makes mixed required cookies order safe in the real persisted jar`(
+        @TempDir tempDir: Path,
+    ) = runTest {
+        listOf(
+            listOf("valid-clearance", ""),
+            listOf("", "valid-clearance"),
+        ).forEachIndexed { index, values ->
+            val expiresAt = System.currentTimeMillis() + TimeUnit.DAYS.toMillis(1)
+            val storage = tempDir.resolve("cookies-$index.json").toFile()
+            val jar = DesktopCookieJar(storage)
+            val manager = CloudflareChallengeManager(committer = DesktopAuthenticatedSessionCommitter(jar))
+            val session = AuthenticatedSession(
+                values.map { authenticatedCookie(value = it, domain = "EXAMPLE.COM", expiresAt = expiresAt) } +
+                    authenticatedCookie(
+                        value = "reader-clearance",
+                        domain = ".EXAMPLE.COM",
+                        expiresAt = expiresAt,
+                        path = "/reader",
+                    ),
+            )
+
+            val state = assertInstanceOf(
+                ChallengeRecoveryState.Recovered::class.java,
+                manager.recover(
+                    manager.publish(loginRequest(url = "https://example.com/reader/chapter")),
+                    ChallengeRecoveryIntent.SubmitManualCookies(session),
+                ),
+            )
+
+            assertEquals(2, state.cookieCount)
+            assertEquals(setOf(CF_CLEARANCE_COOKIE_NAME), state.cookieNames)
+            val persisted = DesktopCookieJar(storage).loadForRequest("https://example.com/reader/chapter".toHttpUrl())
+            assertEquals(
+                setOf(Triple("/", "valid-clearance", "example.com"), Triple("/reader", "reader-clearance", "example.com")),
+                persisted.map { Triple(it.path, it.value, it.domain) }.toSet(),
+            )
+        }
+    }
+
+    @Test
+    fun `solver user agent lookup requires any still matching credential in the actual jar`() = runTest {
+        val solverServer = MockWebServer().also { it.start() }
+        try {
+            solverServer.enqueue(
+                MockResponse(
+                    body = """{"status":"ok","solution":{"userAgent":"bound-agent","cookies":[{"name":"cf_clearance","value":"root-secret","domain":"example.com","path":"/"},{"name":"cf_clearance","value":"reader-secret","domain":"example.com","path":"/reader"}]}}""",
+                ),
+            )
+            val jar = DesktopCookieJar()
+            val manager = CloudflareChallengeManager(
+                committer = DesktopAuthenticatedSessionCommitter(jar),
+                flareSolverrClient = FlareSolverrClient(solverServer.url("/").toString().removeSuffix("/"), OkHttpClient()),
+                authenticatedCookieLookup = desktopCookieLookup(jar),
+            )
+            val readerUrl = "https://example.com/reader/chapter".toHttpUrl()
+            assertInstanceOf(
+                ChallengeRecoveryState.Recovered::class.java,
+                manager.recover(manager.publish(loginRequest(url = readerUrl.toString())), ChallengeRecoveryIntent.UseFlareSolverr),
+            )
+            assertEquals("bound-agent", manager.solverUserAgentFor(readerUrl))
+
+            jar.commitAuthenticatedSession(
+                readerUrl,
+                listOf(
+                    Cookie.Builder().name(CF_CLEARANCE_COOKIE_NAME).value("reader-secret")
+                        .hostOnlyDomain("example.com").path("/reader").build(),
+                ),
+            )
+            assertEquals("bound-agent", manager.solverUserAgentFor(readerUrl), "any still-bound identity keeps the UA valid")
+
+            jar.commitAuthenticatedSession(
+                readerUrl,
+                listOf(
+                    Cookie.Builder().name(CF_CLEARANCE_COOKIE_NAME).value("replacement")
+                        .hostOnlyDomain("example.com").path("/reader").build(),
+                ),
+            )
+            assertNull(manager.solverUserAgentFor(readerUrl))
+            assertNull(manager.solverUserAgentFor(readerUrl), "a replaced credential must stay evicted")
+        } finally {
+            solverServer.close()
+        }
+    }
+
+    @Test
+    fun `jar validation racing a newer solver commit cannot evict the newer binding`() = runBlocking {
+        val solverServer = MockWebServer().also { it.start() }
+        try {
+            solverServer.enqueue(solvedResponse("example.com", "old-secret", userAgent = "old-agent"))
+            solverServer.enqueue(solvedResponse("example.com", "new-secret", userAgent = "new-agent"))
+            val jar = DesktopCookieJar()
+            val blockNextLookup = AtomicBoolean()
+            val lookupCaptured = CountDownLatch(1)
+            val releaseLookup = CountDownLatch(1)
+            val manager = CloudflareChallengeManager(
+                committer = DesktopAuthenticatedSessionCommitter(jar),
+                flareSolverrClient = FlareSolverrClient(solverServer.url("/").toString().removeSuffix("/"), OkHttpClient()),
+                authenticatedCookieLookup = AuthenticatedCookieLookup { url ->
+                    val snapshot = desktopCookieLookup(jar).loadForRequest(url)
+                    if (blockNextLookup.compareAndSet(true, false)) {
+                        lookupCaptured.countDown()
+                        check(releaseLookup.await(5, TimeUnit.SECONDS))
+                    }
+                    snapshot
+                },
+            )
+            val url = loginRequest().url
+            manager.recover(manager.publish(loginRequest()), ChallengeRecoveryIntent.UseFlareSolverr)
+            assertEquals("old-agent", manager.solverUserAgentFor(url))
+
+            blockNextLookup.set(true)
+            val racingLookup = CompletableFuture.supplyAsync { manager.solverUserAgentFor(url) }
+            check(lookupCaptured.await(5, TimeUnit.SECONDS))
+            manager.recover(manager.publish(loginRequest()), ChallengeRecoveryIntent.UseFlareSolverr)
+            releaseLookup.countDown()
+
+            assertEquals("new-agent", racingLookup.get(5, TimeUnit.SECONDS))
+            assertEquals("new-agent", manager.solverUserAgentFor(url))
+        } finally {
+            solverServer.close()
+        }
+    }
+
+    @Test
+    fun `manual recovery rebuilds the current source retry from the untouched original request`() {
+        val sourceServer = MockWebServer().also { it.start() }
+        val solverServer = MockWebServer().also { it.start() }
+        try {
+            solverServer.enqueue(
+                solvedResponse(
+                    sourceServer.url("/").host,
+                    "solver-secret",
+                    secure = false,
+                    userAgent = "solver-agent",
+                ),
+            )
+            sourceServer.enqueue(cloudflareChallenge(503))
+            sourceServer.enqueue(MockResponse(code = 200, body = "recovered"))
+            val jar = DesktopCookieJar()
+            val manager = CloudflareChallengeManager(
+                committer = DesktopAuthenticatedSessionCommitter(jar),
+                flareSolverrClient = FlareSolverrClient(solverServer.url("/").toString().removeSuffix("/"), OkHttpClient()),
+                authenticatedCookieLookup = desktopCookieLookup(jar),
+            )
+            runBlocking {
+                manager.recover(
+                    manager.publish(loginRequest(url = sourceServer.url("/seed").toString())),
+                    ChallengeRecoveryIntent.UseFlareSolverr,
+                )
+            }
+            checkNotNull(manager.tryReceive())
+            val client = OkHttpClient.Builder()
+                .cookieJar(jar)
+                .addInterceptor(DesktopCloudflareInterceptor(jar, manager))
+                .build()
+            val call = CompletableFuture.supplyAsync {
+                client.newCall(
+                    Request.Builder().url(sourceServer.url("/chapter")).header("User-Agent", "original-agent").build(),
+                ).execute().use { it.code }
+            }
+            val challenge = awaitChallenge(manager)
+            runBlocking {
+                manager.recover(
+                    challenge,
+                    ChallengeRecoveryIntent.SubmitManualCookies(
+                        authenticatedSession("manual-secret", domain = sourceServer.url("/").host),
+                    ),
+                )
+            }
+
+            assertEquals(200, call.get(5, TimeUnit.SECONDS))
+            val first = sourceServer.takeRequest(5, TimeUnit.SECONDS) ?: error("missing first source request")
+            val retry = sourceServer.takeRequest(5, TimeUnit.SECONDS) ?: error("missing retry source request")
+            assertEquals("solver-agent", first.headers["User-Agent"])
+            assertEquals("original-agent", retry.headers["User-Agent"])
+        } finally {
+            solverServer.close()
+            sourceServer.close()
+        }
+    }
+
+    @Test
+    fun `retry creates an isolated full-timeout attempt while old waiter returns old failure`() = runBlocking {
+        val nowNanos = AtomicLong()
+        val oldWaiterPaused = CountDownLatch(1)
+        val releaseOldWaiter = CountDownLatch(1)
+        val challenge = CloudflareChallenge(
+            loginRequest(timeoutMillis = 100),
+            nanoTime = nowNanos::get,
+            afterAttemptCompletionObserved = {
+                oldWaiterPaused.countDown()
+                check(releaseOldWaiter.await(5, TimeUnit.SECONDS))
+            },
+        )
+        val attempts = AtomicInteger()
+        val manager = CloudflareChallengeManager(
+            committer = AuthenticatedSessionCommitter { _, _ ->
+                if (attempts.incrementAndGet() == 1) {
+                    nowNanos.set(TimeUnit.MILLISECONDS.toNanos(150))
+                    error("first commit failed past the original deadline")
+                }
+            },
+        )
+        val oldWaiter = CompletableFuture.supplyAsync { challenge.awaitTerminal() }
+
+        assertEquals(
+            ChallengeRecoveryState.RecoverableFailure(ChallengeRecoveryFailure.CommitFailed),
+            manager.recover(challenge, ChallengeRecoveryIntent.SubmitManualCookies(authenticatedSession("first"))),
+        )
+        check(oldWaiterPaused.await(5, TimeUnit.SECONDS))
+        assertEquals(ChallengeRecoveryState.AwaitingUserAction, manager.recover(challenge, ChallengeRecoveryIntent.Retry))
+        assertInstanceOf(
+            ChallengeRecoveryState.Recovered::class.java,
+            manager.recover(challenge, ChallengeRecoveryIntent.SubmitManualCookies(authenticatedSession("second"))),
+        )
+        releaseOldWaiter.countDown()
+
+        assertEquals(ChallengeRecoveryTerminal.Failed, oldWaiter.get(5, TimeUnit.SECONDS))
+        assertEquals(ChallengeRecoveryTerminal.Recovered, challenge.terminal)
+        assertEquals(2, attempts.get())
+    }
+
+    @Test
+    fun `commit lock storage stays structurally bounded across arbitrary hosts`() = runTest {
+        val manager = CloudflareChallengeManager(committer = RecordingCommitter())
+        repeat(256) { index ->
+            val host = "host-$index.example.com"
+            assertInstanceOf(
+                ChallengeRecoveryState.Recovered::class.java,
+                manager.recover(
+                    manager.publish(loginRequest(url = "https://$host/chapter")),
+                    ChallengeRecoveryIntent.SubmitManualCookies(authenticatedSession("secret-$index", domain = host)),
+                ),
+            )
+        }
+        assertTrue(manager.commitLockCount <= 64, "striped commit locks must be bounded")
     }
 
     @Test
@@ -1313,12 +1566,13 @@ class DesktopChallengeRecoveryPolicyTest {
         value: String,
         domain: String = "example.com",
         expiresAt: Long? = null,
+        path: String = "/",
     ) = AuthenticatedCookie(
         name = name,
         value = value,
         domain = domain,
         hostOnly = true,
-        path = "/",
+        path = path,
         expiresAt = expiresAt,
         secure = true,
         httpOnly = true,
@@ -1363,6 +1617,21 @@ class DesktopChallengeRecoveryPolicyTest {
 
         override suspend fun commit(request: SourceLoginRequest, session: AuthenticatedSession) {
             sessions += session
+        }
+    }
+
+    private fun desktopCookieLookup(jar: DesktopCookieJar) = AuthenticatedCookieLookup { url ->
+        jar.loadForRequest(url).map { cookie ->
+            AuthenticatedCookie(
+                name = cookie.name,
+                value = cookie.value,
+                domain = cookie.domain,
+                hostOnly = cookie.hostOnly,
+                path = cookie.path,
+                expiresAt = cookie.expiresAt.takeIf { cookie.persistent },
+                secure = cookie.secure,
+                httpOnly = cookie.httpOnly,
+            )
         }
     }
 }

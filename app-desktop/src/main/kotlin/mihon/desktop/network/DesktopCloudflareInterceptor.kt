@@ -14,7 +14,8 @@ class DesktopCloudflareInterceptor(
 ) : Interceptor {
 
     override fun intercept(chain: Interceptor.Chain): Response {
-        val request = chain.request().withSolverUserAgent()
+        val originalRequest = chain.request()
+        val request = originalRequest.withSolverUserAgent()
         val response = chain.proceed(request)
 
         if (!shouldIntercept(response)) return response
@@ -22,7 +23,7 @@ class DesktopCloudflareInterceptor(
         response.close()
         val challenge = challengeManager.publish(
             SourceLoginRequest(
-                url = request.url,
+                url = originalRequest.url,
                 requiredCookieNames = setOf(CF_CLEARANCE_COOKIE_NAME),
                 timeoutMillis = TimeUnit.SECONDS.toMillis(TIMEOUT_SECONDS),
             ),
@@ -31,7 +32,7 @@ class DesktopCloudflareInterceptor(
             throw IOException("Cloudflare bypass failed or timed out")
         }
 
-        return chain.proceed(request.withSolverUserAgent())
+        return chain.proceed(originalRequest.withSolverUserAgent())
     }
 
     private fun okhttp3.Request.withSolverUserAgent(): okhttp3.Request {
