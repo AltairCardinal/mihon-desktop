@@ -567,10 +567,10 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
       - [x] **Task 6A2AR2: typed retirement cause 与外部取消传播契约**
         - [x] **Task 6A2AR3: late-register typed cancel 与有界 cause-chain**
   - [ ] **Task 6A2B: Global Search production projector、exact recovery 与 Dialog wiring**
-    - [ ] **Task 6A2B1: 当前 child 生命周期持续聚合与 recovery 状态回流**
-      - [ ] **Task 6A2B1R: 长期 collector 解除 per-search callback 与旧 Screen closure**
-        - [ ] **Task 6A2B1R2: query callback 单一路径与 session/generation 隔离**
-          - [ ] **Task 6A2B1R3: StateFlow 锁外 CAS 发布与 collector 跨线程重入**
+    - [x] **Task 6A2B1: 当前 child 生命周期持续聚合与 recovery 状态回流**
+      - [x] **Task 6A2B1R: 长期 collector 解除 per-search callback 与旧 Screen closure**
+        - [x] **Task 6A2B1R2: query callback 单一路径与 session/generation 隔离**
+          - [x] **Task 6A2B1R3: StateFlow 锁外 CAS 发布与 collector 跨线程重入**
     - [ ] **Task 6A2B2: Global authoritative state/projector 与 per-source exact Retry**
     - [ ] **Task 6A2B3: Global generic login Dialog、反馈与删除 AWT 路径**
   - [ ] **Task 6A2C: Browse 缺失 source 的 ExtensionListScreen 导航入口**
