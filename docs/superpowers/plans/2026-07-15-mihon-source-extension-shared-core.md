@@ -41,7 +41,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - [x] Task 5A：共享登录会话与 Desktop Cookie 原子提交
 - [x] Task 5B：Desktop 挑战恢复策略与 FlareSolverr 显式后备
 - [x] Task 5C：Desktop 登录设置、UI 与 production wiring
-- [ ] Task 6A：Browse 共享状态 wiring
+- [x] Task 6A：Browse 共享状态 wiring
 - [ ] Task 6B：Extension UI、DI 与 i18n wiring
 - [ ] Task 6C：Test Mode、导航与自动化观察
 - [ ] Task 7：compat 去重、parity 证据、全量审查与跨平台运行时验收
@@ -561,12 +561,12 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
           - [x] **Task 6A1R2b2b2b: Source login Compose Host 与 Screen 事件 wiring**
             - [x] **Task 6A1R2b2b2bR: stale attempt 事件隔离与真实 Dialog/Screen wiring 测试闭环**
               - [x] **Task 6A1R2b2b2bR2: cancel 拒绝保留当前 UI 状态契约**
-- [ ] **Task 6A2: Global 共享状态消费与 Browse 缺源入口**
+- [x] **Task 6A2: Global 共享状态消费与 Browse 缺源入口**
   - [x] **Task 6A2A: Global StateFlow 聚合与 per-source coordinator 复用**
     - [x] **Task 6A2AR: cancellation-safe session retirement 与独立发布门禁验证**
       - [x] **Task 6A2AR2: typed retirement cause 与外部取消传播契约**
         - [x] **Task 6A2AR3: late-register typed cancel 与有界 cause-chain**
-  - [ ] **Task 6A2B: Global Search production projector、exact recovery 与 Dialog wiring**
+  - [x] **Task 6A2B: Global Search production projector、exact recovery 与 Dialog wiring**
     - [x] **Task 6A2B1: 当前 child 生命周期持续聚合与 recovery 状态回流**
       - [x] **Task 6A2B1R: 长期 collector 解除 per-search callback 与旧 Screen closure**
         - [x] **Task 6A2B1R2: query callback 单一路径与 session/generation 隔离**
@@ -574,8 +574,8 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
     - [x] **Task 6A2B2: Global authoritative state/projector 与 per-source exact Retry**
       - [x] **Task 6A2B2R: 动态 source 列表与真实 Content collect/dispose wiring**
     - [x] **Task 6A2B3: Global generic login Dialog、反馈与删除 AWT 路径**
-  - [ ] **Task 6A2C: Browse 缺失 source 的 ExtensionListScreen 导航入口**
-    - [ ] **Task 6A2CR: 真实 BrowseTab nested Navigator 黑盒保护**
+  - [x] **Task 6A2C: Browse 缺失 source 的 ExtensionListScreen 导航入口**
+    - [x] **Task 6A2CR: 真实 BrowseTab nested Navigator 黑盒保护**
 
 **6A2B1R2 scope adjustment:** 原 70 changed lines 估算遗漏了移除旧全局 observer 与 direct callback 路径本身产生的约 28 行删除；最小 production 替换约 62 changed lines，真实 duplicate/cross-session/recovery RED 约 39 行。该行为闭环不可再独立拆分，调整为 2 files/110 changed lines，仍远低于项目 400 行拆分门槛；不得为满足旧估算压缩掉行为断言。
 
@@ -596,25 +596,25 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Consumes: Task 2 共享 query/page/error state 与 Task 5 登录 intent。
 - Produces: Browse UI intents（`Retry`、`OpenLogin`、`OpenSettings`）和既有宽屏入口。
 
-- [ ] **Step 1: 写 Browse wiring RED**
+- [x] **Step 1: 写 Browse wiring RED**
 
   实例化 Browse/Source/Global Search 页面并驱动共享状态，覆盖 Loading、真正 Empty、翻页失败保留内容、403 登录、缺配置设置入口和 Retry。
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.browse.SourceSharedStateWiringTest" --tests "*Source*ScreenModelTest"`
   Expected: FAIL，原因是 Browse UI 仍自行维护状态或直接查询 repository/network。
 
-- [ ] **Step 3: 最小接线 Browse 状态与 intents**
+- [x] **Step 3: 最小接线 Browse 状态与 intents**
 
   ScreenModel 只组合共享 state 和发送 intent；Composable 保留现有导航入口与宽屏布局，不直接访问 repository/network。
 
-- [ ] **Step 4: 运行 GREEN**
+- [x] **Step 4: 运行 GREEN**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.browse.*"`
   Expected: 全部 PASS；共享状态或 Browse production wiring 断线会失败。
 
-- [ ] **Step 5: 提交 Task 6A**
+- [x] **Step 5: 提交 Task 6A**
 
   Commit: `refactor(desktop): wire shared browse state`
 
