@@ -191,10 +191,8 @@ class DesktopSourceLoginUiActions(
             state.copy(feedback = DesktopSourceLoginFeedback.InvalidHeader)
         }
 
-    fun cancel(state: DesktopSourceLoginUiState): DesktopSourceLoginUiState? {
-        cancel(state.attempt)
-        return null
-    }
+    fun cancel(state: DesktopSourceLoginUiState): DesktopSourceLoginUiState? =
+        if (cancel(state.attempt)) null else state
 
     fun complete(
         state: DesktopSourceLoginUiState,

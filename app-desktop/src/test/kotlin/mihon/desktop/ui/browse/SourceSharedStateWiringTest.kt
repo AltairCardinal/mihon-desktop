@@ -116,14 +116,24 @@ class SourceSharedStateWiringTest {
         staleTerminal.dismiss()
 
         assertSame(newer, state)
-        val currentActions = DesktopSourceLoginUiActions({ _, _ -> false }, { false })
+        var acceptsCancel = false
+        var cancelCalls = 0
+        val currentActions = DesktopSourceLoginUiActions({ _, _ -> false }) { acceptsCancel.also { cancelCalls++ } }
         val current = sourceLoginDialogEvents(newer, { state }, currentActions) { state = it }
         current.edit("session=secret")
         assertEquals("session=secret", state?.cookieHeader)
         current.submit()
         assertEquals(DesktopSourceLoginFeedback.InvalidHeader, state?.feedback)
+        val rejected = requireNotNull(state)
+        current.dismiss()
+        assertSame(rejected, state)
+        acceptsCancel = true
         current.dismiss()
         assertEquals(null, state)
+        state = newer.copy(terminal = true)
+        sourceLoginDialogEvents(requireNotNull(state), { state }, currentActions) { state = it }.dismiss()
+        assertEquals(null, state)
+        assertEquals(2, cancelCalls)
     }
 
     @Test
@@ -357,13 +367,14 @@ class SourceSharedStateWiringTest {
         var submittedHeader: String? = null
         var cancelledAttempt: DesktopSourceLoginAttempt? = null
         var acceptsHeader = false
+        var acceptsCancel = false
         val actions = DesktopSourceLoginUiActions(
             submitCookies = { actualAttempt, header ->
                 submittedAttempt = actualAttempt
                 submittedHeader = header
                 acceptsHeader
             },
-            cancel = { actualAttempt -> true.also { cancelledAttempt = actualAttempt } },
+            cancel = { actualAttempt -> acceptsCancel.also { cancelledAttempt = actualAttempt } },
         )
         val opened = actions.open(attempt, "https://reader.example.com/login")
         val edited = actions.editHeader(opened, "session=secret")
@@ -378,6 +389,8 @@ class SourceSharedStateWiringTest {
 
         acceptsHeader = true
         assertEquals(null, actions.submit(rejected).feedback)
+        assertSame(rejected, actions.cancel(rejected))
+        acceptsCancel = true
         assertEquals(null, actions.cancel(rejected))
         assertSame(attempt, cancelledAttempt)
 
