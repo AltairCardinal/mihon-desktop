@@ -157,6 +157,7 @@
 - Extra closure mutations: bypassing normalized session, bypassing real jar validation, reusing an exhausted Retry deadline, or restoring an unbounded host→Mutex map each failed a named test and was restored.
 - Extra closure verification: seven fresh XML suites total 100/100 PASS, 0 failures/errors/skips; final affected policy 36 + FlareSolverr 2 = 38/38 PASS after the stable-snapshot race fix; root Spotless 93 tasks PASS; diff/scope checks PASS.
 - Final cumulative scope: 7 planned files, +2458/-76 (2534 changed lines); plan/brief waiver updated for actual closure scope.
+- Credential closure reviewer: `/root/task5b_credential_closure_review` (fresh independent read-only cumulative review; no test rerun).
 
 ## Task 5A Review History
 
