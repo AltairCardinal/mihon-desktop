@@ -456,7 +456,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **Risk axis:** challenge-recovery-policy
 **Platform boundary:** shared+desktop
-**Estimated scope:** 7 files, 2850 lines
+**Estimated scope:** 8 files, 3600 lines
 **Verification:** 运行真实 interceptor/challenge manager 策略测试，确认 403/503 只发布登录请求；browser、手动 Cookie 和 FlareSolverr 均由显式用户 intent 触发，取消/超时不清除或写入凭据，solver 从不由 interceptor 自动调用。
 **Split waiver:** 实际 2534 changed lines（+2458/-76）分布在 7 个 shared+desktop 文件：714 行是 challenge/manager/interceptor/client 的 immutable per-attempt lifecycle、commit-point、单调 terminal/state、active-job 抢占、有界 timeout、真实 jar 校验的 UA+clearance identity/expiry 生命周期、稳定快照、同 host striped commit 序列化、IO dispatcher、显式 recovery intents、单次重试和 cancellable HTTP；183 行是 Task 5A shared required Cookie 非空量词、canonical normalized commit session、有限本地 committer 契约及测试；1637 行是同一真实链路的 36 项 MockWebServer→OkHttp interceptor→manager→Task 5A validation/atomic committer→DesktopCookieJar 策略/并发/HTTP/安全矩阵。shared 改动统一保护 browser/manual/solver 三条入口，避免 Desktop 复制提交规则。clear-first、自动 solver、committer 旁路、重复 retry、cancel/timeout/late completion、commit claim 双向竞态、register/self-cancel 窗口、阻塞 socket/UI dispatcher、UA 不匹配/过期/替换/lookup交错、HTTP 403/429/500/缺 solution、mixed required Cookie、真实持久化失败→Retry、old waiter/new deadline 与无界 host lock 共同决定恢复是否会误写/泄露凭据；拆开会留下虚假 terminal、不可用 clearance、共享/平台规则分叉或无法穿透 production 链的中间状态，不能独立验收。Task 5C 的 UI/设置/DI production entry wiring 未混入本 Task。
 
@@ -465,6 +465,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/network/CloudflareChallengeManager.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/network/DesktopCloudflareInterceptor.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/network/FlareSolverrClient.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopNetworkHelper.kt`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/network/DesktopChallengeRecoveryPolicyTest.kt`
 - Modify: `domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceLoginSession.kt`
 - Modify: `domain/src/jvmTest/kotlin/tachiyomi/domain/source/service/SourceLoginSessionTest.kt`
