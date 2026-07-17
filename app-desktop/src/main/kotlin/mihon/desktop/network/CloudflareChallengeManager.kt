@@ -187,9 +187,9 @@ class CloudflareChallengeManager(
                     solver.solve(challenge.request.url.toString())
                 }
             }
-        } catch (_: TimeoutCancellationException) {
+        } catch (error: TimeoutCancellationException) {
             challenge.completeFromActiveAction(ChallengeRecoveryTerminal.TimedOut, ChallengeRecoveryState.TimedOut)
-            return ChallengeRecoveryState.TimedOut
+            throw error
         } catch (error: CancellationException) {
             challenge.cancelOrAwaitCommit()
             throw error

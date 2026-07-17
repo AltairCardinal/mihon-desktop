@@ -702,15 +702,35 @@ class DesktopChallengeRecoveryPolicyTest {
             }
             server.takeRequest(5, TimeUnit.SECONDS) ?: error("solver request was not sent")
 
-            val terminal = withContext(Dispatchers.IO) { challenge.awaitTerminal() }
-            withTimeout(5_000) { recovery.join() }
+            withTimeout(10_000) { recovery.join() }
 
-            assertEquals(ChallengeRecoveryTerminal.TimedOut, terminal)
+            assertEquals(ChallengeRecoveryTerminal.TimedOut, challenge.terminal)
+            assertEquals(ChallengeRecoveryState.TimedOut, challenge.state.value)
             assertTrue(recovery.isCancelled)
             assertEquals(0, commits.sessions.size)
         } finally {
             server.close()
         }
+    }
+
+    @Test
+    fun `deadline before action registration returns timeout without cancelling recovery`() = runBlocking {
+        val nowNanos = AtomicLong()
+        val challenge = CloudflareChallenge(
+            loginRequest(timeoutMillis = 100),
+            nanoTime = nowNanos::get,
+        )
+        val manager = CloudflareChallengeManager(committer = RecordingCommitter())
+        nowNanos.set(TimeUnit.MILLISECONDS.toNanos(101))
+
+        val recovery = async {
+            manager.recover(challenge, ChallengeRecoveryIntent.SubmitManualCookies(authenticatedSession("unused")))
+        }
+
+        assertEquals(ChallengeRecoveryState.TimedOut, recovery.await())
+        assertFalse(recovery.isCancelled)
+        assertEquals(ChallengeRecoveryTerminal.TimedOut, challenge.terminal)
+        assertEquals(ChallengeRecoveryState.TimedOut, challenge.state.value)
     }
 
     @Test
@@ -1161,7 +1181,7 @@ class DesktopChallengeRecoveryPolicyTest {
     }
 
     @Test
-    fun `slow solver failure past deadline is timed out and action is cleaned`() = runBlocking {
+    fun `slow solver timeout cancels recovery and cleans the action`() = runBlocking {
         val server = MockWebServer().also { it.start() }
         try {
             server.enqueue(
@@ -1185,9 +1205,9 @@ class DesktopChallengeRecoveryPolicyTest {
                 manager.recover(challenge, ChallengeRecoveryIntent.UseFlareSolverr)
             }
             server.takeRequest(5, TimeUnit.SECONDS) ?: error("solver request was not sent")
-            val result = recovery.await()
+            withTimeout(5_000) { recovery.join() }
 
-            assertEquals(ChallengeRecoveryState.TimedOut, result)
+            assertTrue(recovery.isCancelled)
             assertEquals(ChallengeRecoveryTerminal.TimedOut, challenge.terminal)
             assertEquals(ChallengeRecoveryState.TimedOut, challenge.state.value)
             assertEquals(0, commits.sessions.size)
