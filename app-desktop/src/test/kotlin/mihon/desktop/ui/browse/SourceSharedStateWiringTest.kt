@@ -16,14 +16,17 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsNode
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
 import io.mockk.every
 import io.mockk.mockk
 import mihon.desktop.LocalDesktopUiDependencies
@@ -59,6 +62,7 @@ import tachiyomi.domain.source.service.AuthenticatedSessionCommitter
 import tachiyomi.domain.source.service.SourceLoginState
 import tachiyomi.i18n.MR
 import java.util.Collections
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -282,6 +286,76 @@ class SourceSharedStateWiringTest {
         val result = assertInstanceOf(SourceQueryState.Content::class.java, coordinator.states.value.queryStates[source.id])
         assertEquals("new", (result.request.query as SourceQuery.Search).query)
         assertEquals(listOf("/new"), result.items.map(SManga::url))
+    }
+
+    @Test
+    fun `new global search cancels old source jobs without letting old cleanup clear current state`() = runBlocking {
+        val source = CancellableGlobalSearchSource()
+        val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+        val old = async { runCatching { coordinator.search(listOf(source), "old") }.exceptionOrNull() }
+        source.oldStarted.await()
+        coordinator.search(listOf(source), "new")
+        assertEquals(null, withTimeout(2_000) { old.await() })
+        withTimeout(2_000) { source.oldCancelled.await() }
+        val result = assertInstanceOf(SourceQueryState.Content::class.java, coordinator.states.value.queryStates[source.id])
+        assertEquals("new", (result.request.query as SourceQuery.Search).query)
+        assertFalse(coordinator.states.value.isSearching)
+        assertEquals(result.request, coordinator.coordinatorFor(source.id)?.state?.request)
+    }
+    @Test
+    fun `cancelling current global search retires its child and clears searching`() = runBlocking {
+        val source = CancellableGlobalSearchSource()
+        val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+        val running = launch { coordinator.search(listOf(source), "old") }
+        source.oldStarted.await()
+        running.cancelAndJoin()
+        assertFalse(coordinator.states.value.isSearching)
+        assertEquals(null, coordinator.coordinatorFor(source.id))
+        withTimeout(2_000) { source.oldCancelled.await() }
+    }
+    @Test
+    fun `compat global callback failure cannot interrupt authoritative aggregation or cleanup`() = runBlocking {
+        val source = NamedSource(21, "Callback")
+        val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+        coordinator.search(listOf(source), "safe") { error("compat callback") }
+        assertInstanceOf(SourceQueryState.Empty::class.java, coordinator.states.value.queryStates[source.id])
+        assertFalse(coordinator.states.value.isSearching)
+        assertEquals(coordinator.states.value.queryStates[source.id]?.request, coordinator.coordinatorFor(source.id)?.state?.request)
+    }
+
+    @Test
+    fun `global publication rejects an older ordinal candidate`() {
+        val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+        coordinator.publishCandidate(DesktopGlobalSearchState(generation = 2, publicationOrdinal = 2))
+        coordinator.publishCandidate(DesktopGlobalSearchState(generation = 1, publicationOrdinal = 1))
+        assertEquals(2, coordinator.states.value.generation)
+    }
+
+    @Test
+    fun `global aggregation independently rejects an old generation and an old child`() = runBlocking {
+        val source = NamedSource(23, "Identity")
+        val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+        coordinator.search(listOf(source), "same")
+        val current = coordinator.states.value
+        val candidate = current.queryStates.getValue(source.id)
+        assertEquals(null, coordinator.aggregateCandidate(current.generation - 1, source.id, requireNotNull(coordinator.coordinatorFor(source.id)), candidate))
+        assertEquals(null, coordinator.aggregateCandidate(current.generation, source.id, SourceBrowseQueryCoordinator(SourceMangaSearchService()), candidate))
+    }
+
+    @Test
+    fun `compat callback runs outside the coordinator lock and can replace its search`() = runBlocking {
+        val source = NamedSource(24, "Reentrant")
+        val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+        var reentered = false
+        val result = runCatching {
+            coordinator.search(listOf(source), "outer") {
+                CompletableFuture.supplyAsync { coordinator.coordinatorFor(source.id) }.get(1, TimeUnit.SECONDS)
+                if (!reentered) runBlocking { reentered = true; coordinator.search(emptyList(), "inner") }
+            }
+        }.exceptionOrNull()
+        assertEquals(null, result)
+        assertEquals(2, coordinator.states.value.generation)
+        assertFalse(coordinator.states.value.isSearching)
     }
 
     @Test
@@ -812,6 +886,16 @@ class SourceSharedStateWiringTest {
                 releaseOldResult.await(5, TimeUnit.SECONDS)
             }
             return MangasPage(listOf(manga("/$query")), false)
+        }
+    }
+
+    private class CancellableGlobalSearchSource : NamedSource(22, "Cancellable") {
+        val oldStarted = CompletableDeferred<Unit>()
+        val oldCancelled = CompletableDeferred<Unit>()
+        override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
+            if (query != "old") return MangasPage(listOf(manga("/new")), false)
+            oldStarted.complete(Unit)
+            try { awaitCancellation() } finally { oldCancelled.complete(Unit) }
         }
     }
 

@@ -3,6 +3,8 @@ package mihon.desktop.ui.browse
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancelAndJoin
@@ -188,16 +190,35 @@ data class DesktopGlobalSearchState(
 class DesktopGlobalSearchCoordinator(
     private val service: SourceMangaSearchService,
 ) {
+    private class SearchSession(
+        val generation: Long,
+        val coordinators: Map<Long, SourceBrowseQueryCoordinator>,
+    ) {
+        private val lock = Any()
+        private val jobs = mutableListOf<Job>()
+        private var retired = false
+
+        fun register(job: Job) = synchronized(lock) { if (retired) job.cancel() else jobs += job }
+
+        fun retire() {
+            val active = synchronized(lock) {
+                retired = true
+                jobs.toList().also { jobs.clear() }
+            }
+            active.forEach(Job::cancel)
+        }
+    }
+
     private val lock = Any()
     private var publicationOrdinal = 0L
     private var authoritativeState = DesktopGlobalSearchState()
-    private var activeCoordinators = emptyMap<Long, SourceBrowseQueryCoordinator>()
+    private var activeSession: SearchSession? = null
     private val publications = MutableStateFlow(authoritativeState)
     val states: StateFlow<DesktopGlobalSearchState> = publications.asStateFlow()
     val state: DesktopGlobalSearchState get() = states.value
 
     fun coordinatorFor(sourceId: Long): SourceBrowseQueryCoordinator? = synchronized(lock) {
-        activeCoordinators[sourceId]
+        activeSession?.coordinators?.get(sourceId)
     }
 
     suspend fun search(
@@ -205,34 +226,44 @@ class DesktopGlobalSearchCoordinator(
         query: String,
         onState: (DesktopGlobalSearchState) -> Unit = {},
     ) {
-        val (started, coordinators) = synchronized(lock) {
+        val (started, session, previous) = synchronized(lock) {
             val generation = authoritativeState.generation + 1
-            activeCoordinators = sources.associate { it.id to SourceBrowseQueryCoordinator(service) }
-            commitLocked(DesktopGlobalSearchState(generation, isSearching = true)) to activeCoordinators
+            val next = SearchSession(generation, sources.associate { it.id to SourceBrowseQueryCoordinator(service) })
+            Triple(commitLocked(DesktopGlobalSearchState(generation, isSearching = true)), next, activeSession).also {
+                activeSession = next
+            }
         }
-        publish(started, onState)
-
-        coroutineScope {
-            sources.map { source ->
-                async {
-                    val child = coordinators.getValue(source.id)
-                    val collector = launch(start = CoroutineStart.UNDISPATCHED) {
-                        child.states.filterNotNull().collect { candidate ->
-                            aggregate(started.generation, source.id, child, candidate)?.let { publish(it, onState) }
+        previous?.retire()
+        var completedNormally = false
+        try {
+            publish(started, onState)
+            coroutineScope {
+                sources.map { source ->
+                    async(start = CoroutineStart.LAZY) {
+                        val child = session.coordinators.getValue(source.id)
+                        val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+                            child.states.filterNotNull().collect { candidate ->
+                                aggregate(started.generation, source.id, child, candidate)?.let { publish(it, onState) }
+                            }
                         }
-                    }
-                    val completed = child.load(source, 1, SourceQuery.Search(query, source.getFilterList()))
-                    aggregate(started.generation, source.id, child, completed)?.let { publish(it, onState) }
-                    collector.cancelAndJoin()
-                }
-            }.awaitAll()
+                        val completed = child.load(source, 1, SourceQuery.Search(query, source.getFilterList()))
+                        aggregate(started.generation, source.id, child, completed)?.let { publish(it, onState) }
+                        collector.cancelAndJoin()
+                    }.also(session::register)
+                }.awaitAll()
+            }
+            completedNormally = true
+        } catch (error: CancellationException) {
+            if (synchronized(lock) { activeSession === session }) throw error
+        } finally {
+            session.retire()
+            val completed = synchronized(lock) {
+                if (activeSession !== session) return@synchronized null
+                if (!completedNormally) activeSession = null
+                commitLocked(authoritativeState.copy(isSearching = false))
+            }
+            completed?.let { publish(it, onState) }
         }
-
-        val completed = synchronized(lock) {
-            if (authoritativeState.generation != started.generation) return@synchronized null
-            commitLocked(authoritativeState.copy(isSearching = false))
-        }
-        completed?.let { publish(it, onState) }
     }
 
     private fun aggregate(
@@ -241,16 +272,25 @@ class DesktopGlobalSearchCoordinator(
         coordinator: SourceBrowseQueryCoordinator,
         state: SourceQueryState,
     ): DesktopGlobalSearchState? = synchronized(lock) {
-        if (authoritativeState.generation != generation || activeCoordinators[sourceId] !== coordinator) return@synchronized null
+        if (authoritativeState.generation != generation || activeSession?.coordinators?.get(sourceId) !== coordinator) return@synchronized null
         commitLocked(authoritativeState.copy(queryStates = authoritativeState.queryStates + (sourceId to state)))
     }
 
     private fun commitLocked(state: DesktopGlobalSearchState): DesktopGlobalSearchState =
         state.copy(publicationOrdinal = ++publicationOrdinal).also { authoritativeState = it }
 
+    internal fun aggregateCandidate(generation: Long, sourceId: Long, coordinator: SourceBrowseQueryCoordinator, state: SourceQueryState) =
+        aggregate(generation, sourceId, coordinator, state)
+
+    internal fun publishCandidate(state: DesktopGlobalSearchState) = publish(state) {}
+
     private fun publish(state: DesktopGlobalSearchState, onState: (DesktopGlobalSearchState) -> Unit) {
         publications.update { current -> if (state.publicationOrdinal > current.publicationOrdinal) state else current }
-        onState(states.value)
+        try {
+            onState(states.value)
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+        }
     }
 
 }
