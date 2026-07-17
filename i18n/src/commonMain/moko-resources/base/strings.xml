@@ -1000,6 +1000,14 @@
     <string name="desktop_settings_cloudflare_solver_explicit_only">Runs only when you explicitly choose FlareSolverr in the source verification dialog. It never intercepts normal requests.</string>
     <string name="desktop_settings_cloudflare_solver_url_required">Enter a FlareSolverr URL.</string>
     <string name="desktop_settings_cloudflare_solver_url_invalid">Use an absolute HTTP or HTTPS URL with a host.</string>
+    <string name="desktop_settings_cloudflare_domain">Site domain (for example, example.com)</string>
+    <string name="desktop_settings_cloudflare_invalid_domain">Enter a valid site domain.</string>
+    <string name="desktop_settings_cloudflare_cookie_required">Enter the cf_clearance cookie value.</string>
+    <string name="desktop_settings_cloudflare_domain_parse_failed">The site domain could not be parsed.</string>
+    <string name="desktop_settings_cloudflare_cookie_imported">Cookie imported for %s</string>
+    <string name="desktop_settings_clear_cookies_summary">Remove all stored cookies</string>
+    <string name="desktop_settings_clear_cookies_warning">This removes all stored cookies. You may need to complete source verification again.</string>
+    <string name="desktop_settings_clear_cookies_confirm">Clear</string>
     <string name="information_required_plain">*required</string>
     <!-- Do not translate "WebView" -->
     <string name="information_webview_required">WebView is required for the app to function</string>

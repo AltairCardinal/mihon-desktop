@@ -66,6 +66,25 @@ internal data class FlareSolverrSettingsState(
     val urlError: FlareSolverrUrlError?,
 )
 
+internal data class FlareSolverrSettingsSection(
+    val switch: FlareSolverrSwitchItem,
+    val url: FlareSolverrUrlItem,
+)
+
+internal data class FlareSolverrSwitchItem(
+    val title: String,
+    val subtitle: String,
+    val checked: Boolean,
+    val onCheckedChange: (Boolean) -> Unit,
+)
+
+internal data class FlareSolverrUrlItem(
+    val label: String,
+    val value: String,
+    val error: String?,
+    val onValueChange: (String) -> Unit,
+)
+
 internal fun flareSolverrSettingsState(preferences: DesktopAppPreferences): FlareSolverrSettingsState {
     val enabled = preferences.flareSolverrEnabled.get()
     val url = preferences.flareSolverrUrl.get()
@@ -98,6 +117,41 @@ internal fun updateFlareSolverrUrl(
     preferences.flareSolverrUrl.set(url)
     return flareSolverrSettingsState(preferences)
 }
+
+internal fun flareSolverrSettingsSection(
+    preferences: DesktopAppPreferences,
+    state: FlareSolverrSettingsState,
+    text: (StringResource) -> String,
+    onStateChanged: (FlareSolverrSettingsState) -> Unit,
+) = FlareSolverrSettingsSection(
+    switch = FlareSolverrSwitchItem(
+        text(MR.strings.desktop_settings_cloudflare_solver_title),
+        text(MR.strings.desktop_settings_cloudflare_solver_explicit_only),
+        state.enabled,
+    ) { onStateChanged(updateFlareSolverrEnabled(preferences, it)) },
+    url = FlareSolverrUrlItem(
+        text(MR.strings.desktop_settings_cloudflare_solver_url),
+        state.url,
+        when (state.urlError) {
+            FlareSolverrUrlError.Required -> text(MR.strings.desktop_settings_cloudflare_solver_url_required)
+            FlareSolverrUrlError.Invalid -> text(MR.strings.desktop_settings_cloudflare_solver_url_invalid)
+            null -> null
+        },
+    ) { onStateChanged(updateFlareSolverrUrl(preferences, it)) },
+)
+
+@Composable
+internal fun FlareSolverrSettingsSectionContent(
+    section: FlareSolverrSettingsSection,
+    renderSwitch: @Composable (FlareSolverrSwitchItem) -> Unit,
+    renderUrl: @Composable (FlareSolverrUrlItem) -> Unit,
+) {
+    renderSwitch(section.switch)
+    renderUrl(section.url)
+}
+
+internal fun cloudflareCookieImportedFeedback(url: okhttp3.HttpUrl, locale: Locale): String =
+    MR.strings.desktop_settings_cloudflare_cookie_imported.localized(locale, url.host)
 
 class AdvancedSettingsScreen : Screen {
 
@@ -165,18 +219,17 @@ class AdvancedSettingsScreen : Screen {
                 )
 
                 ListItem(
-                    headlineContent = { Text("Clear cookies") },
+                    headlineContent = { Text(text(MR.strings.pref_clear_cookies)) },
                     supportingContent = {
-                        Text(
-                            if (cookiesCleared) "Cookies cleared" else "Remove all stored cookies",
-                        )
+                        val summary = if (cookiesCleared) MR.strings.cookies_cleared else MR.strings.desktop_settings_clear_cookies_summary
+                        Text(text(summary))
                     },
                 )
                 TextButton(
                     onClick = { showClearCookiesDialog = true },
                     modifier = Modifier.padding(horizontal = 16.dp),
                 ) {
-                    Text("Clear cookies")
+                    Text(text(MR.strings.pref_clear_cookies))
                 }
 
                 HorizontalDivider()
@@ -233,41 +286,37 @@ class AdvancedSettingsScreen : Screen {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
                 )
-                SwitchSettingsItem(
-                    title = text(MR.strings.desktop_settings_cloudflare_solver_title),
-                    subtitle = text(MR.strings.desktop_settings_cloudflare_solver_explicit_only),
-                    checked = solverSettings.enabled,
-                    onCheckedChange = {
-                        solverSettings = updateFlareSolverrEnabled(preferences, it)
+                FlareSolverrSettingsSectionContent(
+                    section = flareSolverrSettingsSection(preferences, solverSettings, text) {
+                        solverSettings = it
                     },
-                )
-                OutlinedTextField(
-                    value = solverSettings.url,
-                    onValueChange = {
-                        solverSettings = updateFlareSolverrUrl(preferences, it)
+                    renderSwitch = { item ->
+                        SwitchSettingsItem(
+                            title = item.title,
+                            subtitle = item.subtitle,
+                            checked = item.checked,
+                            onCheckedChange = item.onCheckedChange,
+                        )
                     },
-                    label = { Text(text(MR.strings.desktop_settings_cloudflare_solver_url)) },
-                    isError = solverSettings.urlError != null,
-                    supportingText = solverSettings.urlError?.let { error ->
-                        {
-                            Text(
-                                text(
-                                    when (error) {
-                                        FlareSolverrUrlError.Required -> MR.strings.desktop_settings_cloudflare_solver_url_required
-                                        FlareSolverrUrlError.Invalid -> MR.strings.desktop_settings_cloudflare_solver_url_invalid
-                                    },
-                                ),
-                            )
-                        }
+                    renderUrl = { item ->
+                        OutlinedTextField(
+                            value = item.value,
+                            onValueChange = item.onValueChange,
+                            label = { Text(item.label) },
+                            isError = item.error != null,
+                            supportingText = item.error?.let { error ->
+                                { Text(error) }
+                            },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        )
                     },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 )
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = cfDomain,
                     onValueChange = { cfDomain = it; cfDomainError = null },
-                    label = { Text("Site domain (e.g. example.com)") },
+                    label = { Text(text(MR.strings.desktop_settings_cloudflare_domain)) },
                     isError = cfDomainError != null,
                     supportingText = if (cfDomainError != null) {{ Text(cfDomainError!!) }} else null,
                     singleLine = true,
@@ -277,7 +326,7 @@ class AdvancedSettingsScreen : Screen {
                 OutlinedTextField(
                     value = cfCookieValue,
                     onValueChange = { cfCookieValue = it; cfValueError = null },
-                    label = { Text("cf_clearance value") },
+                    label = { Text(text(MR.strings.desktop_challenge_manual_cookie)) },
                     isError = cfValueError != null,
                     supportingText = if (cfValueError != null) {{ Text(cfValueError!!) }} else null,
                     singleLine = true,
@@ -287,24 +336,24 @@ class AdvancedSettingsScreen : Screen {
                 Button(
                     onClick = {
                         when (val result = validateCloudflareCookieInput(cfDomain, cfCookieValue)) {
-                            is CookieImportResult.InvalidDomain -> cfDomainError = "Invalid domain"
-                            is CookieImportResult.InvalidValue -> cfValueError = "Cookie value must not be blank"
+                            is CookieImportResult.InvalidDomain -> cfDomainError = text(MR.strings.desktop_settings_cloudflare_invalid_domain)
+                            is CookieImportResult.InvalidValue -> cfValueError = text(MR.strings.desktop_settings_cloudflare_cookie_required)
                             is CookieImportResult.Valid -> {
                                 val url = "https://${result.domain}".toHttpUrlOrNull()
                                 if (url != null) {
                                     networkHelper.cookieJar.addManual(url, CF_CLEARANCE_COOKIE_NAME, result.value)
                                     cfDomain = ""
                                     cfCookieValue = ""
-                                    scope.launch { snackbar.showSnackbar("Cookie imported for ${result.domain}") }
+                                    scope.launch { snackbar.showSnackbar(cloudflareCookieImportedFeedback(url, locale)) }
                                 } else {
-                                    cfDomainError = "Could not parse domain"
+                                    cfDomainError = text(MR.strings.desktop_settings_cloudflare_domain_parse_failed)
                                 }
                             }
                         }
                     },
                     modifier = Modifier.padding(horizontal = 16.dp),
                 ) {
-                    Text("Import Cookie")
+                    Text(text(MR.strings.desktop_challenge_manual_submit))
                 }
                 Spacer(Modifier.height(8.dp))
             }
@@ -313,8 +362,8 @@ class AdvancedSettingsScreen : Screen {
         if (showClearCookiesDialog) {
             AlertDialog(
                 onDismissRequest = { showClearCookiesDialog = false },
-                title = { Text("Clear cookies") },
-                text = { Text("This will remove all stored cookies. You may need to re-solve CAPTCHA challenges.") },
+                title = { Text(text(MR.strings.pref_clear_cookies)) },
+                text = { Text(text(MR.strings.desktop_settings_clear_cookies_warning)) },
                 confirmButton = {
                     TextButton(
                         onClick = {
@@ -322,10 +371,10 @@ class AdvancedSettingsScreen : Screen {
                             networkHelper.cookieJar.clear()
                             cookiesCleared = true
                         },
-                    ) { Text("Clear") }
+                    ) { Text(text(MR.strings.desktop_settings_clear_cookies_confirm)) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showClearCookiesDialog = false }) { Text("Cancel") }
+                    TextButton(onClick = { showClearCookiesDialog = false }) { Text(text(MR.strings.action_cancel)) }
                 },
             )
         }

@@ -1,8 +1,15 @@
 package mihon.desktop.ui.cloudflare
 
 import eu.kanade.tachiyomi.network.DesktopCookieJar
+import androidx.compose.runtime.AbstractApplier
+import androidx.compose.runtime.BroadcastFrameClock
+import androidx.compose.runtime.Composition
+import androidx.compose.runtime.Recomposer
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -16,7 +23,12 @@ import mihon.desktop.network.DesktopBrowserOpener
 import mihon.desktop.network.DesktopChallengeBrowserLoginBridge
 import mihon.desktop.network.FlareSolverrClient
 import mihon.desktop.settings.DesktopAppPreferences
+import mihon.desktop.ui.settings.FlareSolverrSettingsSectionContent
+import mihon.desktop.ui.settings.FlareSolverrSwitchItem
+import mihon.desktop.ui.settings.FlareSolverrUrlItem
 import mihon.desktop.ui.settings.FlareSolverrUrlError
+import mihon.desktop.ui.settings.cloudflareCookieImportedFeedback
+import mihon.desktop.ui.settings.flareSolverrSettingsSection
 import mihon.desktop.ui.settings.flareSolverrSettingsState
 import mihon.desktop.ui.settings.updateFlareSolverrEnabled
 import mihon.desktop.ui.settings.updateFlareSolverrUrl
@@ -209,6 +221,7 @@ class DesktopChallengeLoginWiringTest {
         val resolved = listOf(
             MR.strings.desktop_challenge_title,
             MR.strings.desktop_challenge_open_browser,
+            MR.strings.desktop_challenge_manual_cookie,
             MR.strings.desktop_challenge_manual_submit,
             MR.strings.desktop_challenge_solver_disabled,
             MR.strings.desktop_challenge_timed_out,
@@ -220,8 +233,82 @@ class DesktopChallengeLoginWiringTest {
             MR.strings.desktop_settings_cloudflare_solver_explicit_only,
             MR.strings.desktop_settings_cloudflare_solver_url_required,
             MR.strings.desktop_settings_cloudflare_solver_url_invalid,
+            MR.strings.desktop_settings_cloudflare_domain,
+            MR.strings.desktop_settings_cloudflare_invalid_domain,
+            MR.strings.desktop_settings_cloudflare_cookie_required,
+            MR.strings.desktop_settings_cloudflare_domain_parse_failed,
+            MR.strings.desktop_settings_cloudflare_cookie_imported,
+            MR.strings.pref_clear_cookies,
+            MR.strings.cookies_cleared,
+            MR.strings.desktop_settings_clear_cookies_summary,
+            MR.strings.desktop_settings_clear_cookies_warning,
+            MR.strings.desktop_settings_clear_cookies_confirm,
+            MR.strings.action_cancel,
         ).map { it.localized(Locale.ENGLISH) }
         assertTrue(resolved.all(String::isNotBlank))
+    }
+
+    @Test
+    fun `advanced production section renders localized controls and routes both preference callbacks`() = runTest {
+        val preferences = DesktopAppPreferences(InMemoryPreferenceStore())
+        var state = flareSolverrSettingsState(preferences)
+        lateinit var renderedSwitch: FlareSolverrSwitchItem
+        lateinit var renderedUrl: FlareSolverrUrlItem
+        val frameClock = BroadcastFrameClock()
+        val recomposer = Recomposer(coroutineContext + frameClock)
+        val composition = Composition(UnitTestApplier(), recomposer)
+        val recomposerJob = launch(frameClock, start = CoroutineStart.UNDISPATCHED) {
+            recomposer.runRecomposeAndApplyChanges()
+        }
+        suspend fun render(frame: Long) {
+            composition.setContent {
+                FlareSolverrSettingsSectionContent(
+                    section = flareSolverrSettingsSection(preferences, state, { it.localized(Locale.ENGLISH) }) {
+                        state = it
+                    },
+                    renderSwitch = { renderedSwitch = it },
+                    renderUrl = { renderedUrl = it },
+                )
+            }
+            runCurrent()
+            frameClock.sendFrame(frame)
+            recomposer.awaitIdle()
+        }
+        render(0L)
+        assertEquals("Enable FlareSolverr fallback", renderedSwitch.title)
+        assertEquals("FlareSolverr URL", renderedUrl.label)
+        renderedSwitch.onCheckedChange(true)
+        render(1L)
+        assertTrue(preferences.flareSolverrEnabled.get())
+        assertEquals("Enter a FlareSolverr URL.", renderedUrl.error)
+        renderedUrl.onValueChange("ftp://invalid")
+        render(2L)
+        assertEquals("Use an absolute HTTP or HTTPS URL with a host.", renderedUrl.error)
+        renderedUrl.onValueChange("https://solver.example/base/")
+        render(3L)
+        assertNull(renderedUrl.error)
+        assertTrue(preferences.flareSolverrRuntimeConfig() != null)
+        val controller = DesktopChallengeLoginController(CloudflareChallengeManager(), DesktopChallengeBrowserLoginBridge(), preferences)
+        assertTrue(controller.uiState(CloudflareChallenge(request())).showSolver)
+        renderedSwitch.onCheckedChange(false)
+        render(4L)
+        assertEquals("https://solver.example/base/", preferences.flareSolverrUrl.get())
+        assertNull(preferences.flareSolverrRuntimeConfig())
+        assertFalse(controller.uiState(CloudflareChallenge(request())).showSolver)
+        composition.dispose()
+        recomposer.close()
+        recomposerJob.cancelAndJoin()
+    }
+
+    @Test
+    fun `manual cookie success feedback contains only the canonical domain`() {
+        val feedback = cloudflareCookieImportedFeedback(
+            "https://例子.测试/private/chapter".toHttpUrl(),
+            Locale.ENGLISH,
+        )
+        assertEquals("Cookie imported for xn--fsqu00a.xn--0zwm56d", feedback)
+        assertFalse(feedback.contains("private"))
+        assertFalse(feedback.contains("cookie-secret"))
     }
 
     @Test
@@ -413,4 +500,12 @@ class DesktopChallengeLoginWiringTest {
     private fun solvedResponse() = MockResponse(
         body = """{"status":"ok","solution":{"userAgent":"solver-agent","cookies":[{"name":"cf_clearance","value":"solver-secret","domain":"reader.example.com","secure":true}]}}""",
     )
+
+    private class UnitTestApplier : AbstractApplier<Unit>(Unit) {
+        override fun insertBottomUp(index: Int, instance: Unit) = Unit
+        override fun insertTopDown(index: Int, instance: Unit) = Unit
+        override fun move(from: Int, to: Int, count: Int) = Unit
+        override fun onClear() = Unit
+        override fun remove(index: Int, count: Int) = Unit
+    }
 }
