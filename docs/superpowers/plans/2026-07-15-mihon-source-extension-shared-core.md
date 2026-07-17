@@ -39,7 +39,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - [x] Task 4C：Android 安装事务/session 生命周期
 - [x] Task 4D：Android 信任、receiver 可见性与精确回滚
 - [x] Task 5A：共享登录会话与 Desktop Cookie 原子提交
-- [ ] Task 5B：Desktop 挑战恢复策略与 FlareSolverr 显式后备
+- [x] Task 5B：Desktop 挑战恢复策略与 FlareSolverr 显式后备
 - [ ] Task 5C：Desktop 登录设置、UI 与 production wiring
 - [ ] Task 6A：Browse 共享状态 wiring
 - [ ] Task 6B：Extension UI、DI 与 i18n wiring
@@ -460,7 +460,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 **Verification:** 运行真实 interceptor/challenge manager 策略测试，确认 403/503 只发布登录请求；browser、手动 Cookie 和 FlareSolverr 均由显式用户 intent 触发，取消/超时不清除或写入凭据，solver 从不由 interceptor 自动调用。
 **Split waiver:** 实际 2534 changed lines（+2458/-76）分布在 7 个 shared+desktop 文件：714 行是 challenge/manager/interceptor/client 的 immutable per-attempt lifecycle、commit-point、单调 terminal/state、active-job 抢占、有界 timeout、真实 jar 校验的 UA+clearance identity/expiry 生命周期、稳定快照、同 host striped commit 序列化、IO dispatcher、显式 recovery intents、单次重试和 cancellable HTTP；183 行是 Task 5A shared required Cookie 非空量词、canonical normalized commit session、有限本地 committer 契约及测试；1637 行是同一真实链路的 36 项 MockWebServer→OkHttp interceptor→manager→Task 5A validation/atomic committer→DesktopCookieJar 策略/并发/HTTP/安全矩阵。shared 改动统一保护 browser/manual/solver 三条入口，避免 Desktop 复制提交规则。clear-first、自动 solver、committer 旁路、重复 retry、cancel/timeout/late completion、commit claim 双向竞态、register/self-cancel 窗口、阻塞 socket/UI dispatcher、UA 不匹配/过期/替换/lookup交错、HTTP 403/429/500/缺 solution、mixed required Cookie、真实持久化失败→Retry、old waiter/new deadline 与无界 host lock 共同决定恢复是否会误写/泄露凭据；拆开会留下虚假 terminal、不可用 clearance、共享/平台规则分叉或无法穿透 production 链的中间状态，不能独立验收。Task 5C 的 UI/设置/DI production entry wiring 未混入本 Task。
 
-**Scope update:** 最终累计 8 个 shared+desktop 文件，+3888/-88（3976 changed lines）；本数值取代上方 waiver 的历史 7 文件/2534 行计数。新增范围仅为 `DesktopNetworkHelper` 的 production application/network interceptor wiring，以及同一 policy 测试中的 final outbound Cookie-header/UA 配对、显式 header provenance、严格 parser、真实 helper 503→recovery→单次 retry 和 timeout 确定性交错矩阵；原 waiver 关于单一 challenge-recovery-policy 风险轴、不可拆分 production 链和 Task 5C 边界的理由保持不变。
+**Scope update:** 最终累计 8 个 shared+desktop 文件，+3908/-88（3996 changed lines）；本数值取代上方 waiver 的历史 7 文件/2534 行计数。新增范围仅为 `DesktopNetworkHelper` 的 production application/network interceptor wiring，以及同一 policy 测试中的 final outbound Cookie-header/UA 配对、显式 header provenance、严格 parser、真实 helper 503→recovery→单次 retry 和 timeout 确定性交错矩阵；原 waiver 关于单一 challenge-recovery-policy 风险轴、不可拆分 production 链和 Task 5C 边界的理由保持不变。
 **Final timeout closure:** provenance 终审确认此前 Cookie provenance 与真实 helper wiring 两项 Important 均已关闭，但暴露一个新的确定性问题：solver 内层 `withTimeout` 与 `awaitTerminal` 使用同一绝对 deadline，先后顺序会令已确认 in-flight 的 recovery 有时正常返回、有时被取消。最后一轮窄修必须让已注册 solver 超时先发布唯一 `TimedOut` terminal，再确定性传播 cancellation；action 注册前已经过期仍正常返回 `TimedOut`。测试必须分别以确定性路径覆盖两种语义，不能依赖两个同 deadline 定时器的调度顺序。
 
 **Files:**
@@ -477,11 +477,11 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Consumes: Task 5A `SourceLoginRequest`/session completion；produces explicit `OpenBrowser`、`SubmitManualCookies`、`UseFlareSolverr`、`Cancel`/`Retry` intents。
 - Interceptor 只检测挑战、等待有界 session terminal 并重试一次；不得删除已有 clearance Cookie 后再等待失败，也不得直接持有或调用 solver。
 
-- [ ] **Step 1: 写 challenge policy/旧 Cookie 保留/solver 非自动调用 RED**
-- [ ] **Step 2: 运行 RED 并确认现有 latch/clear-first 行为失败**
-- [ ] **Step 3: 实现显式恢复 intents 与有界 terminal**
-- [ ] **Step 4: 运行 GREEN、FlareSolverr HTTP 回归与 mutation**
-- [ ] **Step 5: 提交 Task 5B**
+- [x] **Step 1: 写 challenge policy/旧 Cookie 保留/solver 非自动调用 RED**
+- [x] **Step 2: 运行 RED 并确认现有 latch/clear-first 行为失败**
+- [x] **Step 3: 实现显式恢复 intents 与有界 terminal**
+- [x] **Step 4: 运行 GREEN、FlareSolverr HTTP 回归与 mutation**
+- [x] **Step 5: 提交 Task 5B**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.network.DesktopChallengeRecoveryPolicyTest" --tests "mihon.desktop.network.FlareSolverrClientTest"`
   Commit: `refactor(desktop): require explicit challenge recovery`
