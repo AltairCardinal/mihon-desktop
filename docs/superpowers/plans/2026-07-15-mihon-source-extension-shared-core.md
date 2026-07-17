@@ -40,7 +40,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - [x] Task 4D：Android 信任、receiver 可见性与精确回滚
 - [x] Task 5A：共享登录会话与 Desktop Cookie 原子提交
 - [x] Task 5B：Desktop 挑战恢复策略与 FlareSolverr 显式后备
-- [ ] Task 5C：Desktop 登录设置、UI 与 production wiring
+- [x] Task 5C：Desktop 登录设置、UI 与 production wiring
 - [ ] Task 6A：Browse 共享状态 wiring
 - [ ] Task 6B：Extension UI、DI 与 i18n wiring
 - [ ] Task 6C：Test Mode、导航与自动化观察
@@ -500,9 +500,9 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - [x] **Task 5C-A: runtime、动态后备与 DI wiring**
 - [x] **Task 5C-B: 挑战对话框、Home flow 与基础 i18n**
 - [x] **Task 5C-B2: 对话框审查闭环、终态反馈与 Home action wiring**
-- [ ] **Task 5C-C: 高级设置、持久反馈与资源完整性**
-- [ ] **Task 5C-C2: 设置审查闭环、完整 Cloudflare i18n 与 Compose wiring**
-- [ ] **Task 5C-C3: 等价硬编码 mutation 与 i18n production-usage 证明**
+- [x] **Task 5C-C: 高级设置、持久反馈与资源完整性**
+- [x] **Task 5C-C2: 设置审查闭环、完整 Cloudflare i18n 与 Compose wiring**
+- [x] **Task 5C-C3: 等价硬编码 mutation 与 i18n production-usage 证明**
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/settings/DesktopAppPreferences.kt`
@@ -523,11 +523,11 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - AWT 外部浏览器不能读取其私有 Cookie store；`OpenBrowser` 必须通过 Task 5A initiator-bound ticket 与具体 `CloudflareChallenge` 绑定，UI 提交完整 session 时只完成该 challenge 的 ticket。相同 host 并发不得按 URL 或“latest”查找而串线，取消/超时必须移除 pending ticket，late completion 必须失败。
 - DI 必须让 browser/manual/solver 三条成功路径复用同一 `DesktopAuthenticatedSessionCommitter` 和 `DesktopNetworkHelper.cookieJar`；FlareSolverr client 在每次显式 intent 时从当前偏好动态解析，禁用或 URL 非法时不得创建请求。
 
-- [ ] **Step 1: 写设置、UI 状态、DI 与脱敏 production-wiring RED**
-- [ ] **Step 2: 运行 RED 并确认入口/反馈/显式后备缺失**
-- [ ] **Step 3: 实现 i18n 设置与对话框 intents，接通 HomeScreen production session**
-- [ ] **Step 4: 运行 GREEN、Screen/DI/资源完整性与 mutation**
-- [ ] **Step 5: 提交 Task 5C**
+- [x] **Step 1: 写设置、UI 状态、DI 与脱敏 production-wiring RED**
+- [x] **Step 2: 运行 RED 并确认入口/反馈/显式后备缺失**
+- [x] **Step 3: 实现 i18n 设置与对话框 intents，接通 HomeScreen production session**
+- [x] **Step 4: 运行 GREEN、Screen/DI/资源完整性与 mutation**
+- [x] **Step 5: 提交 Task 5C**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.cloudflare.DesktopChallengeLoginWiringTest" --tests "mihon.desktop.di.DesktopDiWiringTest" --tests "mihon.desktop.network.CloudflareCookieImportTest" --tests "mihon.desktop.network.FlareSolverrClientTest"`
   Commit: `feat(desktop): wire recoverable source browser login`
