@@ -674,6 +674,14 @@
     <string name="email">Email address</string>
     <string name="password">Password</string>
     <string name="login">Login</string>
+    <string name="desktop_source_login_description">Open the source login page, then paste its Cookie request header here.</string>
+    <string name="desktop_source_login_cookie_header">Cookie header</string>
+    <string name="desktop_source_login_cookie_placeholder">session=value; token=value</string>
+    <string name="desktop_source_login_invalid_header">Enter a valid Cookie header.</string>
+    <string name="desktop_source_login_browser_unavailable">The login page could not be opened.</string>
+    <string name="desktop_source_login_timed_out">Login timed out.</string>
+    <string name="desktop_source_login_invalid_cookies">The source rejected these cookies.</string>
+    <string name="desktop_source_login_commit_failed">The authenticated session could not be saved.</string>
     <string name="logging_in">Logging in…</string>
     <string name="login_success">Logged in</string>
     <string name="logout_title">Log out from %1$s?</string>

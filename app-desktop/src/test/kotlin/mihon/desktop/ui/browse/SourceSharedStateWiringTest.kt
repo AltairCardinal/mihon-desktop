@@ -9,6 +9,7 @@ import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import dev.icerock.moko.resources.StringResource
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -45,6 +46,7 @@ import tachiyomi.domain.source.service.AuthenticatedCookie
 import tachiyomi.domain.source.service.AuthenticatedSession
 import tachiyomi.domain.source.service.AuthenticatedSessionCommitter
 import tachiyomi.domain.source.service.SourceLoginState
+import tachiyomi.i18n.MR
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -52,6 +54,37 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.io.File
 
 class SourceSharedStateWiringTest {
+
+    @Test
+    fun `source login copy uses MR key identity and maps terminal feedback`() {
+        val resources = listOf(
+            MR.strings.login,
+            MR.strings.desktop_source_login_description,
+            MR.strings.desktop_source_login_cookie_header,
+            MR.strings.desktop_source_login_cookie_placeholder,
+            MR.strings.desktop_source_login_invalid_header,
+            MR.strings.desktop_source_login_browser_unavailable,
+            MR.strings.desktop_source_login_timed_out,
+            MR.strings.desktop_source_login_invalid_cookies,
+            MR.strings.desktop_source_login_commit_failed,
+            MR.strings.action_ok,
+            MR.strings.action_cancel,
+            MR.strings.action_close,
+        )
+        val tokens = resources.mapIndexed { index, resource -> resource to "token-$index" }.toMap()
+        val copy = desktopSourceLoginCopy { resource: StringResource -> tokens.getValue(resource) }
+
+        assertEquals(
+            tokens.values.toList(),
+            listOf(
+                copy.title, copy.description, copy.cookieHeaderLabel, copy.cookieHeaderPlaceholder,
+                copy.invalidHeader, copy.browserUnavailable, copy.timedOut, copy.invalidCookies,
+                copy.commitFailed, copy.submit, copy.cancel, copy.close,
+            ),
+        )
+        assertEquals("token-4", copy.feedback(DesktopSourceLoginFeedback.InvalidHeader))
+        assertEquals("token-8", copy.feedback(DesktopSourceLoginFeedback.CommitFailed))
+    }
 
     @Test
     fun `source projector preserves content while a later page loads and fails`() {

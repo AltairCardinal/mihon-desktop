@@ -1,5 +1,6 @@
 package mihon.desktop.ui.browse
 
+import dev.icerock.moko.resources.StringResource
 import eu.kanade.tachiyomi.source.CatalogueSource
 import mihon.desktop.network.DesktopBrowserLoginTicket
 import mihon.desktop.network.DesktopSourceLoginSessionFactory
@@ -9,6 +10,45 @@ import tachiyomi.domain.source.service.AuthenticatedCookie
 import tachiyomi.domain.source.service.AuthenticatedSession
 import tachiyomi.domain.source.service.SourceLoginRequest
 import tachiyomi.domain.source.service.SourceLoginState
+import tachiyomi.i18n.MR
+
+data class DesktopSourceLoginCopy(
+    val title: String,
+    val description: String,
+    val cookieHeaderLabel: String,
+    val cookieHeaderPlaceholder: String,
+    val invalidHeader: String,
+    val browserUnavailable: String,
+    val timedOut: String,
+    val invalidCookies: String,
+    val commitFailed: String,
+    val submit: String,
+    val cancel: String,
+    val close: String,
+) {
+    fun feedback(value: DesktopSourceLoginFeedback): String = when (value) {
+        DesktopSourceLoginFeedback.InvalidHeader -> invalidHeader
+        DesktopSourceLoginFeedback.BrowserUnavailable -> browserUnavailable
+        DesktopSourceLoginFeedback.TimedOut -> timedOut
+        DesktopSourceLoginFeedback.InvalidCookies -> invalidCookies
+        DesktopSourceLoginFeedback.CommitFailed -> commitFailed
+    }
+}
+
+internal fun desktopSourceLoginCopy(text: (StringResource) -> String) = DesktopSourceLoginCopy(
+    text(MR.strings.login),
+    text(MR.strings.desktop_source_login_description),
+    text(MR.strings.desktop_source_login_cookie_header),
+    text(MR.strings.desktop_source_login_cookie_placeholder),
+    text(MR.strings.desktop_source_login_invalid_header),
+    text(MR.strings.desktop_source_login_browser_unavailable),
+    text(MR.strings.desktop_source_login_timed_out),
+    text(MR.strings.desktop_source_login_invalid_cookies),
+    text(MR.strings.desktop_source_login_commit_failed),
+    text(MR.strings.action_ok),
+    text(MR.strings.action_cancel),
+    text(MR.strings.action_close),
+)
 
 class DesktopSourceLoginController(
     private val factory: DesktopSourceLoginSessionFactory,
