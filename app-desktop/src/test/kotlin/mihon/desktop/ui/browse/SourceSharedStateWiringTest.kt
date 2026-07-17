@@ -3,6 +3,7 @@ package mihon.desktop.ui.browse
 import eu.kanade.tachiyomi.network.HttpException
 import eu.kanade.tachiyomi.network.DesktopCookieJar
 import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
@@ -15,13 +16,18 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.delay
+import mihon.desktop.network.ChallengeRecoveryIntent
+import mihon.desktop.network.CloudflareChallengeManager
 import mihon.desktop.network.DesktopBrowserOpener
 import mihon.desktop.network.DesktopAuthenticatedSessionCommitter
 import mihon.desktop.network.DesktopSourceLoginSessionFactory
+import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.domain.error.AppError
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Headers
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -30,6 +36,7 @@ import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourcePageRequest
 import tachiyomi.domain.source.service.SourceQuery
@@ -42,6 +49,7 @@ import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.io.File
 
 class SourceSharedStateWiringTest {
 
@@ -285,8 +293,13 @@ class SourceSharedStateWiringTest {
     fun `screen recovery never retries a newer request than its intent`() = runBlocking {
         val source = QueryFailureSource()
         val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
-        val actions = DesktopSourceRecoveryActionAdapter { _, _ -> true }
-        val controller = SourceBrowseRecoveryController(coordinator, actions)
+        val controller = SourceBrowseRecoveryController(
+            coordinator,
+            DesktopSourceLoginController(
+                DesktopSourceLoginSessionFactory(AuthenticatedSessionCommitter { _, _ -> }, DesktopBrowserOpener { _, _ -> true }),
+                coordinator,
+            ),
+        )
         val screen = SourceBrowseScreen(source.id)
 
         coordinator.load(source, 1, SourceQuery.Search("old", FilterList()))
@@ -295,6 +308,69 @@ class SourceSharedStateWiringTest {
         screen.recover(controller, source, oldIntent)
 
         assertEquals(listOf("old", "new"), source.queries)
+    }
+
+    @Test
+    fun `generic authentication and real Cloudflare responses use exclusive production routes`(
+        @TempDir tempDir: File,
+    ) = runBlocking {
+        val manager = CloudflareChallengeManager()
+        DesktopNetworkHelper(
+            cacheDir = tempDir.resolve("cache"),
+            cookieStorageFile = tempDir.resolve("cookies.json"),
+            challengeManager = manager,
+        ).use { helper ->
+            MockWebServer().use { server ->
+                server.start()
+                server.enqueue(MockResponse(code = 403, body = "authentication required"))
+                val source = RoutedHttpSource(server.url("/").toString().removeSuffix("/"), helper.client)
+                val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
+                coordinator.load(source, 1, SourceQuery.Popular)
+                assertEquals(null, manager.tryReceive())
+
+                val tickets = mutableListOf<mihon.desktop.network.DesktopBrowserLoginTicket>()
+                val recovery = SourceBrowseRecoveryController(
+                    coordinator,
+                    DesktopSourceLoginController(
+                        DesktopSourceLoginSessionFactory(
+                            DesktopAuthenticatedSessionCommitter(helper.cookieJar),
+                            DesktopBrowserOpener { _, ticket -> tickets += ticket; true },
+                        ),
+                        coordinator,
+                    ),
+                )
+                lateinit var attempt: DesktopSourceLoginAttempt
+                val generic = async(start = CoroutineStart.UNDISPATCHED) {
+                    recovery.recover(source, coordinator.recoveryIntent(source)) { attempt = it }
+                }
+                assertEquals(1, tickets.size)
+                assertEquals(null, manager.tryReceive())
+                assertTrue(recovery.cancel(attempt))
+                assertEquals(SourceLoginState.Cancelled, generic.await())
+
+                server.enqueue(
+                    MockResponse(
+                        code = 403,
+                        headers = Headers.headersOf("Server", "cloudflare"),
+                        body = "<html><div id=\"challenge-error-title\">challenge</div></html>",
+                    ),
+                )
+                val cloudflareCall = async(Dispatchers.IO) {
+                    runCatching { helper.client.newCall(Request.Builder().url(server.url("/cf")).build()).execute().close() }
+                }
+                var challenge = manager.tryReceive()
+                repeat(100) {
+                    if (challenge != null) return@repeat
+                    delay(10)
+                    challenge = manager.tryReceive()
+                }
+                val published = requireNotNull(challenge)
+                assertEquals(1, tickets.size)
+                manager.recover(published, ChallengeRecoveryIntent.Cancel)
+                cloudflareCall.await()
+            }
+        }
+        Unit
     }
 
     @Test
@@ -427,6 +503,27 @@ class SourceSharedStateWiringTest {
             }
             return MangasPage(listOf(manga("/authenticated")), false)
         }
+    }
+
+    private class RoutedHttpSource(
+        override val baseUrl: String,
+        override val client: OkHttpClient,
+    ) : HttpSource() {
+        override val id = 6L
+        override val name = "Routed"
+        override val lang = "en"
+        override val supportsLatest = false
+        override fun popularMangaRequest(page: Int) = Request.Builder().url("$baseUrl/popular").build()
+        override fun popularMangaParse(response: okhttp3.Response) = MangasPage(emptyList(), false)
+        override fun latestUpdatesRequest(page: Int) = popularMangaRequest(page)
+        override fun latestUpdatesParse(response: okhttp3.Response) = popularMangaParse(response)
+        override fun searchMangaRequest(page: Int, query: String, filters: FilterList) = popularMangaRequest(page)
+        override fun searchMangaParse(response: okhttp3.Response) = popularMangaParse(response)
+        override fun mangaDetailsParse(response: okhttp3.Response) = SManga.create()
+        override fun chapterListParse(response: okhttp3.Response) = emptyList<SChapter>()
+        override fun chapterPageParse(response: okhttp3.Response) = SChapter.create()
+        override fun pageListParse(response: okhttp3.Response) = emptyList<Page>()
+        override fun imageUrlParse(response: okhttp3.Response) = ""
     }
 
     private open class NamedSource(override val id: Long, override val name: String) : CatalogueSource {

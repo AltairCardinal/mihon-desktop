@@ -58,6 +58,7 @@ import mihon.desktop.network.AuthenticatedCookieLookup
 import mihon.desktop.network.DesktopAuthenticatedSessionCommitter
 import mihon.desktop.network.DesktopBrowserOpener
 import mihon.desktop.network.DesktopChallengeBrowserLoginBridge
+import mihon.desktop.network.DesktopSourceLoginSessionFactory
 import mihon.desktop.network.FlareSolverrClient
 import mihon.desktop.test.http.MigrationBatchTestBridge
 import mihon.desktop.test.http.TrackingTestBridge
@@ -301,6 +302,10 @@ private fun registerDesktopNetwork(
     Injekt.addSingleton(challengeManager)
     Injekt.addSingleton(authenticatedSessionCommitter)
     Injekt.addSingleton<tachiyomi.domain.source.service.AuthenticatedSessionCommitter>(authenticatedSessionCommitter)
+    Injekt.addSingleton(
+        browserOpener?.let { DesktopSourceLoginSessionFactory(authenticatedSessionCommitter, it) }
+            ?: DesktopSourceLoginSessionFactory(authenticatedSessionCommitter),
+    )
     Injekt.addSingleton(networkHelper)
     Injekt.addSingleton(networkHelper.client)
     Injekt.addSingleton(NetworkHelper(networkHelper.client))

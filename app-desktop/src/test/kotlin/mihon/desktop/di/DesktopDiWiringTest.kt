@@ -41,6 +41,7 @@ import mihon.desktop.network.CloudflareChallengeManager
 import mihon.desktop.network.DesktopAuthenticatedSessionCommitter
 import mihon.desktop.network.DesktopBrowserOpener
 import mihon.desktop.network.DesktopChallengeBrowserLoginBridge
+import mihon.desktop.network.DesktopSourceLoginSessionFactory
 import mihon.domain.download.DownloadRepository
 import mihon.domain.download.EnqueueDownload
 import mihon.domain.download.IsChapterDownloaded
@@ -119,9 +120,12 @@ class DesktopDiWiringTest {
                 val manager = Injekt.get<CloudflareChallengeManager>()
                 val bridge = Injekt.get<DesktopChallengeBrowserLoginBridge>()
                 val helper = Injekt.get<DesktopNetworkHelper>()
+                val sourceLoginFactory = Injekt.get<DesktopSourceLoginSessionFactory>()
                 val ui = DesktopUiDependencies.fromInjekt()
                 assertEquals(listOf(manager, bridge, helper), listOf(ui.cloudflareChallengeManager, ui.challengeBrowserLoginBridge, ui.networkHelper))
                 assertSame(Injekt.get<DesktopAuthenticatedSessionCommitter>(), Injekt.get<AuthenticatedSessionCommitter>())
+                assertSame(Injekt.get<AuthenticatedSessionCommitter>(), sourceLoginFactory.committer)
+                assertSame(sourceLoginFactory, ui.sourceLoginSessionFactory)
                 assertEquals(0, solverServer.requestCount, "runtime providers must not be observed while the helper is built")
 
                 val manual = manager.publish(loginRequest(sourceUrl))

@@ -69,13 +69,12 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.ui.library.MangaDetailScreen
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourceQuery
 import tachiyomi.domain.source.service.SourceQueryState
+import tachiyomi.domain.source.service.SourceLoginState
 import tachiyomi.i18n.MR
-import java.awt.Desktop
 
 data class SourceBrowseUiState(
     val items: List<SManga> = emptyList(),
@@ -105,50 +104,31 @@ object SourceBrowseStateProjector {
     }
 }
 
-fun interface DesktopSourceLoginOpener {
-    fun open(sourceId: Long, url: okhttp3.HttpUrl): Boolean
-}
-
-private object SystemDesktopSourceLoginOpener : DesktopSourceLoginOpener {
-    override fun open(sourceId: Long, url: okhttp3.HttpUrl): Boolean = runCatching {
-        if (!Desktop.isDesktopSupported()) return@runCatching false
-        val desktop = Desktop.getDesktop()
-        if (!desktop.isSupported(Desktop.Action.BROWSE)) return@runCatching false
-        desktop.browse(url.toUri())
-        true
-    }.getOrDefault(false)
-}
-
-class DesktopSourceRecoveryActionAdapter(
-    private val loginOpener: DesktopSourceLoginOpener = SystemDesktopSourceLoginOpener,
-) {
-    suspend fun execute(
-        source: CatalogueSource,
-        intent: DesktopSourceRecoveryIntent,
-        retry: suspend (tachiyomi.domain.source.service.SourcePageRequest) -> Unit,
-    ) {
-        when (intent) {
-            is DesktopSourceRecoveryIntent.Retry -> retry(intent.request)
-            is DesktopSourceRecoveryIntent.OpenLogin -> intent.url.toHttpUrlOrNull()?.let {
-                loginOpener.open(source.id, it)
-            }
-            DesktopSourceRecoveryIntent.None -> Unit
-        }
-    }
-}
-
 class SourceBrowseRecoveryController(
     private val coordinator: SourceBrowseQueryCoordinator,
-    private val actions: DesktopSourceRecoveryActionAdapter,
+    private val loginController: DesktopSourceLoginController,
 ) {
     suspend fun recover(
         source: CatalogueSource,
         intent: DesktopSourceRecoveryIntent,
-    ) {
-        actions.execute(source, intent) { request ->
-            coordinator.retry(source, request)
+        onLoginStarted: (DesktopSourceLoginAttempt) -> Unit = {},
+    ): SourceLoginState? = when (intent) {
+        is DesktopSourceRecoveryIntent.Retry -> {
+            coordinator.retry(source, intent.request)
+            null
         }
+        is DesktopSourceRecoveryIntent.OpenLogin -> {
+            val attempt = loginController.newAttempt()
+            onLoginStarted(attempt)
+            loginController.login(source, intent, attempt)
+        }
+        DesktopSourceRecoveryIntent.None -> null
     }
+
+    fun submitCookies(attempt: DesktopSourceLoginAttempt, header: String): Boolean =
+        loginController.submitCookies(attempt, header)
+
+    fun cancel(attempt: DesktopSourceLoginAttempt): Boolean = loginController.cancel(attempt)
 }
 
 data class SourceBrowseScreen(val sourceId: Long) : Screen {
@@ -163,7 +143,8 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
         controller: SourceBrowseRecoveryController,
         source: CatalogueSource,
         intent: DesktopSourceRecoveryIntent,
-    ) = controller.recover(source, intent)
+        onLoginStarted: (DesktopSourceLoginAttempt) -> Unit = {},
+    ) = controller.recover(source, intent, onLoginStarted)
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
@@ -180,9 +161,11 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
         val queryState by queryStates(queryCoordinator).collectAsState(initial = null)
         val queryUiState = projectState(queryState)
         var openingMangaUrl by remember { mutableStateOf<String?>(null) }
-        val recoveryActions = remember { DesktopSourceRecoveryActionAdapter() }
-        val recoveryController = remember(queryCoordinator, recoveryActions) {
-            SourceBrowseRecoveryController(queryCoordinator, recoveryActions)
+        val loginController = remember(queryCoordinator, dependencies.sourceLoginSessionFactory) {
+            DesktopSourceLoginController(dependencies.sourceLoginSessionFactory, queryCoordinator)
+        }
+        val recoveryController = remember(queryCoordinator, loginController) {
+            SourceBrowseRecoveryController(queryCoordinator, loginController)
         }
 
         // Search state

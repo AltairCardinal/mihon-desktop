@@ -16,6 +16,7 @@ import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.network.CloudflareChallengeManager
 import mihon.desktop.network.DesktopChallengeBrowserLoginBridge
+import mihon.desktop.network.DesktopSourceLoginSessionFactory
 import mihon.desktop.migration.DesktopBatchMigrationController
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.settings.DesktopAppPreferences
@@ -55,6 +56,7 @@ data class DesktopUiDependencies(
     val chapterRepository: ChapterRepository,
     val cloudflareChallengeManager: CloudflareChallengeManager,
     val challengeBrowserLoginBridge: DesktopChallengeBrowserLoginBridge,
+    val sourceLoginSessionFactory: DesktopSourceLoginSessionFactory,
     val createExtensionRepo: CreateExtensionRepo,
     val creatorDiscoveryService: CreatorDiscoveryService,
     val creatorRepository: CreatorRepository,
@@ -107,6 +109,7 @@ data class DesktopUiDependencies(
                 chapterRepository = Injekt.get(),
                 cloudflareChallengeManager = Injekt.get(),
                 challengeBrowserLoginBridge = Injekt.get(),
+                sourceLoginSessionFactory = Injekt.get(),
                 createExtensionRepo = Injekt.get(),
                 creatorDiscoveryService = Injekt.get(),
                 creatorRepository = Injekt.get(),
