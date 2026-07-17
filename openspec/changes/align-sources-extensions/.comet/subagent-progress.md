@@ -174,6 +174,11 @@
 - Outbound pair closure requirements: the application interceptor remains responsible only for challenge detection, bounded terminal wait, and one retry from the untouched original request. A network interceptor must inspect the final outbound Cookie header and apply solver UA only when applicable bound clearance names/value fingerprints match that exact header; mismatched or replaced clearance must never receive the old solver UA. Deterministic production-chain tests must cover jar-committed/binding-not-published, lookup-selected/before-cookie-load, solver-to-manual, solver-to-solver, and direct network Set-Cookie transitions; removing the network-stage pairing must fail a named test.
 - Review/fix round: 5/5 (user-authorized engineering override for one localized outbound-pair closure).
 - Outbound pair fix agent: `/root/task5b_fix5` (fresh TDD implementer; bounded to the now eight-file Desktop/shared Task 5B scope).
+- Outbound pair fix commit: `20fda18b4bd0c04d705a63c1522a1c1a5c283923` (`fix(desktop): pair outbound challenge credentials`).
+- Outbound pair TDD: six deterministic production-chain RED failures covered manual/browser replacement, solver-to-solver transition, direct network Set-Cookie, explicit/missing Cookie and duplicate path snapshots. GREEN policy 51/51 moves UA selection to the final network-stage outbound Cookie header while the application interceptor retains challenge/retry only.
+- Outbound pair mutations: restoring application-stage UA selection made the manual replacement race fail; removing `DesktopNetworkHelper` paired network-interceptor wiring made the real helper wiring test fail. Both were restored.
+- Outbound pair verification: fresh policy 51 + FlareSolverr 2 + browser adapter 6 + shared SourceLoginSession 27 = 86/86 PASS, 0 failures/errors/skips; root Spotless 61 tasks PASS; diff check PASS.
+- Final cumulative Task 5B product/test scope: 8 planned shared+desktop files, +3657/-88 (3745 changed lines). The eighth file is the inseparable production network-interceptor wiring; Task 5C UI/DI/settings remain untouched.
 
 ## Task 5A Review History
 
