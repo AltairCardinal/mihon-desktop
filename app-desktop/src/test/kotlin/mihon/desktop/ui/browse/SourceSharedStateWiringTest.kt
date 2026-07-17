@@ -353,6 +353,48 @@ class SourceSharedStateWiringTest {
     }
 
     @Test
+    fun `global callback reports each authoritative query transition exactly once`() = runBlocking {
+        val source = QueryFailureSource()
+        val callbacks = Collections.synchronizedList(mutableListOf<DesktopGlobalSearchState>())
+        val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+        coordinator.search(listOf(source), "sequence", callbacks::add)
+        val queryStates = callbacks.filter { it.isSearching }.mapNotNull { it.queryStates[source.id] }
+        assertEquals(listOf(SourceQueryState.Loading::class, SourceQueryState.Failure::class), queryStates.map { it::class })
+        assertEquals(1, callbacks.count { !it.isSearching })
+    }
+
+    @Test
+    fun `replaced global callback never observes the replacement generation`() = runBlocking {
+        val (callbackEntered, releaseCallback) = List(2) { CountDownLatch(1) }
+        val finishOldQuery = CountDownLatch(1)
+        val oldSource = object : NamedSource(33, "Old callback") {
+            override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage = try {
+                awaitCancellation()
+            } finally {
+                finishOldQuery.await(5, TimeUnit.SECONDS)
+            }
+        }
+        val callbacks = Collections.synchronizedList(mutableListOf<DesktopGlobalSearchState>())
+        val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+        val old = async(Dispatchers.Default) {
+            coordinator.search(listOf(oldSource), "old") { state ->
+                callbacks += state
+                if (state.queryStates[oldSource.id] is SourceQueryState.Loading) {
+                    callbackEntered.countDown()
+                    releaseCallback.await(5, TimeUnit.SECONDS)
+                }
+            }
+        }
+        assertTrue(callbackEntered.await(5, TimeUnit.SECONDS))
+        coordinator.search(listOf(NamedSource(34, "Replacement")), "new")
+        releaseCallback.countDown()
+        delay(50)
+        finishOldQuery.countDown()
+        old.await()
+        assertTrue(callbacks.all { it.generation == 1L && it.queryStates.keys.none { id -> id == 34L } })
+    }
+
+    @Test
     fun `global coordinator rejects late generation state and retires its child coordinator`() = runBlocking {
         val source = InterleavingSource()
         val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
