@@ -130,6 +130,73 @@ class SourceBrowseRecoveryController(
     fun cancel(attempt: DesktopSourceLoginAttempt): Boolean = loginController.cancel(attempt)
 }
 
+data class DesktopSourceLoginDialogModel(
+    val state: DesktopSourceLoginUiState,
+    val copy: DesktopSourceLoginCopy,
+) {
+    val feedback: String? = state.feedback?.let(copy::feedback)
+}
+
+data class DesktopSourceLoginDialogEvents(
+    val edit: (String) -> Unit,
+    val submit: () -> Unit,
+    val dismiss: () -> Unit,
+)
+
+@Composable
+internal fun SourceLoginDialogHost(
+    state: DesktopSourceLoginUiState?,
+    copy: DesktopSourceLoginCopy,
+    actions: DesktopSourceLoginUiActions,
+    onStateChange: (DesktopSourceLoginUiState?) -> Unit,
+    render: @Composable (DesktopSourceLoginDialogModel, DesktopSourceLoginDialogEvents) -> Unit = ::DesktopSourceLoginDialog,
+) {
+    state ?: return
+    render(
+        DesktopSourceLoginDialogModel(state, copy),
+        DesktopSourceLoginDialogEvents(
+            edit = { onStateChange(actions.editHeader(state, it)) },
+            submit = { onStateChange(actions.submit(state)) },
+            dismiss = { onStateChange(if (state.terminal) null else actions.cancel(state)) },
+        ),
+    )
+}
+
+@Composable
+fun DesktopSourceLoginDialog(model: DesktopSourceLoginDialogModel, events: DesktopSourceLoginDialogEvents) {
+    val state = model.state
+    val copy = model.copy
+    AlertDialog(
+        onDismissRequest = events.dismiss,
+        title = { Text(copy.title) },
+        text = {
+            Column {
+                Text(state.host)
+                Text(copy.description)
+                if (!state.terminal) {
+                    OutlinedTextField(
+                        value = state.cookieHeader,
+                        onValueChange = events.edit,
+                        label = { Text(copy.cookieHeaderLabel) },
+                        placeholder = { Text(copy.cookieHeaderPlaceholder) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                model.feedback?.let { Text(it) }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = if (state.terminal) events.dismiss else events.submit) {
+                Text(if (state.terminal) copy.close else copy.submit)
+            }
+        },
+        dismissButton = {
+            if (!state.terminal) TextButton(onClick = events.dismiss) { Text(copy.cancel) }
+        },
+    )
+}
+
 data class SourceBrowseScreen(val sourceId: Long) : Screen {
 
     internal fun projectState(state: SourceQueryState?): SourceBrowseUiState =
@@ -169,6 +236,7 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
         val loginUiActions = remember(recoveryController) {
             DesktopSourceLoginUiActions(recoveryController::submitCookies, recoveryController::cancel)
         }
+        val loginCopy = remember { desktopSourceLoginCopy { it.localized() } }
         var sourceLoginUiState by remember { mutableStateOf<DesktopSourceLoginUiState?>(null) }
 
         // Search state
@@ -220,6 +288,13 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
                 }
             }
         }
+
+        SourceLoginDialogHost(
+            sourceLoginUiState,
+            loginCopy,
+            loginUiActions,
+            onStateChange = { sourceLoginUiState = it },
+        )
 
         // Initial load
         LaunchedEffect(Unit) { loadPage(1) }

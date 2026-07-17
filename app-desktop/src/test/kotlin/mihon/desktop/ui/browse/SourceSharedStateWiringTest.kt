@@ -10,6 +10,10 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import dev.icerock.moko.resources.StringResource
+import androidx.compose.runtime.AbstractApplier
+import androidx.compose.runtime.BroadcastFrameClock
+import androidx.compose.runtime.Composition
+import androidx.compose.runtime.Recomposer
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -85,6 +89,60 @@ class SourceSharedStateWiringTest {
         DesktopSourceLoginFeedback.entries.forEachIndexed { index, feedback ->
             assertEquals("token-${index + 4}", copy.feedback(feedback))
         }
+    }
+
+    @Test
+    fun `source login host renders model and routes edits submit and dismiss by state`() = runBlocking {
+        val attempt = DesktopSourceLoginAttempt()
+        var state: DesktopSourceLoginUiState? = DesktopSourceLoginUiState(attempt, "source.test")
+        var submitted = ""
+        var cancelled: DesktopSourceLoginAttempt? = null
+        val actions = DesktopSourceLoginUiActions(
+            { _, header -> false.also { submitted = header } },
+            { actual -> true.also { cancelled = actual } },
+        )
+        val copy = desktopSourceLoginCopy {
+            if (it == MR.strings.desktop_source_login_timed_out) "timed-out" else it.toString()
+        }
+        lateinit var model: DesktopSourceLoginDialogModel
+        lateinit var events: DesktopSourceLoginDialogEvents
+        val clock = BroadcastFrameClock()
+        val recomposer = Recomposer(coroutineContext + clock)
+        val composition = Composition(UnitTestApplier(), recomposer)
+        val job = launch(clock, start = CoroutineStart.UNDISPATCHED) { recomposer.runRecomposeAndApplyChanges() }
+
+        suspend fun render() {
+            composition.setContent {
+                SourceLoginDialogHost(state, copy, actions, { state = it }) { actual, actualEvents ->
+                    model = actual
+                    events = actualEvents
+                }
+            }
+            clock.sendFrame(0)
+            recomposer.awaitIdle()
+        }
+        render()
+        assertEquals("source.test", model.state.host)
+        events.edit("session=secret")
+        assertEquals("session=secret", state?.cookieHeader)
+        render()
+        events.submit()
+        assertEquals("session=secret", submitted)
+        assertEquals(DesktopSourceLoginFeedback.InvalidHeader, state?.feedback)
+        events.dismiss()
+        assertSame(attempt, cancelled)
+        assertEquals(null, state)
+
+        state = DesktopSourceLoginUiState(attempt, "source.test", feedback = DesktopSourceLoginFeedback.TimedOut, terminal = true)
+        render()
+        assertEquals("timed-out", model.feedback)
+        cancelled = null
+        events.dismiss()
+        assertEquals(null, cancelled)
+        assertEquals(null, state)
+        composition.dispose()
+        recomposer.close()
+        job.cancelAndJoin()
     }
 
     @Test
@@ -720,6 +778,14 @@ class SourceSharedStateWiringTest {
         override suspend fun getMangaDetails(manga: SManga) = manga
         override suspend fun getChapterList(manga: SManga) = emptyList<SChapter>()
         override suspend fun getPageList(chapter: SChapter) = emptyList<Page>()
+    }
+
+    private class UnitTestApplier : AbstractApplier<Unit>(Unit) {
+        override fun insertBottomUp(index: Int, instance: Unit) = Unit
+        override fun insertTopDown(index: Int, instance: Unit) = Unit
+        override fun move(from: Int, to: Int, count: Int) = Unit
+        override fun onClear() = Unit
+        override fun remove(index: Int, count: Int) = Unit
     }
 
     private companion object {
