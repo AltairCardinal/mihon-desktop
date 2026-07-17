@@ -20,6 +20,7 @@ import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
@@ -60,8 +61,71 @@ class DesktopChallengeLoginWiringTest {
 
         assertTrue(recovery.await() is ChallengeRecoveryState.Recovered)
         val cookie = jar.get(request().url).single()
-        assertEquals(listOf("reader.example.com", true, "/chapter", true, true), listOf(cookie.domain, cookie.hostOnly, cookie.path, cookie.secure, cookie.httpOnly))
+        assertEquals(listOf("reader.example.com", true, "/", true, true), listOf(cookie.domain, cookie.hostOnly, cookie.path, cookie.secure, cookie.httpOnly))
         assertEquals("browser-secret", cookie.value)
+    }
+
+    @Test
+    fun `manual clearance recovered at chapter is sent by real OkHttp jar to browse`() = runTest {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(MockResponse())
+            val jar = DesktopCookieJar()
+            val manager = CloudflareChallengeManager(committer = DesktopAuthenticatedSessionCommitter(jar))
+            val controller = DesktopChallengeLoginController(manager, DesktopChallengeBrowserLoginBridge(), DesktopAppPreferences(InMemoryPreferenceStore()))
+            val loginRequest = SourceLoginRequest(server.url("/chapter"), setOf("cf_clearance"), 30_000)
+
+            controller.submitClearance(manager.publish(loginRequest), "root-secret")
+            OkHttpClient.Builder().cookieJar(jar).build().newCall(Request.Builder().url(server.url("/browse")).build()).execute().close()
+
+            assertEquals("cf_clearance=root-secret", server.takeRequest().headers["Cookie"])
+        }
+    }
+
+    @Test
+    fun `Home action adapter drives bound browser commit feedback dismiss and stale identity`() = runTest {
+        val jar = DesktopCookieJar()
+        val bridge = DesktopChallengeBrowserLoginBridge(browserOpener = DesktopBrowserOpener { _, _ -> true })
+        val manager = CloudflareChallengeManager(
+            browserAdapterProvider = bridge::adapterFor,
+            committer = DesktopAuthenticatedSessionCommitter(jar),
+        )
+        val adapter = DesktopChallengeHomeActionAdapter(
+            DesktopChallengeLoginController(manager, bridge, DesktopAppPreferences(InMemoryPreferenceStore()), Locale.ENGLISH),
+        )
+        val challenge = manager.publish(request())
+        var active: CloudflareChallenge? = challenge
+        val browser = async { adapter.execute({ active }, challenge, DesktopChallengeHomeAction.Recover(ChallengeRecoveryIntent.OpenBrowser)) }
+        runCurrent()
+        adapter.execute({ active }, challenge, DesktopChallengeHomeAction.SubmitClearance("adapter-secret"))
+
+        val recovered = browser.await()
+        assertTrue(recovered.dismiss)
+        assertTrue(recovered.feedback.orEmpty().isNotBlank())
+        assertFalse(recovered.toString().contains("adapter-secret"))
+        assertEquals("adapter-secret", jar.get(request().url).single().value)
+        active = manager.publish(request())
+        assertFalse(adapter.observe({ active }, challenge).dismiss)
+        assertNull(adapter.observe({ active }, challenge).feedback)
+    }
+
+    @Test
+    fun `timed out Home action offers pure close without dispatching another recovery`() = runTest {
+        val manager = CloudflareChallengeManager()
+        val adapter = DesktopChallengeHomeActionAdapter(
+            DesktopChallengeLoginController(manager, DesktopChallengeBrowserLoginBridge(), DesktopAppPreferences(InMemoryPreferenceStore())),
+        )
+        val challenge = manager.publish(request(timeoutMillis = 1))
+        Thread.sleep(5)
+        var active: CloudflareChallenge? = challenge
+        val timedOut = adapter.execute({ active }, challenge, DesktopChallengeHomeAction.Recover(ChallengeRecoveryIntent.OpenBrowser))
+        assertEquals(ChallengeRecoveryState.TimedOut, challenge.state.value)
+        assertFalse(timedOut.dismiss)
+
+        val close = adapter.execute({ active }, challenge, DesktopChallengeHomeAction.Close)
+        assertTrue(close.dismiss)
+        assertNull(close.feedback)
+        assertEquals(ChallengeRecoveryState.TimedOut, challenge.state.value)
     }
 
     @Test

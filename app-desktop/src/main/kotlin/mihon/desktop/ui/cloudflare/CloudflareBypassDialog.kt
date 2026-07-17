@@ -42,6 +42,7 @@ data class DesktopChallengeLoginUiState(
     val dismiss: Boolean = false,
     val cookieNames: Set<String> = emptySet(),
     val cookieCount: Int = 0,
+    val terminalClose: Boolean = false,
 )
 
 class DesktopChallengeLoginController(
@@ -50,8 +51,10 @@ class DesktopChallengeLoginController(
     private val preferences: DesktopAppPreferences,
     private val locale: Locale = Locale.getDefault(),
 ) {
-    fun uiState(challenge: CloudflareChallenge): DesktopChallengeLoginUiState {
-        val state = challenge.state.value
+    fun uiState(
+        challenge: CloudflareChallenge,
+        state: ChallengeRecoveryState = challenge.state.value,
+    ): DesktopChallengeLoginUiState {
         val solverAvailable = preferences.flareSolverrRuntimeConfig() != null
         val recovered = state as? ChallengeRecoveryState.Recovered
         return DesktopChallengeLoginUiState(
@@ -59,7 +62,7 @@ class DesktopChallengeLoginController(
             feedback = state.feedback(locale),
             runningAction = (state as? ChallengeRecoveryState.Running)?.action,
             allowConflictingActions = state !is ChallengeRecoveryState.Running,
-            showSolver = solverAvailable,
+            showSolver = solverAvailable && state != ChallengeRecoveryState.TimedOut,
             solverGuidance = if (solverAvailable) {
                 null
             } else if (preferences.flareSolverrEnabled.get()) {
@@ -71,6 +74,7 @@ class DesktopChallengeLoginController(
             dismiss = state is ChallengeRecoveryState.Recovered || state == ChallengeRecoveryState.Cancelled,
             cookieNames = recovered?.cookieNames.orEmpty(),
             cookieCount = recovered?.cookieCount ?: 0,
+            terminalClose = state == ChallengeRecoveryState.TimedOut,
         )
     }
 
@@ -97,7 +101,7 @@ class DesktopChallengeLoginController(
                     value = normalized,
                     domain = url.host,
                     hostOnly = true,
-                    path = url.encodedPath.ifBlank { "/" },
+                    path = "/",
                     expiresAt = null,
                     secure = url.isHttps,
                     httpOnly = true,
@@ -120,19 +124,64 @@ class DesktopChallengeLoginController(
         (state is ChallengeRecoveryState.Recovered || state == ChallengeRecoveryState.Cancelled)
 }
 
+sealed interface DesktopChallengeHomeAction {
+    data class Recover(val intent: ChallengeRecoveryIntent) : DesktopChallengeHomeAction
+    data class SubmitClearance(val value: String) : DesktopChallengeHomeAction
+    data object Close : DesktopChallengeHomeAction
+}
+
+data class DesktopChallengeHomeResult(
+    val dismiss: Boolean = false,
+    val feedback: String? = null,
+)
+
+class DesktopChallengeHomeActionAdapter(
+    private val controller: DesktopChallengeLoginController,
+) {
+    suspend fun execute(
+        activeChallenge: () -> CloudflareChallenge?,
+        challenge: CloudflareChallenge,
+        action: DesktopChallengeHomeAction,
+    ): DesktopChallengeHomeResult {
+        if (action == DesktopChallengeHomeAction.Close) {
+            return DesktopChallengeHomeResult(
+                dismiss = activeChallenge() === challenge && challenge.state.value == ChallengeRecoveryState.TimedOut,
+            )
+        }
+        when (action) {
+            is DesktopChallengeHomeAction.Recover -> controller.dispatch(challenge, action.intent)
+            is DesktopChallengeHomeAction.SubmitClearance -> controller.submitClearance(challenge, action.value)
+            DesktopChallengeHomeAction.Close -> error("handled above")
+        }
+        return observe(activeChallenge, challenge)
+    }
+
+    fun observe(
+        activeChallenge: () -> CloudflareChallenge?,
+        challenge: CloudflareChallenge,
+    ): DesktopChallengeHomeResult {
+        val state = challenge.state.value
+        val dismiss = controller.shouldDismiss(activeChallenge(), challenge, state)
+        val feedback = if (dismiss) controller.uiState(challenge, state).feedback else null
+        return DesktopChallengeHomeResult(dismiss, feedback)
+    }
+}
+
 @Composable
 fun CloudflareBypassDialog(
     state: DesktopChallengeLoginUiState,
     onIntent: (ChallengeRecoveryIntent) -> Unit,
     onCookieSubmit: (String) -> Unit,
-    onDismiss: () -> Unit,
+    onClose: () -> Unit,
 ) {
     var cookieValue by remember { mutableStateOf("") }
     val locale = Locale.getDefault()
     val text: (dev.icerock.moko.resources.StringResource) -> String = { it.localized(locale) }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            if (state.terminalClose) onClose() else onIntent(ChallengeRecoveryIntent.Cancel)
+        },
         title = { Text(text(MR.strings.desktop_challenge_title)) },
         text = {
             Column {
@@ -142,25 +191,27 @@ fun CloudflareBypassDialog(
                 Text(state.feedback)
                 state.solverGuidance?.let { Text(it) }
                 Spacer(Modifier.height(8.dp))
-                TextButton(
-                    onClick = { onIntent(ChallengeRecoveryIntent.OpenBrowser) },
-                    enabled = state.allowConflictingActions,
-                ) { Text(text(MR.strings.desktop_challenge_open_browser)) }
-                if (state.showSolver) {
+                if (!state.terminalClose) {
                     TextButton(
-                        onClick = { onIntent(ChallengeRecoveryIntent.UseFlareSolverr) },
+                        onClick = { onIntent(ChallengeRecoveryIntent.OpenBrowser) },
                         enabled = state.allowConflictingActions,
-                    ) { Text(text(MR.strings.desktop_challenge_use_solver)) }
+                    ) { Text(text(MR.strings.desktop_challenge_open_browser)) }
+                    if (state.showSolver) {
+                        TextButton(
+                            onClick = { onIntent(ChallengeRecoveryIntent.UseFlareSolverr) },
+                            enabled = state.allowConflictingActions,
+                        ) { Text(text(MR.strings.desktop_challenge_use_solver)) }
+                    }
+                    OutlinedTextField(
+                        value = cookieValue,
+                        onValueChange = { cookieValue = it },
+                        label = { Text(text(MR.strings.desktop_challenge_manual_cookie)) },
+                        placeholder = { Text(text(MR.strings.desktop_challenge_manual_placeholder)) },
+                        singleLine = true,
+                        enabled = state.allowConflictingActions || state.runningAction == ChallengeRecoveryAction.Browser,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
-                OutlinedTextField(
-                    value = cookieValue,
-                    onValueChange = { cookieValue = it },
-                    label = { Text(text(MR.strings.desktop_challenge_manual_cookie)) },
-                    placeholder = { Text(text(MR.strings.desktop_challenge_manual_placeholder)) },
-                    singleLine = true,
-                    enabled = state.allowConflictingActions || state.runningAction == ChallengeRecoveryAction.Browser,
-                    modifier = Modifier.fillMaxWidth(),
-                )
                 if (state.cookieCount > 0) {
                     Text(text(MR.strings.desktop_challenge_cookie_names))
                     Text(state.cookieNames.sorted().joinToString())
@@ -171,21 +222,25 @@ fun CloudflareBypassDialog(
         },
         confirmButton = {
             Row(horizontalArrangement = Arrangement.End) {
-                if (state.showRetry) {
+                if (state.terminalClose) {
+                    TextButton(onClick = onClose) { Text(text(MR.strings.desktop_challenge_close)) }
+                } else if (state.showRetry) {
                     TextButton(onClick = { onIntent(ChallengeRecoveryIntent.Retry) }) {
                         Text(text(MR.strings.desktop_challenge_retry))
                     }
                     Spacer(Modifier.width(8.dp))
                 }
-                TextButton(onClick = { onIntent(ChallengeRecoveryIntent.Cancel) }) {
-                    Text(text(MR.strings.desktop_challenge_cancel))
+                if (!state.terminalClose) {
+                    TextButton(onClick = { onIntent(ChallengeRecoveryIntent.Cancel) }) {
+                        Text(text(MR.strings.desktop_challenge_cancel))
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(
+                        onClick = { onCookieSubmit(cookieValue) },
+                        enabled = cookieValue.isNotBlank() &&
+                            (state.allowConflictingActions || state.runningAction == ChallengeRecoveryAction.Browser),
+                    ) { Text(text(MR.strings.desktop_challenge_manual_submit)) }
                 }
-                Spacer(Modifier.width(8.dp))
-                TextButton(
-                    onClick = { onCookieSubmit(cookieValue) },
-                    enabled = cookieValue.isNotBlank() &&
-                        (state.allowConflictingActions || state.runningAction == ChallengeRecoveryAction.Browser),
-                ) { Text(text(MR.strings.desktop_challenge_manual_submit)) }
             }
         },
     )

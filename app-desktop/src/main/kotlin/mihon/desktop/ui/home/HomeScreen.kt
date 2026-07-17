@@ -44,6 +44,8 @@ import mihon.desktop.test.navigation.TestNavigationController
 import mihon.desktop.ui.browse.BrowseTab
 import mihon.desktop.ui.authors.AuthorsTab
 import mihon.desktop.ui.cloudflare.CloudflareBypassDialog
+import mihon.desktop.ui.cloudflare.DesktopChallengeHomeAction
+import mihon.desktop.ui.cloudflare.DesktopChallengeHomeActionAdapter
 import mihon.desktop.ui.cloudflare.DesktopChallengeLoginController
 import mihon.desktop.ui.extension.ExtensionListScreen
 import mihon.desktop.ui.history.HistoryTab
@@ -72,6 +74,7 @@ class HomeScreen : Screen {
                 dependencies.appPreferences,
             )
         }
+        val challengeActions = remember(controller) { DesktopChallengeHomeActionAdapter(controller) }
         val scope = rememberCoroutineScope()
         var actionJob by remember { mutableStateOf<Job?>(null) }
         val snackbarHostState = remember { SnackbarHostState() }
@@ -102,16 +105,18 @@ class HomeScreen : Screen {
 
         activeChallenge?.let { challenge ->
             val recoveryState by challenge.state.collectAsState()
-            val uiState = controller.uiState(challenge)
-            LaunchedEffect(challenge, recoveryState) {
-                if (controller.shouldDismiss(activeChallenge, challenge, recoveryState)) activeChallenge = null
-            }
-            val runIntent: (ChallengeRecoveryIntent) -> Unit = { intent ->
+            val uiState = controller.uiState(challenge, recoveryState)
+            val runAction: (DesktopChallengeHomeAction) -> Unit = { action ->
                 val block: suspend () -> Unit = {
-                    val result = controller.dispatch(challenge, intent)
-                    if (controller.shouldDismiss(activeChallenge, challenge, result)) activeChallenge = null
+                    val result = challengeActions.execute({ activeChallenge }, challenge, action)
+                    if (result.dismiss) activeChallenge = null
+                    result.feedback?.let { snackbarHostState.showSnackbar(message = it) }
                 }
-                if (intent == ChallengeRecoveryIntent.Cancel) {
+                val alongsideActiveRecovery = action == DesktopChallengeHomeAction.Close ||
+                    action == DesktopChallengeHomeAction.Recover(ChallengeRecoveryIntent.Cancel) ||
+                    (action is DesktopChallengeHomeAction.SubmitClearance &&
+                        uiState.runningAction == ChallengeRecoveryAction.Browser)
+                if (alongsideActiveRecovery) {
                     scope.launch { block() }
                 } else {
                     actionJob?.cancel()
@@ -120,20 +125,9 @@ class HomeScreen : Screen {
             }
             CloudflareBypassDialog(
                 state = uiState,
-                onIntent = runIntent,
-                onCookieSubmit = { cookieValue ->
-                    val submit = suspend {
-                        val result = controller.submitClearance(challenge, cookieValue)
-                        if (controller.shouldDismiss(activeChallenge, challenge, result)) activeChallenge = null
-                    }
-                    if (uiState.runningAction == ChallengeRecoveryAction.Browser) {
-                        scope.launch { submit() }
-                    } else {
-                        actionJob?.cancel()
-                        actionJob = scope.launch { submit() }
-                    }
-                },
-                onDismiss = { runIntent(ChallengeRecoveryIntent.Cancel) },
+                onIntent = { runAction(DesktopChallengeHomeAction.Recover(it)) },
+                onCookieSubmit = { runAction(DesktopChallengeHomeAction.SubmitClearance(it)) },
+                onClose = { runAction(DesktopChallengeHomeAction.Close) },
             )
         }
 

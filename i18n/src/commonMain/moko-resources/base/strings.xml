@@ -977,6 +977,7 @@
     <string name="desktop_challenge_manual_submit">Import manually</string>
     <string name="desktop_challenge_use_solver">Use FlareSolverr</string>
     <string name="desktop_challenge_cancel">Cancel</string>
+    <string name="desktop_challenge_close">Close</string>
     <string name="desktop_challenge_retry">Retry</string>
     <string name="desktop_challenge_browser_running">Waiting for browser verification…</string>
     <string name="desktop_challenge_manual_running">Importing cookies…</string>
