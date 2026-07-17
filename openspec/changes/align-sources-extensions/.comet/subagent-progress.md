@@ -101,7 +101,7 @@
 - Current task: `Task 5B: Desktop 挑战恢复策略与 FlareSolverr 显式后备`
 - Plan checkbox: pending
 - OpenSpec mapping: `3.3` partial (do not check off until Tasks 5B and 5C complete).
-- Stage: `extra-closure-fix`
+- Stage: `extra-closure-review`
 - Task base: `1d5b6cc9b`
 - Brief: `.superpowers/sdd/align-sources-task-5b-brief.md`
 - Risk axis: `challenge-recovery-policy`
@@ -151,6 +151,12 @@
 - Extra closure requirements: derive UA binding from the normalized, actually committed nonblank clearance set and verify it against current jar state; rebuild every proceed from the untouched original request and current binding. Shared validation must pass a normalized commit session that removes blank required losers and makes canonical winners order-safe. Each attempt must own its immutable latch/terminal/deadline and Retry must create a full new timeout without changing old waiters. Replace the unbounded host-lock map with fixed stripes or safe refcounted cleanup.
 - Review/fix round: 3/3 (user-authorized engineering override for narrow closure).
 - Extra closure fix agent: `/root/task5b_fix3` (fresh TDD agent; normalized commit session, jar-validated UA binding, immutable attempt isolation/new deadline, and bounded striped host locks).
+- Extra closure fix commit: `bcf663ca40c63d7f421e5429558866dafb6f225c` (`fix(desktop): close challenge credential races`).
+- Extra closure behavior: shared validation emits a canonical normalized session where blank required losers cannot overwrite nonblank winners; UA bindings cover the actually committed nonblank clearance identities/fingerprints and are checked against the real jar with a stable before/lookup/after snapshot; interceptor always rebuilds from the untouched original request; each attempt owns its immutable completion/terminal/deadline and Retry gets a full new timeout without changing old waiters; 64 striped Mutexes preserve same-host serialization with bounded storage.
+- Extra closure RED/GREEN: shared mixed-order normalization failed in both orders; Desktop initially failed to compile because real-cookie lookup, per-attempt observer, and bounded-lock APIs were absent; real-jar mixed identities/order/expiry, credential delete/replace, solver→manual current retry, old waiter/new attempt interleaving, 256-host bounded locks, and UA lookup/new commit interleaving were then driven RED→GREEN.
+- Extra closure mutations: bypassing normalized session, bypassing real jar validation, reusing an exhausted Retry deadline, or restoring an unbounded host→Mutex map each failed a named test and was restored.
+- Extra closure verification: seven fresh XML suites total 100/100 PASS, 0 failures/errors/skips; final affected policy 36 + FlareSolverr 2 = 38/38 PASS after the stable-snapshot race fix; root Spotless 93 tasks PASS; diff/scope checks PASS.
+- Final cumulative scope: 7 planned files, +2458/-76 (2534 changed lines); plan/brief waiver updated for actual closure scope.
 
 ## Task 5A Review History
 
