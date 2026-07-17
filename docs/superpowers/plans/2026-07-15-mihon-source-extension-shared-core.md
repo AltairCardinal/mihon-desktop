@@ -538,10 +538,11 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **Risk axis:** source-browse-wiring
 **Platform boundary:** shared+desktop
-**Estimated scope:** 4 files, 320 lines
+**Estimated scope:** 5 files, 320 lines
 **Verification:** 运行 Browse ScreenModel 与 `SourceSharedStateWiringTest`，确认 Loading、Empty、分页保留内容、403 登录和 Retry 均来自共享状态。
 
 **Files:**
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceQueryCoordinators.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/BrowseTab.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/GlobalSearchScreen.kt`
