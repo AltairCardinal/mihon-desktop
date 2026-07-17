@@ -249,11 +249,34 @@ class DesktopChallengeLoginWiringTest {
     }
 
     @Test
-    fun `advanced production section renders localized controls and routes both preference callbacks`() = runTest {
+    fun `advanced production section uses resource identity tokens and routes both preference callbacks`() = runTest {
         val preferences = DesktopAppPreferences(InMemoryPreferenceStore())
         var state = flareSolverrSettingsState(preferences)
         lateinit var renderedSwitch: FlareSolverrSwitchItem
         lateinit var renderedUrl: FlareSolverrUrlItem
+        val tokens = mapOf(
+            MR.strings.desktop_settings_cloudflare_title to "cloudflare-title",
+            MR.strings.desktop_settings_cloudflare_description to "cloudflare-description",
+            MR.strings.desktop_settings_cloudflare_solver_title to "solver-title",
+            MR.strings.desktop_settings_cloudflare_solver_explicit_only to "solver-subtitle",
+            MR.strings.desktop_settings_cloudflare_solver_url to "solver-url",
+            MR.strings.desktop_settings_cloudflare_solver_url_required to "solver-required",
+            MR.strings.desktop_settings_cloudflare_solver_url_invalid to "solver-invalid",
+            MR.strings.desktop_settings_cloudflare_domain to "manual-domain",
+            MR.strings.desktop_challenge_manual_cookie to "manual-cookie",
+            MR.strings.desktop_settings_cloudflare_invalid_domain to "manual-invalid-domain",
+            MR.strings.desktop_settings_cloudflare_cookie_required to "manual-cookie-required",
+            MR.strings.desktop_settings_cloudflare_domain_parse_failed to "manual-domain-parse-failed",
+            MR.strings.desktop_challenge_manual_submit to "manual-submit",
+            MR.strings.pref_clear_cookies to "clear-title",
+            MR.strings.desktop_settings_clear_cookies_summary to "clear-summary",
+            MR.strings.cookies_cleared to "clear-feedback",
+            MR.strings.desktop_settings_clear_cookies_warning to "clear-warning",
+            MR.strings.desktop_settings_clear_cookies_confirm to "clear-confirm",
+            MR.strings.action_cancel to "clear-cancel",
+        )
+        val text = { resource: dev.icerock.moko.resources.StringResource -> tokens.getValue(resource) }
+        lateinit var copyTokens: List<String>
         val frameClock = BroadcastFrameClock()
         val recomposer = Recomposer(coroutineContext + frameClock)
         val composition = Composition(UnitTestApplier(), recomposer)
@@ -262,10 +285,16 @@ class DesktopChallengeLoginWiringTest {
         }
         suspend fun render(frame: Long) {
             composition.setContent {
+                val section = flareSolverrSettingsSection(preferences, state, text) { state = it }
+                copyTokens = section.copy.run {
+                    listOf(
+                        title, description, domainLabel, cookieLabel, invalidDomain, cookieRequired,
+                        domainParseFailed, submit, clearTitle, clearSummary, clearedFeedback,
+                        clearWarning, clearConfirm, cancel,
+                    )
+                }
                 FlareSolverrSettingsSectionContent(
-                    section = flareSolverrSettingsSection(preferences, state, { it.localized(Locale.ENGLISH) }) {
-                        state = it
-                    },
+                    section = section,
                     renderSwitch = { renderedSwitch = it },
                     renderUrl = { renderedUrl = it },
                 )
@@ -275,15 +304,16 @@ class DesktopChallengeLoginWiringTest {
             recomposer.awaitIdle()
         }
         render(0L)
-        assertEquals("Enable FlareSolverr fallback", renderedSwitch.title)
-        assertEquals("FlareSolverr URL", renderedUrl.label)
+        assertEquals(tokens.values.take(2) + tokens.values.drop(7), copyTokens)
+        assertEquals("solver-title", renderedSwitch.title)
+        assertEquals("solver-url", renderedUrl.label)
         renderedSwitch.onCheckedChange(true)
         render(1L)
         assertTrue(preferences.flareSolverrEnabled.get())
-        assertEquals("Enter a FlareSolverr URL.", renderedUrl.error)
+        assertEquals("solver-required", renderedUrl.error)
         renderedUrl.onValueChange("ftp://invalid")
         render(2L)
-        assertEquals("Use an absolute HTTP or HTTPS URL with a host.", renderedUrl.error)
+        assertEquals("solver-invalid", renderedUrl.error)
         renderedUrl.onValueChange("https://solver.example/base/")
         render(3L)
         assertNull(renderedUrl.error)

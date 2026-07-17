@@ -67,6 +67,7 @@ internal data class FlareSolverrSettingsState(
 )
 
 internal data class FlareSolverrSettingsSection(
+    val copy: CloudflareSettingsCopy,
     val switch: FlareSolverrSwitchItem,
     val url: FlareSolverrUrlItem,
 )
@@ -83,6 +84,23 @@ internal data class FlareSolverrUrlItem(
     val value: String,
     val error: String?,
     val onValueChange: (String) -> Unit,
+)
+
+internal data class CloudflareSettingsCopy(
+    val title: String,
+    val description: String,
+    val domainLabel: String,
+    val cookieLabel: String,
+    val invalidDomain: String,
+    val cookieRequired: String,
+    val domainParseFailed: String,
+    val submit: String,
+    val clearTitle: String,
+    val clearSummary: String,
+    val clearedFeedback: String,
+    val clearWarning: String,
+    val clearConfirm: String,
+    val cancel: String,
 )
 
 internal fun flareSolverrSettingsState(preferences: DesktopAppPreferences): FlareSolverrSettingsState {
@@ -124,6 +142,22 @@ internal fun flareSolverrSettingsSection(
     text: (StringResource) -> String,
     onStateChanged: (FlareSolverrSettingsState) -> Unit,
 ) = FlareSolverrSettingsSection(
+    copy = CloudflareSettingsCopy(
+        text(MR.strings.desktop_settings_cloudflare_title),
+        text(MR.strings.desktop_settings_cloudflare_description),
+        text(MR.strings.desktop_settings_cloudflare_domain),
+        text(MR.strings.desktop_challenge_manual_cookie),
+        text(MR.strings.desktop_settings_cloudflare_invalid_domain),
+        text(MR.strings.desktop_settings_cloudflare_cookie_required),
+        text(MR.strings.desktop_settings_cloudflare_domain_parse_failed),
+        text(MR.strings.desktop_challenge_manual_submit),
+        text(MR.strings.pref_clear_cookies),
+        text(MR.strings.desktop_settings_clear_cookies_summary),
+        text(MR.strings.cookies_cleared),
+        text(MR.strings.desktop_settings_clear_cookies_warning),
+        text(MR.strings.desktop_settings_clear_cookies_confirm),
+        text(MR.strings.action_cancel),
+    ),
     switch = FlareSolverrSwitchItem(
         text(MR.strings.desktop_settings_cloudflare_solver_title),
         text(MR.strings.desktop_settings_cloudflare_solver_explicit_only),
@@ -181,6 +215,9 @@ class AdvancedSettingsScreen : Screen {
         var solverSettings by remember(preferences) {
             mutableStateOf(flareSolverrSettingsState(preferences))
         }
+        val cloudflare = flareSolverrSettingsSection(preferences, solverSettings, text) {
+            solverSettings = it
+        }
 
         // Compute network cache size once (and refresh after clearing)
         val cacheSize by produceState(initialValue = "", cacheCleared) {
@@ -219,17 +256,16 @@ class AdvancedSettingsScreen : Screen {
                 )
 
                 ListItem(
-                    headlineContent = { Text(text(MR.strings.pref_clear_cookies)) },
+                    headlineContent = { Text(cloudflare.copy.clearTitle) },
                     supportingContent = {
-                        val summary = if (cookiesCleared) MR.strings.cookies_cleared else MR.strings.desktop_settings_clear_cookies_summary
-                        Text(text(summary))
+                        Text(if (cookiesCleared) cloudflare.copy.clearedFeedback else cloudflare.copy.clearSummary)
                     },
                 )
                 TextButton(
                     onClick = { showClearCookiesDialog = true },
                     modifier = Modifier.padding(horizontal = 16.dp),
                 ) {
-                    Text(text(MR.strings.pref_clear_cookies))
+                    Text(cloudflare.copy.clearTitle)
                 }
 
                 HorizontalDivider()
@@ -275,21 +311,19 @@ class AdvancedSettingsScreen : Screen {
 
                 // Cloudflare bypass section
                 Text(
-                    text = text(MR.strings.desktop_settings_cloudflare_title),
+                    text = cloudflare.copy.title,
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
                 Text(
-                    text = text(MR.strings.desktop_settings_cloudflare_description),
+                    text = cloudflare.copy.description,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
                 )
                 FlareSolverrSettingsSectionContent(
-                    section = flareSolverrSettingsSection(preferences, solverSettings, text) {
-                        solverSettings = it
-                    },
+                    section = cloudflare,
                     renderSwitch = { item ->
                         SwitchSettingsItem(
                             title = item.title,
@@ -316,7 +350,7 @@ class AdvancedSettingsScreen : Screen {
                 OutlinedTextField(
                     value = cfDomain,
                     onValueChange = { cfDomain = it; cfDomainError = null },
-                    label = { Text(text(MR.strings.desktop_settings_cloudflare_domain)) },
+                    label = { Text(cloudflare.copy.domainLabel) },
                     isError = cfDomainError != null,
                     supportingText = if (cfDomainError != null) {{ Text(cfDomainError!!) }} else null,
                     singleLine = true,
@@ -326,7 +360,7 @@ class AdvancedSettingsScreen : Screen {
                 OutlinedTextField(
                     value = cfCookieValue,
                     onValueChange = { cfCookieValue = it; cfValueError = null },
-                    label = { Text(text(MR.strings.desktop_challenge_manual_cookie)) },
+                    label = { Text(cloudflare.copy.cookieLabel) },
                     isError = cfValueError != null,
                     supportingText = if (cfValueError != null) {{ Text(cfValueError!!) }} else null,
                     singleLine = true,
@@ -336,8 +370,8 @@ class AdvancedSettingsScreen : Screen {
                 Button(
                     onClick = {
                         when (val result = validateCloudflareCookieInput(cfDomain, cfCookieValue)) {
-                            is CookieImportResult.InvalidDomain -> cfDomainError = text(MR.strings.desktop_settings_cloudflare_invalid_domain)
-                            is CookieImportResult.InvalidValue -> cfValueError = text(MR.strings.desktop_settings_cloudflare_cookie_required)
+                            is CookieImportResult.InvalidDomain -> cfDomainError = cloudflare.copy.invalidDomain
+                            is CookieImportResult.InvalidValue -> cfValueError = cloudflare.copy.cookieRequired
                             is CookieImportResult.Valid -> {
                                 val url = "https://${result.domain}".toHttpUrlOrNull()
                                 if (url != null) {
@@ -346,14 +380,14 @@ class AdvancedSettingsScreen : Screen {
                                     cfCookieValue = ""
                                     scope.launch { snackbar.showSnackbar(cloudflareCookieImportedFeedback(url, locale)) }
                                 } else {
-                                    cfDomainError = text(MR.strings.desktop_settings_cloudflare_domain_parse_failed)
+                                    cfDomainError = cloudflare.copy.domainParseFailed
                                 }
                             }
                         }
                     },
                     modifier = Modifier.padding(horizontal = 16.dp),
                 ) {
-                    Text(text(MR.strings.desktop_challenge_manual_submit))
+                    Text(cloudflare.copy.submit)
                 }
                 Spacer(Modifier.height(8.dp))
             }
@@ -362,8 +396,8 @@ class AdvancedSettingsScreen : Screen {
         if (showClearCookiesDialog) {
             AlertDialog(
                 onDismissRequest = { showClearCookiesDialog = false },
-                title = { Text(text(MR.strings.pref_clear_cookies)) },
-                text = { Text(text(MR.strings.desktop_settings_clear_cookies_warning)) },
+                title = { Text(cloudflare.copy.clearTitle) },
+                text = { Text(cloudflare.copy.clearWarning) },
                 confirmButton = {
                     TextButton(
                         onClick = {
@@ -371,10 +405,10 @@ class AdvancedSettingsScreen : Screen {
                             networkHelper.cookieJar.clear()
                             cookiesCleared = true
                         },
-                    ) { Text(text(MR.strings.desktop_settings_clear_cookies_confirm)) }
+                    ) { Text(cloudflare.copy.clearConfirm) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showClearCookiesDialog = false }) { Text(text(MR.strings.action_cancel)) }
+                    TextButton(onClick = { showClearCookiesDialog = false }) { Text(cloudflare.copy.cancel) }
                 },
             )
         }
