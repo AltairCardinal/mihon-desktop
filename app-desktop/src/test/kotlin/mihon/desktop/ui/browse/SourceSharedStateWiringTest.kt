@@ -23,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -267,6 +268,49 @@ class SourceSharedStateWiringTest {
         assertSame(child, coordinator.coordinatorFor(success.id))
         assertEquals(child.state?.request, state.queryStates.getValue(success.id).request)
         assertTrue(observed.any { it.isSearching && it.queryStates.values.any(SourceQueryState::isLoading) })
+    }
+
+    @Test
+    fun `completed global search keeps current child recovery states flowing until replacement`() = runBlocking {
+        var originalAttempts = 0
+        val retryStarted = CompletableDeferred<Unit>()
+        val finishRetry = CompletableDeferred<Unit>()
+        val source = object : NamedSource(29, "Recovery") {
+            override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage = when (query) {
+                "original" -> if (originalAttempts++ == 0) throw HttpException(500) else {
+                    retryStarted.complete(Unit)
+                    finishRetry.await()
+                    MangasPage(listOf(manga("/retried")), false)
+                }
+                "fail" -> throw HttpException(500)
+                else -> MangasPage(listOf(manga("/$query")), false)
+            }
+        }
+        val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+
+        coordinator.search(listOf(source), "original")
+        val oldChild = requireNotNull(coordinator.coordinatorFor(source.id))
+        val retry = async { oldChild.retry(source) }
+        retryStarted.await()
+        withTimeout(2_000) { coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Loading } }
+        finishRetry.complete(Unit)
+        retry.await()
+        withTimeout(2_000) { coordinator.states.first { (it.queryStates[source.id] as? SourceQueryState.Content)?.items?.singleOrNull()?.url == "/retried" } }
+
+        oldChild.load(source, 1, SourceQuery.Search("new", FilterList()))
+        withTimeout(2_000) { coordinator.states.first { (it.queryStates[source.id]?.request?.query as? SourceQuery.Search)?.query == "new" } }
+        oldChild.load(source, 1, SourceQuery.Search("fail", FilterList()))
+        withTimeout(2_000) { coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Failure } }
+        coordinator.search(listOf(source), "replacement")
+        oldChild.load(source, 1, SourceQuery.Search("stale", FilterList()))
+        val current = coordinator.states.value.queryStates.getValue(source.id)
+        assertEquals("replacement", (current.request.query as SourceQuery.Search).query)
+        val currentChild = requireNotNull(coordinator.coordinatorFor(source.id))
+        coordinator.close()
+        withTimeout(2_000) { while (currentChild.subscriberCount != 0) delay(1) }
+        currentChild.load(source, 1, SourceQuery.Search("closed", FilterList()))
+        assertEquals(null, coordinator.coordinatorFor(source.id))
+        assertEquals(current, coordinator.states.value.queryStates[source.id])
     }
 
     @Test

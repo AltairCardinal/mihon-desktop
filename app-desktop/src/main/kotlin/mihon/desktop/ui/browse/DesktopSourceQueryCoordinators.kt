@@ -2,12 +2,13 @@ package mihon.desktop.ui.browse
 
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.online.HttpSource
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -62,6 +63,7 @@ internal class SourceQueryStatePublisher {
     val states: Flow<SourceQueryState?> = publications.map { it.state }.distinctUntilChanged()
     val current: StampedSourceQueryState
         get() = publications.value
+    val subscriberCount: Int get() = publications.subscriptionCount.value
 
     fun publish(candidate: StampedSourceQueryState) {
         publications.update { current -> if (candidate.ordinal > current.ordinal) candidate else current }
@@ -81,6 +83,7 @@ class SourceBrowseQueryCoordinator(
     val states: Flow<SourceQueryState?> = publisher.states
     val state: SourceQueryState?
         get() = synchronized(lock) { authoritativeState }
+    internal val subscriberCount: Int get() = publisher.subscriberCount
 
     suspend fun load(
         source: CatalogueSource,
@@ -189,14 +192,16 @@ data class DesktopGlobalSearchState(
 
 class DesktopGlobalSearchCoordinator(
     private val service: SourceMangaSearchService,
-) {
+) : AutoCloseable {
     private class SearchSession(
         val generation: Long,
         val coordinators: Map<Long, SourceBrowseQueryCoordinator>,
     ) {
         private class Retirement(val token: Any) : CancellationException()
         private val lock = Any()
-        private val jobs = mutableListOf<Job>()
+        private val queryJobs = mutableListOf<Job>()
+        private val collectorJob = SupervisorJob()
+        private val collectorScope = CoroutineScope(collectorJob)
         private val retirementToken = Any()
         private val retirementCause = Retirement(retirementToken)
         private var retired = false
@@ -204,12 +209,17 @@ class DesktopGlobalSearchCoordinator(
         fun register(job: Job) {
             val cause = synchronized(lock) {
                 if (retired) retirementCause else {
-                    jobs += job
+                    queryJobs += job
                     null
                 }
             }
             cause?.let(job::cancel)
         }
+
+        fun collect(block: suspend CoroutineScope.() -> Unit) {
+            collectorScope.launch(start = CoroutineStart.UNDISPATCHED, block = block)
+        }
+
         fun owns(error: CancellationException): Boolean {
             val visited = mutableListOf<Throwable>()
             var cause: Throwable? = error
@@ -224,9 +234,10 @@ class DesktopGlobalSearchCoordinator(
         fun retire() {
             val active = synchronized(lock) {
                 retired = true
-                jobs.toList().also { jobs.clear() }
+                queryJobs.toList().also { queryJobs.clear() }
             }
             active.forEach { it.cancel(retirementCause) }
+            collectorJob.cancel(retirementCause)
         }
     }
 
@@ -240,6 +251,16 @@ class DesktopGlobalSearchCoordinator(
 
     fun coordinatorFor(sourceId: Long): SourceBrowseQueryCoordinator? = synchronized(lock) {
         activeSession?.coordinators?.get(sourceId)
+    }
+
+    override fun close() {
+        val (session, closed) = synchronized(lock) {
+            val current = activeSession ?: return
+            activeSession = null
+            current to commitLocked(authoritativeState.copy(isSearching = false))
+        }
+        session.retire()
+        publish(closed) {}
     }
 
     suspend fun search(
@@ -260,16 +281,15 @@ class DesktopGlobalSearchCoordinator(
             publish(started, onState)
             coroutineScope {
                 sources.map { source ->
-                    async(start = CoroutineStart.LAZY) {
-                        val child = session.coordinators.getValue(source.id)
-                        val collector = launch(start = CoroutineStart.UNDISPATCHED) {
-                            child.states.filterNotNull().collect { candidate ->
-                                aggregate(started.generation, source.id, child, candidate)?.let { publish(it, onState) }
-                            }
+                    val child = session.coordinators.getValue(source.id)
+                    session.collect {
+                        child.states.filterNotNull().collect { candidate ->
+                            aggregate(started.generation, source.id, child, candidate)?.let { publish(it, onState) }
                         }
+                    }
+                    async(start = CoroutineStart.LAZY) {
                         val completed = child.load(source, 1, SourceQuery.Search(query, source.getFilterList()))
                         aggregate(started.generation, source.id, child, completed)?.let { publish(it, onState) }
-                        collector.cancelAndJoin()
                     }.also(session::register)
                 }.awaitAll()
             }
@@ -277,7 +297,7 @@ class DesktopGlobalSearchCoordinator(
         } catch (error: CancellationException) {
             if (!session.owns(error)) throw error
         } finally {
-            session.retire()
+            if (!completedNormally) session.retire()
             val completed = synchronized(lock) {
                 if (activeSession !== session) return@synchronized null
                 if (!completedNormally) activeSession = null
