@@ -236,6 +236,58 @@ class SourceSharedStateWiringTest {
     }
 
     @Test
+    fun `source login UI actions preserve attempt identity and report invalid header`() {
+        val attempt = DesktopSourceLoginAttempt()
+        var submittedAttempt: DesktopSourceLoginAttempt? = null
+        var submittedHeader: String? = null
+        var cancelledAttempt: DesktopSourceLoginAttempt? = null
+        var acceptsHeader = false
+        val actions = DesktopSourceLoginUiActions(
+            submitCookies = { actualAttempt, header ->
+                submittedAttempt = actualAttempt
+                submittedHeader = header
+                acceptsHeader
+            },
+            cancel = { actualAttempt -> true.also { cancelledAttempt = actualAttempt } },
+        )
+        val opened = actions.open(attempt, "https://reader.example.com/login")
+        val edited = actions.editHeader(opened, "session=secret")
+
+        val rejected = actions.submit(edited)
+        assertSame(attempt, rejected.attempt)
+        assertSame(attempt, submittedAttempt)
+        assertEquals("reader.example.com", rejected.host)
+        assertEquals("session=secret", submittedHeader)
+        assertEquals(DesktopSourceLoginFeedback.InvalidHeader, rejected.feedback)
+        assertFalse(rejected.toString().contains("secret"))
+
+        acceptsHeader = true
+        assertEquals(null, actions.submit(rejected).feedback)
+        assertEquals(null, actions.cancel(rejected))
+        assertSame(attempt, cancelledAttempt)
+    }
+
+    @Test
+    fun `source login terminal mapping closes success and cancellation but retains failures`() {
+        val actions = DesktopSourceLoginUiActions({ _, _ -> true }, { true })
+        val active = actions.open(DesktopSourceLoginAttempt(), "https://example.com")
+        val failures = mapOf(
+            SourceLoginState.BrowserUnavailable to DesktopSourceLoginFeedback.BrowserUnavailable,
+            SourceLoginState.TimedOut to DesktopSourceLoginFeedback.TimedOut,
+            SourceLoginState.InvalidCookies(emptySet(), setOf("session")) to DesktopSourceLoginFeedback.InvalidCookies,
+            SourceLoginState.CommitFailed to DesktopSourceLoginFeedback.CommitFailed,
+        )
+
+        failures.forEach { (result, expected) ->
+            val terminal = requireNotNull(actions.complete(active, result))
+            assertTrue(terminal.terminal)
+            assertEquals(expected, terminal.feedback)
+        }
+        assertEquals(null, actions.complete(active, SourceLoginState.Authenticated(setOf("session"), 1)))
+        assertEquals(null, actions.complete(active, SourceLoginState.Cancelled))
+    }
+
+    @Test
     fun `non authenticated login outcomes never retry the source`() = runBlocking {
         suspend fun outcome(
             opener: DesktopBrowserOpener,

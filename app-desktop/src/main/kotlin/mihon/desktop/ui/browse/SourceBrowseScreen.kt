@@ -167,6 +167,10 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
         val recoveryController = remember(queryCoordinator, loginController) {
             SourceBrowseRecoveryController(queryCoordinator, loginController)
         }
+        val loginUiActions = remember(recoveryController) {
+            DesktopSourceLoginUiActions(recoveryController::submitCookies, recoveryController::cancel)
+        }
+        var sourceLoginUiState by remember { mutableStateOf<DesktopSourceLoginUiState?>(null) }
 
         // Search state
         var searchQuery by remember { mutableStateOf("") }
@@ -197,12 +201,18 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
 
         fun recover() {
             val catalogueSource = source ?: return
+            val intent = queryCoordinator.recoveryIntent(catalogueSource)
             scope.launch {
-                recover(
+                val result = recover(
                     recoveryController,
                     catalogueSource,
-                    queryCoordinator.recoveryIntent(catalogueSource),
-                )
+                    intent,
+                ) { attempt ->
+                    (intent as? DesktopSourceRecoveryIntent.OpenLogin)?.let { loginIntent ->
+                        sourceLoginUiState = loginUiActions.open(attempt, loginIntent.url)
+                    }
+                }
+                sourceLoginUiState = sourceLoginUiState?.let { loginUiActions.complete(it, result) }
             }
         }
 

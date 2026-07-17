@@ -113,6 +113,60 @@ class DesktopSourceLoginAttempt internal constructor() {
     override fun toString(): String = "DesktopSourceLoginAttempt(<opaque>)"
 }
 
+enum class DesktopSourceLoginFeedback {
+    InvalidHeader,
+    BrowserUnavailable,
+    TimedOut,
+    InvalidCookies,
+    CommitFailed,
+}
+
+data class DesktopSourceLoginUiState(
+    val attempt: DesktopSourceLoginAttempt,
+    val host: String,
+    val cookieHeader: String = "",
+    val feedback: DesktopSourceLoginFeedback? = null,
+    val terminal: Boolean = false,
+) {
+    override fun toString(): String =
+        "DesktopSourceLoginUiState(attempt=$attempt, host=$host, cookieHeader=<redacted>, feedback=$feedback, terminal=$terminal)"
+}
+
+class DesktopSourceLoginUiActions(
+    private val submitCookies: (DesktopSourceLoginAttempt, String) -> Boolean,
+    private val cancel: (DesktopSourceLoginAttempt) -> Boolean,
+) {
+    fun open(attempt: DesktopSourceLoginAttempt, url: String): DesktopSourceLoginUiState =
+        DesktopSourceLoginUiState(attempt, url.toHttpUrlOrNull()?.host ?: url)
+
+    fun editHeader(state: DesktopSourceLoginUiState, header: String): DesktopSourceLoginUiState =
+        state.copy(cookieHeader = header, feedback = null)
+
+    fun submit(state: DesktopSourceLoginUiState): DesktopSourceLoginUiState =
+        if (submitCookies(state.attempt, state.cookieHeader)) {
+            state.copy(feedback = null)
+        } else {
+            state.copy(feedback = DesktopSourceLoginFeedback.InvalidHeader)
+        }
+
+    fun cancel(state: DesktopSourceLoginUiState): DesktopSourceLoginUiState? {
+        cancel(state.attempt)
+        return null
+    }
+
+    fun complete(state: DesktopSourceLoginUiState, result: SourceLoginState?): DesktopSourceLoginUiState? = when (result) {
+        is SourceLoginState.Authenticated, SourceLoginState.Cancelled -> null
+        SourceLoginState.BrowserUnavailable -> state.terminal(DesktopSourceLoginFeedback.BrowserUnavailable)
+        SourceLoginState.TimedOut -> state.terminal(DesktopSourceLoginFeedback.TimedOut)
+        is SourceLoginState.InvalidCookies -> state.terminal(DesktopSourceLoginFeedback.InvalidCookies)
+        SourceLoginState.CommitFailed -> state.terminal(DesktopSourceLoginFeedback.CommitFailed)
+        else -> state
+    }
+
+    private fun DesktopSourceLoginUiState.terminal(feedback: DesktopSourceLoginFeedback) =
+        copy(feedback = feedback, terminal = true)
+}
+
 internal object DesktopSourceCookieHeaderParser {
     private val cookieName = Regex("[!#$%&'*+.^_`|~0-9A-Za-z-]+")
 
