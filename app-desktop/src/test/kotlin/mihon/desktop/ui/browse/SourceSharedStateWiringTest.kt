@@ -265,6 +265,71 @@ class SourceSharedStateWiringTest {
 
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
+    fun `global login action uses the shared dialog and retries its failed child request`() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse(code = 403))
+            server.enqueue(MockResponse(code = 200))
+            server.start()
+            val cookieJar = DesktopCookieJar()
+            val source = RoutedHttpSource(server.url("/").toString().removeSuffix("/"), OkHttpClient.Builder().cookieJar(cookieJar).build())
+            val dependencies = mockk<DesktopUiDependencies> {
+                every { sourceManager } returns MutableSourceManager(listOf(source))
+                every { sourceMangaSearchService } returns SourceMangaSearchService()
+                every { saveSourceMangaForDetails } returns mockk(relaxed = true)
+                every { sourceLoginSessionFactory } returns DesktopSourceLoginSessionFactory(
+                    DesktopAuthenticatedSessionCommitter(cookieJar),
+                    DesktopBrowserOpener { _, _ -> true },
+                )
+            }
+            var coordinator: DesktopGlobalSearchCoordinator? = null
+            val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
+            fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+            fun nodes() = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+            fun click(text: String): Boolean {
+                val node = requireNotNull(nodes().firstOrNull {
+                    it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains(text)
+                })
+                return requireNotNull(node.config[SemanticsActions.OnClick].action).invoke()
+            }
+            val copy = desktopSourceLoginCopy { it.localized() }
+
+            scene.setContent {
+                CompositionLocalProvider(
+                    LocalDesktopUiDependencies provides dependencies,
+                    LocalGlobalSearchCoordinatorFactory provides { service -> DesktopGlobalSearchCoordinator(service).also { coordinator = it } },
+                ) { Navigator(GlobalSearchScreen("captured")) { CurrentScreen() } }
+            }
+            scene.render()
+            withTimeout(2_000) { requireNotNull(coordinator).states.first { !it.isSearching } }
+            val child = requireNotNull(coordinator).coordinatorFor(source.id)
+            val failed = requireNotNull(coordinator).state.queryStates.getValue(source.id).request
+            scene.render()
+
+            assertTrue(click(copy.title))
+            scene.render()
+            val cookieHeader = nodes().filter { it.config.contains(SemanticsActions.SetText) }.last()
+            assertTrue(requireNotNull(cookieHeader.config[SemanticsActions.SetText].action).invoke(AnnotatedString("invalid")))
+            assertTrue(click(copy.submit))
+            scene.render()
+            assertTrue(nodes().joinToString { it.config.toString() }.contains(copy.invalidHeader))
+            assertTrue(requireNotNull(cookieHeader.config[SemanticsActions.SetText].action).invoke(AnnotatedString("session=secret")))
+            assertTrue(click(copy.submit))
+
+            withTimeout(2_000) {
+                requireNotNull(coordinator).states.first { it.queryStates[source.id] is SourceQueryState.Content }
+            }
+            scene.render()
+            assertSame(child, requireNotNull(coordinator).coordinatorFor(source.id))
+            assertEquals(failed, requireNotNull(coordinator).state.queryStates.getValue(source.id).request)
+            assertEquals(null, server.takeRequest().headers["Cookie"])
+            assertEquals("session=secret", server.takeRequest().headers["Cookie"])
+            assertTrue(nodes().joinToString { it.config.toString() }.contains("Routed (1)"))
+            scene.close()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
     fun `global search content collects state and closes its coordinator on disposal`() = runBlocking {
         val firstCompleted = CompletableDeferred<Unit>()
         val started = CompletableDeferred<Unit>()
@@ -1268,7 +1333,7 @@ class SourceSharedStateWiringTest {
         override val lang = "en"
         override val supportsLatest = false
         override fun popularMangaRequest(page: Int) = Request.Builder().url("$baseUrl/popular").build()
-        override fun popularMangaParse(response: okhttp3.Response) = MangasPage(emptyList(), false)
+        override fun popularMangaParse(response: okhttp3.Response) = MangasPage(listOf(manga("/authenticated")), false)
         override fun latestUpdatesRequest(page: Int) = popularMangaRequest(page)
         override fun latestUpdatesParse(response: okhttp3.Response) = popularMangaParse(response)
         override fun searchMangaRequest(page: Int, query: String, filters: FilterList) = popularMangaRequest(page)

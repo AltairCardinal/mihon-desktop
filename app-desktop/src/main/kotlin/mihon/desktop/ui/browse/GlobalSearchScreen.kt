@@ -163,6 +163,15 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
         val searchState by queryCoordinator.states.collectAsState()
         var sourcesByGeneration by remember { mutableStateOf(emptyMap<Long, List<CatalogueSource>>()) }
         val searchUiState = GlobalSearchStateProjector.project(sourcesByGeneration[searchState.generation].orEmpty(), searchState)
+        var activeRecoveryController by remember { mutableStateOf<SourceBrowseRecoveryController?>(null) }
+        var sourceLoginUiState by remember { mutableStateOf<DesktopSourceLoginUiState?>(null) }
+        val loginUiActions = remember {
+            DesktopSourceLoginUiActions(
+                { attempt, header -> activeRecoveryController?.submitCookies(attempt, header) ?: false },
+                { attempt -> activeRecoveryController?.cancel(attempt) ?: false },
+            )
+        }
+        val loginCopy = remember { desktopSourceLoginCopy { it.localized() } }
 
         DisposableEffect(queryCoordinator) {
             onDispose { queryCoordinator.close() }
@@ -178,12 +187,37 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
         }
 
         fun recover(sourceResult: SourceSearchResult) {
-            if (sourceResult.recoveryIntent is DesktopSourceRecoveryIntent.Retry) {
-                scope.launch {
-                    retry(queryCoordinator, sourceResult.source, sourceResult.recoveryIntent, sourceLoginSessionFactory)
+            scope.launch {
+                val child = queryCoordinator.coordinatorFor(sourceResult.source.id) ?: return@launch
+                val controller = SourceBrowseRecoveryController(
+                    child,
+                    DesktopSourceLoginController(sourceLoginSessionFactory, child),
+                )
+                var acceptedAttempt: DesktopSourceLoginAttempt? = null
+                if (sourceResult.recoveryIntent is DesktopSourceRecoveryIntent.OpenLogin) {
+                    activeRecoveryController = controller
+                }
+                val result = controller.recover(sourceResult.source, sourceResult.recoveryIntent) { attempt ->
+                    acceptedAttempt = attempt
+                    (sourceResult.recoveryIntent as? DesktopSourceRecoveryIntent.OpenLogin)?.let { loginIntent ->
+                        sourceLoginUiState = loginUiActions.open(attempt, loginIntent.url)
+                    }
+                }
+                acceptedAttempt?.let { completedAttempt ->
+                    sourceLoginUiState = sourceLoginUiState?.let {
+                        loginUiActions.complete(it, completedAttempt, result)
+                    }
                 }
             }
         }
+
+        SourceLoginDialogHost(
+            state = sourceLoginUiState,
+            currentState = { sourceLoginUiState },
+            copy = loginCopy,
+            actions = loginUiActions,
+            onStateChange = { sourceLoginUiState = it },
+        )
 
         // Auto-search if an initial query is provided
         LaunchedEffect(initialQuery) {
@@ -276,7 +310,6 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
                                     color = MaterialTheme.colorScheme.error,
                                 )
                                 desktopSourceRecoveryActionLabel(error.recoveryAction)
-                                    ?.takeIf { sourceResult.recoveryIntent is DesktopSourceRecoveryIntent.Retry }
                                     ?.let { label ->
                                     androidx.compose.material3.TextButton(onClick = { recover(sourceResult) }) {
                                         Text(label)
