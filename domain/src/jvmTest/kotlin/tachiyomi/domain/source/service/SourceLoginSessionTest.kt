@@ -184,6 +184,171 @@ class SourceLoginSessionTest {
     }
 
     @Test
+    fun `required cookie must match the request path before commit`() = runTest {
+        val commits = mutableListOf<AuthenticatedSession>()
+        val browserSession = TestBrowserSession()
+        val login = session(browserSession) { commits += it }
+        val result = async { login.login(request(required = setOf("clearance"))) }
+        runCurrent()
+
+        browserSession.complete(
+            AuthenticatedSession(
+                listOf(cookie("clearance", "path-secret", "reader.example.com", path = "/auth")),
+            ),
+        )
+
+        val state = assertInstanceOf(SourceLoginState.InvalidCookies::class.java, result.await())
+        assertEquals(setOf("clearance"), state.rejectedCookieNames)
+        assertTrue(commits.isEmpty())
+    }
+
+    @Test
+    fun `secure required cookie cannot satisfy an http request`() = runTest {
+        val commits = mutableListOf<AuthenticatedSession>()
+        val browserSession = TestBrowserSession()
+        val login = session(browserSession) { commits += it }
+        val result = async {
+            login.login(
+                request(url = "http://reader.example.com/login", required = setOf("clearance")),
+            )
+        }
+        runCurrent()
+
+        browserSession.complete(
+            AuthenticatedSession(listOf(cookie("clearance", "secure-secret", "reader.example.com", secure = true))),
+        )
+
+        val state = assertInstanceOf(SourceLoginState.InvalidCookies::class.java, result.await())
+        assertEquals(setOf("clearance"), state.rejectedCookieNames)
+        assertTrue(commits.isEmpty())
+    }
+
+    @Test
+    fun `expired required cookie cannot satisfy the request`() = runTest {
+        val commits = mutableListOf<AuthenticatedSession>()
+        val browserSession = TestBrowserSession()
+        val login = session(browserSession) { commits += it }
+        val result = async { login.login(request(required = setOf("clearance"))) }
+        runCurrent()
+
+        browserSession.complete(
+            AuthenticatedSession(
+                listOf(cookie("clearance", "expired-secret", "reader.example.com", expiresAt = 1L)),
+            ),
+        )
+
+        val state = assertInstanceOf(SourceLoginState.InvalidCookies::class.java, result.await())
+        assertEquals(setOf("clearance"), state.rejectedCookieNames)
+        assertTrue(commits.isEmpty())
+    }
+
+    @Test
+    fun `deliverable required sibling permits domain-safe cookies for other paths`() = runTest {
+        val commits = mutableListOf<AuthenticatedSession>()
+        val browserSession = TestBrowserSession()
+        val login = session(browserSession) { commits += it }
+        val result = async { login.login(request(required = setOf("clearance"))) }
+        runCurrent()
+
+        browserSession.complete(
+            AuthenticatedSession(
+                listOf(
+                    cookie("clearance", "auth-secret", "reader.example.com", path = "/auth"),
+                    cookie("clearance", "root-secret", "reader.example.com"),
+                ),
+            ),
+        )
+
+        assertEquals(SourceLoginState.Authenticated(setOf("clearance"), 2), result.await())
+        assertEquals(setOf("/", "/auth"), commits.single().cookies.map { it.path }.toSet())
+    }
+
+    @Test
+    fun `required canonical winner comes from candidates deliverable to the original request`() = runTest {
+        listOf(listOf(true, false), listOf(false, true)).forEach { secureValues ->
+            val commits = mutableListOf<AuthenticatedSession>()
+            val browserSession = TestBrowserSession()
+            val login = session(browserSession) { commits += it }
+            val result = async {
+                login.login(
+                    request(url = "http://reader.example.com/login", required = setOf("clearance")),
+                )
+            }
+            runCurrent()
+
+            browserSession.complete(
+                AuthenticatedSession(
+                    secureValues.map {
+                        cookie("clearance", "same-secret", "reader.example.com", secure = it)
+                    },
+                ),
+            )
+
+            assertEquals(SourceLoginState.Authenticated(setOf("clearance"), 1), result.await())
+            assertFalse(commits.single().cookies.single().secure)
+        }
+    }
+
+    @Test
+    fun `same canonical value normalizes metadata by safe attributes in both input orders`() = runTest {
+        val variants = listOf(
+            cookie(
+                "clearance",
+                "same-secret",
+                "reader.example.com",
+                secure = false,
+                httpOnly = false,
+            ),
+            cookie(
+                "clearance",
+                "same-secret",
+                "reader.example.com",
+                secure = true,
+                httpOnly = true,
+            ),
+        )
+        listOf(variants, variants.reversed()).forEach { cookies ->
+            val commits = mutableListOf<AuthenticatedSession>()
+            val browserSession = TestBrowserSession()
+            val login = session(browserSession) { commits += it }
+            val result = async { login.login(request(required = setOf("clearance"))) }
+            runCurrent()
+
+            browserSession.complete(AuthenticatedSession(cookies))
+
+            assertEquals(SourceLoginState.Authenticated(setOf("clearance"), 1), result.await())
+            assertTrue(commits.single().cookies.single().secure)
+            assertTrue(commits.single().cookies.single().httpOnly)
+        }
+    }
+
+    @Test
+    fun `conflicting nonblank values for one canonical identity reject both input orders without leaking values`() =
+        runTest {
+            listOf(
+                listOf("old-account-secret", "new-account-secret"),
+                listOf("new-account-secret", "old-account-secret"),
+            ).forEach { values ->
+                val commits = mutableListOf<AuthenticatedSession>()
+                val browserSession = TestBrowserSession()
+                val login = session(browserSession) { commits += it }
+                val result = async { login.login(request(required = setOf("clearance"))) }
+                runCurrent()
+
+                browserSession.complete(
+                    AuthenticatedSession(
+                        values.map { cookie("clearance", it, "READER.EXAMPLE.COM") },
+                    ),
+                )
+
+                val state = assertInstanceOf(SourceLoginState.InvalidCookies::class.java, result.await())
+                assertEquals(setOf("clearance"), state.rejectedCookieNames)
+                assertTrue(commits.isEmpty())
+                values.forEach { assertFalse(state.toString().contains(it)) }
+            }
+        }
+
+    @Test
     fun `unrelated and child-domain cookies reject the whole session`() = runTest {
         val commits = mutableListOf<AuthenticatedSession>()
         val browserSession = TestBrowserSession()
@@ -493,10 +658,11 @@ class SourceLoginSessionTest {
     )
 
     private fun request(
+        url: String = "https://reader.example.com/login",
         required: Set<String> = emptySet(),
         timeoutMillis: Long = 30_000,
     ) = SourceLoginRequest(
-        url = "https://reader.example.com/login".toHttpUrl(),
+        url = url.toHttpUrl(),
         requiredCookieNames = required,
         timeoutMillis = timeoutMillis,
     )
@@ -507,15 +673,18 @@ class SourceLoginSessionTest {
         domain: String,
         hostOnly: Boolean = true,
         path: String = "/",
+        expiresAt: Long? = null,
+        secure: Boolean = true,
+        httpOnly: Boolean = true,
     ) = AuthenticatedCookie(
         name = name,
         value = value,
         domain = domain,
         hostOnly = hostOnly,
         path = path,
-        expiresAt = null,
-        secure = true,
-        httpOnly = true,
+        expiresAt = expiresAt,
+        secure = secure,
+        httpOnly = httpOnly,
     )
 
     private class TestBrowserSession : BrowserLoginSession {

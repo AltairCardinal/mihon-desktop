@@ -24,9 +24,9 @@ import tachiyomi.domain.source.service.BrowserOpenResult
 import tachiyomi.domain.source.service.SourceLoginRequest
 import tachiyomi.domain.source.service.SourceLoginSession
 import tachiyomi.domain.source.service.SourceLoginState
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ConcurrentLinkedQueue
 import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicReference
 
 fun interface AuthenticatedCookieLookup {
     fun loadForRequest(url: HttpUrl): List<AuthenticatedCookie>
@@ -46,7 +46,7 @@ class CloudflareChallengeManager(
     )
     val challenges: SharedFlow<CloudflareChallenge> = _challenges
 
-    private val recentChallenges = ConcurrentLinkedQueue<CloudflareChallenge>()
+    private val recentChallenge = AtomicReference<CloudflareChallenge?>()
     private val solverUserAgents = ConcurrentHashMap<String, SolverUserAgentBinding>()
     private val hostCommitLocks = List(COMMIT_LOCK_STRIPES) { Mutex() }
     internal val commitLockCount: Int
@@ -56,13 +56,22 @@ class CloudflareChallengeManager(
         val host = url.host.lowercase()
         repeat(BINDING_LOOKUP_RETRIES) {
             val binding = solverUserAgents[host] ?: return null
+            val applicableCredentials = binding.credentials.filter { it.appliesTo(url) }
+            if (applicableCredentials.isEmpty()) return null
             val actualCookies = runCatching { authenticatedCookieLookup.loadForRequest(url) }.getOrDefault(emptyList())
             if (solverUserAgents[host] !== binding) return@repeat
-            if (!binding.isBackedBy(actualCookies, currentTimeMillis())) {
-                if (solverUserAgents.remove(host, binding)) return null
-                return@repeat
+            val invalidCredentials = applicableCredentials.filterNot { credential ->
+                credential.isBackedBy(actualCookies, currentTimeMillis())
+            }.toSet()
+            if (invalidCredentials.isEmpty()) return binding.userAgent
+
+            val remainingCredentials = binding.credentials.filterNot(invalidCredentials::contains)
+            val updated = if (remainingCredentials.isEmpty()) {
+                solverUserAgents.remove(host, binding)
+            } else {
+                solverUserAgents.replace(host, binding, binding.copy(credentials = remainingCredentials))
             }
-            return binding.userAgent
+            if (!updated) return@repeat
         }
         return null
     }
@@ -71,7 +80,7 @@ class CloudflareChallengeManager(
         CloudflareChallenge(request).also(::emit)
 
     fun emit(challenge: CloudflareChallenge) {
-        recentChallenges.add(challenge)
+        recentChallenge.set(challenge)
         _challenges.tryEmit(challenge)
     }
 
@@ -80,10 +89,9 @@ class CloudflareChallengeManager(
         intent: ChallengeRecoveryIntent,
     ): ChallengeRecoveryState {
         if (intent == ChallengeRecoveryIntent.Cancel) {
-            if (challenge.cancelOrAwaitCommit()) {
-                withContext(Dispatchers.IO) { challenge.awaitTerminal() }
-            }
-            return challenge.stateAfterTerminal() ?: ChallengeRecoveryState.Cancelled
+            val cancellation = challenge.cancelOrAwaitCommit()
+            withContext(Dispatchers.IO) { cancellation.awaitTerminal() }
+            return checkNotNull(cancellation.stateAfterTerminal())
         }
 
         return challenge.actionMutex.withLock {
@@ -241,7 +249,7 @@ class CloudflareChallengeManager(
     }
 
     /** For tests and the Task 5C UI adapter: poll one pending recovery request. */
-    internal fun tryReceive(): CloudflareChallenge? = recentChallenges.poll()
+    internal fun tryReceive(): CloudflareChallenge? = recentChallenge.getAndSet(null)
 
     private fun hostCommitLock(host: String): Mutex =
         hostCommitLocks[Math.floorMod(host.lowercase().hashCode(), hostCommitLocks.size)]
@@ -281,19 +289,7 @@ private class ChallengeExpiredException : IllegalStateException("challenge recov
 private data class SolverUserAgentBinding(
     val userAgent: String,
     val credentials: List<BoundClearanceCredential>,
-) {
-    fun isBackedBy(actualCookies: List<AuthenticatedCookie>, nowMillis: Long): Boolean {
-        val liveCredentials = credentials.filterNot { it.isExpired(nowMillis) }
-        return liveCredentials.any { credential ->
-            actualCookies.any { cookie ->
-                cookie.value.isNotBlank() &&
-                    cookie.toIdentity() == credential.identity &&
-                    cookie.value.fingerprint() == credential.valueFingerprint &&
-                    cookie.expiresAt?.let { it > nowMillis } != false
-            }
-        }
-    }
-}
+)
 
 private data class ClearanceCookieIdentity(
     val name: String,
@@ -303,14 +299,40 @@ private data class ClearanceCookieIdentity(
 
 private data class BoundClearanceCredential(
     val identity: ClearanceCookieIdentity,
+    val hostOnly: Boolean,
+    val secure: Boolean,
     val valueFingerprint: String,
     val expiresAt: Long?,
 ) {
     fun isExpired(nowMillis: Long): Boolean = expiresAt?.let { it <= nowMillis } == true
+
+    fun appliesTo(url: HttpUrl): Boolean {
+        val host = url.host.lowercase().trimEnd('.')
+        val domainMatches = if (hostOnly) {
+            host == identity.domain
+        } else {
+            host == identity.domain || host.endsWith(".${identity.domain}")
+        }
+        return domainMatches &&
+            pathMatches(url.encodedPath, identity.path) &&
+            (!secure || url.isHttps)
+    }
+
+    fun isBackedBy(actualCookies: List<AuthenticatedCookie>, nowMillis: Long): Boolean =
+        !isExpired(nowMillis) && actualCookies.any { cookie ->
+            cookie.value.isNotBlank() &&
+                cookie.toIdentity() == identity &&
+                cookie.hostOnly == hostOnly &&
+                cookie.secure == secure &&
+                cookie.value.fingerprint() == valueFingerprint &&
+                cookie.expiresAt?.let { it > nowMillis } != false
+        }
 }
 
 private fun AuthenticatedCookie.toBoundCredential() = BoundClearanceCredential(
     identity = toIdentity(),
+    hostOnly = hostOnly,
+    secure = secure,
     valueFingerprint = value.fingerprint(),
     expiresAt = expiresAt,
 )
@@ -320,6 +342,10 @@ private fun AuthenticatedCookie.toIdentity() = ClearanceCookieIdentity(
     domain = domain.lowercase().trim().trimStart('.').trimEnd('.'),
     path = path.ifBlank { "/" },
 )
+
+private fun pathMatches(requestPath: String, cookiePath: String): Boolean =
+    requestPath == cookiePath ||
+        (requestPath.startsWith(cookiePath) && (cookiePath.endsWith('/') || requestPath[cookiePath.length] == '/'))
 
 private fun String.fingerprint(): String =
     MessageDigest.getInstance("SHA-256")

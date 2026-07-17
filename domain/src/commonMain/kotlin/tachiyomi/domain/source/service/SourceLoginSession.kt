@@ -130,20 +130,28 @@ class SourceLoginSession(
         request: SourceLoginRequest,
         session: AuthenticatedSession,
     ): SourceLoginState {
-        val invalidDomainCookies = session.cookies.filterNot { it.matches(request.url) }
+        val nowMillis = System.currentTimeMillis()
+        val invalidDomainCookies = session.cookies.filterNot { it.matchesDomain(request.url) }
         val missing = request.requiredCookieNames - session.cookieNames
         val satisfiedRequired = session.cookies
-            .filter { it.name in request.requiredCookieNames && it.value.isNotBlank() && it.matches(request.url) }
+            .filter {
+                it.name in request.requiredCookieNames &&
+                    it.value.isNotBlank() &&
+                    it.isDeliverableTo(request.url, nowMillis)
+            }
             .mapTo(hashSetOf()) { it.name }
         val unsatisfiedRequired = request.requiredCookieNames - missing - satisfiedRequired
         val rejected = invalidDomainCookies
             .mapTo(sortedSetOf()) { it.name }
-            .apply { addAll(unsatisfiedRequired) }
+            .apply {
+                addAll(unsatisfiedRequired)
+                addAll(session.conflictingCanonicalCookieNames())
+            }
         if (missing.isNotEmpty() || rejected.isNotEmpty()) {
             return finish(SourceLoginState.InvalidCookies(missing.toSortedSet(), rejected))
         }
 
-        val normalizedSession = session.normalizedForCommit(request.requiredCookieNames, satisfiedRequired)
+        val normalizedSession = session.normalizedForCommit(request, satisfiedRequired, nowMillis)
 
         return withContext(NonCancellable) {
             try {
@@ -167,7 +175,7 @@ private sealed interface BrowserPhase {
     data class Completed(val session: AuthenticatedSession) : BrowserPhase
 }
 
-private fun AuthenticatedCookie.matches(requestUrl: HttpUrl): Boolean {
+private fun AuthenticatedCookie.matchesDomain(requestUrl: HttpUrl): Boolean {
     val host = requestUrl.host.lowercase().trimEnd('.')
     val cookieDomain = domain.lowercase().trim().trimStart('.').trimEnd('.')
     if (cookieDomain.isBlank()) return false
@@ -176,6 +184,18 @@ private fun AuthenticatedCookie.matches(requestUrl: HttpUrl): Boolean {
     } else {
         isRegistrableDomain(cookieDomain) && (host == cookieDomain || host.endsWith(".$cookieDomain"))
     }
+}
+
+private fun AuthenticatedCookie.isDeliverableTo(requestUrl: HttpUrl, nowMillis: Long): Boolean =
+    matchesDomain(requestUrl) &&
+        pathMatches(requestUrl.encodedPath, path.ifBlank { "/" }) &&
+        (!secure || requestUrl.isHttps) &&
+        expiresAt?.let { it > nowMillis } != false
+
+private fun pathMatches(requestPath: String, cookiePath: String): Boolean {
+    if (!cookiePath.startsWith('/')) return false
+    return requestPath == cookiePath ||
+        (requestPath.startsWith(cookiePath) && (cookiePath.endsWith('/') || requestPath[cookiePath.length] == '/'))
 }
 
 private fun isRegistrableDomain(domain: String): Boolean =
@@ -190,12 +210,13 @@ private fun isRegistrableDomain(domain: String): Boolean =
     }
 
 private fun AuthenticatedSession.normalizedForCommit(
-    requiredCookieNames: Set<String>,
+    request: SourceLoginRequest,
     satisfiedRequired: Set<String>,
+    nowMillis: Long,
 ): AuthenticatedSession {
     val candidates = cookies
         .asSequence()
-        .filterNot { it.name in satisfiedRequired && it.name in requiredCookieNames && it.value.isBlank() }
+        .filterNot { it.name in satisfiedRequired && it.name in request.requiredCookieNames && it.value.isBlank() }
         .map { cookie ->
             cookie.copy(
                 domain = cookie.domain.lowercase().trim().trimStart('.').trimEnd('.'),
@@ -204,10 +225,29 @@ private fun AuthenticatedSession.normalizedForCommit(
         }
         .groupBy { CanonicalCookieIdentity(it.name, it.domain, it.path) }
         .values
-        .map { duplicates -> checkNotNull(duplicates.maxWithOrNull(AUTHENTICATED_COOKIE_PREFERENCE)) }
+        .map { duplicates ->
+            val deliverableRequired = duplicates.filter {
+                it.name in request.requiredCookieNames &&
+                    it.value.isNotBlank() &&
+                    it.isDeliverableTo(request.url, nowMillis)
+            }
+            checkNotNull((deliverableRequired.ifEmpty { duplicates }).maxWithOrNull(AUTHENTICATED_COOKIE_PREFERENCE))
+        }
         .sortedWith(compareBy({ it.name }, { it.domain }, { it.path }))
     return AuthenticatedSession(candidates)
 }
+
+private fun AuthenticatedSession.conflictingCanonicalCookieNames(): Set<String> = cookies
+    .map { cookie ->
+        cookie.copy(
+            domain = cookie.domain.lowercase().trim().trimStart('.').trimEnd('.'),
+            path = cookie.path.ifBlank { "/" },
+        )
+    }
+    .groupBy { CanonicalCookieIdentity(it.name, it.domain, it.path) }
+    .filterValues { duplicates -> duplicates.mapNotNull { it.value.takeIf(String::isNotBlank) }.toSet().size > 1 }
+    .values
+    .mapTo(sortedSetOf()) { it.first().name }
 
 private data class CanonicalCookieIdentity(
     val name: String,
@@ -221,5 +261,4 @@ private val AUTHENTICATED_COOKIE_PREFERENCE = compareBy<AuthenticatedCookie>(
     { it.secure },
     { it.httpOnly },
     { it.expiresAt ?: Long.MAX_VALUE },
-    { it.value },
 )
