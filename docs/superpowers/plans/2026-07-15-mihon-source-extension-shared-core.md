@@ -570,11 +570,14 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
     - [ ] **Task 6A2B1: 当前 child 生命周期持续聚合与 recovery 状态回流**
       - [ ] **Task 6A2B1R: 长期 collector 解除 per-search callback 与旧 Screen closure**
         - [ ] **Task 6A2B1R2: query callback 单一路径与 session/generation 隔离**
+          - [ ] **Task 6A2B1R3: StateFlow 锁外 CAS 发布与 collector 跨线程重入**
     - [ ] **Task 6A2B2: Global authoritative state/projector 与 per-source exact Retry**
     - [ ] **Task 6A2B3: Global generic login Dialog、反馈与删除 AWT 路径**
   - [ ] **Task 6A2C: Browse 缺失 source 的 ExtensionListScreen 导航入口**
 
 **6A2B1R2 scope adjustment:** 原 70 changed lines 估算遗漏了移除旧全局 observer 与 direct callback 路径本身产生的约 28 行删除；最小 production 替换约 62 changed lines，真实 duplicate/cross-session/recovery RED 约 39 行。该行为闭环不可再独立拆分，调整为 2 files/110 changed lines，仍远低于项目 400 行拆分门槛；不得为满足旧估算压缩掉行为断言。
+
+**6A2B1R3 review closure:** B1R2 为判断 accepted winner 把 `StateFlow.value` 写入放回 global monitor，可能同步恢复 collector 并与跨线程 `coordinatorFor/search` 重入死锁。新子任务仍仅 coordinator+测试两文件、≤90 changed lines：global lock 内只接受/盖章 immutable candidate，锁外用 ordinal-aware `MutableStateFlow.compareAndSet` 或等价 stamped publisher 原子选 winner，且只有 winner 调 session callback。必须以 Unconfined/阻塞 collector + 另一线程重入的确定性测试击穿锁内 setter mutation。
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceQueryCoordinators.kt`
