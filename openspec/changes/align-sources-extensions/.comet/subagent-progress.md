@@ -163,6 +163,7 @@
 - Finding evaluation: all five are technically valid and remain within the existing 7-file boundary. Continue a focused TDD delivery-semantics closure without involving Task 5C UI/DI/settings.
 - Delivery closure requirements: required candidates must fully match request domain/hostOnly, path, Secure scheme, expiry and nonblank value while other domain-safe cookies may remain; conflicting nonblank values for one canonical identity must reject the session. UA credentials must retain applicability fields and prune only applicable missing/expired identities, preserving other paths. Cancel must return/use an attempt-bound completion handle. Replace `recentChallenges` with a structurally bounded or explicitly test-only seam.
 - Review/fix round: 4/4 (user-authorized engineering override for localized delivery closure).
+- Delivery closure fix agent: `/root/task5b_fix4` (fresh TDD implementer; bounded to the existing seven shared+desktop files and the five independently reviewed delivery/attempt findings).
 
 ## Task 5A Review History
 
