@@ -559,6 +559,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
           - [x] **Task 6A1R2b2b2a: Source login MR copy 与反馈映射**
             - [x] **Task 6A1R2b2b2aR: 五类终态反馈映射测试闭环**
           - [ ] **Task 6A1R2b2b2b: Source login Compose Host 与 Screen 事件 wiring**
+            - [ ] **Task 6A1R2b2b2bR: stale attempt 事件隔离与真实 Dialog/Screen wiring 测试闭环**
 - [ ] **Task 6A2: Global 共享状态消费与 Browse 缺源入口**
 
 **Files:**
