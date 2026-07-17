@@ -574,6 +574,8 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
     - [ ] **Task 6A2B3: Global generic login Dialog、反馈与删除 AWT 路径**
   - [ ] **Task 6A2C: Browse 缺失 source 的 ExtensionListScreen 导航入口**
 
+**6A2B1R2 scope adjustment:** 原 70 changed lines 估算遗漏了移除旧全局 observer 与 direct callback 路径本身产生的约 28 行删除；最小 production 替换约 62 changed lines，真实 duplicate/cross-session/recovery RED 约 39 行。该行为闭环不可再独立拆分，调整为 2 files/110 changed lines，仍远低于项目 400 行拆分门槛；不得为满足旧估算压缩掉行为断言。
+
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceQueryCoordinators.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/BrowseTab.kt`
