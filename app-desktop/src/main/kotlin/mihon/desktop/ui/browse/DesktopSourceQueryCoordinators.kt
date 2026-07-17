@@ -9,12 +9,14 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
@@ -280,18 +282,25 @@ class DesktopGlobalSearchCoordinator(
         try {
             publish(started, onState)
             coroutineScope {
-                sources.map { source ->
-                    val child = session.coordinators.getValue(source.id)
-                    session.collect {
-                        child.states.filterNotNull().collect { candidate ->
-                            aggregate(started.generation, source.id, child, candidate)?.let { publish(it, onState) }
+                val callbackCollector = launch(start = CoroutineStart.UNDISPATCHED) {
+                    states.drop(1).collect { publish(it, onState) }
+                }
+                try {
+                    sources.map { source ->
+                        val child = session.coordinators.getValue(source.id)
+                        session.collect {
+                            child.states.filterNotNull().collect { candidate ->
+                                aggregate(started.generation, source.id, child, candidate)?.let { publish(it) {} }
+                            }
                         }
-                    }
-                    async(start = CoroutineStart.LAZY) {
-                        val completed = child.load(source, 1, SourceQuery.Search(query, source.getFilterList()))
-                        aggregate(started.generation, source.id, child, completed)?.let { publish(it, onState) }
-                    }.also(session::register)
-                }.awaitAll()
+                        async(start = CoroutineStart.LAZY) {
+                            val completed = child.load(source, 1, SourceQuery.Search(query, source.getFilterList()))
+                            aggregate(started.generation, source.id, child, completed)?.let { publish(it, onState) }
+                        }.also(session::register)
+                    }.awaitAll()
+                } finally {
+                    callbackCollector.cancelAndJoin()
+                }
             }
             completedNormally = true
         } catch (error: CancellationException) {

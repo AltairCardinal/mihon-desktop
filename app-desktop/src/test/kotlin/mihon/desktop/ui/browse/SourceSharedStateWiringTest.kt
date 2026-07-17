@@ -68,6 +68,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import java.io.File
 
 class SourceSharedStateWiringTest {
@@ -311,6 +312,44 @@ class SourceSharedStateWiringTest {
         currentChild.load(source, 1, SourceQuery.Search("closed", FilterList()))
         assertEquals(null, coordinator.coordinatorFor(source.id))
         assertEquals(current, coordinator.states.value.queryStates[source.id])
+    }
+
+    @Test
+    fun `completed global search detaches compat callback from later exact recovery`() = runBlocking {
+        listOf(CancellationException("late callback"), AssertionError("late callback")).forEachIndexed { index, lateError ->
+            val attempts = mutableMapOf<String, Int>()
+            val source = object : NamedSource(30L + index, "Detached callback") {
+                override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
+                    if (attempts.put(query, attempts.getOrDefault(query, 0) + 1) == null) throw HttpException(500)
+                    delay(25)
+                    return MangasPage(listOf(manga("/$query")), false)
+                }
+            }
+            val lateFailure = AtomicReference<Throwable?>()
+            val callbacks = Collections.synchronizedList(mutableListOf<Unit>())
+            val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+            withTimeout(2_000) {
+                coordinator.search(listOf(source), "first") {
+                    callbacks += Unit
+                    lateFailure.get()?.let { throw it }
+                }
+            }
+            val child = requireNotNull(coordinator.coordinatorFor(source.id))
+            val callbackCount = callbacks.size.also { lateFailure.set(lateError) }
+            val firstRetry = async(start = CoroutineStart.UNDISPATCHED) { child.retry(source) }
+            withTimeout(2_000) { coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Loading } }
+            firstRetry.await()
+            withTimeout(2_000) { coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Content } }
+            child.load(source, 1, SourceQuery.Search("second", FilterList()))
+            withTimeout(2_000) { coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Failure } }
+            val secondRetry = async(start = CoroutineStart.UNDISPATCHED) { child.retry(source) }
+            withTimeout(2_000) { coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Loading } }
+            secondRetry.await()
+            withTimeout(2_000) { coordinator.states.first { (it.queryStates[source.id] as? SourceQueryState.Content)?.items?.singleOrNull()?.url == "/second" } }
+            assertEquals(callbackCount, callbacks.size)
+            assertTrue(child.subscriberCount > 0)
+            coordinator.close()
+        }
     }
 
     @Test
