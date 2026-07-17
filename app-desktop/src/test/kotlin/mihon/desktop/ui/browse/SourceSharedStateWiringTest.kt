@@ -10,10 +10,12 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import dev.icerock.moko.resources.StringResource
-import androidx.compose.runtime.AbstractApplier
-import androidx.compose.runtime.BroadcastFrameClock
-import androidx.compose.runtime.Composition
-import androidx.compose.runtime.Recomposer
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.semantics.SemanticsNode
+import cafe.adriel.voyager.navigator.CurrentScreen
+import cafe.adriel.voyager.navigator.Navigator
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -22,12 +24,17 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.delay
+import io.mockk.every
+import io.mockk.mockk
+import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.network.ChallengeRecoveryIntent
 import mihon.desktop.network.CloudflareChallengeManager
 import mihon.desktop.network.DesktopBrowserOpener
 import mihon.desktop.network.DesktopAuthenticatedSessionCommitter
 import mihon.desktop.network.DesktopSourceLoginSessionFactory
 import mihon.desktop.platform.DesktopNetworkHelper
+import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.domain.error.AppError
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -92,57 +99,73 @@ class SourceSharedStateWiringTest {
     }
 
     @Test
-    fun `source login host renders model and routes edits submit and dismiss by state`() = runBlocking {
+    fun `stale source login events cannot replace or close the current attempt`() {
         val attempt = DesktopSourceLoginAttempt()
-        var state: DesktopSourceLoginUiState? = DesktopSourceLoginUiState(attempt, "source.test")
-        var submitted = ""
-        var cancelled: DesktopSourceLoginAttempt? = null
+        val newer = DesktopSourceLoginUiState(DesktopSourceLoginAttempt(), "new.test")
+        var state: DesktopSourceLoginUiState? = DesktopSourceLoginUiState(attempt, "old.test")
         val actions = DesktopSourceLoginUiActions(
-            { _, header -> false.also { submitted = header } },
-            { actual -> true.also { cancelled = actual } },
+            { _, _ -> error("stale submit") },
+            { error("stale cancel") },
         )
-        val copy = desktopSourceLoginCopy {
-            if (it == MR.strings.desktop_source_login_timed_out) "timed-out" else it.toString()
-        }
-        lateinit var model: DesktopSourceLoginDialogModel
-        lateinit var events: DesktopSourceLoginDialogEvents
-        val clock = BroadcastFrameClock()
-        val recomposer = Recomposer(coroutineContext + clock)
-        val composition = Composition(UnitTestApplier(), recomposer)
-        val job = launch(clock, start = CoroutineStart.UNDISPATCHED) { recomposer.runRecomposeAndApplyChanges() }
+        val stale = sourceLoginDialogEvents(requireNotNull(state), { state }, actions) { state = it }
+        val staleTerminal = sourceLoginDialogEvents(requireNotNull(state).copy(terminal = true), { state }, actions) { state = it }
+        state = newer
+        stale.edit("stale=secret")
+        stale.submit()
+        stale.dismiss()
+        staleTerminal.dismiss()
 
-        suspend fun render() {
-            composition.setContent {
-                SourceLoginDialogHost(state, copy, actions, { state = it }) { actual, actualEvents ->
-                    model = actual
-                    events = actualEvents
-                }
-            }
-            clock.sendFrame(0)
-            recomposer.awaitIdle()
-        }
-        render()
-        assertEquals("source.test", model.state.host)
-        events.edit("session=secret")
+        assertSame(newer, state)
+        val currentActions = DesktopSourceLoginUiActions({ _, _ -> false }, { false })
+        val current = sourceLoginDialogEvents(newer, { state }, currentActions) { state = it }
+        current.edit("session=secret")
         assertEquals("session=secret", state?.cookieHeader)
-        render()
-        events.submit()
-        assertEquals("session=secret", submitted)
+        current.submit()
         assertEquals(DesktopSourceLoginFeedback.InvalidHeader, state?.feedback)
-        events.dismiss()
-        assertSame(attempt, cancelled)
+        current.dismiss()
         assertEquals(null, state)
+    }
 
-        state = DesktopSourceLoginUiState(attempt, "source.test", feedback = DesktopSourceLoginFeedback.TimedOut, terminal = true)
-        render()
-        assertEquals("timed-out", model.feedback)
-        cancelled = null
-        events.dismiss()
-        assertEquals(null, cancelled)
-        assertEquals(null, state)
-        composition.dispose()
-        recomposer.close()
-        job.cancelAndJoin()
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `source browse content mounts the real active and terminal login dialog`() = runBlocking {
+        val copy = desktopSourceLoginCopy { it.localized() }
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { sourceManager } returns FakeDesktopSourceManager(emptyList())
+            every { sourceMangaSearchService } returns SourceMangaSearchService()
+            every { saveSourceMangaForDetails } returns mockk(relaxed = true)
+            every { sourceLoginSessionFactory } returns DesktopSourceLoginSessionFactory(
+                AuthenticatedSessionCommitter { _, _ -> },
+                DesktopBrowserOpener { _, _ -> false },
+            )
+        }
+        val active = DesktopSourceLoginUiState(DesktopSourceLoginAttempt(), "source.test")
+        val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
+        fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+        fun render(state: DesktopSourceLoginUiState): List<String> {
+            scene.setContent {
+                CompositionLocalProvider(
+                    LocalDesktopUiDependencies provides dependencies,
+                    LocalSourceLoginDialogInitialState provides state,
+                ) { Navigator(SourceBrowseScreen(404)) { CurrentScreen() } }
+            }
+            scene.render()
+            return scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.map { it.config.toString() }
+        }
+
+        fun List<String>.hasClick(text: String) = any { it.contains(text) && it.contains("OnClick") }
+        val activeNodes = render(active)
+        val activeSemantics = activeNodes.joinToString()
+        listOf(copy.title, active.host, copy.description, copy.cookieHeaderLabel, "IsEditable : true")
+            .forEach { assertTrue(activeSemantics.contains(it), "missing active dialog text: $it") }
+        assertTrue(activeNodes.hasClick(copy.submit))
+        assertTrue(activeNodes.hasClick(copy.cancel))
+        val terminalNodes = render(active.copy(feedback = DesktopSourceLoginFeedback.TimedOut, terminal = true))
+        val terminalSemantics = terminalNodes.joinToString()
+        assertTrue(terminalSemantics.contains(copy.timedOut))
+        assertTrue(terminalNodes.hasClick(copy.close))
+        listOf(copy.cookieHeaderLabel, copy.cancel).forEach { assertFalse(terminalSemantics.contains(it)) }
+        scene.close()
     }
 
     @Test
@@ -778,14 +801,6 @@ class SourceSharedStateWiringTest {
         override suspend fun getMangaDetails(manga: SManga) = manga
         override suspend fun getChapterList(manga: SManga) = emptyList<SChapter>()
         override suspend fun getPageList(chapter: SChapter) = emptyList<Page>()
-    }
-
-    private class UnitTestApplier : AbstractApplier<Unit>(Unit) {
-        override fun insertBottomUp(index: Int, instance: Unit) = Unit
-        override fun insertTopDown(index: Int, instance: Unit) = Unit
-        override fun move(from: Int, to: Int, count: Int) = Unit
-        override fun onClear() = Unit
-        override fun remove(index: Int, count: Int) = Unit
     }
 
     private companion object {

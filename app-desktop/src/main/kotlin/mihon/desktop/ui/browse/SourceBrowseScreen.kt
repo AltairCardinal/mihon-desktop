@@ -50,6 +50,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -143,9 +144,23 @@ data class DesktopSourceLoginDialogEvents(
     val dismiss: () -> Unit,
 )
 
+internal val LocalSourceLoginDialogInitialState = staticCompositionLocalOf<DesktopSourceLoginUiState?> { null }
+
+internal fun sourceLoginDialogEvents(
+    rendered: DesktopSourceLoginUiState,
+    currentState: () -> DesktopSourceLoginUiState?,
+    actions: DesktopSourceLoginUiActions,
+    onStateChange: (DesktopSourceLoginUiState?) -> Unit,
+) = DesktopSourceLoginDialogEvents(
+    edit = { value -> currentState()?.takeIf { it.attempt === rendered.attempt }?.let { onStateChange(actions.editHeader(it, value)) } },
+    submit = { currentState()?.takeIf { it.attempt === rendered.attempt }?.let { onStateChange(actions.submit(it)) } },
+    dismiss = { currentState()?.takeIf { it.attempt === rendered.attempt }?.let { onStateChange(if (it.terminal) null else actions.cancel(it)) } },
+)
+
 @Composable
 internal fun SourceLoginDialogHost(
     state: DesktopSourceLoginUiState?,
+    currentState: () -> DesktopSourceLoginUiState?,
     copy: DesktopSourceLoginCopy,
     actions: DesktopSourceLoginUiActions,
     onStateChange: (DesktopSourceLoginUiState?) -> Unit,
@@ -154,11 +169,7 @@ internal fun SourceLoginDialogHost(
     state ?: return
     render(
         DesktopSourceLoginDialogModel(state, copy),
-        DesktopSourceLoginDialogEvents(
-            edit = { onStateChange(actions.editHeader(state, it)) },
-            submit = { onStateChange(actions.submit(state)) },
-            dismiss = { onStateChange(if (state.terminal) null else actions.cancel(state)) },
-        ),
+        sourceLoginDialogEvents(state, currentState, actions, onStateChange),
     )
 }
 
@@ -237,7 +248,8 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
             DesktopSourceLoginUiActions(recoveryController::submitCookies, recoveryController::cancel)
         }
         val loginCopy = remember { desktopSourceLoginCopy { it.localized() } }
-        var sourceLoginUiState by remember { mutableStateOf<DesktopSourceLoginUiState?>(null) }
+        val initialLoginState = LocalSourceLoginDialogInitialState.current
+        var sourceLoginUiState by remember { mutableStateOf(initialLoginState) }
 
         // Search state
         var searchQuery by remember { mutableStateOf("") }
@@ -290,9 +302,10 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
         }
 
         SourceLoginDialogHost(
-            sourceLoginUiState,
-            loginCopy,
-            loginUiActions,
+            state = sourceLoginUiState,
+            currentState = { sourceLoginUiState },
+            copy = loginCopy,
+            actions = loginUiActions,
             onStateChange = { sourceLoginUiState = it },
         )
 
