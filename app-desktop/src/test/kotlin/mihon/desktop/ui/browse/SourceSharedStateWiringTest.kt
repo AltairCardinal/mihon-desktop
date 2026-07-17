@@ -18,6 +18,8 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.text.AnnotatedString
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
+import cafe.adriel.voyager.navigator.tab.CurrentTab
+import cafe.adriel.voyager.navigator.tab.TabNavigator
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
@@ -44,7 +46,6 @@ import mihon.desktop.network.DesktopAuthenticatedSessionCommitter
 import mihon.desktop.network.DesktopSourceLoginSessionFactory
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.source.FakeDesktopSourceManager
-import mihon.desktop.ui.extension.ExtensionListScreen
 import mihon.domain.error.AppError
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -81,20 +82,24 @@ class SourceSharedStateWiringTest {
 
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
-    fun `empty source list extensions action pushes extension list screen`() = runBlocking {
+    fun `browse tab extensions action renders extension list screen`() = runBlocking {
+        val extensionApi = mockk<mihon.desktop.extension.DesktopExtensionApi>()
+        val extensionManager = mockk<mihon.desktop.extension.DesktopExtensionManager> {
+            every { getInstalledExtensions() } returns emptyList()
+        }
         val dependencies = mockk<DesktopUiDependencies> {
             every { sourceManager } returns FakeDesktopSourceManager(emptyList())
+            every { this@mockk.extensionApi } returns extensionApi
+            every { this@mockk.extensionManager } returns extensionManager
         }
         val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
-        var nestedNavigator: Navigator? = null
 
         fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
 
         scene.setContent {
             CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
-                Navigator(BrowseSourceListScreen()) { navigator ->
-                    nestedNavigator = navigator
-                    CurrentScreen()
+                TabNavigator(BrowseTab) {
+                    CurrentTab()
                 }
             }
         }
@@ -110,7 +115,13 @@ class SourceSharedStateWiringTest {
         )
 
         assertTrue(requireNotNull(extensionsAction.config[SemanticsActions.OnClick].action).invoke())
-        assertInstanceOf(ExtensionListScreen::class.java, requireNotNull(nestedNavigator).lastItem)
+        scene.render()
+
+        assertTrue(
+            scene.semanticsOwners
+                .flatMap { flatten(it.rootSemanticsNode) }
+                .any { it.config.toString().contains("Reload installed") },
+        )
         scene.close()
     }
 
