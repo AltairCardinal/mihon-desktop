@@ -562,10 +562,10 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
             - [x] **Task 6A1R2b2b2bR: stale attempt 事件隔离与真实 Dialog/Screen wiring 测试闭环**
               - [x] **Task 6A1R2b2b2bR2: cancel 拒绝保留当前 UI 状态契约**
 - [ ] **Task 6A2: Global 共享状态消费与 Browse 缺源入口**
-  - [ ] **Task 6A2A: Global StateFlow 聚合与 per-source coordinator 复用**
-    - [ ] **Task 6A2AR: cancellation-safe session retirement 与独立发布门禁验证**
-      - [ ] **Task 6A2AR2: typed retirement cause 与外部取消传播契约**
-        - [ ] **Task 6A2AR3: late-register typed cancel 与有界 cause-chain**
+  - [x] **Task 6A2A: Global StateFlow 聚合与 per-source coordinator 复用**
+    - [x] **Task 6A2AR: cancellation-safe session retirement 与独立发布门禁验证**
+      - [x] **Task 6A2AR2: typed retirement cause 与外部取消传播契约**
+        - [x] **Task 6A2AR3: late-register typed cancel 与有界 cause-chain**
   - [ ] **Task 6A2B: Global Search production projector、exact recovery 与 Dialog wiring**
   - [ ] **Task 6A2C: Browse 缺失 source 的 ExtensionListScreen 导航入口**
 
