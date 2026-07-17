@@ -1,6 +1,5 @@
 package mihon.desktop.network
 
-import eu.kanade.tachiyomi.network.DesktopCookieJar
 import okhttp3.Interceptor
 import okhttp3.Response
 import org.jsoup.Jsoup
@@ -9,14 +8,12 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 class DesktopCloudflareInterceptor(
-    @Suppress("UNUSED_PARAMETER") cookieJar: DesktopCookieJar,
     private val challengeManager: CloudflareChallengeManager,
 ) : Interceptor {
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
-        val request = originalRequest.withSolverUserAgent()
-        val response = chain.proceed(request)
+        val response = chain.proceed(originalRequest)
 
         if (!shouldIntercept(response)) return response
 
@@ -32,12 +29,7 @@ class DesktopCloudflareInterceptor(
             throw IOException("Cloudflare bypass failed or timed out")
         }
 
-        return chain.proceed(originalRequest.withSolverUserAgent())
-    }
-
-    private fun okhttp3.Request.withSolverUserAgent(): okhttp3.Request {
-        val solverUserAgent = challengeManager.solverUserAgentFor(url) ?: return this
-        return newBuilder().header("User-Agent", solverUserAgent).build()
+        return chain.proceed(originalRequest)
     }
 
     internal fun shouldIntercept(response: Response): Boolean {
@@ -55,5 +47,23 @@ class DesktopCloudflareInterceptor(
         private val ERROR_CODES = listOf(403, 503)
         private val SERVER_CHECK = arrayOf("cloudflare-nginx", "cloudflare")
         internal const val TIMEOUT_SECONDS = 120L
+    }
+}
+
+class DesktopCloudflareCredentialInterceptor(
+    private val challengeManager: CloudflareChallengeManager,
+) : Interceptor {
+
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val originalRequest = chain.request()
+        val solverUserAgent = challengeManager.solverUserAgentForOutboundRequest(
+            originalRequest.url,
+            originalRequest.headers("Cookie"),
+        ) ?: return chain.proceed(originalRequest)
+        return chain.proceed(
+            originalRequest.newBuilder()
+                .header("User-Agent", solverUserAgent)
+                .build(),
+        )
     }
 }

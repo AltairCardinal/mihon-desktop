@@ -9,10 +9,12 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import mihon.desktop.platform.DesktopNetworkHelper
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.Cookie
 import okhttp3.Headers
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -65,7 +67,8 @@ class DesktopChallengeRecoveryPolicyTest {
                 )
                 val client = OkHttpClient.Builder()
                     .cookieJar(cookieJar)
-                    .addInterceptor(DesktopCloudflareInterceptor(cookieJar, manager))
+                    .addInterceptor(DesktopCloudflareInterceptor(manager))
+                    .addNetworkInterceptor(DesktopCloudflareCredentialInterceptor(manager))
                     .build()
 
                 val call = executeAsync(client, sourceServer)
@@ -1255,6 +1258,407 @@ class DesktopChallengeRecoveryPolicyTest {
     }
 
     @Test
+    fun `manual jar replacement between application interception and bridge never pairs old user agent with new clearance`(
+        @TempDir tempDir: Path,
+    ): Unit = runBlocking {
+        val sourceServer = MockWebServer().also { it.start() }
+        val solverServer = MockWebServer().also { it.start() }
+        val jarRef = AtomicReference<DesktopCookieJar>()
+        val replacementCommitted = CountDownLatch(1)
+        val releaseReplacement = CountDownLatch(1)
+        val blockReplacement = AtomicBoolean()
+        try {
+            sourceServer.enqueue(MockResponse(code = 200, body = "ok"))
+            solverServer.enqueue(
+                solvedResponse(sourceServer.url("/").host, "old-clearance", secure = false, userAgent = "old-agent"),
+            )
+            val manager = productionManager(
+                jarRef = jarRef,
+                solverClient = FlareSolverrClient(solverServer.url("/").toString().removeSuffix("/"), OkHttpClient()),
+                afterCommit = { _, _ ->
+                    if (blockReplacement.compareAndSet(true, false)) {
+                        replacementCommitted.countDown()
+                        check(releaseReplacement.await(5, TimeUnit.SECONDS))
+                    }
+                },
+            )
+            DesktopNetworkHelper(
+                cacheDir = tempDir.resolve("manual-cache").toFile(),
+                cookieStorageFile = tempDir.resolve("manual-cookies.json").toFile(),
+                challengeManager = manager,
+            ).use { helper ->
+                jarRef.set(helper.cookieJar)
+                manager.recover(
+                    manager.publish(loginRequest(url = sourceServer.url("/seed").toString())),
+                    ChallengeRecoveryIntent.UseFlareSolverr,
+                )
+                val beforeBridge = CountDownLatch(1)
+                val releaseBridge = CountDownLatch(1)
+                val request = executeAsync(barrierClient(helper.client, beforeBridge, releaseBridge), sourceServer)
+                check(beforeBridge.await(5, TimeUnit.SECONDS))
+
+                blockReplacement.set(true)
+                val recovery = async(Dispatchers.Default) {
+                    manager.recover(
+                        manager.publish(loginRequest(url = sourceServer.url("/chapter").toString())),
+                        ChallengeRecoveryIntent.SubmitManualCookies(
+                            authenticatedSession(
+                                "manual-clearance",
+                                domain = sourceServer.url("/").host,
+                                secure = false,
+                            ),
+                        ),
+                    )
+                }
+                check(replacementCommitted.await(5, TimeUnit.SECONDS))
+                releaseBridge.countDown()
+
+                assertEquals(200, request.get(5, TimeUnit.SECONDS))
+                val observed = sourceServer.takeRequest(5, TimeUnit.SECONDS) ?: error("missing source request")
+                assertTrue(observed.headers["Cookie"]?.contains("manual-clearance") == true)
+                assertTrue(observed.headers["User-Agent"] != "old-agent")
+
+                releaseReplacement.countDown()
+                assertInstanceOf(ChallengeRecoveryState.Recovered::class.java, recovery.await())
+            }
+        } finally {
+            releaseReplacement.countDown()
+            solverServer.close()
+            sourceServer.close()
+        }
+    }
+
+    @Test
+    fun `jar rotation after application lookup but before bridge never emits stale paired credentials`(
+        @TempDir tempDir: Path,
+    ) = runBlocking {
+        val sourceServer = MockWebServer().also { it.start() }
+        val solverServer = MockWebServer().also { it.start() }
+        val jarRef = AtomicReference<DesktopCookieJar>()
+        try {
+            sourceServer.enqueue(MockResponse(code = 200, body = "ok"))
+            solverServer.enqueue(
+                solvedResponse(sourceServer.url("/").host, "old-clearance", secure = false, userAgent = "old-agent"),
+            )
+            val manager = productionManager(
+                jarRef,
+                FlareSolverrClient(solverServer.url("/").toString().removeSuffix("/"), OkHttpClient()),
+            )
+            DesktopNetworkHelper(
+                cacheDir = tempDir.resolve("rotation-cache").toFile(),
+                cookieStorageFile = tempDir.resolve("rotation-cookies.json").toFile(),
+                challengeManager = manager,
+            ).use { helper ->
+                jarRef.set(helper.cookieJar)
+                manager.recover(
+                    manager.publish(loginRequest(url = sourceServer.url("/seed").toString())),
+                    ChallengeRecoveryIntent.UseFlareSolverr,
+                )
+                val beforeBridge = CountDownLatch(1)
+                val releaseBridge = CountDownLatch(1)
+                val request = executeAsync(barrierClient(helper.client, beforeBridge, releaseBridge), sourceServer)
+                check(beforeBridge.await(5, TimeUnit.SECONDS))
+                helper.cookieJar.commitAuthenticatedSession(
+                    sourceServer.url("/chapter"),
+                    listOf(clearanceCookie(sourceServer.url("/").host, "rotated-clearance")),
+                )
+                releaseBridge.countDown()
+
+                assertEquals(200, request.get(5, TimeUnit.SECONDS))
+                val observed = sourceServer.takeRequest(5, TimeUnit.SECONDS) ?: error("missing source request")
+                assertTrue(observed.headers["Cookie"]?.contains("rotated-clearance") == true)
+                assertTrue(observed.headers["User-Agent"] != "old-agent")
+            }
+        } finally {
+            solverServer.close()
+            sourceServer.close()
+        }
+    }
+
+    @Test
+    fun `solver transition suppresses old user agent until the new binding is published`(
+        @TempDir tempDir: Path,
+    ) = runBlocking {
+        val sourceServer = MockWebServer().also { it.start() }
+        val solverServer = MockWebServer().also { it.start() }
+        val jarRef = AtomicReference<DesktopCookieJar>()
+        val newJarCommitted = CountDownLatch(1)
+        val releaseNewBinding = CountDownLatch(1)
+        val commitOrdinal = AtomicInteger()
+        try {
+            sourceServer.enqueue(MockResponse(code = 200, body = "transition"))
+            sourceServer.enqueue(MockResponse(code = 200, body = "published"))
+            solverServer.enqueue(
+                solvedResponse(sourceServer.url("/").host, "old-clearance", secure = false, userAgent = "old-agent"),
+            )
+            solverServer.enqueue(
+                solvedResponse(sourceServer.url("/").host, "new-clearance", secure = false, userAgent = "new-agent"),
+            )
+            val manager = productionManager(
+                jarRef = jarRef,
+                solverClient = FlareSolverrClient(solverServer.url("/").toString().removeSuffix("/"), OkHttpClient()),
+                afterCommit = { _, _ ->
+                    if (commitOrdinal.incrementAndGet() == 2) {
+                        newJarCommitted.countDown()
+                        check(releaseNewBinding.await(5, TimeUnit.SECONDS))
+                    }
+                },
+            )
+            DesktopNetworkHelper(
+                cacheDir = tempDir.resolve("solver-transition-cache").toFile(),
+                cookieStorageFile = tempDir.resolve("solver-transition-cookies.json").toFile(),
+                challengeManager = manager,
+            ).use { helper ->
+                jarRef.set(helper.cookieJar)
+                manager.recover(
+                    manager.publish(loginRequest(url = sourceServer.url("/seed").toString())),
+                    ChallengeRecoveryIntent.UseFlareSolverr,
+                )
+                val beforeBridge = CountDownLatch(1)
+                val releaseBridge = CountDownLatch(1)
+                val transitionRequest = executeAsync(
+                    barrierClient(helper.client, beforeBridge, releaseBridge),
+                    sourceServer,
+                )
+                check(beforeBridge.await(5, TimeUnit.SECONDS))
+                val recovery = async(Dispatchers.Default) {
+                    manager.recover(
+                        manager.publish(loginRequest(url = sourceServer.url("/chapter").toString())),
+                        ChallengeRecoveryIntent.UseFlareSolverr,
+                    )
+                }
+                check(newJarCommitted.await(5, TimeUnit.SECONDS))
+                releaseBridge.countDown()
+
+                assertEquals(200, transitionRequest.get(5, TimeUnit.SECONDS))
+                val transition = sourceServer.takeRequest(5, TimeUnit.SECONDS) ?: error("missing transition request")
+                assertTrue(transition.headers["Cookie"]?.contains("new-clearance") == true)
+                assertTrue(transition.headers["User-Agent"] != "old-agent")
+
+                releaseNewBinding.countDown()
+                assertInstanceOf(ChallengeRecoveryState.Recovered::class.java, recovery.await())
+                helper.client.newCall(Request.Builder().url(sourceServer.url("/published")).build()).execute().close()
+                val published = sourceServer.takeRequest(5, TimeUnit.SECONDS) ?: error("missing published request")
+                assertTrue(published.headers["Cookie"]?.contains("new-clearance") == true)
+                assertEquals("new-agent", published.headers["User-Agent"])
+            }
+        } finally {
+            releaseNewBinding.countDown()
+            solverServer.close()
+            sourceServer.close()
+        }
+    }
+
+    @Test
+    fun `network set cookie rotation cannot race a following request into stale credentials`(
+        @TempDir tempDir: Path,
+    ) = runBlocking {
+        val sourceServer = MockWebServer().also { it.start() }
+        val solverServer = MockWebServer().also { it.start() }
+        val jarRef = AtomicReference<DesktopCookieJar>()
+        try {
+            sourceServer.enqueue(
+                MockResponse(
+                    code = 200,
+                    headers = Headers.headersOf("Set-Cookie", "cf_clearance=network-clearance; Path=/"),
+                    body = "rotated",
+                ),
+            )
+            sourceServer.enqueue(MockResponse(code = 200, body = "following"))
+            solverServer.enqueue(
+                solvedResponse(sourceServer.url("/").host, "old-clearance", secure = false, userAgent = "old-agent"),
+            )
+            val manager = productionManager(
+                jarRef,
+                FlareSolverrClient(solverServer.url("/").toString().removeSuffix("/"), OkHttpClient()),
+            )
+            DesktopNetworkHelper(
+                cacheDir = tempDir.resolve("set-cookie-cache").toFile(),
+                cookieStorageFile = tempDir.resolve("set-cookie-cookies.json").toFile(),
+                challengeManager = manager,
+            ).use { helper ->
+                jarRef.set(helper.cookieJar)
+                manager.recover(
+                    manager.publish(loginRequest(url = sourceServer.url("/seed").toString())),
+                    ChallengeRecoveryIntent.UseFlareSolverr,
+                )
+                val beforeBridge = CountDownLatch(1)
+                val releaseBridge = CountDownLatch(1)
+                val following = executeAsync(barrierClient(helper.client, beforeBridge, releaseBridge), sourceServer)
+                check(beforeBridge.await(5, TimeUnit.SECONDS))
+
+                helper.client.newCall(Request.Builder().url(sourceServer.url("/rotate")).build()).execute().close()
+                releaseBridge.countDown()
+
+                assertEquals(200, following.get(5, TimeUnit.SECONDS))
+                val rotated = sourceServer.takeRequest(5, TimeUnit.SECONDS) ?: error("missing rotation request")
+                val observed = sourceServer.takeRequest(5, TimeUnit.SECONDS) ?: error("missing following request")
+                assertEquals("old-agent", rotated.headers["User-Agent"])
+                assertTrue(observed.headers["Cookie"]?.contains("network-clearance") == true)
+                assertTrue(observed.headers["User-Agent"] != "old-agent")
+            }
+        } finally {
+            solverServer.close()
+            sourceServer.close()
+        }
+    }
+
+    @Test
+    fun `desktop network helper wires solver credentials at the final outbound request stage`(
+        @TempDir tempDir: Path,
+    ) = runBlocking {
+        val sourceServer = MockWebServer().also { it.start() }
+        val solverServer = MockWebServer().also { it.start() }
+        val jarRef = AtomicReference<DesktopCookieJar>()
+        try {
+            sourceServer.enqueue(MockResponse(code = 200, body = "ok"))
+            solverServer.enqueue(
+                solvedResponse(sourceServer.url("/").host, "paired-clearance", secure = false, userAgent = "paired-agent"),
+            )
+            val manager = productionManager(
+                jarRef,
+                FlareSolverrClient(solverServer.url("/").toString().removeSuffix("/"), OkHttpClient()),
+            )
+            DesktopNetworkHelper(
+                cacheDir = tempDir.resolve("wiring-cache").toFile(),
+                cookieStorageFile = tempDir.resolve("wiring-cookies.json").toFile(),
+                challengeManager = manager,
+            ).use { helper ->
+                jarRef.set(helper.cookieJar)
+                manager.recover(
+                    manager.publish(loginRequest(url = sourceServer.url("/seed").toString())),
+                    ChallengeRecoveryIntent.UseFlareSolverr,
+                )
+
+                helper.client.newCall(Request.Builder().url(sourceServer.url("/chapter")).build()).execute().close()
+
+                val observed = sourceServer.takeRequest(5, TimeUnit.SECONDS) ?: error("missing source request")
+                assertEquals("paired-agent", observed.headers["User-Agent"])
+                assertTrue(observed.headers["Cookie"]?.contains("paired-clearance") == true)
+            }
+        } finally {
+            solverServer.close()
+            sourceServer.close()
+        }
+    }
+
+    @Test
+    fun `explicit or missing outbound clearance never receives a stale solver user agent`(
+        @TempDir tempDir: Path,
+    ) = runBlocking {
+        val sourceServer = MockWebServer().also { it.start() }
+        val solverServer = MockWebServer().also { it.start() }
+        val jarRef = AtomicReference<DesktopCookieJar>()
+        try {
+            sourceServer.enqueue(MockResponse(code = 200, body = "explicit"))
+            sourceServer.enqueue(MockResponse(code = 200, body = "missing"))
+            solverServer.enqueue(
+                solvedResponse(sourceServer.url("/").host, "old-clearance", secure = false, userAgent = "old-agent"),
+            )
+            val manager = productionManager(
+                jarRef,
+                FlareSolverrClient(solverServer.url("/").toString().removeSuffix("/"), OkHttpClient()),
+            )
+            DesktopNetworkHelper(
+                cacheDir = tempDir.resolve("explicit-cache").toFile(),
+                cookieStorageFile = tempDir.resolve("explicit-cookies.json").toFile(),
+                challengeManager = manager,
+            ).use { helper ->
+                jarRef.set(helper.cookieJar)
+                manager.recover(
+                    manager.publish(loginRequest(url = sourceServer.url("/seed").toString())),
+                    ChallengeRecoveryIntent.UseFlareSolverr,
+                )
+                val explicitEntered = CountDownLatch(1)
+                val releaseExplicit = CountDownLatch(1)
+                val explicit = CompletableFuture.supplyAsync {
+                    barrierClient(helper.client, explicitEntered, releaseExplicit).newCall(
+                        Request.Builder()
+                            .url(sourceServer.url("/explicit"))
+                            .header("Cookie", "cf_clearance=explicit-clearance")
+                            .build(),
+                    ).execute().use { it.code }
+                }
+                check(explicitEntered.await(5, TimeUnit.SECONDS))
+                helper.cookieJar.clear()
+                releaseExplicit.countDown()
+                assertEquals(200, explicit.get(5, TimeUnit.SECONDS))
+
+                helper.client.newCall(Request.Builder().url(sourceServer.url("/missing")).build()).execute().close()
+
+                val explicitObserved = sourceServer.takeRequest(5, TimeUnit.SECONDS) ?: error("missing explicit request")
+                val missingObserved = sourceServer.takeRequest(5, TimeUnit.SECONDS) ?: error("missing cookie-free request")
+                assertTrue(explicitObserved.headers["Cookie"]?.contains("explicit-clearance") == true)
+                assertTrue(explicitObserved.headers["User-Agent"] != "old-agent")
+                assertNull(missingObserved.headers["Cookie"])
+                assertTrue(missingObserved.headers["User-Agent"] != "old-agent")
+            }
+        } finally {
+            solverServer.close()
+            sourceServer.close()
+        }
+    }
+
+    @Test
+    fun `duplicate path clearances reject a mixed outbound snapshot while retaining the valid binding`(
+        @TempDir tempDir: Path,
+    ) = runBlocking {
+        val sourceServer = MockWebServer().also { it.start() }
+        val solverServer = MockWebServer().also { it.start() }
+        val jarRef = AtomicReference<DesktopCookieJar>()
+        try {
+            sourceServer.enqueue(MockResponse(code = 200, body = "mixed"))
+            solverServer.enqueue(
+                MockResponse(
+                    body = """{"status":"ok","solution":{"userAgent":"bound-agent","cookies":[{"name":"cf_clearance","value":"root-secret","domain":"${sourceServer.url("/").host}","path":"/","secure":false},{"name":"cf_clearance","value":"reader-secret","domain":"${sourceServer.url("/").host}","path":"/reader","secure":false}]}}""",
+                ),
+            )
+            val manager = productionManager(
+                jarRef,
+                FlareSolverrClient(solverServer.url("/").toString().removeSuffix("/"), OkHttpClient()),
+            )
+            DesktopNetworkHelper(
+                cacheDir = tempDir.resolve("duplicate-cache").toFile(),
+                cookieStorageFile = tempDir.resolve("duplicate-cookies.json").toFile(),
+                challengeManager = manager,
+            ).use { helper ->
+                jarRef.set(helper.cookieJar)
+                val readerUrl = sourceServer.url("/reader/chapter")
+                manager.recover(
+                    manager.publish(loginRequest(url = readerUrl.toString())),
+                    ChallengeRecoveryIntent.UseFlareSolverr,
+                )
+                val beforeBridge = CountDownLatch(1)
+                val releaseBridge = CountDownLatch(1)
+                val request = CompletableFuture.supplyAsync {
+                    barrierClient(helper.client, beforeBridge, releaseBridge).newCall(
+                        Request.Builder().url(readerUrl).build(),
+                    ).execute().use { it.code }
+                }
+                check(beforeBridge.await(5, TimeUnit.SECONDS))
+                helper.cookieJar.commitAuthenticatedSession(
+                    readerUrl,
+                    listOf(
+                        clearanceCookie(sourceServer.url("/").host, "replacement-root"),
+                        clearanceCookie(sourceServer.url("/").host, "reader-secret", path = "/reader"),
+                    ),
+                )
+                releaseBridge.countDown()
+
+                assertEquals(200, request.get(5, TimeUnit.SECONDS))
+                val observed = sourceServer.takeRequest(5, TimeUnit.SECONDS) ?: error("missing mixed request")
+                assertTrue(observed.headers["Cookie"]?.contains("replacement-root") == true)
+                assertTrue(observed.headers["Cookie"]?.contains("reader-secret") == true)
+                assertTrue(observed.headers["User-Agent"] != "bound-agent")
+                assertEquals("bound-agent", manager.solverUserAgentFor(readerUrl))
+            }
+        } finally {
+            solverServer.close()
+            sourceServer.close()
+        }
+    }
+
+    @Test
     fun `successful recovery retries the intercepted request at most once`() {
         val server = MockWebServer().also { it.start() }
         try {
@@ -1265,7 +1669,8 @@ class DesktopChallengeRecoveryPolicyTest {
             val manager = CloudflareChallengeManager(committer = DesktopAuthenticatedSessionCommitter(jar))
             val client = OkHttpClient.Builder()
                 .cookieJar(jar)
-                .addInterceptor(DesktopCloudflareInterceptor(jar, manager))
+                .addInterceptor(DesktopCloudflareInterceptor(manager))
+                .addNetworkInterceptor(DesktopCloudflareCredentialInterceptor(manager))
                 .build()
             val call = executeAsync(client, server)
             val challenge = awaitChallenge(manager)
@@ -1314,7 +1719,8 @@ class DesktopChallengeRecoveryPolicyTest {
             )
             val client = OkHttpClient.Builder()
                 .cookieJar(jar)
-                .addInterceptor(DesktopCloudflareInterceptor(jar, manager))
+                .addInterceptor(DesktopCloudflareInterceptor(manager))
+                .addNetworkInterceptor(DesktopCloudflareCredentialInterceptor(manager))
                 .build()
             val firstCall = CompletableFuture.supplyAsync {
                 client.newCall(
@@ -1813,7 +2219,8 @@ class DesktopChallengeRecoveryPolicyTest {
             checkNotNull(manager.tryReceive())
             val client = OkHttpClient.Builder()
                 .cookieJar(jar)
-                .addInterceptor(DesktopCloudflareInterceptor(jar, manager))
+                .addInterceptor(DesktopCloudflareInterceptor(manager))
+                .addNetworkInterceptor(DesktopCloudflareCredentialInterceptor(manager))
                 .build()
             val call = CompletableFuture.supplyAsync {
                 client.newCall(
@@ -1933,6 +2340,46 @@ class DesktopChallengeRecoveryPolicyTest {
         CompletableFuture.supplyAsync {
             client.newCall(Request.Builder().url(server.url("/chapter")).build()).execute().use { it.code }
         }
+
+    private fun barrierClient(
+        client: OkHttpClient,
+        entered: CountDownLatch,
+        release: CountDownLatch,
+    ): OkHttpClient = client.newBuilder()
+        .addInterceptor(
+            Interceptor { chain ->
+                entered.countDown()
+                check(release.await(5, TimeUnit.SECONDS)) { "request bridge barrier was not released" }
+                chain.proceed(chain.request())
+            },
+        )
+        .build()
+
+    private fun productionManager(
+        jarRef: AtomicReference<DesktopCookieJar>,
+        solverClient: FlareSolverrClient,
+        afterCommit: suspend (SourceLoginRequest, AuthenticatedSession) -> Unit = { _, _ -> },
+    ) = CloudflareChallengeManager(
+        committer = AuthenticatedSessionCommitter { request, session ->
+            DesktopAuthenticatedSessionCommitter(jarRef.get()).commit(request, session)
+            afterCommit(request, session)
+        },
+        flareSolverrClient = solverClient,
+        authenticatedCookieLookup = AuthenticatedCookieLookup { url ->
+            desktopCookieLookup(jarRef.get()).loadForRequest(url)
+        },
+    )
+
+    private fun clearanceCookie(
+        domain: String,
+        value: String,
+        path: String = "/",
+    ) = Cookie.Builder()
+        .name(CF_CLEARANCE_COOKIE_NAME)
+        .value(value)
+        .hostOnlyDomain(domain)
+        .path(path)
+        .build()
 
     private fun awaitChallenge(manager: CloudflareChallengeManager): CloudflareChallenge {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)

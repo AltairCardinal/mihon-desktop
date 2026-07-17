@@ -6,6 +6,7 @@ import eu.kanade.tachiyomi.network.interceptor.UncaughtExceptionInterceptor
 import eu.kanade.tachiyomi.network.interceptor.UserAgentInterceptor
 import mihon.desktop.network.CloudflareChallengeManager
 import mihon.desktop.network.DesktopCloudflareInterceptor
+import mihon.desktop.network.DesktopCloudflareCredentialInterceptor
 import mihon.desktop.settings.DohProvider
 import okhttp3.Cache
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -42,7 +43,8 @@ class DesktopNetworkHelper(
         .addInterceptor(UserAgentInterceptor(::defaultUserAgentProvider))
         .apply {
             challengeManager?.let {
-                addInterceptor(DesktopCloudflareInterceptor(cookieJar, it))
+                addInterceptor(DesktopCloudflareInterceptor(it))
+                addNetworkInterceptor(DesktopCloudflareCredentialInterceptor(it))
             }
         }
         .addNetworkInterceptor(IgnoreGzipInterceptor())

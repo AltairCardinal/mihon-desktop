@@ -76,6 +76,52 @@ class CloudflareChallengeManager(
         return null
     }
 
+    internal fun solverUserAgentForOutboundRequest(
+        url: HttpUrl,
+        cookieHeaders: List<String>,
+    ): String? {
+        val outboundCookies = parseOutboundCookies(cookieHeaders) ?: return null
+        val host = url.host.lowercase()
+        repeat(BINDING_LOOKUP_RETRIES) {
+            val binding = solverUserAgents[host] ?: return null
+            val applicableCredentials = binding.credentials.filter { it.appliesTo(url) }
+            if (applicableCredentials.isEmpty()) return null
+
+            val unmatchedClearances = outboundCookies
+                .filter { it.name == CF_CLEARANCE_COOKIE_NAME }
+                .toMutableList()
+            val nowMillis = currentTimeMillis()
+            val invalidCredentials = applicableCredentials.filter { credential ->
+                if (credential.isExpired(nowMillis)) {
+                    true
+                } else {
+                    val outboundIndex = unmatchedClearances.indexOfFirst(credential::matchesOutbound)
+                    if (outboundIndex < 0) {
+                        true
+                    } else {
+                        unmatchedClearances.removeAt(outboundIndex)
+                        false
+                    }
+                }
+            }.toSet()
+
+            if (solverUserAgents[host] !== binding) return@repeat
+            if (invalidCredentials.isEmpty()) {
+                return binding.userAgent.takeIf { unmatchedClearances.isEmpty() }
+            }
+
+            val remainingCredentials = binding.credentials.filterNot(invalidCredentials::contains)
+            val updated = if (remainingCredentials.isEmpty()) {
+                solverUserAgents.remove(host, binding)
+            } else {
+                solverUserAgents.replace(host, binding, binding.copy(credentials = remainingCredentials))
+            }
+            if (!updated) return@repeat
+            return null
+        }
+        return null
+    }
+
     internal fun publish(request: SourceLoginRequest): CloudflareChallenge =
         CloudflareChallenge(request).also(::emit)
 
@@ -327,7 +373,15 @@ private data class BoundClearanceCredential(
                 cookie.value.fingerprint() == valueFingerprint &&
                 cookie.expiresAt?.let { it > nowMillis } != false
         }
+
+    fun matchesOutbound(cookie: OutboundCookie): Boolean =
+        identity.name == cookie.name && valueFingerprint == cookie.valueFingerprint
 }
+
+private data class OutboundCookie(
+    val name: String,
+    val valueFingerprint: String,
+)
 
 private fun AuthenticatedCookie.toBoundCredential() = BoundClearanceCredential(
     identity = toIdentity(),
@@ -346,6 +400,22 @@ private fun AuthenticatedCookie.toIdentity() = ClearanceCookieIdentity(
 private fun pathMatches(requestPath: String, cookiePath: String): Boolean =
     requestPath == cookiePath ||
         (requestPath.startsWith(cookiePath) && (cookiePath.endsWith('/') || requestPath[cookiePath.length] == '/'))
+
+private fun parseOutboundCookies(cookieHeaders: List<String>): List<OutboundCookie>? {
+    if (cookieHeaders.size != 1) return emptyList<OutboundCookie>().takeIf { cookieHeaders.isEmpty() }
+    val header = cookieHeaders.single()
+    if (header.isBlank()) return emptyList()
+    return header.split(';').map { pair ->
+        val separator = pair.indexOf('=')
+        if (separator <= 0) return null
+        val name = pair.substring(0, separator).trim()
+        if (name.isEmpty()) return null
+        OutboundCookie(
+            name = name,
+            valueFingerprint = pair.substring(separator + 1).trim().fingerprint(),
+        )
+    }
+}
 
 private fun String.fingerprint(): String =
     MessageDigest.getInstance("SHA-256")
