@@ -65,7 +65,7 @@ import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SManga
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.ui.library.MangaDetailScreen
@@ -156,7 +156,7 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
     internal fun projectState(state: SourceQueryState?): SourceBrowseUiState =
         SourceBrowseStateProjector.project(state)
 
-    internal fun queryStates(coordinator: SourceBrowseQueryCoordinator): StateFlow<SourceQueryState?> =
+    internal fun queryStates(coordinator: SourceBrowseQueryCoordinator): Flow<SourceQueryState?> =
         coordinator.states
 
     internal suspend fun recover(
@@ -177,7 +177,7 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
         val scope = rememberCoroutineScope()
 
         val queryCoordinator = remember { SourceBrowseQueryCoordinator(sourceMangaSearchService) }
-        val queryState by queryStates(queryCoordinator).collectAsState()
+        val queryState by queryStates(queryCoordinator).collectAsState(initial = null)
         val queryUiState = projectState(queryState)
         var openingMangaUrl by remember { mutableStateOf<String?>(null) }
         val recoveryActions = remember { DesktopSourceRecoveryActionAdapter() }

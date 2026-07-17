@@ -27,6 +27,7 @@ import tachiyomi.domain.source.service.SourceQueryState
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 class SourceSharedStateWiringTest {
 
@@ -60,11 +61,15 @@ class SourceSharedStateWiringTest {
         val source = PagingSource()
         val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
         val observed = mutableListOf<SourceQueryState>()
+        val collector = launch(Dispatchers.Unconfined, start = CoroutineStart.UNDISPATCHED) {
+            coordinator.states.filterNotNull().collect(observed::add)
+        }
 
-        coordinator.load(source, 1, SourceQuery.Popular, observed::add)
-        coordinator.load(source, 2, SourceQuery.Popular, observed::add)
+        coordinator.load(source, 1, SourceQuery.Popular)
+        coordinator.load(source, 2, SourceQuery.Popular)
         val failedRequest = coordinator.state!!.request
-        coordinator.retry(source, observed::add)
+        coordinator.retry(source)
+        collector.cancelAndJoin()
 
         assertInstanceOf(SourceQueryState.Loading::class.java, observed.first())
         assertTrue(observed.any { it.request == failedRequest && it.isLoading && it.items.isNotEmpty() })
@@ -119,31 +124,36 @@ class SourceSharedStateWiringTest {
     }
 
     @Test
-    fun `blocking callback cannot hold the coordinator lock against a reentrant state collector`() = runBlocking {
+    fun `inline state collector cannot hold the coordinator lock against a reentrant load`() = runBlocking {
         val source = NamedSource(4, "Concurrent")
         val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
         val screen = SourceBrowseScreen(source.id)
+        val collectorEntered = CountDownLatch(1)
         val reentrantLoadCompleted = CountDownLatch(1)
+        val progressedWhileCollectorBlocked = AtomicBoolean(false)
 
-        val collector = launch(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) {
+        val collector = launch(Dispatchers.Unconfined, start = CoroutineStart.UNDISPATCHED) {
             screen.queryStates(coordinator).filterNotNull().collect { state ->
                 if ((state.request.query as? SourceQuery.Search)?.query == "old" && state.isLoading) {
-                    coordinator.load(source, 1, SourceQuery.Search("new", FilterList()))
-                    reentrantLoadCompleted.countDown()
+                    collectorEntered.countDown()
+                    progressedWhileCollectorBlocked.set(reentrantLoadCompleted.await(2, TimeUnit.SECONDS))
                 }
             }
         }
 
         val oldLoad = async(Dispatchers.Default) {
-            coordinator.load(source, 1, SourceQuery.Search("old", FilterList())) { state ->
-                if ((state.request.query as? SourceQuery.Search)?.query == "old" && state.isLoading) {
-                    assertTrue(reentrantLoadCompleted.await(2, TimeUnit.SECONDS))
-                }
-            }
+            coordinator.load(source, 1, SourceQuery.Search("old", FilterList()))
+        }
+        assertTrue(collectorEntered.await(5, TimeUnit.SECONDS))
+        val reentrantLoad = async(Dispatchers.Default) {
+            coordinator.load(source, 1, SourceQuery.Search("new", FilterList()))
+            reentrantLoadCompleted.countDown()
         }
         oldLoad.await()
+        reentrantLoad.await()
         collector.cancelAndJoin()
 
+        assertTrue(progressedWhileCollectorBlocked.get())
         assertEquals("new", (coordinator.state!!.request.query as SourceQuery.Search).query)
     }
 
@@ -176,6 +186,18 @@ class SourceSharedStateWiringTest {
         val generationTwoIndex = observedGenerations.indexOfFirst { it == 2L }
         assertTrue(generationTwoIndex >= 0)
         assertTrue(observedGenerations.drop(generationTwoIndex).all { it == 2L })
+    }
+
+    @Test
+    fun `stamped publisher rejects an older publication that arrives late`() {
+        val publisher = SourceQueryStatePublisher()
+        val old = SourceQueryState.Loading(SourcePageRequest(4, 1, 1, SourceQuery.Popular))
+        val current = SourceQueryState.Loading(SourcePageRequest(4, 1, 2, SourceQuery.Latest))
+
+        publisher.publish(StampedSourceQueryState(2, current))
+        publisher.publish(StampedSourceQueryState(1, old))
+
+        assertEquals(current, publisher.current.state)
     }
 
     private class PagingSource : NamedSource(1, "Paging") {

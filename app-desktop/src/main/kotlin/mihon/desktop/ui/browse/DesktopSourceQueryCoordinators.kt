@@ -5,9 +5,11 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import mihon.domain.error.AppError
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourcePageRequest
@@ -44,79 +46,92 @@ internal fun desktopSourceRecoveryActionLabel(
     SourceRecoveryAction.None -> null
 }
 
+internal data class StampedSourceQueryState(
+    val ordinal: Long,
+    val state: SourceQueryState?,
+)
+
+internal class SourceQueryStatePublisher {
+    private val publications = MutableStateFlow(StampedSourceQueryState(0, null))
+    val states: Flow<SourceQueryState?> = publications.map { it.state }.distinctUntilChanged()
+    val current: StampedSourceQueryState
+        get() = publications.value
+
+    fun publish(candidate: StampedSourceQueryState) {
+        publications.update { current -> if (candidate.ordinal > current.ordinal) candidate else current }
+    }
+}
+
 class SourceBrowseQueryCoordinator(
     private val service: SourceMangaSearchService,
 ) {
     private val reducer = SourceQueryReducer()
     private val lock = Any()
     private var generation = 0L
-    private val mutableStates = MutableStateFlow<SourceQueryState?>(null)
+    private var publicationOrdinal = 0L
+    private var authoritativeState: SourceQueryState? = null
+    private val publisher = SourceQueryStatePublisher()
 
-    val states: StateFlow<SourceQueryState?> = mutableStates.asStateFlow()
+    val states: Flow<SourceQueryState?> = publisher.states
     val state: SourceQueryState?
-        get() = states.value
+        get() = synchronized(lock) { authoritativeState }
 
     suspend fun load(
         source: CatalogueSource,
         page: Int,
         query: SourceQuery,
-        onState: (SourceQueryState) -> Unit = {},
     ): SourceQueryState {
         val started = synchronized(lock) {
             if (page == 1) generation += 1
             val request = SourcePageRequest(source.id, page, generation, query)
-            reducer.start(request, state).also {
-                mutableStates.value = it
-            }
+            commitLocked(reducer.start(request, authoritativeState))
         }
-        onState(started)
-        return completeLoad(source, started.request, onState)
+        publisher.publish(started)
+        return completeLoad(source, requireNotNull(started.state).request)
     }
 
     private suspend fun completeLoad(
         source: CatalogueSource,
         request: SourcePageRequest,
-        onState: (SourceQueryState) -> Unit,
     ): SourceQueryState {
         val result = service.loadPageResult(source, request)
         val completed = synchronized(lock) {
-            val current = requireNotNull(state)
+            val current = requireNotNull(authoritativeState)
             if (current.request != request) return@synchronized null
-            reducer.reduce(current, result).also {
-                mutableStates.value = it
-            }
+            commitLocked(reducer.reduce(current, result))
         }
-        completed?.let(onState)
-        return completed ?: requireNotNull(state)
+        completed?.let(publisher::publish)
+        return completed?.state ?: requireNotNull(state)
     }
 
     suspend fun retry(
         source: CatalogueSource,
         request: SourcePageRequest,
-        onState: (SourceQueryState) -> Unit = {},
     ): SourceQueryState? {
         val started = synchronized(lock) {
-            val current = state
+            val current = authoritativeState
             if (current?.request != request || current.recoveryAction() != SourceRecoveryAction.Retry) {
                 return@synchronized null
             }
-            reducer.start(request, current).also {
-                mutableStates.value = it
-            }
+            commitLocked(reducer.start(request, current))
         }
         if (started == null) return null
-        onState(started)
-        return completeLoad(source, request, onState)
+        publisher.publish(started)
+        return completeLoad(source, request)
     }
 
     suspend fun retry(
         source: CatalogueSource,
-        onState: (SourceQueryState) -> Unit = {},
     ): SourceQueryState {
         val request = synchronized(lock) {
             requireNotNull(state?.request) { "No source request to retry" }
         }
-        return requireNotNull(retry(source, request, onState)) { "Current source error is not retryable" }
+        return requireNotNull(retry(source, request)) { "Current source error is not retryable" }
+    }
+
+    private fun commitLocked(state: SourceQueryState): StampedSourceQueryState {
+        authoritativeState = state
+        return StampedSourceQueryState(++publicationOrdinal, state)
     }
 
     fun recoveryIntent(source: CatalogueSource): DesktopSourceRecoveryIntent =
