@@ -5,6 +5,9 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import mihon.domain.error.AppError
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourcePageRequest
@@ -47,10 +50,11 @@ class SourceBrowseQueryCoordinator(
     private val reducer = SourceQueryReducer()
     private val lock = Any()
     private var generation = 0L
+    private val mutableStates = MutableStateFlow<SourceQueryState?>(null)
 
-    @Volatile
-    var state: SourceQueryState? = null
-        private set
+    val states: StateFlow<SourceQueryState?> = mutableStates.asStateFlow()
+    val state: SourceQueryState?
+        get() = states.value
 
     suspend fun load(
         source: CatalogueSource,
@@ -58,16 +62,15 @@ class SourceBrowseQueryCoordinator(
         query: SourceQuery,
         onState: (SourceQueryState) -> Unit = {},
     ): SourceQueryState {
-        val request = synchronized(lock) {
+        val started = synchronized(lock) {
             if (page == 1) generation += 1
-            SourcePageRequest(source.id, page, generation, query).also { request ->
-                reducer.start(request, state).also {
-                    state = it
-                    onState(it)
-                }
+            val request = SourcePageRequest(source.id, page, generation, query)
+            reducer.start(request, state).also {
+                mutableStates.value = it
             }
         }
-        return completeLoad(source, request, onState)
+        onState(started)
+        return completeLoad(source, started.request, onState)
     }
 
     private suspend fun completeLoad(
@@ -76,14 +79,15 @@ class SourceBrowseQueryCoordinator(
         onState: (SourceQueryState) -> Unit,
     ): SourceQueryState {
         val result = service.loadPageResult(source, request)
-        return synchronized(lock) {
+        val completed = synchronized(lock) {
             val current = requireNotNull(state)
-            if (current.request != request) return@synchronized current
+            if (current.request != request) return@synchronized null
             reducer.reduce(current, result).also {
-                state = it
-                onState(it)
+                mutableStates.value = it
             }
         }
+        completed?.let(onState)
+        return completed ?: requireNotNull(state)
     }
 
     suspend fun retry(
@@ -97,11 +101,11 @@ class SourceBrowseQueryCoordinator(
                 return@synchronized null
             }
             reducer.start(request, current).also {
-                state = it
-                onState(it)
+                mutableStates.value = it
             }
         }
         if (started == null) return null
+        onState(started)
         return completeLoad(source, request, onState)
     }
 

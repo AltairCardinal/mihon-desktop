@@ -44,6 +44,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,6 +65,7 @@ import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SManga
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.ui.library.MangaDetailScreen
@@ -142,10 +144,9 @@ class SourceBrowseRecoveryController(
     suspend fun recover(
         source: CatalogueSource,
         intent: DesktopSourceRecoveryIntent,
-        onState: (SourceQueryState) -> Unit,
     ) {
         actions.execute(source, intent) { request ->
-            coordinator.retry(source, request, onState)
+            coordinator.retry(source, request)
         }
     }
 }
@@ -155,12 +156,14 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
     internal fun projectState(state: SourceQueryState?): SourceBrowseUiState =
         SourceBrowseStateProjector.project(state)
 
+    internal fun queryStates(coordinator: SourceBrowseQueryCoordinator): StateFlow<SourceQueryState?> =
+        coordinator.states
+
     internal suspend fun recover(
         controller: SourceBrowseRecoveryController,
         source: CatalogueSource,
         intent: DesktopSourceRecoveryIntent,
-        onState: (SourceQueryState) -> Unit,
-    ) = controller.recover(source, intent, onState)
+    ) = controller.recover(source, intent)
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
@@ -173,10 +176,10 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
         val source = remember { sourceManager.getCatalogueSources().find { it.id == sourceId } }
         val scope = rememberCoroutineScope()
 
-        var queryState by remember { mutableStateOf<SourceQueryState?>(null) }
+        val queryCoordinator = remember { SourceBrowseQueryCoordinator(sourceMangaSearchService) }
+        val queryState by queryStates(queryCoordinator).collectAsState()
         val queryUiState = projectState(queryState)
         var openingMangaUrl by remember { mutableStateOf<String?>(null) }
-        val queryCoordinator = remember { SourceBrowseQueryCoordinator(sourceMangaSearchService) }
         val recoveryActions = remember { DesktopSourceRecoveryActionAdapter() }
         val recoveryController = remember(queryCoordinator, recoveryActions) {
             SourceBrowseRecoveryController(queryCoordinator, recoveryActions)
@@ -205,7 +208,7 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
                     else -> SourceQuery.Popular
                 }
             scope.launch {
-                queryCoordinator.load(source, page, sourceQuery) { queryState = it }
+                queryCoordinator.load(source, page, sourceQuery)
             }
         }
 
@@ -216,7 +219,7 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
                     recoveryController,
                     catalogueSource,
                     queryCoordinator.recoveryIntent(catalogueSource),
-                ) { queryState = it }
+                )
             }
         }
 

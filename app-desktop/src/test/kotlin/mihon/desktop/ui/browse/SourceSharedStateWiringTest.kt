@@ -7,8 +7,12 @@ import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import mihon.domain.error.AppError
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -109,45 +113,69 @@ class SourceSharedStateWiringTest {
         coordinator.load(source, 1, SourceQuery.Search("old", FilterList()))
         val oldIntent = coordinator.recoveryIntent(source)
         coordinator.load(source, 1, SourceQuery.Search("new", FilterList()))
-        screen.recover(controller, source, oldIntent) {}
+        screen.recover(controller, source, oldIntent)
 
         assertEquals(listOf("old", "new"), source.queries)
     }
 
     @Test
-    fun `new generation cannot publish before the older start callback completes`() = runBlocking {
+    fun `blocking callback cannot hold the coordinator lock against a reentrant state collector`() = runBlocking {
         val source = NamedSource(4, "Concurrent")
         val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
-        val oldCallbackEntered = CountDownLatch(1)
-        val releaseOldCallback = CountDownLatch(1)
-        val newCallbackPublished = CountDownLatch(1)
-        val observedGenerations = Collections.synchronizedList(mutableListOf<Long>())
+        val screen = SourceBrowseScreen(source.id)
+        val reentrantLoadCompleted = CountDownLatch(1)
+
+        val collector = launch(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) {
+            screen.queryStates(coordinator).filterNotNull().collect { state ->
+                if ((state.request.query as? SourceQuery.Search)?.query == "old" && state.isLoading) {
+                    coordinator.load(source, 1, SourceQuery.Search("new", FilterList()))
+                    reentrantLoadCompleted.countDown()
+                }
+            }
+        }
 
         val oldLoad = async(Dispatchers.Default) {
             coordinator.load(source, 1, SourceQuery.Search("old", FilterList())) { state ->
                 if ((state.request.query as? SourceQuery.Search)?.query == "old" && state.isLoading) {
-                    oldCallbackEntered.countDown()
-                    releaseOldCallback.await(5, TimeUnit.SECONDS)
+                    assertTrue(reentrantLoadCompleted.await(2, TimeUnit.SECONDS))
                 }
-                observedGenerations += state.request.generation
             }
         }
-        assertTrue(oldCallbackEntered.await(5, TimeUnit.SECONDS))
-
-        val newLoad = async(Dispatchers.Default) {
-            coordinator.load(source, 1, SourceQuery.Search("new", FilterList())) { state ->
-                observedGenerations += state.request.generation
-                newCallbackPublished.countDown()
-            }
-        }
-        val publishedDuringOldCallback = newCallbackPublished.await(1, TimeUnit.SECONDS)
-        releaseOldCallback.countDown()
         oldLoad.await()
-        newLoad.await()
+        collector.cancelAndJoin()
 
-        assertFalse(publishedDuringOldCallback)
-        assertEquals(observedGenerations.sorted(), observedGenerations)
+        assertEquals("new", (coordinator.state!!.request.query as SourceQuery.Search).query)
+    }
+
+    @Test
+    fun `screen state flow never observes an old result after generation two`() = runBlocking {
+        val source = InterleavingSource()
+        val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
+        val screen = SourceBrowseScreen(source.id)
+        val observedGenerations = Collections.synchronizedList(mutableListOf<Long>())
+        val generationTwoObserved = CountDownLatch(1)
+        val collector = launch(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) {
+            screen.queryStates(coordinator).filterNotNull().collect { state ->
+                observedGenerations += state.request.generation
+                if (state.request.generation == 2L) generationTwoObserved.countDown()
+            }
+        }
+
+        val oldLoad = async(Dispatchers.Default) {
+            coordinator.load(source, 1, SourceQuery.Search("old", FilterList()))
+        }
+        assertTrue(source.oldRequestStarted.await(5, TimeUnit.SECONDS))
+        coordinator.load(source, 1, SourceQuery.Search("new", FilterList()))
+        assertTrue(generationTwoObserved.await(5, TimeUnit.SECONDS))
+        source.releaseOldResult.countDown()
+        oldLoad.await()
+        collector.cancelAndJoin()
+
         assertEquals(2L, coordinator.state!!.request.generation)
+        assertEquals(listOf("/new"), coordinator.state!!.items.map(SManga::url))
+        val generationTwoIndex = observedGenerations.indexOfFirst { it == 2L }
+        assertTrue(generationTwoIndex >= 0)
+        assertTrue(observedGenerations.drop(generationTwoIndex).all { it == 2L })
     }
 
     private class PagingSource : NamedSource(1, "Paging") {
@@ -173,6 +201,19 @@ class SourceSharedStateWiringTest {
         override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
             queries += query
             throw HttpException(500)
+        }
+    }
+
+    private class InterleavingSource : NamedSource(4, "Interleaving") {
+        val oldRequestStarted = CountDownLatch(1)
+        val releaseOldResult = CountDownLatch(1)
+
+        override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
+            if (query == "old") {
+                oldRequestStarted.countDown()
+                releaseOldResult.await(5, TimeUnit.SECONDS)
+            }
+            return MangasPage(listOf(manga("/$query")), false)
         }
     }
 
