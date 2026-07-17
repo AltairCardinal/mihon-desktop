@@ -384,6 +384,44 @@ class SourceSharedStateWiringTest {
     }
 
     @Test
+    fun `late registered source job uses the same retirement cause after callback replacement`() = runBlocking {
+        val invoked = AtomicBoolean()
+        val source = object : NamedSource(27, "Late register") {
+            override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage =
+                MangasPage(emptyList(), false).also { invoked.set(true) }
+        }
+        val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+        var reentered = false
+        val result = runCatching {
+            coordinator.search(listOf(source), "outer") {
+                if (!reentered) runBlocking { reentered = true; coordinator.search(emptyList(), "inner") }
+            }
+        }.exceptionOrNull()
+        assertEquals(null, result)
+        assertFalse(invoked.get())
+        assertEquals(2, coordinator.states.value.generation)
+    }
+
+    @Test
+    fun `cyclic callback cancellation cause propagates and cleans current search in bounded time`() {
+        val first = CancellationException("first")
+        val second = CancellationException("second")
+        first.initCause(second)
+        second.initCause(first)
+        val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+        val result = CompletableFuture.supplyAsync {
+            runBlocking {
+                runCatching {
+                    coordinator.search(listOf(NamedSource(28, "Cycle")), "cycle") { throw first }
+                }.exceptionOrNull()
+            }
+        }.get(2, TimeUnit.SECONDS)
+        assertSame(first, result)
+        assertFalse(coordinator.states.value.isSearching)
+        assertEquals(null, coordinator.coordinatorFor(28))
+    }
+
+    @Test
     fun `authenticated login keeps its captured request and never retries a newer generation`() = runBlocking {
         val source = QueryFailureSource()
         val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())

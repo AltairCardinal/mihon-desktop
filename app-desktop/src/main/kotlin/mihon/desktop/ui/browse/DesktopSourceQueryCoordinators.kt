@@ -201,9 +201,25 @@ class DesktopGlobalSearchCoordinator(
         private val retirementCause = Retirement(retirementToken)
         private var retired = false
 
-        fun register(job: Job) = synchronized(lock) { if (retired) job.cancel() else jobs += job }
-        fun owns(error: CancellationException): Boolean = generateSequence<Throwable>(error) { it.cause }
-            .any { it is Retirement && it.token === retirementToken }
+        fun register(job: Job) {
+            val cause = synchronized(lock) {
+                if (retired) retirementCause else {
+                    jobs += job
+                    null
+                }
+            }
+            cause?.let(job::cancel)
+        }
+        fun owns(error: CancellationException): Boolean {
+            val visited = mutableListOf<Throwable>()
+            var cause: Throwable? = error
+            while (cause != null && visited.none { it === cause }) {
+                if (cause is Retirement && cause.token === retirementToken) return true
+                visited += cause
+                cause = cause.cause
+            }
+            return false
+        }
 
         fun retire() {
             val active = synchronized(lock) {
