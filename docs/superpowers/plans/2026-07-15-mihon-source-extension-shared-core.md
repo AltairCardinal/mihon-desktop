@@ -551,6 +551,8 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
     - [x] **Task 6A1R2b1: 通用登录会话核心、Cookie Header 与真实 CookieJar**
       - [x] **Task 6A1R2b1R: 审查闭环——intent identity、attempt lifecycle 与真实出站 Cookie**
     - [ ] **Task 6A1R2b2: Source Browse 登录 UI、DI、MR 与 production wiring**
+      - [ ] **Task 6A1R2b2a: Source login DI、generic/Cloudflare 路由与 Screen production seam**
+      - [ ] **Task 6A1R2b2b: Source login 对话框、MR、取消与终态反馈**
 - [ ] **Task 6A2: Global 共享状态消费与 Browse 缺源入口**
 
 **Files:**
