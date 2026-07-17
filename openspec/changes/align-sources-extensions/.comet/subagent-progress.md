@@ -144,6 +144,7 @@
 - Final repair mutations: permanent UA, caller-thread commit, generic self-cancelling Cancelled completion, any-blank rejection, or placing the terminal gate before Retry each failed a named test and was restored.
 - Final repair verification: fresh policy 30 + client 2 + import 7 + adapter 6 + session 19 + jar 21 + persistence 8 = 93/93 PASS, 0 failures/errors/skips; root Spotless 97/97 tasks in the same `BUILD SUCCESSFUL in 1m26s`; diff/scope checks PASS.
 - Final cumulative scope: 7 planned files, +2041/-72 (2113 changed lines); plan/brief waiver updated for the second review closure.
+- Final reviewer: `/root/task5b_final_review` (fresh independent read-only cumulative closure review; no test rerun).
 
 ## Task 5A Review History
 
