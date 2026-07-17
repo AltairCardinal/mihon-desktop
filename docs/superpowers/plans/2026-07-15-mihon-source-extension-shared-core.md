@@ -549,6 +549,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
     - [x] **Task 6A1R2aR: 审查闭环——stamped StateFlow 锁外单调发布**
   - [ ] **Task 6A1R2b: 重规划——真实 Desktop WebView 登录、Cookie 回传与 exact retry**
     - [ ] **Task 6A1R2b1: 通用登录会话核心、Cookie Header 与真实 CookieJar**
+      - [ ] **Task 6A1R2b1R: 审查闭环——intent identity、attempt lifecycle 与真实出站 Cookie**
     - [ ] **Task 6A1R2b2: Source Browse 登录 UI、DI、MR 与 production wiring**
 - [ ] **Task 6A2: Global 共享状态消费与 Browse 缺源入口**
 
