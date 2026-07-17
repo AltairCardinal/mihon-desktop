@@ -540,8 +540,8 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 **Platform boundary:** shared+desktop
 **Estimated scope:** 5 files, 620 lines
 **Verification:** 运行 Browse ScreenModel 与 `SourceSharedStateWiringTest`，确认 Loading、Empty、分页保留内容、403 登录和 Retry 均来自共享状态。
-**Execution split:** 删除三 Screen 各自复制的 query/loading/items/error/page 状态本身会同时产生大量删除与替换，实际完整实现无法在 320 changed lines 内保持有效 production-wiring 测试。Task 连续拆为：6A1 `source-browse-shared-state`（shared+desktop，3 files/360 lines：coordinator start/final、exact retry、单源 projector/action adapter/消费及其测试）；6A2 `global-browse-state-consumption`（desktop，3 files/260 lines：Global projector/消费、Browse 缺源入口及增量测试）。
-**Split waiver:** 顶层 5 files/620 lines 是两个独立 TDD、提交和审查单元的聚合值，不是单个实现者一次调度范围；6A1 与 6A2 均低于 8 文件/400 行。单源 coordinator/projector/action 必须先独立全绿，Global 与 Browse 再消费同一契约；把三 Screen 状态删除压入一个 320 行任务会迫使删除行为测试或保留复制状态，违反有效验证和共享状态唯一事实源要求。
+**Execution split:** 删除三 Screen 各自复制的 query/loading/items/error/page 状态本身会同时产生大量删除与替换，实际完整实现无法在 320 changed lines 内保持有效 production-wiring 测试。Task 先拆为 6A1 `source-browse-shared-state`；6A2 审计又确认原 260 行估算遗漏 Global 聚合 coordinator 的 StateFlow、per-source exact retry/recovery 基础设施，完整范围预计 325–440 changed lines，因此继续顺序拆为：6A2A `global-search-stateflow-core`（2 files/170 lines）、6A2B `global-search-ui-wiring`（2 files/180 lines）、6A2C `browse-missing-source-route`（2 files/80 lines）。
+**Split waiver:** 顶层 5 files/620 lines 是多个独立 TDD、提交和审查单元的聚合值，不是单个实现者一次调度范围。单源 coordinator 必须先独立全绿；Global 聚合核心再复用同一 per-source coordinator；Global UI 与 Browse 缺源导航最后分别消费。把 Global core 塞入 Screen 会复制 6A1 reducer/recovery，把三部分压回一个 260 行任务则会迫使删除行为测试或保留复制状态，违反有效验证和共享状态唯一事实源要求。
 
 - [x] **Task 6A1: 单源共享状态、exact recovery 与 production action wiring**
   - [x] **Task 6A1R: 审查闭环——区分通用登录与 Cloudflare，并证明 Screen 重放 exact request**
@@ -562,6 +562,9 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
             - [x] **Task 6A1R2b2b2bR: stale attempt 事件隔离与真实 Dialog/Screen wiring 测试闭环**
               - [x] **Task 6A1R2b2b2bR2: cancel 拒绝保留当前 UI 状态契约**
 - [ ] **Task 6A2: Global 共享状态消费与 Browse 缺源入口**
+  - [ ] **Task 6A2A: Global StateFlow 聚合与 per-source coordinator 复用**
+  - [ ] **Task 6A2B: Global Search production projector、exact recovery 与 Dialog wiring**
+  - [ ] **Task 6A2C: Browse 缺失 source 的 ExtensionListScreen 导航入口**
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceQueryCoordinators.kt`
