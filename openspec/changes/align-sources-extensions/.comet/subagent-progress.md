@@ -101,7 +101,7 @@
 - Current task: `Task 5B: Desktop 挑战恢复策略与 FlareSolverr 显式后备`
 - Plan checkbox: pending
 - OpenSpec mapping: `3.3` partial (do not check off until Tasks 5B and 5C complete).
-- Stage: `repair`
+- Stage: `re-review`
 - Task base: `1d5b6cc9b`
 - Brief: `.superpowers/sdd/align-sources-task-5b-brief.md`
 - Risk axis: `challenge-recovery-policy`
@@ -125,6 +125,12 @@
 - Repair requirements: persist/apply nonblank solver UA to the single retry and later matching requests; atomically arbitrate action registration, deadline/cancel, commit claim and terminal/state so pre-claim cancellation wins with zero writes while post-claim cancellation waits for the real atomic outcome; reject blank required values in shared validation; cover 403/429/500/missing solution, blank UA/value, cancel-before-register, deadline/slow failure, blocking commit in both race directions, and UA request headers with mutations.
 - Review/fix round: 1/2.
 - Fix agent: `/root/task5b_fix1` (fresh TDD repair agent; five review findings within the approved 7-file shared+desktop boundary).
+- Fix commit: `426226af95c60fce0ad273ab7c7b49b32a8dc9f4` (`fix(desktop): harden challenge recovery races`).
+- Repair behavior: solver UA is retained per exact host and applied to the one retry/future same-host requests; a single lifecycle lock arbitrates action registration, deadline/cancel, commit claim and monotonic terminal/state; pre-claim cancel/timeout wins with zero delegate writes while post-claim cancel/timeout waits for the real atomic Recovered/Failed outcome; HTTP calls are bounded/cancellable; shared required Cookie validation rejects blank values across browser/manual/solver.
+- Repair RED/GREEN: deterministic tests covered default→solver UA and unrelated-host isolation; commit claim success/failure versus cancel/timeout in both directions; cancel-before-register, slow socket/deadline and pre-claim timeout self-cancel; blank required values through shared and platform entries; 403/429/500/missing solution/malformed/empty/blank UA/value.
+- Repair mutations: discarding UA, letting cancel ignore commit claim, removing beginAction terminal guard, removing shared blank-required validation, or ignoring HTTP status each failed a named production-chain test and was restored.
+- Final repair verification: fresh policy 21 + client 2 + import 7 + adapter 6 + session 16 + jar 21 + persistence 8 = 81/81 PASS, 0 failures/errors/skips; root Spotless 97 tasks in the same 1m29s invocation; diff/scope checks PASS.
+- Final cumulative scope: 7 planned files, +1459/-74 (1533 changed lines); plan/brief waiver updated for the review-expanded shared+desktop closure.
 
 ## Task 5A Review History
 

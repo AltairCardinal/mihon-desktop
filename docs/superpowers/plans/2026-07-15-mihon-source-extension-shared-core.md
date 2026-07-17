@@ -456,9 +456,9 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **Risk axis:** challenge-recovery-policy
 **Platform boundary:** shared+desktop
-**Estimated scope:** 7 files, 1500 lines
+**Estimated scope:** 7 files, 1533 lines
 **Verification:** 运行真实 interceptor/challenge manager 策略测试，确认 403/503 只发布登录请求；browser、手动 Cookie 和 FlareSolverr 均由显式用户 intent 触发，取消/超时不清除或写入凭据，solver 从不由 interceptor 自动调用。
-**Split waiver:** 初始实现 971 changed lines（+899/-72）严格分布在 5 个 Desktop 计划文件；thorough review 要求再扩展 2 个 Task 5A shared session 文件，以统一拒绝 browser/manual/solver 任一路径中名称存在但 value 空白的 required Cookie，避免在 Desktop 复制提交规则。Desktop 部分的 challenge 状态、commit-point、exactly-once terminal、active-job 抢占、有界 timeout、UA 绑定、显式 recovery intents、interceptor 单次重试与 cancellable FlareSolverr HTTP，必须与同一条 MockWebServer→OkHttp interceptor→manager→Task 5A validation/atomic committer→DesktopCookieJar 集成矩阵共同闭环。clear-first、自动 solver、共享 committer 旁路、重复 retry、cancel/timeout/late completion、阻塞 socket、UA 不匹配和空 required Cookie 共同决定恢复是否会误写/泄露凭据；拆开会留下虚假 terminal、不可用 clearance、共享/平台规则分叉或无法穿透 production 链的中间状态，不能独立验收。Task 5C 的 UI/设置/DI production entry wiring 未混入本 Task。
+**Split waiver:** 实际 1533 changed lines（+1459/-74）分布在 7 个 shared+desktop 文件：532 行是 challenge/manager/interceptor/client 的 commit-point、单调 terminal/state、active-job 抢占、有界 timeout、同 host UA 绑定、显式 recovery intents、单次重试和 cancellable HTTP；30 行是 Task 5A shared required Cookie 非空校验及契约测试；971 行是同一真实链路的 21 项 MockWebServer→OkHttp interceptor→manager→Task 5A validation/atomic committer→DesktopCookieJar 策略/并发/HTTP/安全矩阵。shared 改动统一保护 browser/manual/solver 三条入口，避免 Desktop 复制提交规则。clear-first、自动 solver、committer 旁路、重复 retry、cancel/timeout/late completion、commit claim 双向竞态、register 窗口、阻塞 socket、UA 不匹配、HTTP 403/429/500/缺 solution 和空 required Cookie 共同决定恢复是否会误写/泄露凭据；拆开会留下虚假 terminal、不可用 clearance、共享/平台规则分叉或无法穿透 production 链的中间状态，不能独立验收。Task 5C 的 UI/设置/DI production entry wiring 未混入本 Task。
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/network/CloudflareChallenge.kt`
