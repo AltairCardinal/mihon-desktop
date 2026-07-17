@@ -101,7 +101,7 @@
 - Current task: `Task 5B: Desktop 挑战恢复策略与 FlareSolverr 显式后备`
 - Plan checkbox: pending
 - OpenSpec mapping: `3.3` partial (do not check off until Tasks 5B and 5C complete).
-- Stage: `extra-closure-review`
+- Stage: `delivery-closure-fix`
 - Task base: `1d5b6cc9b`
 - Brief: `.superpowers/sdd/align-sources-task-5b-brief.md`
 - Risk axis: `challenge-recovery-policy`
@@ -158,6 +158,11 @@
 - Extra closure verification: seven fresh XML suites total 100/100 PASS, 0 failures/errors/skips; final affected policy 36 + FlareSolverr 2 = 38/38 PASS after the stable-snapshot race fix; root Spotless 93 tasks PASS; diff/scope checks PASS.
 - Final cumulative scope: 7 planned files, +2458/-76 (2534 changed lines); plan/brief waiver updated for actual closure scope.
 - Credential closure reviewer: `/root/task5b_credential_closure_review` (fresh independent read-only cumulative review; no test rerun).
+- Credential closure review result: Spec Compliance `CHANGES_REQUIRED`; Task quality `NEEDS_FIXES`; Critical 0 / Important 4 / Minor 1. Report: `.superpowers/sdd/align-sources-task-5b-credential-closure-review.md`.
+- Remaining findings: (1) required satisfaction checks only domain, so path-mismatched, Secure-on-HTTP, or expired cookies can commit and report Recovered while not deliverable to the original URL; (2) a lookup URL unrelated to path-scoped bound clearances removes the whole host UA binding instead of preserving other applicable paths; (3) conflicting nonblank values for one canonical identity choose an arbitrary lexicographic secret without a producer contract; (4) Cancel does not carry the post-claim attempt it observed into its wait and can cross a concurrent Retry; (5) the production manager's test bridge retains every challenge in an unbounded queue.
+- Finding evaluation: all five are technically valid and remain within the existing 7-file boundary. Continue a focused TDD delivery-semantics closure without involving Task 5C UI/DI/settings.
+- Delivery closure requirements: required candidates must fully match request domain/hostOnly, path, Secure scheme, expiry and nonblank value while other domain-safe cookies may remain; conflicting nonblank values for one canonical identity must reject the session. UA credentials must retain applicability fields and prune only applicable missing/expired identities, preserving other paths. Cancel must return/use an attempt-bound completion handle. Replace `recentChallenges` with a structurally bounded or explicitly test-only seam.
+- Review/fix round: 4/4 (user-authorized engineering override for localized delivery closure).
 
 ## Task 5A Review History
 
