@@ -32,6 +32,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -50,7 +51,9 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import eu.kanade.tachiyomi.source.CatalogueSource
+import mihon.desktop.ui.extension.ExtensionListScreen
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.i18n.MR
 
 object BrowseTab : Tab {
 
@@ -154,7 +157,7 @@ class BrowseSourceListScreen : Screen {
                 HorizontalDivider()
 
                 if (displayedSources.isEmpty()) {
-                    EmptySources()
+                    EmptySources(onExtensionsClick = { navigator.push(ExtensionListScreen()) })
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
@@ -209,7 +212,7 @@ class BrowseSourceListScreen : Screen {
 }
 
 @Composable
-private fun EmptySources() {
+private fun EmptySources(onExtensionsClick: () -> Unit) {
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
@@ -226,6 +229,9 @@ private fun EmptySources() {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
             )
+            TextButton(onClick = onExtensionsClick) {
+                Text(MR.strings.label_extensions.localized())
+            }
         }
     }
 }

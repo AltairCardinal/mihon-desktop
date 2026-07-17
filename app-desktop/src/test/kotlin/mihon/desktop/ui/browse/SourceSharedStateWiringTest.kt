@@ -44,6 +44,7 @@ import mihon.desktop.network.DesktopAuthenticatedSessionCommitter
 import mihon.desktop.network.DesktopSourceLoginSessionFactory
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.source.FakeDesktopSourceManager
+import mihon.desktop.ui.extension.ExtensionListScreen
 import mihon.domain.error.AppError
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -77,6 +78,41 @@ import java.util.concurrent.atomic.AtomicReference
 import java.io.File
 
 class SourceSharedStateWiringTest {
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `empty source list extensions action pushes extension list screen`() = runBlocking {
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { sourceManager } returns FakeDesktopSourceManager(emptyList())
+        }
+        val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
+        var nestedNavigator: Navigator? = null
+
+        fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+
+        scene.setContent {
+            CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                Navigator(BrowseSourceListScreen()) { navigator ->
+                    nestedNavigator = navigator
+                    CurrentScreen()
+                }
+            }
+        }
+        scene.render()
+
+        val extensionsAction = requireNotNull(
+            scene.semanticsOwners
+                .flatMap { flatten(it.rootSemanticsNode) }
+                .firstOrNull {
+                    it.config.contains(SemanticsActions.OnClick) &&
+                        it.config.toString().contains(MR.strings.label_extensions.localized())
+                },
+        )
+
+        assertTrue(requireNotNull(extensionsAction.config[SemanticsActions.OnClick].action).invoke())
+        assertInstanceOf(ExtensionListScreen::class.java, requireNotNull(nestedNavigator).lastItem)
+        scene.close()
+    }
 
     @Test
     fun `source login copy uses MR key identity and maps terminal feedback`() {
