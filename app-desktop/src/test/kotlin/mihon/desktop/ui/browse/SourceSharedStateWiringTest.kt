@@ -7,8 +7,9 @@ import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
-import mihon.desktop.network.CloudflareChallengeManager
 import mihon.domain.error.AppError
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -19,6 +20,9 @@ import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourcePageRequest
 import tachiyomi.domain.source.service.SourceQuery
 import tachiyomi.domain.source.service.SourceQueryState
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 class SourceSharedStateWiringTest {
 
@@ -77,17 +81,73 @@ class SourceSharedStateWiringTest {
     }
 
     @Test
-    fun `recovery adapter replays request and publishes login through challenge manager`() = runBlocking {
-        val manager = CloudflareChallengeManager()
-        val adapter = DesktopSourceRecoveryActionAdapter(manager)
+    fun `generic source login never publishes a Cloudflare challenge`() = runBlocking {
+        val source = NamedSource(9, "Login")
+        var opened: Pair<Long, String>? = null
+        val adapter = DesktopSourceRecoveryActionAdapter { sourceId, url ->
+            opened = sourceId to url.toString()
+            true
+        }
         val request = SourcePageRequest(9, 3, 11, SourceQuery.Search("old", FilterList()))
         var replayed: SourcePageRequest? = null
 
-        adapter.execute(DesktopSourceRecoveryIntent.Retry(request)) { replayed = it }
-        adapter.execute(DesktopSourceRecoveryIntent.OpenLogin("https://example.com/path")) {}
+        adapter.execute(source, DesktopSourceRecoveryIntent.Retry(request)) { replayed = it }
+        adapter.execute(source, DesktopSourceRecoveryIntent.OpenLogin("https://example.com/path")) {}
 
         assertEquals(request, replayed)
-        assertEquals("example.com", manager.tryReceive()!!.request.url.host)
+        assertEquals(9L to "https://example.com/path", opened)
+    }
+
+    @Test
+    fun `screen recovery never retries a newer request than its intent`() = runBlocking {
+        val source = QueryFailureSource()
+        val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
+        val actions = DesktopSourceRecoveryActionAdapter { _, _ -> true }
+        val controller = SourceBrowseRecoveryController(coordinator, actions)
+        val screen = SourceBrowseScreen(source.id)
+
+        coordinator.load(source, 1, SourceQuery.Search("old", FilterList()))
+        val oldIntent = coordinator.recoveryIntent(source)
+        coordinator.load(source, 1, SourceQuery.Search("new", FilterList()))
+        screen.recover(controller, source, oldIntent) {}
+
+        assertEquals(listOf("old", "new"), source.queries)
+    }
+
+    @Test
+    fun `new generation cannot publish before the older start callback completes`() = runBlocking {
+        val source = NamedSource(4, "Concurrent")
+        val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
+        val oldCallbackEntered = CountDownLatch(1)
+        val releaseOldCallback = CountDownLatch(1)
+        val newCallbackPublished = CountDownLatch(1)
+        val observedGenerations = Collections.synchronizedList(mutableListOf<Long>())
+
+        val oldLoad = async(Dispatchers.Default) {
+            coordinator.load(source, 1, SourceQuery.Search("old", FilterList())) { state ->
+                if ((state.request.query as? SourceQuery.Search)?.query == "old" && state.isLoading) {
+                    oldCallbackEntered.countDown()
+                    releaseOldCallback.await(5, TimeUnit.SECONDS)
+                }
+                observedGenerations += state.request.generation
+            }
+        }
+        assertTrue(oldCallbackEntered.await(5, TimeUnit.SECONDS))
+
+        val newLoad = async(Dispatchers.Default) {
+            coordinator.load(source, 1, SourceQuery.Search("new", FilterList())) { state ->
+                observedGenerations += state.request.generation
+                newCallbackPublished.countDown()
+            }
+        }
+        val publishedDuringOldCallback = newCallbackPublished.await(1, TimeUnit.SECONDS)
+        releaseOldCallback.countDown()
+        oldLoad.await()
+        newLoad.await()
+
+        assertFalse(publishedDuringOldCallback)
+        assertEquals(observedGenerations.sorted(), observedGenerations)
+        assertEquals(2L, coordinator.state!!.request.generation)
     }
 
     private class PagingSource : NamedSource(1, "Paging") {
@@ -106,6 +166,14 @@ class SourceSharedStateWiringTest {
         private var attempts = 0
         override suspend fun getPopularManga(page: Int): MangasPage =
             if (attempts++ == 0) throw HttpException(500) else MangasPage(listOf(manga("/retry")), false)
+    }
+
+    private class QueryFailureSource : NamedSource(3, "Queries") {
+        val queries = mutableListOf<String>()
+        override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
+            queries += query
+            throw HttpException(500)
+        }
     }
 
     private open class NamedSource(override val id: Long, override val name: String) : CatalogueSource {

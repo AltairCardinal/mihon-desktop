@@ -66,15 +66,14 @@ import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.SaveSourceMangaForDetails
-import mihon.desktop.network.CloudflareChallengeManager
 import mihon.desktop.ui.library.MangaDetailScreen
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourceQuery
 import tachiyomi.domain.source.service.SourceQueryState
-import tachiyomi.domain.source.service.SourceLoginRequest
 import tachiyomi.i18n.MR
+import java.awt.Desktop
 
 data class SourceBrowseUiState(
     val items: List<SManga> = emptyList(),
@@ -104,19 +103,49 @@ object SourceBrowseStateProjector {
     }
 }
 
+fun interface DesktopSourceLoginOpener {
+    fun open(sourceId: Long, url: okhttp3.HttpUrl): Boolean
+}
+
+private object SystemDesktopSourceLoginOpener : DesktopSourceLoginOpener {
+    override fun open(sourceId: Long, url: okhttp3.HttpUrl): Boolean = runCatching {
+        if (!Desktop.isDesktopSupported()) return@runCatching false
+        val desktop = Desktop.getDesktop()
+        if (!desktop.isSupported(Desktop.Action.BROWSE)) return@runCatching false
+        desktop.browse(url.toUri())
+        true
+    }.getOrDefault(false)
+}
+
 class DesktopSourceRecoveryActionAdapter(
-    private val challengeManager: CloudflareChallengeManager,
+    private val loginOpener: DesktopSourceLoginOpener = SystemDesktopSourceLoginOpener,
 ) {
     suspend fun execute(
+        source: CatalogueSource,
         intent: DesktopSourceRecoveryIntent,
         retry: suspend (tachiyomi.domain.source.service.SourcePageRequest) -> Unit,
     ) {
         when (intent) {
             is DesktopSourceRecoveryIntent.Retry -> retry(intent.request)
             is DesktopSourceRecoveryIntent.OpenLogin -> intent.url.toHttpUrlOrNull()?.let {
-                challengeManager.publish(SourceLoginRequest(it, setOf("cf_clearance"), 120_000))
+                loginOpener.open(source.id, it)
             }
             DesktopSourceRecoveryIntent.None -> Unit
+        }
+    }
+}
+
+class SourceBrowseRecoveryController(
+    private val coordinator: SourceBrowseQueryCoordinator,
+    private val actions: DesktopSourceRecoveryActionAdapter,
+) {
+    suspend fun recover(
+        source: CatalogueSource,
+        intent: DesktopSourceRecoveryIntent,
+        onState: (SourceQueryState) -> Unit,
+    ) {
+        actions.execute(source, intent) { request ->
+            coordinator.retry(source, request, onState)
         }
     }
 }
@@ -125,6 +154,13 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
 
     internal fun projectState(state: SourceQueryState?): SourceBrowseUiState =
         SourceBrowseStateProjector.project(state)
+
+    internal suspend fun recover(
+        controller: SourceBrowseRecoveryController,
+        source: CatalogueSource,
+        intent: DesktopSourceRecoveryIntent,
+        onState: (SourceQueryState) -> Unit,
+    ) = controller.recover(source, intent, onState)
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
@@ -141,7 +177,10 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
         val queryUiState = projectState(queryState)
         var openingMangaUrl by remember { mutableStateOf<String?>(null) }
         val queryCoordinator = remember { SourceBrowseQueryCoordinator(sourceMangaSearchService) }
-        val recoveryActions = remember { DesktopSourceRecoveryActionAdapter(dependencies.cloudflareChallengeManager) }
+        val recoveryActions = remember { DesktopSourceRecoveryActionAdapter() }
+        val recoveryController = remember(queryCoordinator, recoveryActions) {
+            SourceBrowseRecoveryController(queryCoordinator, recoveryActions)
+        }
 
         // Search state
         var searchQuery by remember { mutableStateOf("") }
@@ -173,9 +212,11 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
         fun recover() {
             val catalogueSource = source ?: return
             scope.launch {
-                recoveryActions.execute(queryCoordinator.recoveryIntent(catalogueSource)) {
-                    queryCoordinator.retry(catalogueSource) { queryState = it }
-                }
+                recover(
+                    recoveryController,
+                    catalogueSource,
+                    queryCoordinator.recoveryIntent(catalogueSource),
+                ) { queryState = it }
             }
         }
 

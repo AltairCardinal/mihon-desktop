@@ -60,31 +60,59 @@ class SourceBrowseQueryCoordinator(
     ): SourceQueryState {
         val request = synchronized(lock) {
             if (page == 1) generation += 1
-            SourcePageRequest(source.id, page, generation, query)
+            SourcePageRequest(source.id, page, generation, query).also { request ->
+                reducer.start(request, state).also {
+                    state = it
+                    onState(it)
+                }
+            }
         }
-        return load(source, request, onState)
+        return completeLoad(source, request, onState)
     }
 
-    private suspend fun load(
+    private suspend fun completeLoad(
         source: CatalogueSource,
         request: SourcePageRequest,
         onState: (SourceQueryState) -> Unit,
     ): SourceQueryState {
-        val started = synchronized(lock) { reducer.start(request, state).also { state = it } }
-        onState(started)
         val result = service.loadPageResult(source, request)
         return synchronized(lock) {
-            reducer.reduce(state ?: reducer.start(request), result).also { state = it }
-        }.also(onState)
+            val current = requireNotNull(state)
+            if (current.request != request) return@synchronized current
+            reducer.reduce(current, result).also {
+                state = it
+                onState(it)
+            }
+        }
+    }
+
+    suspend fun retry(
+        source: CatalogueSource,
+        request: SourcePageRequest,
+        onState: (SourceQueryState) -> Unit = {},
+    ): SourceQueryState? {
+        val started = synchronized(lock) {
+            val current = state
+            if (current?.request != request || current.recoveryAction() != SourceRecoveryAction.Retry) {
+                return@synchronized null
+            }
+            reducer.start(request, current).also {
+                state = it
+                onState(it)
+            }
+        }
+        if (started == null) return null
+        return completeLoad(source, request, onState)
     }
 
     suspend fun retry(
         source: CatalogueSource,
         onState: (SourceQueryState) -> Unit = {},
     ): SourceQueryState {
-        val request = requireNotNull(state?.request) { "No source request to retry" }
-        require(recoveryAction() == SourceRecoveryAction.Retry) { "Current source error is not retryable" }
-        return load(source, request, onState)
+        val request = synchronized(lock) {
+            requireNotNull(state?.request) { "No source request to retry" }
+        }
+        return requireNotNull(retry(source, request, onState)) { "Current source error is not retryable" }
     }
 
     fun recoveryIntent(source: CatalogueSource): DesktopSourceRecoveryIntent =
