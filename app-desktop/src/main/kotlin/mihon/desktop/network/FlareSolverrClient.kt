@@ -53,8 +53,9 @@ class FlareSolverrClient(
         val parsed = json.decodeFromString<FlareSolverrResponse>(responseBody)
         if (parsed.status != "ok") return null
         val solution = parsed.solution ?: return null
+        val userAgent = solution.userAgent.trim().takeIf(String::isNotEmpty) ?: return null
         FlareSolverrResult(
-            userAgent = solution.userAgent,
+            userAgent = userAgent,
             cookies = solution.cookies.map { cookie ->
                 FlareSolverrCookie(
                     name = cookie.name,

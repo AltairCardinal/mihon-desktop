@@ -1,12 +1,17 @@
 package mihon.desktop.network
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import okhttp3.HttpUrl
 import tachiyomi.domain.source.service.AuthenticatedCookie
 import tachiyomi.domain.source.service.AuthenticatedSession
 import tachiyomi.domain.source.service.AuthenticatedSessionCommitter
@@ -17,6 +22,7 @@ import tachiyomi.domain.source.service.BrowserOpenResult
 import tachiyomi.domain.source.service.SourceLoginRequest
 import tachiyomi.domain.source.service.SourceLoginSession
 import tachiyomi.domain.source.service.SourceLoginState
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 
 class CloudflareChallengeManager(
@@ -31,6 +37,9 @@ class CloudflareChallengeManager(
     val challenges: SharedFlow<CloudflareChallenge> = _challenges
 
     private val recentChallenges = ConcurrentLinkedQueue<CloudflareChallenge>()
+    private val solverUserAgents = ConcurrentHashMap<String, String>()
+
+    internal fun solverUserAgentFor(url: HttpUrl): String? = solverUserAgents[url.host.lowercase()]
 
     internal fun publish(request: SourceLoginRequest): CloudflareChallenge =
         CloudflareChallenge(request).also(::emit)
@@ -45,32 +54,39 @@ class CloudflareChallengeManager(
         intent: ChallengeRecoveryIntent,
     ): ChallengeRecoveryState {
         if (intent == ChallengeRecoveryIntent.Cancel) {
-            challenge.complete(ChallengeRecoveryTerminal.Cancelled, ChallengeRecoveryState.Cancelled)
-            challenge.cancelActiveAction()
+            if (challenge.cancelOrAwaitCommit()) {
+                withContext(Dispatchers.IO) { challenge.awaitTerminal() }
+            }
             return challenge.stateAfterTerminal() ?: ChallengeRecoveryState.Cancelled
         }
 
         return challenge.actionMutex.withLock {
             challenge.stateAfterTerminal()?.let { return@withLock it }
-            if (!challenge.ensureActive()) return@withLock ChallengeRecoveryState.TimedOut
+            if (intent == ChallengeRecoveryIntent.Retry) {
+                return@withLock challenge.transition(ChallengeRecoveryState.AwaitingUserAction)
+            }
             val actionJob = currentCoroutineContext()[Job]
-            challenge.registerAction(actionJob)
+            val action = when (intent) {
+                ChallengeRecoveryIntent.OpenBrowser -> ChallengeRecoveryAction.Browser
+                is ChallengeRecoveryIntent.SubmitManualCookies -> ChallengeRecoveryAction.ManualCookies
+                ChallengeRecoveryIntent.UseFlareSolverr -> ChallengeRecoveryAction.FlareSolverr
+                ChallengeRecoveryIntent.Cancel,
+                ChallengeRecoveryIntent.Retry,
+                -> error("non-action intent reached action registration")
+            }
+            challenge.beginAction(actionJob, ChallengeRecoveryState.Running(action))?.let { return@withLock it }
             try {
                 when (intent) {
-                    ChallengeRecoveryIntent.Cancel -> error("cancel is handled before action serialization")
-                    ChallengeRecoveryIntent.Retry -> {
-                        challenge.updateState(ChallengeRecoveryState.AwaitingUserAction)
-                        ChallengeRecoveryState.AwaitingUserAction
-                    }
+                    ChallengeRecoveryIntent.Cancel,
+                    ChallengeRecoveryIntent.Retry,
+                    -> error("non-action intent reached action execution")
                     ChallengeRecoveryIntent.OpenBrowser -> recoverWithSession(
                         challenge = challenge,
-                        action = ChallengeRecoveryAction.Browser,
                         adapter = browserAdapter,
                         invalidFailure = ChallengeRecoveryFailure.InvalidCookies,
                     )
                     is ChallengeRecoveryIntent.SubmitManualCookies -> recoverWithSession(
                         challenge = challenge,
-                        action = ChallengeRecoveryAction.ManualCookies,
                         adapter = completedSessionAdapter(intent.session),
                         invalidFailure = ChallengeRecoveryFailure.InvalidCookies,
                     )
@@ -85,15 +101,20 @@ class CloudflareChallengeManager(
     private suspend fun recoverWithSolver(challenge: CloudflareChallenge): ChallengeRecoveryState {
         val solver = flareSolverrClient
             ?: return challenge.fail(ChallengeRecoveryFailure.SolverUnavailable)
-        challenge.updateState(ChallengeRecoveryState.Running(ChallengeRecoveryAction.FlareSolverr))
         val solved = try {
-            solver.solve(challenge.request.url.toString())
+            withContext(Dispatchers.IO) {
+                withTimeout(challenge.remainingMillis().coerceAtLeast(1)) {
+                    solver.solve(challenge.request.url.toString())
+                }
+            }
+        } catch (_: TimeoutCancellationException) {
+            challenge.completeFromActiveAction(ChallengeRecoveryTerminal.TimedOut, ChallengeRecoveryState.TimedOut)
+            return ChallengeRecoveryState.TimedOut
         } catch (error: CancellationException) {
-            challenge.complete(ChallengeRecoveryTerminal.Cancelled, ChallengeRecoveryState.Cancelled)
+            challenge.cancelOrAwaitCommit()
             throw error
         } ?: return challenge.fail(ChallengeRecoveryFailure.SolverFailed)
 
-        if (!challenge.ensureActive()) return ChallengeRecoveryState.TimedOut
         if (solved.cookies.isEmpty()) return challenge.fail(ChallengeRecoveryFailure.SolverFailed)
         val session = AuthenticatedSession(
             solved.cookies.map { cookie ->
@@ -111,57 +132,59 @@ class CloudflareChallengeManager(
         )
         return recoverWithSession(
             challenge = challenge,
-            action = ChallengeRecoveryAction.FlareSolverr,
             adapter = completedSessionAdapter(session),
             invalidFailure = ChallengeRecoveryFailure.SolverFailed,
+            solverUserAgent = solved.userAgent,
         )
     }
 
     private suspend fun recoverWithSession(
         challenge: CloudflareChallenge,
-        action: ChallengeRecoveryAction,
         adapter: BrowserLoginAdapter,
         invalidFailure: ChallengeRecoveryFailure,
+        solverUserAgent: String? = null,
     ): ChallengeRecoveryState {
         val delegate = committer ?: MissingAuthenticatedSessionCommitter
-        if (!challenge.ensureActive()) return ChallengeRecoveryState.TimedOut
-        challenge.updateState(ChallengeRecoveryState.Running(action))
         val request = challenge.request.copy(timeoutMillis = challenge.remainingMillis().coerceAtLeast(1))
         val guardedCommitter = AuthenticatedSessionCommitter { loginRequest, session ->
-            if (!challenge.ensureActive()) throw ChallengeExpiredException()
-            delegate.commit(loginRequest, session)
+            if (!challenge.claimCommit()) throw ChallengeExpiredException()
+            try {
+                delegate.commit(loginRequest, session)
+                solverUserAgent?.let { solverUserAgents[loginRequest.url.host.lowercase()] = it }
+                challenge.complete(
+                    ChallengeRecoveryTerminal.Recovered,
+                    ChallengeRecoveryState.Recovered(session.cookieNames, session.cookies.size),
+                )
+            } catch (error: Exception) {
+                challenge.complete(
+                    ChallengeRecoveryTerminal.Failed,
+                    ChallengeRecoveryState.RecoverableFailure(ChallengeRecoveryFailure.CommitFailed),
+                )
+                throw error
+            }
         }
         val result = try {
             SourceLoginSession(adapter, guardedCommitter).login(request)
         } catch (error: CancellationException) {
-            challenge.complete(ChallengeRecoveryTerminal.Cancelled, ChallengeRecoveryState.Cancelled)
+            challenge.cancelOrAwaitCommit()
             throw error
         }
         return when (result) {
-            is SourceLoginState.Authenticated -> {
-                val recovered = ChallengeRecoveryState.Recovered(result.cookieNames, result.cookieCount)
-                if (challenge.complete(ChallengeRecoveryTerminal.Recovered, recovered)) {
-                    recovered
-                } else {
-                    challenge.stateAfterTerminal() ?: ChallengeRecoveryState.TimedOut
-                }
-            }
+            is SourceLoginState.Authenticated -> checkNotNull(challenge.stateAfterTerminal())
             SourceLoginState.BrowserUnavailable -> challenge.fail(ChallengeRecoveryFailure.BrowserUnavailable)
             is SourceLoginState.InvalidCookies -> challenge.fail(invalidFailure)
-            SourceLoginState.CommitFailed -> {
-                if (challenge.terminal == ChallengeRecoveryTerminal.TimedOut) {
-                    ChallengeRecoveryState.TimedOut
-                } else {
-                    challenge.fail(ChallengeRecoveryFailure.CommitFailed)
-                }
-            }
+            SourceLoginState.CommitFailed ->
+                challenge.stateAfterTerminal() ?: challenge.fail(ChallengeRecoveryFailure.CommitFailed)
             SourceLoginState.Cancelled -> {
                 challenge.complete(ChallengeRecoveryTerminal.Cancelled, ChallengeRecoveryState.Cancelled)
-                ChallengeRecoveryState.Cancelled
+                challenge.stateAfterTerminal() ?: ChallengeRecoveryState.Cancelled
             }
             SourceLoginState.TimedOut -> {
-                challenge.complete(ChallengeRecoveryTerminal.TimedOut, ChallengeRecoveryState.TimedOut)
-                ChallengeRecoveryState.TimedOut
+                challenge.completeFromActiveAction(
+                    ChallengeRecoveryTerminal.TimedOut,
+                    ChallengeRecoveryState.TimedOut,
+                )
+                challenge.stateAfterTerminal() ?: ChallengeRecoveryState.TimedOut
             }
             SourceLoginState.Idle,
             SourceLoginState.OpeningBrowser,
@@ -176,8 +199,7 @@ class CloudflareChallengeManager(
 
 private fun CloudflareChallenge.fail(reason: ChallengeRecoveryFailure): ChallengeRecoveryState {
     val failure = ChallengeRecoveryState.RecoverableFailure(reason)
-    updateState(failure)
-    return failure
+    return transition(failure)
 }
 
 private fun completedSessionAdapter(session: AuthenticatedSession): BrowserLoginAdapter = BrowserLoginAdapter {

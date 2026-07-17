@@ -125,9 +125,13 @@ class SourceLoginSession(
         session: AuthenticatedSession,
     ): SourceLoginState {
         val missing = request.requiredCookieNames - session.cookieNames
+        val blankRequired = session.cookies
+            .filter { it.name in request.requiredCookieNames && it.value.isBlank() }
+            .mapTo(sortedSetOf()) { it.name }
         val rejected = session.cookies
             .filterNot { it.matches(request.url) }
             .mapTo(sortedSetOf()) { it.name }
+            .apply { addAll(blankRequired) }
         if (missing.isNotEmpty() || rejected.isNotEmpty()) {
             return finish(SourceLoginState.InvalidCookies(missing.toSortedSet(), rejected))
         }

@@ -60,6 +60,32 @@ class SourceLoginSessionTest {
     }
 
     @Test
+    fun `required cookie with blank value rejects the whole session without exposing values`() = runTest {
+        val commits = mutableListOf<AuthenticatedSession>()
+        val browserSession = TestBrowserSession()
+        val login = session(browserSession) { commits += it }
+        val result = async { login.login(request(required = setOf("session", "clearance"))) }
+        runCurrent()
+
+        browserSession.complete(
+            AuthenticatedSession(
+                listOf(
+                    cookie("session", "session-secret", "reader.example.com"),
+                    cookie("clearance", "   ", "reader.example.com"),
+                    cookie("optional-empty", "", "reader.example.com"),
+                ),
+            ),
+        )
+
+        val state = assertInstanceOf(SourceLoginState.InvalidCookies::class.java, result.await())
+        assertEquals(emptySet<String>(), state.missingRequiredCookieNames)
+        assertEquals(setOf("clearance"), state.rejectedCookieNames)
+        assertTrue(commits.isEmpty())
+        assertFalse(state.toString().contains("session-secret"))
+        assertFalse(state.toString().contains("   "))
+    }
+
+    @Test
     fun `unrelated and child-domain cookies reject the whole session`() = runTest {
         val commits = mutableListOf<AuthenticatedSession>()
         val browserSession = TestBrowserSession()

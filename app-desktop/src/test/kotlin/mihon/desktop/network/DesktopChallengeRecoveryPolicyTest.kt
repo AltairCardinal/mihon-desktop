@@ -2,6 +2,7 @@ package mihon.desktop.network
 
 import eu.kanade.tachiyomi.network.DesktopCookieJar
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
@@ -29,9 +30,12 @@ import tachiyomi.domain.source.service.BrowserLoginSession
 import tachiyomi.domain.source.service.BrowserOpenResult
 import tachiyomi.domain.source.service.SourceLoginRequest
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 class DesktopChallengeRecoveryPolicyTest {
     @Test
@@ -215,6 +219,36 @@ class DesktopChallengeRecoveryPolicyTest {
     }
 
     @Test
+    fun `browser and manual required cookies with blank values share zero-write validation`() = runTest {
+        val commits = RecordingCommitter()
+        val blankSession = authenticatedSession("   ")
+        val manager = CloudflareChallengeManager(
+            browserAdapter = BrowserLoginAdapter {
+                BrowserOpenResult.Opened(completedBrowserSession(blankSession))
+            },
+            committer = commits,
+        )
+
+        val browserChallenge = manager.publish(loginRequest())
+        assertEquals(
+            ChallengeRecoveryState.RecoverableFailure(ChallengeRecoveryFailure.InvalidCookies),
+            manager.recover(browserChallenge, ChallengeRecoveryIntent.OpenBrowser),
+        )
+        assertNull(browserChallenge.terminal)
+
+        val manualChallenge = manager.publish(loginRequest())
+        assertEquals(
+            ChallengeRecoveryState.RecoverableFailure(ChallengeRecoveryFailure.InvalidCookies),
+            manager.recover(
+                manualChallenge,
+                ChallengeRecoveryIntent.SubmitManualCookies(blankSession),
+            ),
+        )
+        assertNull(manualChallenge.terminal)
+        assertEquals(0, commits.sessions.size)
+    }
+
+    @Test
     fun `unavailable adapters and commit failures remain recoverable without terminal or writes`() = runTest {
         val unavailableManager = CloudflareChallengeManager(
             browserAdapter = BrowserLoginAdapter { BrowserOpenResult.Unavailable },
@@ -243,7 +277,7 @@ class DesktopChallengeRecoveryPolicyTest {
             ),
         )
         assertEquals(1, commitAttempts.get())
-        assertNull(commitChallenge.terminal)
+        assertEquals(ChallengeRecoveryTerminal.Failed, commitChallenge.terminal)
 
         val solverChallenge = failingManager.publish(loginRequest())
         assertEquals(
@@ -275,6 +309,60 @@ class DesktopChallengeRecoveryPolicyTest {
 
             assertEquals(0, commits.sessions.size)
             assertEquals(3, server.requestCount)
+        } finally {
+            server.close()
+        }
+    }
+
+    @Test
+    fun `solver HTTP and incomplete solution matrix is recoverable with zero writes`() = runTest {
+        val server = MockWebServer().also { it.start() }
+        try {
+            server.enqueue(MockResponse(code = 403, body = solvedBody("example.com", "forbidden")))
+            server.enqueue(MockResponse(code = 429, body = solvedBody("example.com", "rate-limited")))
+            server.enqueue(MockResponse(code = 500, body = solvedBody("example.com", "server-error")))
+            server.enqueue(MockResponse(body = """{"status":"ok"}"""))
+            server.enqueue(MockResponse(body = "not-json"))
+            server.enqueue(MockResponse(body = """{"status":"ok","solution":{"userAgent":"agent","cookies":[]}}"""))
+            server.enqueue(
+                MockResponse(
+                    body = solvedBody(
+                        domain = "example.com",
+                        value = "blank-agent-must-not-commit",
+                        userAgent = "   ",
+                    ),
+                ),
+            )
+            server.enqueue(
+                MockResponse(
+                    body = solvedBody(
+                        domain = "example.com",
+                        value = "   ",
+                        userAgent = "agent",
+                    ),
+                ),
+            )
+            val commits = RecordingCommitter()
+            val manager = CloudflareChallengeManager(
+                committer = commits,
+                flareSolverrClient = FlareSolverrClient(
+                    server.url("/").toString().removeSuffix("/"),
+                    OkHttpClient(),
+                ),
+            )
+
+            repeat(8) { index ->
+                val challenge = manager.publish(loginRequest())
+                assertEquals(
+                    ChallengeRecoveryState.RecoverableFailure(ChallengeRecoveryFailure.SolverFailed),
+                    manager.recover(challenge, ChallengeRecoveryIntent.UseFlareSolverr),
+                    "matrix case $index must remain recoverable",
+                )
+                assertNull(challenge.terminal)
+                assertEquals(0, commits.sessions.size, "matrix case $index must not commit")
+            }
+
+            assertEquals(8, server.requestCount)
         } finally {
             server.close()
         }
@@ -351,6 +439,273 @@ class DesktopChallengeRecoveryPolicyTest {
     }
 
     @Test
+    fun `commit claim wins over cancel and publishes the real persisted outcome`() {
+        val jar = DesktopCookieJar()
+        val url = "https://example.com/chapter".toHttpUrl()
+        jar.addManual(url, CF_CLEARANCE_COOKIE_NAME, "old-clearance")
+        val commitStarted = CountDownLatch(1)
+        val releaseCommit = CountDownLatch(1)
+        val commitCount = AtomicInteger()
+        val delegate = DesktopAuthenticatedSessionCommitter(jar)
+        val manager = CloudflareChallengeManager(
+            committer = AuthenticatedSessionCommitter { request, session ->
+                commitStarted.countDown()
+                check(releaseCommit.await(5, TimeUnit.SECONDS))
+                delegate.commit(request, session)
+                commitCount.incrementAndGet()
+            },
+        )
+        val challenge = manager.publish(loginRequest())
+        val recovery = CompletableFuture.supplyAsync {
+            runBlocking {
+                manager.recover(
+                    challenge,
+                    ChallengeRecoveryIntent.SubmitManualCookies(authenticatedSession("new-clearance")),
+                )
+            }
+        }
+        check(commitStarted.await(5, TimeUnit.SECONDS))
+
+        val cancel = CompletableFuture.supplyAsync {
+            runBlocking { manager.recover(challenge, ChallengeRecoveryIntent.Cancel) }
+        }
+        assertThrows(TimeoutException::class.java) { cancel.get(150, TimeUnit.MILLISECONDS) }
+        releaseCommit.countDown()
+
+        assertInstanceOf(ChallengeRecoveryState.Recovered::class.java, recovery.get(5, TimeUnit.SECONDS))
+        assertInstanceOf(ChallengeRecoveryState.Recovered::class.java, cancel.get(5, TimeUnit.SECONDS))
+        assertEquals(ChallengeRecoveryTerminal.Recovered, challenge.terminal)
+        assertEquals(1, commitCount.get())
+        assertEquals(
+            "new-clearance",
+            jar.loadForRequest(url).single { it.name == CF_CLEARANCE_COOKIE_NAME }.value,
+        )
+    }
+
+    @Test
+    fun `commit claim wins over deadline and terminal wait observes the real persisted outcome`() {
+        val jar = DesktopCookieJar()
+        val url = "https://example.com/chapter".toHttpUrl()
+        jar.addManual(url, CF_CLEARANCE_COOKIE_NAME, "old-clearance")
+        val commitStarted = CountDownLatch(1)
+        val releaseCommit = CountDownLatch(1)
+        val delegate = DesktopAuthenticatedSessionCommitter(jar)
+        val manager = CloudflareChallengeManager(
+            committer = AuthenticatedSessionCommitter { request, session ->
+                commitStarted.countDown()
+                check(releaseCommit.await(5, TimeUnit.SECONDS))
+                delegate.commit(request, session)
+            },
+        )
+        val challenge = manager.publish(loginRequest(timeoutMillis = 100))
+        val recovery = CompletableFuture.supplyAsync {
+            runBlocking {
+                manager.recover(
+                    challenge,
+                    ChallengeRecoveryIntent.SubmitManualCookies(authenticatedSession("new-clearance")),
+                )
+            }
+        }
+        check(commitStarted.await(5, TimeUnit.SECONDS))
+        val terminalWait = CompletableFuture.supplyAsync { challenge.awaitTerminal() }
+
+        assertThrows(TimeoutException::class.java) { terminalWait.get(250, TimeUnit.MILLISECONDS) }
+        releaseCommit.countDown()
+
+        assertInstanceOf(ChallengeRecoveryState.Recovered::class.java, recovery.get(5, TimeUnit.SECONDS))
+        assertEquals(ChallengeRecoveryTerminal.Recovered, terminalWait.get(5, TimeUnit.SECONDS))
+        assertEquals(
+            "new-clearance",
+            jar.loadForRequest(url).single { it.name == CF_CLEARANCE_COOKIE_NAME }.value,
+        )
+    }
+
+    @Test
+    fun `commit claim wins over cancel and publishes the real failed outcome`() {
+        val commitStarted = CountDownLatch(1)
+        val releaseCommit = CountDownLatch(1)
+        val commitCount = AtomicInteger()
+        val manager = CloudflareChallengeManager(
+            committer = AuthenticatedSessionCommitter { _, _ ->
+                commitStarted.countDown()
+                check(releaseCommit.await(5, TimeUnit.SECONDS))
+                commitCount.incrementAndGet()
+                error("persistence failed")
+            },
+        )
+        val challenge = manager.publish(loginRequest())
+        val recovery = CompletableFuture.supplyAsync {
+            runBlocking {
+                manager.recover(
+                    challenge,
+                    ChallengeRecoveryIntent.SubmitManualCookies(authenticatedSession("never-written")),
+                )
+            }
+        }
+        check(commitStarted.await(5, TimeUnit.SECONDS))
+
+        val cancel = CompletableFuture.supplyAsync {
+            runBlocking { manager.recover(challenge, ChallengeRecoveryIntent.Cancel) }
+        }
+        assertThrows(TimeoutException::class.java) { cancel.get(150, TimeUnit.MILLISECONDS) }
+        releaseCommit.countDown()
+
+        assertEquals(
+            ChallengeRecoveryState.RecoverableFailure(ChallengeRecoveryFailure.CommitFailed),
+            recovery.get(5, TimeUnit.SECONDS),
+        )
+        assertEquals(
+            ChallengeRecoveryState.RecoverableFailure(ChallengeRecoveryFailure.CommitFailed),
+            cancel.get(5, TimeUnit.SECONDS),
+        )
+        assertEquals("Failed", challenge.terminal?.name)
+        assertEquals(1, commitCount.get())
+    }
+
+    @Test
+    fun `cancel before commit claim prevents delegate entry and late completion`() {
+        val openStarted = CountDownLatch(1)
+        val releaseOpen = CountDownLatch(1)
+        val commitCount = AtomicInteger()
+        val manager = CloudflareChallengeManager(
+            browserAdapter = BrowserLoginAdapter {
+                openStarted.countDown()
+                check(releaseOpen.await(5, TimeUnit.SECONDS))
+                BrowserOpenResult.Opened(completedBrowserSession(authenticatedSession("late-clearance")))
+            },
+            committer = AuthenticatedSessionCommitter { _, _ -> commitCount.incrementAndGet() },
+        )
+        val challenge = manager.publish(loginRequest())
+        val recovery = CompletableFuture.supplyAsync {
+            runBlocking { manager.recover(challenge, ChallengeRecoveryIntent.OpenBrowser) }
+        }
+        check(openStarted.await(5, TimeUnit.SECONDS))
+
+        assertEquals(
+            ChallengeRecoveryState.Cancelled,
+            runBlocking { manager.recover(challenge, ChallengeRecoveryIntent.Cancel) },
+        )
+        releaseOpen.countDown()
+        runCatching { recovery.get(5, TimeUnit.SECONDS) }
+
+        assertEquals(ChallengeRecoveryTerminal.Cancelled, challenge.terminal)
+        assertEquals(ChallengeRecoveryState.Cancelled, challenge.state.value)
+        assertEquals(0, commitCount.get())
+    }
+
+    @Test
+    fun `deadline before commit claim publishes timeout without cancelling the recovery result`() = runTest {
+        val nowNanos = AtomicLong()
+        val commitCount = AtomicInteger()
+        val request = loginRequest(timeoutMillis = 100)
+        val challenge = CloudflareChallenge(request, nanoTime = nowNanos::get)
+        val manager = CloudflareChallengeManager(
+            browserAdapter = BrowserLoginAdapter {
+                BrowserOpenResult.Opened(
+                    object : BrowserLoginSession {
+                        override suspend fun awaitResult(): BrowserLoginResult {
+                            nowNanos.set(TimeUnit.MILLISECONDS.toNanos(101))
+                            return BrowserLoginResult.Completed(authenticatedSession("too-late"))
+                        }
+
+                        override fun cancel() = Unit
+                    },
+                )
+            },
+            committer = AuthenticatedSessionCommitter { _, _ -> commitCount.incrementAndGet() },
+        )
+
+        val state = manager.recover(challenge, ChallengeRecoveryIntent.OpenBrowser)
+
+        assertEquals(ChallengeRecoveryState.TimedOut, state)
+        assertEquals(ChallengeRecoveryTerminal.TimedOut, challenge.terminal)
+        assertEquals(ChallengeRecoveryState.TimedOut, challenge.state.value)
+        assertEquals(0, commitCount.get())
+    }
+
+    @Test
+    fun `cancel before atomic action registration prevents solver start and state regression`() = runBlocking {
+        val server = MockWebServer().also { it.start() }
+        try {
+            server.enqueue(solvedResponse("example.com", "must-not-run"))
+            val manager = CloudflareChallengeManager(
+                committer = RecordingCommitter(),
+                flareSolverrClient = FlareSolverrClient(
+                    server.url("/").toString().removeSuffix("/"),
+                    OkHttpClient(),
+                ),
+            )
+            val challenge = manager.publish(loginRequest())
+            challenge.actionMutex.lock()
+            val recovery = async(Dispatchers.IO) {
+                manager.recover(challenge, ChallengeRecoveryIntent.UseFlareSolverr)
+            }
+
+            assertEquals(
+                ChallengeRecoveryState.Cancelled,
+                manager.recover(challenge, ChallengeRecoveryIntent.Cancel),
+            )
+            assertEquals(
+                ChallengeRecoveryState.Cancelled,
+                challenge.beginAction(
+                    Job(),
+                    ChallengeRecoveryState.Running(ChallengeRecoveryAction.FlareSolverr),
+                ),
+                "an action registration that loses the terminal race must not start",
+            )
+            challenge.actionMutex.unlock()
+
+            assertEquals(ChallengeRecoveryState.Cancelled, recovery.await())
+            assertEquals(ChallengeRecoveryTerminal.Cancelled, challenge.terminal)
+            assertEquals(ChallengeRecoveryState.Cancelled, challenge.state.value)
+            assertEquals(0, server.requestCount)
+        } finally {
+            server.close()
+        }
+    }
+
+    @Test
+    fun `slow solver failure past deadline is timed out and action is cleaned`() = runBlocking {
+        val server = MockWebServer().also { it.start() }
+        try {
+            server.enqueue(
+                MockResponse.Builder()
+                    .headersDelay(500, TimeUnit.MILLISECONDS)
+                    .code(500)
+                    .body("server-error")
+                    .build(),
+            )
+            val commits = RecordingCommitter()
+            val manager = CloudflareChallengeManager(
+                committer = commits,
+                flareSolverrClient = FlareSolverrClient(
+                    server.url("/").toString().removeSuffix("/"),
+                    OkHttpClient(),
+                ),
+            )
+            val challenge = manager.publish(loginRequest(timeoutMillis = 200))
+
+            val recovery = async(Dispatchers.IO) {
+                manager.recover(challenge, ChallengeRecoveryIntent.UseFlareSolverr)
+            }
+            server.takeRequest(5, TimeUnit.SECONDS) ?: error("solver request was not sent")
+            val result = recovery.await()
+
+            assertEquals(ChallengeRecoveryState.TimedOut, result)
+            assertEquals(ChallengeRecoveryTerminal.TimedOut, challenge.terminal)
+            assertEquals(ChallengeRecoveryState.TimedOut, challenge.state.value)
+            assertEquals(0, commits.sessions.size)
+            assertEquals(
+                ChallengeRecoveryState.TimedOut,
+                manager.recover(challenge, ChallengeRecoveryIntent.UseFlareSolverr),
+            )
+            assertEquals(1, server.requestCount, "a late or duplicate action must not start another solver call")
+        } finally {
+            server.close()
+        }
+    }
+
+    @Test
     fun `terminal is exactly once and duplicate late actions do not commit or invoke solver`() = runTest {
         val server = MockWebServer().also { it.start() }
         try {
@@ -411,6 +766,73 @@ class DesktopChallengeRecoveryPolicyTest {
             assertEquals(2, server.requestCount)
         } finally {
             server.close()
+        }
+    }
+
+    @Test
+    fun `solver user agent is used for the unique retry and later same-host requests only`() {
+        val sourceServer = MockWebServer().also { it.start() }
+        val solverServer = MockWebServer().also { it.start() }
+        try {
+            sourceServer.enqueue(cloudflareChallenge(503))
+            sourceServer.enqueue(MockResponse(code = 200, body = "recovered"))
+            sourceServer.enqueue(MockResponse(code = 200, body = "same-host"))
+            sourceServer.enqueue(MockResponse(code = 200, body = "unrelated-host"))
+            solverServer.enqueue(
+                solvedResponse(
+                    domain = sourceServer.url("/").host,
+                    value = "solver-clearance",
+                    userAgent = "solver-agent",
+                ),
+            )
+            val jar = DesktopCookieJar()
+            val manager = CloudflareChallengeManager(
+                committer = DesktopAuthenticatedSessionCommitter(jar),
+                flareSolverrClient = FlareSolverrClient(
+                    solverServer.url("/").toString().removeSuffix("/"),
+                    OkHttpClient(),
+                ),
+            )
+            val client = OkHttpClient.Builder()
+                .cookieJar(jar)
+                .addInterceptor(DesktopCloudflareInterceptor(jar, manager))
+                .build()
+            val firstCall = CompletableFuture.supplyAsync {
+                client.newCall(
+                    Request.Builder()
+                        .url(sourceServer.url("/chapter"))
+                        .header("User-Agent", "default-agent")
+                        .build(),
+                ).execute().use { it.code }
+            }
+            val challenge = awaitChallenge(manager)
+
+            runBlocking { manager.recover(challenge, ChallengeRecoveryIntent.UseFlareSolverr) }
+
+            assertEquals(200, firstCall.get(5, TimeUnit.SECONDS))
+            client.newCall(
+                Request.Builder()
+                    .url(sourceServer.url("/next"))
+                    .header("User-Agent", "default-agent")
+                    .build(),
+            ).execute().close()
+            client.newCall(
+                Request.Builder()
+                    .url(sourceServer.url("/other").newBuilder().host("127.0.0.1").build())
+                    .header("User-Agent", "default-agent")
+                    .build(),
+            ).execute().close()
+
+            val observed = List(4) { sourceServer.takeRequest(5, TimeUnit.SECONDS) ?: error("missing source request") }
+            assertEquals("default-agent", observed[0].headers["User-Agent"])
+            assertEquals("solver-agent", observed[1].headers["User-Agent"])
+            assertEquals("solver-agent", observed[2].headers["User-Agent"])
+            assertEquals("default-agent", observed[3].headers["User-Agent"])
+            assertEquals(4, sourceServer.requestCount)
+            assertEquals(1, solverServer.requestCount)
+        } finally {
+            solverServer.close()
+            sourceServer.close()
         }
     }
 
@@ -493,7 +915,8 @@ class DesktopChallengeRecoveryPolicyTest {
         expires: Double? = null,
         secure: Boolean = true,
         httpOnly: Boolean = true,
-    ) = MockResponse(body = solvedBody(domain, value, path, expires, secure, httpOnly))
+        userAgent: String = "desktop-agent",
+    ) = MockResponse(body = solvedBody(domain, value, path, expires, secure, httpOnly, userAgent))
 
     private fun solvedBody(
         domain: String,
@@ -502,9 +925,10 @@ class DesktopChallengeRecoveryPolicyTest {
         expires: Double? = null,
         secure: Boolean = true,
         httpOnly: Boolean = true,
+        userAgent: String = "desktop-agent",
     ): String {
         val expiresField = expires?.let { "\"expires\":$it," }.orEmpty()
-        return """{"status":"ok","solution":{"userAgent":"desktop-agent","cookies":[{"name":"cf_clearance","value":"$value","domain":"$domain","path":"$path",$expiresField"secure":$secure,"httpOnly":$httpOnly}]}}"""
+        return """{"status":"ok","solution":{"userAgent":"$userAgent","cookies":[{"name":"cf_clearance","value":"$value","domain":"$domain","path":"$path",$expiresField"secure":$secure,"httpOnly":$httpOnly}]}}"""
     }
 
     private class RecordingCommitter : AuthenticatedSessionCommitter {
