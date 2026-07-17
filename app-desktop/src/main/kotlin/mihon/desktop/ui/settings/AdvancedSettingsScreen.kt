@@ -36,9 +36,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import dev.icerock.moko.resources.StringResource
 import mihon.desktop.network.CF_CLEARANCE_COOKIE_NAME
 import mihon.desktop.network.CookieImportResult
 import mihon.desktop.network.validateCloudflareCookieInput
+import mihon.desktop.settings.DesktopAppPreferences
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -49,6 +51,53 @@ import kotlinx.coroutines.withContext
 import mihon.desktop.CrashHandler
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.platform.DesktopPlatformPaths
+import tachiyomi.i18n.MR
+import java.util.Locale
+
+internal enum class FlareSolverrUrlError {
+    Required,
+    Invalid,
+}
+
+internal data class FlareSolverrSettingsState(
+    val enabled: Boolean,
+    val url: String,
+    val solverAvailable: Boolean,
+    val urlError: FlareSolverrUrlError?,
+)
+
+internal fun flareSolverrSettingsState(preferences: DesktopAppPreferences): FlareSolverrSettingsState {
+    val enabled = preferences.flareSolverrEnabled.get()
+    val url = preferences.flareSolverrUrl.get()
+    val solverAvailable = preferences.flareSolverrRuntimeConfig() != null
+    return FlareSolverrSettingsState(
+        enabled = enabled,
+        url = url,
+        solverAvailable = solverAvailable,
+        urlError = when {
+            !enabled -> null
+            url.isBlank() -> FlareSolverrUrlError.Required
+            !solverAvailable -> FlareSolverrUrlError.Invalid
+            else -> null
+        },
+    )
+}
+
+internal fun updateFlareSolverrEnabled(
+    preferences: DesktopAppPreferences,
+    enabled: Boolean,
+): FlareSolverrSettingsState {
+    preferences.flareSolverrEnabled.set(enabled)
+    return flareSolverrSettingsState(preferences)
+}
+
+internal fun updateFlareSolverrUrl(
+    preferences: DesktopAppPreferences,
+    url: String,
+): FlareSolverrSettingsState {
+    preferences.flareSolverrUrl.set(url)
+    return flareSolverrSettingsState(preferences)
+}
 
 class AdvancedSettingsScreen : Screen {
 
@@ -56,9 +105,13 @@ class AdvancedSettingsScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val networkHelper = LocalDesktopUiDependencies.current.networkHelper
+        val dependencies = LocalDesktopUiDependencies.current
+        val networkHelper = dependencies.networkHelper
+        val preferences = dependencies.appPreferences
         val paths = remember { DesktopPlatformPaths.current() }
         val scope = rememberCoroutineScope()
+        val locale = remember { Locale.getDefault() }
+        val text: (StringResource) -> String = { it.localized(locale) }
 
         val snackbar = remember { SnackbarHostState() }
         var showClearCookiesDialog by remember { mutableStateOf(false) }
@@ -71,6 +124,9 @@ class AdvancedSettingsScreen : Screen {
         var cfCookieValue by remember { mutableStateOf("") }
         var cfDomainError by remember { mutableStateOf<String?>(null) }
         var cfValueError by remember { mutableStateOf<String?>(null) }
+        var solverSettings by remember(preferences) {
+            mutableStateOf(flareSolverrSettingsState(preferences))
+        }
 
         // Compute network cache size once (and refresh after clearing)
         val cacheSize by produceState(initialValue = "", cacheCleared) {
@@ -166,17 +222,48 @@ class AdvancedSettingsScreen : Screen {
 
                 // Cloudflare bypass section
                 Text(
-                    text = "Cloudflare Bypass",
+                    text = text(MR.strings.desktop_settings_cloudflare_title),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
                 Text(
-                    text = "If a source shows a Cloudflare challenge, solve it in a browser, then paste the cf_clearance cookie here.",
+                    text = text(MR.strings.desktop_settings_cloudflare_description),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
                 )
+                SwitchSettingsItem(
+                    title = text(MR.strings.desktop_settings_cloudflare_solver_title),
+                    subtitle = text(MR.strings.desktop_settings_cloudflare_solver_explicit_only),
+                    checked = solverSettings.enabled,
+                    onCheckedChange = {
+                        solverSettings = updateFlareSolverrEnabled(preferences, it)
+                    },
+                )
+                OutlinedTextField(
+                    value = solverSettings.url,
+                    onValueChange = {
+                        solverSettings = updateFlareSolverrUrl(preferences, it)
+                    },
+                    label = { Text(text(MR.strings.desktop_settings_cloudflare_solver_url)) },
+                    isError = solverSettings.urlError != null,
+                    supportingText = solverSettings.urlError?.let { error ->
+                        {
+                            Text(
+                                text(
+                                    when (error) {
+                                        FlareSolverrUrlError.Required -> MR.strings.desktop_settings_cloudflare_solver_url_required
+                                        FlareSolverrUrlError.Invalid -> MR.strings.desktop_settings_cloudflare_solver_url_invalid
+                                    },
+                                ),
+                            )
+                        }
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                )
+                Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = cfDomain,
                     onValueChange = { cfDomain = it; cfDomainError = null },

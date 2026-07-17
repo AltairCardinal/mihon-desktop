@@ -16,6 +16,10 @@ import mihon.desktop.network.DesktopBrowserOpener
 import mihon.desktop.network.DesktopChallengeBrowserLoginBridge
 import mihon.desktop.network.FlareSolverrClient
 import mihon.desktop.settings.DesktopAppPreferences
+import mihon.desktop.ui.settings.FlareSolverrUrlError
+import mihon.desktop.ui.settings.flareSolverrSettingsState
+import mihon.desktop.ui.settings.updateFlareSolverrEnabled
+import mihon.desktop.ui.settings.updateFlareSolverrUrl
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -209,8 +213,66 @@ class DesktopChallengeLoginWiringTest {
             MR.strings.desktop_challenge_solver_disabled,
             MR.strings.desktop_challenge_timed_out,
             MR.strings.desktop_challenge_recovered,
+            MR.strings.desktop_settings_cloudflare_title,
+            MR.strings.desktop_settings_cloudflare_description,
+            MR.strings.desktop_settings_cloudflare_solver_title,
+            MR.strings.desktop_settings_cloudflare_solver_url,
+            MR.strings.desktop_settings_cloudflare_solver_explicit_only,
+            MR.strings.desktop_settings_cloudflare_solver_url_required,
+            MR.strings.desktop_settings_cloudflare_solver_url_invalid,
         ).map { it.localized(Locale.ENGLISH) }
         assertTrue(resolved.all(String::isNotBlank))
+    }
+
+    @Test
+    fun `advanced solver settings write real preferences and share runtime availability`() {
+        val node = Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")
+        try {
+            val preferences = DesktopAppPreferences(DesktopPreferenceStore(node), node)
+            assertEquals(
+                listOf(false, "", false, null),
+                flareSolverrSettingsState(preferences).let {
+                    listOf(it.enabled, it.url, it.solverAvailable, it.urlError)
+                },
+            )
+
+            val missing = updateFlareSolverrEnabled(preferences, true)
+            assertEquals(FlareSolverrUrlError.Required, missing.urlError)
+            assertEquals(missing.solverAvailable, preferences.flareSolverrRuntimeConfig() != null)
+
+            listOf("not a URL", "/relative", "ftp://solver.example", "http:///missing-host").forEach { url ->
+                val invalid = updateFlareSolverrUrl(preferences, url)
+                assertEquals(FlareSolverrUrlError.Invalid, invalid.urlError, url)
+                assertEquals(invalid.solverAvailable, preferences.flareSolverrRuntimeConfig() != null, url)
+            }
+
+            val valid = updateFlareSolverrUrl(preferences, "HTTPS://solver.example/base/")
+            assertNull(valid.urlError)
+            assertTrue(valid.solverAvailable)
+            assertEquals(valid.solverAvailable, preferences.flareSolverrRuntimeConfig() != null)
+            val controller = DesktopChallengeLoginController(
+                CloudflareChallengeManager(),
+                DesktopChallengeBrowserLoginBridge(),
+                preferences,
+            )
+            assertTrue(controller.uiState(CloudflareChallenge(request())).showSolver)
+
+            val disabled = updateFlareSolverrEnabled(preferences, false)
+            assertEquals("HTTPS://solver.example/base/", disabled.url)
+            assertFalse(disabled.solverAvailable)
+            assertNull(disabled.urlError)
+            assertNull(preferences.flareSolverrRuntimeConfig())
+            assertFalse(controller.uiState(CloudflareChallenge(request())).showSolver)
+
+            val reconstructed = DesktopAppPreferences(DesktopPreferenceStore(node), node)
+            assertFalse(reconstructed.flareSolverrEnabled.get())
+            assertEquals("HTTPS://solver.example/base/", reconstructed.flareSolverrUrl.get())
+            val restored = updateFlareSolverrEnabled(reconstructed, true)
+            assertTrue(restored.solverAvailable)
+            assertEquals(restored.solverAvailable, reconstructed.flareSolverrRuntimeConfig() != null)
+        } finally {
+            node.removeNode()
+        }
     }
 
     @Test

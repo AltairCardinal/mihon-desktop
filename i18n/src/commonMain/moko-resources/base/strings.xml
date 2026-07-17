@@ -993,6 +993,13 @@
     <string name="desktop_challenge_commit_failed">The verified session could not be saved. Retry.</string>
     <string name="desktop_challenge_cookie_names">Saved cookie names</string>
     <string name="desktop_challenge_cookie_count">Saved cookie count</string>
+    <string name="desktop_settings_cloudflare_title">Cloudflare bypass</string>
+    <string name="desktop_settings_cloudflare_description">If a source shows a Cloudflare challenge, solve it in a browser, then import the cf_clearance cookie here.</string>
+    <string name="desktop_settings_cloudflare_solver_title">Enable FlareSolverr fallback</string>
+    <string name="desktop_settings_cloudflare_solver_url">FlareSolverr URL</string>
+    <string name="desktop_settings_cloudflare_solver_explicit_only">Runs only when you explicitly choose FlareSolverr in the source verification dialog. It never intercepts normal requests.</string>
+    <string name="desktop_settings_cloudflare_solver_url_required">Enter a FlareSolverr URL.</string>
+    <string name="desktop_settings_cloudflare_solver_url_invalid">Use an absolute HTTP or HTTPS URL with a host.</string>
     <string name="information_required_plain">*required</string>
     <!-- Do not translate "WebView" -->
     <string name="information_webview_required">WebView is required for the app to function</string>
