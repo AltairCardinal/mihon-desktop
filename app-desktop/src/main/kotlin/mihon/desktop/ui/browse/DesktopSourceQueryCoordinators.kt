@@ -22,21 +22,11 @@ import java.util.Locale
 
 sealed interface DesktopSourceRecoveryIntent {
     data class Retry(val request: SourcePageRequest) : DesktopSourceRecoveryIntent
-    class OpenLogin(
+    data class OpenLogin(
         val url: String,
         val request: SourcePageRequest,
-    ) : DesktopSourceRecoveryIntent {
-        override fun equals(other: Any?): Boolean = other is OpenLogin && url == other.url
-        override fun hashCode(): Int = url.hashCode()
-        override fun toString(): String = "OpenLogin(url=$url, request=$request)"
-    }
+    ) : DesktopSourceRecoveryIntent
     data object None : DesktopSourceRecoveryIntent
-
-    companion object {
-        @Deprecated("Use OpenLogin; opening is delegated to the platform login flow")
-        fun OpenExternalUrl(url: String): DesktopSourceRecoveryIntent =
-            OpenLogin(url, SourcePageRequest(Long.MIN_VALUE, 1, Long.MIN_VALUE, SourceQuery.Popular))
-    }
 }
 
 internal fun desktopSourceErrorMessage(error: AppError, locale: Locale = Locale.getDefault()): String = when (error) {

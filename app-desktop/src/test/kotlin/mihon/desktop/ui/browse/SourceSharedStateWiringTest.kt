@@ -16,11 +16,14 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import mihon.desktop.network.DesktopBrowserOpener
-import mihon.desktop.network.CloudflareChallengeManager
 import mihon.desktop.network.DesktopAuthenticatedSessionCommitter
 import mihon.desktop.network.DesktopSourceLoginSessionFactory
 import mihon.domain.error.AppError
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
@@ -126,39 +129,102 @@ class SourceSharedStateWiringTest {
 
     @Test
     fun `cookie header commits through the real jar before exact source retry`() = runBlocking {
-        val jar = DesktopCookieJar()
-        val source = CookieQuerySource(jar)
-        val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
-        coordinator.load(source, 1, SourceQuery.Search("captured", FilterList()))
-        val captured = coordinator.state!!.request
-        val factory = DesktopSourceLoginSessionFactory(
-            DesktopAuthenticatedSessionCommitter(jar),
-            DesktopBrowserOpener { _, _ -> true },
-        )
-        val controller = DesktopSourceLoginController(factory, coordinator)
-        val login = async(start = CoroutineStart.UNDISPATCHED) {
-            controller.login(source, DesktopSourceRecoveryIntent.OpenLogin(source.url.toString(), captured))
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse(code = 403))
+            server.enqueue(MockResponse(code = 200))
+            server.start()
+            val jar = DesktopCookieJar()
+            val source = CookieQuerySource(server.url("/source"), OkHttpClient.Builder().cookieJar(jar).build())
+            val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
+            coordinator.load(source, 1, SourceQuery.Search("captured", FilterList()))
+            val captured = coordinator.state!!.request
+            val controller = DesktopSourceLoginController(
+                DesktopSourceLoginSessionFactory(
+                    DesktopAuthenticatedSessionCommitter(jar),
+                    DesktopBrowserOpener { _, _ -> true },
+                ),
+                coordinator,
+            )
+            val attempt = controller.newAttempt()
+            val login = async(start = CoroutineStart.UNDISPATCHED) {
+                controller.login(source, DesktopSourceRecoveryIntent.OpenLogin(source.url.toString(), captured), attempt)
+            }
+
+            assertTrue(controller.submitCookies(attempt, "session=secret; auth_token=token"))
+
+            assertEquals(SourceLoginState.Authenticated(setOf("auth_token", "session"), 2), login.await())
+            assertEquals(null, server.takeRequest().headers["Cookie"])
+            assertEquals("auth_token=token; session=secret", server.takeRequest().headers["Cookie"])
+            assertEquals(listOf(1, 1), source.requests.map { it.page })
+            assertEquals(listOf("captured", "captured"), source.requests.map { (it.query as SourceQuery.Search).query })
+            assertSame((captured.query as SourceQuery.Search).filters, source.filters.last())
+            assertEquals(captured, coordinator.state!!.request)
         }
-
-        assertTrue(controller.submitCookies("session=secret; auth_token=token"))
-
-        assertEquals(SourceLoginState.Authenticated(setOf("auth_token", "session"), 2), login.await())
-        assertEquals(listOf("auth_token", "session"), jar.get(source.url).map { it.name }.sorted())
-        assertEquals(listOf(1, 1), source.requests.map { it.page })
-        assertEquals(listOf("captured", "captured"), source.requests.map { (it.query as SourceQuery.Search).query })
-        assertSame((captured.query as SourceQuery.Search).filters, source.filters.last())
-        assertEquals(captured, coordinator.state!!.request)
-        assertEquals(setOf("auth_token", "session"), source.cookies.last())
-        assertEquals(null, CloudflareChallengeManager().tryReceive())
     }
 
     @Test
     fun `cookie header parser rejects unsafe input without exposing values`() {
         val url = "https://example.com/path".toHttpUrl()
-        listOf("", "missing", "=secret", "session=", "session=one; session=two", "bad name=secret")
+        listOf(
+            "", "missing", "=secret", "session=", "session=one; session=two", "bad name=secret",
+            "session=bad value", "session=bad,comma", "session=bad\\slash", "session=line\r\nbreak",
+            "session=\u007f", "session=é",
+        )
             .forEach { assertEquals(null, DesktopSourceCookieHeaderParser.parse(it, url)) }
         val parsed = requireNotNull(DesktopSourceCookieHeaderParser.parse("session=secret", url))
         assertFalse(parsed.toString().contains("secret"))
+    }
+
+    @Test
+    fun `login controller rejects concurrency and cancellation isolates late input`() = runBlocking {
+        val source = QueryFailureSource()
+        val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
+        coordinator.load(source, 1, SourceQuery.Search("once", FilterList()))
+        val intent = DesktopSourceRecoveryIntent.OpenLogin("https://example.com", coordinator.state!!.request)
+        lateinit var firstTicket: mihon.desktop.network.DesktopBrowserLoginTicket
+        val controller = DesktopSourceLoginController(
+            DesktopSourceLoginSessionFactory(
+                AuthenticatedSessionCommitter { _, _ -> },
+                DesktopBrowserOpener { _, ticket -> firstTicket = ticket; true },
+            ),
+            coordinator,
+        )
+        val first = controller.newAttempt()
+        val running = async(start = CoroutineStart.UNDISPATCHED) { controller.login(source, intent, first) }
+        val second = controller.newAttempt()
+
+        assertEquals(SourceLoginState.BrowserUnavailable, controller.login(source, intent, second))
+        assertTrue(controller.cancel(first))
+        controller.cancel(first)
+        assertEquals(SourceLoginState.Cancelled, running.await())
+        assertFalse(controller.submitCookies(first, "session=secret"))
+        assertFalse(firstTicket.complete(session("session", "secret")))
+        assertFalse(controller.toString().contains("secret"))
+    }
+
+    @Test
+    fun `timed out attempt is cleaned before a fresh login and rejects late submission`() = runBlocking {
+        val source = QueryFailureSource()
+        val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
+        coordinator.load(source, 1, SourceQuery.Search("once", FilterList()))
+        val intent = DesktopSourceRecoveryIntent.OpenLogin("https://example.com", coordinator.state!!.request)
+        val controller = DesktopSourceLoginController(
+            DesktopSourceLoginSessionFactory(
+                AuthenticatedSessionCommitter { _, _ -> },
+                DesktopBrowserOpener { _, _ -> true },
+            ),
+            coordinator,
+            timeoutMillis = 1,
+        )
+        val timedOut = controller.newAttempt()
+        assertEquals(SourceLoginState.TimedOut, controller.login(source, intent, timedOut))
+        assertFalse(controller.submitCookies(timedOut, "session=secret"))
+
+        val fresh = controller.newAttempt()
+        val running = async(start = CoroutineStart.UNDISPATCHED) { controller.login(source, intent, fresh) }
+        assertFalse(controller.submitCookies(timedOut, "session=late-secret"))
+        assertTrue(controller.submitCookies(fresh, "session=secret"))
+        assertEquals(SourceLoginState.Authenticated(setOf("session"), 1), running.await())
     }
 
     @Test
@@ -347,17 +413,18 @@ class SourceSharedStateWiringTest {
         }
     }
 
-    private class CookieQuerySource(val jar: DesktopCookieJar) : NamedSource(5, "Cookies") {
-        val url = "https://example.com/path".toHttpUrl()
+    private class CookieQuerySource(
+        val url: okhttp3.HttpUrl,
+        private val client: OkHttpClient,
+    ) : NamedSource(5, "Cookies") {
         val requests = mutableListOf<SourcePageRequest>()
-        val cookies = mutableListOf<Set<String>>()
         val filters = mutableListOf<FilterList>()
         override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
-            val names = jar.get(url).mapTo(sortedSetOf()) { it.name }
-            cookies += names
             requests += SourcePageRequest(id, page, 1, SourceQuery.Search(query, filters))
             this.filters += filters
-            if (names.isEmpty()) throw HttpException(403)
+            client.newCall(Request.Builder().url(url).build()).execute().use { response ->
+                if (!response.isSuccessful) throw HttpException(response.code)
+            }
             return MangasPage(listOf(manga("/authenticated")), false)
         }
     }

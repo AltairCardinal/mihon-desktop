@@ -18,6 +18,7 @@ import okhttp3.Request
 import okhttp3.Response
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourceQuery
@@ -83,16 +84,19 @@ class DesktopSourceQueryBehaviorTest {
     }
 
     @Test
-    fun `authentication recovery opens the existing source URL intent`() = runBlocking {
+    fun `authentication recovery identity includes its captured request`() = runBlocking {
         val source = AuthenticationSource()
         val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
 
         coordinator.load(source, page = 1, query = SourceQuery.Popular)
 
-        assertEquals(
-            DesktopSourceRecoveryIntent.OpenExternalUrl(source.baseUrl),
+        val intent = assertInstanceOf(
+            DesktopSourceRecoveryIntent.OpenLogin::class.java,
             coordinator.recoveryIntent(source),
         )
+        assertEquals(source.baseUrl, intent.url)
+        assertEquals(coordinator.state!!.request, intent.request)
+        assertNotEquals(intent, intent.copy(request = intent.request.copy(generation = intent.request.generation + 1)))
     }
 
     private class AuthenticationSource : eu.kanade.tachiyomi.source.online.HttpSource() {
