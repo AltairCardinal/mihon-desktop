@@ -15,6 +15,10 @@ data class LibraryMembershipUpdate(
     val favorite: Boolean,
     val dateAdded: Long,
     val categoryIds: List<Long>,
+    val updateCategories: Boolean = true,
+    val chapterFlags: Long? = null,
+    val viewerFlags: Long? = null,
+    val notes: String? = null,
 )
 
 interface MangaRepository : LibraryMembershipRepository {

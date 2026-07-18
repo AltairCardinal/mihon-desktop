@@ -29,12 +29,15 @@ class MangaRepositoryImpl(
                     source = null, url = null, artist = null, author = null, description = null,
                     genre = null, title = null, status = null, thumbnailUrl = null,
                     favorite = update.favorite, lastUpdate = null, nextUpdate = null,
-                    calculateInterval = null, initialized = null, viewer = null, chapterFlags = null,
+                    calculateInterval = null, initialized = null, viewer = update.viewerFlags,
+                    chapterFlags = update.chapterFlags,
                     coverLastModified = null, dateAdded = update.dateAdded, mangaId = update.mangaId,
-                    updateStrategy = null, version = null, isSyncing = 0, notes = null,
+                    updateStrategy = null, version = null, isSyncing = 0, notes = update.notes,
                 )
-                mangas_categoriesQueries.deleteMangaCategoryByMangaId(update.mangaId)
-                update.categoryIds.forEach { mangas_categoriesQueries.insert(update.mangaId, it) }
+                if (update.updateCategories) {
+                    mangas_categoriesQueries.deleteMangaCategoryByMangaId(update.mangaId)
+                    update.categoryIds.forEach { mangas_categoriesQueries.insert(update.mangaId, it) }
+                }
             }
         }
     }

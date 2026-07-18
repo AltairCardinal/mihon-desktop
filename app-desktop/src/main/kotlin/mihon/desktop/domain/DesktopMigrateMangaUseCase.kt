@@ -10,7 +10,6 @@ import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.manga.model.Manga
-import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.LibraryMembershipUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
 
@@ -70,12 +69,6 @@ class DesktopMigrateMangaUseCase(
             replace = replace,
             now = migrationTime,
         )
-        val targetCategoryIds = if (options.copyCategories) {
-            libraryPlan.targetCategoryIds
-        } else {
-            getCategories.await(savedTarget.id).map { it.id }
-        }
-
         // 2. Copy chapter read status
         if (options.copyChapters) {
             val sourceChapters = getChaptersByMangaId.await(sourceManga.id).map {
@@ -92,20 +85,21 @@ class DesktopMigrateMangaUseCase(
         // 3. Copy category assignments
         // Categories were applied by UpdateLibraryMembership with the favorite update.
 
-        // 4. Copy manga flags and optional notes
-        mangaRepository.update(
-            MangaUpdate(
-                id = savedTarget.id,
-                chapterFlags = libraryPlan.targetChapterFlags,
-                viewerFlags = libraryPlan.targetViewerFlags,
-                notes = libraryPlan.targetNotes,
-            ),
-        )
-
-        // 5. Commit target membership and optional source removal in one database transaction.
+        // 4. Commit target metadata and membership, plus optional source removal, in one transaction.
         mangaRepository.updateMembershipsAtomically(
             buildList {
-                add(LibraryMembershipUpdate(savedTarget.id, true, libraryPlan.targetDateAdded, targetCategoryIds))
+                add(
+                    LibraryMembershipUpdate(
+                        mangaId = savedTarget.id,
+                        favorite = true,
+                        dateAdded = libraryPlan.targetDateAdded,
+                        categoryIds = libraryPlan.targetCategoryIds,
+                        updateCategories = options.copyCategories,
+                        chapterFlags = libraryPlan.targetChapterFlags,
+                        viewerFlags = libraryPlan.targetViewerFlags,
+                        notes = libraryPlan.targetNotes,
+                    ),
+                )
                 if (libraryPlan.removeCurrentFromLibrary) {
                     add(LibraryMembershipUpdate(sourceManga.id, false, 0, emptyList()))
                 }

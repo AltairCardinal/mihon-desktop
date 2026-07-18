@@ -31,6 +31,14 @@ class DesktopMigrateMangaUseCaseIntegrationTest {
         fixture(faultMembership = true).use { f ->
             val categoryId = f.insertCategory("Action")
             val source = f.insertManga("/source")
+            f.mangas.update(
+                MangaUpdate(
+                    id = source.id,
+                    chapterFlags = 0x35L,
+                    viewerFlags = 0x62L,
+                    notes = "source notes",
+                ),
+            )
             f.mangas.updateMembershipsAtomically(listOf(LibraryMembershipUpdate(source.id, true, 40, listOf(categoryId))))
             val favoriteSource = f.mangas.getMangaById(source.id)
 
@@ -43,6 +51,9 @@ class DesktopMigrateMangaUseCaseIntegrationTest {
             val target = requireNotNull(f.mangas.getMangaByUrlAndSourceId("/target", 2))
             assertEquals(false, target.favorite)
             assertEquals(0, target.dateAdded)
+            assertEquals(0, target.chapterFlags)
+            assertEquals(0, target.viewerFlags)
+            assertEquals("", target.notes)
             assertEquals(emptyList<Long>(), f.categoryIds(target.id))
             assertEquals(true, f.mangas.getMangaById(source.id).favorite)
             assertEquals(40, f.mangas.getMangaById(source.id).dateAdded)
@@ -106,6 +117,7 @@ class DesktopMigrateMangaUseCaseIntegrationTest {
                     LibraryMembershipUpdate(target.id, true, 20, listOf(targetCategoryId)),
                 ),
             )
+            f.failOnCategoryDelete(target.id)
 
             val migrated = f.useCase.await(
                 f.mangas.getMangaById(source.id),
@@ -326,6 +338,21 @@ class DesktopMigrateMangaUseCaseIntegrationTest {
 
         suspend fun categoryIds(mangaId: Long): List<Long> = handler.awaitList {
             categoriesQueries.getCategoriesByMangaId(mangaId) { id, _, _, _ -> id }
+        }
+
+        fun failOnCategoryDelete(mangaId: Long) {
+            driver.execute(
+                null,
+                """
+                CREATE TRIGGER abort_target_category_delete
+                BEFORE DELETE ON mangas_categories
+                WHEN OLD.manga_id = $mangaId
+                BEGIN
+                    SELECT RAISE(ABORT, 'target categories must not be rewritten');
+                END
+                """.trimIndent(),
+                0,
+            )
         }
 
         override fun close() = driver.close()
