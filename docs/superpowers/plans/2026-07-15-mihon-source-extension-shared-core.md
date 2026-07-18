@@ -844,30 +844,35 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 - Risk axis: `desktop-extension-projection-rules`
 - Platform boundary: `shared+desktop`
-- Estimated scope: `2 files, 300 lines`
+- Estimated scope: `3 files, 310 lines`
 - Verification: Desktop item adapter 使用 Task 6B shared classifier/search 与 `SharedExtensionUpdatePolicy`；完整 raw install state 只在 port 单点映射并保留原始 state/AppError；partial repo failure 不误标 obsolete，custom JAR 保守，bundled package 不重新显示为可安装/更新，多 source projection action 保留原始 package。
+
+**6C2a scope adjustment:** 断线 mutation 强制重新编译 production 后暴露 `DesktopExtensionManager` 的 StateFlow 属性 getter 与旧 List 快照方法生成同名 JVM getter，MockK 无法稳定插桩，原 GREEN 被增量缓存掩盖。为避免修改 Manager 产品 API，port 允许显式注入同一 authoritative StateFlow，两个端口测试直接传入该 flow；增加 1 个既有测试文件和最多 10 changed lines，不改变 production 默认 wiring。
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/DesktopExtensionPresentationPort.kt`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/DesktopExtensionPresentationProjectionTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/DesktopExtensionPresentationPortTest.kt`
 
-- [ ] **Step 1: 写 projection/update/raw mapping RED**
+- [x] **Step 1: 写 projection/update/raw mapping RED**
 
   覆盖 package-name opt-in、逗号 OR、source name/baseUrl/id、shared classifier 返回值、update/obsolete、partial repo failure、custom/bundled package、多 source 原始 action package，以及全部 `ExtensionInstallState`→presentation step 映射并保留 raw state/error identity。
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.DesktopExtensionPresentationProjectionTest"`
   Expected: FAIL，原因是 typed port 尚未建立 shared projection/update/raw adapter。
 
-- [ ] **Step 3: 实现单点 projection adapter**
+- [x] **Step 3: 实现单点 projection adapter**
 
   port 负责 Desktop model→shared item 的薄映射，update 只调用 shared policy；obsolete 仅在能证明所属 repo refresh 成功时设置；raw state 映射集中一个函数，ScreenModel 不得出现第二个 `when (ExtensionInstallState)`。
 
-- [ ] **Step 4: 运行 GREEN 与断线 mutation**
+- [x] **Step 4: 运行 GREEN 与断线 mutation**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.DesktopExtensionPresentationProjectionTest"`
   Expected: 全部 PASS；绕过 shared store/policy、丢 raw state、错误 obsolete 或用 projected package 执行动作时至少一个测试失败。
+
+**6C2a completion evidence:** Desktop port 已消费 shared classifier/search/update policy，并集中完成 projection、update/obsolete 与 raw install state 映射；partial failure、custom/bundled、多 source action package 与 raw identity 均有行为断言。重新编译暴露的 MockK 同名 getter 夹具缺陷通过显式 authoritative StateFlow seam 修复，production 默认仍来自 Manager。focused Port/Projection tests 4/4 PASS；`includePackageName=true→false` mutation 精确杀死 1 项测试；3 files/308 changed lines，首次审查及唯一修复复审均 Approved。
 
 ##### Task 6C2b: Desktop ScreenModel、jobs/trust 与 DI lifecycle
 
