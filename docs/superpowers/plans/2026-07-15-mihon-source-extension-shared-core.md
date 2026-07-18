@@ -1052,8 +1052,9 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 - Risk axis: `extension-list-compose-state`
 - Platform boundary: `desktop`
-- Estimated scope: `2 files, 300 lines`
-- Verification: production `ExtensionListContent` 收集 singleton ScreenModel，首次 refresh；真实 Compose 区分 loading/empty、data+exact partial failure 同屏，Retry 再触发 refresh；保留双 tab、宽屏与仓库入口，动作生命周期留给 6D2。
+- Estimated scope: `2 files, 400 lines`
+- Verification: production `ExtensionListScreen.Content` 经 Voyager/Injekt 收集 singleton ScreenModel，首次 refresh；真实 Compose 区分 loading/empty、data+exact partial failure 同屏，Retry 再触发 refresh；updates 与 available 同屏且仅有 update 时不丢失 Update/Update All；语言与 NSFW 同次应用不互相覆盖，source language 与 Clear 使用完整 inventory；保留双 tab、宽屏与仓库入口，动作生命周期留给 6D2。
+- Estimate correction: 初稿 `296/300` 的审查证明原估算遗漏了真实 Screen→Injekt route、update-only 可达性和多 source filter 断线场景；唯一修复轮仍限制在同一 2 files 且不超过项目 400-line Task 上限，不新增调度单元。
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionListScreen.kt`
