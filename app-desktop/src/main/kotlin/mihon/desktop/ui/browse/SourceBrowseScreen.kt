@@ -208,7 +208,7 @@ fun DesktopSourceLoginDialog(model: DesktopSourceLoginDialogModel, events: Deskt
     )
 }
 
-data class SourceBrowseScreen(val sourceId: Long) : Screen {
+data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = null) : Screen {
 
     internal fun projectState(state: SourceQueryState?): SourceBrowseUiState =
         SourceBrowseStateProjector.project(state)
@@ -252,9 +252,14 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
         var sourceLoginUiState by remember { mutableStateOf(initialLoginState) }
 
         // Search state
-        var searchQuery by remember { mutableStateOf("") }
-        var searchActive by remember { mutableStateOf(false) }
-        var listingQuery by remember { mutableStateOf<SourceQuery>(SourceQuery.Popular) }
+        var searchQuery by remember { mutableStateOf(initialQuery.orEmpty()) }
+        var searchActive by remember { mutableStateOf(initialQuery != null) }
+        var listingQuery by remember(source, initialQuery) {
+            mutableStateOf<SourceQuery>(
+                initialQuery?.let { SourceQuery.Search(it, source?.getFilterList() ?: FilterList()) }
+                    ?: SourceQuery.Popular,
+            )
+        }
 
         val modes = remember(source) { availableBrowseModes(source?.supportsLatest == true) }
 

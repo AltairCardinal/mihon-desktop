@@ -503,7 +503,9 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
                             text = "${sourceResult.source.name} (${sourceResult.results.size})",
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+                            modifier = Modifier
+                                .clickable { navigator.push(SourceBrowseScreen(sourceResult.source.id, query)) }
+                                .padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
                         )
                         sourceResult.error?.let { error ->
                             Row(
@@ -542,7 +544,7 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
                             contentPadding = PaddingValues(horizontal = 12.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            items(sourceResult.results.take(10), key = { it.source to it.url }) { initialManga ->
+                            items(sourceResult.results, key = { it.source to it.url }) { initialManga ->
                                 val manga by produceState(initialManga, initialManga.source, initialManga.url) {
                                     getManga.subscribe(initialManga.url, initialManga.source)
                                         .filterNotNull()

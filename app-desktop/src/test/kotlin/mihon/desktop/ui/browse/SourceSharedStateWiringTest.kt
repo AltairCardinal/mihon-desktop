@@ -521,6 +521,8 @@ class SourceSharedStateWiringTest {
     fun `source projector distinguishes first load from a successful empty page`() {
         val request = SourcePageRequest(1, 1, 1, SourceQuery.Popular)
         val screen = SourceBrowseScreen(1)
+        assertEquals(null, screen.initialQuery)
+        assertEquals("query", SourceBrowseScreen(1, "query").initialQuery)
         assertTrue(screen.projectState(SourceQueryState.Loading(request)).loading)
         assertFalse(screen.projectState(SourceQueryState.Empty(request)).loading)
         assertTrue(screen.projectState(SourceQueryState.Empty(request)).empty)

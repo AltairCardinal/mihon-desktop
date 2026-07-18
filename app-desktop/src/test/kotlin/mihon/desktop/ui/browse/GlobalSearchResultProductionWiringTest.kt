@@ -72,8 +72,8 @@ class GlobalSearchResultProductionWiringTest {
             val searchesB = mutableListOf<String>()
             val listedA = mutableListOf<SManga>()
             val details = DetailProbe()
-            val sourceA = source(9, "A", searchesA, "/shared", listedA, details)
-            val sourceB = source(10, "B", searchesB, "/shared")
+            val sourceA = source(9, "A", searchesA, "/shared", listedA, details, resultCount = 1)
+            val sourceB = source(10, "B", searchesB, "/shared", resultCount = 1)
             val preferences = DesktopAppPreferences(DesktopPreferenceStore(fixture.preferenceRoot)).apply {
                 enabledLanguages.set(setOf("en"))
                 pinnedSources.set(setOf(sourceA.id.toString(), sourceB.id.toString()))
@@ -220,6 +220,7 @@ class GlobalSearchResultProductionWiringTest {
         sharedUrl: String? = null,
         listed: MutableList<SManga>? = null,
         details: DetailProbe? = null,
+        resultCount: Int = 12,
     ): CatalogueSource = mockk {
         every { this@mockk.id } returns id
         every { this@mockk.name } returns name
@@ -228,7 +229,7 @@ class GlobalSearchResultProductionWiringTest {
         coEvery { getSearchManga(1, any(), any()) } answers {
             val query = secondArg<String>()
             searches += query
-            val items = (0 until 12).map { index ->
+            val items = (0 until resultCount).map { index ->
                 SManga.create().apply {
                     url = sharedUrl?.takeIf { index == 0 } ?: if (sharedUrl == null) "/$query/$index" else "/$name/$query/$index"
                     title = if (sharedUrl == null) "$query canonical $index" else "$name listed $index"
