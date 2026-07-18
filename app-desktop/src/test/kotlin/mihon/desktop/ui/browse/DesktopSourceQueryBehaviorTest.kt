@@ -2,6 +2,7 @@ package mihon.desktop.ui.browse
 
 import eu.kanade.tachiyomi.network.HttpException
 import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
@@ -9,8 +10,10 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -19,8 +22,10 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourceQuery
@@ -141,6 +146,97 @@ class DesktopSourceQueryBehaviorTest {
         assertEquals(replacement.request, current.request)
         assertEquals("new", (current.request.query as SourceQuery.Search).query)
         assertEquals(listOf("/new-1"), current.items.map { it.url })
+    }
+
+    @Test
+    fun `started callback failure retires pending append and restores previous content`() = runBlocking {
+        val source = SerializedPagingSource()
+        val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
+        val first = coordinator.load(source, page = 1, query = SourceQuery.Popular)
+
+        val failure = runCatching {
+            coordinator.load(source, page = 2, query = SourceQuery.Popular) { error("callback failed") }
+        }.exceptionOrNull()
+
+        assertInstanceOf(IllegalStateException::class.java, failure)
+        assertFalse(coordinator.state!!.isLoading)
+        assertEquals(first, coordinator.state)
+        val recovered = withTimeout(2_000) {
+            coordinator.load(source, page = 2, query = SourceQuery.Popular)
+        }
+        assertEquals(listOf("/popular-1", "/popular-2"), recovered.items.map { it.url })
+    }
+
+    @Test
+    fun `owner cancellation wakes waiter retires loading and permits reissue`() = runBlocking {
+        val source = SerializedPagingSource(blockPopularPageTwo = true)
+        val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
+        coordinator.load(source, page = 1, query = SourceQuery.Popular)
+        val owner = async(start = CoroutineStart.UNDISPATCHED) {
+            coordinator.load(source, page = 2, query = SourceQuery.Popular)
+        }
+        withTimeout(2_000) { source.pageTwoStarted.await() }
+        val waiter = async(start = CoroutineStart.UNDISPATCHED) {
+            runCatching { coordinator.load(source, page = 2, query = SourceQuery.Popular) }
+        }
+
+        withTimeout(2_000) { owner.cancelAndJoin() }
+        val waiterFailure = withTimeout(2_000) { waiter.await().exceptionOrNull() }
+        source.releasePageTwo.complete(Unit)
+
+        assertInstanceOf(CancellationException::class.java, waiterFailure)
+        assertFalse(coordinator.state!!.isLoading)
+        val recovered = withTimeout(2_000) {
+            coordinator.load(source, page = 2, query = SourceQuery.Popular)
+        }
+        assertEquals(2, source.requests.count { it == "popular" to 2 })
+        assertEquals(listOf("/popular-1", "/popular-2"), recovered.items.map { it.url })
+    }
+
+    @Test
+    fun `waiter cancellation does not cancel append owner`() = runBlocking {
+        val source = SerializedPagingSource(blockPopularPageTwo = true)
+        val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
+        coordinator.load(source, page = 1, query = SourceQuery.Popular)
+        val owner = async(start = CoroutineStart.UNDISPATCHED) {
+            coordinator.load(source, page = 2, query = SourceQuery.Popular)
+        }
+        withTimeout(2_000) { source.pageTwoStarted.await() }
+        val waiter = async(start = CoroutineStart.UNDISPATCHED) {
+            coordinator.load(source, page = 2, query = SourceQuery.Popular)
+        }
+
+        withTimeout(2_000) { waiter.cancelAndJoin() }
+        val ownerStillActive = owner.isActive
+        source.releasePageTwo.complete(Unit)
+        val completed = withTimeout(2_000) { owner.await() }
+
+        assertTrue(ownerStillActive)
+        assertEquals(1, source.requests.count { it == "popular" to 2 })
+        assertEquals(listOf("/popular-1", "/popular-2"), completed.items.map { it.url })
+    }
+
+    @Test
+    fun `mutable filter state cannot orphan or duplicate pending append`() = runBlocking {
+        val filter = object : Filter.Text("Title") {}
+        val query = SourceQuery.Search("old", FilterList(listOf(filter)))
+        val source = SerializedPagingSource(blockOldSearchPageTwo = true)
+        val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
+        coordinator.load(source, page = 1, query = query)
+        val owner = async(start = CoroutineStart.UNDISPATCHED) { coordinator.load(source, page = 2, query = query) }
+        withTimeout(2_000) { source.pageTwoStarted.await() }
+
+        filter.state = "changed while loading"
+        val waiter = async(start = CoroutineStart.UNDISPATCHED) { coordinator.load(source, page = 2, query = query) }
+        val waiterCompletedBeforeOwner = waiter.isCompleted
+        source.releasePageTwo.complete(Unit)
+        withTimeout(2_000) { owner.await() }
+        withTimeout(2_000) { waiter.await() }
+
+        val next = withTimeout(2_000) { coordinator.load(source, page = 3, query = query) }
+        assertFalse(waiterCompletedBeforeOwner)
+        assertEquals(1, source.requests.count { it == "old" to 2 })
+        assertEquals(3, next.request.page)
     }
 
     @Test

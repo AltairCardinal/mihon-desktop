@@ -11,6 +11,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -74,12 +76,18 @@ internal class SourceQueryStatePublisher {
 class SourceBrowseQueryCoordinator(
     private val service: SourceMangaSearchService,
 ) {
+    private data class SourceLoadKey(
+        val sourceId: Long,
+        val generation: Long,
+        val page: Int,
+    )
+
     private val reducer = SourceQueryReducer()
     private val lock = Any()
     private var generation = 0L
     private var publicationOrdinal = 0L
     private var authoritativeState: SourceQueryState? = null
-    private val pendingLoads = mutableMapOf<SourcePageRequest, CompletableDeferred<SourceQueryState>>()
+    private val pendingLoads = mutableMapOf<SourceLoadKey, CompletableDeferred<SourceQueryState>>()
     private val publisher = SourceQueryStatePublisher()
 
     val states: Flow<SourceQueryState?> = publisher.states
@@ -95,31 +103,47 @@ class SourceBrowseQueryCoordinator(
     ): SourceQueryState {
         val pending = CompletableDeferred<SourceQueryState>()
         var shared: CompletableDeferred<SourceQueryState>? = null
+        var previous: SourceQueryState? = null
         lateinit var request: SourcePageRequest
+        lateinit var key: SourceLoadKey
         val started = synchronized(lock) {
             if (page == 1) generation += 1
             request = SourcePageRequest(source.id, page, generation, query)
-            pendingLoads[request]?.let {
+            key = request.loadKey()
+            pendingLoads[key]?.let {
+                if (!matchesCurrentRequestLocked(request)) return requireNotNull(authoritativeState)
                 shared = it
                 return@synchronized null
             }
             if (page > 1 && !canAppendLocked(request)) return requireNotNull(authoritativeState)
-            pendingLoads[request] = pending
+            previous = authoritativeState
+            pendingLoads[key] = pending
             commitLocked(reducer.start(request, authoritativeState))
         }
         shared?.let { return it.await() }
         val owned = requireNotNull(started)
-        publisher.publish(owned)
-        onStarted(requireNotNull(owned.state))
         return try {
+            publisher.publish(owned)
+            onStarted(requireNotNull(owned.state))
+            currentCoroutineContext().ensureActive()
             completeLoad(source, request).also(pending::complete)
         } catch (error: Throwable) {
+            val restored = synchronized(lock) {
+                val current = authoritativeState
+                if (current?.isLoading == true && current.request.loadKey() == key) restoreLocked(previous) else null
+            }
+            restored?.let(publisher::publish)
             pending.completeExceptionally(error)
             throw error
         } finally {
-            synchronized(lock) { pendingLoads.remove(request, pending) }
+            synchronized(lock) { pendingLoads.remove(key, pending) }
         }
     }
+
+    private fun SourcePageRequest.loadKey() = SourceLoadKey(sourceId, generation, page)
+
+    private fun matchesCurrentRequestLocked(request: SourcePageRequest): Boolean =
+        authoritativeState?.request?.let { it.loadKey() == request.loadKey() && it.query == request.query } == true
 
     private fun canAppendLocked(request: SourcePageRequest): Boolean {
         val current = authoritativeState as? SourceQueryState.Content ?: return false
@@ -133,6 +157,7 @@ class SourceBrowseQueryCoordinator(
         request: SourcePageRequest,
     ): SourceQueryState {
         val result = service.loadPageResult(source, request)
+        currentCoroutineContext().ensureActive()
         val completed = synchronized(lock) {
             val current = requireNotNull(authoritativeState)
             if (current.request != request) return@synchronized null
@@ -179,6 +204,11 @@ class SourceBrowseQueryCoordinator(
     }
 
     private fun commitLocked(state: SourceQueryState): StampedSourceQueryState {
+        authoritativeState = state
+        return StampedSourceQueryState(++publicationOrdinal, state)
+    }
+
+    private fun restoreLocked(state: SourceQueryState?): StampedSourceQueryState {
         authoritativeState = state
         return StampedSourceQueryState(++publicationOrdinal, state)
     }
