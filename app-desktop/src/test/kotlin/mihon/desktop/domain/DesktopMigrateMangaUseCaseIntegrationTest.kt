@@ -305,6 +305,76 @@ class DesktopMigrateMangaUseCaseIntegrationTest {
         }
     }
 
+    @Test
+    fun `chapter adapter copies matched metadata and preserves unmatched target metadata`() = runTest {
+        fixture().use { f ->
+            val source = f.insertManga("/source", sourceId = 1)
+            val target = f.insertManga("/target", sourceId = 2)
+            f.chapters.addAll(
+                listOf(
+                    Chapter.create().copy(
+                        mangaId = source.id,
+                        url = "/source-2",
+                        name = "Source 2",
+                        chapterNumber = 2.0,
+                        bookmark = true,
+                        dateFetch = 220,
+                    ),
+                    Chapter.create().copy(
+                        mangaId = source.id,
+                        url = "/source-unknown",
+                        name = "Source unknown",
+                        chapterNumber = -1.0,
+                        bookmark = true,
+                        dateFetch = 990,
+                    ),
+                    Chapter.create().copy(
+                        mangaId = target.id,
+                        url = "/target-2",
+                        name = "Target 2",
+                        chapterNumber = 2.0,
+                        bookmark = false,
+                        dateFetch = 20,
+                    ),
+                    Chapter.create().copy(
+                        mangaId = target.id,
+                        url = "/target-3",
+                        name = "Target 3",
+                        chapterNumber = 3.0,
+                        bookmark = true,
+                        dateFetch = 330,
+                    ),
+                    Chapter.create().copy(
+                        mangaId = target.id,
+                        url = "/target-unknown",
+                        name = "Target unknown",
+                        chapterNumber = -1.0,
+                        bookmark = false,
+                        dateFetch = 440,
+                    ),
+                ),
+            )
+
+            f.useCase.await(
+                source,
+                target("/target"),
+                2,
+                listOf(
+                    sourceChapter("/target-2", "Target 2", 2.0),
+                    sourceChapter("/target-3", "Target 3", 3.0),
+                    sourceChapter("/target-unknown", "Target unknown", -1.0),
+                ),
+                replace = false,
+            )
+
+            val metadataByUrl = f.chapters.getChapterByMangaId(target.id)
+                .associate { it.url to (it.bookmark to it.dateFetch) }
+            assertEquals(true to 220L, metadataByUrl.getValue("/target-2"))
+            assertEquals(true to 330L, metadataByUrl.getValue("/target-3"))
+            assertEquals(false to 440L, metadataByUrl.getValue("/target-unknown"))
+        }
+    }
+
     private fun target(url: String) = SManga.create().apply {
         this.url = url
         title = "Target"
