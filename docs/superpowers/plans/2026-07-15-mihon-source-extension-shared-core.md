@@ -788,6 +788,10 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **OpenSpec mapping:** 2.3、3.4（Desktop 消费从固定 main 提取的共享状态、安装反馈与 DI 部分）
 
+**Risk axis:** desktop-extension-presentation-wiring
+**Platform boundary:** shared+desktop
+**Estimated scope:** 13 files, 720 lines
+**Verification:** Task 6C1 独立闭合 metadata 连续性、Manager authoritative state、typed catalog/trust/install port 与取消 rollback；Task 6C2 再闭合只消费该 port 和 Task 6B shared store 的 ScreenModel/DI lifecycle。两个子 Task 分别验收，任一方通过不能替代另一方。
 **Execution split:** 预审确认已安装 sidecar 缺少 fixed-main 分类所需的 name/language/isNsfw，且 Manager 没有 authoritative installed StateFlow；若在原 8 files/400 lines 内同时实现 metadata 连续性、typed port、ScreenModel 与 DI，只能以 catalog 临时 join 或 terminal wrapper 继续丢状态。因此按 6C1→6C2 顺序施工。
 **Split waiver:** 下述文件数/行数不会作为一个 Task 调度；6C1 与 6C2 分别不超过 8 files/400 lines。6C1 先让 typed platform port 独立可用，6C2 再只消费该 port 与 Task 6B shared store。
 
