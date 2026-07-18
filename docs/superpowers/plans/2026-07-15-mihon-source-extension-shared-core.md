@@ -901,20 +901,20 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **6C2b1a scope adjustment:** 首轮审查发现全量 mock port 不能证明 production shared reducer/classifier 与 manager uninstall wiring，且手工 update item 不是 C2a 可产出的真实状态。唯一修复轮改为只 mock API/Manager 平台边界并使用真实 port、authoritative installed flow 与 typed catalog；增加最多 20 changed lines，同时补首次 refresh 前 options 公开反馈。
 
-- [ ] **Step 1: 写 state/reducer/intents RED**
+- [x] **Step 1: 写 state/reducer/intents RED**
 
   覆盖 manager flow 更新后重投影、partial failure exact identity、RefreshFinished 输入继承 RefreshStarted 返回值、refresh 异常也结束、update-all 按 `operationPackageName` 从最近 catalog 取原始 artifact、uninstall 只走 typed port。
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionSharedStateWiringTest"`
   Expected: FAIL，原因是尚无 production ScreenModel state/reducer 与 fixed-main intents。
 
-- [ ] **Step 3: 实现 state/reducer 与 typed intent surface**
+- [x] **Step 3: 实现 state/reducer 与 typed intent surface**
 
   ScreenModel 持有最近 typed catalog，只消费 C2a projection/classifier 和 shared reducer；port 只补卸载等平台 side-effect adapter，不增加业务规则。
 
-- [ ] **Step 4: 运行 GREEN 与断线 mutation**
+- [x] **Step 4: 运行 GREEN 与断线 mutation**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionSharedStateWiringTest"`
   Expected: 全部 PASS；忽略 reducer 返回值、停止订阅 installed flow、丢 partial failure identity、从 projected available 选 update 或绕开 typed uninstall 时至少一项失败。
@@ -929,9 +929,11 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 **Files:**
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionSharedStateWiringTest.kt`
 
-- [ ] **Step 1: 补 refresh failure RED/GREEN 与 finally mutation**
+- [x] **Step 1: 补 refresh failure RED/GREEN 与 finally mutation**
 
   在现有真实 port 测试末尾令 refresh 抛出同一 `IllegalStateException`，断言 `refreshError === error` 且 `actions.isRefreshing == false`；focused 单类通过后临时把 `RefreshFinished` 移出 finally，确认该断言失败，再恢复并重跑 GREEN。
+
+**6C2b1a/1aR completion evidence:** production ScreenModel 订阅 authoritative installed flow，以最近 typed catalog 调用 C2a projection/classifier，并连续回灌 shared reducer；真实 port 测试保留 partial failure/error identity、update policy 的原始 candidate identity 与 typed uninstall manager identity，首次 refresh 前 options 也立即反馈。focused tests 2/2 PASS；忽略 reducer 返回值与把 `RefreshFinished` 移出 finally 的 mutation 均精确失败；聚合 3 files/228 changed lines。6C2b1a 首审触发唯一修复复审后仍缺异常分支，因此按门禁停止并新建 1aR；1aR 独立审查 Approved、无 P0/P1/P2。
 
 ###### Task 6C2b1b: Desktop package jobs、trust 与 close lifecycle
 
