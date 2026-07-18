@@ -48,7 +48,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.platform.DesktopOAuthCallbackServer
+import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.tracking.DesktopAuthenticatingTrackerService
+import mihon.desktop.ui.settings.SwitchSettingsItem
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.service.TrackEdit
 import tachiyomi.domain.track.service.TrackSearchResult
@@ -91,63 +93,73 @@ data class TrackingSettingsScreen(
                 )
             },
         ) { padding ->
-            Box(Modifier.fillMaxSize().padding(padding)) {
-                when {
-                    state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-                    state.services.isEmpty() && state.error == null -> Text(
-                        "No tracking services are available for this build.",
-                        modifier = Modifier.align(Alignment.Center),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    else -> LazyColumn(Modifier.fillMaxSize()) {
-                        state.error?.let { message ->
-                            item { Text(message, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error) }
-                        }
-                        state.feedback?.let { message -> item { Text(message, Modifier.padding(16.dp)) } }
-                        items(state.services, key = { it.profile.id }) { item ->
-                            val profile = item.profile
-                            val sourceManaged = dependencies.trackerServiceRegistry.get(profile.id) !is DesktopAuthenticatingTrackerService
-                            ListItem(
-                                headlineContent = { Text(profile.name) },
-                                supportingContent = {
-                                    Text(
-                                        profile.unavailableReason
-                                            ?: when {
-                                                item.track != null -> "Bound to ${item.track.title}"
-                                                sourceManaged && profile.loggedIn -> "Available through configured source"
-                                                profile.loggedIn -> "Logged in${profile.username?.let { " as $it" }.orEmpty()} · Not bound"
-                                                else -> "Not logged in"
-                                            },
-                                    )
-                                },
-                                trailingContent = {
-                                    TextButton(
-                                        enabled = profile.unavailableReason == null && (!sourceManaged || mangaId != null),
-                                        onClick = {
-                                            if (profile.loggedIn && mangaId == null) {
-                                                confirmation = TrackingConfirmation.Logout(profile.id, profile.name)
-                                            } else {
-                                                selectedId = profile.id
-                                            }
-                                        },
-                                    ) {
+            Column(Modifier.fillMaxSize().padding(padding)) {
+                if (mangaId == null) {
+                    TrackingAutoSyncPreference(dependencies.appPreferences)
+                    HorizontalDivider()
+                }
+                Box(Modifier.fillMaxWidth().weight(1f)) {
+                    when {
+                        state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
+                        state.services.isEmpty() && state.error == null -> Text(
+                            "No tracking services are available for this build.",
+                            modifier = Modifier.align(Alignment.Center),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        else -> LazyColumn(Modifier.fillMaxSize()) {
+                            state.error?.let { message ->
+                                item { Text(message, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error) }
+                            }
+                            state.feedback?.let { message -> item { Text(message, Modifier.padding(16.dp)) } }
+                            items(state.services, key = { it.profile.id }) { item ->
+                                val profile = item.profile
+                                val sourceManaged =
+                                    dependencies.trackerServiceRegistry.get(profile.id) !is DesktopAuthenticatingTrackerService
+                                ListItem(
+                                    headlineContent = { Text(profile.name) },
+                                    supportingContent = {
                                         Text(
-                                            when {
-                                                sourceManaged && mangaId == null -> "Source managed"
-                                                profile.loggedIn && mangaId == null -> "Logout"
-                                                profile.loggedIn -> "Manage"
-                                                else -> "Login"
-                                            },
+                                            profile.unavailableReason
+                                                ?: when {
+                                                    item.track != null -> "Bound to ${item.track.title}"
+                                                    sourceManaged && profile.loggedIn -> "Available through configured source"
+                                                    profile.loggedIn ->
+                                                        "Logged in${profile.username?.let { " as $it" }.orEmpty()} · Not bound"
+                                                    else -> "Not logged in"
+                                                },
                                         )
-                                    }
-                                },
-                                modifier = if (profile.unavailableReason == null) {
-                                    Modifier.clickable { if (!sourceManaged || mangaId != null) selectedId = profile.id }
-                                } else {
-                                    Modifier
-                                },
-                            )
-                            HorizontalDivider()
+                                    },
+                                    trailingContent = {
+                                        TextButton(
+                                            enabled = profile.unavailableReason == null && (!sourceManaged || mangaId != null),
+                                            onClick = {
+                                                if (profile.loggedIn && mangaId == null) {
+                                                    confirmation = TrackingConfirmation.Logout(profile.id, profile.name)
+                                                } else {
+                                                    selectedId = profile.id
+                                                }
+                                            },
+                                        ) {
+                                            Text(
+                                                when {
+                                                    sourceManaged && mangaId == null -> "Source managed"
+                                                    profile.loggedIn && mangaId == null -> "Logout"
+                                                    profile.loggedIn -> "Manage"
+                                                    else -> "Login"
+                                                },
+                                            )
+                                        }
+                                    },
+                                    modifier = if (profile.unavailableReason == null) {
+                                        Modifier.clickable {
+                                            if (!sourceManaged || mangaId != null) selectedId = profile.id
+                                        }
+                                    } else {
+                                        Modifier
+                                    },
+                                )
+                                HorizontalDivider()
+                            }
                         }
                     }
                 }
@@ -211,6 +223,19 @@ data class TrackingSettingsScreen(
             )
         }
     }
+}
+
+@Composable
+internal fun TrackingAutoSyncPreference(preferences: DesktopAppPreferences) {
+    val autoUpdateTrack by preferences.autoUpdateTrack.changes().collectAsState(
+        initial = preferences.autoUpdateTrack.get(),
+    )
+    SwitchSettingsItem(
+        title = "Automatically update tracking",
+        subtitle = "Update tracking services when a chapter is completed",
+        checked = autoUpdateTrack,
+        onCheckedChange = preferences.autoUpdateTrack::set,
+    )
 }
 
 fun trackingSettingsDestination() = TrackingSettingsScreen()

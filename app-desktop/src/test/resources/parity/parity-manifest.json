@@ -1200,8 +1200,8 @@
       "SHARE-DIRECT"
     ],
     "status": "CHARACTERIZED",
-    "authoritativeImplementation": "Fixed original Mihon reader-triggered TrackChapter and delayed update chain at main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8.",
-    "desktopImplementation": "Current shared progress sync and Desktop persistent checkpoint scheduler are migration output and product enhancement; fixed-main filtering, refresh, concurrency and delayed-work behavior remain to be replayed.",
+    "authoritativeImplementation": "Fixed original Mihon reader-triggered TrackChapter and delayed update chain at main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8, including incognito and auto-update preference gates plus non-cancellable eligible updates.",
+    "desktopImplementation": "Desktop replays the fixed-main reader trigger gates and non-cancellable completion while retaining its persistent checkpoint scheduler; fixed-main filtering, refresh, concurrency and delayed-work behavior remain to be replayed.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
       {
@@ -1237,6 +1237,10 @@
     "deviations": [
       {
         "classification": "MIGRATION_OUTPUT",
+        "description": "The fixed-main reader trigger is replayed in Desktop: incognito and the auto-update preference gate remote updates, and an eligible sync uses non-cancellable completion. Production ReaderProgressTracker and Compose wiring tests protect these rules."
+      },
+      {
+        "classification": "MIGRATION_OUTPUT",
         "description": "SyncReadingProgressWithTrack is current shared migration output, not fixed-main authority."
       },
       {
@@ -1259,7 +1263,8 @@
     "protectionTests": [
       "domain/src/commonTest/kotlin/tachiyomi/domain/track/interactor/SyncReadingProgressWithTrackTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopTrackerSyncSchedulerTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/tracking/TrackingAutoSyncPreferenceWiringTest.kt"
     ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"

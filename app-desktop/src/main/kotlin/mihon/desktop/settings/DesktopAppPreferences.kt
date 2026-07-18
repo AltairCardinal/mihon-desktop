@@ -76,6 +76,11 @@ class DesktopAppPreferences(
         boolean(key = "incognito_mode", default = false)
     }
 
+    /** When true, completing a chapter updates configured tracking services. */
+    val autoUpdateTrack: Preference<Boolean> by lazy {
+        boolean(key = "pref_auto_update_manga_sync_key", default = true)
+    }
+
     /** Comma-separated source IDs disabled by the user. Empty keeps legacy behavior. */
     val disabledSourceIds: Preference<String> by lazy {
         string(key = "disabled_source_ids", default = "")

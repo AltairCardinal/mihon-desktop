@@ -906,6 +906,26 @@ class DesktopProductCapabilityContractTest {
     }
 
     @Test
+    fun `reader tracker trigger parity records fixed-main replay and its production protection`() {
+        val item = manifestItems(repositoryRoot()).single { validatedId(it.jsonObject) == 70 }.jsonObject
+        val deviations = item.getValue("deviations").jsonArray.map { it.jsonObject }
+        val replay = deviations.single {
+            it.getValue("classification").jsonPrimitive.content == "MIGRATION_OUTPUT" &&
+                it.getValue("description").jsonPrimitive.content.contains("incognito") &&
+                it.getValue("description").jsonPrimitive.content.contains("auto-update preference") &&
+                it.getValue("description").jsonPrimitive.content.contains("non-cancellable completion")
+        }
+        val tests = item.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content }
+
+        assertTrue(replay.getValue("description").jsonPrimitive.content.contains("fixed-main reader trigger"))
+        assertTrue("app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt" in tests)
+        assertTrue(
+            "app-desktop/src/test/kotlin/mihon/desktop/tracking/TrackingAutoSyncPreferenceWiringTest.kt" in tests,
+        )
+        assertEquals("CHARACTERIZED", item.getValue("status").jsonPrimitive.content)
+    }
+
+    @Test
     fun `reader parity entries report only evidenced shared and wired states`() {
         val items = manifestItems(repositoryRoot()).associateBy { validatedId(it.jsonObject) }
         val expectedStatuses = mapOf(

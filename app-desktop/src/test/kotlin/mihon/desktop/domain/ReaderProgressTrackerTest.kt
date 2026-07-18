@@ -1,9 +1,13 @@
 package mihon.desktop.domain
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import mihon.desktop.settings.DesktopAppPreferences
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.domain.reader.interactor.RecordReadingProgress
 import tachiyomi.domain.reader.model.ReadingProgressEvent
 import tachiyomi.domain.reader.repository.ReadingProgressRepository
@@ -58,6 +62,66 @@ class ReaderProgressTrackerTest {
         tracker.track("exit-4", 4, 3, 10, mangaId = 7, chapterNumber = 4.5)
 
         assertTrue(requests.isEmpty())
+    }
+
+    @Test
+    fun `incognito completion does not update remote tracker`() = runBlocking {
+        val preferences = DesktopAppPreferences(InMemoryPreferenceStore()).apply {
+            incognitoMode.set(true)
+        }
+        val requests = mutableListOf<TrackerSyncRequest>()
+        val tracker = ReaderProgressTracker(
+            RecordReadingProgress(RecordingRepository()),
+            appPreferences = preferences,
+            trackSync = ReadingProgressTrackSync(requests::add),
+        )
+
+        tracker.track("exit-incognito", 5, 9, 10, mangaId = 7, chapterNumber = 4.5)
+
+        assertTrue(requests.isEmpty())
+    }
+
+    @Test
+    fun `disabled automatic tracking does not update remote tracker`() = runBlocking {
+        val preferences = DesktopAppPreferences(InMemoryPreferenceStore()).apply {
+            autoUpdateTrack.set(false)
+        }
+        val requests = mutableListOf<TrackerSyncRequest>()
+        val tracker = ReaderProgressTracker(
+            RecordReadingProgress(RecordingRepository()),
+            appPreferences = preferences,
+            trackSync = ReadingProgressTrackSync(requests::add),
+        )
+
+        tracker.track("exit-auto-disabled", 6, 9, 10, mangaId = 7, chapterNumber = 4.5)
+
+        assertTrue(requests.isEmpty())
+    }
+
+    @Test
+    fun `eligible tracker sync completes after caller cancellation`() = runBlocking {
+        val syncStarted = CompletableDeferred<Unit>()
+        val allowSyncCompletion = CompletableDeferred<Unit>()
+        val syncCompleted = CompletableDeferred<Unit>()
+        val tracker = ReaderProgressTracker(
+            RecordReadingProgress(RecordingRepository()),
+            appPreferences = DesktopAppPreferences(InMemoryPreferenceStore()),
+            trackSync = ReadingProgressTrackSync {
+                syncStarted.complete(Unit)
+                allowSyncCompletion.await()
+                syncCompleted.complete(Unit)
+            },
+        )
+        val caller = launch {
+            tracker.track("exit-cancelled", 7, 9, 10, mangaId = 7, chapterNumber = 4.5)
+        }
+
+        syncStarted.await()
+        caller.cancel()
+        allowSyncCompletion.complete(Unit)
+        caller.join()
+
+        assertTrue(syncCompleted.isCompleted)
     }
 
     private class RecordingRepository : ReadingProgressRepository {

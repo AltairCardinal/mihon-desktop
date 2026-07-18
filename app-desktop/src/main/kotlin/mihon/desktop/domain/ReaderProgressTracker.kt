@@ -3,6 +3,8 @@ package mihon.desktop.domain
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.settings.DesktopAppPreferences
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import tachiyomi.domain.reader.interactor.RecordReadingProgress
 import tachiyomi.domain.reader.model.ReadingProgressEvent
 import tachiyomi.domain.manga.model.Manga
@@ -54,8 +56,11 @@ class ReaderProgressTracker(
             ),
         )
 
-        if (isRead && mangaId > 0 && chapterNumber != null && chapterNumber >= 0) {
-            trackSync?.sync(TrackerSyncRequest(eventId, mangaId, chapterNumber))
+        val autoUpdateTrack = appPreferences?.autoUpdateTrack?.get() != false
+        if (!incognito && autoUpdateTrack && isRead && mangaId > 0 && chapterNumber != null && chapterNumber >= 0) {
+            withContext(NonCancellable) {
+                trackSync?.sync(TrackerSyncRequest(eventId, mangaId, chapterNumber))
+            }
         }
 
         // Auto-delete downloaded chapter when fully read
