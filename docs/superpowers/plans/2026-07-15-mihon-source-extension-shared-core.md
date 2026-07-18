@@ -632,7 +632,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 - Risk axis: `global-search-card-observation-proof`
 - Platform boundary: `desktop`
-- Estimated scope: `2 files, 120 lines`
+- Estimated scope: `2 files, 135 lines`
 - Verification: 真实 SQL/Compose 场景证明订阅数严格小于当前实际候选数、相同 URL 的两个 source 保持独立观察且更新互不串线；捕获并阻塞原始 `SManga` 刷新参数，双击期间只导航/刷新一次；更新后的 thumbnail URL 必须通过 production `AsyncImage` 的非用户可见 test tag 可观察，不能只断言标题或收藏。
 
 **Files:**
