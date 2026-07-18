@@ -81,4 +81,16 @@ class ExtensionManagerTest {
         val ext = manager.getInstalledExtensions().first()
         assertEquals("my-source-1.0", ext.name)
     }
+
+    @Test
+    fun `source id resolves to its loaded extension package`() {
+        val jar = File("extension.hidden.jar")
+        val manager = DesktopExtensionManager(
+            FakeLoader(listOf(LoadedExtension(StubSource(42L), jar, javaClass.classLoader))),
+        )
+        manager.loadAll()
+
+        assertEquals("extension.hidden", manager.getExtensionPackage(42L))
+        assertEquals(null, manager.getExtensionPackage(404L))
+    }
 }

@@ -106,7 +106,11 @@ class DesktopProductCapabilityContractTest {
                     "app/src/main/java/eu/kanade/domain/track/interactor/TrackChapter.kt",
                     "app/src/main/java/eu/kanade/domain/track/store/DelayedTrackingStore.kt",
                     "app/src/main/java/eu/kanade/domain/track/service/DelayedTrackingUpdateJob.kt",
+                    "app/src/main/java/eu/kanade/domain/source/interactor/GetIncognitoState.kt",
+                    "app/src/main/java/eu/kanade/domain/source/interactor/ToggleIncognito.kt",
+                    "app/src/main/java/eu/kanade/domain/source/service/SourcePreferences.kt",
                     "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/ExtensionDetailsScreenModel.kt",
                 ),
         )
     private val requiredAuthorityBoundaryTerms =
@@ -947,10 +951,16 @@ class DesktopProductCapabilityContractTest {
         val tests = item.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content }
 
         assertTrue(replay.getValue("description").jsonPrimitive.content.contains("fixed-main reader trigger"))
+        assertTrue(replay.getValue("description").jsonPrimitive.content.contains("source extension package"))
         assertTrue("app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt" in tests)
         assertTrue(
             "app-desktop/src/test/kotlin/mihon/desktop/tracking/TrackingAutoSyncPreferenceWiringTest.kt" in tests,
         )
+        assertTrue("app-desktop/src/test/kotlin/mihon/desktop/extension/ExtensionManagerTest.kt" in tests)
+        assertTrue(
+            "app-desktop/src/test/kotlin/mihon/desktop/extension/ExtensionIncognitoPreferenceWiringTest.kt" in tests,
+        )
+        assertTrue("app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt" in tests)
         assertEquals("CHARACTERIZED", item.getValue("status").jsonPrimitive.content)
     }
 

@@ -1208,6 +1208,22 @@
       {
         "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
         "symbol": "ReaderViewModel.updateTrackChapterRead: completed-chapter trigger gated by incognito and auto-update preference"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/domain/source/interactor/GetIncognitoState.kt",
+        "symbol": "GetIncognitoState.await: global incognito OR current source extension package membership"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/domain/source/interactor/ToggleIncognito.kt",
+        "symbol": "ToggleIncognito.await: add or remove one extension package without changing global incognito"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/domain/source/service/SourcePreferences.kt",
+        "symbol": "SourcePreferences.incognitoExtensions: string-set preference keyed as incognito_extensions"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/ExtensionDetailsScreenModel.kt",
+        "symbol": "ExtensionDetailsScreenModel: current extension package checked state and toggle wiring"
       }
     ],
     "sharedImplementationPaths": [
@@ -1217,16 +1233,25 @@
       "app/src/main/java/eu/kanade/domain/track/interactor/TrackChapter.kt",
       "app/src/main/java/eu/kanade/domain/track/store/DelayedTrackingStore.kt",
       "app/src/main/java/eu/kanade/domain/track/service/DelayedTrackingUpdateJob.kt",
-      "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt"
+      "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
+      "app/src/main/java/eu/kanade/domain/source/interactor/GetIncognitoState.kt",
+      "app/src/main/java/eu/kanade/domain/source/interactor/ToggleIncognito.kt",
+      "app/src/main/java/eu/kanade/domain/source/service/SourcePreferences.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/ExtensionDetailsScreenModel.kt"
     ],
     "desktopConsumerAdapterPaths": [
       "app-desktop/src/main/kotlin/mihon/desktop/domain/ReaderProgressTracker.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopTrackerSyncScheduler.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopTrackerSyncScheduler.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/settings/DesktopAppPreferences.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionManager.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderLifecycleEffect.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionDetailsScreen.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt"
     ],
     "deviations": [
       {
         "classification": "MIGRATION_OUTPUT",
-        "description": "The fixed-main reader trigger is replayed in Desktop: incognito and the auto-update preference gate remote updates, and an eligible sync uses non-cancellable completion. Production ReaderProgressTracker and Compose wiring tests protect these rules."
+        "description": "The fixed-main reader trigger is replayed in Desktop: incognito is global OR source extension package membership, the auto-update preference gates remote updates, and an eligible sync uses non-cancellable completion. Production ReaderProgressTracker, extension UI and DI wiring tests protect these rules."
       },
       {
         "classification": "MIGRATION_OUTPUT",
@@ -1253,7 +1278,10 @@
       "domain/src/commonTest/kotlin/tachiyomi/domain/track/interactor/SyncReadingProgressWithTrackTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopTrackerSyncSchedulerTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/tracking/TrackingAutoSyncPreferenceWiringTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/tracking/TrackingAutoSyncPreferenceWiringTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/extension/ExtensionManagerTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/extension/ExtensionIncognitoPreferenceWiringTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
     ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"

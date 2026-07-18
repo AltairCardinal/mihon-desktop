@@ -62,6 +62,11 @@ class DesktopExtensionManager(
     fun getSource(sourceId: Long): Source? =
         synchronized(runtimeLock) { loadedExtensions.find { it.source.id == sourceId }?.source }
 
+    /** Returns the installed extension package that owns [sourceId]. */
+    fun getExtensionPackage(sourceId: Long): String? = synchronized(runtimeLock) {
+        loadedExtensions.find { it.source.id == sourceId }?.jarFile?.nameWithoutExtension
+    }
+
     /**
      * Returns installed extensions grouped by JAR file.
      * Each entry represents one JAR that may expose multiple sources.

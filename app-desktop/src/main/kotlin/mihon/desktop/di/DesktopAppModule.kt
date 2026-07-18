@@ -607,6 +607,7 @@ internal fun initUILayer(
             downloadPreferences = downloadPreferences,
             downloadManager = downloadManager,
             trackSync = trackSync,
+            extensionPackageForSource = Injekt.get<DesktopExtensionManager>()::getExtensionPackage,
         ),
     )
 

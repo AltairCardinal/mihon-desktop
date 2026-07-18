@@ -15,6 +15,7 @@ internal fun ReaderLifecycleEffect(
     scope: CoroutineScope,
     tracker: ReaderProgressTracker,
     chapterId: Long,
+    sourceId: Long,
     mangaId: Long,
     chapterNumber: Double,
     exitEventId: String,
@@ -32,6 +33,7 @@ internal fun ReaderLifecycleEffect(
                         chapterId,
                         latestPage,
                         latestUrls.size,
+                        sourceId = sourceId,
                         mangaId = mangaId,
                         chapterNumber = chapterNumber,
                     )

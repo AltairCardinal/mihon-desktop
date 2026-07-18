@@ -16,6 +16,7 @@ import mihon.desktop.backup.BackupRestoreScreenModelFactory
 import mihon.desktop.domain.LibraryUpdateScheduler
 import mihon.desktop.domain.LibraryUpdateChecker
 import mihon.desktop.domain.DesktopCustomCoverStore
+import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DefaultDownloadFileOperations
 import mihon.desktop.download.DownloadFileOperations
@@ -67,7 +68,9 @@ import tachiyomi.domain.source.service.AuthenticatedSession
 import tachiyomi.domain.source.service.AuthenticatedSessionCommitter
 import tachiyomi.domain.source.service.SourceLoginRequest
 import tachiyomi.domain.reader.interactor.RecordReadingProgress
+import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.category.interactor.CreateCategoryWithName
@@ -212,6 +215,51 @@ class DesktopDiWiringTest {
                 assertNotNull(manager.getSource(FixtureNewSource.ID))
                 assertEquals(1, server.requestCount)
             }
+        } finally {
+            context.closeAndJoin()
+        }
+    }
+
+    @Test
+    fun `reader DI resolves extension package for incognito history gating`(@TempDir tempDir: File) = runBlocking {
+        val extensionDir = tempDir.resolve("extensions").also(File::mkdirs)
+        extensionDir.resolve("mihon.desktop.extension.jar").writeBytes(sourceJar())
+        val store = DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}"))
+        store.getStringSet("incognito_extensions").set(setOf("mihon.desktop.extension"))
+        val context = initDesktopDIForTest(tempDir, store, startDownloadWorker = false)
+        try {
+            val manga = Injekt.get<MangaRepository>().insertNetworkManga(
+                listOf(
+                    Manga.create().copy(
+                        source = FixtureNewSource.ID,
+                        url = "/incognito-manga",
+                        title = "Incognito manga",
+                    ),
+                ),
+            ).single()
+            Injekt.get<ChapterRepository>().addAll(
+                listOf(
+                    Chapter.create().copy(
+                        mangaId = manga.id,
+                        url = "/incognito-chapter",
+                        name = "Incognito chapter",
+                    ),
+                ),
+            )
+            val chapter = Injekt.get<ChapterRepository>().getChapterByMangaId(manga.id).single()
+
+            Injekt.get<ReaderProgressTracker>().track(
+                eventId = "di-extension-incognito",
+                chapterId = chapter.id,
+                lastPageRead = 2,
+                totalPages = 10,
+                sourceId = FixtureNewSource.ID,
+                mangaId = manga.id,
+                chapterNumber = 1.0,
+            )
+
+            assertTrue(context.handler.db.historyQueries.getHistoryByMangaId(manga.id).executeAsList().isEmpty())
+            assertEquals(2L, Injekt.get<ChapterRepository>().getChapterByMangaId(manga.id).single().lastPageRead)
         } finally {
             context.closeAndJoin()
         }

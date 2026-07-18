@@ -132,6 +132,7 @@ data class DesktopReaderScreen(
             scope,
             runtime.tracker,
             chapterId,
+            sourceId,
             mangaId,
             chapters.getOrNull(currentChapterIndex)?.chapterNumber ?: chapterNumber,
             readerExitEventId,

@@ -22,9 +22,9 @@ class ReaderProgressTrackerIntegrationTest {
         val tracker = ReaderProgressTracker(fixture.recorder)
 
         (1..8).map { async {
-            tracker.track("session-1-exit", 1, 5, 10, mangaId = 10, readAt = Date(1234), sessionReadDuration = 500)
+            tracker.track("session-1-exit", 1, 5, 10, sourceId = null, mangaId = 10, readAt = Date(1234), sessionReadDuration = 500)
         } }.awaitAll()
-        tracker.track("session-2-exit", 1, 5, 10, mangaId = 10, readAt = Date(1234), sessionReadDuration = 500)
+        tracker.track("session-2-exit", 1, 5, 10, sourceId = null, mangaId = 10, readAt = Date(1234), sessionReadDuration = 500)
 
         fixture.database.historyQueries.getHistoryByMangaId(10).executeAsOne().time_read shouldBe 1000
         fixture.database.reading_eventsQueries.countByChapter(1).executeAsOne() shouldBe 2

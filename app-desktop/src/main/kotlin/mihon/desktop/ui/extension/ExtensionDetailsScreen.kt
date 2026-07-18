@@ -33,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,6 +41,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -180,7 +183,10 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                 item {
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            var incognito by remember { mutableStateOf(appPreferences.incognitoMode.get()) }
+                            val incognitoExtensions by appPreferences.incognitoExtensions.changes().collectAsState(
+                                initial = appPreferences.incognitoExtensions.get(),
+                            )
+                            val incognito = extension.pkgName in incognitoExtensions
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
                                     Text("Incognito mode", style = MaterialTheme.typography.titleSmall)
@@ -189,8 +195,12 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                                 Switch(
                                     checked = incognito,
                                     onCheckedChange = {
-                                        incognito = it
-                                        appPreferences.incognitoMode.set(it)
+                                        appPreferences.incognitoExtensions.set(
+                                            if (it) incognitoExtensions + extension.pkgName else incognitoExtensions - extension.pkgName,
+                                        )
+                                    },
+                                    modifier = Modifier.semantics {
+                                        contentDescription = "Incognito mode for ${extension.pkgName}"
                                     },
                                 )
                             }

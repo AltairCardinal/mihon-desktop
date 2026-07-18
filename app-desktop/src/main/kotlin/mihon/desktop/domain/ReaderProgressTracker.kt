@@ -26,6 +26,7 @@ class ReaderProgressTracker(
     private val downloadPreferences: DesktopDownloadPreferences? = null,
     private val downloadManager: DesktopDownloadManager? = null,
     private val trackSync: ReadingProgressTrackSync? = null,
+    private val extensionPackageForSource: (Long) -> String? = { null },
 ) {
 
     suspend fun track(
@@ -33,6 +34,7 @@ class ReaderProgressTracker(
         chapterId: Long,
         lastPageRead: Int,
         totalPages: Int,
+        sourceId: Long?,
         manga: Manga? = null,
         chapterName: String? = null,
         mangaId: Long = 0L,
@@ -42,7 +44,10 @@ class ReaderProgressTracker(
     ) {
         val isRead = totalPages > 0 && lastPageRead >= totalPages - 1
 
-        val incognito = appPreferences?.incognitoMode?.get() == true
+        val extensionPackage = sourceId?.let(extensionPackageForSource)
+        val extensionIncognito = extensionPackage != null &&
+            extensionPackage in appPreferences?.incognitoExtensions?.get().orEmpty()
+        val incognito = appPreferences?.incognitoMode?.get() == true || extensionIncognito
         recordReadingProgress.await(
             ReadingProgressEvent(
                 chapterId = chapterId,

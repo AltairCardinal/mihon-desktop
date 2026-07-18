@@ -76,6 +76,11 @@ class DesktopAppPreferences(
         boolean(key = "incognito_mode", default = false)
     }
 
+    /** Extension packages whose sources should suppress history and tracker updates. */
+    val incognitoExtensions: Preference<Set<String>> by lazy {
+        store.getStringSet(key = "incognito_extensions", defaultValue = emptySet())
+    }
+
     /** When true, completing a chapter updates configured tracking services. */
     val autoUpdateTrack: Preference<Boolean> by lazy {
         boolean(key = "pref_auto_update_manga_sync_key", default = true)
