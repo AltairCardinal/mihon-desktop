@@ -2,6 +2,7 @@ package mihon.desktop.domain
 
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import kotlinx.coroutines.runBlocking
 import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.domain.fakes.FakeCatalogueSource
@@ -14,6 +15,49 @@ import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 
 class SaveSourceMangaForDetailsTest {
+
+    @Test
+    fun `search results use canonical mapping deduplicate per source and preserve existing state`() = runBlocking<Unit> {
+        val mangaRepo = FakeMangaRepository()
+        val useCase = SaveSourceMangaForDetails(NetworkToLocalManga(mangaRepo), mangaRepo, FakeChapterRepository())
+        mangaRepo.seed(
+            Manga.create().copy(
+                id = 7,
+                source = 42,
+                url = "/same",
+                title = "Existing",
+                favorite = true,
+                initialized = true,
+            ),
+        )
+        val listed = SManga.create().apply {
+            url = "/same"
+            title = "Listed"
+            artist = "Artist"
+            author = "Author"
+            description = "Description"
+            genre = "Drama, Action"
+            status = SManga.COMPLETED
+            thumbnail_url = "https://example.invalid/cover.jpg"
+            update_strategy = UpdateStrategy.ONLY_FETCH_ONCE
+            initialized = false
+        }
+
+        val sameSource = useCase.awaitSearchResults(listOf(listed, listed), 42)
+        val otherSource = useCase.awaitSearchResults(listOf(listed), 43).single()
+
+        assertEquals(listOf(7L), sameSource.map(Manga::id))
+        assertEquals(true, sameSource.single().favorite)
+        assertEquals(true, sameSource.single().initialized)
+        assertEquals(43L, otherSource.source)
+        assertEquals("Artist", otherSource.artist)
+        assertEquals("Author", otherSource.author)
+        assertEquals("Description", otherSource.description)
+        assertEquals(listOf("Drama", "Action"), otherSource.genre)
+        assertEquals(SManga.COMPLETED.toLong(), otherSource.status)
+        assertEquals("https://example.invalid/cover.jpg", otherSource.thumbnailUrl)
+        assertEquals(UpdateStrategy.ONLY_FETCH_ONCE, otherSource.updateStrategy)
+    }
 
     @Test
     fun `saves source manga as non favorite with chapters`() = runBlocking<Unit> {

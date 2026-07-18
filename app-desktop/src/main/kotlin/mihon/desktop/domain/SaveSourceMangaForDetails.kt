@@ -8,6 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import mihon.domain.manga.model.toDomainManga
 import mihon.desktop.extension.safeSourceCall
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
@@ -25,6 +26,11 @@ class SaveSourceMangaForDetails(
     private val chapterRepository: ChapterRepository,
     private val refreshScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {
+
+    suspend fun awaitSearchResults(results: List<SManga>, sourceId: Long): List<Manga> =
+        results.map { it.toDomainManga(sourceId) }
+            .distinctBy(Manga::url)
+            .let { networkToLocalManga(it) }
 
     fun refreshFromSource(
         source: CatalogueSource,
