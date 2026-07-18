@@ -194,6 +194,21 @@ Source/Extension authority baseline 使用了 `d77ef4d2b` 而不是固定 `main`
 
 当前 `SourceMangaSearchService.kt:15-41` 将取消转换为 `Failure(Cancelled)` 等共享错误状态，这是新设计出来的跨端契约；应通过固定 `main` 调用链回放确认其 UI/协程语义，而不能只凭当前 Android/Desktop 都消费它就宣布原版一致。
 
+### R1 更正（2026-07-18）：fixed-main 回放已确认 Source Browse / Global Search 差异
+
+本段追加更正 R1 的早期结论。后续已直接读取固定权威 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` 的 `BrowseSourceScreenModel`、`SourceFilterDialog`、`SearchScreenModel`、`GlobalSearchScreenModel` 与 `AndroidSourceManager`，不再以当前 `app/` 或迁移后的 shared service 作为 expected value。回放确认以下差异：
+
+| 状态 | 差异明细 | fixed-main 行为 | Desktop 处理 |
+|---|---|---|---|
+| 已修复 | Source filter 类型与交互 | source 创建的具体 `Filter` 子类和 `Select<V>` 数组原样回交 source；Reset 只重建 filter state，Apply 后分页沿用同一 listing | `5b2ad641c`、`b99ea3715`、`385ab7d1c`、`87adceae0` 已补完整 filter UI、draft 隔离、runtime subtype/array 保真、结构漂移校验与严格 production Compose 测试 |
+| 已修复 | Source append 串行化 | Paging 顺序请求下一页，不允许重复或跳页；取消不会把旧页发布到新 listing | `e35078d5b`、`42bf801bd`、`dc1516b0b` 已加入不可变 in-flight key、owner/waiter 取消与异常清理、旧 generation 隔离；Desktop generation、typed error、exact retry 属于可保留可靠性增强 |
+| 已修复 | source preference / manager 权责 | `AndroidSourceManager` 始终按 ID 解析已安装 source；`enabledLanguages`、`disabledSources` 只过滤发现与搜索候选 | `de03a8633` 对齐 `source_languages`、`hidden_catalogues`、`pinned_catalogues`、has-results app-state key；禁用 source 仍可解析，Browse 与 Global Search 通过显式候选策略过滤 |
+| 待施工 | Global Search 选择与执行策略 | 默认 `PinnedOnly`，可切换 `All`；同 query/filter 不重复请求，切换 filter 复用交集结果；最多 5 个 source 并发 | Desktop 仍缺 Pinned/All 策略、重复查询抑制、交集复用和并发上限；必须保留 generation/session retirement，不能用回退到简化协程替代 |
+| 待施工 | Global Search 状态投影与排序 | 默认保留每个选中 source 的 Loading/Empty/Content/Error 行；非空优先、pinned 次之、最后按名称/语言；Has results 可切换并持久化 | Desktop 当前永久丢弃 Empty/零结果 Loading，并按结果数量降序；仍需补逐源反馈、原版排序、Pinned/All、Has results 与完成数/总数 |
+| 待施工 | Global Search 结果生产链路 | 按 URL 去重，经 `NetworkToLocalManga` 复用本地记录；source 标题进入带当前 query 的单源浏览；不截断首屏结果 | Desktop 仍有 `.take(10)`、缺少 source 标题导航和完整本地记录观察；详情刷新与防重复打开属于可保留增强 |
+
+这轮没有把 fixed-main 不存在的 Desktop typed error、登录恢复、generation 或 CAS publication 反写为“原版行为”；它们继续作为显式 Desktop/跨端可靠性增强维护。当前 `app/` 只用于验证迁移后的 Android consumer wiring，不参与生成上述 expected value。
+
 ### R2. Tracker provider contracts
 
 Tracker 施工初版的明确偏差已修复，当前静态扫描未发现已知偏差回归。但 `TrackerProviderContracts`/`TrackerProviderProtocol` 是本轮新建的 shared 源，现有证据主要比较当前 Android consumer 和 Desktop adapter，未逐项固定到 `main` provider 实现。
