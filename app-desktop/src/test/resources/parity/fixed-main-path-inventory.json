@@ -31,6 +31,26 @@
     { "path": "app/src/main/java/eu/kanade/presentation/track/TrackerSearch.kt", "blobId": "0fa91c2ab257c4afc659ada2a6ae194b30392b5b" },
     { "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/myanimelist/MyAnimeListApi.kt", "blobId": "9cb79e2ce9ff34edb0818f1242f57b2e20b973c8" },
     { "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/EnhancedTracker.kt", "blobId": "a501cded88e9dee00fc75cc8bbb96f36f364dcc3" },
-    { "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/suwayomi/Suwayomi.kt", "blobId": "904fb0292685403d6d1ac1f0d04e92bdad81b261" }
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/suwayomi/Suwayomi.kt", "blobId": "904fb0292685403d6d1ac1f0d04e92bdad81b261" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/suwayomi/SuwayomiApi.kt", "blobId": "7177fb82ec9a102e5e78e85a7463483ae39e719d" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/myanimelist/MyAnimeList.kt", "blobId": "1e529754d6996cf8ffb759a878cc323d85ef983c" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/anilist/Anilist.kt", "blobId": "ecb98f015fa05acdd76f58991d57abee64d9acbd" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/anilist/AnilistApi.kt", "blobId": "72fb07cf5b08e0a684022dda4d982fdf052ffd18" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/kitsu/Kitsu.kt", "blobId": "9fec22523977438a34941a5aa80fc1d732e086b3" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/kitsu/KitsuApi.kt", "blobId": "44680870462229345e45bf2e68d69659e37335d2" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/shikimori/Shikimori.kt", "blobId": "fe22cd2e57980ebc75c83d90d4e2fe42494ed356" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/shikimori/ShikimoriApi.kt", "blobId": "b11fc9877b8b9c8c693728dc6d7205c95ac1725e" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/bangumi/Bangumi.kt", "blobId": "ea1ca863481e78fd1d1b01ee22870e130f4f50be" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/bangumi/BangumiApi.kt", "blobId": "e372489be070764417545ad1f59e2ed1827bf264" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/mangaupdates/MangaUpdates.kt", "blobId": "5550028b7d7ee0c188a02a2358e71c38de2f14bc" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/mangaupdates/MangaUpdatesApi.kt", "blobId": "1c334ed5ed9c38b3820b826395b81de38d8cc5d8" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/komga/Komga.kt", "blobId": "768df7dc39a8cd31a29f75db83d04cbc009f1c7b" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/komga/KomgaApi.kt", "blobId": "a8661bf188a952c4ca29fa6936b278935cd041d7" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/kavita/Kavita.kt", "blobId": "ae1068d68b5124c5b9b3aae2a92f4c8973b8521d" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/kavita/KavitaApi.kt", "blobId": "fd1b26197f811f6ad5c65a3034719ff759b9fdc3" },
+    { "path": "app/src/main/java/eu/kanade/domain/track/interactor/TrackChapter.kt", "blobId": "fdf24ec4e933de07866bafbdef3f38f0d27fbd11" },
+    { "path": "app/src/main/java/eu/kanade/domain/track/store/DelayedTrackingStore.kt", "blobId": "10779a2198a28e572e5704297ca5d3fdd79357bd" },
+    { "path": "app/src/main/java/eu/kanade/domain/track/service/DelayedTrackingUpdateJob.kt", "blobId": "50589ae9d6392401d81b222a7d93bd9d6d06dda2" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "blobId": "4c227636a85e44c8abb35e6b73ec524a54931b41" }
   ]
 }

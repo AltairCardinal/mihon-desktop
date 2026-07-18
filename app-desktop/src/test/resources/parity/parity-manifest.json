@@ -1028,6 +1028,10 @@
         "symbol": "TrackerSearch: query result, selection, private toggle and provider metadata presentation"
       },
       {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/myanimelist/MyAnimeList.kt",
+        "symbol": "MyAnimeList: provider status, score, bind, refresh and deletion rules"
+      },
+      {
         "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/myanimelist/MyAnimeListApi.kt",
         "symbol": "MyAnimeListApi: search/list lookup, add/update/delete, dates and provider error behavior"
       },
@@ -1038,6 +1042,66 @@
       {
         "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/suwayomi/Suwayomi.kt",
         "symbol": "Suwayomi: progress/status mapping, source-bound match and Tracker Delete preference"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/suwayomi/SuwayomiApi.kt",
+        "symbol": "SuwayomiApi: GraphQL source client, manga match, chapter progress and error response rules"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/anilist/Anilist.kt",
+        "symbol": "Anilist: provider status, score, registration and update rules"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/anilist/AnilistApi.kt",
+        "symbol": "AnilistApi: OAuth, GraphQL search, bind, update and provider error shape"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/kitsu/Kitsu.kt",
+        "symbol": "Kitsu: provider status, score, bind and refresh rules"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/kitsu/KitsuApi.kt",
+        "symbol": "KitsuApi: OAuth, JSON API search, library bind and update request shape"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/shikimori/Shikimori.kt",
+        "symbol": "Shikimori: provider status, score, bind and refresh rules"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/shikimori/ShikimoriApi.kt",
+        "symbol": "ShikimoriApi: OAuth, search, bind and update request shape"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/bangumi/Bangumi.kt",
+        "symbol": "Bangumi: provider status, score, bind and refresh rules"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/bangumi/BangumiApi.kt",
+        "symbol": "BangumiApi: OAuth, search, collection bind and update request shape"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/mangaupdates/MangaUpdates.kt",
+        "symbol": "MangaUpdates: provider status, rating, bind, refresh and deletion rules"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/mangaupdates/MangaUpdatesApi.kt",
+        "symbol": "MangaUpdatesApi: credential login, search, list bind and update request shape"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/komga/Komga.kt",
+        "symbol": "Komga: source-bound acceptance, match, progress and status rules"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/komga/KomgaApi.kt",
+        "symbol": "KomgaApi: source client, server discovery, series match and progress requests"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/kavita/Kavita.kt",
+        "symbol": "Kavita: source-bound acceptance, match, progress and status rules"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/kavita/KavitaApi.kt",
+        "symbol": "KavitaApi: source configuration, authentication, series match and progress requests"
       }
     ],
     "sharedImplementationPaths": [
@@ -1048,7 +1112,16 @@
     "currentAndroidConsumerPaths": [
       "app/src/main/java/eu/kanade/tachiyomi/data/track/TrackerManager.kt",
       "app/src/main/java/eu/kanade/tachiyomi/ui/manga/track/TrackInfoDialog.kt",
-      "app/src/main/java/eu/kanade/tachiyomi/data/track/myanimelist/MyAnimeListApi.kt"
+      "app/src/main/java/eu/kanade/tachiyomi/data/track/myanimelist/MyAnimeList.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/data/track/myanimelist/MyAnimeListApi.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/data/track/anilist/AnilistApi.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/data/track/kitsu/KitsuApi.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/data/track/shikimori/ShikimoriApi.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/data/track/bangumi/BangumiApi.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/data/track/mangaupdates/MangaUpdatesApi.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/data/track/komga/KomgaApi.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/data/track/kavita/KavitaApi.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/data/track/suwayomi/SuwayomiApi.kt"
     ],
     "desktopConsumerAdapterPaths": [
       "app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopTrackerServiceRegistry.kt",
@@ -1088,6 +1161,22 @@
       {
         "classification": "UNCLASSIFIED_DEBT",
         "description": "The Suwayomi delete preference remains unclosed."
+      },
+      {
+        "classification": "UNCLASSIFIED_DEBT",
+        "description": "illegal provider status values must not silently fall back; cross-provider replay remains unclosed."
+      },
+      {
+        "classification": "UNCLASSIFIED_DEBT",
+        "description": "Original provider error classification/retry behavior has not yet been reconciled with Desktop retry policy."
+      },
+      {
+        "classification": "UNCLASSIFIED_DEBT",
+        "description": "Komga DNS and server-discovery behavior still requires fixed-main production replay evidence."
+      },
+      {
+        "classification": "UNCLASSIFIED_DEBT",
+        "description": "Kitsu/MangaUpdates request shape must still be replayed field by field against fixed main."
       }
     ],
     "protectionTests": [
@@ -1110,9 +1199,63 @@
     "tags": [
       "SHARE-DIRECT"
     ],
-    "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #70: 自动追踪更新",
-    "desktopImplementation": "Reader completion invokes shared SyncReadingProgressWithTrack for persisted manga bindings whose production provider session is currently logged in, then atomically stores normalized remote progress and persists per-tracker retry checkpoints through DesktopTaskScheduler.",
+    "status": "CHARACTERIZED",
+    "authoritativeImplementation": "Fixed original Mihon reader-triggered TrackChapter and delayed update chain at main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8.",
+    "desktopImplementation": "Current shared progress sync and Desktop persistent checkpoint scheduler are migration output and product enhancement; fixed-main filtering, refresh, concurrency and delayed-work behavior remain to be replayed.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [
+      {
+        "path": "app/src/main/java/eu/kanade/domain/track/interactor/TrackChapter.kt",
+        "symbol": "TrackChapter.await: non-cancellable login/progress filtering, refresh-before-update, parallel provider updates and delayed fallback"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/domain/track/store/DelayedTrackingStore.kt",
+        "symbol": "DelayedTrackingStore: per-track monotonic highest progress queue and removal"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/domain/track/service/DelayedTrackingUpdateJob.kt",
+        "symbol": "DelayedTrackingUpdateJob: connected-network unique work, exponential backoff, bounded retry and queue cleanup"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
+        "symbol": "ReaderViewModel.updateTrackChapterRead: completed-chapter trigger gated by incognito and auto-update preference"
+      }
+    ],
+    "sharedImplementationPaths": [
+      "domain/src/commonMain/kotlin/tachiyomi/domain/track/interactor/SyncReadingProgressWithTrack.kt"
+    ],
+    "currentAndroidConsumerPaths": [
+      "app/src/main/java/eu/kanade/domain/track/interactor/TrackChapter.kt",
+      "app/src/main/java/eu/kanade/domain/track/store/DelayedTrackingStore.kt",
+      "app/src/main/java/eu/kanade/domain/track/service/DelayedTrackingUpdateJob.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt"
+    ],
+    "desktopConsumerAdapterPaths": [
+      "app-desktop/src/main/kotlin/mihon/desktop/domain/ReaderProgressTracker.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopTrackerSyncScheduler.kt"
+    ],
+    "deviations": [
+      {
+        "classification": "MIGRATION_OUTPUT",
+        "description": "SyncReadingProgressWithTrack is current shared migration output, not fixed-main authority."
+      },
+      {
+        "classification": "UNCLASSIFIED_DEBT",
+        "description": "Fixed-main refresh-before-update, login/progress filtering and parallel provider updates remain unclosed in the shared/Desktop replay."
+      },
+      {
+        "classification": "UNCLASSIFIED_DEBT",
+        "description": "The delayed queue's per-track monotonic highest progress rule remains unclosed."
+      },
+      {
+        "classification": "UNCLASSIFIED_DEBT",
+        "description": "Fixed-main network constraint, unique work, exponential backoff, bounded retry and queue cleanup semantics remain unclosed."
+      },
+      {
+        "classification": "DESKTOP_PRODUCT_ENHANCEMENT",
+        "description": "Desktop persistent checkpoint recovery across restarts is retained as a product enhancement; it does not replace fixed-main retry semantics."
+      }
+    ],
     "protectionTests": [
       "domain/src/commonTest/kotlin/tachiyomi/domain/track/interactor/SyncReadingProgressWithTrackTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopTrackerSyncSchedulerTest.kt",

@@ -43,7 +43,7 @@ class DesktopProductCapabilityContractTest {
             "PLATFORM-EXEMPT",
         )
     private val structuredProvenanceIds =
-        setOf(28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 43, 67, 68, 69)
+        setOf(28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 43, 67, 68, 69, 70)
     private val allowedDeviationClassifications =
         setOf(
             "PLATFORM_ADAPTER",
@@ -81,38 +81,78 @@ class DesktopProductCapabilityContractTest {
                     "app/src/main/java/eu/kanade/tachiyomi/data/track/TrackerManager.kt",
                     "app/src/main/java/eu/kanade/tachiyomi/ui/manga/track/TrackInfoDialog.kt",
                     "app/src/main/java/eu/kanade/presentation/track/TrackerSearch.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/data/track/myanimelist/MyAnimeList.kt",
                     "app/src/main/java/eu/kanade/tachiyomi/data/track/myanimelist/MyAnimeListApi.kt",
                     "app/src/main/java/eu/kanade/tachiyomi/data/track/EnhancedTracker.kt",
                     "app/src/main/java/eu/kanade/tachiyomi/data/track/suwayomi/Suwayomi.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/data/track/suwayomi/SuwayomiApi.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/data/track/anilist/Anilist.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/data/track/anilist/AnilistApi.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/data/track/kitsu/Kitsu.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/data/track/kitsu/KitsuApi.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/data/track/shikimori/Shikimori.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/data/track/shikimori/ShikimoriApi.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/data/track/bangumi/Bangumi.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/data/track/bangumi/BangumiApi.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/data/track/mangaupdates/MangaUpdates.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/data/track/mangaupdates/MangaUpdatesApi.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/data/track/komga/Komga.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/data/track/komga/KomgaApi.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/data/track/kavita/Kavita.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/data/track/kavita/KavitaApi.kt",
+                ),
+            70 to
+                setOf(
+                    "app/src/main/java/eu/kanade/domain/track/interactor/TrackChapter.kt",
+                    "app/src/main/java/eu/kanade/domain/track/store/DelayedTrackingStore.kt",
+                    "app/src/main/java/eu/kanade/domain/track/service/DelayedTrackingUpdateJob.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
                 ),
         )
     private val requiredAuthorityBoundaryTerms =
         mapOf(
             67 to
-                setOf(
-                    "category copy is disabled",
-                    "chapter/viewer flag writes",
-                    "old target dateAdded",
+                mapOf(
+                    "category copy is disabled" to "UNCLASSIFIED_DEBT",
+                    "chapter/viewer flag writes" to "UNCLASSIFIED_DEBT",
+                    "old target dateAdded" to "UNCLASSIFIED_DEBT",
                 ),
             68 to
-                setOf(
-                    "startIndex",
-                    "Failure summary and targeted retry",
-                    "queue targets/options/status/errors",
+                mapOf(
+                    "startIndex" to "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT",
+                    "Failure summary and targeted retry" to "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT",
+                    "queue targets/options/status/errors" to "DESKTOP_PRODUCT_ENHANCEMENT",
                 ),
             69 to
-                setOf(
-                    "OS credential",
-                    "persistent event/checkpoint",
-                    "production provider configuration",
-                    "bind-existing/new-entry",
-                    "refresh-before-update",
-                    "reading status/date",
-                    "MAL error",
-                    "search model",
-                    "private/date/delete",
-                    "enhanced auto-match",
-                    "Suwayomi delete",
+                mapOf(
+                    "OS credential" to "SECURITY_ENHANCEMENT",
+                    "persistent event/checkpoint" to "DESKTOP_PRODUCT_ENHANCEMENT",
+                    "production provider configuration" to "UNCLASSIFIED_DEBT",
+                    "bind-existing/new-entry" to "UNCLASSIFIED_DEBT",
+                    "refresh-before-update" to "UNCLASSIFIED_DEBT",
+                    "reading status/date" to "UNCLASSIFIED_DEBT",
+                    "MAL error" to "UNCLASSIFIED_DEBT",
+                    "search model" to "UNCLASSIFIED_DEBT",
+                    "private/date/delete" to "UNCLASSIFIED_DEBT",
+                    "enhanced auto-match" to "UNCLASSIFIED_DEBT",
+                    "Suwayomi delete" to "UNCLASSIFIED_DEBT",
+                    "illegal provider status" to "UNCLASSIFIED_DEBT",
+                    "provider error classification/retry" to "UNCLASSIFIED_DEBT",
+                    "Komga DNS" to "UNCLASSIFIED_DEBT",
+                    "Kitsu/MangaUpdates request shape" to "UNCLASSIFIED_DEBT",
+                ),
+            70 to
+                mapOf(
+                    "refresh-before-update" to "UNCLASSIFIED_DEBT",
+                    "login/progress filtering" to "UNCLASSIFIED_DEBT",
+                    "parallel provider updates" to "UNCLASSIFIED_DEBT",
+                    "highest progress" to "UNCLASSIFIED_DEBT",
+                    "network constraint" to "UNCLASSIFIED_DEBT",
+                    "unique work" to "UNCLASSIFIED_DEBT",
+                    "exponential backoff" to "UNCLASSIFIED_DEBT",
+                    "bounded retry" to "UNCLASSIFIED_DEBT",
+                    "queue cleanup" to "UNCLASSIFIED_DEBT",
+                    "persistent checkpoint" to "DESKTOP_PRODUCT_ENHANCEMENT",
                 ),
         )
     private val desktopProductEvidence =
@@ -789,6 +829,50 @@ class DesktopProductCapabilityContractTest {
     }
 
     @Test
+    fun `tracker debt cannot be reclassified as an enhancement`() {
+        val repositoryRoot = repositoryRoot()
+        val tracker = manifestItems(repositoryRoot).single { validatedId(it.jsonObject) == 69 }.jsonObject
+        val reclassifiedDebt =
+            JsonObject(
+                tracker.toMutableMap().apply {
+                    put(
+                        "deviations",
+                        buildJsonArray {
+                            tracker.getValue("deviations").jsonArray.forEach { element ->
+                                val deviation = element.jsonObject
+                                if (deviation.getValue("description").jsonPrimitive.content.contains("Suwayomi delete")) {
+                                    add(
+                                        JsonObject(
+                                            deviation.toMutableMap().apply {
+                                                put(
+                                                    "classification",
+                                                    Json.parseToJsonElement("\"DESKTOP_PRODUCT_ENHANCEMENT\""),
+                                                )
+                                            },
+                                        ),
+                                    )
+                                } else {
+                                    add(element)
+                                }
+                            }
+                        },
+                    )
+                },
+            )
+
+        val failure = assertThrows(AssertionError::class.java) {
+            validateSourceExtensionProvenance(
+                reclassifiedDebt,
+                repositoryRoot,
+                fixedMainPathInventory(repositoryRoot),
+            )
+        }
+
+        assertTrue(failure.message.orEmpty().contains("UNCLASSIFIED_DEBT"), failure.message)
+        assertTrue(failure.message.orEmpty().contains("Suwayomi delete"), failure.message)
+    }
+
+    @Test
     fun `source extension provenance validates from a snapshot without a Git directory`() {
         createSyntheticConsumerFiles()
         val inventoryResource = tempDir.resolve(fixedMainPathInventoryResource)
@@ -1054,10 +1138,20 @@ class DesktopProductCapabilityContractTest {
             )
             requiredText(deviation, "description", id, context)
         }
-        requiredAuthorityBoundaryTerms[id]?.forEach { requiredTerm ->
+        requiredAuthorityBoundaryTerms[id]?.forEach { (requiredTerm, expectedClassification) ->
+            val matches =
+                deviations.filter {
+                    it.jsonObject.getValue("description").jsonPrimitive.content.contains(requiredTerm)
+                }
             assertTrue(
-                deviations.any { it.jsonObject.getValue("description").jsonPrimitive.content.contains(requiredTerm) },
+                matches.isNotEmpty(),
                 "ID $id deviations must explicitly record `$requiredTerm`",
+            )
+            assertTrue(
+                matches.all {
+                    it.jsonObject.getValue("classification").jsonPrimitive.content == expectedClassification
+                },
+                "ID $id deviations containing `$requiredTerm` must be classified as $expectedClassification",
             )
         }
     }
