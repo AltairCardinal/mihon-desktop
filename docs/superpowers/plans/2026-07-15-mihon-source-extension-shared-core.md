@@ -1060,22 +1060,24 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionListScreen.kt`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionPresentationUiTest.kt`
 
-- [ ] **Step 1: 写 list state/partial failure/Retry RED**
+- [x] **Step 1: 写 list state/partial failure/Retry RED**
 
   使用真实 Compose/wiring fixture 覆盖 Screen 实例化、loading/empty、成功列表与 exact partial failure 同屏、Retry 发送 refresh、shared classification/search/options；替换源码字符串扫描断言。
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionPresentationUiTest" --tests "mihon.desktop.ui.extension.ExtensionListCopyContractTest"`
   Expected: FAIL，原因是列表仍维护本地 catalog/filter/error 状态且恢复文案未资源化。
 
-- [ ] **Step 3: 接入 list state/classification**
+- [x] **Step 3: 接入 list state/classification**
 
   Composable 只收集 production ScreenModel state 并渲染 shared presentation；保留 Desktop 宽屏/仓库入口，不迁移 install/trust action（留给 6D2）。
 
-- [ ] **Step 4: 运行 GREEN 与断线 mutation**
+- [x] **Step 4: 运行 GREEN 与断线 mutation**
 
   Expected: 断开 ScreenModel collect、把 partial failure 折叠成 empty、恢复本地 classifier 或删除任一 locale key 时至少一项失败。
+
+  Evidence: commit `0b00f1628`（与 6D1bR 组合提交）；真实 Navigator/Injekt Screen 测试覆盖 loading、empty、data+exact partial failure、Retry、update-only、原子 language+NSFW Apply 与完整 inventory Clear。Retry 断线时 `exactly 3 refresh` 仅收到 2 次并失败；combined focused 为 Ui `1/0/0/0`、Copy `2/0/0/0`、DI singleton `1/0/0/0`。
 
 **Review status:** 初审四项经唯一修复轮已关闭，但复审发现 Available UI 将 shared 逐-source `DesktopExtensionItem` 按 operation package 去重并降回 raw extension，仍会丢失 fixed-main 的 source 名称、语言和分组。按门禁停止 6D1b，不追加第二修复轮；由 6D1bR 独立闭环后再统一 checkoff。
 
@@ -1091,9 +1093,11 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionListScreen.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionPresentationUiTest.kt`
 
-- [ ] **Step 1: 写 multi-source available RED 与 raw-deprojection mutation**
-- [ ] **Step 2: Available UI 保留 shared projected item**
-- [ ] **Step 3: 运行 focused GREEN、CopyContract 与 singleton DI 回归**
+- [x] **Step 1: 写 multi-source available RED 与 raw-deprojection mutation**
+- [x] **Step 2: Available UI 保留 shared projected item**
+- [x] **Step 3: 运行 focused GREEN、CopyContract 与 singleton DI 回归**
+
+  Evidence: 旧 raw/distinct UI 精确失败 `missing production extension UI: Beta available source`；修复后 Alpha/Beta 逐-source projection 同屏，Filtered source 仍由 shared classifier 排除。6D1bR thorough review APPROVED；组合范围 `2 files, 399 lines`，closure 增量 `26/100`。
 
 #### Task 6D2: Extension list install、trust 与 error action UI
 
