@@ -203,8 +203,8 @@ Source/Extension authority baseline 使用了 `d77ef4d2b` 而不是固定 `main`
 | 已修复 | Source filter 类型与交互 | source 创建的具体 `Filter` 子类和 `Select<V>` 数组原样回交 source；Reset 只重建 filter state，Apply 后分页沿用同一 listing | `5b2ad641c`、`b99ea3715`、`385ab7d1c`、`87adceae0` 已补完整 filter UI、draft 隔离、runtime subtype/array 保真、结构漂移校验与严格 production Compose 测试 |
 | 已修复 | Source append 串行化 | Paging 顺序请求下一页，不允许重复或跳页；取消不会把旧页发布到新 listing | `e35078d5b`、`42bf801bd`、`dc1516b0b` 已加入不可变 in-flight key、owner/waiter 取消与异常清理、旧 generation 隔离；Desktop generation、typed error、exact retry 属于可保留可靠性增强 |
 | 已修复 | source preference / manager 权责 | `AndroidSourceManager` 始终按 ID 解析已安装 source；`enabledLanguages`、`disabledSources` 只过滤发现与搜索候选 | `de03a8633` 对齐 `source_languages`、`hidden_catalogues`、`pinned_catalogues`、has-results app-state key；禁用 source 仍可解析，Browse 与 Global Search 通过显式候选策略过滤 |
-| 待施工 | Global Search 选择与执行策略 | 默认 `PinnedOnly`，可切换 `All`；同 query/filter 不重复请求，切换 filter 复用交集结果；最多 5 个 source 并发 | Desktop 仍缺 Pinned/All 策略、重复查询抑制、交集复用和并发上限；必须保留 generation/session retirement，不能用回退到简化协程替代 |
-| 待施工 | Global Search 状态投影与排序 | 默认保留每个选中 source 的 Loading/Empty/Content/Error 行；非空优先、pinned 次之、最后按名称/语言；Has results 可切换并持久化 | Desktop 当前永久丢弃 Empty/零结果 Loading，并按结果数量降序；仍需补逐源反馈、原版排序、Pinned/All、Has results 与完成数/总数 |
+| 已修复 | Global Search 选择与执行策略 | 默认 `PinnedOnly`，可切换 `All`；同 query/filter 不重复请求，切换 filter 复用交集结果；最多 5 个 source 并发 | `ad121fcbc`、`b416fd198`、`894b91400` 已补 Pinned/All 策略、交集复用、重复查询抑制与五源并发上限，并保留 generation/session retirement、typed error 与 recovery 增强 |
+| 已修复 | Global Search 状态投影与排序 | 默认保留每个选中 source 的 Loading/Empty/Content/Error 行；非空优先、pinned 次之、最后按名称/语言；Has results 可切换并持久化 | `a492c9f4a` 已补完整逐源状态、完成数/总数、原版排序与真实偏好持久化；严格 Compose 场景重建验证过滤状态恢复，Task 3 的 Pinned/All 行为保持不变 |
 | 待施工 | Global Search 结果生产链路 | 按 URL 去重，经 `NetworkToLocalManga` 复用本地记录；source 标题进入带当前 query 的单源浏览；不截断首屏结果 | Desktop 仍有 `.take(10)`、缺少 source 标题导航和完整本地记录观察；详情刷新与防重复打开属于可保留增强 |
 
 这轮没有把 fixed-main 不存在的 Desktop typed error、登录恢复、generation 或 CAS publication 反写为“原版行为”；它们继续作为显式 Desktop/跨端可靠性增强维护。当前 `app/` 只用于验证迁移后的 Android consumer wiring，不参与生成上述 expected value。
@@ -287,3 +287,60 @@ Task 3B 的实现与复审把当前分支 `app/` 的 provider 测试当成了 up
 6. 对 R1/R2 补固定 `main` 的调用链和行为 replay；若 replay 发现偏差，再作为新的实现修复项进入 TDD。
 
 任何“当前 Android 与 Desktop 测试结果相同”只能证明双端一致，不能替代“与固定原版 Mihon 一致”的证据。
+
+## 9. 2026-07-18 追加审计：Global Search、Extension 与 Desktop Android shim
+
+### C8. Global Search 权威清单遗漏结果生产、观察与导航链路
+
+**状态：当前未解决；必须纳入 Global Search Task 5。**
+
+当前 parity manifest、fixed-main path inventory 与 source/extension authority baseline 只记录了固定原版的 `GlobalSearchScreenModel`、`SearchScreenModel`，遗漏了 presentation `GlobalSearchScreen`、`GlobalSearchCardRow` 以及 `SManga.toDomainManga()`。这会让下列 Desktop 简化实现绕过 provenance 门禁：
+
+- `GlobalSearchScreen.kt` 直接以 `SManga` 作为最终 UI 结果，并用 `.take(10)` 截断每个源的结果；
+- 源标题没有进入携带当前 query 的单源浏览；
+- 只在点击结果时调用 `SaveSourceMangaForDetails.awaitListedForDetails()`，而非在发布结果前完成 URL 去重和 `NetworkToLocalManga`；
+- `SaveSourceMangaForDetails.awaitListed()` 手工只映射少数字段并强制 `initialized=false`，遗漏 artist、author、description、genre、status、updateStrategy 等原版转换语义；
+- 卡片没有通过固定原版 `getManga(initialManga)` 对本地记录持续观察，收藏、本地标题或封面变化不能反馈到搜索行。
+
+固定原版权威为 `SearchScreenModel.search()` 的 `distinctBy { it.url } -> NetworkToLocalManga`、`SearchScreenModel.getManga()` 的 URL/source 观察链、`GlobalSearchScreen` 的带 query 源标题导航，以及 presentation `GlobalSearchScreen` / `GlobalSearchCardRow` 的不截断展示。必须补入的 fixed-main 路径包括：
+
+- `app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/GlobalSearchScreen.kt`
+- `app/src/main/java/eu/kanade/presentation/browse/GlobalSearchScreen.kt`
+- `app/src/main/java/eu/kanade/presentation/browse/components/GlobalSearchCardRow.kt`
+- `domain/src/commonMain/kotlin/mihon/domain/manga/model/SManga.kt`
+
+Desktop 的 generation/session retirement、CAS publication、typed error、精确 retry/login、防重复打开与详情后台刷新可以保留；它们不能替代搜索结果发布前的 canonical 本地记录建立。后续拆为 `global-search-canonical-result-wiring`（≤6 文件/300 行）和 `global-search-result-navigation`（≤4 文件/250 行）。
+
+### C9. Task 6B 遗漏原版扩展分类器与 presentation 行为
+
+**状态：当前未解决；不得直接以 Desktop helper 或迁移后的 catalog model 实施 6B。**
+
+Task 6B、authority baseline ID 37 与 manifest ID 37 只列出 `ExtensionsScreenModel`、`ExtensionDetailsScreenModel`、`ExtensionManager`，却遗漏真正定义 updates/installed/available/untrusted、NSFW、obsolete、语言拆分等规则的 fixed-main `GetExtensionsByType`，也遗漏 presentation 动作与安装阶段反馈。必须补充以下权威：
+
+- `GetExtensionsByType`：`showNsfwSource`，installed 的 obsolete/name 排序与 `hasUpdate` 分区，available 排除已安装/不受信任项，多语言扩展按 enabled language 拆分；
+- `ExtensionsScreenModel.searchQueryPredicate()`：逗号分隔子查询，匹配扩展名、source name、baseUrl 与数值 source ID；
+- `ExtensionsScreen`：Pending/Downloading/Installing/Error/Idle 反馈与 install/update/cancel/trust 动作；
+- `GetExtensionSources`、`ToggleSource`、`ToggleIncognito`、`ExtensionDetailsScreenModel`：已启用源优先、单个/全部启停与卸载后退出详情；
+- `ExtensionDetailsScreen` 与 `ExtensionsTab` 的入口、反馈和导航语义。
+
+当前 Desktop `ExtensionSearch.kt` 只处理单一 trimmed query，并以 package name/source name 搜索；`ExtensionLanguageFilter.kt`、`ExtensionListScreen.kt` 使用局部语言与默认 `showNsfw=false`；列表、安装任务和详情 enabled 状态仍在 Composable 内维护；`DesktopExtensionApi.installExtension()` 又把丰富安装状态压成 terminal `InstallResult`。这些均不等价于固定原版。package name 搜索、宽屏 Tab、语言多选、仓库 fingerprint/SHA/rollback/runtime restore、APK/JAR/ClassLoader、目录与仓库详情可作为 Desktop 增强保留，但必须叠加于原版核心语义。
+
+建议拆分为：fixture/provenance 补全、分类搜索共享核心、动作生命周期共享核心，以及分别的 Desktop 列表 UI 与详情/设置 UI；每项继续遵守 8 文件/400 行上限。
+
+### C10. OpenSpec 2.1/2.3 的完成状态扩大了已共享事实
+
+**状态：当前 checkoff 错误，会误导 Comet 认为 extension presentation 已完成。**
+
+`openspec/changes/align-sources-extensions/tasks.md` 已勾选 2.1 和 2.3，但 `SourceMangaSearchService` 并不负责源列表，`domain/.../extension/presentation/` 尚不存在，Desktop `ExtensionListScreen` 与 `ExtensionDetailsScreen` 仍分别维护 catalog snapshot、过滤、install jobs、update-all、terminal error、source enabled、incognito、cookie 与卸载状态。因此“共享了部分 query/catalog/install 类型”不能写成“Android 与 Desktop production manager/ScreenModel 已消费相同 presentation state/error”。
+
+2.1 应缩小为 shared query request/page/error core；2.3 应恢复未完成，或拆成 source query core、extension transaction core、当前 Android presentation consumer、Desktop presentation consumer。只有 fixed-main fixture、shared contract、当前 Android consumer 与 Desktop consumer 四层证据同时成立后才能重新勾选。
+
+### C11. Desktop Android shim 尚未被直接冒充原版，但 Task 7 证据会循环自证
+
+**状态：未发现代码直接把 shim 称为原版；现有证据不足以支持 Task 7 checkoff。**
+
+当前兼容层至少有 40 个 Kotlin 文件、41 个顶层 public 类型；`compat-evidence.json` 只有 1 条且状态为 `unsupported`。`AndroidCompatTest` 只证明自建 stub 的局部行为；`ExtensionCompatibilityTest.MinimalTestSource` 的 JAR 只含 ServiceLoader 描述，Source 类来自测试 parent classpath，不能证明真实扩展 JAR 或 Android shim 被调用。唯一真实 ManHuaGui APK fixture 仍因缺少 `android.app.Application` binding 而明确 unsupported。
+
+固定原版 `source-api` 的 `Source`、`CatalogueSource`、`ConfigurableSource`、`HttpSource` 定义扩展 ABI，`ExtensionLoader` 使用 Android PackageManager、签名与 APK runtime；固定原版不存在 Desktop 的 `android/**` 或 `AndroidCompat`。因此 shim 永远只能归入 Desktop adapter。真实 fixture 穿透 production loader 后实际调用的最小 adapter、APK→JAR、child-first ClassLoader、manifest discovery 与明确的不兼容诊断可以保留；合成自测只能作为 adapter 单测，不能升级为“真实扩展需要”的证据。
+
+原 Task 7 的 7 文件/350 行不足以审计 40 个文件，应拆为 public surface inventory、真实 fixture evidence、按 package 分批的 compat prune、最终 parity evidence，以及独立的 Android/Windows/macOS 运行验收。Task 6E 的 Test Mode/导航暂未发现身份混淆，但它只能观察 production state，不得复制业务 reducer。
