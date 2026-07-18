@@ -773,10 +773,11 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 - Risk axis: `extension-presentation-android-ui-actions`
 - Platform boundary: `android`
-- Estimated scope: `3 files, 210 lines`
+- Estimated scope: `4 files, 210 lines`
 - Verification: 当前 Android ScreenModel 通过 Task 6B2a shared reducer 驱动 refresh 与逐 package install state，按 fixed main 在 Installed 后停止并清理；详情页通过 injectable shared enabled-first seam 排序，同时覆盖 source 单个/全部启停、incognito 和仅在 installed flow 移除后退出。
 
 **Files:**
+- Modify: `app/src/main/java/eu/kanade/domain/extension/interactor/GetExtensionsByType.kt`
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsScreenModel.kt`
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/ExtensionDetailsScreenModel.kt`
 - Modify: `app/src/test/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionPresentationWiringTest.kt`
