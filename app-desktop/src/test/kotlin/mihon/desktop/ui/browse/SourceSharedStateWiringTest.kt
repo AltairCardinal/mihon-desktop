@@ -15,6 +15,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.AnnotatedString
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
@@ -183,7 +184,7 @@ class SourceSharedStateWiringTest {
 
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
-    fun `browse pin action persists selected feedback and ordering after reconstruction`() = runBlocking {
+    fun `browse pin buttons and long click update feedback and ordering in the mounted scene`() = runBlocking {
         val root = Preferences.userRoot().node("/mihon/browse-pin/${System.nanoTime()}")
         try {
             val alpha = FakeSource(87, "en", "Alpha authority source")
@@ -206,23 +207,48 @@ class SourceSharedStateWiringTest {
 
             fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
             fun semantics(scene: ImageComposeScene) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+            fun rendered(scene: ImageComposeScene) = semantics(scene).joinToString { it.config.toString() }
+            suspend fun awaitFeedback(scene: ImageComposeScene, label: String) = withTimeout(2_000) {
+                val conflictingLabel = label.takeIf { it.startsWith("Pin ") }?.let { "Unpin ${it.removePrefix("Pin ")}" }
+                fun hasFeedback() = semantics(scene).any {
+                    val text = it.config.toString()
+                    it.config.contains(SemanticsActions.OnClick) &&
+                        text.contains(label) &&
+                        (conflictingLabel == null || !text.contains(conflictingLabel))
+                }
+                while (!hasFeedback()) {
+                    scene.render()
+                    delay(10)
+                }
+            }
 
-            val firstPreferences = DesktopAppPreferences(DesktopPreferenceStore(root))
-            firstPreferences.enabledLanguages.set(setOf("en"))
-            val firstScene = scene(firstPreferences)
-            val pin = semantics(firstScene).first {
+            val preferences = DesktopAppPreferences(DesktopPreferenceStore(root))
+            preferences.enabledLanguages.set(setOf("en"))
+            val mountedScene = scene(preferences)
+            val pin = semantics(mountedScene).first {
                 it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains("Pin ${zeta.name}")
             }
             assertTrue(requireNotNull(pin.config[SemanticsActions.OnClick].action).invoke())
-            assertEquals(setOf(zeta.id.toString()), firstPreferences.pinnedSources.get())
-            firstScene.close()
+            awaitFeedback(mountedScene, "Unpin ${zeta.name}")
+            assertEquals(setOf(zeta.id.toString()), preferences.pinnedSources.get())
+            assertTrue(rendered(mountedScene).indexOf(zeta.name) < rendered(mountedScene).indexOf(alpha.name))
 
-            val restoredPreferences = DesktopAppPreferences(DesktopPreferenceStore(root))
-            val restoredScene = scene(restoredPreferences)
-            val restoredSemantics = semantics(restoredScene).joinToString { it.config.toString() }
-            assertTrue(restoredSemantics.contains("Unpin ${zeta.name}"))
-            assertTrue(restoredSemantics.indexOf(zeta.name) < restoredSemantics.indexOf(alpha.name))
-            restoredScene.close()
+            val unpin = semantics(mountedScene).first {
+                it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains("Unpin ${zeta.name}")
+            }
+            assertTrue(requireNotNull(unpin.config[SemanticsActions.OnClick].action).invoke())
+            awaitFeedback(mountedScene, "Pin ${zeta.name}")
+            assertEquals(emptySet<String>(), preferences.pinnedSources.get())
+            assertTrue(rendered(mountedScene).indexOf(alpha.name) < rendered(mountedScene).indexOf(zeta.name))
+
+            val longClick = semantics(mountedScene).first {
+                it.config.contains(SemanticsActions.OnLongClick) && it.config.toString().contains(zeta.name)
+            }
+            assertTrue(requireNotNull(longClick.config[SemanticsActions.OnLongClick].action).invoke())
+            awaitFeedback(mountedScene, "Unpin ${zeta.name}")
+            assertEquals(setOf(zeta.id.toString()), preferences.pinnedSources.get())
+            assertTrue(rendered(mountedScene).indexOf(zeta.name) < rendered(mountedScene).indexOf(alpha.name))
+            mountedScene.close()
         } finally {
             root.removeNode()
         }
@@ -257,7 +283,16 @@ class SourceSharedStateWiringTest {
                 val node = nodes(scene).first { it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains(label) }
                 assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
             }
+            fun clickLast(scene: ImageComposeScene, label: String) {
+                val node = nodes(scene).last { it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains(label) }
+                assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
+            }
             fun rendered(scene: ImageComposeScene) = nodes(scene).joinToString { it.config.toString() }
+            fun selected(scene: ImageComposeScene, label: String) = nodes(scene).any {
+                it.config.toString().contains(label) &&
+                    it.config.contains(SemanticsProperties.Selected) &&
+                    it.config[SemanticsProperties.Selected]
+            }
 
             val preferences = DesktopAppPreferences(DesktopPreferenceStore(root))
             preferences.enabledLanguages.set(setOf("en"))
@@ -274,11 +309,35 @@ class SourceSharedStateWiringTest {
             firstScene.render()
             assertTrue(rendered(firstScene).contains(french.name))
 
-            preferences.disabledSources.set(setOf(english.id.toString()))
+            click(firstScene, "FR")
             firstScene.render()
+            assertTrue(selected(firstScene, "FR"))
             assertFalse(rendered(firstScene).contains(english.name))
-            assertTrue(rendered(firstScene).contains(french.name))
+
+            click(firstScene, MR.strings.action_filter.localized())
+            firstScene.render()
+            clickLast(firstScene, "FR")
+            firstScene.render()
+            click(firstScene, MR.strings.action_close.localized())
+            firstScene.render()
+            assertEquals(setOf("en"), preferences.enabledLanguages.get())
+            assertTrue(selected(firstScene, "All"))
+            assertTrue(rendered(firstScene).contains(english.name))
+            assertFalse(rendered(firstScene).contains(french.name))
+
+            preferences.enabledLanguages.set(setOf("en", "fr"))
+            firstScene.render()
+            click(firstScene, "FR")
+            firstScene.render()
+            preferences.enabledLanguages.set(setOf("en"))
+            firstScene.render()
+            assertTrue(selected(firstScene, "All"))
+            assertTrue(rendered(firstScene).contains(english.name))
+            assertFalse(rendered(firstScene).contains(french.name))
             firstScene.close()
+
+            preferences.enabledLanguages.set(setOf("en", "fr"))
+            preferences.disabledSources.set(setOf(english.id.toString()))
 
             val restored = DesktopAppPreferences(DesktopPreferenceStore(root))
             val restoredScene = scene(restored)

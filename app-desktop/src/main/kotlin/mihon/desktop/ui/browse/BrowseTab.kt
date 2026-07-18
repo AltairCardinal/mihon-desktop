@@ -117,12 +117,17 @@ class BrowseSourceListScreen : Screen {
         val languages = remember(allSources) {
             allSources.map { it.lang }.distinct().sorted()
         }
+        val effectiveSelectedLang = selectedLang?.takeIf { it in languages }
         val installedLanguages = remember(installedSources) {
             installedSources.map { it.lang }.distinct().sorted()
         }
 
-        val displayedSources = remember(allSources, selectedLang, pinnedSourceIds) {
-            val filtered = if (selectedLang == null) allSources else allSources.filter { it.lang == selectedLang }
+        val displayedSources = remember(allSources, effectiveSelectedLang, pinnedSourceIds) {
+            val filtered = if (effectiveSelectedLang == null) {
+                allSources
+            } else {
+                allSources.filter { it.lang == effectiveSelectedLang }
+            }
             val sorted = filtered.sortedBy { it.name.lowercase() }
             val pinned = sorted.filter { it.id.toString() in pinnedSourceIds }
             val rest = sorted.filter { it.id.toString() !in pinnedSourceIds }
@@ -198,14 +203,14 @@ class BrowseSourceListScreen : Screen {
                     ) {
                         item {
                             FilterChip(
-                                selected = selectedLang == null,
+                                selected = effectiveSelectedLang == null,
                                 onClick = { selectedLang = null },
                                 label = { Text("All") },
                             )
                         }
                         items(languages) { lang ->
                             FilterChip(
-                                selected = selectedLang == lang,
+                                selected = effectiveSelectedLang == lang,
                                 onClick = { selectedLang = if (selectedLang == lang) null else lang },
                                 label = { Text(lang.uppercase()) },
                             )
