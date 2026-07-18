@@ -299,7 +299,7 @@ class ExtensionManager internal constructor(
 
         untrustedExtensionMapFlow.value -= extension.pkgName
 
-        ExtensionLoader.loadExtensionFromPkgName(context, extension.pkgName)
+        extensionLoader(context, extension.pkgName)
             .let { it as? LoadResult.Success }
             ?.let { registerNewExtension(it.extension) }
     }
