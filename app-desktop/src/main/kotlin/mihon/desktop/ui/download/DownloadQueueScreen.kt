@@ -64,13 +64,15 @@ class DownloadQueueScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val manager = LocalDesktopUiDependencies.current.downloadManager
+        val dependencies = LocalDesktopUiDependencies.current
+        val manager = dependencies.downloadManager
         val queue by manager.queue.collectAsState()
         val isPaused by manager.isPaused.collectAsState()
         val scope = rememberCoroutineScope()
 
-        // Group downloads by manga title (mirrors Android's by-source grouping)
-        val grouped = remember(queue) { queue.groupBy { it.mangaTitle } }
+        val grouped = remember(queue, dependencies.sourceManager) {
+            queue.groupBy { it.sourceId }
+        }
 
         // Two separate menus — mirrors Android's separate Sort + Overflow pattern
         var showSortMenu by remember { mutableStateOf(false) }
@@ -243,11 +245,11 @@ class DownloadQueueScreen : Screen {
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        grouped.forEach { (mangaTitle, chapterItems) ->
-                            // Manga title group header (non-draggable, string key)
-                            item(key = "hdr_$mangaTitle") {
+                        grouped.forEach { (sourceId, chapterItems) ->
+                            item(key = "hdr_$sourceId") {
                                 Text(
-                                    text = mangaTitle,
+                                    text = dependencies.sourceManager.get(sourceId)?.name
+                                        ?: "Unknown source ($sourceId)",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.SemiBold,
                                     modifier = Modifier.padding(
