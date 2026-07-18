@@ -41,7 +41,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - [x] Task 5A：共享登录会话与 Desktop Cookie 原子提交
 - [x] Task 5B：Desktop 挑战恢复策略与 FlareSolverr 显式后备
 - [x] Task 5C：Desktop 登录设置、UI 与 production wiring
-- [ ] Task 6A：Browse 共享状态 wiring（6A1/6A2 已完成；C8 的 6A3A/6A3B 待完成）
+- [x] Task 6A：Browse 共享状态 wiring（6A1/6A2/6A3 已完成；C8 已闭合）
 - [ ] Task 6B：从固定 main 原版提取扩展呈现契约
 - [ ] Task 6C：Desktop 扩展 adapter、ScreenModel 与 DI wiring
 - [ ] Task 6D：Desktop Extension UI、详情/设置与 i18n wiring
@@ -651,6 +651,8 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/browse/GlobalSearchResultNavigationTest.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceSharedStateWiringTest.kt`
+
+**完成证据（`20fd5dd41`）：** 固定 main 的带当前 query 源导航、目标页首载 Search/fresh filters、默认 Popular 与不截断 `GlobalSearchCardRow` 语义已接入 Desktop；Compose/Voyager/真实 SQL 证据同时保留 `(sourceId, url)` 观察、最新 canonical ID、原始 `SManga` 后台刷新与防重复打开。无截断后为隔离 headless 双源批量调度，A2 双源同 URL 场景收敛为每源 1 项，另由 12 项真实 Compose 探针证明滚动到索引 11、惰性订阅及第 12 项可达；真实 SQL batch/generation 场景仍保持默认 12 项。最终 9 类 focused tests 为 107/107，独立审查与唯一测试增强复审均为 Approved。实际范围为 5 files/257 changed lines；新增的第 5 个文件修改是既有 A2 production 测试证据拆分，仍低于 8 files/400 lines 门槛。
 
 **6A2B1R2 scope adjustment:** 原 70 changed lines 估算遗漏了移除旧全局 observer 与 direct callback 路径本身产生的约 28 行删除；最小 production 替换约 62 changed lines，真实 duplicate/cross-session/recovery RED 约 39 行。该行为闭环不可再独立拆分，调整为 2 files/110 changed lines，仍远低于项目 400 行拆分门槛；不得为满足旧估算压缩掉行为断言。
 

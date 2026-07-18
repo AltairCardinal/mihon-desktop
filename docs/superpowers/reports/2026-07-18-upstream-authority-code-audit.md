@@ -292,7 +292,7 @@ Task 3B 的实现与复审把当前分支 `app/` 的 provider 测试当成了 up
 
 ### C8. Global Search 权威清单遗漏结果生产、观察与导航链路
 
-**状态：当前未解决；必须纳入 Global Search Task 5。**
+**状态：已解决。** `156bac203`、`94d3abbcd`、`81e302345`、`51f8314e8` 与 `20fd5dd41` 依次闭合 canonical contract、结果物化、可见卡观察及导航/完整结果行；最终 9 类 focused tests 107/107，独立审查通过。
 
 当前 parity manifest、fixed-main path inventory 与 source/extension authority baseline 只记录了固定原版的 `GlobalSearchScreenModel`、`SearchScreenModel`，遗漏了 presentation `GlobalSearchScreen`、`GlobalSearchCardRow` 以及 `SManga.toDomainManga()`。这会让下列 Desktop 简化实现绕过 provenance 门禁：
 
@@ -310,6 +310,8 @@ Task 3B 的实现与复审把当前分支 `app/` 的 provider 测试当成了 up
 - `domain/src/commonMain/kotlin/mihon/domain/manga/model/SManga.kt`
 
 Desktop 的 generation/session retirement、CAS publication、typed error、精确 retry/login、防重复打开与详情后台刷新可以保留；它们不能替代搜索结果发布前的 canonical 本地记录建立。后续拆为 `global-search-canonical-result-wiring`（≤6 文件/300 行）和 `global-search-result-navigation`（≤4 文件/250 行）。
+
+闭合后的 Desktop production 链路先对搜索结果按 URL 去重并通过 `NetworkToLocalManga` 建立 canonical 本地记录，再仅为进入 composition 的卡片按 `(sourceId, url)` 观察数据库；源标题携带当前编辑 query 进入单源浏览，目标页直接以 fresh filters 首载 Search，默认入口仍首载 Popular。每源结果不再 `.take(10)`，12 项 Compose 探针证明索引 11 可滚动、组合并订阅。Desktop 的防重复打开和原始 `SManga` 后台详情刷新作为不冲突的增强保留。
 
 ### C9. Task 6B 遗漏原版扩展分类器与 presentation 行为
 
