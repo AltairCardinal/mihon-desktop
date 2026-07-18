@@ -788,43 +788,80 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **OpenSpec mapping:** 2.3、3.4（Desktop 消费从固定 main 提取的共享状态、安装反馈与 DI 部分）
 
-**Risk axis:** desktop-extension-presentation-adapter
-**Platform boundary:** shared+desktop
-**Estimated scope:** 8 files, 400 lines
-**Verification:** Desktop production ScreenModel 只消费 Task 6B 的共享 state/intents，部分仓库失败、TrustRequired、安装取消/失败/回滚与旧版本保留均来自真实 catalog/trust/install 链路；DI 能解析同一个长生命周期实例。
+**Execution split:** 预审确认已安装 sidecar 缺少 fixed-main 分类所需的 name/language/isNsfw，且 Manager 没有 authoritative installed StateFlow；若在原 8 files/400 lines 内同时实现 metadata 连续性、typed port、ScreenModel 与 DI，只能以 catalog 临时 join 或 terminal wrapper 继续丢状态。因此按 6C1→6C2 顺序施工。
+**Split waiver:** 下述文件数/行数不会作为一个 Task 调度；6C1 与 6C2 分别不超过 8 files/400 lines。6C1 先让 typed platform port 独立可用，6C2 再只消费该 port 与 Task 6B shared store。
+
+#### Task 6C1: Desktop metadata、Manager state 与 typed presentation port
+
+- Risk axis: `desktop-extension-presentation-port`
+- Platform boundary: `desktop`
+- Estimated scope: `8 files, 400 lines`
+- Verification: 新旧 sidecar 均可读取，安装后 name/language/isNsfw 可在 catalog 部分失败与重启后稳定恢复；Manager 暴露 authoritative installed StateFlow 与原生 install Flow；catalog 保留 typed per-repo failures；TrustRequired 使用稳定 requestId 恢复同一 pending request；取消 collector 仍触发既有 NonCancellable rollback 并保留旧 runtime。
 
 **Files:**
-- Create: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/DesktopExtensionPresentationPort.kt`
-- Create: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionsScreenModel.kt`
-- Modify: `app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionApi.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/extension/ExtensionMeta.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionManager.kt`
-- Modify: `app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt`
-- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionSharedStateWiringTest.kt`
-- Modify: `app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionApi.kt`
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/DesktopExtensionPresentationPort.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/DesktopExtensionPresentationPortTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionApiSharedCatalogTest.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionInstallTransactionTest.kt`
 
-**Interfaces:**
-- Consumes: Task 6B 的 `ExtensionPresentationStore`/port/intents，以及 Tasks 3–5 已有的 shared catalog/trust/install/login services。
-- Produces: 注入到 Desktop UI 的 `ExtensionsScreenModel`；其 State/操作语义与固定 main 原版一致，平台 adapter 仅负责 JAR、APK→JAR、ClassLoader、文件和浏览器 side effect。
-- Boundary: 禁止创建 `DesktopExtensionUiCoordinator` 或在 Desktop adapter 中复制分类、搜索、版本、信任、回滚和错误映射规则；`ConfirmTrust` 必须恢复共享 pending request，不能以新的终态 API 重新发起一次不相关安装。
+- [ ] **Step 1: 写 typed port / metadata / transaction RED**
 
-- [ ] **Step 1: 写 Desktop production wiring RED**
-
-  覆盖多仓库部分失败仍保留成功条目、安装状态流、取消、TrustRequired→ConfirmTrust 同一 request、失败回滚后旧版本仍可用、DI 单例解析，以及绕过 shared store 的 mutation。
+  覆盖旧 sidecar 默认值与新字段 round-trip、两仓库一成功一失败、raw install state、cancel rollback、TrustRequired→ConfirmTrust 同一 request identity，以及 installed flow 仅随成功 commit/rollback/uninstall 更新。
 
 - [ ] **Step 2: 运行 RED**
 
-  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionSharedStateWiringTest" --tests "mihon.desktop.di.DesktopDiWiringTest" --tests "mihon.desktop.extension.DesktopExtensionInstallTransactionTest"`
-  Expected: FAIL，原因是 Desktop 尚无 Task 6B adapter/ScreenModel，且 UI API 仍只返回 terminal result。
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.DesktopExtensionPresentationPortTest" --tests "mihon.desktop.extension.DesktopExtensionApiSharedCatalogTest" --tests "mihon.desktop.extension.DesktopExtensionInstallTransactionTest"`
+  Expected: FAIL，原因是 Desktop 仍只有 terminal API、sidecar 缺字段且 Manager 无 authoritative flow。
 
-- [ ] **Step 3: 实现薄平台 adapter 与 ScreenModel**
+- [ ] **Step 3: 实现 metadata、Manager Flow 与 typed port**
 
-  让 catalog refresh 保留 `ExtensionCatalogResult.failures`，让安装直接转发共享 `ExtensionInstallState`，并把 trust confirmation、cancel、retry、reload/uninstall 映射到现有 production manager/port。ScreenModel 仅持有共享 store 生命周期并暴露 Android 对齐的 State/方法。
+  sidecar 向后兼容地持久化 artifact presentation metadata；Manager 直接暴露 coordinator Flow 和 installed StateFlow；port 只映射 JAR/APK/文件 side effect，保留 typed catalog/trust/install state。legacy terminal wrapper 仅为 6D 前现有 UI 编译暂留，新链路禁止消费。
+
+- [ ] **Step 4: 运行 GREEN 与取消/rollback mutation**
+
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.DesktopExtensionPresentationPortTest" --tests "mihon.desktop.extension.DesktopExtensionApiSharedCatalogTest" --tests "mihon.desktop.extension.DesktopExtensionInstallTransactionTest"`
+  Expected: 全部 PASS；改回 `.last()`、重建 trust request、丢 catalog failure 或在 cancel 时不 rollback，至少一个行为测试失败。
+
+#### Task 6C2: Desktop ScreenModel、shared store 与 DI lifecycle wiring
+
+- Risk axis: `desktop-extension-screenmodel-wiring`
+- Platform boundary: `shared+desktop`
+- Estimated scope: `5 files, 320 lines`
+- Verification: Desktop production ScreenModel 只消费 Task 6B shared classifier/action store 与 Task 6C1 typed port；部分失败、逐包状态、取消和 pending trust 均来自真实 port；DI 重复解析同一长生命周期实例，test DI close 后 jobs 停止。
+
+**Files:**
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/DesktopExtensionPresentationPort.kt`
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionsScreenModel.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionSharedStateWiringTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt`
+
+**Interfaces:**
+- Consumes: Task 6B 的 `ExtensionPresentationStore`/actions 与 Task 6C1 typed port。
+- Produces: 注入到 Desktop UI 的 `ExtensionsScreenModel`；其状态/操作语义与 fixed main 一致，平台 adapter 只负责 JAR、APK→JAR、ClassLoader、文件和浏览器 side effect。
+- Boundary: 禁止创建 `DesktopExtensionUiCoordinator` 或复制分类、搜索、版本、信任、回滚和错误映射规则；6D 前 legacy wrapper 可暂留，但 6C2 ScreenModel 不得调用。
+
+- [ ] **Step 1: 写 shared store / ScreenModel / DI RED**
+
+  覆盖 shared classifier/reducer seam 调用与返回值回灌、部分失败保留、逐 package install/cancel、pending trust intents、DI singleton 与 close ownership；绕过 shared store 或内部 new Manager 必须失败。
+
+- [ ] **Step 2: 运行 RED**
+
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionSharedStateWiringTest" --tests "mihon.desktop.di.DesktopDiWiringTest"`
+  Expected: FAIL，原因是 Desktop 尚无 shared presentation ScreenModel 与 DI lifecycle wiring。
+
+- [ ] **Step 3: 实现薄 ScreenModel 与 DI lifecycle**
+
+  ScreenModel 只将 port 的 typed state 送入 shared classifier/reducer，并暴露 fixed-main intents；DI 注册同一个 port/ScreenModel 长生命周期实例，test context 在 manager/network 前取消其 jobs。
 
 - [ ] **Step 4: 运行 GREEN 与断线 mutation**
 
-  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionSharedStateWiringTest" --tests "mihon.desktop.di.DesktopDiWiringTest" --tests "mihon.desktop.extension.*Extension*"`
-  Expected: 全部 PASS；把 ScreenModel 改回 terminal API、丢弃部分失败或在 adapter 重算 update/trust/error 时至少一个行为测试失败。
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionSharedStateWiringTest" --tests "mihon.desktop.di.DesktopDiWiringTest"`
+  Expected: 全部 PASS；丢弃 shared reducer 返回值、改用 legacy terminal API 或重复构造实例时至少一个测试失败。
 
 - [ ] **Step 5: 提交 Task 6C**
 
