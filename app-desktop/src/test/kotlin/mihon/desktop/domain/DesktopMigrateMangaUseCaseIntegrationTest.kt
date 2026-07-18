@@ -154,6 +154,48 @@ class DesktopMigrateMangaUseCaseIntegrationTest {
     }
 
     @Test
+    fun `copy notes true replaces target notes with source notes`() = runTest {
+        fixture().use { f ->
+            val source = f.insertManga("/source")
+            val target = f.insertManga("/target", sourceId = 2)
+            f.mangas.update(MangaUpdate(id = source.id, notes = "source notes"))
+            f.mangas.update(MangaUpdate(id = target.id, notes = "target notes"))
+
+            val migrated = f.useCase.await(
+                f.mangas.getMangaById(source.id),
+                target("/target"),
+                2,
+                emptyList(),
+                options = MigrationOptions(copyNotes = true),
+                replace = false,
+            )
+
+            assertEquals("source notes", f.mangas.getMangaById(migrated.id).notes)
+        }
+    }
+
+    @Test
+    fun `copy notes false preserves existing target notes`() = runTest {
+        fixture().use { f ->
+            val source = f.insertManga("/source")
+            val target = f.insertManga("/target", sourceId = 2)
+            f.mangas.update(MangaUpdate(id = source.id, notes = "source notes"))
+            f.mangas.update(MangaUpdate(id = target.id, notes = "target notes"))
+
+            val migrated = f.useCase.await(
+                f.mangas.getMangaById(source.id),
+                target("/target"),
+                2,
+                emptyList(),
+                options = MigrationOptions(copyNotes = false),
+                replace = false,
+            )
+
+            assertEquals("target notes", f.mangas.getMangaById(migrated.id).notes)
+        }
+    }
+
+    @Test
     fun `copy migration replaces existing target date with invocation time`() = runTest {
         fixture().use { f ->
             val source = f.insertManga("/source")

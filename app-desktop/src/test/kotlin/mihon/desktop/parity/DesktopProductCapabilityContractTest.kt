@@ -118,6 +118,8 @@ class DesktopProductCapabilityContractTest {
             67 to
                 mapOf(
                     "shared migration plan" to "MIGRATION_OUTPUT",
+                    "metadata/category/source removal" to "DESKTOP_PRODUCT_ENHANCEMENT",
+                    "persisted target reread" to "DESKTOP_PRODUCT_ENHANCEMENT",
                 ),
             68 to
                 mapOf(
@@ -901,6 +903,8 @@ class DesktopProductCapabilityContractTest {
         assertTrue(desktopImplementation.contains("shared migration plan"))
         assertTrue(desktopImplementation.contains("Desktop consumer"))
         assertTrue(desktopImplementation.contains("end-to-end"))
+        assertFalse(desktopImplementation.contains("atomic commit"))
+        assertFalse(desktopImplementation.contains("returned-object reread"))
         assertFalse(
             deviations.any { it.getValue("classification").jsonPrimitive.content == "UNCLASSIFIED_DEBT" },
         )
@@ -908,6 +912,19 @@ class DesktopProductCapabilityContractTest {
             deviations.any {
                 it.getValue("classification").jsonPrimitive.content == "MIGRATION_OUTPUT" &&
                     it.getValue("description").jsonPrimitive.content.contains("not original-Mihon authority")
+            },
+        )
+        assertTrue(
+            deviations.any {
+                it.getValue("classification").jsonPrimitive.content == "DESKTOP_PRODUCT_ENHANCEMENT" &&
+                    it.getValue("description").jsonPrimitive.content.contains("metadata/category/source removal") &&
+                    it.getValue("description").jsonPrimitive.content.contains("atomic transaction")
+            },
+        )
+        assertTrue(
+            deviations.any {
+                it.getValue("classification").jsonPrimitive.content == "DESKTOP_PRODUCT_ENHANCEMENT" &&
+                    it.getValue("description").jsonPrimitive.content.contains("persisted target reread")
             },
         )
         assertTrue(

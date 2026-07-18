@@ -889,7 +889,7 @@
     ],
     "status": "WIRED",
     "authoritativeImplementation": "Fixed original Mihon single-manga migration behavior at main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8.",
-    "desktopImplementation": "The fixed original Mihon main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8 single-manga persistence rules are replayed end-to-end by the shared migration plan and Desktop consumer: category no-touch when copy is disabled, chapter/viewer flags, invocation-time or source dateAdded, notes, replace/copy membership, atomic commit, and returned-object reread.",
+    "desktopImplementation": "The fixed original Mihon main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8 single-manga persistence rules are replayed end-to-end by the shared migration plan and Desktop consumer: category no-touch when copy is disabled, chapter/viewer flags, invocation-time or source dateAdded, notes, and replace/copy membership. Desktop-specific reliability enhancements are classified separately below.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
       {
@@ -916,6 +916,14 @@
       {
         "classification": "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT",
         "description": "Current Android exposes non-cancellation failures as Result for visible batch failure handling."
+      },
+      {
+        "classification": "DESKTOP_PRODUCT_ENHANCEMENT",
+        "description": "Desktop combines metadata/category/source removal in one atomic transaction to prevent half-applied migration state; this reliability boundary is absent from fixed main."
+      },
+      {
+        "classification": "DESKTOP_PRODUCT_ENHANCEMENT",
+        "description": "Desktop performs a persisted target reread after a successful commit so callers observe final database values; this reliability enhancement is absent from fixed main."
       }
     ],
     "protectionTests": [
