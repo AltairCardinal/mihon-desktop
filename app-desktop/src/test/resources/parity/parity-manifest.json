@@ -613,8 +613,34 @@
       "DESKTOP-PRODUCT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt 提供旋转后宽页判断、奇数像素拆分边界、虚拟页映射与 Android 权威配对默认值；app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagePairingAlgorithm.kt 直接委托共享配对",
-    "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/reader/VirtualPageList.kt、app-desktop/src/main/kotlin/mihon/desktop/reader/DualPageState.kt 与 app-desktop/src/main/kotlin/mihon/desktop/ui/reader/PageSplitHalf.kt 消费共享变换，并显式叠加封面、edge matching、landscape parity 增强",
+    "authoritativeImplementation": "fixed main 的 PagerViewerAdapter/PagerPageHolder 与 WebtoonAdapter/WebtoonPageHolder 提供单页顺序、RTL 反转、章节过渡与同一宽源页拆分/旋转；固定原版没有相邻 portrait 页配对默认算法",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerViewerAdapter.kt", "symbol": "PagerViewerAdapter.setChapters/onPageSplit → LTR/vertical order, R2L reversal, split InsertPage placement and transitions" },
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerPageHolder.kt", "symbol": "PagerPageHolder.process/splitInHalf → wide-page split, rotate and direction/invert side selection" },
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerViewers.kt", "symbol": "L2RPagerViewer/R2LPagerViewer/VerticalPagerViewer → reading-direction navigation" },
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonAdapter.kt", "symbol": "WebtoonAdapter.setChapters → one ReaderPage item per source page plus explicit transitions" },
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonPageHolder.kt", "symbol": "WebtoonPageHolder.process → wide-page splitAndMerge/rotate inside one page holder" },
+      { "path": "core/common/src/main/kotlin/tachiyomi/core/common/util/system/ImageUtil.kt", "symbol": "ImageUtil.isWideImage/splitInHalf → historical width-height rule and odd-width half extraction" }
+    ],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt"],
+    "currentAndroidConsumerPaths": [
+      "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagePairingAlgorithm.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PairingState.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPageViewerAdapter.kt"
+    ],
+    "desktopConsumerAdapterPaths": [
+      "app-desktop/src/main/kotlin/mihon/desktop/reader/VirtualPageList.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/reader/DualPageState.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/PageSplitHalf.kt"
+    ],
+    "deviations": [
+      { "classification": "CROSS_PLATFORM_PRODUCT_ENHANCEMENT", "description": "ReaderPagePairing/ReaderPairingState pair adjacent portrait pages and power current Android/Desktop dual-page modes; these fork-added classes are absent from fixed main." },
+      { "classification": "DESKTOP_PRODUCT", "description": "Cover single, manual spread adjustment, edge matching and landscape parity remain explicit Desktop product options." },
+      { "classification": "CORRECTNESS_BUGFIX", "description": "Odd-pixel split bounds intentionally preserve the center line that historical ImageUtil.splitInHalf omitted." },
+      { "classification": "PLATFORM_ADAPTER", "description": "Android View adapters and Desktop Compose/Skia rendering remain separate consumers of the shared enhancement." }
+    ],
+    "desktopImplementation": "VirtualPageList/DualPageState/PageSplitHalf consume shared transforms and explicitly layer cover single, manual adjustment, edge matching and landscape parity without claiming fixed-main pairing authority",
     "protectionTests": [
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt",

@@ -12,6 +12,8 @@ status: final
 
 Mihon Desktop 从 Android 原版 fork 后，为快速获得可用阅读器，在 Compose/Skia 层重新实现了页面拆分、双页配对、导航、章节跳过、滤镜与预加载。长期结果是 Android 与 Desktop 对相同章节可能产生不同页序、错误状态、跳过目标和内存行为。
 
+> **2026-07-18 authority correction：** 固定 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` 有 Pager/Webtoon 单页顺序、宽源页拆分/旋转和章节过渡，但没有将相邻 portrait 页组合成 display unit 的默认 pairing 算法。`ReaderPagePairing` 来自 fork 提交 `bef51fc69`，现作为 Android/Desktop 共用的双页产品增强保留。证据与影响见 [authority correction report](../../../.superpowers/sdd/authority-correction-wave2-reader-report.md)。
+
 本 change 将非平台特有的阅读器语义收敛为 `domain/common` 的唯一实现。Android 和 Desktop 只保留像素载体、渲染控件、文件/网络 side effect 与输入设备差异。Desktop 的 edge matching、自动滚动、键盘/鼠标和右键保存属于永久产品能力，必须继续存在但不能替代共享语义。
 
 需求事实源是 `openspec/changes/align-reader-core/specs/shared-reader-core/spec.md`；本文只描述实现方式和取舍。
@@ -49,14 +51,16 @@ Desktop UI/Skia ─┘
 
 ### 3.2 `PageTransform`
 
-负责旋转后尺寸、宽页判断、奇数像素拆分边界、虚拟页映射和双页配对。默认配对严格使用 Android 权威向量。Desktop 增强通过 `PagePairingOptions` 显式传入：
+负责旋转后尺寸、宽页判断、奇数像素拆分边界、虚拟页映射和双页配对。拆分、方向和过渡仅在固定 main 存在可比规则时以其为基线；奇数像素中心线保留是相对历史 `ImageUtil.splitInHalf` 的显式 correctness bugfix。
+
+`ReaderPagePairing` 的相邻 portrait 页配对没有固定 main 默认值，是 fork 后由两端共用的产品增强。Desktop 附加能力通过 `PagePairingOptions` 显式传入：
 
 - cover single；
 - forced single；
 - edge-matched pair；
 - landscape 后 parity 调整。
 
-未提供 options 时，结果必须与 Android 原版一致，禁止把 Desktop 默认写回 shared default。
+未提供 options 时，结果表示该跨端增强的共享基线，不得反写为原版 Mihon authority；Desktop 附加能力仍不得改变 Android 当前默认。
 
 ### 3.3 `ReaderNavigation`
 
@@ -119,7 +123,7 @@ Desktop 继续保留 edge matching、自动滚动、键盘/鼠标与右键保存
 ## 6. 迁移与回滚
 
 1. 将当前未提交 Task 4A 工作树归因到本 change，并逐文件排除无关修改。
-2. 从 Android 原版 fixture 建立 common RED，再实现 shared core。
+2. 从固定 main 建立可比的页序/拆分/过渡 RED，并将 fork-only 双页 pairing 作为显式增强契约。
 3. 先接 Android/Desktop adapter 测试，再切 production viewer/ScreenModel。
 4. 双端与 Desktop 产品回归全绿后删除重复 Desktop 规则。
 5. 更新 parity 9、43、44、45、47、49、51、54 和架构文档。

@@ -16,6 +16,12 @@
     { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/webview/WebViewScreenModel.kt", "blobId": "833806db8f8c8678fc9c5095a91d3b96511ed6ef" },
     { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/webview/WebViewScreen.kt", "blobId": "dbb514794757fef531ebbc2454b72ceed0bb613f" },
     { "path": "app/src/main/java/eu/kanade/presentation/webview/WebViewScreenContent.kt", "blobId": "72b8d2fdabd1ec919440468d74d02751756c7b05" },
-    { "path": "core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareInterceptor.kt", "blobId": "517679aca861d7959c512cb3739ab7dce18b4336" }
+    { "path": "core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareInterceptor.kt", "blobId": "517679aca861d7959c512cb3739ab7dce18b4336" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerViewerAdapter.kt", "blobId": "0fef0b8bc0c42b13b704ebd0c5de77b1cce26426" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerPageHolder.kt", "blobId": "4a6850bf4c447906c10ead2c0d3d0826f3671630" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerViewers.kt", "blobId": "a79f858142b6ce27432c17563f022457a24a5039" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonAdapter.kt", "blobId": "29727f696845dae7b8d1df9b1581b84aeb8d5671" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonPageHolder.kt", "blobId": "5b63635d34015602999eccd6f9c40fb4b8219eb5" },
+    { "path": "core/common/src/main/kotlin/tachiyomi/core/common/util/system/ImageUtil.kt", "blobId": "ec08d66d2ed7ea56586027422170d01b09bae9dc" }
   ]
 }

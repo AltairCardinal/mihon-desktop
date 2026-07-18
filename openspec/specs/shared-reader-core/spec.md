@@ -14,8 +14,8 @@ TBD - created by archiving change align-reader-core. Update Purpose after archiv
 - **WHEN** 两端渲染共享页面状态
 - **THEN** Android Bitmap/View 与 Desktop Skia/Compose 仅存在于各自 adapter，common API 不暴露平台类型
 
-### Requirement: Wide pages and pairing follow the authoritative contract
-系统 SHALL 以 Android 原版行为作为宽页拆分、旋转、方向反转、双页配对和未知尺寸处理的默认权威契约。
+### Requirement: Fixed-main page rules and pairing enhancements stay distinct
+系统 SHALL 在固定 Android 原版存在可比规则时，以其作为宽页判断、拆分/旋转、页序、方向反转和过渡处理的契约；固定 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` 不存在的相邻 portrait 页 pairing SHALL 作为 fork 后 Android/Desktop 共用产品增强，不得声明为原版默认。奇数像素中心线保留 SHALL 显式分类为相对历史 `splitInHalf` 的 correctness bugfix。
 
 #### Scenario: Wide page is split in reading order
 - **WHEN** 宽页在 LTR、RTL 或旋转模式下需要拆分
@@ -23,7 +23,7 @@ TBD - created by archiving change align-reader-core. Update Purpose after archiv
 
 #### Scenario: Desktop product pairing is enabled
 - **WHEN** Desktop 启用封面单页、edge matching 或 landscape parity 增强
-- **THEN** 增强仅通过显式选项改变 Desktop 布局，Android 默认配对结果不变
+- **THEN** 增强仅通过显式选项改变 Desktop 布局，当前 Android 双页基线不变，且该基线不被记为固定原版 authority
 
 ### Requirement: Reader transitions and navigation are explicit
 系统 SHALL 表达 Wait、Loading、Loaded、Error、缺章、上一章/下一章边界与 Retry 命令，并统一点击区和方向反转语义。

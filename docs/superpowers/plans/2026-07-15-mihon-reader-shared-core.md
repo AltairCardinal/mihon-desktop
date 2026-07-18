@@ -7,9 +7,11 @@ archived-with: 2026-07-15-align-reader-core
 
 # Mihon 阅读器共享核心实施计划
 
+> **2026-07-18 authority correction：** 本计划当时把 fork 新增的相邻 portrait 页 pairing 向量误写为 Android 原版默认。固定 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` 并无直接可比的 pairing 算法；共享实现作为双端产品增强保留，不改变用户行为。证据见 [authority correction report](../../../.superpowers/sdd/authority-correction-wave2-reader-report.md)。
+
 > 本计划在当前分支 `claude/pensive-vaughan` 和现有 Task 4A 未提交工作树上继续。不得创建平行实现，也不得把 SDK、Gradle 缓存、构建产物、旧 Task 3B 审查草稿或其他临时文件混入提交。
 
-**目标：** 将 Android 原版阅读器中与平台无关的页面、拆页、配对、导航、章节跳过、滤镜参数、预加载和缓存语义收敛到 `domain/common`，让 Android 与 Desktop 的生产路径共同消费；同时保留 Desktop 的双页 edge matching、Webtoon 自动滚动、键鼠导航和右键保存等产品能力。
+**目标：** 将固定 Android 原版中真实可比的页面、拆页、导航、章节跳过、滤镜参数、预加载和缓存语义收敛到 `domain/common`；将 fork-only 双页配对明确作为 Android/Desktop 共用的产品增强，并保留 Desktop 的 edge matching、Webtoon 自动滚动、键鼠导航和右键保存等产品能力。
 
 **架构：** `domain/src/commonMain/kotlin/mihon/domain/reader/` 是唯一语义来源。Android 仅保留 Bitmap/View/Coil/Activity 适配，Desktop 仅保留 Skia/Compose/文件与输入设备适配。任何 Desktop 增强必须通过显式 options 进入共享核心，不能改变 Android 默认行为。
 
@@ -40,13 +42,13 @@ archived-with: 2026-07-15-align-reader-core
 - Reference: `openspec/changes/align-reader-core/specs/shared-reader-core/spec.md`
 - Reference: `docs/superpowers/specs/2026-07-15-mihon-reader-shared-core-design.md`
 
-**Consumes:** 当前未提交实现、Android 原版行为 fixture、OpenSpec 场景。
+**Consumes:** 当前未提交实现、固定 main 可比行为 fixture、fork pairing provenance、OpenSpec 场景。
 
 **Produces:** 可追溯的 shared contract、已核对的 RED/GREEN 证据、明确的 shared/platform/product 边界。
 
 1. 用 `git status --short`、`git diff --stat`、`git diff --check` 归因现有变更；只把 Task 4A 文件列入后续提交。特别检查 `LibraryScreenModel.kt`、`MangaDetailScreen.kt`、`MangaDetailScreenModel.kt` 只补充 filtered/duplicate 元数据，不承载新的跳过决策。
 2. 对照 OpenSpec 逐项核查 `ReaderPageModel`、`ReaderChapterState`、`ReaderTransition`、`ReaderPagePairing`、`ChapterSkipPolicy`、`ReaderColorFilterParams`、`ReaderPreloadPlanner`、`PageDecoder`、`RegionDecoder`、`PageCache`。共享 API 不得引用 Bitmap、View、ImageBitmap、Skia 或 Compose 类型。
-3. 核查 `ReaderParityContractTest` 覆盖拆页方向与像素边界、配对默认值和 Desktop 显式 options、状态/Retry、导航反转、read+filtered+duplicate 组合跳过、滤镜边界、预加载窗口/代次/取消/淘汰/预算。
+3. 核查 `ReaderParityContractTest` 覆盖固定 main 可比的拆页方向与像素边界、fork 配对增强基线和 Desktop 显式 options、状态/Retry、导航反转、read+filtered+duplicate 组合跳过、滤镜边界、预加载窗口/代次/取消/淘汰/预算。
 4. 重跑共享契约：
 
    ```powershell
@@ -86,7 +88,7 @@ archived-with: 2026-07-15-align-reader-core
    ./gradlew :app:testReleaseUnitTest --tests "eu.kanade.tachiyomi.ui.reader.ReaderSharedParityWiringTest" --tests "eu.kanade.tachiyomi.data.coil.AndroidReaderPageDecoderContractTest"
    ```
 
-2. GREEN：最小化 Android 适配。`PagePairingAlgorithm` 委托 `ReaderPagePairing`；transition holder 消费 `ReaderChapter.sharedStateFlow`；`ViewerNavigation` 只映射 Android 点击输入；`ReaderViewModel` 用 `filterChaptersForReader` 和组合 policy；`HttpPageLoader` 消费共享预加载窗口和取消集合；`AndroidReaderPageDecoder`/`TachiyomiImageDecoder` 执行共享 decoder/cache policy；`AndroidReaderColorFilter` 把共享参数转成 Android 图层滤镜。
+2. GREEN：最小化 Android 适配。`PagePairingAlgorithm` 委托 fork 提取的共享 `ReaderPagePairing` 增强；transition holder 消费 `ReaderChapter.sharedStateFlow`；`ViewerNavigation` 只映射 Android 点击输入；`ReaderViewModel` 用 `filterChaptersForReader` 和组合 policy；`HttpPageLoader` 消费共享预加载窗口和取消集合；`AndroidReaderPageDecoder`/`TachiyomiImageDecoder` 执行共享 decoder/cache policy；`AndroidReaderColorFilter` 把共享参数转成 Android 图层滤镜。
 3. 删除已被共享核心覆盖的 Android 私有业务判断，但保留 SubsamplingScaleImageView、动画解码、Activity 生命周期、Coil 与 Bitmap 的平台代码。
 4. 重构后重跑上述两类测试，并运行代表性 Android reader 回归：
 

@@ -40,13 +40,15 @@ class DesktopProductCapabilityContractTest {
             "TEMP-COMPAT",
             "PLATFORM-EXEMPT",
         )
-    private val sourceExtensionAuthorityIds =
-        setOf(28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40)
+    private val structuredProvenanceIds =
+        setOf(28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 43)
     private val allowedDeviationClassifications =
         setOf(
             "PLATFORM_ADAPTER",
             "SECURITY_ENHANCEMENT",
             "DESKTOP_PRODUCT",
+            "CROSS_PLATFORM_PRODUCT_ENHANCEMENT",
+            "CORRECTNESS_BUGFIX",
             "MIGRATION_OUTPUT",
             "UNCLASSIFIED_DEBT",
         )
@@ -489,7 +491,7 @@ class DesktopProductCapabilityContractTest {
             assertTrue(tags.all { it in validTags }, "ID ${item["id"]}: invalid tag")
             assertEquals(expectedTags.getValue(id), tags.toSet(), "ID $id: tags differ from design A-J tables")
 
-            if (id in sourceExtensionAuthorityIds) {
+            if (id in structuredProvenanceIds) {
                 validateSourceExtensionProvenance(item, repositoryRoot, fixedMainPathInventory)
             }
 
@@ -607,6 +609,26 @@ class DesktopProductCapabilityContractTest {
     }
 
     @Test
+    fun `reader provenance rejects the fork pairing facade as a fixed-main symbol`() {
+        createSyntheticConsumerFiles()
+        val forkPairingPath =
+            "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagePairingAlgorithm.kt"
+        val item = syntheticSourceExtensionItem(id = 43, upstreamPath = forkPairingPath)
+
+        val failure = assertThrows(AssertionError::class.java) {
+            validateSourceExtensionProvenance(
+                item,
+                tempDir,
+                fixedMainPathInventory(
+                    buildFixedMainPathInventory(paths = listOf(forkPairingPath to "0".repeat(40))),
+                ),
+            )
+        }
+
+        assertTrue(failure.message.orEmpty().contains("fork-only PagePairingAlgorithm"), failure.message)
+    }
+
+    @Test
     fun `fixed-main inventory rejects mismatched ref and malformed blob ids`() {
         val refFailure = assertThrows(AssertionError::class.java) {
             fixedMainPathInventory(
@@ -677,14 +699,29 @@ class DesktopProductCapabilityContractTest {
         expectedStatuses.forEach { (id, expectedStatus) ->
             val item = items.getValue(id).jsonObject
             assertEquals(expectedStatus, item.getValue("status").jsonPrimitive.content, "ID $id status")
-            assertTrue(
-                item.getValue("authoritativeImplementation").jsonPrimitive.content.contains("domain/src/commonMain"),
-                "ID $id must name its shared authoritative implementation",
-            )
-            assertTrue(
-                item.getValue("desktopImplementation").jsonPrimitive.content.contains("app-desktop/src/main"),
-                "ID $id must name the production Desktop consumer",
-            )
+            if (id in structuredProvenanceIds) {
+                assertTrue(
+                    item.getValue("sharedImplementationPaths").jsonArray.any {
+                        it.jsonPrimitive.content.startsWith("domain/src/commonMain/")
+                    },
+                    "ID $id must name its shared implementation separately from fixed-main provenance",
+                )
+                assertTrue(
+                    item.getValue("desktopConsumerAdapterPaths").jsonArray.any {
+                        it.jsonPrimitive.content.startsWith("app-desktop/src/main/")
+                    },
+                    "ID $id must name the production Desktop consumer separately from fixed-main provenance",
+                )
+            } else {
+                assertTrue(
+                    item.getValue("authoritativeImplementation").jsonPrimitive.content.contains("domain/src/commonMain"),
+                    "ID $id must name its shared implementation",
+                )
+                assertTrue(
+                    item.getValue("desktopImplementation").jsonPrimitive.content.contains("app-desktop/src/main"),
+                    "ID $id must name the production Desktop consumer",
+                )
+            }
             assertTrue(item.getValue("protectionTests").jsonArray.isNotEmpty(), "ID $id must declare protection evidence")
         }
     }
@@ -725,7 +762,11 @@ class DesktopProductCapabilityContractTest {
             val declaredImplementations =
                 item.getValue("authoritativeImplementation").jsonPrimitive.content +
                     "\n" +
-                    item.getValue("desktopImplementation").jsonPrimitive.content
+                    item.getValue("desktopImplementation").jsonPrimitive.content +
+                    "\n" +
+                    listOf("sharedImplementationPaths", "currentAndroidConsumerPaths", "desktopConsumerAdapterPaths")
+                        .flatMap { field -> item[field]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty() }
+                        .joinToString("\n")
             delegates.forEach { (path, delegateMarkers) ->
                 assertTrue(path in declaredImplementations, "ID $id must name production delegate $path")
                 val productionPath = repositoryRoot.resolve(path)
@@ -834,6 +875,12 @@ class DesktopProductCapabilityContractTest {
             val symbol = element.jsonObject
             val path = requiredText(symbol, "path", id, "upstreamSymbols[$index]")
             requiredText(symbol, "symbol", id, "upstreamSymbols[$index]")
+            if (id == 43) {
+                assertFalse(
+                    path.endsWith("/PagePairingAlgorithm.kt"),
+                    "ID 43: fork-only PagePairingAlgorithm must not be listed as a fixed-main upstream symbol",
+                )
+            }
             assertTrue(
                 path.endsWith(".kt") && !Path.of(path).isAbsolute && path.split('/').none { it == ".." },
                 "ID $id: incomplete upstream path $path",
@@ -953,18 +1000,20 @@ class DesktopProductCapabilityContractTest {
     }
 
     private fun syntheticSourceExtensionItem(
+        id: Int = 28,
+        upstreamPath: String = "app/src/main/Upstream.kt",
         currentAndroidConsumerPaths: List<String> = listOf("app/src/main/Current.kt"),
         deviations: List<Pair<String?, String>> = listOf("PLATFORM_ADAPTER" to "Platform-specific behavior."),
     ) =
         buildJsonObject {
-            put("id", 28)
+            put("id", id)
             put("upstreamRef", fixedOriginalMihonRef)
             put(
                 "upstreamSymbols",
                 buildJsonArray {
                     add(
                         buildJsonObject {
-                            put("path", "app/src/main/Upstream.kt")
+                            put("path", upstreamPath)
                             put("symbol", "Upstream")
                         },
                     )

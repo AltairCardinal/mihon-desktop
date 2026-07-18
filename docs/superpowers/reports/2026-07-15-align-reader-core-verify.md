@@ -3,6 +3,10 @@
 日期：2026-07-15
 验证区间：`20c56cbc6b62c4607c4d28709734142cc127a8b3..ac118049fa86909020a5beee7e6441d6e8523d28`
 
+## 2026-07-18 authority correction
+
+本报告的 PASS 结论证明了当时共享实现与双端 wiring 一致，但其中“pairing 默认来自 Android 原版”的 provenance 结论不成立。固定 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` 没有相邻 portrait 页配对算法；`ReaderPagePairing` 与当前 Android facade/state 来自 fork 提交 `bef51fc69`，现重分类为 Android/Desktop 共用双页产品增强。本勘误不改动当时历史审查记录，详细证据和当前验证见 [authority correction report](../../../.superpowers/sdd/authority-correction-wave2-reader-report.md)。
+
 ## 结论
 
 PASS。Critical 0、Warning 0、Suggestion 0。实现满足 proposal、OpenSpec delta spec、OpenSpec design 与技术 Design Doc，可进入归档。
