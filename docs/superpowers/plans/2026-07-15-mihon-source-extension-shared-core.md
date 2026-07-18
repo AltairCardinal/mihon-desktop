@@ -604,7 +604,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 - Risk axis: `global-search-canonical-materializer`
 - Platform boundary: `desktop`
-- Estimated scope: `4 files, 240 lines`
+- Estimated scope: `4 files, 280 lines`
 - Verification: 真实 Global Search → `awaitSearchResults` → 内存 SQLDelight/MangaRepository production 链证明不点击卡片也会入库，物化完成前不显示 raw 结果，旧 generation 不覆盖新搜索，失败产生明确行级错误与 exact retry；测试夹具必须可被 6A3A2 复用。
 
 **Files:**
