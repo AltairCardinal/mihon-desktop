@@ -1160,8 +1160,8 @@
         "description": "The Suwayomi delete preference remains unclosed."
       },
       {
-        "classification": "UNCLASSIFIED_DEBT",
-        "description": "illegal provider status values must not silently fall back; cross-provider replay remains unclosed."
+        "classification": "MIGRATION_OUTPUT",
+        "description": "provider-specific fixed-main status replay is implemented: MAL preserves unknown outbound and inbound fallback to reading; AniList, Kitsu, Shikimori and Bangumi reject unknown outbound statuses, and Shikimori rejects unknown inbound statuses."
       },
       {
         "classification": "UNCLASSIFIED_DEBT",
@@ -1180,6 +1180,7 @@
       "app/src/test/java/eu/kanade/tachiyomi/data/track/AndroidTrackerApiIntegrationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopTrackingIntegrationTest.kt",
       "domain/src/commonTest/kotlin/tachiyomi/domain/track/service/TrackerProviderProtocolTest.kt",
+      "domain/src/commonTest/kotlin/tachiyomi/domain/track/service/TrackerProviderContractTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopProviderTrackerServiceTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopEnhancedTrackerServiceTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/tracking/TrackingScreenModelTest.kt",

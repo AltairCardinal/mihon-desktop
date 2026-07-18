@@ -140,7 +140,7 @@ class DesktopProductCapabilityContractTest {
                     "private/date/delete" to "UNCLASSIFIED_DEBT",
                     "enhanced auto-match" to "UNCLASSIFIED_DEBT",
                     "Suwayomi delete" to "UNCLASSIFIED_DEBT",
-                    "illegal provider status" to "UNCLASSIFIED_DEBT",
+                    "provider-specific fixed-main status replay" to "MIGRATION_OUTPUT",
                     "provider error classification/retry" to "UNCLASSIFIED_DEBT",
                     "Komga DNS" to "UNCLASSIFIED_DEBT",
                     "Kitsu/MangaUpdates request shape" to "UNCLASSIFIED_DEBT",
@@ -950,6 +950,9 @@ class DesktopProductCapabilityContractTest {
         )
         assertTrue(
             "app/src/test/java/eu/kanade/tachiyomi/data/track/AndroidTrackerApiIntegrationTest.kt" in trackingTests,
+        )
+        assertTrue(
+            "domain/src/commonTest/kotlin/tachiyomi/domain/track/service/TrackerProviderContractTest.kt" in trackingTests,
         )
         assertEquals("WIRED", migration.getValue("status").jsonPrimitive.content)
         assertEquals("CHARACTERIZED", tracking.getValue("status").jsonPrimitive.content)

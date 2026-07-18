@@ -1,6 +1,7 @@
 package tachiyomi.domain.track.service
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 
 class TrackerProviderContractTest {
@@ -12,5 +13,32 @@ class TrackerProviderContractTest {
         assertEquals("planned", TrackerProviderContracts.kitsu.statusToWire(5))
         assertEquals("rewatching", TrackerProviderContracts.shikimori.statusToWire(6))
         assertEquals("1", TrackerProviderContracts.bangumi.statusToWire(1))
+    }
+
+    @Test
+    fun `MAL preserves fixed-main fallback semantics for unknown statuses`() {
+        assertEquals("reading", TrackerProviderContracts.myAnimeList.statusToWire(Long.MAX_VALUE))
+        assertEquals(1L, TrackerProviderContracts.myAnimeList.wireToStatus("unknown"))
+    }
+
+    @Test
+    fun `non-MAL providers reject unknown outbound statuses`() {
+        listOf(
+            TrackerProviderContracts.aniList,
+            TrackerProviderContracts.kitsu,
+            TrackerProviderContracts.shikimori,
+            TrackerProviderContracts.bangumi,
+        ).forEach { contract ->
+            assertThrows(IllegalArgumentException::class.java) {
+                contract.statusToWire(Long.MAX_VALUE)
+            }
+        }
+    }
+
+    @Test
+    fun `Shikimori rejects unknown inbound statuses`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            TrackerProviderContracts.shikimori.wireToStatus("unknown")
+        }
     }
 }
