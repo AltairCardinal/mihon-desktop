@@ -1037,14 +1037,16 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Modify: `i18n/src/commonMain/moko-resources/zh-rCN/strings.xml`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionListCopyContractTest.kt`
 
-- [ ] **Step 1: 写 projection/copy RED**
+- [x] **Step 1: 写 projection/copy RED**
 
   覆盖 shared updates+installed→Installed tab、available→Available tab、package/source search、options/filter 与 partial failure identity；资源 key 通过真实资源 API/生成 accessor 加载，不读取 Kotlin 源文本。
 
-- [ ] **Step 2: 实现独立 projection adapter 与双语 copy**
-- [ ] **Step 3: 运行 GREEN 与 classifier/i18n mutation**
+- [x] **Step 2: 实现独立 projection adapter 与双语 copy**
+- [x] **Step 3: 运行 GREEN 与 classifier/i18n mutation**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionListCopyContractTest"`
+
+  Evidence: commit `0e4a90394`；最终 `2 tests / 0 failures / 0 errors / 0 skipped`。断开 `updates + installed` 合并时测试在 line 36 失败；关闭 `includePackageName` 时测试在 line 40 失败，恢复后全绿。独立 thorough review 经一次测试数据修复后 APPROVED；实际范围 `4 files, 151 lines`。
 
 ##### Task 6D1b: Extension list Compose state、partial failure 与 Retry
 
