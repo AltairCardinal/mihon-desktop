@@ -43,7 +43,7 @@ class DesktopProductCapabilityContractTest {
             "PLATFORM-EXEMPT",
         )
     private val structuredProvenanceIds =
-        setOf(28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 43)
+        setOf(28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 43, 67, 68, 69)
     private val allowedDeviationClassifications =
         setOf(
             "PLATFORM_ADAPTER",
@@ -53,6 +53,8 @@ class DesktopProductCapabilityContractTest {
             "CORRECTNESS_BUGFIX",
             "MIGRATION_OUTPUT",
             "UNCLASSIFIED_DEBT",
+            "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT",
+            "DESKTOP_PRODUCT_ENHANCEMENT",
         )
     private val fixedOriginalMihonRef =
         "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8"
@@ -66,6 +68,53 @@ class DesktopProductCapabilityContractTest {
         )
     private val fixedMainPathInventoryResource =
         "app-desktop/src/test/resources/parity/fixed-main-path-inventory.json"
+    private val exactAuthorityPaths =
+        mapOf(
+            67 to setOf("app/src/main/java/mihon/domain/migration/usecases/MigrateMangaUseCase.kt"),
+            68 to
+                setOf(
+                    "app/src/main/java/mihon/feature/migration/list/MigrationListScreenModel.kt",
+                    "app/src/main/java/mihon/feature/migration/list/components/MigrationProgressDialog.kt",
+                ),
+            69 to
+                setOf(
+                    "app/src/main/java/eu/kanade/tachiyomi/data/track/TrackerManager.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/manga/track/TrackInfoDialog.kt",
+                    "app/src/main/java/eu/kanade/presentation/track/TrackerSearch.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/data/track/myanimelist/MyAnimeListApi.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/data/track/EnhancedTracker.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/data/track/suwayomi/Suwayomi.kt",
+                ),
+        )
+    private val requiredAuthorityBoundaryTerms =
+        mapOf(
+            67 to
+                setOf(
+                    "category copy is disabled",
+                    "chapter/viewer flag writes",
+                    "old target dateAdded",
+                ),
+            68 to
+                setOf(
+                    "startIndex",
+                    "Failure summary and targeted retry",
+                    "queue targets/options/status/errors",
+                ),
+            69 to
+                setOf(
+                    "OS credential",
+                    "persistent event/checkpoint",
+                    "production provider configuration",
+                    "bind-existing/new-entry",
+                    "refresh-before-update",
+                    "reading status/date",
+                    "MAL error",
+                    "search model",
+                    "private/date/delete",
+                    "enhanced auto-match",
+                    "Suwayomi delete",
+                ),
+        )
     private val desktopProductEvidence =
         setOf(
             "app-desktop/src/test/kotlin/mihon/desktop/ui/authors/AuthorDetailBehaviorTest.kt",
@@ -207,7 +256,7 @@ class DesktopProductCapabilityContractTest {
                 mapOf(
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt" to
                         mapOf(
-                            "Android navigation adapters match every shared preset and inversion" to
+                            "current Android consumer navigation adapters match every shared preset and inversion" to
                                 setOf("ReaderNavigation.regions", "adapter.getNormalizedRegions()"),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/TapZoneTest.kt" to
@@ -225,7 +274,7 @@ class DesktopProductCapabilityContractTest {
                 mapOf(
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt" to
                         mapOf(
-                            "Android grayscale and invert preferences are mapped to the shared filter contract" to
+                            "current Android consumer grayscale and invert preferences map to the shared filter contract" to
                                 setOf("buildAndroidLayerFilterParams", "params.isEffective"),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt" to
@@ -250,7 +299,7 @@ class DesktopProductCapabilityContractTest {
                 mapOf(
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt" to
                         mapOf(
-                            "Android ReaderViewModel getChapterList delegates the sorted production list to the shared skip filter" to
+                            "current Android consumer ReaderViewModel delegates the sorted chapter list to the shared skip filter" to
                                 setOf(
                                     "filterAndroidReaderChapters(",
                                     "chapters = sortedChapters",
@@ -258,7 +307,7 @@ class DesktopProductCapabilityContractTest {
                                     "skipPolicy = skipPolicy",
                                     "isFiltered =",
                                 ),
-                            "Android production chapter pipeline maps real chapter metadata before applying shared skip policy" to
+                            "current Android consumer chapter pipeline maps metadata before applying shared skip policy" to
                                 setOf("filterAndroidReaderChapters", "ChapterSkipPolicy"),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderNavigatorTest.kt" to
@@ -673,6 +722,73 @@ class DesktopProductCapabilityContractTest {
     }
 
     @Test
+    fun `migration and tracker authority rejects wrong ref consumer confusion and omitted debt`() {
+        val repositoryRoot = repositoryRoot()
+        val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
+        val inventory = fixedMainPathInventory(repositoryRoot)
+
+        val wrongRef =
+            JsonObject(
+                items.getValue(67).jsonObject.toMutableMap().apply {
+                    put("upstreamRef", Json.parseToJsonElement("\"main@0000000000000000000000000000000000000000\""))
+                },
+            )
+        val refFailure = assertThrows(AssertionError::class.java) {
+            validateSourceExtensionProvenance(wrongRef, repositoryRoot, inventory)
+        }
+        assertTrue(refFailure.message.orEmpty().contains("exact fixed original Mihon ref"), refFailure.message)
+
+        val currentConsumerAsAuthority =
+            JsonObject(
+                items.getValue(69).jsonObject.toMutableMap().apply {
+                    put(
+                        "upstreamSymbols",
+                        buildJsonArray {
+                            add(
+                                buildJsonObject {
+                                    put(
+                                        "path",
+                                        "domain/src/commonMain/kotlin/tachiyomi/domain/track/service/TrackerProviderProtocol.kt",
+                                    )
+                                    put("symbol", "Current shared migration output")
+                                },
+                            )
+                        },
+                    )
+                },
+            )
+        val consumerFailure = assertThrows(AssertionError::class.java) {
+            validateSourceExtensionProvenance(
+                currentConsumerAsAuthority,
+                repositoryRoot,
+                inventory +
+                    ("domain/src/commonMain/kotlin/tachiyomi/domain/track/service/TrackerProviderProtocol.kt" to
+                        "0".repeat(40)),
+            )
+        }
+        assertTrue(consumerFailure.message.orEmpty().contains("exact fixed-main authority paths"), consumerFailure.message)
+
+        val tracker = items.getValue(69).jsonObject
+        val omittedDebt =
+            JsonObject(
+                tracker.toMutableMap().apply {
+                    put(
+                        "deviations",
+                        buildJsonArray {
+                            tracker.getValue("deviations").jsonArray
+                                .filterNot { it.jsonObject.getValue("description").jsonPrimitive.content.contains("Suwayomi delete") }
+                                .forEach(::add)
+                        },
+                    )
+                },
+            )
+        val debtFailure = assertThrows(AssertionError::class.java) {
+            validateSourceExtensionProvenance(omittedDebt, repositoryRoot, inventory)
+        }
+        assertTrue(debtFailure.message.orEmpty().contains("Suwayomi delete"), debtFailure.message)
+    }
+
+    @Test
     fun `source extension provenance validates from a snapshot without a Git directory`() {
         createSyntheticConsumerFiles()
         val inventoryResource = tempDir.resolve(fixedMainPathInventoryResource)
@@ -702,7 +818,7 @@ class DesktopProductCapabilityContractTest {
             "app/src/test/java/eu/kanade/tachiyomi/data/track/AndroidTrackerApiIntegrationTest.kt" in trackingTests,
         )
         assertEquals("WIRED", migration.getValue("status").jsonPrimitive.content)
-        assertEquals("SHARED", tracking.getValue("status").jsonPrimitive.content)
+        assertEquals("CHARACTERIZED", tracking.getValue("status").jsonPrimitive.content)
     }
 
     @Test
@@ -912,6 +1028,14 @@ class DesktopProductCapabilityContractTest {
                 path in fixedMainPathInventory,
                 "ID $id: fixed-main inventory does not contain upstream path $path",
             )
+            assertFalse(
+                "/src/test/" in path,
+                "ID $id: current tests cannot be used as fixed-main upstream evidence: $path",
+            )
+        }
+        exactAuthorityPaths[id]?.let { expected ->
+            val actual = upstreamSymbols.map { it.jsonObject.getValue("path").jsonPrimitive.content }.toSet()
+            assertEquals(expected, actual, "ID $id must declare the exact fixed-main authority paths")
         }
 
         validateCurrentPaths(item, "sharedImplementationPaths", id, repositoryRoot, allowEmpty = true)
@@ -929,6 +1053,12 @@ class DesktopProductCapabilityContractTest {
                 "ID $id: $context.classification must be one of $allowedDeviationClassifications",
             )
             requiredText(deviation, "description", id, context)
+        }
+        requiredAuthorityBoundaryTerms[id]?.forEach { requiredTerm ->
+            assertTrue(
+                deviations.any { it.jsonObject.getValue("description").jsonPrimitive.content.contains(requiredTerm) },
+                "ID $id deviations must explicitly record `$requiredTerm`",
+            )
         }
     }
 

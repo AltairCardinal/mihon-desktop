@@ -887,9 +887,49 @@
       "SHARE-DIRECT",
       "SHARE-EXTRACT"
     ],
-    "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #67: 单部漫画迁移",
-    "desktopImplementation": "Android/Desktop use MigrationOrchestrator; Desktop keeps visible single-copy/migrate flow and atomic library membership updates.",
+    "status": "CHARACTERIZED",
+    "authoritativeImplementation": "Fixed original Mihon single-manga migration behavior at main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8.",
+    "desktopImplementation": "Current shared migration plan and current Android/Desktop consumers are migration outputs; Desktop remains characterized until all fixed-main persistence rules are replayed end to end.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [
+      {
+        "path": "app/src/main/java/mihon/domain/migration/usecases/MigrateMangaUseCase.kt",
+        "symbol": "MigrateMangaUseCase: chapter/read metadata, categories, flags, date-added, notes, and replace/copy membership"
+      }
+    ],
+    "sharedImplementationPaths": [
+      "domain/src/commonMain/kotlin/mihon/domain/migration/MigrationOrchestrator.kt"
+    ],
+    "currentAndroidConsumerPaths": [
+      "app/src/main/java/mihon/domain/migration/usecases/MigrateMangaUseCase.kt",
+      "app/src/main/java/mihon/feature/migration/dialog/MigrateMangaDialog.kt"
+    ],
+    "desktopConsumerAdapterPaths": [
+      "app-desktop/src/main/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCase.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/migration/MigrationMangaScreen.kt"
+    ],
+    "deviations": [
+      {
+        "classification": "MIGRATION_OUTPUT",
+        "description": "MigrationOrchestrator is current shared code replaying fixed-main rules, not original-Mihon authority."
+      },
+      {
+        "classification": "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT",
+        "description": "Current Android exposes non-cancellation failures as Result for visible batch failure handling."
+      },
+      {
+        "classification": "UNCLASSIFIED_DEBT",
+        "description": "Desktop clears target categories when category copy is disabled instead of preserving membership."
+      },
+      {
+        "classification": "UNCLASSIFIED_DEBT",
+        "description": "Desktop omits target chapter/viewer flag writes calculated by the shared plan."
+      },
+      {
+        "classification": "UNCLASSIFIED_DEBT",
+        "description": "Desktop preserves an old target dateAdded during copy instead of using the fixed-main invocation-time rule."
+      }
+    ],
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/migration/MigrationOrchestratorTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/migration/DesktopMigrationParityTest.kt",
@@ -905,8 +945,53 @@
       "SHARE-EXTRACT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #68: 批量迁移",
-    "desktopImplementation": "Desktop submits persistent background queues to the shared BatchMigrationOrchestrator. Queue items, selected targets, options, checkpoints, statuses and per-item errors survive restart; RUNNING recovers as QUEUED, WAITING_FOR_USER remains explicit, and UI/TestMode drive pause, resume, retry and cancellation.",
+    "authoritativeImplementation": "Fixed original Mihon batch order, ordinary-failure continuation, cancellation, progress and cancel feedback at main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8.",
+    "desktopImplementation": "Current shared reliability protocol and Desktop durable queue retain behavior absent from fixed main; they are explicit enhancements, not original-Mihon extraction.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [
+      {
+        "path": "app/src/main/java/mihon/feature/migration/list/MigrationListScreenModel.kt",
+        "symbol": "MigrationListScreenModel.migrateMangas: ordered iteration, continue after ordinary failure, propagate cancellation"
+      },
+      {
+        "path": "app/src/main/java/mihon/feature/migration/list/components/MigrationProgressDialog.kt",
+        "symbol": "MigrationProgressDialog: progress and cancellation feedback"
+      }
+    ],
+    "sharedImplementationPaths": [
+      "domain/src/commonMain/kotlin/mihon/domain/migration/MigrationOrchestrator.kt"
+    ],
+    "currentAndroidConsumerPaths": [
+      "app/src/main/java/mihon/feature/migration/list/AndroidBatchMigrationRunner.kt",
+      "app/src/main/java/mihon/feature/migration/list/MigrationListScreenModel.kt",
+      "app/src/main/java/mihon/feature/migration/list/components/MigrationFailureDialog.kt"
+    ],
+    "desktopConsumerAdapterPaths": [
+      "app-desktop/src/main/kotlin/mihon/desktop/migration/DesktopBatchMigrationController.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/migration/MigrationBatchQueueScreen.kt"
+    ],
+    "deviations": [
+      {
+        "classification": "MIGRATION_OUTPUT",
+        "description": "Shared ordered traversal, ordinary-failure continuation and cancellation propagation replay fixed-main batch semantics."
+      },
+      {
+        "classification": "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT",
+        "description": "startIndex, Completed(nextIndex), Failed, WaitingForUser and resumable checkpoint semantics were added after fixed main."
+      },
+      {
+        "classification": "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT",
+        "description": "Failure summary and targeted retry are retained product reliability behavior, not Android platform semantics."
+      },
+      {
+        "classification": "PLATFORM_ADAPTER",
+        "description": "Current Android maps the shared events to ScreenModel, Compose UI, Job lifecycle and cancellation wiring."
+      },
+      {
+        "classification": "DESKTOP_PRODUCT_ENHANCEMENT",
+        "description": "Desktop persists queue targets/options/status/errors and exposes recovery, pause, resume, cancel, retry, queue UI and Test Mode."
+      }
+    ],
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/migration/MigrationOrchestratorTest.kt",
       "app/src/test/java/mihon/feature/migration/list/AndroidBatchMigrationRunnerTest.kt",
@@ -925,9 +1010,86 @@
       "SHARE-EXTRACT",
       "PLATFORM-ADAPTER"
     ],
-    "status": "SHARED",
-    "authoritativeImplementation": "Android authoritative capability #69: 追踪服务",
-    "desktopImplementation": "Android and Desktop consume shared provider auth/update protocol constructors. Desktop registers all nine profiles, but public OAuth/password clients that require an unproven loopback redirect or external client secret are explicitly unavailable in the production profile; MangaUpdates and configured Enhanced trackers remain available. WIRED requires deployed desktop client registration and secure external secret configuration.",
+    "status": "CHARACTERIZED",
+    "authoritativeImplementation": "Fixed original Mihon tracker manager, UI workflows, provider APIs and enhanced tracker contracts at main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8.",
+    "desktopImplementation": "Current shared provider protocol plus current Android and Desktop consumers remain characterized; current app tests are consumer evidence, never fixed-main evidence.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/TrackerManager.kt",
+        "symbol": "TrackerManager: production provider set, IDs, lookup and logged-in filtering"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/track/TrackInfoDialog.kt",
+        "symbol": "TrackInfoDialog models: refresh, bind, status/chapter/score/date/private update, enhanced matching and deletion"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/presentation/track/TrackerSearch.kt",
+        "symbol": "TrackerSearch: query result, selection, private toggle and provider metadata presentation"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/myanimelist/MyAnimeListApi.kt",
+        "symbol": "MyAnimeListApi: search/list lookup, add/update/delete, dates and provider error behavior"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/EnhancedTracker.kt",
+        "symbol": "EnhancedTracker: accepted source, automatic match, registration and migration contract"
+      },
+      {
+        "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/suwayomi/Suwayomi.kt",
+        "symbol": "Suwayomi: progress/status mapping, source-bound match and Tracker Delete preference"
+      }
+    ],
+    "sharedImplementationPaths": [
+      "domain/src/commonMain/kotlin/tachiyomi/domain/track/service/TrackerProviderProtocol.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/track/service/TrackerProviderContracts.kt",
+      "domain/src/commonMain/kotlin/tachiyomi/domain/track/service/TrackerService.kt"
+    ],
+    "currentAndroidConsumerPaths": [
+      "app/src/main/java/eu/kanade/tachiyomi/data/track/TrackerManager.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/ui/manga/track/TrackInfoDialog.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/data/track/myanimelist/MyAnimeListApi.kt"
+    ],
+    "desktopConsumerAdapterPaths": [
+      "app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopTrackerServiceRegistry.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopEnhancedTrackerServices.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/tracking/TrackingScreenModel.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopTrackerSyncScheduler.kt"
+    ],
+    "deviations": [
+      {
+        "classification": "SECURITY_ENHANCEMENT",
+        "description": "Desktop stores tracker secrets in OS credential storage instead of application preferences."
+      },
+      {
+        "classification": "DESKTOP_PRODUCT_ENHANCEMENT",
+        "description": "Desktop adds a persistent event/checkpoint scheduler for tracker retry across restarts."
+      },
+      {
+        "classification": "UNCLASSIFIED_DEBT",
+        "description": "production provider configuration remains unclosed for deployed OAuth redirect and external-secret requirements."
+      },
+      {
+        "classification": "UNCLASSIFIED_DEBT",
+        "description": "The bind-existing/new-entry split and refresh-before-update workflow still require fixed-main replay evidence."
+      },
+      {
+        "classification": "UNCLASSIFIED_DEBT",
+        "description": "Initial reading status/date behavior and provider-specific MAL error behavior remain unclosed."
+      },
+      {
+        "classification": "UNCLASSIFIED_DEBT",
+        "description": "The provider search model plus private/date/delete editing rules remain unclosed."
+      },
+      {
+        "classification": "UNCLASSIFIED_DEBT",
+        "description": "enhanced auto-match behavior remains unclosed."
+      },
+      {
+        "classification": "UNCLASSIFIED_DEBT",
+        "description": "The Suwayomi delete preference remains unclosed."
+      }
+    ],
     "protectionTests": [
       "app/src/test/java/eu/kanade/tachiyomi/data/track/AndroidTrackerApiIntegrationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopTrackingIntegrationTest.kt",
