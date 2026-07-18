@@ -756,19 +756,28 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **6B2a completion evidence:** `9401b363a` 从 fixed main 提取共享刷新/逐 package 安装状态归约、唯一 Installed 终止边界与 enabled-first 排序。行为 RED 分别以未实现 lifecycle 与错误排序精确失败；最终 focused tests 4/4，通过同 package 覆盖、refresh 与 install state 隔离、全枚举终态和 disabled-first 反例保护实现。3 files/105 changed lines，唯一修复复审 Approved。
 
-#### Task 6B2b: Android extension action lifecycle wiring
+#### Task 6B2b: Android extension manager action adapters
 
-- Risk axis: `extension-presentation-android-actions`
+- Risk axis: `extension-manager-android-actions`
 - Platform boundary: `android`
-- Estimated scope: `5 files, 300 lines`
-- Verification: 当前 Android consumer 通过共享动作契约保持 fixed-main 的逐 package install/update/cancel/trust/uninstall、`takeWhile { step != Installed }`、source 单个/全部启停、incognito 与卸载后详情退出；当前 fork 的异步初始化、事务 ID、receiver 去重和 reload/rollback callback 作为安全超集保留，但不得改写原版终态或绕过可测试的平台 adapter。
+- Estimated scope: `2 files, 180 lines`
+- Verification: 当前 Android consumer 保持 fixed-main 的 install/update/cancel/trust/uninstall side-effect 顺序；trust 持久化后必须经 injected loader adapter reload，卸载命令后等待 receiver 再移除 installed state。当前 fork 的异步初始化、事务 ID、receiver 去重和 reload/rollback callback 作为安全超集保留。
 
 **Files:**
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt`
+- Create: `app/src/test/java/eu/kanade/tachiyomi/extension/ExtensionManagerTest.kt`
+
+#### Task 6B2c: Android extension UI action lifecycle wiring
+
+- Risk axis: `extension-presentation-android-ui-actions`
+- Platform boundary: `android`
+- Estimated scope: `3 files, 210 lines`
+- Verification: 当前 Android ScreenModel 通过 Task 6B2a shared reducer 驱动 refresh 与逐 package install state，按 fixed main 在 Installed 后停止并清理；详情页通过 injectable shared enabled-first seam 排序，同时覆盖 source 单个/全部启停、incognito 和仅在 installed flow 移除后退出。
+
+**Files:**
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsScreenModel.kt`
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/ExtensionDetailsScreenModel.kt`
 - Modify: `app/src/test/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionPresentationWiringTest.kt`
-- Create: `app/src/test/java/eu/kanade/tachiyomi/extension/ExtensionManagerTest.kt`
 
 ### Task 6C: Desktop 扩展 adapter、ScreenModel 与 DI wiring
 
