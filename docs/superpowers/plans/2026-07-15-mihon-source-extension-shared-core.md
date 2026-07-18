@@ -42,8 +42,10 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - [x] Task 5B：Desktop 挑战恢复策略与 FlareSolverr 显式后备
 - [x] Task 5C：Desktop 登录设置、UI 与 production wiring
 - [x] Task 6A：Browse 共享状态 wiring
-- [ ] Task 6B：Extension UI、DI 与 i18n wiring
-- [ ] Task 6C：Test Mode、导航与自动化观察
+- [ ] Task 6B：从 Android 原版提取扩展呈现契约
+- [ ] Task 6C：Desktop 扩展 adapter、ScreenModel 与 DI wiring
+- [ ] Task 6D：Desktop Extension UI、详情/设置与 i18n wiring
+- [ ] Task 6E：Test Mode、导航与自动化观察
 - [ ] Task 7：compat 去重、parity 证据、全量审查与跨平台运行时验收
 
 ---
@@ -618,56 +620,145 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
   Commit: `refactor(desktop): wire shared browse state`
 
-### Task 6B: Extension UI、DI 与 i18n wiring
+### Task 6B: 从 Android 原版提取扩展呈现契约
 
-**OpenSpec mapping:** 2.3、3.4、3.5（扩展状态、安装反馈、DI 与本地化部分）
+**OpenSpec mapping:** 2.3、3.4（Android 权威扩展状态、操作与共享呈现契约部分）
 
-**Risk axis:** extension-ui-wiring
+**Risk axis:** android-extension-presentation-authority
+**Platform boundary:** shared+android
+**Estimated scope:** 8 files, 400 lines
+**Verification:** 以 Android `ExtensionsScreenModel`、`ExtensionManager` 和 `ExtensionDetailsScreenModel` 的现有行为为权威 fixture，证明搜索、分类、刷新、安装/更新/取消、卸载、信任和卸载后详情退出语义由共享契约表达，且 Android production wiring 已消费该契约。
+
+**Files:**
+- Create: `domain/src/commonMain/kotlin/mihon/domain/extension/presentation/ExtensionPresentationContract.kt`
+- Create: `domain/src/commonMain/kotlin/mihon/domain/extension/presentation/ExtensionPresentationStore.kt`
+- Create: `domain/src/commonTest/kotlin/mihon/domain/extension/presentation/ExtensionPresentationStoreTest.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsScreenModel.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/ExtensionDetailsScreenModel.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt`
+- Create: `app/src/test/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionPresentationWiringTest.kt`
+- Create: `app/src/test/java/eu/kanade/tachiyomi/extension/ExtensionManagerTest.kt`
+
+**Interfaces:**
+- Consumes: Tasks 3–4 的 `ExtensionCatalogResult`、`ExtensionTrustDecision`、`ExtensionInstallState` 与平台 install port。
+- Produces: 无 Android/Desktop 类型的 `ExtensionPresentationState`、`ExtensionPresentationIntent` 和 `ExtensionPresentationPort`；Android `ExtensionsScreenModel` 保持原有公开 State/方法并改为薄适配器。
+- Authority: 共享状态转换必须从 Android 原版调用链提取；禁止为了适配 Desktop 改写 Android 的搜索字段、updates/installed/language 分类、安装步骤、取消或 trust 语义。OpenSpec 新增的逐仓库部分失败和事务回滚信息只能作为共享状态的增量字段。
+
+- [ ] **Step 1: 写 Android 权威行为与共享契约 RED**
+
+  用真实 production ScreenModel/Manager seam 固定搜索（名称、source 名称/baseUrl/id）、updates/installed/untrusted/语言分类、刷新、逐 package 安装步骤、取消、卸载、trust 和详情卸载事件；再以同一 fixture 断言尚不存在的共享 `ExtensionPresentationStore` 产生相同结果。
+
+- [ ] **Step 2: 运行 RED**
+
+  Run: `./gradlew :domain:allTests :app:testReleaseUnitTest --tests "*ExtensionPresentation*" --tests "*ExtensionManager*"`
+  Expected: FAIL，原因只能是共享 contract/store 尚不存在或 Android production wiring 尚未消费它；既有 Android 权威断言必须先通过。
+
+- [ ] **Step 3: 最小提取并接回 Android production wiring**
+
+  将 Android 无关的状态转换和 intents 移入 shared；Android adapter 只映射 APK/PackageManager、Drawable、Context、Locale 资源和安装 side effect。Android `StateScreenModel` 继续提供原版 UI 所需 State/方法，不保留第二套分类、搜索或安装状态 reducer。
+
+- [ ] **Step 4: 运行 GREEN 与断线 mutation**
+
+  Run: `./gradlew :domain:allTests :app:testReleaseUnitTest --tests "*ExtensionPresentation*" --tests "*ExtensionsScreenModel*" --tests "*ExtensionManager*"`
+  Expected: 全部 PASS；恢复 Android 本地分类或绕过共享 store 时，production wiring 测试必须失败。
+
+- [ ] **Step 5: 提交 Task 6B**
+
+  Commit: `refactor(extension): extract Android presentation contract`
+
+### Task 6C: Desktop 扩展 adapter、ScreenModel 与 DI wiring
+
+**OpenSpec mapping:** 2.3、3.4（Desktop 消费 Android 权威共享状态、安装反馈与 DI 部分）
+
+**Risk axis:** desktop-extension-presentation-adapter
 **Platform boundary:** shared+desktop
 **Estimated scope:** 8 files, 400 lines
-**Verification:** 运行 Extension shared-state 与 Desktop DI wiring 测试，确认部分仓库失败、TrustRequired、安装失败旧版本可用及本地化恢复操作均由 production wiring 提供。
+**Verification:** Desktop production ScreenModel 只消费 Task 6B 的共享 state/intents，部分仓库失败、TrustRequired、安装取消/失败/回滚与旧版本保留均来自真实 catalog/trust/install 链路；DI 能解析同一个长生命周期实例。
+
+**Files:**
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/DesktopExtensionPresentationPort.kt`
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionsScreenModel.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionApi.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionManager.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionSharedStateWiringTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionInstallTransactionTest.kt`
+
+**Interfaces:**
+- Consumes: Task 6B 的 `ExtensionPresentationStore`/port/intents，以及 Tasks 3–5 已有的 shared catalog/trust/install/login services。
+- Produces: 注入到 Desktop UI 的 `ExtensionsScreenModel`；其 State/操作语义与 Android 原版一致，平台 adapter 仅负责 JAR、APK→JAR、ClassLoader、文件和浏览器 side effect。
+- Boundary: 禁止创建 `DesktopExtensionUiCoordinator` 或在 Desktop adapter 中复制分类、搜索、版本、信任、回滚和错误映射规则；`ConfirmTrust` 必须恢复共享 pending request，不能以新的终态 API 重新发起一次不相关安装。
+
+- [ ] **Step 1: 写 Desktop production wiring RED**
+
+  覆盖多仓库部分失败仍保留成功条目、安装状态流、取消、TrustRequired→ConfirmTrust 同一 request、失败回滚后旧版本仍可用、DI 单例解析，以及绕过 shared store 的 mutation。
+
+- [ ] **Step 2: 运行 RED**
+
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionSharedStateWiringTest" --tests "mihon.desktop.di.DesktopDiWiringTest" --tests "mihon.desktop.extension.DesktopExtensionInstallTransactionTest"`
+  Expected: FAIL，原因是 Desktop 尚无 Task 6B adapter/ScreenModel，且 UI API 仍只返回 terminal result。
+
+- [ ] **Step 3: 实现薄平台 adapter 与 ScreenModel**
+
+  让 catalog refresh 保留 `ExtensionCatalogResult.failures`，让安装直接转发共享 `ExtensionInstallState`，并把 trust confirmation、cancel、retry、reload/uninstall 映射到现有 production manager/port。ScreenModel 仅持有共享 store 生命周期并暴露 Android 对齐的 State/方法。
+
+- [ ] **Step 4: 运行 GREEN 与断线 mutation**
+
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionSharedStateWiringTest" --tests "mihon.desktop.di.DesktopDiWiringTest" --tests "mihon.desktop.extension.*Extension*"`
+  Expected: 全部 PASS；把 ScreenModel 改回 terminal API、丢弃部分失败或在 adapter 重算 update/trust/error 时至少一个行为测试失败。
+
+- [ ] **Step 5: 提交 Task 6C**
+
+  Commit: `refactor(desktop): adapt shared extension presentation`
+
+### Task 6D: Desktop Extension UI、详情/设置与 i18n wiring
+
+**OpenSpec mapping:** 3.4、3.5（扩展列表/详情/设置入口、反馈与本地化部分）
+
+**Risk axis:** extension-ui-wiring
+**Platform boundary:** desktop
+**Estimated scope:** 8 files, 400 lines
+**Verification:** 三个 Desktop Screen 只收集 Task 6C ScreenModel/shared state 并发送 intents；加载、空、部分失败、安装阶段、TrustRequired、回滚保留旧版本、详情缺失和源设置不可用均有可执行反馈，且 base/zh-rCN 资源完整。
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionListScreen.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionDetailsScreen.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/SourcePreferencesScreen.kt`
-- Modify: `app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt`
 - Modify: `i18n/src/commonMain/moko-resources/base/strings.xml`
 - Modify: `i18n/src/commonMain/moko-resources/zh-rCN/strings.xml`
-- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionSharedStateWiringTest.kt`
-- Modify: `app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionPresentationUiTest.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionDetailsPreferencesWiringTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionListCopyContractTest.kt`
 
 **Interfaces:**
-- Consumes: Tasks 3–5 catalog/trust/install/login state。
-- Produces: Extension UI intents（`Install`、`CancelInstall`、`ConfirmTrust`、`Retry`）与可解析的 Desktop DI bindings。
+- Consumes: Task 6C 的真实 `ExtensionsScreenModel` 与 Task 6B 的 shared state/intents。
+- Produces: Android 原版行为语义下的 Desktop 扩展列表/详情/设置 UI；保留宽屏布局、APK→JAR、仓库链接、SHA-256、Explorer/Finder 定位和文件信息等 Desktop 独有入口。
+- Boundary: Composable 不维护 catalog/install job/update/trust reducer；仅允许短生命周期纯 UI 状态（tab、对话框开关、输入焦点）。源 preference 的 JVM 控件渲染属于平台 adapter，但 missing、non-configurable、setup failure 与 empty 必须使用有区分的 production state。
 
-- [ ] **Step 1: 写 Extension UI/DI/i18n RED**
+- [ ] **Step 1: 写 Extension UI/i18n RED**
 
-  覆盖 Screen 实例化、所有新增 DI 类型解析、部分仓库失败、TrustRequired、安装失败后旧版本仍可用，以及 base/zh-rCN 恢复操作 key 可加载。
+  覆盖 Screen 实例化、列表收集 shared state/发送 intents、部分失败 Retry、TrustRequired 确认、安装失败旧版本提示、详情卸载退出、源设置四类 availability，以及 base/zh-rCN 恢复操作 key 可加载。
 
 - [ ] **Step 2: 运行 RED**
 
-  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionSharedStateWiringTest" --tests "mihon.desktop.di.DesktopDiWiringTest"`
-  Expected: FAIL，原因是 Extension UI 仍绕过共享状态、DI 缺绑定或资源 key 缺失。
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionPresentationUiTest" --tests "mihon.desktop.ui.extension.ExtensionDetailsPreferencesWiringTest" --tests "mihon.desktop.ui.extension.ExtensionListCopyContractTest"`
+  Expected: FAIL，原因是 UI 仍维护本地业务状态、吞掉详情/设置失败或使用硬编码文案。
 
-- [ ] **Step 3: 接线 Extension 状态与 DI**
+- [ ] **Step 3: 接线 UI 并迁移触达文案**
 
-  Composable 只消费共享 state/intent，保留扩展列表、详情和源偏好入口；注册 production bindings，错误状态提供 Retry、设置或信任确认。
+  删除 Composable 中的 catalog snapshot、install jobs、install state map、update-all 编排和 trust/error 推断；改为收集 production ScreenModel 并发送 shared intents。将触达的文案同时加入 base 与 zh-rCN，不改变 Desktop 独有入口。
 
-- [ ] **Step 4: 迁移本切片文案**
-
-  将触达的源/扩展/挑战恢复文案同时加入 base 与 zh-rCN，禁止在上述 Kotlin 文件新增硬编码业务提示。
-
-- [ ] **Step 5: 运行 GREEN**
+- [ ] **Step 4: 运行 GREEN 与断线 mutation**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.*" --tests "mihon.desktop.di.DesktopDiWiringTest"`
-  Expected: 全部 PASS；共享状态、DI 或资源 wiring 任一断线会失败。
+  Expected: 全部 PASS；断开 ScreenModel、恢复本地 reducer、把 failure 折叠成 empty 或删除任一 locale key 时测试失败。
 
-- [ ] **Step 6: 提交 Task 6B**
+- [ ] **Step 5: 提交 Task 6D**
 
-  Commit: `refactor(desktop): wire extension UI and DI`
+  Commit: `refactor(desktop): wire shared extension UI`
 
-### Task 6C: Test Mode、导航与自动化观察
+### Task 6E: Test Mode、导航与自动化观察
 
 **OpenSpec mapping:** 2.3、3.4、3.5（导航类型、Test Mode 与自动化观察部分）
 
@@ -708,7 +799,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
   Run: `./gradlew :app-desktop:jvmTest --tests "*Navigation*ContractTest" --tests "*I18n*" :test-desktop:test`
   Expected: 全部 PASS；Screen/navigation/Test Mode/i18n 任一断线都会失败。
 
-- [ ] **Step 6: 提交 Task 6C**
+- [ ] **Step 6: 提交 Task 6E**
 
   Commit: `test(desktop): expose source extension workflow state`
 
