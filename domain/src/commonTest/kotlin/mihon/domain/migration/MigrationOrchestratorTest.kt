@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test
 
 class MigrationOrchestratorTest {
     @Test
-    fun `migration flag bit contract preserves every Android option`() {
+    fun `current shared migration flag bits round trip`() {
         val flags = MigrationFlag.entries.toSet()
 
         assertEquals(flags, MigrationFlag.fromBit(MigrationFlag.toBit(flags)))

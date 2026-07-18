@@ -81,15 +81,22 @@
 迁移行为的原版权威固定为 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`。
 `MigrationOrchestrator` 是当前共享迁移产物，不是原版 Android Mihon 本身。
 
-- 与固定原版一致的单部迁移核心：使用第一个可识别章节号相同的章节；只写入可空的
-  `read = true` patch；保留固定原版的 `NaN` 最大已读行为，以及章节元数据、分类、标志、
-  加入日期、备注和替换/复制书库归属语义。
+- 与固定原版一致的是共享 `MigrationOrchestrator` 的计划层规则：使用第一个可识别章节号
+  相同的章节；只写入可空的 `read = true` patch；保留固定原版的 `NaN` 最大已读行为；
+  `libraryPlan()` 也按原版计算分类、chapter/viewer flags、加入日期、备注和替换/复制归属。
+- 这不代表 Desktop 单部迁移 adapter 已完全一致。现存三项 `UNCLASSIFIED_DEBT`（均为
+  “原版更优”）：`copyCategories = false` 会错误清空目标已有分类；计划得出的 target
+  chapter/viewer flags 没有写入；复制到已收藏目标时保留旧 `dateAdded`，而固定原版按本次
+  调用时间写入。三项必须进入独立严格 TDD Task，修复前不得宣称 Desktop 单部迁移完全对齐。
 - 与固定原版一致的批量核心：按顺序遍历、普通失败后继续、传播取消。
-- 跨平台可靠性增强：`startIndex`、`Completed(nextIndex)`、逐项 `Failed`、
-  `WaitingForUser` 和可恢复 checkpoint 协议。
-- Android 平台 adapter：`AndroidBatchMigrationRunner` 及进度/失败对话框 wiring。
+- 跨平台/产品可靠性增强：`startIndex`、`Completed(nextIndex)`、逐项 `Failed`、
+  `WaitingForUser`、可恢复 checkpoint、失败汇总和定向重试。
+- Android 平台 adapter：仅指 ScreenModel、Compose 与 Job/lifecycle/cancellation wiring；
+  失败汇总和定向重试本身不能归入平台 adapter。
 - Desktop 产品增强：持久任务队列、目标/选项/状态/错误持久化、恢复、暂停/继续/取消/重试，
   以及队列 UI/Test Mode。
 
 不得把 checkpoint、等待用户、重试或 Desktop 队列持久化描述为从原版 Mihon 抽取的行为。
-若以后 replay 发现核心规则不一致，应停止分类工作并建立独立的严格 TDD 行为变更。
+已确认的三项 Desktop 单部迁移债务必须先完成严格 TDD 行为修复，再重新 replay 固定原版。
+在此之前 parity manifest 的 ID 67/68 都不得标为“完全 parity”：ID 67 应保留
+`UNCLASSIFIED_DEBT`，ID 68 则必须把固定原版批量核心与明确保留的可靠性增强分开记录。
