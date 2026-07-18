@@ -1011,44 +1011,100 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **Risk axis:** extension-ui-wiring
 **Platform boundary:** desktop
-**Estimated scope:** 8 files, 400 lines
+**Estimated scope:** 8 files, 1320 lines
 **Verification:** 三个 Desktop Screen 只收集 Task 6C ScreenModel/shared state 并发送 intents；加载、空、部分失败、安装阶段、TrustRequired、回滚保留旧版本、详情缺失和源设置不可用均有可执行反馈，且 base/zh-rCN 资源完整。
+**Execution split:** 只读评估确认列表 state/classification、列表 action lifecycle、详情 Desktop 独有入口与 JVM preference availability 是四条可独立失效风险；合并预计 650–850 changed lines，且现有源码扫描 CopyContract 不能替代真实行为测试。因此按 6D1→6D2→6D3→6D4 顺序调度。
+**Split waiver:** 本聚合项不作为一个 Task 调度；6D1–6D4 各自不超过 8 files/400 lines，前一段的 production/test seam 稳定后才允许后一段施工。
+
+#### Task 6D1: Extension list state、classification 与恢复 UI
+
+- Risk axis: `extension-list-state-ui`
+- Platform boundary: `desktop`
+- Estimated scope: `5 files, 360 lines`
+- Verification: Screen 实例化；真实 Compose 收集 Task 6C state，区分 loading/empty/partial failure 并以同一 failure identity Retry；分类/search/options 来自 shared presentation，base/zh-rCN key 均可加载。
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionListScreen.kt`
-- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionDetailsScreen.kt`
-- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/SourcePreferencesScreen.kt`
 - Modify: `i18n/src/commonMain/moko-resources/base/strings.xml`
 - Modify: `i18n/src/commonMain/moko-resources/zh-rCN/strings.xml`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionPresentationUiTest.kt`
-- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionDetailsPreferencesWiringTest.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionListCopyContractTest.kt`
 
-**Interfaces:**
-- Consumes: Task 6C 的真实 `ExtensionsScreenModel` 与 Task 6B 的 shared state/intents。
-- Produces: 固定 main 原版行为语义下的 Desktop 扩展列表/详情/设置 UI；保留宽屏布局、APK→JAR、仓库链接、SHA-256、Explorer/Finder 定位和文件信息等 Desktop 独有入口。
-- Boundary: Composable 不维护 catalog/install job/update/trust reducer；仅允许短生命周期纯 UI 状态（tab、对话框开关、输入焦点）。源 preference 的 JVM 控件渲染属于平台 adapter，但 missing、non-configurable、setup failure 与 empty 必须使用有区分的 production state。
+- [ ] **Step 1: 写 list state/partial failure/i18n RED**
 
-- [ ] **Step 1: 写 Extension UI/i18n RED**
-
-  覆盖 Screen 实例化、列表收集 shared state/发送 intents、部分失败 Retry、TrustRequired 确认、安装失败旧版本提示、详情卸载退出、源设置四类 availability，以及 base/zh-rCN 恢复操作 key 可加载。
+  使用真实 Compose/wiring fixture 覆盖 Screen 实例化、loading/empty、成功列表与 exact partial failure 同屏、Retry 发送 refresh、shared classification/search/options；替换源码字符串扫描断言。
 
 - [ ] **Step 2: 运行 RED**
 
-  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionPresentationUiTest" --tests "mihon.desktop.ui.extension.ExtensionDetailsPreferencesWiringTest" --tests "mihon.desktop.ui.extension.ExtensionListCopyContractTest"`
-  Expected: FAIL，原因是 UI 仍维护本地业务状态、吞掉详情/设置失败或使用硬编码文案。
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionPresentationUiTest" --tests "mihon.desktop.ui.extension.ExtensionListCopyContractTest"`
+  Expected: FAIL，原因是列表仍维护本地 catalog/filter/error 状态且恢复文案未资源化。
 
-- [ ] **Step 3: 接线 UI 并迁移触达文案**
+- [ ] **Step 3: 接入 list state/classification**
 
-  删除 Composable 中的 catalog snapshot、install jobs、install state map、update-all 编排和 trust/error 推断；改为收集 production ScreenModel 并发送 shared intents。将触达的文案同时加入 base 与 zh-rCN，不改变 Desktop 独有入口。
+  Composable 只收集 production ScreenModel state 并渲染 shared presentation；保留 Desktop 宽屏/仓库入口，不迁移 install/trust action（留给 6D2）。
 
 - [ ] **Step 4: 运行 GREEN 与断线 mutation**
 
-  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.*" --tests "mihon.desktop.di.DesktopDiWiringTest"`
-  Expected: 全部 PASS；断开 ScreenModel、恢复本地 reducer、把 failure 折叠成 empty 或删除任一 locale key 时测试失败。
+  Expected: 断开 ScreenModel collect、把 partial failure 折叠成 empty、恢复本地 classifier 或删除任一 locale key 时至少一项失败。
 
-- [ ] **Step 5: 提交 Task 6D**
+#### Task 6D2: Extension list install、trust 与 error action UI
 
+- Risk axis: `extension-list-action-ui`
+- Platform boundary: `desktop`
+- Estimated scope: `5 files, 380 lines`
+- Verification: 真实 Compose 点击发送 install/update/update-all/cancel/confirm/dismiss/retry intents；单项 update 从 latest typed catalog 按 operation package 取得 exact raw candidate；逐包 shared step、TrustRequired、Error 与旧 installed 版本并存反馈可观察，不调用 legacy terminal API。
+
+**Files:**
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionsScreenModel.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionListScreen.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionSharedStateWiringTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionPresentationUiTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionListCopyContractTest.kt`
+
+6D2 所需用户文案 key 在 6D1 同步预置到 base/zh-rCN，避免动作 Task 再扩大到 7 files；若实现发现缺失 key，必须如实调整到 7 files/≤400，不得硬编码。
+
+- [ ] **Step 1: 写 list action lifecycle RED**
+- [ ] **Step 2: 删除本地 jobs/reducer/legacy API 并接入 ScreenModel intents**
+- [ ] **Step 3: 运行 GREEN 与断线 mutation**
+
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionPresentationUiTest" --tests "mihon.desktop.ui.extension.ExtensionListCopyContractTest"`
+  Expected: 绕过 ScreenModel、恢复本地 install map、丢 trust/error/旧版本反馈或删除 locale key 时至少一项失败。
+
+#### Task 6D3: Extension details、typed uninstall 与 Desktop 独有入口
+
+- Risk axis: `extension-details-ui`
+- Platform boundary: `desktop`
+- Estimated scope: `4 files, 300 lines`
+- Verification: authoritative installed flow 变 missing；typed uninstall 成功后 pop、失败不 pop；APK/JAR origin、repo/SHA/file info、Explorer/Finder folder、source enable/incognito/cookie 入口均保留并有行为反馈。
+
+**Files:**
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionDetailsScreen.kt`
+- Modify: `i18n/src/commonMain/moko-resources/base/strings.xml`
+- Modify: `i18n/src/commonMain/moko-resources/zh-rCN/strings.xml`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionDetailsPreferencesWiringTest.kt`
+
+- [ ] **Step 1: 写 details authoritative/uninstall/Desktop-entry RED**
+- [ ] **Step 2: 接入 ScreenModel 与保留 Desktop unique adapters**
+- [ ] **Step 3: 运行 GREEN 与断线 mutation**
+
+#### Task 6D4: Source preferences typed availability UI
+
+- Risk axis: `source-preferences-availability-ui`
+- Platform boundary: `desktop`
+- Estimated scope: `4 files, 280 lines`
+- Verification: production typed availability 区分 missing、non-configurable、setup-failure、empty 与 content；真实 Compose 显示可区分反馈和 exact setup error identity，JVM 控件 adapter 保留。
+
+**Files:**
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/SourcePreferencesScreen.kt`
+- Modify: `i18n/src/commonMain/moko-resources/base/strings.xml`
+- Modify: `i18n/src/commonMain/moko-resources/zh-rCN/strings.xml`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionDetailsPreferencesWiringTest.kt`
+
+- [ ] **Step 1: 写五态 availability RED**
+- [ ] **Step 2: 实现 typed availability 与 JVM adapter UI**
+- [ ] **Step 3: 运行 GREEN、i18n mutation 并提交 Task 6D**
+
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionPresentationUiTest" --tests "mihon.desktop.ui.extension.ExtensionDetailsPreferencesWiringTest" --tests "mihon.desktop.ui.extension.ExtensionListCopyContractTest"`
   Commit: `refactor(desktop): wire shared extension UI`
 
 ### Task 6E: Test Mode、导航与自动化观察
