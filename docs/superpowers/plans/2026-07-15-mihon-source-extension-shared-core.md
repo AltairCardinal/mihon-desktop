@@ -41,8 +41,8 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - [x] Task 5A：共享登录会话与 Desktop Cookie 原子提交
 - [x] Task 5B：Desktop 挑战恢复策略与 FlareSolverr 显式后备
 - [x] Task 5C：Desktop 登录设置、UI 与 production wiring
-- [x] Task 6A：Browse 共享状态 wiring
-- [ ] Task 6B：从 Android 原版提取扩展呈现契约
+- [ ] Task 6A：Browse 共享状态 wiring（6A1/6A2 已完成；C8 的 6A3A/6A3B 待完成）
+- [ ] Task 6B：从固定 main 原版提取扩展呈现契约
 - [ ] Task 6C：Desktop 扩展 adapter、ScreenModel 与 DI wiring
 - [ ] Task 6D：Desktop Extension UI、详情/设置与 i18n wiring
 - [ ] Task 6E：Test Mode、导航与自动化观察
@@ -579,6 +579,49 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
   - [x] **Task 6A2C: Browse 缺失 source 的 ExtensionListScreen 导航入口**
     - [x] **Task 6A2CR: 真实 BrowseTab nested Navigator 黑盒保护**
 
+**Authority correction（C8）:** 上述 6A1/6A2 checkoff 只证明 query/page/error、聚合、恢复和现有 UI 状态 wiring，不证明固定 main 的 global-search 结果生产、完整结果行或带 query 的源导航已经对齐。Task 6A 只有在以下两个独立 Task 通过后才闭合。
+
+#### 6A3A phase: Global Search canonical result wiring
+
+**Execution split:** 只按 6A3A1→6A3A2 调度。批量物化必须先通过真实 Global Search production 链路建立 canonical 记录；逐卡观察随后只消费该记录，不新建第二套映射或入库逻辑。
+
+##### Task 6A3A1: Global Search canonical batch persistence
+
+- Risk axis: `global-search-canonical-persistence`
+- Platform boundary: `desktop`
+- Estimated scope: `4 files, 230 lines`
+- Verification: 以固定 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` 的 `SearchScreenModel.search` 为预言机，证明每源结果先执行 `SManga.toDomainManga(sourceId)`、按 URL 去重并经真实 `NetworkToLocalManga` 建立 canonical 本地记录，再发布到 production Global Search UI；完整字段、已有收藏/initialized 不降级、旧 generation 隔离与物化失败反馈均由行为测试覆盖。当前 `app/` 只作迁移后 consumer 证据。
+
+**Files:**
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/domain/SaveSourceMangaForDetails.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/GlobalSearchScreen.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/domain/SaveSourceMangaForDetailsTest.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/browse/GlobalSearchResultProductionWiringTest.kt`
+
+##### Task 6A3A2: Global Search visible-card database observation
+
+- Risk axis: `global-search-card-observation`
+- Platform boundary: `desktop`
+- Estimated scope: `2 files, 120 lines`
+- Verification: 以固定 main `SearchScreenModel.getManga()` 为预言机，仅为进入 composition 的结果卡按 `(sourceId, url)` 订阅 production `GetManga` flow；真实内存 SQLDelight/repository 测试在不重新搜索时更新标题、封面或收藏状态，卡片必须刷新且源搜索调用次数仍为一次。
+
+**Files:**
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/GlobalSearchScreen.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/browse/GlobalSearchResultProductionWiringTest.kt`
+
+#### Task 6A3B: Global Search result navigation
+
+- Risk axis: `global-search-result-navigation`
+- Platform boundary: `desktop`
+- Estimated scope: `4 files, 260 lines`
+- Verification: 以固定 main 的 presentation `GlobalSearchScreen`/`GlobalSearchCardRow` 为预言机，真实 Compose/Voyager 测试证明源标题进入携带当前 query 的 `SourceBrowseScreen`、每源结果不再 `.take(10)` 截断，并保留 Desktop 防重复打开与后台详情刷新增强。
+
+**Files:**
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/GlobalSearchScreen.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/browse/GlobalSearchResultNavigationTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceSharedStateWiringTest.kt`
+
 **6A2B1R2 scope adjustment:** 原 70 changed lines 估算遗漏了移除旧全局 observer 与 direct callback 路径本身产生的约 28 行删除；最小 production 替换约 62 changed lines，真实 duplicate/cross-session/recovery RED 约 39 行。该行为闭环不可再独立拆分，调整为 2 files/110 changed lines，仍远低于项目 400 行拆分门槛；不得为满足旧估算压缩掉行为断言。
 
 **6A2B1R3 review closure:** B1R2 为判断 accepted winner 把 `StateFlow.value` 写入放回 global monitor，可能同步恢复 collector 并与跨线程 `coordinatorFor/search` 重入死锁。新子任务仍仅 coordinator+测试两文件、≤90 changed lines：global lock 内只接受/盖章 immutable candidate，锁外用 ordinal-aware `MutableStateFlow.compareAndSet` 或等价 stamped publisher 原子选 winner，且只有 winner 调 session callback。必须以 Unconfined/阻塞 collector + 另一线程重入的确定性测试击穿锁内 setter mutation。
@@ -616,59 +659,56 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.browse.*"`
   Expected: 全部 PASS；共享状态或 Browse production wiring 断线会失败。
 
-- [x] **Step 5: 提交 Task 6A**
+- [x] **Step 5: 提交原 6A1/6A2 范围**
 
   Commit: `refactor(desktop): wire shared browse state`
 
-### Task 6B: 从 Android 原版提取扩展呈现契约
+### Task 6B: 从固定 main 原版提取扩展呈现契约
 
-**OpenSpec mapping:** 2.3、3.4（Android 权威扩展状态、操作与共享呈现契约部分）
+**OpenSpec mapping:** 2.3、3.4（固定 main 权威扩展状态、操作与共享呈现契约部分）
 
-**Risk axis:** android-extension-presentation-authority
+**Risk axis:** extension-presentation-authority
 **Platform boundary:** shared+android
-**Estimated scope:** 8 files, 400 lines
-**Verification:** 先以固定原始 Mihon `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` 的 `ExtensionsScreenModel`、`ExtensionManager` 和 `ExtensionDetailsScreenModel` 回放权威 fixture；再将当前 fork 的同名 Android consumer 差异分类为必要 adapter、已证实增强或待偿还技术债。证明搜索、分类、刷新、安装/更新/取消、卸载、信任和卸载后详情退出语义由共享契约表达，且 Android production wiring 已消费该契约。
+**Estimated scope:** 9 files, 760 lines
+**Verification:** 权威只来自固定 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` 的 `GetExtensionsByType`、`ExtensionsScreenModel`、presentation `ExtensionsScreen`、`ExtensionManager`、`GetExtensionSources`、`ToggleSource`、`ToggleIncognito`、`ExtensionDetailsScreenModel` 与 presentation `ExtensionDetailsScreen`。当前 `app/` 是被测 Android consumer，不得生成 expected value；shared catalog/install 类型是迁移输出。Desktop Tab/宽屏/package-name 搜索、文件/仓库详情，以及 fingerprint/SHA/snapshot/rollback/runtime restore 作为显式增强保留。
+**Execution split:** C9 审计确认分类/search 与安装/详情动作是两个可独立验证的风险轴。原 8 files/400 lines 不足以同时建立 fixed-main fixture、共享 reducer 和 Android production wiring，因此拆为 6B1 分类核心与 6B2 动作生命周期；下层通过不能替代 fixed-main fixture。
+**Split waiver:** 9 files/760 lines 是 6B1 与 6B2 两个顺序 Task 的聚合值，不会作为单一实现者范围调度；二者分别低于 8 files/400 lines，分类 reducer 与动作生命周期可独立验收，不能合并成一次变更。
+
+#### Task 6B1: Extension presentation classification core
+
+- Risk axis: `extension-presentation-classification`
+- Platform boundary: `shared+android`
+- Estimated scope: `6 files, 380 lines`
+- Verification: 固定 main fixture 覆盖逗号子查询、名称/source name/baseUrl/id、全局 NSFW、enabled language、多 source 拆分、obsolete/name 排序及 updates/installed/available/untrusted 分区；shared store 与当前 Android consumer 必须产生相同结果，package-name 搜索只能作为显式增量字段。
 
 **Files:**
 - Create: `domain/src/commonMain/kotlin/mihon/domain/extension/presentation/ExtensionPresentationContract.kt`
 - Create: `domain/src/commonMain/kotlin/mihon/domain/extension/presentation/ExtensionPresentationStore.kt`
 - Create: `domain/src/commonTest/kotlin/mihon/domain/extension/presentation/ExtensionPresentationStoreTest.kt`
+- Modify: `app/src/main/java/eu/kanade/domain/extension/interactor/GetExtensionsByType.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsScreenModel.kt`
+- Create: `app/src/test/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionPresentationWiringTest.kt`
+
+#### Task 6B2: Extension presentation action lifecycle
+
+- Risk axis: `extension-presentation-actions`
+- Platform boundary: `shared+android`
+- Estimated scope: `8 files, 380 lines`
+- Verification: 固定 main fixture 覆盖刷新、逐 package install/update/cancel/trust/uninstall、`takeWhile { step != Installed }`、source 单个/全部启停、incognito 与卸载后详情退出；当前 fork 的异步初始化等差异必须分类，安全事务新增阶段作为超集而不改写原版终态。
+
+**Files:**
+- Modify: `domain/src/commonMain/kotlin/mihon/domain/extension/presentation/ExtensionPresentationContract.kt`
+- Modify: `domain/src/commonMain/kotlin/mihon/domain/extension/presentation/ExtensionPresentationStore.kt`
+- Modify: `domain/src/commonTest/kotlin/mihon/domain/extension/presentation/ExtensionPresentationStoreTest.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt`
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsScreenModel.kt`
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/ExtensionDetailsScreenModel.kt`
-- Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt`
-- Create: `app/src/test/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionPresentationWiringTest.kt`
+- Modify: `app/src/test/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionPresentationWiringTest.kt`
 - Create: `app/src/test/java/eu/kanade/tachiyomi/extension/ExtensionManagerTest.kt`
-
-**Interfaces:**
-- Consumes: Tasks 3–4 的 `ExtensionCatalogResult`、`ExtensionTrustDecision`、`ExtensionInstallState` 与平台 install port。
-- Produces: 无 Android/Desktop 类型的 `ExtensionPresentationState`、`ExtensionPresentationIntent` 和 `ExtensionPresentationPort`；Android `ExtensionsScreenModel` 保持原有公开 State/方法并改为薄适配器。
-- Authority: 共享状态转换必须从固定 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` 的原版调用链提取，不得因当前 `app/` 路径或已有 shared 实现而推定权威。先比较固定 main 与当前 fork，再将差异分类为必要 adapter、已有正确性/安全性/UX 证据的增强或待偿还技术债；未知差异不得宣称更优。禁止为了适配 Desktop 改写原始搜索字段、updates/installed/language 分类、安装步骤、取消或 trust 语义。逐仓库部分失败、repo fingerprint/SHA continuity、snapshot、rollback 与 runtime restore 是共享状态的跨平台安全/可靠性增量字段，必须与原始兼容核心分开报告。
-
-- [ ] **Step 1: 写固定 main 权威行为与共享契约 RED**
-
-  用固定 main 的 production ScreenModel/Manager 调用链固定搜索（名称、source 名称/baseUrl/id）、updates/installed/untrusted/语言分类、刷新、逐 package 安装步骤、取消、卸载、trust 和详情卸载事件；再以同一 fixture 断言尚不存在的共享 `ExtensionPresentationStore` 产生相同结果。当前 fork 的 `ExtensionManager` 异步初始化与 `ExtensionsScreenModel` 缺失 `takeWhile { step != Installed }` 必须分别分类，不得作为 fixture。
-
-- [ ] **Step 2: 运行 RED**
-
-  Run: `./gradlew :domain:allTests :app:testReleaseUnitTest --tests "*ExtensionPresentation*" --tests "*ExtensionManager*"`
-  Expected: FAIL，原因只能是共享 contract/store 尚不存在或 Android production wiring 尚未消费它；固定 main 回放断言必须先通过，当前 fork 差异必须已有分类记录。
-
-- [ ] **Step 3: 最小提取并接回 Android production wiring**
-
-  将 Android 无关的状态转换和 intents 移入 shared；Android adapter 只映射 APK/PackageManager、Drawable、Context、Locale 资源和安装 side effect。Android `StateScreenModel` 继续提供原版 UI 所需 State/方法，不保留第二套分类、搜索或安装状态 reducer。
-
-- [ ] **Step 4: 运行 GREEN 与断线 mutation**
-
-  Run: `./gradlew :domain:allTests :app:testReleaseUnitTest --tests "*ExtensionPresentation*" --tests "*ExtensionsScreenModel*" --tests "*ExtensionManager*"`
-  Expected: 全部 PASS；恢复 Android 本地分类或绕过共享 store 时，production wiring 测试必须失败。
-
-- [ ] **Step 5: 提交 Task 6B**
-
-  Commit: `refactor(extension): extract Android presentation contract`
 
 ### Task 6C: Desktop 扩展 adapter、ScreenModel 与 DI wiring
 
-**OpenSpec mapping:** 2.3、3.4（Desktop 消费 Android 权威共享状态、安装反馈与 DI 部分）
+**OpenSpec mapping:** 2.3、3.4（Desktop 消费从固定 main 提取的共享状态、安装反馈与 DI 部分）
 
 **Risk axis:** desktop-extension-presentation-adapter
 **Platform boundary:** shared+desktop
@@ -687,7 +727,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **Interfaces:**
 - Consumes: Task 6B 的 `ExtensionPresentationStore`/port/intents，以及 Tasks 3–5 已有的 shared catalog/trust/install/login services。
-- Produces: 注入到 Desktop UI 的 `ExtensionsScreenModel`；其 State/操作语义与 Android 原版一致，平台 adapter 仅负责 JAR、APK→JAR、ClassLoader、文件和浏览器 side effect。
+- Produces: 注入到 Desktop UI 的 `ExtensionsScreenModel`；其 State/操作语义与固定 main 原版一致，平台 adapter 仅负责 JAR、APK→JAR、ClassLoader、文件和浏览器 side effect。
 - Boundary: 禁止创建 `DesktopExtensionUiCoordinator` 或在 Desktop adapter 中复制分类、搜索、版本、信任、回滚和错误映射规则；`ConfirmTrust` 必须恢复共享 pending request，不能以新的终态 API 重新发起一次不相关安装。
 
 - [ ] **Step 1: 写 Desktop production wiring RED**
@@ -733,7 +773,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **Interfaces:**
 - Consumes: Task 6C 的真实 `ExtensionsScreenModel` 与 Task 6B 的 shared state/intents。
-- Produces: Android 原版行为语义下的 Desktop 扩展列表/详情/设置 UI；保留宽屏布局、APK→JAR、仓库链接、SHA-256、Explorer/Finder 定位和文件信息等 Desktop 独有入口。
+- Produces: 固定 main 原版行为语义下的 Desktop 扩展列表/详情/设置 UI；保留宽屏布局、APK→JAR、仓库链接、SHA-256、Explorer/Finder 定位和文件信息等 Desktop 独有入口。
 - Boundary: Composable 不维护 catalog/install job/update/trust reducer；仅允许短生命周期纯 UI 状态（tab、对话框开关、输入焦点）。源 preference 的 JVM 控件渲染属于平台 adapter，但 missing、non-configurable、setup failure 与 empty 必须使用有区分的 production state。
 
 - [ ] **Step 1: 写 Extension UI/i18n RED**
@@ -809,8 +849,38 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **Risk axis:** parity-evidence
 **Platform boundary:** verification
-**Estimated scope:** 7 files, 350 lines
+**Estimated scope:** 47 files, 1950 lines
 **Verification:** 运行 compat 契约、全量 Gradle/桌面测试构建和 Android/Windows/macOS 运行时验收，并完成 thorough 独立审查。
+**Execution split（C11）:** 当前 Desktop Android/AndroidX compat 至少 40 个文件、41 个顶层 public 类型，而 `compat-evidence.json` 只有一条且为 `unsupported`；`AndroidCompatTest` 和 parent-classpath `MinimalTestSource` 只能证明 adapter 自测，不能证明真实扩展需要某 shim。固定 main 的 `Source` ABI 与 Android `ExtensionLoader` 是兼容目标，Desktop shim 永远只属于平台 adapter。原 7 files/350 lines 不能承担逐符号证据与删除，拆分如下。
+**Split waiver:** 47 files/1,950 lines 是 inventory、真实 fixture、多个 package prune 批次与最终运行验收的聚合上界；任何单次调度仍不得超过 8 files/400 lines，且删除批次必须逐包消费前序真实证据，无法作为一个原子 Task 执行。
+
+#### Task 7A: Compat public surface inventory
+
+- Risk axis: `compat-public-inventory`
+- Platform boundary: `verification`
+- Estimated scope: `4 files, 250 lines`
+- Verification: 每个 public compat symbol 在清单中恰有一项；清单明确 `required`/`unsupported`、fixture 与 production 调用测试，单元自测不得升级为真实扩展证据。
+
+#### Task 7B: Compat real fixture evidence
+
+- Risk axis: `compat-real-fixture-evidence`
+- Platform boundary: `verification`
+- Estimated scope: `6 files, 350 lines`
+- Verification: 真实 APK/JAR 必须通过 production converter/loader 并实际调用所声明 symbol；parent classpath fixture、仅加载 class 或网络调查输出不算 `required` 证据。
+
+#### Task 7C: Compat package prune batches
+
+- Risk axis: `compat-package-pruning`
+- Platform boundary: `desktop`
+- Estimated scope: `8 files, 400 lines`
+- Verification: 按 `android.content`、`android.os/util`、`androidx.preference` 等包分批；只有 production/真实 fixture 均无调用才能删除，每批运行对应 loader/fixture 回归，不把 shim 移入 shared authority。
+
+#### Task 7D: Parity evidence and runtime verification
+
+- Risk axis: `parity-runtime-evidence`
+- Platform boundary: `verification`
+- Estimated scope: `7 files, 350 lines`
+- Verification: 仅消费 7A–7C 已闭合证据更新 parity 28–40、87，再运行全量测试、Android/Windows/macOS 验收与 thorough review；结构化 provenance 必须区分 fixed main、shared output、当前 Android consumer 与 Desktop adapter。
 
 **Files:**
 - Modify/Delete: 由 `compat-evidence.json` 审计确认无调用的 Desktop compat 符号；不得凭猜测删除。

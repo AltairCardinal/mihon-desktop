@@ -7,9 +7,14 @@
 
 ## 2. 共享源与扩展核心
 
-- [x] 2.1 复用并扩展 `SourceMangaSearchService`，提取源列表、浏览、搜索、分页、空状态和错误到共享层
+- [x] 2.1 复用并扩展 `SourceMangaSearchService`，完成共享 query/request/page/empty/error core；源列表与 presentation wiring 不包含在本项完成证据中
 - [x] 2.2 提取扩展发现、版本、安全、安装/更新事务与回滚状态到共享层
-- [x] 2.3 让 Android 与 Desktop production manager/ScreenModel 消费相同共享状态和错误
+- [ ] 2.3 让当前 Android consumer 与 Desktop consumer 的 production manager/ScreenModel 消费相同共享状态和错误
+  - [x] 2.3.1 Android/Desktop 源查询已消费共享 query/page/error core
+  - [x] 2.3.2 Android/Desktop 扩展链路已消费共享 catalog/version/security/install transaction core
+  - [ ] 2.3.3 当前 Android extension presentation consumer 接入固定 main 提取的共享契约
+  - [ ] 2.3.4 Desktop source result consumer 完成 canonical persistence、观察与导航 wiring
+  - [ ] 2.3.5 Desktop extension presentation consumer 完成 production wiring
 
 ## 3. Desktop 平台适配
 
