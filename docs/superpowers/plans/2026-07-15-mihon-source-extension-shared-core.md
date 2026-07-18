@@ -760,7 +760,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 - Risk axis: `extension-manager-android-actions`
 - Platform boundary: `android`
-- Estimated scope: `2 files, 180 lines`
+- Estimated scope: `2 files, 220 lines`
 - Verification: 当前 Android consumer 保持 fixed-main 的 install/update/cancel/trust/uninstall side-effect 顺序；trust 持久化后必须经 injected loader adapter reload，卸载命令后等待 receiver 再移除 installed state。当前 fork 的异步初始化、事务 ID、receiver 去重和 reload/rollback callback 作为安全超集保留。
 
 **Files:**
