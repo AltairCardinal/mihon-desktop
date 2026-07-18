@@ -585,17 +585,30 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **Execution split:** 只按 6A3A1→6A3A2 调度。批量物化必须先通过真实 Global Search production 链路建立 canonical 记录；逐卡观察随后只消费该记录，不新建第二套映射或入库逻辑。
 
-##### Task 6A3A1: Global Search canonical batch persistence
+##### 6A3A1 phase: Global Search canonical batch persistence
 
-- Risk axis: `global-search-canonical-persistence`
+**Execution split:** 初始 4 files/230 lines 估算不足以同时容纳 fixed-main batch contract、真实 SQLDelight production wiring、generation 门控、失败重试与给 6A3A2 复用的数据库夹具。只按 6A3A1a→6A3A1b 调度；前者建立唯一 batch contract，后者必须直接接入该 contract，不得复制映射。
+
+###### Task 6A3A1a: Canonical batch contract
+
+- Risk axis: `global-search-canonical-batch`
 - Platform boundary: `desktop`
-- Estimated scope: `4 files, 230 lines`
-- Verification: 以固定 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` 的 `SearchScreenModel.search` 为预言机，证明每源结果先执行 `SManga.toDomainManga(sourceId)`、按 URL 去重并经真实 `NetworkToLocalManga` 建立 canonical 本地记录，再发布到 production Global Search UI；完整字段、已有收藏/initialized 不降级、旧 generation 隔离与物化失败反馈均由行为测试覆盖。当前 `app/` 只作迁移后 consumer 证据。
+- Estimated scope: `2 files, 60 lines`
+- Verification: 固定 main fixture 证明 `SManga.toDomainManga(sourceId)` 保留完整字段、同源 URL 去重、不同 source 不合并，并由真实 `NetworkToLocalManga` 保留已有 favorite/initialized；恢复简化手工映射或逐项写入时测试必须失败。
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/domain/SaveSourceMangaForDetails.kt`
-- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/GlobalSearchScreen.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/domain/SaveSourceMangaForDetailsTest.kt`
+
+###### Task 6A3A1b: Canonical production materializer wiring
+
+- Risk axis: `global-search-canonical-materializer`
+- Platform boundary: `desktop`
+- Estimated scope: `2 files, 225 lines`
+- Verification: 真实 Global Search → `awaitSearchResults` → 内存 SQLDelight/MangaRepository production 链证明不点击卡片也会入库，物化完成前不显示 raw 结果，旧 generation 不覆盖新搜索，失败产生明确行级错误与 exact retry；测试夹具必须可被 6A3A2 复用。
+
+**Files:**
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/GlobalSearchScreen.kt`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/browse/GlobalSearchResultProductionWiringTest.kt`
 
 ##### Task 6A3A2: Global Search visible-card database observation
