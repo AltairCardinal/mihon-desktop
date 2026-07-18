@@ -27,6 +27,8 @@ import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopAvailableExtension
 import mihon.desktop.extension.DesktopAvailableSource
 import mihon.desktop.extension.FixtureNewSource
+import mihon.desktop.ui.extension.DesktopExtensionPresentationPort
+import mihon.desktop.ui.extension.ExtensionsScreenModel
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.library.LibraryScreenModelFactory
 import mihon.desktop.library.MangaDetailScreenModelFactory
@@ -48,6 +50,7 @@ import mihon.domain.download.EnqueueDownload
 import mihon.domain.download.IsChapterDownloaded
 import mihon.domain.download.DownloadQueueStatus
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -281,6 +284,48 @@ class DesktopDiWiringTest {
                 }
             }
             bytes.toByteArray()
+        }
+    }
+
+    @Test
+    fun `extension presentation DI keeps default flow singleton and captured reinit ownership`(@TempDir tempDir: File) = runBlocking {
+        val first = initDesktopDIForTest(
+            tempDir.resolve("extension-first"),
+            DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")),
+        )
+        try {
+            val firstManager = Injekt.get<DesktopExtensionManager>()
+            val firstPort = Injekt.get<DesktopExtensionPresentationPort>()
+            val firstModel = Injekt.get<ExtensionsScreenModel>()
+            assertSame(firstManager.installedExtensions, firstPort.installedExtensions)
+            assertSame(firstPort, Injekt.get<DesktopExtensionPresentationPort>())
+            assertSame(firstModel, Injekt.get<ExtensionsScreenModel>())
+            assertSame(firstModel, first.extensionScreenModel)
+            assertFalse(firstModel.closed)
+
+            val second = initDesktopDIForTest(
+                tempDir.resolve("extension-second"),
+                DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")),
+            )
+            val secondModel = Injekt.get<ExtensionsScreenModel>()
+            try {
+                assertTrue(firstModel.closed)
+                assertTrue(firstModel !== secondModel)
+                assertFalse(secondModel.closed)
+                assertSame(secondModel, Injekt.get<ExtensionsScreenModel>())
+                assertSame(secondModel, second.extensionScreenModel)
+                assertSame(
+                    Injekt.get<DesktopExtensionManager>().installedExtensions,
+                    Injekt.get<DesktopExtensionPresentationPort>().installedExtensions,
+                )
+                first.closeAndJoin()
+                assertFalse(secondModel.closed)
+            } finally {
+                second.closeAndJoin()
+                assertTrue(secondModel.closed)
+            }
+        } finally {
+            first.closeAndJoin()
         }
     }
 

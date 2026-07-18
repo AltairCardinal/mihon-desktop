@@ -37,6 +37,8 @@ import tachiyomi.data.reader.SqlDelightReadingProgressRepository
 import tachiyomi.domain.reader.interactor.RecordReadingProgress
 import mihon.data.repository.ExtensionRepoRepositoryImpl
 import mihon.desktop.extension.DesktopExtensionApi
+import mihon.desktop.ui.extension.DesktopExtensionPresentationPort
+import mihon.desktop.ui.extension.ExtensionsScreenModel
 import mihon.desktop.domain.DesktopCustomCoverStore
 import mihon.desktop.domain.DesktopNotificationService
 import mihon.desktop.domain.DesktopMigrateMangaUseCase
@@ -75,6 +77,7 @@ import mihon.domain.extensionrepo.interactor.ReplaceExtensionRepo
 import mihon.domain.extensionrepo.interactor.UpdateExtensionRepo
 import mihon.domain.extensionrepo.repository.ExtensionRepoRepository
 import mihon.domain.extensionrepo.service.ExtensionRepoService
+import mihon.domain.extension.presentation.ExtensionPresentationOptions
 import tachiyomi.data.category.CategoryRepositoryImpl
 import tachiyomi.data.chapter.ChapterRepositoryImpl
 import tachiyomi.data.creator.CreatorRepositoryImpl
@@ -185,6 +188,7 @@ internal suspend fun initDesktopDIForTest(
         scheduler = Injekt.get(),
         downloadManager = Injekt.get(),
         extensionManager = Injekt.get(),
+        extensionScreenModel = Injekt.get(),
     ).also { activeDesktopTestDIContext = it }
 }
 
@@ -196,6 +200,7 @@ internal class DesktopTestDIContext(
     private val scheduler: LibraryUpdateScheduler,
     private val downloadManager: mihon.desktop.download.DesktopDownloadManager,
     private val extensionManager: DesktopExtensionManager,
+    val extensionScreenModel: ExtensionsScreenModel,
 ) : AutoCloseable {
     private var closed = false
 
@@ -208,6 +213,7 @@ internal class DesktopTestDIContext(
         if (closed) return
         closed = true
         scheduler.stopAndJoin()
+        extensionScreenModel.closeAndJoin()
         // Cancel calls before joining downloads because OkHttp execute() is blocking.
         networkHelper.client.dispatcher.cancelAll()
         downloadManager.stopAndJoin()
@@ -383,6 +389,17 @@ private fun registerDesktopExtension(paths: DesktopPlatformPaths, networkHelper:
     extensionManager.loadAll()
     Injekt.addSingleton(extensionManager)
     Injekt.addSingleton(extensionApi)
+    val presentationPort = DesktopExtensionPresentationPort(extensionApi, extensionManager)
+    Injekt.addSingleton(presentationPort)
+    Injekt.addSingleton(
+        ExtensionsScreenModel(
+            port = presentationPort,
+            initialOptions = ExtensionPresentationOptions(
+                showNsfw = false,
+                enabledLanguages = Injekt.get<DesktopAppPreferences>().enabledLanguages.get(),
+            ),
+        ),
+    )
     val sourceManager = DesktopSourceManager(extensionManager, Injekt.get())
     Injekt.addSingleton<SourceManager>(sourceManager)
     Injekt.addSingleton(sourceManager)
