@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -63,10 +64,13 @@ import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.getEnabledCatalogueSourceCandidates
 import mihon.desktop.ui.library.MangaDetailScreen
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.source.service.GlobalSearchSourceFilter
+import tachiyomi.domain.source.service.GlobalSearchSourcePolicy
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourceQueryState
 import tachiyomi.domain.source.service.SourceRecoveryAction
+import tachiyomi.i18n.MR
 import eu.kanade.tachiyomi.source.online.HttpSource
 
 /** Result group from one source. */
@@ -132,10 +136,28 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
         coordinator: DesktopGlobalSearchCoordinator,
         query: String,
         onStarted: (Long, List<CatalogueSource>) -> Unit,
+    ) = executeSearch(
+        sourceManager.getEnabledCatalogueSourceCandidates(appPreferences),
+        coordinator,
+        query,
+        GlobalSearchSourceFilter.All,
+        onStarted,
+    )
+
+    private suspend fun executeSearch(
+        sources: List<CatalogueSource>,
+        coordinator: DesktopGlobalSearchCoordinator,
+        query: String,
+        sourceFilter: GlobalSearchSourceFilter,
+        onStarted: (Long, List<CatalogueSource>) -> Unit,
     ) {
-        val sources = sourceManager.getEnabledCatalogueSourceCandidates(appPreferences)
-        onStarted(coordinator.state.generation + 1, sources)
-        coordinator.search(sources, query)
+        var started = false
+        coordinator.search(sources, query, sourceFilter) { state ->
+            if (!started) {
+                started = true
+                onStarted(state.generation, sources)
+            }
+        }
     }
 
     internal suspend fun retry(
@@ -161,6 +183,7 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
         val scope = rememberCoroutineScope()
 
         var query by remember { mutableStateOf(initialQuery) }
+        var sourceFilter by remember { mutableStateOf(GlobalSearchSourceFilter.PinnedOnly) }
         var openingMangaUrl by remember { mutableStateOf<String?>(null) }
         val coordinatorFactory = LocalGlobalSearchCoordinatorFactory.current
         val queryCoordinator = remember(sourceMangaSearchService, coordinatorFactory) { coordinatorFactory(sourceMangaSearchService) }
@@ -181,11 +204,18 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
             onDispose { queryCoordinator.close() }
         }
 
-        fun launchSearch(q: String) {
+        fun launchSearch(q: String, filter: GlobalSearchSourceFilter = sourceFilter) {
             if (q.isBlank()) return
             scope.launch(start = CoroutineStart.UNDISPATCHED) {
-                search(sourceManager, appPreferences, queryCoordinator, q) { generation, sources ->
-                    sourcesByGeneration = mapOf(generation to sources)
+                val sources = GlobalSearchSourcePolicy.select(
+                    sourceManager.getCatalogueSources(),
+                    appPreferences.enabledLanguages.get(),
+                    appPreferences.disabledSources.get(),
+                    appPreferences.pinnedSources.get(),
+                    filter,
+                )
+                executeSearch(sources, queryCoordinator, q, filter) { generation, selectedSources ->
+                    sourcesByGeneration = mapOf(generation to selectedSources)
                 }
             }
         }
@@ -271,6 +301,26 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
                     )
                     IconButton(onClick = { launchSearch(query) }) {
                         Icon(Icons.Default.Search, contentDescription = "Search")
+                    }
+                }
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    listOf(
+                        GlobalSearchSourceFilter.PinnedOnly to MR.strings.pinned_sources.localized(),
+                        GlobalSearchSourceFilter.All to MR.strings.all.localized(),
+                    ).forEach { (filter, label) ->
+                        FilterChip(
+                            selected = sourceFilter == filter,
+                            onClick = {
+                                if (sourceFilter != filter) {
+                                    sourceFilter = filter
+                                    launchSearch(query, filter)
+                                }
+                            },
+                            label = { Text(label) },
+                        )
                     }
                 }
 

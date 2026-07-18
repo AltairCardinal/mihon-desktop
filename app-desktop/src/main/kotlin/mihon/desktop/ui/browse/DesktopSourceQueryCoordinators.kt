@@ -22,7 +22,10 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import mihon.domain.error.AppError
+import tachiyomi.domain.source.service.GlobalSearchSourceFilter
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourcePageRequest
 import tachiyomi.domain.source.service.SourceQuery
@@ -252,8 +255,15 @@ data class DesktopGlobalSearchState(
 class DesktopGlobalSearchCoordinator(
     private val service: SourceMangaSearchService,
 ) : AutoCloseable {
+    private data class SearchIdentity(
+        val query: String,
+        val sourceFilter: GlobalSearchSourceFilter,
+        val sourceIds: List<Long>,
+    )
+
     private class SearchSession(
         val generation: Long,
+        val identity: SearchIdentity,
         val coordinators: Map<Long, SourceBrowseQueryCoordinator>,
         onState: (DesktopGlobalSearchState) -> Unit,
     ) {
@@ -310,6 +320,7 @@ class DesktopGlobalSearchCoordinator(
     private var publicationOrdinal = 0L
     private var authoritativeState = DesktopGlobalSearchState()
     private var activeSession: SearchSession? = null
+    private val sourceLoadPermits = Semaphore(5)
     private val publications = MutableStateFlow(authoritativeState)
     val states: StateFlow<DesktopGlobalSearchState> = publications.asStateFlow()
     val state: DesktopGlobalSearchState get() = states.value
@@ -332,11 +343,43 @@ class DesktopGlobalSearchCoordinator(
         sources: List<CatalogueSource>,
         query: String,
         onState: (DesktopGlobalSearchState) -> Unit = {},
+    ) = search(sources, query, GlobalSearchSourceFilter.All, onState)
+
+    suspend fun search(
+        sources: List<CatalogueSource>,
+        query: String,
+        sourceFilter: GlobalSearchSourceFilter,
+        onState: (DesktopGlobalSearchState) -> Unit = {},
     ) {
+        val identity = SearchIdentity(query, sourceFilter, sources.map(CatalogueSource::id))
         val (started, session, previous) = synchronized(lock) {
+            if (activeSession?.identity == identity) return
+            val previousSession = activeSession
+            val reusableStates = if (previousSession?.identity?.query == query) {
+                authoritativeState.queryStates.filter { (sourceId, state) ->
+                    sourceId in identity.sourceIds && !state.isLoading && previousSession.coordinators[sourceId] != null
+                }
+            } else {
+                emptyMap()
+            }
             val generation = authoritativeState.generation + 1
-            val next = SearchSession(generation, sources.associate { it.id to SourceBrowseQueryCoordinator(service) }, onState)
-            Triple(commitLocked(DesktopGlobalSearchState(generation, isSearching = true)), next, activeSession).also {
+            val next = SearchSession(
+                generation = generation,
+                identity = identity,
+                coordinators = sources.associate { source ->
+                    source.id to (
+                        previousSession?.coordinators?.get(source.id)
+                            ?.takeIf { source.id in reusableStates }
+                            ?: SourceBrowseQueryCoordinator(service)
+                        )
+                },
+                onState = onState,
+            )
+            Triple(
+                commitLocked(DesktopGlobalSearchState(generation, isSearching = true, queryStates = reusableStates)),
+                next,
+                previousSession,
+            ).also {
                 activeSession = next
             }
         }
@@ -353,8 +396,11 @@ class DesktopGlobalSearchCoordinator(
                         }
                     }
                     async(start = CoroutineStart.LAZY) {
-                        val completed = child.load(source, 1, SourceQuery.Search(query, source.getFilterList())) { candidate ->
-                            aggregate(started.generation, source.id, child, candidate)?.let { publish(it, session) }
+                        if (source.id in started.queryStates) return@async
+                        val completed = sourceLoadPermits.withPermit {
+                            child.load(source, 1, SourceQuery.Search(query, source.getFilterList())) { candidate ->
+                                aggregate(started.generation, source.id, child, candidate)?.let { publish(it, session) }
+                            }
                         }
                         aggregate(started.generation, source.id, child, completed)?.let { publish(it, session) }
                     }.also(session::register)
