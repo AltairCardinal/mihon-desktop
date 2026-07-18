@@ -6,6 +6,7 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.AnnotatedString
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import eu.kanade.tachiyomi.source.CatalogueSource
@@ -29,6 +30,7 @@ import tachiyomi.core.common.preference.Preference
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.i18n.MR
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.coroutines.CoroutineContext
 
 @OptIn(ExperimentalComposeUiApi::class)
 class GlobalSearchSourceFilterWiringTest {
@@ -83,13 +85,120 @@ class GlobalSearchSourceFilterWiringTest {
         scene.close()
     }
 
-    private fun source(id: Long, name: String, calls: AtomicInteger): CatalogueSource = mockk {
+    @Test
+    fun `no pins makes initial search empty until all is selected`() = runBlocking {
+        val firstCalls = AtomicInteger()
+        val secondCalls = AtomicInteger()
+        val first = source(11, "First source", firstCalls)
+        val second = source(12, "Second source", secondCalls)
+        val mounted = mount("initial query", listOf(first, second), emptySet(), coroutineContext)
+
+        withTimeout(2_000) { mounted.coordinator.states.first { it.generation == 1L && !it.isSearching } }
+        mounted.scene.render()
+        assertEquals(0, firstCalls.get())
+        assertEquals(0, secondCalls.get())
+
+        click(mounted.scene, MR.strings.all.localized())
+        withTimeout(2_000) { mounted.coordinator.states.first { it.generation == 2L && !it.isSearching } }
+        mounted.scene.render()
+
+        assertEquals(1, firstCalls.get())
+        assertEquals(1, secondCalls.get())
+        mounted.scene.close()
+    }
+
+    @Test
+    fun `manual search submits current all and pinned filters with entered query`() = runBlocking {
+        val pinnedCalls = AtomicInteger()
+        val unpinnedCalls = AtomicInteger()
+        val pinnedQueries = mutableListOf<String>()
+        val unpinnedQueries = mutableListOf<String>()
+        val pinned = source(21, "Pinned source", pinnedCalls, pinnedQueries)
+        val unpinned = source(22, "Unpinned source", unpinnedCalls, unpinnedQueries)
+        val mounted = mount("", listOf(pinned, unpinned), setOf(pinned.id.toString()), coroutineContext)
+        val allLabel = MR.strings.all.localized()
+        val pinnedLabel = MR.strings.pinned_sources.localized()
+
+        click(mounted.scene, allLabel)
+        mounted.scene.render()
+        assertTrue(selected(mounted.scene, allLabel))
+        assertEquals(0L, mounted.coordinator.state.generation)
+
+        setText(mounted.scene, "all query")
+        mounted.scene.render()
+        click(mounted.scene, "Search")
+        withTimeout(2_000) { mounted.coordinator.states.first { it.generation == 1L && !it.isSearching } }
+        assertEquals(1, pinnedCalls.get())
+        assertEquals(1, unpinnedCalls.get())
+        assertEquals(listOf("all query"), pinnedQueries)
+        assertEquals(listOf("all query"), unpinnedQueries)
+
+        click(mounted.scene, pinnedLabel)
+        withTimeout(2_000) { mounted.coordinator.states.first { it.generation == 2L && !it.isSearching } }
+        mounted.scene.render()
+        assertTrue(selected(mounted.scene, pinnedLabel))
+
+        setText(mounted.scene, "pinned query")
+        mounted.scene.render()
+        click(mounted.scene, "Search")
+        withTimeout(2_000) { mounted.coordinator.states.first { it.generation == 3L && !it.isSearching } }
+        assertEquals(2, pinnedCalls.get())
+        assertEquals(1, unpinnedCalls.get(), "Pinned manual search must not request the unpinned source")
+        assertEquals(listOf("all query", "pinned query"), pinnedQueries)
+        assertEquals(listOf("all query"), unpinnedQueries)
+        mounted.scene.close()
+    }
+
+    private data class MountedSearch(
+        val scene: ImageComposeScene,
+        val coordinator: DesktopGlobalSearchCoordinator,
+    )
+
+    private fun mount(
+        initialQuery: String,
+        sources: List<CatalogueSource>,
+        pinnedSourceIds: Set<String>,
+        coroutineContext: CoroutineContext,
+    ): MountedSearch {
+        val preferences = mockk<DesktopAppPreferences> {
+            every { enabledLanguages } returns preference(setOf("en"))
+            every { disabledSources } returns preference(emptySet())
+            every { pinnedSources } returns preference(pinnedSourceIds)
+        }
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { sourceManager } returns FakeDesktopSourceManager(sources)
+            every { appPreferences } returns preferences
+            every { sourceMangaSearchService } returns SourceMangaSearchService()
+            every { saveSourceMangaForDetails } returns mockk(relaxed = true)
+            every { sourceLoginSessionFactory } returns mockk(relaxed = true)
+        }
+        lateinit var coordinator: DesktopGlobalSearchCoordinator
+        val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
+        scene.setContent {
+            CompositionLocalProvider(
+                LocalDesktopUiDependencies provides dependencies,
+                LocalGlobalSearchCoordinatorFactory provides { service ->
+                    DesktopGlobalSearchCoordinator(service).also { coordinator = it }
+                },
+            ) { Navigator(GlobalSearchScreen(initialQuery)) { CurrentScreen() } }
+        }
+        scene.render()
+        return MountedSearch(scene, coordinator)
+    }
+
+    private fun source(
+        id: Long,
+        name: String,
+        calls: AtomicInteger,
+        queries: MutableList<String>? = null,
+    ): CatalogueSource = mockk {
         every { this@mockk.id } returns id
         every { this@mockk.name } returns name
         every { lang } returns "en"
         every { getFilterList() } returns FilterList()
         coEvery { getSearchManga(1, any(), any()) } answers {
             calls.incrementAndGet()
+            queries?.add(secondArg())
             MangasPage(emptyList(), false)
         }
     }
@@ -103,5 +212,10 @@ class GlobalSearchSourceFilterWiringTest {
     private fun click(scene: ImageComposeScene, label: String) {
         val node = nodes(scene).first { it.config.toString().contains(label) && it.config.contains(SemanticsActions.OnClick) }
         assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
+    }
+
+    private fun setText(scene: ImageComposeScene, value: String) {
+        val node = nodes(scene).first { it.config.contains(SemanticsActions.SetText) }
+        assertTrue(requireNotNull(node.config[SemanticsActions.SetText].action).invoke(AnnotatedString(value)))
     }
 }
