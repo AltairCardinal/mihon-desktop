@@ -981,27 +981,29 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt`
 
-- [ ] **Step 1: 写 DI singleton/reinit RED**
+- [x] **Step 1: 写 DI singleton/reinit RED**
 
   覆盖默认 `manager.installedExtensions` identity、重复 Injekt get 同实例、old model closed/new model distinct active、旧 context close 不影响新实例，以及 context 不在 close 阶段重新 Injekt get。
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.di.DesktopDiWiringTest"`
   Expected: FAIL，原因是 port/ScreenModel 尚未注册且 test context 未捕获其 owner。
 
-- [ ] **Step 3: 注册并实现 reinit ownership**
+- [x] **Step 3: 注册并实现 reinit ownership**
 
   DI 使用默认 production port 构造并注册单一 ScreenModel；`DesktopTestDIContext` 构造时捕获该实例，`closeAndJoin` 在 manager/network 前关闭并等待它。
 
-- [ ] **Step 4: 运行 GREEN 与断线 mutation**
+- [x] **Step 4: 运行 GREEN 与断线 mutation**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.di.DesktopDiWiringTest"`
   Expected: 全部 PASS；重复 new、显式假 flow、close 时重新 Injekt get、遗漏 model close 或关闭新实例时至少一项失败。
 
-- [ ] **Step 5: 提交 Task 6C**
+- [x] **Step 5: 提交 Task 6C**
 
   Commit: `refactor(desktop): adapt shared extension presentation`
+
+**6C2b2/Task 6C completion evidence:** `b2ec94cf6` 以 production 默认构造注册同一 Desktop presentation port/ScreenModel singleton；port flow 与 Manager authoritative flow 引用一致。`DesktopTestDIContext` 在构造时捕获 owner，reinit 在 manager/network/DB 前 close-and-join 旧 model，old/new context 与幂等 close 相互隔离。focused DI tests 8/8 PASS；省略 model shutdown 的 mutation 精确失败；2 files/62 changed lines，独立审查 Approved、无 P0/P1/P2。至此 6C1、6C2a、6C2b1a/1aR、6C2b1b、6C2b2 全部闭合，Desktop extension production ScreenModel 已消费 Task 6B shared state/actions，Desktop 独有 JAR/APK→JAR、trust request 与 runtime side effect 保留在 adapter/lifecycle 边界。
 
 ### Task 6D: Desktop Extension UI、详情/设置与 i18n wiring
 
