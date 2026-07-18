@@ -18,6 +18,8 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 
 class DesktopProductCapabilityContractTest {
     @TempDir
@@ -54,6 +56,14 @@ class DesktopProductCapabilityContractTest {
         )
     private val fixedOriginalMihonRef =
         "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8"
+    private val forkOnlyReaderPairingPaths =
+        setOf(
+            "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagePairingAlgorithm.kt",
+            "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PairingState.kt",
+            "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPageViewerAdapter.kt",
+            "app/src/test/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPagePairingTest.kt",
+            "app/src/test/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPageViewerAdapterTest.kt",
+        )
     private val fixedMainPathInventoryResource =
         "app-desktop/src/test/resources/parity/fixed-main-path-inventory.json"
     private val desktopProductEvidence =
@@ -73,6 +83,7 @@ class DesktopProductCapabilityContractTest {
             43 to
                 setOf(
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
+                    "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt",
@@ -113,8 +124,13 @@ class DesktopProductCapabilityContractTest {
                 mapOf(
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt" to
                         mapOf(
-                            "Android pairing adapter and shared default produce the same authoritative vectors" to
+                            "fork-added pairing adapter and shared core produce the same enhancement vectors" to
                                 setOf("PagePairingAlgorithm.buildPairings", "ReaderPagePairing.build"),
+                        ),
+                    "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt" to
+                        mapOf(
+                            "fork-added shared portrait pairing enhancement groups adjacent pages" to
+                                setOf("ReaderPagePairing.build", "PageLayout.PORTRAIT"),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt" to
                         mapOf(
@@ -608,11 +624,18 @@ class DesktopProductCapabilityContractTest {
         assertTrue(failure.message.orEmpty().contains("fixed-main inventory does not contain"), failure.message)
     }
 
-    @Test
-    fun `reader provenance rejects the fork pairing facade as a fixed-main symbol`() {
+    @ParameterizedTest(name = "rejects fork-only reader path {0}")
+    @ValueSource(
+        strings = [
+            "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagePairingAlgorithm.kt",
+            "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PairingState.kt",
+            "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPageViewerAdapter.kt",
+            "app/src/test/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPagePairingTest.kt",
+            "app/src/test/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPageViewerAdapterTest.kt",
+        ],
+    )
+    fun `reader provenance rejects fork-added pairing paths as fixed-main symbols`(forkPairingPath: String) {
         createSyntheticConsumerFiles()
-        val forkPairingPath =
-            "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagePairingAlgorithm.kt"
         val item = syntheticSourceExtensionItem(id = 43, upstreamPath = forkPairingPath)
 
         val failure = assertThrows(AssertionError::class.java) {
@@ -625,7 +648,7 @@ class DesktopProductCapabilityContractTest {
             )
         }
 
-        assertTrue(failure.message.orEmpty().contains("fork-only PagePairingAlgorithm"), failure.message)
+        assertTrue(failure.message.orEmpty().contains("fork-only reader pairing path"), failure.message)
     }
 
     @Test
@@ -877,8 +900,8 @@ class DesktopProductCapabilityContractTest {
             requiredText(symbol, "symbol", id, "upstreamSymbols[$index]")
             if (id == 43) {
                 assertFalse(
-                    path.endsWith("/PagePairingAlgorithm.kt"),
-                    "ID 43: fork-only PagePairingAlgorithm must not be listed as a fixed-main upstream symbol",
+                    path in forkOnlyReaderPairingPaths,
+                    "ID 43: fork-only reader pairing path $path must not be listed as a fixed-main upstream symbol",
                 )
             }
             assertTrue(

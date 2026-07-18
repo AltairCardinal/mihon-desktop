@@ -643,6 +643,7 @@
     "desktopImplementation": "VirtualPageList/DualPageState/PageSplitHalf consume shared transforms and explicitly layer cover single, manual adjustment, edge matching and landscape parity without claiming fixed-main pairing authority",
     "protectionTests": [
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
+      "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt"

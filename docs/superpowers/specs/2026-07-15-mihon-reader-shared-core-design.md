@@ -12,7 +12,7 @@ status: final
 
 Mihon Desktop 从 Android 原版 fork 后，为快速获得可用阅读器，在 Compose/Skia 层重新实现了页面拆分、双页配对、导航、章节跳过、滤镜与预加载。长期结果是 Android 与 Desktop 对相同章节可能产生不同页序、错误状态、跳过目标和内存行为。
 
-> **2026-07-18 authority correction：** 固定 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` 有 Pager/Webtoon 单页顺序、宽源页拆分/旋转和章节过渡，但没有将相邻 portrait 页组合成 display unit 的默认 pairing 算法。`ReaderPagePairing` 来自 fork 提交 `bef51fc69`，现作为 Android/Desktop 共用的双页产品增强保留。证据与影响见 [authority correction report](../../../.superpowers/sdd/authority-correction-wave2-reader-report.md)。
+> **2026-07-18 authority correction：** 固定 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` 有 Pager/Webtoon 单页顺序、宽源页拆分/旋转和章节过渡，但没有将相邻 portrait 页组合成 display unit 的默认 pairing 算法。`ReaderPagePairing` 来自 fork 提交 `bef51fc69`，现作为 Android/Desktop 共用的双页产品增强保留。证据与影响见 [Reader authority](../../architecture/reader-authority.md)。
 
 本 change 将非平台特有的阅读器语义收敛为 `domain/common` 的唯一实现。Android 和 Desktop 只保留像素载体、渲染控件、文件/网络 side effect 与输入设备差异。Desktop 的 edge matching、自动滚动、键盘/鼠标和右键保存属于永久产品能力，必须继续存在但不能替代共享语义。
 

@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test
 class ReaderParityContractTest {
 
     @Test
-    fun `Android portrait pairing vectors are preserved by the shared algorithm`() {
+    fun `fork-added shared portrait pairing enhancement groups adjacent pages`() {
         val pairings = ReaderPagePairing.build(
             pageCount = 4,
             layoutAt = { PageLayout.PORTRAIT },
@@ -157,7 +157,7 @@ class ReaderParityContractTest {
     }
 
     @Test
-    fun `vertical virtual wide pages follow Android Webtoon order and expose rotated source bounds`() {
+    fun `vertical virtual wide pages follow fixed original Mihon Webtoon order and expose rotated source bounds`() {
         val vertical = buildVirtualReaderPages(
             totalPages = 1,
             spreadPages = setOf(0),
@@ -233,7 +233,7 @@ class ReaderParityContractTest {
     }
 
     @Test
-    fun `Android navigation presets support horizontal vertical and combined inversion`() {
+    fun `fixed original Mihon navigation presets support horizontal vertical and combined inversion`() {
         assertEquals(
             ReaderNavigationCommand.Previous,
             ReaderNavigation.commandAt(0.1f, 0.5f, NavigationPreset.RIGHT_AND_LEFT),
@@ -303,7 +303,7 @@ class ReaderParityContractTest {
     }
 
     @Test
-    fun `duplicate identification preserves current chapter then matching scanlator like Android`() {
+    fun `duplicate identification matches fixed original Mihon current-chapter and scanlator order`() {
         val chapters = listOf(
             ReaderChapterEntry(5, chapterNumber = 5.0, scanlator = "A"),
             ReaderChapterEntry(41, chapterNumber = 4.0, scanlator = "A"),
@@ -387,7 +387,7 @@ class ReaderParityContractTest {
     }
 
     @Test
-    fun `reader filtered metadata follows authoritative manga chapter flags`() {
+    fun `reader filtered metadata follows fixed original Mihon manga chapter flags`() {
         assertTrue(
             isReaderChapterFiltered(
                 unreadFilterRaw = tachiyomi.domain.manga.model.Manga.CHAPTER_SHOW_UNREAD,
@@ -449,7 +449,7 @@ class ReaderParityContractTest {
     }
 
     @Test
-    fun `Android preload window keeps authoritative forward-only behavior`() {
+    fun `fixed original Mihon preload window keeps forward-only behavior`() {
         val planner = ReaderPreloadPlanner(windowSize = 4, backwardWindowSize = 0)
 
         val plan = planner.moveTo(currentPage = 2, pageCount = 8)

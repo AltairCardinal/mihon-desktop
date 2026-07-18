@@ -38,7 +38,7 @@ import java.io.File
 class ReaderSharedParityWiringTest {
 
     @Test
-    fun `Android pairing adapter and shared default produce the same authoritative vectors`() {
+    fun `fork-added pairing adapter and shared core produce the same enhancement vectors`() {
         val android = PagePairingAlgorithm.buildPairings(5, { index -> index == 2 })
         val shared = ReaderPagePairing.build(
             pageCount = 5,
@@ -50,7 +50,7 @@ class ReaderSharedParityWiringTest {
     }
 
     @Test
-    fun `Android page adapter exposes platform neutral page metadata`() {
+    fun `current Android consumer page adapter exposes platform neutral page metadata`() {
         val shared = ReaderPage(index = 4, url = "/page/4", imageUrl = "https://example/4.jpg").toSharedPageModel()
 
         assertEquals(4, shared.index)
@@ -59,7 +59,7 @@ class ReaderSharedParityWiringTest {
     }
 
     @Test
-    fun `Android navigation adapters match every shared preset and inversion`() {
+    fun `current Android consumer navigation adapters match every shared preset and inversion`() {
         val adapters = listOf(
             RightAndLeftNavigation() to NavigationPreset.RIGHT_AND_LEFT,
             KindlishNavigation() to NavigationPreset.KINDLE,
@@ -84,7 +84,7 @@ class ReaderSharedParityWiringTest {
     }
 
     @Test
-    fun `Android grayscale and invert preferences are mapped to the shared filter contract`() {
+    fun `current Android consumer grayscale and invert preferences map to the shared filter contract`() {
         val params = buildAndroidLayerFilterParams(grayscale = true, invertedColors = true)
 
         assertTrue(params.grayscaleEnabled)
@@ -93,7 +93,7 @@ class ReaderSharedParityWiringTest {
     }
 
     @Test
-    fun `Android maps tint brightness grayscale and invert as independent shared effects`() {
+    fun `current Android consumer maps tint brightness grayscale and invert as independent shared effects`() {
         val tintOnly = buildAndroidReaderColorFilterParams(tintEnabled = true, alpha = 128)
         val brightnessOnly = buildAndroidReaderColorFilterParams(brightnessEnabled = true, brightness = -0.5f)
         val grayscaleOnly = buildAndroidReaderColorFilterParams(grayscaleEnabled = true)
@@ -106,7 +106,7 @@ class ReaderSharedParityWiringTest {
     }
 
     @Test
-    fun `Android ReaderViewModel forwards the logical page selection to the production loader`() = runTest {
+    fun `current Android consumer forwards logical page selection to production loader`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
             val downloadPreferences = mockk<DownloadPreferences>(relaxed = true)
@@ -151,7 +151,7 @@ class ReaderSharedParityWiringTest {
     }
 
     @Test
-    fun `Android recomputes duplicates after read and filtered candidates are removed`() {
+    fun `current Android consumer recomputes duplicates after read and filtered candidates are removed`() {
         val entries = listOf(
             ReaderChapterEntry(1, isRead = true, chapterNumber = 4.0, scanlator = "A"),
             ReaderChapterEntry(2, chapterNumber = 4.0, scanlator = "B"),
@@ -168,7 +168,7 @@ class ReaderSharedParityWiringTest {
     }
 
     @Test
-    fun `Android production chapter pipeline maps real chapter metadata before applying shared skip policy`() {
+    fun `current Android consumer chapter pipeline maps metadata before applying shared skip policy`() {
         val chapters = listOf(
             chapter(id = 41, number = 4.0, scanlator = "A", read = true),
             chapter(id = 42, number = 4.0, scanlator = "B"),
@@ -188,7 +188,7 @@ class ReaderSharedParityWiringTest {
     }
 
     @Test
-    fun `Android ReaderViewModel getChapterList delegates the sorted production list to the shared skip filter`() {
+    fun `current Android consumer ReaderViewModel delegates the sorted chapter list to the shared skip filter`() {
         val readerViewModel = productionSource("app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt")
         val getChapterList = bracedBlock(readerViewModel, "private suspend fun getChapterList()")
 

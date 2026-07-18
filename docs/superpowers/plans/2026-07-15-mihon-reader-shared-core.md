@@ -7,7 +7,7 @@ archived-with: 2026-07-15-align-reader-core
 
 # Mihon 阅读器共享核心实施计划
 
-> **2026-07-18 authority correction：** 本计划当时把 fork 新增的相邻 portrait 页 pairing 向量误写为 Android 原版默认。固定 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` 并无直接可比的 pairing 算法；共享实现作为双端产品增强保留，不改变用户行为。证据见 [authority correction report](../../../.superpowers/sdd/authority-correction-wave2-reader-report.md)。
+> **2026-07-18 authority correction：** 本计划当时把 fork 新增的相邻 portrait 页 pairing 向量误写为 Android 原版默认。固定 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` 并无直接可比的 pairing 算法；共享实现作为双端产品增强保留，不改变用户行为。证据见 [Reader authority](../../architecture/reader-authority.md)。
 
 > 本计划在当前分支 `claude/pensive-vaughan` 和现有 Task 4A 未提交工作树上继续。不得创建平行实现，也不得把 SDK、Gradle 缓存、构建产物、旧 Task 3B 审查草稿或其他临时文件混入提交。
 
