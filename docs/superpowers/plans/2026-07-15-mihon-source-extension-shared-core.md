@@ -767,6 +767,8 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt`
 - Create: `app/src/test/java/eu/kanade/tachiyomi/extension/ExtensionManagerTest.kt`
 
+**6B2b completion evidence:** `ed577a8c2` 保持 fixed-main install/update/cancel/uninstall/trust 与 receiver 顺序，并让 trust reload 使用 injected loader adapter；事务 ID、active receiver 去重和 rollback 等安全超集保留。行为 RED 证明静态 loader 会绕过 seam；失败原子性测试以预先激活的 disappearance observer 证明 trust persistence/private cleanup 抛错时状态不提前移除。focused tests 4/4，2 files/220 changed lines，唯一修复复审 Approved。
+
 #### Task 6B2c: Android extension UI action lifecycle wiring
 
 - Risk axis: `extension-presentation-android-ui-actions`
