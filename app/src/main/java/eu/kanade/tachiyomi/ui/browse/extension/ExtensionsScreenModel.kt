@@ -26,9 +26,14 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import mihon.domain.extension.presentation.ExtensionPresentationAction
+import mihon.domain.extension.presentation.ExtensionPresentationActionState
 import mihon.domain.extension.presentation.ExtensionPresentationClassifier
+import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
+import mihon.domain.extension.presentation.ExtensionPresentationStore
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
@@ -42,9 +47,11 @@ class ExtensionsScreenModel(
     private val getExtensions: GetExtensionsByType = Injekt.get(),
     private val classifier: ExtensionPresentationClassifier<Extension> = androidExtensionPresentationStore,
     private val context: Application = Injekt.get(),
+    private val actionStore: ExtensionPresentationStore<Extension> =
+        androidExtensionPresentationStore,
 ) : StateScreenModel<ExtensionsScreenModel.State>(State()) {
 
-    private val currentDownloads = MutableStateFlow<Map<String, InstallStep>>(hashMapOf())
+    private val actionState = MutableStateFlow(ExtensionPresentationActionState())
 
     init {
         val extensionMapper: (Map<String, InstallStep>) -> ((Extension) -> ExtensionUiModel.Item) = { map ->
@@ -59,7 +66,9 @@ class ExtensionsScreenModel(
                     .distinctUntilChanged()
                     .debounce(SEARCH_DEBOUNCE_MILLIS)
                     .map { searchQueryPredicate(it ?: "") },
-                currentDownloads,
+                actionState.map { actionState ->
+                    actionState.installSteps.mapValues { InstallStep.valueOf(it.value.name) }
+                },
                 getExtensions.subscribe(),
             ) { predicate, downloads, (_updates, _installed, _available, _untrusted) ->
                 buildMap {
@@ -145,16 +154,29 @@ class ExtensionsScreenModel(
     }
 
     private fun addDownloadState(extension: Extension, installStep: InstallStep) {
-        currentDownloads.update { it + Pair(extension.pkgName, installStep) }
+        dispatch(
+            ExtensionPresentationAction.InstallStepChanged(
+                extension.pkgName,
+                ExtensionPresentationInstallStep.valueOf(installStep.name),
+            ),
+        )
     }
 
     private fun removeDownloadState(extension: Extension) {
-        currentDownloads.update { it - extension.pkgName }
+        dispatch(ExtensionPresentationAction.InstallFinished(extension.pkgName))
+    }
+
+    private fun dispatch(action: ExtensionPresentationAction) {
+        actionState.update { actionStore.reduce(it, action) }
+        mutableState.update { it.copy(isRefreshing = actionState.value.isRefreshing) }
     }
 
     private suspend fun Flow<InstallStep>.collectToInstallUpdate(extension: Extension) =
         this
             .onEach { installStep -> addDownloadState(extension, installStep) }
+            .takeWhile { installStep ->
+                actionStore.shouldContinue(ExtensionPresentationInstallStep.valueOf(installStep.name))
+            }
             .onCompletion { removeDownloadState(extension) }
             .collect()
 
@@ -164,14 +186,14 @@ class ExtensionsScreenModel(
 
     fun findAvailableExtensions() {
         screenModelScope.launchIO {
-            mutableState.update { it.copy(isRefreshing = true) }
+            dispatch(ExtensionPresentationAction.RefreshStarted)
 
             extensionManager.findAvailableExtensions()
 
             // Fake slower refresh so it doesn't seem like it's not doing anything
             delay(1.seconds)
 
-            mutableState.update { it.copy(isRefreshing = false) }
+            dispatch(ExtensionPresentationAction.RefreshFinished)
         }
     }
 

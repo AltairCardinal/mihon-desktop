@@ -45,7 +45,7 @@ class GetExtensionsByType(
     }
 }
 
-internal val androidExtensionPresentationStore: ExtensionPresentationClassifier<Extension> =
+internal val androidExtensionPresentationStore =
     ExtensionPresentationStore(AndroidExtensionPresentationAdapter)
 
 private object AndroidExtensionPresentationAdapter : ExtensionPresentationAdapter<Extension> {

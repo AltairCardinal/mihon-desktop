@@ -6,6 +6,7 @@ import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.extension.interactor.ExtensionSourceItem
 import eu.kanade.domain.extension.interactor.GetExtensionSources
+import eu.kanade.domain.extension.interactor.androidExtensionPresentationStore
 import eu.kanade.domain.source.interactor.ToggleIncognito
 import eu.kanade.domain.source.interactor.ToggleSource
 import eu.kanade.domain.source.service.SourcePreferences
@@ -27,6 +28,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import logcat.LogPriority
+import mihon.domain.extension.presentation.ExtensionPresentationStore
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import tachiyomi.core.common.util.system.logcat
 import uy.kohesive.injekt.Injekt
@@ -41,6 +43,8 @@ class ExtensionDetailsScreenModel(
     private val toggleSource: ToggleSource = Injekt.get(),
     private val toggleIncognito: ToggleIncognito = Injekt.get(),
     private val preferences: SourcePreferences = Injekt.get(),
+    private val actionStore: ExtensionPresentationStore<Extension> =
+        androidExtensionPresentationStore,
 ) : StateScreenModel<ExtensionDetailsScreenModel.State>(State()) {
 
     private val _events: Channel<ExtensionDetailsEvent> = Channel()
@@ -65,16 +69,11 @@ class ExtensionDetailsScreenModel(
                 state.collectLatest { state ->
                     if (state.extension == null) return@collectLatest
                     getExtensionSources.subscribe(state.extension)
-                        .map {
-                            it.sortedWith(
-                                compareBy(
-                                    { !it.enabled },
-                                    { item ->
-                                        item.source.name.takeIf { item.labelAsName }
-                                            ?: LocaleHelper.getSourceDisplayName(item.source.lang, context).lowercase()
-                                    },
-                                ),
-                            )
+                        .map { sources ->
+                            actionStore.enabledFirst(sources, ExtensionSourceItem::enabled) { item ->
+                                item.source.name.takeIf { item.labelAsName }
+                                    ?: LocaleHelper.getSourceDisplayName(item.source.lang, context).lowercase()
+                            }
                         }
                         .catch { throwable ->
                             logcat(LogPriority.ERROR, throwable)

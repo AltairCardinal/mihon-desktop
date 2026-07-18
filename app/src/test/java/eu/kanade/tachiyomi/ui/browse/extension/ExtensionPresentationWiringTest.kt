@@ -2,33 +2,147 @@ package eu.kanade.tachiyomi.ui.browse.extension
 
 import android.app.Application
 import eu.kanade.domain.base.BasePreferences
+import eu.kanade.domain.extension.interactor.ExtensionSourceItem
 import eu.kanade.domain.extension.interactor.GetExtensionsByType
 import eu.kanade.domain.extension.interactor.androidExtensionPresentationStore
 import eu.kanade.domain.extension.model.Extensions
+import eu.kanade.domain.source.interactor.ToggleIncognito
+import eu.kanade.domain.source.interactor.ToggleSource
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
+import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.ui.browse.extension.details.ExtensionDetailsEvent
+import eu.kanade.tachiyomi.ui.browse.extension.details.ExtensionDetailsScreenModel
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.spyk
 import io.mockk.verify
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import mihon.domain.extension.presentation.ExtensionPresentationAction
+import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
+import mihon.domain.extension.presentation.ExtensionPresentationStore
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.Preference
+import java.util.concurrent.atomic.AtomicBoolean
 
 class ExtensionPresentationWiringTest {
+
+    @Test
+    fun `android install collection stops at installed and cleans package state`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val extension = available("Reader", "pkg.reader", emptyList())
+        val collectedPastInstalled = AtomicBoolean(false)
+        val actionStore = spyk(androidExtensionPresentationStore)
+        val manager = mockk<ExtensionManager>(relaxed = true) {
+            every { installExtension(extension) } returns flow {
+                emit(eu.kanade.tachiyomi.extension.model.InstallStep.Installing)
+                emit(eu.kanade.tachiyomi.extension.model.InstallStep.Installed)
+                collectedPastInstalled.set(true)
+                emit(eu.kanade.tachiyomi.extension.model.InstallStep.Error)
+            }
+        }
+        val screenModel = screenModel(
+            manager,
+            Extensions(emptyList(), emptyList(), listOf(extension), emptyList()),
+            actionStore,
+        )
+        try {
+            screenModel.installExtension(extension)
+            verify(timeout = 5_000) {
+                actionStore.reduce(
+                    match { it.installSteps[extension.pkgName] == ExtensionPresentationInstallStep.Installed },
+                    ExtensionPresentationAction.InstallFinished(extension.pkgName),
+                )
+            }
+            verify(timeout = 5_000) {
+                actionStore.reduce(any(), ExtensionPresentationAction.RefreshStarted)
+                actionStore.reduce(match { it.isRefreshing }, ExtensionPresentationAction.RefreshFinished)
+            }
+            verify { actionStore.shouldContinue(ExtensionPresentationInstallStep.Installed) }
+            verify {
+                actionStore.reduce(any(), match { it is ExtensionPresentationAction.InstallStepChanged })
+            }
+            assertFalse(collectedPastInstalled.get())
+        } finally {
+            screenModel.onDispose()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `android details keep fixed main source actions and exit only after installed flow removal`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val zulu = source(3, "Zulu")
+        val alpha = source(2, "alpha")
+        val disabled = source(1, "Aardvark")
+        val extension = installed("Reader", "pkg.reader", sources = listOf(disabled, alpha, zulu))
+        val installedFlow = MutableStateFlow(listOf(extension))
+        val manager = mockk<ExtensionManager>(relaxed = true) {
+            every { installedExtensionsFlow } returns installedFlow
+        }
+        val toggleSource = mockk<ToggleSource>(relaxed = true)
+        val toggleIncognito = mockk<ToggleIncognito>(relaxed = true)
+        val preferences = mockk<SourcePreferences> {
+            every { incognitoExtensions() } returns preference(setOf(extension.pkgName))
+        }
+        val actionStore = spyk(androidExtensionPresentationStore)
+        val details = ExtensionDetailsScreenModel(
+            extension.pkgName,
+            mockk(relaxed = true),
+            mockk<NetworkHelper>(relaxed = true),
+            manager,
+            mockk {
+                every { subscribe(extension) } returns flowOf(
+                    listOf(
+                        ExtensionSourceItem(disabled, false, true),
+                        ExtensionSourceItem(alpha, true, true),
+                        ExtensionSourceItem(zulu, true, true),
+                    ),
+                )
+            },
+            toggleSource,
+            toggleIncognito,
+            preferences,
+            actionStore,
+        )
+        try {
+            assertEquals(listOf(3L, 2L, 1L), details.state.value.sources.map { it.source.id })
+            verify { actionStore.enabledFirst<ExtensionSourceItem>(any(), any(), any()) }
+            details.toggleSource(2)
+            details.toggleSources(false)
+            details.toggleIncognito(true)
+            val event = async(start = CoroutineStart.UNDISPATCHED) { details.events.first() }
+            details.uninstallExtension()
+            assertFalse(event.isCompleted)
+            verify { toggleSource.await(2) }
+            verify { toggleSource.await(listOf(1L, 2L, 3L), false) }
+            verify { toggleIncognito.await(extension.pkgName, true) }
+            verify { manager.uninstallExtension(extension) }
+            assertTrue(installedFlow.value.isNotEmpty())
+            installedFlow.value = emptyList()
+            assertEquals(ExtensionDetailsEvent.Uninstalled, event.await())
+        } finally {
+            details.onDispose()
+            Dispatchers.resetMain()
+        }
+    }
 
     @Test
     fun `android get extensions consumes shared classification and source projection`() = runTest {
@@ -137,6 +251,7 @@ class ExtensionPresentationWiringTest {
             verify { classifier.searchPredicate("org.example", false) }
             verify { classifier.searchPredicate("org.example", true) }
         } finally {
+            screenModel.onDispose()
             Dispatchers.resetMain()
         }
     }
@@ -181,6 +296,34 @@ class ExtensionPresentationWiringTest {
 
     private fun untrusted(name: String, pkg: String) =
         Extension.Untrusted(name, pkg, "1.0", 1, 1.4, "signature")
+
+    private fun source(sourceId: Long, sourceName: String) = mockk<Source> {
+        every { id } returns sourceId
+        every { name } returns sourceName
+        every { lang } returns "en"
+    }
+
+    private fun screenModel(
+        manager: ExtensionManager,
+        extensions: Extensions,
+        actionStore: ExtensionPresentationStore<Extension>,
+    ): ExtensionsScreenModel {
+        val preferences = mockk<SourcePreferences> { every { extensionUpdatesCount() } returns preference(0) }
+        val basePreferences = mockk<BasePreferences> {
+            every { extensionInstaller() } returns mockk {
+                every { changes() } returns flowOf(BasePreferences.ExtensionInstaller.PACKAGEINSTALLER)
+            }
+        }
+        return ExtensionsScreenModel(
+            preferences,
+            basePreferences,
+            manager,
+            mockk { every { subscribe() } returns flowOf(extensions) },
+            androidExtensionPresentationStore,
+            mockk(relaxed = true),
+            actionStore,
+        )
+    }
 
     private fun <T> preference(value: T) = mockk<Preference<T>> {
         every { get() } returns value
