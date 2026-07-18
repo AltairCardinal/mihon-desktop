@@ -1077,6 +1077,24 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
   Expected: 断开 ScreenModel collect、把 partial failure 折叠成 empty、恢复本地 classifier 或删除任一 locale key 时至少一项失败。
 
+**Review status:** 初审四项经唯一修复轮已关闭，但复审发现 Available UI 将 shared 逐-source `DesktopExtensionItem` 按 operation package 去重并降回 raw extension，仍会丢失 fixed-main 的 source 名称、语言和分组。按门禁停止 6D1b，不追加第二修复轮；由 6D1bR 独立闭环后再统一 checkoff。
+
+##### Task 6D1bR: Available source projection closure
+
+- Risk axis: `extension-list-source-projection`
+- Platform boundary: `desktop`
+- Estimated scope: `2 files, 100 lines` incremental on the reviewed 6D1b worktree
+- Verification: AvailableTab/Card 端到端消费 `DesktopExtensionItem.presentation`，不按 operation package 合并逐-source projection；side effect 仅从 item 取 typed raw candidate。真实 Screen 测试以一个未安装、多 source candidate 断言两个 source 名称/语言同时可见；恢复 raw mapping 或 package distinct 时必须失败。
+- Carry-forward waiver: 6D1b 的 `373/400` 两文件修复仍未提交，6D1bR 只计复审新发现的增量 closure；最终提交前同时报告组合 diff，若组合 diff 超过 400 lines 则先机械收缩测试，不扩大文件范围。
+
+**Files:**
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionListScreen.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionPresentationUiTest.kt`
+
+- [ ] **Step 1: 写 multi-source available RED 与 raw-deprojection mutation**
+- [ ] **Step 2: Available UI 保留 shared projected item**
+- [ ] **Step 3: 运行 focused GREEN、CopyContract 与 singleton DI 回归**
+
 #### Task 6D2: Extension list install、trust 与 error action UI
 
 - Risk axis: `extension-list-action-ui`
