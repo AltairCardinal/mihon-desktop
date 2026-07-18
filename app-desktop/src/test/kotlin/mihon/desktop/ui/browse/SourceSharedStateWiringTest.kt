@@ -567,7 +567,7 @@ class SourceSharedStateWiringTest {
             val source = RoutedHttpSource(server.url("/").toString().removeSuffix("/"), OkHttpClient.Builder().cookieJar(cookieJar).build())
             val dependencies = mockk<DesktopUiDependencies> {
                 every { sourceManager } returns MutableSourceManager(listOf(source))
-                every { appPreferences } returns sourcePreferences()
+                every { appPreferences } returns sourcePreferences(pinnedSources = setOf(source.id.toString()))
                 every { sourceMangaSearchService } returns SourceMangaSearchService()
                 every { saveSourceMangaForDetails } returns mockk(relaxed = true)
                 every { sourceLoginSessionFactory } returns DesktopSourceLoginSessionFactory(
@@ -648,7 +648,9 @@ class SourceSharedStateWiringTest {
         val dynamicSourceManager = MutableSourceManager(listOf(first))
         val dependencies = mockk<DesktopUiDependencies> {
             every { sourceManager } returns dynamicSourceManager
-            every { appPreferences } returns sourcePreferences()
+            every { appPreferences } returns sourcePreferences(
+                pinnedSources = setOf(first.id.toString(), second.id.toString()),
+            )
             every { sourceMangaSearchService } returns SourceMangaSearchService()
             every { saveSourceMangaForDetails } returns mockk(relaxed = true)
             every { sourceLoginSessionFactory } returns DesktopSourceLoginSessionFactory(
