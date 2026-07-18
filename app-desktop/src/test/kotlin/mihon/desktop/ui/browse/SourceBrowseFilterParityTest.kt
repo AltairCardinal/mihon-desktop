@@ -38,6 +38,7 @@ class SourceBrowseFilterParityTest {
 
         click(scene, "Filter")
         click(scene, "Apply")
+        source.assertNextSearchRuntimeTypes()
         val defaultApply = source.next()
         assertEquals(Kind.Search, defaultApply.kind)
         assertEquals(1, defaultApply.page)
@@ -47,6 +48,7 @@ class SourceBrowseFilterParityTest {
         click(scene, "Search")
         setText(scene, "hero")
         submitText(scene)
+        source.assertNextSearchRuntimeTypes()
         val textSearch = source.next()
         assertEquals(Kind.Search, textSearch.kind)
         assertEquals("hero", textSearch.query)
@@ -71,11 +73,13 @@ class SourceBrowseFilterParityTest {
 
         source.paginateSearch = true
         click(scene, "Apply")
+        source.assertNextSearchRuntimeTypes()
         val page1 = source.next()
         assertEquals(Kind.Search, page1.kind)
         assertEquals(1, page1.page)
         assertEquals("", page1.query)
         val page2 = awaitNextRendering(scene, source)
+        source.assertNextSearchRuntimeTypes()
         assertEquals(2, page2.page)
         assertEquals(page1.query, page2.query)
         assertSame(page1.filters, page2.filters)
@@ -87,6 +91,7 @@ class SourceBrowseFilterParityTest {
         assertTrue(selected(scene, "Popular"))
         click(scene, "Filter")
         click(scene, "Apply")
+        source.assertNextSearchRuntimeTypes()
         val afterPopular = source.next()
         assertNull(afterPopular.filters!!.filterIsInstance<Filter.Sort>().single().state)
 
@@ -166,8 +171,17 @@ class SourceBrowseFilterParityTest {
         val filters: FilterList? = null,
     )
 
+    private class ExtensionSelect(state: Int = 0) : Filter.Select<String>(
+        "Language",
+        arrayOf("First", "Second"),
+        state,
+    )
+
+    private class ExtensionGroup(state: List<Filter<*>>) : Filter.Group<Filter<*>>("Outer", state)
+
     private class RecordingSource : CatalogueSource {
         private val calls = Channel<Call>(Channel.UNLIMITED)
+        private val searchRuntimeTypeFailures = Channel<Throwable?>(Channel.UNLIMITED)
         var paginateSearch = false
         override val id = 73L
         override val name = "Filter source"
@@ -182,8 +196,23 @@ class SourceBrowseFilterParityTest {
             calls.send(Call(Kind.Latest, page))
         }
         override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
+            val runtimeTypes = runCatching {
+                val group = filters.filterIsInstance<ExtensionGroup>().single()
+                val select = group.state.filterIsInstance<ExtensionSelect>().single()
+                check(select.values.javaClass == arrayOf<String>().javaClass) {
+                    "Extension Select values must remain String[]"
+                }
+            }
+            searchRuntimeTypeFailures.send(runtimeTypes.exceptionOrNull())
+            runtimeTypes.getOrThrow()
             calls.send(Call(Kind.Search, page, query, filters))
             return if (paginateSearch && page == 1) MangasPage(listOf(manga()), true) else MangasPage(emptyList(), false)
+        }
+        suspend fun assertNextSearchRuntimeTypes() {
+            assertNull(
+                withTimeout(3_000) { searchRuntimeTypeFailures.receive() },
+                "source must receive its own Filter runtime subtypes and String[] values",
+            )
         }
         override fun getFilterList() = filters()
         override suspend fun getMangaDetails(manga: SManga) = manga
@@ -195,12 +224,13 @@ class SourceBrowseFilterParityTest {
             Filter.Separator(),
             object : Filter.TriState("Licensed") {},
             object : Filter.Text("Keyword") {},
-            object : Filter.Select<String>("Language", arrayOf("First", "Second")) {},
             object : Filter.Sort("Order", arrayOf("Newest", "Oldest")) {},
-            object : Filter.Group<Filter<*>>(
-                "Outer",
-                listOf(object : Filter.Group<Filter<*>>("Inner", listOf(object : Filter.CheckBox("Completed") {})) {}),
-            ) {},
+            ExtensionGroup(
+                listOf(
+                    ExtensionSelect(),
+                    object : Filter.Group<Filter<*>>("Inner", listOf(object : Filter.CheckBox("Completed") {})) {},
+                ),
+            ),
         )
 
         private fun manga() = SManga.create().apply { url = "/page"; title = "Page" }

@@ -509,7 +509,12 @@ private fun FilterDialog(
     onApply: (FilterList) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var draft by remember(filters) { mutableStateOf(filters.deepCopyFilters()) }
+    fun freshSourceTree(): FilterList = resetFilters().also {
+        require(it !== filters) { "Source must return a fresh FilterList for draft editing" }
+    }
+    var draft by remember(filters) {
+        mutableStateOf(filters.copyStatesToFreshTree(freshSourceTree()))
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -524,7 +529,7 @@ private fun FilterDialog(
         },
         dismissButton = {
             Row {
-                TextButton(onClick = { draft = resetFilters().deepCopyFilters() }) {
+                TextButton(onClick = { draft = freshSourceTree() }) {
                     Text("Reset", color = MaterialTheme.colorScheme.error)
                 }
                 TextButton(onClick = onDismiss) { Text("Cancel") }

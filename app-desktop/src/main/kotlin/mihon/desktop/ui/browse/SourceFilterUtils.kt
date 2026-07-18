@@ -15,18 +15,35 @@ fun hasActiveFilters(filters: FilterList): Boolean = filters.any { filter ->
     }
 }
 
-internal fun FilterList.deepCopyFilters(): FilterList = FilterList(map { it.deepCopy() })
+internal fun FilterList.copyStatesToFreshTree(fresh: FilterList): FilterList {
+    require(this !== fresh) { "Source must return a fresh FilterList for draft editing" }
+    require(size == fresh.size) { "Source FilterList structure changed while creating a draft" }
+    zip(fresh).forEach { (committed, draft) -> committed.copyStateTo(draft) }
+    return fresh
+}
 
-private fun Filter<*>.deepCopy(): Filter<*> = when (this) {
-    is Filter.Header -> Filter.Header(name)
-    is Filter.Separator -> Filter.Separator(name)
-    is Filter.CheckBox -> object : Filter.CheckBox(name, state) {}
-    is Filter.TriState -> object : Filter.TriState(name, state) {}
-    is Filter.Text -> object : Filter.Text(name, state) {}
-    is Filter.Select<*> -> object : Filter.Select<Any?>(name, values.map { it }.toTypedArray(), state) {}
-    is Filter.Sort -> object : Filter.Sort(name, values.copyOf(), state?.copy()) {}
-    is Filter.Group<*> -> object : Filter.Group<Any?>(
-        name,
-        state.map { value -> (value as? Filter<*>)?.deepCopy() ?: value },
-    ) {}
+private fun Filter<*>.copyStateTo(draft: Filter<*>) {
+    require(name == draft.name && javaClass == draft.javaClass) {
+        "Source Filter structure changed at '$name'"
+    }
+    when {
+        this is Filter.Header && draft is Filter.Header -> Unit
+        this is Filter.Separator && draft is Filter.Separator -> Unit
+        this is Filter.CheckBox && draft is Filter.CheckBox -> draft.state = state
+        this is Filter.TriState && draft is Filter.TriState -> draft.state = state
+        this is Filter.Text && draft is Filter.Text -> draft.state = state
+        this is Filter.Select<*> && draft is Filter.Select<*> -> draft.state = state
+        this is Filter.Sort && draft is Filter.Sort -> draft.state = state?.copy()
+        this is Filter.Group<*> && draft is Filter.Group<*> -> {
+            require(state.size == draft.state.size) { "Source Filter group '$name' changed shape" }
+            state.zip(draft.state).forEach { (committedChild, draftChild) ->
+                if (committedChild is Filter<*> && draftChild is Filter<*>) {
+                    committedChild.copyStateTo(draftChild)
+                } else {
+                    require(committedChild == draftChild) { "Source Filter group '$name' changed values" }
+                }
+            }
+        }
+        else -> error("Source Filter kind changed at '$name'")
+    }
 }
