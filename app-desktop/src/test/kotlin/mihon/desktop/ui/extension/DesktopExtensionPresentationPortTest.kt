@@ -67,16 +67,14 @@ class DesktopExtensionPresentationPortTest {
             jarUrl = artifact.downloadUrl, iconUrl = "", repoUrl = repository.baseUrl,
         )
         val api = mockk<DesktopExtensionApi> { coEvery { refreshCatalog() } returns catalog }
-        val manager = mockk<DesktopExtensionManager> {
-            every { installedExtensions } returns installed
-        }
+        val manager = mockk<DesktopExtensionManager>()
         every { api.availableExtensions(catalog) } returns listOf(available)
         every { api.discardTrust("request") } returns true
         val states = flowOf(mihon.domain.extension.service.ExtensionInstallState.Preparing)
         val start = DesktopExtensionInstallStart.Started(states)
         coEvery { api.beginInstall(available, manager) } returns start
         every { api.confirmTrust("request", manager) } returns states
-        val port = DesktopExtensionPresentationPort(api, manager)
+        val port = DesktopExtensionPresentationPort(api, manager, installed)
 
         val refreshed = port.refresh()
 
