@@ -14,3 +14,19 @@ fun hasActiveFilters(filters: FilterList): Boolean = filters.any { filter ->
         else -> false
     }
 }
+
+internal fun FilterList.deepCopyFilters(): FilterList = FilterList(map { it.deepCopy() })
+
+private fun Filter<*>.deepCopy(): Filter<*> = when (this) {
+    is Filter.Header -> Filter.Header(name)
+    is Filter.Separator -> Filter.Separator(name)
+    is Filter.CheckBox -> object : Filter.CheckBox(name, state) {}
+    is Filter.TriState -> object : Filter.TriState(name, state) {}
+    is Filter.Text -> object : Filter.Text(name, state) {}
+    is Filter.Select<*> -> object : Filter.Select<Any?>(name, values.map { it }.toTypedArray(), state) {}
+    is Filter.Sort -> object : Filter.Sort(name, values.copyOf(), state?.copy()) {}
+    is Filter.Group<*> -> object : Filter.Group<Any?>(
+        name,
+        state.map { value -> (value as? Filter<*>)?.deepCopy() ?: value },
+    ) {}
+}

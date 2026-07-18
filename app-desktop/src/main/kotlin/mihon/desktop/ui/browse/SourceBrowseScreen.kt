@@ -27,18 +27,16 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SearchBarDefaults
-import androidx.compose.material3.PrimaryTabRow
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -256,16 +254,12 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
         // Search state
         var searchQuery by remember { mutableStateOf("") }
         var searchActive by remember { mutableStateOf(false) }
-        var isSearchMode by remember { mutableStateOf(false) }
         var listingQuery by remember { mutableStateOf<SourceQuery>(SourceQuery.Popular) }
 
-        // Browse mode (Popular / Latest tabs)
-        var browseMode by remember { mutableStateOf(BrowseMode.POPULAR) }
         val modes = remember(source) { availableBrowseModes(source?.supportsLatest == true) }
 
         // Filter state
         var showFilterDialog by remember { mutableStateOf(false) }
-        var activeFilters by remember { mutableStateOf(source?.getFilterList() ?: FilterList()) }
         val hasFilters = remember(source) { source?.getFilterList()?.isNotEmpty() == true }
 
         fun loadPage(page: Int, query: SourceQuery = listingQuery) {
@@ -312,24 +306,17 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
         // Filter dialog
         if (showFilterDialog) {
             FilterDialog(
-                filters = activeFilters,
+                filters = (listingQuery as? SourceQuery.Search)?.filters
+                    ?: source?.getFilterList()
+                    ?: FilterList(),
+                resetFilters = { source?.getFilterList() ?: FilterList() },
                 onApply = { updatedFilters ->
-                    activeFilters = updatedFilters
                     showFilterDialog = false
-                    browseMode = BrowseMode.POPULAR
-                    isSearchMode = false
+                    searchQuery = ""
                     SourceQuery.Search("", updatedFilters).also {
                         listingQuery = it
                         loadPage(1, it)
                     }
-                },
-                onReset = {
-                    activeFilters = source?.getFilterList() ?: FilterList()
-                    showFilterDialog = false
-                    browseMode = BrowseMode.POPULAR
-                    isSearchMode = false
-                    listingQuery = SourceQuery.Popular
-                    loadPage(1, SourceQuery.Popular)
                 },
                 onDismiss = { showFilterDialog = false },
             )
@@ -345,17 +332,6 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
                         }
                     },
                     actions = {
-                        // Filter button – only when source has filters and not in Latest mode
-                        if (hasFilters && !isSearchMode && browseMode != BrowseMode.LATEST) {
-                            val filtersActive = hasActiveFilters(activeFilters)
-                            IconButton(onClick = { showFilterDialog = true }) {
-                                Icon(
-                                    Icons.Default.FilterList,
-                                    contentDescription = "Filters",
-                                    tint = if (filtersActive) MaterialTheme.colorScheme.primary else LocalContentColor.current,
-                                )
-                            }
-                        }
                         IconButton(onClick = { searchActive = true }) {
                             Icon(Icons.Default.Search, "Search")
                         }
@@ -375,8 +351,10 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
                                 onQueryChange = { searchQuery = it },
                                 onSearch = { q ->
                                     searchActive = false
-                                    isSearchMode = q.isNotBlank()
-                                    SourceQuery.Search(q, activeFilters).also {
+                                    val filters = (listingQuery as? SourceQuery.Search)?.filters
+                                        ?: source?.getFilterList()
+                                        ?: FilterList()
+                                    SourceQuery.Search(q, filters).also {
                                         listingQuery = it
                                         loadPage(1, it)
                                     }
@@ -393,34 +371,32 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
                     )
                 }
 
-                // Popular / Latest tabs (only when source supports latest)
-                if (modes.size > 1 && !isSearchMode) {
-                    PrimaryTabRow(selectedTabIndex = modes.indexOf(browseMode)) {
-                        modes.forEach { mode ->
-                            Tab(
-                                selected = browseMode == mode,
-                                onClick = {
-                                    if (browseMode != mode) {
-                                        browseMode = mode
-                                        isSearchMode = false
-                                        val query = when (mode) {
-                                            BrowseMode.POPULAR -> SourceQuery.Popular
-                                            BrowseMode.LATEST -> SourceQuery.Latest
-                                        }
-                                        listingQuery = query
-                                        loadPage(1, query)
-                                    }
-                                },
-                                text = {
-                                    Text(
-                                        when (mode) {
-                                            BrowseMode.POPULAR -> "Popular"
-                                            BrowseMode.LATEST -> "Latest"
-                                        },
-                                    )
-                                },
-                            )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    modes.forEach { mode ->
+                        val query = when (mode) {
+                            BrowseMode.POPULAR -> SourceQuery.Popular
+                            BrowseMode.LATEST -> SourceQuery.Latest
                         }
+                        FilterChip(
+                            selected = listingQuery == query,
+                            onClick = {
+                                searchQuery = ""
+                                listingQuery = query
+                                loadPage(1, query)
+                            },
+                            label = { Text(if (mode == BrowseMode.POPULAR) "Popular" else "Latest") },
+                        )
+                    }
+                    if (hasFilters) {
+                        FilterChip(
+                            selected = listingQuery is SourceQuery.Search,
+                            onClick = { showFilterDialog = true },
+                            leadingIcon = { Icon(Icons.Default.FilterList, contentDescription = null) },
+                            label = { Text("Filter") },
+                        )
                     }
                 }
 
@@ -529,23 +505,30 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
 @Composable
 private fun FilterDialog(
     filters: FilterList,
+    resetFilters: () -> FilterList,
     onApply: (FilterList) -> Unit,
-    onReset: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var draft by remember(filters) { mutableStateOf(filters.deepCopyFilters()) }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Filter") },
         text = {
             Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
-                filters.forEach { FilterItem(it) }
+                draft.forEach { FilterItem(it) }
             }
         },
         confirmButton = {
-            TextButton(onClick = { onApply(filters) }) { Text("Apply") }
+            TextButton(onClick = { onApply(draft) }) { Text("Apply") }
         },
         dismissButton = {
-            TextButton(onClick = onReset) { Text("Reset", color = MaterialTheme.colorScheme.error) }
+            Row {
+                TextButton(onClick = { draft = resetFilters().deepCopyFilters() }) {
+                    Text("Reset", color = MaterialTheme.colorScheme.error)
+                }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
         },
     )
 }
@@ -622,7 +605,10 @@ private fun FilterItem(filter: Filter<*>) {
             var selection by remember(filter) { mutableStateOf(filter.state) }
             FilterChoiceGroup(filter.name) {
                 filter.values.forEachIndexed { index, value ->
-                    FilterChoice(value, selection?.index == index) {
+                    val selected = selection?.index == index
+                    val direction = selection?.takeIf { selected }
+                        ?.let { if (it.ascending) "Ascending" else "Descending" }
+                    FilterChoice(listOfNotNull(value, direction?.let { "($it)" }).joinToString(" "), selected) {
                         selection = Filter.Sort.Selection(
                             index,
                             if (selection?.index == index) !selection!!.ascending else selection?.ascending ?: true,
