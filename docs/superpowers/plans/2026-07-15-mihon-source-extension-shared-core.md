@@ -790,7 +790,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **Risk axis:** desktop-extension-presentation-wiring
 **Platform boundary:** shared+desktop
-**Estimated scope:** 13 files, 1300 lines
+**Estimated scope:** 13 files, 1310 lines
 **Verification:** Task 6C1 独立闭合 metadata 连续性、Manager authoritative state、typed catalog/trust/install port 与取消 rollback；Task 6C2a 闭合 projection/update/obsolete/raw-step adapter；Task 6C2b1 闭合只消费该 port 和 Task 6B shared store 的 ScreenModel/jobs/trust lifecycle；Task 6C2b2 再闭合 DI singleton/reinit ownership。四个子 Task 分别验收，任一方通过不能替代另一方。
 **Execution split:** 预审确认已安装 sidecar 缺少 fixed-main 分类所需的 name/language/isNsfw，且 Manager 没有 authoritative installed StateFlow；6C2a 已独立固定 projection/update/raw mapping。6C2b 预审又确认 ScreenModel reducer/jobs/trust 与 DI owner 是两组可独立失效风险，原 320 行估算无法保留高杀伤 mutation，因此按 6C1→6C2a→6C2b1→6C2b2 顺序施工。
 **Split waiver:** 聚合文件数/行数不会作为一个 Task 调度；6C1、6C2a、6C2b1、6C2b2 分别不超过 8 files/400 lines。6C2b1 先产出稳定的 `closeAndJoin()` lifecycle contract，6C2b2 才注册并验证 DI ownership。
@@ -836,7 +836,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 - Risk axis: `desktop-extension-presentation-consumer`
 - Platform boundary: `shared+desktop`
-- Estimated scope: `7 files, 940 lines`
+- Estimated scope: `7 files, 950 lines`
 - Verification: 6C2a 的 Desktop adapter 独立消费 shared classifier/update policy 并保留 raw state；6C2b1 的 ScreenModel 消费该稳定 adapter 与 shared reducer并拥有 jobs/trust；6C2b2 注册同一长生命周期实例并证明 test DI reinit/close 后旧 jobs 停止。
 - Split waiver: 6C2a、6C2b1、6C2b2 分别独立验收且均不超过 400 lines；projection/update/raw mapping、ScreenModel jobs/trust 与 DI ownership 是三条可独立断线测试的风险轴，不能由同一实现者批次压缩。
 
@@ -878,7 +878,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 - Risk axis: `desktop-extension-screenmodel-lifecycle`
 - Platform boundary: `shared+desktop`
-- Estimated scope: `3 files, 480 lines`
+- Estimated scope: `3 files, 490 lines`
 - Verification: authoritative installed flow 触发重新 projection；partial failure identity、shared reducer 连续回灌、fixed-main intents、post-Installed cutoff、逐包 job、Error/raw identity、pending trust 与 child-scope close-and-join 均由真实 port/flow 行为覆盖。
 - Split waiver: 本聚合项不作为一个 Task 调度；6C2b1a 与 6C2b1b 分别低于 400 lines，先稳定 state/intents contract，再追加 jobs/trust/close lifecycle。
 
@@ -918,6 +918,20 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionSharedStateWiringTest"`
   Expected: 全部 PASS；忽略 reducer 返回值、停止订阅 installed flow、丢 partial failure identity、从 projected available 选 update 或绕开 typed uninstall 时至少一项失败。
+
+###### Task 6C2b1aR: Desktop refresh failure proof closure
+
+- Risk axis: `desktop-extension-refresh-failure-proof`
+- Platform boundary: `verification`
+- Estimated scope: `1 file, 10 lines`
+- Verification: 真实 port 的 `api.refreshCatalog()` 抛出同一异常时，ScreenModel 必须保留 exact error identity，并由 shared reducer 的 finally 路径清除 refreshing；将 `RefreshFinished` 移出 finally 时测试必须失败。
+
+**Files:**
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionSharedStateWiringTest.kt`
+
+- [ ] **Step 1: 补 refresh failure RED/GREEN 与 finally mutation**
+
+  在现有真实 port 测试末尾令 refresh 抛出同一 `IllegalStateException`，断言 `refreshError === error` 且 `actions.isRefreshing == false`；focused 单类通过后临时把 `RefreshFinished` 移出 finally，确认该断言失败，再恢复并重跑 GREEN。
 
 ###### Task 6C2b1b: Desktop package jobs、trust 与 close lifecycle
 
