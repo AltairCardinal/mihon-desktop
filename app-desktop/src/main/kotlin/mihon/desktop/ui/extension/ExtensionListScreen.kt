@@ -49,6 +49,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -68,15 +69,11 @@ import mihon.desktop.extension.DesktopAvailableExtension
 import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.extension.InstalledExtension
-import mihon.desktop.extension.availableLangs
-import mihon.desktop.extension.filterAvailableByLangs
-import mihon.desktop.extension.filterAvailableByNsfw
-import mihon.desktop.extension.filterInstalledByLangs
-import mihon.desktop.extension.findUpdatableExtensions
-import mihon.desktop.extension.installedLangs
 import mihon.desktop.extension.isExtensionAvailableOnDesktop
-import mihon.desktop.extension.filterAvailableByQuery
-import mihon.desktop.extension.filterInstalledByQuery
+import mihon.domain.extension.presentation.ExtensionPresentationOptions
+import tachiyomi.i18n.MR
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.awt.Desktop
 import java.net.URI
 
@@ -87,58 +84,57 @@ class ExtensionListScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
+        val manager = LocalDesktopUiDependencies.current.extensionManager
+        val api = LocalDesktopUiDependencies.current.extensionApi
+        ExtensionListContent(
+            model = remember { Injekt.get<ExtensionsScreenModel>() },
+            manager = manager,
+            api = api,
+            onBack = navigator::pop,
+            onOpen = { navigator.push(ExtensionDetailsScreen(it.jarFile.absolutePath)) },
+            onSettings = { sourceId, sourceName -> navigator.push(SourcePreferencesScreen(sourceId, sourceName)) },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun ExtensionListContent(
+    model: ExtensionsScreenModel,
+    manager: DesktopExtensionManager,
+    api: DesktopExtensionApi,
+    onBack: () -> Unit = {},
+    onOpen: (InstalledExtension) -> Unit = {},
+    onSettings: (Long, String) -> Unit = { _, _ -> },
+) {
+        val state by model.state.collectAsState()
+        val copy = remember { extensionListCopy() }
         val scope = rememberCoroutineScope()
         val snackbarHostState = remember { SnackbarHostState() }
 
-        val manager = LocalDesktopUiDependencies.current.extensionManager
-        val api = LocalDesktopUiDependencies.current.extensionApi
-
         var selectedTab by remember { mutableStateOf(0) }
-        var installedExtensions by remember { mutableStateOf(manager.getInstalledExtensions()) }
-        var availableExtensions by remember { mutableStateOf<List<DesktopAvailableExtension>>(emptyList()) }
-        var isLoadingAvailable by remember { mutableStateOf(false) }
         var pendingRemoval by remember { mutableStateOf<InstalledExtension?>(null) }
-        var selectedLangs by remember { mutableStateOf(emptySet<String>()) }
         var showLangFilter by remember { mutableStateOf(false) }
-        var showNsfw by remember { mutableStateOf(false) }
         var searchQuery by remember { mutableStateOf("") }
         val installStates = remember { mutableStateMapOf<String, ExtensionInstallUiState>() }
         val installJobs = remember { mutableMapOf<String, Job>() }
-
-        // Compute which available extensions have a newer version than what is installed
-        val availableWithUpdate = remember(availableExtensions, installedExtensions) {
-            findUpdatableExtensions(installedExtensions, availableExtensions)
+        val ui = remember(state, searchQuery) { state.toExtensionListUiProjection(searchQuery) }
+        val installedExtensions = state.projection?.installed.orEmpty().mapNotNull(DesktopExtensionItem::installed)
+        val languageInventory = remember(state.projection) {
+            state.projection?.let { projection ->
+                (projection.installed + projection.available).flatMap { item ->
+                    listOfNotNull(item.presentation.language) + item.presentation.sources.map { it.language }
+                }.filter(String::isNotBlank).toSet()
+            }.orEmpty()
+        }
+        val currentTabLangs = remember(selectedTab, state.projection) {
+            (if (selectedTab == 0) state.projection?.installed.orEmpty() else state.projection?.available.orEmpty())
+                .flatMap { item ->
+                    listOfNotNull(item.presentation.language) + item.presentation.sources.map { it.language }
+                }.filter(String::isNotBlank).distinct().sorted()
         }
 
-        // Language + NSFW filter
-        val filteredInstalled = remember(installedExtensions, selectedLangs, searchQuery) {
-            filterInstalledByQuery(filterInstalledByLangs(installedExtensions, selectedLangs), searchQuery)
-        }
-        val filteredAvailable = remember(availableExtensions, selectedLangs, showNsfw, searchQuery) {
-            filterAvailableByQuery(
-                filterAvailableByNsfw(filterAvailableByLangs(availableExtensions, selectedLangs), showNsfw),
-                searchQuery,
-            )
-        }
-        val currentTabLangs = remember(selectedTab, installedExtensions, availableExtensions) {
-            if (selectedTab == 0) installedLangs(installedExtensions)
-            else availableLangs(availableExtensions)
-        }
-
-        fun loadAvailable() {
-            isLoadingAvailable = true
-            scope.launch {
-                availableExtensions = api.findAvailableExtensions()
-                isLoadingAvailable = false
-            }
-        }
-
-        // Auto-load available when switching to that tab
-        LaunchedEffect(selectedTab) {
-            if (selectedTab == 1 && availableExtensions.isEmpty() && !isLoadingAvailable) {
-                loadAvailable()
-            }
-        }
+        LaunchedEffect(model) { model.refresh() }
 
         pendingRemoval?.let { ext ->
             AlertDialog(
@@ -148,7 +144,6 @@ class ExtensionListScreen : Screen {
                 confirmButton = {
                     TextButton(onClick = {
                         manager.removeExtensionWithMeta(ext)
-                        installedExtensions = manager.getInstalledExtensions()
                         pendingRemoval = null
                     }) { Text("Uninstall", color = MaterialTheme.colorScheme.error) }
                 },
@@ -161,10 +156,11 @@ class ExtensionListScreen : Screen {
         if (showLangFilter) {
             LanguageFilterDialog(
                 langs = currentTabLangs,
-                selectedLangs = selectedLangs,
-                showNsfw = showNsfw,
-                onSelectionChanged = { selectedLangs = it },
-                onNsfwChanged = { showNsfw = it },
+                selectedLangs = state.options.enabledLanguages,
+                showNsfw = state.options.showNsfw,
+                onApply = { languages, showNsfw ->
+                    model.setOptions(ExtensionPresentationOptions(showNsfw, languages.ifEmpty { languageInventory }))
+                },
                 onDismiss = { showLangFilter = false },
             )
         }
@@ -173,17 +169,17 @@ class ExtensionListScreen : Screen {
             topBar = {
                 Column {
                     TopAppBar(
-                        title = { Text("Extensions") },
+                        title = { Text(copy.title) },
                         navigationIcon = {
-                            IconButton(onClick = { navigator.pop() }) {
+                            IconButton(onClick = onBack) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                             }
                         },
                         actions = {
                             if (currentTabLangs.isNotEmpty()) {
                                 IconButton(onClick = { showLangFilter = true }) {
-                                    if (selectedLangs.isNotEmpty()) {
-                                        BadgedBox(badge = { Badge { Text("${selectedLangs.size}") } }) {
+                                    if (state.options.enabledLanguages.isNotEmpty()) {
+                                        BadgedBox(badge = { Badge { Text("${state.options.enabledLanguages.size}") } }) {
                                             Icon(Icons.Default.FilterList, contentDescription = "Filter by language")
                                         }
                                     } else {
@@ -194,12 +190,11 @@ class ExtensionListScreen : Screen {
                             if (selectedTab == 0) {
                                 IconButton(onClick = {
                                     manager.reloadAll()
-                                    installedExtensions = manager.getInstalledExtensions()
                                 }) {
                                     Icon(Icons.Default.Refresh, contentDescription = "Reload installed")
                                 }
                             } else {
-                                IconButton(onClick = { loadAvailable() }) {
+                                IconButton(onClick = { model.refresh() }) {
                                     Icon(Icons.Default.Refresh, contentDescription = "Refresh available")
                                 }
                             }
@@ -210,20 +205,19 @@ class ExtensionListScreen : Screen {
                             selected = selectedTab == 0,
                             onClick = { selectedTab = 0 },
                             text = {
-                                val count = if (selectedLangs.isEmpty()) installedExtensions.size else filteredInstalled.size
-                                Text("Installed ($count)")
+                                Text("${MR.strings.ext_installed.localized()} (${ui.installed.size})")
                             },
                         )
                         Tab(
                             selected = selectedTab == 1,
                             onClick = { selectedTab = 1 },
                             text = {
-                                if (availableWithUpdate.isNotEmpty()) {
-                                    BadgedBox(badge = { Badge { Text("${availableWithUpdate.size}") } }) {
-                                        Text("Available")
+                                if (ui.updates.isNotEmpty()) {
+                                    BadgedBox(badge = { Badge { Text("${ui.updates.size}") } }) {
+                                        Text(copy.available)
                                     }
                                 } else {
-                                    Text("Available")
+                                    Text(copy.available)
                                 }
                             },
                         )
@@ -234,42 +228,58 @@ class ExtensionListScreen : Screen {
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                         singleLine = true,
                         leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                        placeholder = { Text("Search extensions") },
+                        placeholder = { Text(copy.search) },
                     )
                 }
             },
             snackbarHost = { SnackbarHost(snackbarHostState) },
         ) { padding ->
-            when (selectedTab) {
+            Column(Modifier.padding(padding).fillMaxSize()) {
+                if (ui.failures.isNotEmpty()) {
+                    ElevatedCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                            Text(copy.repositoryFailure, style = MaterialTheme.typography.titleSmall)
+                            ui.failures.forEach { Text("${it.repository.name.ifBlank { it.repository.baseUrl }}: ${it.error}") }
+                            TextButton(onClick = model::refresh, modifier = Modifier.align(Alignment.End)) { Text(copy.retry) }
+                        }
+                    }
+                }
+                if (state.projection == null) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator()
+                            Text(copy.loading, modifier = Modifier.padding(top = 8.dp))
+                        }
+                    }
+                } else when (selectedTab) {
                 0 -> InstalledTab(
-                    extensions = filteredInstalled,
+                    extensions = ui.installed.mapNotNull(DesktopExtensionItem::installed),
                     onUninstall = { pendingRemoval = it },
-                    onOpen = { navigator.push(ExtensionDetailsScreen(it.jarFile.absolutePath)) },
-                    onSettings = { sourceId, sourceName ->
-                        navigator.push(SourcePreferencesScreen(sourceId, sourceName))
-                    },
-                    modifier = Modifier.padding(padding),
+                    onOpen = onOpen,
+                    onSettings = onSettings,
+                    emptyCopy = copy,
+                    modifier = Modifier.weight(1f),
                 )
                 1 -> AvailableTab(
-                    extensions = filteredAvailable,
+                    extensions = ui.updates + ui.available,
                     installedExtensions = installedExtensions,
-                    updatableExtensions = availableWithUpdate,
-                    isLoading = isLoadingAvailable,
+                    updatableExtensions = ui.updates,
                     installStates = installStates,
-                    onInstall = { ext ->
-                        if (installJobs[ext.pkgName]?.isActive == true) return@AvailableTab
-                        installStates[ext.pkgName] = ExtensionInstallUiState.INSTALLING
-                        installJobs[ext.pkgName] = scope.launch {
+                    onInstall = { item ->
+                        val ext = item.available ?: return@AvailableTab
+                        val packageName = item.operationPackageName
+                        if (installJobs[packageName]?.isActive == true) return@AvailableTab
+                        installStates[packageName] = ExtensionInstallUiState.INSTALLING
+                        installJobs[packageName] = scope.launch {
                             snackbarHostState.showSnackbar("Installing ${ext.name}…")
                             val result = api.installExtension(ext, manager)
                             when (result) {
                                 is DesktopExtensionApi.InstallResult.Success -> {
-                                    installStates.remove(ext.pkgName)
-                                    installedExtensions = manager.getInstalledExtensions()
+                                    installStates.remove(packageName)
                                     snackbarHostState.showSnackbar("${ext.name} installed")
                                 }
                                 is DesktopExtensionApi.InstallResult.Error -> {
-                                    installStates[ext.pkgName] = ExtensionInstallUiState.ERROR
+                                    installStates[packageName] = ExtensionInstallUiState.ERROR
                                     val msg = when {
                                         result.message.startsWith("Android-only") ->
                                             "${ext.name}: Android-only extension, cannot run on desktop"
@@ -281,7 +291,7 @@ class ExtensionListScreen : Screen {
                                     snackbarHostState.showSnackbar(msg)
                                 }
                                 is DesktopExtensionApi.InstallResult.TrustRequired -> {
-                                    installStates[ext.pkgName] = ExtensionInstallUiState.ERROR
+                                    installStates[packageName] = ExtensionInstallUiState.ERROR
                                     snackbarHostState.showSnackbar(
                                         "Update blocked: repository identity changed from " +
                                             "${result.existingFingerprint} to ${result.incomingFingerprint}",
@@ -290,9 +300,9 @@ class ExtensionListScreen : Screen {
                             }
                         }
                     },
-                    onCancel = { ext ->
-                        installJobs.remove(ext.pkgName)?.cancel()
-                        installStates.remove(ext.pkgName)
+                    onCancel = { item ->
+                        installJobs.remove(item.operationPackageName)?.cancel()
+                        installStates.remove(item.operationPackageName)
                     },
                     onOpenUrl = { url ->
                         runCatching { Desktop.getDesktop().browse(URI(url)) }
@@ -300,7 +310,7 @@ class ExtensionListScreen : Screen {
                     },
                     onUpdateAll = {
                         scope.launch {
-                            val toUpdate = availableWithUpdate.toList()
+                            val toUpdate = ui.updates.mapNotNull(DesktopExtensionItem::available)
                             if (toUpdate.isEmpty()) return@launch
                             snackbarHostState.showSnackbar("Updating ${toUpdate.size} extension(s)…")
                             var successCount = 0
@@ -308,15 +318,15 @@ class ExtensionListScreen : Screen {
                                 val result = api.installExtension(ext, manager)
                                 if (result is DesktopExtensionApi.InstallResult.Success) successCount++
                             }
-                            installedExtensions = manager.getInstalledExtensions()
                             snackbarHostState.showSnackbar("Updated $successCount/${toUpdate.size} extension(s)")
                         }
                     },
-                    modifier = Modifier.padding(padding),
+                    emptyCopy = copy,
+                    modifier = Modifier.weight(1f),
                 )
             }
+            }
         }
-    }
 }
 
 @Composable
@@ -325,10 +335,11 @@ private fun InstalledTab(
     onUninstall: (InstalledExtension) -> Unit,
     onOpen: (InstalledExtension) -> Unit,
     onSettings: (sourceId: Long, sourceName: String) -> Unit,
+    emptyCopy: ExtensionListCopy,
     modifier: Modifier = Modifier,
 ) {
     if (extensions.isEmpty()) {
-        EmptyExtensions(modifier = modifier.fillMaxSize())
+        EmptyExtensions(emptyCopy, modifier = modifier.fillMaxSize())
     } else {
         LazyColumn(
             modifier = modifier.fillMaxSize(),
@@ -349,24 +360,21 @@ private fun InstalledTab(
 
 @Composable
 private fun AvailableTab(
-    extensions: List<DesktopAvailableExtension>,
+    extensions: List<DesktopExtensionItem>,
     installedExtensions: List<InstalledExtension>,
-    updatableExtensions: List<DesktopAvailableExtension>,
-    isLoading: Boolean,
+    updatableExtensions: List<DesktopExtensionItem>,
     installStates: Map<String, ExtensionInstallUiState>,
-    onInstall: (DesktopAvailableExtension) -> Unit,
-    onCancel: (DesktopAvailableExtension) -> Unit,
+    onInstall: (DesktopExtensionItem) -> Unit,
+    onCancel: (DesktopExtensionItem) -> Unit,
     onOpenUrl: (String) -> Unit,
     onUpdateAll: () -> Unit,
+    emptyCopy: ExtensionListCopy,
     modifier: Modifier = Modifier,
 ) {
     when {
-        isLoading -> Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
-        }
         extensions.isEmpty() -> Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
-                "No extensions found.\nAdd a repository in More → Extension Repos.",
+                emptyCopy.emptyAvailable,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -387,16 +395,16 @@ private fun AvailableTab(
                     }
                 }
             }
-            items(extensions, key = { it.pkgName }) { ext ->
-                val isInstalled = isExtensionAvailableOnDesktop(ext.pkgName, installedExtensions)
-                val hasUpdate = updatableExtensions.any { it.pkgName == ext.pkgName }
+            items(extensions, key = { it.presentation.packageName }) { item ->
+                val isInstalled = isExtensionAvailableOnDesktop(item.operationPackageName, installedExtensions)
+                val hasUpdate = updatableExtensions.any { it.operationPackageName == item.operationPackageName }
                 AvailableExtensionCard(
-                    extension = ext,
+                    item = item,
                     isInstalled = isInstalled,
                     hasUpdate = hasUpdate,
-                    onInstall = { onInstall(ext) },
-                    onCancel = { onCancel(ext) },
-                    installState = installStates[ext.pkgName],
+                    onInstall = { onInstall(item) },
+                    onCancel = { onCancel(item) },
+                    installState = installStates[item.operationPackageName],
                     onOpenUrl = onOpenUrl,
                 )
             }
@@ -452,7 +460,7 @@ private fun ExtensionCard(
 
 @Composable
 private fun AvailableExtensionCard(
-    extension: DesktopAvailableExtension,
+    item: DesktopExtensionItem,
     isInstalled: Boolean,
     hasUpdate: Boolean,
     onInstall: () -> Unit,
@@ -460,6 +468,8 @@ private fun AvailableExtensionCard(
     installState: ExtensionInstallUiState?,
     onOpenUrl: (String) -> Unit,
 ) {
+    val extension = requireNotNull(item.available)
+    val presentation = item.presentation
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
@@ -474,8 +484,8 @@ private fun AvailableExtensionCard(
             )
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = extension.name, style = MaterialTheme.typography.titleSmall)
-                    if (extension.isNsfw) {
+                    Text(text = presentation.name, style = MaterialTheme.typography.titleSmall)
+                    if (presentation.isNsfw) {
                         Text(
                             text = "18+",
                             style = MaterialTheme.typography.labelSmall,
@@ -485,18 +495,18 @@ private fun AvailableExtensionCard(
                     }
                 }
                 Text(
-                    text = "${extension.lang} • v${extension.versionName}",
+                    text = "${presentation.language.orEmpty()} • v${extension.versionName}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    text = extension.pkgName,
+                    text = presentation.packageName,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.outline,
                 )
             }
-            extension.sources.firstOrNull { it.baseUrl.startsWith("http") }?.let { source ->
-                IconButton(onClick = { onOpenUrl(source.baseUrl) }) {
+            presentation.sources.firstOrNull { it.baseUrl?.startsWith("http") == true }?.let { source ->
+                IconButton(onClick = { onOpenUrl(requireNotNull(source.baseUrl)) }) {
                     Icon(Icons.Default.Public, contentDescription = "Open ${source.name} website")
                 }
             }
@@ -520,12 +530,12 @@ private fun AvailableExtensionCard(
 private enum class ExtensionInstallUiState { INSTALLING, ERROR }
 
 @Composable
-private fun EmptyExtensions(modifier: Modifier = Modifier) {
+private fun EmptyExtensions(copy: ExtensionListCopy, modifier: Modifier = Modifier) {
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("No extensions installed", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(copy.emptyInstalled, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(8.dp))
-            Text("Browse the Available tab to install extensions.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(copy.emptyInstalledHint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -535,8 +545,7 @@ private fun LanguageFilterDialog(
     langs: List<String>,
     selectedLangs: Set<String>,
     showNsfw: Boolean = false,
-    onSelectionChanged: (Set<String>) -> Unit,
-    onNsfwChanged: (Boolean) -> Unit = {},
+    onApply: (Set<String>, Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var pending by remember(selectedLangs) { mutableStateOf(selectedLangs) }
@@ -593,16 +602,14 @@ private fun LanguageFilterDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                onSelectionChanged(pending)
-                onNsfwChanged(pendingNsfw)
+                onApply(pending, pendingNsfw)
                 onDismiss()
             }) { Text("Apply") }
         },
         dismissButton = {
             Row {
                 TextButton(onClick = {
-                    onSelectionChanged(emptySet())
-                    onNsfwChanged(false)
+                    onApply(emptySet(), false)
                     onDismiss()
                 }) { Text("Clear") }
                 TextButton(onClick = onDismiss) { Text("Cancel") }
