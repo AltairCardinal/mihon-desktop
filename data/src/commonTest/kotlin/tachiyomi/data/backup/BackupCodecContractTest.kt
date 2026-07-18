@@ -12,6 +12,17 @@ import java.security.MessageDigest
 
 class BackupCodecContractTest {
     @Test
+    fun `Android fixture declares fixed original Mihon provenance`() {
+        val provenance = requireNotNull(javaClass.getResourceAsStream("/backup/README.md"))
+            .bufferedReader()
+            .use { it.readText() }
+
+        assertTrue(provenance.contains("`main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`"))
+        assertTrue(provenance.contains("`2e86d6d1f626b349473e1e71e833215aac0c92e3`"))
+        assertTrue(provenance.contains("`43FA65A3469932F4DA2794E8BDF69C7BEF7D65D4E77FE894E1B1798ED1EFAD8D`"))
+    }
+
+    @Test
     @Suppress("DEPRECATION")
     fun `Android authoritative full fixture decodes and reencodes with canonical schema`() {
         val bytes = requireNotNull(javaClass.getResourceAsStream("/backup/android-full.tachibk")).readBytes()

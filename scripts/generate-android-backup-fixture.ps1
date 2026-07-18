@@ -3,7 +3,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$commit = "d376fa62fcbdc7f108251762f9645da0e23b89db"
+$commit = "6fbf6dfca203d99d6dd32137f2df97ced40c81b8"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $scratch = Join-Path $root ".test-tmp/android-backup-fixture-generator"
 $sourceRoot = Join-Path $scratch "src/main/kotlin"
