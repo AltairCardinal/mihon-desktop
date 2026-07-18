@@ -18,11 +18,14 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.Divider
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -35,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,7 +56,8 @@ import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import eu.kanade.tachiyomi.source.CatalogueSource
 import mihon.desktop.ui.extension.ExtensionListScreen
-import mihon.desktop.source.getEnabledCatalogueSourceCandidates
+import mihon.desktop.source.selectEnabledCatalogueSourceCandidates
+import tachiyomi.core.common.preference.getAndSet
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.MR
 
@@ -92,22 +97,77 @@ class BrowseSourceListScreen : Screen {
         val dependencies = LocalDesktopUiDependencies.current
         val sourceManager = dependencies.sourceManager
         val appPreferences = dependencies.appPreferences
-        val allSources = remember(sourceManager, appPreferences) {
-            sourceManager.getEnabledCatalogueSourceCandidates(appPreferences)
+        val installedSources = remember(sourceManager) { sourceManager.getCatalogueSources() }
+        val enabledLanguages by appPreferences.enabledLanguages.changes().collectAsState(
+            initial = appPreferences.enabledLanguages.get(),
+        )
+        val disabledSources by appPreferences.disabledSources.changes().collectAsState(
+            initial = appPreferences.disabledSources.get(),
+        )
+        val pinnedSourceIds by appPreferences.pinnedSources.changes().collectAsState(
+            initial = appPreferences.pinnedSources.get(),
+        )
+        val allSources = remember(installedSources, enabledLanguages, disabledSources) {
+            selectEnabledCatalogueSourceCandidates(installedSources, enabledLanguages, disabledSources)
         }
 
         var selectedLang by remember { mutableStateOf<String?>(null) }
-        var pinnedIds by remember { mutableStateOf(emptySet<Long>()) }
+        var showLanguageFilter by remember { mutableStateOf(false) }
 
         val languages = remember(allSources) {
             allSources.map { it.lang }.distinct().sorted()
         }
+        val installedLanguages = remember(installedSources) {
+            installedSources.map { it.lang }.distinct().sorted()
+        }
 
-        val displayedSources = remember(allSources, selectedLang, pinnedIds) {
+        val displayedSources = remember(allSources, selectedLang, pinnedSourceIds) {
             val filtered = if (selectedLang == null) allSources else allSources.filter { it.lang == selectedLang }
-            val pinned = filtered.filter { it.id in pinnedIds }
-            val rest = filtered.filter { it.id !in pinnedIds }
+            val sorted = filtered.sortedBy { it.name.lowercase() }
+            val pinned = sorted.filter { it.id.toString() in pinnedSourceIds }
+            val rest = sorted.filter { it.id.toString() !in pinnedSourceIds }
             pinned + rest
+        }
+
+        fun togglePin(sourceId: Long) {
+            appPreferences.pinnedSources.getAndSet { pinned ->
+                val id = sourceId.toString()
+                if (id in pinned) pinned - id else pinned + id
+            }
+        }
+
+        if (showLanguageFilter) {
+            AlertDialog(
+                onDismissRequest = { showLanguageFilter = false },
+                title = { Text(MR.strings.label_sources.localized()) },
+                text = {
+                    Column {
+                        installedLanguages.forEach { language ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        appPreferences.enabledLanguages.getAndSet { enabled ->
+                                            if (language in enabled) enabled - language else enabled + language
+                                        }
+                                    },
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Checkbox(
+                                    checked = language in enabledLanguages,
+                                    onCheckedChange = null,
+                                )
+                                Text(language.uppercase())
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showLanguageFilter = false }) {
+                        Text(MR.strings.action_close.localized())
+                    }
+                },
+            )
         }
 
         Scaffold(
@@ -115,6 +175,12 @@ class BrowseSourceListScreen : Screen {
                 TopAppBar(
                     title = { Text("Browse") },
                     actions = {
+                        IconButton(onClick = { showLanguageFilter = true }) {
+                            Icon(
+                                Icons.Default.FilterList,
+                                contentDescription = MR.strings.action_filter.localized(),
+                            )
+                        }
                         IconButton(onClick = { navigator.push(GlobalSearchScreen()) }) {
                             Icon(Icons.Default.Search, contentDescription = "Global search")
                         }
@@ -169,21 +235,17 @@ class BrowseSourceListScreen : Screen {
                         contentPadding = PaddingValues(vertical = 4.dp),
                     ) {
                         items(displayedSources, key = { it.id }) { source ->
-                            val isPinned = source.id in pinnedIds
+                            val isPinned = source.id.toString() in pinnedSourceIds
                             ListItem(
                                 headlineContent = { Text(source.name) },
                                 supportingContent = { Text(source.lang.uppercase()) },
                                 trailingContent = {
                                     IconButton(onClick = {
-                                        pinnedIds = if (isPinned) {
-                                            pinnedIds - source.id
-                                        } else {
-                                            pinnedIds + source.id
-                                        }
+                                        togglePin(source.id)
                                     }) {
                                         Icon(
                                             if (isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
-                                            contentDescription = if (isPinned) "Unpin" else "Pin",
+                                            contentDescription = if (isPinned) "Unpin ${source.name}" else "Pin ${source.name}",
                                             tint = if (isPinned) {
                                                 MaterialTheme.colorScheme.primary
                                             } else {
@@ -199,11 +261,7 @@ class BrowseSourceListScreen : Screen {
                                             navigator.push(SourceBrowseScreen(sourceId = source.id))
                                         },
                                         onLongClick = {
-                                            pinnedIds = if (isPinned) {
-                                                pinnedIds - source.id
-                                            } else {
-                                                pinnedIds + source.id
-                                            }
+                                            togglePin(source.id)
                                         },
                                     ),
                             )

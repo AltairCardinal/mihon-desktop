@@ -74,11 +74,19 @@ class DesktopSourceManager(
 
 /** Fixed-main discovery policy; source resolution itself intentionally remains unfiltered. */
 fun SourceManager.getEnabledCatalogueSourceCandidates(preferences: DesktopAppPreferences): List<CatalogueSource> {
-    val enabledLanguages = preferences.enabledLanguages.get()
-    val disabledSources = preferences.disabledSources.get()
-    return getCatalogueSources().filter { source ->
-        source.lang in enabledLanguages && source.id.toString() !in disabledSources
-    }
+    return selectEnabledCatalogueSourceCandidates(
+        sources = getCatalogueSources(),
+        enabledLanguages = preferences.enabledLanguages.get(),
+        disabledSources = preferences.disabledSources.get(),
+    )
+}
+
+fun selectEnabledCatalogueSourceCandidates(
+    sources: List<CatalogueSource>,
+    enabledLanguages: Set<String>,
+    disabledSources: Set<String>,
+): List<CatalogueSource> = sources.filter { source ->
+    source.lang in enabledLanguages && source.id.toString() !in disabledSources
 }
 
 /** Online-source variant of [getEnabledCatalogueSourceCandidates]. */

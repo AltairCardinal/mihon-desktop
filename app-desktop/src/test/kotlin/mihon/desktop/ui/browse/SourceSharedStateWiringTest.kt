@@ -73,6 +73,7 @@ import tachiyomi.domain.source.service.AuthenticatedSessionCommitter
 import tachiyomi.domain.source.service.SourceLoginState
 import tachiyomi.i18n.MR
 import tachiyomi.core.common.preference.Preference
+import tachiyomi.core.common.preference.DesktopPreferenceStore
 import java.util.Collections
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
@@ -80,18 +81,26 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import java.io.File
+import java.util.prefs.Preferences
 
 class SourceSharedStateWiringTest {
 
     private fun sourcePreferences(
         enabledLanguages: Set<String> = setOf("all", "en"),
         disabledSources: Set<String> = emptySet(),
+        pinnedSources: Set<String> = emptySet(),
     ): DesktopAppPreferences = mockk {
         every { this@mockk.enabledLanguages } returns mockk<Preference<Set<String>>> {
             every { get() } returns enabledLanguages
+            every { changes() } returns flowOf(enabledLanguages)
         }
         every { this@mockk.disabledSources } returns mockk<Preference<Set<String>>> {
             every { get() } returns disabledSources
+            every { changes() } returns flowOf(disabledSources)
+        }
+        every { this@mockk.pinnedSources } returns mockk<Preference<Set<String>>> {
+            every { get() } returns pinnedSources
+            every { changes() } returns flowOf(pinnedSources)
         }
     }
 
@@ -170,6 +179,116 @@ class SourceSharedStateWiringTest {
         assertFalse(semantics.contains(hidden.name))
         assertFalse(semantics.contains(disabledLanguage.name))
         scene.close()
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `browse pin action persists selected feedback and ordering after reconstruction`() = runBlocking {
+        val root = Preferences.userRoot().node("/mihon/browse-pin/${System.nanoTime()}")
+        try {
+            val alpha = FakeSource(87, "en", "Alpha authority source")
+            val zeta = FakeSource(88, "en", "Zeta authority source")
+            val sourceManager = FakeDesktopSourceManager(listOf(alpha, zeta))
+
+            fun scene(preferences: DesktopAppPreferences): ImageComposeScene =
+                ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}.also { scene ->
+                    val dependencies = mockk<DesktopUiDependencies> {
+                        every { this@mockk.sourceManager } returns sourceManager
+                        every { appPreferences } returns preferences
+                    }
+                    scene.setContent {
+                        CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                            Navigator(BrowseSourceListScreen()) { CurrentScreen() }
+                        }
+                    }
+                    scene.render()
+                }
+
+            fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+            fun semantics(scene: ImageComposeScene) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+
+            val firstPreferences = DesktopAppPreferences(DesktopPreferenceStore(root))
+            firstPreferences.enabledLanguages.set(setOf("en"))
+            val firstScene = scene(firstPreferences)
+            val pin = semantics(firstScene).first {
+                it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains("Pin ${zeta.name}")
+            }
+            assertTrue(requireNotNull(pin.config[SemanticsActions.OnClick].action).invoke())
+            assertEquals(setOf(zeta.id.toString()), firstPreferences.pinnedSources.get())
+            firstScene.close()
+
+            val restoredPreferences = DesktopAppPreferences(DesktopPreferenceStore(root))
+            val restoredScene = scene(restoredPreferences)
+            val restoredSemantics = semantics(restoredScene).joinToString { it.config.toString() }
+            assertTrue(restoredSemantics.contains("Unpin ${zeta.name}"))
+            assertTrue(restoredSemantics.indexOf(zeta.name) < restoredSemantics.indexOf(alpha.name))
+            restoredScene.close()
+        } finally {
+            root.removeNode()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `browse language configuration and hidden changes refresh production candidates and persist`() = runBlocking {
+        val root = Preferences.userRoot().node("/mihon/browse-language/${System.nanoTime()}")
+        try {
+            val english = FakeSource(89, "en", "English authority source")
+            val french = FakeSource(90, "fr", "French authority source")
+            val sourceManager = FakeDesktopSourceManager(listOf(english, french))
+
+            fun scene(preferences: DesktopAppPreferences): ImageComposeScene =
+                ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}.also { scene ->
+                    val dependencies = mockk<DesktopUiDependencies> {
+                        every { this@mockk.sourceManager } returns sourceManager
+                        every { appPreferences } returns preferences
+                    }
+                    scene.setContent {
+                        CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                            Navigator(BrowseSourceListScreen()) { CurrentScreen() }
+                        }
+                    }
+                    scene.render()
+                }
+
+            fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+            fun nodes(scene: ImageComposeScene) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+            fun click(scene: ImageComposeScene, label: String) {
+                val node = nodes(scene).first { it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains(label) }
+                assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
+            }
+            fun rendered(scene: ImageComposeScene) = nodes(scene).joinToString { it.config.toString() }
+
+            val preferences = DesktopAppPreferences(DesktopPreferenceStore(root))
+            preferences.enabledLanguages.set(setOf("en"))
+            val firstScene = scene(preferences)
+            assertTrue(rendered(firstScene).contains(english.name))
+            assertFalse(rendered(firstScene).contains(french.name))
+
+            click(firstScene, MR.strings.action_filter.localized())
+            firstScene.render()
+            click(firstScene, "FR")
+            assertEquals(setOf("en", "fr"), preferences.enabledLanguages.get())
+            firstScene.render()
+            click(firstScene, MR.strings.action_close.localized())
+            firstScene.render()
+            assertTrue(rendered(firstScene).contains(french.name))
+
+            preferences.disabledSources.set(setOf(english.id.toString()))
+            firstScene.render()
+            assertFalse(rendered(firstScene).contains(english.name))
+            assertTrue(rendered(firstScene).contains(french.name))
+            firstScene.close()
+
+            val restored = DesktopAppPreferences(DesktopPreferenceStore(root))
+            val restoredScene = scene(restored)
+            val restoredContent = rendered(restoredScene)
+            assertFalse(restoredContent.contains(english.name))
+            assertTrue(restoredContent.contains(french.name))
+            restoredScene.close()
+        } finally {
+            root.removeNode()
+        }
     }
 
     @Test
