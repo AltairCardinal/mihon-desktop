@@ -94,11 +94,13 @@ class DesktopExtensionApiSharedCatalogTest {
                 repoFingerprint = "incoming-fingerprint",
             )
 
-            val result = install(api(), available)
+            val api = api()
+            val result = install(api, available)
 
             val trustRequired =
                 assertInstanceOf(DesktopExtensionApi.InstallResult.TrustRequired::class.java, result)
             assertEquals(setOf(TrustMismatch.LegacyMetadataMissingRepositoryIdentity), trustRequired.reasons)
+            assertEquals(0, api.pendingTrustCount)
         }
     }
 

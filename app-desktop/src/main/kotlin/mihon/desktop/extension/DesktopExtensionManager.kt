@@ -6,6 +6,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.last
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.onCompletion
 import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionArtifact
 import mihon.domain.extension.service.ExtensionInstallCoordinator
@@ -40,6 +45,8 @@ class DesktopExtensionManager(
         lifecycleGate = lifecycleGate,
     )
     private val installCoordinator = ExtensionInstallCoordinator(installPort, installScope)
+    private val mutableInstalledExtensions = MutableStateFlow<List<InstalledExtension>>(emptyList())
+    val installedExtensions: StateFlow<List<InstalledExtension>> = mutableInstalledExtensions.asStateFlow()
 
     /** Loads all extensions from the extensions directory. */
     fun loadAll() {
@@ -52,6 +59,7 @@ class DesktopExtensionManager(
                 }
             }
             closeLoaders(previous)
+            publishInstalledExtensions()
         }
     }
 
@@ -72,7 +80,9 @@ class DesktopExtensionManager(
      * Each entry represents one JAR that may expose multiple sources.
      * Version info is read from the sidecar meta file when available.
      */
-    fun getInstalledExtensions(): List<InstalledExtension> =
+    fun getInstalledExtensions(): List<InstalledExtension> = installedExtensions.value
+
+    private fun snapshotInstalledExtensions(): List<InstalledExtension> =
         synchronized(runtimeLock) { loadedExtensions.toList() }
             .groupBy { it.jarFile }
             .map { (jarFile, exts) ->
@@ -89,18 +99,29 @@ class DesktopExtensionManager(
                     installedAt = meta?.installedAt ?: 0L,
                     artifactSha256 = meta?.artifactSha256 ?: "",
                     origin = meta?.source ?: ExtensionOrigin.COMPILED_JAR,
+                    displayName = meta?.name.orEmpty(),
+                    language = meta?.language.orEmpty(),
+                    isNsfw = meta?.isNsfw == true,
                 )
             }
+
+    private fun publishInstalledExtensions() {
+        mutableInstalledExtensions.value = snapshotInstalledExtensions()
+    }
 
     /**
      * Deletes the JAR file for [extension] and removes its sources from the loaded list.
      * @return true if the JAR was deleted successfully.
      */
     fun removeExtension(extension: InstalledExtension): Boolean {
-        return lifecycleGate.withPublicOperation {
+        val removed = lifecycleGate.withPublicOperation {
             releaseRuntime(extension.pkgName)
-            extension.jarFile.delete()
+            extension.jarFile.delete().also { deleted ->
+                if (!deleted) reloadRuntime(extension.pkgName, extension.sources.map { it.id }.toSet())
+            }
         }
+        publishInstalledExtensions()
+        return removed
     }
 
     /**
@@ -108,18 +129,29 @@ class DesktopExtensionManager(
      * @return true if the JAR was deleted successfully.
      */
     fun removeExtensionWithMeta(extension: InstalledExtension): Boolean {
-        return lifecycleGate.withPublicOperation {
+        val removed = lifecycleGate.withPublicOperation {
             releaseRuntime(extension.pkgName)
-            deleteExtensionMeta(extension.jarFile)
-            extension.jarFile.delete()
+            extension.jarFile.delete().also { deleted ->
+                if (deleted) {
+                    deleteExtensionMeta(extension.jarFile)
+                } else {
+                    reloadRuntime(extension.pkgName, extension.sources.map { it.id }.toSet())
+                }
+            }
         }
+        publishInstalledExtensions()
+        return removed
     }
 
     /** Re-scans the extensions directory and reloads all extensions. */
     fun reloadAll() = loadAll()
 
     internal suspend fun installExtension(artifact: ExtensionArtifact): ExtensionInstallState =
-        installCoordinator.install(ExtensionInstallRequest(artifact)).last()
+        installExtensionStates(artifact).last()
+
+    internal fun installExtensionStates(artifact: ExtensionArtifact): Flow<ExtensionInstallState> =
+        installCoordinator.install(ExtensionInstallRequest(artifact))
+            .onCompletion { publishInstalledExtensions() }
 
     private fun releaseRuntime(packageName: String) {
         val previous = synchronized(runtimeLock) {
@@ -188,7 +220,10 @@ data class InstalledExtension(
     val installedAt: Long = 0L,
     val artifactSha256: String = "",
     val origin: ExtensionOrigin = ExtensionOrigin.COMPILED_JAR,
+    val displayName: String = "",
+    val language: String = "",
+    val isNsfw: Boolean = false,
 ) {
-    val name: String get() = jarFile.nameWithoutExtension
+    val name: String get() = displayName.ifBlank { jarFile.nameWithoutExtension }
     val pkgName: String get() = jarFile.nameWithoutExtension
 }

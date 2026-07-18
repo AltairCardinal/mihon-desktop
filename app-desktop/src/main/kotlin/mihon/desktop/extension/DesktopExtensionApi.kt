@@ -9,6 +9,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.last
 import kotlinx.serialization.json.Json
 import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionArtifact
@@ -30,6 +32,19 @@ import mihon.domain.extensionrepo.repository.ExtensionRepoRepository
 import mihon.domain.extensionrepo.service.ExtensionRepoIndexEntryDto
 import mihon.domain.extensionrepo.service.toCatalogEntry
 import okhttp3.OkHttpClient
+import java.util.UUID
+
+sealed interface DesktopExtensionInstallStart {
+    data class Started(val states: Flow<ExtensionInstallState>) : DesktopExtensionInstallStart
+    data class TrustRequired(
+        val requestId: String,
+        val existingFingerprint: String,
+        val incomingFingerprint: String,
+        val reasons: Set<TrustMismatch>,
+        internal val request: ExtensionTrustRequest,
+    ) : DesktopExtensionInstallStart
+    data class Rejected(val error: AppError) : DesktopExtensionInstallStart
+}
 
 /** Fetches Desktop extension catalogs and provides downloaded artifacts to the install manager. */
 class DesktopExtensionApi(
@@ -39,6 +54,7 @@ class DesktopExtensionApi(
     private val catalogService: ExtensionCatalogService = ExtensionCatalogService(),
     private val trustPolicy: ExtensionTrustPolicy = ExtensionTrustPolicy(),
 ) {
+    private val pendingTrust = mutableMapOf<String, ExtensionTrustRequest>()
     suspend fun loadExtensionIcon(iconUrl: String): ByteArray? = withContext(Dispatchers.IO) {
         if (iconUrl.isBlank()) return@withContext null
         runCatching {
@@ -50,7 +66,9 @@ class DesktopExtensionApi(
         }.getOrNull()
     }
 
-    suspend fun findAvailableExtensions(): List<DesktopAvailableExtension> = refreshCatalog().entries
+    suspend fun findAvailableExtensions(): List<DesktopAvailableExtension> = availableExtensions(refreshCatalog())
+
+    internal fun availableExtensions(catalog: ExtensionCatalogResult): List<DesktopAvailableExtension> = catalog.entries
         .filter { it.compatibility == ExtensionCompatibility.Compatible }
         .map { entry ->
             val artifact = entry.artifact
@@ -89,22 +107,58 @@ class DesktopExtensionApi(
         extension: DesktopAvailableExtension,
         manager: DesktopExtensionManager,
     ): InstallResult = withContext(Dispatchers.IO) {
-        try {
-            val installedJar = extensionArtifactFile(manager.extensionsDirectory, extension.pkgName, "jar")
-            val existingMeta = readExtensionMeta(installedJar)
-            val trustRequest = extension.trustRequest(installedJar, existingMeta)
-            trustFailure(trustPolicy.evaluate(trustRequest), existingMeta, extension)?.let { return@withContext it }
-            when (
-                val terminal = manager.installExtension(trustRequest.incomingArtifact)
-            ) {
-                is ExtensionInstallState.Installed -> InstallResult.Success(installedJar)
+        when (val start = beginInstall(extension, manager)) {
+            is DesktopExtensionInstallStart.Started -> when (val terminal = start.states.last()) {
+                is ExtensionInstallState.Installed -> InstallResult.Success(
+                    extensionArtifactFile(manager.extensionsDirectory, extension.pkgName, "jar"),
+                )
                 is ExtensionInstallState.Failed -> terminal.error.toInstallResult()
                 else -> InstallResult.Error("Extension install ended before reaching a terminal state")
             }
-        } catch (failure: mihon.domain.extension.service.ExtensionInstallFailure) {
-            failure.error.toInstallResult()
+            is DesktopExtensionInstallStart.TrustRequired -> {
+                discardTrust(start.requestId)
+                InstallResult.TrustRequired(start.existingFingerprint, start.incomingFingerprint, start.reasons)
+            }
+            is DesktopExtensionInstallStart.Rejected -> start.error.toInstallResult()
         }
     }
+
+    internal suspend fun beginInstall(
+        extension: DesktopAvailableExtension,
+        manager: DesktopExtensionManager,
+    ): DesktopExtensionInstallStart = withContext(Dispatchers.IO) {
+        try {
+            val installedJar = extensionArtifactFile(manager.extensionsDirectory, extension.pkgName, "jar")
+            val meta = readExtensionMeta(installedJar)
+            val request = extension.trustRequest(installedJar, meta)
+            when (val decision = trustPolicy.evaluate(request)) {
+                ExtensionTrustDecision.Trusted -> DesktopExtensionInstallStart.Started(
+                    manager.installExtensionStates(request.incomingArtifact),
+                )
+                is ExtensionTrustDecision.ConfirmationRequired -> {
+                    val id = UUID.randomUUID().toString()
+                    synchronized(pendingTrust) { pendingTrust[id] = request }
+                    DesktopExtensionInstallStart.TrustRequired(
+                        id, meta?.repoFingerprint.orEmpty(), extension.repoFingerprint, decision.reasons, request,
+                    )
+                }
+                is ExtensionTrustDecision.Rejected -> DesktopExtensionInstallStart.Rejected(decision.error)
+            }
+        } catch (failure: mihon.domain.extension.service.ExtensionInstallFailure) {
+            DesktopExtensionInstallStart.Rejected(failure.error)
+        }
+    }
+
+    internal fun confirmTrust(
+        requestId: String,
+        manager: DesktopExtensionManager,
+    ): Flow<ExtensionInstallState>? = synchronized(pendingTrust) { pendingTrust.remove(requestId) }
+        ?.let { manager.installExtensionStates(it.incomingArtifact) }
+
+    internal fun discardTrust(requestId: String): Boolean =
+        synchronized(pendingTrust) { pendingTrust.remove(requestId) != null }
+
+    internal val pendingTrustCount: Int get() = synchronized(pendingTrust) { pendingTrust.size }
 
     internal suspend fun downloadArtifact(artifact: ExtensionArtifact, destination: File) {
         val response = try {
@@ -215,23 +269,6 @@ class DesktopExtensionApi(
             downloadedArtifactSha256 = null,
             installed = installed,
             installedArtifactSha256 = installedJar.takeIf(File::exists)?.sha256(),
-        )
-    }
-
-    private fun trustFailure(
-        decision: ExtensionTrustDecision,
-        existingMeta: ExtensionMeta?,
-        extension: DesktopAvailableExtension,
-    ): InstallResult? = when (decision) {
-        ExtensionTrustDecision.Trusted -> null
-        is ExtensionTrustDecision.ConfirmationRequired -> InstallResult.TrustRequired(
-            existingFingerprint = existingMeta?.repoFingerprint.orEmpty(),
-            incomingFingerprint = extension.repoFingerprint,
-            reasons = decision.reasons,
-        )
-        is ExtensionTrustDecision.Rejected -> InstallResult.Error(
-            message = "Extension artifact integrity validation failed",
-            error = decision.error,
         )
     }
 

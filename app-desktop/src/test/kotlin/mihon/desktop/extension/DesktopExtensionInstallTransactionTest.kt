@@ -21,6 +21,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.last
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -42,6 +44,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -571,6 +574,77 @@ class DesktopExtensionInstallTransactionTest {
     }
 
     @Test
+    fun `trust confirmation resumes exactly the pending request`(@TempDir directory: Path) = runBlocking {
+        installedSnapshot(directory)
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(MockResponse.Builder().body(Buffer().write(sourceJar(FixtureNewSource::class.java))).build())
+            val api = api()
+            val manager = manager(api, directory.toFile()).also { it.loadAll() }
+            val extension = available(server, FixtureNewSource.ID, null).copy(repoFingerprint = "new-key")
+            try {
+                val discarded = assertInstanceOf(
+                    DesktopExtensionInstallStart.TrustRequired::class.java,
+                    api.beginInstall(extension, manager),
+                )
+                assertTrue(api.discardTrust(discarded.requestId))
+                assertFalse(api.discardTrust(discarded.requestId))
+                assertNull(api.confirmTrust(discarded.requestId, manager))
+                val pending = assertInstanceOf(
+                    DesktopExtensionInstallStart.TrustRequired::class.java,
+                    api.beginInstall(extension, manager),
+                )
+                assertNull(api.confirmTrust("unrelated", manager))
+                val states = checkNotNull(api.confirmTrust(pending.requestId, manager)).toList()
+                val terminal = states.last()
+
+                val installedTerminal = assertInstanceOf(ExtensionInstallState.Installed::class.java, terminal)
+                assertEquals(
+                    listOf(
+                        ExtensionInstallState.Preparing::class,
+                        ExtensionInstallState.Validating::class,
+                        ExtensionInstallState.Committing::class,
+                        ExtensionInstallState.Reloading::class,
+                        ExtensionInstallState.Installed::class,
+                    ),
+                    states.map { it::class },
+                )
+                assertSame(pending.request.incomingArtifact, installedTerminal.artifact)
+                assertNull(api.confirmTrust(pending.requestId, manager))
+                assertEquals(1, server.requestCount)
+                val installed = manager.installedExtensions.value.single()
+                assertEquals(listOf(extension.name, extension.lang, extension.isNsfw), listOf(installed.name, installed.language, installed.isNsfw))
+                assertTrue(manager.removeExtensionWithMeta(installed))
+                assertTrue(manager.installedExtensions.value.isEmpty())
+            } finally {
+                manager.close()
+            }
+        }
+    }
+
+    @Test
+    fun `failed uninstall restores runtime and leaves authoritative state unchanged`(@TempDir directory: Path) {
+        installedSnapshot(directory)
+        val manager = DesktopExtensionManager(DesktopExtensionLoader(directory.toFile())).also { it.loadAll() }
+        val before = manager.installedExtensions.value.single()
+        val undeletable = before.copy(
+            jarFile = object : File(before.jarFile.path) {
+                override fun delete() = false
+            },
+        )
+        try {
+            assertFalse(manager.removeExtension(undeletable))
+            assertNotNull(manager.getSource(FixtureOldSource.ID))
+            assertEquals(before.pkgName, manager.installedExtensions.value.single().pkgName)
+            assertFalse(manager.removeExtensionWithMeta(undeletable))
+            assertTrue(directory.resolve("$PACKAGE.meta.json").toFile().isFile)
+            assertNotNull(manager.getSource(FixtureOldSource.ID))
+        } finally {
+            manager.close()
+        }
+    }
+
+    @Test
     fun `public close waits for cancelled prepare cleanup`(@TempDir directory: Path) = runBlocking {
         val providerStarted = kotlinx.coroutines.CompletableDeferred<Unit>()
         val fileSystem = BlockingCleanupFileSystem()
@@ -608,8 +682,9 @@ class DesktopExtensionInstallTransactionTest {
             loader = loader,
             artifactProvider = { _, destination -> destination.writeBytes(sourceJar(FixtureNewSource::class.java)) },
         ).also { it.loadAll() }
+        val installedBefore = manager.installedExtensions.value
         loader.blockNextReload = true
-        val install = async { manager.installExtension(artifact(FixtureNewSource.ID)) }
+        val install = async { manager.installExtensionStates(artifact(FixtureNewSource.ID)).last() }
         loader.reloadEntered.awaitLatch()
 
         install.cancel()
@@ -620,6 +695,10 @@ class DesktopExtensionInstallTransactionTest {
         snapshot.assertUnchanged()
         assertNotNull(manager.getSource(FixtureOldSource.ID))
         assertNull(manager.getSource(FixtureNewSource.ID))
+        assertEquals(
+            installedBefore.map { it.copy(sources = emptyList()) to it.sources.map { source -> source.id } },
+            manager.installedExtensions.value.map { it.copy(sources = emptyList()) to it.sources.map { source -> source.id } },
+        )
         assertNoTransactionFiles(directory)
         manager.close()
     }

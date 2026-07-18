@@ -26,6 +26,9 @@ data class ExtensionMeta(
     val installedAt: Long = 0L,
     val artifactSha256: String = "",
     val source: ExtensionOrigin = ExtensionOrigin.COMPILED_JAR,
+    val name: String = "",
+    val language: String = "",
+    val isNsfw: Boolean = false,
     /**
      * Fully-qualified Source class name extracted from AndroidManifest.xml
      * (`tachiyomi.extension.class` meta-data).
@@ -43,7 +46,9 @@ internal fun readExtensionMeta(jarFile: File): ExtensionMeta? {
     val metaFile = metaFileFor(jarFile)
     if (!metaFile.exists()) return null
     return try {
-        metaJson.decodeFromString<ExtensionMeta>(metaFile.readText())
+        metaJson.decodeFromString<ExtensionMeta>(metaFile.readText()).let {
+            if (it.name.isBlank()) it.copy(name = it.pkgName) else it
+        }
     } catch (_: Exception) {
         null
     }
