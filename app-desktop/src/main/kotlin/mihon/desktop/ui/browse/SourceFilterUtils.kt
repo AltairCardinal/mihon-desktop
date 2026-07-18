@@ -23,6 +23,7 @@ internal fun FilterList.copyStatesToFreshTree(fresh: FilterList): FilterList {
 }
 
 private fun Filter<*>.copyStateTo(draft: Filter<*>) {
+    require(this !== draft) { "Source must return fresh Filter instances for draft editing" }
     require(name == draft.name && javaClass == draft.javaClass) {
         "Source Filter structure changed at '$name'"
     }
@@ -32,8 +33,16 @@ private fun Filter<*>.copyStateTo(draft: Filter<*>) {
         this is Filter.CheckBox && draft is Filter.CheckBox -> draft.state = state
         this is Filter.TriState && draft is Filter.TriState -> draft.state = state
         this is Filter.Text && draft is Filter.Text -> draft.state = state
-        this is Filter.Select<*> && draft is Filter.Select<*> -> draft.state = state
-        this is Filter.Sort && draft is Filter.Sort -> draft.state = state?.copy()
+        this is Filter.Select<*> && draft is Filter.Select<*> -> {
+            require(values.javaClass == draft.values.javaClass && values.contentDeepEquals(draft.values)) {
+                "Source Select '$name' changed values"
+            }
+            draft.state = state
+        }
+        this is Filter.Sort && draft is Filter.Sort -> {
+            require(values.contentEquals(draft.values)) { "Source Sort '$name' changed values" }
+            draft.state = state?.copy()
+        }
         this is Filter.Group<*> && draft is Filter.Group<*> -> {
             require(state.size == draft.state.size) { "Source Filter group '$name' changed shape" }
             state.zip(draft.state).forEach { (committedChild, draftChild) ->
