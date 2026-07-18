@@ -38,6 +38,18 @@ class DesktopProductCapabilityContractTest {
             "TEMP-COMPAT",
             "PLATFORM-EXEMPT",
         )
+    private val sourceExtensionAuthorityIds =
+        setOf(28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40)
+    private val sourceExtensionProvenanceFields =
+        setOf(
+            "upstreamRefAndSymbols",
+            "migratedSharedImplementation",
+            "currentAndroidConsumer",
+            "desktopConsumerAdapter",
+            "deviationClassification",
+        )
+    private val fixedOriginalMihonRef =
+        "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8"
     private val desktopProductEvidence =
         setOf(
             "app-desktop/src/test/kotlin/mihon/desktop/ui/authors/AuthorDetailBehaviorTest.kt",
@@ -472,6 +484,49 @@ class DesktopProductCapabilityContractTest {
             assertTrue(tags.all { it in validTags }, "ID ${item["id"]}: invalid tag")
             assertEquals(expectedTags.getValue(id), tags.toSet(), "ID $id: tags differ from design A-J tables")
 
+            if (id in sourceExtensionAuthorityIds) {
+                sourceExtensionProvenanceFields.forEach { field ->
+                    assertTrue(
+                        item[field]?.jsonPrimitive?.content?.isNotBlank() == true,
+                        "ID $id: source/extension provenance field $field must not be blank",
+                    )
+                }
+                val upstream = item.getValue("upstreamRefAndSymbols").jsonPrimitive.content
+                assertTrue(
+                    upstream.startsWith(fixedOriginalMihonRef),
+                    "ID $id must use the fixed original Mihon ref",
+                )
+                assertTrue(
+                    upstream.contains(".kt"),
+                    "ID $id must name fixed-main symbol evidence",
+                )
+                assertTrue(
+                    item.getValue("currentAndroidConsumer").jsonPrimitive.content.contains("app/src/main"),
+                    "ID $id must name a current Android consumer path",
+                )
+                assertTrue(
+                    declaredProductionPaths(item.getValue("currentAndroidConsumer").jsonPrimitive.content)
+                        .any { Files.isRegularFile(repositoryRoot.resolve(it)) },
+                    "ID $id must reference an existing current Android consumer file",
+                )
+                assertTrue(
+                    item.getValue("desktopConsumerAdapter").jsonPrimitive.content.contains("app-desktop/src/main"),
+                    "ID $id must name a Desktop consumer or adapter path",
+                )
+                assertTrue(
+                    declaredProductionPaths(item.getValue("desktopConsumerAdapter").jsonPrimitive.content)
+                        .any { Files.isRegularFile(repositoryRoot.resolve(it)) },
+                    "ID $id must reference an existing Desktop consumer or adapter file",
+                )
+                val classification = item.getValue("deviationClassification").jsonPrimitive.content
+                assertTrue(
+                    classification.contains(
+                        Regex("PLATFORM_ADAPTER|SECURITY_ENHANCEMENT|DESKTOP_PRODUCT|MIGRATION_OUTPUT|UNCLASSIFIED_DEBT"),
+                    ),
+                    "ID $id must classify every deviation instead of treating current-fork behavior as authority",
+                )
+            }
+
             val protectionTests = item.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content }
             assertFalse(
                 protectionTests.any { it.endsWith("DesktopProductCapabilityContractTest.kt") },
@@ -709,6 +764,11 @@ class DesktopProductCapabilityContractTest {
         val nextTest = source.indexOf("\n    @Test", start + marker.length).takeIf { it >= 0 } ?: source.length
         return source.substring(start, nextTest)
     }
+
+    private fun declaredProductionPaths(value: String) =
+        Regex("(?:app|app-desktop)/src/main/[A-Za-z0-9_./-]+\\.kt")
+            .findAll(value)
+            .map { it.value }
 
     private fun repositoryRoot() =
         generateSequence(Path.of("").toAbsolutePath()) { it.parent }

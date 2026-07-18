@@ -1,76 +1,46 @@
 # 源与扩展权威实现基线
 
-日期：2026-07-15
-Task base：`d77ef4d2b63e00d8abe3e2da85b6ef4e4351ae58`
+日期：2026-07-18
+原始 Mihon 权威：`main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`（下称“固定 main”）
 
-## 目的与边界
+## 目的、身份与判定规则
 
-本基线只固定当前 Android 权威调用链、Desktop 对应实现、已存在 fixture 与 Desktop 产品保护网，为后续共享模型提供输入；本批不创建共享生产模型，也不改变用户界面或安装行为。
+本基线为 source/extension slice 重建可审计的来源。只有固定 main 中的实现、测试与调用链可以证明原始 Mihon 语义；当前 `app/` 是 Desktop fork 的 Android consumer/迁移目标，`domain/common` 是迁移输出，二者均不能因路径或复用关系自证为权威。`app-desktop/` 是 JVM 产品和平台 adapter。
 
-复用结论如下：
+后续任务必须先以固定 main 对照行为，再将当前 fork 差异逐项分类为：必要平台 adapter、已有正确性/安全性/UX 证据的增强，或待偿还的 fork 技术债。未知差异保持待偿还状态，不得称为更好或直接回填为原始语义。本批只记录来源，不删除任何 Desktop 功能或改变产品行为。
 
-1. `SourceMangaSearchService`、`ExtensionRepoRepository`、`source-api` 类型、网络客户端、Desktop APK→JAR、原子替换、扩展详情与文件工具可以直接复用。
-2. 源分页/错误、扩展目录/版本/安全/事务状态应从两端重复实现中抽取，供 Android 与 Desktop 共用；本批仅记录边界，不提前实现。
-3. 新链路应追加到现有源与扩展入口，不建立第二套 Screen 或安装入口。
-4. Android PackageManager/PackageInstaller 与 Desktop 目录、ClassLoader、APK→JAR、系统文件管理器属于真实平台差异，必须保留平台 adapter；把它们强行共享会丢失签名、包管理或 JVM 文件语义，也会破坏现有用户入口。
+## 原始兼容核心与跨平台安全增强
 
-## 权威类映射
+固定 main 可作为逐项对照的 extension 核心仅包括：版本和更新判定、已安装/可用/不受信任展示、安装/更新/取消/信任的基本操作，以及 Android 签名与 PackageInstaller 流程。当前 shared/consumer 中的仓库 fingerprint 连续性、声明及下载 SHA-256 连续性、提交前快照、rollback 和 runtime restore 是跨平台安全与可靠性增强；它们保留并由两端消费，但不宣称来自固定 main。验证结论必须表述为“原始兼容核心 + 跨平台安全增强”。
 
-| 能力 | Android 权威实现 | Desktop 当前对应 | 直接复用 | 后续必须抽取 | 必须平台适配 | 现有 fixture / 保护测试 |
-| --- | --- | --- | --- | --- | --- | --- |
-| 扩展目录与更新检查 | `eu.kanade.tachiyomi.extension.api.ExtensionApi` | `mihon.desktop.extension.DesktopExtensionApi` | `ExtensionRepoRepository`、OkHttp、index JSON | 多仓库部分失败、版本判断、目录结果与错误 | 下载产物的最终安装动作 | Android repository index；Desktop `ExtensionIconLoadingTest`、`KeiyoushiChineseCompatibilityTest` |
-| 扩展生命周期 | `eu.kanade.tachiyomi.extension.ExtensionManager` | `mihon.desktop.extension.DesktopExtensionManager`，UI 状态暂存于 `ExtensionListScreen` | `source-api`、扩展仓库领域层 | Installed/Available/Installing/Failed、信任、更新与回滚事务 | Android `ExtensionInstaller`；Desktop 文件提交与 reload | `DesktopExtensionManagerTest`、`ExtensionArtifactReplacementTest` |
-| 扩展发现与加载 | `eu.kanade.tachiyomi.extension.util.ExtensionLoader` | `mihon.desktop.extension.DesktopExtensionLoader` | `Source`/`CatalogueSource` 合约 | 统一的加载结果、兼容错误与诊断 | Android PackageManager、签名与私有 APK；Desktop 目录、`ExtensionClassLoader`、ServiceLoader、compat 层 | `DesktopExtensionLoaderTest`、`ExtensionCompatibilityTest`、`KeiyoushiChineseCompatibilityTest` |
-| 源列表 | `eu.kanade.tachiyomi.ui.browse.source.SourcesScreenModel` | `mihon.desktop.ui.browse.BrowseTab` / `BrowseSourceListScreen` + `DesktopSourceManager` | 源模型与启用源查询能力 | 列表状态、语言分组、启用/固定动作与错误 | Voyager 导航和宽屏 Compose 布局 | Android ScreenModel 流；Desktop `ScreenInstantiationSmokeTest` |
-| 全局搜索 | `eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreenModel`（经 `SearchScreenModel`） | `mihon.desktop.ui.browse.GlobalSearchScreen` | `tachiyomi.domain.source.service.SourceMangaSearchService` | 查询、并发结果、空状态、分页与统一 AppError | 两端 Compose 呈现、导航与键鼠交互 | `SourceMangaSearchServiceTest`；Desktop 当前 Screen 路径 |
-| 扩展列表操作 | `eu.kanade.tachiyomi.ui.browse.extension.ExtensionsScreenModel` | `mihon.desktop.ui.extension.ExtensionListScreen` | 搜索/语言筛选的纯规则可迁入共享层 | 刷新、安装、更新、取消、卸载、信任与逐项反馈 | Android 安装会话；Desktop JAR/APK 文件流程与宽屏布局 | `ExtensionSearchTest`、`ExtensionLanguageFilterTest`、本产品基线测试 |
-| 扩展详情与文件定位 | Android `ExtensionDetailsScreenModel` / `ExtensionDetailsScreen` | Desktop `ExtensionDetailsScreen` + `DesktopDirectoryOpener` | 扩展详情领域字段 | 详情加载、缺失、卸载结果 | Android Intent/包页面；Desktop 系统文件管理器 | `DesktopExtensionProductBaselineTest`、`ScreenInstantiationSmokeTest` |
+## 能力来源矩阵
 
-## 当前调用链
+每行均给出固定 main 的符号/调用链、已迁移 shared 实现（没有则明确为无）、当前 Android consumer、Desktop consumer/adapter 以及偏离分类。路径均为 production 路径，测试 fixture 只能保护对应链路，不能替代来源证明。
 
-### Android 扩展
+| ID / 能力 | 固定 main 原始符号与调用链 | 已迁移 shared 实现 | 当前 Android consumer | Desktop consumer / adapter | 偏离分类与原因 |
+| --- | --- | --- | --- | --- | --- |
+| 28 源列表 | `SourcesScreenModel` → enabled/language/pin source interactors | `SourceMangaSearchService` 不负责源列表分组；其余无 | `SourcesScreenModel` | `BrowseTab` → `BrowseSourceListScreen` → `DesktopSourceManager` | Desktop 宽屏与 Voyager 是 platform adapter；列表共享状态已迁移时必须单独对照 main。 |
+| 29 单源浏览 | `BrowseSourceScreenModel` → `CatalogueSource` 分页 | `SourceMangaSearchService` | `BrowseSourceScreenModel` | `SourceBrowseScreen`、`DesktopSourceQueryCoordinators` | 共享查询服务是迁移输出；分页/空/错误语义必须回放固定 main，键鼠布局是 platform adapter。 |
+| 30 全局搜索 | `GlobalSearchScreenModel` → `SearchScreenModel` → enabled `CatalogueSource` | `SourceMangaSearchService` | `GlobalSearchScreenModel` | `GlobalSearchScreen`、`DesktopSourceQueryCoordinators` | generation、统一错误和多源聚合是共享迁移/增强，需与固定 main 分开验证；Desktop 呈现为 adapter。 |
+| 32 扩展仓库 | `ExtensionReposScreenModel` → extension-repo interactors | `ExtensionRepoRepository`、`ExtensionRepoService` | `ExtensionReposScreenModel` | `ExtensionRepoScreen`、`DesktopExtensionApi` | shared repo 模型是迁移输出；repo fingerprint 去重必须以固定 main 的仓库操作为核心并单列连续性增强。 |
+| 33 扩展发现 | `ExtensionManager.findAvailableExtensions` → `ExtensionApi`；安装后 `ExtensionLoader` | `ExtensionCatalogService` | `ExtensionManager`、`ExtensionApi`、`ExtensionLoader` | `DesktopExtensionApi`、`DesktopExtensionManager`、`DesktopExtensionLoader` | PackageManager/签名与 ClassLoader/JAR 是各自 adapter；兼容性诊断是跨端增强，不能倒推原始语义。 |
+| 34 扩展安装 | `ExtensionManager.installExtension/updateExtension/cancelInstallUpdateExtension` → `ExtensionInstaller` | `ExtensionInstallCoordinator`、`ExtensionInstallPort` | `ExtensionManager`、`ExtensionInstaller` | `DesktopExtensionApi`、`DesktopExtensionManager`、`DesktopExtensionInstallPort`、APK→JAR | 原始基本安装、更新、取消必须逐项对照；SHA、snapshot、rollback/runtime restore 是保留的跨平台安全增强。 |
+| 35 扩展加载 | `ExtensionLoader` → PackageManager、签名、私有 APK | 无 | `ExtensionLoader` | `DesktopExtensionLoader`、`ExtensionClassLoader`、ServiceLoader/compat | Android package/signature 与 Desktop JAR/compat 都是 platform adapter；缺真实 fixture 的 compat 能力仍为待偿还技术债。 |
+| 36 扩展安全/信任 | `ExtensionLoader` 不受信任结果 → `ExtensionManager.trust` | `ExtensionTrustPolicy`、`RepositoryIdentity` | `ExtensionLoader`、`ExtensionManager.trust` | `DesktopExtensionInstallPort`、metadata sidecar、Desktop loader | 原始签名信任和基本 trust 为核心；repo fingerprint/SHA continuity 是安全增强，不能声称固定 main 已有。 |
+| 37 扩展详情与更新 | `ExtensionsScreenModel` / `ExtensionDetailsScreenModel` → `ExtensionManager.updateExtension/uninstallExtension` | 无 presentation shared core（Task 6B 待建） | `ExtensionsScreenModel`、`ExtensionDetailsScreenModel` | `ExtensionListScreen`、`ExtensionDetailsScreen`、`DesktopExtensionManager` | 搜索、分类、更新、详情退出必须先回放固定 main；文件信息/打开目录为 Desktop 产品增强。 |
+| 38 源偏好设置 | `SourcePreferencesScreen` → source preference schema | 无 | `SourcePreferencesScreen` | Desktop `SourcePreferencesScreen` | 控件渲染与文件/窗口交互是 platform adapter；missing、不可配置和 setup failure 的状态须保持可区分。 |
+| 39 WebView/源登录 | `WebViewScreenModel` → `WebViewScreen` / `WebViewScreenContent` → Android CookieManager | `SourceLoginSession` | `WebViewScreenModel`、`WebViewScreen` | `DesktopBrowserLoginAdapter`、`DesktopSourceLoginDialog` | 受控浏览器和 Cookie 存储是 platform adapter；显式 login session 状态为跨端迁移输出，不可反称原始 WebView 行为。 |
+| 40 Cloudflare 绕过 | 固定 main 的 `CloudflareInterceptor` / WebView Cloudflare help；无 FlareSolverr | 无 | `CloudflareInterceptor`、WebView UI | `CloudflareChallengeManager`、`DesktopCloudflareInterceptor`、`FlareSolverrClient`、`CloudflareBypassDialog` | FlareSolverr 是 Desktop-only、用户显式选择的后备产品能力；它不是原始 Mihon 语义，也不得静默接管请求。 |
 
-`ExtensionsScreenModel` → `ExtensionManager.findAvailableExtensions/installExtension/updateExtension/uninstallExtension` → `ExtensionApi`（目录与 APK URL）或 `ExtensionInstaller`（安装会话）→ `ExtensionLoader`（PackageManager、签名、私有扩展选择）→ 已安装 `Source` 发布给源管理链路。
+## Task 6B 的固定 main 回放规则
 
-### Desktop 扩展
+Task 6B 不得把当前 `ExtensionsScreenModel`、`ExtensionManager` 或 `ExtensionDetailsScreenModel` 当作 authority fixture。RED 先从固定 main 回放名称/source/baseUrl/id 搜索、updates/installed/untrusted/语言分类、刷新、逐 package 安装步骤、取消、卸载、trust 和详情卸载事件；随后再比较当前 fork。
 
-`ExtensionListScreen` → `DesktopExtensionApi.findAvailableExtensions/installExtension` → 下载 JAR/APK → `ApkToJarConverter`（APK 路径）→ `replaceExtensionArtifact` + sidecar metadata → `DesktopExtensionManager.reloadAll` → `DesktopExtensionLoader` / `ExtensionClassLoader` / ServiceLoader。已安装项由 `ExtensionDetailsScreen` 打开；“Open folder” 委托 `DesktopDirectoryOpener`。
+已知当前 fork 差异：`ExtensionManager` 的初始化在 coroutine 中异步启动，而固定 main 同一流程同步完成；`ExtensionsScreenModel` 收集安装流时缺少固定 main 的 `takeWhile { step != Installed }`。两项均尚未被证明为必要 adapter 或正确性/安全性/UX 增强，分类为待偿还 fork 技术债，Task 6B 必须用对照测试决定保留、修复或显式隔离。
 
-### Android 源列表与搜索
+## Desktop 产品边界与现有保护网
 
-`SourcesScreenModel` 从启用源用例收集列表并处理启用/固定；`GlobalSearchScreenModel` 继承 `SearchScreenModel`，选取启用的 `CatalogueSource`、并发搜索并发布逐源结果。
-
-### Desktop 源列表与搜索
-
-`BrowseTab` 的嵌套 Navigator 打开 `BrowseSourceListScreen`；列表从 `DesktopSourceManager` 读取并导航到 `SourceBrowseScreen`。`GlobalSearchScreen` 当前直接并发调用各 `CatalogueSource`；后续必须追加到现有 `SourceMangaSearchService` 链路并抽取共享状态，不另建搜索服务。
-
-## Fixture 清单与可信度
-
-| Fixture | 类型/版本 | 来源 | 当前用途 | 边界 |
-| --- | --- | --- | --- | --- |
-| `minimalDexBytes()` / `MINIMAL_DEX_BASE64` | 最小 DEX v035 | `ApkToJarConverterTest` 与 `DesktopExtensionProductBaselineTest` | 确认 production APK→JAR 转换仍可产出 JVM JAR | 合成结构 fixture，只保护转换机械链路，不证明第三方扩展兼容 |
-| `MinimalTestSource` ServiceLoader JAR | repo test classpath | `ExtensionCompatibilityTest` | 确认 production loader 能发现 `Source` | 确定性 JVM fixture，不代表 Android API 使用面 |
-| `eu.kanade.tachiyomi.extension.zh.manhuagui@1.4.28` | Keiyoushi APK | `https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.min.json`，2026-07-15 记录 | `KeiyoushiChineseCompatibilityTest` 精确校验 package/version，下载并转换后调用 production `DesktopExtensionLoader`（ServiceLoader fast path + manifest sidecar fallback）；当前因缺少 `android.app.Application` compat 绑定而不暴露 `Source` | `unsupported` 网络 integration fixture；只有 Task 4 提供真实 Application adapter 且同一固定 fixture 能由 loader 暴露 `Source` 后才能转为 `required` |
-| 本地 ManHuaGui 构建产物 | 版本由本地构建决定 | `/tmp/extensions-desktop/extensions-source/.../build/libs` | `ManhuaguiLoadTest` 的开发者诊断 | 非 CI 权威，不得单独作为新增 compat stub 的依据 |
-
-## Compat evidence schema
-
-资源：`app-desktop/src/test/resources/extensions/compat-evidence.json`。
-
-每项字段固定为：
-
-- `symbol`：真实被调用的完整 API 符号；
-- `fixture`：`path-or-package@version`，必须能追溯到测试输入；
-- `test`：仓库内触发加载/调用的保护测试；
-- `status`：仅 `required` 或 `unsupported`；
-- `removalCondition`：何时可以删除该兼容面或明确不支持结果。
-
-首批只登记现有真实 Keiyoushi fixture 已触达的 `eu.kanade.tachiyomi.source.Source` 边界。现有 `AndroidCompatPhase*Test` 只直接调用自造 stub，不能证明第三方扩展使用，因此没有把 `android.*` / `androidx.*` 的未来可能需求预填进清单。后续审计必须为每个 compat public symbol 补真实 fixture 调用证据，或记录 `unsupported` 并删除无调用实现。
-
-## Desktop 产品保护网与用户行为
-
-- 用户入口：Browse → Sources / Global Search；Browse → Extensions → Installed/Available → Extension details。
-- 扩展安装仍支持预编译 JAR 和 APK→JAR；替换后 reload，失败结果由现有安装 UI 显示。
-- 详情页保留文件路径、大小、摘要、仓库信息、“Open folder”、源浏览/设置、清 Cookie 和卸载确认。
-- 空状态、加载与错误沿用当前页面行为；本批不改变文案或状态模型。
-- 功能边界：APK→JAR 只保证可转换的 DEX；Android-only AAR/QuickJS 或缺少真实调用证据的 API 不承诺支持。文件工具只负责 Desktop 目录 side effect，不进入共享业务层。
+- 用户入口保持 Browse → Sources / Global Search，以及 Browse → Extensions → Installed/Available → Extension details。
+- Desktop 保留预编译 JAR、APK→JAR、原子替换/reload、文件摘要和仓库信息、Open folder、键鼠/宽屏、显式 FlareSolverr 后备与 Test Mode。
+- `minimalDexBytes()`、`MinimalTestSource` 和 Keiyoushi fixture 分别只证明转换、ServiceLoader 和真实扩展边界；本地构建产物只是诊断，均不构成固定 main 来源证明。
+- Android-only AAR、QuickJS 或没有真实 fixture 调用的 compat API 不承诺支持；文件工具仅承担 Desktop side effect，不进入共享业务层。

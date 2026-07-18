@@ -627,7 +627,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 **Risk axis:** android-extension-presentation-authority
 **Platform boundary:** shared+android
 **Estimated scope:** 8 files, 400 lines
-**Verification:** 以 Android `ExtensionsScreenModel`、`ExtensionManager` 和 `ExtensionDetailsScreenModel` 的现有行为为权威 fixture，证明搜索、分类、刷新、安装/更新/取消、卸载、信任和卸载后详情退出语义由共享契约表达，且 Android production wiring 已消费该契约。
+**Verification:** 先以固定原始 Mihon `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` 的 `ExtensionsScreenModel`、`ExtensionManager` 和 `ExtensionDetailsScreenModel` 回放权威 fixture；再将当前 fork 的同名 Android consumer 差异分类为必要 adapter、已证实增强或待偿还技术债。证明搜索、分类、刷新、安装/更新/取消、卸载、信任和卸载后详情退出语义由共享契约表达，且 Android production wiring 已消费该契约。
 
 **Files:**
 - Create: `domain/src/commonMain/kotlin/mihon/domain/extension/presentation/ExtensionPresentationContract.kt`
@@ -642,16 +642,16 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 **Interfaces:**
 - Consumes: Tasks 3–4 的 `ExtensionCatalogResult`、`ExtensionTrustDecision`、`ExtensionInstallState` 与平台 install port。
 - Produces: 无 Android/Desktop 类型的 `ExtensionPresentationState`、`ExtensionPresentationIntent` 和 `ExtensionPresentationPort`；Android `ExtensionsScreenModel` 保持原有公开 State/方法并改为薄适配器。
-- Authority: 共享状态转换必须从 Android 原版调用链提取；禁止为了适配 Desktop 改写 Android 的搜索字段、updates/installed/language 分类、安装步骤、取消或 trust 语义。OpenSpec 新增的逐仓库部分失败和事务回滚信息只能作为共享状态的增量字段。
+- Authority: 共享状态转换必须从固定 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` 的原版调用链提取，不得因当前 `app/` 路径或已有 shared 实现而推定权威。先比较固定 main 与当前 fork，再将差异分类为必要 adapter、已有正确性/安全性/UX 证据的增强或待偿还技术债；未知差异不得宣称更优。禁止为了适配 Desktop 改写原始搜索字段、updates/installed/language 分类、安装步骤、取消或 trust 语义。逐仓库部分失败、repo fingerprint/SHA continuity、snapshot、rollback 与 runtime restore 是共享状态的跨平台安全/可靠性增量字段，必须与原始兼容核心分开报告。
 
-- [ ] **Step 1: 写 Android 权威行为与共享契约 RED**
+- [ ] **Step 1: 写固定 main 权威行为与共享契约 RED**
 
-  用真实 production ScreenModel/Manager seam 固定搜索（名称、source 名称/baseUrl/id）、updates/installed/untrusted/语言分类、刷新、逐 package 安装步骤、取消、卸载、trust 和详情卸载事件；再以同一 fixture 断言尚不存在的共享 `ExtensionPresentationStore` 产生相同结果。
+  用固定 main 的 production ScreenModel/Manager 调用链固定搜索（名称、source 名称/baseUrl/id）、updates/installed/untrusted/语言分类、刷新、逐 package 安装步骤、取消、卸载、trust 和详情卸载事件；再以同一 fixture 断言尚不存在的共享 `ExtensionPresentationStore` 产生相同结果。当前 fork 的 `ExtensionManager` 异步初始化与 `ExtensionsScreenModel` 缺失 `takeWhile { step != Installed }` 必须分别分类，不得作为 fixture。
 
 - [ ] **Step 2: 运行 RED**
 
   Run: `./gradlew :domain:allTests :app:testReleaseUnitTest --tests "*ExtensionPresentation*" --tests "*ExtensionManager*"`
-  Expected: FAIL，原因只能是共享 contract/store 尚不存在或 Android production wiring 尚未消费它；既有 Android 权威断言必须先通过。
+  Expected: FAIL，原因只能是共享 contract/store 尚不存在或 Android production wiring 尚未消费它；固定 main 回放断言必须先通过，当前 fork 差异必须已有分类记录。
 
 - [ ] **Step 3: 最小提取并接回 Android production wiring**
 

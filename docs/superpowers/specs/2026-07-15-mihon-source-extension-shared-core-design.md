@@ -8,7 +8,7 @@ canonical_spec: openspec
 
 ## 目标
 
-让 Android 与 Desktop 在源列表、单源浏览、全局搜索、扩展发现、版本判断、安全信任、安装/更新事务和错误反馈上使用同一套业务语义。Desktop 只保留操作系统与 JVM 强制不同的适配：扩展目录、ClassLoader、APK→JAR、浏览器会话、文件工具和系统网络集成。
+让 Android 与 Desktop 在源列表、单源浏览、全局搜索、扩展发现、版本判断、安全信任、安装/更新事务和错误反馈上使用同一套业务语义。原始 Mihon 语义的唯一 authority 是 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`；当前 `app/` 只是 fork 后的 Android consumer，shared 代码只是迁移输出，二者都不能自证为 authority。Desktop 只保留操作系统与 JVM 强制不同的适配：扩展目录、ClassLoader、APK→JAR、浏览器会话、文件工具和系统网络集成。
 
 本次迁移保留 Desktop 已有的宽屏布局、APK→JAR、扩展文件信息/定位、键鼠交互、FlareSolverr 显式后备和 Test Mode。它们作为共享核心之上的产品增强存在，不得反向进入共享业务规则。
 
@@ -20,7 +20,7 @@ canonical_spec: openspec
 - `AppError` 已提供跨端错误模型，网络层已有 403、429、服务端错误和解析错误映射基础。
 - `ExtensionRepoRepository`、`ExtensionRepoService` 与仓库模型已位于 domain common。
 - Desktop 已有 `ApkToJarConverter`、`DesktopExtensionLoader`、`DesktopCookieJar`、原子文件替换、扩展 metadata、FlareSolverr client 和现有 UI 入口。
-- Android 的 `ExtensionApi`、`ExtensionManager`、`ExtensionLoader`、Sources/GlobalSearch/Extensions ScreenModel 提供权威行为与 fixture 来源。
+- 固定 main 中的 `ExtensionApi`、`ExtensionManager`、`ExtensionLoader`、Sources/GlobalSearch/Extensions ScreenModel 提供原始行为与 fixture 来源；当前同名 Android consumer 必须另行比较、分类差异。
 
 ### 应抽取后共用
 
@@ -84,6 +84,8 @@ Android `ExtensionApi` 与 Desktop `DesktopExtensionApi` 的 index DTO 解析迁
 并发规则：同一 package 同时只能有一个事务；更新全部可并行处理不同 package，但结果逐项发布。取消在 Commit 前删除候选并结束，在 Commit 开始后等待原子提交完成并立即回滚，避免半安装。
 
 ### 4. 信任与安全边界
+
+原始兼容核心与安全增强必须分层报告。固定 main 提供版本/更新、已安装/可用/不受信任展示、安装/更新/取消/trust 基础，以及 Android 签名和 PackageInstaller 语义。仓库 fingerprint 连续性、声明与下载 SHA-256 连续性、snapshot、rollback、runtime restore 是保留的跨平台安全/可靠性增强，不得声称固定 main 已有；结果表述为“原始兼容核心 + 跨平台安全增强”。
 
 信任检查依次使用：
 
