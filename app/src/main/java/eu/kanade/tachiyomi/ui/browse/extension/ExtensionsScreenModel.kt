@@ -7,12 +7,12 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.extension.interactor.GetExtensionsByType
+import eu.kanade.domain.extension.interactor.androidExtensionPresentationStore
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.components.SEARCH_DEBOUNCE_MILLIS
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
-import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import mihon.domain.extension.presentation.ExtensionPresentationClassifier
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
@@ -39,12 +40,13 @@ class ExtensionsScreenModel(
     basePreferences: BasePreferences = Injekt.get(),
     private val extensionManager: ExtensionManager = Injekt.get(),
     private val getExtensions: GetExtensionsByType = Injekt.get(),
+    private val classifier: ExtensionPresentationClassifier<Extension> = androidExtensionPresentationStore,
+    private val context: Application = Injekt.get(),
 ) : StateScreenModel<ExtensionsScreenModel.State>(State()) {
 
     private val currentDownloads = MutableStateFlow<Map<String, InstallStep>>(hashMapOf())
 
     init {
-        val context = Injekt.get<Application>()
         val extensionMapper: (Map<String, InstallStep>) -> ((Extension) -> ExtensionUiModel.Item) = { map ->
             {
                 ExtensionUiModel.Item(it, map[it.pkgName] ?: InstallStep.Idle)
@@ -106,35 +108,8 @@ class ExtensionsScreenModel(
             .launchIn(screenModelScope)
     }
 
-    fun searchQueryPredicate(query: String): (Extension) -> Boolean {
-        val subqueries = query.split(",")
-            .map { it.trim() }
-            .filterNot { it.isBlank() }
-
-        if (subqueries.isEmpty()) return { true }
-
-        return { extension ->
-            subqueries.any { subquery ->
-                if (extension.name.contains(subquery, ignoreCase = true)) return@any true
-
-                when (extension) {
-                    is Extension.Installed -> extension.sources.any { source ->
-                        source.name.contains(subquery, ignoreCase = true) ||
-                            (source as? HttpSource)?.baseUrl?.contains(subquery, ignoreCase = true) == true ||
-                            source.id == subquery.toLongOrNull()
-                    }
-
-                    is Extension.Available -> extension.sources.any {
-                        it.name.contains(subquery, ignoreCase = true) ||
-                            it.baseUrl.contains(subquery, ignoreCase = true) ||
-                            it.id == subquery.toLongOrNull()
-                    }
-
-                    else -> false
-                }
-            }
-        }
-    }
+    fun searchQueryPredicate(query: String, includePackageName: Boolean = false): (Extension) -> Boolean =
+        classifier.searchPredicate(query, includePackageName)
 
     fun search(query: String?) {
         mutableState.update {
