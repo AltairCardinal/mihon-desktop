@@ -20,6 +20,7 @@ import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.LibraryMembershipUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
 
@@ -89,6 +90,107 @@ class DesktopMigrateMangaUseCaseIntegrationTest {
             assertEquals(true, f.mangas.getMangaById(source.id).favorite)
             assertEquals(40, f.mangas.getMangaById(source.id).dateAdded)
             assertEquals(listOf(categoryId), f.categoryIds(source.id))
+        }
+    }
+
+    @Test
+    fun `copy categories false preserves categories already assigned to favorite target`() = runTest {
+        fixture().use { f ->
+            val targetCategoryId = f.insertCategory("Target category")
+            val sourceCategoryId = f.insertCategory("Source category")
+            val source = f.insertManga("/source")
+            val target = f.insertManga("/target", sourceId = 2)
+            f.mangas.updateMembershipsAtomically(
+                listOf(
+                    LibraryMembershipUpdate(source.id, true, 40, listOf(sourceCategoryId)),
+                    LibraryMembershipUpdate(target.id, true, 20, listOf(targetCategoryId)),
+                ),
+            )
+
+            val migrated = f.useCase.await(
+                f.mangas.getMangaById(source.id),
+                target("/target"),
+                2,
+                emptyList(),
+                options = MigrationOptions(copyCategories = false),
+                replace = false,
+            )
+
+            assertEquals(listOf(targetCategoryId), f.categoryIds(migrated.id))
+            assertEquals(listOf(sourceCategoryId), f.categoryIds(source.id))
+        }
+    }
+
+    @Test
+    fun `migration persists source chapter and viewer flags on target`() = runTest {
+        fixture().use { f ->
+            val source = f.insertManga("/source")
+            f.mangas.update(MangaUpdate(id = source.id, chapterFlags = 0x35L, viewerFlags = 0x62L))
+
+            val migrated = f.useCase.await(
+                f.mangas.getMangaById(source.id),
+                target("/target"),
+                2,
+                emptyList(),
+                replace = false,
+            )
+
+            val savedTarget = f.mangas.getMangaById(migrated.id)
+            assertEquals(0x35L, savedTarget.chapterFlags)
+            assertEquals(0x62L, savedTarget.viewerFlags)
+        }
+    }
+
+    @Test
+    fun `copy migration replaces existing target date with invocation time`() = runTest {
+        fixture().use { f ->
+            val source = f.insertManga("/source")
+            val target = f.insertManga("/target", sourceId = 2)
+            f.mangas.updateMembershipsAtomically(
+                listOf(
+                    LibraryMembershipUpdate(source.id, true, 40, emptyList()),
+                    LibraryMembershipUpdate(target.id, true, 5, emptyList()),
+                ),
+            )
+            val beforeInvocation = System.currentTimeMillis()
+
+            val migrated = f.useCase.await(
+                f.mangas.getMangaById(source.id),
+                target("/target"),
+                2,
+                emptyList(),
+                replace = false,
+            )
+            val afterInvocation = System.currentTimeMillis()
+
+            val targetDateAdded = f.mangas.getMangaById(migrated.id).dateAdded
+            assertEquals(true, targetDateAdded in beforeInvocation..afterInvocation)
+        }
+    }
+
+    @Test
+    fun `replace migration returns the final persisted source date and flags`() = runTest {
+        fixture().use { f ->
+            val source = f.insertManga("/source")
+            f.mangas.update(MangaUpdate(id = source.id, chapterFlags = 0x35L, viewerFlags = 0x62L))
+            f.mangas.updateMembershipsAtomically(
+                listOf(LibraryMembershipUpdate(source.id, true, 40, emptyList())),
+            )
+
+            val returned = f.useCase.await(
+                f.mangas.getMangaById(source.id),
+                target("/target"),
+                2,
+                emptyList(),
+                replace = true,
+            )
+
+            val persisted = f.mangas.getMangaById(returned.id)
+            assertEquals(40, persisted.dateAdded)
+            assertEquals(
+                listOf(persisted.dateAdded, persisted.chapterFlags, persisted.viewerFlags),
+                listOf(returned.dateAdded, returned.chapterFlags, returned.viewerFlags),
+            )
         }
     }
 

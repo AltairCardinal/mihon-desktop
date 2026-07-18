@@ -49,8 +49,8 @@ class DesktopMigrateMangaUseCase(
     ): Manga {
         // 1. Persist target manga + chapters to DB
         val persistedTarget = saveSourceMangaForDetails.await(targetSManga, targetSourceId, targetChapters)
-        val targetDateAdded = if (persistedTarget.favorite) persistedTarget.dateAdded else System.currentTimeMillis()
-        val savedTarget = persistedTarget.copy(favorite = true, dateAdded = targetDateAdded)
+        val migrationTime = System.currentTimeMillis()
+        val savedTarget = persistedTarget.copy(favorite = true, dateAdded = migrationTime)
         val flags = buildSet {
             if (options.copyChapters) add(MigrationFlag.CHAPTER)
             if (options.copyCategories) add(MigrationFlag.CATEGORY)
@@ -68,8 +68,13 @@ class DesktopMigrateMangaUseCase(
             targetMangaId = savedTarget.id,
             flags = flags,
             replace = replace,
-            now = targetDateAdded,
+            now = migrationTime,
         )
+        val targetCategoryIds = if (options.copyCategories) {
+            libraryPlan.targetCategoryIds
+        } else {
+            getCategories.await(savedTarget.id).map { it.id }
+        }
 
         // 2. Copy chapter read status
         if (options.copyChapters) {
@@ -87,21 +92,26 @@ class DesktopMigrateMangaUseCase(
         // 3. Copy category assignments
         // Categories were applied by UpdateLibraryMembership with the favorite update.
 
-        // 4. Copy notes
-        if (libraryPlan.targetNotes != null) {
-            mangaRepository.update(MangaUpdate(id = savedTarget.id, notes = libraryPlan.targetNotes))
-        }
+        // 4. Copy manga flags and optional notes
+        mangaRepository.update(
+            MangaUpdate(
+                id = savedTarget.id,
+                chapterFlags = libraryPlan.targetChapterFlags,
+                viewerFlags = libraryPlan.targetViewerFlags,
+                notes = libraryPlan.targetNotes,
+            ),
+        )
 
         // 5. Commit target membership and optional source removal in one database transaction.
         mangaRepository.updateMembershipsAtomically(
             buildList {
-                add(LibraryMembershipUpdate(savedTarget.id, true, libraryPlan.targetDateAdded, libraryPlan.targetCategoryIds))
+                add(LibraryMembershipUpdate(savedTarget.id, true, libraryPlan.targetDateAdded, targetCategoryIds))
                 if (libraryPlan.removeCurrentFromLibrary) {
                     add(LibraryMembershipUpdate(sourceManga.id, false, 0, emptyList()))
                 }
             },
         )
 
-        return savedTarget
+        return mangaRepository.getMangaById(savedTarget.id)
     }
 }
