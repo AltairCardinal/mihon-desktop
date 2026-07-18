@@ -42,6 +42,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TriStateCheckbox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -56,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
@@ -255,6 +257,7 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
         var searchQuery by remember { mutableStateOf("") }
         var searchActive by remember { mutableStateOf(false) }
         var isSearchMode by remember { mutableStateOf(false) }
+        var listingQuery by remember { mutableStateOf<SourceQuery>(SourceQuery.Popular) }
 
         // Browse mode (Popular / Latest tabs)
         var browseMode by remember { mutableStateOf(BrowseMode.POPULAR) }
@@ -265,16 +268,10 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
         var activeFilters by remember { mutableStateOf(source?.getFilterList() ?: FilterList()) }
         val hasFilters = remember(source) { source?.getFilterList()?.isNotEmpty() == true }
 
-        fun loadPage(page: Int, query: String = "", mode: BrowseMode = browseMode) {
+        fun loadPage(page: Int, query: SourceQuery = listingQuery) {
             if (source == null || (page > 1 && queryUiState.loading)) return
-            val sourceQuery = when {
-                    query.isNotBlank() -> SourceQuery.Search(query, activeFilters)
-                    hasActiveFilters(activeFilters) -> SourceQuery.Search("", activeFilters)
-                    mode == BrowseMode.LATEST -> SourceQuery.Latest
-                    else -> SourceQuery.Popular
-                }
             scope.launch {
-                queryCoordinator.load(source, page, sourceQuery)
+                queryCoordinator.load(source, page, query)
             }
         }
 
@@ -319,13 +316,20 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
                 onApply = { updatedFilters ->
                     activeFilters = updatedFilters
                     showFilterDialog = false
-                    isSearchMode = hasActiveFilters(updatedFilters)
-                    loadPage(1, query = searchQuery.ifBlank { "" }, mode = browseMode)
+                    browseMode = BrowseMode.POPULAR
+                    isSearchMode = false
+                    SourceQuery.Search("", updatedFilters).also {
+                        listingQuery = it
+                        loadPage(1, it)
+                    }
                 },
                 onReset = {
                     activeFilters = source?.getFilterList() ?: FilterList()
                     showFilterDialog = false
-                    loadPage(1)
+                    browseMode = BrowseMode.POPULAR
+                    isSearchMode = false
+                    listingQuery = SourceQuery.Popular
+                    loadPage(1, SourceQuery.Popular)
                 },
                 onDismiss = { showFilterDialog = false },
             )
@@ -372,7 +376,10 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
                                 onSearch = { q ->
                                     searchActive = false
                                     isSearchMode = q.isNotBlank()
-                                    loadPage(1, q)
+                                    SourceQuery.Search(q, activeFilters).also {
+                                        listingQuery = it
+                                        loadPage(1, it)
+                                    }
                                 },
                                 expanded = false,
                                 onExpandedChange = { searchActive = it },
@@ -395,7 +402,13 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
                                 onClick = {
                                     if (browseMode != mode) {
                                         browseMode = mode
-                                        loadPage(1, mode = mode)
+                                        isSearchMode = false
+                                        val query = when (mode) {
+                                            BrowseMode.POPULAR -> SourceQuery.Popular
+                                            BrowseMode.LATEST -> SourceQuery.Latest
+                                        }
+                                        listingQuery = query
+                                        loadPage(1, query)
                                     }
                                 },
                                 text = {
@@ -494,7 +507,7 @@ data class SourceBrowseScreen(val sourceId: Long) : Screen {
                                     LaunchedEffect(queryUiState.items.size) {
                                         loadPage(
                                             (queryUiState.request?.page ?: 0) + 1,
-                                            if (isSearchMode) searchQuery else "",
+                                            queryUiState.request?.query ?: listingQuery,
                                         )
                                     }
                                     Box(
@@ -520,100 +533,130 @@ private fun FilterDialog(
     onReset: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    // Create local mutable copies of filter state
-    val localFilters = remember(filters) {
-        filters.map { filter ->
-            when (filter) {
-                is Filter.CheckBox -> object : Filter.CheckBox(filter.name, filter.state) {}
-                is Filter.Text -> object : Filter.Text(filter.name) {}.also { it.state = filter.state }
-                is Filter.Select<*> -> filter  // use as-is; selects are immutable value types
-                else -> filter
-            }
-        }.let { FilterList(it) }
-    }
-
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Filter") },
         text = {
             Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
-                localFilters.forEach { filter ->
-                    when (filter) {
-                        is Filter.CheckBox -> {
-                            var checked by remember { mutableStateOf(filter.state) }
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth().clickable {
-                                    checked = !checked
-                                    filter.state = checked
-                                },
-                            ) {
-                                Checkbox(checked = checked, onCheckedChange = { v ->
-                                    checked = v
-                                    filter.state = v
-                                })
-                                Text(filter.name, style = MaterialTheme.typography.bodyMedium)
-                            }
-                        }
-                        is Filter.Text -> {
-                            var text by remember { mutableStateOf(filter.state) }
-                            OutlinedTextField(
-                                value = text,
-                                onValueChange = { v -> text = v; filter.state = v },
-                                label = { Text(filter.name) },
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                singleLine = true,
-                            )
-                        }
-                        is Filter.Select<*> -> {
-                            @Suppress("UNCHECKED_CAST")
-                            val select = filter as Filter.Select<Any>
-                            var selectedIndex by remember { mutableStateOf(select.state) }
-                            Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                                Text(
-                                    select.name,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(bottom = 4.dp),
-                                )
-                                select.values.forEachIndexed { index, value ->
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.fillMaxWidth().clickable {
-                                            selectedIndex = index
-                                            select.state = index
-                                        },
-                                    ) {
-                                        RadioButton(
-                                            selected = selectedIndex == index,
-                                            onClick = { selectedIndex = index; select.state = index },
-                                        )
-                                        Text(value.toString(), style = MaterialTheme.typography.bodySmall)
-                                    }
-                                }
-                            }
-                        }
-                        is Filter.Header -> {
-                            Text(
-                                filter.name,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
-                            )
-                        }
-                        is Filter.Separator -> HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                        else -> { /* Sort and Group not yet supported */ }
-                    }
-                }
+                filters.forEach { FilterItem(it) }
             }
         },
         confirmButton = {
-            TextButton(onClick = { onApply(localFilters) }) { Text("Apply") }
+            TextButton(onClick = { onApply(filters) }) { Text("Apply") }
         },
         dismissButton = {
             TextButton(onClick = onReset) { Text("Reset", color = MaterialTheme.colorScheme.error) }
         },
     )
+}
+
+@Composable
+private fun FilterItem(filter: Filter<*>) {
+    when (filter) {
+        is Filter.Header -> Text(
+            filter.name,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
+        )
+        is Filter.Separator -> HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+        is Filter.CheckBox -> {
+            var checked by remember(filter) { mutableStateOf(filter.state) }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().clickable {
+                    checked = !checked
+                    filter.state = checked
+                },
+            ) {
+                Checkbox(checked = checked, onCheckedChange = null)
+                Text(filter.name, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        is Filter.TriState -> {
+            var state by remember(filter) { mutableStateOf(filter.state) }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().clickable {
+                    state = when (state) {
+                        Filter.TriState.STATE_IGNORE -> Filter.TriState.STATE_INCLUDE
+                        Filter.TriState.STATE_INCLUDE -> Filter.TriState.STATE_EXCLUDE
+                        else -> Filter.TriState.STATE_IGNORE
+                    }
+                    filter.state = state
+                },
+            ) {
+                TriStateCheckbox(
+                    state = when (state) {
+                        Filter.TriState.STATE_INCLUDE -> ToggleableState.On
+                        Filter.TriState.STATE_EXCLUDE -> ToggleableState.Indeterminate
+                        else -> ToggleableState.Off
+                    },
+                    onClick = null,
+                )
+                Text(filter.name, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        is Filter.Text -> {
+            var text by remember(filter) { mutableStateOf(filter.state) }
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it; filter.state = it },
+                label = { Text(filter.name) },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                singleLine = true,
+            )
+        }
+        is Filter.Select<*> -> {
+            var selectedIndex by remember(filter) { mutableStateOf(filter.state) }
+            FilterChoiceGroup(filter.name) {
+                filter.values.forEachIndexed { index, value ->
+                    FilterChoice(value.toString(), selectedIndex == index) {
+                        selectedIndex = index
+                        filter.state = index
+                    }
+                }
+            }
+        }
+        is Filter.Sort -> {
+            var selection by remember(filter) { mutableStateOf(filter.state) }
+            FilterChoiceGroup(filter.name) {
+                filter.values.forEachIndexed { index, value ->
+                    FilterChoice(value, selection?.index == index) {
+                        selection = Filter.Sort.Selection(
+                            index,
+                            if (selection?.index == index) !selection!!.ascending else selection?.ascending ?: true,
+                        )
+                        filter.state = selection
+                    }
+                }
+            }
+        }
+        is Filter.Group<*> -> FilterChoiceGroup(filter.name) {
+            filter.state.filterIsInstance<Filter<*>>().forEach { nested ->
+                Box(Modifier.padding(start = 12.dp)) { FilterItem(nested) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilterChoiceGroup(name: String, content: @Composable () -> Unit) {
+    Column(modifier = Modifier.padding(vertical = 4.dp)) {
+        Text(name, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        content()
+    }
+}
+
+@Composable
+private fun FilterChoice(label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Text(label, style = MaterialTheme.typography.bodySmall)
+    }
 }
 
 @Composable
