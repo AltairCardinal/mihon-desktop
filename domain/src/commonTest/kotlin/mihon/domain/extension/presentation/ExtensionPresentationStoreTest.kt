@@ -10,6 +10,59 @@ class ExtensionPresentationStoreTest {
     private val store = ExtensionPresentationStore(FixtureAdapter)
 
     @Test
+    fun `fixed main action lifecycle refreshes and isolates install state by package`() {
+        var state = store.reduce(
+            ExtensionPresentationActionState(),
+            ExtensionPresentationAction.InstallStepChanged(
+                "pkg.alpha",
+                ExtensionPresentationInstallStep.Downloading,
+            ),
+        )
+        state = store.reduce(state, ExtensionPresentationAction.RefreshStarted)
+        assertTrue(state.isRefreshing)
+        assertEquals(ExtensionPresentationInstallStep.Downloading, state.installSteps["pkg.alpha"])
+        state = store.reduce(
+            state,
+            ExtensionPresentationAction.InstallStepChanged("pkg.beta", ExtensionPresentationInstallStep.Installing),
+        )
+        state = store.reduce(
+            state,
+            ExtensionPresentationAction.InstallStepChanged("pkg.alpha", ExtensionPresentationInstallStep.Installing),
+        )
+        assertTrue(state.isRefreshing)
+        assertEquals(
+            mapOf(
+                "pkg.alpha" to ExtensionPresentationInstallStep.Installing,
+                "pkg.beta" to ExtensionPresentationInstallStep.Installing,
+            ),
+            state.installSteps,
+        )
+        assertEquals(
+            listOf(ExtensionPresentationInstallStep.Installed),
+            ExtensionPresentationInstallStep.entries.filterNot(store::shouldContinue),
+        )
+
+        state = store.reduce(state, ExtensionPresentationAction.InstallFinished("pkg.alpha"))
+        assertTrue(state.isRefreshing)
+        state = store.reduce(state, ExtensionPresentationAction.RefreshFinished)
+        assertFalse(state.isRefreshing)
+        assertEquals(setOf("pkg.beta"), state.installSteps.keys)
+    }
+
+    @Test
+    fun `fixed main source ordering keeps enabled first then display name`() {
+        val sources = listOf(
+            SourceFixture(1, "Aardvark", enabled = false),
+            SourceFixture(2, "alpha", enabled = true),
+            SourceFixture(3, "Zulu", enabled = true),
+        )
+
+        val result = store.enabledFirst(sources, SourceFixture::enabled, SourceFixture::name)
+
+        assertEquals(listOf(3L, 2L, 1L), result.map(SourceFixture::id))
+    }
+
+    @Test
     fun `fixed main classification filters sorts partitions and projects available sources`() {
         val installed = listOf(
             item("Hidden", "installed.hidden", nsfw = true),
@@ -98,6 +151,8 @@ class ExtensionPresentationStoreTest {
         val obsolete: Boolean,
         val sources: List<ExtensionPresentationSource>,
     )
+
+    private data class SourceFixture(val id: Long, val name: String, val enabled: Boolean)
 
     private object FixtureAdapter : ExtensionPresentationAdapter<Fixture> {
         override fun describe(extension: Fixture) = ExtensionPresentationItem(

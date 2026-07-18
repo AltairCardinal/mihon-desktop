@@ -3,6 +3,32 @@ package mihon.domain.extension.presentation
 class ExtensionPresentationStore<T>(
     private val adapter: ExtensionPresentationAdapter<T>,
 ) : ExtensionPresentationClassifier<T> {
+    fun reduce(
+        state: ExtensionPresentationActionState,
+        action: ExtensionPresentationAction,
+    ): ExtensionPresentationActionState = when (action) {
+        ExtensionPresentationAction.RefreshStarted -> state.copy(isRefreshing = true)
+        ExtensionPresentationAction.RefreshFinished -> state.copy(isRefreshing = false)
+        is ExtensionPresentationAction.InstallStepChanged -> state.copy(
+            installSteps = state.installSteps + (action.packageName to action.step),
+        )
+        is ExtensionPresentationAction.InstallFinished -> state.copy(
+            installSteps = state.installSteps - action.packageName,
+        )
+    }
+
+    fun shouldContinue(step: ExtensionPresentationInstallStep): Boolean =
+        step != ExtensionPresentationInstallStep.Installed
+
+    fun <S> enabledFirst(
+        sources: List<S>,
+        enabled: (S) -> Boolean,
+        displayName: (S) -> String,
+    ): List<S> = sources.sortedWith(
+        compareBy<S> { !enabled(it) }
+            .thenBy(displayName),
+    )
+
     override fun classify(
         installed: List<T>,
         untrusted: List<T>,

@@ -44,3 +44,27 @@ data class ExtensionPresentationResult<T>(
     val available: List<T>,
     val untrusted: List<T>,
 )
+
+enum class ExtensionPresentationInstallStep {
+    Idle,
+    Pending,
+    Downloading,
+    Installing,
+    Installed,
+    Error,
+}
+
+data class ExtensionPresentationActionState(
+    val isRefreshing: Boolean = false,
+    val installSteps: Map<String, ExtensionPresentationInstallStep> = emptyMap(),
+)
+
+sealed interface ExtensionPresentationAction {
+    data object RefreshStarted : ExtensionPresentationAction
+    data object RefreshFinished : ExtensionPresentationAction
+    data class InstallStepChanged(
+        val packageName: String,
+        val step: ExtensionPresentationInstallStep,
+    ) : ExtensionPresentationAction
+    data class InstallFinished(val packageName: String) : ExtensionPresentationAction
+}
