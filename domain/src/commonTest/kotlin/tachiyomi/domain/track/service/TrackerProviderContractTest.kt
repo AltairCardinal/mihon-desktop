@@ -17,7 +17,9 @@ class TrackerProviderContractTest {
 
     @Test
     fun `MAL preserves fixed-main fallback semantics for unknown statuses`() {
+        assertEquals("reading", TrackerProviderContracts.myAnimeList.statusToWire(7))
         assertEquals("reading", TrackerProviderContracts.myAnimeList.statusToWire(Long.MAX_VALUE))
+        assertEquals(1L, TrackerProviderContracts.myAnimeList.wireToStatus("reading"))
         assertEquals(1L, TrackerProviderContracts.myAnimeList.wireToStatus("unknown"))
     }
 

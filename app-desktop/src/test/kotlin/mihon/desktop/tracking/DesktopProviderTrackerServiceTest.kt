@@ -208,6 +208,28 @@ class DesktopProviderTrackerServiceTest {
     }
 
     @Test
+    fun `Bangumi rejects an unknown status before sending an update request`() = runTest {
+        MockWebServer().also { it.start() }.use { server ->
+            val backend = MemoryBackend().apply {
+                save(
+                    "tracker.5.account.default.session.v1",
+                    """{"accessToken":"access-secret"}""".toCharArray(),
+                )
+            }
+            val bangumi = service(registry(server, backend), "Bangumi")
+            val bound = bangumi.bind(102, tachiyomi.domain.track.service.TrackSearchResult(15, "BGM", 16))
+
+            assertTrue(bangumi.profile.value.loggedIn)
+            assertThrows(IllegalArgumentException::class.java) {
+                kotlinx.coroutines.runBlocking {
+                    bangumi.update(bound, TrackEdit(status = Long.MAX_VALUE))
+                }
+            }
+            assertEquals(0, server.requestCount)
+        }
+    }
+
+    @Test
     fun `each provider maps empty malformed and http errors without leaking credentials`() = runTest {
         MockWebServer().also { it.start() }.use { server ->
             val backend = MemoryBackend()

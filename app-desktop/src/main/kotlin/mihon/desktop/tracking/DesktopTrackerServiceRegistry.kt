@@ -511,7 +511,12 @@ private class DesktopProviderTrackerService(
             }.toString().toRequestBody(JSON),
         ).build()
         ProviderKind.BANGUMI -> Request.Builder().url(url(definition.apiBase, "v0/users/-/collections/${track.remoteId}"))
-            .post(buildJsonObject { put("type", track.status); put("rate", track.score.toInt()) }.toString().toRequestBody(JSON)).build()
+            .post(
+                buildJsonObject {
+                    put("type", TrackerProviderContracts.bangumi.statusToWire(track.status).toInt())
+                    put("rate", track.score.toInt())
+                }.toString().toRequestBody(JSON),
+            ).build()
         ProviderKind.MANGA_UPDATES -> Request.Builder().url(url(definition.apiBase, "v1/lists/series/update"))
             .post(
                 buildJsonObject {
