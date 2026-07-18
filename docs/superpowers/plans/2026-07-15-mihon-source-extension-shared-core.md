@@ -790,10 +790,10 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **Risk axis:** desktop-extension-presentation-wiring
 **Platform boundary:** shared+desktop
-**Estimated scope:** 13 files, 720 lines
-**Verification:** Task 6C1 独立闭合 metadata 连续性、Manager authoritative state、typed catalog/trust/install port 与取消 rollback；Task 6C2 再闭合只消费该 port 和 Task 6B shared store 的 ScreenModel/DI lifecycle。两个子 Task 分别验收，任一方通过不能替代另一方。
-**Execution split:** 预审确认已安装 sidecar 缺少 fixed-main 分类所需的 name/language/isNsfw，且 Manager 没有 authoritative installed StateFlow；若在原 8 files/400 lines 内同时实现 metadata 连续性、typed port、ScreenModel 与 DI，只能以 catalog 临时 join 或 terminal wrapper 继续丢状态。因此按 6C1→6C2 顺序施工。
-**Split waiver:** 下述文件数/行数不会作为一个 Task 调度；6C1 与 6C2 分别不超过 8 files/400 lines。6C1 先让 typed platform port 独立可用，6C2 再只消费该 port 与 Task 6B shared store。
+**Estimated scope:** 13 files, 1000 lines
+**Verification:** Task 6C1 独立闭合 metadata 连续性、Manager authoritative state、typed catalog/trust/install port 与取消 rollback；Task 6C2a 闭合 projection/update/obsolete/raw-step adapter；Task 6C2b 再闭合只消费该 port 和 Task 6B shared store 的 ScreenModel/DI lifecycle。三个子 Task 分别验收，任一方通过不能替代另一方。
+**Execution split:** 预审确认已安装 sidecar 缺少 fixed-main 分类所需的 name/language/isNsfw，且 Manager 没有 authoritative installed StateFlow；进一步的 6C2 RED 又确认 projection/update/raw mapping 与 ScreenModel/jobs/DI lifecycle 各自接近 300 行。强行合并会删掉 update/obsolete、pending 清理或 DI reinit 证据，因此按 6C1→6C2a→6C2b 顺序施工。
+**Split waiver:** 聚合文件数/行数不会作为一个 Task 调度；6C1、6C2a、6C2b 分别不超过 8 files/400 lines。6C1 先让 typed platform port 独立可用，6C2a 固定 adapter 规则，6C2b 再只消费稳定 port 与 Task 6B shared store。
 
 #### Task 6C1: Desktop metadata、Manager state 与 typed presentation port
 
@@ -834,10 +834,47 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 #### Task 6C2: Desktop ScreenModel、shared store 与 DI lifecycle wiring
 
-- Risk axis: `desktop-extension-screenmodel-wiring`
+- Risk axis: `desktop-extension-presentation-consumer`
+- Platform boundary: `shared+desktop`
+- Estimated scope: `6 files, 620 lines`
+- Verification: 6C2a 的 Desktop adapter 独立消费 shared classifier/update policy 并保留 raw state；6C2b 的 ScreenModel 只消费该稳定 adapter 与 shared reducer，DI 重复解析同一长生命周期实例，test DI reinit/close 后旧 jobs 停止。
+- Split waiver: 6C2a 与 6C2b 分别独立验收且均不超过 400 lines；projection/update/raw mapping 与 jobs/trust/DI lifecycle 是可独立断线测试的风险轴，不能由同一实现者批次压缩。
+
+##### Task 6C2a: Desktop projection、update/obsolete 与 raw-step adapter
+
+- Risk axis: `desktop-extension-projection-rules`
+- Platform boundary: `shared+desktop`
+- Estimated scope: `2 files, 300 lines`
+- Verification: Desktop item adapter 使用 Task 6B shared classifier/search 与 `SharedExtensionUpdatePolicy`；完整 raw install state 只在 port 单点映射并保留原始 state/AppError；partial repo failure 不误标 obsolete，custom JAR 保守，bundled package 不重新显示为可安装/更新，多 source projection action 保留原始 package。
+
+**Files:**
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/DesktopExtensionPresentationPort.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/DesktopExtensionPresentationProjectionTest.kt`
+
+- [ ] **Step 1: 写 projection/update/raw mapping RED**
+
+  覆盖 package-name opt-in、逗号 OR、source name/baseUrl/id、shared classifier 返回值、update/obsolete、partial repo failure、custom/bundled package、多 source 原始 action package，以及全部 `ExtensionInstallState`→presentation step 映射并保留 raw state/error identity。
+
+- [ ] **Step 2: 运行 RED**
+
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.DesktopExtensionPresentationProjectionTest"`
+  Expected: FAIL，原因是 typed port 尚未建立 shared projection/update/raw adapter。
+
+- [ ] **Step 3: 实现单点 projection adapter**
+
+  port 负责 Desktop model→shared item 的薄映射，update 只调用 shared policy；obsolete 仅在能证明所属 repo refresh 成功时设置；raw state 映射集中一个函数，ScreenModel 不得出现第二个 `when (ExtensionInstallState)`。
+
+- [ ] **Step 4: 运行 GREEN 与断线 mutation**
+
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.DesktopExtensionPresentationProjectionTest"`
+  Expected: 全部 PASS；绕过 shared store/policy、丢 raw state、错误 obsolete 或用 projected package 执行动作时至少一个测试失败。
+
+##### Task 6C2b: Desktop ScreenModel、jobs/trust 与 DI lifecycle
+
+- Risk axis: `desktop-extension-screenmodel-lifecycle`
 - Platform boundary: `shared+desktop`
 - Estimated scope: `5 files, 320 lines`
-- Verification: Desktop production ScreenModel 只消费 Task 6B shared classifier/action store 与 Task 6C1 typed port；部分失败、逐包状态、取消和 pending trust 均来自真实 port；DI 重复解析同一长生命周期实例，test DI close 后 jobs 停止。
+- Verification: Desktop production ScreenModel 只消费 Task 6C2a adapter 与 Task 6B shared action reducer；部分失败、逐包状态、取消和 pending trust 均来自真实 port；dismiss/replace/close 清理 pending 与 jobs；DI reinit 捕获并 close/join 旧实例后再关闭 manager/network。
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/DesktopExtensionPresentationPort.kt`
@@ -851,9 +888,9 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Produces: 注入到 Desktop UI 的 `ExtensionsScreenModel`；其状态/操作语义与 fixed main 一致，平台 adapter 只负责 JAR、APK→JAR、ClassLoader、文件和浏览器 side effect。
 - Boundary: 禁止创建 `DesktopExtensionUiCoordinator` 或复制分类、搜索、版本、信任、回滚和错误映射规则；6D 前 legacy wrapper 可暂留，但 6C2 ScreenModel 不得调用。
 
-- [ ] **Step 1: 写 shared store / ScreenModel / DI RED**
+- [ ] **Step 1: 写 shared reducer / ScreenModel / DI RED**
 
-  覆盖 shared classifier/reducer seam 调用与返回值回灌、部分失败保留、逐 package install/cancel、pending trust intents、DI singleton 与 close ownership；绕过 shared store 或内部 new Manager 必须失败。
+  覆盖 reducer 连续输入与返回值回灌、部分失败 identity、逐 package install/cancel、pending trust confirm/dismiss/replace/close、DI singleton/reinit/close-and-join ownership；绕过 shared reducer、取消外部 scope 或内部 new Manager 必须失败。
 
 - [ ] **Step 2: 运行 RED**
 
@@ -862,7 +899,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 - [ ] **Step 3: 实现薄 ScreenModel 与 DI lifecycle**
 
-  ScreenModel 只将 port 的 typed state 送入 shared classifier/reducer，并暴露 fixed-main intents；DI 注册同一个 port/ScreenModel 长生命周期实例，test context 在 manager/network 前取消其 jobs。
+  ScreenModel 只将 port 的 typed state 送入 shared reducer，并暴露 fixed-main intents；DI 注册同一个 port/ScreenModel 长生命周期实例，test context 捕获该实例并在 manager/network 前 close-and-join，不在关闭阶段重新 `Injekt.get`。
 
 - [ ] **Step 4: 运行 GREEN 与断线 mutation**
 
