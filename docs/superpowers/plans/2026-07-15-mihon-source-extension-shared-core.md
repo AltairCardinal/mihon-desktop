@@ -754,6 +754,8 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Modify: `domain/src/commonMain/kotlin/mihon/domain/extension/presentation/ExtensionPresentationStore.kt`
 - Modify: `domain/src/commonTest/kotlin/mihon/domain/extension/presentation/ExtensionPresentationStoreTest.kt`
 
+**6B2a completion evidence:** `9401b363a` 从 fixed main 提取共享刷新/逐 package 安装状态归约、唯一 Installed 终止边界与 enabled-first 排序。行为 RED 分别以未实现 lifecycle 与错误排序精确失败；最终 focused tests 4/4，通过同 package 覆盖、refresh 与 install state 隔离、全枚举终态和 disabled-first 反例保护实现。3 files/105 changed lines，唯一修复复审 Approved。
+
 #### Task 6B2b: Android extension action lifecycle wiring
 
 - Risk axis: `extension-presentation-android-actions`
