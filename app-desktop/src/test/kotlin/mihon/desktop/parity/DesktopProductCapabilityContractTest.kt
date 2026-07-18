@@ -52,6 +52,8 @@ class DesktopProductCapabilityContractTest {
         )
     private val fixedOriginalMihonRef =
         "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8"
+    private val fixedMainPathInventoryResource =
+        "app-desktop/src/test/resources/parity/fixed-main-path-inventory.json"
     private val desktopProductEvidence =
         setOf(
             "app-desktop/src/test/kotlin/mihon/desktop/ui/authors/AuthorDetailBehaviorTest.kt",
@@ -452,6 +454,7 @@ class DesktopProductCapabilityContractTest {
     fun `parity manifest defines the exact roadmap contract`() {
         val repositoryRoot = repositoryRoot()
         val items = manifestItems(repositoryRoot)
+        val fixedMainPathInventory = fixedMainPathInventory(repositoryRoot)
 
         desktopProductEvidence.forEach { evidence ->
             assertTrue(Files.isRegularFile(repositoryRoot.resolve(evidence)), "Missing Desktop product evidence $evidence")
@@ -487,7 +490,7 @@ class DesktopProductCapabilityContractTest {
             assertEquals(expectedTags.getValue(id), tags.toSet(), "ID $id: tags differ from design A-J tables")
 
             if (id in sourceExtensionAuthorityIds) {
-                validateSourceExtensionProvenance(item, repositoryRoot)
+                validateSourceExtensionProvenance(item, repositoryRoot, fixedMainPathInventory)
             }
 
             val protectionTests = item.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content }
@@ -560,7 +563,7 @@ class DesktopProductCapabilityContractTest {
         )
 
         val failure = assertThrows(AssertionError::class.java) {
-            validateSourceExtensionProvenance(item, tempDir) { _, _ -> true }
+            validateSourceExtensionProvenance(item, tempDir, fixedMainPathInventory(buildFixedMainPathInventory()))
         }
 
         assertTrue(failure.message.orEmpty().contains("app/src/main/Missing.kt"), failure.message)
@@ -578,10 +581,65 @@ class DesktopProductCapabilityContractTest {
         )
 
         val failure = assertThrows(AssertionError::class.java) {
-            validateSourceExtensionProvenance(item, tempDir) { _, _ -> true }
+            validateSourceExtensionProvenance(item, tempDir, fixedMainPathInventory(buildFixedMainPathInventory()))
         }
 
         assertTrue(failure.message.orEmpty().contains("deviations[1].classification"), failure.message)
+    }
+
+    @Test
+    fun `source extension provenance rejects an unknown fixed-main inventory path`() {
+        createSyntheticConsumerFiles()
+
+        val failure = assertThrows(AssertionError::class.java) {
+            validateSourceExtensionProvenance(
+                syntheticSourceExtensionItem(),
+                tempDir,
+                fixedMainPathInventory(
+                    buildFixedMainPathInventory(
+                        paths = listOf("app/src/main/Known.kt" to "0".repeat(40)),
+                    ),
+                ),
+            )
+        }
+
+        assertTrue(failure.message.orEmpty().contains("fixed-main inventory does not contain"), failure.message)
+    }
+
+    @Test
+    fun `fixed-main inventory rejects mismatched ref and malformed blob ids`() {
+        val refFailure = assertThrows(AssertionError::class.java) {
+            fixedMainPathInventory(
+                buildFixedMainPathInventory(
+                    ref = "main@0000000000000000000000000000000000000000",
+                ),
+            )
+        }
+        assertTrue(refFailure.message.orEmpty().contains("exact fixed original Mihon ref"), refFailure.message)
+
+        val blobFailure = assertThrows(AssertionError::class.java) {
+            fixedMainPathInventory(
+                buildFixedMainPathInventory(
+                    paths = listOf("app/src/main/Upstream.kt" to "not-a-blob"),
+                ),
+            )
+        }
+        assertTrue(blobFailure.message.orEmpty().contains("lowercase 40-hex"), blobFailure.message)
+    }
+
+    @Test
+    fun `source extension provenance validates from a snapshot without a Git directory`() {
+        createSyntheticConsumerFiles()
+        val inventoryResource = tempDir.resolve(fixedMainPathInventoryResource)
+        Files.createDirectories(inventoryResource.parent)
+        Files.writeString(inventoryResource, buildFixedMainPathInventory().toString())
+
+        assertFalse(Files.exists(tempDir.resolve(".git")))
+        validateSourceExtensionProvenance(
+            syntheticSourceExtensionItem(),
+            tempDir,
+            fixedMainPathInventory(tempDir),
+        )
     }
 
     @Test
@@ -763,7 +821,7 @@ class DesktopProductCapabilityContractTest {
     private fun validateSourceExtensionProvenance(
         item: JsonObject,
         repositoryRoot: Path,
-        upstreamPathExists: (String, String) -> Boolean = { ref, path -> gitPathExists(repositoryRoot, ref, path) },
+        fixedMainPathInventory: Map<String, String>,
     ) {
         val id = validatedId(item)
         val upstreamRef = requiredText(item, "upstreamRef", id)
@@ -780,7 +838,10 @@ class DesktopProductCapabilityContractTest {
                 path.endsWith(".kt") && !Path.of(path).isAbsolute && path.split('/').none { it == ".." },
                 "ID $id: incomplete upstream path $path",
             )
-            assertTrue(upstreamPathExists(upstreamRef, path), "ID $id: fixed-main path does not exist: $path")
+            assertTrue(
+                path in fixedMainPathInventory,
+                "ID $id: fixed-main inventory does not contain upstream path $path",
+            )
         }
 
         validateCurrentPaths(item, "sharedImplementationPaths", id, repositoryRoot, allowEmpty = true)
@@ -828,15 +889,60 @@ class DesktopProductCapabilityContractTest {
         return value!!
     }
 
-    private fun gitPathExists(repositoryRoot: Path, upstreamRef: String, path: String): Boolean {
-        val commit = upstreamRef.substringAfter('@')
-        val process = ProcessBuilder("git", "cat-file", "-e", "${commit}:$path")
-            .directory(repositoryRoot.toFile())
-            .redirectErrorStream(true)
-            .start()
-        process.inputStream.bufferedReader().use { it.readText() }
-        return process.waitFor() == 0
+    private fun fixedMainPathInventory(repositoryRoot: Path): Map<String, String> {
+        val resource = repositoryRoot.resolve(fixedMainPathInventoryResource)
+        assertTrue(Files.isRegularFile(resource), "Missing fixed-main path inventory $fixedMainPathInventoryResource")
+        return fixedMainPathInventory(Json.parseToJsonElement(Files.readString(resource)).jsonObject)
     }
+
+    private fun fixedMainPathInventory(inventory: JsonObject): Map<String, String> {
+        val ref = inventory["upstreamRef"]?.jsonPrimitive?.content
+        assertEquals(fixedOriginalMihonRef, ref, "Fixed-main inventory must use the exact fixed original Mihon ref")
+
+        val entries = inventory["paths"]?.jsonArray
+            ?: throw AssertionError("Fixed-main inventory paths must be an explicit array")
+        assertTrue(entries.isNotEmpty(), "Fixed-main inventory paths must not be empty")
+        return buildMap {
+            entries.forEachIndexed { index, element ->
+                val entry = element.jsonObject
+                val path = entry["path"]?.jsonPrimitive?.content
+                assertTrue(path?.isNotBlank() == true, "Fixed-main inventory paths[$index].path must not be blank")
+                assertTrue(
+                    path!!.split('/').all { it.isNotBlank() && it != "." && it != ".." } &&
+                        !Path.of(path).isAbsolute &&
+                        '\\' !in path,
+                    "Fixed-main inventory paths[$index].path must be repository-relative: $path",
+                )
+                val blobId = entry["blobId"]?.jsonPrimitive?.content
+                assertTrue(
+                    blobId?.matches(Regex("[0-9a-f]{40}")) == true,
+                    "Fixed-main inventory paths[$index].blobId must be lowercase 40-hex",
+                )
+                assertTrue(put(path, blobId!!) == null, "Fixed-main inventory path must be unique: $path")
+            }
+        }
+    }
+
+    private fun buildFixedMainPathInventory(
+        ref: String = fixedOriginalMihonRef,
+        paths: List<Pair<String, String>> = listOf("app/src/main/Upstream.kt" to "0".repeat(40)),
+    ) =
+        buildJsonObject {
+            put("upstreamRef", ref)
+            put(
+                "paths",
+                buildJsonArray {
+                    paths.forEach { (path, blobId) ->
+                        add(
+                            buildJsonObject {
+                                put("path", path)
+                                put("blobId", blobId)
+                            },
+                        )
+                    }
+                },
+            )
+        }
 
     private fun createSyntheticConsumerFiles() {
         listOf("app/src/main/Current.kt", "app-desktop/src/main/Desktop.kt").forEach { path ->

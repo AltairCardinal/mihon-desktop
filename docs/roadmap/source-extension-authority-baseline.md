@@ -66,3 +66,9 @@ Task 6B 不得把当前 `ExtensionsScreenModel`、`ExtensionManager` 或 `Extens
 - 用户入口保持 Browse → Sources / Global Search，以及 Browse → Extensions → Installed/Available → Extension details。
 - Desktop 保留预编译 JAR、APK→JAR、原子替换/reload、文件摘要和仓库信息、Open folder、键鼠/宽屏、显式 FlareSolverr 后备与 Test Mode。
 - Android-only AAR、QuickJS 或没有真实 fixture 调用的 compat API 不承诺支持；文件工具仅承担 Desktop side effect，不进入共享业务层。
+
+## 固定 main 路径清单（CI 可携带）
+
+`app-desktop/src/test/resources/parity/fixed-main-path-inventory.json` 是 IDs 28–40 的固定 main 路径证据。它记录精确的 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`，以及每个去重的 `upstreamSymbols.path` 在该提交 tree 中的 Git blob ID。契约测试只读取该 UTF-8 JSON 资源；不会在测试运行时启动 Git、读取 `.git`，或下载历史对象，因此默认 shallow checkout 的 Desktop CI 也可验证 provenance。
+
+清单必须在拥有完整历史和该固定提交对象的本地 clone 中生成：先从 manifest 的 IDs 28–40 收集去重的 `upstreamSymbols.path`，再对每条路径执行 `git rev-parse 6fbf6dfca203d99d6dd32137f2df97ced40c81b8:<path>` 并写入 `blobId`。只有固定 ref 变更，或这些 IDs 的 upstream path 集合发生变更时，才可重新生成；生成后必须核对路径集合、ref 和 40 位小写 blob ID。不要以当前 fork 的路径、当前文件内容或 CI checkout 深度替代此证据。

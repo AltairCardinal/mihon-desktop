@@ -1,0 +1,21 @@
+{
+  "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+  "paths": [
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt", "blobId": "0f777f7e58b653e458bba240127f8446b0e2ae28" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModel.kt", "blobId": "bf55f35f63f1db54e8aa5a48ac270658f210b4b2" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/GlobalSearchScreenModel.kt", "blobId": "33c71576818c890947556fe5a09237eb46626aa0" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/SearchScreenModel.kt", "blobId": "cf3578bff687aa11aef0a80dcfcee493d761b8fb" },
+    { "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/browse/ExtensionReposScreenModel.kt", "blobId": "3c5212473c1b8c3175d6d94d5178207053bf4b40" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt", "blobId": "a631056237f98a33863dda52da7f7f6de4ae64fe" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/extension/api/ExtensionApi.kt", "blobId": "71e6251dbfe34e562315f1bb5316274d86d0859e" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt", "blobId": "db6b0aa407b9a9a3098754e2f88d9aeb5c764467" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionInstaller.kt", "blobId": "5eae3fe476c1f7817f02842c18736f6269428957" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsScreenModel.kt", "blobId": "666c0442445138ab3589dc713909788e822c1471" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/ExtensionDetailsScreenModel.kt", "blobId": "e763fb6b434120f7b9b914cadb1b34fc54c87134" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/SourcePreferencesScreen.kt", "blobId": "538e257a500ab07861a8ebec13012e2616c58bc4" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/webview/WebViewScreenModel.kt", "blobId": "833806db8f8c8678fc9c5095a91d3b96511ed6ef" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/webview/WebViewScreen.kt", "blobId": "dbb514794757fef531ebbc2454b72ceed0bb613f" },
+    { "path": "app/src/main/java/eu/kanade/presentation/webview/WebViewScreenContent.kt", "blobId": "72b8d2fdabd1ec919440468d74d02751756c7b05" },
+    { "path": "core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareInterceptor.kt", "blobId": "517679aca861d7959c512cb3739ab7dce18b4336" }
+  ]
+}
