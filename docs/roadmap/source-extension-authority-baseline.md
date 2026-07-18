@@ -32,6 +32,29 @@
 | 39 WebView/源登录 | `WebViewScreenModel` → `WebViewScreen` / `WebViewScreenContent` → Android CookieManager | `SourceLoginSession` | `WebViewScreenModel`、`WebViewScreen` | `DesktopBrowserLoginAdapter`、`DesktopSourceLoginDialog` | 受控浏览器和 Cookie 存储是 platform adapter；显式 login session 状态为跨端迁移输出，不可反称原始 WebView 行为。 |
 | 40 Cloudflare 绕过 | 固定 main 的 `CloudflareInterceptor` / WebView Cloudflare help；无 FlareSolverr | 无 | `CloudflareInterceptor`、WebView UI | `CloudflareChallengeManager`、`DesktopCloudflareInterceptor`、`FlareSolverrClient`、`CloudflareBypassDialog` | FlareSolverr 是 Desktop-only、用户显式选择的后备产品能力；它不是原始 Mihon 语义，也不得静默接管请求。 |
 
+## Manifest 结构化 provenance 契约
+
+IDs 28、29、30、32–40 的 completion gate 只读取以下结构化字段；`authoritativeImplementation` 与 `desktopImplementation` 仅为旧消费者兼容文本，不提供完成证据：
+
+- `upstreamRef`：必须精确等于固定 main；
+- `upstreamSymbols`：非空对象列表，每项分别记录完整 repository-relative `path` 和非空 `symbol`，且 path 必须在固定 main tree 中存在；
+- `sharedImplementationPaths`：显式路径列表；允许为空，非空时每条路径都必须存在；
+- `currentAndroidConsumerPaths` / `desktopConsumerAdapterPaths`：非空完整路径列表，每条路径逐项存在；
+- `deviations`：对象列表，每项各自带一个允许的 `classification` 和非空 `description`，不得用一段文字中的单个 token 为多个偏离兜底。
+
+## Fixture 清单与可信度
+
+| Fixture | 类型/版本 | 当前用途 | 可信度边界 |
+| --- | --- | --- | --- |
+| `minimalDexBytes()` / `MINIMAL_DEX_BASE64` | 最小 DEX v035 | `ApkToJarConverterTest`、`DesktopExtensionProductBaselineTest` 保护 production APK→JAR 转换 | 合成结构 fixture，只证明转换机械链路，不证明第三方扩展兼容。 |
+| `MinimalTestSource` ServiceLoader JAR | repo test classpath | `ExtensionCompatibilityTest` 证明 production loader 能发现 `Source` | 确定性 JVM fixture，不代表 Android API 使用面。 |
+| `eu.kanade.tachiyomi.extension.zh.manhuagui@1.4.28` | 固定 Keiyoushi APK | `KeiyoushiChineseCompatibilityTest` 校验 package/version 并调用 production 转换/loader | 网络 integration fixture；当前缺 `android.app.Application` compat 绑定，只能标 `unsupported`，不得升级为 authority。 |
+| 本地 ManHuaGui 构建产物 | 开发机临时版本 | `ManhuaguiLoadTest` 开发诊断 | 非 CI 权威，不能独立支持新增 compat stub。 |
+
+## Compat evidence schema
+
+`app-desktop/src/test/resources/extensions/compat-evidence.json` 的每项继续要求 `symbol`、可追溯的 `fixture`、真实加载/调用 `test`、仅 `required`/`unsupported` 的 `status` 和非空 `removalCondition`。自造 stub 测试不能证明第三方扩展使用；每个 public compat symbol 必须有真实 fixture 调用证据，或明确 `unsupported` 并在确认无生产引用后删除。该证据只证明 Desktop compatibility 边界，不证明固定 main 来源。
+
 ## Task 6B 的固定 main 回放规则
 
 Task 6B 不得把当前 `ExtensionsScreenModel`、`ExtensionManager` 或 `ExtensionDetailsScreenModel` 当作 authority fixture。RED 先从固定 main 回放名称/source/baseUrl/id 搜索、updates/installed/untrusted/语言分类、刷新、逐 package 安装步骤、取消、卸载、trust 和详情卸载事件；随后再比较当前 fork。
@@ -42,5 +65,4 @@ Task 6B 不得把当前 `ExtensionsScreenModel`、`ExtensionManager` 或 `Extens
 
 - 用户入口保持 Browse → Sources / Global Search，以及 Browse → Extensions → Installed/Available → Extension details。
 - Desktop 保留预编译 JAR、APK→JAR、原子替换/reload、文件摘要和仓库信息、Open folder、键鼠/宽屏、显式 FlareSolverr 后备与 Test Mode。
-- `minimalDexBytes()`、`MinimalTestSource` 和 Keiyoushi fixture 分别只证明转换、ServiceLoader 和真实扩展边界；本地构建产物只是诊断，均不构成固定 main 来源证明。
 - Android-only AAR、QuickJS 或没有真实 fixture 调用的 compat API 不承诺支持；文件工具仅承担 Desktop side effect，不进入共享业务层。

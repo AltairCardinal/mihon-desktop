@@ -97,6 +97,8 @@ Android `ExtensionApi` 与 Desktop `DesktopExtensionApi` 的 index DTO 解析迁
 
 Desktop 没有 APK 签名证据时只声明“仓库身份与摘要连续”，不得显示“签名已验证”。旧 sidecar 缺少身份时进入一次性 TrustRequired 迁移，用户能看到旧来源、incoming 来源和摘要；拒绝后旧版本保持可用。
 
+parity provenance 使用结构化 completion gate：固定 `upstreamRef`、逐项 `upstreamSymbols(path, symbol)`、显式 `sharedImplementationPaths`、逐项存在的 `currentAndroidConsumerPaths` / `desktopConsumerAdapterPaths`，以及逐项带允许 classification 和说明的 `deviations`。旧 `authoritativeImplementation` / `desktopImplementation` 只兼容既有读取方，不参与 authority 判定。
+
 ### 5. compat stub 治理
 
 建立机器可校验清单，每个 compat API 必须记录：

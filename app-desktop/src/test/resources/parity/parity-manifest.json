@@ -239,11 +239,20 @@
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #28: 源列表",
-    "upstreamRefAndSymbols": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8: app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt — SourcesScreenModel → enabled/language/pin source interactors",
-    "migratedSharedImplementation": "No shared source-list reducer; domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaSearchService.kt is query-only migration output.",
-    "currentAndroidConsumer": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt",
-    "desktopConsumerAdapter": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/BrowseTab.kt → BrowseSourceListScreen; app-desktop/src/main/kotlin/mihon/desktop/source/DesktopSourceManager.kt",
-    "deviationClassification": "PLATFORM_ADAPTER: Desktop wide-screen Compose and Voyager navigation; source-list shared-state differences remain to be replayed against fixed main.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt", "symbol": "SourcesScreenModel → enabled/language/pin source interactors" }
+    ],
+    "sharedImplementationPaths": [],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt"],
+    "desktopConsumerAdapterPaths": [
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/BrowseTab.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/source/DesktopSourceManager.kt"
+    ],
+    "deviations": [
+      { "classification": "PLATFORM_ADAPTER", "description": "Desktop wide-screen Compose and Voyager navigation." },
+      { "classification": "UNCLASSIFIED_DEBT", "description": "Source-list shared-state differences remain to be replayed against fixed main." }
+    ],
     "desktopImplementation": "Desktop current implementation to characterize and align: 源列表",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -258,11 +267,20 @@
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #29: 单源浏览",
-    "upstreamRefAndSymbols": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8: app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModel.kt — BrowseSourceScreenModel → CatalogueSource pagination",
-    "migratedSharedImplementation": "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaSearchService.kt",
-    "currentAndroidConsumer": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModel.kt",
-    "desktopConsumerAdapter": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt; app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceQueryCoordinators.kt",
-    "deviationClassification": "MIGRATION_OUTPUT + PLATFORM_ADAPTER: shared query state and Desktop keyboard/layout require fixed-main replay; neither is original authority.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModel.kt", "symbol": "BrowseSourceScreenModel → CatalogueSource pagination" }
+    ],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaSearchService.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModel.kt"],
+    "desktopConsumerAdapterPaths": [
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceQueryCoordinators.kt"
+    ],
+    "deviations": [
+      { "classification": "MIGRATION_OUTPUT", "description": "Shared query state is migration output and requires fixed-main replay." },
+      { "classification": "PLATFORM_ADAPTER", "description": "Desktop keyboard and layout behavior is platform-specific." }
+    ],
     "desktopImplementation": "Desktop current implementation to characterize and align: 单源浏览",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -276,11 +294,24 @@
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #30: 全局搜索",
-    "upstreamRefAndSymbols": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8: app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/GlobalSearchScreenModel.kt → SearchScreenModel → enabled CatalogueSource",
-    "migratedSharedImplementation": "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaSearchService.kt",
-    "currentAndroidConsumer": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/GlobalSearchScreenModel.kt; SearchScreenModel.kt",
-    "desktopConsumerAdapter": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/GlobalSearchScreen.kt; DesktopSourceQueryCoordinators.kt",
-    "deviationClassification": "MIGRATION_OUTPUT: generation and unified error aggregation are shared migration semantics; Desktop rendering is a platform adapter and must not redefine fixed-main search behavior.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/GlobalSearchScreenModel.kt", "symbol": "GlobalSearchScreenModel" },
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/SearchScreenModel.kt", "symbol": "SearchScreenModel → enabled CatalogueSource" }
+    ],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaSearchService.kt"],
+    "currentAndroidConsumerPaths": [
+      "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/GlobalSearchScreenModel.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/SearchScreenModel.kt"
+    ],
+    "desktopConsumerAdapterPaths": [
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/GlobalSearchScreen.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceQueryCoordinators.kt"
+    ],
+    "deviations": [
+      { "classification": "MIGRATION_OUTPUT", "description": "Generation and unified error aggregation are shared migration semantics." },
+      { "classification": "PLATFORM_ADAPTER", "description": "Desktop rendering must not redefine fixed-main search behavior." }
+    ],
     "desktopImplementation": "Desktop current implementation to characterize and align: 全局搜索",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -294,11 +325,23 @@
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #32: 扩展仓库",
-    "upstreamRefAndSymbols": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8: app/src/main/java/eu/kanade/presentation/more/settings/screen/browse/ExtensionReposScreenModel.kt → extension-repo interactors",
-    "migratedSharedImplementation": "domain/src/commonMain/kotlin/mihon/domain/extensionrepo/repository/ExtensionRepoRepository.kt; ExtensionRepoService.kt",
-    "currentAndroidConsumer": "app/src/main/java/eu/kanade/presentation/more/settings/screen/browse/ExtensionReposScreenModel.kt",
-    "desktopConsumerAdapter": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/ExtensionRepoScreen.kt; app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionApi.kt",
-    "deviationClassification": "SECURITY_ENHANCEMENT: repository fingerprint continuity is cross-platform evidence, not fixed-main authority; CRUD behavior must be replayed from fixed main.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [
+      { "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/browse/ExtensionReposScreenModel.kt", "symbol": "ExtensionReposScreenModel → extension-repo interactors" }
+    ],
+    "sharedImplementationPaths": [
+      "domain/src/commonMain/kotlin/mihon/domain/extensionrepo/repository/ExtensionRepoRepository.kt",
+      "domain/src/commonMain/kotlin/mihon/domain/extensionrepo/service/ExtensionRepoService.kt"
+    ],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/presentation/more/settings/screen/browse/ExtensionReposScreenModel.kt"],
+    "desktopConsumerAdapterPaths": [
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/ExtensionRepoScreen.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionApi.kt"
+    ],
+    "deviations": [
+      { "classification": "SECURITY_ENHANCEMENT", "description": "Repository fingerprint continuity is cross-platform evidence, not fixed-main authority." },
+      { "classification": "UNCLASSIFIED_DEBT", "description": "Repository CRUD migration behavior must be replayed from fixed main." }
+    ],
     "desktopImplementation": "Desktop current implementation to characterize and align: 扩展仓库",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -313,11 +356,27 @@
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #33: 扩展发现",
-    "upstreamRefAndSymbols": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8: app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt — findAvailableExtensions → ExtensionApi; ExtensionLoader reloads installed sources",
-    "migratedSharedImplementation": "domain/src/commonMain/kotlin/mihon/domain/extension/service/ExtensionCatalogService.kt",
-    "currentAndroidConsumer": "app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt; extension/api/ExtensionApi.kt; extension/util/ExtensionLoader.kt",
-    "desktopConsumerAdapter": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionApi.kt; DesktopExtensionManager.kt; DesktopExtensionLoader.kt",
-    "deviationClassification": "PLATFORM_ADAPTER + SECURITY_ENHANCEMENT: PackageManager/signatures and JVM ClassLoader/JAR differ; shared compatibility diagnostics do not prove original semantics.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt", "symbol": "ExtensionManager.findAvailableExtensions" },
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/extension/api/ExtensionApi.kt", "symbol": "ExtensionApi" },
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt", "symbol": "ExtensionLoader" }
+    ],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/extension/service/ExtensionCatalogService.kt"],
+    "currentAndroidConsumerPaths": [
+      "app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/extension/api/ExtensionApi.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt"
+    ],
+    "desktopConsumerAdapterPaths": [
+      "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionApi.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionManager.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt"
+    ],
+    "deviations": [
+      { "classification": "PLATFORM_ADAPTER", "description": "Android PackageManager/signatures and Desktop JVM ClassLoader/JAR loading differ." },
+      { "classification": "SECURITY_ENHANCEMENT", "description": "Shared compatibility diagnostics do not prove original semantics." }
+    ],
     "desktopImplementation": "Desktop current implementation to characterize and align: 扩展发现",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -332,11 +391,29 @@
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #34: 扩展安装",
-    "upstreamRefAndSymbols": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8: app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt — installExtension/updateExtension/cancelInstallUpdateExtension → ExtensionInstaller",
-    "migratedSharedImplementation": "domain/src/commonMain/kotlin/mihon/domain/extension/service/ExtensionInstallCoordinator.kt; ExtensionInstallPort.kt",
-    "currentAndroidConsumer": "app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt; extension/util/ExtensionInstaller.kt",
-    "desktopConsumerAdapter": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionApi.kt; DesktopExtensionManager.kt; DesktopExtensionInstallPort.kt; ApkToJarConverter.kt",
-    "deviationClassification": "SECURITY_ENHANCEMENT + PLATFORM_ADAPTER: fixed-main install/update/cancel is the core; SHA continuity, snapshots, rollback/runtime restore and APK→JAR are explicit cross-platform additions/adapters.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt", "symbol": "installExtension/updateExtension/cancelInstallUpdateExtension" },
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionInstaller.kt", "symbol": "ExtensionInstaller" }
+    ],
+    "sharedImplementationPaths": [
+      "domain/src/commonMain/kotlin/mihon/domain/extension/service/ExtensionInstallCoordinator.kt",
+      "domain/src/commonMain/kotlin/mihon/domain/extension/service/ExtensionInstallPort.kt"
+    ],
+    "currentAndroidConsumerPaths": [
+      "app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionInstaller.kt"
+    ],
+    "desktopConsumerAdapterPaths": [
+      "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionApi.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionManager.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/extension/ApkToJarConverter.kt"
+    ],
+    "deviations": [
+      { "classification": "SECURITY_ENHANCEMENT", "description": "SHA continuity, snapshots and rollback/runtime restore are explicit cross-platform additions." },
+      { "classification": "PLATFORM_ADAPTER", "description": "Desktop APK-to-JAR is a platform adapter; fixed-main install/update/cancel remains the core." }
+    ],
     "desktopImplementation": "Desktop current implementation to characterize and align: 扩展安装",
     "protectionTests": [
       "app-desktop/src/test/kotlin/mihon/desktop/extension/ApkToJarConverterTest.kt"
@@ -353,11 +430,17 @@
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #35: 扩展加载",
-    "upstreamRefAndSymbols": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8: app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt — PackageManager, signature and private APK loading",
-    "migratedSharedImplementation": "None; loading remains platform-specific.",
-    "currentAndroidConsumer": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt",
-    "desktopConsumerAdapter": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt; ExtensionClassLoader.kt; ServiceLoader/compat path",
-    "deviationClassification": "PLATFORM_ADAPTER; missing real-fixture compat calls are UNCLASSIFIED_DEBT and must not be presented as supported original behavior.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt", "symbol": "ExtensionLoader → PackageManager/signature/private APK loading" }
+    ],
+    "sharedImplementationPaths": [],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt"],
+    "deviations": [
+      { "classification": "PLATFORM_ADAPTER", "description": "DesktopExtensionLoader contains the JVM ExtensionClassLoader and ServiceLoader/compat path." },
+      { "classification": "UNCLASSIFIED_DEBT", "description": "Compat calls without real fixtures must not be presented as supported original behavior." }
+    ],
     "desktopImplementation": "Desktop current implementation to characterize and align: 扩展加载",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -371,11 +454,26 @@
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #36: 扩展安全",
-    "upstreamRefAndSymbols": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8: app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt — untrusted load result → ExtensionManager.trust",
-    "migratedSharedImplementation": "domain/src/commonMain/kotlin/mihon/domain/extension/service/ExtensionTrustPolicy.kt; model/ExtensionArtifact.kt",
-    "currentAndroidConsumer": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt; ExtensionManager.kt",
-    "desktopConsumerAdapter": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt; DesktopExtensionLoader.kt; metadata sidecar",
-    "deviationClassification": "SECURITY_ENHANCEMENT: original APK-signature trust/basic trust is compatible core; repository fingerprint and SHA-256 continuity are cross-platform additions.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt", "symbol": "untrusted LoadResult" },
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt", "symbol": "ExtensionManager.trust" }
+    ],
+    "sharedImplementationPaths": [
+      "domain/src/commonMain/kotlin/mihon/domain/extension/service/ExtensionTrustPolicy.kt",
+      "domain/src/commonMain/kotlin/mihon/domain/extension/model/ExtensionArtifact.kt"
+    ],
+    "currentAndroidConsumerPaths": [
+      "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt"
+    ],
+    "desktopConsumerAdapterPaths": [
+      "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt"
+    ],
+    "deviations": [
+      { "classification": "SECURITY_ENHANCEMENT", "description": "Repository fingerprint and SHA-256 continuity extend original APK-signature/basic trust behavior." }
+    ],
     "desktopImplementation": "Desktop current implementation to characterize and align: 扩展安全",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -389,11 +487,27 @@
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #37: 扩展详情与更新",
-    "upstreamRefAndSymbols": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8: app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsScreenModel.kt + details/ExtensionDetailsScreenModel.kt → ExtensionManager.updateExtension/uninstallExtension",
-    "migratedSharedImplementation": "None: ExtensionPresentationContract/Store is intentionally absent until Task 6B extracts fixed-main semantics.",
-    "currentAndroidConsumer": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsScreenModel.kt; details/ExtensionDetailsScreenModel.kt; ExtensionManager.kt",
-    "desktopConsumerAdapter": "app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionListScreen.kt; ExtensionDetailsScreen.kt; extension/DesktopExtensionManager.kt",
-    "deviationClassification": "DESKTOP_PRODUCT + UNCLASSIFIED_DEBT: file detail/Open folder is retained Desktop capability; current Android async initialization and missing takeWhile difference must be replayed, not treated as authority.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsScreenModel.kt", "symbol": "ExtensionsScreenModel" },
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/ExtensionDetailsScreenModel.kt", "symbol": "ExtensionDetailsScreenModel" },
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt", "symbol": "updateExtension/uninstallExtension" }
+    ],
+    "sharedImplementationPaths": [],
+    "currentAndroidConsumerPaths": [
+      "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsScreenModel.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/ExtensionDetailsScreenModel.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt"
+    ],
+    "desktopConsumerAdapterPaths": [
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionListScreen.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionDetailsScreen.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionManager.kt"
+    ],
+    "deviations": [
+      { "classification": "DESKTOP_PRODUCT", "description": "File detail and Open folder are retained Desktop capabilities." },
+      { "classification": "UNCLASSIFIED_DEBT", "description": "Current Android asynchronous initialization and missing takeWhile difference must be replayed." }
+    ],
     "desktopImplementation": "Desktop current implementation to characterize and align: 扩展详情与更新",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -408,11 +522,16 @@
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #38: 源偏好设置",
-    "upstreamRefAndSymbols": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8: app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/SourcePreferencesScreen.kt — source preference schema rendering",
-    "migratedSharedImplementation": "None; platform-neutral preference presentation schema is not yet extracted.",
-    "currentAndroidConsumer": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/SourcePreferencesScreen.kt",
-    "desktopConsumerAdapter": "app-desktop/src/main/kotlin/mihon/desktop/ui/extension/SourcePreferencesScreen.kt",
-    "deviationClassification": "PLATFORM_ADAPTER: controls and window/file interaction differ; missing/non-configurable/setup-failure states remain distinct product requirements.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/SourcePreferencesScreen.kt", "symbol": "SourcePreferencesScreen → source preference schema rendering" }
+    ],
+    "sharedImplementationPaths": [],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/SourcePreferencesScreen.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/ui/extension/SourcePreferencesScreen.kt"],
+    "deviations": [
+      { "classification": "PLATFORM_ADAPTER", "description": "Controls and window/file interaction differ; missing, non-configurable and setup-failure states remain distinct." }
+    ],
     "desktopImplementation": "Desktop current implementation to characterize and align: 源偏好设置",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -426,11 +545,25 @@
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #39: WebView/源登录",
-    "upstreamRefAndSymbols": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8: app/src/main/java/eu/kanade/tachiyomi/ui/webview/WebViewScreenModel.kt → WebViewScreen/WebViewScreenContent → Android CookieManager",
-    "migratedSharedImplementation": "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceLoginSession.kt",
-    "currentAndroidConsumer": "app/src/main/java/eu/kanade/tachiyomi/ui/webview/WebViewScreenModel.kt; WebViewScreen.kt",
-    "desktopConsumerAdapter": "app-desktop/src/main/kotlin/mihon/desktop/network/DesktopBrowserLoginAdapter.kt; ui/browse/DesktopSourceLoginDialog.kt",
-    "deviationClassification": "MIGRATION_OUTPUT + PLATFORM_ADAPTER: controlled browser and cookie storage are platform-specific; login session state is not original WebView authority.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/webview/WebViewScreenModel.kt", "symbol": "WebViewScreenModel" },
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/webview/WebViewScreen.kt", "symbol": "WebViewScreen" },
+      { "path": "app/src/main/java/eu/kanade/presentation/webview/WebViewScreenContent.kt", "symbol": "WebViewScreenContent → Android CookieManager" }
+    ],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceLoginSession.kt"],
+    "currentAndroidConsumerPaths": [
+      "app/src/main/java/eu/kanade/tachiyomi/ui/webview/WebViewScreenModel.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/ui/webview/WebViewScreen.kt"
+    ],
+    "desktopConsumerAdapterPaths": [
+      "app-desktop/src/main/kotlin/mihon/desktop/network/DesktopBrowserLoginAdapter.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceLoginDialog.kt"
+    ],
+    "deviations": [
+      { "classification": "MIGRATION_OUTPUT", "description": "SourceLoginSession state is migration output, not original WebView authority." },
+      { "classification": "PLATFORM_ADAPTER", "description": "Controlled browser and cookie storage are platform-specific." }
+    ],
     "desktopImplementation": "Desktop current implementation to characterize and align: WebView/源登录",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -445,11 +578,26 @@
     ],
     "status": "NOT_STARTED",
     "authoritativeImplementation": "Android authoritative capability #40: Cloudflare 绕过",
-    "upstreamRefAndSymbols": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8: app/src/main/java/eu/kanade/tachiyomi/network/interceptor/CloudflareInterceptor.kt; presentation/webview/WebViewScreenContent.kt Cloudflare help",
-    "migratedSharedImplementation": "None; fixed main has no FlareSolverr shared service.",
-    "currentAndroidConsumer": "app/src/main/java/eu/kanade/presentation/webview/WebViewScreenContent.kt; eu/kanade/tachiyomi/ui/webview/WebViewScreenModel.kt (no current-fork FlareSolverr equivalent)",
-    "desktopConsumerAdapter": "app-desktop/src/main/kotlin/mihon/desktop/network/CloudflareChallengeManager.kt; DesktopCloudflareInterceptor.kt; FlareSolverrClient.kt; ui/cloudflare/CloudflareBypassDialog.kt",
-    "deviationClassification": "DESKTOP_PRODUCT + PLATFORM_ADAPTER: FlareSolverr is an explicit user-selected Desktop fallback, never a silent replacement or fixed-main behavior.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [
+      { "path": "core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareInterceptor.kt", "symbol": "CloudflareInterceptor" },
+      { "path": "app/src/main/java/eu/kanade/presentation/webview/WebViewScreenContent.kt", "symbol": "Cloudflare help presentation" }
+    ],
+    "sharedImplementationPaths": [],
+    "currentAndroidConsumerPaths": [
+      "app/src/main/java/eu/kanade/presentation/webview/WebViewScreenContent.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/ui/webview/WebViewScreenModel.kt"
+    ],
+    "desktopConsumerAdapterPaths": [
+      "app-desktop/src/main/kotlin/mihon/desktop/network/CloudflareChallengeManager.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/network/DesktopCloudflareInterceptor.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/network/FlareSolverrClient.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/cloudflare/CloudflareBypassDialog.kt"
+    ],
+    "deviations": [
+      { "classification": "DESKTOP_PRODUCT", "description": "FlareSolverr is an explicit user-selected Desktop fallback, never fixed-main behavior." },
+      { "classification": "PLATFORM_ADAPTER", "description": "Desktop challenge and cookie integration must not silently replace normal requests." }
+    ],
     "desktopImplementation": "Desktop current implementation to characterize and align: Cloudflare 绕过",
     "protectionTests": [
       "app-desktop/src/test/kotlin/mihon/desktop/network/FlareSolverrClientTest.kt"

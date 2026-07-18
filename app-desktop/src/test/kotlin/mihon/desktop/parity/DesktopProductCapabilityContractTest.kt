@@ -5,6 +5,8 @@ import java.nio.file.Path
 import kotlin.io.path.exists
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.jsonArray
@@ -40,13 +42,13 @@ class DesktopProductCapabilityContractTest {
         )
     private val sourceExtensionAuthorityIds =
         setOf(28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40)
-    private val sourceExtensionProvenanceFields =
+    private val allowedDeviationClassifications =
         setOf(
-            "upstreamRefAndSymbols",
-            "migratedSharedImplementation",
-            "currentAndroidConsumer",
-            "desktopConsumerAdapter",
-            "deviationClassification",
+            "PLATFORM_ADAPTER",
+            "SECURITY_ENHANCEMENT",
+            "DESKTOP_PRODUCT",
+            "MIGRATION_OUTPUT",
+            "UNCLASSIFIED_DEBT",
         )
     private val fixedOriginalMihonRef =
         "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8"
@@ -485,46 +487,7 @@ class DesktopProductCapabilityContractTest {
             assertEquals(expectedTags.getValue(id), tags.toSet(), "ID $id: tags differ from design A-J tables")
 
             if (id in sourceExtensionAuthorityIds) {
-                sourceExtensionProvenanceFields.forEach { field ->
-                    assertTrue(
-                        item[field]?.jsonPrimitive?.content?.isNotBlank() == true,
-                        "ID $id: source/extension provenance field $field must not be blank",
-                    )
-                }
-                val upstream = item.getValue("upstreamRefAndSymbols").jsonPrimitive.content
-                assertTrue(
-                    upstream.startsWith(fixedOriginalMihonRef),
-                    "ID $id must use the fixed original Mihon ref",
-                )
-                assertTrue(
-                    upstream.contains(".kt"),
-                    "ID $id must name fixed-main symbol evidence",
-                )
-                assertTrue(
-                    item.getValue("currentAndroidConsumer").jsonPrimitive.content.contains("app/src/main"),
-                    "ID $id must name a current Android consumer path",
-                )
-                assertTrue(
-                    declaredProductionPaths(item.getValue("currentAndroidConsumer").jsonPrimitive.content)
-                        .any { Files.isRegularFile(repositoryRoot.resolve(it)) },
-                    "ID $id must reference an existing current Android consumer file",
-                )
-                assertTrue(
-                    item.getValue("desktopConsumerAdapter").jsonPrimitive.content.contains("app-desktop/src/main"),
-                    "ID $id must name a Desktop consumer or adapter path",
-                )
-                assertTrue(
-                    declaredProductionPaths(item.getValue("desktopConsumerAdapter").jsonPrimitive.content)
-                        .any { Files.isRegularFile(repositoryRoot.resolve(it)) },
-                    "ID $id must reference an existing Desktop consumer or adapter file",
-                )
-                val classification = item.getValue("deviationClassification").jsonPrimitive.content
-                assertTrue(
-                    classification.contains(
-                        Regex("PLATFORM_ADAPTER|SECURITY_ENHANCEMENT|DESKTOP_PRODUCT|MIGRATION_OUTPUT|UNCLASSIFIED_DEBT"),
-                    ),
-                    "ID $id must classify every deviation instead of treating current-fork behavior as authority",
-                )
+                validateSourceExtensionProvenance(item, repositoryRoot)
             }
 
             val protectionTests = item.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content }
@@ -587,6 +550,38 @@ class DesktopProductCapabilityContractTest {
                 assertTrue(Files.readString(testFile).contains("@Test"), "ID $id: product protection must be a test file")
             }
         }
+    }
+
+    @Test
+    fun `source extension provenance rejects an invalid second consumer path`() {
+        createSyntheticConsumerFiles()
+        val item = syntheticSourceExtensionItem(
+            currentAndroidConsumerPaths = listOf("app/src/main/Current.kt", "app/src/main/Missing.kt"),
+        )
+
+        val failure = assertThrows(AssertionError::class.java) {
+            validateSourceExtensionProvenance(item, tempDir) { _, _ -> true }
+        }
+
+        assertTrue(failure.message.orEmpty().contains("app/src/main/Missing.kt"), failure.message)
+    }
+
+    @Test
+    fun `source extension provenance rejects an unclassified deviation tail item`() {
+        createSyntheticConsumerFiles()
+        val item = syntheticSourceExtensionItem(
+            deviations =
+                listOf(
+                    "PLATFORM_ADAPTER" to "The first deviation is classified.",
+                    null to "The second deviation has no classification.",
+                ),
+        )
+
+        val failure = assertThrows(AssertionError::class.java) {
+            validateSourceExtensionProvenance(item, tempDir) { _, _ -> true }
+        }
+
+        assertTrue(failure.message.orEmpty().contains("deviations[1].classification"), failure.message)
     }
 
     @Test
@@ -765,10 +760,127 @@ class DesktopProductCapabilityContractTest {
         return source.substring(start, nextTest)
     }
 
-    private fun declaredProductionPaths(value: String) =
-        Regex("(?:app|app-desktop)/src/main/[A-Za-z0-9_./-]+\\.kt")
-            .findAll(value)
-            .map { it.value }
+    private fun validateSourceExtensionProvenance(
+        item: JsonObject,
+        repositoryRoot: Path,
+        upstreamPathExists: (String, String) -> Boolean = { ref, path -> gitPathExists(repositoryRoot, ref, path) },
+    ) {
+        val id = validatedId(item)
+        val upstreamRef = requiredText(item, "upstreamRef", id)
+        assertEquals(fixedOriginalMihonRef, upstreamRef, "ID $id must use the exact fixed original Mihon ref")
+
+        val upstreamSymbols = item["upstreamSymbols"]?.jsonArray
+            ?: throw AssertionError("ID $id: upstreamSymbols must be an explicit array")
+        assertTrue(upstreamSymbols.isNotEmpty(), "ID $id: upstreamSymbols must not be empty")
+        upstreamSymbols.forEachIndexed { index, element ->
+            val symbol = element.jsonObject
+            val path = requiredText(symbol, "path", id, "upstreamSymbols[$index]")
+            requiredText(symbol, "symbol", id, "upstreamSymbols[$index]")
+            assertTrue(
+                path.endsWith(".kt") && !Path.of(path).isAbsolute && path.split('/').none { it == ".." },
+                "ID $id: incomplete upstream path $path",
+            )
+            assertTrue(upstreamPathExists(upstreamRef, path), "ID $id: fixed-main path does not exist: $path")
+        }
+
+        validateCurrentPaths(item, "sharedImplementationPaths", id, repositoryRoot, allowEmpty = true)
+        validateCurrentPaths(item, "currentAndroidConsumerPaths", id, repositoryRoot, requiredPrefix = "app/src/main/")
+        validateCurrentPaths(item, "desktopConsumerAdapterPaths", id, repositoryRoot, requiredPrefix = "app-desktop/src/main/")
+
+        val deviations = item["deviations"]?.jsonArray
+            ?: throw AssertionError("ID $id: deviations must be an explicit array")
+        deviations.forEachIndexed { index, element ->
+            val deviation = element.jsonObject
+            val context = "deviations[$index]"
+            val classification = requiredText(deviation, "classification", id, context)
+            assertTrue(
+                classification in allowedDeviationClassifications,
+                "ID $id: $context.classification must be one of $allowedDeviationClassifications",
+            )
+            requiredText(deviation, "description", id, context)
+        }
+    }
+
+    private fun validateCurrentPaths(
+        item: JsonObject,
+        field: String,
+        id: Int,
+        repositoryRoot: Path,
+        requiredPrefix: String? = null,
+        allowEmpty: Boolean = false,
+    ) {
+        val paths = item[field]?.jsonArray
+            ?: throw AssertionError("ID $id: $field must be an explicit array")
+        if (!allowEmpty) assertTrue(paths.isNotEmpty(), "ID $id: $field must not be empty")
+        paths.forEachIndexed { index, element ->
+            val path = element.jsonPrimitive.content
+            assertTrue(path.isNotBlank(), "ID $id: $field[$index] must not be blank")
+            if (requiredPrefix != null) {
+                assertTrue(path.startsWith(requiredPrefix), "ID $id: $field[$index] must start with $requiredPrefix")
+            }
+            assertTrue(Files.isRegularFile(repositoryRoot.resolve(path)), "ID $id: missing $field path $path")
+        }
+    }
+
+    private fun requiredText(item: JsonObject, field: String, id: Int, context: String? = null): String {
+        val value = item[field]?.jsonPrimitive?.content
+        assertTrue(value?.isNotBlank() == true, "ID $id: ${context?.plus(".").orEmpty()}$field must not be blank")
+        return value!!
+    }
+
+    private fun gitPathExists(repositoryRoot: Path, upstreamRef: String, path: String): Boolean {
+        val commit = upstreamRef.substringAfter('@')
+        val process = ProcessBuilder("git", "cat-file", "-e", "${commit}:$path")
+            .directory(repositoryRoot.toFile())
+            .redirectErrorStream(true)
+            .start()
+        process.inputStream.bufferedReader().use { it.readText() }
+        return process.waitFor() == 0
+    }
+
+    private fun createSyntheticConsumerFiles() {
+        listOf("app/src/main/Current.kt", "app-desktop/src/main/Desktop.kt").forEach { path ->
+            val file = tempDir.resolve(path)
+            Files.createDirectories(file.parent)
+            if (!Files.exists(file)) Files.createFile(file)
+        }
+    }
+
+    private fun syntheticSourceExtensionItem(
+        currentAndroidConsumerPaths: List<String> = listOf("app/src/main/Current.kt"),
+        deviations: List<Pair<String?, String>> = listOf("PLATFORM_ADAPTER" to "Platform-specific behavior."),
+    ) =
+        buildJsonObject {
+            put("id", 28)
+            put("upstreamRef", fixedOriginalMihonRef)
+            put(
+                "upstreamSymbols",
+                buildJsonArray {
+                    add(
+                        buildJsonObject {
+                            put("path", "app/src/main/Upstream.kt")
+                            put("symbol", "Upstream")
+                        },
+                    )
+                },
+            )
+            put("sharedImplementationPaths", buildJsonArray {})
+            put("currentAndroidConsumerPaths", buildJsonArray { currentAndroidConsumerPaths.forEach { add(it) } })
+            put("desktopConsumerAdapterPaths", buildJsonArray { add("app-desktop/src/main/Desktop.kt") })
+            put(
+                "deviations",
+                buildJsonArray {
+                    deviations.forEach { (classification, description) ->
+                        add(
+                            buildJsonObject {
+                                classification?.let { put("classification", it) }
+                                put("description", description)
+                            },
+                        )
+                    }
+                },
+            )
+        }
 
     private fun repositoryRoot() =
         generateSequence(Path.of("").toAbsolutePath()) { it.parent }

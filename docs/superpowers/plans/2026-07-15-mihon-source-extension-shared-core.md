@@ -836,7 +836,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 - [ ] **Step 3: 更新 parity 28–40、87**
 
-  manifest 的 `authoritativeImplementation`、`desktopImplementation` 与 `protectionTests` 必须引用真实 production/test 路径；状态只提升到证据支持的 CHARACTERIZED/SHARED/WIRED/VERIFIED，不把平台 adapter 当作业务豁免。
+  IDs 28–40 的 manifest completion gate 使用结构化 provenance：`upstreamRef` 必须精确固定到 main，`upstreamSymbols` 的每个 path 在该 git tree 中存在，shared/current Android/Desktop 路径数组逐项验证，每个 deviation 对象独立携带允许 classification 和非空说明。`authoritativeImplementation` / `desktopImplementation` 仅保留兼容，不能作为完成证据；`protectionTests` 仍必须引用真实测试路径。状态只提升到证据支持的 CHARACTERIZED/SHARED/WIRED/VERIFIED，不把平台 adapter 当作业务豁免。
 
 - [ ] **Step 4: 运行全量自动验证**
 
