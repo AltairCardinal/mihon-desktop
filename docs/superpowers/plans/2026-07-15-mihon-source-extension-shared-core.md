@@ -604,13 +604,14 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 - Risk axis: `global-search-canonical-materializer`
 - Platform boundary: `desktop`
-- Estimated scope: `4 files, 360 lines`
-- Verification: 真实 Global Search → `awaitSearchResults` → 内存 SQLDelight/MangaRepository production 链证明不点击卡片也会入库，物化完成前不显示 raw 结果，旧 generation 不覆盖新搜索，失败产生明确行级错误与 exact retry；测试夹具必须可被 6A3A2 复用。
+- Estimated scope: `5 files, 390 lines`
+- Verification: 真实 Global Search → `awaitSearchResults` → 内存 SQLDelight/MangaRepository production 链证明不点击卡片也会入库，物化完成前不显示 raw 结果，已发布旧结果与未完成旧任务在 generation 切换后都不能污染新搜索，失败产生明确行级错误与 exact retry；Task 4 Authority fixture 必须消费 canonical batch API，测试夹具可被 6A3A2 复用。本 Task 保持原有点击等待/导航/刷新语义，立即 canonical 导航由 6A3A2 连同最新数据库观察统一验证。
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/GlobalSearchScreen.kt`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/browse/GlobalSearchResultProductionWiringTest.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/browse/GlobalSearchAuthorityProjectionTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/browse/GlobalSearchAuthorityWiringTest.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceSharedStateWiringTest.kt`
 
 ##### Task 6A3A2: Global Search visible-card database observation
@@ -618,7 +619,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Risk axis: `global-search-card-observation`
 - Platform boundary: `desktop`
 - Estimated scope: `2 files, 120 lines`
-- Verification: 以固定 main `SearchScreenModel.getManga()` 为预言机，仅为进入 composition 的结果卡按 `(sourceId, url)` 订阅 production `GetManga` flow；真实内存 SQLDelight/repository 测试在不重新搜索时更新标题、封面或收藏状态，卡片必须刷新且源搜索调用次数仍为一次。
+- Verification: 以固定 main `SearchScreenModel.getManga()` 为预言机，仅为进入 composition 的结果卡按 `(sourceId, url)` 订阅 production `GetManga` flow；真实内存 SQLDelight/repository 测试在不重新搜索时更新标题、封面或收藏状态，卡片必须刷新且源搜索调用次数仍为一次；点击必须立即使用最新 canonical ID 导航，并只将对应 `listedByUrl` 原始 `SManga` 交给后台详情/章节刷新。
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/GlobalSearchScreen.kt`
