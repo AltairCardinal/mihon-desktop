@@ -4,6 +4,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import io.mockk.every
@@ -16,8 +17,7 @@ import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.desktop.source.FakeSource
-import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -53,17 +53,15 @@ class DownloadQueueSourceGroupingWiringTest {
         }
         scene.render()
 
-        val semantics = scene.semanticsOwners
-            .flatMap { flatten(it.rootSemanticsNode) }
-            .joinToString { it.config.toString() }
+        val nodes = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
 
-        assertTrue(semantics.contains("Source One"))
-        assertTrue(semantics.contains("Source Two"))
-        assertTrue(semantics.contains("Unknown source (3)"))
-        assertFalse(semantics.contains("Manga A"))
-        assertFalse(semantics.contains("Manga B"))
-        assertFalse(semantics.contains("Manga C"))
-        assertFalse(semantics.contains("Manga D"))
+        assertEquals(1, textNodeCount(nodes, "Source One"))
+        assertEquals(1, textNodeCount(nodes, "Source Two"))
+        assertEquals(1, textNodeCount(nodes, "Unknown source (3)"))
+        assertEquals(0, textNodeCount(nodes, "Manga A"))
+        assertEquals(0, textNodeCount(nodes, "Manga B"))
+        assertEquals(0, textNodeCount(nodes, "Manga C"))
+        assertEquals(0, textNodeCount(nodes, "Manga D"))
 
         scene.close()
     }
@@ -76,4 +74,9 @@ class DownloadQueueSourceGroupingWiringTest {
     )
 
     private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+
+    private fun textNodeCount(nodes: List<SemanticsNode>, label: String): Int = nodes.count { node ->
+        node.config.contains(SemanticsProperties.Text) &&
+            node.config[SemanticsProperties.Text].any { it.text == label }
+    }
 }
