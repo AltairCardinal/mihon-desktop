@@ -790,7 +790,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **Risk axis:** desktop-extension-presentation-wiring
 **Platform boundary:** shared+desktop
-**Estimated scope:** 13 files, 1210 lines
+**Estimated scope:** 13 files, 1280 lines
 **Verification:** Task 6C1 独立闭合 metadata 连续性、Manager authoritative state、typed catalog/trust/install port 与取消 rollback；Task 6C2a 闭合 projection/update/obsolete/raw-step adapter；Task 6C2b1 闭合只消费该 port 和 Task 6B shared store 的 ScreenModel/jobs/trust lifecycle；Task 6C2b2 再闭合 DI singleton/reinit ownership。四个子 Task 分别验收，任一方通过不能替代另一方。
 **Execution split:** 预审确认已安装 sidecar 缺少 fixed-main 分类所需的 name/language/isNsfw，且 Manager 没有 authoritative installed StateFlow；6C2a 已独立固定 projection/update/raw mapping。6C2b 预审又确认 ScreenModel reducer/jobs/trust 与 DI owner 是两组可独立失效风险，原 320 行估算无法保留高杀伤 mutation，因此按 6C1→6C2a→6C2b1→6C2b2 顺序施工。
 **Split waiver:** 聚合文件数/行数不会作为一个 Task 调度；6C1、6C2a、6C2b1、6C2b2 分别不超过 8 files/400 lines。6C2b1 先产出稳定的 `closeAndJoin()` lifecycle contract，6C2b2 才注册并验证 DI ownership。
@@ -836,7 +836,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 - Risk axis: `desktop-extension-presentation-consumer`
 - Platform boundary: `shared+desktop`
-- Estimated scope: `7 files, 850 lines`
+- Estimated scope: `7 files, 920 lines`
 - Verification: 6C2a 的 Desktop adapter 独立消费 shared classifier/update policy 并保留 raw state；6C2b1 的 ScreenModel 消费该稳定 adapter 与 shared reducer并拥有 jobs/trust；6C2b2 注册同一长生命周期实例并证明 test DI reinit/close 后旧 jobs 停止。
 - Split waiver: 6C2a、6C2b1、6C2b2 分别独立验收且均不超过 400 lines；projection/update/raw mapping、ScreenModel jobs/trust 与 DI ownership 是三条可独立断线测试的风险轴，不能由同一实现者批次压缩。
 
@@ -878,8 +878,9 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 - Risk axis: `desktop-extension-screenmodel-lifecycle`
 - Platform boundary: `shared+desktop`
-- Estimated scope: `3 files, 390 lines`
+- Estimated scope: `3 files, 460 lines`
 - Verification: authoritative installed flow 触发重新 projection；partial failure identity、shared reducer 连续回灌、fixed-main intents、post-Installed cutoff、逐包 job、Error/raw identity、pending trust 与 child-scope close-and-join 均由真实 port/flow 行为覆盖。
+- Split waiver: 本聚合项不作为一个 Task 调度；6C2b1a 与 6C2b1b 分别低于 400 lines，先稳定 state/intents contract，再追加 jobs/trust/close lifecycle。
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/DesktopExtensionPresentationPort.kt`
@@ -891,25 +892,59 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Produces: 稳定的 `ExtensionsScreenModel.closeAndJoin()`；refresh/install/update-all/cancel/uninstall/trust intents 与 fixed main 一致。
 - Boundary: 不 new Manager/API，不调用 legacy terminal API，不复制分类、搜索、版本、信任、回滚或错误映射；只取消/等待自身 child jobs，不取消外部 scope。
 
-- [ ] **Step 1: 写 ScreenModel/reducer/jobs/trust RED**
+###### Task 6C2b1a: Desktop ScreenModel state、shared reducer 与 fixed-main intents
 
-  覆盖 reducer 输入连续回灌、authoritative flow 重投影、partial failure identity、refresh finally、install/update-all/cancel/uninstall、Installed 后停止、Error/raw identity、同包 job 替换、pending confirm/dismiss/replace/close 与 parent sibling 存活。
+- Risk axis: `desktop-extension-screenmodel-core`
+- Platform boundary: `shared+desktop`
+- Estimated scope: `3 files, 240 lines`
+- Verification: authoritative installed flow 使用最近 typed catalog 重新 projection/classify；refresh partial failure identity 与 finally、shared reducer 连续返回回灌、update-all candidate 选择及 typed uninstall intent 均由行为测试覆盖。
+
+- [ ] **Step 1: 写 state/reducer/intents RED**
+
+  覆盖 manager flow 更新后重投影、partial failure exact identity、RefreshFinished 输入继承 RefreshStarted 返回值、refresh 异常也结束、update-all 按 `operationPackageName` 从最近 catalog 取原始 artifact、uninstall 只走 typed port。
 
 - [ ] **Step 2: 运行 RED**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionSharedStateWiringTest"`
-  Expected: FAIL，原因是尚无 production ScreenModel 与 package/trust lifecycle。
+  Expected: FAIL，原因是尚无 production ScreenModel state/reducer 与 fixed-main intents。
 
-- [ ] **Step 3: 实现薄 ScreenModel 与 typed port intents**
+- [ ] **Step 3: 实现 state/reducer 与 typed intent surface**
 
-  ScreenModel 持有最近 typed catalog，只消费 C2a projection 与 shared reducer；每包至多一个自有 Job，终态与 trust 清理保持 exact identity，`closeAndJoin` 等待自身 jobs 并 drain pending。
+  ScreenModel 持有最近 typed catalog，只消费 C2a projection/classifier 和 shared reducer；port 只补卸载等平台 side-effect adapter，不增加业务规则。
 
 - [ ] **Step 4: 运行 GREEN 与断线 mutation**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionSharedStateWiringTest"`
-  Expected: 全部 PASS；忽略 reducer 返回值、清掉 Error、同包不取消、漏 discard、取消 parent scope 或 Installed 后继续收集时至少一项失败。
+  Expected: 全部 PASS；忽略 reducer 返回值、停止订阅 installed flow、丢 partial failure identity、从 projected available 选 update 或绕开 typed uninstall 时至少一项失败。
 
-**Conditional split:** 若 RED 完成后最小可读实现预计超过 400 changed lines，自动顺序拆为 6C2b1a `desktop-extension-screenmodel-core`（同 3 文件/240 行：projection/reducer/fixed-main intents）与 6C2b1b `desktop-extension-package-trust-lifecycle`（修改 ScreenModel/WiringTest，2 文件/220 行：jobs/trust/close），不得压缩长行或删除 mutation 证据。
+###### Task 6C2b1b: Desktop package jobs、trust 与 close lifecycle
+
+- Risk axis: `desktop-extension-package-trust-lifecycle`
+- Platform boundary: `shared+desktop`
+- Estimated scope: `2 files, 220 lines`
+- Verification: install/update flow 在 Installed 后停止，Error/raw identity 保留；同包 job 替换、取消、pending trust confirm/dismiss/replace/close 与 child-scope close-and-join 均由真实 flow/finally 证明。
+
+**Files:**
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionsScreenModel.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionSharedStateWiringTest.kt`
+
+- [ ] **Step 1: 写 jobs/trust/close RED**
+
+  覆盖 onEach→takeWhile→cleanup、Error/raw identity、同包 cancel+join 且只移除自身、pending exact request confirm/dismiss/replace/close，以及 model close 后 parent sibling 仍 active。
+
+- [ ] **Step 2: 运行 RED**
+
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionSharedStateWiringTest"`
+  Expected: FAIL，原因是 core 尚无 package/trust/close lifecycle。
+
+- [ ] **Step 3: 实现 package/trust/close lifecycle**
+
+  每包至多一个自有 Job；终态与 trust 清理保持 exact identity；`closeAndJoin` 禁止新操作、等待自身 jobs、drain pending，且不取消外部 scope。
+
+- [ ] **Step 4: 运行 GREEN 与断线 mutation**
+
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionSharedStateWiringTest"`
+  Expected: 全部 PASS；清掉 Error、同包不取消、漏 discard、取消 parent scope 或 Installed 后继续收集时至少一项失败。
 
 ##### Task 6C2b2: Desktop extension DI singleton 与 reinit ownership
 
