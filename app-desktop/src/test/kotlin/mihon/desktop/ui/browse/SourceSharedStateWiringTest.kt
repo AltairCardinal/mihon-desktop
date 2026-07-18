@@ -37,9 +37,11 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import io.mockk.every
+import io.mockk.coEvery
 import io.mockk.mockk
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.DesktopUiDependencies
+import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.network.ChallengeRecoveryIntent
 import mihon.desktop.network.CloudflareChallengeManager
 import mihon.desktop.network.DesktopBrowserOpener
@@ -50,6 +52,7 @@ import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.desktop.source.FakeSource
 import mihon.domain.error.AppError
+import mihon.domain.manga.model.toDomainManga
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -85,6 +88,12 @@ import java.io.File
 import java.util.prefs.Preferences
 
 class SourceSharedStateWiringTest {
+
+    private fun canonicalSaver() = mockk<SaveSourceMangaForDetails>(relaxed = true) {
+        coEvery { awaitSearchResults(any(), any()) } answers {
+            firstArg<List<SManga>>().distinctBy(SManga::url).map { it.toDomainManga(secondArg()) }
+        }
+    }
 
     private fun sourcePreferences(
         enabledLanguages: Set<String> = setOf("all", "en"),
@@ -518,6 +527,7 @@ class SourceSharedStateWiringTest {
         val failure = NamedSource(41, "Failure")
         val empty = NamedSource(42, "Empty")
         val contentRequest = SourcePageRequest(content.id, 1, 3, SourceQuery.Popular)
+        val contentItem = manga("/kept")
         val failureRequest = SourcePageRequest(failure.id, 1, 3, SourceQuery.Latest)
         val ui = GlobalSearchStateProjector.project(
             listOf(content, failure, empty),
@@ -525,17 +535,18 @@ class SourceSharedStateWiringTest {
                 generation = 3,
                 isSearching = true,
                 queryStates = mapOf(
-                    content.id to SourceQueryState.Content(contentRequest, listOf(manga("/kept")), false),
+                    content.id to SourceQueryState.Content(contentRequest, listOf(contentItem), false),
                     failure.id to SourceQueryState.Failure(failureRequest, AppError.Server(500), tachiyomi.domain.source.service.SourceRecoveryAction.Retry),
                     empty.id to SourceQueryState.Empty(SourcePageRequest(empty.id, 1, 3, SourceQuery.Popular)),
                 ),
             ),
+            mapOf(content.id to CanonicalSearchResult.Content(3, listOf(contentItem.toDomainManga(content.id)), mapOf(contentItem.url to contentItem))),
         )
 
         assertTrue(ui.loading)
         assertFalse(ui.empty)
         assertEquals(listOf("Content", "Empty", "Failure"), ui.results.map { it.source.name })
-        assertEquals(listOf("/kept"), ui.results.first().results.map(SManga::url))
+        assertEquals(listOf("/kept"), ui.results.first().results.map { it.url })
         assertInstanceOf(AppError.Server::class.java, ui.results.last().error?.error)
         assertEquals(DesktopSourceRecoveryIntent.Retry(failureRequest), ui.results.last().recoveryIntent)
         assertTrue(
@@ -573,7 +584,7 @@ class SourceSharedStateWiringTest {
                 every { sourceManager } returns MutableSourceManager(listOf(source))
                 every { appPreferences } returns sourcePreferences(pinnedSources = setOf(source.id.toString()))
                 every { sourceMangaSearchService } returns SourceMangaSearchService()
-                every { saveSourceMangaForDetails } returns mockk(relaxed = true)
+                every { saveSourceMangaForDetails } returns canonicalSaver()
                 every { sourceLoginSessionFactory } returns DesktopSourceLoginSessionFactory(
                     DesktopAuthenticatedSessionCommitter(cookieJar),
                     DesktopBrowserOpener { _, _ -> true },
@@ -617,6 +628,7 @@ class SourceSharedStateWiringTest {
                 requireNotNull(coordinator).states.first { it.queryStates[source.id] is SourceQueryState.Content }
             }
             scene.render()
+            scene.render()
             assertSame(child, requireNotNull(coordinator).coordinatorFor(source.id))
             assertEquals(failed, requireNotNull(coordinator).state.queryStates.getValue(source.id).request)
             assertEquals(null, server.takeRequest().headers["Cookie"])
@@ -656,7 +668,7 @@ class SourceSharedStateWiringTest {
                 pinnedSources = setOf(first.id.toString(), second.id.toString()),
             )
             every { sourceMangaSearchService } returns SourceMangaSearchService()
-            every { saveSourceMangaForDetails } returns mockk(relaxed = true)
+            every { saveSourceMangaForDetails } returns canonicalSaver()
             every { sourceLoginSessionFactory } returns DesktopSourceLoginSessionFactory(
                 AuthenticatedSessionCommitter { _, _ -> },
                 DesktopBrowserOpener { _, _ -> false },
@@ -693,6 +705,7 @@ class SourceSharedStateWiringTest {
 
         release.complete(Unit)
         withTimeout(2_000) { requireNotNull(coordinator).states.first { it.generation == 2L && !it.isSearching } }
+        scene.render()
         scene.render()
         assertEquals(listOf("visible"), first.queries)
         assertEquals(listOf("second"), second.queries)

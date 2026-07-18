@@ -35,6 +35,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -55,17 +56,22 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.SManga
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.network.DesktopSourceLoginSessionFactory
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.getEnabledCatalogueSourceCandidates
 import mihon.desktop.ui.library.MangaDetailScreen
-import tachiyomi.domain.source.service.SourceManager
+import mihon.domain.error.AppError
+import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.GlobalSearchSourceFilter
 import tachiyomi.domain.source.service.GlobalSearchSourcePolicy
+import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourceQueryState
@@ -76,13 +82,75 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 /** Result group from one source. */
 data class SourceSearchResult(
     val source: CatalogueSource,
-    val results: List<SManga>,
+    val results: List<Manga>,
     val kind: GlobalSearchRowKind,
     val error: SourcePageError? = null,
     val recoveryIntent: DesktopSourceRecoveryIntent = DesktopSourceRecoveryIntent.None,
+    val listedByUrl: Map<String, SManga> = emptyMap(),
+    val retryMaterialization: Boolean = false,
 )
 
 enum class GlobalSearchRowKind { Loading, Empty, Content, Error }
+
+internal sealed interface CanonicalSearchResult {
+    val generation: Long
+    data class Content(override val generation: Long, val items: List<Manga>, val listedByUrl: Map<String, SManga>) : CanonicalSearchResult
+    data class Failure(override val generation: Long, val cause: Throwable) : CanonicalSearchResult
+}
+
+internal class GlobalSearchResultMaterializer(
+    private val scope: CoroutineScope,
+    private val persist: suspend (List<SManga>, Long) -> List<Manga>,
+) {
+    val results = mutableStateMapOf<Long, CanonicalSearchResult>()
+    private val requests = mutableMapOf<Long, List<SManga>>()
+    private val jobs = mutableMapOf<Long, Job>()
+    private var generation = 0L
+
+    fun sync(state: DesktopGlobalSearchState) {
+        if (generation != state.generation) {
+            jobs.values.forEach(Job::cancel)
+            jobs.clear()
+            requests.clear()
+            results.clear()
+            generation = state.generation
+        }
+        state.queryStates.forEach { (sourceId, queryState) ->
+            if (queryState is SourceQueryState.Content && sourceId !in requests) {
+                requests[sourceId] = queryState.items
+                start(sourceId, queryState.items)
+            }
+        }
+    }
+
+    fun retry(sourceId: Long) {
+        results.remove(sourceId)
+        requests[sourceId]?.let { start(sourceId, it) }
+    }
+
+    fun close() = jobs.values.forEach(Job::cancel)
+
+    private fun start(sourceId: Long, listed: List<SManga>) {
+        val expectedGeneration = generation
+        jobs[sourceId]?.cancel()
+        jobs[sourceId] = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                val canonical = persist(listed, sourceId)
+                if (generation == expectedGeneration) {
+                    results[sourceId] = CanonicalSearchResult.Content(
+                        expectedGeneration,
+                        canonical,
+                        listed.distinctBy(SManga::url).associateBy(SManga::url),
+                    )
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                if (generation == expectedGeneration) results[sourceId] = CanonicalSearchResult.Failure(expectedGeneration, error)
+            }
+        }
+    }
+}
 
 internal data class GlobalSearchUiState(
     val loading: Boolean = false,
@@ -96,6 +164,7 @@ internal object GlobalSearchStateProjector {
     fun project(
         sources: List<CatalogueSource>,
         state: DesktopGlobalSearchState,
+        canonicalResults: Map<Long, CanonicalSearchResult> = emptyMap(),
         pinnedIds: Set<String> = emptySet(),
         onlyShowHasResults: Boolean = false,
     ): GlobalSearchUiState {
@@ -103,13 +172,24 @@ internal object GlobalSearchStateProjector {
             when (val queryState = state.queryStates[source.id]) {
                 null, is SourceQueryState.Loading -> SourceSearchResult(source, emptyList(), GlobalSearchRowKind.Loading)
                 is SourceQueryState.Empty -> SourceSearchResult(source, emptyList(), GlobalSearchRowKind.Empty)
-                is SourceQueryState.Content -> SourceSearchResult(
-                    source,
-                    queryState.items,
-                    if (queryState.items.isEmpty()) GlobalSearchRowKind.Empty else GlobalSearchRowKind.Content,
-                    queryState.pageError,
-                    recoveryIntent(source, queryState.request, queryState.pageError?.recoveryAction),
-                )
+                is SourceQueryState.Content -> when (val canonical = canonicalResults[source.id]?.takeIf { it.generation == state.generation }) {
+                    null -> SourceSearchResult(source, emptyList(), GlobalSearchRowKind.Loading, queryState.pageError)
+                    is CanonicalSearchResult.Content -> SourceSearchResult(
+                        source,
+                        canonical.items,
+                        if (canonical.items.isEmpty()) GlobalSearchRowKind.Empty else GlobalSearchRowKind.Content,
+                        queryState.pageError,
+                        recoveryIntent(source, queryState.request, queryState.pageError?.recoveryAction),
+                        canonical.listedByUrl,
+                    )
+                    is CanonicalSearchResult.Failure -> SourceSearchResult(
+                        source,
+                        emptyList(),
+                        GlobalSearchRowKind.Error,
+                        SourcePageError(AppError.Unknown(canonical.cause), SourceRecoveryAction.Retry),
+                        retryMaterialization = true,
+                    )
+                }
                 is SourceQueryState.Failure -> SourceSearchResult(
                     source,
                     emptyList(),
@@ -219,7 +299,13 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
         var openingMangaUrl by remember { mutableStateOf<String?>(null) }
         val coordinatorFactory = LocalGlobalSearchCoordinatorFactory.current
         val queryCoordinator = remember(sourceMangaSearchService, coordinatorFactory) { coordinatorFactory(sourceMangaSearchService) }
+        val resultMaterializer = remember(saveSourceMangaForDetails, scope) {
+            GlobalSearchResultMaterializer(scope, saveSourceMangaForDetails::awaitSearchResults)
+        }
         val searchState by queryCoordinator.states.collectAsState()
+        LaunchedEffect(searchState.generation, searchState.publicationOrdinal) {
+            resultMaterializer.sync(searchState)
+        }
         val onlyShowHasResults by appPreferences.globalSearchFilterState.changes().collectAsState(
             initial = appPreferences.globalSearchFilterState.get(),
         )
@@ -227,6 +313,7 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
         val searchUiState = GlobalSearchStateProjector.project(
             sourcesByGeneration[searchState.generation].orEmpty(),
             searchState,
+            resultMaterializer.results,
             pinnedIds = appPreferences.pinnedSources.get(),
             onlyShowHasResults = onlyShowHasResults,
         )
@@ -240,8 +327,11 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
         }
         val loginCopy = remember { desktopSourceLoginCopy { it.localized() } }
 
-        DisposableEffect(queryCoordinator) {
-            onDispose { queryCoordinator.close() }
+        DisposableEffect(queryCoordinator, resultMaterializer) {
+            onDispose {
+                queryCoordinator.close()
+                resultMaterializer.close()
+            }
         }
 
         fun launchSearch(q: String, filter: GlobalSearchSourceFilter = sourceFilter) {
@@ -418,7 +508,15 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
                             ) {
                                 Text(desktopSourceErrorMessage(error.error), color = MaterialTheme.colorScheme.error)
                                 desktopSourceRecoveryActionLabel(error.recoveryAction)?.let { label ->
-                                    androidx.compose.material3.TextButton(onClick = { recover(sourceResult) }) {
+                                    androidx.compose.material3.TextButton(
+                                        onClick = {
+                                            if (sourceResult.retryMaterialization) {
+                                                resultMaterializer.retry(sourceResult.source.id)
+                                            } else {
+                                                recover(sourceResult)
+                                            }
+                                        },
+                                    ) {
                                         Text(label)
                                     }
                                 }
@@ -444,15 +542,18 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
                                     manga = manga,
                                     onClick = {
                                         if (openingMangaUrl != null) return@GlobalSearchMangaCard
+                                        val listed = sourceResult.listedByUrl[manga.url] ?: return@GlobalSearchMangaCard
                                         openingMangaUrl = "${sourceResult.source.id}:${manga.url}"
                                         scope.launch {
-                                            val details = saveSourceMangaForDetails.awaitListedForDetails(manga, sourceResult.source.id)
-                                            val saved = details.manga
-                                            navigator.push(MangaDetailScreen(saved.id))
-                                            if (details.needsRefresh) {
-                                                saveSourceMangaForDetails.refreshFromSource(sourceResult.source, manga)
+                                            try {
+                                                val details = saveSourceMangaForDetails.awaitListedForDetails(listed, sourceResult.source.id)
+                                                navigator.push(MangaDetailScreen(details.manga.id))
+                                                if (details.needsRefresh) {
+                                                    saveSourceMangaForDetails.refreshFromSource(sourceResult.source, listed)
+                                                }
+                                            } finally {
+                                                openingMangaUrl = null
                                             }
-                                            openingMangaUrl = null
                                         }
                                     },
                                 )
@@ -468,7 +569,7 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
 
 @Composable
 private fun GlobalSearchMangaCard(
-    manga: SManga,
+    manga: Manga,
     onClick: () -> Unit,
 ) {
     Card(
@@ -478,7 +579,7 @@ private fun GlobalSearchMangaCard(
     ) {
         Box {
             AsyncImage(
-                model = manga.thumbnail_url,
+                model = manga.thumbnailUrl,
                 contentDescription = manga.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),

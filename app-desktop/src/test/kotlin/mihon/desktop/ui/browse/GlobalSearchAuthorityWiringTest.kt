@@ -21,8 +21,10 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.FakeDesktopSourceManager
+import mihon.domain.manga.model.toDomainManga
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -56,7 +58,11 @@ class GlobalSearchAuthorityWiringTest {
             every { sourceManager } returns FakeDesktopSourceManager(sources)
             every { appPreferences } answers { activePreferences }
             every { sourceMangaSearchService } returns SourceMangaSearchService()
-            every { saveSourceMangaForDetails } returns mockk(relaxed = true)
+            every { saveSourceMangaForDetails } returns mockk<SaveSourceMangaForDetails>(relaxed = true) {
+                coEvery { awaitSearchResults(any(), any()) } answers {
+                    firstArg<List<SManga>>().distinctBy(SManga::url).map { it.toDomainManga(secondArg()) }
+                }
+            }
             every { sourceLoginSessionFactory } returns mockk(relaxed = true)
         }
         var coordinator: DesktopGlobalSearchCoordinator? = null
@@ -80,6 +86,7 @@ class GlobalSearchAuthorityWiringTest {
                 }
             }
             scene.render()
+            scene.render()
             val partial = semantics(scene)
             listOf("Content source (1)", "Empty source (0)", "Failure source (0)", "Loading source (0)", "3 / 4", "Searching").forEach {
                 assertTrue(partial.contains(it), "missing partial-search feedback: $it")
@@ -91,6 +98,7 @@ class GlobalSearchAuthorityWiringTest {
 
             release.complete(Unit)
             withTimeout(2_000) { requireNotNull(coordinator).states.first { !it.isSearching } }
+            scene.render()
             scene.render()
             val hasResults = MR.strings.has_results.localized()
             assertFalse(selected(scene, hasResults))
@@ -118,6 +126,7 @@ class GlobalSearchAuthorityWiringTest {
                     state.generation > 0 && !state.isSearching && state.queryStates.size == sources.size
                 }
             }
+            scene.render()
             scene.render()
             val restored = semantics(scene)
             assertTrue(selected(scene, hasResults))

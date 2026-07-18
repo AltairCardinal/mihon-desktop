@@ -5,6 +5,7 @@ import eu.kanade.tachiyomi.source.model.SManga
 import io.mockk.every
 import io.mockk.mockk
 import mihon.domain.error.AppError
+import mihon.domain.manga.model.toDomainManga
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
@@ -37,9 +38,11 @@ class GlobalSearchAuthorityProjectionTest {
             ),
         )
 
+        val canonical = canonical(7, content to listOf(manga("/kept")))
         val ui = GlobalSearchStateProjector.project(
             listOf(content, empty, failure, loading, missing),
             state,
+            canonical,
             pinnedIds = setOf(empty.id.toString()),
         )
 
@@ -57,9 +60,17 @@ class GlobalSearchAuthorityProjectionTest {
             ),
             ui.results.associate { it.source.id to it.kind },
         )
-        assertEquals(listOf("/kept"), ui.results.first { it.source.id == content.id }.results.map(SManga::url))
+        assertEquals(listOf("/kept"), ui.results.first { it.source.id == content.id }.results.map { it.url })
         assertInstanceOf(AppError.Server::class.java, ui.results.first { it.source.id == content.id }.error?.error)
         assertInstanceOf(AppError.Server::class.java, ui.results.first { it.source.id == failure.id }.error?.error)
+
+        val next = state.copy(
+            generation = 8,
+            queryStates = mapOf(content.id to SourceQueryState.Content(request(content, 8), listOf(manga("/new")), false)),
+        )
+        val pending = GlobalSearchStateProjector.project(listOf(content), next, canonical).results.single()
+        assertEquals(GlobalSearchRowKind.Loading, pending.kind)
+        assertTrue(pending.results.none { it.title == "/kept" })
     }
 
     @Test
@@ -83,6 +94,11 @@ class GlobalSearchAuthorityProjectionTest {
         val ui = GlobalSearchStateProjector.project(
             sources,
             state,
+            canonical(
+                2,
+                pinnedSuccess to listOf(manga("/pinned")),
+                success to listOf(manga("/success-1"), manga("/success-2")),
+            ),
             pinnedIds = setOf(pinnedSuccess.id.toString(), pinnedEmpty.id.toString()),
         )
 
@@ -92,7 +108,17 @@ class GlobalSearchAuthorityProjectionTest {
         assertTrue(GlobalSearchStateProjector.project(listOf(pinnedEmpty), state).empty)
         assertEquals(
             listOf(1L, 2L),
-            GlobalSearchStateProjector.project(sources, state, pinnedIds = emptySet(), onlyShowHasResults = true)
+            GlobalSearchStateProjector.project(
+                sources,
+                state,
+                canonical(
+                    2,
+                    pinnedSuccess to listOf(manga("/pinned")),
+                    success to listOf(manga("/success-1"), manga("/success-2")),
+                ),
+                pinnedIds = emptySet(),
+                onlyShowHasResults = true,
+            )
                 .results.map { it.source.id },
         )
     }
@@ -109,5 +135,9 @@ class GlobalSearchAuthorityProjectionTest {
     private fun manga(url: String) = SManga.create().apply {
         this.url = url
         title = url
+    }
+
+    private fun canonical(generation: Long, vararg entries: Pair<CatalogueSource, List<SManga>>) = entries.associate { (source, items) ->
+        source.id to CanonicalSearchResult.Content(generation, items.map { it.toDomainManga(source.id) }, items.associateBy(SManga::url))
     }
 }
