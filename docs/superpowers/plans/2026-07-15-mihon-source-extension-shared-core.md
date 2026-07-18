@@ -950,23 +950,25 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionsScreenModel.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionSharedStateWiringTest.kt`
 
-- [ ] **Step 1: 写 jobs/trust/close RED**
+- [x] **Step 1: 写 jobs/trust/close RED**
 
   覆盖 onEach→takeWhile→cleanup、Error/raw identity、同包 cancel+join 且只移除自身、pending exact request confirm/dismiss/replace/close，以及 model close 后 parent sibling 仍 active。
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionSharedStateWiringTest"`
   Expected: FAIL，原因是 core 尚无 package/trust/close lifecycle。
 
-- [ ] **Step 3: 实现 package/trust/close lifecycle**
+- [x] **Step 3: 实现 package/trust/close lifecycle**
 
   每包至多一个自有 Job；终态与 trust 清理保持 exact identity；`closeAndJoin` 禁止新操作、等待自身 jobs、drain pending，且不取消外部 scope。
 
-- [ ] **Step 4: 运行 GREEN 与断线 mutation**
+- [x] **Step 4: 运行 GREEN 与断线 mutation**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionSharedStateWiringTest"`
   Expected: 全部 PASS；清掉 Error、同包不取消、漏 discard、取消 parent scope 或 Installed 后继续收集时至少一项失败。
+
+**6C2b1b completion evidence:** ScreenModel 的自有 child scope 管理 per-package owner jobs；真实 typed flow 依 fixed-main 顺序 dispatch→shared `shouldContinue`→terminal cleanup，Installed 后截止、Error/raw identity 保留，retry/Cancelled/Installed 清理。同包替换先 cancel-and-join 且旧 owner 不删除新 job，不同包隔离；单可见 trust 槽在 replace/confirm/dismiss/late-close 中 exact-once discard，`closeAndJoin` 双重 drain、等待 NonCancellable finally 且不取消 parent sibling。focused tests 5/5 PASS；保留 raw state mutation 精确失败；2 files/319 changed lines，唯一修复复审 Approved、无 P0/P1/P2。
 
 ##### Task 6C2b2: Desktop extension DI singleton 与 reinit ownership
 
