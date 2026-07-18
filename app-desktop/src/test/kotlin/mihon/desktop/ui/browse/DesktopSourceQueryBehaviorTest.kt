@@ -106,8 +106,8 @@ class DesktopSourceQueryBehaviorTest {
         val pageTwoRequestsBeforeRelease = source.requests.count { it == "popular" to 2 }
         source.releasePageTwo.complete(Unit)
 
-        val completed = first.await()
-        assertEquals(completed, duplicate.await())
+        val completed = withTimeout(2_000) { first.await() }
+        assertEquals(completed, withTimeout(2_000) { duplicate.await() })
         assertEquals(1, pageTwoRequestsBeforeRelease)
         assertEquals(listOf("/popular-1", "/popular-2"), completed.items.map { it.url })
     }
