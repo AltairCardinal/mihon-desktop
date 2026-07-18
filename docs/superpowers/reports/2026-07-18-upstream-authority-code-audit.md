@@ -200,6 +200,55 @@ Tracker 施工初版的明确偏差已修复，当前静态扫描未发现已知
 
 **处理方式：** 在最终 parity verify 前补一份 `main ref + 原版 provider 方法/fixture + shared constructor + Android consumer + Desktop consumer` 映射，并重放 bind/update/auth/error 行为。补证据前状态应为“实现已共享、原版来源待核验”，不是“已证明原版权威”。
 
+### R2 更正（2026-07-18）：fixed-main 回放已确认多项当前语义差异
+
+本段是对上文 R2“未确认当前语义错误”的**追加更正**，不删除上文，以保留当时审查结论及其证据局限。经逐 provider 对照固定权威 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` 后，R2 不再只是 provenance 待补证据：已经确认多项原版更优但尚未完整迁移的语义差异。
+
+本轮重新固定四层身份：
+
+- **原版权威：** 只包括 `main@6fbf6dfc` 中的 tracker provider、界面与测试；
+- **当前 Android consumer：** 当前分支 `app/`，可能已经消费本轮 shared 迁移产物，不能反向证明原版行为；
+- **shared migration output：** `domain/common` 等新建协议与构造器，只是迁移结果，必须逐项回链固定原版；
+- **Desktop adapter：** `app-desktop/` 的认证、HTTP、凭据与 UI wiring，可以保留平台增强，但不得用增强掩盖缺失的原版业务语义。
+
+#### 已确认差异与保留增强
+
+| 判定 | 差异明细 | 固定原版行为与当前实现差异 | 后续处理 |
+|---|---|---|---|
+| 原版更优 | 非法状态不能静默回退 | 固定原版对 provider 不支持或无法映射的状态保留显式失败；当前 shared/Desktop 映射存在回退为通用默认状态的路径，会把数据错误伪装成成功。 | 以原版状态映射为共享核心；非法值必须返回可观察错误。 |
+| 原版更优 | 五家生产配置不可用 | 固定原版可实际使用 MyAnimeList、AniList、Kitsu、Shikimori、Bangumi；Desktop production profile 当前把五者标为 unavailable，原因分别涉及 loopback redirect、implicit-token callback、client secret 或 provider 配置缺失。 | 逐家补齐可部署配置和真实登录链路；仅声明 profile 或测试构造器可用不算完成。 |
+| 原版更优 | provider search model | 固定原版搜索保留 provider 所需的标识、媒体信息和后续绑定字段；当前通用 `TrackSearchResult`/解析路径会压平部分 provider 特有语义。 | 从固定原版 fixture 建立逐 provider 搜索契约，再让 shared model 表达其并集。 |
+| 原版更优 | bind new / existing | 固定原版区分绑定远端已有条目与新建库条目，并保留 provider 的远端 ID/库 ID 前置条件；当前共享 bind 入口没有完整表达所有分支。 | 分开测试 existing-entry 与 new-entry，禁止用同一默认路径替代。 |
+| 原版更优 | 阅读状态与日期 | 固定原版按 provider 规则同步 reading status、开始日期和完成日期；当前路径仍有默认状态或日期写入不完整的情况。 | 用固定原版状态/日期 fixture 做红绿测试，覆盖开始、继续、完成与回退。 |
+| 原版更优 | refresh-before-update | 固定原版在更新前刷新远端绑定状态，避免用陈旧条目覆盖服务器数据；当前通用更新路径没有把该顺序作为强制契约。 | 在 shared 协议中显式建模 refresh → merge → update，并验证调用顺序。 |
+| 原版更优 | MAL 专用错误 | 固定原版保留 MyAnimeList 的专用 API/认证错误语义；当前通用 HTTP/Tracker 错误会丢失 MAL 可操作反馈。 | 保留 provider-specific error，再在 UI 层映射为用户反馈。 |
+| 原版更优 | private / date UI | 固定原版追踪界面允许查看或编辑隐私与日期字段；Desktop 当前通用 UI 未完整暴露这些能力。 | 在 Desktop 入口补齐字段、反馈和集成测试；平台布局可不同，能力不能缺失。 |
+| 原版更优 | 远端删除 | 固定原版提供解除绑定时的远端删除语义；当前 Desktop 链路主要覆盖本地解绑。 | 明确区分 local unbind 与 remote delete，危险操作增加确认和结果反馈。 |
+| 原版更优 | Enhanced auto-match | 固定原版 Enhanced tracker 会依据源/条目自动匹配；当前 Desktop 只验证配置可用性，未完整迁移自动匹配规则。 | 将原版匹配规则提取为可回放契约，Desktop adapter 只负责源会话。 |
+| 原版更优 | Suwayomi delete flag | 固定原版 Suwayomi 更新/删除请求携带其专用 delete flag；当前通用删除协议未证明保留该请求语义。 | 增加真实 request-shape 测试，确保 flag 从 UI 操作传到 HTTP 请求。 |
+| Desktop 更优 | OS credential storage | Desktop 使用操作系统凭据存储隔离 token/secret，安全边界优于把认证材料当普通偏好数据。 | 保留为 Desktop adapter 增强，不反写成原版已有能力。 |
+| Desktop 更优 | HTTP `Retry-After` | Desktop HTTP 层能够读取服务端 `Retry-After` 并给出明确退避时间。 | 保留并下沉为可复用增强，但不得替代 provider 专用错误。 |
+| Desktop 更优 | 持久事件 / checkpoint | Desktop 可持久化追踪同步事件与重试 checkpoint，崩溃后可恢复。 | 保留为可靠性超集，验证不会改变原版一次更新的业务结果。 |
+| 需要合并优势 | 重试策略 | 固定原版含 provider/操作语境下的失败处理；Desktop 有 HTTP 退避与持久恢复，单独采用任一侧都会丢失另一侧优势。 | 以原版可重试边界和错误分类为核心，叠加 `Retry-After`、checkpoint 与幂等恢复。 |
+| 待补证据 | Komga DNS | 当前证据不足以判断 Desktop 网络/DNS 处理是否与固定原版 Komga 语义等价或更优。 | 增加固定原版调用链、DNS 成功/失败和 Desktop adapter 集成回放。 |
+| 待补证据 | Kitsu / MangaUpdates request shape | 现有测试证明当前构造器能发送请求，但尚未逐字段证明 URL、method、body、ID 与固定原版一致。 | 使用固定原版请求 fixture 做 MockWebServer 精确断言；补证前不判定优劣。 |
+
+#### Task 3B 为何漏检
+
+Task 3B 的实现与复审把当前分支 `app/` 的 provider 测试当成了 upstream evidence。由于当前 Android consumer 已经接入同一批 shared constructor/protocol，“Android 测试通过 + Desktop adapter 测试通过”只能证明两个 consumer 对迁移产物一致，不能证明迁移产物与固定原版一致。审查当时没有把 `main@6fbf6dfc` 的逐 provider 方法、请求 fixture、状态映射和 UI 能力作为独立预言机，因此只捕获了早期 generic API 的明显回归，漏掉了迁移后双方共同具有的缺失或改写。
+
+#### 后续 TDD 分层与 ID 69 闭合条件
+
+后续修复必须按以下层次执行红绿重构，且下层通过不能替代上层证据：
+
+1. **固定原版 fixture 层：** 从 `main@6fbf6dfc` 提取 provider 搜索、bind、refresh/update、状态/日期、错误和删除的输入输出及 request shape；fixture 必须记录 ref、路径与符号。
+2. **shared 契约层：** 先用固定原版 fixture 写失败测试，再修改 shared model/protocol；需要保留的 Desktop 增强以显式 extension/deviation 测试覆盖。
+3. **当前 Android consumer 层：** 验证迁移后的 `app/` wiring 没有偏离固定原版；它是被测 consumer，不是 expected value 的来源。
+4. **Desktop adapter 层：** 用真实 HTTP parser/client、OS credential adapter 和 provider 配置验证成功、空数据、认证失败、限流、畸形响应与 request shape。
+5. **产品链路层：** 覆盖登录、搜索、绑定、刷新后更新、状态/日期编辑、远端删除、Enhanced auto-match、Suwayomi delete flag，以及失败时的用户可见反馈。
+
+在上述已确认“原版更优”条目完成 TDD、五家 production profile 可真实使用、待补证据项完成判定，并且 parity manifest 的 ID 69 使用结构化 fixed-main provenance 区分原版、shared、当前 Android consumer、Desktop adapter 与 intentional enhancement 之前，**ID 69 不得标记为完全 parity 或完成闭合**。
+
 ## 7. 未发现概念混淆的已扫描区域
 
 本次扫描未在以下区域发现“当前 Android 构建版被当作原版”或“Desktop Android shim 被当作原版”的明确证据：
