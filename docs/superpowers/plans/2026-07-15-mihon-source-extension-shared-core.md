@@ -710,13 +710,32 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 - Risk axis: `extension-presentation-classification`
 - Platform boundary: `shared+android`
-- Estimated scope: `6 files, 380 lines`
+- Estimated scope: `6 files, 480 lines`（仅为 6B1a/6B1b 聚合，不作为单次调度范围）
 - Verification: 固定 main fixture 覆盖逗号子查询、名称/source name/baseUrl/id、全局 NSFW、enabled language、多 source 拆分、obsolete/name 排序及 updates/installed/available/untrusted 分区；shared store 与当前 Android consumer 必须产生相同结果，package-name 搜索只能作为显式增量字段。
+
+**6B1 scope correction:** 实际 fixed-main fixture、shared 泛型 contract/store 与可删除复制逻辑后仍会失败的 Android injectable wiring 证据合计约 475 changed lines；机械压缩到旧 380 行估算会降低测试可读性。只按 6B1a→6B1b 顺序调度，前者先提交 shared contract，后者再接入 Android consumer。
+**Split rationale:** 6 files/480 lines 是两个顺序 Task 的聚合值，不会交给单一实现/审查范围；6B1a 与 6B1b 分别低于 8 files/400 lines。shared fixed-main reducer 与 Android production wiring 可独立验证，禁止以任一方通过替代另一方。
+
+##### Task 6B1a: Fixed-main shared classification/search contract
+
+- Risk axis: `extension-presentation-shared-classification`
+- Platform boundary: `shared`
+- Estimated scope: `3 files, 250 lines`
+- Verification: common fixture 以行为 mutant 证明 installed 不按语言过滤、NSFW 显示开关、obsolete/name/update 分区、untrusted 不受 NSFW/语言过滤、available 去重/语言/多源拆分，以及逗号 OR 搜索与 package-name opt-in。
 
 **Files:**
 - Create: `domain/src/commonMain/kotlin/mihon/domain/extension/presentation/ExtensionPresentationContract.kt`
 - Create: `domain/src/commonMain/kotlin/mihon/domain/extension/presentation/ExtensionPresentationStore.kt`
 - Create: `domain/src/commonTest/kotlin/mihon/domain/extension/presentation/ExtensionPresentationStoreTest.kt`
+
+##### Task 6B1b: Android classification/search production wiring
+
+- Risk axis: `extension-presentation-android-classification-wiring`
+- Platform boundary: `android`
+- Estimated scope: `3 files, 230 lines`
+- Verification: 真实 `GetExtensionsByType.subscribe()` 使用 Android `Extension`/Flow 产生 fixed-main 分类与 synthetic source；injectable classifier/search seam 证明删除 shared 调用后 `GetExtensionsByType` 与 `ExtensionsScreenModel` wiring 测试失败，默认搜索不含 package name，opt-in 才包含。
+
+**Files:**
 - Modify: `app/src/main/java/eu/kanade/domain/extension/interactor/GetExtensionsByType.kt`
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsScreenModel.kt`
 - Create: `app/src/test/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionPresentationWiringTest.kt`
