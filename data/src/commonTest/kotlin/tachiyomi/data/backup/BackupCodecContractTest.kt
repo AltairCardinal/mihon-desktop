@@ -8,19 +8,32 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.io.File
 import java.security.MessageDigest
 
 class BackupCodecContractTest {
     @Test
-    fun `Android fixture declares fixed original Mihon provenance`() {
-        val provenance = requireNotNull(javaClass.getResourceAsStream("/backup/README.md"))
+    fun `Android fixture generator consumes fixed original Mihon ref`() {
+        val authorityRef = requireNotNull(javaClass.getResourceAsStream("/backup/android-full.original-mihon-ref"))
             .bufferedReader()
             .use { it.readText() }
 
-        assertTrue(provenance.contains("`main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`"))
-        assertTrue(provenance.contains("`2e86d6d1f626b349473e1e71e833215aac0c92e3`"))
-        assertTrue(provenance.contains("`43FA65A3469932F4DA2794E8BDF69C7BEF7D65D4E77FE894E1B1798ED1EFAD8D`"))
+        assertEquals("6fbf6dfca203d99d6dd32137f2df97ced40c81b8", authorityRef.trim())
+
+        val generator = repositoryFile("scripts/generate-android-backup-fixture.ps1").readText()
+        assertTrue(
+            generator.contains(
+                "\$authorityRefResource = \"data/src/commonTest/resources/backup/android-full.original-mihon-ref\"",
+            ),
+        )
+        assertTrue(generator.contains("\$commit = (Get-Content -Raw \$authorityRefPath).Trim()"))
     }
+
+    private fun repositoryFile(relativePath: String): File =
+        generateSequence(File(System.getProperty("user.dir")).absoluteFile) { it.parentFile }
+            .map { File(it, relativePath) }
+            .firstOrNull { it.isFile }
+            ?: error("Repository file not found: $relativePath")
 
     @Test
     @Suppress("DEPRECATION")

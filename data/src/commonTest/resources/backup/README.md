@@ -2,6 +2,7 @@
 
 `android-full.tachibk` is generated from the original Mihon Android backup model sources at
 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`.
+The generator reads this SHA from `android-full.original-mihon-ref`, its single authority-ref input.
 The generator extracts those sources with `git show`, compiles their generated `Backup.serializer()`
 with the historical model annotations, serializes via `ProtoBuf`, and gzip-compresses the result.
 It does not import the current common backup schema or `BackupCodec`.

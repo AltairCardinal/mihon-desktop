@@ -3,8 +3,13 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$commit = "6fbf6dfca203d99d6dd32137f2df97ced40c81b8"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$authorityRefResource = "data/src/commonTest/resources/backup/android-full.original-mihon-ref"
+$authorityRefPath = Join-Path $root $authorityRefResource
+$commit = (Get-Content -Raw $authorityRefPath).Trim()
+if ($commit -notmatch "^[0-9a-f]{40}$") {
+    throw "Backup fixture authority ref must be a 40-character Git SHA: $authorityRefResource"
+}
 $scratch = Join-Path $root ".test-tmp/android-backup-fixture-generator"
 $sourceRoot = Join-Path $scratch "src/main/kotlin"
 
