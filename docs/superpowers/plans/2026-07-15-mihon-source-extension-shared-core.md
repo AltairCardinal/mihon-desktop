@@ -812,23 +812,25 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionApiSharedCatalogTest.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionInstallTransactionTest.kt`
 
-- [ ] **Step 1: 写 typed port / metadata / transaction RED**
+- [x] **Step 1: 写 typed port / metadata / transaction RED**
 
   覆盖旧 sidecar 默认值与新字段 round-trip、两仓库一成功一失败、raw install state、cancel rollback、TrustRequired→ConfirmTrust 同一 request identity，以及 installed flow 仅随成功 commit/rollback/uninstall 更新。
 
-- [ ] **Step 2: 运行 RED**
+- [x] **Step 2: 运行 RED**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.DesktopExtensionPresentationPortTest" --tests "mihon.desktop.extension.DesktopExtensionApiSharedCatalogTest" --tests "mihon.desktop.extension.DesktopExtensionInstallTransactionTest"`
   Expected: FAIL，原因是 Desktop 仍只有 terminal API、sidecar 缺字段且 Manager 无 authoritative flow。
 
-- [ ] **Step 3: 实现 metadata、Manager Flow 与 typed port**
+- [x] **Step 3: 实现 metadata、Manager Flow 与 typed port**
 
   sidecar 向后兼容地持久化 artifact presentation metadata；Manager 直接暴露 coordinator Flow 和 installed StateFlow；port 只映射 JAR/APK/文件 side effect，保留 typed catalog/trust/install state。legacy terminal wrapper 仅为 6D 前现有 UI 编译暂留，新链路禁止消费。
 
-- [ ] **Step 4: 运行 GREEN 与取消/rollback mutation**
+- [x] **Step 4: 运行 GREEN 与取消/rollback mutation**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.DesktopExtensionPresentationPortTest" --tests "mihon.desktop.extension.DesktopExtensionApiSharedCatalogTest" --tests "mihon.desktop.extension.DesktopExtensionInstallTransactionTest"`
   Expected: 全部 PASS；改回 `.last()`、重建 trust request、丢 catalog failure 或在 cancel 时不 rollback，至少一个行为测试失败。
+
+**6C1 completion evidence:** `5c018153d` 为旧/new sidecar 补齐向后兼容的 name/language/isNsfw，并由真实 install port 写入；Manager 暴露 raw install Flow 与 authoritative installed StateFlow，在成功、取消 rollback、卸载和删除失败恢复后原子发布；typed port 保留 partial catalog、同一 pending trust request identity 与 discard，legacy wrapper 立即 discard 避免过渡期泄漏。focused tests 53/53，8 files/364 changed lines，独立首审 Approved。`app-desktop` 无 Spotless/ktlint task；root `spotlessCheck` 仅被范围外已知 `GlobalSearchSourcePolicyTest.kt:53` 阻塞，本 Task `diff --check` clean。
 
 #### Task 6C2: Desktop ScreenModel、shared store 与 DI lifecycle wiring
 
