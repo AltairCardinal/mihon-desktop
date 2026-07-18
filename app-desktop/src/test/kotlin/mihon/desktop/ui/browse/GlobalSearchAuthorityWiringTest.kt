@@ -17,6 +17,7 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import mihon.desktop.DesktopUiDependencies
@@ -29,6 +30,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.DesktopPreferenceStore
+import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourceQueryState
 import tachiyomi.i18n.MR
@@ -37,6 +39,10 @@ import java.util.prefs.Preferences
 
 @OptIn(ExperimentalComposeUiApi::class)
 class GlobalSearchAuthorityWiringTest {
+
+    private fun staticGetManga() = mockk<GetManga> {
+        every { subscribe(any<String>(), any<Long>()) } returns flowOf(null)
+    }
 
     @Test
     fun `rows progress and persisted has-results filter are wired through production UI`() = runBlocking {
@@ -63,6 +69,7 @@ class GlobalSearchAuthorityWiringTest {
                     firstArg<List<SManga>>().distinctBy(SManga::url).map { it.toDomainManga(secondArg()) }
                 }
             }
+            every { getManga } returns staticGetManga()
             every { sourceLoginSessionFactory } returns mockk(relaxed = true)
         }
         var coordinator: DesktopGlobalSearchCoordinator? = null

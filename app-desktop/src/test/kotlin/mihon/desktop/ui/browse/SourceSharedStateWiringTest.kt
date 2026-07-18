@@ -67,6 +67,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.domain.source.service.SourceMangaSearchService
+import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourcePageRequest
 import tachiyomi.domain.source.service.SourceQuery
@@ -88,6 +89,10 @@ import java.io.File
 import java.util.prefs.Preferences
 
 class SourceSharedStateWiringTest {
+
+    private fun staticGetManga() = mockk<GetManga> {
+        every { subscribe(any<String>(), any<Long>()) } returns flowOf(null)
+    }
 
     private fun canonicalSaver() = mockk<SaveSourceMangaForDetails>(relaxed = true) {
         coEvery { awaitSearchResults(any(), any()) } answers {
@@ -585,6 +590,7 @@ class SourceSharedStateWiringTest {
                 every { appPreferences } returns sourcePreferences(pinnedSources = setOf(source.id.toString()))
                 every { sourceMangaSearchService } returns SourceMangaSearchService()
                 every { saveSourceMangaForDetails } returns canonicalSaver()
+                every { getManga } returns staticGetManga()
                 every { sourceLoginSessionFactory } returns DesktopSourceLoginSessionFactory(
                     DesktopAuthenticatedSessionCommitter(cookieJar),
                     DesktopBrowserOpener { _, _ -> true },
@@ -669,6 +675,7 @@ class SourceSharedStateWiringTest {
             )
             every { sourceMangaSearchService } returns SourceMangaSearchService()
             every { saveSourceMangaForDetails } returns canonicalSaver()
+            every { getManga } returns staticGetManga()
             every { sourceLoginSessionFactory } returns DesktopSourceLoginSessionFactory(
                 AuthenticatedSessionCommitter { _, _ -> },
                 DesktopBrowserOpener { _, _ -> false },

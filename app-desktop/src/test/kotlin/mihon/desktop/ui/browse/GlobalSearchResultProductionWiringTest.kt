@@ -5,10 +5,13 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.AnnotatedString
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import cafe.adriel.voyager.navigator.CurrentScreen
+import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
+import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -18,6 +21,13 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -27,8 +37,11 @@ import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.FakeDesktopSourceManager
+import mihon.desktop.ui.library.MangaDetailScreen
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.data.Database
@@ -40,14 +53,108 @@ import tachiyomi.data.chapter.ChapterRepositoryImpl
 import tachiyomi.data.manga.MangaRepositoryImpl
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
+import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.i18n.MR
 import java.util.prefs.Preferences
+import java.util.concurrent.ConcurrentHashMap
 
 @OptIn(ExperimentalComposeUiApi::class)
 class GlobalSearchResultProductionWiringTest {
+
+    @Test
+    fun `only composed cards observe canonical database rows without another search`() = runBlocking {
+        Fixture().use { fixture ->
+            val searchesA = mutableListOf<String>()
+            val searchesB = mutableListOf<String>()
+            val listedA = mutableListOf<SManga>()
+            val details = DetailProbe()
+            val sourceA = source(9, "A", searchesA, "/shared", listedA, details)
+            val sourceB = source(10, "B", searchesB, "/shared")
+            val preferences = DesktopAppPreferences(DesktopPreferenceStore(fixture.preferenceRoot)).apply {
+                enabledLanguages.set(setOf("en"))
+                pinnedSources.set(setOf(sourceA.id.toString(), sourceB.id.toString()))
+            }
+            val dependencies = mockk<DesktopUiDependencies> {
+                every { sourceManager } returns FakeDesktopSourceManager(listOf(sourceA, sourceB))
+                every { appPreferences } returns preferences
+                every { sourceMangaSearchService } returns SourceMangaSearchService()
+                every { saveSourceMangaForDetails } returns fixture.saver
+                every { getManga } returns fixture.getManga
+                every { sourceLoginSessionFactory } returns mockk(relaxed = true)
+            }
+            var navigator: Navigator? = null
+            val scene = ImageComposeScene(320, 700, coroutineContext = coroutineContext) {}
+            try {
+                scene.setContent {
+                    CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                        Navigator(GlobalSearchScreen("observe")) {
+                            navigator = LocalNavigator.currentOrThrow
+                            CurrentScreen()
+                        }
+                    }
+                }
+                withTimeout(2_000) {
+                    while (!text(scene).contains("A listed 0") || !text(scene).contains("B listed 0") ||
+                        fixture.repository.latestRows[sourceA.id to "/shared"] == null || fixture.repository.latestRows[sourceB.id to "/shared"] == null
+                    ) {
+                        scene.render()
+                        delay(10)
+                    }
+                }
+                scene.render()
+                delay(10)
+                val sharedKeys = setOf(sourceA.id to "/shared", sourceB.id to "/shared")
+                assertTrue(fixture.repository.activeSubscriptions.size in 1..<10 && fixture.repository.activeSubscriptions.containsAll(sharedKeys))
+                assertTrue(fixture.repository.seenSubscriptions.size in 1..<10 && fixture.repository.seenSubscriptions.containsAll(sharedKeys))
+
+                val observed = requireNotNull(fixture.mangas.getMangaByUrlAndSourceId("/shared", sourceA.id))
+                val untouched = requireNotNull(fixture.mangas.getMangaByUrlAndSourceId("/shared", sourceB.id))
+                assertTrue(fixture.mangas.update(MangaUpdate(observed.id, title = "DB updated", thumbnailUrl = "updated-cover", favorite = true)))
+                val repositoryUpdated = withTimeout(2_000) {
+                    GetManga(fixture.mangas).subscribe("/shared", sourceA.id).filterNotNull().first { it.title == "DB updated" }
+                }
+                assertEquals("updated-cover", repositoryUpdated.thumbnailUrl)
+                withTimeout(2_000) {
+                    while (fixture.repository.latestRows[sourceA.id to "/shared"]?.title != "DB updated") {
+                        scene.render()
+                        delay(10)
+                    }
+                }
+                withTimeout(2_000) {
+                    while (!text(scene).contains("DB updated") || !text(scene).contains(MR.strings.in_library.localized())) {
+                        scene.render()
+                        delay(10)
+                    }
+                }
+                assertTrue(nodes(scene, unmerged = true).any {
+                    it.config.contains(SemanticsProperties.TestTag) && it.config[SemanticsProperties.TestTag] == "global-search-cover:updated-cover"
+                })
+                assertEquals(listOf("B listed 0", "B-cover-0", false), listOf(untouched.title, untouched.thumbnailUrl, untouched.favorite))
+                val listed = listedA.single { it.url == "/shared" }
+                val action = clickAction(scene, "DB updated")
+                val stackSize = requireNotNull(navigator).size
+                assertTrue(action.invoke())
+                assertTrue(action.invoke())
+                assertEquals(stackSize + 1, requireNotNull(navigator).size)
+                assertEquals(observed.id, (requireNotNull(navigator).items.last() as MangaDetailScreen).mangaId)
+                withTimeout(2_000) { details.started.await() }
+                assertEquals(1, details.inputs.size)
+                assertSame(listed, details.inputs.single())
+                assertEquals(listOf("/shared", "A listed 0", "A-cover-0"), listOf(listed.url, listed.title, listed.thumbnail_url))
+                details.release.complete(Unit)
+                withTimeout(2_000) { details.completed.await() }
+                assertEquals(1, details.inputs.size)
+                assertEquals(listOf("observe"), searchesA)
+                assertEquals(listOf("observe"), searchesB)
+            } finally {
+                scene.close()
+            }
+        }
+    }
 
     @Test
     fun `production search gates canonical rows retries materialization and rejects old completion`() = runBlocking {
@@ -62,6 +169,7 @@ class GlobalSearchResultProductionWiringTest {
                 every { appPreferences } returns preferences
                 every { sourceMangaSearchService } returns SourceMangaSearchService()
                 every { saveSourceMangaForDetails } returns fixture.saver
+                every { getManga } returns fixture.getManga
                 every { sourceLoginSessionFactory } returns mockk(relaxed = true)
             }
             val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
@@ -92,7 +200,7 @@ class GlobalSearchResultProductionWiringTest {
                 withTimeout(2_000) { fixture.repository.newInserted.await() }
                 scene.render()
                 assertTrue(text(scene).contains("new canonical"))
-                assertNotNull(fixture.mangas.getMangaByUrlAndSourceId("/new", source.id))
+                assertNotNull(fixture.mangas.getMangaByUrlAndSourceId("/new/0", source.id))
 
                 fixture.repository.releaseOld.complete(Unit)
                 withTimeout(2_000) { fixture.repository.oldInserted.await() }
@@ -105,26 +213,47 @@ class GlobalSearchResultProductionWiringTest {
         }
     }
 
-    private fun source(): CatalogueSource = mockk {
-        every { id } returns 9L
-        every { name } returns "Canonical"
+    private fun source(
+        id: Long = 9L,
+        name: String = "Canonical",
+        searches: MutableList<String> = mutableListOf(),
+        sharedUrl: String? = null,
+        listed: MutableList<SManga>? = null,
+        details: DetailProbe? = null,
+    ): CatalogueSource = mockk {
+        every { this@mockk.id } returns id
+        every { this@mockk.name } returns name
         every { lang } returns "en"
         every { getFilterList() } returns FilterList()
         coEvery { getSearchManga(1, any(), any()) } answers {
             val query = secondArg<String>()
-            val item = SManga.create().apply { url = "/$query"; title = "$query canonical" }
-            MangasPage(listOf(item, item), false)
+            searches += query
+            val items = (0 until 12).map { index ->
+                SManga.create().apply {
+                    url = sharedUrl?.takeIf { index == 0 } ?: if (sharedUrl == null) "/$query/$index" else "/$name/$query/$index"
+                    title = if (sharedUrl == null) "$query canonical $index" else "$name listed $index"
+                    thumbnail_url = "$name-cover-$index"
+                }
+            }
+            listed?.addAll(items)
+            MangasPage(items, false)
         }
+        coEvery { getMangaDetails(any()) } coAnswers {
+            firstArg<SManga>().also { details?.inputs?.add(it); details?.started?.complete(Unit); details?.release?.await() }
+        }
+        coEvery { getChapterList(any()) } answers { details?.completed?.complete(Unit); emptyList() }
     }
 
-    private fun nodes(scene: ImageComposeScene): List<SemanticsNode> = scene.semanticsOwners.flatMap { owner ->
+    private fun nodes(scene: ImageComposeScene, unmerged: Boolean = false): List<SemanticsNode> = scene.semanticsOwners.flatMap { owner ->
         fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
-        flatten(owner.rootSemanticsNode)
+        flatten(if (unmerged) owner.unmergedRootSemanticsNode else owner.rootSemanticsNode)
     }
     private fun text(scene: ImageComposeScene) = nodes(scene).joinToString { it.config.toString() }
-    private fun click(scene: ImageComposeScene, label: String) = requireNotNull(
-        nodes(scene).first { it.config.toString().contains(label) }.config[SemanticsActions.OnClick].action,
-    ).invoke()
+    private fun clickAction(scene: ImageComposeScene, label: String) = requireNotNull(
+        nodes(scene).first { it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains(label) }
+            .config[SemanticsActions.OnClick].action,
+    )
+    private fun click(scene: ImageComposeScene, label: String) = clickAction(scene, label).invoke()
     private fun setText(scene: ImageComposeScene, value: String) = requireNotNull(
         nodes(scene).first { it.config.contains(SemanticsActions.SetText) }.config[SemanticsActions.SetText].action,
     ).invoke(AnnotatedString(value))
@@ -138,6 +267,7 @@ class GlobalSearchResultProductionWiringTest {
         )
         val mangas = MangaRepositoryImpl(handler)
         val repository = ControlledRepository(mangas)
+        val getManga = GetManga(repository)
         val saver = SaveSourceMangaForDetails(NetworkToLocalManga(repository), repository, ChapterRepositoryImpl(handler))
         override fun close() {
             driver.close()
@@ -145,26 +275,46 @@ class GlobalSearchResultProductionWiringTest {
         }
     }
 
+    private class DetailProbe {
+        val inputs = mutableListOf<SManga>()
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val completed = CompletableDeferred<Unit>()
+    }
+
     private class ControlledRepository(private val delegate: MangaRepository) : MangaRepository by delegate {
+        val seenSubscriptions = ConcurrentHashMap.newKeySet<Pair<Long, String>>()
+        val activeSubscriptions = ConcurrentHashMap.newKeySet<Pair<Long, String>>()
+        val latestRows = ConcurrentHashMap<Pair<Long, String>, Manga>()
         val oldStarted = CompletableDeferred<Unit>()
         val releaseOld = CompletableDeferred<Unit>()
         val oldInserted = CompletableDeferred<Unit>()
         val newFailed = CompletableDeferred<Unit>()
         val newInserted = CompletableDeferred<Unit>()
         private var rejectNew = true
-        override suspend fun insertNetworkManga(manga: List<Manga>): List<Manga> = when (manga.single().url) {
-            "/old" -> withContext(NonCancellable) {
+        override fun getMangaByUrlAndSourceIdAsFlow(url: String, sourceId: Long): Flow<Manga?> =
+            (sourceId to url).let { key ->
+                delegate.getMangaByUrlAndSourceIdAsFlow(url, sourceId)
+                    .onStart { seenSubscriptions += key; activeSubscriptions += key }
+                    .onEach { it?.let { manga -> latestRows[key] = manga } }
+                    .onCompletion { activeSubscriptions -= key }
+            }
+
+        override suspend fun insertNetworkManga(manga: List<Manga>): List<Manga> = when {
+            manga.first().url.startsWith("/old/") -> withContext(NonCancellable) {
                 oldStarted.complete(Unit)
                 releaseOld.await()
                 delegate.insertNetworkManga(manga).also { oldInserted.complete(Unit) }
             }
-            else -> if (rejectNew) {
+            manga.first().url.startsWith("/new/") && rejectNew -> {
                 rejectNew = false
                 newFailed.complete(Unit)
                 error("controlled materialization failure")
-            } else {
+            }
+            manga.first().url.startsWith("/new/") -> {
                 delegate.insertNetworkManga(manga).also { newInserted.complete(Unit) }
             }
+            else -> delegate.insertNetworkManga(manga)
         }
     }
 }

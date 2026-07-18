@@ -37,6 +37,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -48,6 +49,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
@@ -61,6 +63,8 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.network.DesktopSourceLoginSessionFactory
@@ -291,6 +295,7 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
         val appPreferences = LocalDesktopUiDependencies.current.appPreferences
         val sourceMangaSearchService = LocalDesktopUiDependencies.current.sourceMangaSearchService
         val saveSourceMangaForDetails = LocalDesktopUiDependencies.current.saveSourceMangaForDetails
+        val getManga = LocalDesktopUiDependencies.current.getManga
         val sourceLoginSessionFactory = LocalDesktopUiDependencies.current.sourceLoginSessionFactory
         val scope = rememberCoroutineScope()
 
@@ -537,17 +542,22 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
                             contentPadding = PaddingValues(horizontal = 12.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            items(sourceResult.results.take(10), key = { it.url }) { manga ->
+                            items(sourceResult.results.take(10), key = { it.source to it.url }) { initialManga ->
+                                val manga by produceState(initialManga, initialManga.source, initialManga.url) {
+                                    getManga.subscribe(initialManga.url, initialManga.source)
+                                        .filterNotNull()
+                                        .collectLatest { value = it }
+                                }
                                 GlobalSearchMangaCard(
                                     manga = manga,
                                     onClick = {
                                         if (openingMangaUrl != null) return@GlobalSearchMangaCard
                                         val listed = sourceResult.listedByUrl[manga.url] ?: return@GlobalSearchMangaCard
                                         openingMangaUrl = "${sourceResult.source.id}:${manga.url}"
+                                        navigator.push(MangaDetailScreen(manga.id))
                                         scope.launch {
                                             try {
                                                 val details = saveSourceMangaForDetails.awaitListedForDetails(listed, sourceResult.source.id)
-                                                navigator.push(MangaDetailScreen(details.manga.id))
                                                 if (details.needsRefresh) {
                                                     saveSourceMangaForDetails.refreshFromSource(sourceResult.source, listed)
                                                 }
@@ -582,7 +592,7 @@ private fun GlobalSearchMangaCard(
                 model = manga.thumbnailUrl,
                 contentDescription = manga.title,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().testTag("global-search-cover:${manga.thumbnailUrl}"),
             )
             Text(
                 text = manga.title,
@@ -595,6 +605,9 @@ private fun GlobalSearchMangaCard(
                     .fillMaxWidth()
                     .padding(4.dp),
             )
+            if (manga.favorite) {
+                Text(MR.strings.in_library.localized(), color = Color.White, modifier = Modifier.padding(4.dp))
+            }
         }
     }
 }

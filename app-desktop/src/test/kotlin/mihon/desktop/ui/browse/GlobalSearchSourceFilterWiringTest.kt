@@ -28,6 +28,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.Preference
+import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.i18n.MR
 import java.util.concurrent.atomic.AtomicInteger
@@ -35,6 +36,10 @@ import kotlin.coroutines.CoroutineContext
 
 @OptIn(ExperimentalComposeUiApi::class)
 class GlobalSearchSourceFilterWiringTest {
+
+    private fun staticGetManga() = mockk<GetManga> {
+        every { subscribe(any<String>(), any<Long>()) } returns flowOf(null)
+    }
 
     @Test
     fun `global search defaults to pinned and all chip incrementally includes unpinned sources`() = runBlocking {
@@ -53,6 +58,7 @@ class GlobalSearchSourceFilterWiringTest {
             every { appPreferences } returns preferences
             every { sourceMangaSearchService } returns SourceMangaSearchService()
             every { saveSourceMangaForDetails } returns mockk(relaxed = true)
+            every { getManga } returns staticGetManga()
             every { sourceLoginSessionFactory } returns mockk(relaxed = true)
         }
         var coordinator: DesktopGlobalSearchCoordinator? = null
@@ -173,6 +179,7 @@ class GlobalSearchSourceFilterWiringTest {
             every { appPreferences } returns preferences
             every { sourceMangaSearchService } returns SourceMangaSearchService()
             every { saveSourceMangaForDetails } returns mockk(relaxed = true)
+            every { getManga } returns staticGetManga()
             every { sourceLoginSessionFactory } returns mockk(relaxed = true)
         }
         lateinit var coordinator: DesktopGlobalSearchCoordinator
