@@ -58,7 +58,7 @@ class MigrationOrchestratorTest {
     }
 
     @Test
-    fun `source read NaN preserves every target read state like Android baseline`() {
+    fun `source read NaN preserves every target read state like fixed original Mihon`() {
         val source = listOf(
             MigrationChapter(1, 2.0, read = true),
             MigrationChapter(2, Double.NaN, read = true),
@@ -76,7 +76,7 @@ class MigrationOrchestratorTest {
     }
 
     @Test
-    fun `duplicate chapter numbers copy metadata from the first Android matching chapter`() {
+    fun `duplicate chapter numbers copy metadata from the first fixed original Mihon match`() {
         val source = listOf(
             MigrationChapter(1, 1.0, bookmark = true, dateFetch = 10),
             MigrationChapter(2, 1.0, bookmark = false, dateFetch = 20),

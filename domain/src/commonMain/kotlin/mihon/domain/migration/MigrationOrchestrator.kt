@@ -41,7 +41,13 @@ data class MigrationLibraryPlan(
     val removeCurrentFromLibrary: Boolean,
 )
 
-/** Android's authoritative platform-independent migration rules. */
+/**
+ * Fixed-main-compatible single-manga migration rules.
+ *
+ * The authority is Mihon [main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8], not the
+ * current Android consumer or this shared migration output. This class preserves the
+ * fixed-main chapter matching, nullable read patch, and library-membership semantics.
+ */
 class MigrationOrchestrator {
     fun chapterUpdates(
         current: List<MigrationChapter>,
@@ -88,7 +94,14 @@ sealed interface BatchMigrationEvent<out T> {
 
 class BatchMigrationWaitingForUserException : Exception()
 
-/** Runs items independently while preserving cancellation and a durable next-index checkpoint. */
+/**
+ * Runs the fixed-main-compatible batch core plus explicit reliability enhancements.
+ *
+ * Ordered iteration, per-item failure continuation, and cancellation propagation match fixed main.
+ * [startIndex], [BatchMigrationEvent.Completed], [BatchMigrationEvent.Failed], and
+ * [BatchMigrationEvent.WaitingForUser] are cross-platform reliability enhancements; fixed main did
+ * not provide durable checkpoints, resume, per-item events, or a user-decision pause.
+ */
 class BatchMigrationOrchestrator<T> {
     fun run(
         items: List<T>,

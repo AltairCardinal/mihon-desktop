@@ -75,3 +75,21 @@
 3. 当前 Android 构建版测试与 Desktop 测试用于证明迁移后 production wiring；它们不能替代原版行为 provenance。
 4. 若当前共享行为与原版不同，必须分类为平台 adapter、Desktop 产品增强或独立 cross-platform bugfix，不能继续标记为无差异的原版对齐。
 5. 原版基线升级必须作为显式变更执行：更新 `original-ref`、重新生成/核验 fixture，并重跑受影响的 parity contract。
+
+## 6. 迁移权威纠正（2026-07-18）
+
+迁移行为的原版权威固定为 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`。
+`MigrationOrchestrator` 是当前共享迁移产物，不是原版 Android Mihon 本身。
+
+- 与固定原版一致的单部迁移核心：使用第一个可识别章节号相同的章节；只写入可空的
+  `read = true` patch；保留固定原版的 `NaN` 最大已读行为，以及章节元数据、分类、标志、
+  加入日期、备注和替换/复制书库归属语义。
+- 与固定原版一致的批量核心：按顺序遍历、普通失败后继续、传播取消。
+- 跨平台可靠性增强：`startIndex`、`Completed(nextIndex)`、逐项 `Failed`、
+  `WaitingForUser` 和可恢复 checkpoint 协议。
+- Android 平台 adapter：`AndroidBatchMigrationRunner` 及进度/失败对话框 wiring。
+- Desktop 产品增强：持久任务队列、目标/选项/状态/错误持久化、恢复、暂停/继续/取消/重试，
+  以及队列 UI/Test Mode。
+
+不得把 checkpoint、等待用户、重试或 Desktop 队列持久化描述为从原版 Mihon 抽取的行为。
+若以后 replay 发现核心规则不一致，应停止分类工作并建立独立的严格 TDD 行为变更。
