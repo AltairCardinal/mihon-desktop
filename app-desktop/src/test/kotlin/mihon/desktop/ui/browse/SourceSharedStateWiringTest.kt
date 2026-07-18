@@ -103,6 +103,10 @@ class SourceSharedStateWiringTest {
             every { get() } returns pinnedSources
             every { changes() } returns flowOf(pinnedSources)
         }
+        every { globalSearchFilterState } returns mockk<Preference<Boolean>> {
+            every { get() } returns false
+            every { changes() } returns flowOf(false)
+        }
     }
 
     @Test
@@ -530,7 +534,7 @@ class SourceSharedStateWiringTest {
 
         assertTrue(ui.loading)
         assertFalse(ui.empty)
-        assertEquals(listOf("Content", "Failure"), ui.results.map { it.source.name })
+        assertEquals(listOf("Content", "Empty", "Failure"), ui.results.map { it.source.name })
         assertEquals(listOf("/kept"), ui.results.first().results.map(SManga::url))
         assertInstanceOf(AppError.Server::class.java, ui.results.last().error?.error)
         assertEquals(DesktopSourceRecoveryIntent.Retry(failureRequest), ui.results.last().recoveryIntent)

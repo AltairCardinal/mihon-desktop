@@ -16,6 +16,7 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import mihon.desktop.DesktopUiDependencies
@@ -45,6 +46,7 @@ class GlobalSearchSourceFilterWiringTest {
             every { enabledLanguages } returns preference(setOf("en"))
             every { disabledSources } returns preference(emptySet())
             every { pinnedSources } returns preference(setOf(pinned.id.toString()))
+            every { globalSearchFilterState } returns booleanPreference()
         }
         val dependencies = mockk<DesktopUiDependencies> {
             every { sourceManager } returns FakeDesktopSourceManager(listOf(pinned, unpinned))
@@ -164,6 +166,7 @@ class GlobalSearchSourceFilterWiringTest {
             every { enabledLanguages } returns preference(setOf("en"))
             every { disabledSources } returns preference(emptySet())
             every { pinnedSources } returns preference(pinnedSourceIds)
+            every { globalSearchFilterState } returns booleanPreference()
         }
         val dependencies = mockk<DesktopUiDependencies> {
             every { sourceManager } returns FakeDesktopSourceManager(sources)
@@ -204,6 +207,10 @@ class GlobalSearchSourceFilterWiringTest {
     }
 
     private fun preference(value: Set<String>): Preference<Set<String>> = mockk { every { get() } returns value }
+    private fun booleanPreference(): Preference<Boolean> = mockk {
+        every { get() } returns false
+        every { changes() } returns flowOf(false)
+    }
     private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
     private fun nodes(scene: ImageComposeScene) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
     private fun selected(scene: ImageComposeScene, label: String) = nodes(scene).any {

@@ -77,37 +77,69 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 data class SourceSearchResult(
     val source: CatalogueSource,
     val results: List<SManga>,
+    val kind: GlobalSearchRowKind,
     val error: SourcePageError? = null,
     val recoveryIntent: DesktopSourceRecoveryIntent = DesktopSourceRecoveryIntent.None,
 )
 
-internal data class GlobalSearchUiState(val loading: Boolean = false, val empty: Boolean = false, val results: List<SourceSearchResult> = emptyList())
+enum class GlobalSearchRowKind { Loading, Empty, Content, Error }
+
+internal data class GlobalSearchUiState(
+    val loading: Boolean = false,
+    val empty: Boolean = false,
+    val completed: Int = 0,
+    val total: Int = 0,
+    val results: List<SourceSearchResult> = emptyList(),
+)
 
 internal object GlobalSearchStateProjector {
-    fun project(sources: List<CatalogueSource>, state: DesktopGlobalSearchState): GlobalSearchUiState {
-        val sourcesById = sources.associateBy(CatalogueSource::id)
-        val results = state.queryStates.mapNotNull { (sourceId, queryState) ->
-            val source = sourcesById[sourceId] ?: return@mapNotNull null
-            when (queryState) {
-                is SourceQueryState.Loading -> SourceSearchResult(source, queryState.items)
-                is SourceQueryState.Empty -> null
+    fun project(
+        sources: List<CatalogueSource>,
+        state: DesktopGlobalSearchState,
+        pinnedIds: Set<String> = emptySet(),
+        onlyShowHasResults: Boolean = false,
+    ): GlobalSearchUiState {
+        val allRows = sources.map { source ->
+            when (val queryState = state.queryStates[source.id]) {
+                null, is SourceQueryState.Loading -> SourceSearchResult(source, emptyList(), GlobalSearchRowKind.Loading)
+                is SourceQueryState.Empty -> SourceSearchResult(source, emptyList(), GlobalSearchRowKind.Empty)
                 is SourceQueryState.Content -> SourceSearchResult(
                     source,
                     queryState.items,
+                    if (queryState.items.isEmpty()) GlobalSearchRowKind.Empty else GlobalSearchRowKind.Content,
                     queryState.pageError,
                     recoveryIntent(source, queryState.request, queryState.pageError?.recoveryAction),
                 )
                 is SourceQueryState.Failure -> SourceSearchResult(
                     source,
                     emptyList(),
+                    GlobalSearchRowKind.Error,
                     SourcePageError(queryState.error, queryState.recoveryAction),
                     recoveryIntent(source, queryState.request, queryState.recoveryAction),
                 )
             }
-        }.filter { it.results.isNotEmpty() || it.error != null }
-            .sortedByDescending { it.results.size }
-        val loading = state.isSearching || state.queryStates.values.any(SourceQueryState::isLoading)
-        return GlobalSearchUiState(loading, state.generation > 0 && !loading && results.isEmpty(), results)
+        }.sortedWith(
+            compareBy<SourceSearchResult>(
+                { it.kind != GlobalSearchRowKind.Content },
+                { it.source.id.toString() !in pinnedIds },
+                { "${it.source.name.lowercase()} (${it.source.lang})" },
+            ),
+        )
+        val completed = allRows.count { it.kind != GlobalSearchRowKind.Loading }
+        val loading = state.isSearching || completed < sources.size
+        val visibleRows = if (onlyShowHasResults) {
+            allRows.filter { it.kind == GlobalSearchRowKind.Content }
+        } else {
+            allRows
+        }
+        return GlobalSearchUiState(
+            loading = loading,
+            empty = state.generation > 0 && allRows.isNotEmpty() &&
+                completed == sources.size && allRows.all { it.kind == GlobalSearchRowKind.Empty },
+            completed = completed,
+            total = sources.size,
+            results = visibleRows,
+        )
     }
 
     private fun recoveryIntent(
@@ -188,8 +220,16 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
         val coordinatorFactory = LocalGlobalSearchCoordinatorFactory.current
         val queryCoordinator = remember(sourceMangaSearchService, coordinatorFactory) { coordinatorFactory(sourceMangaSearchService) }
         val searchState by queryCoordinator.states.collectAsState()
+        val onlyShowHasResults by appPreferences.globalSearchFilterState.changes().collectAsState(
+            initial = appPreferences.globalSearchFilterState.get(),
+        )
         var sourcesByGeneration by remember { mutableStateOf(emptyMap<Long, List<CatalogueSource>>()) }
-        val searchUiState = GlobalSearchStateProjector.project(sourcesByGeneration[searchState.generation].orEmpty(), searchState)
+        val searchUiState = GlobalSearchStateProjector.project(
+            sourcesByGeneration[searchState.generation].orEmpty(),
+            searchState,
+            pinnedIds = appPreferences.pinnedSources.get(),
+            onlyShowHasResults = onlyShowHasResults,
+        )
         var activeRecoveryController by remember { mutableStateOf<SourceBrowseRecoveryController?>(null) }
         var sourceLoginUiState by remember { mutableStateOf<DesktopSourceLoginUiState?>(null) }
         val loginUiActions = remember {
@@ -322,6 +362,15 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
                             label = { Text(label) },
                         )
                     }
+                    FilterChip(
+                        selected = onlyShowHasResults,
+                        onClick = {
+                            synchronized(appPreferences.globalSearchFilterState) {
+                                appPreferences.globalSearchFilterState.set(!appPreferences.globalSearchFilterState.get())
+                            }
+                        },
+                        label = { Text(MR.strings.has_results.localized()) },
+                    )
                 }
 
                 if (searchUiState.loading) {
@@ -339,11 +388,19 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
                     }
                 }
 
-                if (searchUiState.empty) {
-                    Text("No results found", modifier = Modifier.padding(16.dp))
+                if (searchUiState.total > 0) {
+                    Text(
+                        "${searchUiState.completed} / ${searchUiState.total}",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
 
-                // Results grouped by source, sorted by result count descending
+                if (searchUiState.empty) {
+                    Text(MR.strings.no_results_found.localized(), modifier = Modifier.padding(16.dp))
+                }
+
+                // Fixed-main ordering: non-empty results, pinned sources, then name/language.
                 val sortedResults = searchUiState.results
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(sortedResults, key = { it.source.id }) { sourceResult ->
@@ -359,17 +416,24 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text(
-                                    desktopSourceErrorMessage(error.error),
-                                    color = MaterialTheme.colorScheme.error,
-                                )
-                                desktopSourceRecoveryActionLabel(error.recoveryAction)
-                                    ?.let { label ->
+                                Text(desktopSourceErrorMessage(error.error), color = MaterialTheme.colorScheme.error)
+                                desktopSourceRecoveryActionLabel(error.recoveryAction)?.let { label ->
                                     androidx.compose.material3.TextButton(onClick = { recover(sourceResult) }) {
                                         Text(label)
                                     }
                                 }
                             }
+                        }
+                        if (sourceResult.kind == GlobalSearchRowKind.Loading) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                Text(MR.strings.loading.localized(), modifier = Modifier.padding(start = 8.dp))
+                            }
+                        } else if (sourceResult.kind == GlobalSearchRowKind.Empty) {
+                            Text(MR.strings.no_results_found.localized(), modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                         }
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = 12.dp),
