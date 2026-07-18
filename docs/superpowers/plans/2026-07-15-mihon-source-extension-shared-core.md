@@ -742,17 +742,26 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **6B1 completion evidence:** `3dc50793a` 建立 fixed-main shared classification/search contract，corrective behavior RED 证明 installed 不得按 enabled language 过滤，相关 domain tests 46/46；`eb37d645d` 删除当前 Android consumer 的复制分类/matcher，以 injectable shared seam 接入真实 `GetExtensionsByType` 与 `ExtensionsScreenModel`。Android mutation RED 在绕过注入 classifier 时以 “classify was not called” 精确失败，最终 wiring 2/2 与 Release Kotlin 编译通过。6B1a 为 3 files/227 lines，6B1b 为 3 files/309 changed lines；两轮独立审查及各自唯一修复复审均为 Approved。
 
-#### Task 6B2: Extension presentation action lifecycle
+#### Task 6B2a: Shared extension action contract
 
-- Risk axis: `extension-presentation-actions`
-- Platform boundary: `shared+android`
-- Estimated scope: `8 files, 380 lines`
-- Verification: 固定 main fixture 覆盖刷新、逐 package install/update/cancel/trust/uninstall、`takeWhile { step != Installed }`、source 单个/全部启停、incognito 与卸载后详情退出；当前 fork 的异步初始化等差异必须分类，安全事务新增阶段作为超集而不改写原版终态。
+- Risk axis: `extension-presentation-shared-actions`
+- Platform boundary: `shared`
+- Estimated scope: `3 files, 120 lines`
+- Verification: 固定 main fixture 覆盖刷新、逐 package 安装状态归约、Installed 终态清理、继续收集边界和详情源 enabled-first 排序；排序键由平台 consumer 按固定 main 规则提供，shared 不私自改写大小写语义。
 
 **Files:**
 - Modify: `domain/src/commonMain/kotlin/mihon/domain/extension/presentation/ExtensionPresentationContract.kt`
 - Modify: `domain/src/commonMain/kotlin/mihon/domain/extension/presentation/ExtensionPresentationStore.kt`
 - Modify: `domain/src/commonTest/kotlin/mihon/domain/extension/presentation/ExtensionPresentationStoreTest.kt`
+
+#### Task 6B2b: Android extension action lifecycle wiring
+
+- Risk axis: `extension-presentation-android-actions`
+- Platform boundary: `android`
+- Estimated scope: `5 files, 300 lines`
+- Verification: 当前 Android consumer 通过共享动作契约保持 fixed-main 的逐 package install/update/cancel/trust/uninstall、`takeWhile { step != Installed }`、source 单个/全部启停、incognito 与卸载后详情退出；当前 fork 的异步初始化、事务 ID、receiver 去重和 reload/rollback callback 作为安全超集保留，但不得改写原版终态或绕过可测试的平台 adapter。
+
+**Files:**
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt`
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsScreenModel.kt`
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/ExtensionDetailsScreenModel.kt`
