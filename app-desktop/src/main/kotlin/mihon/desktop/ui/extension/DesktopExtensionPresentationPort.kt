@@ -13,8 +13,12 @@ import mihon.desktop.extension.InstalledExtension
 import mihon.domain.extension.model.ExtensionCatalogResult
 import mihon.domain.extension.model.extractExtensionLibVersion
 import mihon.domain.extension.presentation.ExtensionPresentationAdapter
+import mihon.domain.extension.presentation.ExtensionPresentationAction
+import mihon.domain.extension.presentation.ExtensionPresentationActionState
 import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
 import mihon.domain.extension.presentation.ExtensionPresentationItem
+import mihon.domain.extension.presentation.ExtensionPresentationOptions
+import mihon.domain.extension.presentation.ExtensionPresentationResult
 import mihon.domain.extension.presentation.ExtensionPresentationSource
 import mihon.domain.extension.presentation.ExtensionPresentationStore
 import mihon.domain.extension.service.ExtensionInstallState
@@ -77,6 +81,22 @@ class DesktopExtensionPresentationPort(
     fun discardTrust(requestId: String): Boolean = api.discardTrust(requestId)
 
     fun searchPredicate(query: String) = desktopExtensionPresentationStore.searchPredicate(query, true)
+
+    fun reduceActions(state: ExtensionPresentationActionState, action: ExtensionPresentationAction) =
+        desktopExtensionPresentationStore.reduce(state, action)
+
+    fun classify(
+        projection: DesktopExtensionProjection,
+        options: ExtensionPresentationOptions,
+    ): ExtensionPresentationResult<DesktopExtensionItem> = desktopExtensionPresentationStore.classify(
+        projection.installed,
+        emptyList(),
+        projection.available,
+        options,
+    )
+
+    fun uninstall(item: DesktopExtensionItem): Boolean =
+        item.installed?.let(manager::removeExtensionWithMeta) == true
 
     fun project(catalog: DesktopExtensionCatalogState): DesktopExtensionProjection {
         val candidates = catalog.available.associateBy(DesktopAvailableExtension::pkgName)
