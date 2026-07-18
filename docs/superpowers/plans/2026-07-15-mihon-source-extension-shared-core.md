@@ -1103,17 +1103,20 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 - Risk axis: `extension-list-action-ui`
 - Platform boundary: `desktop`
-- Estimated scope: `5 files, 380 lines`
+- Estimated scope: `6 files, 400 lines`
 - Verification: 真实 Compose 点击发送 install/update/update-all/cancel/confirm/dismiss/retry intents；单项 update 从 latest typed catalog 按 operation package 取得 exact raw candidate；逐包 shared step、TrustRequired、Error 与旧 installed 版本并存反馈可观察，不调用 legacy terminal API。
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionsScreenModel.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/DesktopExtensionPresentationPort.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionListScreen.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionSharedStateWiringTest.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionPresentationUiTest.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionListCopyContractTest.kt`
 
 6D2 所需用户文案 key 在 6D1 同步预置到 base/zh-rCN，避免动作 Task 再扩大到 7 files；若实现发现缺失 key，必须如实调整到 7 files/≤400，不得硬编码。
+
+初审 correction：单项 update 与 C2a projection 必须共用 canonical candidate 选择，因此唯一修复轮纳入 `DesktopExtensionPresentationPort.kt`；同时删除无法从 Job 正确推断 TrustRequired/Cancelled 的批量成功汇总，逐阶段与逐包终态按 fixed-main/shared state 呈现。范围修正为 6 files/400 lines，不新增调度单元。
 
 - [ ] **Step 1: 写 list action lifecycle RED**
 - [ ] **Step 2: 删除本地 jobs/reducer/legacy API 并接入 ScreenModel intents**
