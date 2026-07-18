@@ -14,6 +14,7 @@ import eu.kanade.tachiyomi.source.model.SManga
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.runBlocking
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
@@ -37,8 +38,26 @@ class ExtensionIncognitoPreferenceWiringTest {
     lateinit var tempDir: File
 
     @Test
+    fun `extension details disables current extension from latest incognito preferences`() = runBlocking {
+        verifyToggle(
+            initialExtensions = setOf("extension.hidden", "extension.other"),
+            expectedExtensions = setOf("extension.other", "extension.concurrent"),
+        )
+    }
+
+    @Test
+    fun `extension details enables current extension from latest incognito preferences`() = runBlocking {
+        verifyToggle(
+            initialExtensions = setOf("extension.other"),
+            expectedExtensions = setOf("extension.other", "extension.concurrent", "extension.hidden"),
+        )
+    }
+
     @OptIn(ExperimentalComposeUiApi::class)
-    fun `extension details toggles current extension from latest incognito preferences`() = runBlocking {
+    private suspend fun CoroutineScope.verifyToggle(
+        initialExtensions: Set<String>,
+        expectedExtensions: Set<String>,
+    ) {
         val jar = tempDir.resolve("extension.hidden.jar").also { it.createNewFile() }
         val manager = DesktopExtensionManager(
             object : DesktopExtensionLoader(tempDir) {
@@ -48,7 +67,7 @@ class ExtensionIncognitoPreferenceWiringTest {
         val preferences = DesktopAppPreferences(
             DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")),
         ).apply {
-            incognitoExtensions.set(setOf("extension.hidden", "extension.other"))
+            incognitoExtensions.set(initialExtensions)
         }
         val api = mockk<DesktopExtensionApi> {
             coEvery { loadExtensionIcon(any()) } returns null
@@ -74,7 +93,7 @@ class ExtensionIncognitoPreferenceWiringTest {
                 it.config.toString().contains("Incognito mode for extension.hidden")
         }
         assertFalse(preferences.incognitoMode.get())
-        assertEquals(setOf("extension.hidden", "extension.other"), preferences.incognitoExtensions.get())
+        assertEquals(initialExtensions, preferences.incognitoExtensions.get())
 
         preferences.incognitoExtensions.set(
             preferences.incognitoExtensions.get() + "extension.concurrent",
@@ -83,7 +102,7 @@ class ExtensionIncognitoPreferenceWiringTest {
         scene.render()
 
         assertFalse(preferences.incognitoMode.get())
-        assertEquals(setOf("extension.other", "extension.concurrent"), preferences.incognitoExtensions.get())
+        assertEquals(expectedExtensions, preferences.incognitoExtensions.get())
         scene.close()
         manager.close()
     }
