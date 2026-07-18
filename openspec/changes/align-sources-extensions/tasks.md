@@ -12,7 +12,7 @@
 - [ ] 2.3 让当前 Android consumer 与 Desktop consumer 的 production manager/ScreenModel 消费相同共享状态和错误
   - [x] 2.3.1 Android/Desktop 源查询已消费共享 query/page/error core
   - [x] 2.3.2 Android/Desktop 扩展链路已消费共享 catalog/version/security/install transaction core
-  - [ ] 2.3.3 当前 Android extension presentation consumer 接入固定 main 提取的共享契约
+  - [x] 2.3.3 当前 Android extension presentation consumer 接入固定 main 提取的共享契约
   - [x] 2.3.4 Desktop source result consumer 完成 canonical persistence、观察与导航 wiring
   - [ ] 2.3.5 Desktop extension presentation consumer 完成 production wiring
 

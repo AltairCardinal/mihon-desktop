@@ -124,7 +124,7 @@
 
 ### C6. Extension 施工基线取自功能分支，并把当前 Android fork 行为作为后续“原版 fixture”
 
-**状态：当前未解决；会直接污染尚未完成的 Task 6B。**
+**状态：已解决。Task 6B 的权威固定为 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`，当前 `app/` 只作为被测 consumer。**
 
 `docs/roadmap/source-extension-authority-baseline.md:4` 和相关 Task 1 报告把 `d77ef4d2b63e00d8abe3e2da85b6ef4e4351ae58` 作为 authority baseline；该提交是当前功能分支，不是固定 `main`。`docs/superpowers/plans/2026-07-15-mihon-source-extension-shared-core.md:630` 进一步要求以当前 `ExtensionsScreenModel`、`ExtensionManager`、`ExtensionDetailsScreenModel` 的“现有行为”为权威 fixture。
 
@@ -137,15 +137,19 @@
 
 **应纠正为：** Task 6B 开工前把 fixture 与调用链重建在固定 `main` 上；当前 Android 的差异逐项归为“迁移必要 adapter”“已验证 bugfix/增强”或“待偿还 fork 技术债”，不得整体继承为权威。
 
+**闭合证据：** Task 6B1/6B2 的 fixture 与 expected value 均取自上述固定 main；`8dc608675` 恢复 `takeWhile { step != Installed }` 并让当前 Android 消费 shared reducer。异步初始化、事务 ID、active receiver 去重与 rollback 被明确分类为保留的工程/安全增强，没有反写成原版事实。
+
 ### C7. Extension trust / transaction shared core 是安全增强，却被整体纳入“原版对齐”叙事
 
-**状态：当前分类混淆；安全能力本身应保留。**
+**状态：已解决；安全能力作为显式超集保留。**
 
 当前 shared/Android 实现加入了仓库 fingerprint 连续性、声明/下载/已安装 SHA 校验、事务 snapshot、rollback 和 runtime restore。固定 `main` 有 Android 签名信任与安装器流程，但没有这套仓库身份连续性和跨平台事务协调器。当前 extension 相关代码相对固定 `main` 已达到 21 个文件、约 `+2085/-279` 行差异。
 
 这些是有价值的安全与可靠性增强，不是“Desktop 独有简化应向原版回退”的对象；但把它们和真正从原版提取的 update policy、安装状态、取消语义放在同一个“Android 权威”标签下，会让后续审查无法判断哪些行为必须逐字对齐、哪些行为允许超集。
 
 **应纠正为：** 分成两层：原版兼容核心（版本比较、签名/安装基本语义、状态与取消）和显式安全增强层（repo identity、SHA continuity、transaction rollback）。两端可以共同消费增强层，但验证报告必须写成“原版兼容 + 双端安全增强”，不能声称全部来自原版。
+
+**闭合证据：** Task 6B2b 只对齐 fixed-main 动作与副作用顺序，`ed577a8c2` 继续保留事务 ID、active receiver 去重、reload/rollback 等安全超集，并以失败原子性测试保护增强层；计划和完成证据均分别标注原版核心与安全增强。
 
 ## 5. 施工中曾混淆、现已修正的项目
 
@@ -315,7 +319,7 @@ Desktop 的 generation/session retirement、CAS publication、typed error、精�
 
 ### C9. Task 6B 遗漏原版扩展分类器与 presentation 行为
 
-**状态：当前未解决；不得直接以 Desktop helper 或迁移后的 catalog model 实施 6B。**
+**状态：已解决；缺失权威已补齐并由 shared contract 与当前 Android consumer 消费。**
 
 Task 6B、authority baseline ID 37 与 manifest ID 37 只列出 `ExtensionsScreenModel`、`ExtensionDetailsScreenModel`、`ExtensionManager`，却遗漏真正定义 updates/installed/available/untrusted、NSFW、obsolete、语言拆分等规则的 fixed-main `GetExtensionsByType`，也遗漏 presentation 动作与安装阶段反馈。必须补充以下权威：
 
@@ -329,13 +333,17 @@ Task 6B、authority baseline ID 37 与 manifest ID 37 只列出 `ExtensionsScree
 
 建议拆分为：fixture/provenance 补全、分类搜索共享核心、动作生命周期共享核心，以及分别的 Desktop 列表 UI 与详情/设置 UI；每项继续遵守 8 文件/400 行上限。
 
+**闭合证据：** Task 6B 已按 6B1a/6B1b/6B2a/6B2b/6B2c 拆分完成；`3dc50793a`、`eb37d645d`、`9401b363a`、`ed577a8c2`、`8dc608675` 分别闭合 fixed-main 分类/search、shared action、Manager side effect 与 Android UI wiring。Desktop 仍有的 presentation 债务明确留在 Task 6C/6D，不再冒充 Task 6B 或原版事实。
+
 ### C10. OpenSpec 2.1/2.3 的完成状态扩大了已共享事实
 
-**状态：当前 checkoff 错误，会误导 Comet 认为 extension presentation 已完成。**
+**状态：已解决；2.3 已拆成可独立验收的 consumer 子项，父项保持未完成。**
 
 `openspec/changes/align-sources-extensions/tasks.md` 已勾选 2.1 和 2.3，但 `SourceMangaSearchService` 并不负责源列表，`domain/.../extension/presentation/` 尚不存在，Desktop `ExtensionListScreen` 与 `ExtensionDetailsScreen` 仍分别维护 catalog snapshot、过滤、install jobs、update-all、terminal error、source enabled、incognito、cookie 与卸载状态。因此“共享了部分 query/catalog/install 类型”不能写成“Android 与 Desktop production manager/ScreenModel 已消费相同 presentation state/error”。
 
 2.1 应缩小为 shared query request/page/error core；2.3 应恢复未完成，或拆成 source query core、extension transaction core、当前 Android presentation consumer、Desktop presentation consumer。只有 fixed-main fixture、shared contract、当前 Android consumer 与 Desktop consumer 四层证据同时成立后才能重新勾选。
+
+**闭合证据：** OpenSpec 2.3.1–2.3.4 分别记录 source query、extension transaction、当前 Android presentation 与 Desktop source result；2.3.5 Desktop extension presentation 仍未完成，因此 2.3 父项继续保持未勾选。
 
 ### C11. Desktop Android shim 尚未被直接冒充原版，但 Task 7 证据会循环自证
 

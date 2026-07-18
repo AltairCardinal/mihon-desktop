@@ -27,7 +27,7 @@
 | 34 扩展安装 | `ExtensionManager.installExtension/updateExtension/cancelInstallUpdateExtension` → `ExtensionInstaller` | `ExtensionInstallCoordinator`、`ExtensionInstallPort` | `ExtensionManager`、`ExtensionInstaller` | `DesktopExtensionApi`、`DesktopExtensionManager`、`DesktopExtensionInstallPort`、APK→JAR | 原始基本安装、更新、取消必须逐项对照；SHA、snapshot、rollback/runtime restore 是保留的跨平台安全增强。 |
 | 35 扩展加载 | `ExtensionLoader` → PackageManager、签名、私有 APK | 无 | `ExtensionLoader` | `DesktopExtensionLoader`、`ExtensionClassLoader`、ServiceLoader/compat | Android package/signature 与 Desktop JAR/compat 都是 platform adapter；缺真实 fixture 的 compat 能力仍为待偿还技术债。 |
 | 36 扩展安全/信任 | `ExtensionLoader` 不受信任结果 → `ExtensionManager.trust` | `ExtensionTrustPolicy`、`RepositoryIdentity` | `ExtensionLoader`、`ExtensionManager.trust` | `DesktopExtensionInstallPort`、metadata sidecar、Desktop loader | 原始签名信任和基本 trust 为核心；repo fingerprint/SHA continuity 是安全增强，不能声称固定 main 已有。 |
-| 37 扩展详情与更新 | `ExtensionsScreenModel` / `ExtensionDetailsScreenModel` → `ExtensionManager.updateExtension/uninstallExtension` | 无 presentation shared core（Task 6B 待建） | `ExtensionsScreenModel`、`ExtensionDetailsScreenModel` | `ExtensionListScreen`、`ExtensionDetailsScreen`、`DesktopExtensionManager` | 搜索、分类、更新、详情退出必须先回放固定 main；文件信息/打开目录为 Desktop 产品增强。 |
+| 37 扩展详情与更新 | `GetExtensionsByType`、`ExtensionsScreenModel` / `ExtensionDetailsScreenModel` → `ExtensionManager.updateExtension/uninstallExtension` | `ExtensionPresentationStore` 的分类、搜索、刷新、逐包安装终态与 enabled-first 规则 | 当前 Android consumer 已接入 shared classifier/action store | `ExtensionListScreen`、`ExtensionDetailsScreen`、`DesktopExtensionManager`（Task 6C/6D 待接入） | fixed-main 搜索、分类、更新、详情退出已由 shared contract 回放并接入当前 Android；文件信息/打开目录等 Desktop 产品增强保留，Desktop presentation wiring 仍未完成。 |
 | 38 源偏好设置 | `SourcePreferencesScreen` → source preference schema | 无 | `SourcePreferencesScreen` | Desktop `SourcePreferencesScreen` | 控件渲染与文件/窗口交互是 platform adapter；missing、不可配置和 setup failure 的状态须保持可区分。 |
 | 39 WebView/源登录 | `WebViewScreenModel` → `WebViewScreen` / `WebViewScreenContent` → Android CookieManager | `SourceLoginSession` | `WebViewScreenModel`、`WebViewScreen` | `DesktopBrowserLoginAdapter`、`DesktopSourceLoginDialog` | 受控浏览器和 Cookie 存储是 platform adapter；显式 login session 状态为跨端迁移输出，不可反称原始 WebView 行为。 |
 | 40 Cloudflare 绕过 | 固定 main 的 `CloudflareInterceptor` / WebView Cloudflare help；无 FlareSolverr | 无 | `CloudflareInterceptor`、WebView UI | `CloudflareChallengeManager`、`DesktopCloudflareInterceptor`、`FlareSolverrClient`、`CloudflareBypassDialog` | FlareSolverr 是 Desktop-only、用户显式选择的后备产品能力；它不是原始 Mihon 语义，也不得静默接管请求。 |
@@ -57,9 +57,9 @@ IDs 28、29、30、32–40 的 completion gate 只读取以下结构化字段；
 
 ## Task 6B 的固定 main 回放规则
 
-Task 6B 不得把当前 `ExtensionsScreenModel`、`ExtensionManager` 或 `ExtensionDetailsScreenModel` 当作 authority fixture。RED 先从固定 main 回放名称/source/baseUrl/id 搜索、updates/installed/untrusted/语言分类、刷新、逐 package 安装步骤、取消、卸载、trust 和详情卸载事件；随后再比较当前 fork。
+Task 6B 已完成，但后续维护仍不得把当前 `ExtensionsScreenModel`、`ExtensionManager` 或 `ExtensionDetailsScreenModel` 当作 authority fixture。权威固定为 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`；名称/source/baseUrl/id 搜索、updates/installed/untrusted/语言分类、刷新、逐 package 安装步骤、取消、卸载、trust 和详情卸载事件均先从该快照回放，再比较当前 fork。
 
-已知当前 fork 差异：`ExtensionManager` 的初始化在 coroutine 中异步启动，而固定 main 同一流程同步完成；`ExtensionsScreenModel` 收集安装流时缺少固定 main 的 `takeWhile { step != Installed }`。两项均尚未被证明为必要 adapter 或正确性/安全性/UX 增强，分类为待偿还 fork 技术债，Task 6B 必须用对照测试决定保留、修复或显式隔离。
+Task 6B 的差异分类结果：`ExtensionManager` 的异步初始化，以及事务 ID、active receiver 去重、reload/rollback callback 作为工程/安全增强保留；缺失的 `takeWhile { step != Installed }` 已恢复，trust reload 改走 injected loader seam。Desktop extension presentation 仍需在 Task 6C/6D 消费同一 shared contract，不得继续以局部 helper 重算规则。
 
 ## Desktop 产品边界与现有保护网
 

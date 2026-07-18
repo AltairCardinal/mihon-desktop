@@ -42,7 +42,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - [x] Task 5B：Desktop 挑战恢复策略与 FlareSolverr 显式后备
 - [x] Task 5C：Desktop 登录设置、UI 与 production wiring
 - [x] Task 6A：Browse 共享状态 wiring（6A1/6A2/6A3 已完成；C8 已闭合）
-- [ ] Task 6B：从固定 main 原版提取扩展呈现契约（6B1a/6B1b 已完成；6B2 待完成）
+- [x] Task 6B：从固定 main 原版提取扩展呈现契约（6B1a/6B1b/6B2a/6B2b/6B2c 已完成；C9 已闭合）
 - [ ] Task 6C：Desktop 扩展 adapter、ScreenModel 与 DI wiring
 - [ ] Task 6D：Desktop Extension UI、详情/设置与 i18n wiring
 - [ ] Task 6E：Test Mode、导航与自动化观察
@@ -781,6 +781,8 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsScreenModel.kt`
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/ExtensionDetailsScreenModel.kt`
 - Modify: `app/src/test/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionPresentationWiringTest.kt`
+
+**6B2c completion evidence:** `8dc608675` 让当前 Android ScreenModel 真实消费 Task 6B2a shared reducer/终态/排序 seam：refresh 与逐 package install state 回灌 shared reducer，Installed 后停止并清理；详情源 enabled-first、单个/全部启停、incognito 与 installed flow 移除后退出均按 fixed main。断线 mutation 证明移除 `takeWhile` 会继续收集 Error；最终 focused tests 4/4、`:app:spotlessKotlinCheck` 通过，4 files/200 changed lines，唯一修复复审 Approved。`d1af3551f` 修正 6B2b 测试格式阻塞。
 
 ### Task 6C: Desktop 扩展 adapter、ScreenModel 与 DI wiring
 
