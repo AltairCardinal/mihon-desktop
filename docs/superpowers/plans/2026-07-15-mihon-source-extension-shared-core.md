@@ -618,12 +618,15 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 - Risk axis: `global-search-card-observation`
 - Platform boundary: `desktop`
-- Estimated scope: `2 files, 120 lines`
+- Estimated scope: `5 files, 145 lines`
 - Verification: 以固定 main `SearchScreenModel.getManga()` 为预言机，仅为进入 composition 的结果卡按 `(sourceId, url)` 订阅 production `GetManga` flow；真实内存 SQLDelight/repository 测试在不重新搜索时更新标题、封面或收藏状态，卡片必须刷新且源搜索调用次数仍为一次；点击必须立即使用最新 canonical ID 导航，并只将对应 `listedByUrl` 原始 `SManga` 交给后台详情/章节刷新。
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/GlobalSearchScreen.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/browse/GlobalSearchResultProductionWiringTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/browse/GlobalSearchAuthorityWiringTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/browse/GlobalSearchSourceFilterWiringTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceSharedStateWiringTest.kt`
 
 #### Task 6A3B: Global Search result navigation
 
