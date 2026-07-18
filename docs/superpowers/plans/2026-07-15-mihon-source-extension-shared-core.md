@@ -1011,26 +1011,53 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **Risk axis:** extension-ui-wiring
 **Platform boundary:** desktop
-**Estimated scope:** 8 files, 1320 lines
+**Estimated scope:** 9 files, 1410 lines
 **Verification:** 三个 Desktop Screen 只收集 Task 6C ScreenModel/shared state 并发送 intents；加载、空、部分失败、安装阶段、TrustRequired、回滚保留旧版本、详情缺失和源设置不可用均有可执行反馈，且 base/zh-rCN 资源完整。
 **Execution split:** 只读评估确认列表 state/classification、列表 action lifecycle、详情 Desktop 独有入口与 JVM preference availability 是四条可独立失效风险；合并预计 650–850 changed lines，且现有源码扫描 CopyContract 不能替代真实行为测试。因此按 6D1→6D2→6D3→6D4 顺序调度。
-**Split waiver:** 本聚合项不作为一个 Task 调度；6D1–6D4 各自不超过 8 files/400 lines，前一段的 production/test seam 稳定后才允许后一段施工。
+**Split waiver:** 本聚合项不作为一个 Task 调度；6D1a、6D1b、6D2、6D3、6D4 各自不超过 8 files/400 lines，前一段的 production/test seam 稳定后才允许后一段施工。
 
 #### Task 6D1: Extension list state、classification 与恢复 UI
 
 - Risk axis: `extension-list-state-ui`
 - Platform boundary: `desktop`
-- Estimated scope: `5 files, 360 lines`
+- Estimated scope: `6 files, 450 lines`
 - Verification: Screen 实例化；真实 Compose 收集 Task 6C state，区分 loading/empty/partial failure 并以同一 failure identity Retry；分类/search/options 来自 shared presentation，base/zh-rCN key 均可加载。
+- Split waiver: 落盘前估算遗漏了删除旧 catalog/filter/load block 与替换 tab/card model 的 churn；测试+ListScreen+i18n 实际约 422 行。D1 不整体调度，顺序拆为 6D1a projection/copy 与 6D1b Compose rendering。
+
+##### Task 6D1a: Extension list projection adapter 与 copy contract
+
+- Risk axis: `extension-list-projection-copy`
+- Platform boundary: `desktop`
+- Estimated scope: `4 files, 170 lines`
+- Verification: `DesktopExtensionsState` 只消费 shared presentation/search/options 生成 Installed/Available tab projection；partial failures 保留 identity；base/zh-rCN 同时具备 6D1/6D2 所需 copy，行为契约不扫描 production 源码。
+
+**Files:**
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionListUiProjection.kt`
+- Modify: `i18n/src/commonMain/moko-resources/base/strings.xml`
+- Modify: `i18n/src/commonMain/moko-resources/zh-rCN/strings.xml`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionListCopyContractTest.kt`
+
+- [ ] **Step 1: 写 projection/copy RED**
+
+  覆盖 shared updates+installed→Installed tab、available→Available tab、package/source search、options/filter 与 partial failure identity；资源 key 通过真实资源 API/生成 accessor 加载，不读取 Kotlin 源文本。
+
+- [ ] **Step 2: 实现独立 projection adapter 与双语 copy**
+- [ ] **Step 3: 运行 GREEN 与 classifier/i18n mutation**
+
+  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionListCopyContractTest"`
+
+##### Task 6D1b: Extension list Compose state、partial failure 与 Retry
+
+- Risk axis: `extension-list-compose-state`
+- Platform boundary: `desktop`
+- Estimated scope: `2 files, 300 lines`
+- Verification: production `ExtensionListContent` 收集 singleton ScreenModel，首次 refresh；真实 Compose 区分 loading/empty、data+exact partial failure 同屏，Retry 再触发 refresh；保留双 tab、宽屏与仓库入口，动作生命周期留给 6D2。
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionListScreen.kt`
-- Modify: `i18n/src/commonMain/moko-resources/base/strings.xml`
-- Modify: `i18n/src/commonMain/moko-resources/zh-rCN/strings.xml`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionPresentationUiTest.kt`
-- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionListCopyContractTest.kt`
 
-- [ ] **Step 1: 写 list state/partial failure/i18n RED**
+- [ ] **Step 1: 写 list state/partial failure/Retry RED**
 
   使用真实 Compose/wiring fixture 覆盖 Screen 实例化、loading/empty、成功列表与 exact partial failure 同屏、Retry 发送 refresh、shared classification/search/options；替换源码字符串扫描断言。
 
