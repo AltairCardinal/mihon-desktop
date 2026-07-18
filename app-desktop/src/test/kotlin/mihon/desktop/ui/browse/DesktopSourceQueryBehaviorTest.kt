@@ -8,10 +8,12 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import mihon.domain.error.AppError
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -81,6 +83,64 @@ class DesktopSourceQueryBehaviorTest {
 
         assertEquals(listOf(1, 2, 2), source.requestedPages)
         assertEquals(listOf("/first", "/second"), retried.items.map { it.url })
+    }
+
+    @Test
+    fun `concurrent append requests share one source load`() = runBlocking {
+        val source = SerializedPagingSource(blockPopularPageTwo = true)
+        val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
+        coordinator.load(source, page = 1, query = SourceQuery.Popular)
+
+        val first = async(start = CoroutineStart.UNDISPATCHED) {
+            coordinator.load(source, page = 2, query = SourceQuery.Popular)
+        }
+        withTimeout(2_000) { source.pageTwoStarted.await() }
+        val duplicate = async(start = CoroutineStart.UNDISPATCHED) {
+            coordinator.load(source, page = 2, query = SourceQuery.Popular)
+        }
+        val pageTwoRequestsBeforeRelease = source.requests.count { it == "popular" to 2 }
+        source.releasePageTwo.complete(Unit)
+
+        val completed = first.await()
+        assertEquals(completed, duplicate.await())
+        assertEquals(1, pageTwoRequestsBeforeRelease)
+        assertEquals(listOf("/popular-1", "/popular-2"), completed.items.map { it.url })
+    }
+
+    @Test
+    fun `append cannot skip the next successful page`() = runBlocking {
+        val source = SerializedPagingSource()
+        val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
+        coordinator.load(source, page = 1, query = SourceQuery.Popular)
+
+        val unchanged = coordinator.load(source, page = 3, query = SourceQuery.Popular)
+
+        assertEquals(listOf("popular" to 1), source.requests)
+        assertEquals(1, unchanged.request.page)
+        assertEquals(listOf("/popular-1"), unchanged.items.map { it.url })
+    }
+
+    @Test
+    fun `late append cannot contaminate a replacement first page`() = runBlocking {
+        val source = SerializedPagingSource(blockOldSearchPageTwo = true)
+        val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
+        val oldQuery = SourceQuery.Search("old", FilterList())
+        coordinator.load(source, page = 1, query = oldQuery)
+        val oldGeneration = coordinator.state!!.request.generation
+        val oldAppend = async(start = CoroutineStart.UNDISPATCHED) {
+            coordinator.load(source, page = 2, query = oldQuery)
+        }
+        withTimeout(2_000) { source.pageTwoStarted.await() }
+
+        val replacement = coordinator.load(source, page = 1, query = SourceQuery.Search("new", FilterList()))
+        source.releasePageTwo.complete(Unit)
+        withTimeout(2_000) { oldAppend.await() }
+
+        val current = coordinator.state!!
+        assertEquals(oldGeneration + 1, current.request.generation)
+        assertEquals(replacement.request, current.request)
+        assertEquals("new", (current.request.query as SourceQuery.Search).query)
+        assertEquals(listOf("/new-1"), current.items.map { it.url })
     }
 
     @Test
@@ -183,6 +243,39 @@ class DesktopSourceQueryBehaviorTest {
             started.complete(Unit)
             return withContext(NonCancellable) { result.await() }
         }
+        override fun getFilterList() = FilterList()
+        override suspend fun getMangaDetails(manga: SManga) = manga
+        override suspend fun getChapterList(manga: SManga) = emptyList<SChapter>()
+        override suspend fun getPageList(chapter: SChapter) = emptyList<Page>()
+    }
+
+    private class SerializedPagingSource(
+        private val blockPopularPageTwo: Boolean = false,
+        private val blockOldSearchPageTwo: Boolean = false,
+    ) : CatalogueSource {
+        val requests = mutableListOf<Pair<String, Int>>()
+        val pageTwoStarted = CompletableDeferred<Unit>()
+        val releasePageTwo = CompletableDeferred<Unit>()
+
+        override val id = 3L
+        override val name = "Serialized"
+        override val lang = "en"
+        override val supportsLatest = false
+
+        override suspend fun getPopularManga(page: Int) = result("popular", page, blockPopularPageTwo)
+        override suspend fun getLatestUpdates(page: Int) = MangasPage(emptyList(), false)
+        override suspend fun getSearchManga(page: Int, query: String, filters: FilterList) =
+            result(query, page, blockOldSearchPageTwo && query == "old")
+
+        private suspend fun result(query: String, page: Int, blockPageTwo: Boolean): MangasPage {
+            requests += query to page
+            if (page == 2 && blockPageTwo) {
+                pageTwoStarted.complete(Unit)
+                releasePageTwo.await()
+            }
+            return MangasPage(listOf(manga("/$query-$page", "$query $page")), true)
+        }
+
         override fun getFilterList() = FilterList()
         override suspend fun getMangaDetails(manga: SManga) = manga
         override suspend fun getChapterList(manga: SManga) = emptyList<SChapter>()

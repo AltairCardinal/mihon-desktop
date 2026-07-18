@@ -2,6 +2,7 @@ package mihon.desktop.ui.browse
 
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.online.HttpSource
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CancellationException
@@ -78,6 +79,7 @@ class SourceBrowseQueryCoordinator(
     private var generation = 0L
     private var publicationOrdinal = 0L
     private var authoritativeState: SourceQueryState? = null
+    private val pendingLoads = mutableMapOf<SourcePageRequest, CompletableDeferred<SourceQueryState>>()
     private val publisher = SourceQueryStatePublisher()
 
     val states: Flow<SourceQueryState?> = publisher.states
@@ -91,14 +93,39 @@ class SourceBrowseQueryCoordinator(
         query: SourceQuery,
         onStarted: (SourceQueryState) -> Unit = {},
     ): SourceQueryState {
+        val pending = CompletableDeferred<SourceQueryState>()
+        var shared: CompletableDeferred<SourceQueryState>? = null
+        lateinit var request: SourcePageRequest
         val started = synchronized(lock) {
             if (page == 1) generation += 1
-            val request = SourcePageRequest(source.id, page, generation, query)
+            request = SourcePageRequest(source.id, page, generation, query)
+            pendingLoads[request]?.let {
+                shared = it
+                return@synchronized null
+            }
+            if (page > 1 && !canAppendLocked(request)) return requireNotNull(authoritativeState)
+            pendingLoads[request] = pending
             commitLocked(reducer.start(request, authoritativeState))
         }
-        publisher.publish(started)
-        onStarted(requireNotNull(started.state))
-        return completeLoad(source, requireNotNull(started.state).request)
+        shared?.let { return it.await() }
+        val owned = requireNotNull(started)
+        publisher.publish(owned)
+        onStarted(requireNotNull(owned.state))
+        return try {
+            completeLoad(source, request).also(pending::complete)
+        } catch (error: Throwable) {
+            pending.completeExceptionally(error)
+            throw error
+        } finally {
+            synchronized(lock) { pendingLoads.remove(request, pending) }
+        }
+    }
+
+    private fun canAppendLocked(request: SourcePageRequest): Boolean {
+        val current = authoritativeState as? SourceQueryState.Content ?: return false
+        return !current.isLoading && current.pageError == null && current.hasNextPage &&
+            current.request.sourceId == request.sourceId && current.request.generation == request.generation &&
+            current.request.query == request.query && current.request.page + 1 == request.page
     }
 
     private suspend fun completeLoad(
