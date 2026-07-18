@@ -42,7 +42,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - [x] Task 5B：Desktop 挑战恢复策略与 FlareSolverr 显式后备
 - [x] Task 5C：Desktop 登录设置、UI 与 production wiring
 - [x] Task 6A：Browse 共享状态 wiring（6A1/6A2/6A3 已完成；C8 已闭合）
-- [ ] Task 6B：从固定 main 原版提取扩展呈现契约
+- [ ] Task 6B：从固定 main 原版提取扩展呈现契约（6B1a/6B1b 已完成；6B2 待完成）
 - [ ] Task 6C：Desktop 扩展 adapter、ScreenModel 与 DI wiring
 - [ ] Task 6D：Desktop Extension UI、详情/设置与 i18n wiring
 - [ ] Task 6E：Test Mode、导航与自动化观察
@@ -739,6 +739,8 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Modify: `app/src/main/java/eu/kanade/domain/extension/interactor/GetExtensionsByType.kt`
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsScreenModel.kt`
 - Create: `app/src/test/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionPresentationWiringTest.kt`
+
+**6B1 completion evidence:** `3dc50793a` 建立 fixed-main shared classification/search contract，corrective behavior RED 证明 installed 不得按 enabled language 过滤，相关 domain tests 46/46；`eb37d645d` 删除当前 Android consumer 的复制分类/matcher，以 injectable shared seam 接入真实 `GetExtensionsByType` 与 `ExtensionsScreenModel`。Android mutation RED 在绕过注入 classifier 时以 “classify was not called” 精确失败，最终 wiring 2/2 与 Release Kotlin 编译通过。6B1a 为 3 files/227 lines，6B1b 为 3 files/309 changed lines；两轮独立审查及各自唯一修复复审均为 Approved。
 
 #### Task 6B2: Extension presentation action lifecycle
 
