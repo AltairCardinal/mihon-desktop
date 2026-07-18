@@ -45,7 +45,9 @@ import mihon.desktop.network.DesktopBrowserOpener
 import mihon.desktop.network.DesktopAuthenticatedSessionCommitter
 import mihon.desktop.network.DesktopSourceLoginSessionFactory
 import mihon.desktop.platform.DesktopNetworkHelper
+import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.FakeDesktopSourceManager
+import mihon.desktop.source.FakeSource
 import mihon.domain.error.AppError
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -70,6 +72,7 @@ import tachiyomi.domain.source.service.AuthenticatedSession
 import tachiyomi.domain.source.service.AuthenticatedSessionCommitter
 import tachiyomi.domain.source.service.SourceLoginState
 import tachiyomi.i18n.MR
+import tachiyomi.core.common.preference.Preference
 import java.util.Collections
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
@@ -80,6 +83,18 @@ import java.io.File
 
 class SourceSharedStateWiringTest {
 
+    private fun sourcePreferences(
+        enabledLanguages: Set<String> = setOf("all", "en"),
+        disabledSources: Set<String> = emptySet(),
+    ): DesktopAppPreferences = mockk {
+        every { this@mockk.enabledLanguages } returns mockk<Preference<Set<String>>> {
+            every { get() } returns enabledLanguages
+        }
+        every { this@mockk.disabledSources } returns mockk<Preference<Set<String>>> {
+            every { get() } returns disabledSources
+        }
+    }
+
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
     fun `browse tab extensions action renders extension list screen`() = runBlocking {
@@ -89,6 +104,7 @@ class SourceSharedStateWiringTest {
         }
         val dependencies = mockk<DesktopUiDependencies> {
             every { sourceManager } returns FakeDesktopSourceManager(emptyList())
+            every { appPreferences } returns sourcePreferences()
             every { this@mockk.extensionApi } returns extensionApi
             every { this@mockk.extensionManager } returns extensionManager
         }
@@ -123,6 +139,58 @@ class SourceSharedStateWiringTest {
                 .any { it.config.toString().contains("Reload installed") },
         )
         scene.close()
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `browse production list excludes hidden and disabled-language candidates`() = runBlocking {
+        val allowed = FakeSource(81, "en", "Allowed authority source")
+        val hidden = FakeSource(82, "en", "Hidden authority source")
+        val disabledLanguage = FakeSource(83, "fr", "French authority source")
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { sourceManager } returns FakeDesktopSourceManager(listOf(allowed, hidden, disabledLanguage))
+            every { appPreferences } returns sourcePreferences(
+                enabledLanguages = setOf("en"),
+                disabledSources = setOf(hidden.id.toString()),
+            )
+        }
+        val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
+
+        fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+
+        scene.setContent {
+            CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                Navigator(BrowseSourceListScreen()) { CurrentScreen() }
+            }
+        }
+        scene.render()
+        val semantics = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.joinToString { it.config.toString() }
+
+        assertTrue(semantics.contains(allowed.name))
+        assertFalse(semantics.contains(hidden.name))
+        assertFalse(semantics.contains(disabledLanguage.name))
+        scene.close()
+    }
+
+    @Test
+    fun `global production search passes only fixed main enabled candidates to coordinator`() = runBlocking {
+        val allowed = FakeSource(84, "en", "Allowed global source")
+        val hidden = FakeSource(85, "en", "Hidden global source")
+        val disabledLanguage = FakeSource(86, "fr", "French global source")
+        val sourceManager = FakeDesktopSourceManager(listOf(allowed, hidden, disabledLanguage))
+        val preferences = sourcePreferences(
+            enabledLanguages = setOf("en"),
+            disabledSources = setOf(hidden.id.toString()),
+        )
+        val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+        var selectedSources = emptyList<CatalogueSource>()
+
+        GlobalSearchScreen().search(sourceManager, preferences, coordinator, "authority") { _, sources ->
+            selectedSources = sources
+        }
+
+        assertEquals(listOf(allowed), selectedSources)
+        assertEquals(setOf(allowed.id), coordinator.state.queryStates.keys)
     }
 
     @Test
@@ -321,6 +389,7 @@ class SourceSharedStateWiringTest {
             val source = RoutedHttpSource(server.url("/").toString().removeSuffix("/"), OkHttpClient.Builder().cookieJar(cookieJar).build())
             val dependencies = mockk<DesktopUiDependencies> {
                 every { sourceManager } returns MutableSourceManager(listOf(source))
+                every { appPreferences } returns sourcePreferences()
                 every { sourceMangaSearchService } returns SourceMangaSearchService()
                 every { saveSourceMangaForDetails } returns mockk(relaxed = true)
                 every { sourceLoginSessionFactory } returns DesktopSourceLoginSessionFactory(
@@ -401,6 +470,7 @@ class SourceSharedStateWiringTest {
         val dynamicSourceManager = MutableSourceManager(listOf(first))
         val dependencies = mockk<DesktopUiDependencies> {
             every { sourceManager } returns dynamicSourceManager
+            every { appPreferences } returns sourcePreferences()
             every { sourceMangaSearchService } returns SourceMangaSearchService()
             every { saveSourceMangaForDetails } returns mockk(relaxed = true)
             every { sourceLoginSessionFactory } returns DesktopSourceLoginSessionFactory(

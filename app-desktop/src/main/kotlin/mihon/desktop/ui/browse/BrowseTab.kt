@@ -52,6 +52,7 @@ import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import eu.kanade.tachiyomi.source.CatalogueSource
 import mihon.desktop.ui.extension.ExtensionListScreen
+import mihon.desktop.source.getEnabledCatalogueSourceCandidates
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.MR
 
@@ -88,8 +89,12 @@ class BrowseSourceListScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val sourceManager = LocalDesktopUiDependencies.current.sourceManager
-        val allSources = remember { sourceManager.getCatalogueSources() }
+        val dependencies = LocalDesktopUiDependencies.current
+        val sourceManager = dependencies.sourceManager
+        val appPreferences = dependencies.appPreferences
+        val allSources = remember(sourceManager, appPreferences) {
+            sourceManager.getEnabledCatalogueSourceCandidates(appPreferences)
+        }
 
         var selectedLang by remember { mutableStateOf<String?>(null) }
         var pinnedIds by remember { mutableStateOf(emptySet<Long>()) }

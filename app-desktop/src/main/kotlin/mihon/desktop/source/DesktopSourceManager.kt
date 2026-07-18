@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flowOf
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.settings.DesktopAppPreferences
+import tachiyomi.core.common.preference.getAndSet
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.domain.source.service.SourceManager
 
@@ -31,7 +32,6 @@ class DesktopSourceManager(
         get() = flowOf(getCatalogueSources())
 
     override fun get(sourceKey: Long): Source? {
-        if (!isSourceEnabled(sourceKey)) return null
         return builtinSources.find { it.id == sourceKey }
             ?: extensionManager.getSource(sourceKey)
     }
@@ -44,27 +44,48 @@ class DesktopSourceManager(
     override fun getOnlineSources(): List<HttpSource> {
         val builtins = builtinSources.filterIsInstance<HttpSource>()
         val extensions = extensionManager.getInstalledSources().filterIsInstance<HttpSource>()
-        return (builtins + extensions).filter { isSourceEnabled(it.id) }
+        return builtins + extensions
     }
 
     override fun getCatalogueSources(): List<CatalogueSource> {
         return (builtinSources + extensionManager.getInstalledSources().filterIsInstance<CatalogueSource>())
-            .filter { isSourceEnabled(it.id) }
     }
+
+    /** Discovery/search candidates; disabled sources remain available through [get]. */
+    fun getEnabledCatalogueSources(): List<CatalogueSource> = preferences
+        ?.let { getEnabledCatalogueSourceCandidates(it) }
+        ?: getCatalogueSources()
+
+    /** Online discovery/search candidates; disabled sources remain available through [get]. */
+    fun getEnabledOnlineSources(): List<HttpSource> = preferences
+        ?.let { getEnabledOnlineSourceCandidates(it) }
+        ?: getOnlineSources()
 
     override fun getStubSources(): List<StubSource> = emptyList()
 
-    fun isSourceEnabled(sourceId: Long): Boolean = sourceId !in disabledSourceIds()
+    fun isSourceEnabled(sourceId: Long): Boolean = sourceId.toString() !in preferences?.disabledSources?.get().orEmpty()
 
     fun setSourceEnabled(sourceId: Long, enabled: Boolean) {
-        val ids = disabledSourceIds().toMutableSet()
-        if (enabled) ids.remove(sourceId) else ids.add(sourceId)
-        preferences?.disabledSourceIds?.set(ids.sorted().joinToString(","))
+        preferences?.disabledSources?.getAndSet { disabled ->
+            if (enabled) disabled - sourceId.toString() else disabled + sourceId.toString()
+        }
     }
+}
 
-    private fun disabledSourceIds(): Set<Long> = preferences?.disabledSourceIds?.get()
-        .orEmpty()
-        .split(',')
-        .mapNotNull { it.trim().toLongOrNull() }
-        .toSet()
+/** Fixed-main discovery policy; source resolution itself intentionally remains unfiltered. */
+fun SourceManager.getEnabledCatalogueSourceCandidates(preferences: DesktopAppPreferences): List<CatalogueSource> {
+    val enabledLanguages = preferences.enabledLanguages.get()
+    val disabledSources = preferences.disabledSources.get()
+    return getCatalogueSources().filter { source ->
+        source.lang in enabledLanguages && source.id.toString() !in disabledSources
+    }
+}
+
+/** Online-source variant of [getEnabledCatalogueSourceCandidates]. */
+fun SourceManager.getEnabledOnlineSourceCandidates(preferences: DesktopAppPreferences): List<HttpSource> {
+    val enabledLanguages = preferences.enabledLanguages.get()
+    val disabledSources = preferences.disabledSources.get()
+    return getOnlineSources().filter { source ->
+        source.lang in enabledLanguages && source.id.toString() !in disabledSources
+    }
 }

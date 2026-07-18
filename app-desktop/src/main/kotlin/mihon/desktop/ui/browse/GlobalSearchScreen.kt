@@ -59,6 +59,8 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.StateFlow
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.network.DesktopSourceLoginSessionFactory
+import mihon.desktop.settings.DesktopAppPreferences
+import mihon.desktop.source.getEnabledCatalogueSourceCandidates
 import mihon.desktop.ui.library.MangaDetailScreen
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourceMangaSearchService
@@ -126,11 +128,12 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
 
     internal suspend fun search(
         sourceManager: SourceManager,
+        appPreferences: DesktopAppPreferences,
         coordinator: DesktopGlobalSearchCoordinator,
         query: String,
         onStarted: (Long, List<CatalogueSource>) -> Unit,
     ) {
-        val sources = sourceManager.getCatalogueSources()
+        val sources = sourceManager.getEnabledCatalogueSourceCandidates(appPreferences)
         onStarted(coordinator.state.generation + 1, sources)
         coordinator.search(sources, query)
     }
@@ -151,6 +154,7 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val sourceManager = LocalDesktopUiDependencies.current.sourceManager
+        val appPreferences = LocalDesktopUiDependencies.current.appPreferences
         val sourceMangaSearchService = LocalDesktopUiDependencies.current.sourceMangaSearchService
         val saveSourceMangaForDetails = LocalDesktopUiDependencies.current.saveSourceMangaForDetails
         val sourceLoginSessionFactory = LocalDesktopUiDependencies.current.sourceLoginSessionFactory
@@ -180,7 +184,7 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
         fun launchSearch(q: String) {
             if (q.isBlank()) return
             scope.launch(start = CoroutineStart.UNDISPATCHED) {
-                search(sourceManager, queryCoordinator, q) { generation, sources ->
+                search(sourceManager, appPreferences, queryCoordinator, q) { generation, sources ->
                     sourcesByGeneration = mapOf(generation to sources)
                 }
             }

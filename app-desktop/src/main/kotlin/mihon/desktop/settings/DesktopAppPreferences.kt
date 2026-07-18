@@ -5,6 +5,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import java.net.URI
+import java.util.Locale
 import java.util.prefs.Preferences
 
 enum class ThemeMode { LIGHT, DARK, SYSTEM }
@@ -89,6 +90,38 @@ class DesktopAppPreferences(
     /** Comma-separated source IDs disabled by the user. Empty keeps legacy behavior. */
     val disabledSourceIds: Preference<String> by lazy {
         string(key = "disabled_source_ids", default = "")
+    }
+
+    /** Languages whose sources participate in source discovery and global search. */
+    val enabledLanguages: Preference<Set<String>> by lazy {
+        store.getStringSet(
+            key = "source_languages",
+            defaultValue = setOf("all", "en", Locale.getDefault().language),
+        )
+    }
+
+    /** Source IDs excluded from discovery while remaining resolvable for existing manga. */
+    val disabledSources: Preference<Set<String>> by lazy {
+        store.getStringSet(key = "hidden_catalogues", defaultValue = emptySet()).also { current ->
+            if (!current.isSet() && disabledSourceIds.isSet()) {
+                current.set(
+                    disabledSourceIds.get()
+                        .split(',')
+                        .mapNotNull { it.trim().toLongOrNull()?.toString() }
+                        .toSet(),
+                )
+            }
+        }
+    }
+
+    /** Source IDs preferred by source discovery and global search. */
+    val pinnedSources: Preference<Set<String>> by lazy {
+        store.getStringSet(key = "pinned_catalogues", defaultValue = emptySet())
+    }
+
+    /** Whether global search only displays sources with results. */
+    val globalSearchFilterState: Preference<Boolean> by lazy {
+        store.getBoolean(Preference.appStateKey("has_filters_toggle_state"), false)
     }
 
     /** When true, the pager shows a page-flip animation between pages. */

@@ -13,6 +13,8 @@ import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestFactory
 import tachiyomi.core.common.preference.DesktopPreferenceStore
+import tachiyomi.core.common.preference.Preference
+import java.util.Locale
 import java.util.prefs.Preferences
 
 class DesktopPreferenceMigrationTest {
@@ -137,5 +139,41 @@ class DesktopPreferenceMigrationTest {
                 assertEquals("BROKEN", current.get(case.newKey, null), "读取回退不应改写 current")
             },
         )
+    }
+
+    @Test
+    fun `source preferences use fixed main keys types and defaults`() {
+        val preferences = DesktopAppPreferences(DesktopPreferenceStore(root.node("source-defaults")))
+
+        assertEquals(setOf("all", "en", Locale.getDefault().language), preferences.enabledLanguages.get())
+        assertEquals("source_languages", preferences.enabledLanguages.key())
+        assertEquals(emptySet<String>(), preferences.disabledSources.get())
+        assertEquals("hidden_catalogues", preferences.disabledSources.key())
+        assertEquals(emptySet<String>(), preferences.pinnedSources.get())
+        assertEquals("pinned_catalogues", preferences.pinnedSources.key())
+        assertEquals(false, preferences.globalSearchFilterState.get())
+        assertEquals(Preference.appStateKey("has_filters_toggle_state"), preferences.globalSearchFilterState.key())
+    }
+
+    @Test
+    fun `legacy disabled source ids migrate once when fixed main key is absent`() {
+        val store = DesktopPreferenceStore(root.node("source-legacy"))
+        val legacy = store.getString("disabled_source_ids", "")
+        legacy.set("42, 7,broken")
+
+        val preferences = DesktopAppPreferences(store)
+
+        assertEquals(setOf("42", "7"), preferences.disabledSources.get())
+        legacy.set("99")
+        assertEquals(setOf("42", "7"), DesktopAppPreferences(store).disabledSources.get())
+    }
+
+    @Test
+    fun `fixed main disabled source key wins over legacy desktop value including empty`() {
+        val store = DesktopPreferenceStore(root.node("source-current"))
+        store.getString("disabled_source_ids", "").set("42")
+        store.getStringSet("hidden_catalogues", emptySet()).set(emptySet())
+
+        assertEquals(emptySet<String>(), DesktopAppPreferences(store).disabledSources.get())
     }
 }
