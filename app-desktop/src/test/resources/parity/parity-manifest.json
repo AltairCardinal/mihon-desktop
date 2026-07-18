@@ -887,9 +887,9 @@
       "SHARE-DIRECT",
       "SHARE-EXTRACT"
     ],
-    "status": "CHARACTERIZED",
+    "status": "WIRED",
     "authoritativeImplementation": "Fixed original Mihon single-manga migration behavior at main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8.",
-    "desktopImplementation": "Current shared migration plan and current Android/Desktop consumers are migration outputs; Desktop remains characterized until all fixed-main persistence rules are replayed end to end.",
+    "desktopImplementation": "The fixed original Mihon main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8 single-manga persistence rules are replayed end-to-end by the shared migration plan and Desktop consumer: category no-touch when copy is disabled, chapter/viewer flags, invocation-time or source dateAdded, notes, replace/copy membership, atomic commit, and returned-object reread.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
       {
@@ -911,27 +911,16 @@
     "deviations": [
       {
         "classification": "MIGRATION_OUTPUT",
-        "description": "MigrationOrchestrator is current shared code replaying fixed-main rules, not original-Mihon authority."
+        "description": "The shared migration plan in MigrationOrchestrator is current code replaying fixed-main rules, not original-Mihon authority."
       },
       {
         "classification": "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT",
         "description": "Current Android exposes non-cancellation failures as Result for visible batch failure handling."
-      },
-      {
-        "classification": "UNCLASSIFIED_DEBT",
-        "description": "Desktop clears target categories when category copy is disabled instead of preserving membership."
-      },
-      {
-        "classification": "UNCLASSIFIED_DEBT",
-        "description": "Desktop omits target chapter/viewer flag writes calculated by the shared plan."
-      },
-      {
-        "classification": "UNCLASSIFIED_DEBT",
-        "description": "Desktop preserves an old target dateAdded during copy instead of using the fixed-main invocation-time rule."
       }
     ],
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/migration/MigrationOrchestratorTest.kt",
+      "data/src/jvmTest/kotlin/tachiyomi/data/manga/MangaRepositoryMembershipIntegrationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/migration/DesktopMigrationParityTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseIntegrationTest.kt"
     ],

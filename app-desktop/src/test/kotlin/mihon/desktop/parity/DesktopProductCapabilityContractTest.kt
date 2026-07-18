@@ -113,9 +113,7 @@ class DesktopProductCapabilityContractTest {
         mapOf(
             67 to
                 mapOf(
-                    "category copy is disabled" to "UNCLASSIFIED_DEBT",
-                    "chapter/viewer flag writes" to "UNCLASSIFIED_DEBT",
-                    "old target dateAdded" to "UNCLASSIFIED_DEBT",
+                    "shared migration plan" to "MIGRATION_OUTPUT",
                 ),
             68 to
                 mapOf(
@@ -884,6 +882,37 @@ class DesktopProductCapabilityContractTest {
             syntheticSourceExtensionItem(),
             tempDir,
             fixedMainPathInventory(tempDir),
+        )
+    }
+
+    @Test
+    fun `single manga migration records fixed-main Desktop replay without remaining debt`() {
+        val item = manifestItems(repositoryRoot()).single { validatedId(it.jsonObject) == 67 }.jsonObject
+        val desktopImplementation = item.getValue("desktopImplementation").jsonPrimitive.content
+        val deviations = item.getValue("deviations").jsonArray.map { it.jsonObject }
+        val protectionTests = item.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content }.toSet()
+
+        assertEquals("WIRED", item.getValue("status").jsonPrimitive.content)
+        assertTrue(desktopImplementation.contains(fixedOriginalMihonRef))
+        assertTrue(desktopImplementation.contains("shared migration plan"))
+        assertTrue(desktopImplementation.contains("Desktop consumer"))
+        assertTrue(desktopImplementation.contains("end-to-end"))
+        assertFalse(
+            deviations.any { it.getValue("classification").jsonPrimitive.content == "UNCLASSIFIED_DEBT" },
+        )
+        assertTrue(
+            deviations.any {
+                it.getValue("classification").jsonPrimitive.content == "MIGRATION_OUTPUT" &&
+                    it.getValue("description").jsonPrimitive.content.contains("not original-Mihon authority")
+            },
+        )
+        assertTrue(
+            "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseIntegrationTest.kt" in
+                protectionTests,
+        )
+        assertTrue(
+            "data/src/jvmTest/kotlin/tachiyomi/data/manga/MangaRepositoryMembershipIntegrationTest.kt" in
+                protectionTests,
         )
     }
 
