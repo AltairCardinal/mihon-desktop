@@ -166,7 +166,8 @@ class ExtensionManagerTest {
         try {
             every { ExtensionLoader.uninstallPrivateExtension(any(), PACKAGE) } throws
                 IllegalStateException("cleanup failed")
-            assertTrue(runCatching { receiver.onPackageUninstalled(PACKAGE) }.exceptionOrNull() is IllegalStateException)
+            val failure = runCatching { receiver.onPackageUninstalled(PACKAGE) }.exceptionOrNull()
+            assertTrue(failure is IllegalStateException)
             assertTrue(withTimeoutOrNull(100) { disappearance.await() } == null)
             disappearance.cancel()
         } finally {
