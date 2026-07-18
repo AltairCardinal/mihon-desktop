@@ -52,9 +52,10 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.launch
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.extension.ExtensionOrigin
+import mihon.desktop.source.DesktopSourceManager
 import mihon.desktop.ui.browse.SourceBrowseScreen
 import mihon.desktop.ui.settings.DesktopDirectoryOpener
-import mihon.desktop.source.DesktopSourceManager
+import tachiyomi.core.common.preference.getAndSet
 import java.awt.Desktop
 import java.net.URI
 
@@ -195,9 +196,9 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                                 Switch(
                                     checked = incognito,
                                     onCheckedChange = {
-                                        appPreferences.incognitoExtensions.set(
-                                            if (it) incognitoExtensions + extension.pkgName else incognitoExtensions - extension.pkgName,
-                                        )
+                                        appPreferences.incognitoExtensions.getAndSet { current ->
+                                            if (it) current + extension.pkgName else current - extension.pkgName
+                                        }
                                     },
                                     modifier = Modifier.semantics {
                                         contentDescription = "Incognito mode for ${extension.pkgName}"

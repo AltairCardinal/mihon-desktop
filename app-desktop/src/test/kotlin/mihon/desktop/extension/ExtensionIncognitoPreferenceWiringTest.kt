@@ -21,6 +21,7 @@ import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.DesktopSourceManager
 import mihon.desktop.ui.extension.ExtensionDetailsScreen
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -37,7 +38,7 @@ class ExtensionIncognitoPreferenceWiringTest {
 
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
-    fun `extension details toggles only the current extension incognito preference`() = runBlocking {
+    fun `extension details toggles current extension from latest incognito preferences`() = runBlocking {
         val jar = tempDir.resolve("extension.hidden.jar").also { it.createNewFile() }
         val manager = DesktopExtensionManager(
             object : DesktopExtensionLoader(tempDir) {
@@ -46,7 +47,9 @@ class ExtensionIncognitoPreferenceWiringTest {
         ).also { it.loadAll() }
         val preferences = DesktopAppPreferences(
             DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")),
-        )
+        ).apply {
+            incognitoExtensions.set(setOf("extension.hidden", "extension.other"))
+        }
         val api = mockk<DesktopExtensionApi> {
             coEvery { loadExtensionIcon(any()) } returns null
         }
@@ -71,12 +74,16 @@ class ExtensionIncognitoPreferenceWiringTest {
                 it.config.toString().contains("Incognito mode for extension.hidden")
         }
         assertFalse(preferences.incognitoMode.get())
-        assertTrue(preferences.incognitoExtensions.get().isEmpty())
+        assertEquals(setOf("extension.hidden", "extension.other"), preferences.incognitoExtensions.get())
+
+        preferences.incognitoExtensions.set(
+            preferences.incognitoExtensions.get() + "extension.concurrent",
+        )
         assertTrue(requireNotNull(toggle.config[SemanticsActions.OnClick].action).invoke())
         scene.render()
 
         assertFalse(preferences.incognitoMode.get())
-        assertTrue("extension.hidden" in preferences.incognitoExtensions.get())
+        assertEquals(setOf("extension.other", "extension.concurrent"), preferences.incognitoExtensions.get())
         scene.close()
         manager.close()
     }
