@@ -790,7 +790,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 **Risk axis:** desktop-extension-presentation-wiring
 **Platform boundary:** shared+desktop
-**Estimated scope:** 13 files, 1280 lines
+**Estimated scope:** 13 files, 1300 lines
 **Verification:** Task 6C1 独立闭合 metadata 连续性、Manager authoritative state、typed catalog/trust/install port 与取消 rollback；Task 6C2a 闭合 projection/update/obsolete/raw-step adapter；Task 6C2b1 闭合只消费该 port 和 Task 6B shared store 的 ScreenModel/jobs/trust lifecycle；Task 6C2b2 再闭合 DI singleton/reinit ownership。四个子 Task 分别验收，任一方通过不能替代另一方。
 **Execution split:** 预审确认已安装 sidecar 缺少 fixed-main 分类所需的 name/language/isNsfw，且 Manager 没有 authoritative installed StateFlow；6C2a 已独立固定 projection/update/raw mapping。6C2b 预审又确认 ScreenModel reducer/jobs/trust 与 DI owner 是两组可独立失效风险，原 320 行估算无法保留高杀伤 mutation，因此按 6C1→6C2a→6C2b1→6C2b2 顺序施工。
 **Split waiver:** 聚合文件数/行数不会作为一个 Task 调度；6C1、6C2a、6C2b1、6C2b2 分别不超过 8 files/400 lines。6C2b1 先产出稳定的 `closeAndJoin()` lifecycle contract，6C2b2 才注册并验证 DI ownership。
@@ -836,7 +836,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 - Risk axis: `desktop-extension-presentation-consumer`
 - Platform boundary: `shared+desktop`
-- Estimated scope: `7 files, 920 lines`
+- Estimated scope: `7 files, 940 lines`
 - Verification: 6C2a 的 Desktop adapter 独立消费 shared classifier/update policy 并保留 raw state；6C2b1 的 ScreenModel 消费该稳定 adapter 与 shared reducer并拥有 jobs/trust；6C2b2 注册同一长生命周期实例并证明 test DI reinit/close 后旧 jobs 停止。
 - Split waiver: 6C2a、6C2b1、6C2b2 分别独立验收且均不超过 400 lines；projection/update/raw mapping、ScreenModel jobs/trust 与 DI ownership 是三条可独立断线测试的风险轴，不能由同一实现者批次压缩。
 
@@ -878,7 +878,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 - Risk axis: `desktop-extension-screenmodel-lifecycle`
 - Platform boundary: `shared+desktop`
-- Estimated scope: `3 files, 460 lines`
+- Estimated scope: `3 files, 480 lines`
 - Verification: authoritative installed flow 触发重新 projection；partial failure identity、shared reducer 连续回灌、fixed-main intents、post-Installed cutoff、逐包 job、Error/raw identity、pending trust 与 child-scope close-and-join 均由真实 port/flow 行为覆盖。
 - Split waiver: 本聚合项不作为一个 Task 调度；6C2b1a 与 6C2b1b 分别低于 400 lines，先稳定 state/intents contract，再追加 jobs/trust/close lifecycle。
 
@@ -896,8 +896,10 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 - Risk axis: `desktop-extension-screenmodel-core`
 - Platform boundary: `shared+desktop`
-- Estimated scope: `3 files, 240 lines`
+- Estimated scope: `3 files, 260 lines`
 - Verification: authoritative installed flow 使用最近 typed catalog 重新 projection/classify；refresh partial failure identity 与 finally、shared reducer 连续返回回灌、update-all candidate 选择及 typed uninstall intent 均由行为测试覆盖。
+
+**6C2b1a scope adjustment:** 首轮审查发现全量 mock port 不能证明 production shared reducer/classifier 与 manager uninstall wiring，且手工 update item 不是 C2a 可产出的真实状态。唯一修复轮改为只 mock API/Manager 平台边界并使用真实 port、authoritative installed flow 与 typed catalog；增加最多 20 changed lines，同时补首次 refresh 前 options 公开反馈。
 
 - [ ] **Step 1: 写 state/reducer/intents RED**
 
