@@ -1748,6 +1748,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `7 files, 150 lines`
 - Verification: fixed main 对两类型的调用属于Android包发现、签名、权限、WebView、图标与安装安全；Desktop只有 `AndroidCompat.packageManager` 持有无方法调用的占位实例，有效扩展源码/DEX/反射均无消费者。删除两个shim与该占位属性，清理Phase6/Phase7自证、inventory并把surface从38/47更新为36/45；运行全部immutable loader/converter、DI/AndroidCompat相关测试与clean compile。任何production调用失败即恢复并重规划真实平台adapter。
 
+  Evidence: commit `e1660f40fd`，7 files/94 touched（3 additions/91 deletions）。删除两个空包管理shim、AndroidCompat占位、Phase6/7对应自证/import与两项inventory；ApplicationInfo、Context/preferences/files/DI、TCBScans evidence零改，surface 36 files/45 symbols。clean compile成功（3m15s），Phase6/7、AndroidCompat、Desktop DI、contract、baseline与6个真实fixture共 `47/47`。独立复核fixed-main引用均为Android系统安装包/签名/权限/Activity/WebView平台链；7个真实raw JAR对PackageManager/PackageInfo/getPackageInfo均零命中，TCBScans只消费保留的ContextWrapper.getApplicationInfo→ApplicationInfo.dataDir。独立scanner/inventory 36/45且集合差/重复0，review APPROVED、Java0。
+
 ##### Task 7C3k: Environment/TextUtils/Pair 无消费者 prune
 
 - Risk axis: `utility-token-prune`
