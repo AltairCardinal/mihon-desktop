@@ -1297,9 +1297,9 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `extension-details-feedback-i18n`
 - Platform boundary: `desktop`
-- Estimated scope: `4 files, 220 lines`
+- Estimated scope: `5 files, 220 lines`
 - Verification: 以 Locale.US/zh-CN 挂载真实 Details，真实点击 folder failure、cookie clear、uninstall，读取 Snackbar/Dialog/ContentDescription；expected 只来自 MR accessor 与动态参数。
-- Files: `ExtensionDetailsScreen.kt`、base/zh-rCN `strings.xml`、`DesktopExtensionDetailsActionCopyTest.kt`。
+- Files: `ExtensionDetailsScreen.kt`、base/zh-rCN `strings.xml`、`DesktopExtensionDetailsActionCopyTest.kt`、`ExtensionDetailsPreferencesWiringTest.kt`（现有 action/feedback selector 与断言必须使用同一 MR accessor，不得硬编码英文或强制 Locale.US）。
 - Authority: 复用 fixed main 的 clear-cookies、uninstall、cancel/open-repo 等同义 MR key；Desktop folder open/failure、cookie count、metadata removal 与带动态 source/pkg 的 accessibility 新增 Desktop formatted key。原始 error cause/message、数量和名称只作参数。
 
 - [ ] RED：zh-CN folder/cookie/uninstall 真实反馈仍渲染硬编码英文时失败。
