@@ -1948,6 +1948,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `3 files, 180 lines`
 - Verification: 真实 ComicFury TextInterceptor 要求 `Html.fromHtml(String):Spanned` 与 `Html.fromHtml(String,int):Spanned`，当前 Desktop 错误返回 CharSequence 且缺 Spanned。先写 descriptor/代表性实体、标签、换行 RED，再新增最小 Spanned 类型并按 fixed Android 调用语义修正 Html；该 Task 只完成可独立验证的 ABI/文本语义，不升级 ledger。文件限定 Spanned.kt、Html.kt、focused Html test。
 
+  Evidence: commit `52e706f8e`，严格 3 files / 107 touched lines。fixed main 使用 Android framework Html/Spanned；Android API 与 tracked ComicFury DEX 分别确认一/两参数方法均返回 Spanned，Desktop SDK_INT=28 实际走 flags=0 两参数分支。RED 中原 7 项通过、新 4 项分别因一参数 NoSuchMethod、两参数错误返回 CharSequence、缺 copy/数字实体与 legacy block newline 不符而失败；GREEN 后 Phase2 11/11。新增最小 Spanned marker，flags=0 覆盖代表性实体、inline tag、p/div 双换行、br 单换行与 trailing newline；未扩张四参数、toHtml、COMPACT、样式/CSS、渲染、Color 或 ledger。独立 authority audit/review APPROVED，diff-check clean、Java0；根 Spotless 复用已知范围外 blocker。
+
 ##### Task 7C3q2: ComicFury author-note 文本转 PNG 真实链
 
 - Risk axis: `comicfury-text-image-pipeline`
