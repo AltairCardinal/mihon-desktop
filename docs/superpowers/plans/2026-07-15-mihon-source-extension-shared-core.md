@@ -1497,7 +1497,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `compat-real-fixture-evidence`
 - Platform boundary: `verification`
-- Estimated scope: `7 files, 650 lines plus one 70,062-byte binary fixture`
+- Estimated scope: `8 files, 650 lines plus one 70,062-byte binary fixture`
 - Verification: 真实 APK/JAR 必须通过 production converter/loader 并实际调用所声明 symbol；parent classpath fixture、仅加载 class 或网络调查输出不算 `required` 证据。每条真实证据负责将对应 inventory 项从 `unverified` 解析为 `required` 或具备真实失败证据的 `unsupported`。
 - Split waiver: 二进制 fixture/provenance/loader outcome 与 exact shim invocation 需要不同的 RED 和审查，按 7B1/7B2 调度；任何单次实现仍不超过 5 files/350 lines。
 
@@ -1505,8 +1505,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `compat-real-fixture-provenance`
 - Platform boundary: `verification`
-- Estimated scope: `3 files, 300 lines plus one 70,062-byte APK`
-- Verification: 本地 fixture 固定为 Keiyoushi ManHuaGui 1.4.28、repo commit `7d5052fb895d086ae2ec6e3cca861146ee3ea0ec`、blob `4529f7017f762a70d52bc15ff70e6260fae17d98`、SHA-256 `200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8`，来源 Apache-2.0。测试必须离线校验 hash/manifest/package/version，经 production `ApkToJarConverter` 与 `DesktopExtensionLoader`，并证明 loaded class 来自 converted JAR；若失败，只接受精确、结构化的首个真实 compat gap，不把 classpath/self-test 当成功。
+- Estimated scope: `4 files, 300 lines plus one 70,062-byte APK`
+- Verification: 本地 fixture 固定为 Keiyoushi ManHuaGui 1.4.28、repo commit `7d5052fb895d086ae2ec6e3cca861146ee3ea0ec`、blob `4529f7017f762a70d52bc15ff70e6260fae17d98`、SHA-256 `200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8`，来源 Apache-2.0。根 `.gitattributes` 必须在全局 text 规则后声明 `*.apk binary`，普通 stage/fresh checkout 不得改变 blob/大小。测试必须离线校验 hash/manifest/package/version，经 production `ApkToJarConverter` 与 `DesktopExtensionLoader`，并证明 loaded class 来自 converted JAR；若失败，只接受精确、结构化的首个真实 compat gap，不把 classpath/self-test 当成功。
 
 ##### Task 7B2: Exact compat invocation 与 evidence resolution
 
