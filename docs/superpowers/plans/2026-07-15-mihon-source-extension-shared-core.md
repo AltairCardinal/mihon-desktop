@@ -1616,19 +1616,21 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Evidence: commit `24f15ea45`，2 files/22 touched。production runtime simple-name 契约先在 `DesktopChallengeRecoveryPolicyTest.kt:62` 精确 RED；GREEN 将实际 class 恢复为 `CloudflareInterceptor`，repo 源码调用通过 typealias 保留，`javap DesktopNetworkHelper -c` 证明 production helper 字节码实际 `new CloudflareInterceptor`，不是测试或 alias 假象。挑战恢复策略 `57/57/0`，真实 Mangalix 越过原 Cloudflare 错误并推进到独立的 default-client compression 兼容性检查；后者不属于本 Task，也未被修改。独立审查确认 challenge/cookie provenance/recovery 无语义变化；旧 binary class 不再生成，但全 tree 无 FQCN/反射/配置/持久化消费者，类型位于不发布的 application 模块而非 source-api，故无受支持 ABI 回退。Java0、diff check通过；root Spotless 仍仅被提交外既有 `GlobalSearchSourcePolicyTest.kt` 阻塞。
 
-##### Task 7C3b0: Mangalix gzip page-list 与 JsonReader ABI
+##### Task 7C3b0: Mangalix fixture authority quarantine
 
-- Risk axis: `mangalix-json-reader-chain`
-- Platform boundary: `desktop`
-- Estimated scope: `8 files, 360 lines plus one 84,906-byte APK`
-- Verification: 固定 Keiyoushi Mangalix 1.6.1 本地 APK/provenance：artifact repo commit `7d5052fb895d086ae2ec6e3cca861146ee3ea0ec`、blob `5710c63733395c1fe84959602e24decea9d7229e`、SHA-256 `9a1034762e236f78fb4435c290b093d7bf2ca8b869f4030f0e4d7c73e2fb9566`、84,906 bytes、Apache-2.0，package `eu.kanade.tachiyomi.extension.en.mangalix`，extension class `eu.kanade.tachiyomi.extension.en.mangalix.ExtensionGenerated`。测试必须显式初始化 production Desktop DI、保存并在最外层 finally 恢复 global Injekt，使用 `@Isolated`，经 production converter/loader 取得真实 source；MockWebServer 只重写 `mangalix.com/chapters.json.gz`，由扩展自身网络 interceptor、GZIPInputStream、InputStreamReader、`android.util.JsonReader` 与 page mapping 完成真实调用。RED 必须依次固定 `JsonReader` 不可赋给 `Closeable`、缺 top-level `android.util.JsonToken` 或 `peek()` descriptor 不符、缺 `android.os.SystemClock.elapsedRealtime()J` 中实际首先出现的 gap，不得跳过真实链路。GREEN 让 JsonReader 实现 `Closeable`、把 JsonToken 恢复为 top-level exact enum 并让 `peek()` 返回 exact descriptor、提供以 `System.nanoTime()/1_000_000` 实现的单调 elapsedRealtime；输入覆盖未知嵌套字段和 `$TEMP`/`$HOT`/绝对 URL，结果必须是三个 exact Page URL。本 Task 只把新增/修改 public symbols登记为 unverified，并同步 compat contract 真实计数；不得提前写 required evidence，也不得把 null Uri 实参算 Uri 行为证据。
-
-##### Task 7C3b1: Mangalix JsonReader 行为证据解析
-
-- Risk axis: `mangalix-json-evidence`
+- Risk axis: `mangalix-fixture-authority`
 - Platform boundary: `verification`
-- Estimated scope: `2 files, 120 lines`
-- Verification: 只消费 7C3b0 已通过审查的 immutable APK、production invocation 与真实 page-list 断言，将 `android.util.JsonReader`、top-level `android.util.JsonToken`、`android.os.SystemClock` 三个实际执行的 public symbols 从 unverified 解析为 required，并在 `compat-evidence.json` 中逐项绑定同一 APK@SHA 与真实测试。不得修改 production 行为、不得顺带升级 Uri、WebKit 或其他仅完成 class verification 的符号；contract 必须继续要求每个 resolved symbol 恰有一条可追溯 evidence。
+- Estimated scope: `4 files, 120 lines plus removal of one untracked 84,906-byte APK`
+- Verification: Mangalix 1.6.1 及其全部源码版本从首次提交起即继承 ext-lib 1.6 `KeiSource`，在进入 JsonReader parser 前强制默认 client 存在 exact `CloudflareInterceptor` 且不存在 `IgnoreGzipInterceptor`/`BrotliInterceptor`；fixed `main@6fbf6dfc` 的 `NetworkHelper` 明确保留后两者，因此该 APK 不可能作为 fixed-main production wiring 证据。移除本轮尚未提交的 APK、provenance 与 page-list test，不修改 Desktop client、JsonReader shim 或 inventory；`android.util.JsonReader` 继续保持 unverified，不创建 JsonToken/SystemClock 伪证据。扫描现有 Comix 1.4.34、MangaDex 1.4.211、ManhuaRM 1.4.76、ManHuaGui 1.4.28、FavComic 1.4.1、TCBScans 1.4.12 的 APK/转换 JAR 后，若仍无可执行 JsonReader 引用，则未来只有获得 fixed-main-compatible、可追溯且能经 production loader 执行确定输入的真实 artifact 才能另开实现 Task。
+
+  Evidence: Mangalix 源码历史只有首次加入与一次更新，全部使用 ext-lib 1.6 client-shape gate；artifact 仓库没有更早 1.6.0 APK。固定 main 的 `NetworkHelper` 与该 gate 在两个 network interceptors 上直接冲突。对现有六个可追溯 1.4 APK/转换 JAR逐项执行 `jdeps -verbose:class` 与定点 `javap -c -p`，JsonReader/JsonToken 可执行引用为 0；只有其中四个实际引用 SystemClock。未提交的 84,906-byte APK、provenance 与 page-list test 已从工作树移除，status 无 Mangalix 产物；production、inventory 与 compat evidence 零修改，`android.util.JsonReader` 保持 unverified。历史 blobless pickaxe 首次超时后即停止，没有以扩大网络搜索替代证据。
+
+##### Task 7C3b1: ManHuaGui 真实 SystemClock rate-limit ABI
+
+- Risk axis: `real-system-clock-rate-limit`
+- Platform boundary: `desktop`
+- Estimated scope: `5 files, 300 lines`
+- Verification: 复用已固定的 Keiyoushi ManHuaGui 1.4.28 APK/provenance 与 production DI/converter/loader，取得真实 HttpSource 后直接通过该 source 的实际 client 向 MockWebServer 发起请求；network rewrite 只改写目标 host，保留扩展自身 rate-limit interceptor。RED 必须精确失败于 `android.os.SystemClock.elapsedRealtime()J`，GREEN 只新增 exact static ABI，以 `System.nanoTime()/1_000_000` 提供单调毫秒值，并证明真实 source client 请求到达 MockWebServer。成功后只将 `android.os.SystemClock` 加入 inventory 并以同一 immutable APK/test解析为 required；不得把该证据扩张到 JsonReader、JsonToken、Uri、WebKit 或未执行的 parser。contract 同步真实 public surface 计数；测试必须 `@Isolated`、保存并在最外层 finally 恢复 Injekt、关闭 classloader/DI/HTTP 资源。
 
 ##### Task 7C4: Source/extension authority baseline 与恢复入口纠偏
 
