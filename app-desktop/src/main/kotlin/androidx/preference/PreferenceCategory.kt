@@ -13,9 +13,7 @@ open class PreferenceCategory(context: Context) : Preference(context) {
 
     val preferences: List<Preference> get() = _prefs.toList()
 
-    fun addPreference(preference: Preference) {
-        _prefs.add(preference)
-    }
+    fun addPreference(preference: Preference): Boolean = _prefs.add(preference)
 
     val preferenceCount: Int get() = _prefs.size
 

@@ -116,7 +116,14 @@ actual class PreferenceScreen {
                 val values = (cls.method("getEntryValues")?.invoke(pref) as? Array<*>)
                     ?.map { it.toString() } ?: emptyList()
                 val value = cls.method("getValue")?.invoke(pref) as? String
-                ListPreference(key = key, title = title, entries = entries, entryValues = values, defaultValue = value)
+                val defaultValue = value ?: cls.field("defaultValue")?.get(pref)?.toString()
+                ListPreference(
+                    key = key,
+                    title = title,
+                    entries = entries,
+                    entryValues = values,
+                    defaultValue = defaultValue,
+                )
             }
             "MultiSelectListPreference" -> {
                 val entries = (cls.method("getEntries")?.invoke(pref) as? Array<*>)
@@ -148,6 +155,12 @@ actual class PreferenceScreen {
     private fun Class<*>.method(name: String) = try {
         getMethod(name)
     } catch (_: NoSuchMethodException) {
+        null
+    }
+
+    private fun Class<*>.field(name: String) = try {
+        getField(name)
+    } catch (_: NoSuchFieldException) {
         null
     }
 }

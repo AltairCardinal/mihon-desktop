@@ -80,7 +80,7 @@ internal fun resolveSourcePreferencesState(
             // Missing optional Android compatibility classes must not block JVM descriptors.
         }
         try {
-            source.setupPreferenceScreen(screen)
+            DesktopAndroidPreferenceAdapter.setupPreferenceScreen(source, screen)
             screen.preferences.takeIf { it.isNotEmpty() }
                 ?.let(SourcePreferencesState::Content)
                 ?: SourcePreferencesState.Empty

@@ -7,6 +7,76 @@
     "removalCondition": "Remove only when real APK extensions no longer request the exact Application binding."
   },
   {
+    "symbol": "android.content.Context",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-manhuagui-1.4.28.apk@sha256:200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when real APK settings no longer construct AndroidX preferences with compat Context."
+  },
+  {
+    "symbol": "android.content.ContextWrapper",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-manhuagui-1.4.28.apk@sha256:200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when real source settings no longer use ContextWrapper-backed storage."
+  },
+  {
+    "symbol": "android.content.SharedPreferences",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-manhuagui-1.4.28.apk@sha256:200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when real APK settings no longer persist values through Android SharedPreferences."
+  },
+  {
+    "symbol": "androidx.preference.CheckBoxPreference",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-manhuagui-1.4.28.apk@sha256:200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when real APK settings no longer create CheckBoxPreference items."
+  },
+  {
+    "symbol": "androidx.preference.DialogPreference",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-manhuagui-1.4.28.apk@sha256:200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when real APK settings no longer create ListPreference through DialogPreference."
+  },
+  {
+    "symbol": "androidx.preference.ListPreference",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-manhuagui-1.4.28.apk@sha256:200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when real APK settings no longer create ListPreference items."
+  },
+  {
+    "symbol": "androidx.preference.Preference",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-manhuagui-1.4.28.apk@sha256:200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when real APK settings no longer execute the AndroidX Preference base ABI."
+  },
+  {
+    "symbol": "androidx.preference.PreferenceCategory",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-manhuagui-1.4.28.apk@sha256:200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when real APK settings no longer add preferences through PreferenceCategory."
+  },
+  {
+    "symbol": "androidx.preference.PreferenceScreen",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-manhuagui-1.4.28.apk@sha256:200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when real APK sources no longer expose settings through AndroidX PreferenceScreen."
+  },
+  {
+    "symbol": "androidx.preference.TwoStatePreference",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-manhuagui-1.4.28.apk@sha256:200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when real APK settings no longer create CheckBoxPreference through TwoStatePreference."
+  },
+  {
     "symbol": "eu.kanade.tachiyomi.source.Source",
     "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-manhuagui-1.4.28.apk@sha256:200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8",
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt",

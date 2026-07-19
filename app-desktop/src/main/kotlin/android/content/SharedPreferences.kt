@@ -31,11 +31,11 @@ interface SharedPreferences {
 
 /**
  * JVM implementation of [SharedPreferences] backed by [java.util.prefs.Preferences].
- * Each named preferences file maps to a Preferences node under "mihon/extensions/<name>".
+ * Each named preferences file maps to the same "mihon/<name>" node used by the Desktop source store.
  */
 internal class DesktopSharedPreferences(name: String) : SharedPreferences {
 
-    private val node = java.util.prefs.Preferences.userRoot().node("mihon/extensions/$name")
+    private val node = java.util.prefs.Preferences.userRoot().node("mihon/$name")
 
     override fun getString(key: String, defValue: String?): String? =
         if (node.keys().contains(key)) node.get(key, defValue) else defValue

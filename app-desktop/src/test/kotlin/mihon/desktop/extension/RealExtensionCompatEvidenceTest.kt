@@ -1,20 +1,28 @@
 package mihon.desktop.extension
 
+import android.app.Application
+import eu.kanade.tachiyomi.source.preference.CheckBoxPreference
+import eu.kanade.tachiyomi.source.preference.ListPreference
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import mihon.desktop.di.initDesktopDIForTest
+import mihon.desktop.ui.extension.SourcePreferencesState
+import mihon.desktop.ui.extension.resolveSourcePreferencesState
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.core.common.preference.DesktopPreferenceStore
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
+import java.util.prefs.Preferences
 
 class RealExtensionCompatEvidenceTest {
 
@@ -75,6 +83,33 @@ class RealExtensionCompatEvidenceTest {
                 assertTrue(source.id != 0L)
                 assertTrue(source.name.isNotBlank())
                 assertEquals("zh", source.lang)
+
+                val state = resolveSourcePreferencesState(source)
+                assertTrue(state is SourcePreferencesState.Content) {
+                    val failure = (state as? SourcePreferencesState.SetupFailure)?.error
+                    "Expected real preference content, got ${failure?.javaClass?.name}: ${failure?.message}"
+                }
+                val items = (state as SourcePreferencesState.Content).items
+                assertEquals(PREFERENCE_KEYS, items.map { it.key }.toSet())
+                assertEquals(4, items.size)
+                val preferences = items.associateBy { it.key }
+                assertEquals("0", (preferences.getValue("preferred_mirror") as ListPreference).defaultValue)
+                assertEquals("10", (preferences.getValue(RATE_LIMIT_KEY) as ListPreference).defaultValue)
+                assertEquals("4", (preferences.getValue("imgCDNRatelimitPreference") as ListPreference).defaultValue)
+                assertEquals(false, (preferences.getValue("showR18Default") as CheckBoxPreference).defaultValue)
+
+                val sourceNode = Preferences.userRoot().node("/mihon/source_${source.id}")
+                val applicationPreferences = Injekt.get<Application>()
+                    .getSharedPreferences("source_${source.id}", 0)
+                sourceNode.remove(RATE_LIMIT_KEY)
+                applicationPreferences.edit().remove(RATE_LIMIT_KEY).commit()
+                try {
+                    DesktopPreferenceStore(sourceNode).getString(RATE_LIMIT_KEY, "10").set("12")
+                    assertEquals("12", applicationPreferences.getString(RATE_LIMIT_KEY, null))
+                } finally {
+                    sourceNode.remove(RATE_LIMIT_KEY)
+                    applicationPreferences.edit().remove(RATE_LIMIT_KEY).commit()
+                }
             } finally {
                 loaded.map { it.classLoader }.distinct().filterIsInstance<AutoCloseable>().forEach { it.close() }
             }
@@ -128,6 +163,13 @@ class RealExtensionCompatEvidenceTest {
         const val VERSION_CODE = 28L
         const val VERSION_NAME = "1.4.28"
         const val EXTENSION_CLASS = "eu.kanade.tachiyomi.extension.zh.manhuagui.ExtensionGenerated"
+        const val RATE_LIMIT_KEY = "mainSiteRatelimitPreference"
+        val PREFERENCE_KEYS = setOf(
+            "preferred_mirror",
+            RATE_LIMIT_KEY,
+            "imgCDNRatelimitPreference",
+            "showR18Default",
+        )
         const val RAW_URL =
             "https://raw.githubusercontent.com/keiyoushi/extensions/$REPOSITORY_COMMIT/" +
                 "apk/tachiyomi-zh.manhuagui-v1.4.28.apk"
