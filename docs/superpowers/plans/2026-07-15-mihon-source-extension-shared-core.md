@@ -1414,10 +1414,12 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Files: 新增 `SourceBrowseTestModeObservation.kt`、修改 `SourceBrowseScreen.kt`，新增 `SourceLoginTestModeWiringTest.kt`。
 - Boundary: attempt token 仅存在于 automation port，不写回 UI/业务状态，不使用 `identityHashCode/toString`；只在当前 `SourceBrowseScreen` 的 `DisposableEffect` 注册并 compare-and-set 注销，不在 GlobalSearch 共用的 dialog host 注册，不写 shared/global TestState。authority 是 shared `SourceQueryState/SourceRecoveryAction` 与 Desktop 平台 `DesktopSourceLoginController/UiActions`；当前 `app/` consumer 与 Desktop Android shim 不是权威。
 
-- [ ] RED：真实 SourceBrowse 403/OpenLogin 产生的 attempt 不可观察/不可经 port 取消。
-- [ ] GREEN：composition 生命周期注册真实 UI port，取消后 ticket/UI/snapshot 同时终止，旧 token 不得取消新 attempt，旧 screen 注销不得清新 port。
-- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.browse.SourceLoginTestModeWiringTest"`
-- [ ] Commit: `test(desktop): observe source login lifecycle`
+- [x] RED：真实 SourceBrowse 403/OpenLogin 产生的 attempt 不可观察/不可经 port 取消。
+- [x] GREEN：composition 生命周期注册真实 UI port，取消后 ticket/UI/snapshot 同时终止，旧 token 不得取消新 attempt，旧 screen 注销不得清新 port。
+- [x] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.browse.SourceLoginTestModeWiringTest"`
+- [x] Commit: `test(desktop): observe source login lifecycle`
+
+  Evidence: commits `83eb3c81b` + `d9bf01cba`；RED 先证明 production observation 缺失，再用确定性 `CountDownLatch` 复现 close 后 snapshot 仍泄露 login/重生 token。GREEN 将最终 closed 检查、DTO/token 发布和 cancel 资格线性化，真实 Compose 403/OpenLogin、取消、旧 token、CAS 注销与 finally 清理同测通过。focused XML `1/0/0`，唯一修复复审的功能、竞态、清理、authority 与 `3 files, 399 lines` 均通过；复审只留下格式门禁，转入 6E4AF。
 
 #### Task 6E4AF: Source login observation 格式门禁收口
 
@@ -1428,9 +1430,11 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Files: `SourceBrowseTestModeObservation.kt`、`SourceLoginTestModeWiringTest.kt`。
 - Boundary: 本项是 6E4A 唯一复审发现的非行为阻塞；约 90 行 `try` 正文需整体补一级缩进，且复审要求拆分残余的 9 个超长行，因此接受不超过 260 行的纯空白 churn；不得借机修改生产语义或扩大 6E4B HTTP/client 范围。
 
-- [ ] GREEN：两文件满足仓库 Spotless/ktlint，且 6E4A focused test 保持通过。
-- [ ] Verify: `./gradlew :app-desktop:spotlessKotlinCheck :app-desktop:jvmTest --tests "mihon.desktop.ui.browse.SourceLoginTestModeWiringTest"`
-- [ ] Commit: `style(desktop): format source login observation`
+- [x] GREEN：两文件满足仓库 Spotless/ktlint，且 6E4A focused test 保持通过。
+- [x] Verify: `./gradlew :app-desktop:spotlessKotlinCheck :app-desktop:jvmTest --tests "mihon.desktop.ui.browse.SourceLoginTestModeWiringTest"`
+- [x] Commit: `style(desktop): format source login observation`
+
+  Evidence: commits `faeb8c126` + `4ba884bb`；两个目标文件去除全部空白后与基线逐字等价，所有行均不超过 120 列，`try/finally` 缩进与 `git diff --check` 通过，累计 `2 files, 259 changed lines`。focused XML `1/0/0`，唯一复审 APPROVED。模块级 Spotless task 不存在；根 `spotlessCheck` 未报告本项文件，仅被任务外既有 `ExtensionPresentationContract.kt` 与 `GlobalSearchSourcePolicyTest.kt` 阻断。
 
 #### Task 6E4B: Source/Login HTTP 与 client contract
 
