@@ -1535,6 +1535,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `4 files, 250 lines`
 - Verification: 只在 7B2 真实 fixture 成功后，将 `android.app.Application` inventory 与 fixed-main `Source` ABI evidence 解析为本地 fixture 的 `required`；同步移除 `DesktopExtensionProductBaselineTest` 对单一 ManHuaGui 条目和测试源码字符串的假验证，改由真实 fixture 行为测试与 `CompatEvidenceContractTest` 保护。其他 42 个 inventory 项保持 `unverified`，不得借成功加载一个扩展批量升级。
 
+  Evidence: commit `a1b65a746`；inventory 仅 `android.app.Application=required`，其余 42 项保持 `unverified`；compat evidence 恰有 Application 与 fixed-main Source 两条 unique required，均指向同一 immutable local APK@SHA 与 Real test，removalCondition 分别限定 exact Application binding 与 Source ABI。旧 ProductBaseline 的单一 package@version/unsupported 假设和读取测试源码 `contains` 验证已删除，改为 repo 内 artifact/test/schema 与两个 resolved 元数据门禁；Real test 继续保护 production converter/loader 行为。Compat `2/0/0`、Baseline `5/0/0`、Real `1/0/0`，独立 review APPROVED；范围 `3 files, 74 touched lines`。
+
 #### Task 7C: Compat package prune batches
 
 - Risk axis: `compat-package-pruning`
