@@ -1398,10 +1398,12 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Files: `test-desktop/build.gradle.kts`、`MihonDesktopTestClient.kt`、`MoreRobot.kt`，新增 `SourceExtensionClientContractTest.kt`。
 - Boundary: `test-desktop` 必须应用项目已有 Kotlin serialization 编译插件，使客户端的 `@Serializable` DTO 由生成 serializer 解析；不得为规避插件缺失而手写第二套 `JsonObject` 字段映射。删除 server/Robot 中 legacy `extension_select/enable/disable` 空操作与 index API；select 已由真实导航契约覆盖，enable/disable 在 fixed main 属于 Source 管理，后续只能以 `source_toggle/source_pin` 调用真实 Source model。
 
-- [ ] RED：legacy index/no-op API 与手拼 JSON 不符合新契约。
-- [ ] GREEN：客户端与 Robot 仅暴露稳定、真实的 production action。
-- [ ] Verify: `./gradlew :test-desktop:test --tests "*SourceExtensionClientContractTest"`
-- [ ] Commit: `test(desktop): align extension automation client`
+- [x] RED：legacy index/no-op API 与手拼 JSON 不符合新契约。
+- [x] GREEN：客户端与 Robot 仅暴露稳定、真实的 production action。
+- [x] Verify: `./gradlew :test-desktop:test --tests "*SourceExtensionClientContractTest"`
+- [x] Commit: `test(desktop): align extension automation client`
+
+  Evidence: commits `07fec9822` + `fc778cad6`；RED 证明 client/Robot/DTO 契约缺失，并暴露 `test-desktop` 未应用 serialization plugin 导致既有 DTO 运行时不可解析。GREEN 后契约测试 1/1 通过，安全编码、非 2xx 结构化错误、10 个真实 action 与 Robot 失败传播均覆盖。首轮 review 发现 stub 与 client DTO 自洽 round-trip；修复为独立固定 server-shaped JSON，并覆盖非空递归 `PartialFailure/failures/failedUnits`，唯一复审 APPROVED；累计 `4 files, 323 lines`。
 
 #### Task 6E4: Source 状态与登录取消 Test Mode wiring
 
