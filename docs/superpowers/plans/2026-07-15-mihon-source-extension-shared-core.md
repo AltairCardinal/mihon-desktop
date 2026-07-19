@@ -1984,6 +1984,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `4 files, 125 lines`
 - Verification: ComicFury raw 字节码将 BLACK/WHITE 编译为整数常量，不链接 `android.graphics.Color`；仓库当前只有 shim 自测。删除 Color.kt 建立 prune probe，确认 production/全部 tracked fixture 无消费者后删除对应 AndroidCompatPhase2Test 片段、inventory entry并更新contract surface。若出现真实链接回归则恢复并重规划，不得用 ComicFury 作为 Color 假证据。文件限定 Color.kt、AndroidCompatPhase2Test.kt、inventory、contract。
 
+  Evidence: scope correction `5be843b3b` 将纯机械删除从估算 100 调整为 125 lines；implementation `42e222d91` 严格 4 files / 122 touched。production/source-api 与全部 6 个 fixed fixture 字节码均为 Color 零消费者，ComicFury BLACK/WHITE 为 LDC ints；删除 Color 与 5 个 self-tests 后 contract RED 唯一为旧 surface expected 36/actual 35，无真实链接错误。GREEN 更新 inventory/contract 为 35 files/45 symbols、required 44、unsupported 1、unverified 0，evidence/reverse零改。一次组合 Gradle 覆盖 Html 6、contract 6、9 个 RealExtension*CompatTest classes/11 tests，总 23/23；独立 review APPROVED、diff-check clean、Java0。app-desktop 未应用 Spotless plugin，故无模块级 spotless task；未重复已知 root blocker。
+
 ##### Task 7C4: Source/extension authority baseline 与恢复入口纠偏
 
 - Risk axis: `authority-resume-pointer`
