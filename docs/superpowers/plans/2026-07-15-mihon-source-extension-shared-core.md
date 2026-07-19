@@ -1621,6 +1621,13 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `2 files, 120 lines`
 - Verification: 只消费 7C3b0 已通过审查的 immutable APK、production invocation 与真实 page-list 断言，将 `android.util.JsonReader`、top-level `android.util.JsonToken`、`android.os.SystemClock` 三个实际执行的 public symbols 从 unverified 解析为 required，并在 `compat-evidence.json` 中逐项绑定同一 APK@SHA 与真实测试。不得修改 production 行为、不得顺带升级 Uri、WebKit 或其他仅完成 class verification 的符号；contract 必须继续要求每个 resolved symbol 恰有一条可追溯 evidence。
 
+##### Task 7C4: Source/extension authority baseline 与恢复入口纠偏
+
+- Risk axis: `authority-resume-pointer`
+- Platform boundary: `tooling`
+- Estimated scope: `4 files, 150 lines`
+- Verification: 更新 source/extension authority baseline 中已被 6C/6D 与真实 ManHuaGui Application evidence supersede 的陈述；把本计划中“Android/Desktop 权威类映射”改为 fixed-main authority 与当前双端 consumer/adapter 映射；让活动 `.superpowers/sdd/progress.md` 恢复入口指向 `2026-07-12-mihon-desktop-upstream-parity-roadmap-main-authority.md`，并在受版本控制的修正版父计划记录当前 source/extension 子计划。不得修改保留作历史对照的原路线图，不得把当前 `app/`、shared output 或 Desktop shim 写成原版权威。验证必须检查 live pointer、父子计划互指、旧 unsupported 文案消失以及 Comet plan guard 通过。
+
 #### Task 7D: Parity evidence and runtime verification
 
 - Risk axis: `parity-runtime-evidence`
