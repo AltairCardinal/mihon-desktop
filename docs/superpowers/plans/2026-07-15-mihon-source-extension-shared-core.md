@@ -1302,10 +1302,12 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Files: `ExtensionDetailsScreen.kt`、base/zh-rCN `strings.xml`、`DesktopExtensionDetailsActionCopyTest.kt`、`ExtensionDetailsPreferencesWiringTest.kt`（现有 action/feedback selector 与断言必须使用同一 MR accessor，不得硬编码英文或强制 Locale.US）。
 - Authority: 复用 fixed main 的 clear-cookies、uninstall、cancel/open-repo 等同义 MR key；Desktop folder open/failure、cookie count、metadata removal 与带动态 source/pkg 的 accessibility 新增 Desktop formatted key。原始 error cause/message、数量和名称只作参数。
 
-- [ ] RED：zh-CN folder/cookie/uninstall 真实反馈仍渲染硬编码英文时失败。
-- [ ] GREEN：接入 MR accessor，不改变 Desktop platform action 或卸载语义。
-- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.i18n.DesktopExtensionDetailsActionCopyTest" --tests "mihon.desktop.ui.extension.ExtensionDetailsPreferencesWiringTest"`
-- [ ] Commit: `refactor(desktop): localize extension details feedback`
+- [x] RED：zh-CN folder/cookie/uninstall 真实反馈仍渲染硬编码英文时失败。
+- [x] GREEN：接入 MR accessor，不改变 Desktop platform action 或卸载语义。
+- [x] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.i18n.DesktopExtensionDetailsActionCopyTest" --tests "mihon.desktop.ui.extension.ExtensionDetailsPreferencesWiringTest"`
+- [x] Commit: `refactor(desktop): localize extension details feedback`
+
+  Evidence: commit `05fc49e67`；zh-CN 真实 Details 首先因 folder/repository/cookie 动作仍为英文 RED，随后 ActionCopy 1 + DetailsPreferences 2 全绿。真实 US/zh 点击 folder failure、cookie clear、uninstall 并读取 Snackbar/Dialog/buttons；通用动作复用 fixed main，Desktop 仅新增 folder action/failure、cookie count、metadata removal body 4 key。独立 review APPROVED，无残留 B2 硬编码或 authority 混淆；`5 files, 177 lines`。
 
 #### Task 6E2C: More source/extension entry copy
 
