@@ -41,9 +41,9 @@ class AndroidStubsPhase27Test {
     }
 
     @Test
-    fun `BitmapFactory decodeByteArray returns non-null stub`() {
+    fun `BitmapFactory decodeByteArray rejects invalid image data`() {
         val bmp = BitmapFactory.decodeByteArray(ByteArray(10), 0, 10)
-        bmp.shouldNotBeNull()
+        bmp shouldBe null
     }
 
     @Test
@@ -56,10 +56,10 @@ class AndroidStubsPhase27Test {
     }
 
     @Test
-    fun `BitmapFactory decodeStream returns non-null stub`() {
+    fun `BitmapFactory decodeStream rejects invalid image data`() {
         val stream = ByteArray(10).inputStream()
         val bmp = BitmapFactory.decodeStream(stream)
-        bmp.shouldNotBeNull()
+        bmp shouldBe null
     }
 
     @Test
