@@ -1838,7 +1838,14 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Risk axis: `mangadex-source-factory-link`
 - Platform boundary: `desktop`
 - Estimated scope: `8 files, 380 lines`
-- Verification: 仅在 7C3o1a 独立审查通过后继续。真实 MangaDex 测试必须走 production converter/meta/loader 并断言 61、diagnostics empty、可选中 English，随后通过 `resolveSourcePreferencesState` → `DesktopAndroidPreferenceAdapter` 执行真实 legacy preference setup，证明 `j2/l2` listener 在产品链构造。实际 RED 已依次暴露 `EditTextPreference.OnBindEditTextListener`、`android.text.TextWatcher` 与 `android.widget.TextView`；真实 `a4/b4` verifier closure 还精确要求 TextView error getter/setter、EditText.addTextChangedListener、View rootView/findViewById/enabled 与 Button checkcast。最小 GREEN 在一个 android.text compat 文件内提供 Editable/TextWatcher，在 EditText compat 文件内提供 TextView/EditText/Button 精确继承和内存状态，并补齐 View 所需成员及 EditTextPreference listener storage。AndroidX 1.2.1、真实 `j2/l2/a4/b4` descriptor 必须一致，不得用空接口或 `Any`。inventory/evidence 必须明确这里只证明 factory/preference setup 所需 verifier closure 与状态模型，不宣称 callback 已由 Compose 调用或 Android widget 已渲染；contract 同提交更新。文件限定 android.text compat、EditText.kt、View.kt、EditTextPreference.kt、RealExtensionMangaDexFactoryCompatTest.kt、inventory、evidence、contract。
+- Verification: 仅在 7C3o1a 独立审查通过后继续。真实 MangaDex 测试必须走 production converter/meta/loader 并断言 61、diagnostics empty、可选中 English。实际 RED 已依次暴露 `EditTextPreference.OnBindEditTextListener`、`android.text.TextWatcher` 与 `android.widget.TextView`；真实 `a4/b4` verifier closure 还精确要求 TextView error getter/setter、EditText.addTextChangedListener、View rootView/findViewById/enabled 与 Button checkcast。最小 GREEN 在一个 android.text compat 文件内提供 Editable/TextWatcher，在 EditText compat 文件内提供 TextView/EditText/Button 精确继承和内存状态，并补齐 View 所需成员及 EditTextPreference listener storage。AndroidX 1.2.1、真实 `j2/l2/a4/b4` descriptor 必须一致，不得用空接口或 `Any`。inventory/evidence 必须明确这里只证明 production loader 所需 verifier closure 与状态模型，不宣称 preference setup、callback 或 Android widget 渲染已完成；contract 同提交更新。文件限定 android.text compat、EditText.kt、View.kt、EditTextPreference.kt、RealExtensionMangaDexFactoryCompatTest.kt、inventory、evidence、contract。
+
+##### Task 7C3o1c: APK assets preservation 与 MangaDex preference setup
+
+- Risk axis: `apk-assets-preference-wiring`
+- Platform boundary: `desktop`
+- Estimated scope: `3 files, 260 lines`
+- Verification: 仅在 7C3o1b 独立审查通过后继续。真实 RED 已证明 production converter 输出 JAR 缺少 APK 中存在的 `assets/i18n/messages_*.properties`，使 MangaDex `setupPreferenceScreen` 在 `InputStreamReader` 构造时 NPE。先用 synthetic APK asset test 锁定 converter 必须保留安全的 `assets/` classpath entries，再最小修改 ApkToJarConverter 将原 APK assets 合并进最终 edited JAR，拒绝路径穿越且不得覆盖转换后的 class/meta。真实 MangaDex 测试随后必须通过 `resolveSourcePreferencesState` → `DesktopAndroidPreferenceAdapter` 成功建立 preference Content，并验证原版 i18n 文案可读取；不得直接 classloader 注入测试资源绕过 production converter。文件限定 ApkToJarConverter.kt、ApkToJarConverterTest.kt、RealExtensionMangaDexFactoryCompatTest.kt。
 
 ##### Task 7C3o2: MangaDex AppInfo 与 Build.RELEASE 真实 header 链
 
