@@ -1223,7 +1223,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 **Risk axis:** automation-observability
 **Platform boundary:** desktop
-**Estimated scope:** 24 files, 1280 lines
+**Estimated scope:** 26 files, 1500 lines
 **Verification:** 串行运行导航、i18n、扩展 ScreenModel、真实 Test HTTP server、production DI/Compose wiring 与 test-desktop 客户端契约测试；任一 production state/intent/wiring 断线时对应测试必须失败。
 **Split waiver:** 这是 6E1–6E4 的聚合上界，横跨 Voyager 导航、Moko 资源、Extension ScreenModel、Ktor server、DI、Compose 生命周期和独立 test-desktop 客户端，不能作为单个风险轴安全调度；下列每个实际子 Task 均不超过 8 files/400 lines，并按依赖顺序提交。
 
@@ -1238,10 +1238,26 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Files: `ExtensionListScreen.kt`、`ExtensionDetailsScreen.kt`、`MoreRootScreen.kt`、`SourceExtensionNavigationContractTest.kt`。
 - Authority: destination 类型和 push 层级优先复用 fixed `main@6fbf6dfc` 的 Screen 语义；Desktop 路径参数只保留在 Desktop destination adapter。
 
-- [ ] RED：先让 Screen 类型、destination 参数或 production 导航回调断线时失败。
-- [ ] GREEN：接入 production destination callback，所有实际点击路径消费同一 callback。
-- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.SourceExtensionNavigationContractTest"`
-- [ ] Commit: `test(desktop): verify source extension navigation`
+- [x] RED：先让 Screen 类型、destination 参数或 production 导航回调断线时失败。
+- [x] GREEN：接入 production destination callback，所有实际点击路径消费同一 callback。
+- [x] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.SourceExtensionNavigationContractTest"`
+- [x] Commit: `test(desktop): verify source extension navigation`
+
+  Evidence: commits `b9815b6e5`、`733df4771`；挂载后的 `open_extensions` 已改为响应式消费并 clear，More 真实点击、automation、destination 类型和参数 focused tests 全绿，聚合 `4 files, 179 lines`。唯一修复复审关闭 automation 与 `initialQuery`，但发现 ExtensionList 测试直接渲染 `ExtensionCard`，未触达 `ExtensionListScreen.Content → ExtensionListContent → InstalledTab → ExtensionCard`；按“修复后复审最多一轮”规则停止原 Task，并拆 6E1C 闭合测试证据。
+
+#### Task 6E1C: ExtensionList 真实点击 wiring 证据
+
+- Risk axis: `extension-list-navigation-evidence`
+- Platform boundary: `desktop`
+- Estimated scope: `2 files, 220 lines`
+- Verification: 挂载真实 `ExtensionListScreen.Content` 与 production `ExtensionsScreenModel`/DI fixture，点击已安装扩展卡片与 configurable source 设置，分别断言精确 `jarPath`、`sourceId`、`sourceName`；断开 Content、ExtensionListContent、InstalledTab 或 ExtensionCard 任一 callback 传递层时测试必须失败。
+- Files: `SourceExtensionNavigationContractTest.kt`；仅当无法通过现有 DI fixture 注入真实 model 时，允许在 `ExtensionListScreen.kt` 增加不改变行为的 typed model provider seam，总数不超过 2。
+- Boundary: 这是 test-evidence closure，不重写导航、不再修改响应式 automation，不以测试自造 lambda 代替 production wiring。
+
+- [ ] 按现有 production 行为直接增加集成证据；若当前真实链路断开才进入 RED/GREEN 修复。
+- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.SourceExtensionNavigationContractTest" --tests "mihon.desktop.ui.extension.ExtensionDetailsPreferencesWiringTest"`
+- [ ] Review: 新 reviewer 只审查真实 ExtensionList 点击链和精确参数，不重复已关闭的 automation 修复轮。
+- [ ] Commit: `test(desktop): close extension list navigation wiring`
 
 #### Task 6E2: Source/Extension 本地化行为
 
