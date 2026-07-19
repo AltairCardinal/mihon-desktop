@@ -1757,6 +1757,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `7 files, 200 lines`
 - Verification: 三类型在fixed-main/current production/source-api、完整Keiyoushi源码及有效artifact descriptor/反射字符串中均无Desktop扩展消费者；fixed-main Environment仅服务Android外部存储，Desktop应使用自身文件系统，仓库其他 `Pair` 均为Kotlin Pair。删除三个shim、Phase2/Phase3自证、inventory并把surface从36/45更新为33/42；运行全部immutable fixture、文件工具回归、contract与clean compile，明确证明Kotlin Pair未受影响。
 
+  Evidence: commit `1e85642e2c`，7 files/186 touched（4 additions/182 deletions）。删除三个shim、Phase2/3仅自证/import与三项inventory，surface 33 files/42 symbols；evidence、DesktopPlatformPaths/DirectoryOpener与Kotlin Pair生产用法零改。clean compile成功（2m1s），Phase2/3、contract、baseline、6个真实fixture、Desktop路径/目录工具、loader/converter共 `48/48`。独立复核fixed-main Environment只用于Android外部存储，7个真实raw JAR对三个Android owner/dotted名均零命中，同时6个JAR明确含kotlin/Pair。独立scanner/inventory 33/42且集合差/重复0，review APPROVED、Java0。
+
 ##### Task 7C3l: PreferenceManager 未消费属性 prune
 
 - Risk axis: `preference-manager-prune`
