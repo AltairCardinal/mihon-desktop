@@ -1573,10 +1573,10 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 ##### Task 7C3a: Comix 真实 EditText/MultiSelect/Switch 设置 ABI
 
-- Risk axis: `androidx-preference-linkage`
+- Risk axis: `androidx-preference-default-semantics`
 - Platform boundary: `desktop`
-- Estimated scope: `6 files, 280 lines plus one 96,835-byte APK`
-- Verification: fixture 固定为 Keiyoushi Comix 1.4.34，artifact repo commit `7d5052fb895d086ae2ec6e3cca861146ee3ea0ec`、blob `ebade6b9ed19d1ba02ac67c377cef31caa0bb0c7`、SHA-256 `5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8`、96,835 bytes、Apache-2.0，package `eu.kanade.tachiyomi.extension.en.comix`，extension class `eu.kanade.tachiyomi.extension.en.comix.ExtensionGenerated`。测试必须由本地 APK 经 production converter/loader 取得真实 source，再经 `DesktopAndroidPreferenceAdapter` 调用 APK 自身 `setupPreferenceScreen`；RED 应精确到缺失 `androidx.preference.EditTextPreference$OnBindEditTextListener`/对应 setter 的首个 linkage gap，若更早出现不同 gap 则停止并重新拆分。GREEN 只补 fixed-main/AndroidX exact nested listener ABI，真实结果必须同时包含 EditText、MultiSelect 与 Switch 三类 descriptor，并断言关键 key/title/entries/default/value，而非只断言无异常；只有成功后才将三个 public symbols 以该 immutable APK/test 解析为 required。该批次不承诺或修改 Comix 的 WebView、Cookie、Handler/Looper 与图像处理路径。
+- Estimated scope: `8 files, 390 lines plus one 96,835-byte APK`
+- Verification: fixture 固定为 Keiyoushi Comix 1.4.34，artifact repo commit `7d5052fb895d086ae2ec6e3cca861146ee3ea0ec`、blob `ebade6b9ed19d1ba02ac67c377cef31caa0bb0c7`、SHA-256 `5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8`、96,835 bytes、Apache-2.0，package `eu.kanade.tachiyomi.extension.en.comix`，extension class `eu.kanade.tachiyomi.extension.en.comix.ExtensionGenerated`；本地 provenance 必须固定这些字段并逐次校验。测试必须由本地 APK 经 production converter/loader 取得真实 source，再经 production settings resolver/`DesktopAndroidPreferenceAdapter` 调用 APK 自身 `setupPreferenceScreen`。固定 APK 已证明不引用 `OnBindEditTextListener`，禁止按候选源码添加无证据 widget/listener shim。RED 应精确证明 AndroidX→JVM descriptor 把 `pref_default_types`/`pref_default_demographics` 默认全选变成空集、把 `pref_show_extra_info=true` 变成 false，且 `pref_scanlator_blacklist` 无法表达原版 dialog title `Exclude groups`。GREEN 中 Switch/MultiSelect descriptor 的 default 必须优先来自 inherited AndroidX `Preference.defaultValue`，仅在未设置 default 时回退当前 checked/values；JVM EditText descriptor 增加可空 dialog title，转换器读取 `DialogPreference.getDialogTitle()`，Compose 对话框显示 `dialogTitle ?: title`。真实结果必须断言 3 个 MultiSelect、4 个 Switch、1 个 EditText 的关键 key/title/entries/default/value；只有成功后才将三个 public symbols以该 immutable APK/test解析为 required。该批次不承诺或修改 Comix 的 WebView、Cookie、Handler/Looper、OnBindEditText 与图像处理路径。
 
 #### Task 7D: Parity evidence and runtime verification
 
