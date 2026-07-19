@@ -1208,12 +1208,14 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Modify: `i18n/src/commonMain/moko-resources/zh-rCN/strings.xml`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionDetailsPreferencesWiringTest.kt`
 
-- [ ] **Step 1: 写五态 availability RED**
-- [ ] **Step 2: 实现 typed availability 与 JVM adapter UI**
-- [ ] **Step 3: 运行 GREEN、i18n mutation 并提交 Task 6D**
+- [x] **Step 1: 写五态 availability RED**
+- [x] **Step 2: 实现 typed availability 与 JVM adapter UI**
+- [x] **Step 3: 运行 GREEN、i18n mutation 并提交 Task 6D**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionPresentationUiTest" --tests "mihon.desktop.ui.extension.ExtensionDetailsPreferencesWiringTest" --tests "mihon.desktop.ui.extension.ExtensionListCopyContractTest"`
   Commit: `refactor(desktop): wire shared extension UI`
+
+  Evidence: commit `b9fcf0d1e`；production typed state 明确 Missing/NonConfigurable/SetupFailure(exact Throwable)/Empty/Content，Context compatibility 的 Exception/LinkageError 失败继续 setup，真实 setup 的 Exception/LinkageError 保留同一 identity，未捕获 VM 级 Throwable。五态真实 Screen、本地化 base/zh 与 JVM Switch 持久化有行为测试；SetupFailure→Empty 与 LinkageError 逃逸 mutation 均失败。fresh `Presentation 1 / Details 2 / Copy 2` 全绿，6D4 review APPROVED，范围 `4 files, 198 lines`。
 
 ### Task 6E: Test Mode、导航与自动化观察
 

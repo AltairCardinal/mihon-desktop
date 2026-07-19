@@ -21,8 +21,8 @@
 - [x] 3.1 将 Desktop loader/installer 收敛为目录、ClassLoader、APK→JAR 与隔离 side effect
 - [x] 3.2 实现仓库身份/摘要信任、下载校验与 reload 失败原子回滚
 - [x] 3.3 实现可取消/超时的 Desktop 浏览器登录与 Cookie 回传；FlareSolverr 仅作显式后备
-- [ ] 3.4 将源列表、单源浏览、全局搜索、扩展详情/设置接入共享 ScreenModel 与 UI 状态
-- [ ] 3.5 将触达的 Desktop 文案迁入 i18n，并覆盖资源缺 key
+- [x] 3.4 将源列表、单源浏览、全局搜索、扩展详情/设置接入共享 ScreenModel 与 UI 状态
+- [x] 3.5 将触达的 Desktop 文案迁入 i18n，并覆盖资源缺 key
 
 ## 4. 去重与验证
 
