@@ -1975,6 +1975,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `3 files, 100 lines`
 - Verification: 仅在 7C3q1/q2 独立审查通过后，将 Html 标 required 并唯一绑定 tracked ComicFury 与真实文本转 PNG test；同时把 Uri 从仅 verifier-token 证据升级为“verifier token + `encode(String)` UTF-8 percent-encoding 真实执行”，仍不得宣称 parse/decode/Builder 或一般 URI 行为。更新 inventory/evidence/contract 反向集合与 surface；不得把未执行的 Color 或其他图文 API 顺带标 required。
 
+  Evidence: commit `0152f1e7a`，严格 3 files / 67 touched lines。RED 为 required expected 44/actual 43、unverified expected 1/actual 2 及 ComicFury Uri evidence expected 1/actual 0；GREEN 后 surface 36/46、required 44、unsupported 1、unverified exact `{Color}`。Html 唯一绑定 ComicFury 的 SDK28 两参数 flags=0 Spanned author-note 实际链，一参数只说明由 q1 Phase2 descriptor 测试保护、未冒充真实执行；Uri 采用两条独立 evidence，contract 精确允许 Uri=2/其他 required=1，Comix 仍仅 getUrl token，ComicFury 仅 exact encode(String) UTF-8 percent/emoji并排除 parse/decode/Builder/construction/general behavior。ComicFury reverse exact 7、Comix reverse仍9；contract 6/6、real 1/1、独立 review APPROVED、diff-check clean、Java0，production/Color零改。
+
 ##### Task 7C3q4: verifier-only Color shim prune
 
 - Risk axis: `color-shim-prune`
