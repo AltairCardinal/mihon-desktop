@@ -1571,12 +1571,19 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Split waiver: 31 个非 Application public compat 类型分属独立 ABI 族；每批只处理一个依赖闭包并单独审查，避免一次删除跨包能力。后续每个实际批次必须在施工前把 fixture、产品边界、文件与 verification 写回本计划。
 - Verification: 对 `android.content/pm`、`android.os`、`android.text`、`android.util`、graphics/drawable、webkit 与剩余 AndroidX 类型，先选择能执行真实调用的本地可追溯 extension fixture；无法支持的平台能力必须有明确用户边界与 production 不可达证据。`required` 必须由真实 artifact 的 production invocation 证明；`unsupported` 必须由真实精确失败与产品边界证明；删除必须同时满足无 production consumer、代表性 fixture 不需要或产品明确不支持，并在删除前取得 public-surface RED。不得用 compat 自测或源码扫描代替行为证据；保留 Desktop-native EditText/MultiSelect/Switch 设置能力。
 
-##### Task 7C3a: Comix 真实 EditText/MultiSelect/Switch 设置 ABI
+##### Task 7C3a0: Fixed-main ContextWrapper 继承 ABI
+
+- Risk axis: `android-context-inheritance-abi`
+- Platform boundary: `desktop`
+- Estimated scope: `5 files, 280 lines plus one 96,835-byte APK`
+- Verification: 固定 Comix 1.4.34 fixture/provenance 与下述 commit/blob/hash/package/class 完全相同。RED 必须由 production converter/loader 精确得到 JVM verifier 拒绝 `android.app.Application` 传给需要 `android.content.Context` 的 preference 构造器，根因是 Desktop `ContextWrapper` 未按 fixed main/Android API 继承 `Context`；不得把 loader 空结果当充分诊断。GREEN 只将 Desktop `ContextWrapper` 恢复为 `Context` 子类并正确 override 委托方法，同时用 unit ABI 断言与真实 Comix loader/settings invocation 证明 Application 可作为 Context、真实设置方法已推进到 Content；本 Task 不断言或修复默认值/dialog title，不更新 compat evidence。若修复后出现新的 linkage gap，停止并继续拆分。
+
+##### Task 7C3a: Comix 真实 EditText/MultiSelect/Switch 设置语义
 
 - Risk axis: `androidx-preference-default-semantics`
 - Platform boundary: `desktop`
-- Estimated scope: `8 files, 390 lines plus one 96,835-byte APK`
-- Verification: fixture 固定为 Keiyoushi Comix 1.4.34，artifact repo commit `7d5052fb895d086ae2ec6e3cca861146ee3ea0ec`、blob `ebade6b9ed19d1ba02ac67c377cef31caa0bb0c7`、SHA-256 `5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8`、96,835 bytes、Apache-2.0，package `eu.kanade.tachiyomi.extension.en.comix`，extension class `eu.kanade.tachiyomi.extension.en.comix.ExtensionGenerated`；本地 provenance 必须固定这些字段并逐次校验。测试必须由本地 APK 经 production converter/loader 取得真实 source，再经 production settings resolver/`DesktopAndroidPreferenceAdapter` 调用 APK 自身 `setupPreferenceScreen`。固定 APK 已证明不引用 `OnBindEditTextListener`，禁止按候选源码添加无证据 widget/listener shim。RED 应精确证明 AndroidX→JVM descriptor 把 `pref_default_types`/`pref_default_demographics` 默认全选变成空集、把 `pref_show_extra_info=true` 变成 false，且 `pref_scanlator_blacklist` 无法表达原版 dialog title `Exclude groups`。GREEN 中 Switch/MultiSelect descriptor 的 default 必须优先来自 inherited AndroidX `Preference.defaultValue`，仅在未设置 default 时回退当前 checked/values；JVM EditText descriptor 增加可空 dialog title，转换器读取 `DialogPreference.getDialogTitle()`，Compose 对话框显示 `dialogTitle ?: title`。真实结果必须断言 3 个 MultiSelect、4 个 Switch、1 个 EditText 的关键 key/title/entries/default/value；只有成功后才将三个 public symbols以该 immutable APK/test解析为 required。该批次不承诺或修改 Comix 的 WebView、Cookie、Handler/Looper、OnBindEditText 与图像处理路径。
+- Estimated scope: `6 files, 320 lines`
+- Verification: 消费 7C3a0 已固定的 Keiyoushi Comix 1.4.34 本地 APK/provenance：artifact repo commit `7d5052fb895d086ae2ec6e3cca861146ee3ea0ec`、blob `ebade6b9ed19d1ba02ac67c377cef31caa0bb0c7`、SHA-256 `5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8`、96,835 bytes、Apache-2.0，package `eu.kanade.tachiyomi.extension.en.comix`，extension class `eu.kanade.tachiyomi.extension.en.comix.ExtensionGenerated`。测试必须由本地 APK 经 production converter/loader 取得真实 source，再经 production settings resolver/`DesktopAndroidPreferenceAdapter` 调用 APK 自身 `setupPreferenceScreen`。固定 APK 已证明不引用 `OnBindEditTextListener`，禁止按候选源码添加无证据 widget/listener shim。RED 应精确证明 AndroidX→JVM descriptor 把 `pref_default_types`/`pref_default_demographics` 默认全选变成空集、把 `pref_show_extra_info=true` 变成 false，且 `pref_scanlator_blacklist` 无法表达原版 dialog title `Exclude groups`。GREEN 中 Switch/MultiSelect descriptor 的 default 必须优先来自 inherited AndroidX `Preference.defaultValue`，仅在未设置 default 时回退当前 checked/values；JVM EditText descriptor 增加可空 dialog title，转换器读取 `DialogPreference.getDialogTitle()`，Compose 对话框显示 `dialogTitle ?: title`。真实结果必须断言 3 个 MultiSelect、4 个 Switch、1 个 EditText 的关键 key/title/entries/default/value；只有成功后才将三个 public symbols以该 immutable APK/test解析为 required。该批次不承诺或修改 Comix 的 WebView、Cookie、Handler/Looper、OnBindEditText 与图像处理路径。
 
 #### Task 7D: Parity evidence and runtime verification
 
