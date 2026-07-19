@@ -1281,9 +1281,9 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `extension-details-metadata-i18n`
 - Platform boundary: `desktop`
-- Estimated scope: `4 files, 220 lines`
+- Estimated scope: `5 files, 220 lines`
 - Verification: 以 Locale.US/zh-CN 挂载真实 Details，覆盖 version/origin、JAR/Windows artifact metadata、sources、browse/settings、incognito 等静态/格式化渲染；断开任一 production MR accessor 或 zh key 时测试失败。
-- Files: `ExtensionDetailsScreen.kt`、base/zh-rCN `strings.xml`、`DesktopExtensionDetailsMetadataCopyTest.kt`。
+- Files: `ExtensionDetailsScreen.kt`、base/zh-rCN `strings.xml`、`DesktopExtensionDetailsMetadataCopyTest.kt`、`ExtensionDetailsPreferencesWiringTest.kt`（既有 metadata/click 断言必须消费同一 MR accessor，不得硬编码英文或强制 Locale.US）。
 - Authority: 复用 fixed main 的 back/version/unknown/sources/browse/incognito 等 MR key；JAR/Windows artifact origin、file/size/hash/fingerprint 属于 Desktop adapter，只新增其外层 label/format，不本地化动态路径、URL、版本、hash、fingerprint、名称或语言代码。
 
 - [ ] RED：zh-CN 真实 Details metadata/source copy 仍回退硬编码英文时失败。
