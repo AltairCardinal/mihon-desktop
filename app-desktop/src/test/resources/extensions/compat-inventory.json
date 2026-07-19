@@ -4,10 +4,6 @@
   "entries": [
     {"symbol":"android.app.Application","status":"required",
       "nextEvidence":"RealExtensionCompatEvidenceTest production loader invocation"},
-    {"symbol":"android.content.ComponentCallbacks","status":"unverified",
-      "nextEvidence":"7B real local fixture invocation or 7C removal"},
-    {"symbol":"android.content.ComponentCallbacks2","status":"unverified",
-      "nextEvidence":"7B real local fixture invocation or 7C removal"},
     {"symbol":"android.content.Context","status":"required",
       "nextEvidence":"RealExtensionCompatEvidenceTest preference invocation"},
     {"symbol":"android.content.ContextWrapper","status":"required",

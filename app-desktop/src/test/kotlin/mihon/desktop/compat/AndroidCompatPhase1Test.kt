@@ -1,8 +1,6 @@
 package mihon.desktop.compat
 
 import android.app.Application
-import android.content.ComponentCallbacks
-import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.ContextWrapper
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -11,7 +9,7 @@ import io.kotest.matchers.types.shouldBeInstanceOf
 import org.junit.jupiter.api.Test
 
 /**
- * Tests for Phase 1 Android compat stubs: ContextWrapper, ComponentCallbacks, Application.
+ * Tests for Phase 1 Android compat stubs: ContextWrapper and Application.
  */
 class AndroidCompatPhase1Test {
 
@@ -53,39 +51,12 @@ class AndroidCompatPhase1Test {
         wrapper.getApplicationContext().shouldNotBeNull()
     }
 
-    // ── ComponentCallbacks ──────────────────────────────────────────────────
-
-    @Test
-    fun `ComponentCallbacks interface can be implemented`() {
-        val callbacks = object : ComponentCallbacks {
-            override fun onConfigurationChanged(newConfig: Any?) {}
-            override fun onLowMemory() {}
-        }
-        callbacks.shouldNotBeNull()
-    }
-
-    @Test
-    fun `ComponentCallbacks2 interface extends ComponentCallbacks`() {
-        val callbacks2 = object : ComponentCallbacks2 {
-            override fun onConfigurationChanged(newConfig: Any?) {}
-            override fun onLowMemory() {}
-            override fun onTrimMemory(level: Int) {}
-        }
-        callbacks2.shouldBeInstanceOf<ComponentCallbacks>()
-    }
-
     // ── Application ─────────────────────────────────────────────────────────
 
     @Test
     fun `Application extends ContextWrapper`() {
         val app = Application()
         app.shouldBeInstanceOf<ContextWrapper>()
-    }
-
-    @Test
-    fun `Application implements ComponentCallbacks2`() {
-        val app = Application()
-        app.shouldBeInstanceOf<ComponentCallbacks2>()
     }
 
     @Test
@@ -118,14 +89,4 @@ class AndroidCompatPhase1Test {
         prefs.shouldNotBeNull()
     }
 
-    @Test
-    fun `Application registerComponentCallbacks does not throw`() {
-        val app = Application()
-        val cb = object : ComponentCallbacks {
-            override fun onConfigurationChanged(newConfig: Any?) {}
-            override fun onLowMemory() {}
-        }
-        app.registerComponentCallbacks(cb)
-        app.unregisterComponentCallbacks(cb)
-    }
 }
