@@ -1517,6 +1517,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   7B1 evidence: commit `cf9835804`；RED1 精确失败于本地 fixture 缺失，RED2 在真实 Desktop DI、manifest、converter、meta 与 production loader 后精确得到 `InjektionException: No registered instance or factory for type class android.app.Application`。GREEN 将该唯一 outcome 固定为 provenance 中的结构化 `unsupported`，任意其他 Throwable 均失败；XML `1/0/0`。APK 固定上游 commit/blob/70,062 bytes/SHA-256，Git binary attrs 保证普通 stage/fresh checkout 不改字节。独立 review APPROVED；范围 `4 files, 160 text lines plus APK`。
 
+  7B2 evidence: commit `2e17f259f`；真实 fixture success 期望与 production DI exact Application 解析分别取得 RED。GREEN 复用 Desktop 现有 Application adapter，按 `AndroidCompat.initialize → Application → attach/onCreate → Injekt.addSingleton(application)` 初始化，并在 production/test scope 的其他模块前调用，精确对齐 fixed main `AppModule.addSingleton(app)`；DI XML `1/0/0`。真实 loader 已越过 Application，严格推进到唯一后续 `NoSuchMethodError: Duration$Companion.getZERO_UwyO8pc()`，Real XML `1/0/0`，未猜测注册 Context/新增 shim/修改 loader。独立 review APPROVED；范围 `4 files, 31 changed lines`。
+
 ##### Task 7B2K: dex2jar Kotlin mangled ABI 修复
 
 - Risk axis: `dex2jar-kotlin-mangled-abi`
