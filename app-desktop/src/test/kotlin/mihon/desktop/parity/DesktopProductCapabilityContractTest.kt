@@ -732,6 +732,16 @@ class DesktopProductCapabilityContractTest {
     }
 
     @Test
+    fun `source extension provenance rejects a platform scoped shared path`() {
+        createSyntheticConsumerFiles()
+        val item = syntheticSourceExtensionItem(sharedImplementationPaths = listOf("app/src/main/Current.kt"))
+        val failure = assertThrows(AssertionError::class.java) {
+            validateSourceExtensionProvenance(item, tempDir, fixedMainPathInventory(buildFixedMainPathInventory()))
+        }
+        assertTrue(failure.message.orEmpty().contains("commonMain"), failure.message)
+    }
+
+    @Test
     fun `source extension provenance rejects an unclassified deviation tail item`() {
         createSyntheticConsumerFiles()
         val item = syntheticSourceExtensionItem(
@@ -1302,6 +1312,7 @@ class DesktopProductCapabilityContractTest {
         paths.forEachIndexed { index, element ->
             val path = element.jsonPrimitive.content
             assertTrue(path.isNotBlank(), "ID $id: $field[$index] must not be blank")
+            if (field == "sharedImplementationPaths") assertTrue("/src/commonMain/" in path, "ID $id: $field[$index] must be commonMain: $path")
             if (requiredPrefixes != null) {
                 assertTrue(requiredPrefixes.any(path::startsWith), "ID $id: $field[$index] must start with one of $requiredPrefixes")
             }
@@ -1381,6 +1392,7 @@ class DesktopProductCapabilityContractTest {
     private fun syntheticSourceExtensionItem(
         id: Int = 28,
         upstreamPath: String = "app/src/main/Upstream.kt",
+        sharedImplementationPaths: List<String> = emptyList(),
         currentAndroidConsumerPaths: List<String> = listOf("app/src/main/Current.kt"),
         deviations: List<Pair<String?, String>> = listOf("PLATFORM_ADAPTER" to "Platform-specific behavior."),
     ) =
@@ -1398,7 +1410,7 @@ class DesktopProductCapabilityContractTest {
                     )
                 },
             )
-            put("sharedImplementationPaths", buildJsonArray {})
+            put("sharedImplementationPaths", buildJsonArray { sharedImplementationPaths.forEach { add(it) } })
             put("currentAndroidConsumerPaths", buildJsonArray { currentAndroidConsumerPaths.forEach { add(it) } })
             put("desktopConsumerAdapterPaths", buildJsonArray { add("app-desktop/src/main/Desktop.kt") })
             put(
