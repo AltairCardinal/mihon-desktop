@@ -5,6 +5,7 @@ import org.jetbrains.skia.Canvas as SkiaCanvas
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Image as SkiaImage
 import org.jetbrains.skia.Rect as SkiaRect
+import org.jetbrains.skia.SamplingMode
 import java.io.OutputStream
 
 open class Bitmap internal constructor(
@@ -30,6 +31,7 @@ open class Bitmap internal constructor(
     fun hasAlpha(): Boolean = config != Config.RGB_565
 
     fun compress(format: CompressFormat, quality: Int, stream: OutputStream): Boolean {
+        require(quality in 0..100) { "quality must be between 0 and 100" }
         val encodedFormat = when (format) {
             CompressFormat.JPEG -> EncodedImageFormat.JPEG
             CompressFormat.PNG -> EncodedImageFormat.PNG
@@ -37,7 +39,7 @@ open class Bitmap internal constructor(
         }
         val image = SkiaImage.makeFromBitmap(native())
         return try {
-            val data = image.encodeToData(encodedFormat, quality.coerceIn(0, 100)) ?: return false
+            val data = image.encodeToData(encodedFormat, quality) ?: return false
             try {
                 stream.write(data.bytes)
                 true
@@ -59,29 +61,43 @@ open class Bitmap internal constructor(
         fun createBitmap(width: Int, height: Int, config: Config): Bitmap {
             require(width > 0 && height > 0) { "Bitmap dimensions must be positive" }
             val native = SkiaBitmap()
-            check(native.allocN32Pixels(width, height)) { "Unable to allocate $width x $height bitmap" }
-            native.erase(0x00000000)
-            return Bitmap(native, config)
+            return try {
+                check(native.allocN32Pixels(width, height)) { "Unable to allocate $width x $height bitmap" }
+                native.erase(0x00000000)
+                Bitmap(native, config)
+            } catch (error: Throwable) {
+                native.close()
+                throw error
+            }
         }
 
         @JvmStatic
         fun createBitmap(src: Bitmap): Bitmap = Bitmap(src.native().makeClone(), src.config)
 
         @JvmStatic
-        @Suppress("UNUSED_PARAMETER")
         fun createScaledBitmap(src: Bitmap, dstWidth: Int, dstHeight: Int, filter: Boolean): Bitmap {
-            val output = createBitmap(dstWidth, dstHeight, src.config)
             val image = SkiaImage.makeFromBitmap(src.native())
             try {
-                SkiaCanvas(output.native()).drawImageRect(
-                    image,
-                    SkiaRect.makeWH(src.width.toFloat(), src.height.toFloat()),
-                    SkiaRect.makeWH(dstWidth.toFloat(), dstHeight.toFloat()),
-                )
+                val output = createBitmap(dstWidth, dstHeight, src.config)
+                try {
+                    SkiaCanvas(output.native()).use { canvas ->
+                        canvas.drawImageRect(
+                            image,
+                            SkiaRect.makeWH(src.width.toFloat(), src.height.toFloat()),
+                            SkiaRect.makeWH(dstWidth.toFloat(), dstHeight.toFloat()),
+                            if (filter) SamplingMode.LINEAR else SamplingMode.DEFAULT,
+                            null,
+                            true,
+                        )
+                    }
+                    return output
+                } catch (error: Throwable) {
+                    output.recycle()
+                    throw error
+                }
             } finally {
                 image.close()
             }
-            return output
         }
     }
 }

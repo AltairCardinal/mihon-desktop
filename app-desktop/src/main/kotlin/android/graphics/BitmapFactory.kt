@@ -18,11 +18,11 @@ object BitmapFactory {
 
     @JvmStatic
     fun decodeByteArray(data: ByteArray, offset: Int, length: Int): Bitmap? =
-        decode(data.copyOfRange(offset, offset + length), null)
+        decode(data.validatedRange(offset, length), null)
 
     @JvmStatic
     fun decodeByteArray(data: ByteArray, offset: Int, length: Int, opts: Options?): Bitmap? {
-        return decode(data.copyOfRange(offset, offset + length), opts)
+        return decode(data.validatedRange(offset, length), opts)
     }
 
     @JvmStatic
@@ -48,12 +48,17 @@ object BitmapFactory {
             opts?.outHeight = image.height
             if (opts?.inJustDecodeBounds == true) return null
             val native = SkiaBitmap()
-            if (!native.allocN32Pixels(image.width, image.height)) {
+            try {
+                if (!native.allocN32Pixels(image.width, image.height)) {
+                    native.close()
+                    return null
+                }
+                SkiaCanvas(native).use { it.drawImage(image, 0f, 0f) }
+                Bitmap(native, opts?.inPreferredConfig ?: Bitmap.Config.ARGB_8888)
+            } catch (error: Throwable) {
                 native.close()
-                return null
+                throw error
             }
-            SkiaCanvas(native).drawImage(image, 0f, 0f)
-            Bitmap(native, opts?.inPreferredConfig ?: Bitmap.Config.ARGB_8888)
         } finally {
             image.close()
         }
@@ -61,5 +66,12 @@ object BitmapFactory {
         opts?.outWidth = -1
         opts?.outHeight = -1
         null
+    }
+
+    private fun ByteArray.validatedRange(offset: Int, length: Int): ByteArray {
+        if (offset < 0 || length < 0 || offset > size - length) {
+            throw ArrayIndexOutOfBoundsException("offset=$offset, length=$length, size=$size")
+        }
+        return copyOfRange(offset, offset + length)
     }
 }

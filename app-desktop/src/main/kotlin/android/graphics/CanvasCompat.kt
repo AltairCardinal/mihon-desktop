@@ -13,30 +13,29 @@ class Rect(
     @JvmField var bottom: Int,
 )
 
-class Canvas(bitmap: Bitmap) {
-    private val native = SkiaCanvas(bitmap.native())
+class Canvas(private val target: Bitmap) {
 
     @Suppress("UNUSED_PARAMETER")
     fun drawBitmap(bitmap: Bitmap, left: Float, top: Float, paint: Paint?) {
+        val targetNative = target.native()
         val image = SkiaImage.makeFromBitmap(bitmap.native())
-        try {
-            native.drawImage(image, left, top)
-        } finally {
-            image.close()
+        image.use {
+            SkiaCanvas(targetNative).use { canvas -> canvas.drawImage(it, left, top) }
         }
     }
 
     @Suppress("UNUSED_PARAMETER")
     fun drawBitmap(bitmap: Bitmap, src: Rect, dst: Rect, paint: Paint?) {
+        val targetNative = target.native()
         val image = SkiaImage.makeFromBitmap(bitmap.native())
-        try {
-            native.drawImageRect(
-                image,
-                SkiaRect.makeLTRB(src.left.toFloat(), src.top.toFloat(), src.right.toFloat(), src.bottom.toFloat()),
-                SkiaRect.makeLTRB(dst.left.toFloat(), dst.top.toFloat(), dst.right.toFloat(), dst.bottom.toFloat()),
-            )
-        } finally {
-            image.close()
+        image.use {
+            SkiaCanvas(targetNative).use { canvas ->
+                canvas.drawImageRect(
+                    it,
+                    SkiaRect.makeLTRB(src.left.toFloat(), src.top.toFloat(), src.right.toFloat(), src.bottom.toFloat()),
+                    SkiaRect.makeLTRB(dst.left.toFloat(), dst.top.toFloat(), dst.right.toFloat(), dst.bottom.toFloat()),
+                )
+            }
         }
     }
 }
