@@ -1233,7 +1233,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `source-extension-navigation`
 - Platform boundary: `desktop`
-- Estimated scope: `4 files, 180 lines`
+- Estimated scope: `5 files, 240 lines`
 - Verification: 直接实例化实际 Screen，并通过 production destination/push callback 验证普通 `Navigator` 只接收 `Screen`、不接收 `Tab`；目标参数必须与实际点击路径一致。
 - Files: `ExtensionListScreen.kt`、`ExtensionDetailsScreen.kt`、`MoreRootScreen.kt`、`SourceExtensionNavigationContractTest.kt`。
 - Authority: destination 类型和 push 层级优先复用 fixed `main@6fbf6dfc` 的 Screen 语义；Desktop 路径参数只保留在 Desktop destination adapter。
@@ -1883,12 +1883,19 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Evidence: commit `3c6edd9cf`，严格 6 files（229 deletions/2 additions）。删除 production shim 后 Desktop production compile 通过，test compile 失败仅来自纯 Cookie Phase4 与 Phase7 自证，另一个命中仅为 WebView verifier 反射；无 production/真实 fixture consumer。GREEN 删除/清理 test-only 依赖，surface 33 files/42 symbols，inventory/evidence 无 CookieManager 或孤儿；Android 原版 AndroidCookieJar 与 DesktopCookieJar 均未改。app 14 suites/37 tests、core DesktopCookieJar 29 tests 全绿；独立 review APPROVED，Java0，root Spotless 仍仅受既有 domain 文件阻塞。
 
-##### Task 7C3p2: dead Uri 与 Web callback ABI prune
+##### Task 7C3p2a: verifier-only ValueCallback prune
 
-- Risk axis: `dead-web-callback-abi-prune`
+- Risk axis: `value-callback-shim-prune`
 - Platform boundary: `desktop`
-- Estimated scope: `8 files, 320 lines`
-- Verification: `android.net.Uri` 的真实 Page 构造 descriptor 已由 BytecodeEditor 精确重写为 Object 且现有 fixture 实参为 null；其余 Uri、ValueCallback、WebResourceRequest、WebViewClient 引用只位于 getSettings 平台边界之后的不可达 callback、非 Source UrlActivity 或自证测试。先删除 Uri.kt、ValueCallback.kt 及 WebViewCompat 中对应 callback API/类型建立 prune probe；production compile 或真实 fixture 若因某个 superclass/descriptor 缺失失败，必须只恢复该符号并单独重规划为 unsupported token。GREEN 清理 AndroidCompatTest、AndroidWebViewVerifierAbiTest、DesktopExtensionLoaderTest 的陈旧自证，删除 inventory entries 并更新 contract surface；保留 generic android.* parent-first 与 BytecodeEditor Page descriptor rewrite。必须复跑 BytecodeEditor/RealExtensionPageList、真实 Comix WebView、ManHuaGui loader/parser、全部 immutable fixture。文件限定 Uri.kt、ValueCallback.kt、WebViewCompat.kt、AndroidCompatTest.kt、AndroidWebViewVerifierAbiTest.kt、DesktopExtensionLoaderTest.kt、inventory、contract。
+- Estimated scope: `5 files, 180 lines`
+- Verification: 原批量 prune probe 已证明同时删除 Uri/WebViewClient/WebResourceRequest 会使真实 Comix production loader 返回 0；精确字节码根因为 `l0 extends WebViewClient`、override descriptor 依赖 WebResourceRequest→Uri，且 `p0` 调用 `WebView.setWebViewClient`，因此三者不得在本 Task 删除。恢复该组后只保留 ValueCallback/evaluateJavascript 删除状态，重新运行 production compile 与真实 Comix/ManHuaGui/PageList；若全绿，清理 AndroidWebViewVerifierAbiTest 对应反射，删除 inventory ValueCallback 并更新 contract surface。文件限定 ValueCallback.kt、WebViewCompat.kt、AndroidWebViewVerifierAbiTest.kt、inventory、contract。
+
+##### Task 7C3p2b: Uri 与 Web callback verifier-token evidence
+
+- Risk axis: `web-callback-verifier-tokens`
+- Platform boundary: `desktop`
+- Estimated scope: `4 files, 180 lines`
+- Verification: 以 immutable Comix production loader 与 RealExtensionWebViewUnsupportedCompatTest 写契约，证明删去 Uri、WebViewClient、WebResourceRequest 或 `setWebViewClient` 任一 exact descriptor 会使真实 source 在到达明确 getSettings UOE 前加载失败。最小化 Uri/WebViewClient/WebResourceRequest 到该真实 verifier closure 所需的 Android 形状，移除无真实证据的 Uri 编解码/Builder 或 callback 行为自证，但保留 BytecodeEditor Page(Uri)→Object rewrite 与 generic android.* parent-first。inventory/evidence/contract 应将三者绑定到真实 Comix fixture，明确只证明 source verifier token，不宣称 callback、Uri 解析或 WebView engine 行为。文件限定 Uri.kt、WebViewCompat.kt、inventory、evidence、contract。
 
 ##### Task 7C4: Source/extension authority baseline 与恢复入口纠偏
 
