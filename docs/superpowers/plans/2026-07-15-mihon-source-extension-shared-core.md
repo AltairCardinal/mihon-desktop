@@ -1442,7 +1442,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Platform boundary: `desktop`
 - Estimated scope: `5 files, 400 lines`
 - Verification: GET `/test/state` 暴露 port 的 nested source snapshot；POST `source_login_cancel` 必须携 GET 取得的 `attemptToken` 并仅转发 active port。app HTTP 测试证明 HTTP 取消真实 ticket/UI state；client 解析同一 DTO，Robot 传播结构化失败。bridge 缺失为 503，missing token 为 400，NO_ACTIVE/ATTEMPT_MISMATCH/TERMINAL/REJECTED 为 409。
-- Files: `TestHttpServer.kt`，新增 `SourceLoginTestModeHttpTest.kt`，`MihonDesktopTestClient.kt`、`BrowseRobot.kt`，新增 `SourceLoginClientContractTest.kt`。
+- Files: `TestHttpServer.kt`，新增 `SourceLoginTestModeHttpTest.kt`，`MihonDesktopTestClient.kt`、实际承载 browse automation 的 `LibraryRobot.kt`，新增 `SourceLoginClientContractTest.kt`。
 - Boundary: server/client 不得复制 query/login 状态机或暴露 cookieHeader；删除 `browse_search` 遗留空操作/Robot API，不得伪装已接入 query coordinator。Source toggle/pin 不在本项范围，后续若实现必须使用 `source_toggle/source_pin` 调用真实 Source model。
 
 - [ ] RED：HTTP/client 不可见 active source/login state，`browse_search` 仍伪成功。
