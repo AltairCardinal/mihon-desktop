@@ -1345,10 +1345,10 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `extension-testmode-controller`
 - Platform boundary: `desktop`
-- Estimated scope: `2 files, 260 lines`
+- Estimated scope: `4 files, 400 lines`
 - Verification: 薄 controller 的 snapshot 只消费真实 `ExtensionsScreenModel.state`，复用 production projection 与 `AppError.toStoredAppError()`；refresh/search/install/update/cancel/retry/updateAll/uninstall/trust confirm/dismiss 均按稳定 `packageName` 调用真实 model intent。未知 package、无 pending trust 或无可用动作时必须明确失败。
-- Files: 新增 `SourceExtensionTestModeController.kt` 与 `SourceExtensionTestModeControllerTest.kt`。
-- Boundary: 不得复制搜索 predicate、分类/reducer、安装状态机、错误字符串或信任规则；Desktop 两阶段指纹信任是平台安全增强，必须保留。
+- Files: 新增 `SourceExtensionTestModeController.kt` 与 `SourceExtensionTestModeControllerTest.kt`，并修改共享 `ExtensionPresentationContract.kt` 与 Desktop `ExtensionListScreen.kt`。
+- Boundary: 不得复制搜索 predicate、分类/reducer、安装状态机、错误字符串或信任规则；Desktop 两阶段指纹信任是平台安全增强，必须保留。动作可用性必须复用 fixed main `InstallStep.isCompleted()` 语义的共享契约，UI 与 Test Mode 不得各自维护一套。
 
 - [ ] RED：断言 controller 不存在，并以真实 model 覆盖状态、动作、失败与取消契约。
 - [ ] GREEN：实现不持有第二份业务状态的 controller。
