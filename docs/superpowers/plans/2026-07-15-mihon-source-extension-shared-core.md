@@ -1957,12 +1957,14 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `6 files, 400 lines`
 - Verification: tracked ComicFury APK 必须经 production converter/meta/loader 展开 14 sources；由公开 page-list 链生成 host=`tachiyomi-lib-textinterceptor` 的 author-note Page，并经公开 `HttpSource.getImage(Page)` 进入真实 TextInterceptor。补齐该链实际执行的 TextPaint、Typeface、Layout.Alignment/StaticLayout 与 Canvas drawColor/save/translate/restore，复用已有 Bitmap create/compress；最终断言 HTTP 200、image/png、可解码非空 PNG 与代表性布局结果。不得只 loadClass、扫描常量池或直接调用私有 helper；若缺口超过 6 文件/400 行必须再拆。
 
-##### Task 7C3q3: Html real-chain evidence ledger
+  Evidence: implementation `9264f53a4`、唯一修复 `7b1dd5d45`；累计严格 6 files / 373 touched lines。真实 RED 为 tracked APK 经 production converter/meta 后 SourceFactory 缺 `android.text.Layout`，继续补齐预审 ABI 后暴露 TextPaint 构造；完整 GREEN 由 MockWebServer HTML 经 public page-list 生成真实 author-note Page，再经 public getImage 进入 TextInterceptor，14 sources/no diagnostics、HTTP 200 image/png、可解码 1000px PNG、长文折行增高、白底深色字形。发现 page-list 无条件调用 `Uri.encode(String)`，因此在同一预算内合并 Layout/StaticLayout 文件并新增 Android UTF-8 percent-encoding；emoji `%F0%9F%98%80` 由真实 Page URL 证明。首审发现错误 `<span>` 未执行标题/DEFAULT_BOLD、setTypeface 返回新值及新 Canvas 比较不能保护 restore；唯一修复取得真实 `NoSuchFieldError: Typeface.DEFAULT_BOLD` RED，以真实 `<a>`、public static DEFAULT_BOLD、旧值返回契约及同一长图下半区 minX 45..75 修复，real 1/1、Phase2 11/11。独立复审 APPROVED，diff-check clean、Java0；Bitmap/Html/Spanned/Color/ledger/loader/converter 零改。
 
-- Risk axis: `html-real-chain-evidence`
+##### Task 7C3q3: Html 与 Uri real-chain evidence ledger
+
+- Risk axis: `comicfury-html-uri-evidence`
 - Platform boundary: `verification`
-- Estimated scope: `3 files, 80 lines`
-- Verification: 仅在 7C3q1/q2 独立审查通过后，将 Html 标 required 并唯一绑定 tracked ComicFury 与真实文本转 PNG test；更新 evidence/contract 反向集合与 surface。不得把未执行的 Color 或图文 API 顺带标 required。
+- Estimated scope: `3 files, 100 lines`
+- Verification: 仅在 7C3q1/q2 独立审查通过后，将 Html 标 required 并唯一绑定 tracked ComicFury 与真实文本转 PNG test；同时把 Uri 从仅 verifier-token 证据升级为“verifier token + `encode(String)` UTF-8 percent-encoding 真实执行”，仍不得宣称 parse/decode/Builder 或一般 URI 行为。更新 inventory/evidence/contract 反向集合与 surface；不得把未执行的 Color 或其他图文 API 顺带标 required。
 
 ##### Task 7C3q4: verifier-only Color shim prune
 
