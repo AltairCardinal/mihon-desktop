@@ -15,6 +15,10 @@ class Rect(
 
 class Canvas(private val target: Bitmap) {
 
+    init {
+        target.native()
+    }
+
     @Suppress("UNUSED_PARAMETER")
     fun drawBitmap(bitmap: Bitmap, left: Float, top: Float, paint: Paint?) {
         val targetNative = target.native()

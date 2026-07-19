@@ -93,6 +93,15 @@ class AndroidStubsPhase27Test {
     }
 
     @Test
+    fun `Canvas rejects a recycled target during construction`() {
+        val target = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+        target.recycle()
+
+        shouldThrow<IllegalStateException> { Canvas(target) }.message shouldBe
+            "Cannot use a recycled bitmap"
+    }
+
+    @Test
     fun `Canvas rejects drawing after its target is recycled`() {
         val target = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
         val source = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
