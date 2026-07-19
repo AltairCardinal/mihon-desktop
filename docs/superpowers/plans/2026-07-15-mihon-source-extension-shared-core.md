@@ -1777,6 +1777,13 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Evidence: commit `54ba9045e7`，4 files/48 touched（2 additions/46 deletions）。删除单文件三个drawable类型、Phase27三项自证与三项inventory，surface 32 files/38 symbols；Bitmap/Factory/Canvas/Paint/Rect/Color、graphics evidence与Desktop图标链零改。clean compile成功（1m54s），graphics adapter/ABI、contract、baseline、6个真实fixture、loader、IconLoading与UI Presentation共 `48/48`。独立复核fixed-main引用只在Android Reader/resources/icon平台链，7个真实raw JAR对三owner/dotted名均0；Desktop图标继续ByteArray+Compose/Coil，真实binary仍命中保留的Bitmap/Canvas。独立scanner/inventory32/38且集合差/重复0，review APPROVED、Java0。
 
+##### Task 7C3n: Comix WebView 平台边界真实证据
+
+- Risk axis: `real-webview-platform-boundary`
+- Platform boundary: `verification`
+- Estimated scope: `4 files, 260 lines`
+- Verification: 复用immutable Comix 1.4.34 APK/provenance，经production converter/loader取得真实 source，并反射调用其父类私有 `p0.P(Document,String,Function1):String` 最短runInWebView入口；固定Document base URI为 `https://example.invalid/comix-webview`，禁止HTTP。真实顺序必须执行 `Looper.getMainLooper`、`Handler`构造/post、`WebResourceResponse(String,String,InputStream)`，再在DesktopHandler线程构造 `WebView(Application)`并由扩展包装为 `Exception("Failed to start WebView (url=...)")`，cause为 `UnsupportedOperationException("Desktop WebView engine unavailable")`。先在contract写RED要求Handler/Looper/WebResourceResponse=required、WebView=unsupported且各有唯一同fixture/test evidence；GREEN新增真实测试并只更新inventory/evidence，surface仍32/38，不改production。不得把仅父类链接的View/ViewGroup，或未执行的CookieManager/ValueCallback/WebResourceRequest/WebSettings/WebViewClient标resolved。测试必须@Timeout(10s)、关闭classloader/DI并恢复Injekt，复跑Comix preference/graphics链，Java0。
+
 ##### Task 7C4: Source/extension authority baseline 与恢复入口纠偏
 
 - Risk axis: `authority-resume-pointer`
