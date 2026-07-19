@@ -1189,9 +1189,11 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionDetailsScreen.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionDetailsPreferencesWiringTest.kt`
 
-- [ ] **Step 1: 写 Desktop adapter/entry RED**
-- [ ] **Step 2: 增加可测试的薄 platform adapter seam 并保留默认实现**
-- [ ] **Step 3: 运行 GREEN 与 directory/URL/navigation/cookie 断线 mutation**
+- [x] **Step 1: 写 Desktop adapter/entry RED**
+- [x] **Step 2: 增加可测试的薄 platform adapter seam 并保留默认实现**
+- [x] **Step 3: 运行 GREEN 与 directory/URL/navigation/cookie 断线 mutation**
+
+  Evidence: commit `2b3ae65a2`；默认 seam 仍委托 `DesktopDirectoryOpener` 与系统浏览器，真实 Screen/provider 测试覆盖 COMPILED_JAR/CONVERTED_APK、exact metadata、目录成功/失败、repo/source URL、source toggle、SourcePreferences/Browse 导航参数、incognito 与 cookie exact domains/反馈。断开 directory adapter 后 exact parent 捕获失败；fresh `Details 1 / Incognito 2` 全绿，6D3b review APPROVED，增量 `2 files, 134 lines`。
 
 #### Task 6D4: Source preferences typed availability UI
 
