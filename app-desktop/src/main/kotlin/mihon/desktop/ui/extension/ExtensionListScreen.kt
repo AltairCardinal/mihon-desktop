@@ -614,7 +614,7 @@ private fun LanguageFilterDialog(
     var pendingNsfw by remember(showNsfw) { mutableStateOf(showNsfw) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(MR.strings.desktop_extension_filter_title.localized()) },
+        title = { Text(MR.strings.action_filter.localized()) },
         text = {
             LazyColumn {
                 // NSFW toggle at top

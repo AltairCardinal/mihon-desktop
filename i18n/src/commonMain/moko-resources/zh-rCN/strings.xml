@@ -573,7 +573,6 @@
     <string name="desktop_extension_reload_installed">重新加载已安装扩展</string>
     <string name="desktop_extension_refresh_available">刷新可用扩展</string>
     <string name="desktop_extension_filter_by_language">按语言筛选</string>
-    <string name="desktop_extension_filter_title">筛选扩展</string>
     <string name="desktop_extension_show_nsfw">显示成人扩展</string>
     <string name="desktop_extension_source_settings">%s 的设置</string>
     <string name="desktop_extension_open_source_website">打开 %s 的网站</string>

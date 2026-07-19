@@ -27,8 +27,10 @@ import mihon.desktop.ui.extension.ExtensionListScreen
 import mihon.desktop.ui.extension.ExtensionsScreenModel
 import mihon.domain.extension.model.ExtensionCatalogResult
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
 import java.io.File
@@ -54,10 +56,7 @@ class DesktopExtensionListRenderedCopyTest {
             every { extensionApi } returns api
             every { extensionManager } returns manager
         }
-        val copies = listOf(
-            Copy(Locale.forLanguageTag("zh-CN"), "返回", "按语言筛选", "重新加载已安装扩展", "筛选扩展", "显示成人扩展", "应用", "重置", "取消", "卸载", "确定删除？", "移除“Example Extension”及其所有来源？此操作无法撤销。"),
-            Copy(Locale.US, "Navigate up", "Filter by language", "Reload installed extensions", "Filter extensions", "Show NSFW extensions", "Apply", "Reset", "Cancel", "Uninstall", "Remove Extension?", "Remove “Example Extension” and all its sources? This cannot be undone."),
-        )
+        val locales = listOf(Locale.forLanguageTag("zh-CN"), Locale.US)
         val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
         val previousInjekt = Injekt
         val previousLocale = Locale.getDefault()
@@ -66,23 +65,45 @@ class DesktopExtensionListRenderedCopyTest {
             Injekt.addSingleton(model)
             withTimeout(5_000) { model.refresh().join() }
             withTimeout(5_000) { model.state.first { it.presentation?.installed?.singleOrNull()?.installed === extension } }
-            copies.forEach { copy ->
-                Locale.setDefault(copy.locale)
+            locales.forEach { locale ->
+                Locale.setDefault(locale)
+                val filterTitle = MR.strings.action_filter.localized(locale)
+                val filterDescription = MR.strings.desktop_extension_filter_by_language.localized(locale)
+                val cancel = MR.strings.action_cancel.localized(locale)
+                val uninstall = MR.strings.ext_uninstall.localized(locale)
+                val removeBody = MR.strings.desktop_extension_remove_confirmation.localized(locale, extension.name)
+                if (locale.language == "zh") {
+                    assertNotEquals(MR.strings.action_filter.localized(Locale.US), filterTitle)
+                    assertTrue(removeBody.contains(extension.name) && MR.strings.desktop_extension_source_settings.localized(locale, "Example Source").contains("Example Source"))
+                }
                 scene.setContent {
                     CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
                         Navigator(ExtensionListScreen()) { CurrentScreen() }
                     }
                 }
                 renderUntil(scene, extension.name)
-                clickDescription(scene, copy.filter, "Filter by language")
+                clickDescription(scene, filterDescription)
                 scene.render()
-                assertCopy(scene, copy.filterTitle, copy.nsfw, copy.apply, copy.reset, copy.cancel)
-                clickText(scene, copy.cancel, "Cancel")
+                assertCopy(
+                    scene,
+                    filterTitle,
+                    MR.strings.desktop_extension_show_nsfw.localized(locale),
+                    MR.strings.action_apply.localized(locale),
+                    MR.strings.action_reset.localized(locale),
+                    cancel,
+                )
+                clickText(scene, cancel)
                 scene.render()
-                clickDescription(scene, copy.uninstall, "Uninstall")
+                clickDescription(scene, uninstall)
                 scene.render()
-                assertCopy(scene, copy.removeTitle, copy.removeBody, copy.uninstall, copy.cancel)
-                assertCopy(scene, copy.up, copy.filter, copy.reload, descriptions = true)
+                assertCopy(scene, MR.strings.ext_confirm_remove.localized(locale), removeBody, uninstall, cancel)
+                assertCopy(
+                    scene,
+                    MR.strings.action_bar_up_description.localized(locale),
+                    filterDescription,
+                    MR.strings.desktop_extension_reload_installed.localized(locale),
+                    descriptions = true,
+                )
             }
         } finally {
             scene.close()
@@ -122,8 +143,4 @@ class DesktopExtensionListRenderedCopyTest {
     private fun nodes(scene: ImageComposeScene) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
     private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
 
-    private data class Copy(
-        val locale: Locale, val up: String, val filter: String, val reload: String, val filterTitle: String, val nsfw: String,
-        val apply: String, val reset: String, val cancel: String, val uninstall: String, val removeTitle: String, val removeBody: String,
-    )
 }
