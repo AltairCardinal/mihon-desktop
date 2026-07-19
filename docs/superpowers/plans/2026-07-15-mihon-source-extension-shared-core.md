@@ -1908,6 +1908,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `6 files, 300 lines`
 - Verification: 先以 fixed Android ABI 写 focused RED：View 由 Context 构造，ViewGroup 为 abstract 且由 Context 构造，WebView 必须将收到的 Context 传给 ViewGroup，LayoutParams width/height 为可变 public fields，TextView/EditText/Button 同样经 Context 构造；WebSettings 为 abstract verifier return type，不可由自证测试直接实例化。GREEN 只对齐类型/构造/字段形状；View layout 与 WebView engine 方法继续 fail-fast，WebViewClient 默认 callback 继续 no-op/null。真实 Comix WebView test 必须仍到达 exact getSettings UOE，MangaDex verifier/preference setup 不回归。文件限定 View.kt、ViewGroup.kt、EditText.kt、WebViewCompat.kt、AndroidViewVerificationAbiTest.kt、AndroidWebViewVerifierAbiTest.kt。
 
+  Evidence: commits `5050c401c` + repair `4de695245`。RED 2 tests 精确命中 ViewGroup/WebSettings 非 abstract；GREEN 对齐 View(Context)、abstract ViewGroup(Context)、WebView super(context)、mutable LayoutParams fields、三 widget Context ctor 与 abstract WebSettings，engine UOE 保持。首轮 review 发现缺 public View.getContext；修复 RED 为 NoSuchMethodException，GREEN javap 为 public overridable `()Landroid/content/Context;` 且返回构造同一实例。唯一修复复审 APPROVED；全部 RealExtension/MangaDex/contract 通过，Java0。
+
 ##### Task 7C3p3b: ViewGroup 与 WebSettings evidence ledger
 
 - Risk axis: `view-websettings-boundary-evidence`
