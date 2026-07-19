@@ -1,5 +1,6 @@
 package mihon.desktop.di
 
+import android.app.Application
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -11,6 +12,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import mihon.desktop.DesktopUiDependencies
+import mihon.desktop.compat.AndroidCompat
 import mihon.desktop.backup.AutoBackupScheduler
 import mihon.desktop.backup.BackupRestoreScreenModelFactory
 import mihon.desktop.domain.LibraryUpdateScheduler
@@ -109,6 +111,18 @@ import okio.Buffer
 
 @Isolated
 class DesktopDiWiringTest {
+    @Test
+    fun `desktop DI binds the started Android compat Application exact type`(@TempDir tempDir: File) = runBlocking {
+        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+        try {
+            val application = Injekt.get<Application>()
+
+            assertSame(AndroidCompat.context, application.getBaseContext())
+        } finally {
+            context.closeAndJoin()
+        }
+    }
+
     @Test
     fun `challenge DI uses one bridge manager committer and helper jar for all explicit success paths`(
         @TempDir tempDir: File,

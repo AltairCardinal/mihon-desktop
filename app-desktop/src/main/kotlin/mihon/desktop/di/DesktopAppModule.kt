@@ -1,5 +1,6 @@
 package mihon.desktop.di
 
+import android.app.Application
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import dev.mihon.injekt.patchInjekt
@@ -9,6 +10,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import mihon.desktop.extension.DesktopExtensionLoader
+import mihon.desktop.compat.AndroidCompat
 import mihon.desktop.backup.BackupRestoreScreenModelFactory
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.source.DesktopSourceManager
@@ -140,6 +142,7 @@ import java.io.File
  * Call once at application startup before showing any UI.
  */
 fun initDesktopDI() {
+    initAndroidCompatApplication()
     val paths = DesktopPlatformPaths.current()
     val preferenceStore = initConfigLayer(paths.configDir)
     val networkHelper = initNetworkLayer(paths, preferenceStore)
@@ -157,6 +160,13 @@ internal fun initDesktopConfigurationForTest(appDir: File, preferenceStore: Pref
     Injekt.addSingleton<PlatformInfo>(DesktopPlatformInfo())
 }
 
+private fun initAndroidCompatApplication() {
+    AndroidCompat.initialize()
+    val application = Application()
+    AndroidCompat.startApp(application)
+    Injekt.addSingleton(application)
+}
+
 internal suspend fun initDesktopDIForTest(
     appDir: File,
     preferenceStore: PreferenceStore,
@@ -168,6 +178,7 @@ internal suspend fun initDesktopDIForTest(
 ): DesktopTestDIContext {
     activeDesktopTestDIContext?.closeAndJoin()
     patchInjekt()
+    initAndroidCompatApplication()
     val paths = desktopPaths(appDir)
     initDesktopConfigurationForTest(appDir, preferenceStore)
     val networkHelper = initNetworkLayer(paths, preferenceStore, browserOpener)

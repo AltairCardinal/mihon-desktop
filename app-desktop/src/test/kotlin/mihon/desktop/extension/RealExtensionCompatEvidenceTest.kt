@@ -73,7 +73,7 @@ class RealExtensionCompatEvidenceTest {
                 assertEquals(provenance.string("rootCauseType"), rootCause.javaClass.name)
                 assertEquals(provenance.string("rootCauseMessage"), rootCause.message)
             } else {
-                assertEquals("supported", provenance.string("expectedOutcome"))
+                assertEquals("success", provenance.string("expectedOutcome"))
                 val source = loaded.first().source
                 val codeSource = java.io.File(source.javaClass.protectionDomain.codeSource.location.toURI())
                 assertEquals(jar.canonicalFile, codeSource.canonicalFile)

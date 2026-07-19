@@ -12,8 +12,8 @@
   "versionName": "1.4.28",
   "extensionClass": "eu.kanade.tachiyomi.extension.zh.manhuagui.ExtensionGenerated",
   "expectedOutcome": "unsupported",
-  "rootCauseType": "uy.kohesive.injekt.api.InjektionException",
-  "rootCauseMessage": "No registered instance or factory for type class android.app.Application",
+  "rootCauseType": "java.lang.NoSuchMethodError",
+  "rootCauseMessage": "'long kotlin.time.Duration$Companion.getZERO_UwyO8pc()'",
   "rawUrl": [
     "https://raw.githubusercontent.com/keiyoushi/extensions/",
     "7d5052fb895d086ae2ec6e3cca861146ee3ea0ec/",
