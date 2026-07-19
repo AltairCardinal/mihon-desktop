@@ -1578,6 +1578,13 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `5 files, 280 lines plus one 96,835-byte APK`
 - Verification: 固定 Comix 1.4.34 fixture/provenance 与下述 commit/blob/hash/package/class 完全相同。RED 必须由 production converter/loader 精确得到 JVM verifier 拒绝 `android.app.Application` 传给需要 `android.content.Context` 的 preference 构造器，根因是 Desktop `ContextWrapper` 未按 fixed main/Android API 继承 `Context`；不得把 loader 空结果当充分诊断。GREEN 只将 Desktop `ContextWrapper` 恢复为 `Context` 子类并正确 override 委托方法，同时用 unit ABI 断言与真实 Comix invocation 证明 Application 可作为 Context、原 VerifyError 已消失。若真实 fixture 随后推进到新的独立 linkage gap，本 Task 应把该精确 root 固定为结构化下一 gap 后提交，不把后续平台 ABI 偷塞进同一修复；本 Task 不要求 settings Content、不修默认值/dialog title、不更新 compat evidence。
 
+##### Task 7C3a0b: Android View verifier ABI token
+
+- Risk axis: `android-view-verifier-token`
+- Platform boundary: `desktop`
+- Estimated scope: `5 files, 220 lines`
+- Verification: 消费 7C3a0a 的 immutable Comix fixture，RED 精确为 production-loaded source superclass 在 verifier 阶段缺 `android.view.View`，该引用来自同一 source class 中未执行的 WebView 内容解析方法，不是 preference listener。GREEN 只提供 `android.view.View`、`View.MeasureSpec`、`ViewGroup` 与 `ViewGroup.LayoutParams` 的 exact class/descriptors：`setLayoutParams(LayoutParams)`、`measure(II)`、`layout(IIII)`、`makeMeasureSpec(II)I` 与 `LayoutParams(II)`；`makeMeasureSpec` 保留 Android size/mode 位编码，其他需要真实 UI 引擎的操作必须 fail-fast，禁止 no-op 冒充 WebView 支持。真实 Comix loader 必须越过 View root 并把任何下一 WebView linkage gap结构化固定；本 Task 不运行 WebView 分支、不更新 compat evidence，新 top-level inventory 项保持 unverified，直到真实产品行为有证据。
+
 ##### Task 7C3a: Comix 真实 EditText/MultiSelect/Switch 设置语义
 
 - Risk axis: `androidx-preference-default-semantics`
