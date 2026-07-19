@@ -1674,6 +1674,13 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `4 files, 180 lines`
 - Verification: 这是 7C3e1 的唯一修复轮，只修改 Bitmap.kt、BitmapFactory.kt、CanvasCompat.kt、AndroidStubsPhase27Test.kt。所有临时 Skia Canvas 必须确定性关闭；decode/allocate/scale 任意异常路径关闭已分配 native Bitmap，Canvas 每次draw重新通过目标 Bitmap 的 recycle guard取得native，禁止use-after-close。`decodeByteArray` 的负offset/length或尾部越界抛 `ArrayIndexOutOfBoundsException`；`Bitmap.compress` quality不在0..100抛 `IllegalArgumentException`；`createScaledBitmap` 必须按filter选择nearest与linear采样，并由真实像素测试区分。复跑7C3e1两条真实Comix链和相关adapter测试；仍不得更新ledger。
 
+###### Task 7C3e1s: Canvas recycled-target construction contract
+
+- Risk axis: `canvas-recycled-construction`
+- Platform boundary: `desktop`
+- Estimated scope: `2 files, 50 lines`
+- Verification: 7C3e1r 的唯一复审发现，为避免长期持有 Skia Canvas 而把 recycle guard 全部推迟到 draw，导致 `Canvas(recycledBitmap)` 未按 Android 在构造阶段立即失败；原修复轮到此停止并重规划为本独立 Task。只修改 CanvasCompat.kt 与 AndroidStubsPhase27Test.kt：构造时调用目标 Bitmap 的 guard 但不持有 native/Skia Canvas，draw 时仍再次 guard；测试同时覆盖“先 recycle 后构造立即失败”和“构造后 recycle 再 draw 失败”，并复跑真实 Comix XOR/grid 链。不得修改 ledger 或其他 graphics 语义。
+
 ###### Task 7C3e2: Comix graphics evidence ledger
 
 - Risk axis: `comix-graphics-evidence`
