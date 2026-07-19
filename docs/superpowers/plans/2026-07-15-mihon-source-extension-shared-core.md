@@ -1813,6 +1813,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `3 files, 100 lines`
 - Verification: 仅在7C3n0独立审查通过后，修改CompatEvidenceContractTest、inventory与evidence：Handler/Looper/WebResourceResponse=required，WebView=unsupported，各自唯一绑定同一immutable Comix真实测试；surface保持32/38。View/ViewGroup与未执行的CookieManager/ValueCallback/WebResourceRequest/WebSettings/WebViewClient仍unverified。
 
+  Evidence: commit `33eedb52f6`，3 ledger files/71 touched（63 additions/8 deletions）。contract RED精确为Handler expected required/actual unverified；GREEN把真实执行成功的Handler/Looper/WebResourceResponse标required，把明确Desktop engine边界的WebView标unsupported，各自唯一绑定tracked Comix APK SHA与RealExtensionWebViewUnsupportedCompatTest，并反向约束该test恰好只覆盖四项。surface仍32 files/38 symbols；View/ViewGroup与CookieManager/ValueCallback/WebResourceRequest/WebSettings/WebViewClient保持unverified。contract、真实WebView、Comix preference/graphics通过，独立review APPROVED、Java0。
+
 ##### Task 7C3o: MangaDex SourceFactory、AppInfo 与 Build.RELEASE 真实链
 
 - Risk axis: `mangadex-build-release-abi`
