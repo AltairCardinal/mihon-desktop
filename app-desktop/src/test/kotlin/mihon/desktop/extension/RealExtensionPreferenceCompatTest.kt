@@ -1,15 +1,18 @@
 package mihon.desktop.extension
 
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import mihon.desktop.di.initDesktopDIForTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import tachiyomi.core.common.preference.DesktopPreferenceStore
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
@@ -17,9 +20,9 @@ import java.security.MessageDigest
 class RealExtensionPreferenceCompatTest {
 
     @Test
-    fun `real Comix conversion advances from View verification to the WebView platform gap`(
+    fun `real Comix conversion loads after the WebView verifier closure`(
         @TempDir tempDir: Path,
-    ) {
+    ) = runBlocking {
         val provenance = Json.parseToJsonElement(
             Files.readString(repositoryRoot().resolve(PROVENANCE_PATH)),
         ).jsonObject
@@ -40,46 +43,44 @@ class RealExtensionPreferenceCompatTest {
         assertEquals(VERSION_CODE, provenance.string("versionCode").toLong())
         assertEquals(VERSION_NAME, provenance.string("versionName"))
         assertEquals(EXTENSION_CLASS, provenance.string("extensionClass"))
-        assertEquals("unsupported", provenance.string("expectedOutcome"))
-        assertEquals("java.lang.ClassNotFoundException", provenance.string("rootCauseType"))
-        assertEquals("android.webkit.WebView", provenance.string("rootCauseMessage"))
+        assertEquals("success", provenance.string("expectedOutcome"))
 
-        val convertedJar = ApkToJarConverter().convert(apkPath.toFile(), tempDir.toFile())
-        assertNotNull(convertedJar, "Production converter rejected the immutable Comix APK")
-        val jar = requireNotNull(convertedJar)
-        writeExtensionMeta(
-            jar,
-            ExtensionMeta(
-                pkgName = PACKAGE_NAME,
-                versionCode = VERSION_CODE,
-                versionName = VERSION_NAME,
-                artifactSha256 = provenance.string("sha256"),
-                source = ExtensionOrigin.CONVERTED_APK,
-                name = "Comix",
-                language = "en",
-                extensionClass = EXTENSION_CLASS,
-            ),
+        val diContext = initDesktopDIForTest(
+            appDir = tempDir.resolve("app").toFile(),
+            preferenceStore = DesktopPreferenceStore(),
         )
-        val loader = DesktopExtensionLoader(tempDir.toFile())
-        val loaded = loader.loadFromSingleJar(jar)
-        assertTrue(loaded.isEmpty(), "Comix unexpectedly loaded before the documented WebView boundary")
-        assertTrue(loader.diagnostics.isEmpty(), "Comix failed in outer loader wiring: ${loader.diagnostics}")
-        val rootCause = loaderFailureRootCause(jar)
-        assertEquals(provenance.string("rootCauseType"), rootCause.javaClass.name)
-        assertEquals(provenance.string("rootCauseMessage"), rootCause.message)
-    }
-
-    private fun loaderFailureRootCause(jar: java.io.File): Throwable {
-        val failure = try {
-            ExtensionClassLoader(jar.toURI().toURL(), javaClass.classLoader).use { classLoader ->
-                classLoader.loadClass(EXTENSION_CLASS).getDeclaredConstructor().newInstance()
+        try {
+            val convertedJar = ApkToJarConverter().convert(apkPath.toFile(), tempDir.toFile())
+            assertNotNull(convertedJar, "Production converter rejected the immutable Comix APK")
+            val jar = requireNotNull(convertedJar)
+            writeExtensionMeta(
+                jar,
+                ExtensionMeta(
+                    pkgName = PACKAGE_NAME,
+                    versionCode = VERSION_CODE,
+                    versionName = VERSION_NAME,
+                    artifactSha256 = provenance.string("sha256"),
+                    source = ExtensionOrigin.CONVERTED_APK,
+                    name = "Comix",
+                    language = "en",
+                    extensionClass = EXTENSION_CLASS,
+                ),
+            )
+            val loader = DesktopExtensionLoader(tempDir.toFile())
+            val loaded = loader.loadFromSingleJar(jar)
+            try {
+                assertEquals(1, loaded.size, "Comix did not load through production Desktop DI")
+                assertTrue(loader.diagnostics.isEmpty(), "Comix failed in outer loader wiring: ${loader.diagnostics}")
+                val source = loaded.single().source
+                assertEquals(EXTENSION_CLASS, source.javaClass.name)
+                val codeSource = java.io.File(source.javaClass.protectionDomain.codeSource.location.toURI())
+                assertEquals(jar.canonicalFile, codeSource.canonicalFile)
+            } finally {
+                loaded.map { it.classLoader }.distinct().filterIsInstance<AutoCloseable>().forEach { it.close() }
             }
-            null
-        } catch (error: Throwable) {
-            error
+        } finally {
+            diContext.closeAndJoin()
         }
-        return generateSequence(requireNotNull(failure) { "Direct instantiation unexpectedly succeeded" }) { it.cause }
-            .last()
     }
 
     private fun sha256(path: Path): String =
@@ -111,7 +112,7 @@ class RealExtensionPreferenceCompatTest {
         val PROVENANCE_FIELDS = setOf(
             "authorityRef", "repository", "repositoryCommit", "gitBlob", "license", "fixturePath", "sha256",
             "sizeBytes", "packageName", "versionCode", "versionName", "extensionClass", "expectedOutcome", "rawUrl",
-            "retrievedAt", "rootCauseType", "rootCauseMessage",
+            "retrievedAt",
         )
     }
 }

@@ -16,6 +16,7 @@ import java.util.concurrent.ConcurrentHashMap
 abstract class CookieManager {
 
     abstract fun setAcceptCookie(accept: Boolean)
+    abstract fun setAcceptThirdPartyCookies(webView: WebView, accept: Boolean)
     abstract fun acceptCookie(): Boolean
     abstract fun setCookie(url: String, value: String)
     abstract fun setCookie(url: String, value: String, callback: ValueCallback<Boolean>?)
@@ -52,6 +53,10 @@ internal class DesktopCookieManager : CookieManager() {
 
     override fun setAcceptCookie(accept: Boolean) {
         acceptCookies = accept
+    }
+
+    override fun setAcceptThirdPartyCookies(webView: WebView, accept: Boolean) {
+        throw UnsupportedOperationException("Desktop WebView engine unavailable")
     }
 
     override fun acceptCookie(): Boolean = acceptCookies
