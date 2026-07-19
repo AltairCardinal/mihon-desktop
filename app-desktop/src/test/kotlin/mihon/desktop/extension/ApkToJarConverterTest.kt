@@ -120,6 +120,48 @@ class ApkToJarConverterTest {
     }
 
     @Test
+    fun `failed asset merge leaves no raw or final output`(@TempDir tmp: Path) {
+        val apk = buildConflictingAssetsApk(tmp.resolve("conflict.apk").toFile())
+
+        converter.convert(apk, tmp.toFile()).shouldBeNull()
+
+        Files.exists(tmp.resolve("conflict-raw.jar")) shouldBe false
+        Files.exists(tmp.resolve("conflict.jar")) shouldBe false
+        Files.list(tmp).use { files ->
+            files.noneMatch { it.fileName.toString().startsWith(".mihon-apk-convert-") } shouldBe true
+        }
+    }
+
+    @Test
+    fun `failed asset merge preserves an existing final output`(@TempDir tmp: Path) {
+        val apk = buildConflictingAssetsApk(tmp.resolve("existing.apk").toFile())
+        val existingOutput = tmp.resolve("existing.jar")
+        val original = "user-owned-output".toByteArray()
+        Files.write(existingOutput, original)
+
+        converter.convert(apk, tmp.toFile()).shouldBeNull()
+
+        Files.readAllBytes(existingOutput).contentEquals(original) shouldBe true
+        Files.exists(tmp.resolve("existing-raw.jar")) shouldBe false
+    }
+
+    @Test
+    fun `successful conversion replaces an existing final output`(@TempDir tmp: Path) {
+        val apk = tmp.resolve("replace.apk").toFile()
+        buildZip(apk) {
+            putEntry("classes.dex", minimalDexBytes())
+            putEntry("assets/value.txt", "replacement".toByteArray())
+        }
+        val existingOutput = tmp.resolve("replace.jar")
+        Files.writeString(existingOutput, "old-output")
+
+        val result = converter.convert(apk, tmp.toFile()).shouldNotBeNull()
+
+        result.toPath() shouldBe existingOutput
+        JarFile(result).use { archive -> archive.getJarEntry("assets/value.txt").shouldNotBeNull() }
+    }
+
+    @Test
     fun `real Comix conversion preserves p0 b exception handlers`(@TempDir tmp: Path) {
         val apk = repositoryRoot().resolve(COMIX_APK).toFile()
         val jar = converter.convert(apk, tmp.toFile()).shouldNotBeNull()
@@ -164,6 +206,14 @@ class ApkToJarConverterTest {
 
     private fun buildZip(file: File, block: ZipOutputStream.() -> Unit) {
         ZipOutputStream(file.outputStream().buffered()).use(block)
+    }
+
+    private fun buildConflictingAssetsApk(file: File): File = file.also { apk ->
+        buildZip(apk) {
+            putEntry("classes.dex", minimalDexBytes())
+            putEntry("assets/i18n", "parent-file".toByteArray())
+            putEntry("assets/i18n/messages_en.properties", "child=conflict".toByteArray())
+        }
     }
 
     private fun ZipOutputStream.putEntry(name: String, content: ByteArray) {

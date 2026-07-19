@@ -5,6 +5,8 @@ import java.io.File
 import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.util.zip.ZipException
 import java.util.zip.ZipFile
 
@@ -27,22 +29,34 @@ class ApkToJarConverter {
      */
     fun convert(apkFile: File, outputDir: File): File? {
         if (!containsDex(apkFile)) return null
+        var workDir: Path? = null
         return try {
-            val rawJar = File(outputDir, apkFile.nameWithoutExtension + "-raw.jar")
+            workDir = Files.createTempDirectory(outputDir.toPath(), ".mihon-apk-convert-")
+            val rawJar = workDir.resolve("raw.jar").toFile()
             Dex2jar.from(apkFile)
                 .skipDebug()
                 .to(rawJar.toPath())
             if (!rawJar.exists() || rawJar.length() == 0L) return null
 
             // Post-process: recompute stack map frames to fix VerifyErrors from dex2jar output
+            val editedJar = workDir.resolve("edited.jar").toFile()
+            BytecodeEditor.fixBytecode(rawJar, editedJar)
+            if (!editedJar.exists() || editedJar.length() == 0L) return null
+            copyClasspathAssets(apkFile, editedJar)
             val outputJar = File(outputDir, apkFile.nameWithoutExtension + ".jar")
-            BytecodeEditor.fixBytecode(rawJar, outputJar)
-            copyClasspathAssets(apkFile, outputJar)
-            rawJar.delete()
+            Files.move(editedJar.toPath(), outputJar.toPath(), StandardCopyOption.REPLACE_EXISTING)
             outputJar.takeIf { it.exists() && it.length() > 0 }
         } catch (_: Exception) {
             null
+        } finally {
+            workDir?.let(::deleteWorkDirectory)
         }
+    }
+
+    private fun deleteWorkDirectory(workDir: Path) {
+        Files.deleteIfExists(workDir.resolve("raw.jar"))
+        Files.deleteIfExists(workDir.resolve("edited.jar"))
+        Files.deleteIfExists(workDir)
     }
 
     /** Copies safe APK assets after bytecode editing without replacing generated JAR entries. */
