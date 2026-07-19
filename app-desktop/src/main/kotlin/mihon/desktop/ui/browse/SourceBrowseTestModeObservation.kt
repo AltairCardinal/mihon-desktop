@@ -22,7 +22,9 @@ enum class SourceBrowseTestQueryKind { POPULAR, LATEST, SEARCH }
 enum class SourceBrowseTestRecovery { OPEN_LOGIN, RETRY, NONE }
 
 @Serializable
-enum class SourceBrowseTestLoginFeedback { INVALID_HEADER, BROWSER_UNAVAILABLE, TIMED_OUT, INVALID_COOKIES, COMMIT_FAILED }
+enum class SourceBrowseTestLoginFeedback {
+    INVALID_HEADER, BROWSER_UNAVAILABLE, TIMED_OUT, INVALID_COOKIES, COMMIT_FAILED
+}
 
 @Serializable
 data class SourceBrowseTestRequest(
@@ -121,7 +123,8 @@ class SourceBrowseTestModeObservationPort(
             error = pageError?.first?.toStoredAppError(),
             recovery = pageError?.second?.let {
                 when (it) {
-                    tachiyomi.domain.source.service.SourceRecoveryAction.OpenLogin -> SourceBrowseTestRecovery.OPEN_LOGIN
+                    tachiyomi.domain.source.service.SourceRecoveryAction.OpenLogin ->
+                        SourceBrowseTestRecovery.OPEN_LOGIN
                     tachiyomi.domain.source.service.SourceRecoveryAction.Retry -> SourceBrowseTestRecovery.RETRY
                     tachiyomi.domain.source.service.SourceRecoveryAction.None -> SourceBrowseTestRecovery.NONE
                 }
@@ -150,14 +153,17 @@ class SourceBrowseTestModeObservationPort(
                 when {
                     closed -> SourceBrowseTestFailureCode.PORT_CLOSED
                     login == null -> SourceBrowseTestFailureCode.NO_ACTIVE_LOGIN
-                    tokenAttempt !== login.attempt || token != attemptToken -> SourceBrowseTestFailureCode.ATTEMPT_MISMATCH
+                    tokenAttempt !== login.attempt || token != attemptToken ->
+                        SourceBrowseTestFailureCode.ATTEMPT_MISMATCH
                     login.terminal -> SourceBrowseTestFailureCode.TERMINAL
                     else -> null
                 }
             }
             if (failureCode != null) return@withContext failure(failureCode)
             requireNotNull(login)
-            if (loginActions.cancel(login) != null) return@withContext failure(SourceBrowseTestFailureCode.OPERATION_REJECTED)
+            if (
+                loginActions.cancel(login) != null
+            ) return@withContext failure(SourceBrowseTestFailureCode.OPERATION_REJECTED)
             setLogin(null)
             clearToken()
             SourceBrowseTestActionResult(true, snapshot())

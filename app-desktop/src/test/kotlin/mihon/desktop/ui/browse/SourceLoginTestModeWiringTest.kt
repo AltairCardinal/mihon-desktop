@@ -58,14 +58,19 @@ class SourceLoginTestModeWiringTest {
             try {
                 fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
                 fun nodes() = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
-                val loginLabel = desktopSourceRecoveryActionLabel(tachiyomi.domain.source.service.SourceRecoveryAction.OpenLogin)!!
+                val loginLabel =
+                    desktopSourceRecoveryActionLabel(tachiyomi.domain.source.service.SourceRecoveryAction.OpenLogin)!!
                 scene.setContent {
                     CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
                         Navigator(SourceBrowseScreen(source.id)) { CurrentScreen() }
                     }
                 }
                 withTimeout(2_000) {
-                    while (nodes().none { it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains(loginLabel) }) {
+                    while (
+                        nodes().none {
+                            it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains(loginLabel)
+                        }
+                    ) {
                         scene.render()
                         delay(10)
                     }
@@ -103,7 +108,8 @@ class SourceLoginTestModeWiringTest {
                 assertNull(port.snapshot().login)
                 scene.render()
                 assertTrue(nodes().none { it.config.contains(SemanticsActions.SetText) })
-                var login: DesktopSourceLoginUiState? = DesktopSourceLoginUiState(DesktopSourceLoginAttempt(), "fixture")
+                var login: DesktopSourceLoginUiState? =
+                    DesktopSourceLoginUiState(DesktopSourceLoginAttempt(), "fixture")
                 var cancelCalls = 0
                 val rejectedActions = DesktopSourceLoginUiActions({ _, _ -> false }) { cancelCalls++; false }
                 val validation = SourceBrowseTestModeObservationPort(
@@ -127,7 +133,10 @@ class SourceLoginTestModeWiringTest {
                 assertEquals(SourceBrowseTestFailureCode.NO_ACTIVE_LOGIN, validation.cancel(current).failureCode)
                 login = DesktopSourceLoginUiState(DesktopSourceLoginAttempt(), "rejected")
                 val rejectedToken = requireNotNull(validation.snapshot().login).attemptToken
-                assertEquals(SourceBrowseTestFailureCode.OPERATION_REJECTED, validation.cancel(rejectedToken).failureCode)
+                assertEquals(
+                    SourceBrowseTestFailureCode.OPERATION_REJECTED,
+                    validation.cancel(rejectedToken).failureCode
+                )
                 assertEquals(1, cancelCalls)
 
                 val raceLogin = DesktopSourceLoginUiState(DesktopSourceLoginAttempt(), "race")
@@ -169,7 +178,8 @@ class SourceLoginTestModeWiringTest {
         io.mockk.mockk<DesktopUiDependencies> {
             io.mockk.every { sourceManager } returns FakeDesktopSourceManager(listOf(source))
             io.mockk.every { sourceMangaSearchService } returns SourceMangaSearchService()
-            io.mockk.every { saveSourceMangaForDetails } returns io.mockk.mockk<SaveSourceMangaForDetails>(relaxed = true)
+            io.mockk.every { saveSourceMangaForDetails } returns
+                io.mockk.mockk<SaveSourceMangaForDetails>(relaxed = true)
             io.mockk.every { sourceLoginSessionFactory } returns DesktopSourceLoginSessionFactory(
                 AuthenticatedSessionCommitter { _, _ -> },
                 DesktopBrowserOpener { _, completion -> ticket.set(completion); true },
