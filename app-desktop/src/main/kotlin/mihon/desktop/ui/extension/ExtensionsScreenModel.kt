@@ -87,7 +87,7 @@ class ExtensionsScreenModel(
         mutableState.update { it.copy(options = value) }
     }
 
-    fun updateAllCandidates() = latestCatalog?.available.orEmpty().filter { candidate ->
+    fun updateAllCandidates() = latestCatalog?.let(port::canonicalCandidates)?.values.orEmpty().filter { candidate ->
         state.value.projection?.installed.orEmpty().any {
             it.presentation.hasUpdate && it.operationPackageName == candidate.pkgName
         }
@@ -108,6 +108,15 @@ class ExtensionsScreenModel(
             }
         }
     }
+
+    fun update(item: DesktopExtensionItem): Job? {
+        checkOpen()
+        return latestCatalog?.let(port::canonicalCandidates)?.get(item.operationPackageName)?.let { install(it.item()) }
+    }
+
+    fun retry(item: DesktopExtensionItem): Job? = if (
+        state.value.presentation?.updates.orEmpty().any { it.operationPackageName == item.operationPackageName }
+    ) update(item) else install(item)
 
     fun updateAll(): List<Job> = updateAllCandidates().map { install(it.item()) }
 
@@ -132,7 +141,10 @@ class ExtensionsScreenModel(
 
     fun dismissTrust(): Boolean {
         checkOpen()
-        return takePending()?.let { port.discardTrust(it.request.requestId) } == true
+        val pending = takePending() ?: return false
+        val discarded = port.discardTrust(pending.request.requestId)
+        clearTerminal(pending.packageName)
+        return discarded
     }
 
     fun uninstall(item: DesktopExtensionItem): Boolean = port.uninstall(item)

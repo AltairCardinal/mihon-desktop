@@ -6,6 +6,7 @@ import mihon.domain.extension.model.RepositoryIdentity
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
 import mihon.domain.extension.presentation.ExtensionPresentationResult
 import mihon.domain.extension.presentation.ExtensionPresentationSource
+import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
@@ -62,6 +63,22 @@ class ExtensionListCopyContractTest {
         assertFalse(base.emptyAvailable.contains("Android-only", ignoreCase = true))
         assertTrue(actions.all { it.localized(Locale.ENGLISH).isNotBlank() && it.localized(Locale.SIMPLIFIED_CHINESE).isNotBlank() })
         assertTrue(actions.all { it.localized(Locale.ENGLISH) != it.localized(Locale.SIMPLIFIED_CHINESE) })
+        assertEquals(
+            MR.strings.desktop_extension_android_only.localized(Locale.ENGLISH, "Example"),
+            extensionInstallErrorCopy("Example", AppError.MalformedData(IllegalStateException("Android-only artifact")), Locale.ENGLISH),
+        )
+        assertEquals(
+            MR.strings.desktop_extension_conversion_failed.localized(Locale.ENGLISH, "Example"),
+            extensionInstallErrorCopy("Example", AppError.MalformedData(IllegalStateException("APK convert failed")), Locale.ENGLISH),
+        )
+        assertTrue(extensionInstallErrorCopy("Example", AppError.Network(), Locale.ENGLISH).contains("Install failed"))
+        assertEquals(
+            MR.strings.desktop_extension_install_failed.localized(Locale.ENGLISH, "Android-only network"),
+            extensionInstallErrorCopy("Example", AppError.Network(IllegalStateException("Android-only network")), Locale.ENGLISH),
+        )
+        assertEquals(MR.strings.ext_pending.localized(Locale.ENGLISH), extensionInstallStepCopy(ExtensionPresentationInstallStep.Pending, Locale.ENGLISH))
+        assertEquals(MR.strings.ext_downloading.localized(Locale.ENGLISH), extensionInstallStepCopy(ExtensionPresentationInstallStep.Downloading, Locale.ENGLISH))
+        assertEquals(MR.strings.ext_installing.localized(Locale.ENGLISH), extensionInstallStepCopy(ExtensionPresentationInstallStep.Installing, Locale.ENGLISH))
     }
 
     private fun available(pkg: String, name: String) = mihon.desktop.extension.DesktopAvailableExtension(

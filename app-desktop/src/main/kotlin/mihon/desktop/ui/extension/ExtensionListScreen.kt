@@ -52,30 +52,32 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.Job
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import mihon.desktop.extension.DesktopAvailableExtension
-import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.extension.InstalledExtension
 import mihon.desktop.extension.isExtensionAvailableOnDesktop
+import mihon.domain.error.AppError
+import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.awt.Desktop
 import java.net.URI
+import java.util.Locale
 
 /** Lists installed extensions and available extensions from registered repositories. */
 class ExtensionListScreen : Screen {
@@ -85,11 +87,9 @@ class ExtensionListScreen : Screen {
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val manager = LocalDesktopUiDependencies.current.extensionManager
-        val api = LocalDesktopUiDependencies.current.extensionApi
         ExtensionListContent(
             model = remember { Injekt.get<ExtensionsScreenModel>() },
             manager = manager,
-            api = api,
             onBack = navigator::pop,
             onOpen = { navigator.push(ExtensionDetailsScreen(it.jarFile.absolutePath)) },
             onSettings = { sourceId, sourceName -> navigator.push(SourcePreferencesScreen(sourceId, sourceName)) },
@@ -102,7 +102,6 @@ class ExtensionListScreen : Screen {
 internal fun ExtensionListContent(
     model: ExtensionsScreenModel,
     manager: DesktopExtensionManager,
-    api: DesktopExtensionApi,
     onBack: () -> Unit = {},
     onOpen: (InstalledExtension) -> Unit = {},
     onSettings: (Long, String) -> Unit = { _, _ -> },
@@ -116,8 +115,6 @@ internal fun ExtensionListContent(
         var pendingRemoval by remember { mutableStateOf<InstalledExtension?>(null) }
         var showLangFilter by remember { mutableStateOf(false) }
         var searchQuery by remember { mutableStateOf("") }
-        val installStates = remember { mutableStateMapOf<String, ExtensionInstallUiState>() }
-        val installJobs = remember { mutableMapOf<String, Job>() }
         val ui = remember(state, searchQuery) { state.toExtensionListUiProjection(searchQuery) }
         val installedExtensions = state.projection?.installed.orEmpty().mapNotNull(DesktopExtensionItem::installed)
         val languageInventory = remember(state.projection) {
@@ -149,6 +146,33 @@ internal fun ExtensionListContent(
                 },
                 dismissButton = {
                     TextButton(onClick = { pendingRemoval = null }) { Text("Cancel") }
+                },
+            )
+        }
+
+        state.pendingTrust?.let { pending ->
+            AlertDialog(
+                onDismissRequest = { model.dismissTrust() },
+                title = { Text(MR.strings.untrusted_extension.localized()) },
+                text = {
+                    Text(
+                        MR.strings.desktop_extension_trust_changed.localized(
+                            Locale.getDefault(),
+                            pending.request.existingFingerprint,
+                            pending.request.incomingFingerprint,
+                        ),
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = { model.confirmTrust() }) { Text(MR.strings.ext_trust.localized()) }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { model.dismissTrust() },
+                        modifier = Modifier.semantics {
+                            contentDescription = "${MR.strings.action_cancel.localized()} ${MR.strings.untrusted_extension.localized()}"
+                        },
+                    ) { Text(MR.strings.action_cancel.localized()) }
                 },
             )
         }
@@ -264,61 +288,28 @@ internal fun ExtensionListContent(
                     extensions = ui.updates + ui.available,
                     installedExtensions = installedExtensions,
                     updatableExtensions = ui.updates,
-                    installStates = installStates,
-                    onInstall = { item ->
-                        val ext = item.available ?: return@AvailableTab
-                        val packageName = item.operationPackageName
-                        if (installJobs[packageName]?.isActive == true) return@AvailableTab
-                        installStates[packageName] = ExtensionInstallUiState.INSTALLING
-                        installJobs[packageName] = scope.launch {
-                            snackbarHostState.showSnackbar("Installing ${ext.name}…")
-                            val result = api.installExtension(ext, manager)
-                            when (result) {
-                                is DesktopExtensionApi.InstallResult.Success -> {
-                                    installStates.remove(packageName)
-                                    snackbarHostState.showSnackbar("${ext.name} installed")
-                                }
-                                is DesktopExtensionApi.InstallResult.Error -> {
-                                    installStates[packageName] = ExtensionInstallUiState.ERROR
-                                    val msg = when {
-                                        result.message.startsWith("Android-only") ->
-                                            "${ext.name}: Android-only extension, cannot run on desktop"
-                                        result.message.startsWith("APK convert failed") ->
-                                            "${ext.name}: APK conversion failed — try a JAR-based repo"
-                                        else ->
-                                            "Install failed: ${result.message}"
-                                    }
-                                    snackbarHostState.showSnackbar(msg)
-                                }
-                                is DesktopExtensionApi.InstallResult.TrustRequired -> {
-                                    installStates[packageName] = ExtensionInstallUiState.ERROR
+                    installSteps = state.actions.installSteps,
+                    installErrors = state.installErrors,
+                    onInstall = model::install,
+                    onUpdate = { model.update(it) },
+                    onRetry = { model.retry(it) },
+                    onCancel = { model.cancel(it.operationPackageName) },
+                    onOpenUrl = { url ->
+                        runCatching { Desktop.getDesktop().browse(URI(url)) }
+                            .onFailure {
+                                scope.launch {
                                     snackbarHostState.showSnackbar(
-                                        "Update blocked: repository identity changed from " +
-                                            "${result.existingFingerprint} to ${result.incomingFingerprint}",
+                                        MR.strings.desktop_extension_open_link_failed.localized(Locale.getDefault(), it.message.orEmpty()),
                                     )
                                 }
                             }
-                        }
-                    },
-                    onCancel = { item ->
-                        installJobs.remove(item.operationPackageName)?.cancel()
-                        installStates.remove(item.operationPackageName)
-                    },
-                    onOpenUrl = { url ->
-                        runCatching { Desktop.getDesktop().browse(URI(url)) }
-                            .onFailure { scope.launch { snackbarHostState.showSnackbar("Unable to open link: ${it.message}") } }
                     },
                     onUpdateAll = {
+                        val jobs = model.updateAll()
                         scope.launch {
-                            val toUpdate = ui.updates.mapNotNull(DesktopExtensionItem::available)
-                            if (toUpdate.isEmpty()) return@launch
-                            snackbarHostState.showSnackbar("Updating ${toUpdate.size} extension(s)…")
-                            var successCount = 0
-                            toUpdate.forEach { ext ->
-                                val result = api.installExtension(ext, manager)
-                                if (result is DesktopExtensionApi.InstallResult.Success) successCount++
-                            }
-                            snackbarHostState.showSnackbar("Updated $successCount/${toUpdate.size} extension(s)")
+                            snackbarHostState.showSnackbar(
+                                MR.strings.desktop_extension_updating_message.localized(Locale.getDefault(), jobs.size),
+                            )
                         }
                     },
                     emptyCopy = copy,
@@ -363,8 +354,11 @@ private fun AvailableTab(
     extensions: List<DesktopExtensionItem>,
     installedExtensions: List<InstalledExtension>,
     updatableExtensions: List<DesktopExtensionItem>,
-    installStates: Map<String, ExtensionInstallUiState>,
+    installSteps: Map<String, ExtensionPresentationInstallStep>,
+    installErrors: Map<String, AppError>,
     onInstall: (DesktopExtensionItem) -> Unit,
+    onUpdate: (DesktopExtensionItem) -> Unit,
+    onRetry: (DesktopExtensionItem) -> Unit,
     onCancel: (DesktopExtensionItem) -> Unit,
     onOpenUrl: (String) -> Unit,
     onUpdateAll: () -> Unit,
@@ -391,7 +385,7 @@ private fun AvailableTab(
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(),
                     ) {
-                        Text("Update All (${updatableExtensions.size})")
+                        Text("${MR.strings.ext_update_all.localized()} (${updatableExtensions.size})")
                     }
                 }
             }
@@ -403,8 +397,11 @@ private fun AvailableTab(
                     isInstalled = isInstalled,
                     hasUpdate = hasUpdate,
                     onInstall = { onInstall(item) },
+                    onUpdate = { onUpdate(item) },
+                    onRetry = { onRetry(item) },
                     onCancel = { onCancel(item) },
-                    installState = installStates[item.operationPackageName],
+                    installStep = installSteps[item.operationPackageName],
+                    installError = installErrors[item.operationPackageName],
                     onOpenUrl = onOpenUrl,
                 )
             }
@@ -464,8 +461,11 @@ private fun AvailableExtensionCard(
     isInstalled: Boolean,
     hasUpdate: Boolean,
     onInstall: () -> Unit,
+    onUpdate: () -> Unit,
+    onRetry: () -> Unit,
     onCancel: () -> Unit,
-    installState: ExtensionInstallUiState?,
+    installStep: ExtensionPresentationInstallStep?,
+    installError: AppError?,
     onOpenUrl: (String) -> Unit,
 ) {
     val extension = requireNotNull(item.available)
@@ -504,6 +504,10 @@ private fun AvailableExtensionCard(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.outline,
                 )
+                extensionInstallStepCopy(installStep)?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
+                installError?.let {
+                    Text(extensionInstallErrorCopy(presentation.name, it), color = MaterialTheme.colorScheme.error)
+                }
             }
             presentation.sources.firstOrNull { it.baseUrl?.startsWith("http") == true }?.let { source ->
                 IconButton(onClick = { onOpenUrl(requireNotNull(source.baseUrl)) }) {
@@ -511,23 +515,58 @@ private fun AvailableExtensionCard(
                 }
             }
             when {
-                installState == ExtensionInstallUiState.INSTALLING -> Row(verticalAlignment = Alignment.CenterVertically) {
+                installStep != null && installStep != ExtensionPresentationInstallStep.Error -> Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(24.dp))
-                    TextButton(onClick = onCancel) { Text("Cancel") }
+                    TextButton(
+                        onClick = onCancel,
+                        modifier = Modifier.semantics {
+                            contentDescription = "${MR.strings.action_cancel.localized()} ${presentation.name}"
+                        },
+                    ) { Text(MR.strings.action_cancel.localized()) }
                 }
-                installState == ExtensionInstallUiState.ERROR -> Button(onClick = onInstall) { Text("Retry") }
-                hasUpdate -> OutlinedButton(onClick = onInstall) { Text("Update") }
-                isInstalled -> OutlinedButton(onClick = {}, enabled = false) { Text("Installed") }
-                else -> Button(onClick = onInstall) {
+                installError != null || installStep == ExtensionPresentationInstallStep.Error ->
+                    Button(
+                        onClick = onRetry,
+                        modifier = Modifier.semantics {
+                            contentDescription = "${MR.strings.action_retry.localized()} ${presentation.name}"
+                        },
+                    ) { Text(MR.strings.action_retry.localized()) }
+                hasUpdate -> OutlinedButton(
+                    onClick = onUpdate,
+                    modifier = Modifier.semantics {
+                        contentDescription = "${MR.strings.ext_update.localized()} ${presentation.name}"
+                    },
+                ) { Text(MR.strings.ext_update.localized()) }
+                isInstalled -> OutlinedButton(onClick = {}, enabled = false) { Text(MR.strings.ext_installed.localized()) }
+                else -> Button(
+                    onClick = onInstall,
+                    modifier = Modifier.semantics {
+                        contentDescription = "${MR.strings.action_install.localized()} ${presentation.name}"
+                    },
+                ) {
                     Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.padding(end = 4.dp))
-                    Text("Install")
+                    Text(MR.strings.action_install.localized())
                 }
             }
         }
     }
 }
 
-private enum class ExtensionInstallUiState { INSTALLING, ERROR }
+internal fun extensionInstallErrorCopy(name: String, error: AppError, locale: Locale = Locale.getDefault()): String {
+    val detail = error.cause?.message.orEmpty()
+    return when {
+        error is AppError.MalformedData && detail.startsWith("Android-only") -> MR.strings.desktop_extension_android_only.localized(locale, name)
+        error is AppError.MalformedData && detail.startsWith("APK convert failed") -> MR.strings.desktop_extension_conversion_failed.localized(locale, name)
+        else -> MR.strings.desktop_extension_install_failed.localized(locale, detail.ifBlank { error.toString() })
+    }
+}
+
+internal fun extensionInstallStepCopy(step: ExtensionPresentationInstallStep?, locale: Locale = Locale.getDefault()): String? = when (step) {
+    ExtensionPresentationInstallStep.Pending -> MR.strings.ext_pending.localized(locale)
+    ExtensionPresentationInstallStep.Downloading -> MR.strings.ext_downloading.localized(locale)
+    ExtensionPresentationInstallStep.Installing -> MR.strings.ext_installing.localized(locale)
+    else -> null
+}
 
 @Composable
 private fun EmptyExtensions(copy: ExtensionListCopy, modifier: Modifier = Modifier) {

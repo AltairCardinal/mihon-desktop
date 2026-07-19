@@ -25,6 +25,7 @@ import mihon.domain.extension.presentation.ExtensionPresentationOptions
 import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
 import mihon.domain.extension.service.ExtensionInstallState
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -88,12 +89,13 @@ class ExtensionSharedStateWiringTest {
     fun `real shared update projection selects raw catalog candidate and typed uninstall exact instance`() = runTest {
         val installed = installed("pkg.update", "https://repo")
         val installedFlow = MutableStateFlow(listOf(installed))
-        val candidate = available("pkg.update")
+        val firstCandidate = available("pkg.update").copy(name = "First candidate", repoUrl = "https://first", repoFingerprint = "first")
+        val candidate = available("pkg.update").copy(name = "Last candidate", repoUrl = "https://last", repoFingerprint = "last")
         val catalog = ExtensionCatalogResult(emptyList(), emptyList())
         val api = mockk<DesktopExtensionApi>()
         val manager = mockk<DesktopExtensionManager>()
         coEvery { api.refreshCatalog() } returns catalog
-        every { api.availableExtensions(catalog) } returns listOf(candidate, available("pkg.not-update"))
+        every { api.availableExtensions(catalog) } returns listOf(firstCandidate, candidate, available("pkg.not-update"))
         every { manager.removeExtensionWithMeta(any()) } returns true
         val port = DesktopExtensionPresentationPort(api, manager, installedFlow)
         val model = ExtensionsScreenModel(
@@ -107,7 +109,20 @@ class ExtensionSharedStateWiringTest {
         assertTrue(projected?.presentation?.hasUpdate == true)
         assertSame(installed, projected?.installed)
         assertEquals("pkg.update", model.state.value.presentation?.updates?.single()?.operationPackageName)
+        val projectedCandidates = model.state.value.projection?.available.orEmpty().filter { it.operationPackageName == "pkg.update" }
+        assertEquals(1, projectedCandidates.size)
+        assertSame(candidate, projectedCandidates.single().available)
+        assertEquals(candidate.name, projectedCandidates.single().presentation.name)
+        assertEquals("https://last", projectedCandidates.single().available?.repoUrl)
+        assertEquals("last", projectedCandidates.single().available?.repoFingerprint)
         assertSame(candidate, model.updateAllCandidates().single())
+        coEvery { api.beginInstall(candidate, manager) } returns DesktopExtensionInstallStart.Started(
+            flowOf(ExtensionInstallState.Installed(mockk())),
+        )
+        model.update(checkNotNull(projected))?.join()
+        model.retry(checkNotNull(projected))?.join()
+        coVerify(exactly = 2) { api.beginInstall(candidate, manager) }
+        coVerify(exactly = 0) { api.beginInstall(firstCandidate, manager) }
         assertTrue(model.uninstall(checkNotNull(projected)))
         verify(exactly = 1) { manager.removeExtensionWithMeta(match { it === installed }) }
     }
@@ -134,7 +149,7 @@ class ExtensionSharedStateWiringTest {
         )
 
         model.install(success.item()).join()
-        model.install(failure.item()).join()
+        model.retry(failure.item())?.join()
         assertFalse(success.pkgName in model.state.value.actions.installSteps)
         assertEquals(ExtensionPresentationInstallStep.Error, model.state.value.actions.installSteps[failure.pkgName])
         assertSame(error, model.state.value.installErrors[failure.pkgName])

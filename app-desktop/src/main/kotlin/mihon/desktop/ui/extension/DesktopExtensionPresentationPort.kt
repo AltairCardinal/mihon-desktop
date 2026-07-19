@@ -98,8 +98,11 @@ class DesktopExtensionPresentationPort(
     fun uninstall(item: DesktopExtensionItem): Boolean =
         item.installed?.let(manager::removeExtensionWithMeta) == true
 
+    fun canonicalCandidates(catalog: DesktopExtensionCatalogState): Map<String, DesktopAvailableExtension> =
+        catalog.available.associateBy(DesktopAvailableExtension::pkgName)
+
     fun project(catalog: DesktopExtensionCatalogState): DesktopExtensionProjection {
-        val candidates = catalog.available.associateBy(DesktopAvailableExtension::pkgName)
+        val candidates = canonicalCandidates(catalog)
         val successfulRepos = (catalog.available.map { it.repoUrl } +
             catalog.catalog.entries.map { it.artifact.repository.baseUrl }).mapTo(mutableSetOf(), String::normalizedRepo)
         val failedRepos = catalog.catalog.failures.mapTo(mutableSetOf()) { it.repository.baseUrl.normalizedRepo() }
@@ -120,7 +123,7 @@ class DesktopExtensionPresentationPort(
         }
         return DesktopExtensionProjection(
             installed,
-            catalog.available.filterNot { it.pkgName == BUNDLED_MANGADEX }.map(DesktopAvailableExtension::item),
+            candidates.values.filterNot { it.pkgName == BUNDLED_MANGADEX }.map(DesktopAvailableExtension::item),
             catalog.catalog.failures,
         )
     }
