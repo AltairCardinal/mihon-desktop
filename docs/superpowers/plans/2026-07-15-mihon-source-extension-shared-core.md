@@ -1786,6 +1786,15 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Scope correction: 首次GREEN真实调用连续三次触及10秒timeout；临时诊断证明 `new WebView` 的UOE位于Comix `p0.b`异常保护区之前，又被Desktop Handler的Future吞掉，导致extension semaphore等待120秒。原“production零改即可得到包装异常”假设不成立，原批停止并按7C3n0行为与7C3n1账本拆分；临时线程/反射诊断不得提交。
 
+  Converter root correction: n0把fail-fast移到getSettings后仍超时；production converted `p0.b` 没有任何Exception table。根因不是BytecodeEditor主动删除，而是ApkToJarConverter误用dex2jar `.skipExceptions(true)`：该API设置 `DexFileReader.SKIP_EXCEPTION (0x100)`，会在raw JAR生成时跳过DEX异常处理表，现有注释却误写为“不要因单类转换错误中止”。先执行7C3n00恢复converter异常表，再继续n0；不得用Handler或测试绕过。
+
+###### Task 7C3n00: Dex2jar exception table preservation
+
+- Risk axis: `dex2jar-exception-table-preservation`
+- Platform boundary: `desktop`
+- Estimated scope: `2 files, 180 lines`
+- Verification: 在ApkToJarConverterTest中用immutable Comix APK经production converter生成JAR，ASM读取 `p0.b` 并取得当前0个try/catch block的精确RED；同一固定字节码预期8个handler。GREEN只移除ApkToJarConverter中错误的 `.skipExceptions(true)` 及误导注释，让dex2jar保留DEX异常表，BytecodeEditor仍负责frames/既有精确调用修复。断言production输出 `p0.b` 恢复8个try/catch blocks且类可加载，复跑全部converter、BytecodeEditor、真实Page/Comix/ManHuaGui fixture；不得修改WebView或ledger。
+
 ###### Task 7C3n0: WebView 构造 shell 与真实引擎操作 fail-fast
 
 - Risk axis: `webview-constructor-fail-fast-placement`
