@@ -32,8 +32,9 @@ data class EditTextPreference(
     override val key: String,
     override val title: String,
     val defaultValue: String = "",
-    val dialogTitle: String? = null,
-) : JvmPreferenceItem()
+) : JvmPreferenceItem() {
+    var dialogTitle: String? = null
+}
 
 data class ListPreference(
     override val key: String,

@@ -115,8 +115,7 @@ actual class PreferenceScreen {
                     key = key,
                     title = title,
                     defaultValue = defaultValue,
-                    dialogTitle = dialogTitle,
-                )
+                ).also { it.dialogTitle = dialogTitle }
             }
             "ListPreference" -> {
                 val entries = (cls.method("getEntries")?.invoke(pref) as? Array<*>)

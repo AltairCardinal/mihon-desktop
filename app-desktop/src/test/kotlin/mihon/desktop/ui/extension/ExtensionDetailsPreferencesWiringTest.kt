@@ -291,8 +291,7 @@ class ExtensionDetailsPreferencesWiringTest {
         val item = EditTextPreference(
             key = "pref_scanlator_blacklist",
             title = "Scanlator Blacklist",
-            dialogTitle = "Exclude groups",
-        )
+        ).apply { dialogTitle = "Exclude groups" }
         val stored = Preferences.userRoot().node("/mihon/source_$sourceId")
         stored.remove(item.key)
         val manager = mockk<DesktopExtensionManager>(relaxed = true)

@@ -28,6 +28,21 @@ import java.security.MessageDigest
 class RealExtensionPreferenceCompatTest {
 
     @Test
+    fun `EditTextPreference keeps legacy JVM constructor descriptors`() {
+        val type = EditTextPreference::class.java
+        assertNotNull(type.getConstructor(String::class.java, String::class.java, String::class.java))
+        assertNotNull(
+            type.getDeclaredConstructor(
+                String::class.java,
+                String::class.java,
+                String::class.java,
+                Int::class.javaPrimitiveType,
+                Class.forName("kotlin.jvm.internal.DefaultConstructorMarker"),
+            ),
+        )
+    }
+
+    @Test
     fun `real Comix conversion loads after the WebView verifier closure`(
         @TempDir tempDir: Path,
     ) = runBlocking {
