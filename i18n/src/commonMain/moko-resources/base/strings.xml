@@ -339,6 +339,8 @@
     <string name="ext_trust">Trust</string>
     <string name="ext_untrusted">Untrusted</string>
     <string name="ext_uninstall">Uninstall</string>
+    <string name="desktop_extension_details_title">Extension details</string>
+    <string name="desktop_extension_uninstall_failed">Unable to uninstall extension</string>
     <string name="ext_remove">Remove</string>
     <string name="ext_confirm_remove">Remove Extension?</string>
     <string name="ext_app_info">App info</string>

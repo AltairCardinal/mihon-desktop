@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,6 +58,9 @@ import mihon.desktop.source.DesktopSourceManager
 import mihon.desktop.ui.browse.SourceBrowseScreen
 import mihon.desktop.ui.settings.DesktopDirectoryOpener
 import tachiyomi.core.common.preference.getAndSet
+import tachiyomi.i18n.MR
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.awt.Desktop
 import java.net.URI
 
@@ -64,16 +69,23 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val manager = LocalDesktopUiDependencies.current.extensionManager
         val dependencies = LocalDesktopUiDependencies.current
+        val model = remember { Injekt.get<ExtensionsScreenModel>() }
+        val state by model.state.collectAsState()
         val sourceManager = dependencies.sourceManager as? DesktopSourceManager
         val appPreferences = dependencies.appPreferences
-        val extension = remember(jarPath) {
-            manager.getInstalledExtensions().firstOrNull { it.jarFile.absolutePath == jarPath }
-        }
+        val item = state.projection?.installed?.firstOrNull { it.installed?.jarFile?.absolutePath == jarPath }
+        val extension = item?.installed
         val snackbar = remember { SnackbarHostState() }
         val scope = rememberCoroutineScope()
         var confirmUninstall by remember { mutableStateOf(false) }
+
+        LaunchedEffect(model) {
+            if (model.state.value.projection == null) model.refresh().join()
+        }
+        LaunchedEffect(state.projection, jarPath) {
+            if (state.projection != null && extension == null) navigator.pop()
+        }
 
         fun openUrl(url: String) {
             runCatching { Desktop.getDesktop().browse(URI(url)) }
@@ -83,7 +95,7 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text(extension?.name ?: "Extension details") },
+                    title = { Text(extension?.name ?: MR.strings.desktop_extension_details_title.localized()) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -93,10 +105,18 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
             },
             snackbarHost = { SnackbarHost(snackbar) },
         ) { padding ->
-            if (extension == null) {
-                Column(Modifier.fillMaxSize().padding(padding), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("This extension is no longer installed")
+            if (state.projection == null) {
+                Column(
+                    Modifier.fillMaxSize().padding(padding),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    CircularProgressIndicator()
+                    Text(MR.strings.loading.localized(), Modifier.padding(top = 8.dp))
                 }
+                return@Scaffold
+            }
+            if (extension == null) {
                 return@Scaffold
             }
             LazyColumn(
@@ -219,7 +239,7 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                 item {
                     Button(onClick = { confirmUninstall = true }) {
                         Icon(Icons.Default.Delete, contentDescription = null)
-                        Text("Uninstall", Modifier.padding(start = 6.dp))
+                        Text(MR.strings.ext_uninstall.localized(), Modifier.padding(start = 6.dp))
                     }
                 }
             }
@@ -231,12 +251,13 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                     text = { Text("Remove ${extension.name} and its metadata?") },
                     confirmButton = {
                         TextButton(onClick = {
-                            manager.removeExtensionWithMeta(extension)
                             confirmUninstall = false
-                            navigator.pop()
-                        }) { Text("Uninstall") }
+                            if (!model.uninstall(item)) {
+                                scope.launch { snackbar.showSnackbar(MR.strings.desktop_extension_uninstall_failed.localized()) }
+                            }
+                        }) { Text(MR.strings.ext_uninstall.localized()) }
                     },
-                    dismissButton = { TextButton(onClick = { confirmUninstall = false }) { Text("Cancel") } },
+                    dismissButton = { TextButton(onClick = { confirmUninstall = false }) { Text(MR.strings.action_cancel.localized()) } },
                 )
             }
         }

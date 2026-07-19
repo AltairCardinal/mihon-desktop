@@ -7,6 +7,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
+import dev.mihon.injekt.patchInjekt
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
@@ -22,12 +23,18 @@ import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.DesktopSourceManager
 import mihon.desktop.ui.extension.ExtensionDetailsScreen
+import mihon.desktop.ui.extension.DesktopExtensionPresentationPort
+import mihon.desktop.ui.extension.ExtensionsScreenModel
+import mihon.domain.extension.model.ExtensionCatalogResult
+import mihon.domain.extension.presentation.ExtensionPresentationOptions
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.core.common.preference.DesktopPreferenceStore
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.addSingleton
 import java.io.File
 import java.util.UUID
 import java.util.prefs.Preferences
@@ -70,8 +77,16 @@ class ExtensionIncognitoPreferenceWiringTest {
             incognitoExtensions.set(initialExtensions)
         }
         val api = mockk<DesktopExtensionApi> {
+            coEvery { refreshCatalog() } returns ExtensionCatalogResult(emptyList(), emptyList())
+            every { availableExtensions(any()) } returns emptyList()
             coEvery { loadExtensionIcon(any()) } returns null
         }
+        val model = ExtensionsScreenModel(
+            DesktopExtensionPresentationPort(api, manager, manager.installedExtensions),
+            this,
+            ExtensionPresentationOptions(false, setOf("en")),
+        )
+        model.refresh().join()
         val dependencies = mockk<DesktopUiDependencies> {
             every { extensionManager } returns manager
             every { appPreferences } returns preferences
@@ -80,31 +95,38 @@ class ExtensionIncognitoPreferenceWiringTest {
             every { networkHelper } returns mockk<DesktopNetworkHelper>(relaxed = true)
         }
         val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
-
-        scene.setContent {
-            CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
-                Navigator(ExtensionDetailsScreen(jar.absolutePath)) { CurrentScreen() }
+        val previous = Injekt
+        try {
+            patchInjekt()
+            Injekt.addSingleton(model)
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    Navigator(ExtensionDetailsScreen(jar.absolutePath)) { CurrentScreen() }
+                }
             }
+            scene.render()
+
+            val toggle = nodes(scene).single {
+                it.config.contains(SemanticsActions.OnClick) &&
+                    it.config.toString().contains("Incognito mode for extension.hidden")
+            }
+            assertFalse(preferences.incognitoMode.get())
+            assertEquals(initialExtensions, preferences.incognitoExtensions.get())
+
+            preferences.incognitoExtensions.set(
+                preferences.incognitoExtensions.get() + "extension.concurrent",
+            )
+            assertTrue(requireNotNull(toggle.config[SemanticsActions.OnClick].action).invoke())
+            scene.render()
+
+            assertFalse(preferences.incognitoMode.get())
+            assertEquals(expectedExtensions, preferences.incognitoExtensions.get())
+        } finally {
+            scene.close()
+            model.closeAndJoin()
+            Injekt = previous
+            manager.close()
         }
-        scene.render()
-
-        val toggle = nodes(scene).single {
-            it.config.contains(SemanticsActions.OnClick) &&
-                it.config.toString().contains("Incognito mode for extension.hidden")
-        }
-        assertFalse(preferences.incognitoMode.get())
-        assertEquals(initialExtensions, preferences.incognitoExtensions.get())
-
-        preferences.incognitoExtensions.set(
-            preferences.incognitoExtensions.get() + "extension.concurrent",
-        )
-        assertTrue(requireNotNull(toggle.config[SemanticsActions.OnClick].action).invoke())
-        scene.render()
-
-        assertFalse(preferences.incognitoMode.get())
-        assertEquals(expectedExtensions, preferences.incognitoExtensions.get())
-        scene.close()
-        manager.close()
     }
 
     @OptIn(ExperimentalComposeUiApi::class)
