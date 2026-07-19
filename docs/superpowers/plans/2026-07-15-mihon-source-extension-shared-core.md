@@ -1614,6 +1614,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `2 files, 120 lines`
 - Verification: 7C3b0 的 immutable Mangalix fixture 在 production DI/loader 中首先真实失败于 `CloudflareInterceptor must be present in default client`；固定扩展按 `client.interceptors.any { it.javaClass.simpleName == "CloudflareInterceptor" }` 检查上游默认客户端，而 Desktop 注入的同功能 adapter 运行时类名为 `DesktopCloudflareInterceptor`。不得用测试替身或修改 fixture 绕过。RED 在 production `DesktopNetworkHelper.client.interceptors` 断言 exact runtime simple name；GREEN 只把现有 Desktop challenge adapter 的运行时类名恢复为 `CloudflareInterceptor`，并用 source-level alias 保留 `DesktopCloudflareInterceptor` 调用方，既不复制 Android WebView 实现，也不改变 challenge manager、cookie provenance 或 recovery 语义。现有策略测试必须全绿，真实 Mangalix 链路必须越过该错误并暴露下一实际 JsonReader ABI gap。
 
+  Evidence: commit `24f15ea45`，2 files/22 touched。production runtime simple-name 契约先在 `DesktopChallengeRecoveryPolicyTest.kt:62` 精确 RED；GREEN 将实际 class 恢复为 `CloudflareInterceptor`，repo 源码调用通过 typealias 保留，`javap DesktopNetworkHelper -c` 证明 production helper 字节码实际 `new CloudflareInterceptor`，不是测试或 alias 假象。挑战恢复策略 `57/57/0`，真实 Mangalix 越过原 Cloudflare 错误并推进到独立的 default-client compression 兼容性检查；后者不属于本 Task，也未被修改。独立审查确认 challenge/cookie provenance/recovery 无语义变化；旧 binary class 不再生成，但全 tree 无 FQCN/反射/配置/持久化消费者，类型位于不发布的 application 模块而非 source-api，故无受支持 ABI 回退。Java0、diff check通过；root Spotless 仍仅被提交外既有 `GlobalSearchSourcePolicyTest.kt` 阻塞。
+
 ##### Task 7C3b0: Mangalix gzip page-list 与 JsonReader ABI
 
 - Risk axis: `mangalix-json-reader-chain`
