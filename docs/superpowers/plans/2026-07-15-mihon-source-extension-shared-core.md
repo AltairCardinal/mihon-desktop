@@ -1528,14 +1528,16 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Consumes: 全部 Tasks 1–6 production/test evidence。
 - Produces: parity 28–40、87 的真实状态/实现路径/保护测试，Windows/macOS/Android 运行时证据，完整独立审查结论。
 
-- [ ] **Step 1: 写 compat public surface RED 测试**
+- [x] **Step 1: 写 compat public surface RED 测试**
 
   扫描 compat 包 public 符号，要求每个符号在 `compat-inventory.json` 恰有一项；inventory 允许 `unverified|required|unsupported`，但 resolved 项必须在 `compat-evidence.json` 有唯一的真实 fixture/test，`required` 项测试可触发真实调用。`compat-evidence.json` 继续只记录真实观察结果，不得为凑齐 inventory 预填假 fixture；清单外 public API、重复项或伪造 resolved evidence 必须失败。
 
-- [ ] **Step 2: 运行 RED 并建立诚实 inventory**
+- [x] **Step 2: 运行 RED 并建立诚实 inventory**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.extension.CompatEvidenceContractTest"`
   Expected: 初次 FAIL 并列出 43 个 inventory 缺项。7A GREEN 只建立完整、可解析的诚实 inventory；逐项真实 fixture 判定与删除分别由 7B/7C 完成。
+
+  Evidence: commit `a8aa3be07`；RED 在先确认 scanner 得到 39 files/43 public top-level symbols 后，精确列出 43 个 inventory 缺项；GREEN XML `2/0/0`。最终 inventory 43/43 unique 且全为诚实 `unverified`，固定 authority 为 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`，Desktop android/androidx roots 仅为 adapter。resolved 负例拒绝无 evidence、URL、parent classpath、AndroidCompat self-test 与 MinimalTestSource，未使用源码字符串扫描冒充行为证据。独立 review APPROVED；范围 `2 files, 247 lines`。
 
 - [ ] **Step 3: 更新 parity 28–40、87**
 
