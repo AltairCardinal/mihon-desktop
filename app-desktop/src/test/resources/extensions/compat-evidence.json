@@ -42,6 +42,13 @@
     "removalCondition": "Remove when real APK source clients no longer execute the Android SystemClock rate-limit ABI."
   },
   {
+    "symbol": "android.util.Base64",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-favcomic-1.4.1.apk@sha256:bc6f5d1b01e62baeeba44f4e7b259eb33b1c76ad261e403ad512b3ff73fe67ab",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionBase64CompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when real FavComic image clients no longer execute Base64.decode(String, int) with DEFAULT=0 during interceptor construction."
+  },
+  {
     "symbol": "android.util.Log",
     "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-tcbscans-1.4.12.apk@sha256:bf5a2bfd907d54c1ab5438f09a3a45693b597fcc27fc914241d9cd3e491ce1d2",
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionTcbScansCompatTest.kt",

@@ -1,0 +1,21 @@
+{
+  "authorityRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+  "repository": "https://github.com/keiyoushi/extensions",
+  "repositoryCommit": "7d5052fb895d086ae2ec6e3cca861146ee3ea0ec",
+  "gitBlob": "a3937a5f16f2a6c7c1f58d4bddff1e28695ed4a9",
+  "license": "Apache-2.0",
+  "fixturePath": "app-desktop/src/test/resources/extensions/real/keiyoushi-favcomic-1.4.1.apk",
+  "sha256": "bc6f5d1b01e62baeeba44f4e7b259eb33b1c76ad261e403ad512b3ff73fe67ab",
+  "sizeBytes": 61951,
+  "packageName": "eu.kanade.tachiyomi.extension.zh.favcomic",
+  "versionCode": 1,
+  "versionName": "1.4.1",
+  "extensionClass": "eu.kanade.tachiyomi.extension.zh.favcomic.ExtensionGenerated",
+  "expectedOutcome": "success",
+  "rawUrl": [
+    "https://raw.githubusercontent.com/keiyoushi/extensions/",
+    "7d5052fb895d086ae2ec6e3cca861146ee3ea0ec/",
+    "apk/tachiyomi-zh.favcomic-v1.4.1.apk"
+  ],
+  "retrievedAt": "2026-07-19"
+}
