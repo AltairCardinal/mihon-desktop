@@ -1899,6 +1899,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `7 files, 320 lines`
 - Verification: 以 immutable Comix production loader 与 RealExtensionWebViewUnsupportedCompatTest 写契约，证明删去 Uri、WebViewClient、WebResourceRequest 或 `setWebViewClient` 任一 exact descriptor 会使真实 source 在到达明确 getSettings UOE 前加载失败。最小化 Uri/WebViewClient/WebResourceRequest 到该真实 verifier closure 所需的 fixed Android 形状，移除无真实证据的 Uri 编解码/Builder 自测及 WebViewClient callback UOE 自证；WebViewClient 的 Android 默认 no-op/null 行为可保留，但不得写成真实 callback 产品证据。保留 BytecodeEditor Page(Uri)→Object rewrite、DesktopExtensionLoader Uri token parent-first 与 generic android.* parent-first。inventory/evidence/contract 将三者绑定到真实 Comix fixture，明确只证明 source verifier token，不宣称 callback、Uri 解析或 WebView engine 行为。文件限定 Uri.kt、WebViewCompat.kt、AndroidCompatTest.kt、AndroidWebViewVerifierAbiTest.kt、inventory、evidence、contract。
 
+  Evidence: commit `3ada81206`，严格 7 files/197 text touched。mutation probe 删除 Uri/WebViewClient/WebResourceRequest/setWebViewClient 时真实 Comix production loader=0；恢复后可稳定到达预期 WebView.getSettings UOE。GREEN 将 Uri 收窄为 fixed Android abstract token（唯一 abstract toString），WebViewClient 三个默认 callback 为 no-op/no-op/null，engine methods 继续 UOE；PAGE_URI rewrite、Uri/generic parent-first 均保留。三项 ledger 仅声明 verifier token，真实 Comix 反向集合为 7 项，surface 32/41。15 classes/52 tests 通过；独立 review APPROVED，Java0。
+
 ##### Task 7C4: Source/extension authority baseline 与恢复入口纠偏
 
 - Risk axis: `authority-resume-pointer`
