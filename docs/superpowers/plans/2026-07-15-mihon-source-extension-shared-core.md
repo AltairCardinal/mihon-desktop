@@ -1148,12 +1148,20 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
   Evidence: raw duplicate-package projection 在 Shared/UI 均 `expected 1 / was 2`；修复后 projection/update/retry/updateAll 共用 last-wins canonical map，UI 只保留 exact last candidate 且 en/fr 两个 source key/action 唯一。6D2R thorough review APPROVED；fresh XML `Shared 5 / UI 1 / Copy 2` 全绿，组合范围 `6 files, 337 lines`，closure 增量 `20/60`。
 
-#### Task 6D3: Extension details、typed uninstall 与 Desktop 独有入口
+#### Task 6D3: Extension details authoritative lifecycle 与 Desktop adapters
+
+- Risk axis: `extension-details-ui`
+- Platform boundary: `desktop`
+- Estimated scope: `6 files, 560 lines`
+- Verification: 6D3a 关闭 authoritative loading/missing/uninstall；6D3b 独立关闭 Desktop origin/metadata/platform action/navigation wiring。
+- Split waiver: 初审证明 lifecycle 与 Desktop adapter 入口可独立失效，且真实入口 side-effect 测试会使原单 Task 超过 300 lines；聚合项不直接调度，按 6D3a→6D3b 顺序执行，各子项不超过 5 files/300 lines。
+
+##### Task 6D3a: Authoritative details lifecycle 与 typed uninstall
 
 - Risk axis: `extension-details-ui`
 - Platform boundary: `desktop`
 - Estimated scope: `5 files, 300 lines`
-- Verification: authoritative installed flow 变 missing；typed uninstall 成功后 pop、失败不 pop；APK/JAR origin、repo/SHA/file info、Explorer/Finder folder、source enable/incognito/cookie 入口均保留并有行为反馈。
+- Verification: projection 初始为空时主动 refresh 并显示 loading、不误 pop；refresh 后按 authoritative installed flow 显示条目或在 missing 时 pop；typed uninstall 失败留页反馈，成功后等待 flow removal 再 pop；既有 incognito fixture 迁移后不回归。
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionDetailsScreen.kt`
@@ -1167,6 +1175,21 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - [ ] **Step 1: 写 details authoritative/uninstall/Desktop-entry RED**
 - [ ] **Step 2: 接入 ScreenModel 与保留 Desktop unique adapters**
 - [ ] **Step 3: 运行 GREEN 与断线 mutation**
+
+##### Task 6D3b: Desktop details adapter 与独有入口 wiring
+
+- Risk axis: `extension-details-platform-adapters`
+- Platform boundary: `desktop`
+- Estimated scope: `2 files, 300 lines`
+- Verification: COMPILED_JAR/CONVERTED_APK origin、exact path/size/SHA/repo/fingerprint、Explorer/Finder directory、repo/source URL、source enable、SourcePreferences/Browse navigation、incognito 与 cookie clear 均通过 production Screen 的真实 adapter/side-effect 行为验证；平台失败有可见反馈。
+
+**Files:**
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionDetailsScreen.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionDetailsPreferencesWiringTest.kt`
+
+- [ ] **Step 1: 写 Desktop adapter/entry RED**
+- [ ] **Step 2: 增加可测试的薄 platform adapter seam 并保留默认实现**
+- [ ] **Step 3: 运行 GREEN 与 directory/URL/navigation/cookie 断线 mutation**
 
 #### Task 6D4: Source preferences typed availability UI
 
