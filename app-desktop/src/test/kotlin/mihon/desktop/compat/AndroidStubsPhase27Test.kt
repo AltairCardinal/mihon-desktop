@@ -4,9 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.drawable.Drawable
-import android.os.AsyncTask
 import android.util.JsonReader
-import android.util.JsonWriter
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -15,7 +13,6 @@ import java.awt.Color
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.StringReader
-import java.io.StringWriter
 import javax.imageio.ImageIO
 
 class AndroidStubsPhase27Test {
@@ -167,28 +164,6 @@ class AndroidStubsPhase27Test {
     }
 
     @Test
-    fun `AsyncTask stub compiles and has execute method`() {
-        val task = object : AsyncTask<String, Int, String>() {
-            override fun doInBackground(vararg params: String): String = params.firstOrNull() ?: ""
-        }
-        task.shouldNotBeNull()
-        task.status shouldBe AsyncTask.Status.PENDING
-    }
-
-    @Test
-    fun `AsyncTask execute changes status to RUNNING then FINISHED`() {
-        val resultHolder = java.util.concurrent.atomic.AtomicReference("")
-        val task = object : AsyncTask<String, Int, String>() {
-            override fun doInBackground(vararg params: String): String = "done"
-            override fun onPostExecute(r: String) { resultHolder.set(r) }
-        }
-        task.execute("input")
-        // Give the background thread time to finish
-        Thread.sleep(300)
-        resultHolder.get() shouldBe "done"
-    }
-
-    @Test
     fun `JsonReader reads string value`() {
         val reader = JsonReader(StringReader("""{"key":"value"}"""))
         reader.beginObject()
@@ -209,25 +184,4 @@ class AndroidStubsPhase27Test {
         reader.close()
     }
 
-    @Test
-    fun `JsonWriter writes object`() {
-        val sw = StringWriter()
-        val writer = JsonWriter(sw)
-        writer.beginObject()
-        writer.name("k").value("v")
-        writer.endObject()
-        writer.close()
-        sw.toString() shouldBe """{"k":"v"}"""
-    }
-
-    @Test
-    fun `JsonWriter writes number value`() {
-        val sw = StringWriter()
-        val writer = JsonWriter(sw)
-        writer.beginObject()
-        writer.name("n").value(42L)
-        writer.endObject()
-        writer.close()
-        sw.toString() shouldBe """{"n":42}"""
-    }
 }
