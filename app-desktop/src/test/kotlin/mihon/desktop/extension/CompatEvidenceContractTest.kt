@@ -106,6 +106,29 @@ class CompatEvidenceContractTest {
         )
     }
 
+    @Test
+    fun `MangaDex validator evidence distinguishes executed text semantics from the Button token`() {
+        val root = repositoryRoot()
+        val entries = inventory(root).entries.associateBy(Entry::symbol)
+        val evidence = evidence(root)
+
+        MANGADEX_VALIDATOR_STATUSES.forEach { (symbol, status) ->
+            assertEquals(status, entries.getValue(symbol).status, "$symbol must reflect the real validator path")
+            val matching = evidence.filter { it.symbol == symbol }
+            assertEquals(1, matching.size, "$symbol must have exactly one evidence item")
+            assertEquals(MANGADEX_VALIDATOR_FIXTURE, matching.single().fixture, "$symbol must bind to tracked MangaDex")
+            assertEquals(MANGADEX_VALIDATOR_TEST, matching.single().test, "$symbol must bind to the real validator test")
+            val boundary = MANGADEX_VALIDATOR_BOUNDARIES.getValue(symbol)
+            assertTrue(matching.single().removalCondition.contains(boundary), "$symbol must record `$boundary`")
+        }
+        assertEquals(6, MANGADEX_VALIDATOR_STATUSES.size, "the MangaDex validator reverse evidence set must stay exact")
+        assertEquals(
+            MANGADEX_VALIDATOR_STATUSES.keys,
+            evidence.filter { it.test == MANGADEX_VALIDATOR_TEST }.map(Evidence::symbol).toSet(),
+            "the MangaDex validator test must not resolve compat APIs outside its executed/token boundary",
+        )
+    }
+
     private fun scanSurface(root: Path): Surface {
         val files = ADAPTER_ROOTS.flatMap { adapter ->
             Files.walk(root.resolve(adapter)).use { paths -> paths.filter { Files.isRegularFile(it) }.toList() }
@@ -223,6 +246,27 @@ class CompatEvidenceContractTest {
         const val MANGADEX_BUILD_TEST =
             "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionBuildCompatTest.kt"
         val MANGADEX_BUILD_STATUSES = mapOf("android.os.Build" to "required")
+        const val MANGADEX_VALIDATOR_TEST =
+            "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionMangaDexFactoryCompatTest.kt"
+        const val MANGADEX_VALIDATOR_FIXTURE =
+            "app-desktop/src/test/resources/extensions/real/keiyoushi-mangadex-1.4.211.apk@" +
+                "sha256:eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236"
+        val MANGADEX_VALIDATOR_STATUSES = mapOf(
+            "android.text.Editable" to "required",
+            "android.text.TextWatcher" to "required",
+            "android.view.View" to "required",
+            "android.widget.Button" to "required",
+            "android.widget.EditText" to "required",
+            "android.widget.TextView" to "required",
+        )
+        val MANGADEX_VALIDATOR_BOUNDARIES = mapOf(
+            "android.text.Editable" to "executes an Editable value",
+            "android.text.TextWatcher" to "executes beforeTextChanged, onTextChanged, and afterTextChanged",
+            "android.view.View" to "executes getRootView and findViewById",
+            "android.widget.Button" to "does not evidence Button construction, setEnabled, or rendering",
+            "android.widget.EditText" to "constructs a fresh EditText for each validation",
+            "android.widget.TextView" to "executes watcher storage and error getter/setter",
+        )
         val PUBLIC_TYPE = Regex(
             "(?:(?:public|data|enum|sealed|open|abstract|value|fun)\\s+)*" +
                 "(?:class|interface|object)\\s+([A-Za-z_]\\w*).*?",

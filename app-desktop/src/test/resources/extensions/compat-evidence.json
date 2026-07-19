@@ -165,42 +165,42 @@
     "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-mangadex-1.4.211.apk@sha256:eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236",
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionMangaDexFactoryCompatTest.kt",
     "status": "required",
-    "removalCondition": "Remove when the real MangaDex factory verifier no longer resolves TextWatcher.afterTextChanged(Editable); this does not evidence an Editable instance or callback execution."
+    "removalCondition": "Remove when the real MangaDex validator no longer executes an Editable value through afterTextChanged; this does not evidence Android mutable editing or rendering."
   },
   {
     "symbol": "android.text.TextWatcher",
     "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-mangadex-1.4.211.apk@sha256:eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236",
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionMangaDexFactoryCompatTest.kt",
     "status": "required",
-    "removalCondition": "Remove when the real MangaDex factory verifier no longer links its TextWatcher implementation; this does not evidence callback execution."
+    "removalCondition": "Remove when the real MangaDex validator no longer executes beforeTextChanged, onTextChanged, and afterTextChanged in order."
   },
   {
     "symbol": "android.view.View",
     "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-mangadex-1.4.211.apk@sha256:eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236",
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionMangaDexFactoryCompatTest.kt",
     "status": "required",
-    "removalCondition": "Remove when the real MangaDex factory verifier no longer resolves root lookup and enabled-state method descriptors; this does not evidence rendering."
+    "removalCondition": "Remove when the real MangaDex validator no longer executes getRootView and findViewById while checking dialog confirmation state; this does not evidence rendering."
   },
   {
     "symbol": "android.widget.Button",
     "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-mangadex-1.4.211.apk@sha256:eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236",
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionMangaDexFactoryCompatTest.kt",
     "status": "required",
-    "removalCondition": "Remove when the real MangaDex watcher verifier no longer resolves the Button checkcast; this does not evidence Button construction or rendering."
+    "removalCondition": "Remove when the real MangaDex watcher no longer resolves its nullable Button checkcast token after findViewById; this does not evidence Button construction, setEnabled, or rendering."
   },
   {
     "symbol": "android.widget.EditText",
     "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-mangadex-1.4.211.apk@sha256:eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236",
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionMangaDexFactoryCompatTest.kt",
     "status": "required",
-    "removalCondition": "Remove when the real MangaDex factory verifier no longer links EditText listener descriptors; this does not evidence widget construction, callback execution, or rendering."
+    "removalCondition": "Remove when the real MangaDex validator no longer constructs a fresh EditText for each validation and feeds candidate text through the saved listener; this does not evidence rendering."
   },
   {
     "symbol": "android.widget.TextView",
     "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-mangadex-1.4.211.apk@sha256:eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236",
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionMangaDexFactoryCompatTest.kt",
     "status": "required",
-    "removalCondition": "Remove when the real MangaDex factory verifier no longer resolves TextView error and watcher-storage descriptors; this does not evidence construction, callbacks, or rendering."
+    "removalCondition": "Remove when the real MangaDex validator no longer executes watcher storage and error getter/setter; this does not evidence rendering."
   },
   {
     "symbol": "androidx.preference.CheckBoxPreference",
