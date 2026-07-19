@@ -1860,19 +1860,26 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Evidence: commit `991071194`，严格 5 files/144 text touched。RED 为真实 English MangaDex public headers 链 `NoClassDefFoundError: eu.kanade.tachiyomi.AppInfo`；GREEN 通过 tracked APK → production converter/meta/loader 61 → `HttpSource.getHeaders()` 得到精确 UA/Referer/Origin/Extra。Desktop AppInfo 编译 ABI 为 Kotlin object INSTANCE + `getVersionName():String` 且仅返回 APP_VERSION；无 direct source/mock/network，http.agent/Injekt/DI/shared classloader 均 finally 恢复。Build ledger 只绑定 VERSION.RELEASE，不覆盖 SDK_INT，surface 保持 34/43；独立 review APPROVED，focused/contract 与 12 classes/29 tests 回归通过，Java0。
 
-##### Task 7C3o3b: MangaDex UUID validator production wiring 与 Compose 反馈
+##### Task 7C3o3b1: MangaDex 真实 listener 到 JVM validator
 
-- Risk axis: `mangadex-validator-wiring`
+- Risk axis: `mangadex-listener-validator`
 - Platform boundary: `shared+desktop`
-- Estimated scope: `6 files, 380 lines`
-- Verification: RED 必须从真实 MangaDex `setupPreferenceScreen` 证明当前 OnBindEditTextListener 在 AndroidX preference → JVM descriptor conversion 中丢失，并从 Desktop edit dialog 证明无效 UUID 仍可确认。GREEN 使 listener 经 EditTextPreference、PreferenceScreen conversion 与 JVM EditText descriptor 保留为 Desktop 可执行 validator；Compose 输入实时显示原版 invalid UUID 错误并在无效时禁用确认，空值或全部逗号分隔 UUID 有效。必须由真实 fixture 驱动 integration test，并补 focused UI/state test；不得在测试中复制 UUID regex 或绕过 production adapter。
+- Estimated scope: `5 files, 360 lines`
+- Verification: RED 由 tracked MangaDex → converter/loader → production preference adapter 证明两个 UUID EditText descriptor 的 validator 当前为空。GREEN 在 Android text shim 中提供无渲染的文本更新/TextWatcher 派发与最小 Editable 值对象，由 AndroidX EditTextPreference 使用已保存的真实 OnBind listener 创建 `(String)->String?` validator；JVM EditTextPreference 只在类体新增可空 validator 属性，不改主构造器，source-api 不依赖 app-desktop 类型。DesktopAndroidPreferenceAdapter 在现有 conversion 后附加 validator。真实测试直接调用该 production validator，覆盖空值、单 UUID、逗号分隔多 UUID 与无效值返回扩展原版错误；不得复制 regex。文件限定 EditText.kt、AndroidX EditTextPreference.kt、JvmPreferenceItems.kt、DesktopAndroidPreferenceAdapter.kt、RealExtensionMangaDexFactoryCompatTest.kt。
+
+##### Task 7C3o3b2: Compose validator 实时反馈与保存门禁
+
+- Risk axis: `desktop-validator-feedback`
+- Platform boundary: `desktop`
+- Estimated scope: `2 files, 260 lines`
+- Verification: RED 证明 Desktop edit dialog 对无效输入仍可确认并落盘。GREEN 让 EditTextRow 在初值和每次 onValueChange 调用 descriptor validator，OutlinedTextField 显示真实错误，错误存在时禁用确认且不写 preference，有效后恢复确认；无 validator 保持既有行为。UI/state test 使用 sentinel validator 验通用 wiring，不复制 UUID 规则；真实 UUID 语义由 7C3o3b1 的 MangaDex integration test保护。文件限定 SourcePreferencesScreen.kt、ExtensionDetailsPreferencesWiringTest.kt。
 
 ##### Task 7C3o3c: MangaDex validator evidence ledger
 
 - Risk axis: `mangadex-validator-evidence`
 - Platform boundary: `verification`
 - Estimated scope: `3 files, 100 lines`
-- Verification: 仅在 7C3o1b/3b 独立审查通过后修改 inventory/evidence/contract；按真实产品链实际执行结果标记 Editable/TextWatcher/TextView/EditText/Button/View 相关边界，区分 required callback semantics 与 unsupported Android widget rendering。不得把仅被 descriptor 链接但未执行的 UI engine 行为写成已支持；反向契约必须唯一绑定 tracked MangaDex fixture 与真实 preference validation test。
+- Verification: 仅在 7C3o1b/3b1/3b2 独立审查通过后修改 inventory/evidence/contract；按真实产品链实际执行结果标记 Editable/TextWatcher/TextView/EditText/Button/View 相关边界，区分 required callback semantics 与 unsupported Android widget rendering。不得把仅被 descriptor 链接但未执行的 UI engine 行为写成已支持；反向契约必须唯一绑定 tracked MangaDex fixture 与真实 preference validation test。
 
 ##### Task 7C3p1: verifier-only CookieManager shim prune
 
