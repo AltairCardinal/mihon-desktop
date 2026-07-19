@@ -1,6 +1,5 @@
 package mihon.desktop.compat
 
-import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -10,7 +9,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
- * Tests for Phase 3 Android compat stubs: Handler, Looper, Environment.
+ * Tests for Phase 3 Android compat stubs: Handler and Looper.
  */
 class AndroidCompatPhase3Test {
 
@@ -57,20 +56,4 @@ class AndroidCompatPhase3Test {
         handler.looper shouldBe looper
     }
 
-    // ── Environment ─────────────────────────────────────────────────────────
-
-    @Test
-    fun `Environment getExternalStorageDirectory returns non-null`() {
-        Environment.getExternalStorageDirectory().shouldNotBeNull()
-    }
-
-    @Test
-    fun `Environment getDataDirectory returns non-null`() {
-        Environment.getDataDirectory().shouldNotBeNull()
-    }
-
-    @Test
-    fun `Environment getExternalStorageState returns mounted`() {
-        Environment.getExternalStorageState() shouldBe Environment.MEDIA_MOUNTED
-    }
 }

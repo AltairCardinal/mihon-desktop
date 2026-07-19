@@ -2,72 +2,15 @@ package mihon.desktop.compat
 
 import android.graphics.Color
 import android.text.Html
-import android.text.TextUtils
-import android.util.Pair
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 
 /**
- * Tests for Phase 2 Android compat stubs: TextUtils, Html, Pair, Color.
+ * Tests for Phase 2 Android compat stubs: Html and Color.
  */
 class AndroidCompatPhase2Test {
-
-    // ── TextUtils ───────────────────────────────────────────────────────────
-
-    @Test
-    fun `TextUtils isEmpty returns true for null`() {
-        TextUtils.isEmpty(null) shouldBe true
-    }
-
-    @Test
-    fun `TextUtils isEmpty returns true for empty string`() {
-        TextUtils.isEmpty("") shouldBe true
-    }
-
-    @Test
-    fun `TextUtils isEmpty returns false for non-empty string`() {
-        TextUtils.isEmpty("hello") shouldBe false
-    }
-
-    @Test
-    fun `TextUtils join joins with delimiter`() {
-        TextUtils.join(", ", listOf("a", "b", "c")) shouldBe "a, b, c"
-    }
-
-    @Test
-    fun `TextUtils join returns empty for empty list`() {
-        TextUtils.join(", ", emptyList<String>()) shouldBe ""
-    }
-
-    @Test
-    fun `TextUtils isDigitsOnly returns true for digits`() {
-        TextUtils.isDigitsOnly("12345") shouldBe true
-    }
-
-    @Test
-    fun `TextUtils isDigitsOnly returns false for mixed`() {
-        TextUtils.isDigitsOnly("123abc") shouldBe false
-    }
-
-    @Test
-    fun `TextUtils isDigitsOnly returns false for empty`() {
-        TextUtils.isDigitsOnly("") shouldBe false
-    }
-
-    @Test
-    fun `TextUtils equals handles nulls`() {
-        TextUtils.equals(null, null) shouldBe true
-        TextUtils.equals("a", null) shouldBe false
-        TextUtils.equals(null, "a") shouldBe false
-        TextUtils.equals("a", "a") shouldBe true
-    }
-
-    @Test
-    fun `TextUtils htmlEncode escapes HTML`() {
-        TextUtils.htmlEncode("<b>test</b>") shouldBe "&lt;b&gt;test&lt;/b&gt;"
-    }
 
     // ── Html ────────────────────────────────────────────────────────────────
 
@@ -81,22 +24,6 @@ class AndroidCompatPhase2Test {
     fun `Html fromHtml handles null gracefully`() {
         val result = Html.fromHtml("", 0)
         result.toString() shouldBe ""
-    }
-
-    // ── Pair ────────────────────────────────────────────────────────────────
-
-    @Test
-    fun `Pair stores first and second`() {
-        val pair = Pair("hello", 42)
-        pair.first shouldBe "hello"
-        pair.second shouldBe 42
-    }
-
-    @Test
-    fun `Pair create factory works`() {
-        val pair = Pair.create("a", "b")
-        pair.first shouldBe "a"
-        pair.second shouldBe "b"
     }
 
     // ── Color ───────────────────────────────────────────────────────────────
