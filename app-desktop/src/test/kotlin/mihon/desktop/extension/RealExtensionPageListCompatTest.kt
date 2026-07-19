@@ -91,46 +91,51 @@ class RealExtensionPageListCompatTest {
     fun `real ManHuaGui parser returns host Pages through fixed-main constructor ABI`(
         @TempDir tempDir: Path,
     ) = runBlocking {
-        val apkPath = repositoryRoot().resolve(APK_PATH)
-        assertTrue(Files.isRegularFile(apkPath), "Missing immutable extension fixture: $apkPath")
-        assertEquals(APK_SHA256, sha256(apkPath))
-        val diContext = initDesktopDIForTest(
-            appDir = tempDir.resolve("app").toFile(),
-            preferenceStore = DesktopPreferenceStore(),
-        )
+        val previousInjekt = Injekt
         try {
-            val convertedJar = ApkToJarConverter().convert(apkPath.toFile(), tempDir.toFile())
-            assertNotNull(convertedJar, "Production converter rejected the immutable ManHuaGui APK")
-            val jar = requireNotNull(convertedJar)
-            writeManHuaGuiMeta(jar)
-            val loaded = DesktopExtensionLoader(tempDir.toFile()).loadFromSingleJar(jar)
-            assertTrue(loaded.isNotEmpty(), "Production loader rejected the converted ManHuaGui extension")
+            val apkPath = repositoryRoot().resolve(APK_PATH)
+            assertTrue(Files.isRegularFile(apkPath), "Missing immutable extension fixture: $apkPath")
+            assertEquals(APK_SHA256, sha256(apkPath))
+            val diContext = initDesktopDIForTest(
+                appDir = tempDir.resolve("app").toFile(),
+                preferenceStore = DesktopPreferenceStore(),
+            )
             try {
-                val source = loaded.first().source
-                val parser = source.javaClass.superclass.getDeclaredMethod("pageListParse", Response::class.java)
-                    .also { it.isAccessible = true }
-                val html = Files.readString(repositoryRoot().resolve(HTML_PATH))
-                MockWebServer().also { it.start() }.use { server ->
-                    server.enqueue(MockResponse(body = html))
-                    val request = Request.Builder().url(server.url("/comic/123/chapter.html")).build()
-                    OkHttpClient().newCall(request).execute().use { response ->
-                        @Suppress("UNCHECKED_CAST")
-                        val pages = try {
-                            parser.invoke(source, response) as List<Page>
-                        } catch (error: InvocationTargetException) {
-                            throw error.targetException
+                val convertedJar = ApkToJarConverter().convert(apkPath.toFile(), tempDir.toFile())
+                assertNotNull(convertedJar, "Production converter rejected the immutable ManHuaGui APK")
+                val jar = requireNotNull(convertedJar)
+                writeManHuaGuiMeta(jar)
+                val loaded = DesktopExtensionLoader(tempDir.toFile()).loadFromSingleJar(jar)
+                assertTrue(loaded.isNotEmpty(), "Production loader rejected the converted ManHuaGui extension")
+                try {
+                    val source = loaded.first().source
+                    val parser = source.javaClass.superclass.getDeclaredMethod("pageListParse", Response::class.java)
+                        .also { it.isAccessible = true }
+                    val html = Files.readString(repositoryRoot().resolve(HTML_PATH))
+                    MockWebServer().also { it.start() }.use { server ->
+                        server.enqueue(MockResponse(body = html))
+                        val request = Request.Builder().url(server.url("/comic/123/chapter.html")).build()
+                        OkHttpClient().newCall(request).execute().use { response ->
+                            @Suppress("UNCHECKED_CAST")
+                            val pages = try {
+                                parser.invoke(source, response) as List<Page>
+                            } catch (error: InvocationTargetException) {
+                                throw error.targetException
+                            }
+                            val page = pages.single()
+                            assertSame(Page::class.java, page.javaClass)
+                            assertEquals(0, page.index)
+                            assertEquals(EXPECTED_IMAGE_URL, page.imageUrl)
                         }
-                        val page = pages.single()
-                        assertSame(Page::class.java, page.javaClass)
-                        assertEquals(0, page.index)
-                        assertEquals(EXPECTED_IMAGE_URL, page.imageUrl)
                     }
+                } finally {
+                    loaded.map { it.classLoader }.distinct().filterIsInstance<AutoCloseable>().forEach { it.close() }
                 }
             } finally {
-                loaded.map { it.classLoader }.distinct().filterIsInstance<AutoCloseable>().forEach { it.close() }
+                diContext.closeAndJoin()
             }
         } finally {
-            diContext.closeAndJoin()
+            Injekt = previousInjekt
         }
     }
 
