@@ -2,11 +2,12 @@ package mihon.test.desktop
 
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonPrimitive
@@ -27,10 +28,11 @@ class SourceExtensionClientContractTest {
     fun `client and robot preserve extension contract across every HTTP status`() {
         val requests = Collections.synchronizedList(mutableListOf<Request>())
         val snapshot = snapshot()
+        val wireSnapshot = wireSnapshot()
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
             createContext("/") { exchange ->
                 try {
-                    handle(exchange, snapshot, requests)
+                    handle(exchange, wireSnapshot, requests)
                 } catch (error: Throwable) {
                     error.printStackTrace()
                     exchange.sendResponseHeaders(500, -1)
@@ -42,7 +44,13 @@ class SourceExtensionClientContractTest {
         DesktopTestClient("127.0.0.1", server.address.port).use { client ->
             try {
                 val robot = ExtensionsRobot(client)
-                assertEquals(snapshot, robot.state())
+                val state = requireNotNull(robot.state())
+                assertEquals(snapshot, state)
+                val partial = state.errors.getValue("pkg.partial")
+                assertEquals("Network", partial.failures.single().type)
+                assertEquals("unit-1", partial.failedUnits.single().unitId)
+                assertEquals("Server", partial.failedUnits.single().error.type)
+                assertEquals(503, partial.failedUnits.single().error.statusCode)
                 val special = "quoted \"query\" \\ path"
                 robot.refresh().search(special).install("pkg.one").update("pkg.one").retry("pkg.one")
                     .cancel("pkg.one").updateAll().uninstall("pkg.one").trustConfirm("pkg.one").trustDismiss("pkg.one")
@@ -83,19 +91,25 @@ class SourceExtensionClientContractTest {
         }
     }
 
-    private fun handle(exchange: HttpExchange, snapshot: SourceExtensionTestSnapshot, requests: MutableList<Request>) {
+    private fun handle(exchange: HttpExchange, snapshot: JsonObject, requests: MutableList<Request>) {
         val path = exchange.requestURI.path
         val payload = when {
-            path == "/test/state" -> json.encodeToString(AppState(currentScreen = "ExtensionListScreen", extension = snapshot))
+            path == "/test/state" -> buildJsonObject {
+                put("currentScreen", JsonPrimitive("ExtensionListScreen"))
+                put("extension", snapshot)
+            }.toString()
             path.startsWith("/test/action/") -> {
                 val action = path.substringAfterLast('/')
                 val body = json.parseToJsonElement(exchange.requestBody.bufferedReader().readText().ifBlank { "{}" }) as JsonObject
                 requests += Request(action, body)
                 val rejected = action == "extension_install" && body["packageName"]?.jsonPrimitive?.contentOrNull == "missing"
                 exchange.setStatus(if (rejected) 409 else 200)
-                json.encodeToString(
-                    ActionResult(!rejected, action, if (rejected) "UNKNOWN_PACKAGE" else null, extension = snapshot),
-                )
+                buildJsonObject {
+                    put("success", JsonPrimitive(!rejected))
+                    put("action", JsonPrimitive(action))
+                    put("error", if (rejected) JsonPrimitive("UNKNOWN_PACKAGE") else JsonNull)
+                    put("extension", snapshot)
+                }.toString()
             }
             else -> "{}"
         }
@@ -116,12 +130,43 @@ class SourceExtensionClientContractTest {
         ),
         updates = emptyList(),
         installSteps = mapOf("pkg.one" to "Idle"),
-        errors = mapOf("pkg.error" to SourceExtensionStoredAppError("Network", message = "offline")),
+        errors = mapOf(
+            "pkg.error" to SourceExtensionStoredAppError("Network", message = "offline"),
+            "pkg.partial" to SourceExtensionStoredAppError(
+                "PartialFailure",
+                message = "partial",
+                failures = listOf(SourceExtensionStoredAppError("Network", message = "network")),
+                failedUnits = listOf(
+                    SourceExtensionStoredFailedUnit("unit-1", SourceExtensionStoredAppError("Server", 503)),
+                ),
+            ),
+        ),
         repositoryErrors = listOf(
             SourceExtensionRepositoryError("https://repo", "Repo", "fingerprint", SourceExtensionStoredAppError("Server", 503)),
         ),
         pendingTrust = SourceExtensionTrustSnapshot("pkg.one", "request", "old", "new", listOf("FingerprintChanged")),
     )
+
+    private fun wireSnapshot() = json.parseToJsonElement(
+        """
+        {
+          "searchQuery":"fixture","refreshing":false,"installed":[],
+          "available":[{"packageName":"pkg.one","name":"Fixture","language":"en","installed":false,
+            "available":true,"hasUpdate":false,"sources":[{"id":1,"language":"en","name":"Source","baseUrl":"https://source"}]}],
+          "updates":[],"installSteps":{"pkg.one":"Idle"},
+          "errors":{
+            "pkg.error":{"type":"Network","message":"offline"},
+            "pkg.partial":{"type":"PartialFailure","message":"partial",
+              "failures":[{"type":"Network","message":"network"}],
+              "failedUnits":[{"unitId":"unit-1","error":{"type":"Server","statusCode":503}}]}
+          },
+          "repositoryErrors":[{"repositoryBaseUrl":"https://repo","repositoryName":"Repo",
+            "repositoryFingerprint":"fingerprint","error":{"type":"Server","statusCode":503}}],
+          "pendingTrust":{"packageName":"pkg.one","requestId":"request","existingFingerprint":"old",
+            "incomingFingerprint":"new","reasons":["FingerprintChanged"]}
+        }
+        """.trimIndent(),
+    ) as JsonObject
 
     private fun HttpExchange.setStatus(value: Int) = setAttribute("status", value)
     private fun HttpExchange.status() = getAttribute("status") as? Int ?: 200
