@@ -1867,6 +1867,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `5 files, 360 lines`
 - Verification: RED 由 tracked MangaDex → converter/loader → production preference adapter 证明两个 UUID EditText descriptor 的 validator 当前为空。GREEN 在 Android text shim 中提供无渲染的文本更新/TextWatcher 派发与最小 Editable 值对象，由 AndroidX EditTextPreference 使用已保存的真实 OnBind listener 创建 `(String)->String?` validator；JVM EditTextPreference 只在类体新增可空 validator 属性，不改主构造器，source-api 不依赖 app-desktop 类型。DesktopAndroidPreferenceAdapter 在现有 conversion 后附加 validator。真实测试直接调用该 production validator，覆盖空值、单 UUID、逗号分隔多 UUID 与无效值返回扩展原版错误；不得复制 regex。文件限定 EditText.kt、AndroidX EditTextPreference.kt、JvmPreferenceItems.kt、DesktopAndroidPreferenceAdapter.kt、RealExtensionMangaDexFactoryCompatTest.kt。
 
+  Evidence: commit `c482d5429`，严格 5 files/105 text touched。真实 MangaDex RED 为 blockedGroups validator null；GREEN production adapter 在每次 conversion 新增 slice 中以类型+key 唯一匹配，JVM descriptor 类体 nullable validator 不改 constructor/copy/component 且无 Desktop 依赖。每次验证使用保存的真实 listener + 新 EditText(context)，实际派发 before/on/after；空/单UUID/逗号多UUID/invalid 均走扩展规则，invalid 返回真实 i18n，无 regex 复制。独立 review APPROVED；contract/MangaDex/preference/UI wiring focused 全绿，Java0。
+
 ##### Task 7C3o3b2: Compose validator 实时反馈与保存门禁
 
 - Risk axis: `desktop-validator-feedback`
