@@ -1784,6 +1784,22 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `4 files, 260 lines`
 - Verification: 复用immutable Comix 1.4.34 APK/provenance，经production converter/loader取得真实 source，并反射调用其父类私有 `p0.P(Document,String,Function1):String` 最短runInWebView入口；固定Document base URI为 `https://example.invalid/comix-webview`，禁止HTTP。真实顺序必须执行 `Looper.getMainLooper`、`Handler`构造/post、`WebResourceResponse(String,String,InputStream)`，再在DesktopHandler线程构造 `WebView(Application)`并由扩展包装为 `Exception("Failed to start WebView (url=...)")`，cause为 `UnsupportedOperationException("Desktop WebView engine unavailable")`。先在contract写RED要求Handler/Looper/WebResourceResponse=required、WebView=unsupported且各有唯一同fixture/test evidence；GREEN新增真实测试并只更新inventory/evidence，surface仍32/38，不改production。不得把仅父类链接的View/ViewGroup，或未执行的CookieManager/ValueCallback/WebResourceRequest/WebSettings/WebViewClient标resolved。测试必须@Timeout(10s)、关闭classloader/DI并恢复Injekt，复跑Comix preference/graphics链，Java0。
 
+  Scope correction: 首次GREEN真实调用连续三次触及10秒timeout；临时诊断证明 `new WebView` 的UOE位于Comix `p0.b`异常保护区之前，又被Desktop Handler的Future吞掉，导致extension semaphore等待120秒。原“production零改即可得到包装异常”假设不成立，原批停止并按7C3n0行为与7C3n1账本拆分；临时线程/反射诊断不得提交。
+
+###### Task 7C3n0: WebView 构造 shell 与真实引擎操作 fail-fast
+
+- Risk axis: `webview-constructor-fail-fast-placement`
+- Platform boundary: `desktop`
+- Estimated scope: `3 files, 230 lines`
+- Verification: RED复用真实Comix `p0.P`链，证明当前WebView构造UOE被Handler Future吞掉并触及10秒timeout。GREEN只修改WebViewCompat.kt：构造器允许创建ABI shell且不声称浏览器可用，`getSettings`及其余所有真实引擎方法继续抛 `UnsupportedOperationException("Desktop WebView engine unavailable")`；不得改变Handler全局调度。Comix字节码在构造后进入异常保护区，故getSettings UOE必须被extension写入errorRef/release semaphore并快速包装为指定Exception/cause。更新AndroidWebViewVerifierAbiTest，断言构造可完成、首次engine方法fail-fast；真实测试、ABI、Comix preference/graphics通过。不得修改inventory/evidence/contract。
+
+###### Task 7C3n1: Comix WebView 平台边界 evidence ledger
+
+- Risk axis: `webview-boundary-evidence-ledger`
+- Platform boundary: `verification`
+- Estimated scope: `3 files, 100 lines`
+- Verification: 仅在7C3n0独立审查通过后，修改CompatEvidenceContractTest、inventory与evidence：Handler/Looper/WebResourceResponse=required，WebView=unsupported，各自唯一绑定同一immutable Comix真实测试；surface保持32/38。View/ViewGroup与未执行的CookieManager/ValueCallback/WebResourceRequest/WebSettings/WebViewClient仍unverified。
+
 ##### Task 7C4: Source/extension authority baseline 与恢复入口纠偏
 
 - Risk axis: `authority-resume-pointer`
