@@ -1656,8 +1656,23 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `extension-graphics-semantics`
 - Platform boundary: `desktop`
-- Estimated scope: `8 files, 400 lines`
+- Estimated scope: `5 files, 400 lines per behavior batch`
+- Split waiver: 真实 XOR/grid 像素 TDD 的三个 production adapter、真实 fixture test 与旧假成功测试修正约 391 touched lines；inventory/evidence/contract 账本另需约 50 行。继续压缩会牺牲像素断言和异常清理可读性，因此按 7C3e1 行为与 7C3e2 证据两个独立审查批次实施，每批仍不超过 8 files/400 lines。
 - Verification: 复用 immutable Comix 1.4.34 APK/provenance，经 production DI/converter/loader取得真实 HttpSource.client；MockWebServer 返回固定 scrambled PNG/JPEG bytes 与 APK 实际识别的 `x-enc-*`/`x-scramble-*` headers，由 extension 自身 Descrambler interceptor 执行，禁止直接调用 shim 或在测试复制扩展算法。RED 必须证明当前 BitmapFactory 1×1占位/缺 `Bitmap.CompressFormat`、`Bitmap.compress`、Canvas/Paint/Rect 等会产生错误尺寸、LinkageError或错误像素；GREEN 只实现该真实链使用的 Android graphics ABI，以 Skia adapter 支持真实 decode、width/height/config、createBitmap、Rect、Canvas 两种 drawBitmap、Paint token、JPEG/PNG/WebP compress 与 recycle。测试用固定编码输入和独立 ImageIO oracle断言输出尺寸与各目标色块（JPEG允许明确容差），不得以“未抛异常”代替像素行为。Bitmap、BitmapFactory以及新增 top-level Canvas/Paint/Rect 只有真实 XOR/grid路径成功后才标 required；同步 inventory/evidence与 public surface contract真实计数，不升级 Color/Drawable/Html/WebKit。复跑 RealExtensionPreferenceCompatTest，确保无WebView引擎仍不影响Comix设置。文件限定 Bitmap.kt、BitmapFactory.kt、一个Canvas/Paint/Rect文件、真实Comix descrambler测试、固定文本内嵌或单一图片fixture、inventory、evidence、CompatEvidenceContractTest；若使用独立图片文件则总文件仍不得超过8。
+
+###### Task 7C3e1: Comix graphics production behavior
+
+- Risk axis: `comix-graphics-behavior`
+- Platform boundary: `desktop`
+- Estimated scope: `5 files, 400 lines`
+- Verification: 只修改 Bitmap.kt、BitmapFactory.kt、CanvasCompat.kt、RealExtensionComixDescramblerCompatTest.kt 与 AndroidStubsPhase27Test.kt；固定图片以 base64 内嵌测试，释放文件名额。XOR-only 与 XOR+grid 必须是两次独立真实 source.client 请求，分别断言 decode/compress 与 Canvas/Rect/Paint tile mapping；旧随机无效字节返回1×1的自证测试改为 Android null 语义。该批次必须取得完整像素 GREEN、相关 settings/compat 回归与独立审查，但不得修改 inventory/evidence/contract或宣称 required。
+
+###### Task 7C3e2: Comix graphics evidence ledger
+
+- Risk axis: `comix-graphics-evidence`
+- Platform boundary: `verification`
+- Estimated scope: `3 files, 80 lines`
+- Verification: 只在 7C3e1 独立审查通过后，修改 compat-inventory、compat-evidence 与 CompatEvidenceContractTest；scanner 真实 surface 应为 44 files/54 symbols，Bitmap、BitmapFactory、Canvas、Paint、Rect分别以 immutable Comix APK@SHA与同一真实像素测试解析为 required。不得改 production/test行为，不得升级Color/Drawable/Html/WebKit。
 
 ##### Task 7C3f: AsyncTask/JsonWriter 无消费者 compat prune
 
