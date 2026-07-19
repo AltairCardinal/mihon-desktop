@@ -28,7 +28,6 @@ class ApkToJarConverter {
             val rawJar = File(outputDir, apkFile.nameWithoutExtension + "-raw.jar")
             Dex2jar.from(apkFile)
                 .skipDebug()
-                .skipExceptions(true) // Don't abort on individual class translation errors
                 .to(rawJar.toPath())
             if (!rawJar.exists() || rawJar.length() == 0L) return null
 

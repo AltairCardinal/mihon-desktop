@@ -4,10 +4,18 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldEndWith
+import org.objectweb.asm.ClassReader
+import org.objectweb.asm.ClassVisitor
+import org.objectweb.asm.Label
+import org.objectweb.asm.MethodVisitor
+import org.objectweb.asm.Opcodes
+import org.objectweb.asm.Type
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.nio.file.Files
 import java.nio.file.Path
+import java.util.jar.JarFile
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -73,6 +81,47 @@ class ApkToJarConverterTest {
         assert(result.length() > 0L) { "JAR file should be non-empty" }
     }
 
+    @Test
+    fun `real Comix conversion preserves p0 b exception handlers`(@TempDir tmp: Path) {
+        val apk = repositoryRoot().resolve(COMIX_APK).toFile()
+        val jar = converter.convert(apk, tmp.toFile()).shouldNotBeNull()
+        val p0Bytes = JarFile(jar).use { archive ->
+            archive.getInputStream(archive.getJarEntry("p0.class")).readBytes()
+        }
+        var handlerCount = 0
+        ClassReader(p0Bytes).accept(
+            object : ClassVisitor(Opcodes.ASM9) {
+                override fun visitMethod(
+                    access: Int,
+                    name: String?,
+                    descriptor: String?,
+                    signature: String?,
+                    exceptions: Array<out String>?,
+                ): MethodVisitor? = if (name == "b" && descriptor == COMIX_WEBVIEW_DESCRIPTOR) {
+                    object : MethodVisitor(Opcodes.ASM9) {
+                        override fun visitTryCatchBlock(
+                            start: Label,
+                            end: Label,
+                            handler: Label,
+                            type: String?,
+                        ) {
+                            handlerCount++
+                        }
+                    }
+                } else {
+                    null
+                }
+            },
+            ClassReader.SKIP_DEBUG or ClassReader.SKIP_FRAMES,
+        )
+        handlerCount shouldBe 8
+
+        ExtensionClassLoader(jar.toURI().toURL(), javaClass.classLoader).use { loader ->
+            val p0 = Class.forName("p0", false, loader)
+            p0.declaredMethods.single { it.name == "b" && Type.getMethodDescriptor(it) == COMIX_WEBVIEW_DESCRIPTOR }
+        }
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     private fun buildZip(file: File, block: ZipOutputStream.() -> Unit) {
@@ -84,6 +133,9 @@ class ApkToJarConverterTest {
         write(content)
         closeEntry()
     }
+
+    private fun repositoryRoot() = generateSequence(Path.of("").toAbsolutePath()) { it.parent }
+        .first { Files.isDirectory(it.resolve("app-desktop")) && Files.isDirectory(it.resolve("docs")) }
 
     /**
      * A valid (but zero-class) DEX file.
@@ -152,5 +204,15 @@ class ApkToJarConverterTest {
             0x00, 0x00, 0x00, 0x00,
         )
         return ByteArray(bytes.size) { bytes[it].toByte() }
+    }
+
+    private companion object {
+        const val COMIX_APK = "app-desktop/src/test/resources/extensions/real/keiyoushi-comix-1.4.34.apk"
+        const val COMIX_WEBVIEW_DESCRIPTOR =
+            "(Ljava/util/concurrent/atomic/AtomicBoolean;Lkotlin/jvm/internal/Ref\$ObjectRef;Lp0;Lg0;" +
+                "Ljava/lang/String;Lkotlin/jvm/internal/Ref\$ObjectRef;Lorg/jsoup/nodes/Document;" +
+                "Landroid/os/Handler;Ljava/util/concurrent/atomic/AtomicReference;Ljava/util/concurrent/Semaphore;" +
+                "Landroid/webkit/WebResourceResponse;Lkotlin/jvm/internal/Ref\$ObjectRef;" +
+                "Ljava/lang/String;Ljava/lang/String;)V"
     }
 }
