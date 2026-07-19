@@ -17,7 +17,7 @@ import java.security.MessageDigest
 class RealExtensionPreferenceCompatTest {
 
     @Test
-    fun `real Comix conversion advances from Context verification to the next platform gap`(
+    fun `real Comix conversion advances from View verification to the WebView platform gap`(
         @TempDir tempDir: Path,
     ) {
         val provenance = Json.parseToJsonElement(
@@ -42,7 +42,7 @@ class RealExtensionPreferenceCompatTest {
         assertEquals(EXTENSION_CLASS, provenance.string("extensionClass"))
         assertEquals("unsupported", provenance.string("expectedOutcome"))
         assertEquals("java.lang.ClassNotFoundException", provenance.string("rootCauseType"))
-        assertEquals("android.view.View", provenance.string("rootCauseMessage"))
+        assertEquals("android.webkit.WebView", provenance.string("rootCauseMessage"))
 
         val convertedJar = ApkToJarConverter().convert(apkPath.toFile(), tempDir.toFile())
         assertNotNull(convertedJar, "Production converter rejected the immutable Comix APK")
@@ -62,7 +62,7 @@ class RealExtensionPreferenceCompatTest {
         )
         val loader = DesktopExtensionLoader(tempDir.toFile())
         val loaded = loader.loadFromSingleJar(jar)
-        assertTrue(loaded.isEmpty(), "Comix unexpectedly loaded before the documented View boundary")
+        assertTrue(loaded.isEmpty(), "Comix unexpectedly loaded before the documented WebView boundary")
         assertTrue(loader.diagnostics.isEmpty(), "Comix failed in outer loader wiring: ${loader.diagnostics}")
         val rootCause = loaderFailureRootCause(jar)
         assertEquals(provenance.string("rootCauseType"), rootCause.javaClass.name)
