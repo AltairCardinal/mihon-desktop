@@ -1445,10 +1445,12 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Files: `TestHttpServer.kt`，新增 `SourceLoginTestModeHttpTest.kt`，`MihonDesktopTestClient.kt`、实际承载 browse automation 的 `LibraryRobot.kt`，新增 `SourceLoginClientContractTest.kt`。
 - Boundary: server/client 不得复制 query/login 状态机或暴露 cookieHeader；删除 `browse_search` 遗留空操作/Robot API，不得伪装已接入 query coordinator。Source toggle/pin 不在本项范围，后续若实现必须使用 `source_toggle/source_pin` 调用真实 Source model。
 
-- [ ] RED：HTTP/client 不可见 active source/login state，`browse_search` 仍伪成功。
-- [ ] GREEN：HTTP 只读取/转发 active port，client/Robot 使用稳定 token 契约并不吞失败。
-- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.test.http.SourceLoginTestModeHttpTest" :test-desktop:test --tests "mihon.test.desktop.SourceLoginClientContractTest"`
-- [ ] Commit: `test(desktop): expose source login cancellation`
+- [x] RED：HTTP/client 不可见 active source/login state，`browse_search` 仍伪成功。
+- [x] GREEN：HTTP 只读取/转发 active port，client/Robot 使用稳定 token 契约并不吞失败。
+- [x] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.test.http.SourceLoginTestModeHttpTest" :test-desktop:test --tests "mihon.test.desktop.SourceLoginClientContractTest"`
+- [x] Commit: `test(desktop): expose source login cancellation`
+
+  Evidence: commit `e4e56ba0c`；清洁 RED 为 App `2/2` 因 nested source/action production contract 缺失而失败，client 仅因目标 DTO/Robot API 缺失而编译失败。GREEN 后 App HTTP `2/0/0`、client `1/0/0`：真实 `DesktopSourceLoginController → SessionFactory → BrowserLoginTicket → UiActions.cancel → port → HTTP` 链路终止 ticket/UI/job；GET/action envelope 只读取 active port，token 安全编码，非 2xx 结构化失败与独立 server-shaped fixture 均覆盖，`browse_search` 伪成功删除。独立 review APPROVED；范围 `5 files, 399 lines`，无 current app consumer/Desktop Android shim authority 混淆。
 
 #### Task 6E closure
 
