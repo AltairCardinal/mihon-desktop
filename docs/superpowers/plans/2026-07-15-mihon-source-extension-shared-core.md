@@ -1571,12 +1571,12 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Split waiver: 31 个非 Application public compat 类型分属独立 ABI 族；每批只处理一个依赖闭包并单独审查，避免一次删除跨包能力。后续每个实际批次必须在施工前把 fixture、产品边界、文件与 verification 写回本计划。
 - Verification: 对 `android.content/pm`、`android.os`、`android.text`、`android.util`、graphics/drawable、webkit 与剩余 AndroidX 类型，先选择能执行真实调用的本地可追溯 extension fixture；无法支持的平台能力必须有明确用户边界与 production 不可达证据。`required` 必须由真实 artifact 的 production invocation 证明；`unsupported` 必须由真实精确失败与产品边界证明；删除必须同时满足无 production consumer、代表性 fixture 不需要或产品明确不支持，并在删除前取得 public-surface RED。不得用 compat 自测或源码扫描代替行为证据；保留 Desktop-native EditText/MultiSelect/Switch 设置能力。
 
-##### Task 7C3a0: Fixed-main ContextWrapper 继承 ABI
+##### Task 7C3a0a: Fixed-main ContextWrapper 继承 ABI
 
 - Risk axis: `android-context-inheritance-abi`
 - Platform boundary: `desktop`
 - Estimated scope: `5 files, 280 lines plus one 96,835-byte APK`
-- Verification: 固定 Comix 1.4.34 fixture/provenance 与下述 commit/blob/hash/package/class 完全相同。RED 必须由 production converter/loader 精确得到 JVM verifier 拒绝 `android.app.Application` 传给需要 `android.content.Context` 的 preference 构造器，根因是 Desktop `ContextWrapper` 未按 fixed main/Android API 继承 `Context`；不得把 loader 空结果当充分诊断。GREEN 只将 Desktop `ContextWrapper` 恢复为 `Context` 子类并正确 override 委托方法，同时用 unit ABI 断言与真实 Comix loader/settings invocation 证明 Application 可作为 Context、真实设置方法已推进到 Content；本 Task 不断言或修复默认值/dialog title，不更新 compat evidence。若修复后出现新的 linkage gap，停止并继续拆分。
+- Verification: 固定 Comix 1.4.34 fixture/provenance 与下述 commit/blob/hash/package/class 完全相同。RED 必须由 production converter/loader 精确得到 JVM verifier 拒绝 `android.app.Application` 传给需要 `android.content.Context` 的 preference 构造器，根因是 Desktop `ContextWrapper` 未按 fixed main/Android API 继承 `Context`；不得把 loader 空结果当充分诊断。GREEN 只将 Desktop `ContextWrapper` 恢复为 `Context` 子类并正确 override 委托方法，同时用 unit ABI 断言与真实 Comix invocation 证明 Application 可作为 Context、原 VerifyError 已消失。若真实 fixture 随后推进到新的独立 linkage gap，本 Task 应把该精确 root 固定为结构化下一 gap 后提交，不把后续平台 ABI 偷塞进同一修复；本 Task 不要求 settings Content、不修默认值/dialog title、不更新 compat evidence。
 
 ##### Task 7C3a: Comix 真实 EditText/MultiSelect/Switch 设置语义
 
