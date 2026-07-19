@@ -27,6 +27,7 @@ import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.ui.extension.DesktopExtensionPresentationPort
 import mihon.desktop.ui.extension.ExtensionDetailsScreen
 import mihon.desktop.ui.extension.ExtensionsScreenModel
+import mihon.desktop.ui.extension.extensionVersionCopy
 import mihon.domain.extension.model.ExtensionCatalogResult
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
 import org.junit.jupiter.api.Assertions.assertNotEquals
@@ -58,7 +59,7 @@ class DesktopExtensionDetailsMetadataCopyTest {
             every { baseUrl } returns "https://source.example"
         }
         val extension = InstalledExtension(
-            jar, listOf(source), displayName = "Example Extension", versionName = "", artifactSha256 = "sha-example",
+            jar, listOf(source), displayName = "Example Extension", versionName = "1.2.3-raw", artifactSha256 = "sha-example",
             repoName = "Example Repository", repoFingerprint = "fingerprint-example", origin = ExtensionOrigin.COMPILED_JAR,
         )
         val api = mockk<DesktopExtensionApi> {
@@ -98,23 +99,18 @@ class DesktopExtensionDetailsMetadataCopyTest {
                 renderUntil(scene, extension.name)
                 val rendered = texts(scene)
                 listOf(
-                    "${MR.strings.version.localized(locale)}: ${MR.strings.unknown.localized(locale)}",
-                    MR.strings.desktop_extension_origin_native.localized(locale),
-                    MR.strings.desktop_extension_metadata_title.localized(locale),
-                    MR.strings.desktop_extension_metadata_file.localized(locale, jar.absolutePath),
-                    MR.strings.desktop_extension_metadata_size.localized(locale, jar.length()),
-                    MR.strings.desktop_extension_metadata_sha256.localized(locale, extension.artifactSha256),
-                    MR.strings.desktop_extension_metadata_repository.localized(locale, extension.repoName),
-                    MR.strings.desktop_extension_metadata_fingerprint.localized(locale, extension.repoFingerprint),
-                    MR.strings.label_sources.localized(locale),
-                    MR.strings.browse.localized(locale),
-                    MR.strings.pref_incognito_mode.localized(locale),
+                    "${MR.strings.ext_info_version.localized(locale)}: ${extension.versionName}", source.lang,
+                    MR.strings.desktop_extension_origin_native.localized(locale), MR.strings.desktop_extension_metadata_title.localized(locale),
+                    MR.strings.desktop_extension_metadata_file.localized(locale, jar.absolutePath), MR.strings.desktop_extension_metadata_size.localized(locale, jar.length()),
+                    MR.strings.desktop_extension_metadata_sha256.localized(locale, extension.artifactSha256), MR.strings.desktop_extension_metadata_repository.localized(locale, extension.repoName),
+                    MR.strings.desktop_extension_metadata_fingerprint.localized(locale, extension.repoFingerprint), MR.strings.label_sources.localized(locale),
+                    MR.strings.browse.localized(locale), MR.strings.pref_incognito_mode.localized(locale),
                     MR.strings.pref_incognito_mode_extension_summary.localized(locale),
                 ).forEach { assertTrue(it in rendered, "Missing '$it': $rendered") }
+                assertTrue(extensionVersionCopy("", locale) == "${MR.strings.ext_info_version.localized(locale)}: ${MR.strings.unknown.localized(locale)}")
                 val descriptions = descriptions(scene)
                 listOf(
-                    MR.strings.action_bar_up_description.localized(locale),
-                    MR.strings.desktop_extension_open_source_website.localized(locale, source.name),
+                    MR.strings.action_bar_up_description.localized(locale), MR.strings.desktop_extension_open_source_website.localized(locale, source.name),
                     MR.strings.desktop_extension_source_settings.localized(locale, source.name),
                     MR.strings.desktop_extension_incognito_for.localized(locale, extension.pkgName),
                 ).forEach { assertTrue(it in descriptions, "Missing '$it': $descriptions") }

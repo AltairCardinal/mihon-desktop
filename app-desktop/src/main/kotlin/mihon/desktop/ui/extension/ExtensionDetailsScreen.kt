@@ -157,7 +157,7 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                         )
                         Column {
                             Text(extension.name, style = MaterialTheme.typography.titleLarge)
-                            Text("${MR.strings.version.localized()}: ${extension.versionName.ifBlank { MR.strings.unknown.localized() }}")
+                            Text(extensionVersionCopy(extension.versionName, Locale.getDefault()))
                             Text(extension.origin.localizedLabel(), color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
@@ -287,6 +287,9 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
         }
     }
 }
+
+internal fun extensionVersionCopy(versionName: String, locale: Locale): String =
+    "${MR.strings.ext_info_version.localized(locale)}: ${versionName.ifBlank { MR.strings.unknown.localized(locale) }}"
 
 private fun ExtensionOrigin.localizedLabel(): String =
     when (this) {
