@@ -1318,10 +1318,12 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Files: `MoreRootScreen.kt`、base/zh-rCN `strings.xml`、`MoreSourceExtensionRenderedCopyTest.kt`、`SourceExtensionNavigationContractTest.kt`（既有真实点击 selector 使用同一 MR accessor，不得硬编码英文或强制 Locale.US）。
 - Authority: 复用 fixed main 的 `label_extensions`、`label_extension_repos`；两个 Desktop More 导航 summary 新增 Desktop key。扩展名、仓库名等动态产品数据不本地化。
 
-- [ ] RED：zh-CN 真实 More 仍渲染 source/extension 英文入口时失败。
-- [ ] GREEN：真实 SettingsEntry 消费 MR accessor，保留既有点击 callback。
-- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.i18n.MoreSourceExtensionRenderedCopyTest" --tests "mihon.desktop.ui.extension.SourceExtensionNavigationContractTest"`
-- [ ] Commit: `refactor(desktop): localize extension navigation entries`
+- [x] RED：zh-CN 真实 More 仍渲染 source/extension 英文入口时失败。
+- [x] GREEN：真实 SettingsEntry 消费 MR accessor，保留既有点击 callback。
+- [x] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.i18n.MoreSourceExtensionRenderedCopyTest" --tests "mihon.desktop.ui.extension.SourceExtensionNavigationContractTest"`
+- [x] Commit: `refactor(desktop): localize extension navigation entries`
+
+  Evidence: commit `721204f1d`；zh-CN 真实 More 两入口 4 段 copy 首先因硬编码英文 RED，随后 More rendered/click 1 + Navigation 3 全绿。title 复用 fixed main `label_extensions/label_extension_repos`，仅新增 2 个 Desktop summary；独立 review APPROVED，确认未扩展到 More 其他条目、无翻译常量复制或 authority 混淆；`5 files, 97 lines`。
 
 #### Task 6E3A: 扩展搜索状态向原版 ScreenModel 对齐
 
