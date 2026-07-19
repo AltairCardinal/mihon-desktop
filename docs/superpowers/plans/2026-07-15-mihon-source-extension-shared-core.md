@@ -1795,6 +1795,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `2 files, 180 lines`
 - Verification: 在ApkToJarConverterTest中用immutable Comix APK经production converter生成JAR，ASM读取 `p0.b` 并取得当前0个try/catch block的精确RED；同一固定字节码预期8个handler。GREEN只移除ApkToJarConverter中错误的 `.skipExceptions(true)` 及误导注释，让dex2jar保留DEX异常表，BytecodeEditor仍负责frames/既有精确调用修复。断言production输出 `p0.b` 恢复8个try/catch blocks且类可加载，复跑全部converter、BytecodeEditor、真实Page/Comix/ManHuaGui fixture；不得修改WebView或ledger。
 
+  Evidence: commit `ec15976f65`，2 files/63 touched（62 additions/1 deletion）。真实tracked Comix APK经production converter的 `p0.b` handler从RED `expected 8/actual 0` 恢复为8，ExtensionClassLoader可加载并解析精确descriptor；测试不依赖untracked raw JAR。生产只删除 `.skipExceptions(true)`，BytecodeEditor零改。独立反编译dex2jar2.4.28确认true会设置readerConfig `0x100`=`DexFileReader.SKIP_EXCEPTION`且跳过findTryCatch，并非容忍单类错误。converter/editor、PageList、Comix graphics、ManHuaGui真实fixture通过，独立review APPROVED；n0/ledger未混入，Java0。
+
 ###### Task 7C3n0: WebView 构造 shell 与真实引擎操作 fail-fast
 
 - Risk axis: `webview-constructor-fail-fast-placement`
