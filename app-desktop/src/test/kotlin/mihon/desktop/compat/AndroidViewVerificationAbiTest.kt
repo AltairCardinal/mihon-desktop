@@ -26,6 +26,8 @@ class AndroidViewVerificationAbiTest {
         assertTrue(Modifier.isAbstract(viewGroup.modifiers))
         assertThrows(NoSuchMethodException::class.java) { view.getConstructor() }
         val viewConstructor = view.getConstructor(context)
+        val getContext = view.getMethod("getContext")
+        assertEquals(context, getContext.returnType)
         viewGroup.getConstructor(context)
         listOf(textView, editText, button).forEach { widget ->
             widget.getConstructor(context)
@@ -65,8 +67,7 @@ class AndroidViewVerificationAbiTest {
 
         val contextInstance = context.getConstructor().newInstance()
         val instance = viewConstructor.newInstance(contextInstance)
-        val storedContext = view.getDeclaredField("context").apply { isAccessible = true }
-        assertSame(contextInstance, storedContext.get(instance))
+        assertSame(contextInstance, getContext.invoke(instance))
         listOf(
             { setLayoutParams.invoke(instance, params) },
             { measure.invoke(instance, 1, 2) },

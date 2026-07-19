@@ -7,6 +7,8 @@ open class View(
 ) {
     private var enabled = true
 
+    open fun getContext(): Context = context
+
     open fun getRootView(): View = this
 
     open fun <T : View> findViewById(id: Int): T? = null
