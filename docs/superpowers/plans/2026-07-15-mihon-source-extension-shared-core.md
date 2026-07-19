@@ -1667,12 +1667,16 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `5 files, 400 lines`
 - Verification: 只修改 Bitmap.kt、BitmapFactory.kt、CanvasCompat.kt、RealExtensionComixDescramblerCompatTest.kt 与 AndroidStubsPhase27Test.kt；固定图片以 base64 内嵌测试，释放文件名额。XOR-only 与 XOR+grid 必须是两次独立真实 source.client 请求，分别断言 decode/compress 与 Canvas/Rect/Paint tile mapping；旧随机无效字节返回1×1的自证测试改为 Android null 语义。该批次必须取得完整像素 GREEN、相关 settings/compat 回归与独立审查，但不得修改 inventory/evidence/contract或宣称 required。
 
+  Evidence: behavior commit `467a0c514`，5 files/395 touched。真实 immutable Comix source.client 的 XOR-only 与 XOR+grid 两次独立请求分别从缺 `Bitmap$CompressFormat`、缺 `Canvas` 精确 RED，GREEN 后均输出 50×50 JPEG；独立 ImageIO oracle 对 25 个目标色块逐块断言，固定 scrambled fixture SHA-256 为 `b5454afef4dbd1ceac4fbea18ce791275b386aa60450b14d0bc08b4fb16ceae0`。首审确认真实链/ABI/oracle有效，但因 Skia 生命周期与 Android 参数语义未闭合转入 7C3e1r，未提前更新 ledger。
+
 ###### Task 7C3e1r: Skia lifecycle 与 Android 参数语义修复
 
 - Risk axis: `skia-lifecycle-parameter-semantics`
 - Platform boundary: `desktop`
 - Estimated scope: `4 files, 180 lines`
 - Verification: 这是 7C3e1 的唯一修复轮，只修改 Bitmap.kt、BitmapFactory.kt、CanvasCompat.kt、AndroidStubsPhase27Test.kt。所有临时 Skia Canvas 必须确定性关闭；decode/allocate/scale 任意异常路径关闭已分配 native Bitmap，Canvas 每次draw重新通过目标 Bitmap 的 recycle guard取得native，禁止use-after-close。`decodeByteArray` 的负offset/length或尾部越界抛 `ArrayIndexOutOfBoundsException`；`Bitmap.compress` quality不在0..100抛 `IllegalArgumentException`；`createScaledBitmap` 必须按filter选择nearest与linear采样，并由真实像素测试区分。复跑7C3e1两条真实Comix链和相关adapter测试；仍不得更新ledger。
+
+  Evidence: commit `9805c5bc4`，4 files/167 touched。RED 为 adapter `19 tests/4 failed`，分别固定非法 range 异常、quality 越界、recycle 后绘制与 filter 无效；GREEN 为 adapter、真实 Comix 解扰、真实设置与 WebView verifier 合计 `23/0/0`。所有临时 Skia Canvas 与异常路径 native Bitmap 已确定性关闭，nearest/linear采样已由像素测试区分。唯一复审确认这些原问题闭合，但发现构造已回收目标的检查被延迟到 draw；按单 Task 修复/复审上限停止，并重规划为 7C3e1s。
 
 ###### Task 7C3e1s: Canvas recycled-target construction contract
 
@@ -1681,12 +1685,16 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `2 files, 50 lines`
 - Verification: 7C3e1r 的唯一复审发现，为避免长期持有 Skia Canvas 而把 recycle guard 全部推迟到 draw，导致 `Canvas(recycledBitmap)` 未按 Android 在构造阶段立即失败；原修复轮到此停止并重规划为本独立 Task。只修改 CanvasCompat.kt 与 AndroidStubsPhase27Test.kt：构造时调用目标 Bitmap 的 guard 但不持有 native/Skia Canvas，draw 时仍再次 guard；测试同时覆盖“先 recycle 后构造立即失败”和“构造后 recycle 再 draw 失败”，并复跑真实 Comix XOR/grid 链。不得修改 ledger 或其他 graphics 语义。
 
+  Evidence: commit `55432f2dc`，2 files/13 touched。新增测试先以 `20 tests/1 failed` 精确证明 pre-recycled target 构造未立即失败；GREEN 只在构造时执行一次 target guard，不持有 native/Skia Canvas，draw 仍逐次 guard。adapter `20/0/0`、真实 Comix `1/0/0`；`javap` 确认唯一实例字段仍为 Bitmap target、构造与两个 draw descriptors 不变，独立 review APPROVED，Java0。
+
 ###### Task 7C3e2: Comix graphics evidence ledger
 
 - Risk axis: `comix-graphics-evidence`
 - Platform boundary: `verification`
 - Estimated scope: `3 files, 80 lines`
 - Verification: 只在 7C3e1 独立审查通过后，修改 compat-inventory、compat-evidence 与 CompatEvidenceContractTest；scanner 真实 surface 应为 44 files/54 symbols，Bitmap、BitmapFactory、Canvas、Paint、Rect分别以 immutable Comix APK@SHA与同一真实像素测试解析为 required。不得改 production/test行为，不得升级Color/Drawable/Html/WebKit。
+
+  Evidence: commit `75107d5c7`，3 files/53 touched。scanner 依次以 `expected 43 files, was 44` 与 `expected 51 symbols, was 54` 取得真实 RED；GREEN 为 44 files/54 unique symbols，inventory集合完全一致、evidence 24/24 unique。仅 Bitmap、BitmapFactory、Canvas、Paint、Rect各以 immutable Comix 1.4.34 APK SHA-256 `5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8` 与 `RealExtensionComixDescramblerCompatTest` 解析为 required；Color/Drawable/Html/Uri/WebKit 保持 unverified。contract `2/0/0`、真实 Comix `1/0/0`，独立 review APPROVED，Java0。
 
 ##### Task 7C3f: AsyncTask/JsonWriter 无消费者 compat prune
 
