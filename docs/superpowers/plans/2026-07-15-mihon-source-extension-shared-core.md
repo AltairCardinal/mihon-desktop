@@ -1265,9 +1265,9 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `extension-list-i18n`
 - Platform boundary: `desktop`
-- Estimated scope: `4 files, 220 lines`
+- Estimated scope: `5 files, 220 lines`
 - Verification: 以 Locale.US/zh-CN 挂载真实 `ExtensionListScreen.Content`，从 Compose semantics 读取 Text/ContentDescription/Dialog；点击 filter、uninstall 等入口。期望只来自生成 MR accessor，中文代表值必须非 base fallback。禁止扫描 Kotlin/XML 或复制 production 文案常量。
-- Files: `ExtensionListScreen.kt`、base/zh-rCN `strings.xml`、`DesktopExtensionListRenderedCopyTest.kt`。
+- Files: `ExtensionListScreen.kt`、base/zh-rCN `strings.xml`、`DesktopExtensionListRenderedCopyTest.kt`、`ExtensionPresentationUiTest.kt`（现有点击必须使用同一 MR accessor，不得硬编码英文或强制 Locale.US 掩盖本地化回归）。
 - Authority: 优先复用 fixed main 的 `ext_confirm_remove`、`ext_uninstall`、`action_cancel`、`action_bar_up_description`、`action_filter`、`ext_nsfw_short`、`action_apply`；卸载所有 sources、Desktop loader reload、filter/可访问性等原版无同义行为才新增 Desktop formatted key，不误用 WebView refresh。
 
 - [ ] RED：真实 List 的 dialog/filter/accessibility 仍使用硬编码 base 文案时，zh-CN rendered copy 失败。
