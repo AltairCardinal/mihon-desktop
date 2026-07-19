@@ -78,8 +78,6 @@
       "nextEvidence":"RealExtensionCompatEvidenceTest preference invocation"},
     {"symbol":"androidx.preference.PreferenceCategory","status":"required",
       "nextEvidence":"RealExtensionCompatEvidenceTest preference invocation"},
-    {"symbol":"androidx.preference.PreferenceManager","status":"unverified",
-      "nextEvidence":"7B real local fixture invocation or 7C removal"},
     {"symbol":"androidx.preference.PreferenceScreen","status":"required",
       "nextEvidence":"RealExtensionCompatEvidenceTest preference invocation"},
     {"symbol":"androidx.preference.SwitchPreferenceCompat","status":"required",
