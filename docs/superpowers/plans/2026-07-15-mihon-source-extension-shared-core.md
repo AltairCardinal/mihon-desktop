@@ -1639,7 +1639,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - [x] **Step 2: 固定父子计划与 live progress 的恢复顺序**
 - [x] **Step 3: 运行文本、路径、互指、diff 与 Comet guard 核验**
 
-  Evidence: Task 7C4 的 scoped tooling/docs 提交只修改本节声明的四个文件；baseline 现记录 Task 6C/6D 已接入的 Desktop presentation 链，并将 ManHuaGui Application 的旧 unsupported 结论明确标为由 `2e17f259f`/`a1b65a746` supersede。live progress 与受版本控制的修正版父计划互指本 child plan，恢复顺序为先完成本计划至 Task 7D，再返回修正版父计划的首个未完成 Task；保留的原路线图未修改。验证使用 `rg`、路径存在检查、`git diff --check` 与 `bash scripts/comet-project-guard.sh plan`，不运行 Gradle。
+  Evidence: commit `a2a4fd416`，四文件/63 touched lines。baseline 现记录 Task 6C/6D 已接入的 Desktop presentation 链，并将 ManHuaGui Application 的旧 unsupported 结论明确标为由 `2e17f259f`/`a1b65a746` supersede。live progress 与受版本控制的修正版父计划互指本 child plan，恢复顺序为先完成本计划至 Task 7D，再返回修正版父计划的首个未完成 Task；fixed `main@6fbf6dfc` 仍是唯一原版权威，current app/shared/Desktop 仅为 consumer/output/adapter，保留的原路线图未修改。私密信息扫描、过时文案扫描、路径存在、`git diff --check` 与 Comet guard 均通过，独立审查 APPROVED；按 tooling/docs 边界未运行 Gradle。
 
 #### Task 7D: Parity evidence and runtime verification
 
