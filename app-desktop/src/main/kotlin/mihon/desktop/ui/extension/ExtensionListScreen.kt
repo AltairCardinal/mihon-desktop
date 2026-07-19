@@ -155,16 +155,16 @@ internal fun ExtensionListContent(
         pendingRemoval?.let { ext ->
             AlertDialog(
                 onDismissRequest = { pendingRemoval = null },
-                title = { Text("Uninstall extension?") },
-                text = { Text("Remove \"${ext.name}\" and all its sources? This cannot be undone.") },
+                title = { Text(MR.strings.ext_confirm_remove.localized()) },
+                text = { Text(MR.strings.desktop_extension_remove_confirmation.localized(Locale.getDefault(), ext.name)) },
                 confirmButton = {
                     TextButton(onClick = {
                         manager.removeExtensionWithMeta(ext)
                         pendingRemoval = null
-                    }) { Text("Uninstall", color = MaterialTheme.colorScheme.error) }
+                    }) { Text(MR.strings.ext_uninstall.localized(), color = MaterialTheme.colorScheme.error) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { pendingRemoval = null }) { Text("Cancel") }
+                    TextButton(onClick = { pendingRemoval = null }) { Text(MR.strings.action_cancel.localized()) }
                 },
             )
         }
@@ -215,7 +215,7 @@ internal fun ExtensionListContent(
                         title = { Text(copy.title) },
                         navigationIcon = {
                             IconButton(onClick = onBack) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = MR.strings.action_bar_up_description.localized())
                             }
                         },
                         actions = {
@@ -223,10 +223,10 @@ internal fun ExtensionListContent(
                                 IconButton(onClick = { showLangFilter = true }) {
                                     if (state.options.enabledLanguages.isNotEmpty()) {
                                         BadgedBox(badge = { Badge { Text("${state.options.enabledLanguages.size}") } }) {
-                                            Icon(Icons.Default.FilterList, contentDescription = "Filter by language")
+                                            Icon(Icons.Default.FilterList, contentDescription = MR.strings.desktop_extension_filter_by_language.localized())
                                         }
                                     } else {
-                                        Icon(Icons.Default.FilterList, contentDescription = "Filter by language")
+                                        Icon(Icons.Default.FilterList, contentDescription = MR.strings.desktop_extension_filter_by_language.localized())
                                     }
                                 }
                             }
@@ -234,11 +234,11 @@ internal fun ExtensionListContent(
                                 IconButton(onClick = {
                                     manager.reloadAll()
                                 }) {
-                                    Icon(Icons.Default.Refresh, contentDescription = "Reload installed")
+                                    Icon(Icons.Default.Refresh, contentDescription = MR.strings.desktop_extension_reload_installed.localized())
                                 }
                             } else {
                                 IconButton(onClick = { model.refresh() }) {
-                                    Icon(Icons.Default.Refresh, contentDescription = "Refresh available")
+                                    Icon(Icons.Default.Refresh, contentDescription = MR.strings.desktop_extension_refresh_available.localized())
                                 }
                             }
                         },
@@ -282,7 +282,9 @@ internal fun ExtensionListContent(
                     ElevatedCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                         Column(Modifier.fillMaxWidth().padding(12.dp)) {
                             Text(copy.repositoryFailure, style = MaterialTheme.typography.titleSmall)
-                            ui.failures.forEach { Text("${it.repository.name.ifBlank { it.repository.baseUrl }}: ${it.error}") }
+                            ui.failures.forEach {
+                                Text(MR.strings.desktop_extension_repository_error.localized(Locale.getDefault(), it.repository.name.ifBlank { it.repository.baseUrl }, it.error.toString()))
+                            }
                             TextButton(onClick = model::refresh, modifier = Modifier.align(Alignment.End)) { Text(copy.retry) }
                         }
                     }
@@ -451,7 +453,9 @@ private fun ExtensionCard(
                 Text(text = extension.name, style = MaterialTheme.typography.titleSmall)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = extension.sources.joinToString(", ") { "${it.name} (${it.lang})" },
+                    text = extension.sources.joinToString(", ") {
+                        MR.strings.desktop_extension_source_language.localized(Locale.getDefault(), it.name, it.lang)
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -464,11 +468,11 @@ private fun ExtensionCard(
             // Show settings icon for each configurable source
             extension.sources.filter { it is ConfigurableSource }.forEach { source ->
                 IconButton(onClick = { onSettings(source.id, source.name) }) {
-                    Icon(Icons.Default.Settings, contentDescription = "Settings for ${source.name}")
+                    Icon(Icons.Default.Settings, contentDescription = MR.strings.desktop_extension_source_settings.localized(Locale.getDefault(), source.name))
                 }
             }
             IconButton(onClick = onUninstall) {
-                Icon(Icons.Default.Delete, contentDescription = "Uninstall", tint = MaterialTheme.colorScheme.error)
+                Icon(Icons.Default.Delete, contentDescription = MR.strings.ext_uninstall.localized(), tint = MaterialTheme.colorScheme.error)
             }
         }
     }
@@ -506,7 +510,7 @@ private fun AvailableExtensionCard(
                     Text(text = presentation.name, style = MaterialTheme.typography.titleSmall)
                     if (presentation.isNsfw) {
                         Text(
-                            text = "18+",
+                            text = MR.strings.ext_nsfw_short.localized(),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.padding(start = 6.dp),
@@ -514,7 +518,7 @@ private fun AvailableExtensionCard(
                     }
                 }
                 Text(
-                    text = "${presentation.language.orEmpty()} • v${extension.versionName}",
+                    text = MR.strings.desktop_extension_language_version.localized(Locale.getDefault(), presentation.language.orEmpty(), extension.versionName),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -530,7 +534,7 @@ private fun AvailableExtensionCard(
             }
             presentation.sources.firstOrNull { it.baseUrl?.startsWith("http") == true }?.let { source ->
                 IconButton(onClick = { onOpenUrl(requireNotNull(source.baseUrl)) }) {
-                    Icon(Icons.Default.Public, contentDescription = "Open ${source.name} website")
+                    Icon(Icons.Default.Public, contentDescription = MR.strings.desktop_extension_open_source_website.localized(Locale.getDefault(), source.name))
                 }
             }
             when {
@@ -610,7 +614,7 @@ private fun LanguageFilterDialog(
     var pendingNsfw by remember(showNsfw) { mutableStateOf(showNsfw) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Filter extensions") },
+        title = { Text(MR.strings.desktop_extension_filter_title.localized()) },
         text = {
             LazyColumn {
                 // NSFW toggle at top
@@ -624,7 +628,7 @@ private fun LanguageFilterDialog(
                             onCheckedChange = { pendingNsfw = it },
                         )
                         Text(
-                            text = "Show NSFW extensions",
+                            text = MR.strings.desktop_extension_show_nsfw.localized(),
                             modifier = Modifier.padding(start = 8.dp),
                             style = MaterialTheme.typography.bodyMedium,
                         )
@@ -662,15 +666,15 @@ private fun LanguageFilterDialog(
             TextButton(onClick = {
                 onApply(pending, pendingNsfw)
                 onDismiss()
-            }) { Text("Apply") }
+            }) { Text(MR.strings.action_apply.localized()) }
         },
         dismissButton = {
             Row {
                 TextButton(onClick = {
                     onApply(emptySet(), false)
                     onDismiss()
-                }) { Text("Clear") }
-                TextButton(onClick = onDismiss) { Text("Cancel") }
+                }) { Text(MR.strings.action_reset.localized()) }
+                TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
             }
         },
     )
