@@ -1696,6 +1696,13 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Evidence: commit `75107d5c7`，3 files/53 touched。scanner 依次以 `expected 43 files, was 44` 与 `expected 51 symbols, was 54` 取得真实 RED；GREEN 为 44 files/54 unique symbols，inventory集合完全一致、evidence 24/24 unique。仅 Bitmap、BitmapFactory、Canvas、Paint、Rect各以 immutable Comix 1.4.34 APK SHA-256 `5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8` 与 `RealExtensionComixDescramblerCompatTest` 解析为 required；Color/Drawable/Html/Uri/WebKit 保持 unverified。contract `2/0/0`、真实 Comix `1/0/0`，独立 review APPROVED，Java0。
 
+##### Task 7C3f0: Compat product baseline 动态证据契约修复
+
+- Risk axis: `compat-baseline-evidence-drift`
+- Platform boundary: `verification`
+- Estimated scope: `1 file, 60 lines`
+- Verification: 7C3f 首次删除后的 31-test fixture 集合暴露 `DesktopExtensionProductBaselineTest` 仍把早期 ManHuaGui 两符号证据固定为整个 resolved symbol 集合；恢复全部裁剪后，在 HEAD `1ccb2518a` 单跑仍稳定为 `5 tests/1 failed`，期望2项而当前真实 ledger 为24项，证明与裁剪无关。只修改该测试文件：移除 `RESOLVED_SYMBOLS`、单一 `REAL_FIXTURE`/`REAL_FIXTURE_TEST` 的重复全集假设，保留 evidence 非空、symbol唯一、schema/status、仓库内本地 artifact 与 protection test 存在检查；动态 surface/inventory/evidence一一对应继续由 `CompatEvidenceContractTest` 唯一负责，不在此复制实现。运行 product baseline、compat contract 与 immutable fixture集合；不得修改 JSON ledger 或 production。
+
 ##### Task 7C3f: AsyncTask/JsonWriter 无消费者 compat prune
 
 - Risk axis: `unused-compat-prune`
