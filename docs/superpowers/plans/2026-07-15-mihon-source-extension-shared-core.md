@@ -43,8 +43,8 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - [x] Task 5C：Desktop 登录设置、UI 与 production wiring
 - [x] Task 6A：Browse 共享状态 wiring（6A1/6A2/6A3 已完成；C8 已闭合）
 - [x] Task 6B：从固定 main 原版提取扩展呈现契约（6B1a/6B1b/6B2a/6B2b/6B2c 已完成；C9 已闭合）
-- [ ] Task 6C：Desktop 扩展 adapter、ScreenModel 与 DI wiring
-- [ ] Task 6D：Desktop Extension UI、详情/设置与 i18n wiring
+- [x] Task 6C：Desktop 扩展 adapter、ScreenModel 与 DI wiring
+- [x] Task 6D：Desktop Extension UI、详情/设置与 i18n wiring
 - [ ] Task 6E：Test Mode、导航与自动化观察
 - [ ] Task 7：compat 去重、parity 证据、全量审查与跨平台运行时验收
 
@@ -1223,44 +1223,87 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 **Risk axis:** automation-observability
 **Platform boundary:** desktop
-**Estimated scope:** 4 files, 280 lines
-**Verification:** 运行导航、i18n 约束与 Test Mode 客户端集成测试，确认 source/extension 状态、安装失败和登录取消可通过真实 HTTP 测试接口观察。
+**Estimated scope:** 24 files, 1280 lines
+**Verification:** 串行运行导航、i18n、扩展 ScreenModel、真实 Test HTTP server、production DI/Compose wiring 与 test-desktop 客户端契约测试；任一 production state/intent/wiring 断线时对应测试必须失败。
+**Split waiver:** 这是 6E1–6E4 的聚合上界，横跨 Voyager 导航、Moko 资源、Extension ScreenModel、Ktor server、DI、Compose 生命周期和独立 test-desktop 客户端，不能作为单个风险轴安全调度；下列每个实际子 Task 均不超过 8 files/400 lines，并按依赖顺序提交。
 
-**Files:**
-- Modify: `app-desktop/src/main/kotlin/mihon/desktop/test/state/TestState.kt`
-- Modify: `app-desktop/src/main/kotlin/mihon/desktop/test/http/TestHttpServer.kt`
-- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/SourceExtensionNavigationContractTest.kt`
-- Create: `app-desktop/src/test/kotlin/mihon/desktop/i18n/DesktopSourceExtensionI18nTest.kt`
+**Execution split:** 原估算把导航、i18n、扩展 ScreenModel 自动化和 Source 登录 UI 局部状态混为 4 文件；但当前 HTTP 扩展动作是空操作，客户端 DTO 没有对应状态，登录取消又只存在于真实 `SourceBrowseScreen` composition。只改 `TestState`/server 会复制第二套业务状态，无法证明 production wiring。另经 fixed main 审计确认，Desktop 把扩展搜索错误留在 Compose-local，而原版 `ExtensionsScreenModel.search(query)` 持有搜索状态；遗留 `extension_enable/disable` 也把原版 Source toggle 错标成 Extension action。按下列风险轴顺序实施，每次调度仍不超过 8 files/400 lines。
 
-**Interfaces:**
-- Consumes: Tasks 6A/6B 的 Screen、intents、DI 与资源 key。
-- Produces: 类型安全导航契约及稳定 Test Mode source/extension state/actions。
+#### Task 6E1: Source/Extension 导航契约
 
-- [ ] **Step 1: 写导航/Test Mode/i18n RED**
+- Risk axis: `source-extension-navigation`
+- Platform boundary: `desktop`
+- Estimated scope: `4 files, 180 lines`
+- Verification: 直接实例化实际 Screen，并通过 production destination/push callback 验证普通 `Navigator` 只接收 `Screen`、不接收 `Tab`；目标参数必须与实际点击路径一致。
+- Files: `ExtensionListScreen.kt`、`ExtensionDetailsScreen.kt`、`MoreRootScreen.kt`、`SourceExtensionNavigationContractTest.kt`。
+- Authority: destination 类型和 push 层级优先复用 fixed `main@6fbf6dfc` 的 Screen 语义；Desktop 路径参数只保留在 Desktop destination adapter。
 
-  验证每个 Screen 可实例化、Voyager push 类型正确；通过真实 Test HTTP server 观察导航、安装失败、登录取消；扫描触达 Kotlin 文件的硬编码业务文案和资源完整性。
+- [ ] RED：先让 Screen 类型、destination 参数或 production 导航回调断线时失败。
+- [ ] GREEN：接入 production destination callback，所有实际点击路径消费同一 callback。
+- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.SourceExtensionNavigationContractTest"`
+- [ ] Commit: `test(desktop): verify source extension navigation`
 
-- [ ] **Step 2: 运行 RED**
+#### Task 6E2: Source/Extension 本地化行为
 
-  Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.SourceExtensionNavigationContractTest" --tests "mihon.desktop.i18n.DesktopSourceExtensionI18nTest" :test-desktop:test`
-  Expected: FAIL，原因是导航契约、Test Mode 状态/action 或 i18n 约束尚未覆盖新链路。
+- Risk axis: `source-extension-i18n`
+- Platform boundary: `desktop`
+- Estimated scope: `5 files, 220 lines`
+- Verification: 只通过生成的 MR accessor、base/zh-rCN locale 和实际 Compose rendered copy 验证；禁止读取或扫描 Kotlin/XML 源码文本，禁止把 production 文案复制为测试常量。
+- Files: `ExtensionListScreen.kt`、`ExtensionDetailsScreen.kt`、base/zh-rCN `strings.xml`、`DesktopSourceExtensionI18nTest.kt`；只有真实渲染发现入口文案缺口时才修改 `MoreRootScreen.kt`，且总数仍不超过 5。
+- Authority: 优先复用 fixed main 已有 `MR.strings` key；只有 Desktop 文件、目录、平台失败等原版无对应语义时才新增 Desktop key。
 
-- [ ] **Step 3: 接入 Test Mode 状态与动作**
+- [ ] RED：base/zh accessor 或实际渲染仍出现未接资源的业务文案时失败。
+- [ ] GREEN：复用上游 key，Desktop 独有语义补齐 base/zh-rCN 并由真实 UI 消费。
+- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.i18n.DesktopSourceExtensionI18nTest"`
+- [ ] Commit: `refactor(desktop): align source extension copy`
 
-  增加或调整 source/extension 可观察状态与动作，复用 production Screen/intents，不在测试 server 复制业务逻辑。
+#### Task 6E3A: 扩展搜索状态向原版 ScreenModel 对齐
 
-- [ ] **Step 4: 补齐导航和 i18n 契约**
+- Risk axis: `extension-search-authority`
+- Platform boundary: `desktop`
+- Estimated scope: `3 files, 160 lines`
+- Verification: `DesktopExtensionsState` 持有 query，`ExtensionsScreenModel.search(query)` 更新状态，production `ExtensionListContent` 只发送 intent 并消费 state；Screen 重组后 query 与过滤结果不丢失。移除 ScreenModel search 或重新引入 Compose-local query 时测试失败。
+- Files: `ExtensionsScreenModel.kt`、`ExtensionListScreen.kt`、`ExtensionPresentationUiTest.kt`。
+- Authority: 语义来自 fixed `main@6fbf6dfc` 的 `ExtensionsScreenModel.search(query)`；不得以当前 Android consumer 或 Desktop legacy Test Mode 为权威。
 
-  直接实例化 Screen 并验证导航上下文；资源测试对 Tasks 6A/6B 的文件与 key 执行完整性检查。
+- [ ] RED：证明当前搜索只存在于 composition，无法由 ScreenModel/Test Mode 控制。
+- [ ] GREEN：最小上收 query/intent，不改变共享分类与 Desktop 独有安装能力。
+- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionPresentationUiTest"`
+- [ ] Commit: `refactor(desktop): align extension search state`
 
-- [ ] **Step 5: 运行 GREEN 与自动化集成**
+#### Task 6E3B: Extension Test Mode production bridge
 
-  Run: `./gradlew :app-desktop:jvmTest --tests "*Navigation*ContractTest" --tests "*I18n*" :test-desktop:test`
-  Expected: 全部 PASS；Screen/navigation/Test Mode/i18n 任一断线都会失败。
+- Risk axis: `extension-automation-observability`
+- Platform boundary: `desktop`
+- Estimated scope: `8 files, 400 lines`
+- Verification: HTTP `/test/state` 读取真实 `ExtensionsScreenModel.state`，扩展 refresh/search/install/update/cancel/retry/updateAll/trust 动作调用同一 production model/intent；安装失败暴露类型化 step/error，不由 server 推演。动作按稳定 `packageName` 定位，不使用易漂移的 list index。移除 DI 注册、model dispatch 或 JSON/client 字段任一处时测试必须失败。
+- Files: 新增薄 `SourceExtensionTestModeController`（或等价 production adapter），修改 `TestHttpServer.kt`、`DesktopAppModule.kt`、`MihonDesktopTestClient.kt`、`MoreRobot.kt`，新增 app-desktop HTTP/DI 集成测试与 test-desktop 客户端契约测试；如 JSON DTO 独立成文件，总文件数仍不得超过 8。
+- Boundary: server 只做参数校验、序列化和 intent 转发；不得维护独立扩展列表、安装状态机、搜索规则或错误映射。删除 `extension_select/enable/disable` 遗留空操作：select 是 UI 导航而非扩展状态 intent，enable/disable 在原版属于 Source 管理。
 
-- [ ] **Step 6: 提交 Task 6E**
+- [ ] RED：真实 HTTP server 仍返回空扩展状态且空 action 不改变 production model。
+- [ ] GREEN：注册 production bridge，暴露稳定 DTO 并转发真实 model intent。
+- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "*SourceExtension*TestMode*" :test-desktop:test --tests "*SourceExtension*"`
+- [ ] Commit: `test(desktop): expose extension production state`
 
-  Commit: `test(desktop): expose source extension workflow state`
+#### Task 6E4: Source 状态与登录取消 Test Mode wiring
+
+- Risk axis: `source-login-automation-wiring`
+- Platform boundary: `desktop`
+- Estimated scope: `6 files, 320 lines`
+- Verification: Source query/loading/error/recovery 取自真实 query state；活跃登录 host/feedback/terminal 取自真实 `DesktopSourceLoginUiState`；HTTP cancel 经真实 `DesktopSourceLoginUiActions`/controller 取消当前 attempt，取消后 UI 与 HTTP 状态同时消失。错误 attempt、无活跃登录和已终止登录不得伪造成功。原版 Source toggle/pin 若纳入自动化，必须使用明确的 `source_toggle/source_pin` 并调用真实 Source model，不得伪装成 extension action。
+- Files: `SourceBrowseScreen.kt`、6E2 的 test-mode controller/server/client DTO、app-desktop HTTP/Compose wiring 测试、test-desktop 客户端契约测试。
+- Boundary: 只在当前 `SourceBrowseScreen` 生命周期注册/注销薄 observation port；不得把 Desktop 登录状态移入 shared authority，也不得用 Android platform shim 代替 fixed main 的登录语义。
+
+- [ ] RED：真实 Screen 有登录 attempt 时 HTTP 不可见/不可取消。
+- [ ] GREEN：composition 生命周期注册真实 UI port，HTTP 仅转发 cancel 并读取 UI state。
+- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "*SourceLogin*TestMode*" :test-desktop:test --tests "*SourceLogin*"`
+- [ ] Commit: `test(desktop): expose source login cancellation`
+
+#### Task 6E closure
+
+- [ ] 串行运行 6E1–6E4 focused tests，再运行 `./gradlew :app-desktop:jvmTest --tests "*Navigation*ContractTest" --tests "*I18n*" :test-desktop:test`。
+- [ ] 独立审查确认 HTTP interface 真实触达 production wiring，且 fixed main、当前 Android consumer 与 Desktop adapter 没有概念混淆。
+- [ ] Check off OpenSpec 2.3、3.4、3.5 的自动化观察部分并提交证据。
 
 ### Task 7: compat 去重、parity 证据、全量审查与跨平台运行时验收
 
