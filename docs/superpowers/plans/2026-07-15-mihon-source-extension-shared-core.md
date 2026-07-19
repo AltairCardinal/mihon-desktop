@@ -1223,7 +1223,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 **Risk axis:** automation-observability
 **Platform boundary:** desktop
-**Estimated scope:** 34 files, 2100 lines
+**Estimated scope:** 38 files, 2400 lines
 **Verification:** 串行运行导航、i18n、扩展 ScreenModel、真实 Test HTTP server、production DI/Compose wiring 与 test-desktop 客户端契约测试；任一 production state/intent/wiring 断线时对应测试必须失败。
 **Split waiver:** 这是 6E1–6E4 的聚合上界，横跨 Voyager 导航、Moko 资源、Extension ScreenModel、Ktor server、DI、Compose 生命周期和独立 test-desktop 客户端，不能作为单个风险轴安全调度；下列每个实际子 Task 均不超过 8 files/400 lines，并按依赖顺序提交。
 
@@ -1277,19 +1277,33 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Evidence: commits `5af2671ec`、`eec81ff63`；zh-CN 真实 filter/uninstall 首先因硬编码英文 RED，随后真实 List 与旧 Presentation UI 各 1 test 全绿。通用操作复用 fixed main MR key，Desktop 独有格式才新增 key；旧测试也改用同一 accessor。唯一修复复审确认测试 expected 全由 MR/locale/动态参数生成、筛选标题复用 `action_filter` 且冗余 key 已删除，APPROVED；最终 `5 files, 220 lines`。
 
-#### Task 6E2B: ExtensionDetails rendered copy
+#### Task 6E2B1: ExtensionDetails metadata/source rendered copy
 
-- Risk axis: `extension-details-i18n`
+- Risk axis: `extension-details-metadata-i18n`
 - Platform boundary: `desktop`
 - Estimated scope: `4 files, 220 lines`
-- Verification: 以 Locale.US/zh-CN 挂载真实 Details，覆盖 metadata、source action、folder failure、cookie feedback 与 uninstall dialog；断开任一 production MR accessor 或 zh key 时 rendered-copy 测试失败。
-- Files: `ExtensionDetailsScreen.kt`、base/zh-rCN `strings.xml`、`DesktopExtensionDetailsRenderedCopyTest.kt`。
-- Authority: 复用 fixed main 的 back/version/unknown/sources/browse/incognito/clear-cookies/uninstall/cancel 等 MR key；JAR/Windows artifact origin、file/size/hash/fingerprint、folder、cookie count、metadata removal 属于 Desktop adapter，只新增其外层 label/format，不本地化动态路径、URL、版本、hash、fingerprint、名称、数量或 error cause。
+- Verification: 以 Locale.US/zh-CN 挂载真实 Details，覆盖 version/origin、JAR/Windows artifact metadata、sources、browse/settings、incognito 等静态/格式化渲染；断开任一 production MR accessor 或 zh key 时测试失败。
+- Files: `ExtensionDetailsScreen.kt`、base/zh-rCN `strings.xml`、`DesktopExtensionDetailsMetadataCopyTest.kt`。
+- Authority: 复用 fixed main 的 back/version/unknown/sources/browse/incognito 等 MR key；JAR/Windows artifact origin、file/size/hash/fingerprint 属于 Desktop adapter，只新增其外层 label/format，不本地化动态路径、URL、版本、hash、fingerprint、名称或语言代码。
 
-- [ ] RED：zh-CN 真实 Details 的 metadata/action/feedback 仍回退硬编码英文时失败。
-- [ ] GREEN：复用上游语义并补齐 Desktop platform formatted key，不复制 Android PackageInstaller/WebView 文案。
-- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.i18n.DesktopExtensionDetailsRenderedCopyTest" --tests "mihon.desktop.ui.extension.ExtensionDetailsPreferencesWiringTest"`
-- [ ] Commit: `refactor(desktop): localize extension details`
+- [ ] RED：zh-CN 真实 Details metadata/source copy 仍回退硬编码英文时失败。
+- [ ] GREEN：复用上游语义并补齐 Desktop platform metadata formatted key，不复制 Android PackageInstaller/WebView 文案。
+- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.i18n.DesktopExtensionDetailsMetadataCopyTest" --tests "mihon.desktop.ui.extension.ExtensionDetailsPreferencesWiringTest"`
+- [ ] Commit: `refactor(desktop): localize extension details metadata`
+
+#### Task 6E2B2: ExtensionDetails action/dialog feedback copy
+
+- Risk axis: `extension-details-feedback-i18n`
+- Platform boundary: `desktop`
+- Estimated scope: `4 files, 220 lines`
+- Verification: 以 Locale.US/zh-CN 挂载真实 Details，真实点击 folder failure、cookie clear、uninstall，读取 Snackbar/Dialog/ContentDescription；expected 只来自 MR accessor 与动态参数。
+- Files: `ExtensionDetailsScreen.kt`、base/zh-rCN `strings.xml`、`DesktopExtensionDetailsActionCopyTest.kt`。
+- Authority: 复用 fixed main 的 clear-cookies、uninstall、cancel/open-repo 等同义 MR key；Desktop folder open/failure、cookie count、metadata removal 与带动态 source/pkg 的 accessibility 新增 Desktop formatted key。原始 error cause/message、数量和名称只作参数。
+
+- [ ] RED：zh-CN folder/cookie/uninstall 真实反馈仍渲染硬编码英文时失败。
+- [ ] GREEN：接入 MR accessor，不改变 Desktop platform action 或卸载语义。
+- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.i18n.DesktopExtensionDetailsActionCopyTest" --tests "mihon.desktop.ui.extension.ExtensionDetailsPreferencesWiringTest"`
+- [ ] Commit: `refactor(desktop): localize extension details feedback`
 
 #### Task 6E2C: More source/extension entry copy
 
