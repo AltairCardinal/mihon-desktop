@@ -83,9 +83,9 @@ class RealExtensionBase64CompatTest {
 
                     val loader = DesktopExtensionLoader(tempDir.toFile())
                     val loaded = loader.loadFromSingleJar(jar)
-                    assertEquals(1, loaded.size, "FavComic did not load through production Desktop DI")
-                    assertTrue(loader.diagnostics.isEmpty(), "FavComic loader diagnostics: ${loader.diagnostics}")
                     try {
+                        assertEquals(1, loaded.size, "FavComic did not load through production Desktop DI")
+                        assertTrue(loader.diagnostics.isEmpty(), "FavComic loader diagnostics: ${loader.diagnostics}")
                         val source = loaded.single().source as HttpSource
                         val codeSource = Path.of(source.javaClass.protectionDomain.codeSource.location.toURI())
                         assertEquals(jar.canonicalFile.toPath(), codeSource.toFile().canonicalFile.toPath())
