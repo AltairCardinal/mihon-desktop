@@ -1584,8 +1584,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `android-view-verifier-token`
 - Platform boundary: `desktop`
-- Estimated scope: `6 files, 240 lines`
-- Verification: 消费 7C3a0a 的 immutable Comix fixture，RED 精确为 production-loaded source superclass 在 verifier 阶段缺 `android.view.View`，该引用来自同一 source class 中未执行的 WebView 内容解析方法，不是 preference listener。GREEN 只提供 `android.view.View`、`View.MeasureSpec`、`ViewGroup` 与 `ViewGroup.LayoutParams` 的 exact class/descriptors：`setLayoutParams(LayoutParams)`、`measure(II)`、`layout(IIII)`、`makeMeasureSpec(II)I` 与 `LayoutParams(II)`；`makeMeasureSpec` 保留 Android size/mode 位编码，其他需要真实 UI 引擎的操作必须 fail-fast，禁止 no-op 冒充 WebView 支持。真实 Comix loader 必须越过 View root，并将 provenance/test 的 root type/message更新为实际出现的下一 WebView linkage gap；production loader outer diagnostics 仍须为空。本 Task 不运行 WebView 分支、不更新 compat evidence，新 top-level inventory 项保持 unverified，直到真实产品行为有证据。
+- Estimated scope: `7 files, 260 lines`
+- Verification: 消费 7C3a0a 的 immutable Comix fixture，RED 精确为 production-loaded source superclass 在 verifier 阶段缺 `android.view.View`，该引用来自同一 source class 中未执行的 WebView 内容解析方法，不是 preference listener。GREEN 只提供 `android.view.View`、`View.MeasureSpec`、`ViewGroup` 与 `ViewGroup.LayoutParams` 的 exact class/descriptors：`setLayoutParams(LayoutParams)`、`measure(II)`、`layout(IIII)`、`makeMeasureSpec(II)I` 与 `LayoutParams(II)`；`makeMeasureSpec` 保留 Android size/mode 位编码，其他需要真实 UI 引擎的操作必须 fail-fast，禁止 no-op 冒充 WebView 支持。真实 Comix loader 必须越过 View root，并将 provenance/test 的 root type/message更新为实际出现的下一 WebView linkage gap；production loader outer diagnostics 仍须为空。新增 top-level public adapter 后必须同步 compat contract 的真实 file/symbol 计数。本 Task 不运行 WebView 分支、不更新 compat evidence，新 top-level inventory 项保持 unverified，直到真实产品行为有证据。
 
 ##### Task 7C3a: Comix 真实 EditText/MultiSelect/Switch 设置语义
 
