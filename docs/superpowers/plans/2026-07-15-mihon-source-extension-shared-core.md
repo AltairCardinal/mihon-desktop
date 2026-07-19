@@ -1822,6 +1822,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `3 files, 150 lines plus one 111,390-byte APK`
 - Verification: 固定 artifact repository snapshot commit `7d5052fb895d086ae2ec6e3cca861146ee3ea0ec`（root tree `35127622c9911a3f7e50c809a71dfc0057843e34`、parent `0dae9cf45bef459a60cefb1f3ad1b4eedea3554b`）、APK blob `2110eaccdbce98e2bf10c827f1136b63c9c35481`、SHA-256 `eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236`、111390 bytes、package `eu.kanade.tachiyomi.extension.all.mangadex`、version 1.4.211/ext-lib1.4、entry `ExtensionGenerated`。提交 tracked APK、provenance 与只验证 authority/ref/blob/SHA/size/manifest 的 `MangaDexFixtureProvenanceTest`；不执行 factory、不修改 production 或 compat ledger。本 Task 将二进制权威与后续行为修复分离，避免 fixture、loader、ABI adapter 混在同一提交。
 
+  Evidence: commit `d07c74519`，严格 3 files/85 text lines plus 111,390-byte APK。focused provenance test 1/1 通过；本地与 GitHub 上游独立交叉核对 commit/root tree/parent/blob/raw URL/SHA/size，manifest package/version/ext-lib/entry 全部匹配。测试未调用或宣称 converter、loader、factory 行为；独立 review APPROVED，Java0，用户 DownloadQueue 与其他 dirty 未进入提交。
+
 ##### Task 7C3o1: MangaDex SourceFactory 61-source 与 preference link closure
 
 - Risk axis: `mangadex-source-factory-link`
