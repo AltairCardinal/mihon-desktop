@@ -1223,7 +1223,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 **Risk axis:** automation-observability
 **Platform boundary:** desktop
-**Estimated scope:** 26 files, 1500 lines
+**Estimated scope:** 34 files, 2100 lines
 **Verification:** 串行运行导航、i18n、扩展 ScreenModel、真实 Test HTTP server、production DI/Compose wiring 与 test-desktop 客户端契约测试；任一 production state/intent/wiring 断线时对应测试必须失败。
 **Split waiver:** 这是 6E1–6E4 的聚合上界，横跨 Voyager 导航、Moko 资源、Extension ScreenModel、Ktor server、DI、Compose 生命周期和独立 test-desktop 客户端，不能作为单个风险轴安全调度；下列每个实际子 Task 均不超过 8 files/400 lines，并按依赖顺序提交。
 
@@ -1261,19 +1261,47 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Evidence: commit `7c12cb04e`；真实 `ExtensionListScreen.Content` 通过 production `ExtensionsScreenModel`、Injekt 与 Desktop dependencies 呈现 installed configurable source，点击卡片与设置分别断言 exact `jarPath`、`sourceId`、`sourceName`。focused `SourceNavigation 3 + DetailsPreferences 2` 全绿，`2 files, 114 lines`；新 reviewer APPROVED，无 P0/P1/P2，确认移除直接渲染 private `ExtensionCard` 和测试自造 lambda 的绕路。
 
-#### Task 6E2: Source/Extension 本地化行为
+#### Task 6E2A: ExtensionList rendered copy
 
-- Risk axis: `source-extension-i18n`
+- Risk axis: `extension-list-i18n`
 - Platform boundary: `desktop`
-- Estimated scope: `5 files, 220 lines`
-- Verification: 只通过生成的 MR accessor、base/zh-rCN locale 和实际 Compose rendered copy 验证；禁止读取或扫描 Kotlin/XML 源码文本，禁止把 production 文案复制为测试常量。
-- Files: `ExtensionListScreen.kt`、`ExtensionDetailsScreen.kt`、base/zh-rCN `strings.xml`、`DesktopSourceExtensionI18nTest.kt`；只有真实渲染发现入口文案缺口时才修改 `MoreRootScreen.kt`，且总数仍不超过 5。
-- Authority: 优先复用 fixed main 已有 `MR.strings` key；只有 Desktop 文件、目录、平台失败等原版无对应语义时才新增 Desktop key。
+- Estimated scope: `4 files, 220 lines`
+- Verification: 以 Locale.US/zh-CN 挂载真实 `ExtensionListScreen.Content`，从 Compose semantics 读取 Text/ContentDescription/Dialog；点击 filter、uninstall 等入口。期望只来自生成 MR accessor，中文代表值必须非 base fallback。禁止扫描 Kotlin/XML 或复制 production 文案常量。
+- Files: `ExtensionListScreen.kt`、base/zh-rCN `strings.xml`、`DesktopExtensionListRenderedCopyTest.kt`。
+- Authority: 优先复用 fixed main 的 `ext_confirm_remove`、`ext_uninstall`、`action_cancel`、`action_bar_up_description`、`action_filter`、`ext_nsfw_short`、`action_apply`；卸载所有 sources、Desktop loader reload、filter/可访问性等原版无同义行为才新增 Desktop formatted key，不误用 WebView refresh。
 
-- [ ] RED：base/zh accessor 或实际渲染仍出现未接资源的业务文案时失败。
-- [ ] GREEN：复用上游 key，Desktop 独有语义补齐 base/zh-rCN 并由真实 UI 消费。
-- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.i18n.DesktopSourceExtensionI18nTest"`
-- [ ] Commit: `refactor(desktop): align source extension copy`
+- [ ] RED：真实 List 的 dialog/filter/accessibility 仍使用硬编码 base 文案时，zh-CN rendered copy 失败。
+- [ ] GREEN：复用上游 key；仅为 Desktop 特有语义补 base/zh formatted key，并由真实 UI 消费。
+- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.i18n.DesktopExtensionListRenderedCopyTest" --tests "mihon.desktop.ui.extension.ExtensionPresentationUiTest"`
+- [ ] Commit: `refactor(desktop): localize extension list actions`
+
+#### Task 6E2B: ExtensionDetails rendered copy
+
+- Risk axis: `extension-details-i18n`
+- Platform boundary: `desktop`
+- Estimated scope: `4 files, 220 lines`
+- Verification: 以 Locale.US/zh-CN 挂载真实 Details，覆盖 metadata、source action、folder failure、cookie feedback 与 uninstall dialog；断开任一 production MR accessor 或 zh key 时 rendered-copy 测试失败。
+- Files: `ExtensionDetailsScreen.kt`、base/zh-rCN `strings.xml`、`DesktopExtensionDetailsRenderedCopyTest.kt`。
+- Authority: 复用 fixed main 的 back/version/unknown/sources/browse/incognito/clear-cookies/uninstall/cancel 等 MR key；JAR/Windows artifact origin、file/size/hash/fingerprint、folder、cookie count、metadata removal 属于 Desktop adapter，只新增其外层 label/format，不本地化动态路径、URL、版本、hash、fingerprint、名称、数量或 error cause。
+
+- [ ] RED：zh-CN 真实 Details 的 metadata/action/feedback 仍回退硬编码英文时失败。
+- [ ] GREEN：复用上游语义并补齐 Desktop platform formatted key，不复制 Android PackageInstaller/WebView 文案。
+- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.i18n.DesktopExtensionDetailsRenderedCopyTest" --tests "mihon.desktop.ui.extension.ExtensionDetailsPreferencesWiringTest"`
+- [ ] Commit: `refactor(desktop): localize extension details`
+
+#### Task 6E2C: More source/extension entry copy
+
+- Risk axis: `more-source-extension-i18n`
+- Platform boundary: `desktop`
+- Estimated scope: `4 files, 160 lines`
+- Verification: 以 Locale.US/zh-CN 挂载真实 `MoreRootScreen`，断言 source/extension 相关入口 title/summary 来自生成资源并能点击；不扫描源码，不扩大到 More 其他功能。
+- Files: `MoreRootScreen.kt`、base/zh-rCN `strings.xml`、`MoreSourceExtensionRenderedCopyTest.kt`。
+- Authority: 复用 fixed main 的 `label_extensions`、`label_extension_repos`；两个 Desktop More 导航 summary 新增 Desktop key。扩展名、仓库名等动态产品数据不本地化。
+
+- [ ] RED：zh-CN 真实 More 仍渲染 source/extension 英文入口时失败。
+- [ ] GREEN：真实 SettingsEntry 消费 MR accessor，保留既有点击 callback。
+- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.i18n.MoreSourceExtensionRenderedCopyTest" --tests "mihon.desktop.ui.extension.SourceExtensionNavigationContractTest"`
+- [ ] Commit: `refactor(desktop): localize extension navigation entries`
 
 #### Task 6E3A: 扩展搜索状态向原版 ScreenModel 对齐
 
