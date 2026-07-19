@@ -11,7 +11,9 @@
   "versionCode": 34,
   "versionName": "1.4.34",
   "extensionClass": "eu.kanade.tachiyomi.extension.en.comix.ExtensionGenerated",
-  "expectedOutcome": "success",
+  "expectedOutcome": "unsupported",
+  "rootCauseType": "java.lang.ClassNotFoundException",
+  "rootCauseMessage": "android.view.View",
   "rawUrl": [
     "https://raw.githubusercontent.com/keiyoushi/extensions/",
     "7d5052fb895d086ae2ec6e3cca861146ee3ea0ec/",

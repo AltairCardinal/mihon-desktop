@@ -40,6 +40,9 @@ class RealExtensionPreferenceCompatTest {
         assertEquals(VERSION_CODE, provenance.string("versionCode").toLong())
         assertEquals(VERSION_NAME, provenance.string("versionName"))
         assertEquals(EXTENSION_CLASS, provenance.string("extensionClass"))
+        assertEquals("unsupported", provenance.string("expectedOutcome"))
+        assertEquals("java.lang.ClassNotFoundException", provenance.string("rootCauseType"))
+        assertEquals("android.view.View", provenance.string("rootCauseMessage"))
 
         val convertedJar = ApkToJarConverter().convert(apkPath.toFile(), tempDir.toFile())
         assertNotNull(convertedJar, "Production converter rejected the immutable Comix APK")
@@ -57,13 +60,13 @@ class RealExtensionPreferenceCompatTest {
                 extensionClass = EXTENSION_CLASS,
             ),
         )
-        val loaded = DesktopExtensionLoader(tempDir.toFile()).loadFromSingleJar(jar)
+        val loader = DesktopExtensionLoader(tempDir.toFile())
+        val loaded = loader.loadFromSingleJar(jar)
         assertTrue(loaded.isEmpty(), "Comix unexpectedly loaded before the documented View boundary")
+        assertTrue(loader.diagnostics.isEmpty(), "Comix failed in outer loader wiring: ${loader.diagnostics}")
         val rootCause = loaderFailureRootCause(jar)
-        assertTrue(rootCause is ClassNotFoundException) {
-            "Expected the next View gap, got ${rootCause.javaClass.name}: ${rootCause.message}"
-        }
-        assertEquals("android.view.View", rootCause.message)
+        assertEquals(provenance.string("rootCauseType"), rootCause.javaClass.name)
+        assertEquals(provenance.string("rootCauseMessage"), rootCause.message)
     }
 
     private fun loaderFailureRootCause(jar: java.io.File): Throwable {
@@ -108,7 +111,7 @@ class RealExtensionPreferenceCompatTest {
         val PROVENANCE_FIELDS = setOf(
             "authorityRef", "repository", "repositoryCommit", "gitBlob", "license", "fixturePath", "sha256",
             "sizeBytes", "packageName", "versionCode", "versionName", "extensionClass", "expectedOutcome", "rawUrl",
-            "retrievedAt",
+            "retrievedAt", "rootCauseType", "rootCauseMessage",
         )
     }
 }
