@@ -1775,6 +1775,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `4 files, 80 lines`
 - Verification: Drawable、BitmapDrawable、ColorDrawable在fixed main仅服务Android reader/resources/icon链，Desktop loader/UI与完整Keiyoushi/有效artifact均无消费者；当前单文件三个类型仅由Phase27自证。删除该文件与自证、三项inventory，contract从33/41更新为32/38；运行Comix graphics、全部immutable loader/product fixture、contract与clean compile。不得把该结论扩张到已有真实消费者但尚缺fixture的 Color/Html。
 
+  Evidence: commit `54ba9045e7`，4 files/48 touched（2 additions/46 deletions）。删除单文件三个drawable类型、Phase27三项自证与三项inventory，surface 32 files/38 symbols；Bitmap/Factory/Canvas/Paint/Rect/Color、graphics evidence与Desktop图标链零改。clean compile成功（1m54s），graphics adapter/ABI、contract、baseline、6个真实fixture、loader、IconLoading与UI Presentation共 `48/48`。独立复核fixed-main引用只在Android Reader/resources/icon平台链，7个真实raw JAR对三owner/dotted名均0；Desktop图标继续ByteArray+Compose/Coil，真实binary仍命中保留的Bitmap/Canvas。独立scanner/inventory32/38且集合差/重复0，review APPROVED、Java0。
+
 ##### Task 7C4: Source/extension authority baseline 与恢复入口纠偏
 
 - Risk axis: `authority-resume-pointer`
