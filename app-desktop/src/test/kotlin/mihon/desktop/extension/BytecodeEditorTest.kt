@@ -194,6 +194,32 @@ class BytecodeEditorTest {
         ) shouldBe "foo_bar"
     }
 
+    @Test
+    fun `fixBytecode rewrites only fixed-main Page constructor descriptors`() {
+        val calls = listOf(
+            Invocation("PagePrimary", PAGE_OWNER, "<init>", PAGE_URI_DESCRIPTOR),
+            Invocation("PageDefault", PAGE_OWNER, "<init>", PAGE_URI_DEFAULT_DESCRIPTOR),
+            Invocation("OtherOwner", "extension/model/Page", "<init>", PAGE_URI_DESCRIPTOR),
+            Invocation("OtherMethod", PAGE_OWNER, "factory", PAGE_URI_DESCRIPTOR),
+            Invocation("OtherDescriptor", PAGE_OWNER, "<init>", "(ILjava/lang/String;)V"),
+        )
+        val input = buildJar(
+            *calls.map { call ->
+                "${call.className}.class" to buildInvocationCaller(call)
+            }.toTypedArray(),
+        )
+        val output = File(tempDir, "output.jar")
+
+        BytecodeEditor.fixBytecode(input, output)
+
+        methodCalls(output, "PagePrimary").single().descriptor shouldBe PAGE_OBJECT_DESCRIPTOR
+        methodCalls(output, "PageDefault").single().descriptor shouldBe PAGE_OBJECT_DEFAULT_DESCRIPTOR
+        calls.drop(2).forEach { call ->
+            methodCalls(output, call.className).single() shouldBe
+                MethodCall(call.owner, call.name, call.descriptor)
+        }
+    }
+
     private fun buildCaller(className: String, owner: String, name: String, descriptor: String): ByteArray {
         val writer = ClassWriter(ClassWriter.COMPUTE_FRAMES)
         writer.visit(Opcodes.V11, Opcodes.ACC_PUBLIC, className, null, "java/lang/Object", null)
@@ -203,6 +229,33 @@ class BytecodeEditorTest {
         method.visitInsn(Opcodes.POP2)
         method.visitInsn(Opcodes.RETURN)
         method.visitMaxs(2, 0)
+        method.visitEnd()
+        writer.visitEnd()
+        return writer.toByteArray()
+    }
+
+    private fun buildInvocationCaller(call: Invocation): ByteArray {
+        val writer = ClassWriter(ClassWriter.COMPUTE_FRAMES)
+        writer.visit(Opcodes.V11, Opcodes.ACC_PUBLIC, call.className, null, "java/lang/Object", null)
+        val method = writer.visitMethod(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, "call", "()V", null, null)
+        method.visitCode()
+        if (call.name == "<init>") {
+            method.visitTypeInsn(Opcodes.NEW, call.owner)
+            method.visitInsn(Opcodes.DUP)
+        }
+        Type.getArgumentTypes(call.descriptor).forEach { type ->
+            method.visitInsn(if (type.sort == Type.INT) Opcodes.ICONST_0 else Opcodes.ACONST_NULL)
+        }
+        method.visitMethodInsn(
+            if (call.name == "<init>") Opcodes.INVOKESPECIAL else Opcodes.INVOKESTATIC,
+            call.owner,
+            call.name,
+            call.descriptor,
+            false,
+        )
+        if (call.name == "<init>") method.visitInsn(Opcodes.POP)
+        method.visitInsn(Opcodes.RETURN)
+        method.visitMaxs(0, 0)
         method.visitEnd()
         writer.visitEnd()
         return writer.toByteArray()
@@ -239,7 +292,21 @@ class BytecodeEditorTest {
 
     private data class MethodCall(val owner: String, val name: String, val descriptor: String)
 
+    private data class Invocation(
+        val className: String,
+        val owner: String,
+        val name: String,
+        val descriptor: String,
+    )
+
     private companion object {
         const val DURATION_COMPANION = "kotlin/time/Duration\$Companion"
+        const val PAGE_OWNER = "eu/kanade/tachiyomi/source/model/Page"
+        const val PAGE_URI_DESCRIPTOR = "(ILjava/lang/String;Ljava/lang/String;Landroid/net/Uri;)V"
+        const val PAGE_OBJECT_DESCRIPTOR = "(ILjava/lang/String;Ljava/lang/String;Ljava/lang/Object;)V"
+        const val PAGE_URI_DEFAULT_DESCRIPTOR =
+            "(ILjava/lang/String;Ljava/lang/String;Landroid/net/Uri;ILkotlin/jvm/internal/DefaultConstructorMarker;)V"
+        const val PAGE_OBJECT_DEFAULT_DESCRIPTOR =
+            "(ILjava/lang/String;Ljava/lang/String;Ljava/lang/Object;ILkotlin/jvm/internal/DefaultConstructorMarker;)V"
     }
 }

@@ -112,9 +112,19 @@ object BytecodeEditor {
                     isInterface: Boolean,
                 ) {
                     val resolvedName = methodNameResolver.resolve(owner, name, descriptor)
-                    super.visitMethodInsn(opcode, owner, resolvedName, descriptor, isInterface)
+                    val resolvedDescriptor = resolvePageConstructorDescriptor(owner, name, descriptor)
+                    super.visitMethodInsn(opcode, owner, resolvedName, resolvedDescriptor, isInterface)
                 }
             }
+        }
+    }
+
+    private fun resolvePageConstructorDescriptor(owner: String, name: String, descriptor: String): String {
+        if (owner != PAGE_OWNER || name != "<init>") return descriptor
+        return when (descriptor) {
+            PAGE_URI_DESCRIPTOR -> PAGE_OBJECT_DESCRIPTOR
+            PAGE_URI_DEFAULT_DESCRIPTOR -> PAGE_OBJECT_DEFAULT_DESCRIPTOR
+            else -> descriptor
         }
     }
 
@@ -157,6 +167,14 @@ object BytecodeEditor {
         val emittedName: String,
         val descriptor: String,
     )
+
+    private const val PAGE_OWNER = "eu/kanade/tachiyomi/source/model/Page"
+    private const val PAGE_URI_DESCRIPTOR = "(ILjava/lang/String;Ljava/lang/String;Landroid/net/Uri;)V"
+    private const val PAGE_OBJECT_DESCRIPTOR = "(ILjava/lang/String;Ljava/lang/String;Ljava/lang/Object;)V"
+    private const val PAGE_URI_DEFAULT_DESCRIPTOR =
+        "(ILjava/lang/String;Ljava/lang/String;Landroid/net/Uri;ILkotlin/jvm/internal/DefaultConstructorMarker;)V"
+    private const val PAGE_OBJECT_DEFAULT_DESCRIPTOR =
+        "(ILjava/lang/String;Ljava/lang/String;Ljava/lang/Object;ILkotlin/jvm/internal/DefaultConstructorMarker;)V"
 
     /**
      * ClassWriter that falls back to java/lang/Object when a type hierarchy
