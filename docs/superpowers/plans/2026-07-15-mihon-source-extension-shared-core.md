@@ -1939,6 +1939,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `3 files, 100 lines plus one 41,496-byte APK`
 - Verification: 固定 keiyoushi/extensions commit `7d5052fb895d086ae2ec6e3cca861146ee3ea0ec` 的 APK `apk/tachiyomi-all.comicfury-v1.4.8.apk`，blob `8660ce4c0366cd14c031731bf2b90febc5a24d3f`、41496 bytes、SHA-256 `9403d439eefec8ccff3fa7a3edd810046a12206d944302013bc3f94538b3def7`；提交 APK、provenance 与 authority/integrity test，不执行或宣称 Html/Color 行为。raw JAR 只用于审计，固定 blob `2a9e1e7ac8ab089fd0a2f6544c27319f2f14f672`、SHA-256 `1fc1b0fc1a3c9c974ca0ef399658da2b9b3d74561ef79c78a1bc77957ec80d65`，不得作为未追踪测试依赖。
 
+  Evidence: fixture/provenance commit `671626c53`；唯一修复 commit `8d968b7a5`。严格 3 个交付文件（测试、provenance、41,496-byte APK）。测试先因缺 provenance RED，后对 APK SHA-256、size、manifest extension class GREEN；首审发现 package/versionCode/versionName/extensionLibVersion 仍为 JSON 自证，唯一修复以测试内、无 SDK/网络依赖的 AXML reader 直接解析 tracked APK 的二进制 `AndroidManifest.xml`，再次完成 RED（actual null）→ GREEN 1/1。固定 Git commit/root/parent、APK path/blob、raw URL 以及仅审计的 raw JAR blob/SHA 均核实；独立复审 APPROVED。根 `spotlessCheck` 仍仅被范围外既有 `GlobalSearchSourcePolicyTest.kt:53` 阻断，Java0；未执行 converter/loader/Html/Color 行为。
+
 ##### Task 7C3q1: Html Spanned ABI 与 fixed behavior
 
 - Risk axis: `html-spanned-abi`
