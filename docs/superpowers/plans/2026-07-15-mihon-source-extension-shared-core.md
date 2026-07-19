@@ -1513,7 +1513,9 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Risk axis: `compat-exact-invocation-resolution`
 - Platform boundary: `desktop`
 - Estimated scope: `5 files, 350 lines`
-- Verification: 只消费 7B1 的真实 loader outcome；若 extension 行为实际调用现有 shim，则用默认 no-op、测试 scope recorder 记录 exact constructor/member 并解析对应 inventory/evidence。仅 linkage/class-load 不得升级为 `required`；若真实失败由缺失 adapter 导致，先按原版语义与平台边界写 RED，再决定最小 adapter 或 `unsupported`，不得预设 Application 或批量新增 shim。
+- Verification: 只消费 7B1 的真实 loader outcome；固定 main `AppModule` 明确 `addSingleton(app)`，而 7B1 证明真实 extension 构造通过 Injekt 精确请求 `android.app.Application`，因此先将 fixture 期望改为 success 取得 RED，再让 Desktop 初始化现有 Application adapter 并注册同一 contract。成功必须返回 converted-JAR Source；只有该因果链闭合后才能把 Application/Source evidence 解析为 `required`。仅 linkage/class-load 不得升级为 `required`，不得批量新增 shim；若出现下一 gap，停止并继续拆分。
+
+  7B1 evidence: commit `cf9835804`；RED1 精确失败于本地 fixture 缺失，RED2 在真实 Desktop DI、manifest、converter、meta 与 production loader 后精确得到 `InjektionException: No registered instance or factory for type class android.app.Application`。GREEN 将该唯一 outcome 固定为 provenance 中的结构化 `unsupported`，任意其他 Throwable 均失败；XML `1/0/0`。APK 固定上游 commit/blob/70,062 bytes/SHA-256，Git binary attrs 保证普通 stage/fresh checkout 不改字节。独立 review APPROVED；范围 `4 files, 160 text lines plus APK`。
 
 #### Task 7C: Compat package prune batches
 
