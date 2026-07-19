@@ -7,10 +7,15 @@ import org.jetbrains.skia.Typeface as SkiaTypeface
 class Typeface private constructor(internal val native: SkiaTypeface) {
     companion object {
         @JvmField
-        val DEFAULT = Typeface(
+        val DEFAULT = create(FontStyle.NORMAL)
+
+        @JvmField
+        val DEFAULT_BOLD = create(FontStyle.BOLD)
+
+        private fun create(style: FontStyle) = Typeface(
             FontMgr.default.run {
                 require(familiesCount > 0) { "No system fonts available" }
-                requireNotNull(matchFamilyStyle(getFamilyName(0), FontStyle.NORMAL))
+                requireNotNull(matchFamilyStyle(getFamilyName(0), style))
             },
         )
     }

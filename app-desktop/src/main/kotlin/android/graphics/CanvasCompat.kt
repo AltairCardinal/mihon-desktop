@@ -14,7 +14,11 @@ open class Paint(flags: Int = 0) {
     private var currentTypeface: Typeface? = null
 
     fun getTypeface(): Typeface? = currentTypeface
-    fun setTypeface(typeface: Typeface?): Typeface? = typeface.also { currentTypeface = it }
+    fun setTypeface(typeface: Typeface?): Typeface? {
+        val previous = currentTypeface
+        currentTypeface = typeface
+        return previous
+    }
 
     companion object {
         const val ANTI_ALIAS_FLAG = 1
