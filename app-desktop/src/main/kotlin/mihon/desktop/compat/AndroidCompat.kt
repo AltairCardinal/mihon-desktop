@@ -2,7 +2,6 @@ package mihon.desktop.compat
 
 import android.app.Application
 import android.content.Context
-import android.content.pm.PackageManager
 
 /**
  * Entry point for the Android API compat layer.
@@ -16,8 +15,6 @@ import android.content.pm.PackageManager
 object AndroidCompat {
 
     val context: Context = Context()
-
-    val packageManager: PackageManager = PackageManager()
 
     @Volatile
     private var initialized = false

@@ -3,7 +3,6 @@ package mihon.desktop.compat
 import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
-import android.content.pm.PackageManager
 import android.webkit.CookieManager
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -30,12 +29,6 @@ class AndroidCompatPhase7Test {
         val prefs = AndroidCompat.context.getSharedPreferences("compat_test", 0)
         prefs.shouldNotBeNull()
         prefs.shouldBeInstanceOf<SharedPreferences>()
-    }
-
-    @Test
-    fun `AndroidCompat packageManager returns non-null`() {
-        AndroidCompat.packageManager.shouldNotBeNull()
-        AndroidCompat.packageManager.shouldBeInstanceOf<PackageManager>()
     }
 
     @Test
