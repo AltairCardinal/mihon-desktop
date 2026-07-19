@@ -1634,6 +1634,20 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Evidence: implementation `2e6787336`、test-isolation repair `be7c74683`。首轮 network-interceptor 改 host 的测试装配只得到 ConnectException，未冒充 ABI 证据；改为保留 ManHuaGui target host、以限定 DNS 路由到 MockWebServer 后，真实 immutable APK 经 production DI/converter/loader 的 `f0.intercept` 精确 RED 为 `NoClassDefFoundError: android/os/SystemClock`，堆栈同时保留 production IgnoreGzip/Compression/Desktop credential。GREEN 新增 `SystemClock.elapsedRealtime()`，`javap -s -p` 为 `public static final ... descriptor: ()J`，实现 `System.nanoTime()/1_000_000L`；真实 source client 到达 exact `/codex-rate-limit` 并返回 200/ok。surface 42 files/50 symbols→43/51，inventory 15 required+36 unverified，compat evidence 16 条；只新增 SystemClock required，JsonReader/Uri/WebKit 未升级。focused Real+contract 首次 `2/0/0`。首审唯一 Important 为同类既有 parser 测试未恢复 global Injekt；唯一修复统一 classloader→DI context→最外层 Injekt 恢复，复跑 `2/0/0`，复审 APPROVED。范围 implementation 5 files/112 touched，repair 1 test file/69 touched，Java0；root Spotless 仍仅被提交外既有 `GlobalSearchSourcePolicyTest.kt` 阻塞。
 
+##### Task 7C3c: TCBScans 真实 ApplicationInfo/Log 旧偏好清理
+
+- Risk axis: `tcbscans-legacy-cleanup`
+- Platform boundary: `desktop`
+- Estimated scope: `8 files, 250 lines plus one 29,544-byte APK`
+- Verification: 固定 Keiyoushi TCBScans 1.4.12：artifact repo commit `04bd989e5ff1f9dda0148c0aad6bac0889e03edb`、blob `12ed843aee2449b8b8793857b874efac0cf98957`、SHA-256 `bf5a2bfd907d54c1ab5438f09a3a45693b597fcc27fc914241d9cd3e491ce1d2`、29,544 bytes、ext-lib 1.4、package `eu.kanade.tachiyomi.extension.en.tcbscans`、version 1.4.12、class `eu.kanade.tachiyomi.extension.en.tcbscans.ExtensionGenerated`。测试以临时 user.home 初始化 production DI/preferences/converter/loader，把真实 `source_1435116756378369709/legacy_updateTime_removed` 置 false，并在 `${dataDir}/shared_prefs` 创建匹配的 legacy XML；构造真实 extension 必须删除文件并输出 `D/TCB Scans: Deleting...`。RED 必须依次固定 `ContextWrapper.getApplicationInfo()Landroid/content/pm/ApplicationInfo;` 缺失、`ApplicationInfo.dataDir:Ljava/lang/String;` 非 public field、`Log.d(String,String):Int` 非 static 的真实首 gap。GREEN 只在 Desktop Android adapter 增加 exact API：dataDir 来自 `getFilesDir().parentFile.absolutePath` 的 Desktop app root，`dataDir` 以 `@JvmField` 暴露，Log 的现有 Android 形状方法生成 static descriptors且保留 stderr/0 语义。成功后仅将 ApplicationInfo、Log 以同一 APK/test解析为 required；ContextWrapper 已有唯一 evidence，不追加重复条目，未执行字段/重载不宣称行为已验证。测试必须 `@Isolated`，按 classloader→DI→Injekt/user.home/stderr 顺序恢复；fixture/provenance/test、三个 adapter 文件与 inventory/evidence合计不超过 8 文件，contract只运行不修改。
+
+##### Task 7C3d: FavComic 真实 Base64 图片解密证据
+
+- Risk axis: `favcomic-base64-evidence`
+- Platform boundary: `verification`
+- Estimated scope: `5 files, 240 lines plus one 61,951-byte APK`
+- Verification: 固定 Keiyoushi FavComic 1.4.1：artifact repo commit `7d5052fb895d086ae2ec6e3cca861146ee3ea0ec`、APK blob `a3937a5f16f2a6c7c1f58d4bddff1e28695ed4a9`、SHA-256 `bc6f5d1b01e62baeeba44f4e7b259eb33b1c76ad261e403ad512b3ff73fe67ab`、61,951 bytes、ext-lib 1.4、package `eu.kanade.tachiyomi.extension.zh.favcomic`、version 1.4.1、class `eu.kanade.tachiyomi.extension.zh.favcomic.ExtensionGenerated`。这是 direct verification，不虚构产品行为 RED：缺少本地 fixture/provenance/test/evidence 即门禁未闭合。真实 production converter/loader 构造 ExtensionGenerated 时必须执行 ImageDecryptInterceptor 的 `Base64.decode(Ljava/lang/String;I)[B`、DEFAULT=0，解出 exact key；随后 loaded HttpSource.client 请求 MockWebServer `/cover.jpg#true`，以 IV `000102030405060708090a0b0c0d0e0f` + cipher `ba7209b41d2d82d8e0fa995afb9b5f0f8c7f832ccb4fe225aa424c90a2c222f6` 经 APK 自身 interceptor 解出明文 `89504e470d0a1a0a466176436f6d6963` 和 `image/jpeg`。只将 inventory 的 `android.util.Base64` 解析为 required并绑定该 APK@SHA/test；不修改 Base64 production，不借此声称未执行的 flags、offset overload、encoder wrapping或宽容 decoder 已验证。测试 `@Isolated`，保存/恢复 Injekt并关闭classloader/DI/server；contract只运行不修改。
+
 ##### Task 7C4: Source/extension authority baseline 与恢复入口纠偏
 
 - Risk axis: `authority-resume-pointer`
