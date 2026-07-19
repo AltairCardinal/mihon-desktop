@@ -1881,6 +1881,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `6 files, 240 lines`
 - Verification: 本 Task 与 7C3o3b 独立并先行调度。当前 `android.webkit.CookieManager` 只有自证测试与 verifier 反射消费者，既不接 fixed-main `AndroidCookieJar` 的 WebView cookie store，也不接 Desktop production `DesktopCookieJar`；真实 Comix 链在 `WebView.getSettings` 明确平台边界前尚未触达 CookieManager。先删除 production shim 建立 prune RED，确认编译失败只来自 AndroidCompatPhase4/Phase7 与 AndroidWebViewVerifierAbiTest 的 test-only consumer；GREEN 删除/清理这些自证测试、inventory entry 并更新 contract surface。复跑真实 Comix WebView/preference/graphics、全部 immutable fixture、DesktopCookieJar 与 loader；任何 production 或真实 fixture 回归即恢复并重规划，不得将当前独立内存仓标 required。文件限定 CookieManager.kt、AndroidCompatPhase4Test.kt、AndroidCompatPhase7Test.kt、AndroidWebViewVerifierAbiTest.kt、inventory、contract。
 
+  Evidence: commit `3c6edd9cf`，严格 6 files（229 deletions/2 additions）。删除 production shim 后 Desktop production compile 通过，test compile 失败仅来自纯 Cookie Phase4 与 Phase7 自证，另一个命中仅为 WebView verifier 反射；无 production/真实 fixture consumer。GREEN 删除/清理 test-only 依赖，surface 33 files/42 symbols，inventory/evidence 无 CookieManager 或孤儿；Android 原版 AndroidCookieJar 与 DesktopCookieJar 均未改。app 14 suites/37 tests、core DesktopCookieJar 29 tests 全绿；独立 review APPROVED，Java0，root Spotless 仍仅受既有 domain 文件阻塞。
+
 ##### Task 7C4: Source/extension authority baseline 与恢复入口纠偏
 
 - Risk axis: `authority-resume-pointer`
