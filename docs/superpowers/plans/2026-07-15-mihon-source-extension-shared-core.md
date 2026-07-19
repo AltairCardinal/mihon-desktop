@@ -2031,9 +2031,11 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Evidence: commit `a8aa3be07`；RED 在先确认 scanner 得到 39 files/43 public top-level symbols 后，精确列出 43 个 inventory 缺项；GREEN XML `2/0/0`。最终 inventory 43/43 unique 且全为诚实 `unverified`，固定 authority 为 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`，Desktop android/androidx roots 仅为 adapter。resolved 负例拒绝无 evidence、URL、parent classpath、AndroidCompat self-test 与 MinimalTestSource，未使用源码字符串扫描冒充行为证据。独立 review APPROVED；范围 `2 files, 247 lines`。
 
-- [ ] **Step 3: 更新 parity 28–40、87**
+- [x] **Step 3: 更新 parity 28–40、87**
 
   IDs 28–40 的 manifest completion gate 使用结构化 provenance：`upstreamRef` 必须精确固定到 main，`upstreamSymbols` 的每个 path 在该 git tree 中存在，shared/current Android/Desktop 路径数组逐项验证，每个 deviation 对象独立携带允许 classification 和非空说明。`authoritativeImplementation` / `desktopImplementation` 仅保留兼容，不能作为完成证据；`protectionTests` 仍必须引用真实测试路径。状态只提升到证据支持的 CHARACTERIZED/SHARED/WIRED/VERIFIED，不把平台 adapter 当作业务豁免。
+
+  Evidence: implementation `c629ca506`、唯一修复 `91f976ea5`，累计严格 5 files / 248 task touched（最终 range净 touched 246）。RED 23 tests中2项精确为 ID29 expected WIRED/actual NOT_STARTED 与 ID87 upstreamRef blank；GREEN 后契约 24/24。最终 28/32 保持 NOT_STARTED，29/30/33–40 为 WIRED，87 为 SHARED，无 VERIFIED、ID31按设计不存在；87 以 AppLanguage/SettingsAppearance/Localize 三条 fixed-main path/blob 为权威，ID40 的 current Android interceptor/NetworkHelper 保持 androidMain consumer而非shared。首审发现 diagnostics 旧枚举残留和 shared path gate 只验存在；唯一修复改为真实四枚举与 per-JAR/class-level remaining limitation，并新增 commonMain 强制门禁及 platform-path 负例。tracker 要求所有已提升项绑定 production behavior/wiring 测试；独立复审 APPROVED，JSON/path/blob static核验、diff-check、Java0。root Spotless 仍被范围外既有 `GlobalSearchSourcePolicyTest.kt` 格式问题阻断。
 
 - [ ] **Step 4: 运行全量自动验证**
 
