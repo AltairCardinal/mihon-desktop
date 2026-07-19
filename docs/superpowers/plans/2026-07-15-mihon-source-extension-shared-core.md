@@ -1840,6 +1840,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `8 files, 380 lines`
 - Verification: 仅在 7C3o1a 独立审查通过后继续。真实 MangaDex 测试必须走 production converter/meta/loader 并断言 61、diagnostics empty、可选中 English。实际 RED 已依次暴露 `EditTextPreference.OnBindEditTextListener`、`android.text.TextWatcher` 与 `android.widget.TextView`；真实 `a4/b4` verifier closure 还精确要求 TextView error getter/setter、EditText.addTextChangedListener、View rootView/findViewById/enabled 与 Button checkcast。最小 GREEN 在一个 android.text compat 文件内提供 Editable/TextWatcher，在 EditText compat 文件内提供 TextView/EditText/Button 精确继承和内存状态，并补齐 View 所需成员及 EditTextPreference listener storage。AndroidX 1.2.1、真实 `j2/l2/a4/b4` descriptor 必须一致，不得用空接口或 `Any`。inventory/evidence 必须明确这里只证明 production loader 所需 verifier closure 与状态模型，不宣称 preference setup、callback 或 Android widget 渲染已完成；contract 同提交更新。文件限定 android.text compat、EditText.kt、View.kt、EditTextPreference.kt、RealExtensionMangaDexFactoryCompatTest.kt、inventory、evidence、contract。
 
+  Evidence: commit `9ead1876e`，严格 8 files/243 text touched。production tracked MangaDex APK → converter/meta/loader 真实返回 61 sources、diagnostics empty 并取得唯一 English MangaDex；RED 依次为 missing OnBindEditTextListener、TextWatcher、TextView，GREEN host descriptor 与真实 j2/l2/a4/b4 字节码一致。surface 34 files/43 symbols，新状态模型仅保存 watcher/error/enabled，ledger 明确不宣称构造、callback 或渲染，EditTextPreference 原 Comix 强证据未降级。focused/contract 与 loader/preference/UI wiring/provenance/全部 RealExtension fixtures 回归通过；独立 review APPROVED，Java0、其他 dirty 未入提交。
+
 ##### Task 7C3o1c: APK assets preservation 与 MangaDex preference setup
 
 - Risk axis: `apk-assets-preference-wiring`
