@@ -23,18 +23,18 @@ class CompatEvidenceContractTest {
         val inventory = inventory(root)
         val symbols = inventory.entries.map(Entry::symbol)
 
-        assertEquals(36, surface.files.size, "compat source file count drifted")
-        assertEquals(46, surface.symbols.size, "compat public symbol count drifted")
+        assertEquals(35, surface.files.size, "compat source file count drifted")
+        assertEquals(45, surface.symbols.size, "compat public symbol count drifted")
         assertEquals(AUTHORITY, inventory.authorityRef)
         assertEquals(ADAPTER_ROOTS, inventory.adapterRoots)
         assertEquals(symbols.size, symbols.toSet().size, "inventory symbols must be unique")
         assertEquals(
-            mapOf("required" to 44, "unsupported" to 1, "unverified" to 1),
-            inventory.entries.groupingBy(Entry::status).eachCount(),
+            mapOf("required" to 44, "unsupported" to 1, "unverified" to 0),
+            STATUSES.associateWith { status -> inventory.entries.count { it.status == status } },
             "compat status counts drifted",
         )
         assertEquals(
-            setOf("android.graphics.Color"),
+            emptySet<String>(),
             inventory.entries.filter { it.status == "unverified" }.map(Entry::symbol).toSet(),
             "the unverified set must remain exact",
         )

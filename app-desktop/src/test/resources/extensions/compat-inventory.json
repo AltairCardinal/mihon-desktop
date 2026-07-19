@@ -18,8 +18,6 @@
       "nextEvidence":"RealExtensionComixDescramblerCompatTest real PNG decode pipeline"},
     {"symbol":"android.graphics.Canvas","status":"required",
       "nextEvidence":"RealExtensionComixDescramblerCompatTest real XOR/grid draw pipeline"},
-    {"symbol":"android.graphics.Color","status":"unverified",
-      "nextEvidence":"7B real local fixture invocation or 7C removal"},
     {"symbol":"android.graphics.Paint","status":"required",
       "nextEvidence":"RealExtensionComixDescramblerCompatTest real Canvas draw ABI"},
     {"symbol":"android.graphics.Rect","status":"required",
