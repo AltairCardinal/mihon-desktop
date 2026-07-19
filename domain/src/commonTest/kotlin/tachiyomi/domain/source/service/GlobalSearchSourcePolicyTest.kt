@@ -50,7 +50,11 @@ class GlobalSearchSourcePolicyTest {
         override val supportsLatest = false
         override suspend fun getPopularManga(page: Int) = MangasPage(emptyList(), false)
         override suspend fun getLatestUpdates(page: Int) = MangasPage(emptyList(), false)
-        override suspend fun getSearchManga(page: Int, query: String, filters: FilterList) = MangasPage(emptyList(), false)
+        override suspend fun getSearchManga(
+            page: Int,
+            query: String,
+            filters: FilterList,
+        ) = MangasPage(emptyList(), false)
         override fun getFilterList() = FilterList()
         override suspend fun getMangaDetails(manga: SManga) = manga
         override suspend fun getChapterList(manga: SManga) = emptyList<SChapter>()
