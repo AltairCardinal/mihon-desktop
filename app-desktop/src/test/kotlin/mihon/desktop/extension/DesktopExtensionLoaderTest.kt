@@ -1,5 +1,7 @@
 package mihon.desktop.extension
 
+import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.SourceFactory
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -32,8 +34,44 @@ class DesktopExtensionLoaderTest {
     fun `source model classes must load from parent for type safety`() {
         val cl = makeLoader()
         assertTrue(mustLoadFromParent(cl, "eu.kanade.tachiyomi.source.Source"))
+        assertTrue(mustLoadFromParent(cl, "eu.kanade.tachiyomi.source.SourceFactory"))
         assertTrue(mustLoadFromParent(cl, "eu.kanade.tachiyomi.source.model.SManga"))
         assertTrue(mustLoadFromParent(cl, "eu.kanade.tachiyomi.source.CatalogueSource"))
+    }
+
+    @Test
+    fun `single source manifest class loads`() {
+        val sources = DesktopExtensionLoader().loadByClassName(
+            ManifestSource::class.java.name,
+            javaClass.classLoader,
+        )
+
+        assertEquals(listOf(1L), sources.map(Source::id))
+    }
+
+    @Test
+    fun `source factory manifest class expands its complete list`() {
+        val sources = DesktopExtensionLoader().loadByClassName(
+            ManifestSourceFactory::class.java.name,
+            javaClass.classLoader,
+        )
+
+        assertEquals(listOf(2L, 3L), sources.map(Source::id))
+    }
+
+    @Test
+    fun `colon manifest classes preserve order and isolate invalid entries`() {
+        val classes = listOf(
+            "missing.extension.Source",
+            ManifestSource::class.java.name,
+            BrokenManifestSource::class.java.name,
+            ManifestSourceFactory::class.java.name,
+            String::class.java.name,
+        ).joinToString(":")
+
+        val sources = DesktopExtensionLoader().loadByClassName(classes, javaClass.classLoader)
+
+        assertEquals(listOf(1L, 2L, 3L), sources.map(Source::id))
     }
 
     @Test
@@ -103,5 +141,23 @@ class DesktopExtensionLoaderTest {
     fun `getExtensionsDirectory returns configured path`() {
         val loader = DesktopExtensionLoader(tempDir)
         assertEquals(tempDir, loader.extensionsDirectory)
+    }
+}
+
+private open class TestSource(
+    override val id: Long,
+) : Source {
+    override val name = "Synthetic $id"
+}
+
+private class ManifestSource : TestSource(1L)
+
+private class ManifestSourceFactory : SourceFactory {
+    override fun createSources(): List<Source> = listOf(TestSource(2L), TestSource(3L))
+}
+
+private class BrokenManifestSource : TestSource(4L) {
+    init {
+        error("synthetic constructor failure")
     }
 }

@@ -1,6 +1,7 @@
 package mihon.desktop.extension
 
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.SourceFactory
 import java.io.File
 import java.lang.reflect.Modifier
 import java.net.URL
@@ -125,21 +126,30 @@ open class DesktopExtensionLoader(
      * as stored in [ExtensionMeta.extensionClass] from the APK manifest.
      *
      * Each name in [classNames] (split on ':') is loaded and instantiated.
-     * Only classes that implement [Source] and have a no-arg constructor are included.
+     * Classes that implement [Source] are instantiated directly. Classes that implement
+     * [SourceFactory] contribute their complete [SourceFactory.createSources] result.
+     * Invalid entries are ignored without preventing later manifest classes from loading.
      */
     internal fun loadByClassName(classNames: String, classLoader: ClassLoader): List<Source> {
         val sourceInterface = Source::class.java
-        return classNames.split(":").mapNotNull { name ->
-            val trimmed = name.trim().ifEmpty { return@mapNotNull null }
+        val sourceFactoryInterface = SourceFactory::class.java
+        return classNames.split(":").flatMap { name ->
+            val trimmed = name.trim().ifEmpty { return@flatMap emptyList() }
             try {
                 val cls = classLoader.loadClass(trimmed)
-                if (!sourceInterface.isAssignableFrom(cls)) return@mapNotNull null
+                if (!sourceInterface.isAssignableFrom(cls) && !sourceFactoryInterface.isAssignableFrom(cls)) {
+                    return@flatMap emptyList()
+                }
                 val ctor = cls.getDeclaredConstructors().firstOrNull { it.parameterCount == 0 }
-                    ?: return@mapNotNull null
+                    ?: return@flatMap emptyList()
                 ctor.isAccessible = true
-                ctor.newInstance() as? Source
+                when (val instance = ctor.newInstance()) {
+                    is Source -> listOf(instance)
+                    is SourceFactory -> instance.createSources()
+                    else -> emptyList()
+                }
             } catch (_: Throwable) {
-                null
+                emptyList()
             }
         }
     }
@@ -251,6 +261,7 @@ internal class ExtensionClassLoader(
         // ServiceLoader and extension manager type checks.
         if (name == "eu.kanade.tachiyomi.source.Source" ||
             name == "eu.kanade.tachiyomi.source.CatalogueSource" ||
+            name == "eu.kanade.tachiyomi.source.SourceFactory" ||
             name == "eu.kanade.tachiyomi.source.UnmeteredSource" ||
             name.startsWith("eu.kanade.tachiyomi.source.model.")
         ) return true
