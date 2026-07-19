@@ -1118,12 +1118,14 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 初审 correction：单项 update 与 C2a projection 必须共用 canonical candidate 选择，因此唯一修复轮纳入 `DesktopExtensionPresentationPort.kt`；同时删除无法从 Job 正确推断 TrustRequired/Cancelled 的批量成功汇总，逐阶段与逐包终态按 fixed-main/shared state 呈现。范围修正为 6 files/400 lines，不新增调度单元。
 
-- [ ] **Step 1: 写 list action lifecycle RED**
-- [ ] **Step 2: 删除本地 jobs/reducer/legacy API 并接入 ScreenModel intents**
-- [ ] **Step 3: 运行 GREEN 与断线 mutation**
+- [x] **Step 1: 写 list action lifecycle RED**
+- [x] **Step 2: 删除本地 jobs/reducer/legacy API 并接入 ScreenModel intents**
+- [x] **Step 3: 运行 GREEN 与断线 mutation**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionPresentationUiTest" --tests "mihon.desktop.ui.extension.ExtensionListCopyContractTest"`
   Expected: 绕过 ScreenModel、恢复本地 install map、丢 trust/error/旧版本反馈或删除 locale key 时至少一项失败。
+
+  Evidence: commit `241c61188`（与 6D2R 组合提交）；Install/Update/Retry/Cancel/Update All/Trust confirm+dismiss 全部经 ScreenModel typed intents。Pending/Downloading/Installing 分阶段 MR copy；失败更新保留同一 installed identity/version；MalformedData 与 Network 文案类型边界有行为契约。断开 `onUpdate` 时 exact canonical `beginInstall` 未调用，phase mutation 把 Downloading 映射为 Installing 时 Copy 测试失败。
 
 **Review status:** 初审五项在唯一修复轮关闭后，复审发现 `project()` 仍把 raw duplicate package candidates 暴露给 UI，而动作已选择 canonical last candidate；这会产生重复卡片、数量与 key。按门禁停止 6D2，由 6D2R 对齐 fixed-main `associateBy(pkgName).values` 后统一 checkoff。
 
@@ -1140,9 +1142,11 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionSharedStateWiringTest.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionPresentationUiTest.kt`
 
-- [ ] **Step 1: 写 duplicate-package projection/UI RED**
-- [ ] **Step 2: project available 只消费 canonical values**
-- [ ] **Step 3: 运行 fresh focused GREEN 与 raw-projection mutation**
+- [x] **Step 1: 写 duplicate-package projection/UI RED**
+- [x] **Step 2: project available 只消费 canonical values**
+- [x] **Step 3: 运行 fresh focused GREEN 与 raw-projection mutation**
+
+  Evidence: raw duplicate-package projection 在 Shared/UI 均 `expected 1 / was 2`；修复后 projection/update/retry/updateAll 共用 last-wins canonical map，UI 只保留 exact last candidate 且 en/fr 两个 source key/action 唯一。6D2R thorough review APPROVED；fresh XML `Shared 5 / UI 1 / Copy 2` 全绿，组合范围 `6 files, 337 lines`，closure 增量 `20/60`。
 
 #### Task 6D3: Extension details、typed uninstall 与 Desktop 独有入口
 
