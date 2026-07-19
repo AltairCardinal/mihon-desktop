@@ -1917,6 +1917,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `3 files, 100 lines`
 - Verification: 仅在 7C3p3a 独立审查通过后修改 inventory/evidence/contract。ViewGroup 标 required verifier/layout shell，WebSettings 标 required getSettings return token，均唯一绑定 tracked Comix 与 RealExtensionWebViewUnsupportedCompatTest；文案必须说明 View layout 与 WebView engine 仍 unsupported，不宣称 WebSettings 实例/setter 已执行。反向集合与 surface 必须精确，删除任一 token 时真实测试应在到达既定 UOE 前失败。
 
+  Evidence: commit `4054a54b5`，严格 3 ledger files。contract RED 精确为 ViewGroup expected required/actual unverified；GREEN 将 ViewGroup/WebSettings 唯一绑定 tracked Comix + real WebView test，reverse 9 exact（8 required + WebView unsupported），surface 32/41。边界明确 ViewGroup 只覆盖 superclass/layout shell且layout UOE被扩展吞掉，WebSettings 只覆盖getSettings return token，不证明实例/setter/engine。独立 review APPROVED；contract/Comix/MangaDex全绿，Java0。
+
 ##### Task 7C4: Source/extension authority baseline 与恢复入口纠偏
 
 - Risk axis: `authority-resume-pointer`
