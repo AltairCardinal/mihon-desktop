@@ -354,3 +354,47 @@ Task 6B、authority baseline ID 37 与 manifest ID 37 只列出 `ExtensionsScree
 固定原版 `source-api` 的 `Source`、`CatalogueSource`、`ConfigurableSource`、`HttpSource` 定义扩展 ABI，`ExtensionLoader` 使用 Android PackageManager、签名与 APK runtime；固定原版不存在 Desktop 的 `android/**` 或 `AndroidCompat`。因此 shim 永远只能归入 Desktop adapter。真实 fixture 穿透 production loader 后实际调用的最小 adapter、APK→JAR、child-first ClassLoader、manifest discovery 与明确的不兼容诊断可以保留；合成自测只能作为 adapter 单测，不能升级为“真实扩展需要”的证据。
 
 原 Task 7 的 7 文件/350 行不足以审计 40 个文件，应拆为 public surface inventory、真实 fixture evidence、按 package 分批的 compat prune、最终 parity evidence，以及独立的 Android/Windows/macOS 运行验收。Task 6E 的 Test Mode/导航暂未发现身份混淆，但它只能观察 production state，不得复制业务 reducer。
+
+## 10. 2026-07-19 施工后复扫：仍待纠正的权威与行为混淆
+
+复扫范围为重构起点父提交 `1dd3e83e` 至 Task 7C3a，并重点复核 `70b0ef56c..HEAD` 的 source、extension、shared、source-api 与 Desktop compatibility 施工。以下项目均有固定 `main@6fbf6dfc` 对照证据；已排除正在处理的 Comix ABI 修复和 Mangalix JsonReader/SystemClock 批次。
+
+### C12. Parity manifest 仍有 47/64 项缺少固定原版来源
+
+`app-desktop/src/test/resources/parity/parity-manifest.json` 只有 17 项包含 `upstreamRef`，其余 47 项仍可能把当前 `domain/common`、当前 `app/` consumer 与原版权威压在 `authoritativeImplementation` 同一字段中。IDs 28–40 已采用正确的 `upstreamRef`、`upstreamSymbols`、`sharedImplementationPaths`、`currentAndroidConsumerPaths`、`desktopConsumerAdapterPaths` 与 `deviations` 结构，其余条目应按每批最多 8 项修复；建议每批只改 manifest、fixed-main path inventory 与 `DesktopProductCapabilityContractTest`，约 200–350 行。
+
+### C13. 主比较文档仍把当前 `app/` 称为原版，并把 fork 配对增强误写成原版
+
+`docs/MIHON_ANDROID_DESKTOP_FEATURE_IMPLEMENTATION_COMPARISON.md:4,74` 仍写“当前工作树中的 `app/`（原版 Android）”及“原版配对规则更成熟”；`docs/desktop-parity/PARITY_TRACKER.md:26` 仍使用未固定 ref 的“Android 权威行为”。固定 main 不存在 `PagePairingAlgorithm.kt`，该算法由 fork 提交 `bef51fc69` 引入。应以 fixed main 重新核验整份 95 项表，而不是只机械改两行；docs Task 预计 2 文件、200–250 行。
+
+### C14. Desktop 源列表仍是一次性快照，未响应扩展安装、卸载与 reload
+
+`DesktopSourceManager.kt:28-32` 使用 `flowOf(getCatalogueSources())`，`BrowseTab.kt:100-135` 又以 `remember(sourceManager) { getCatalogueSources() }` 固定列表。固定 main 的 `AndroidSourceManager.kt:40-67` 订阅 `installedExtensionsFlow` 并重建 `sourcesMapFlow`，`SourcesScreenModel.kt:36-44` 持续收集；Desktop 已有 `DesktopExtensionManager.installedExtensions: StateFlow`，因此这不是平台限制。建议 Task `source-membership-reactivity`，desktop，5 文件/≤300 行；RED 必须证明不重建 Screen 也能观察安装/卸载后的列表变化。
+
+### C15. Desktop 源列表遗漏 fixed-main last-used 投影与 incognito 边界
+
+`BrowseTab.kt:114-135` 仍直接执行 pinned + alphabetic 简化规则，Desktop preferences 和浏览入口没有 `lastUsedSource`。固定 main 的 `GetEnabledSources.kt:18-40` 投影 last-used/pinned/language，`SourcesScreenModel.kt:47-67` 定义分组顺序，`BrowseSourceScreenModel.kt:97-99` 只在非 incognito 时记录 last-used。这是用户可见的发现/排序规则，不是平台差异。建议 Task `source-list-upstream-projection`，7–8 文件/≤400 行，不与 C14 合并。
+
+### C16. Extension details 仍在 Composable 内维护源启停规则
+
+`ExtensionDetailsScreen.kt:195-212` 直接遍历 `extension.sources`，每行用 `remember(source.id)` 保存 enabled；外部 preference 变化不会反馈，也没有 enable-all/disable-all。fixed main 的 `GetExtensionSources.kt:13-29` 订阅 `disabledSources.changes()`，`ExtensionDetailsScreenModel.kt:64-85,125-133` 定义 enabled-first、display-name 排序和单个/全部 toggle，presentation `ExtensionDetailsScreen.kt:113-120` 提供批量入口。Desktop 已有 shared `enabledFirst()`，未消费属于平行规则债。建议 Task `extension-details-source-state`，desktop，7 文件/≤380 行。
+
+### C17. Extension details 丢失 obsolete 与 NSFW 用户反馈
+
+Desktop `ExtensionDetailsScreen.kt:146-269` 没有呈现 projection 中的 `isObsolete`，详情页也没有原版 NSFW age-rating warning；fixed-main presentation `ExtensionDetailsScreen.kt:168,173-176,191-215,457-470` 有警告与对话框。这些 Compose 反馈不存在平台障碍。建议 Task `extension-details-upstream-feedback`，desktop，4 文件/≤250 行，与 C16 分开。
+
+### C18. Extension list 的 uninstall/reload 绕过 ScreenModel 并形成第二条业务路径
+
+`ExtensionListScreen.kt:155-163,232-240` 直接调用 manager，卸载时忽略 Boolean 失败；但 `ExtensionsScreenModel.kt:155` 与 `DesktopExtensionPresentationPort.kt:98-99` 已有 typed uninstall。fixed main 的 `ExtensionsTab.kt:61-99` 统一经 ScreenModel。Desktop adapter 可以保留 reload 实现，但状态和错误反馈必须归 ScreenModel/port。建议 Task `extension-list-manager-bypass`，desktop，4 文件/≤250 行。
+
+### C19. Source/extension 权威基线与当前真实施工状态漂移
+
+`docs/roadmap/source-extension-authority-baseline.md:30,51` 仍写 6C/6D 待接入、ManHuaGui 因 Application binding unsupported；实际相关 Task 已完成，真实 loader 已越过 Application gap并将其解析为 required。`2026-07-15-mihon-source-extension-shared-core.md:66` 的“真实 Android/Desktop 权威类映射”也应改为 fixed-main authority 与双端 consumer/adapter 映射。建议 docs Task 3 文件/≤150 行，只追加 superseded/closure 状态，不篡改历史证据。
+
+### C20. 活动 SDD 恢复入口仍指向保留的旧混淆路线图
+
+`.superpowers/sdd/progress.md:4` 仍指向保留原文的 `2026-07-12-mihon-desktop-upstream-parity-roadmap.md`，没有引用已纠正的 `...roadmap-main-authority.md`。该 progress 文件未被 Git 跟踪，必须同时更新 live 指针，并在受版本控制的父/子计划元数据记录 corrected parent path；tooling/docs Task 1–2 文件/≤30 行。
+
+### 本轮未发现新增混淆的区域
+
+Task 7 compatibility 施工仍固定 `authorityRef = main@6fbf6dfc`，真实 APK 均有本地 SHA/provenance；Page ABI 以 fixed-main Uri descriptor 为兼容目标，View/WebView 仅完成 verifier 的类型仍保持 `unverified`，WebView fail-fast 也没有冒充 Android 浏览器支持。因此 Task 7C 当前施工没有新增“当前 app 或 Desktop Android shim 充当原版权威”的证据。
