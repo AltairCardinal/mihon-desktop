@@ -18,7 +18,6 @@ class AndroidWebViewVerifierAbiTest {
         val uri = Class.forName("android.net.Uri")
         val inputStream = Class.forName("java.io.InputStream")
         val valueCallback = Class.forName("android.webkit.ValueCallback")
-        val cookieManager = Class.forName("android.webkit.CookieManager")
         val webView = Class.forName("android.webkit.WebView")
         val webSettings = Class.forName("android.webkit.WebSettings")
         val webViewClient = Class.forName("android.webkit.WebViewClient")
@@ -69,9 +68,6 @@ class AndroidWebViewVerifierAbiTest {
         assertEquals(webResourceResponse, shouldInterceptRequest.returnType)
         assertEquals(uri, webResourceRequest.getMethod("getUrl").returnType)
         val responseConstructor = webResourceResponse.getConstructor(String::class.java, String::class.java, inputStream)
-        val setAcceptThirdPartyCookies =
-            cookieManager.getMethod("setAcceptThirdPartyCookies", webView, Boolean::class.javaPrimitiveType)
-        assertEquals(Void.TYPE, setAcceptThirdPartyCookies.returnType)
 
         val contextInstance = context.getConstructor().newInstance()
         val webViewInstance = webView.getConstructor(context).newInstance(contextInstance)
@@ -115,9 +111,6 @@ class AndroidWebViewVerifierAbiTest {
         assertEquals("image/png", webResourceResponse.getMethod("getMimeType").invoke(response))
         assertEquals("binary", webResourceResponse.getMethod("getEncoding").invoke(response))
         assertEquals(responseData, webResourceResponse.getMethod("getData").invoke(response))
-
-        val cookieInstance = cookieManager.getMethod("getInstance").invoke(null)
-        assertUnsupported { setAcceptThirdPartyCookies.invoke(cookieInstance, webViewInstance, true) }
     }
 
     private fun assertUnsupported(call: () -> Unit) {

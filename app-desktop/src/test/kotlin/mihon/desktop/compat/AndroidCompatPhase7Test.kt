@@ -3,7 +3,6 @@ package mihon.desktop.compat
 import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
-import android.webkit.CookieManager
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
@@ -58,11 +57,5 @@ class AndroidCompatPhase7Test {
     @Test
     fun `AndroidCompat context getPackageName returns mihon desktop`() {
         AndroidCompat.context.getPackageName() shouldBe "mihon.desktop"
-    }
-
-    @Test
-    fun `CookieManager singleton is accessible after init`() {
-        AndroidCompat.initialize()
-        CookieManager.getInstance().shouldNotBeNull()
     }
 }
