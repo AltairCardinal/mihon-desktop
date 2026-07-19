@@ -1901,6 +1901,20 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Evidence: commit `3ada81206`，严格 7 files/197 text touched。mutation probe 删除 Uri/WebViewClient/WebResourceRequest/setWebViewClient 时真实 Comix production loader=0；恢复后可稳定到达预期 WebView.getSettings UOE。GREEN 将 Uri 收窄为 fixed Android abstract token（唯一 abstract toString），WebViewClient 三个默认 callback 为 no-op/no-op/null，engine methods 继续 UOE；PAGE_URI rewrite、Uri/generic parent-first 均保留。三项 ledger 仅声明 verifier token，真实 Comix 反向集合为 7 项，surface 32/41。15 classes/52 tests 通过；独立 review APPROVED，Java0。
 
+##### Task 7C3p3a: View hierarchy 与 WebSettings boundary shape
+
+- Risk axis: `view-websettings-boundary-shape`
+- Platform boundary: `desktop`
+- Estimated scope: `6 files, 300 lines`
+- Verification: 先以 fixed Android ABI 写 focused RED：View 由 Context 构造，ViewGroup 为 abstract 且由 Context 构造，WebView 必须将收到的 Context 传给 ViewGroup，LayoutParams width/height 为可变 public fields，TextView/EditText/Button 同样经 Context 构造；WebSettings 为 abstract verifier return type，不可由自证测试直接实例化。GREEN 只对齐类型/构造/字段形状；View layout 与 WebView engine 方法继续 fail-fast，WebViewClient 默认 callback 继续 no-op/null。真实 Comix WebView test 必须仍到达 exact getSettings UOE，MangaDex verifier/preference setup 不回归。文件限定 View.kt、ViewGroup.kt、EditText.kt、WebViewCompat.kt、AndroidViewVerificationAbiTest.kt、AndroidWebViewVerifierAbiTest.kt。
+
+##### Task 7C3p3b: ViewGroup 与 WebSettings evidence ledger
+
+- Risk axis: `view-websettings-boundary-evidence`
+- Platform boundary: `verification`
+- Estimated scope: `3 files, 100 lines`
+- Verification: 仅在 7C3p3a 独立审查通过后修改 inventory/evidence/contract。ViewGroup 标 required verifier/layout shell，WebSettings 标 required getSettings return token，均唯一绑定 tracked Comix 与 RealExtensionWebViewUnsupportedCompatTest；文案必须说明 View layout 与 WebView engine 仍 unsupported，不宣称 WebSettings 实例/setter 已执行。反向集合与 surface 必须精确，删除任一 token 时真实测试应在到达既定 UOE 前失败。
+
 ##### Task 7C4: Source/extension authority baseline 与恢复入口纠偏
 
 - Risk axis: `authority-resume-pointer`
