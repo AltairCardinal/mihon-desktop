@@ -1589,6 +1589,13 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Evidence: commit `4ce4619b3`。reflection unit RED `1/1` 精确缺 `android.view.View`；GREEN 固定 View/MeasureSpec/ViewGroup/LayoutParams binary names、constructors/descriptors、EXACTLY 位编码，三个 UI engine 操作均实际断言 fail-fast。真实 Comix RED2 从旧 provenance View推进到实际 `ClassNotFoundException: android.webkit.WebView`，production loader empty + diagnostics empty、direct root与更新后的 provenance一致。Android View `1/0/0`、Real Comix `1/0/0`、AndroidCompat `14/0/0`、ManHuaGui `1/0/0`、Compat contract `2/0/0`，共 `19/0/0`、Java0。surface 41 files/45 symbols；View/ViewGroup仅新增为 unverified，无 evidence。范围 7 files/104 touched，独立 review APPROVED。
 
+##### Task 7C3a0c: Comix WebView verifier closure
+
+- Risk axis: `comix-webview-verifier`
+- Platform boundary: `desktop`
+- Estimated scope: `7 files, 380 lines`
+- Verification: 消费 immutable Comix fixture，RED 精确为 production source superclass 缺 `android.webkit.WebView`。GREEN 必须提供 exact top-level binary classes `WebView : ViewGroup`、`WebSettings`、`WebViewClient`、`WebResourceRequest` interface、`WebResourceResponse`，并覆盖固定 APK 实际引用的 constructors/method descriptors；可在一个 `WebViewCompat.kt` 声明多个 top-level 类型，但不得写成嵌套类。`CookieManager.setAcceptThirdPartyCookies` 参数必须是 exact `WebView`，不能用 `Any/Object`；`ValueCallback` 保持现有 erased ABI。所有 WebView 构造/执行、WebSettings setters、WebViewClient callbacks 与第三方 Cookie 联动必须 fail-fast 并说明 Desktop 尚无 WebView engine；WebResourceRequest 仅定义 interface，WebResourceResponse 只保存 mime/encoding/InputStream。真实 loader 必须越过全部 `android.webkit.*` linkage，并将 provenance/test更新到实际下一 root；不得把预测的 Canvas 当成功条件。新增 5 个 public symbols 以 unverified 进入 inventory，contract 更新为 42 files/50 symbols；CookieManager/ValueCallback/Uri及新类型均不得写 required evidence。
+
 ##### Task 7C3a: Comix 真实 EditText/MultiSelect/Switch 设置语义
 
 - Risk axis: `androidx-preference-default-semantics`
