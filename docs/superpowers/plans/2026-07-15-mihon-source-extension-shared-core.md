@@ -1966,6 +1966,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `3 files, 140 lines`
 - Verification: 7C3q2 新增 4 个 compat 文件与 5 个 public symbols 后，surface contract 的真实 RED 为 36 files / 46 symbols，而 inventory 仍为 32/41，缺 `android.graphics.Typeface`、`android.text.Layout`、`android.text.Spanned`、`android.text.StaticLayout`、`android.text.TextPaint`。仅修改 inventory/evidence/contract，将这 5 项分别以 tracked ComicFury 与 `RealExtensionComicFuryTextCompatTest` 的实际执行边界登记为 required：Spanned 只覆盖 Html 返回 descriptor/实例，Typeface 覆盖 DEFAULT/DEFAULT_BOLD，TextPaint 覆盖构造与实际 setters，Layout 覆盖 ALIGN_NORMAL token，StaticLayout 覆盖固定构造/getHeight/draw。反向集合、required/unverified 计数和 36/46 surface 必须精确；不得改 Html/Uri/Color 状态，不得把未执行的其他字段、alignment 或排版语义写入证据。
 
+  Evidence: commit `b8e361f71`，严格 3 files / 106 touched lines。contract RED 为 required expected 43/actual 38 且五项反向集合为空；GREEN 后 surface 36/46、required 43、unsupported 1、unverified exact `{Color, Html}`。五项均唯一绑定 tracked ComicFury SHA 与真实文本链，removalCondition 分别限定 Spanned descriptor/instance、Typeface DEFAULT/BOLD、TextPaint 实际 setters、Layout ALIGN_NORMAL token、StaticLayout fixed ctor/getHeight/draw 并明确排除 Android pixel/font-metrics parity；reverse exact 5。contract 6/6、real 1/1、独立 review APPROVED、diff-check clean、Java0；Html/Uri/Color/production 零改。
+
 ##### Task 7C3q3b: Html 与 Uri real-chain evidence ledger
 
 - Risk axis: `comicfury-html-uri-evidence`
