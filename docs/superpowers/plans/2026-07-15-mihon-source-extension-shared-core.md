@@ -1890,6 +1890,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `5 files, 180 lines`
 - Verification: 原批量 prune probe 已证明同时删除 Uri/WebViewClient/WebResourceRequest 会使真实 Comix production loader 返回 0；精确字节码根因为 `l0 extends WebViewClient`、override descriptor 依赖 WebResourceRequest→Uri，且 `p0` 调用 `WebView.setWebViewClient`，因此三者不得在本 Task 删除。恢复该组后只保留 ValueCallback/evaluateJavascript 删除状态，重新运行 production compile 与真实 Comix/ManHuaGui/PageList；若全绿，清理 AndroidWebViewVerifierAbiTest 对应反射，删除 inventory ValueCallback 并更新 contract surface。文件限定 ValueCallback.kt、WebViewCompat.kt、AndroidWebViewVerifierAbiTest.kt、inventory、contract。
 
+  Evidence: commit `750031f27`，严格 5 files。原批量 probe 中真实 Comix 3 项因删除 WebViewClient/WebResourceRequest/Uri 而 loader=0；恢复该组后只删除 ValueCallback/evaluateJavascript 及自证，production 与真实链全绿。Uri 行为测试、Uri parent-first、generic android.* parent-first、两种 PAGE_URI rewrite 及测试全部保留；surface 32 files/41 symbols，inventory/evidence 无 ValueCallback。BytecodeEditor/PageList/Comix/ManHuaGui/loader/all immutable 共 15 classes/55 tests 全绿；独立 review APPROVED，Java0。
+
 ##### Task 7C3p2b: Uri 与 Web callback verifier-token evidence
 
 - Risk axis: `web-callback-verifier-tokens`
