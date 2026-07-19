@@ -1,0 +1,21 @@
+{
+  "authorityRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+  "repository": "https://github.com/keiyoushi/extensions",
+  "repositoryCommit": "7d5052fb895d086ae2ec6e3cca861146ee3ea0ec",
+  "gitBlob": "ebade6b9ed19d1ba02ac67c377cef31caa0bb0c7",
+  "license": "Apache-2.0",
+  "fixturePath": "app-desktop/src/test/resources/extensions/real/keiyoushi-comix-1.4.34.apk",
+  "sha256": "5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8",
+  "sizeBytes": 96835,
+  "packageName": "eu.kanade.tachiyomi.extension.en.comix",
+  "versionCode": 34,
+  "versionName": "1.4.34",
+  "extensionClass": "eu.kanade.tachiyomi.extension.en.comix.ExtensionGenerated",
+  "expectedOutcome": "success",
+  "rawUrl": [
+    "https://raw.githubusercontent.com/keiyoushi/extensions/",
+    "7d5052fb895d086ae2ec6e3cca861146ee3ea0ec/",
+    "apk/tachiyomi-en.comix-v1.4.34.apk"
+  ],
+  "retrievedAt": "2026-07-19"
+}

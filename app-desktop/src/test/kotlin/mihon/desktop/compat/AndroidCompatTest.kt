@@ -1,5 +1,8 @@
 package mihon.desktop.compat
 
+import android.app.Application
+import android.content.Context
+import android.content.ContextWrapper
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldNotBeEmpty
@@ -21,6 +24,12 @@ class AndroidCompatTest {
         val context = AndroidCompat.context
         val prefs = context.getSharedPreferences("test_prefs", 0)
         prefs.shouldNotBeNull()
+    }
+
+    @Test
+    fun `Application and ContextWrapper preserve Android Context inheritance`() {
+        Context::class.java.isAssignableFrom(ContextWrapper::class.java) shouldBe true
+        Context::class.java.isAssignableFrom(Application::class.java) shouldBe true
     }
 
     @Test
