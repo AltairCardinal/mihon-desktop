@@ -119,6 +119,48 @@
     "removalCondition": "Remove when real APK source constructors no longer invoke the static Android Log ABI during legacy preference cleanup."
   },
   {
+    "symbol": "android.text.Editable",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-mangadex-1.4.211.apk@sha256:eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionMangaDexFactoryCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the real MangaDex factory verifier no longer resolves TextWatcher.afterTextChanged(Editable); this does not evidence an Editable instance or callback execution."
+  },
+  {
+    "symbol": "android.text.TextWatcher",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-mangadex-1.4.211.apk@sha256:eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionMangaDexFactoryCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the real MangaDex factory verifier no longer links its TextWatcher implementation; this does not evidence callback execution."
+  },
+  {
+    "symbol": "android.view.View",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-mangadex-1.4.211.apk@sha256:eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionMangaDexFactoryCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the real MangaDex factory verifier no longer resolves root lookup and enabled-state method descriptors; this does not evidence rendering."
+  },
+  {
+    "symbol": "android.widget.Button",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-mangadex-1.4.211.apk@sha256:eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionMangaDexFactoryCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the real MangaDex watcher verifier no longer resolves the Button checkcast; this does not evidence Button construction or rendering."
+  },
+  {
+    "symbol": "android.widget.EditText",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-mangadex-1.4.211.apk@sha256:eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionMangaDexFactoryCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the real MangaDex factory verifier no longer links EditText listener descriptors; this does not evidence widget construction, callback execution, or rendering."
+  },
+  {
+    "symbol": "android.widget.TextView",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-mangadex-1.4.211.apk@sha256:eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionMangaDexFactoryCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the real MangaDex factory verifier no longer resolves TextView error and watcher-storage descriptors; this does not evidence construction, callbacks, or rendering."
+  },
+  {
     "symbol": "androidx.preference.CheckBoxPreference",
     "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-manhuagui-1.4.28.apk@sha256:200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8",
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt",

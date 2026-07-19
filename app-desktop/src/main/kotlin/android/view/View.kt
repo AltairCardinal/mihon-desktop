@@ -1,6 +1,18 @@
 package android.view
 
 open class View {
+    private var enabled = true
+
+    open fun getRootView(): View = this
+
+    open fun <T : View> findViewById(id: Int): T? = null
+
+    open fun isEnabled(): Boolean = enabled
+
+    open fun setEnabled(enabled: Boolean) {
+        this.enabled = enabled
+    }
+
     open fun setLayoutParams(params: ViewGroup.LayoutParams) {
         unsupported("setLayoutParams")
     }
