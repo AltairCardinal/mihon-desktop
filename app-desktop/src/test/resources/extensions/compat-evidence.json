@@ -28,6 +28,13 @@
     "removalCondition": "Remove when real APK settings no longer persist values through Android SharedPreferences."
   },
   {
+    "symbol": "android.os.SystemClock",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-manhuagui-1.4.28.apk@sha256:200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionPageListCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when real APK source clients no longer execute the Android SystemClock rate-limit ABI."
+  },
+  {
     "symbol": "androidx.preference.CheckBoxPreference",
     "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-manhuagui-1.4.28.apk@sha256:200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8",
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt",

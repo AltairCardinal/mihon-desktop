@@ -1,10 +1,13 @@
 package mihon.desktop.extension
 
 import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.runBlocking
 import mihon.desktop.di.initDesktopDIForTest
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
+import okhttp3.Dns
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -14,13 +17,75 @@ import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.parallel.Isolated
 import tachiyomi.core.common.preference.DesktopPreferenceStore
+import uy.kohesive.injekt.Injekt
 import java.lang.reflect.InvocationTargetException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
 
+@Isolated
 class RealExtensionPageListCompatTest {
+
+    @Test
+    fun `real ManHuaGui source client executes its rate limit interceptor`(
+        @TempDir tempDir: Path,
+    ) = runBlocking {
+        val previousInjekt = Injekt
+        try {
+            val apkPath = repositoryRoot().resolve(APK_PATH)
+            assertTrue(Files.isRegularFile(apkPath), "Missing immutable extension fixture: $apkPath")
+            assertEquals(APK_SHA256, sha256(apkPath))
+            MockWebServer().also { it.start() }.use { server ->
+                server.enqueue(MockResponse(body = "ok"))
+                val diContext = initDesktopDIForTest(
+                    appDir = tempDir.resolve("app").toFile(),
+                    preferenceStore = DesktopPreferenceStore(),
+                )
+                try {
+                    val convertedJar = ApkToJarConverter().convert(apkPath.toFile(), tempDir.toFile())
+                    assertNotNull(convertedJar, "Production converter rejected the immutable ManHuaGui APK")
+                    val jar = requireNotNull(convertedJar)
+                    writeManHuaGuiMeta(jar)
+                    val loaded = DesktopExtensionLoader(tempDir.toFile()).loadFromSingleJar(jar)
+                    assertTrue(loaded.isNotEmpty(), "Production loader rejected the converted ManHuaGui extension")
+                    try {
+                        val source = loaded.first().source as HttpSource
+                        val targetHost = source.baseUrl.toHttpUrl().host
+                        val sourceClient = source.client
+                        val extensionNetworkInterceptors = sourceClient.networkInterceptors
+                        val rewrittenClient = sourceClient.newBuilder()
+                            .dns { hostname ->
+                                if (hostname == targetHost) {
+                                    Dns.SYSTEM.lookup(server.hostName)
+                                } else {
+                                    Dns.SYSTEM.lookup(hostname)
+                                }
+                            }
+                            .build()
+                        assertTrue(rewrittenClient.networkInterceptors.containsAll(extensionNetworkInterceptors))
+
+                        val request = Request.Builder()
+                            .url("http://$targetHost:${server.port}/codex-rate-limit")
+                            .build()
+                        rewrittenClient.newCall(request).execute().use { response ->
+                            assertEquals(200, response.code)
+                            assertEquals("ok", response.body.string())
+                        }
+                        assertEquals(1, server.requestCount)
+                        assertEquals("/codex-rate-limit", server.takeRequest().url.encodedPath)
+                    } finally {
+                        loaded.map { it.classLoader }.distinct().filterIsInstance<AutoCloseable>().forEach { it.close() }
+                    }
+                } finally {
+                    diContext.closeAndJoin()
+                }
+            }
+        } finally {
+            Injekt = previousInjekt
+        }
+    }
 
     @Test
     fun `real ManHuaGui parser returns host Pages through fixed-main constructor ABI`(
@@ -37,19 +102,7 @@ class RealExtensionPageListCompatTest {
             val convertedJar = ApkToJarConverter().convert(apkPath.toFile(), tempDir.toFile())
             assertNotNull(convertedJar, "Production converter rejected the immutable ManHuaGui APK")
             val jar = requireNotNull(convertedJar)
-            writeExtensionMeta(
-                jar,
-                ExtensionMeta(
-                    pkgName = PACKAGE_NAME,
-                    versionCode = VERSION_CODE,
-                    versionName = VERSION_NAME,
-                    artifactSha256 = APK_SHA256,
-                    source = ExtensionOrigin.CONVERTED_APK,
-                    name = "ManHuaGui",
-                    language = "zh",
-                    extensionClass = EXTENSION_CLASS,
-                ),
-            )
+            writeManHuaGuiMeta(jar)
             val loaded = DesktopExtensionLoader(tempDir.toFile()).loadFromSingleJar(jar)
             assertTrue(loaded.isNotEmpty(), "Production loader rejected the converted ManHuaGui extension")
             try {
@@ -83,6 +136,20 @@ class RealExtensionPageListCompatTest {
 
     private fun sha256(path: Path): String =
         MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(path)).joinToString("") { "%02x".format(it) }
+
+    private fun writeManHuaGuiMeta(jar: java.io.File) = writeExtensionMeta(
+        jar,
+        ExtensionMeta(
+            pkgName = PACKAGE_NAME,
+            versionCode = VERSION_CODE,
+            versionName = VERSION_NAME,
+            artifactSha256 = APK_SHA256,
+            source = ExtensionOrigin.CONVERTED_APK,
+            name = "ManHuaGui",
+            language = "zh",
+            extensionClass = EXTENSION_CLASS,
+        ),
+    )
 
     private fun repositoryRoot() =
         generateSequence(Path.of("").toAbsolutePath()) { it.parent }
