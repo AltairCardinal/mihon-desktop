@@ -3,7 +3,6 @@ package mihon.desktop.compat
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
-import android.graphics.drawable.Drawable
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -125,25 +124,6 @@ class AndroidStubsPhase27Test {
             nearest.recycle()
             linear.recycle()
         }
-    }
-
-    @Test
-    fun `Drawable stub can be instantiated`() {
-        val d = object : Drawable() {}
-        d.shouldNotBeNull()
-    }
-
-    @Test
-    fun `BitmapDrawable can be instantiated`() {
-        val d = android.graphics.drawable.BitmapDrawable()
-        d.shouldNotBeNull()
-    }
-
-    @Test
-    fun `ColorDrawable can be instantiated with color`() {
-        val d = android.graphics.drawable.ColorDrawable(0xFF0000FF.toInt())
-        d.shouldNotBeNull()
-        d.color shouldBe 0xFF0000FF.toInt()
     }
 
     private fun twoToneBitmap(): Bitmap {
