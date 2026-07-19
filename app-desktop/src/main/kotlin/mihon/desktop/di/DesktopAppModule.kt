@@ -63,6 +63,8 @@ import mihon.desktop.network.DesktopChallengeBrowserLoginBridge
 import mihon.desktop.network.DesktopSourceLoginSessionFactory
 import mihon.desktop.network.FlareSolverrClient
 import mihon.desktop.test.http.MigrationBatchTestBridge
+import mihon.desktop.test.http.SourceExtensionTestModeBridge
+import mihon.desktop.test.http.SourceExtensionTestModeController
 import mihon.desktop.test.http.TrackingTestBridge
 import mihon.desktop.tracking.TrackingTestModeController
 import eu.kanade.tachiyomi.source.CatalogueSource
@@ -189,6 +191,7 @@ internal suspend fun initDesktopDIForTest(
         downloadManager = Injekt.get(),
         extensionManager = Injekt.get(),
         extensionScreenModel = Injekt.get(),
+        extensionController = Injekt.get(),
     ).also { activeDesktopTestDIContext = it }
 }
 
@@ -201,6 +204,7 @@ internal class DesktopTestDIContext(
     private val downloadManager: mihon.desktop.download.DesktopDownloadManager,
     private val extensionManager: DesktopExtensionManager,
     val extensionScreenModel: ExtensionsScreenModel,
+    private val extensionController: SourceExtensionTestModeController,
 ) : AutoCloseable {
     private var closed = false
 
@@ -213,6 +217,7 @@ internal class DesktopTestDIContext(
         if (closed) return
         closed = true
         scheduler.stopAndJoin()
+        SourceExtensionTestModeBridge.clear(extensionController)
         extensionScreenModel.closeAndJoin()
         // Cancel calls before joining downloads because OkHttp execute() is blocking.
         networkHelper.client.dispatcher.cancelAll()
@@ -391,15 +396,17 @@ private fun registerDesktopExtension(paths: DesktopPlatformPaths, networkHelper:
     Injekt.addSingleton(extensionApi)
     val presentationPort = DesktopExtensionPresentationPort(extensionApi, extensionManager)
     Injekt.addSingleton(presentationPort)
-    Injekt.addSingleton(
-        ExtensionsScreenModel(
-            port = presentationPort,
-            initialOptions = ExtensionPresentationOptions(
-                showNsfw = false,
-                enabledLanguages = Injekt.get<DesktopAppPreferences>().enabledLanguages.get(),
-            ),
+    val extensionScreenModel = ExtensionsScreenModel(
+        port = presentationPort,
+        initialOptions = ExtensionPresentationOptions(
+            showNsfw = false,
+            enabledLanguages = Injekt.get<DesktopAppPreferences>().enabledLanguages.get(),
         ),
     )
+    Injekt.addSingleton(extensionScreenModel)
+    val extensionController = SourceExtensionTestModeController(extensionScreenModel)
+    Injekt.addSingleton(extensionController)
+    SourceExtensionTestModeBridge.install(extensionController)
     val sourceManager = DesktopSourceManager(extensionManager, Injekt.get())
     Injekt.addSingleton<SourceManager>(sourceManager)
     Injekt.addSingleton(sourceManager)

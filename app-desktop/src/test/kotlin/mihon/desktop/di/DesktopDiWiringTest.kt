@@ -36,6 +36,8 @@ import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.ui.more.StatsScreenModel
 import mihon.desktop.task.DesktopTaskScheduler
+import mihon.desktop.test.http.SourceExtensionTestModeBridge
+import mihon.desktop.test.http.SourceExtensionTestModeController
 import mihon.desktop.migration.DesktopBatchMigrationController
 import mihon.desktop.network.ChallengeRecoveryFailure
 import mihon.desktop.network.ChallengeRecoveryIntent
@@ -52,6 +54,7 @@ import mihon.domain.download.DownloadQueueStatus
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -297,10 +300,14 @@ class DesktopDiWiringTest {
             val firstManager = Injekt.get<DesktopExtensionManager>()
             val firstPort = Injekt.get<DesktopExtensionPresentationPort>()
             val firstModel = Injekt.get<ExtensionsScreenModel>()
+            val firstController = Injekt.get<SourceExtensionTestModeController>()
             assertSame(firstManager.installedExtensions, firstPort.installedExtensions)
             assertSame(firstPort, Injekt.get<DesktopExtensionPresentationPort>())
             assertSame(firstModel, Injekt.get<ExtensionsScreenModel>())
             assertSame(firstModel, first.extensionScreenModel)
+            assertSame(firstController, SourceExtensionTestModeBridge.controller)
+            firstModel.search("first-query")
+            assertEquals("first-query", firstController.snapshot().searchQuery)
             assertFalse(firstModel.closed)
 
             val second = initDesktopDIForTest(
@@ -308,21 +315,26 @@ class DesktopDiWiringTest {
                 DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")),
             )
             val secondModel = Injekt.get<ExtensionsScreenModel>()
+            val secondController = Injekt.get<SourceExtensionTestModeController>()
             try {
                 assertTrue(firstModel.closed)
                 assertTrue(firstModel !== secondModel)
                 assertFalse(secondModel.closed)
                 assertSame(secondModel, Injekt.get<ExtensionsScreenModel>())
                 assertSame(secondModel, second.extensionScreenModel)
+                assertTrue(firstController !== secondController)
+                assertSame(secondController, SourceExtensionTestModeBridge.controller)
                 assertSame(
                     Injekt.get<DesktopExtensionManager>().installedExtensions,
                     Injekt.get<DesktopExtensionPresentationPort>().installedExtensions,
                 )
                 first.closeAndJoin()
                 assertFalse(secondModel.closed)
+                assertSame(secondController, SourceExtensionTestModeBridge.controller)
             } finally {
                 second.closeAndJoin()
                 assertTrue(secondModel.closed)
+                assertNull(SourceExtensionTestModeBridge.controller)
             }
         } finally {
             first.closeAndJoin()
