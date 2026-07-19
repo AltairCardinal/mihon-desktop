@@ -35,6 +35,41 @@
     "removalCondition": "Remove when real APK settings no longer persist values through Android SharedPreferences."
   },
   {
+    "symbol": "android.graphics.Bitmap",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comix-1.4.34.apk@sha256:5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionComixDescramblerCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the immutable Comix APK no longer executes Bitmap creation, slicing, and pixel output in its real XOR/grid descrambler."
+  },
+  {
+    "symbol": "android.graphics.BitmapFactory",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comix-1.4.34.apk@sha256:5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionComixDescramblerCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the immutable Comix APK no longer decodes the real scrambled PNG through BitmapFactory."
+  },
+  {
+    "symbol": "android.graphics.Canvas",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comix-1.4.34.apk@sha256:5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionComixDescramblerCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the immutable Comix APK no longer executes Canvas draws in its real XOR/grid pixel reconstruction."
+  },
+  {
+    "symbol": "android.graphics.Paint",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comix-1.4.34.apk@sha256:5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionComixDescramblerCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the immutable Comix APK no longer links and invokes the Paint-bearing Canvas draw ABI in its real descrambler."
+  },
+  {
+    "symbol": "android.graphics.Rect",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comix-1.4.34.apk@sha256:5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionComixDescramblerCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the immutable Comix APK no longer maps source and destination Rect grids during real pixel reconstruction."
+  },
+  {
     "symbol": "android.os.SystemClock",
     "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-manhuagui-1.4.28.apk@sha256:200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8",
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionPageListCompatTest.kt",
