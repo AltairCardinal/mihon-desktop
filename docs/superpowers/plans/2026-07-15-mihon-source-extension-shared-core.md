@@ -1393,10 +1393,10 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `extension-testmode-client-contract`
 - Platform boundary: `desktop`
-- Estimated scope: `3 files, 400 lines`
+- Estimated scope: `4 files, 400 lines`
 - Verification: client 能安全序列化包含引号/反斜杠的 query，解析 state/action 共用的 nested extension DTO 与非 2xx 结构化错误；Robot 按 `packageName` 发送全部真实动作且不得吞掉 `ActionResult.success=false`。
-- Files: `MihonDesktopTestClient.kt`、`MoreRobot.kt`，新增 `SourceExtensionClientContractTest.kt`。
-- Boundary: 删除 server/Robot 中 legacy `extension_select/enable/disable` 空操作与 index API；select 已由真实导航契约覆盖，enable/disable 在 fixed main 属于 Source 管理，后续只能以 `source_toggle/source_pin` 调用真实 Source model。
+- Files: `test-desktop/build.gradle.kts`、`MihonDesktopTestClient.kt`、`MoreRobot.kt`，新增 `SourceExtensionClientContractTest.kt`。
+- Boundary: `test-desktop` 必须应用项目已有 Kotlin serialization 编译插件，使客户端的 `@Serializable` DTO 由生成 serializer 解析；不得为规避插件缺失而手写第二套 `JsonObject` 字段映射。删除 server/Robot 中 legacy `extension_select/enable/disable` 空操作与 index API；select 已由真实导航契约覆盖，enable/disable 在 fixed main 属于 Source 管理，后续只能以 `source_toggle/source_pin` 调用真实 Source model。
 
 - [ ] RED：legacy index/no-op API 与手拼 JSON 不符合新契约。
 - [ ] GREEN：客户端与 Robot 仅暴露稳定、真实的 production action。
