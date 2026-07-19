@@ -1382,10 +1382,12 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Files: `TestHttpServer.kt`，新增 `SourceExtensionTestModeHttpTest.kt`。
 - Boundary: server 只校验参数、用 kotlinx serialization `JsonObject/encodeToJsonElement` 序列化并转发 controller；不得手拼 extension JSON 或推演任何扩展状态。保留现有 action 响应的 `success/action/error/timestamp` 顶层兼容形状，扩展 snapshot 放入 nested `extension`。删除 legacy `extension_select/enable/disable` 空操作。
 
-- [ ] RED：真实 HTTP server 仍返回空扩展状态，空 action 不改变 production model。
-- [ ] GREEN：暴露稳定 DTO 并转发真实 controller intent。
-- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.test.http.SourceExtensionTestModeHttpTest" --tests "mihon.desktop.test.http.TestHttpServerJsonTest"`
-- [ ] Commit: `test(desktop): expose extension production state`
+- [x] RED：真实 HTTP server 仍返回空扩展状态，空 action 不改变 production model。
+- [x] GREEN：暴露稳定 DTO 并转发真实 controller intent。
+- [x] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.test.http.SourceExtensionTestModeHttpTest" --tests "mihon.desktop.test.http.TestHttpServerJsonTest"`
+- [x] Commit: `test(desktop): expose extension production state`
+
+  Evidence: commit `56f108dec`；RED 证明 state 缺 extension 且 legacy action 伪成功，GREEN 后 HTTP production 测试 2/2、既有 JSON 测试 1/1 通过。state/action 全部使用 `JsonObject + encodeToJsonElement`，覆盖真实 DI search、Network 安装失败、retry/cancel、特殊字符串及 context 关闭后 503；legacy extension no-op 已删除；独立 review APPROVED；`2 files, 299 lines`。
 
 #### Task 6E3B3: Extension Test Mode client 与 Robot contract
 
