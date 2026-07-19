@@ -1483,7 +1483,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 **Platform boundary:** verification
 **Estimated scope:** 47 files, 1950 lines
 **Verification:** 运行 compat 契约、全量 Gradle/桌面测试构建和 Android/Windows/macOS 运行时验收，并完成 thorough 独立审查。
-**Execution split（C11）:** 当前 Desktop Android/AndroidX compat 至少 40 个文件、41 个顶层 public 类型，而 `compat-evidence.json` 只有一条且为 `unsupported`；`AndroidCompatTest` 和 parent-classpath `MinimalTestSource` 只能证明 adapter 自测，不能证明真实扩展需要某 shim。固定 main 的 `Source` ABI 与 Android `ExtensionLoader` 是兼容目标，Desktop shim 永远只属于平台 adapter。原 7 files/350 lines 不能承担逐符号证据与删除，拆分如下。
+**Execution split（C11）:** 当前 Desktop Android/AndroidX compat 为 39 个文件、43 个顶层 public 类型，而 `compat-evidence.json` 只有一条且为 `unsupported`；`AndroidCompatTest` 和 parent-classpath `MinimalTestSource` 只能证明 adapter 自测，不能证明真实扩展需要某 shim。固定 main 的 `Source` ABI 与 Android `ExtensionLoader` 是兼容目标，Desktop shim 永远只属于平台 adapter。原 7 files/350 lines 不能承担逐符号证据与删除，拆分如下。
 **Split waiver:** 47 files/1,950 lines 是 inventory、真实 fixture、多个 package prune 批次与最终运行验收的聚合上界；任何单次调度仍不得超过 8 files/400 lines，且删除批次必须逐包消费前序真实证据，无法作为一个原子 Task 执行。
 
 #### Task 7A: Compat public surface inventory
@@ -1491,21 +1491,21 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Risk axis: `compat-public-inventory`
 - Platform boundary: `verification`
 - Estimated scope: `4 files, 250 lines`
-- Verification: 每个 public compat symbol 在清单中恰有一项；清单明确 `required`/`unsupported`、fixture 与 production 调用测试，单元自测不得升级为真实扩展证据。
+- Verification: 每个 public compat symbol 在独立 inventory 中恰有一项；7A 允许诚实的暂态 `unverified`，但只有真实 fixture production 调用才能在 `compat-evidence.json` 中解析为 `required`/`unsupported`，单元自测不得升级为真实扩展证据。7D 完成门禁要求 `unverified` 为 0。
 
 #### Task 7B: Compat real fixture evidence
 
 - Risk axis: `compat-real-fixture-evidence`
 - Platform boundary: `verification`
 - Estimated scope: `6 files, 350 lines`
-- Verification: 真实 APK/JAR 必须通过 production converter/loader 并实际调用所声明 symbol；parent classpath fixture、仅加载 class 或网络调查输出不算 `required` 证据。
+- Verification: 真实 APK/JAR 必须通过 production converter/loader 并实际调用所声明 symbol；parent classpath fixture、仅加载 class 或网络调查输出不算 `required` 证据。每条真实证据负责将对应 inventory 项从 `unverified` 解析为 `required` 或具备真实失败证据的 `unsupported`。
 
 #### Task 7C: Compat package prune batches
 
 - Risk axis: `compat-package-pruning`
 - Platform boundary: `desktop`
 - Estimated scope: `8 files, 400 lines`
-- Verification: 按 `android.content`、`android.os/util`、`androidx.preference` 等包分批；只有 production/真实 fixture 均无调用才能删除，每批运行对应 loader/fixture 回归，不把 shim 移入 shared authority。
+- Verification: 按 `android.content`、`android.os/util`、`androidx.preference` 等包分批；只有 production/真实 fixture 均无调用才能删除，每批运行对应 loader/fixture 回归，不把 shim 移入 shared authority；已经由共享 core 覆盖的搜索、版本、错误字符串和事务规则也只能在本项按真实引用证据删除。
 
 #### Task 7D: Parity evidence and runtime verification
 
@@ -1517,6 +1517,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 **Files:**
 - Modify/Delete: 由 `compat-evidence.json` 审计确认无调用的 Desktop compat 符号；不得凭猜测删除。
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/extension/CompatEvidenceContractTest.kt`
+- Create: `app-desktop/src/test/resources/extensions/compat-inventory.json`
 - Modify: `app-desktop/src/test/resources/parity/parity-manifest.json`
 - Modify: `docs/desktop-parity/PARITY_TRACKER.md`
 - Modify: `docs/roadmap/extension-diagnostics-baseline.md`
@@ -1529,12 +1530,12 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - [ ] **Step 1: 写 compat public surface RED 测试**
 
-  扫描 compat 包 public 符号，要求每个符号在 `compat-evidence.json` 恰有一项，fixture/test 路径存在，`required` 项测试可触发真实调用；清单外 public API 或不存在测试必须失败。
+  扫描 compat 包 public 符号，要求每个符号在 `compat-inventory.json` 恰有一项；inventory 允许 `unverified|required|unsupported`，但 resolved 项必须在 `compat-evidence.json` 有唯一的真实 fixture/test，`required` 项测试可触发真实调用。`compat-evidence.json` 继续只记录真实观察结果，不得为凑齐 inventory 预填假 fixture；清单外 public API、重复项或伪造 resolved evidence 必须失败。
 
-- [ ] **Step 2: 运行 RED 并删除无证据重复实现**
+- [ ] **Step 2: 运行 RED 并建立诚实 inventory**
 
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.extension.CompatEvidenceContractTest"`
-  Expected: 初次 FAIL 并列出清单外/无证据项。逐项用 production 引用和真实 fixture 判定：有证据则补测试，确认无调用才删除；同时删除已经由共享 core 覆盖的搜索、版本、错误字符串和事务规则。
+  Expected: 初次 FAIL 并列出 43 个 inventory 缺项。7A GREEN 只建立完整、可解析的诚实 inventory；逐项真实 fixture 判定与删除分别由 7B/7C 完成。
 
 - [ ] **Step 3: 更新 parity 28–40、87**
 
@@ -1575,6 +1576,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - 本计划与 `openspec/changes/align-sources-extensions/tasks.md` 全部勾选并通过 Comet task-checkoff。
 - OpenSpec strict validation 0 issue；独立最终审查 0 Critical/Important。
+- Compat inventory 的 `unverified` 为 0；每个 `required`/`unsupported` 均有本地可追溯真实 artifact 与 production invocation/failure 证据，或在 7C 删除后不再属于 public surface。
 - Android 与 Desktop production wiring 都消费共享业务类型，旧并行规则与无证据 compat stub 已删除。
 - Windows 报告完整版本与固定 EXE 绝对路径；macOS 与 Android 运行时证据可追溯。
 - 用户可从 Browse/Extensions 实际完成浏览、搜索、安装/更新、错误恢复、设置与登录挑战；空、加载、错误、取消和数据缺失均有明确反馈。
