@@ -1883,6 +1883,13 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Evidence: commit `3c6edd9cf`，严格 6 files（229 deletions/2 additions）。删除 production shim 后 Desktop production compile 通过，test compile 失败仅来自纯 Cookie Phase4 与 Phase7 自证，另一个命中仅为 WebView verifier 反射；无 production/真实 fixture consumer。GREEN 删除/清理 test-only 依赖，surface 33 files/42 symbols，inventory/evidence 无 CookieManager 或孤儿；Android 原版 AndroidCookieJar 与 DesktopCookieJar 均未改。app 14 suites/37 tests、core DesktopCookieJar 29 tests 全绿；独立 review APPROVED，Java0，root Spotless 仍仅受既有 domain 文件阻塞。
 
+##### Task 7C3p2: dead Uri 与 Web callback ABI prune
+
+- Risk axis: `dead-web-callback-abi-prune`
+- Platform boundary: `desktop`
+- Estimated scope: `8 files, 320 lines`
+- Verification: `android.net.Uri` 的真实 Page 构造 descriptor 已由 BytecodeEditor 精确重写为 Object 且现有 fixture 实参为 null；其余 Uri、ValueCallback、WebResourceRequest、WebViewClient 引用只位于 getSettings 平台边界之后的不可达 callback、非 Source UrlActivity 或自证测试。先删除 Uri.kt、ValueCallback.kt 及 WebViewCompat 中对应 callback API/类型建立 prune probe；production compile 或真实 fixture 若因某个 superclass/descriptor 缺失失败，必须只恢复该符号并单独重规划为 unsupported token。GREEN 清理 AndroidCompatTest、AndroidWebViewVerifierAbiTest、DesktopExtensionLoaderTest 的陈旧自证，删除 inventory entries 并更新 contract surface；保留 generic android.* parent-first 与 BytecodeEditor Page descriptor rewrite。必须复跑 BytecodeEditor/RealExtensionPageList、真实 Comix WebView、ManHuaGui loader/parser、全部 immutable fixture。文件限定 Uri.kt、ValueCallback.kt、WebViewCompat.kt、AndroidCompatTest.kt、AndroidWebViewVerifierAbiTest.kt、DesktopExtensionLoaderTest.kt、inventory、contract。
+
 ##### Task 7C4: Source/extension authority baseline 与恢复入口纠偏
 
 - Risk axis: `authority-resume-pointer`
