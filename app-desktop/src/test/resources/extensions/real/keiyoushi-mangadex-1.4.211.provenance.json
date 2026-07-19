@@ -1,0 +1,20 @@
+{
+  "authorityRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+  "repository": "https://github.com/keiyoushi/extensions",
+  "repositoryCommit": "7d5052fb895d086ae2ec6e3cca861146ee3ea0ec",
+  "repositoryRootTree": "35127622c9911a3f7e50c809a71dfc0057843e34",
+  "repositoryParent": "0dae9cf45bef459a60cefb1f3ad1b4eedea3554b",
+  "gitBlob": "2110eaccdbce98e2bf10c827f1136b63c9c35481",
+  "license": "Apache-2.0",
+  "fixturePath": "app-desktop/src/test/resources/extensions/real/keiyoushi-mangadex-1.4.211.apk",
+  "sha256": "eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236",
+  "sizeBytes": 111390,
+  "packageName": "eu.kanade.tachiyomi.extension.all.mangadex",
+  "versionCode": 211,
+  "versionName": "1.4.211",
+  "extensionLibVersion": "1.4",
+  "extensionClass": "eu.kanade.tachiyomi.extension.all.mangadex.ExtensionGenerated",
+  "expectedOutcome": "success",
+  "rawUrl": "https://raw.githubusercontent.com/keiyoushi/extensions/7d5052fb895d086ae2ec6e3cca861146ee3ea0ec/apk/tachiyomi-all.mangadex-v1.4.211.apk",
+  "retrievedAt": "2026-07-20"
+}
