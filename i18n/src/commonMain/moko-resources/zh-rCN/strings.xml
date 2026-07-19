@@ -98,6 +98,10 @@
     <string name="ext_uninstall">卸载</string>
     <string name="desktop_extension_details_title">扩展详情</string>
     <string name="desktop_extension_uninstall_failed">无法卸载扩展</string>
+    <string name="desktop_source_preferences_missing">该图源已不可用。</string>
+    <string name="desktop_source_preferences_non_configurable">该图源未提供设置。</string>
+    <string name="desktop_source_preferences_setup_failed">无法加载图源设置：%s</string>
+    <string name="desktop_source_preferences_empty">该图源没有设置项。</string>
     <string name="untrusted_extension">插件未受信任</string>
     <string name="untrusted_extension_message">恶意插件可能会读取所有登录的账号或执行任意代码。
 \n

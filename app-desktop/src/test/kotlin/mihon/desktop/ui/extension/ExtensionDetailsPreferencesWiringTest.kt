@@ -15,7 +15,10 @@ import cafe.adriel.voyager.navigator.Navigator
 import dev.mihon.injekt.patchInjekt
 import eu.kanade.tachiyomi.network.DesktopCookieJar
 import eu.kanade.tachiyomi.source.ConfigurableSource
+import eu.kanade.tachiyomi.source.PreferenceScreen
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.source.preference.SwitchPreference
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -46,6 +49,7 @@ import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
 import java.io.File
+import java.util.Locale
 import java.util.UUID
 import java.util.prefs.Preferences
 
@@ -205,6 +209,78 @@ class ExtensionDetailsPreferencesWiringTest {
             model.closeAndJoin()
             Injekt = previous
         }
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
+    fun `source preference availability states stay distinct and content persists`() = runBlocking {
+        val failure = IllegalStateException("setup exploded")
+        val linkageFailure = NoClassDefFoundError("androidx/preference/Missing")
+        val item = SwitchPreference("feature_enabled", "Enable feature")
+        val failing = mockk<ConfigurableSource>(relaxed = true) {
+            every { setupPreferenceScreen(any()) } throws failure
+        }
+        val empty = mockk<ConfigurableSource>(relaxed = true)
+        val content = mockk<ConfigurableSource>(relaxed = true) {
+            every { setupPreferenceScreen(any()) } answers { firstArg<PreferenceScreen>().addPreference(item) }
+        }
+        val linkageFailing = mockk<ConfigurableSource>(relaxed = true) {
+            every { setupPreferenceScreen(any()) } throws linkageFailure
+        }
+        assertTrue(resolveSourcePreferencesState(null) is SourcePreferencesState.Missing)
+        assertTrue(resolveSourcePreferencesState(mockk<Source>(relaxed = true)) is SourcePreferencesState.NonConfigurable)
+        assertSame(failure, (resolveSourcePreferencesState(failing) as SourcePreferencesState.SetupFailure).error)
+        assertTrue(resolveSourcePreferencesState(empty) is SourcePreferencesState.Empty)
+        assertTrue(resolveSourcePreferencesState(content) { throw IllegalArgumentException("context unavailable") } is SourcePreferencesState.Content)
+        assertTrue(resolveSourcePreferencesState(content) { throw linkageFailure } is SourcePreferencesState.Content)
+        assertSame(linkageFailure, (resolveSourcePreferencesState(linkageFailing) as SourcePreferencesState.SetupFailure).error)
+        val baseCopy = listOf(
+            MR.strings.desktop_source_preferences_missing.localized(Locale.ENGLISH),
+            MR.strings.desktop_source_preferences_non_configurable.localized(Locale.ENGLISH),
+            MR.strings.desktop_source_preferences_setup_failed.localized(Locale.ENGLISH, failure.message.orEmpty()),
+            MR.strings.desktop_source_preferences_empty.localized(Locale.ENGLISH),
+        )
+        val chineseCopy = listOf(
+            MR.strings.desktop_source_preferences_missing.localized(Locale.SIMPLIFIED_CHINESE),
+            MR.strings.desktop_source_preferences_non_configurable.localized(Locale.SIMPLIFIED_CHINESE),
+            MR.strings.desktop_source_preferences_setup_failed.localized(Locale.SIMPLIFIED_CHINESE, failure.message.orEmpty()),
+            MR.strings.desktop_source_preferences_empty.localized(Locale.SIMPLIFIED_CHINESE),
+        )
+        assertTrue(baseCopy.zip(chineseCopy).all { (base, chinese) -> base.isNotBlank() && chinese.isNotBlank() && base != chinese })
+
+        val sourceId = 987654321L
+        val stored = Preferences.userRoot().node("/mihon/source_$sourceId")
+        stored.remove(item.key)
+        val states = listOf(
+            SourcePreferencesState.Missing to MR.strings.desktop_source_preferences_missing.localized(),
+            SourcePreferencesState.NonConfigurable to MR.strings.desktop_source_preferences_non_configurable.localized(),
+            SourcePreferencesState.SetupFailure(failure) to MR.strings.desktop_source_preferences_setup_failed.localized(Locale.getDefault(), failure.message.orEmpty()),
+            SourcePreferencesState.SetupFailure(linkageFailure) to MR.strings.desktop_source_preferences_setup_failed.localized(Locale.getDefault(), linkageFailure.message.orEmpty()),
+            SourcePreferencesState.Empty to MR.strings.desktop_source_preferences_empty.localized(),
+            SourcePreferencesState.Content(listOf(item)) to item.title,
+        )
+        val manager = mockk<DesktopExtensionManager>(relaxed = true)
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) { every { extensionManager } returns manager }
+        states.forEach { (state, feedback) ->
+            val scene = ImageComposeScene(700, 600, coroutineContext = coroutineContext) {}
+            try {
+                scene.setContent {
+                    CompositionLocalProvider(
+                        LocalDesktopUiDependencies provides dependencies,
+                        LocalSourcePreferencesStateResolver provides { state },
+                    ) { Navigator(SourcePreferencesScreen(sourceId, "Source settings")) { CurrentScreen() } }
+                }
+                scene.render()
+                assertTrue(nodes(scene).any { it.config.toString().contains(feedback) }, "missing state feedback: $state")
+                if (state is SourcePreferencesState.Content) {
+                    toggle(scene, 0)
+                    assertTrue(stored.getBoolean(item.key, false))
+                }
+            } finally {
+                scene.close()
+            }
+        }
+        stored.remove(item.key)
     }
 
     private suspend fun uninstall(scene: ImageComposeScene) {

@@ -341,6 +341,10 @@
     <string name="ext_uninstall">Uninstall</string>
     <string name="desktop_extension_details_title">Extension details</string>
     <string name="desktop_extension_uninstall_failed">Unable to uninstall extension</string>
+    <string name="desktop_source_preferences_missing">Source is no longer available.</string>
+    <string name="desktop_source_preferences_non_configurable">This source does not provide settings.</string>
+    <string name="desktop_source_preferences_setup_failed">Unable to load source settings: %s</string>
+    <string name="desktop_source_preferences_empty">This source has no settings.</string>
     <string name="ext_remove">Remove</string>
     <string name="ext_confirm_remove">Remove Extension?</string>
     <string name="ext_app_info">App info</string>

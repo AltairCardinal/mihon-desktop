@@ -33,6 +33,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -41,6 +42,7 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.PreferenceScreen
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.preference.CheckBoxPreference
 import eu.kanade.tachiyomi.source.preference.EditTextPreference
 import eu.kanade.tachiyomi.source.preference.JvmPreferenceItem
@@ -50,7 +52,54 @@ import eu.kanade.tachiyomi.source.preference.PreferenceCategoryItem
 import eu.kanade.tachiyomi.source.preference.SwitchPreference
 import mihon.desktop.extension.DesktopExtensionManager
 import tachiyomi.core.common.preference.DesktopPreferenceStore
+import tachiyomi.i18n.MR
+import java.util.Locale
 import java.util.prefs.Preferences as JvmPrefs
+
+internal sealed interface SourcePreferencesState {
+    data object Missing : SourcePreferencesState
+    data object NonConfigurable : SourcePreferencesState
+    data class SetupFailure(val error: Throwable) : SourcePreferencesState
+    data object Empty : SourcePreferencesState
+    data class Content(val items: List<JvmPreferenceItem>) : SourcePreferencesState
+}
+
+internal fun resolveSourcePreferencesState(
+    source: Source?,
+    contextFactory: (ClassLoader?) -> Any? = ::createExtensionContext,
+): SourcePreferencesState = when (source) {
+    null -> SourcePreferencesState.Missing
+    !is ConfigurableSource -> SourcePreferencesState.NonConfigurable
+    else -> {
+        val screen = PreferenceScreen()
+        try {
+            contextFactory(source::class.java.classLoader)?.let(screen::setContext)
+        } catch (_: Exception) {
+            // Context is optional compatibility wiring; setup decides actual availability.
+        } catch (_: LinkageError) {
+            // Missing optional Android compatibility classes must not block JVM descriptors.
+        }
+        try {
+            source.setupPreferenceScreen(screen)
+            screen.preferences.takeIf { it.isNotEmpty() }
+                ?.let(SourcePreferencesState::Content)
+                ?: SourcePreferencesState.Empty
+        } catch (error: Exception) {
+            SourcePreferencesState.SetupFailure(error)
+        } catch (error: LinkageError) {
+            SourcePreferencesState.SetupFailure(error)
+        }
+    }
+}
+
+private fun createExtensionContext(classLoader: ClassLoader?): Any? = classLoader
+    ?.loadClass("android.content.Context")
+    ?.getDeclaredConstructor()
+    ?.newInstance()
+
+internal val LocalSourcePreferencesStateResolver = staticCompositionLocalOf<(Source?) -> SourcePreferencesState> {
+    { source -> resolveSourcePreferencesState(source) }
+}
 
 /**
  * Displays configurable preferences for a single source.
@@ -69,37 +118,13 @@ data class SourcePreferencesScreen(
         val manager = LocalDesktopUiDependencies.current.extensionManager
 
         val source = remember(sourceId) { manager.getSource(sourceId) }
-        val configurableSource = source as? ConfigurableSource
+        val stateResolver = LocalSourcePreferencesStateResolver.current
+        val state = remember(sourceId, source, stateResolver) { stateResolver(source) }
 
         val prefStore = remember(sourceId) {
             DesktopPreferenceStore(
                 JvmPrefs.userRoot().node("/mihon/source_$sourceId"),
             )
-        }
-
-        val prefScreen = remember(sourceId) {
-            if (configurableSource != null) {
-                val screen = PreferenceScreen()
-                // Inject a real android.content.Context from the extension's classloader so that
-                // extensions using SwitchPreferenceCompat(context) don't NPE.
-                try {
-                    val cl = configurableSource::class.java.classLoader
-                    val ctxClass = cl?.loadClass("android.content.Context")
-                    if (ctxClass != null) {
-                        screen.setContext(ctxClass.getDeclaredConstructor().newInstance())
-                    }
-                } catch (_: Exception) {
-                    // Context injection failed — preferences may still work via JvmPreferenceItem
-                }
-                try {
-                    configurableSource.setupPreferenceScreen(screen)
-                } catch (_: Exception) {
-                    // Extension uses Android-only preference classes; fall through to empty list
-                }
-                screen
-            } else {
-                null
-            }
         }
 
         Scaffold(
@@ -114,29 +139,34 @@ data class SourcePreferencesScreen(
                 )
             },
         ) { padding ->
-            val items = prefScreen?.preferences.orEmpty()
-            if (items.isEmpty()) {
-                Column(
-                    modifier = Modifier.fillMaxSize().padding(padding),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text(
-                        text = "This source has no settings.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            } else {
-                LazyColumn(
+            when (state) {
+                SourcePreferencesState.Missing -> SourcePreferencesStatus(MR.strings.desktop_source_preferences_missing.localized(), Modifier.padding(padding))
+                SourcePreferencesState.NonConfigurable -> SourcePreferencesStatus(MR.strings.desktop_source_preferences_non_configurable.localized(), Modifier.padding(padding))
+                is SourcePreferencesState.SetupFailure -> SourcePreferencesStatus(
+                    MR.strings.desktop_source_preferences_setup_failed.localized(Locale.getDefault(), state.error.message.orEmpty()),
+                    Modifier.padding(padding),
+                )
+                SourcePreferencesState.Empty -> SourcePreferencesStatus(MR.strings.desktop_source_preferences_empty.localized(), Modifier.padding(padding))
+                is SourcePreferencesState.Content -> LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(padding),
                 ) {
-                    items(items, key = { "${it::class.simpleName}:${it.key}:${it.title}" }) { item ->
+                    items(state.items, key = { "${it::class.simpleName}:${it.key}:${it.title}" }) { item ->
                         PreferenceItemRow(item = item, prefStore = prefStore)
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SourcePreferencesStatus(text: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
