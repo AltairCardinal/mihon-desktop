@@ -1815,12 +1815,19 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Evidence: commit `33eedb52f6`，3 ledger files/71 touched（63 additions/8 deletions）。contract RED精确为Handler expected required/actual unverified；GREEN把真实执行成功的Handler/Looper/WebResourceResponse标required，把明确Desktop engine边界的WebView标unsupported，各自唯一绑定tracked Comix APK SHA与RealExtensionWebViewUnsupportedCompatTest，并反向约束该test恰好只覆盖四项。surface仍32 files/38 symbols；View/ViewGroup与CookieManager/ValueCallback/WebResourceRequest/WebSettings/WebViewClient保持unverified。contract、真实WebView、Comix preference/graphics通过，独立review APPROVED、Java0。
 
-##### Task 7C3o: MangaDex SourceFactory、AppInfo 与 Build.RELEASE 真实链
+##### Task 7C3o0: MangaDex SourceFactory preference 嵌套 ABI 前置修复
+
+- Risk axis: `mangadex-preference-nested-abi`
+- Platform boundary: `desktop`
+- Estimated scope: `4 files, 190 lines plus one 111,390-byte APK`
+- Verification: 固定 artifact repository snapshot commit `7d5052fb895d086ae2ec6e3cca861146ee3ea0ec`（root tree `35127622c9911a3f7e50c809a71dfc0057843e34`、parent `0dae9cf45bef459a60cefb1f3ad1b4eedea3554b`）、APK blob `2110eaccdbce98e2bf10c827f1136b63c9c35481`、SHA-256 `eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236`、111390 bytes、package `eu.kanade.tachiyomi.extension.all.mangadex`、version 1.4.211/ext-lib1.4、entry `ExtensionGenerated`。原 7C3o RED 已证明 production converter/classloader 调用真实 `ExtensionGenerated.createSources()` 时先于 AppInfo 精确失败于 `NoClassDefFoundError: androidx/preference/EditTextPreference$OnBindEditTextListener`，因此不得在原 7 文件范围内静默增加第 8 文件。本前置 Task 保留 fixture、provenance 与真实测试，只针对固定原版 AndroidX Preference ABI 补齐 `EditTextPreference` 的嵌套 listener 形状；RED 必须来自该真实 factory 调用，GREEN 必须成功创建 61 个 sources。该测试是后续 production-loader 端到端证据的前置诊断，不单独改变 compat ledger，也不得借机实现尚未执行的 preference UI 行为。
+
+##### Task 7C3o1: MangaDex SourceFactory、AppInfo 与 Build.RELEASE 真实链
 
 - Risk axis: `mangadex-build-release-abi`
 - Platform boundary: `desktop`
-- Estimated scope: `7 files, 300 lines plus one 111,390-byte APK`
-- Verification: 固定artifact repository snapshot commit `7d5052fb895d086ae2ec6e3cca861146ee3ea0ec`（root tree `35127622c9911a3f7e50c809a71dfc0057843e34`、parent `0dae9cf45bef459a60cefb1f3ad1b4eedea3554b`）、APK blob `2110eaccdbce98e2bf10c827f1136b63c9c35481`、SHA-256 `eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236`、111390 bytes、package `eu.kanade.tachiyomi.extension.all.mangadex`、version 1.4.211/ext-lib1.4、entry `ExtensionGenerated`。RED由production converter/loader真实暴露manifest `SourceFactory`尚未展开；最小loader GREEN必须按原版语义实例化factory并展开61个sources、保持host ABI parent-first，随后真实英文MangaDex headers读取时精确暴露缺 `eu.kanade.tachiyomi.AppInfo`。再新增原版ABI形状的production `object AppInfo`，本Task只实现真实执行的 `getVersionName()`并返回Desktop `APP_VERSION`；未执行getVersionCode/getSupportedImageMimeTypes不虚构支持。最终通过公开headers/getHeaders链真实执行 `Build.VERSION.RELEASE`，断言User-Agent、Referer、Origin与 `Extra="Android/9 Tachiyomi/<APP_VERSION> MangaDex/1.4.211 Keiyoushi"`；只将Build以该APK/test标required，不宣称SDK_INT已执行。文件限定fixture、provenance、新真实测试、DesktopExtensionLoader.kt、AppInfo.kt、inventory、evidence；contract只运行不修改。测试需隔离DI/Injekt与http.agent、关闭去重classloader，复跑全部immutable fixture/loader。
+- Estimated scope: `5 files, 220 lines`
+- Verification: 仅在 7C3o0 独立审查通过后继续。RED 由 production converter/loader 真实暴露 manifest `SourceFactory` 尚未展开；最小 loader GREEN 必须按原版语义实例化 factory 并展开 61 个 sources、保持 host ABI parent-first，随后真实英文 MangaDex headers 读取时精确暴露缺 `eu.kanade.tachiyomi.AppInfo`。再新增原版 ABI 形状的 production `object AppInfo`，本 Task 只实现真实执行的 `getVersionName()` 并返回 Desktop `APP_VERSION`；未执行 getVersionCode/getSupportedImageMimeTypes 不虚构支持。最终通过公开 headers/getHeaders 链真实执行 `Build.VERSION.RELEASE`，断言 User-Agent、Referer、Origin 与 `Extra="Android/9 Tachiyomi/<APP_VERSION> MangaDex/1.4.211 Keiyoushi"`；只将 Build 以该 APK/test 标 required，不宣称 SDK_INT 已执行。文件限定真实测试、DesktopExtensionLoader.kt、AppInfo.kt、inventory、evidence；contract 只运行不修改。测试需隔离 DI/Injekt 与 http.agent、关闭去重 classloader，复跑全部 immutable fixture/loader。
 
 ##### Task 7C4: Source/extension authority baseline 与恢复入口纠偏
 
