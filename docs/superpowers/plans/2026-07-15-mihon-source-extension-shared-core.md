@@ -1959,7 +1959,14 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Evidence: implementation `9264f53a4`、唯一修复 `7b1dd5d45`；累计严格 6 files / 373 touched lines。真实 RED 为 tracked APK 经 production converter/meta 后 SourceFactory 缺 `android.text.Layout`，继续补齐预审 ABI 后暴露 TextPaint 构造；完整 GREEN 由 MockWebServer HTML 经 public page-list 生成真实 author-note Page，再经 public getImage 进入 TextInterceptor，14 sources/no diagnostics、HTTP 200 image/png、可解码 1000px PNG、长文折行增高、白底深色字形。发现 page-list 无条件调用 `Uri.encode(String)`，因此在同一预算内合并 Layout/StaticLayout 文件并新增 Android UTF-8 percent-encoding；emoji `%F0%9F%98%80` 由真实 Page URL 证明。首审发现错误 `<span>` 未执行标题/DEFAULT_BOLD、setTypeface 返回新值及新 Canvas 比较不能保护 restore；唯一修复取得真实 `NoSuchFieldError: Typeface.DEFAULT_BOLD` RED，以真实 `<a>`、public static DEFAULT_BOLD、旧值返回契约及同一长图下半区 minX 45..75 修复，real 1/1、Phase2 11/11。独立复审 APPROVED，diff-check clean、Java0；Bitmap/Html/Spanned/Color/ledger/loader/converter 零改。
 
-##### Task 7C3q3: Html 与 Uri real-chain evidence ledger
+##### Task 7C3q3a: ComicFury render public surface evidence
+
+- Risk axis: `comicfury-render-surface-evidence`
+- Platform boundary: `verification`
+- Estimated scope: `3 files, 140 lines`
+- Verification: 7C3q2 新增 4 个 compat 文件与 5 个 public symbols 后，surface contract 的真实 RED 为 36 files / 46 symbols，而 inventory 仍为 32/41，缺 `android.graphics.Typeface`、`android.text.Layout`、`android.text.Spanned`、`android.text.StaticLayout`、`android.text.TextPaint`。仅修改 inventory/evidence/contract，将这 5 项分别以 tracked ComicFury 与 `RealExtensionComicFuryTextCompatTest` 的实际执行边界登记为 required：Spanned 只覆盖 Html 返回 descriptor/实例，Typeface 覆盖 DEFAULT/DEFAULT_BOLD，TextPaint 覆盖构造与实际 setters，Layout 覆盖 ALIGN_NORMAL token，StaticLayout 覆盖固定构造/getHeight/draw。反向集合、required/unverified 计数和 36/46 surface 必须精确；不得改 Html/Uri/Color 状态，不得把未执行的其他字段、alignment 或排版语义写入证据。
+
+##### Task 7C3q3b: Html 与 Uri real-chain evidence ledger
 
 - Risk axis: `comicfury-html-uri-evidence`
 - Platform boundary: `verification`
