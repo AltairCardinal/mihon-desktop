@@ -1270,10 +1270,12 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Files: `ExtensionListScreen.kt`、base/zh-rCN `strings.xml`、`DesktopExtensionListRenderedCopyTest.kt`、`ExtensionPresentationUiTest.kt`（现有点击必须使用同一 MR accessor，不得硬编码英文或强制 Locale.US 掩盖本地化回归）。
 - Authority: 优先复用 fixed main 的 `ext_confirm_remove`、`ext_uninstall`、`action_cancel`、`action_bar_up_description`、`action_filter`、`ext_nsfw_short`、`action_apply`；卸载所有 sources、Desktop loader reload、filter/可访问性等原版无同义行为才新增 Desktop formatted key，不误用 WebView refresh。
 
-- [ ] RED：真实 List 的 dialog/filter/accessibility 仍使用硬编码 base 文案时，zh-CN rendered copy 失败。
-- [ ] GREEN：复用上游 key；仅为 Desktop 特有语义补 base/zh formatted key，并由真实 UI 消费。
-- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.i18n.DesktopExtensionListRenderedCopyTest" --tests "mihon.desktop.ui.extension.ExtensionPresentationUiTest"`
-- [ ] Commit: `refactor(desktop): localize extension list actions`
+- [x] RED：真实 List 的 dialog/filter/accessibility 仍使用硬编码 base 文案时，zh-CN rendered copy 失败。
+- [x] GREEN：复用上游 key；仅为 Desktop 特有语义补 base/zh formatted key，并由真实 UI 消费。
+- [x] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.i18n.DesktopExtensionListRenderedCopyTest" --tests "mihon.desktop.ui.extension.ExtensionPresentationUiTest"`
+- [x] Commit: `refactor(desktop): localize extension list actions`
+
+  Evidence: commits `5af2671ec`、`eec81ff63`；zh-CN 真实 filter/uninstall 首先因硬编码英文 RED，随后真实 List 与旧 Presentation UI 各 1 test 全绿。通用操作复用 fixed main MR key，Desktop 独有格式才新增 key；旧测试也改用同一 accessor。唯一修复复审确认测试 expected 全由 MR/locale/动态参数生成、筛选标题复用 `action_filter` 且冗余 key 已删除，APPROVED；最终 `5 files, 220 lines`。
 
 #### Task 6E2B: ExtensionDetails rendered copy
 
