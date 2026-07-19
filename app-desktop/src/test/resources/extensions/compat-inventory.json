@@ -48,8 +48,6 @@
       "nextEvidence":"RealExtensionMangaDexFactoryCompatTest verifier closure for root lookup and enabled-state descriptors"},
     {"symbol":"android.view.ViewGroup","status":"unverified",
       "nextEvidence":"later real WebView adapter invocation or removal"},
-    {"symbol":"android.webkit.ValueCallback","status":"unverified",
-      "nextEvidence":"7B real local fixture invocation or 7C removal"},
     {"symbol":"android.webkit.WebResourceRequest","status":"unverified",
       "nextEvidence":"later real WebView adapter invocation or removal"},
     {"symbol":"android.webkit.WebResourceResponse","status":"required",

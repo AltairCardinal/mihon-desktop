@@ -27,10 +27,6 @@ open class WebView(context: Context) : ViewGroup() {
         unavailable()
     }
 
-    open fun evaluateJavascript(script: String, resultCallback: ValueCallback<String>?) {
-        unavailable()
-    }
-
     open fun stopLoading() {
         unavailable()
     }

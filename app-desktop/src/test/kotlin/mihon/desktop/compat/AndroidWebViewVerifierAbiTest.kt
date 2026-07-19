@@ -17,7 +17,6 @@ class AndroidWebViewVerifierAbiTest {
         val bitmap = Class.forName("android.graphics.Bitmap")
         val uri = Class.forName("android.net.Uri")
         val inputStream = Class.forName("java.io.InputStream")
-        val valueCallback = Class.forName("android.webkit.ValueCallback")
         val webView = Class.forName("android.webkit.WebView")
         val webSettings = Class.forName("android.webkit.WebSettings")
         val webViewClient = Class.forName("android.webkit.WebViewClient")
@@ -41,11 +40,10 @@ class AndroidWebViewVerifierAbiTest {
             String::class.java,
             String::class.java,
         )
-        val evaluateJavascript = webView.getMethod("evaluateJavascript", String::class.java, valueCallback)
         val stopLoading = webView.getMethod("stopLoading")
         val destroy = webView.getMethod("destroy")
         assertEquals(webSettings, getSettings.returnType)
-        listOf(addJavascriptInterface, setWebViewClient, loadDataWithBaseUrl, evaluateJavascript, stopLoading, destroy)
+        listOf(addJavascriptInterface, setWebViewClient, loadDataWithBaseUrl, stopLoading, destroy)
             .forEach { assertEquals(Void.TYPE, it.returnType) }
 
         val booleanSettingMethods = listOf(
@@ -74,12 +72,10 @@ class AndroidWebViewVerifierAbiTest {
         assertEquals(webView, webViewInstance.javaClass)
         assertUnsupported { getSettings.invoke(webViewInstance) }
         val clientInstance = webViewClient.getConstructor().newInstance()
-        val callbackInstance = Proxy.newProxyInstance(valueCallback.classLoader, arrayOf(valueCallback)) { _, _, _ -> null }
         listOf(
             addJavascriptInterface to arrayOf(Any(), "bridge"),
             setWebViewClient to arrayOf(clientInstance),
             loadDataWithBaseUrl to arrayOf("https://example.com", "data", "text/html", "UTF-8", "history"),
-            evaluateJavascript to arrayOf("1 + 1", callbackInstance),
             stopLoading to emptyArray(),
             destroy to emptyArray(),
         ).forEach { (method, arguments) ->
