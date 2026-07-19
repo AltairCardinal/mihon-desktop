@@ -63,7 +63,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Reuse: `app-desktop/src/test/kotlin/mihon/desktop/extension/ExtensionArtifactReplacementTest.kt`
 
 **Interfaces:**
-- Produces: 真实 Android/Desktop 权威类映射、代表性 JAR/APK fixture 清单、compat evidence schema、后续共享类型的测试输入。
+- Produces: 固定 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` 的原版权威符号/调用链，以及迁移后 shared output、当前 Android consumer、Desktop consumer/adapter 的分层映射；同时产出代表性 JAR/APK fixture 清单、compat evidence schema 和后续共享类型的测试输入。当前 `app/`、shared output 与 Desktop shim 均不得填入原版权威层。
 - Evidence JSON shape: `{"symbol":"fully.qualified.Api","fixture":"path-or-package@version","test":"repo/test/path","status":"required|unsupported","removalCondition":"text"}`。
 
 - [x] **Step 1: 写会失败的权威证据与产品基线测试**
@@ -1627,6 +1627,12 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Platform boundary: `tooling`
 - Estimated scope: `4 files, 150 lines`
 - Verification: 更新 source/extension authority baseline 中已被 6C/6D 与真实 ManHuaGui Application evidence supersede 的陈述；把本计划中“Android/Desktop 权威类映射”改为 fixed-main authority 与当前双端 consumer/adapter 映射；让活动 `.superpowers/sdd/progress.md` 恢复入口指向 `2026-07-12-mihon-desktop-upstream-parity-roadmap-main-authority.md`，并在受版本控制的修正版父计划记录当前 source/extension 子计划。不得修改保留作历史对照的原路线图，不得把当前 `app/`、shared output 或 Desktop shim 写成原版权威。验证必须检查 live pointer、父子计划互指、旧 unsupported 文案消失以及 Comet plan guard 通过。
+
+- [x] **Step 1: 纠正 source/extension baseline 的 6C/6D 与 ManHuaGui superseded 陈述**
+- [x] **Step 2: 固定父子计划与 live progress 的恢复顺序**
+- [x] **Step 3: 运行文本、路径、互指、diff 与 Comet guard 核验**
+
+  Evidence: Task 7C4 的 scoped tooling/docs 提交只修改本节声明的四个文件；baseline 现记录 Task 6C/6D 已接入的 Desktop presentation 链，并将 ManHuaGui Application 的旧 unsupported 结论明确标为由 `2e17f259f`/`a1b65a746` supersede。live progress 与受版本控制的修正版父计划互指本 child plan，恢复顺序为先完成本计划至 Task 7D，再返回修正版父计划的首个未完成 Task；保留的原路线图未修改。验证使用 `rg`、路径存在检查、`git diff --check` 与 `bash scripts/comet-project-guard.sh plan`，不运行 Gradle。
 
 #### Task 7D: Parity evidence and runtime verification
 

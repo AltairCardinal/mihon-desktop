@@ -27,7 +27,7 @@
 | 34 扩展安装 | `ExtensionManager.installExtension/updateExtension/cancelInstallUpdateExtension` → `ExtensionInstaller` | `ExtensionInstallCoordinator`、`ExtensionInstallPort` | `ExtensionManager`、`ExtensionInstaller` | `DesktopExtensionApi`、`DesktopExtensionManager`、`DesktopExtensionInstallPort`、APK→JAR | 原始基本安装、更新、取消必须逐项对照；SHA、snapshot、rollback/runtime restore 是保留的跨平台安全增强。 |
 | 35 扩展加载 | `ExtensionLoader` → PackageManager、签名、私有 APK | 无 | `ExtensionLoader` | `DesktopExtensionLoader`、`ExtensionClassLoader`、ServiceLoader/compat | Android package/signature 与 Desktop JAR/compat 都是 platform adapter；缺真实 fixture 的 compat 能力仍为待偿还技术债。 |
 | 36 扩展安全/信任 | `ExtensionLoader` 不受信任结果 → `ExtensionManager.trust` | `ExtensionTrustPolicy`、`RepositoryIdentity` | `ExtensionLoader`、`ExtensionManager.trust` | `DesktopExtensionInstallPort`、metadata sidecar、Desktop loader | 原始签名信任和基本 trust 为核心；repo fingerprint/SHA continuity 是安全增强，不能声称固定 main 已有。 |
-| 37 扩展详情与更新 | `GetExtensionsByType`、`ExtensionsScreenModel` / `ExtensionDetailsScreenModel` → `ExtensionManager.updateExtension/uninstallExtension` | `ExtensionPresentationStore` 的分类、搜索、刷新、逐包安装终态与 enabled-first 规则 | 当前 Android consumer 已接入 shared classifier/action store | `ExtensionListScreen`、`ExtensionDetailsScreen`、`DesktopExtensionManager`（Task 6C/6D 待接入） | fixed-main 搜索、分类、更新、详情退出已由 shared contract 回放并接入当前 Android；文件信息/打开目录等 Desktop 产品增强保留，Desktop presentation wiring 仍未完成。 |
+| 37 扩展详情与更新 | `GetExtensionsByType`、`ExtensionsScreenModel` / `ExtensionDetailsScreenModel` → `ExtensionManager.updateExtension/uninstallExtension` | `ExtensionPresentationStore` 的分类、搜索、刷新、逐包安装终态与 enabled-first 规则 | 当前 Android consumer 已接入 shared classifier/action store | `ExtensionListScreen`、`ExtensionDetailsScreen` → Desktop `ExtensionsScreenModel` / `DesktopExtensionPresentationPort` → `DesktopExtensionManager` adapter | fixed-main 搜索、分类、刷新、逐包安装终态与详情缺失/卸载生命周期已由 shared contract 回放，并在 Task 6C/6D 接入当前 Android 与 Desktop consumer；文件信息、打开目录、APK→JAR 与信任恢复等 Desktop 产品/平台增强继续保留。 |
 | 38 源偏好设置 | `SourcePreferencesScreen` → source preference schema | 无 | `SourcePreferencesScreen` | Desktop `SourcePreferencesScreen` | 控件渲染与文件/窗口交互是 platform adapter；missing、不可配置和 setup failure 的状态须保持可区分。 |
 | 39 WebView/源登录 | `WebViewScreenModel` → `WebViewScreen` / `WebViewScreenContent` → Android CookieManager | `SourceLoginSession` | `WebViewScreenModel`、`WebViewScreen` | `DesktopBrowserLoginAdapter`、`DesktopSourceLoginDialog` | 受控浏览器和 Cookie 存储是 platform adapter；显式 login session 状态为跨端迁移输出，不可反称原始 WebView 行为。 |
 | 40 Cloudflare 绕过 | 固定 main 的 `CloudflareInterceptor` / WebView Cloudflare help；无 FlareSolverr | 无 | `CloudflareInterceptor`、WebView UI | `CloudflareChallengeManager`、`DesktopCloudflareInterceptor`、`FlareSolverrClient`、`CloudflareBypassDialog` | FlareSolverr 是 Desktop-only、用户显式选择的后备产品能力；它不是原始 Mihon 语义，也不得静默接管请求。 |
@@ -48,7 +48,7 @@ IDs 28、29、30、32–40 的 completion gate 只读取以下结构化字段；
 | --- | --- | --- | --- |
 | `minimalDexBytes()` / `MINIMAL_DEX_BASE64` | 最小 DEX v035 | `ApkToJarConverterTest`、`DesktopExtensionProductBaselineTest` 保护 production APK→JAR 转换 | 合成结构 fixture，只证明转换机械链路，不证明第三方扩展兼容。 |
 | `MinimalTestSource` ServiceLoader JAR | repo test classpath | `ExtensionCompatibilityTest` 证明 production loader 能发现 `Source` | 确定性 JVM fixture，不代表 Android API 使用面。 |
-| `eu.kanade.tachiyomi.extension.zh.manhuagui@1.4.28` | 固定 Keiyoushi APK | `KeiyoushiChineseCompatibilityTest` 校验 package/version 并调用 production 转换/loader | 网络 integration fixture；当前缺 `android.app.Application` compat 绑定，只能标 `unsupported`，不得升级为 authority。 |
+| `eu.kanade.tachiyomi.extension.zh.manhuagui@1.4.28` | 固定 Keiyoushi APK，SHA-256 `200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8` | `RealExtensionCompatEvidenceTest` 经 production converter/loader 调用真实 Source/settings，并由 `compat-evidence.json` 绑定逐符号证据 | 先前“缺 `android.app.Application`、只能 unsupported”的结论已被 `2e17f259f` 的 Application DI 闭合和 `a1b65a746` 的 required evidence supersede；该 fixture 证明已实际调用的 Desktop compat 边界，不把 shim 或当前 consumer 升格为原版权威。 |
 | 本地 ManHuaGui 构建产物 | 开发机临时版本 | `ManhuaguiLoadTest` 开发诊断 | 非 CI 权威，不能独立支持新增 compat stub。 |
 
 ## Compat evidence schema
@@ -59,7 +59,7 @@ IDs 28、29、30、32–40 的 completion gate 只读取以下结构化字段；
 
 Task 6B 已完成，但后续维护仍不得把当前 `ExtensionsScreenModel`、`ExtensionManager` 或 `ExtensionDetailsScreenModel` 当作 authority fixture。权威固定为 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`；名称/source/baseUrl/id 搜索、updates/installed/untrusted/语言分类、刷新、逐 package 安装步骤、取消、卸载、trust 和详情卸载事件均先从该快照回放，再比较当前 fork。
 
-Task 6B 的差异分类结果：`ExtensionManager` 的异步初始化，以及事务 ID、active receiver 去重、reload/rollback callback 作为工程/安全增强保留；缺失的 `takeWhile { step != Installed }` 已恢复，trust reload 改走 injected loader seam。Desktop extension presentation 仍需在 Task 6C/6D 消费同一 shared contract，不得继续以局部 helper 重算规则。
+Task 6B 的差异分类结果：`ExtensionManager` 的异步初始化，以及事务 ID、active receiver 去重、reload/rollback callback 作为工程/安全增强保留；缺失的 `takeWhile { step != Installed }` 已恢复，trust reload 改走 injected loader seam。Task 6C/6D 已让 Desktop extension presentation 的列表状态、分类、安装动作、详情缺失/卸载生命周期消费同一 shared contract；后续维护不得恢复 Compose-local 分类、安装 reducer 或直接把当前 Desktop/Android consumer 当作 fixed-main 证据。
 
 ## Desktop 产品边界与现有保护网
 

@@ -3,6 +3,8 @@ original-roadmap: docs/superpowers/plans/2026-07-12-mihon-desktop-upstream-parit
 correction-list: docs/superpowers/plans/2026-07-12-mihon-desktop-upstream-parity-roadmap-concept-confusions.md
 original-branch: main
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
+active-child-plan: docs/superpowers/plans/2026-07-15-mihon-source-extension-shared-core.md
+resume-order: complete the active child plan through Task 7D, then resume the first unchecked task in this corrected parent plan
 ---
 
 # Mihon Desktop 对齐原版 Mihon 实施计划（原版基线修正版）
@@ -20,6 +22,8 @@ original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 - **共享实现**：当前重构分支的 common/shared 生产代码。它是迁移目标，不是原版来源；必须通过原版 fixture 证明默认语义一致。
 
 如果后续需要升级原版基线，必须先更新 `original-ref`，重新核验受影响的原版实现与 fixture，再更新计划和 parity evidence；不得让移动中的 `main` 静默改变任务语义。
+
+当前 source/extension 施工由 `active-child-plan` 承载。恢复执行时必须先完成该子计划至 Task 7D，再回到本修正版父计划的首个未完成 Task；保留的 `original-roadmap` 仅供历史对照，不得重新作为可执行权威入口。
 
 **Goal:** 以固定原版 Mihon 的成熟行为、流程和工程边界为权威契约，消除 Mihon Desktop 当初为快速完成功能而产生的非平台必要简化与重复实现；将适合共用的规则迁入当前分支 shared core，让当前 Android 构建版和 Desktop JVM 实现共同消费，同时保持全部 Desktop 独有产品能力零回退。
 
