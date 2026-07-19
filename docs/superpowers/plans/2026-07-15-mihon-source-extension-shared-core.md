@@ -1981,7 +1981,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `color-shim-prune`
 - Platform boundary: `desktop`
-- Estimated scope: `4 files, 100 lines`
+- Estimated scope: `4 files, 125 lines`
 - Verification: ComicFury raw 字节码将 BLACK/WHITE 编译为整数常量，不链接 `android.graphics.Color`；仓库当前只有 shim 自测。删除 Color.kt 建立 prune probe，确认 production/全部 tracked fixture 无消费者后删除对应 AndroidCompatPhase2Test 片段、inventory entry并更新contract surface。若出现真实链接回归则恢复并重规划，不得用 ComicFury 作为 Color 假证据。文件限定 Color.kt、AndroidCompatPhase2Test.kt、inventory、contract。
 
 ##### Task 7C4: Source/extension authority baseline 与恢复入口纠偏
