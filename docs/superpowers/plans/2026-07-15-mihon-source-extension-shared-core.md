@@ -1423,10 +1423,10 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `source-login-observation-format`
 - Platform boundary: `desktop`
-- Estimated scope: `2 files, 80 lines`
+- Estimated scope: `2 files, 240 lines`
 - Verification: 仅对 6E4A 的 observation 与 wiring test 做机械换行、缩进和 Spotless 收口，不改变竞态、token、取消或清理语义；格式化后原 focused test 必须仍通过。
 - Files: `SourceBrowseTestModeObservation.kt`、`SourceLoginTestModeWiringTest.kt`。
-- Boundary: 本项是 6E4A 唯一复审发现的非行为阻塞；不得借机修改生产语义或扩大 6E4B HTTP/client 范围。
+- Boundary: 本项是 6E4A 唯一复审发现的非行为阻塞；约 90 行 `try` 正文需整体补一级缩进，因此接受不超过 240 行的纯空白 churn；不得借机修改生产语义或扩大 6E4B HTTP/client 范围。
 
 - [ ] GREEN：两文件满足仓库 Spotless/ktlint，且 6E4A focused test 保持通过。
 - [ ] Verify: `./gradlew :app-desktop:spotlessKotlinCheck :app-desktop:jvmTest --tests "mihon.desktop.ui.browse.SourceLoginTestModeWiringTest"`
