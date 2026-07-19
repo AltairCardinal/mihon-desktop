@@ -1152,7 +1152,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 - Risk axis: `extension-details-ui`
 - Platform boundary: `desktop`
-- Estimated scope: `4 files, 300 lines`
+- Estimated scope: `5 files, 300 lines`
 - Verification: authoritative installed flow 变 missing；typed uninstall 成功后 pop、失败不 pop；APK/JAR origin、repo/SHA/file info、Explorer/Finder folder、source enable/incognito/cookie 入口均保留并有行为反馈。
 
 **Files:**
@@ -1160,6 +1160,9 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - Modify: `i18n/src/commonMain/moko-resources/base/strings.xml`
 - Modify: `i18n/src/commonMain/moko-resources/zh-rCN/strings.xml`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionDetailsPreferencesWiringTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/extension/ExtensionIncognitoPreferenceWiringTest.kt`
+
+Scope correction: Details 改为从 Injekt singleton authoritative state 取值后，既有 incognito 真实 Compose fixture 会因仍按 manager snapshot 架构而抛 `InjektionException`；该测试必须同步注册同一 ScreenModel 并恢复 Injekt scope。预计组合仍低于 300 lines，不新增生产文件。
 
 - [ ] **Step 1: 写 details authoritative/uninstall/Desktop-entry RED**
 - [ ] **Step 2: 接入 ScreenModel 与保留 Desktop unique adapters**
