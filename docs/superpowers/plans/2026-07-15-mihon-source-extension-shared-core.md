@@ -1556,8 +1556,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `real-page-uri-abi`
 - Platform boundary: `desktop`
-- Estimated scope: `6 files, 350 lines`
-- Verification: fixed main `Page` 的旧扩展 ABI 使用 `android.net.Uri?`，真实 ManHuaGui 字节码调用该 exact constructor；当前 common `Any?` 不能作为 authority。先通过 immutable APK 执行真实 page-list production 路径取得精确 RED，再以最小 Desktop bytecode/platform adapter 保留 common KMP 模型与 fixed-main binary ABI，禁止把 `android.net.Uri` 引入 shared authority。GREEN 必须返回可由 Desktop reader 消费的真实 Page，并使 `android.net.Uri` 取得行为 evidence；若真实网络请求不可确定，使用 extension 自身 parser 与本地真实形状响应，不 mock parser。
+- Estimated scope: `4 files, 300 lines`
+- Verification: fixed main `Page` 的旧扩展 ABI 使用主构造 `(I,String,String,android.net.Uri)V` 与默认参数构造 `(I,String,String,android.net.Uri,I,DefaultConstructorMarker)V`，真实 ManHuaGui `pageListParse` 调用后者；当前 common `Object` descriptors 不能作为 authority。immutable APK 经 production converter/loader 后，必须由本地 MockWebServer 返回真实 Dean-Edwards packed-script HTML，再反射执行 extension 自身 protected parser；RED 精确解包到 `NoSuchMethodError`，不得停在输入解析错误。GREEN 只允许 Desktop `BytecodeEditor` 对 owner `eu/kanade/tachiyomi/source/model/Page` 的上述两个 `<init>` descriptors 做 exact allowlist `Uri→Object` 重写，其他 owner/方法/descriptor 原样保留；不得修改 common `Page`、不得将 `android.net.Uri` 下沉到 shared authority。真实 parser 必须返回 parent-loaded host Page 及 `https://i.hamreus.com/comic/123/001.jpg?e=1700000000&m=sig`，并继续通过 Desktop reader Page 消费回归。该调用的 Uri 实参为 `null`，只证明 fixed-main Page binary ABI 兼容需求，不足以将 Uri shim 行为解析为 `required`。
 
 ##### Task 7C3: Representative fixture matrix 与 compat prune batches
 
