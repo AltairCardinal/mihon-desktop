@@ -74,6 +74,7 @@ import mihon.desktop.ui.browse.SourceBrowseScreen
 import mihon.domain.error.AppError
 import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
+import mihon.domain.extension.presentation.extensionActionEligibility
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -492,6 +493,7 @@ private fun AvailableExtensionCard(
 ) {
     val extension = requireNotNull(item.available)
     val presentation = item.presentation
+    val eligibility = extensionActionEligibility(installStep, installError != null)
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
@@ -537,7 +539,7 @@ private fun AvailableExtensionCard(
                 }
             }
             when {
-                installStep != null && installStep != ExtensionPresentationInstallStep.Error -> Row(verticalAlignment = Alignment.CenterVertically) {
+                eligibility.canCancel -> Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(24.dp))
                     TextButton(
                         onClick = onCancel,
@@ -546,21 +548,21 @@ private fun AvailableExtensionCard(
                         },
                     ) { Text(MR.strings.action_cancel.localized()) }
                 }
-                installError != null || installStep == ExtensionPresentationInstallStep.Error ->
+                eligibility.canRetry ->
                     Button(
                         onClick = onRetry,
                         modifier = Modifier.semantics {
                             contentDescription = "${MR.strings.action_retry.localized()} ${presentation.name}"
                         },
                     ) { Text(MR.strings.action_retry.localized()) }
-                hasUpdate -> OutlinedButton(
+                hasUpdate && eligibility.canStart -> OutlinedButton(
                     onClick = onUpdate,
                     modifier = Modifier.semantics {
                         contentDescription = "${MR.strings.ext_update.localized()} ${presentation.name}"
                     },
                 ) { Text(MR.strings.ext_update.localized()) }
                 isInstalled -> OutlinedButton(onClick = {}, enabled = false) { Text(MR.strings.ext_installed.localized()) }
-                else -> Button(
+                eligibility.canStart -> Button(
                     onClick = onInstall,
                     modifier = Modifier.semantics {
                         contentDescription = "${MR.strings.action_install.localized()} ${presentation.name}"
@@ -569,6 +571,7 @@ private fun AvailableExtensionCard(
                     Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.padding(end = 4.dp))
                     Text(MR.strings.action_install.localized())
                 }
+                else -> Unit
             }
         }
     }

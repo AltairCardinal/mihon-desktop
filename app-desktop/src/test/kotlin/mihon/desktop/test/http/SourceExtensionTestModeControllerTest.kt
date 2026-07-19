@@ -23,8 +23,11 @@ import mihon.desktop.ui.extension.ExtensionsScreenModel
 import mihon.domain.error.AppError
 import mihon.domain.error.toStoredAppError
 import mihon.domain.extension.model.ExtensionCatalogResult
+import mihon.domain.extension.model.RepositoryCatalogFailure
+import mihon.domain.extension.model.RepositoryIdentity
 import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
+import mihon.domain.extension.presentation.extensionActionEligibility
 import mihon.domain.extension.service.ExtensionInstallState
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -36,12 +39,17 @@ import java.io.File
 class SourceExtensionTestModeControllerTest {
     @Test
     fun `controller bridges production state intents failures and trust`() = runBlocking {
+        assertFalse(extensionActionEligibility(ExtensionPresentationInstallStep.Installed).canStart)
+        val busyWithError = extensionActionEligibility(ExtensionPresentationInstallStep.Downloading, hasError = true)
+        assertTrue(busyWithError.canCancel)
+        assertFalse(busyWithError.canRetry)
         val update = available("pkg.update", "Update Extension", 2)
         val fresh = available("pkg.new", "New Extension", 1)
         val installed = InstalledExtension(File("pkg.update.jar"), emptyList(), versionCode = 1, displayName = update.name)
         val stable = InstalledExtension(File("pkg.stable.jar"), emptyList(), versionCode = 1, displayName = "Stable Extension")
         val installedFlow = MutableStateFlow(listOf(installed, stable))
         val failure = AppError.Network(IllegalStateException("offline-raw"))
+        val repositoryFailure = RepositoryCatalogFailure(RepositoryIdentity("https://broken", "Broken Repo", "repo-key"), AppError.Server(503))
         val newStarts = ArrayDeque<DesktopExtensionInstallStart>(
             listOf(
                 DesktopExtensionInstallStart.Started(flowOf(ExtensionInstallState.Failed(failure))),
@@ -51,12 +59,12 @@ class SourceExtensionTestModeControllerTest {
             ),
         )
         val updateStarts = ArrayDeque<DesktopExtensionInstallStart>(listOf(
-            DesktopExtensionInstallStart.Started(flowOf(ExtensionInstallState.Failed(failure))),
+            DesktopExtensionInstallStart.Started(flow { emit(ExtensionInstallState.Preparing); awaitCancellation() }),
             DesktopExtensionInstallStart.Started(flowOf(ExtensionInstallState.Failed(failure))),
         ))
         val manager = mockk<DesktopExtensionManager> { every { removeExtensionWithMeta(stable) } returns true }
         val api = mockk<DesktopExtensionApi> {
-            coEvery { refreshCatalog() } returns ExtensionCatalogResult(emptyList(), emptyList())
+            coEvery { refreshCatalog() } returns ExtensionCatalogResult(emptyList(), listOf(repositoryFailure))
             every { availableExtensions(any()) } returns listOf(update, fresh)
             coEvery { beginInstall(any(), manager) } answers {
                 if (firstArg<DesktopAvailableExtension>().pkgName == fresh.pkgName) newStarts.removeFirst() else updateStarts.removeFirst()
@@ -74,7 +82,12 @@ class SourceExtensionTestModeControllerTest {
             val initial = controller.snapshot()
             assertEquals(setOf(update.pkgName, stable.pkgName), initial.installed.map { it.packageName }.toSet())
             assertTrue(initial.available.any { it.packageName == fresh.pkgName && it.sources.single().name == "New Source" })
+            assertEquals("https://broken", initial.repositoryErrors.single().repositoryBaseUrl)
+            assertEquals("Broken Repo", initial.repositoryErrors.single().repositoryName)
+            assertEquals("repo-key", initial.repositoryErrors.single().repositoryFingerprint)
+            assertEquals(repositoryFailure.error.toStoredAppError(), initial.repositoryErrors.single().error)
 
+            assertEquals(SourceExtensionActionFailureCode.MISSING_PARAMETER, controller.execute("extension_search").failureCode)
             assertTrue(controller.execute("extension_search", mapOf("query" to "New")).success)
             assertEquals("New", model.state.value.searchQuery)
             assertEquals(setOf(fresh.pkgName), controller.snapshot().available.map { it.packageName }.toSet())
@@ -88,12 +101,18 @@ class SourceExtensionTestModeControllerTest {
             assertTrue(action(controller, "extension_install", fresh.pkgName).success)
             withTimeout(5_000) { model.state.first { fresh.pkgName in it.installErrors } }
             assertEquals(failure.toStoredAppError(), controller.snapshot().errors[fresh.pkgName])
+            assertEquals(SourceExtensionActionFailureCode.ACTION_UNAVAILABLE, action(controller, "extension_cancel", fresh.pkgName).failureCode)
             assertTrue(action(controller, "extension_retry", fresh.pkgName).success)
             withTimeout(5_000) { model.state.first { it.actions.installSteps[fresh.pkgName] == ExtensionPresentationInstallStep.Downloading } }
+            assertEquals(SourceExtensionActionFailureCode.ACTION_UNAVAILABLE, action(controller, "extension_install", fresh.pkgName).failureCode)
             assertTrue(action(controller, "extension_cancel", fresh.pkgName).success)
             withTimeout(5_000) { model.state.first { fresh.pkgName !in it.actions.installSteps } }
 
             assertTrue(action(controller, "extension_update", update.pkgName).success)
+            withTimeout(5_000) { model.state.first { it.actions.installSteps[update.pkgName] == ExtensionPresentationInstallStep.Downloading } }
+            assertEquals(SourceExtensionActionFailureCode.ACTION_UNAVAILABLE, action(controller, "extension_update", update.pkgName).failureCode)
+            assertTrue(action(controller, "extension_cancel", update.pkgName).success)
+            withTimeout(5_000) { model.state.first { update.pkgName !in it.actions.installSteps } }
             assertTrue(controller.execute("extension_update_all").success)
             assertTrue(action(controller, "extension_uninstall", stable.pkgName).success)
             verify(exactly = 1) { manager.removeExtensionWithMeta(stable) }
@@ -101,9 +120,11 @@ class SourceExtensionTestModeControllerTest {
             action(controller, "extension_install", fresh.pkgName)
             withTimeout(5_000) { model.state.first { it.pendingTrust?.request?.requestId == "confirm" } }
             assertEquals(listOf("old-fingerprint", "new-fingerprint"), controller.snapshot().pendingTrust?.let { listOf(it.existingFingerprint, it.incomingFingerprint) })
+            assertEquals(SourceExtensionActionFailureCode.ACTION_UNAVAILABLE, action(controller, "extension_install", fresh.pkgName).failureCode)
+            assertEquals("confirm", model.state.value.pendingTrust?.request?.requestId)
             assertEquals(SourceExtensionActionFailureCode.TRUST_PACKAGE_MISMATCH, action(controller, "extension_trust_confirm", update.pkgName).failureCode)
             assertTrue(action(controller, "extension_trust_confirm", fresh.pkgName).success)
-            action(controller, "extension_install", fresh.pkgName)
+            action(controller, "extension_retry", fresh.pkgName)
             withTimeout(5_000) { model.state.first { it.pendingTrust?.request?.requestId == "dismiss" } }
             assertTrue(action(controller, "extension_trust_dismiss", fresh.pkgName).success)
             coVerify(exactly = 4) { api.beginInstall(fresh, manager) }

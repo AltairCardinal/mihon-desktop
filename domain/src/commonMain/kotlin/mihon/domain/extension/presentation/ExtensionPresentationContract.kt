@@ -51,7 +51,24 @@ enum class ExtensionPresentationInstallStep {
     Downloading,
     Installing,
     Installed,
-    Error,
+    Error;
+
+    fun isCompleted(): Boolean = this == Idle || this == Installed || this == Error
+}
+
+data class ExtensionActionEligibility(val canStart: Boolean, val canCancel: Boolean, val canRetry: Boolean)
+
+fun extensionActionEligibility(
+    step: ExtensionPresentationInstallStep?,
+    hasError: Boolean = false,
+): ExtensionActionEligibility {
+    val current = step ?: ExtensionPresentationInstallStep.Idle
+    return ExtensionActionEligibility(
+        canStart = current == ExtensionPresentationInstallStep.Idle && !hasError,
+        canCancel = !current.isCompleted(),
+        canRetry = current == ExtensionPresentationInstallStep.Error ||
+            (current == ExtensionPresentationInstallStep.Idle && hasError),
+    )
 }
 
 data class ExtensionPresentationActionState(

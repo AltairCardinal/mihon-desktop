@@ -6,6 +6,8 @@ import mihon.desktop.ui.extension.ExtensionsScreenModel
 import mihon.desktop.ui.extension.toExtensionListUiProjection
 import mihon.domain.error.StoredAppError
 import mihon.domain.error.toStoredAppError
+import mihon.domain.extension.presentation.extensionActionEligibility
+import java.util.concurrent.atomic.AtomicReference
 
 @Serializable data class SourceExtensionTestSource(val id: Long, val language: String, val name: String, val baseUrl: String?)
 @Serializable data class SourceExtensionTestItem(
@@ -16,11 +18,15 @@ import mihon.domain.error.toStoredAppError
     val packageName: String, val requestId: String, val existingFingerprint: String, val incomingFingerprint: String,
     val reasons: List<String>,
 )
+@Serializable data class SourceExtensionRepositoryError(
+    val repositoryBaseUrl: String, val repositoryName: String, val repositoryFingerprint: String,
+    val error: StoredAppError,
+)
 @Serializable data class SourceExtensionTestSnapshot(
     val searchQuery: String, val refreshing: Boolean, val installed: List<SourceExtensionTestItem>,
     val available: List<SourceExtensionTestItem>, val updates: List<SourceExtensionTestItem>,
     val installSteps: Map<String, String>, val errors: Map<String, StoredAppError>,
-    val repositoryErrors: List<StoredAppError>, val pendingTrust: SourceExtensionTrustSnapshot?,
+    val repositoryErrors: List<SourceExtensionRepositoryError>, val pendingTrust: SourceExtensionTrustSnapshot?,
 )
 @Serializable enum class SourceExtensionActionFailureCode {
     MISSING_PARAMETER, UNKNOWN_PACKAGE, ACTION_UNAVAILABLE, NO_PENDING_TRUST, TRUST_PACKAGE_MISMATCH,
@@ -44,14 +50,19 @@ class SourceExtensionTestModeController(private val model: ExtensionsScreenModel
             state.searchQuery, state.actions.isRefreshing, ui.installed.map(DesktopExtensionItem::testSnapshot),
             ui.available.map(DesktopExtensionItem::testSnapshot), ui.updates.map(DesktopExtensionItem::testSnapshot),
             state.actions.installSteps.mapValues { it.value.name }, state.installErrors.mapValues { it.value.toStoredAppError() },
-            state.projection?.failures.orEmpty().map { it.error.toStoredAppError() }, trust,
+            state.projection?.failures.orEmpty().map {
+                SourceExtensionRepositoryError(
+                    it.repository.baseUrl, it.repository.name, it.repository.signingKeyFingerprint,
+                    it.error.toStoredAppError(),
+                )
+            }, trust,
         )
     }
 
     fun execute(action: String, params: Map<String, String> = emptyMap()): SourceExtensionActionResult = try {
         when (action) {
             "extension_refresh" -> model.refresh()
-            "extension_search" -> model.search(params["query"].orEmpty())
+            "extension_search" -> model.search(params["query"] ?: fail(SourceExtensionActionFailureCode.MISSING_PARAMETER))
             "extension_install" -> model.install(available(requirePackage(params)))
             "extension_update" -> model.update(update(requirePackage(params))) ?: fail(SourceExtensionActionFailureCode.ACTION_UNAVAILABLE)
             "extension_retry" -> model.retry(retry(requirePackage(params))) ?: fail(SourceExtensionActionFailureCode.ACTION_UNAVAILABLE)
@@ -79,25 +90,31 @@ class SourceExtensionTestModeController(private val model: ExtensionsScreenModel
     private fun known(packageName: String) = model.state.value.projection?.let { it.installed + it.available }.orEmpty()
         .firstOrNull { it.operationPackageName == packageName } ?: fail(SourceExtensionActionFailureCode.UNKNOWN_PACKAGE)
     private fun available(packageName: String) = known(packageName).let {
+        if (!eligibility(packageName).canStart) fail(SourceExtensionActionFailureCode.ACTION_UNAVAILABLE)
         model.state.value.presentation?.available.orEmpty().firstOrNull { item -> item.operationPackageName == packageName }
             ?: fail(SourceExtensionActionFailureCode.ACTION_UNAVAILABLE)
     }
     private fun update(packageName: String) = known(packageName).let {
+        if (!eligibility(packageName).canStart) fail(SourceExtensionActionFailureCode.ACTION_UNAVAILABLE)
         model.state.value.presentation?.updates.orEmpty().firstOrNull { item -> item.operationPackageName == packageName }
             ?: fail(SourceExtensionActionFailureCode.ACTION_UNAVAILABLE)
     }
     private fun retry(packageName: String): DesktopExtensionItem {
         known(packageName)
-        if (packageName !in model.state.value.installErrors) fail(SourceExtensionActionFailureCode.ACTION_UNAVAILABLE)
+        if (!eligibility(packageName).canRetry) fail(SourceExtensionActionFailureCode.ACTION_UNAVAILABLE)
         return (model.state.value.presentation?.updates.orEmpty() + model.state.value.presentation?.available.orEmpty())
             .firstOrNull { it.operationPackageName == packageName } ?: fail(SourceExtensionActionFailureCode.ACTION_UNAVAILABLE)
     }
     private fun cancellable(packageName: String): String {
         known(packageName)
-        if (packageName !in model.state.value.actions.installSteps && model.state.value.pendingTrust?.packageName != packageName) {
-            fail(SourceExtensionActionFailureCode.ACTION_UNAVAILABLE)
-        }
+        if (!eligibility(packageName).canCancel) fail(SourceExtensionActionFailureCode.ACTION_UNAVAILABLE)
         return packageName
+    }
+    private fun eligibility(packageName: String) = model.state.value.let {
+        extensionActionEligibility(
+            it.actions.installSteps[packageName],
+            packageName in it.installErrors,
+        )
     }
     private fun installed(packageName: String) = known(packageName).let {
         model.state.value.projection?.installed.orEmpty().firstOrNull { item -> item.operationPackageName == packageName }
@@ -110,12 +127,10 @@ class SourceExtensionTestModeController(private val model: ExtensionsScreenModel
 }
 
 object SourceExtensionTestModeBridge {
-    @Volatile private var value: SourceExtensionTestModeController? = null
-    val controller: SourceExtensionTestModeController? get() = value
-    fun install(controller: SourceExtensionTestModeController) { value = controller }
-    fun clear(expected: SourceExtensionTestModeController): Boolean = synchronized(this) {
-        if (value !== expected) false else true.also { value = null }
-    }
+    private val value = AtomicReference<SourceExtensionTestModeController?>()
+    val controller: SourceExtensionTestModeController? get() = value.get()
+    fun install(controller: SourceExtensionTestModeController) { value.set(controller) }
+    fun clear(expected: SourceExtensionTestModeController): Boolean = value.compareAndSet(expected, null)
 }
 
 private class SourceExtensionActionFailure(val code: SourceExtensionActionFailureCode) : IllegalStateException()
