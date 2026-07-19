@@ -1571,6 +1571,13 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Split waiver: 31 个非 Application public compat 类型分属独立 ABI 族；每批只处理一个依赖闭包并单独审查，避免一次删除跨包能力。后续每个实际批次必须在施工前把 fixture、产品边界、文件与 verification 写回本计划。
 - Verification: 对 `android.content/pm`、`android.os`、`android.text`、`android.util`、graphics/drawable、webkit 与剩余 AndroidX 类型，先选择能执行真实调用的本地可追溯 extension fixture；无法支持的平台能力必须有明确用户边界与 production 不可达证据。`required` 必须由真实 artifact 的 production invocation 证明；`unsupported` 必须由真实精确失败与产品边界证明；删除必须同时满足无 production consumer、代表性 fixture 不需要或产品明确不支持，并在删除前取得 public-surface RED。不得用 compat 自测或源码扫描代替行为证据；保留 Desktop-native EditText/MultiSelect/Switch 设置能力。
 
+##### Task 7C3a: Comix 真实 EditText/MultiSelect/Switch 设置 ABI
+
+- Risk axis: `androidx-preference-linkage`
+- Platform boundary: `desktop`
+- Estimated scope: `6 files, 280 lines plus one 96,835-byte APK`
+- Verification: fixture 固定为 Keiyoushi Comix 1.4.34，artifact repo commit `7d5052fb895d086ae2ec6e3cca861146ee3ea0ec`、blob `ebade6b9ed19d1ba02ac67c377cef31caa0bb0c7`、SHA-256 `5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8`、96,835 bytes、Apache-2.0，package `eu.kanade.tachiyomi.extension.en.comix`，extension class `eu.kanade.tachiyomi.extension.en.comix.ExtensionGenerated`。测试必须由本地 APK 经 production converter/loader 取得真实 source，再经 `DesktopAndroidPreferenceAdapter` 调用 APK 自身 `setupPreferenceScreen`；RED 应精确到缺失 `androidx.preference.EditTextPreference$OnBindEditTextListener`/对应 setter 的首个 linkage gap，若更早出现不同 gap 则停止并重新拆分。GREEN 只补 fixed-main/AndroidX exact nested listener ABI，真实结果必须同时包含 EditText、MultiSelect 与 Switch 三类 descriptor，并断言关键 key/title/entries/default/value，而非只断言无异常；只有成功后才将三个 public symbols 以该 immutable APK/test 解析为 required。该批次不承诺或修改 Comix 的 WebView、Cookie、Handler/Looper 与图像处理路径。
+
 #### Task 7D: Parity evidence and runtime verification
 
 - Risk axis: `parity-runtime-evidence`
