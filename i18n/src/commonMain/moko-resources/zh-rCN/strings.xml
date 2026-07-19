@@ -111,6 +111,8 @@
     <string name="desktop_extension_open_folder_failed">无法打开扩展文件夹</string>
     <string name="desktop_extension_cookies_cleared">已清除 %d 个域名的 Cookie</string>
     <string name="desktop_extension_remove_metadata_confirmation">移除 %s 及其元数据？</string>
+    <string name="desktop_more_extensions_summary">管理已安装的图源插件</string>
+    <string name="desktop_more_extension_repos_summary">添加或移除插件仓库</string>
     <string name="desktop_extension_remove_confirmation">移除“%s”及其所有来源？此操作无法撤销。</string>
     <string name="desktop_source_preferences_missing">该图源已不可用。</string>
     <string name="desktop_source_preferences_non_configurable">该图源未提供设置。</string>

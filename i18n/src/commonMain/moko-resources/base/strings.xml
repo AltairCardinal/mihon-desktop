@@ -354,6 +354,8 @@
     <string name="desktop_extension_open_folder_failed">Unable to open extension folder</string>
     <string name="desktop_extension_cookies_cleared">Cleared cookies for %d domain(s)</string>
     <string name="desktop_extension_remove_metadata_confirmation">Remove %s and its metadata?</string>
+    <string name="desktop_more_extensions_summary">Manage installed source extensions</string>
+    <string name="desktop_more_extension_repos_summary">Add or remove extension repositories</string>
     <string name="desktop_extension_remove_confirmation">Remove “%s” and all its sources? This cannot be undone.</string>
     <string name="desktop_source_preferences_missing">Source is no longer available.</string>
     <string name="desktop_source_preferences_non_configurable">This source does not provide settings.</string>

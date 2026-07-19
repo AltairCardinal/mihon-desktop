@@ -33,9 +33,11 @@ import mihon.desktop.ui.settings.MoreRootScreen
 import mihon.desktop.ui.settings.TestScreenNavigator
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
+import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
 import java.io.File
+import java.util.Locale
 
 @OptIn(ExperimentalComposeUiApi::class)
 class SourceExtensionNavigationContractTest {
@@ -72,7 +74,7 @@ class SourceExtensionNavigationContractTest {
             }
             scene.render()
 
-            click(scene, "Extensions")
+            click(scene, MR.strings.label_extensions.localized())
             Assertions.assertTrue(navigator.lastItem is ExtensionListScreen)
             navigator.pop()
 
@@ -156,7 +158,7 @@ class SourceExtensionNavigationContractTest {
             Assertions.assertEquals(extension.jarFile.absolutePath, (navigator.lastItem as ExtensionDetailsScreen).jarPath)
             navigator.pop()
             scene.render()
-            clickDescription(scene, "Settings for ${source.name}")
+            clickDescription(scene, MR.strings.desktop_extension_source_settings.localized(Locale.getDefault(), source.name))
             val settings = navigator.lastItem as SourcePreferencesScreen
             Assertions.assertEquals(source.id, settings.sourceId)
             Assertions.assertEquals(source.name, settings.sourceName)

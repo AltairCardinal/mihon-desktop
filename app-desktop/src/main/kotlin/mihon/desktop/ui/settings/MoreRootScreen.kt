@@ -43,6 +43,7 @@ import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.test.state.applicationState
 import mihon.desktop.ui.extension.extensionListDestination
 import mihon.desktop.ui.migration.MigrationSearchScreen
+import tachiyomi.i18n.MR
 
 class MoreRootScreen : Screen {
 
@@ -169,8 +170,8 @@ class MoreRootScreen : Screen {
                 item {
                     SettingsEntry(
                         icon = Icons.Default.Extension,
-                        title = "Extensions",
-                        subtitle = "Manage installed source extensions",
+                        title = MR.strings.label_extensions.localized(),
+                        subtitle = MR.strings.desktop_more_extensions_summary.localized(),
                         onClick = { onExtensions(navigator) },
                     )
                     HorizontalDivider()
@@ -178,8 +179,8 @@ class MoreRootScreen : Screen {
                 item {
                     SettingsEntry(
                         icon = Icons.Default.Extension,
-                        title = "Extension Repos",
-                        subtitle = "Add or remove extension repositories",
+                        title = MR.strings.label_extension_repos.localized(),
+                        subtitle = MR.strings.desktop_more_extension_repos_summary.localized(),
                         onClick = { navigator.push(ExtensionRepoScreen()) },
                     )
                     HorizontalDivider()
