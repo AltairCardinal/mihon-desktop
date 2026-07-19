@@ -1497,9 +1497,9 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `compat-real-fixture-evidence`
 - Platform boundary: `verification`
-- Estimated scope: `8 files, 650 lines plus one 70,062-byte binary fixture`
+- Estimated scope: `9 files, 750 lines plus one 70,062-byte binary fixture`
 - Verification: 真实 APK/JAR 必须通过 production converter/loader 并实际调用所声明 symbol；parent classpath fixture、仅加载 class 或网络调查输出不算 `required` 证据。每条真实证据负责将对应 inventory 项从 `unverified` 解析为 `required` 或具备真实失败证据的 `unsupported`。
-- Split waiver: 二进制 fixture/provenance/loader outcome 与 exact shim invocation 需要不同的 RED 和审查，按 7B1/7B2 调度；任何单次实现仍不超过 6 files/350 lines。
+- Split waiver: 二进制 fixture/provenance/loader outcome、production DI wiring 与 evidence/baseline 清理需要不同的 RED 和审查，按 7B1/7B2/7B3 调度；任何单次实现仍不超过 4 files/350 lines。
 
 ##### Task 7B1: Immutable real APK 与 production loader outcome
 
@@ -1512,10 +1512,17 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `compat-exact-invocation-resolution`
 - Platform boundary: `desktop`
-- Estimated scope: `6 files, 350 lines`
+- Estimated scope: `4 files, 350 lines`
 - Verification: 只消费 7B1 的真实 loader outcome；固定 main `AppModule` 明确 `addSingleton(app)`，而 7B1 证明真实 extension 构造通过 Injekt 精确请求 `android.app.Application`，因此先将 fixture 期望改为 success 取得 RED，再让 Desktop 初始化现有 Application adapter 并注册同一 contract。成功必须返回 converted-JAR Source；只有该因果链闭合后才能把 Application/Source evidence 解析为 `required`。仅 linkage/class-load 不得升级为 `required`，不得批量新增 shim；若出现下一 gap，停止并继续拆分。
 
   7B1 evidence: commit `cf9835804`；RED1 精确失败于本地 fixture 缺失，RED2 在真实 Desktop DI、manifest、converter、meta 与 production loader 后精确得到 `InjektionException: No registered instance or factory for type class android.app.Application`。GREEN 将该唯一 outcome 固定为 provenance 中的结构化 `unsupported`，任意其他 Throwable 均失败；XML `1/0/0`。APK 固定上游 commit/blob/70,062 bytes/SHA-256，Git binary attrs 保证普通 stage/fresh checkout 不改字节。独立 review APPROVED；范围 `4 files, 160 text lines plus APK`。
+
+##### Task 7B3: Resolved evidence 与旧 baseline 收口
+
+- Risk axis: `compat-resolved-evidence-baseline`
+- Platform boundary: `verification`
+- Estimated scope: `4 files, 250 lines`
+- Verification: 只在 7B2 真实 fixture 成功后，将 `android.app.Application` inventory 与 fixed-main `Source` ABI evidence 解析为本地 fixture 的 `required`；同步移除 `DesktopExtensionProductBaselineTest` 对单一 ManHuaGui 条目和测试源码字符串的假验证，改由真实 fixture 行为测试与 `CompatEvidenceContractTest` 保护。其他 42 个 inventory 项保持 `unverified`，不得借成功加载一个扩展批量升级。
 
 #### Task 7C: Compat package prune batches
 
