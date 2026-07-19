@@ -1885,6 +1885,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `3 files, 100 lines`
 - Verification: 仅在 7C3o1b/3b1/3b2 独立审查通过后修改 inventory/evidence/contract；按真实产品链实际执行结果标记 Editable/TextWatcher/TextView/EditText/Button/View 相关边界，区分 required callback semantics 与 unsupported Android widget rendering。不得把仅被 descriptor 链接但未执行的 UI engine 行为写成已支持；反向契约必须唯一绑定 tracked MangaDex fixture 与真实 preference validation test。
 
+  Evidence: commit `8d164048d`，严格 3 ledger files。contract RED 为 Editable 尚无真实执行边界；GREEN 将 MangaDex reverse 固定为 Editable/TextWatcher/View/Button/EditText/TextView 六项，均唯一绑定 tracked SHA+real validator test。Editable/三回调/View root+find/EditText构造/TextView watcher+error均实际执行；Button仅nullable checkcast token，不宣称构造/setEnabled/rendering。AndroidX EditTextPreference 原 Comix 强证据逐字段不变，surface 32/41、状态38/1/2。独立 review APPROVED；contract5/5、MangaDex1/1、Comix preference2/2全绿，Java0。
+
 ##### Task 7C3p1: verifier-only CookieManager shim prune
 
 - Risk axis: `cookie-manager-shim-prune`
