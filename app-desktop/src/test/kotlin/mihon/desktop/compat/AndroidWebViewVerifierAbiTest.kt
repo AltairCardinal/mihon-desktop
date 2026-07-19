@@ -11,7 +11,7 @@ import java.lang.reflect.Proxy
 class AndroidWebViewVerifierAbiTest {
 
     @Test
-    fun `WebView verifier closure exposes exact ABI and fails fast without a browser engine`() {
+    fun `WebView constructs an ABI shell and fails fast on the first browser engine method`() {
         val context = Class.forName("android.content.Context")
         val viewGroup = Class.forName("android.view.ViewGroup")
         val bitmap = Class.forName("android.graphics.Bitmap")
@@ -74,12 +74,12 @@ class AndroidWebViewVerifierAbiTest {
         assertEquals(Void.TYPE, setAcceptThirdPartyCookies.returnType)
 
         val contextInstance = context.getConstructor().newInstance()
-        assertUnsupported { webView.getConstructor(context).newInstance(contextInstance) }
-        val webViewInstance = allocateWithoutConstructor(webView)
+        val webViewInstance = webView.getConstructor(context).newInstance(contextInstance)
+        assertEquals(webView, webViewInstance.javaClass)
+        assertUnsupported { getSettings.invoke(webViewInstance) }
         val clientInstance = webViewClient.getConstructor().newInstance()
         val callbackInstance = Proxy.newProxyInstance(valueCallback.classLoader, arrayOf(valueCallback)) { _, _, _ -> null }
         listOf(
-            getSettings to emptyArray(),
             addJavascriptInterface to arrayOf(Any(), "bridge"),
             setWebViewClient to arrayOf(clientInstance),
             loadDataWithBaseUrl to arrayOf("https://example.com", "data", "text/html", "UTF-8", "history"),
@@ -118,12 +118,6 @@ class AndroidWebViewVerifierAbiTest {
 
         val cookieInstance = cookieManager.getMethod("getInstance").invoke(null)
         assertUnsupported { setAcceptThirdPartyCookies.invoke(cookieInstance, webViewInstance, true) }
-    }
-
-    private fun allocateWithoutConstructor(type: Class<*>): Any {
-        val unsafeClass = Class.forName("sun.misc.Unsafe")
-        val field = unsafeClass.getDeclaredField("theUnsafe").apply { isAccessible = true }
-        return unsafeClass.getMethod("allocateInstance", Class::class.java).invoke(field.get(null), type)
     }
 
     private fun assertUnsupported(call: () -> Unit) {

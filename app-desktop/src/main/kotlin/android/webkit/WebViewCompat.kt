@@ -7,10 +7,6 @@ import android.view.ViewGroup
 import java.io.InputStream
 
 open class WebView(context: Context) : ViewGroup() {
-    init {
-        unavailable()
-    }
-
     open fun getSettings(): WebSettings = unavailable()
 
     open fun addJavascriptInterface(instance: Any, name: String) {
