@@ -1366,10 +1366,12 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Files: `DesktopAppModule.kt`、`DesktopDiWiringTest.kt`。
 - Boundary: bridge 仅保存 controller 指针，不缓存 snapshot；`TestMode.stop()` 不清 bridge，以便同一 DI 下重启 Test Mode。
 
-- [ ] RED：DI 中无 controller 绑定，bridge 不随 context 重建/关闭替换。
-- [ ] GREEN：用同一 model 注册 controller，并实现 identity-safe 生命周期。
-- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.di.DesktopDiWiringTest"`
-- [ ] Commit: `test(desktop): wire extension controller lifecycle`
+- [x] RED：DI 中无 controller 绑定，bridge 不随 context 重建/关闭替换。
+- [x] GREEN：用同一 model 注册 controller，并实现 identity-safe 生命周期。
+- [x] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.di.DesktopDiWiringTest"`
+- [x] Commit: `test(desktop): wire extension controller lifecycle`
+
+  Evidence: commit `3a083ff50`；RED 因 Injekt 缺 controller 绑定精确失败，GREEN 后 `DesktopDiWiringTest` 8/8 通过。同一 model 被 Injekt/controller/bridge/context 共用，重建替换实例，关闭顺序为 identity-safe clear 再 close model；独立 review APPROVED；`2 files, 33 lines`。
 
 #### Task 6E3B2B: Extension Test Mode HTTP production bridge
 
