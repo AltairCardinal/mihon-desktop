@@ -57,6 +57,25 @@ class CompatEvidenceContractTest {
         }
     }
 
+    @Test
+    fun `Comix WebView evidence resolves only the compat surface executed before fail fast`() {
+        val root = repositoryRoot()
+        val entries = inventory(root).entries.associateBy(Entry::symbol)
+        val evidence = evidence(root)
+
+        COMIX_WEBVIEW_STATUSES.forEach { (symbol, status) ->
+            assertEquals(status, entries.getValue(symbol).status, "$symbol must reflect the real Comix invocation")
+            val matching = evidence.filter { it.symbol == symbol }
+            assertEquals(1, matching.size, "$symbol must have exactly one evidence item")
+            assertEquals(COMIX_WEBVIEW_TEST, matching.single().test, "$symbol must bind to the real Comix WebView test")
+        }
+        assertEquals(
+            COMIX_WEBVIEW_STATUSES.keys,
+            evidence.filter { it.test == COMIX_WEBVIEW_TEST }.map(Evidence::symbol).toSet(),
+            "the Comix WebView test must not resolve compat APIs it does not execute",
+        )
+    }
+
     private fun scanSurface(root: Path): Surface {
         val files = ADAPTER_ROOTS.flatMap { adapter ->
             Files.walk(root.resolve(adapter)).use { paths -> paths.filter { Files.isRegularFile(it) }.toList() }
@@ -147,6 +166,14 @@ class CompatEvidenceContractTest {
         val STATUSES = setOf("unverified", "required", "unsupported")
         val ENTRY_FIELDS = setOf("symbol", "status", "nextEvidence")
         val BANNED = listOf("http://", "https://", "parent-classpath", "AndroidCompat", "MinimalTestSource")
+        const val COMIX_WEBVIEW_TEST =
+            "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt"
+        val COMIX_WEBVIEW_STATUSES = mapOf(
+            "android.os.Handler" to "required",
+            "android.os.Looper" to "required",
+            "android.webkit.WebResourceResponse" to "required",
+            "android.webkit.WebView" to "unsupported",
+        )
         val PUBLIC_TYPE = Regex(
             "(?:(?:public|data|enum|sealed|open|abstract|value|fun)\\s+)*" +
                 "(?:class|interface|object)\\s+([A-Za-z_]\\w*).*?",

@@ -77,6 +77,34 @@
     "removalCondition": "Remove when real APK source clients no longer execute the Android SystemClock rate-limit ABI."
   },
   {
+    "symbol": "android.os.Handler",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comix-1.4.34.apk@sha256:5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the immutable Comix APK no longer constructs Handler and posts its real WebView startup path."
+  },
+  {
+    "symbol": "android.os.Looper",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comix-1.4.34.apk@sha256:5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the immutable Comix APK no longer resolves the main Looper before scheduling WebView startup."
+  },
+  {
+    "symbol": "android.webkit.WebResourceResponse",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comix-1.4.34.apk@sha256:5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the immutable Comix APK no longer constructs WebResourceResponse before entering WebView startup."
+  },
+  {
+    "symbol": "android.webkit.WebView",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comix-1.4.34.apk@sha256:5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt",
+    "status": "unsupported",
+    "removalCondition": "Remove when Desktop gains a real WebView engine or the immutable Comix APK no longer reaches WebView construction."
+  },
+  {
     "symbol": "android.util.Base64",
     "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-favcomic-1.4.1.apk@sha256:bc6f5d1b01e62baeeba44f4e7b259eb33b1c76ad261e403ad512b3ff73fe67ab",
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionBase64CompatTest.kt",
