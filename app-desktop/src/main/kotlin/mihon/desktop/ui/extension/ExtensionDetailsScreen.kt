@@ -41,6 +41,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
@@ -62,7 +63,20 @@ import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.awt.Desktop
+import java.io.File
 import java.net.URI
+
+internal data class ExtensionDetailsPlatformActions(
+    val openDirectory: (File) -> Boolean,
+    val openUrl: (String) -> Result<Unit>,
+)
+
+internal val LocalExtensionDetailsPlatformActions = staticCompositionLocalOf {
+    ExtensionDetailsPlatformActions(
+        openDirectory = DesktopDirectoryOpener::open,
+        openUrl = { url -> runCatching { Desktop.getDesktop().browse(URI(url)) } },
+    )
+}
 
 data class ExtensionDetailsScreen(val jarPath: String) : Screen {
     @OptIn(ExperimentalMaterial3Api::class)
@@ -70,6 +84,7 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val dependencies = LocalDesktopUiDependencies.current
+        val platformActions = LocalExtensionDetailsPlatformActions.current
         val model = remember { Injekt.get<ExtensionsScreenModel>() }
         val state by model.state.collectAsState()
         val sourceManager = dependencies.sourceManager as? DesktopSourceManager
@@ -88,7 +103,7 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
         }
 
         fun openUrl(url: String) {
-            runCatching { Desktop.getDesktop().browse(URI(url)) }
+            platformActions.openUrl(url)
                 .onFailure { scope.launch { snackbar.showSnackbar("Unable to open link: ${it.message}") } }
         }
 
@@ -150,7 +165,7 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                             Spacer(Modifier.height(4.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 OutlinedButton(onClick = {
-                                    if (!DesktopDirectoryOpener.open(extension.jarFile.parentFile)) {
+                                    if (!platformActions.openDirectory(extension.jarFile.parentFile)) {
                                         scope.launch { snackbar.showSnackbar("Unable to open extension folder") }
                                     }
                                 }) {

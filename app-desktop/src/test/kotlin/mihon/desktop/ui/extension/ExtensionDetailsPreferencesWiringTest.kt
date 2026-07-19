@@ -13,6 +13,9 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import dev.mihon.injekt.patchInjekt
+import eu.kanade.tachiyomi.network.DesktopCookieJar
+import eu.kanade.tachiyomi.source.ConfigurableSource
+import eu.kanade.tachiyomi.source.online.HttpSource
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -25,10 +28,15 @@ import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopExtensionManager
+import mihon.desktop.extension.ExtensionOrigin
 import mihon.desktop.extension.InstalledExtension
+import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.settings.DesktopAppPreferences
+import mihon.desktop.source.DesktopSourceManager
+import mihon.desktop.ui.browse.SourceBrowseScreen
 import mihon.domain.extension.model.ExtensionCatalogResult
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -48,12 +56,28 @@ class ExtensionDetailsPreferencesWiringTest {
     @OptIn(ExperimentalComposeUiApi::class)
     @Test
     fun `details waits for authoritative removal and keeps desktop capabilities`() = runBlocking {
-        val jar = tempDir.resolve("pkg.details.jar").also { it.createNewFile() }
+        val jar = tempDir.resolve("pkg.details.jar").also { it.writeText("desktop-extension") }
+        val source = mockk<HttpSource>(relaxed = true, moreInterfaces = arrayOf(ConfigurableSource::class)) {
+            every { id } returns 42L
+            every { name } returns "Configurable web source"
+            every { lang } returns "en"
+            every { baseUrl } returns "https://source.example/path"
+        }
         val installed = InstalledExtension(
             jarFile = jar,
-            sources = emptyList(),
+            sources = listOf(source),
             displayName = "Details extension",
             versionName = "1.0.0",
+            artifactSha256 = "sha-details",
+            repoName = "Details repository",
+            repoUrl = "https://repo.example/details",
+            repoFingerprint = "fingerprint-details",
+            origin = ExtensionOrigin.COMPILED_JAR,
+        )
+        val converted = installed.copy(
+            jarFile = tempDir.resolve("pkg.converted.jar").also { it.writeText("converted") },
+            displayName = "Converted extension",
+            origin = ExtensionOrigin.CONVERTED_APK,
         )
         val installedFlow = MutableStateFlow<List<InstalledExtension>>(emptyList())
         val catalog = ExtensionCatalogResult(emptyList(), emptyList())
@@ -79,19 +103,38 @@ class ExtensionDetailsPreferencesWiringTest {
         val preferences = DesktopAppPreferences(
             DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")),
         )
+        val sourceManager = mockk<DesktopSourceManager>(relaxed = true) {
+            every { isSourceEnabled(42L) } returns true
+        }
+        val cookies = mockk<DesktopCookieJar> {
+            every { clearDomains(setOf("source.example")) } returns 2
+        }
+        val network = mockk<DesktopNetworkHelper> { every { cookieJar } returns cookies }
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { extensionApi } returns api
             every { extensionManager } returns manager
             every { appPreferences } returns preferences
+            every { this@mockk.sourceManager } returns sourceManager
+            every { networkHelper } returns network
         }
-        val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
+        val scene = ImageComposeScene(900, 1400, coroutineContext = coroutineContext) {}
+        val openedDirectories = mutableListOf<File>()
+        val openedUrls = mutableListOf<String>()
+        var directoryResult = true
+        val platformActions = ExtensionDetailsPlatformActions(
+            openDirectory = { openedDirectories += it; directoryResult },
+            openUrl = { openedUrls += it; Result.success(Unit) },
+        )
         val previous = Injekt
         var navigator: Navigator? = null
         try {
             patchInjekt()
             Injekt.addSingleton(model)
             scene.setContent {
-                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                CompositionLocalProvider(
+                    LocalDesktopUiDependencies provides dependencies,
+                    LocalExtensionDetailsPlatformActions provides platformActions,
+                ) {
                     Navigator(DetailsRoot) { current ->
                         navigator = current
                         LaunchedEffect(Unit) { current.push(ExtensionDetailsScreen(jar.absolutePath)) }
@@ -99,32 +142,62 @@ class ExtensionDetailsPreferencesWiringTest {
                     }
                 }
             }
-            renderUntil(scene) { refreshEntered.isCompleted }
+            renderUntil(scene, "mounted refresh") { refreshEntered.isCompleted }
             assertTrue(navigator?.lastItem is ExtensionDetailsScreen)
             assertTrue(nodes(scene).any { it.config.toString().contains(MR.strings.loading.localized()) })
             releaseRefresh.complete(Unit)
-            renderUntil(scene) { navigator?.lastItem === DetailsRoot }
-            installedFlow.value = listOf(installed)
-            renderUntil(scene) { model.state.value.projection?.installed?.singleOrNull()?.installed === installed }
+            renderUntil(scene, "missing pop") { navigator?.lastItem === DetailsRoot }
+            installedFlow.value = listOf(installed, converted)
+            renderUntil(scene, "authoritative install") { model.state.value.projection?.installed?.any { it.installed === installed } == true }
             navigator?.push(ExtensionDetailsScreen(jar.absolutePath))
-            renderUntil(scene) {
+            renderUntil(scene, "details content") {
                 navigator?.lastItem is ExtensionDetailsScreen &&
                     nodes(scene).any { it.config.toString().contains("Details extension") }
             }
             val rendered = nodes(scene).joinToString { it.config.toString() }
-            listOf("Details extension", jar.absolutePath, "SHA-256", "Repository fingerprint", "Open folder", "Incognito mode", "Clear extension cookies")
+            listOf("Details extension", jar.absolutePath, "Size: ${jar.length()} bytes", "SHA-256: sha-details", "Repository: Details repository", "Repository fingerprint: fingerprint-details", "Native desktop JAR")
                 .forEach { assertTrue(rendered.contains(it), "missing Desktop capability: $it") }
+            click(scene, "Open folder")
+            assertEquals(jar.parentFile, openedDirectories.single())
+            click(scene, "Repository")
+            assertEquals(installed.repoUrl, openedUrls.single())
+            click(scene, "Open Configurable web source website")
+            assertEquals("https://source.example/path", openedUrls.last())
+            toggle(scene, 0)
+            verify { sourceManager.setSourceEnabled(42L, false) }
+            click(scene, "Settings for Configurable web source")
+            assertTrue((navigator?.lastItem as SourcePreferencesScreen).let { it.sourceId == 42L && it.sourceName == "Configurable web source" })
+            navigator?.pop()
+            scene.render()
+            click(scene, "Browse")
+            assertTrue((navigator?.lastItem as SourceBrowseScreen).sourceId == 42L)
+            navigator?.pop()
+            scene.render()
+            click(scene, "Incognito mode for ${installed.pkgName}")
+            assertTrue(installed.pkgName in preferences.incognitoExtensions.get())
+            click(scene, "Clear extension cookies")
+            verify { cookies.clearDomains(setOf("source.example")) }
+            renderUntil(scene, "cookie feedback") { nodes(scene).any { it.config.toString().contains("Cleared cookies for 2 domain(s)") } }
+            dismissSnackbar(scene)
+            directoryResult = false
+            click(scene, "Open folder")
+            renderUntil(scene, "directory failure feedback") { nodes(scene).any { it.config.toString().contains("Unable to open extension folder") } }
+            dismissSnackbar(scene)
+            navigator?.push(ExtensionDetailsScreen(converted.jarFile.absolutePath))
+            renderUntil(scene, "converted origin") { nodes(scene).any { it.config.toString().contains("Converted from Android APK") } }
+            navigator?.pop()
+            scene.render()
 
             uninstall(scene)
             assertTrue(navigator?.lastItem is ExtensionDetailsScreen)
-            renderUntil(scene) {
+            renderUntil(scene, "uninstall failure") {
                 nodes(scene).any { it.config.toString().contains(MR.strings.desktop_extension_uninstall_failed.localized()) }
             }
 
             uninstall(scene)
             assertTrue(navigator?.lastItem is ExtensionDetailsScreen)
             installedFlow.value = emptyList()
-            renderUntil(scene) { navigator?.lastItem === DetailsRoot }
+            renderUntil(scene, "uninstall removal") { navigator?.lastItem === DetailsRoot }
             verify(exactly = 2) { manager.removeExtensionWithMeta(installed) }
             assertSame(DetailsRoot, navigator?.lastItem)
         } finally {
@@ -141,13 +214,13 @@ class ExtensionDetailsPreferencesWiringTest {
         scene.render()
     }
 
-    private suspend fun renderUntil(scene: ImageComposeScene, condition: () -> Boolean) {
+    private suspend fun renderUntil(scene: ImageComposeScene, label: String = "condition", condition: () -> Boolean) {
         repeat(50) {
             scene.render()
             if (condition()) return
             yield()
         }
-        assertTrue(condition())
+        assertTrue(condition(), label)
     }
 
     @OptIn(ExperimentalComposeUiApi::class)
@@ -157,11 +230,21 @@ class ExtensionDetailsPreferencesWiringTest {
     private fun click(scene: ImageComposeScene, label: String, last: Boolean = false) {
         val matches = nodes(scene).filter {
             it.config.contains(SemanticsActions.OnClick) &&
-                it.config.contains(SemanticsProperties.Text) &&
-                it.config[SemanticsProperties.Text].any { text -> text.text == label }
+                (it.config.contains(SemanticsProperties.Text) && it.config[SemanticsProperties.Text].any { text -> text.text == label } ||
+                    it.config.contains(SemanticsProperties.ContentDescription) && it.config[SemanticsProperties.ContentDescription].contains(label))
         }
         val node = if (last) matches.last() else matches.first()
         assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
+    }
+
+    private fun toggle(scene: ImageComposeScene, index: Int) {
+        val node = nodes(scene).filter { it.config.contains(SemanticsProperties.ToggleableState) }[index]
+        assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
+    }
+
+    private suspend fun dismissSnackbar(scene: ImageComposeScene) {
+        nodes(scene).first { it.config.contains(SemanticsActions.Dismiss) }.config[SemanticsActions.Dismiss]?.action?.invoke()
+        renderUntil(scene, "snackbar dismissed") { nodes(scene).none { it.config.contains(SemanticsActions.Dismiss) } }
     }
 
     private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
