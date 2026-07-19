@@ -51,6 +51,22 @@ import java.util.concurrent.atomic.AtomicReference
 
 class DesktopChallengeRecoveryPolicyTest {
     @Test
+    fun `production client exposes upstream cloudflare interceptor runtime contract`(
+        @TempDir tempDir: Path,
+    ) {
+        DesktopNetworkHelper(
+            cacheDir = tempDir.resolve("contract-cache").toFile(),
+            cookieStorageFile = tempDir.resolve("contract-cookies.json").toFile(),
+            challengeManager = CloudflareChallengeManager(),
+        ).use { helper ->
+            assertTrue(
+                helper.client.interceptors.any { it.javaClass.simpleName == "CloudflareInterceptor" },
+                "Keiyoushi sources require an application interceptor named CloudflareInterceptor",
+            )
+        }
+    }
+
+    @Test
     fun `403 and 503 only publish recovery and explicit cancel preserves existing cookies`() {
         listOf(403, 503).forEach { status ->
             val sourceServer = MockWebServer().also { it.start() }

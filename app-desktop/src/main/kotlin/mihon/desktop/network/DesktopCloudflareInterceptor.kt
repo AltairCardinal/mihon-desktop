@@ -7,7 +7,7 @@ import tachiyomi.domain.source.service.SourceLoginRequest
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
-class DesktopCloudflareInterceptor(
+class CloudflareInterceptor(
     private val challengeManager: CloudflareChallengeManager,
 ) : Interceptor {
 
@@ -29,7 +29,7 @@ class DesktopCloudflareInterceptor(
         val challenge = challengeManager.publish(
             SourceLoginRequest(
                 url = originalRequest.url,
-                requiredCookieNames = setOf(CF_CLEARANCE_COOKIE_NAME),
+                requiredCookieNames = setOf(mihon.desktop.network.CF_CLEARANCE_COOKIE_NAME),
                 timeoutMillis = TimeUnit.SECONDS.toMillis(TIMEOUT_SECONDS),
             ),
         )
@@ -57,6 +57,8 @@ class DesktopCloudflareInterceptor(
         internal const val TIMEOUT_SECONDS = 120L
     }
 }
+
+typealias DesktopCloudflareInterceptor = CloudflareInterceptor
 
 class DesktopCloudflareCredentialInterceptor(
     private val challengeManager: CloudflareChallengeManager,
