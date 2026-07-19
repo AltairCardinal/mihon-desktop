@@ -1,0 +1,23 @@
+{
+  "authorityRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+  "repository": "https://github.com/keiyoushi/extensions",
+  "repositoryCommit": "7d5052fb895d086ae2ec6e3cca861146ee3ea0ec",
+  "gitBlob": "4529f7017f762a70d52bc15ff70e6260fae17d98",
+  "license": "Apache-2.0",
+  "fixturePath": "app-desktop/src/test/resources/extensions/real/keiyoushi-manhuagui-1.4.28.apk",
+  "sha256": "200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8",
+  "sizeBytes": 70062,
+  "packageName": "eu.kanade.tachiyomi.extension.zh.manhuagui",
+  "versionCode": 28,
+  "versionName": "1.4.28",
+  "extensionClass": "eu.kanade.tachiyomi.extension.zh.manhuagui.ExtensionGenerated",
+  "expectedOutcome": "unsupported",
+  "rootCauseType": "uy.kohesive.injekt.api.InjektionException",
+  "rootCauseMessage": "No registered instance or factory for type class android.app.Application",
+  "rawUrl": [
+    "https://raw.githubusercontent.com/keiyoushi/extensions/",
+    "7d5052fb895d086ae2ec6e3cca861146ee3ea0ec/",
+    "apk/tachiyomi-zh.manhuagui-v1.4.28.apk"
+  ],
+  "retrievedAt": "2026-07-19"
+}
