@@ -1172,9 +1172,11 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 
 Scope correction: Details 改为从 Injekt singleton authoritative state 取值后，既有 incognito 真实 Compose fixture 会因仍按 manager snapshot 架构而抛 `InjektionException`；该测试必须同步注册同一 ScreenModel 并恢复 Injekt scope。预计组合仍低于 300 lines，不新增生产文件。
 
-- [ ] **Step 1: 写 details authoritative/uninstall/Desktop-entry RED**
-- [ ] **Step 2: 接入 ScreenModel 与保留 Desktop unique adapters**
-- [ ] **Step 3: 运行 GREEN 与断线 mutation**
+- [x] **Step 1: 写 details authoritative/uninstall RED**
+- [x] **Step 2: 接入 ScreenModel authoritative lifecycle**
+- [x] **Step 3: 运行 GREEN 与 refresh/pop 断线 mutation**
+
+  Evidence: commit `e7ad5fc7d`；Details 初始 projection 为空时自行 refresh 并显示 spinner + `MR.loading`，阻塞期间不 pop；refresh 后 empty installed 才 pop，authoritative item 出现可重入。typed uninstall false 留页反馈，true 等待 installed flow removal。断开 refresh effect 或 missing pop 均使真实 Navigator 测试超时；fresh `Details 1 / Incognito 2 / DI singleton 1` 全绿，6D3a review APPROVED，范围 `5 files, 288 lines`。
 
 ##### Task 6D3b: Desktop details adapter 与独有入口 wiring
 
