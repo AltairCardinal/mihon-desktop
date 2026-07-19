@@ -1254,10 +1254,12 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Files: `SourceExtensionNavigationContractTest.kt`；仅当无法通过现有 DI fixture 注入真实 model 时，允许在 `ExtensionListScreen.kt` 增加不改变行为的 typed model provider seam，总数不超过 2。
 - Boundary: 这是 test-evidence closure，不重写导航、不再修改响应式 automation，不以测试自造 lambda 代替 production wiring。
 
-- [ ] 按现有 production 行为直接增加集成证据；若当前真实链路断开才进入 RED/GREEN 修复。
-- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.SourceExtensionNavigationContractTest" --tests "mihon.desktop.ui.extension.ExtensionDetailsPreferencesWiringTest"`
-- [ ] Review: 新 reviewer 只审查真实 ExtensionList 点击链和精确参数，不重复已关闭的 automation 修复轮。
-- [ ] Commit: `test(desktop): close extension list navigation wiring`
+- [x] 按现有 production 行为直接增加集成证据；若当前真实链路断开才进入 RED/GREEN 修复。
+- [x] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.SourceExtensionNavigationContractTest" --tests "mihon.desktop.ui.extension.ExtensionDetailsPreferencesWiringTest"`
+- [x] Review: 新 reviewer 只审查真实 ExtensionList 点击链和精确参数，不重复已关闭的 automation 修复轮。
+- [x] Commit: `test(desktop): close extension list navigation wiring`
+
+  Evidence: commit `7c12cb04e`；真实 `ExtensionListScreen.Content` 通过 production `ExtensionsScreenModel`、Injekt 与 Desktop dependencies 呈现 installed configurable source，点击卡片与设置分别断言 exact `jarPath`、`sourceId`、`sourceName`。focused `SourceNavigation 3 + DetailsPreferences 2` 全绿，`2 files, 114 lines`；新 reviewer APPROVED，无 P0/P1/P2，确认移除直接渲染 private `ExtensionCard` 和测试自造 lambda 的绕路。
 
 #### Task 6E2: Source/Extension 本地化行为
 
