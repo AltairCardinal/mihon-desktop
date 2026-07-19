@@ -1,0 +1,21 @@
+{
+  "authorityRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+  "repository": "https://github.com/keiyoushi/extensions",
+  "repositoryCommit": "04bd989e5ff1f9dda0148c0aad6bac0889e03edb",
+  "gitBlob": "12ed843aee2449b8b8793857b874efac0cf98957",
+  "license": "Apache-2.0",
+  "fixturePath": "app-desktop/src/test/resources/extensions/real/keiyoushi-tcbscans-1.4.12.apk",
+  "sha256": "bf5a2bfd907d54c1ab5438f09a3a45693b597fcc27fc914241d9cd3e491ce1d2",
+  "sizeBytes": 29544,
+  "packageName": "eu.kanade.tachiyomi.extension.en.tcbscans",
+  "versionCode": 12,
+  "versionName": "1.4.12",
+  "extensionClass": "eu.kanade.tachiyomi.extension.en.tcbscans.ExtensionGenerated",
+  "expectedOutcome": "success",
+  "rawUrl": [
+    "https://raw.githubusercontent.com/keiyoushi/extensions/",
+    "04bd989e5ff1f9dda0148c0aad6bac0889e03edb/",
+    "apk/tachiyomi-en.tcbscans-v1.4.12.apk"
+  ],
+  "retrievedAt": "2026-07-19"
+}

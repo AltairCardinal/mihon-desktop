@@ -7,6 +7,7 @@ open class ApplicationInfo {
     var packageName: String = "mihon.desktop"
     var name: String? = null
     var sourceDir: String? = null
+    @JvmField
     var dataDir: String? = null
     var nativeLibraryDir: String? = null
     var flags: Int = 0

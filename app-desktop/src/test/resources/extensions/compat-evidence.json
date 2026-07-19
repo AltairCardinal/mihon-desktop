@@ -21,6 +21,13 @@
     "removalCondition": "Remove when real source settings no longer use ContextWrapper-backed storage."
   },
   {
+    "symbol": "android.content.pm.ApplicationInfo",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-tcbscans-1.4.12.apk@sha256:bf5a2bfd907d54c1ab5438f09a3a45693b597fcc27fc914241d9cd3e491ce1d2",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionTcbScansCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when real APK source constructors no longer resolve their legacy preference path through ApplicationInfo.dataDir."
+  },
+  {
     "symbol": "android.content.SharedPreferences",
     "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-manhuagui-1.4.28.apk@sha256:200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8",
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt",
@@ -33,6 +40,13 @@
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionPageListCompatTest.kt",
     "status": "required",
     "removalCondition": "Remove when real APK source clients no longer execute the Android SystemClock rate-limit ABI."
+  },
+  {
+    "symbol": "android.util.Log",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-tcbscans-1.4.12.apk@sha256:bf5a2bfd907d54c1ab5438f09a3a45693b597fcc27fc914241d9cd3e491ce1d2",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionTcbScansCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when real APK source constructors no longer invoke the static Android Log ABI during legacy preference cleanup."
   },
   {
     "symbol": "androidx.preference.CheckBoxPreference",

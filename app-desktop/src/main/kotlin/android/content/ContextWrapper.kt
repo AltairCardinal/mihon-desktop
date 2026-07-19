@@ -1,5 +1,7 @@
 package android.content
 
+import android.content.pm.ApplicationInfo
+
 /**
  * Desktop stub for android.content.ContextWrapper.
  * Proxies all calls to a base [Context].
@@ -19,6 +21,10 @@ open class ContextWrapper(private var mBase: Context?) : Context() {
         mBase!!.getSharedPreferences(name, mode)
 
     override fun getPackageName(): String = mBase!!.getPackageName()
+
+    open fun getApplicationInfo(): ApplicationInfo = ApplicationInfo().apply {
+        dataDir = getFilesDir().parentFile.absolutePath
+    }
 
     override fun getString(resId: Int): String = mBase!!.getString(resId)
 
