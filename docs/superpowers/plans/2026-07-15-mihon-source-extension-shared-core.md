@@ -1607,6 +1607,13 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Evidence: implementation `1feb0e07e`、ABI repair `18a6a708b`。真实 Comix RED 精确证明 3 个 MultiSelect 的上游默认集合和 `pref_show_extra_info=true` 被 Desktop 转换为空/false，UI RED 精确证明点击黑名单设置后仍显示行标题而非 `Exclude groups`；GREEN 从 inherited AndroidX `defaultValue` 读取默认值并保留仅 null 时回退当前状态，EditText descriptor 读取 dialog title，Compose 使用 `dialogTitle ?: title`。真实 APK 经 production DI/converter/loader/settings resolver 后断言 3 MultiSelect、4 Switch、1 EditText，组合回归 `38/0/0`。首审发现给公开 data class 主构造器增加默认参数仍删除旧 JVM descriptors；唯一修复先取得缺 `(String,String,String)V` 的精确 RED，再把 dialog title 改为 body property，反射同时保护旧三参数构造与 default-mask 构造，Real/ABI `2/0/0`、UI/JVM descriptor 使用方 `20/0/0`，复审 APPROVED。inventory 50=14 required+36 unverified，evidence 15 条 unique required；WebKit、Uri 等未执行行为保持 unverified。范围 implementation 7 files/148 touched，repair 4 files/26 touched，Java0；source-api Spotless 通过，root Spotless 唯一阻塞仍为提交外既有 `GlobalSearchSourcePolicyTest.kt`。
 
+##### Task 7C3b-pre: Mangalix default client Cloudflare identity
+
+- Risk axis: `cloudflare-interceptor-identity`
+- Platform boundary: `desktop`
+- Estimated scope: `2 files, 120 lines`
+- Verification: 7C3b0 的 immutable Mangalix fixture 在 production DI/loader 中首先真实失败于 `CloudflareInterceptor must be present in default client`；固定扩展按 `client.interceptors.any { it.javaClass.simpleName == "CloudflareInterceptor" }` 检查上游默认客户端，而 Desktop 注入的同功能 adapter 运行时类名为 `DesktopCloudflareInterceptor`。不得用测试替身或修改 fixture 绕过。RED 在 production `DesktopNetworkHelper.client.interceptors` 断言 exact runtime simple name；GREEN 只把现有 Desktop challenge adapter 的运行时类名恢复为 `CloudflareInterceptor`，并用 source-level alias 保留 `DesktopCloudflareInterceptor` 调用方，既不复制 Android WebView 实现，也不改变 challenge manager、cookie provenance 或 recovery 语义。现有策略测试必须全绿，真实 Mangalix 链路必须越过该错误并暴露下一实际 JsonReader ABI gap。
+
 ##### Task 7C3b0: Mangalix gzip page-list 与 JsonReader ABI
 
 - Risk axis: `mangalix-json-reader-chain`
