@@ -33,6 +33,7 @@ data class DesktopPendingTrust(
 )
 
 data class DesktopExtensionsState(
+    val searchQuery: String = "",
     val projection: DesktopExtensionProjection? = null,
     val presentation: ExtensionPresentationResult<DesktopExtensionItem>? = null,
     val actions: ExtensionPresentationActionState = ExtensionPresentationActionState(),
@@ -85,6 +86,10 @@ class ExtensionsScreenModel(
     fun setOptions(value: ExtensionPresentationOptions) {
         options.value = value
         mutableState.update { it.copy(options = value) }
+    }
+
+    fun search(query: String) {
+        mutableState.update { it.copy(searchQuery = query) }
     }
 
     fun updateAllCandidates() = latestCatalog?.let(port::canonicalCandidates)?.values.orEmpty().filter { candidate ->

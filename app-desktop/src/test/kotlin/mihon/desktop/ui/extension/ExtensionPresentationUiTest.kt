@@ -6,6 +6,7 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.AnnotatedString
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import dev.mihon.injekt.patchInjekt
@@ -49,6 +50,52 @@ import uy.kohesive.injekt.api.addSingleton
 import java.io.File
 
 class ExtensionPresentationUiTest {
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
+    fun `search input filters through model state and survives content remount`() = runBlocking {
+        val alpha = InstalledExtension(File("alpha.jar"), emptyList(), displayName = "Alpha Extension")
+        val beta = InstalledExtension(File("beta.jar"), emptyList(), displayName = "Beta Extension")
+        val api = mockk<DesktopExtensionApi> {
+            coEvery { refreshCatalog() } returns ExtensionCatalogResult(emptyList(), emptyList())
+            every { availableExtensions(any()) } returns emptyList()
+            coEvery { loadExtensionIcon(any()) } returns null
+        }
+        val manager = mockk<DesktopExtensionManager>(relaxed = true)
+        val model = ExtensionsScreenModel(
+            DesktopExtensionPresentationPort(api, manager, MutableStateFlow(listOf(alpha, beta))),
+            this,
+            ExtensionPresentationOptions(false, setOf("en")),
+        )
+        val dependencies = mockk<DesktopUiDependencies> { every { extensionApi } returns api; every { extensionManager } returns manager }
+        val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
+        fun mount() = scene.setContent {
+            CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) { ExtensionListContent(model, manager) }
+        }
+        try {
+            model.refresh().join()
+            mount()
+            scene.render()
+            setText(scene, "Beta")
+            scene.render()
+            assertEquals("Beta", model.state.value.searchQuery)
+            assertTrue(nodes(scene).any { it.config.toString().contains(beta.name) })
+            assertFalse(nodes(scene).any { it.config.toString().contains(alpha.name) })
+            mount()
+            scene.render()
+            val input = nodes(scene).single { it.config.contains(SemanticsProperties.EditableText) }
+            assertEquals(AnnotatedString("Beta"), input.config[SemanticsProperties.EditableText])
+            assertFalse(nodes(scene).any { it.config.toString().contains(alpha.name) })
+            model.search("Alpha")
+            scene.render()
+            assertEquals("Alpha", model.state.value.searchQuery)
+            assertTrue(nodes(scene).any { it.config.toString().contains(alpha.name) })
+            assertFalse(nodes(scene).any { it.config.toString().contains(beta.name) })
+        } finally {
+            scene.close()
+            model.closeAndJoin()
+        }
+    }
+
     @OptIn(ExperimentalComposeUiApi::class)
     @Test
     fun `production content renders loading empty data with failure and retries`() = runBlocking {
@@ -231,6 +278,10 @@ class ExtensionPresentationUiTest {
     private fun toggle(scene: ImageComposeScene, index: Int) {
         val node = nodes(scene).filter { it.config.contains(SemanticsProperties.ToggleableState) }[index]
         assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
+    }
+    private fun setText(scene: ImageComposeScene, value: String) {
+        val input = nodes(scene).single { it.config.contains(SemanticsActions.SetText) }
+        assertTrue(requireNotNull(input.config[SemanticsActions.SetText].action).invoke(AnnotatedString(value)))
     }
     private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
     private fun source(id: Long, lang: String, name: String) = DesktopAvailableSource(id, lang, name, "https://$id")

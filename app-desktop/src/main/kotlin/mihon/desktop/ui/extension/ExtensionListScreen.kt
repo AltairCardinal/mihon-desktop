@@ -133,8 +133,7 @@ internal fun ExtensionListContent(
         var selectedTab by remember { mutableStateOf(0) }
         var pendingRemoval by remember { mutableStateOf<InstalledExtension?>(null) }
         var showLangFilter by remember { mutableStateOf(false) }
-        var searchQuery by remember { mutableStateOf("") }
-        val ui = remember(state, searchQuery) { state.toExtensionListUiProjection(searchQuery) }
+        val ui = remember(state) { state.toExtensionListUiProjection(state.searchQuery) }
         val installedExtensions = state.projection?.installed.orEmpty().mapNotNull(DesktopExtensionItem::installed)
         val languageInventory = remember(state.projection) {
             state.projection?.let { projection ->
@@ -266,8 +265,8 @@ internal fun ExtensionListContent(
                         )
                     }
                     OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
+                        value = state.searchQuery,
+                        onValueChange = model::search,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                         singleLine = true,
                         leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
