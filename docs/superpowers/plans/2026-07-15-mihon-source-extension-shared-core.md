@@ -45,7 +45,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - [x] Task 6B：从固定 main 原版提取扩展呈现契约（6B1a/6B1b/6B2a/6B2b/6B2c 已完成；C9 已闭合）
 - [x] Task 6C：Desktop 扩展 adapter、ScreenModel 与 DI wiring
 - [x] Task 6D：Desktop Extension UI、详情/设置与 i18n wiring
-- [ ] Task 6E：Test Mode、导航与自动化观察
+- [x] Task 6E：Test Mode、导航与自动化观察
 - [ ] Task 7：compat 去重、parity 证据、全量审查与跨平台运行时验收
 
 ---
@@ -1537,12 +1537,35 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Evidence: commit `a1b65a746`；inventory 仅 `android.app.Application=required`，其余 42 项保持 `unverified`；compat evidence 恰有 Application 与 fixed-main Source 两条 unique required，均指向同一 immutable local APK@SHA 与 Real test，removalCondition 分别限定 exact Application binding 与 Source ABI。旧 ProductBaseline 的单一 package@version/unsupported 假设和读取测试源码 `contains` 验证已删除，改为 repo 内 artifact/test/schema 与两个 resolved 元数据门禁；Real test 继续保护 production converter/loader 行为。Compat `2/0/0`、Baseline `5/0/0`、Real `1/0/0`，独立 review APPROVED；范围 `3 files, 74 touched lines`。
 
-#### Task 7C: Compat package prune batches
+#### Task 7C: Compat 真实行为闭环与有证据去重
 
-- Risk axis: `compat-package-pruning`
+- Risk axis: `compat-behavior-pruning`
 - Platform boundary: `desktop`
-- Estimated scope: `8 files, 400 lines`
-- Verification: 按 `android.content`、`android.os/util`、`androidx.preference` 等包分批；只有 production/真实 fixture 均无调用才能删除，每批运行对应 loader/fixture 回归，不把 shim 移入 shared authority；已经由共享 core 覆盖的搜索、版本、错误字符串和事务规则也只能在本项按真实引用证据删除。
+- Estimated scope: `8 files, 400 lines per independently reviewed batch`
+- Split waiver: 本项覆盖设置 ABI、页面 ABI 与多个互不相同的 compat 包；它们不能在一个提交或一次调度内安全闭合，因此以下子任务分别实施、测试、审查和提交，每个实际批次仍不超过 8 files/400 lines。
+- Verification: 先用 immutable 真实 APK 执行 fixed-main 行为链，再决定 shim 为 `required`、明确 `unsupported` 或删除。不得把当前 `app/` consumer、Desktop Android 构建或静态源码引用当 authority；不得仅因单一 fixture 未调用就删除旧扩展常见 ABI。所有平台差异只留在 Desktop adapter，不修改 shared contract 来冒充原版 Android ABI。
+
+##### Task 7C1: 真实 AndroidX source settings bridge
+
+- Risk axis: `real-androidx-settings-bridge`
+- Platform boundary: `desktop`
+- Estimated scope: `7 files, 360 lines`
+- Verification: immutable ManHuaGui APK 必须经 production converter/loader 后，从 Desktop production settings resolver 调用其真实 `setupPreferenceScreen(androidx.preference.PreferenceScreen)`，得到 4 个真实设置项（`preferred_mirror`、`mainSiteRatelimitPreference`、`imgCDNRatelimitPreference`、`showR18Default`）。RED 先固定当前 `AbstractMethodError`，桥接旧 descriptor 后继续固定 `addPreference(Preference):Z` ABI gap；GREEN 将反射兼容限定在 Desktop adapter、让 `addPreference` 返回 AndroidX 兼容 `Boolean`，并证明 Desktop UI 写入与真实 extension `Application.getSharedPreferences("source_$id")` 读取同一 `/mihon/source_$id` 节点。只有行为成功后才将 Context/SharedPreferences/AndroidX 继承闭包解析为 `required`。
+
+##### Task 7C2: Fixed-main Page(Uri) ABI 与真实 page-list 行为
+
+- Risk axis: `real-page-uri-abi`
+- Platform boundary: `desktop`
+- Estimated scope: `6 files, 350 lines`
+- Verification: fixed main `Page` 的旧扩展 ABI 使用 `android.net.Uri?`，真实 ManHuaGui 字节码调用该 exact constructor；当前 common `Any?` 不能作为 authority。先通过 immutable APK 执行真实 page-list production 路径取得精确 RED，再以最小 Desktop bytecode/platform adapter 保留 common KMP 模型与 fixed-main binary ABI，禁止把 `android.net.Uri` 引入 shared authority。GREEN 必须返回可由 Desktop reader 消费的真实 Page，并使 `android.net.Uri` 取得行为 evidence；若真实网络请求不可确定，使用 extension 自身 parser 与本地真实形状响应，不 mock parser。
+
+##### Task 7C3: Representative fixture matrix 与 compat prune batches
+
+- Risk axis: `compat-fixture-matrix-pruning`
+- Platform boundary: `desktop`
+- Estimated scope: `8 files, 400 lines per prune batch`
+- Split waiver: 31 个非 Application public compat 类型分属独立 ABI 族；每批只处理一个依赖闭包并单独审查，避免一次删除跨包能力。后续每个实际批次必须在施工前把 fixture、产品边界、文件与 verification 写回本计划。
+- Verification: 对 `android.content/pm`、`android.os`、`android.text`、`android.util`、graphics/drawable、webkit 与剩余 AndroidX 类型，先选择能执行真实调用的本地可追溯 extension fixture；无法支持的平台能力必须有明确用户边界与 production 不可达证据。`required` 必须由真实 artifact 的 production invocation 证明；`unsupported` 必须由真实精确失败与产品边界证明；删除必须同时满足无 production consumer、代表性 fixture 不需要或产品明确不支持，并在删除前取得 public-surface RED。不得用 compat 自测或源码扫描代替行为证据；保留 Desktop-native EditText/MultiSelect/Switch 设置能力。
 
 #### Task 7D: Parity evidence and runtime verification
 
