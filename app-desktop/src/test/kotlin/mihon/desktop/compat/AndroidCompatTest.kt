@@ -114,25 +114,4 @@ class AndroidCompatTest {
         // Should be a plausible Android API level (21-34)
         assert(sdkInt in 21..40) { "SDK_INT=$sdkInt not in expected range" }
     }
-
-    // ── Uri ───────────────────────────────────────────────────────────────────
-
-    @Test
-    fun `Uri parse produces non-null object`() {
-        val uri = android.net.Uri.parse("https://example.com/path?q=1")
-        uri.shouldNotBeNull()
-    }
-
-    @Test
-    fun `Uri toString round-trips URL string`() {
-        val url = "https://example.com/page"
-        val uri = android.net.Uri.parse(url)
-        uri.toString() shouldBe url
-    }
-
-    @Test
-    fun `Uri getHost returns hostname`() {
-        val uri = android.net.Uri.parse("https://example.com/path")
-        uri.host shouldBe "example.com"
-    }
 }

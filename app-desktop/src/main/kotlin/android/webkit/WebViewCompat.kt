@@ -67,15 +67,11 @@ open class WebSettings {
 }
 
 open class WebViewClient {
-    open fun onPageFinished(view: WebView?, url: String?) {
-        unavailable()
-    }
+    open fun onPageFinished(view: WebView?, url: String?) = Unit
 
-    open fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-        unavailable()
-    }
+    open fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) = Unit
 
-    open fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? = unavailable()
+    open fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? = null
 }
 
 interface WebResourceRequest {

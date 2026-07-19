@@ -58,16 +58,20 @@ class CompatEvidenceContractTest {
     }
 
     @Test
-    fun `Comix WebView evidence resolves only the compat surface executed before fail fast`() {
+    fun `Comix WebView evidence resolves only the compat surface linked or executed before fail fast`() {
         val root = repositoryRoot()
         val entries = inventory(root).entries.associateBy(Entry::symbol)
         val evidence = evidence(root)
 
         COMIX_WEBVIEW_STATUSES.forEach { (symbol, status) ->
-            assertEquals(status, entries.getValue(symbol).status, "$symbol must reflect the real Comix invocation")
+            assertEquals(status, entries.getValue(symbol).status, "$symbol must reflect the real Comix verifier path")
             val matching = evidence.filter { it.symbol == symbol }
             assertEquals(1, matching.size, "$symbol must have exactly one evidence item")
+            assertEquals(COMIX_WEBVIEW_FIXTURE, matching.single().fixture, "$symbol must bind to tracked Comix")
             assertEquals(COMIX_WEBVIEW_TEST, matching.single().test, "$symbol must bind to the real Comix WebView test")
+            COMIX_VERIFIER_BOUNDARIES[symbol]?.let { boundary ->
+                assertTrue(matching.single().removalCondition.contains(boundary), "$symbol must record `$boundary`")
+            }
         }
         assertEquals(
             COMIX_WEBVIEW_STATUSES.keys,
@@ -193,11 +197,22 @@ class CompatEvidenceContractTest {
         val BANNED = listOf("http://", "https://", "parent-classpath", "AndroidCompat", "MinimalTestSource")
         const val COMIX_WEBVIEW_TEST =
             "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt"
+        const val COMIX_WEBVIEW_FIXTURE =
+            "app-desktop/src/test/resources/extensions/real/keiyoushi-comix-1.4.34.apk@" +
+                "sha256:5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8"
         val COMIX_WEBVIEW_STATUSES = mapOf(
             "android.os.Handler" to "required",
             "android.os.Looper" to "required",
+            "android.net.Uri" to "required",
+            "android.webkit.WebResourceRequest" to "required",
             "android.webkit.WebResourceResponse" to "required",
             "android.webkit.WebView" to "unsupported",
+            "android.webkit.WebViewClient" to "required",
+        )
+        val COMIX_VERIFIER_BOUNDARIES = mapOf(
+            "android.net.Uri" to "does not evidence Uri parsing, construction, or behavior",
+            "android.webkit.WebResourceRequest" to "does not evidence callback execution or a request engine",
+            "android.webkit.WebViewClient" to "does not evidence callback execution or a WebView engine",
         )
         const val MANGADEX_BUILD_TEST =
             "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionBuildCompatTest.kt"

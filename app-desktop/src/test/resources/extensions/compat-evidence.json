@@ -84,6 +84,13 @@
     "removalCondition": "Remove when the immutable MangaDex APK no longer reads Build.VERSION.RELEASE for its Extra header; this evidence covers RELEASE only and does not evidence SDK_INT."
   },
   {
+    "symbol": "android.net.Uri",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comix-1.4.34.apk@sha256:5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the immutable Comix l0 verifier no longer resolves android.net.Uri as WebResourceRequest.getUrl()'s return descriptor; this does not evidence Uri parsing, construction, or behavior."
+  },
+  {
     "symbol": "android.os.Handler",
     "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comix-1.4.34.apk@sha256:5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8",
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt",
@@ -98,6 +105,13 @@
     "removalCondition": "Remove when the immutable Comix APK no longer resolves the main Looper before scheduling WebView startup."
   },
   {
+    "symbol": "android.webkit.WebResourceRequest",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comix-1.4.34.apk@sha256:5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the immutable Comix l0 verifier no longer resolves the shouldInterceptRequest callback descriptor; this does not evidence callback execution or a request engine."
+  },
+  {
     "symbol": "android.webkit.WebResourceResponse",
     "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comix-1.4.34.apk@sha256:5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8",
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt",
@@ -110,6 +124,13 @@
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt",
     "status": "unsupported",
     "removalCondition": "Remove when Desktop gains a real WebView engine or the immutable Comix APK no longer reaches WebView construction."
+  },
+  {
+    "symbol": "android.webkit.WebViewClient",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comix-1.4.34.apk@sha256:5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when immutable Comix l0 no longer extends WebViewClient and links its exact callback descriptors; this does not evidence callback execution or a WebView engine."
   },
   {
     "symbol": "android.util.Base64",

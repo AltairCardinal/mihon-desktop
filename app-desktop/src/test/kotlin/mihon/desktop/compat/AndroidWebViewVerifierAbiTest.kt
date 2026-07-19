@@ -1,17 +1,18 @@
 package mihon.desktop.compat
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.io.ByteArrayInputStream
 import java.lang.reflect.InvocationTargetException
-import java.lang.reflect.Proxy
+import java.lang.reflect.Modifier
 
 class AndroidWebViewVerifierAbiTest {
 
     @Test
-    fun `WebView constructs an ABI shell and fails fast on the first browser engine method`() {
+    fun `WebView verifier tokens keep exact shapes while engine methods fail fast`() {
         val context = Class.forName("android.content.Context")
         val viewGroup = Class.forName("android.view.ViewGroup")
         val bitmap = Class.forName("android.graphics.Bitmap")
@@ -26,6 +27,11 @@ class AndroidWebViewVerifierAbiTest {
         listOf(webView, webSettings, webViewClient, webResourceRequest, webResourceResponse).forEach {
             assertEquals(null, it.enclosingClass, "${it.name} must remain a top-level verifier type")
         }
+        assertTrue(Modifier.isAbstract(uri.modifiers))
+        val uriToString = uri.getMethod("toString")
+        assertTrue(Modifier.isAbstract(uriToString.modifiers))
+        assertEquals(String::class.java, uriToString.returnType)
+        assertEquals(setOf("toString"), uri.declaredMethods.map { it.name }.toSet())
         assertEquals(viewGroup, webView.superclass)
         assertTrue(webResourceRequest.isInterface)
         webView.getConstructor(context)
@@ -88,19 +94,9 @@ class AndroidWebViewVerifierAbiTest {
         }
         assertUnsupported { setUserAgentString.invoke(settingsInstance, "Mihon Desktop") }
 
-        val requestInstance = Proxy.newProxyInstance(
-            webResourceRequest.classLoader,
-            arrayOf(webResourceRequest),
-        ) { _, method, _ ->
-            if (method.name == "getUrl") uri.getMethod("parse", String::class.java).invoke(null, "https://example.com") else null
-        }
-        listOf(
-            onPageFinished to arrayOf(webViewInstance, "https://example.com"),
-            onPageStarted to arrayOf(webViewInstance, "https://example.com", null),
-            shouldInterceptRequest to arrayOf(webViewInstance, requestInstance),
-        ).forEach { (method, arguments) ->
-            assertUnsupported { method.invoke(clientInstance, *arguments) }
-        }
+        assertNull(onPageFinished.invoke(clientInstance, webViewInstance, "https://example.com"))
+        assertNull(onPageStarted.invoke(clientInstance, webViewInstance, "https://example.com", null))
+        assertNull(shouldInterceptRequest.invoke(clientInstance, webViewInstance, null))
 
         val responseData = ByteArrayInputStream(byteArrayOf(1, 2, 3))
         val response = responseConstructor.newInstance("image/png", "binary", responseData)
