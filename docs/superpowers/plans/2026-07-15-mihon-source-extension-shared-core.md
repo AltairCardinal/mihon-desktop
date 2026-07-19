@@ -1286,10 +1286,12 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Files: `ExtensionDetailsScreen.kt`、base/zh-rCN `strings.xml`、`DesktopExtensionDetailsMetadataCopyTest.kt`、`ExtensionDetailsPreferencesWiringTest.kt`（既有 metadata/click 断言必须消费同一 MR accessor，不得硬编码英文或强制 Locale.US）。
 - Authority: 复用 fixed main 的 back/version/unknown/sources/browse/incognito 等 MR key；JAR/Windows artifact origin、file/size/hash/fingerprint 属于 Desktop adapter，只新增其外层 label/format，不本地化动态路径、URL、版本、hash、fingerprint、名称或语言代码。
 
-- [ ] RED：zh-CN 真实 Details metadata/source copy 仍回退硬编码英文时失败。
-- [ ] GREEN：复用上游语义并补齐 Desktop platform metadata formatted key，不复制 Android PackageInstaller/WebView 文案。
-- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.i18n.DesktopExtensionDetailsMetadataCopyTest" --tests "mihon.desktop.ui.extension.ExtensionDetailsPreferencesWiringTest"`
-- [ ] Commit: `refactor(desktop): localize extension details metadata`
+- [x] RED：zh-CN 真实 Details metadata/source copy 仍回退硬编码英文时失败。
+- [x] GREEN：复用上游语义并补齐 Desktop platform metadata formatted key，不复制 Android PackageInstaller/WebView 文案。
+- [x] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.i18n.DesktopExtensionDetailsMetadataCopyTest" --tests "mihon.desktop.ui.extension.ExtensionDetailsPreferencesWiringTest"`
+- [x] Commit: `refactor(desktop): localize extension details metadata`
+
+  Evidence: commits `8a289ffd8`、`e0f10d96b`；zh-CN 真实 Details metadata/source 首先因硬编码英文 RED，随后 MetadataCopy 1 + DetailsPreferences 2 全绿。通用语义复用 fixed main MR，Desktop origin/file/size/hash/fingerprint 仅本地化外层格式；唯一修复复审确认版本精确使用 `ext_info_version`，真实渲染保留 raw `1.2.3-raw` 与 `source.lang=en`，empty version 独立回退 localized unknown，APPROVED；最终 `5 files, 218 lines`。
 
 #### Task 6E2B2: ExtensionDetails action/dialog feedback copy
 
