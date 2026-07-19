@@ -1766,6 +1766,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `3 files, 50 lines`
 - Verification: fixed main PreferenceManager只提供Android默认SharedPreferences；Desktop `PreferenceScreen.preferenceManager` 仅自动构造但Keiyoushi和真实偏好fixture均不读取，产品设置已使用Desktop preference bridge/store。删除该公开类型/属性与inventory条目，surface保持33 files但symbols从42降为41；真实Comix/ManHuaGui preference fixture、contract与clean compile必须通过，否则恢复。
 
+  Evidence: commit `4191993d71`，3 files/17 touched（2 additions/15 deletions）。只删除PreferenceManager类型/自动属性与inventory项，surface 33 files/41 symbols；PreferenceScreen继承/构造/容器方法、其他preference、evidence与production adapter零改。clean compile成功（2m10s），Phase5、loader ABI、contract、baseline与6个真实fixture共 `39/39`，Comix production preference无NoSuchMethod/Field。独立复核7个raw JAR对manager owner/dotted/getter/field/createPreferenceScreen均0，而5个JAR真实消费保留的PreferenceScreen/addPreference；scanner/inventory33/41且集合差/重复0，review APPROVED、Java0。
+
 ##### Task 7C3m: Drawable verification-only family prune
 
 - Risk axis: `drawable-family-prune`
