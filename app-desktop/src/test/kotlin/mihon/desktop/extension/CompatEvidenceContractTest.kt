@@ -23,11 +23,21 @@ class CompatEvidenceContractTest {
         val inventory = inventory(root)
         val symbols = inventory.entries.map(Entry::symbol)
 
-        assertEquals(32, surface.files.size, "compat source file count drifted")
-        assertEquals(41, surface.symbols.size, "compat public symbol count drifted")
+        assertEquals(36, surface.files.size, "compat source file count drifted")
+        assertEquals(46, surface.symbols.size, "compat public symbol count drifted")
         assertEquals(AUTHORITY, inventory.authorityRef)
         assertEquals(ADAPTER_ROOTS, inventory.adapterRoots)
         assertEquals(symbols.size, symbols.toSet().size, "inventory symbols must be unique")
+        assertEquals(
+            mapOf("required" to 43, "unsupported" to 1, "unverified" to 2),
+            inventory.entries.groupingBy(Entry::status).eachCount(),
+            "compat status counts drifted",
+        )
+        assertEquals(
+            setOf("android.graphics.Color", "android.text.Html"),
+            inventory.entries.filter { it.status == "unverified" }.map(Entry::symbol).toSet(),
+            "the unverified set must remain exact",
+        )
         assertEquals(
             surface.symbols,
             symbols.toSet(),
@@ -55,6 +65,34 @@ class CompatEvidenceContractTest {
             assertFalse(isRealEvidence(root, it), "${it.fixture}/${it.test} must not resolve compat evidence")
             assertThrows(IllegalArgumentException::class.java) { validateResolved(root, listOf(resolved), listOf(it)) }
         }
+    }
+
+    @Test
+    fun `ComicFury text evidence resolves only the five executed compat types`() {
+        val root = repositoryRoot()
+        val entries = inventory(root).entries.associateBy(Entry::symbol)
+        val evidence = evidence(root)
+
+        assertEquals(
+            COMIC_FURY_TEXT_STATUSES.keys,
+            entries.keys.intersect(COMIC_FURY_TEXT_STATUSES.keys),
+            "all five ComicFury text compat types must be inventoried",
+        )
+        COMIC_FURY_TEXT_STATUSES.forEach { (symbol, status) ->
+            assertEquals(status, entries.getValue(symbol).status, "$symbol must reflect the executed text path")
+            val matching = evidence.filter { it.symbol == symbol }
+            assertEquals(1, matching.size, "$symbol must have exactly one evidence item")
+            assertEquals(COMIC_FURY_FIXTURE, matching.single().fixture, "$symbol must bind to tracked ComicFury")
+            assertEquals(COMIC_FURY_TEST, matching.single().test, "$symbol must bind to the real ComicFury test")
+            val boundary = COMIC_FURY_TEXT_BOUNDARIES.getValue(symbol)
+            assertTrue(matching.single().removalCondition.contains(boundary), "$symbol must record `$boundary`")
+        }
+        assertEquals(5, COMIC_FURY_TEXT_STATUSES.size, "the ComicFury text reverse evidence set must stay exact")
+        assertEquals(
+            COMIC_FURY_TEXT_STATUSES.keys,
+            evidence.filter { it.test == COMIC_FURY_TEST }.map(Evidence::symbol).toSet(),
+            "the ComicFury test must not resolve compat APIs outside its executed path",
+        )
     }
 
     @Test
@@ -219,6 +257,25 @@ class CompatEvidenceContractTest {
         val STATUSES = setOf("unverified", "required", "unsupported")
         val ENTRY_FIELDS = setOf("symbol", "status", "nextEvidence")
         val BANNED = listOf("http://", "https://", "parent-classpath", "AndroidCompat", "MinimalTestSource")
+        const val COMIC_FURY_TEST =
+            "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionComicFuryTextCompatTest.kt"
+        const val COMIC_FURY_FIXTURE =
+            "app-desktop/src/test/resources/extensions/real/keiyoushi-comicfury-1.4.8.apk@" +
+                "sha256:9403d439eefec8ccff3fa7a3edd810046a12206d944302013bc3f94538b3def7"
+        val COMIC_FURY_TEXT_STATUSES = setOf(
+            "android.graphics.Typeface",
+            "android.text.Layout",
+            "android.text.Spanned",
+            "android.text.StaticLayout",
+            "android.text.TextPaint",
+        ).associateWith { "required" }
+        val COMIC_FURY_TEXT_BOUNDARIES = mapOf(
+            "android.graphics.Typeface" to "DEFAULT_BOLD for the author title and DEFAULT for body text",
+            "android.text.Layout" to "Alignment.ALIGN_NORMAL token passed to StaticLayout",
+            "android.text.Spanned" to "Html.fromHtml return descriptor and runtime instance",
+            "android.text.StaticLayout" to "fixed constructor, getHeight, and draw through the Desktop Skia adapter",
+            "android.text.TextPaint" to "no-arg construction and color/textSize/typeface/antiAlias setters",
+        )
         const val COMIX_WEBVIEW_TEST =
             "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt"
         const val COMIX_WEBVIEW_FIXTURE =

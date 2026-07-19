@@ -70,6 +70,41 @@
     "removalCondition": "Remove when the immutable Comix APK no longer maps source and destination Rect grids during real pixel reconstruction."
   },
   {
+    "symbol": "android.graphics.Typeface",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comicfury-1.4.8.apk@sha256:9403d439eefec8ccff3fa7a3edd810046a12206d944302013bc3f94538b3def7",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionComicFuryTextCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the immutable ComicFury author-note path no longer reads Typeface.DEFAULT_BOLD for the author title and DEFAULT for body text."
+  },
+  {
+    "symbol": "android.text.Layout",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comicfury-1.4.8.apk@sha256:9403d439eefec8ccff3fa7a3edd810046a12206d944302013bc3f94538b3def7",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionComicFuryTextCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the immutable ComicFury author-note path no longer resolves the Layout.Alignment.ALIGN_NORMAL token passed to StaticLayout; this covers no other Layout behavior."
+  },
+  {
+    "symbol": "android.text.Spanned",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comicfury-1.4.8.apk@sha256:9403d439eefec8ccff3fa7a3edd810046a12206d944302013bc3f94538b3def7",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionComicFuryTextCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the immutable ComicFury author-note path no longer executes the Html.fromHtml return descriptor and runtime instance produced by Html.fromHtml(String, flags=0) for actual author-note text."
+  },
+  {
+    "symbol": "android.text.StaticLayout",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comicfury-1.4.8.apk@sha256:9403d439eefec8ccff3fa7a3edd810046a12206d944302013bc3f94538b3def7",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionComicFuryTextCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the immutable ComicFury author-note path no longer invokes the fixed constructor, getHeight, and draw through the Desktop Skia adapter; this does not promise Android pixel or font-metrics parity."
+  },
+  {
+    "symbol": "android.text.TextPaint",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comicfury-1.4.8.apk@sha256:9403d439eefec8ccff3fa7a3edd810046a12206d944302013bc3f94538b3def7",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionComicFuryTextCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the immutable ComicFury author-note path no longer executes TextPaint no-arg construction and color/textSize/typeface/antiAlias setters."
+  },
+  {
     "symbol": "android.os.SystemClock",
     "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-manhuagui-1.4.28.apk@sha256:200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8",
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionPageListCompatTest.kt",
