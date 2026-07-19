@@ -1454,6 +1454,19 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 #### Task 6E closure
 
+##### Task 6E5: Extension presentation contract 格式门禁收口
+
+- Risk axis: `extension-presentation-contract-format`
+- Platform boundary: `shared`
+- Estimated scope: `1 file, 5 lines`
+- Verification: 仅将 6E3B1 修改的 enum 末项收敛为仓库 Spotless 要求的尾逗号与独立分号，不改变共享状态或 eligibility 语义；6E3B1 focused test 保持通过，根 Spotless 不再报告本文件。
+- Files: `domain/src/commonMain/kotlin/mihon/domain/extension/presentation/ExtensionPresentationContract.kt`。
+- Boundary: 纯格式修复，不处理任务外既有 `GlobalSearchSourcePolicyTest.kt`，不得扩大到其他 domain 文件。
+
+- [ ] GREEN：本文件满足 Spotless，且 extension production controller contract 保持通过。
+- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "*SourceExtensionTestModeControllerTest" spotlessCheck`
+- [ ] Commit: `style(domain): format extension presentation contract`
+
 - [ ] 串行运行 6E1–6E4 focused tests，再运行 `./gradlew :app-desktop:jvmTest --tests "*Navigation*ContractTest" --tests "*I18n*" :test-desktop:test`。
 - [ ] 独立审查确认 HTTP interface 真实触达 production wiring，且 fixed main、当前 Android consumer 与 Desktop adapter 没有概念混淆。
 - [ ] Check off OpenSpec 2.3、3.4、3.5 的自动化观察部分并提交证据。
