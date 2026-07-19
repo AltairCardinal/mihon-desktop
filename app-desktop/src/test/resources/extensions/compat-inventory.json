@@ -60,8 +60,6 @@
       "nextEvidence":"7B real local fixture invocation or 7C removal"},
     {"symbol":"android.util.Base64","status":"required",
       "nextEvidence":"Keep while the immutable FavComic image pipeline executes decode(String, int) with DEFAULT=0"},
-    {"symbol":"android.util.JsonReader","status":"unverified",
-      "nextEvidence":"7B real local fixture invocation or 7C removal"},
     {"symbol":"android.util.Log","status":"required",
       "nextEvidence":"RealExtensionTcbScansCompatTest legacy preference cleanup invocation"},
     {"symbol":"android.util.Pair","status":"unverified",

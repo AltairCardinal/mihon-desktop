@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.drawable.Drawable
-import android.util.JsonReader
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -12,7 +11,6 @@ import org.junit.jupiter.api.Test
 import java.awt.Color
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
-import java.io.StringReader
 import javax.imageio.ImageIO
 
 class AndroidStubsPhase27Test {
@@ -161,27 +159,6 @@ class AndroidStubsPhase27Test {
         val output = ByteArrayOutputStream()
         compress(Bitmap.CompressFormat.PNG, 100, output) shouldBe true
         return ImageIO.read(output.toByteArray().inputStream())
-    }
-
-    @Test
-    fun `JsonReader reads string value`() {
-        val reader = JsonReader(StringReader("""{"key":"value"}"""))
-        reader.beginObject()
-        reader.nextName() shouldBe "key"
-        reader.nextString() shouldBe "value"
-        reader.endObject()
-        reader.close()
-    }
-
-    @Test
-    fun `JsonReader reads nested array`() {
-        val reader = JsonReader(StringReader("""[1,2,3]"""))
-        reader.beginArray()
-        reader.nextInt() shouldBe 1
-        reader.nextInt() shouldBe 2
-        reader.nextInt() shouldBe 3
-        reader.endArray()
-        reader.close()
     }
 
 }
