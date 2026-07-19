@@ -16,6 +16,17 @@ open class EditTextPreference(context: Context) : DialogPreference(context) {
         onBindEditTextListener = listener
     }
 
+    internal fun desktopValidator(): ((String) -> String?)? {
+        val listener = onBindEditTextListener ?: return null
+        return { candidate ->
+            EditText(context).run {
+                listener.onBindEditText(this)
+                setText(candidate)
+                error?.toString()
+            }
+        }
+    }
+
     fun interface OnBindEditTextListener {
         fun onBindEditText(editText: EditText)
     }

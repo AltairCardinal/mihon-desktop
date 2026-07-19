@@ -34,6 +34,7 @@ data class EditTextPreference(
     val defaultValue: String = "",
 ) : JvmPreferenceItem() {
     var dialogTitle: String? = null
+    var validator: ((String) -> String?)? = null
 }
 
 data class ListPreference(

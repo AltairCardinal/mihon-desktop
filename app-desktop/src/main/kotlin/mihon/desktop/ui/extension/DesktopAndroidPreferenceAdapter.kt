@@ -1,7 +1,9 @@
 package mihon.desktop.ui.extension
 
+import androidx.preference.EditTextPreference as AndroidEditTextPreference
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.PreferenceScreen
+import eu.kanade.tachiyomi.source.preference.EditTextPreference as JvmEditTextPreference
 import mihon.desktop.compat.AndroidCompat
 import java.lang.reflect.InvocationTargetException
 
@@ -26,6 +28,16 @@ internal object DesktopAndroidPreferenceAdapter {
         } catch (error: InvocationTargetException) {
             throw error.targetException
         }
-        androidScreen.preferences.forEach(descriptorScreen::addPreference)
+        androidScreen.preferences.forEach { androidPreference ->
+            val convertedStart = descriptorScreen.preferences.size
+            descriptorScreen.addPreference(androidPreference)
+            if (androidPreference is AndroidEditTextPreference) {
+                descriptorScreen.preferences
+                    .drop(convertedStart)
+                    .filterIsInstance<JvmEditTextPreference>()
+                    .singleOrNull { it.key == androidPreference.key }
+                    ?.validator = androidPreference.desktopValidator()
+            }
+        }
     }
 }
