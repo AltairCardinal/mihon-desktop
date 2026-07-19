@@ -1552,6 +1552,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `8 files, 390 lines`
 - Verification: immutable ManHuaGui APK 必须经 production converter/loader 后，从 Desktop production settings resolver 调用其真实 `setupPreferenceScreen(androidx.preference.PreferenceScreen)`，得到 4 个真实设置项（`preferred_mirror`、`mainSiteRatelimitPreference`、`imgCDNRatelimitPreference`、`showR18Default`）及原版 `setDefaultValue` 语义。RED 先固定当前 `AbstractMethodError`，桥接旧 descriptor 后继续固定 `addPreference(Preference):Z` ABI gap；若 ABI 闭合后 JVM descriptor 仍因只读取 `ListPreference.value` 而丢失 inherited `defaultValue`，必须以同一真实 fixture 取得第三个精确 RED，且只允许在 `source-api` JVM adapter 修复转换，不改 common/Android authority。GREEN 将反射兼容限定在 Desktop adapter、让 `addPreference` 返回 AndroidX 兼容 `Boolean`，并证明 Desktop UI 写入与真实 extension `Application.getSharedPreferences("source_$id")` 读取同一 `/mihon/source_$id` 节点。只有行为成功后才将 Context/SharedPreferences/AndroidX 继承闭包解析为 `required`。
 
+  Evidence: implementation commit `ec9309ab8`、review repair `5de09713a`。真实 immutable APK 依次取得 `AbstractMethodError`、`NoSuchMethodError: addPreference(Preference):Z`、ListPreference default `expected 0 but null` 三个精确 RED；GREEN 以 Desktop legacy descriptor adapter、AndroidX Boolean ABI、JVM defaultValue fallback 和统一 `/mihon/source_$id` 节点闭合 4 个真实设置项及持久化。Real `1/0/0`、Compat contract `2/0/0`、settings wiring `2/0/0`；inventory 为 11 required + 32 unverified，evidence 12/12 unique required。首轮 review 唯一 Important 为测试写删真实业务 key；修复改用每次唯一 sentinel 且 finally 证明两侧清理，复审 APPROVED。范围 8 files/208 touched + repair 1 test file，Java0；root Spotless 唯一阻塞仍为提交外既有 `GlobalSearchSourcePolicyTest.kt`。
+
 ##### Task 7C2: Fixed-main Page(Uri) ABI 与真实 page-list 行为
 
 - Risk axis: `real-page-uri-abi`
