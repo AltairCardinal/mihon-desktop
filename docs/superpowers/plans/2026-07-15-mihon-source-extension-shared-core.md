@@ -1926,6 +1926,41 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Evidence: commit `4054a54b5`，严格 3 ledger files。contract RED 精确为 ViewGroup expected required/actual unverified；GREEN 将 ViewGroup/WebSettings 唯一绑定 tracked Comix + real WebView test，reverse 9 exact（8 required + WebView unsupported），surface 32/41。边界明确 ViewGroup 只覆盖 superclass/layout shell且layout UOE被扩展吞掉，WebSettings 只覆盖getSettings return token，不证明实例/setter/engine。独立 review APPROVED；contract/Comix/MangaDex全绿，Java0。
 
+##### Task 7C3q0: ComicFury fixture authority freeze
+
+- Risk axis: `comicfury-fixture-authority`
+- Platform boundary: `verification`
+- Estimated scope: `3 files, 100 lines plus one 41,496-byte APK`
+- Verification: 固定 keiyoushi/extensions commit `7d5052fb895d086ae2ec6e3cca861146ee3ea0ec` 的 APK `apk/tachiyomi-all.comicfury-v1.4.8.apk`，blob `8660ce4c0366cd14c031731bf2b90febc5a24d3f`、41496 bytes、SHA-256 `9403d439eefec8ccff3fa7a3edd810046a12206d944302013bc3f94538b3def7`；提交 APK、provenance 与 authority/integrity test，不执行或宣称 Html/Color 行为。raw JAR 只用于审计，固定 blob `2a9e1e7ac8ab089fd0a2f6544c27319f2f14f672`、SHA-256 `1fc1b0fc1a3c9c974ca0ef399658da2b9b3d74561ef79c78a1bc77957ec80d65`，不得作为未追踪测试依赖。
+
+##### Task 7C3q1: Html Spanned ABI 与 fixed behavior
+
+- Risk axis: `html-spanned-abi`
+- Platform boundary: `desktop`
+- Estimated scope: `3 files, 180 lines`
+- Verification: 真实 ComicFury TextInterceptor 要求 `Html.fromHtml(String):Spanned` 与 `Html.fromHtml(String,int):Spanned`，当前 Desktop 错误返回 CharSequence 且缺 Spanned。先写 descriptor/代表性实体、标签、换行 RED，再新增最小 Spanned 类型并按 fixed Android 调用语义修正 Html；该 Task 只完成可独立验证的 ABI/文本语义，不升级 ledger。文件限定 Spanned.kt、Html.kt、focused Html test。
+
+##### Task 7C3q2: ComicFury author-note 文本转 PNG 真实链
+
+- Risk axis: `comicfury-text-image-pipeline`
+- Platform boundary: `desktop`
+- Estimated scope: `6 files, 400 lines`
+- Verification: tracked ComicFury APK 必须经 production converter/meta/loader 展开 14 sources；由公开 page-list 链生成 host=`tachiyomi-lib-textinterceptor` 的 author-note Page，并经公开 `HttpSource.getImage(Page)` 进入真实 TextInterceptor。补齐该链实际执行的 TextPaint、Typeface、Layout.Alignment/StaticLayout 与 Canvas drawColor/save/translate/restore，复用已有 Bitmap create/compress；最终断言 HTTP 200、image/png、可解码非空 PNG 与代表性布局结果。不得只 loadClass、扫描常量池或直接调用私有 helper；若缺口超过 6 文件/400 行必须再拆。
+
+##### Task 7C3q3: Html real-chain evidence ledger
+
+- Risk axis: `html-real-chain-evidence`
+- Platform boundary: `verification`
+- Estimated scope: `3 files, 80 lines`
+- Verification: 仅在 7C3q1/q2 独立审查通过后，将 Html 标 required 并唯一绑定 tracked ComicFury 与真实文本转 PNG test；更新 evidence/contract 反向集合与 surface。不得把未执行的 Color 或图文 API 顺带标 required。
+
+##### Task 7C3q4: verifier-only Color shim prune
+
+- Risk axis: `color-shim-prune`
+- Platform boundary: `desktop`
+- Estimated scope: `4 files, 100 lines`
+- Verification: ComicFury raw 字节码将 BLACK/WHITE 编译为整数常量，不链接 `android.graphics.Color`；仓库当前只有 shim 自测。删除 Color.kt 建立 prune probe，确认 production/全部 tracked fixture 无消费者后删除对应 AndroidCompatPhase2Test 片段、inventory entry并更新contract surface。若出现真实链接回归则恢复并重规划，不得用 ComicFury 作为 Color 假证据。文件限定 Color.kt、AndroidCompatPhase2Test.kt、inventory、contract。
+
 ##### Task 7C4: Source/extension authority baseline 与恢复入口纠偏
 
 - Risk axis: `authority-resume-pointer`
