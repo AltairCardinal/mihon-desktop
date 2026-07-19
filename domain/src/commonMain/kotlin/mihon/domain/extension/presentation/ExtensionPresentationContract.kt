@@ -51,7 +51,8 @@ enum class ExtensionPresentationInstallStep {
     Downloading,
     Installing,
     Installed,
-    Error;
+    Error,
+    ;
 
     fun isCompleted(): Boolean = this == Idle || this == Installed || this == Error
 }
