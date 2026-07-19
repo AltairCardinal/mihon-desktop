@@ -26,34 +26,48 @@ enum class SourceBrowseTestLoginFeedback { INVALID_HEADER, BROWSER_UNAVAILABLE, 
 
 @Serializable
 data class SourceBrowseTestRequest(
-    val sourceId: Long, val page: Int, val generation: Long,
-    val queryKind: SourceBrowseTestQueryKind, val queryText: String? = null,
+    val sourceId: Long,
+    val page: Int,
+    val generation: Long,
+    val queryKind: SourceBrowseTestQueryKind,
+    val queryText: String? = null,
 )
 
 @Serializable
 data class SourceBrowseTestLogin(
-    val host: String, val feedback: SourceBrowseTestLoginFeedback? = null,
-    val terminal: Boolean, val attemptToken: String,
+    val host: String,
+    val feedback: SourceBrowseTestLoginFeedback? = null,
+    val terminal: Boolean,
+    val attemptToken: String,
 )
 
 @Serializable
 data class SourceBrowseTestSnapshot(
-    val sourceId: Long, val phase: SourceBrowseTestPhase = SourceBrowseTestPhase.IDLE,
-    val request: SourceBrowseTestRequest? = null, val itemCount: Int = 0, val loading: Boolean = false,
-    val hasNextPage: Boolean? = null, val error: StoredAppError? = null,
-    val recovery: SourceBrowseTestRecovery? = null, val login: SourceBrowseTestLogin? = null,
+    val sourceId: Long,
+    val phase: SourceBrowseTestPhase = SourceBrowseTestPhase.IDLE,
+    val request: SourceBrowseTestRequest? = null,
+    val itemCount: Int = 0,
+    val loading: Boolean = false,
+    val hasNextPage: Boolean? = null,
+    val error: StoredAppError? = null,
+    val recovery: SourceBrowseTestRecovery? = null,
+    val login: SourceBrowseTestLogin? = null,
 )
 
 @Serializable
 enum class SourceBrowseTestFailureCode {
-    MISSING_TOKEN, NO_ACTIVE_LOGIN,
-    ATTEMPT_MISMATCH, TERMINAL,
-    OPERATION_REJECTED, PORT_CLOSED,
+    MISSING_TOKEN,
+    NO_ACTIVE_LOGIN,
+    ATTEMPT_MISMATCH,
+    TERMINAL,
+    OPERATION_REJECTED,
+    PORT_CLOSED,
 }
 
 @Serializable
 data class SourceBrowseTestActionResult(
-    val success: Boolean, val snapshot: SourceBrowseTestSnapshot,
+    val success: Boolean,
+    val snapshot: SourceBrowseTestSnapshot,
     val failureCode: SourceBrowseTestFailureCode? = null,
 )
 
@@ -90,12 +104,15 @@ class SourceBrowseTestModeObservationPort(
             },
             request = state?.request?.let {
                 SourceBrowseTestRequest(
-                    it.sourceId, it.page, it.generation,
+                    it.sourceId,
+                    it.page,
+                    it.generation,
                     when (it.query) {
                         SourceQuery.Popular -> SourceBrowseTestQueryKind.POPULAR
                         SourceQuery.Latest -> SourceBrowseTestQueryKind.LATEST
                         is SourceQuery.Search -> SourceBrowseTestQueryKind.SEARCH
-                    }, (it.query as? SourceQuery.Search)?.query,
+                    },
+                    (it.query as? SourceQuery.Search)?.query,
                 )
             },
             itemCount = state?.items?.size ?: 0,
@@ -115,8 +132,10 @@ class SourceBrowseTestModeObservationPort(
                     null
                 } else {
                     SourceBrowseTestLogin(
-                        loginState.host, loginState.feedback?.toTestFeedback(),
-                        loginState.terminal, tokenForLocked(loginState.attempt),
+                        loginState.host,
+                        loginState.feedback?.toTestFeedback(),
+                        loginState.terminal,
+                        tokenForLocked(loginState.attempt),
                     )
                 }
             },

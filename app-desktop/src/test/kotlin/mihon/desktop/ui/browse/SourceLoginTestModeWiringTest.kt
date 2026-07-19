@@ -56,101 +56,103 @@ class SourceLoginTestModeWiringTest {
             var validationPort: SourceBrowseTestModeObservationPort? = null
             var racePort: SourceBrowseTestModeObservationPort? = null
             try {
-            fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
-            fun nodes() = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
-            val loginLabel = desktopSourceRecoveryActionLabel(tachiyomi.domain.source.service.SourceRecoveryAction.OpenLogin)!!
-            scene.setContent {
-                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
-                    Navigator(SourceBrowseScreen(source.id)) { CurrentScreen() }
+                fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+                fun nodes() = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+                val loginLabel = desktopSourceRecoveryActionLabel(tachiyomi.domain.source.service.SourceRecoveryAction.OpenLogin)!!
+                scene.setContent {
+                    CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                        Navigator(SourceBrowseScreen(source.id)) { CurrentScreen() }
+                    }
                 }
-            }
-            withTimeout(2_000) {
-                while (nodes().none { it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains(loginLabel) }) {
-                    scene.render()
-                    delay(10)
+                withTimeout(2_000) {
+                    while (nodes().none { it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains(loginLabel) }) {
+                        scene.render()
+                        delay(10)
+                    }
                 }
-            }
-            val recovery = nodes().first { it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains(loginLabel) }
-            assertTrue(requireNotNull(recovery.config[SemanticsActions.OnClick].action).invoke())
-            withTimeout(2_000) { while (ticket.get() == null) { scene.render(); delay(10) } }
-            val port = requireNotNull(SourceBrowseTestModeBridge.port).also { activePort = it }
-            val active = port.snapshot()
-            assertEquals(source.id, active.sourceId)
-            assertEquals(SourceBrowseTestPhase.FAILURE, active.phase)
-            assertEquals(source.id, active.request?.sourceId)
-            assertEquals(1, active.request?.page)
-            assertEquals(1, active.request?.generation)
-            assertEquals(SourceBrowseTestQueryKind.POPULAR, active.request?.queryKind)
-            assertEquals(0, active.itemCount)
-            assertFalse(active.loading)
-            assertNull(active.hasNextPage)
-            assertEquals("Authentication", active.error?.type)
-            assertEquals(SourceBrowseTestRecovery.OPEN_LOGIN, active.recovery)
-            assertEquals(server.url("/").host, active.login?.host)
-            assertNull(active.login?.feedback)
-            assertFalse(active.login?.terminal ?: true)
-            val runtimeJson = Json.encodeToString(SourceBrowseTestSnapshot.serializer(), active)
-            assertFalse(runtimeJson.contains("cookieHeader"))
-            assertFalse(runtimeJson.contains("FilterList"))
+                val recovery = nodes().first {
+                    it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains(loginLabel)
+                }
+                assertTrue(requireNotNull(recovery.config[SemanticsActions.OnClick].action).invoke())
+                withTimeout(2_000) { while (ticket.get() == null) { scene.render(); delay(10) } }
+                val port = requireNotNull(SourceBrowseTestModeBridge.port).also { activePort = it }
+                val active = port.snapshot()
+                assertEquals(source.id, active.sourceId)
+                assertEquals(SourceBrowseTestPhase.FAILURE, active.phase)
+                assertEquals(source.id, active.request?.sourceId)
+                assertEquals(1, active.request?.page)
+                assertEquals(1, active.request?.generation)
+                assertEquals(SourceBrowseTestQueryKind.POPULAR, active.request?.queryKind)
+                assertEquals(0, active.itemCount)
+                assertFalse(active.loading)
+                assertNull(active.hasNextPage)
+                assertEquals("Authentication", active.error?.type)
+                assertEquals(SourceBrowseTestRecovery.OPEN_LOGIN, active.recovery)
+                assertEquals(server.url("/").host, active.login?.host)
+                assertNull(active.login?.feedback)
+                assertFalse(active.login?.terminal ?: true)
+                val runtimeJson = Json.encodeToString(SourceBrowseTestSnapshot.serializer(), active)
+                assertFalse(runtimeJson.contains("cookieHeader"))
+                assertFalse(runtimeJson.contains("FilterList"))
 
-            assertEquals(SourceBrowseTestFailureCode.MISSING_TOKEN, port.cancel(null).failureCode)
-            assertEquals(SourceBrowseTestFailureCode.ATTEMPT_MISMATCH, port.cancel("wrong").failureCode)
-            assertEquals(active.login, port.snapshot().login)
-            assertTrue(port.cancel(requireNotNull(active.login).attemptToken).success)
-            assertFalse(requireNotNull(ticket.get()).cancel())
-            assertNull(port.snapshot().login)
-            scene.render()
-            assertTrue(nodes().none { it.config.contains(SemanticsActions.SetText) })
-            var login: DesktopSourceLoginUiState? = DesktopSourceLoginUiState(DesktopSourceLoginAttempt(), "fixture")
-            var cancelCalls = 0
-            val rejectedActions = DesktopSourceLoginUiActions({ _, _ -> false }) { cancelCalls++; false }
-            val validation = SourceBrowseTestModeObservationPort(
-                source.id,
-                SourceBrowseQueryCoordinator(SourceMangaSearchService()),
-                this,
-                { login },
-                { login = it },
-                rejectedActions,
-            ).also { validationPort = it }
-            val stale = requireNotNull(validation.snapshot().login).attemptToken
-            login = DesktopSourceLoginUiState(DesktopSourceLoginAttempt(), "replacement")
-            val current = requireNotNull(validation.snapshot().login).attemptToken
-            assertNotEquals(stale, current)
-            assertEquals(SourceBrowseTestFailureCode.ATTEMPT_MISMATCH, validation.cancel(stale).failureCode)
-            login = requireNotNull(login).copy(feedback = DesktopSourceLoginFeedback.TimedOut, terminal = true)
-            assertEquals(SourceBrowseTestLoginFeedback.TIMED_OUT, validation.snapshot().login?.feedback)
-            assertTrue(validation.snapshot().login?.terminal == true)
-            assertEquals(SourceBrowseTestFailureCode.TERMINAL, validation.cancel(current).failureCode)
-            login = null
-            assertEquals(SourceBrowseTestFailureCode.NO_ACTIVE_LOGIN, validation.cancel(current).failureCode)
-            login = DesktopSourceLoginUiState(DesktopSourceLoginAttempt(), "rejected")
-            val rejectedToken = requireNotNull(validation.snapshot().login).attemptToken
-            assertEquals(SourceBrowseTestFailureCode.OPERATION_REJECTED, validation.cancel(rejectedToken).failureCode)
-            assertEquals(1, cancelCalls)
+                assertEquals(SourceBrowseTestFailureCode.MISSING_TOKEN, port.cancel(null).failureCode)
+                assertEquals(SourceBrowseTestFailureCode.ATTEMPT_MISMATCH, port.cancel("wrong").failureCode)
+                assertEquals(active.login, port.snapshot().login)
+                assertTrue(port.cancel(requireNotNull(active.login).attemptToken).success)
+                assertFalse(requireNotNull(ticket.get()).cancel())
+                assertNull(port.snapshot().login)
+                scene.render()
+                assertTrue(nodes().none { it.config.contains(SemanticsActions.SetText) })
+                var login: DesktopSourceLoginUiState? = DesktopSourceLoginUiState(DesktopSourceLoginAttempt(), "fixture")
+                var cancelCalls = 0
+                val rejectedActions = DesktopSourceLoginUiActions({ _, _ -> false }) { cancelCalls++; false }
+                val validation = SourceBrowseTestModeObservationPort(
+                    source.id,
+                    SourceBrowseQueryCoordinator(SourceMangaSearchService()),
+                    this,
+                    { login },
+                    { login = it },
+                    rejectedActions,
+                ).also { validationPort = it }
+                val stale = requireNotNull(validation.snapshot().login).attemptToken
+                login = DesktopSourceLoginUiState(DesktopSourceLoginAttempt(), "replacement")
+                val current = requireNotNull(validation.snapshot().login).attemptToken
+                assertNotEquals(stale, current)
+                assertEquals(SourceBrowseTestFailureCode.ATTEMPT_MISMATCH, validation.cancel(stale).failureCode)
+                login = requireNotNull(login).copy(feedback = DesktopSourceLoginFeedback.TimedOut, terminal = true)
+                assertEquals(SourceBrowseTestLoginFeedback.TIMED_OUT, validation.snapshot().login?.feedback)
+                assertTrue(validation.snapshot().login?.terminal == true)
+                assertEquals(SourceBrowseTestFailureCode.TERMINAL, validation.cancel(current).failureCode)
+                login = null
+                assertEquals(SourceBrowseTestFailureCode.NO_ACTIVE_LOGIN, validation.cancel(current).failureCode)
+                login = DesktopSourceLoginUiState(DesktopSourceLoginAttempt(), "rejected")
+                val rejectedToken = requireNotNull(validation.snapshot().login).attemptToken
+                assertEquals(SourceBrowseTestFailureCode.OPERATION_REJECTED, validation.cancel(rejectedToken).failureCode)
+                assertEquals(1, cancelCalls)
 
-            val raceLogin = DesktopSourceLoginUiState(DesktopSourceLoginAttempt(), "race")
-            val loginRead = java.util.concurrent.CountDownLatch(1)
-            val releaseLogin = java.util.concurrent.CountDownLatch(1)
-            val racing = SourceBrowseTestModeObservationPort(
-                source.id,
-                SourceBrowseQueryCoordinator(SourceMangaSearchService()),
-                this,
-                { raceLogin.also { loginRead.countDown(); releaseLogin.await() } },
-                {},
-                rejectedActions,
-            ).also { racePort = it }
-            val racedSnapshot = async(kotlinx.coroutines.Dispatchers.Default) { racing.snapshot() }
-            assertTrue(loginRead.await(2, java.util.concurrent.TimeUnit.SECONDS))
-            racing.close()
-            releaseLogin.countDown()
-            assertNull(racedSnapshot.await().login)
-            assertEquals(SourceBrowseTestFailureCode.PORT_CLOSED, racing.cancel("closed").failureCode)
+                val raceLogin = DesktopSourceLoginUiState(DesktopSourceLoginAttempt(), "race")
+                val loginRead = java.util.concurrent.CountDownLatch(1)
+                val releaseLogin = java.util.concurrent.CountDownLatch(1)
+                val racing = SourceBrowseTestModeObservationPort(
+                    source.id,
+                    SourceBrowseQueryCoordinator(SourceMangaSearchService()),
+                    this,
+                    { raceLogin.also { loginRead.countDown(); releaseLogin.await() } },
+                    {},
+                    rejectedActions,
+                ).also { racePort = it }
+                val racedSnapshot = async(kotlinx.coroutines.Dispatchers.Default) { racing.snapshot() }
+                assertTrue(loginRead.await(2, java.util.concurrent.TimeUnit.SECONDS))
+                racing.close()
+                releaseLogin.countDown()
+                assertNull(racedSnapshot.await().login)
+                assertEquals(SourceBrowseTestFailureCode.PORT_CLOSED, racing.cancel("closed").failureCode)
 
-            SourceBrowseTestModeBridge.install(port)
-            SourceBrowseTestModeBridge.install(validation)
-            assertFalse(SourceBrowseTestModeBridge.clear(port))
-            assertSame(validation, SourceBrowseTestModeBridge.port)
-            assertTrue(SourceBrowseTestModeBridge.clear(validation))
+                SourceBrowseTestModeBridge.install(port)
+                SourceBrowseTestModeBridge.install(validation)
+                assertFalse(SourceBrowseTestModeBridge.clear(port))
+                assertSame(validation, SourceBrowseTestModeBridge.port)
+                assertTrue(SourceBrowseTestModeBridge.clear(validation))
             } finally {
                 listOf(racePort, validationPort, activePort).forEach { candidate ->
                     candidate?.close()
