@@ -10,9 +10,13 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.jsonObject
 import mihon.desktop.test.navigation.TestNavigationController
 import mihon.desktop.test.screenshot.ScreenshotService
@@ -51,6 +55,23 @@ private fun parseJsonBody(body: String): Map<String, String> {
     }
 }
 
+private fun jsonText(value: JsonObject) = Json.encodeToString(JsonObject.serializer(), value)
+
+private fun actionJson(
+    action: String,
+    success: Boolean,
+    error: String? = null,
+    extension: kotlinx.serialization.json.JsonElement = JsonNull,
+    tracking: JsonObject? = null,
+) = buildJsonObject {
+    put("success", JsonPrimitive(success))
+    put("action", JsonPrimitive(action))
+    put("error", error?.let(::JsonPrimitive) ?: JsonNull)
+    put("timestamp", JsonPrimitive(Instant.now().toString()))
+    put("extension", extension)
+    tracking?.let { put("tracking", it) }
+}
+
 /**
  * Configure HTTP test routes.
  */
@@ -77,22 +98,27 @@ fun Application.testHttpServer() {
                 val upState = updatesState
                 val histState = historyState
                 val migrationQueues = MigrationBatchTestBridge.controller?.queues?.value?.size ?: 0
-                """{
-                    |"currentScreen": "${state.currentScreen.value ?: "HomeScreen"}",
-                    |"isLoading": ${state.isLoading.value},
-                    |"notifications": [],
-                    |"screens": [],
-                    |"actions": [],
-                    |"testMode": ${state.testMode},
-                    |"downloadQueueSize": ${dlState.queueSize},
-                    |"downloadsPaused": ${dlState.isPaused},
-                    |"updateCount": ${upState.count},
-                    |"hasUnreadUpdates": ${upState.hasUnread},
-                    |"historyCount": ${histState.count},
-                    |"migrationQueueCount": $migrationQueues,
-                    |"timestamp": "${Instant.now()}"
-                |}
-                """.trimMargin()
+                jsonText(buildJsonObject {
+                    put("currentScreen", JsonPrimitive(state.currentScreen.value ?: "HomeScreen"))
+                    put("isLoading", JsonPrimitive(state.isLoading.value))
+                    put("notifications", JsonArray(emptyList()))
+                    put("screens", JsonArray(emptyList()))
+                    put("actions", JsonArray(emptyList()))
+                    put("testMode", JsonPrimitive(state.testMode))
+                    put("downloadQueueSize", JsonPrimitive(dlState.queueSize))
+                    put("downloadsPaused", JsonPrimitive(dlState.isPaused))
+                    put("updateCount", JsonPrimitive(upState.count))
+                    put("hasUnreadUpdates", JsonPrimitive(upState.hasUnread))
+                    put("historyCount", JsonPrimitive(histState.count))
+                    put("migrationQueueCount", JsonPrimitive(migrationQueues))
+                    put("timestamp", JsonPrimitive(Instant.now().toString()))
+                    put(
+                        "extension",
+                        SourceExtensionTestModeBridge.controller?.snapshot()?.let {
+                            Json.encodeToJsonElement(SourceExtensionTestSnapshot.serializer(), it)
+                        } ?: JsonNull,
+                    )
+                })
             }
         }
 
@@ -198,9 +224,21 @@ fun Application.testHttpServer() {
 
             applicationState.recordAction(action, params)
 
+            val isExtensionAction = action.startsWith("extension_")
+            val extensionController = if (isExtensionAction) SourceExtensionTestModeBridge.controller else null
+            if (isExtensionAction && extensionController == null) {
+                call.respondText(
+                    jsonText(actionJson(action, false, "Extension controller unavailable")),
+                    ContentType.Application.Json,
+                    HttpStatusCode.ServiceUnavailable,
+                )
+                return@post
+            }
+            val extensionResult = extensionController?.execute(action, params)
+
             // Process actions
             var trackingResult: mihon.desktop.tracking.TrackingTestState? = null
-            when (action) {
+            if (!isExtensionAction) when (action) {
                 // Library actions
                 "search", "filter", "sort" -> { }
 
@@ -270,10 +308,6 @@ fun Application.testHttpServer() {
                 -> { }
                 // History actions
                 "history_search", "history_clear_all", "history_remove", "history_select" -> { }
-                // Extension actions
-                "extension_select", "extension_enable", "extension_disable",
-                "extension_update", "extension_update_all", "extension_search",
-                -> { }
                 // Migration actions
                 "migration_search", "migration_select" -> { }
                 "migration_submit" -> {
@@ -309,12 +343,38 @@ fun Application.testHttpServer() {
 
             call.respondText(
                 contentType = ContentType.Application.Json,
-                status = HttpStatusCode.OK,
+                status = when (extensionResult?.failureCode) {
+                    SourceExtensionActionFailureCode.MISSING_PARAMETER,
+                    SourceExtensionActionFailureCode.UNSUPPORTED_ACTION,
+                    -> HttpStatusCode.BadRequest
+                    SourceExtensionActionFailureCode.UNKNOWN_PACKAGE -> HttpStatusCode.NotFound
+                    SourceExtensionActionFailureCode.ACTION_UNAVAILABLE,
+                    SourceExtensionActionFailureCode.NO_PENDING_TRUST,
+                    SourceExtensionActionFailureCode.TRUST_PACKAGE_MISMATCH,
+                    SourceExtensionActionFailureCode.OPERATION_REJECTED,
+                    -> HttpStatusCode.Conflict
+                    null -> HttpStatusCode.OK
+                },
             ) {
                 val tracking = trackingResult?.let {
-                    ",\"tracking\":{\"trackerId\":${it.trackerId},\"loggedIn\":${it.loggedIn},\"resultCount\":${it.resultCount},\"bound\":${it.track != null}}"
-                }.orEmpty()
-                """{"success":true,"action":"$action"$tracking,"timestamp":"${Instant.now()}"}"""
+                    buildJsonObject {
+                        put("trackerId", JsonPrimitive(it.trackerId))
+                        put("loggedIn", JsonPrimitive(it.loggedIn))
+                        put("resultCount", JsonPrimitive(it.resultCount))
+                        put("bound", JsonPrimitive(it.track != null))
+                    }
+                }
+                jsonText(
+                    actionJson(
+                        action = action,
+                        success = extensionResult?.success ?: true,
+                        error = extensionResult?.failureCode?.name,
+                        extension = extensionResult?.let {
+                            Json.encodeToJsonElement(SourceExtensionTestSnapshot.serializer(), it.snapshot)
+                        } ?: JsonNull,
+                        tracking = tracking,
+                    ),
+                )
             }
         }
 
