@@ -1357,18 +1357,32 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Evidence: commits `d3685df05` + `489dda981`；初始 RED 为 controller unresolved，真实 model 契约 1/1 与 production UI 2/2 全绿。首轮 review 发现缺 query、动作资格、bridge 并发清理与 repository error 证据四项 P1；修复后 UI/controller 共用 fixed-main 式 enum member `isCompleted()` 语义，bridge 使用 `AtomicReference.compareAndSet`，repository identity + `StoredAppError` 受真实 projection 测试保护，唯一复审 APPROVED。累计 `4 files, 322 lines`；根 `spotlessCheck` 仅被范围外既有 `GlobalSearchSourcePolicyTest.kt` 阻断，本轮文件无违规。
 
-#### Task 6E3B2: Extension Test Mode HTTP 与 DI wiring
+#### Task 6E3B2A: Extension Test Mode DI 与 bridge 生命周期
 
-- Risk axis: `extension-testmode-http-di`
+- Risk axis: `extension-testmode-di-lifecycle`
 - Platform boundary: `desktop`
-- Estimated scope: `4 files, 260 lines`
-- Verification: embedded HTTP `/test/state` 来自与 Injekt 同一个 `ExtensionsScreenModel`；POST search 改变真实 model 与后续 state，安装失败经真实 model 暴露类型化 error，cancel 清理真实 operation。缺 bridge、缺参数、未知 package 和 DI/model/controller 断线时测试必须失败。
-- Files: `TestHttpServer.kt`、`DesktopAppModule.kt`、`DesktopDiWiringTest.kt`，新增 `SourceExtensionTestModeHttpTest.kt`。
-- Boundary: server 只校验参数、用 kotlinx serialization 序列化与转发 controller；不得手拼 JSON 或推演任何扩展状态。DI 重建必须替换旧 controller。
+- Estimated scope: `2 files, 120 lines`
+- Verification: Injekt 注册的 controller、`SourceExtensionTestModeBridge.controller` 与 `DesktopTestDIContext` 都消费同一个 `ExtensionsScreenModel`；二次初始化必须替换 controller 并关闭旧 model，context 关闭必须先 identity-safe clear bridge 再关 model。删除 DI 注册、替换或 clear 任一处时测试失败。
+- Files: `DesktopAppModule.kt`、`DesktopDiWiringTest.kt`。
+- Boundary: bridge 仅保存 controller 指针，不缓存 snapshot；`TestMode.stop()` 不清 bridge，以便同一 DI 下重启 Test Mode。
+
+- [ ] RED：DI 中无 controller 绑定，bridge 不随 context 重建/关闭替换。
+- [ ] GREEN：用同一 model 注册 controller，并实现 identity-safe 生命周期。
+- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.di.DesktopDiWiringTest"`
+- [ ] Commit: `test(desktop): wire extension controller lifecycle`
+
+#### Task 6E3B2B: Extension Test Mode HTTP production bridge
+
+- Risk axis: `extension-testmode-http`
+- Platform boundary: `desktop`
+- Estimated scope: `2 files, 400 lines`
+- Verification: embedded HTTP `/test/state` 来自 bridge 中的真实 controller；POST search 改变同一 Injekt model 与后续 state，安装失败经真实 model 暴露 `Error + StoredAppError.type`，cancel 清理真实 operation。缺 bridge、缺参数、未知 package 和 context 关闭后必须明确失败。
+- Files: `TestHttpServer.kt`，新增 `SourceExtensionTestModeHttpTest.kt`。
+- Boundary: server 只校验参数、用 kotlinx serialization `JsonObject/encodeToJsonElement` 序列化并转发 controller；不得手拼 extension JSON 或推演任何扩展状态。保留现有 action 响应的 `success/action/error/timestamp` 顶层兼容形状，扩展 snapshot 放入 nested `extension`。删除 legacy `extension_select/enable/disable` 空操作。
 
 - [ ] RED：真实 HTTP server 仍返回空扩展状态，空 action 不改变 production model。
-- [ ] GREEN：注册 controller，暴露稳定 DTO 并转发真实 intent。
-- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "*SourceExtensionTestModeHttpTest" --tests "*DesktopDiWiringTest"`
+- [ ] GREEN：暴露稳定 DTO 并转发真实 controller intent。
+- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.test.http.SourceExtensionTestModeHttpTest" --tests "mihon.desktop.test.http.TestHttpServerJsonTest"`
 - [ ] Commit: `test(desktop): expose extension production state`
 
 #### Task 6E3B3: Extension Test Mode client 与 Robot contract
