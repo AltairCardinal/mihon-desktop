@@ -1605,6 +1605,22 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `7 files, 360 lines`
 - Verification: 消费 7C3a0 已固定的 Keiyoushi Comix 1.4.34 本地 APK/provenance：artifact repo commit `7d5052fb895d086ae2ec6e3cca861146ee3ea0ec`、blob `ebade6b9ed19d1ba02ac67c377cef31caa0bb0c7`、SHA-256 `5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8`、96,835 bytes、Apache-2.0，package `eu.kanade.tachiyomi.extension.en.comix`，extension class `eu.kanade.tachiyomi.extension.en.comix.ExtensionGenerated`。测试必须由本地 APK 经 production converter/loader 取得真实 source，再经 production settings resolver/`DesktopAndroidPreferenceAdapter` 调用 APK 自身 `setupPreferenceScreen`。固定 APK 已证明不引用 `OnBindEditTextListener`，禁止按候选源码添加无证据 widget/listener shim。RED 应精确证明 AndroidX→JVM descriptor 把 `pref_default_types`/`pref_default_demographics` 默认全选变成空集、把 `pref_show_extra_info=true` 变成 false，且 `pref_scanlator_blacklist` 无法表达原版 dialog title `Exclude groups`；独立 UI wiring RED 必须证明 Compose 仍错误显示行标题。GREEN 中 Switch/MultiSelect descriptor 的 default 必须优先来自 inherited AndroidX `Preference.defaultValue`，仅在未设置 default 时回退当前 checked/values；JVM EditText descriptor 增加可空 dialog title，转换器读取 `DialogPreference.getDialogTitle()`，Compose 对话框显示 `dialogTitle ?: title`，并由渲染/点击集成测试保护。真实结果必须断言 3 个 MultiSelect、4 个 Switch、1 个 EditText 的关键 key/title/entries/default/value；只有成功后才将三个 public symbols以该 immutable APK/test解析为 required。该批次不承诺或修改 Comix 的 WebView、Cookie、Handler/Looper、OnBindEditText 与图像处理路径。
 
+  Evidence: implementation `1feb0e07e`、ABI repair `18a6a708b`。真实 Comix RED 精确证明 3 个 MultiSelect 的上游默认集合和 `pref_show_extra_info=true` 被 Desktop 转换为空/false，UI RED 精确证明点击黑名单设置后仍显示行标题而非 `Exclude groups`；GREEN 从 inherited AndroidX `defaultValue` 读取默认值并保留仅 null 时回退当前状态，EditText descriptor 读取 dialog title，Compose 使用 `dialogTitle ?: title`。真实 APK 经 production DI/converter/loader/settings resolver 后断言 3 MultiSelect、4 Switch、1 EditText，组合回归 `38/0/0`。首审发现给公开 data class 主构造器增加默认参数仍删除旧 JVM descriptors；唯一修复先取得缺 `(String,String,String)V` 的精确 RED，再把 dialog title 改为 body property，反射同时保护旧三参数构造与 default-mask 构造，Real/ABI `2/0/0`、UI/JVM descriptor 使用方 `20/0/0`，复审 APPROVED。inventory 50=14 required+36 unverified，evidence 15 条 unique required；WebKit、Uri 等未执行行为保持 unverified。范围 implementation 7 files/148 touched，repair 4 files/26 touched，Java0；source-api Spotless 通过，root Spotless 唯一阻塞仍为提交外既有 `GlobalSearchSourcePolicyTest.kt`。
+
+##### Task 7C3b0: Mangalix gzip page-list 与 JsonReader ABI
+
+- Risk axis: `mangalix-json-reader-chain`
+- Platform boundary: `desktop`
+- Estimated scope: `8 files, 360 lines plus one 84,906-byte APK`
+- Verification: 固定 Keiyoushi Mangalix 1.6.1 本地 APK/provenance：artifact repo commit `7d5052fb895d086ae2ec6e3cca861146ee3ea0ec`、blob `5710c63733395c1fe84959602e24decea9d7229e`、SHA-256 `9a1034762e236f78fb4435c290b093d7bf2ca8b869f4030f0e4d7c73e2fb9566`、84,906 bytes、Apache-2.0，package `eu.kanade.tachiyomi.extension.en.mangalix`，extension class `eu.kanade.tachiyomi.extension.en.mangalix.ExtensionGenerated`。测试必须显式初始化 production Desktop DI、保存并在最外层 finally 恢复 global Injekt，使用 `@Isolated`，经 production converter/loader 取得真实 source；MockWebServer 只重写 `mangalix.com/chapters.json.gz`，由扩展自身网络 interceptor、GZIPInputStream、InputStreamReader、`android.util.JsonReader` 与 page mapping 完成真实调用。RED 必须依次固定 `JsonReader` 不可赋给 `Closeable`、缺 top-level `android.util.JsonToken` 或 `peek()` descriptor 不符、缺 `android.os.SystemClock.elapsedRealtime()J` 中实际首先出现的 gap，不得跳过真实链路。GREEN 让 JsonReader 实现 `Closeable`、把 JsonToken 恢复为 top-level exact enum 并让 `peek()` 返回 exact descriptor、提供以 `System.nanoTime()/1_000_000` 实现的单调 elapsedRealtime；输入覆盖未知嵌套字段和 `$TEMP`/`$HOT`/绝对 URL，结果必须是三个 exact Page URL。本 Task 只把新增/修改 public symbols登记为 unverified，并同步 compat contract 真实计数；不得提前写 required evidence，也不得把 null Uri 实参算 Uri 行为证据。
+
+##### Task 7C3b1: Mangalix JsonReader 行为证据解析
+
+- Risk axis: `mangalix-json-evidence`
+- Platform boundary: `verification`
+- Estimated scope: `2 files, 120 lines`
+- Verification: 只消费 7C3b0 已通过审查的 immutable APK、production invocation 与真实 page-list 断言，将 `android.util.JsonReader`、top-level `android.util.JsonToken`、`android.os.SystemClock` 三个实际执行的 public symbols 从 unverified 解析为 required，并在 `compat-evidence.json` 中逐项绑定同一 APK@SHA 与真实测试。不得修改 production 行为、不得顺带升级 Uri、WebKit 或其他仅完成 class verification 的符号；contract 必须继续要求每个 resolved symbol 恰有一条可追溯 evidence。
+
 #### Task 7D: Parity evidence and runtime verification
 
 - Risk axis: `parity-runtime-evidence`
