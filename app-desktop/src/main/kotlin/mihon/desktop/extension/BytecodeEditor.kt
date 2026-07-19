@@ -1,7 +1,11 @@
 package mihon.desktop.extension
 
 import org.objectweb.asm.ClassReader
+import org.objectweb.asm.ClassVisitor
 import org.objectweb.asm.ClassWriter
+import org.objectweb.asm.MethodVisitor
+import org.objectweb.asm.Opcodes
+import org.objectweb.asm.Type
 import java.io.File
 import java.util.jar.JarFile
 import java.util.jar.JarOutputStream
@@ -30,11 +34,16 @@ object BytecodeEditor {
      */
     fun fixBytecode(inputJar: File, outputJar: File) {
         JarFile(inputJar).use { jar ->
+            val inputClassNames = jar.entries().asSequence()
+                .filter { it.name.endsWith(".class") }
+                .map { it.name.removeSuffix(".class") }
+                .toSet()
+            val methodNameResolver = HostMethodNameResolver(inputClassNames)
             JarOutputStream(outputJar.outputStream()).use { out ->
                 jar.entries().asSequence().forEach { entry ->
                     val inputBytes = jar.getInputStream(entry).readBytes()
                     val outputBytes = if (entry.name.endsWith(".class")) {
-                        fixClass(inputBytes)
+                        fixClass(inputBytes, methodNameResolver)
                     } else {
                         inputBytes
                     }
@@ -51,12 +60,13 @@ object BytecodeEditor {
     // Internal
     // ──────────────────────────────────────────────────────────────
 
-    private fun fixClass(bytes: ByteArray): ByteArray {
+    private fun fixClass(bytes: ByteArray, methodNameResolver: HostMethodNameResolver): ByteArray {
         return try {
             val reader = ClassReader(bytes)
             val writer = LenientClassWriter(reader, ClassWriter.COMPUTE_FRAMES)
+            val visitor = MethodCallRepairingClassVisitor(writer, methodNameResolver)
             // SKIP_FRAMES: don't validate existing frames — let COMPUTE_FRAMES redo them
-            reader.accept(writer, ClassReader.SKIP_FRAMES)
+            reader.accept(visitor, ClassReader.SKIP_FRAMES)
             writer.toByteArray()
         } catch (_: Exception) {
             // If ASM fails (e.g. malformed class), keep the original bytes so the
@@ -64,6 +74,73 @@ object BytecodeEditor {
             bytes
         }
     }
+
+    private class MethodCallRepairingClassVisitor(
+        writer: ClassWriter,
+        private val methodNameResolver: HostMethodNameResolver,
+    ) : ClassVisitor(Opcodes.ASM9, writer) {
+        override fun visitMethod(
+            access: Int,
+            name: String?,
+            descriptor: String?,
+            signature: String?,
+            exceptions: Array<out String>?,
+        ): MethodVisitor {
+            val delegate = super.visitMethod(access, name, descriptor, signature, exceptions)
+            return object : MethodVisitor(Opcodes.ASM9, delegate) {
+                override fun visitMethodInsn(
+                    opcode: Int,
+                    owner: String,
+                    name: String,
+                    descriptor: String,
+                    isInterface: Boolean,
+                ) {
+                    val resolvedName = methodNameResolver.resolve(owner, name, descriptor)
+                    super.visitMethodInsn(opcode, owner, resolvedName, descriptor, isInterface)
+                }
+            }
+        }
+    }
+
+    private class HostMethodNameResolver(private val inputClassNames: Set<String>) {
+        private val cache = mutableMapOf<MethodCall, String?>()
+
+        fun resolve(owner: String, emittedName: String, descriptor: String): String {
+            if (owner in inputClassNames || emittedName.startsWith('<')) return emittedName
+            val call = MethodCall(owner, emittedName, descriptor)
+            if (!cache.containsKey(call)) cache[call] = findHostMethodName(call)
+            return cache[call] ?: emittedName
+        }
+
+        private fun findHostMethodName(call: MethodCall): String? {
+            val ownerClass = try {
+                Class.forName(call.owner.replace('/', '.'), false, BytecodeEditor::class.java.classLoader)
+            } catch (_: ClassNotFoundException) {
+                return null
+            } catch (_: LinkageError) {
+                return null
+            } catch (_: SecurityException) {
+                return null
+            }
+            return try {
+                ownerClass.declaredMethods.filter { method ->
+                    method.name != call.emittedName &&
+                        method.name.replace('-', '_') == call.emittedName &&
+                        Type.getMethodDescriptor(method) == call.descriptor
+                }.singleOrNull()?.name
+            } catch (_: LinkageError) {
+                null
+            } catch (_: SecurityException) {
+                null
+            }
+        }
+    }
+
+    private data class MethodCall(
+        val owner: String,
+        val emittedName: String,
+        val descriptor: String,
+    )
 
     /**
      * ClassWriter that falls back to java/lang/Object when a type hierarchy

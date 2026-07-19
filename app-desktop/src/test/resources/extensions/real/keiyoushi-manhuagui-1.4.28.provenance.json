@@ -11,9 +11,7 @@
   "versionCode": 28,
   "versionName": "1.4.28",
   "extensionClass": "eu.kanade.tachiyomi.extension.zh.manhuagui.ExtensionGenerated",
-  "expectedOutcome": "unsupported",
-  "rootCauseType": "java.lang.NoSuchMethodError",
-  "rootCauseMessage": "'long kotlin.time.Duration$Companion.getZERO_UwyO8pc()'",
+  "expectedOutcome": "success",
   "rawUrl": [
     "https://raw.githubusercontent.com/keiyoushi/extensions/",
     "7d5052fb895d086ae2ec6e3cca861146ee3ea0ec/",

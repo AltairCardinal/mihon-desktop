@@ -66,25 +66,29 @@ class RealExtensionCompatEvidenceTest {
 
             val loader = DesktopExtensionLoader(tempDir.toFile())
             val loaded = loader.loadFromSingleJar(jar)
-            if (loaded.isEmpty()) {
-                assertEquals("unsupported", provenance.string("expectedOutcome"))
-                assertTrue(loader.diagnostics.isEmpty(), "Production loader reported ${loader.diagnostics}")
-                val rootCause = loaderFailureRootCause(jar, EXTENSION_CLASS)
-                assertEquals(provenance.string("rootCauseType"), rootCause.javaClass.name)
-                assertEquals(provenance.string("rootCauseMessage"), rootCause.message)
-            } else {
-                assertEquals("success", provenance.string("expectedOutcome"))
+            assertEquals("success", provenance.string("expectedOutcome"))
+            assertTrue(loaded.isNotEmpty()) { loaderFailureDiagnostic(loader, jar, EXTENSION_CLASS) }
+            try {
                 val source = loaded.first().source
                 val codeSource = java.io.File(source.javaClass.protectionDomain.codeSource.location.toURI())
                 assertEquals(jar.canonicalFile, codeSource.canonicalFile)
                 assertTrue(source.id != 0L)
                 assertTrue(source.name.isNotBlank())
                 assertEquals("zh", source.lang)
+            } finally {
                 loaded.map { it.classLoader }.distinct().filterIsInstance<AutoCloseable>().forEach { it.close() }
             }
         } finally {
             diContext.closeAndJoin()
         }
+    }
+
+    private fun loaderFailureDiagnostic(loader: DesktopExtensionLoader, jar: java.io.File, className: String): String {
+        loader.diagnostics.firstOrNull()?.let { diagnostic ->
+            return "type=${diagnostic.errorType}, category=${diagnostic.category}, message=${diagnostic.message}"
+        }
+        val rootCause = loaderFailureRootCause(jar, className)
+        return "type=${rootCause.javaClass.name}, category=empty-loader-result, message=${rootCause.message}"
     }
 
     private fun loaderFailureRootCause(jar: java.io.File, className: String): Throwable {
@@ -129,8 +133,8 @@ class RealExtensionCompatEvidenceTest {
                 "apk/tachiyomi-zh.manhuagui-v1.4.28.apk"
         val PROVENANCE_FIELDS = setOf(
             "authorityRef", "repository", "repositoryCommit", "gitBlob", "license", "fixturePath", "sha256",
-            "sizeBytes", "packageName", "versionCode", "versionName", "extensionClass", "expectedOutcome",
-            "rootCauseType", "rootCauseMessage", "rawUrl", "retrievedAt",
+            "sizeBytes", "packageName", "versionCode", "versionName", "extensionClass", "expectedOutcome", "rawUrl",
+            "retrievedAt",
         )
     }
 }
