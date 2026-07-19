@@ -1463,13 +1463,17 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Files: `domain/src/commonMain/kotlin/mihon/domain/extension/presentation/ExtensionPresentationContract.kt`。
 - Boundary: 纯格式修复，不处理任务外既有 `GlobalSearchSourcePolicyTest.kt`，不得扩大到其他 domain 文件。
 
-- [ ] GREEN：本文件满足 Spotless，且 extension production controller contract 保持通过。
-- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "*SourceExtensionTestModeControllerTest" spotlessCheck`
-- [ ] Commit: `style(domain): format extension presentation contract`
+- [x] GREEN：本文件满足 Spotless，且 extension production controller contract 保持通过。
+- [x] Verify: `./gradlew :app-desktop:jvmTest --tests "*SourceExtensionTestModeControllerTest" spotlessCheck`
+- [x] Commit: `style(domain): format extension presentation contract`
 
-- [ ] 串行运行 6E1–6E4 focused tests，再运行 `./gradlew :app-desktop:jvmTest --tests "*Navigation*ContractTest" --tests "*I18n*" :test-desktop:test`。
-- [ ] 独立审查确认 HTTP interface 真实触达 production wiring，且 fixed main、当前 Android consumer 与 Desktop adapter 没有概念混淆。
-- [ ] Check off OpenSpec 2.3、3.4、3.5 的自动化观察部分并提交证据。
+  Evidence: commit `2affee53f`；仅将 enum 末项改为 Spotless clean output 要求的尾逗号与独立分号，归一化后语义等价，`1 file, 3 changed lines`。controller focused XML `1/0/0`；根 Spotless 不再报告本文件，唯一剩余阻断是任务外既有 `GlobalSearchSourcePolicyTest.kt`。独立 review APPROVED，并确认 6E closure 的唯一 blocker 已解除。
+
+- [x] 串行运行 6E1–6E4 focused tests，再运行 `./gradlew :app-desktop:jvmTest --tests "*Navigation*ContractTest" --tests "*I18n*" :test-desktop:test`。
+- [x] 独立审查确认 HTTP interface 真实触达 production wiring，且 fixed main、当前 Android consumer 与 Desktop adapter 没有概念混淆。
+- [x] Check off OpenSpec 2.3、3.4、3.5 的自动化观察部分并提交证据。
+
+  Closure evidence: App focused 13 类 `26/0/0`，client focused `2/0/0`，原样 closure 组合 App `55/0/0` + client `17/0/0`，累计执行 100 tests（含组间重复）且 0 failures/0 errors，总墙钟 104.688 秒，最终 Java 进程 0。独立 closure review 确认 navigation、真实 Compose i18n、extension DI/model/controller/HTTP/client 与 source login Compose/controller/ticket/HTTP/client 均触达 production wiring；fixed authority 为 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` 的原版 Mihon 语义，当前 Android consumer 与 Desktop Android shim 均未被误作 authority，Desktop 差异只保留在 adapter/automation token。OpenSpec 2.3、3.4、3.5 已为完成状态并由本轮证据复核。
 
 ### Task 7: compat 去重、parity 证据、全量审查与跨平台运行时验收
 
