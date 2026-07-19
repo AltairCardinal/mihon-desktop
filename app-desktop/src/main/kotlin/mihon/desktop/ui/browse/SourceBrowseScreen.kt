@@ -42,6 +42,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TriStateCheckbox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -250,6 +251,23 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
         val loginCopy = remember { desktopSourceLoginCopy { it.localized() } }
         val initialLoginState = LocalSourceLoginDialogInitialState.current
         var sourceLoginUiState by remember { mutableStateOf(initialLoginState) }
+        val testModePort = remember(queryCoordinator, scope, loginUiActions) {
+            SourceBrowseTestModeObservationPort(
+                sourceId,
+                queryCoordinator,
+                scope,
+                currentLogin = { sourceLoginUiState },
+                setLogin = { sourceLoginUiState = it },
+                loginActions = loginUiActions,
+            )
+        }
+        DisposableEffect(testModePort) {
+            SourceBrowseTestModeBridge.install(testModePort)
+            onDispose {
+                testModePort.close()
+                SourceBrowseTestModeBridge.clear(testModePort)
+            }
+        }
 
         // Search state
         var searchQuery by remember { mutableStateOf(initialQuery.orEmpty()) }
