@@ -1858,6 +1858,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `5 files, 220 lines`
 - Verification: 仅在 7C3o1b 独立审查通过后继续。真实 61-source production loader 中选 English source，公开 `headers/getHeaders` 链先精确 RED 于缺 `eu.kanade.tachiyomi.AppInfo`；新增 fixed-main ABI 形状的 production `object AppInfo`，只实现实际执行的 `getVersionName() = APP_VERSION`，不虚构 getVersionCode/MIME API。GREEN 断言 User-Agent、Referer、Origin 与 `Extra="Android/9 Tachiyomi/<APP_VERSION> MangaDex/1.4.211 Keiyoushi"`，设置并 finally 恢复 `http.agent`。inventory/evidence 只将 Build 标 required 且限定为 RELEASE，不宣称 SDK_INT；contract 同提交更新。文件限定 AppInfo.kt、RealExtensionBuildCompatTest.kt、inventory、evidence、contract。
 
+  Evidence: commit `991071194`，严格 5 files/144 text touched。RED 为真实 English MangaDex public headers 链 `NoClassDefFoundError: eu.kanade.tachiyomi.AppInfo`；GREEN 通过 tracked APK → production converter/meta/loader 61 → `HttpSource.getHeaders()` 得到精确 UA/Referer/Origin/Extra。Desktop AppInfo 编译 ABI 为 Kotlin object INSTANCE + `getVersionName():String` 且仅返回 APP_VERSION；无 direct source/mock/network，http.agent/Injekt/DI/shared classloader 均 finally 恢复。Build ledger 只绑定 VERSION.RELEASE，不覆盖 SDK_INT，surface 保持 34/43；独立 review APPROVED，focused/contract 与 12 classes/29 tests 回归通过，Java0。
+
 ##### Task 7C3o3b: MangaDex UUID validator production wiring 与 Compose 反馈
 
 - Risk axis: `mangadex-validator-wiring`
