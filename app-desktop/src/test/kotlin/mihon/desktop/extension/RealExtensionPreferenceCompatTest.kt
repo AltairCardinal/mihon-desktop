@@ -1,5 +1,8 @@
 package mihon.desktop.extension
 
+import eu.kanade.tachiyomi.source.preference.EditTextPreference
+import eu.kanade.tachiyomi.source.preference.MultiSelectListPreference
+import eu.kanade.tachiyomi.source.preference.SwitchPreference
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -7,6 +10,8 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import mihon.desktop.di.initDesktopDIForTest
+import mihon.desktop.ui.extension.SourcePreferencesState
+import mihon.desktop.ui.extension.resolveSourcePreferencesState
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -83,6 +88,54 @@ class RealExtensionPreferenceCompatTest {
                     assertEquals(EXTENSION_CLASS, source.javaClass.name)
                     val codeSource = java.io.File(source.javaClass.protectionDomain.codeSource.location.toURI())
                     assertEquals(jar.canonicalFile, codeSource.canonicalFile)
+
+                    val state = resolveSourcePreferencesState(source)
+                    assertTrue(state is SourcePreferencesState.Content, "Comix preferences were not resolved: $state")
+                    val items = (state as SourcePreferencesState.Content).items
+                    val multiSelects = items.filterIsInstance<MultiSelectListPreference>()
+                    val switches = items.filterIsInstance<SwitchPreference>()
+                    val editTexts = items.filterIsInstance<EditTextPreference>()
+                    assertEquals(3, multiSelects.size)
+                    assertEquals(4, switches.size)
+                    assertEquals(1, editTexts.size)
+                    val defaultTypes = multiSelects.single { it.key == "pref_default_types" }
+                    assertEquals("Default types", defaultTypes.title)
+                    assertEquals(listOf("Manga", "Manhwa", "Manhua", "Other"), defaultTypes.entries)
+                    assertEquals(listOf("manga", "manhwa", "manhua", "other"), defaultTypes.entryValues)
+                    assertEquals(setOf("manga", "manhwa", "manhua", "other"), defaultTypes.defaultValue)
+
+                    val defaultDemographics = multiSelects.single { it.key == "pref_default_demographics" }
+                    assertEquals("Default demographics", defaultDemographics.title)
+                    assertEquals(listOf("Josei", "Seinen", "Shoujo", "Shounen"), defaultDemographics.entries)
+                    assertEquals(listOf("3", "4", "1", "2"), defaultDemographics.entryValues)
+                    assertEquals(setOf("3", "4", "1", "2"), defaultDemographics.defaultValue)
+
+                    val blockedGenres = multiSelects.single { it.key == "pref_blocked_genres" }
+                    assertEquals("Blocked genres", blockedGenres.title)
+                    assertTrue(blockedGenres.entries.isNotEmpty())
+                    assertEquals(blockedGenres.entries.size, blockedGenres.entryValues.size)
+                    assertEquals(emptySet<String>(), blockedGenres.defaultValue)
+
+                    assertEquals(
+                        listOf(
+                            Triple("pref_deduplicate_chapters", "Deduplicate Chapters", false),
+                            Triple("pref_alt_names_in_description", "Show Alternative Names in Description", false),
+                            Triple("pref_show_extra_info", "Show extra info in description", true),
+                            Triple("pref_show_tags_in_genres", "Show tags in genre chips", false),
+                        ),
+                        switches.map { Triple(it.key, it.title, it.defaultValue) },
+                    )
+
+                    val scanlatorBlacklist = editTexts.single()
+                    assertEquals("pref_scanlator_blacklist", scanlatorBlacklist.key)
+                    assertEquals("Scanlator Blacklist", scanlatorBlacklist.title)
+                    assertEquals(
+                        "Filter out chapters from specific groups. Comma-separated list of group names or group IDs " +
+                            "(e.g., 'Violet Scans, 307').",
+                        scanlatorBlacklist.summary,
+                    )
+                    assertEquals("", scanlatorBlacklist.defaultValue)
+                    assertEquals("Exclude groups", scanlatorBlacklist.dialogTitle)
                 } finally {
                     loaded.map { it.classLoader }.distinct().filterIsInstance<AutoCloseable>().forEach { it.close() }
                 }

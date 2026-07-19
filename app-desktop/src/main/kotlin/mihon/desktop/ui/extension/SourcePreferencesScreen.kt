@@ -284,7 +284,7 @@ private fun EditTextRow(item: EditTextPreference, prefStore: DesktopPreferenceSt
         var draft by remember { mutableStateOf(storedValue) }
         AlertDialog(
             onDismissRequest = { showDialog = false },
-            title = { Text(item.title) },
+            title = { Text(item.dialogTitle ?: item.title) },
             text = {
                 OutlinedTextField(
                     value = draft,

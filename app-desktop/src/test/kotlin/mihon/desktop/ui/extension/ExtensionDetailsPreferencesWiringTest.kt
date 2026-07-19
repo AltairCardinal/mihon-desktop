@@ -18,6 +18,7 @@ import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.PreferenceScreen
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.source.preference.EditTextPreference
 import eu.kanade.tachiyomi.source.preference.SwitchPreference
 import io.mockk.coEvery
 import io.mockk.every
@@ -281,6 +282,45 @@ class ExtensionDetailsPreferencesWiringTest {
             }
         }
         stored.remove(item.key)
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
+    fun `edit text preference dialog preserves its Android dialog title`() = runBlocking {
+        val sourceId = 987654322L
+        val item = EditTextPreference(
+            key = "pref_scanlator_blacklist",
+            title = "Scanlator Blacklist",
+            dialogTitle = "Exclude groups",
+        )
+        val stored = Preferences.userRoot().node("/mihon/source_$sourceId")
+        stored.remove(item.key)
+        val manager = mockk<DesktopExtensionManager>(relaxed = true)
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+            every { extensionManager } returns manager
+        }
+        val scene = ImageComposeScene(700, 600, coroutineContext = coroutineContext) {}
+        try {
+            scene.setContent {
+                CompositionLocalProvider(
+                    LocalDesktopUiDependencies provides dependencies,
+                    LocalSourcePreferencesStateResolver provides { SourcePreferencesState.Content(listOf(item)) },
+                ) { Navigator(SourcePreferencesScreen(sourceId, "Source settings")) { CurrentScreen() } }
+            }
+            scene.render()
+            click(scene, item.title)
+            scene.render()
+            assertTrue(
+                nodes(scene).any {
+                    it.config.contains(SemanticsProperties.Text) &&
+                        it.config[SemanticsProperties.Text].any { text -> text.text == "Exclude groups" }
+                },
+                "EditText dialog did not expose its Android dialog title",
+            )
+        } finally {
+            scene.close()
+            stored.remove(item.key)
+        }
     }
 
     private suspend fun uninstall(scene: ImageComposeScene) {

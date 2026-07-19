@@ -42,11 +42,25 @@
     "removalCondition": "Remove when real APK settings no longer create ListPreference through DialogPreference."
   },
   {
+    "symbol": "androidx.preference.EditTextPreference",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comix-1.4.34.apk@sha256:5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionPreferenceCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when real APK settings no longer create EditTextPreference items with preserved text and dialog title semantics."
+  },
+  {
     "symbol": "androidx.preference.ListPreference",
     "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-manhuagui-1.4.28.apk@sha256:200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8",
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt",
     "status": "required",
     "removalCondition": "Remove when real APK settings no longer create ListPreference items."
+  },
+  {
+    "symbol": "androidx.preference.MultiSelectListPreference",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comix-1.4.34.apk@sha256:5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionPreferenceCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when real APK settings no longer require inherited MultiSelectListPreference defaults."
   },
   {
     "symbol": "androidx.preference.Preference",
@@ -68,6 +82,13 @@
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt",
     "status": "required",
     "removalCondition": "Remove when real APK sources no longer expose settings through AndroidX PreferenceScreen."
+  },
+  {
+    "symbol": "androidx.preference.SwitchPreferenceCompat",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comix-1.4.34.apk@sha256:5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionPreferenceCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when real APK settings no longer require inherited SwitchPreferenceCompat defaults."
   },
   {
     "symbol": "androidx.preference.TwoStatePreference",

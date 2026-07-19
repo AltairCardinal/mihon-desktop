@@ -100,15 +100,23 @@ actual class PreferenceScreen {
         val item: JvmPreferenceItem? = when (cls.simpleName) {
             "SwitchPreferenceCompat", "SwitchPreference", "TwoStatePreference" -> {
                 val checked = cls.method("isChecked")?.invoke(pref) as? Boolean ?: false
-                SwitchPreference(key = key, title = title, defaultValue = checked)
+                val defaultValue = cls.field("defaultValue")?.get(pref) as? Boolean ?: checked
+                SwitchPreference(key = key, title = title, defaultValue = defaultValue)
             }
             "CheckBoxPreference" -> {
                 val checked = cls.method("isChecked")?.invoke(pref) as? Boolean ?: false
                 CheckBoxPreference(key = key, title = title, defaultValue = checked)
             }
             "EditTextPreference" -> {
-                val text = cls.method("getText")?.invoke(pref) as? String ?: ""
-                EditTextPreference(key = key, title = title, defaultValue = text)
+                val text = cls.method("getText")?.invoke(pref) as? String
+                val defaultValue = text ?: cls.field("defaultValue")?.get(pref) as? String ?: ""
+                val dialogTitle = cls.method("getDialogTitle")?.invoke(pref)?.toString()
+                EditTextPreference(
+                    key = key,
+                    title = title,
+                    defaultValue = defaultValue,
+                    dialogTitle = dialogTitle,
+                )
             }
             "ListPreference" -> {
                 val entries = (cls.method("getEntries")?.invoke(pref) as? Array<*>)
@@ -133,12 +141,15 @@ actual class PreferenceScreen {
 
                 @Suppress("UNCHECKED_CAST")
                 val selected = cls.method("getValues")?.invoke(pref) as? Set<String> ?: emptySet()
+
+                @Suppress("UNCHECKED_CAST")
+                val defaultValue = cls.field("defaultValue")?.get(pref) as? Set<String> ?: selected
                 MultiSelectListPreference(
                     key = key,
                     title = title,
                     entries = entries,
                     entryValues = values,
-                    defaultValue = selected,
+                    defaultValue = defaultValue,
                 )
             }
             else -> null
