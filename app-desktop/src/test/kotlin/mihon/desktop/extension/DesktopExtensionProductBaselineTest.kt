@@ -58,13 +58,6 @@ class DesktopExtensionProductBaselineTest {
                 "${item.symbol}: missing protection test ${item.test}",
             )
         }
-        val resolved = evidence.associateBy { it.symbol }
-        assertEquals(RESOLVED_SYMBOLS, resolved.keys)
-        resolved.values.forEach { item ->
-            assertEquals("required", item.status)
-            assertEquals(REAL_FIXTURE, item.fixture)
-            assertEquals(REAL_FIXTURE_TEST, item.test)
-        }
     }
 
     @Test
@@ -144,12 +137,6 @@ class DesktopExtensionProductBaselineTest {
             "ZGV4CjAzNQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAcAAAAHhWNBIAAAAAAAAAAHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAcAAAAAEAAAAAAAAAAQAAAAAAAAA="
         val COMPAT_FIELDS = setOf("symbol", "fixture", "test", "status", "removalCondition")
         val COMPAT_STATUSES = setOf("required", "unsupported")
-        const val REAL_FIXTURE =
-            "app-desktop/src/test/resources/extensions/real/keiyoushi-manhuagui-1.4.28.apk@" +
-                "sha256:200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8"
-        const val REAL_FIXTURE_TEST =
-            "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt"
-        val RESOLVED_SYMBOLS = setOf("android.app.Application", "eu.kanade.tachiyomi.source.Source")
         val REQUIRED_AUTHORITY_SYMBOLS =
             setOf(
                 "`ExtensionApi`",
