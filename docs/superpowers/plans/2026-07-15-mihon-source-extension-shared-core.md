@@ -1804,6 +1804,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `3 files, 230 lines`
 - Verification: RED复用真实Comix `p0.P`链，证明当前WebView构造UOE被Handler Future吞掉并触及10秒timeout。GREEN只修改WebViewCompat.kt：构造器允许创建ABI shell且不声称浏览器可用，`getSettings`及其余所有真实引擎方法继续抛 `UnsupportedOperationException("Desktop WebView engine unavailable")`；不得改变Handler全局调度。Comix字节码在构造后进入异常保护区，故getSettings UOE必须被extension写入errorRef/release semaphore并快速包装为指定Exception/cause。更新AndroidWebViewVerifierAbiTest，断言构造可完成、首次engine方法fail-fast；真实测试、ABI、Comix preference/graphics通过。不得修改inventory/evidence/contract。
 
+  Evidence: commit `5879b1a836`，3 files/151 touched（137 additions/14 deletions）。在7C3n00恢复exception handlers后，真实Comix `p0.P`链由原三次10秒timeout变为1.84秒内返回exact `Exception("Failed to start WebView...")`，cause为exact Desktop engine UOE；bridge与稳定栈均断言。WebView ctor仅成为ABI shell，getSettings及全部engine方法仍fail-fast，private helper未扩大ABI；View layout三方法零改，其UOE只由extension原runCatching吞下。ABI、真实P、Comix preference/graphics、converter全绿，ledger零diff，独立review APPROVED、Java0。
+
 ###### Task 7C3n1: Comix WebView 平台边界 evidence ledger
 
 - Risk axis: `webview-boundary-evidence-ledger`
