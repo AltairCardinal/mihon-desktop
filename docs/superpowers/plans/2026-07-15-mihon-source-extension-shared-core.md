@@ -1125,6 +1125,25 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
   Run: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionPresentationUiTest" --tests "mihon.desktop.ui.extension.ExtensionListCopyContractTest"`
   Expected: 绕过 ScreenModel、恢复本地 install map、丢 trust/error/旧版本反馈或删除 locale key 时至少一项失败。
 
+**Review status:** 初审五项在唯一修复轮关闭后，复审发现 `project()` 仍把 raw duplicate package candidates 暴露给 UI，而动作已选择 canonical last candidate；这会产生重复卡片、数量与 key。按门禁停止 6D2，由 6D2R 对齐 fixed-main `associateBy(pkgName).values` 后统一 checkoff。
+
+##### Task 6D2R: Canonical catalog projection closure
+
+- Risk axis: `extension-canonical-ui-projection`
+- Platform boundary: `desktop`
+- Estimated scope: `3 files, 60 lines` incremental on the reviewed 6D2 worktree
+- Verification: `project()`、single update 与 updateAll 共用同一 last-wins canonical candidate map；同包双仓库输入在 projection 与真实 UI 中只出现一次，identity 为 last candidate，badge/key/action 数量一致。恢复 raw catalog projection 时契约测试必须失败。
+- Carry-forward waiver: 6D2 的 `317/400` 六文件修复仍未提交；6D2R 只计复审新发现的 projection closure，最终组合 diff 继续保持不超过 400 lines。
+
+**Files:**
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/extension/DesktopExtensionPresentationPort.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionSharedStateWiringTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionPresentationUiTest.kt`
+
+- [ ] **Step 1: 写 duplicate-package projection/UI RED**
+- [ ] **Step 2: project available 只消费 canonical values**
+- [ ] **Step 3: 运行 fresh focused GREEN 与 raw-projection mutation**
+
 #### Task 6D3: Extension details、typed uninstall 与 Desktop 独有入口
 
 - Risk axis: `extension-details-ui`
