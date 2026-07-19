@@ -29,12 +29,12 @@ class CompatEvidenceContractTest {
         assertEquals(ADAPTER_ROOTS, inventory.adapterRoots)
         assertEquals(symbols.size, symbols.toSet().size, "inventory symbols must be unique")
         assertEquals(
-            mapOf("required" to 43, "unsupported" to 1, "unverified" to 2),
+            mapOf("required" to 44, "unsupported" to 1, "unverified" to 1),
             inventory.entries.groupingBy(Entry::status).eachCount(),
             "compat status counts drifted",
         )
         assertEquals(
-            setOf("android.graphics.Color", "android.text.Html"),
+            setOf("android.graphics.Color"),
             inventory.entries.filter { it.status == "unverified" }.map(Entry::symbol).toSet(),
             "the unverified set must remain exact",
         )
@@ -68,7 +68,7 @@ class CompatEvidenceContractTest {
     }
 
     @Test
-    fun `ComicFury text evidence resolves only the five executed compat types`() {
+    fun `ComicFury text evidence resolves only the seven executed compat types`() {
         val root = repositoryRoot()
         val entries = inventory(root).entries.associateBy(Entry::symbol)
         val evidence = evidence(root)
@@ -76,22 +76,36 @@ class CompatEvidenceContractTest {
         assertEquals(
             COMIC_FURY_TEXT_STATUSES.keys,
             entries.keys.intersect(COMIC_FURY_TEXT_STATUSES.keys),
-            "all five ComicFury text compat types must be inventoried",
+            "all seven ComicFury text compat types must be inventoried",
         )
         COMIC_FURY_TEXT_STATUSES.forEach { (symbol, status) ->
             assertEquals(status, entries.getValue(symbol).status, "$symbol must reflect the executed text path")
-            val matching = evidence.filter { it.symbol == symbol }
+            val matching = evidence.filter { it.symbol == symbol && it.test == COMIC_FURY_TEST }
             assertEquals(1, matching.size, "$symbol must have exactly one evidence item")
             assertEquals(COMIC_FURY_FIXTURE, matching.single().fixture, "$symbol must bind to tracked ComicFury")
             assertEquals(COMIC_FURY_TEST, matching.single().test, "$symbol must bind to the real ComicFury test")
             val boundary = COMIC_FURY_TEXT_BOUNDARIES.getValue(symbol)
             assertTrue(matching.single().removalCondition.contains(boundary), "$symbol must record `$boundary`")
         }
-        assertEquals(5, COMIC_FURY_TEXT_STATUSES.size, "the ComicFury text reverse evidence set must stay exact")
+        assertEquals(7, COMIC_FURY_TEXT_STATUSES.size, "the ComicFury text reverse evidence set must stay exact")
         assertEquals(
             COMIC_FURY_TEXT_STATUSES.keys,
             evidence.filter { it.test == COMIC_FURY_TEST }.map(Evidence::symbol).toSet(),
             "the ComicFury test must not resolve compat APIs outside its executed path",
+        )
+        assertEquals(
+            setOf(COMIX_WEBVIEW_TEST, COMIC_FURY_TEST),
+            evidence.filter { it.symbol == "android.net.Uri" }.map(Evidence::test).toSet(),
+            "Uri must retain the Comix token and ComicFury encode evidence separately",
+        )
+        val htmlBoundary = evidence.single { it.symbol == "android.text.Html" }.removalCondition
+        assertTrue(htmlBoundary.contains("one-argument descriptor is protected by AndroidCompatPhase2Test"))
+        assertTrue(htmlBoundary.contains("not executed by this Desktop SDK 28 path"))
+        val uriBoundary = evidence
+            .single { it.symbol == "android.net.Uri" && it.test == COMIC_FURY_TEST }
+            .removalCondition
+        assertTrue(
+            uriBoundary.contains("does not evidence parsing, decoding, Builder/construction, or general Uri behavior"),
         )
     }
 
@@ -103,7 +117,7 @@ class CompatEvidenceContractTest {
 
         COMIX_WEBVIEW_STATUSES.forEach { (symbol, status) ->
             assertEquals(status, entries.getValue(symbol).status, "$symbol must reflect the real Comix verifier path")
-            val matching = evidence.filter { it.symbol == symbol }
+            val matching = evidence.filter { it.symbol == symbol && it.test == COMIX_WEBVIEW_TEST }
             assertEquals(1, matching.size, "$symbol must have exactly one evidence item")
             assertEquals(COMIX_WEBVIEW_FIXTURE, matching.single().fixture, "$symbol must bind to tracked Comix")
             assertEquals(COMIX_WEBVIEW_TEST, matching.single().test, "$symbol must bind to the real Comix WebView test")
@@ -215,12 +229,17 @@ class CompatEvidenceContractTest {
     private fun validateResolved(root: Path, entries: List<Entry>, evidence: List<Evidence>) {
         entries.filter { it.status != "unverified" }.forEach { entry ->
             val matching = evidence.filter { it.symbol == entry.symbol }
-            require(matching.size == 1) { "${entry.symbol}: resolved status requires exactly one evidence item" }
-            require(matching.single().status == entry.status && matching.single().removalCondition.isNotBlank()) {
-                "${entry.symbol}: evidence status/provenance mismatch"
+            val expectedCount = if (entry.symbol == "android.net.Uri") 2 else 1
+            require(matching.size == expectedCount) {
+                "${entry.symbol}: resolved status requires exactly $expectedCount evidence item(s)"
             }
-            require(isRealEvidence(root, matching.single())) {
-                "${entry.symbol}: evidence lacks real local artifact/test provenance"
+            matching.forEach {
+                require(it.status == entry.status && it.removalCondition.isNotBlank()) {
+                    "${entry.symbol}: evidence status/provenance mismatch"
+                }
+                require(isRealEvidence(root, it)) {
+                    "${entry.symbol}: evidence lacks real local artifact/test provenance"
+                }
             }
         }
     }
@@ -264,6 +283,8 @@ class CompatEvidenceContractTest {
                 "sha256:9403d439eefec8ccff3fa7a3edd810046a12206d944302013bc3f94538b3def7"
         val COMIC_FURY_TEXT_STATUSES = setOf(
             "android.graphics.Typeface",
+            "android.net.Uri",
+            "android.text.Html",
             "android.text.Layout",
             "android.text.Spanned",
             "android.text.StaticLayout",
@@ -271,6 +292,8 @@ class CompatEvidenceContractTest {
         ).associateWith { "required" }
         val COMIC_FURY_TEXT_BOUNDARIES = mapOf(
             "android.graphics.Typeface" to "DEFAULT_BOLD for the author title and DEFAULT for body text",
+            "android.net.Uri" to "exact static Uri.encode(String) with Android UTF-8 percent encoding, including emoji",
+            "android.text.Html" to "fromHtml(String, int flags=0): Spanned in the real author-note text chain",
             "android.text.Layout" to "Alignment.ALIGN_NORMAL token passed to StaticLayout",
             "android.text.Spanned" to "Html.fromHtml return descriptor and runtime instance",
             "android.text.StaticLayout" to "fixed constructor, getHeight, and draw through the Desktop Skia adapter",

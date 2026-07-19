@@ -84,6 +84,13 @@
     "removalCondition": "Remove when the immutable ComicFury author-note path no longer resolves the Layout.Alignment.ALIGN_NORMAL token passed to StaticLayout; this covers no other Layout behavior."
   },
   {
+    "symbol": "android.text.Html",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comicfury-1.4.8.apk@sha256:9403d439eefec8ccff3fa7a3edd810046a12206d944302013bc3f94538b3def7",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionComicFuryTextCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the immutable ComicFury source no longer executes fromHtml(String, int flags=0): Spanned in the real author-note text chain; the one-argument descriptor is protected by AndroidCompatPhase2Test but is not executed by this Desktop SDK 28 path."
+  },
+  {
     "symbol": "android.text.Spanned",
     "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comicfury-1.4.8.apk@sha256:9403d439eefec8ccff3fa7a3edd810046a12206d944302013bc3f94538b3def7",
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionComicFuryTextCompatTest.kt",
@@ -124,6 +131,13 @@
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt",
     "status": "required",
     "removalCondition": "Remove when the immutable Comix l0 verifier no longer resolves android.net.Uri as WebResourceRequest.getUrl()'s return descriptor; this does not evidence Uri parsing, construction, or behavior."
+  },
+  {
+    "symbol": "android.net.Uri",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comicfury-1.4.8.apk@sha256:9403d439eefec8ccff3fa7a3edd810046a12206d944302013bc3f94538b3def7",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionComicFuryTextCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the immutable ComicFury public page-list path no longer executes exact static Uri.encode(String) with Android UTF-8 percent encoding, including emoji; this does not evidence parsing, decoding, Builder/construction, or general Uri behavior."
   },
   {
     "symbol": "android.view.ViewGroup",
