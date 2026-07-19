@@ -1497,9 +1497,9 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `compat-real-fixture-evidence`
 - Platform boundary: `verification`
-- Estimated scope: `9 files, 750 lines plus one 70,062-byte binary fixture`
+- Estimated scope: `11 files, 1,050 lines plus one 70,062-byte binary fixture`
 - Verification: 真实 APK/JAR 必须通过 production converter/loader 并实际调用所声明 symbol；parent classpath fixture、仅加载 class 或网络调查输出不算 `required` 证据。每条真实证据负责将对应 inventory 项从 `unverified` 解析为 `required` 或具备真实失败证据的 `unsupported`。
-- Split waiver: 二进制 fixture/provenance/loader outcome、production DI wiring 与 evidence/baseline 清理需要不同的 RED 和审查，按 7B1/7B2/7B3 调度；任何单次实现仍不超过 4 files/350 lines。
+- Split waiver: 二进制 fixture/provenance/loader outcome、production DI wiring、dex2jar Kotlin ABI 修复与 evidence/baseline 清理需要不同的 RED 和审查，按 7B1/7B2/7B2K/7B3 调度；任何单次实现仍不超过 4 files/350 lines。
 
 ##### Task 7B1: Immutable real APK 与 production loader outcome
 
@@ -1516,6 +1516,13 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Verification: 只消费 7B1 的真实 loader outcome；固定 main `AppModule` 明确 `addSingleton(app)`，而 7B1 证明真实 extension 构造通过 Injekt 精确请求 `android.app.Application`，因此先将 fixture 期望改为 success 取得 RED，再让 Desktop 初始化现有 Application adapter 并注册同一 contract。成功必须返回 converted-JAR Source；只有该因果链闭合后才能把 Application/Source evidence 解析为 `required`。仅 linkage/class-load 不得升级为 `required`，不得批量新增 shim；若出现下一 gap，停止并继续拆分。
 
   7B1 evidence: commit `cf9835804`；RED1 精确失败于本地 fixture 缺失，RED2 在真实 Desktop DI、manifest、converter、meta 与 production loader 后精确得到 `InjektionException: No registered instance or factory for type class android.app.Application`。GREEN 将该唯一 outcome 固定为 provenance 中的结构化 `unsupported`，任意其他 Throwable 均失败；XML `1/0/0`。APK 固定上游 commit/blob/70,062 bytes/SHA-256，Git binary attrs 保证普通 stage/fresh checkout 不改字节。独立 review APPROVED；范围 `4 files, 160 text lines plus APK`。
+
+##### Task 7B2K: dex2jar Kotlin mangled ABI 修复
+
+- Risk axis: `dex2jar-kotlin-mangled-abi`
+- Platform boundary: `desktop`
+- Estimated scope: `4 files, 350 lines`
+- Verification: 7B2 注册 Application 后真实 fixture 推进到 `Duration.Companion.getZERO_UwyO8pc`，而宿主 Kotlin 真实 JVM 方法名为 `getZERO-UwyO8pc`，证明 gap 来自 dex2jar 将合法 JVM `-` 净化为 `_`，不是原版业务差异或缺少 Android shim。Bytecode post-process 必须按外部 owner + 完整 descriptor 查询宿主真实方法并只恢复唯一匹配名称；不得硬编码 Duration/方法名，不得改写 extension JAR 自有 owner 或无唯一宿主匹配的方法。单元 RED/GREEN 与真实 fixture success 必须同时通过；若出现下一 gap，停止并继续拆分。
 
 ##### Task 7B3: Resolved evidence 与旧 baseline 收口
 
