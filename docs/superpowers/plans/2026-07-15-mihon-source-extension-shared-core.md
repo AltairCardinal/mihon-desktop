@@ -1667,6 +1667,13 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `5 files, 400 lines`
 - Verification: 只修改 Bitmap.kt、BitmapFactory.kt、CanvasCompat.kt、RealExtensionComixDescramblerCompatTest.kt 与 AndroidStubsPhase27Test.kt；固定图片以 base64 内嵌测试，释放文件名额。XOR-only 与 XOR+grid 必须是两次独立真实 source.client 请求，分别断言 decode/compress 与 Canvas/Rect/Paint tile mapping；旧随机无效字节返回1×1的自证测试改为 Android null 语义。该批次必须取得完整像素 GREEN、相关 settings/compat 回归与独立审查，但不得修改 inventory/evidence/contract或宣称 required。
 
+###### Task 7C3e1r: Skia lifecycle 与 Android 参数语义修复
+
+- Risk axis: `skia-lifecycle-parameter-semantics`
+- Platform boundary: `desktop`
+- Estimated scope: `4 files, 180 lines`
+- Verification: 这是 7C3e1 的唯一修复轮，只修改 Bitmap.kt、BitmapFactory.kt、CanvasCompat.kt、AndroidStubsPhase27Test.kt。所有临时 Skia Canvas 必须确定性关闭；decode/allocate/scale 任意异常路径关闭已分配 native Bitmap，Canvas 每次draw重新通过目标 Bitmap 的 recycle guard取得native，禁止use-after-close。`decodeByteArray` 的负offset/length或尾部越界抛 `ArrayIndexOutOfBoundsException`；`Bitmap.compress` quality不在0..100抛 `IllegalArgumentException`；`createScaledBitmap` 必须按filter选择nearest与linear采样，并由真实像素测试区分。复跑7C3e1两条真实Comix链和相关adapter测试；仍不得更新ledger。
+
 ###### Task 7C3e2: Comix graphics evidence ledger
 
 - Risk axis: `comix-graphics-evidence`
