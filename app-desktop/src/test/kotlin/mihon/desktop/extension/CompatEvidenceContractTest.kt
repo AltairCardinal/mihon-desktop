@@ -73,6 +73,7 @@ class CompatEvidenceContractTest {
                 assertTrue(matching.single().removalCondition.contains(boundary), "$symbol must record `$boundary`")
             }
         }
+        assertEquals(9, COMIX_WEBVIEW_STATUSES.size, "the Comix WebView reverse evidence set must stay exact")
         assertEquals(
             COMIX_WEBVIEW_STATUSES.keys,
             evidence.filter { it.test == COMIX_WEBVIEW_TEST }.map(Evidence::symbol).toSet(),
@@ -204,14 +205,19 @@ class CompatEvidenceContractTest {
             "android.os.Handler" to "required",
             "android.os.Looper" to "required",
             "android.net.Uri" to "required",
+            "android.view.ViewGroup" to "required",
             "android.webkit.WebResourceRequest" to "required",
             "android.webkit.WebResourceResponse" to "required",
+            "android.webkit.WebSettings" to "required",
             "android.webkit.WebView" to "unsupported",
             "android.webkit.WebViewClient" to "required",
         )
         val COMIX_VERIFIER_BOUNDARIES = mapOf(
             "android.net.Uri" to "does not evidence Uri parsing, construction, or behavior",
+            "android.view.ViewGroup" to "layout operations remain unsupported and the extension swallows that failure",
             "android.webkit.WebResourceRequest" to "does not evidence callback execution or a request engine",
+            "android.webkit.WebSettings" to
+                "does not evidence WebSettings instantiation, setters, or a WebView engine",
             "android.webkit.WebViewClient" to "does not evidence callback execution or a WebView engine",
         )
         const val MANGADEX_BUILD_TEST =

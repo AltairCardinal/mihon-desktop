@@ -91,6 +91,13 @@
     "removalCondition": "Remove when the immutable Comix l0 verifier no longer resolves android.net.Uri as WebResourceRequest.getUrl()'s return descriptor; this does not evidence Uri parsing, construction, or behavior."
   },
   {
+    "symbol": "android.view.ViewGroup",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comix-1.4.34.apk@sha256:5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the immutable Comix APK no longer resolves WebView's ViewGroup superclass/layout shell before the unsupported engine boundary; layout operations remain unsupported and the extension swallows that failure."
+  },
+  {
     "symbol": "android.os.Handler",
     "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comix-1.4.34.apk@sha256:5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8",
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt",
@@ -117,6 +124,13 @@
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt",
     "status": "required",
     "removalCondition": "Remove when the immutable Comix APK no longer constructs WebResourceResponse before entering WebView startup."
+  },
+  {
+    "symbol": "android.webkit.WebSettings",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comix-1.4.34.apk@sha256:5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the immutable Comix verifier no longer resolves WebView.getSettings()'s WebSettings return token before the unsupported engine boundary; this does not evidence WebSettings instantiation, setters, or a WebView engine."
   },
   {
     "symbol": "android.webkit.WebView",
