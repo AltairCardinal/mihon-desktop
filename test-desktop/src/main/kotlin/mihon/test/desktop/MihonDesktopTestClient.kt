@@ -13,6 +13,10 @@ import io.ktor.http.contentType
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import mihon.test.desktop.data.TestDataClient
 import mihon.test.desktop.robot.BrowseRobot
 import mihon.test.desktop.robot.DownloadsRobot
@@ -160,18 +164,28 @@ class DesktopTestClient(
     /**
      * Execute a test action.
      */
-    fun executeAction(action: String, params: Map<String, Any> = emptyMap()): ActionResult {
+    fun executeAction(action: String, params: Map<String, Any?> = emptyMap()): ActionResult {
         return runBlocking {
-            val body = params.entries.joinToString(",", "{", "}") { "\"${it.key}\":\"${it.value}\"" }
+            val body = buildJsonObject {
+                params.forEach { (key, value) ->
+                    put(
+                        key,
+                        when (value) {
+                            null -> JsonNull
+                            is String -> JsonPrimitive(value)
+                            is Boolean -> JsonPrimitive(value)
+                            is Number -> JsonPrimitive(value)
+                            else -> JsonPrimitive(value.toString())
+                        },
+                    )
+                }
+            }
             val response = http.post("$baseUrl/test/action/$action") {
                 contentType(ContentType.Application.Json)
-                setBody(body)
+                setBody(Json.encodeToString(JsonObject.serializer(), body))
             }
-            if (response.status == HttpStatusCode.OK) {
-                json.decodeFromString<ActionResult>(response.bodyAsText())
-            } else {
-                ActionResult(success = false, action = action, error = response.status.toString())
-            }
+            runCatching { json.decodeFromString<ActionResult>(response.bodyAsText()) }
+                .getOrElse { ActionResult(success = false, action = action, error = response.status.toString()) }
         }
     }
 
@@ -230,6 +244,8 @@ data class AppState(
     val hasUnreadUpdates: Boolean? = null,
     // History state
     val historyCount: Int? = null,
+    val migrationQueueCount: Int? = null,
+    val extension: SourceExtensionTestSnapshot? = null,
 )
 
 @Serializable
@@ -252,6 +268,64 @@ data class ActionResult(
     val action: String,
     val error: String? = null,
     val timestamp: String = Instant.now().toString(),
+    val extension: SourceExtensionTestSnapshot? = null,
+)
+
+@Serializable
+data class SourceExtensionTestSource(val id: Long, val language: String, val name: String, val baseUrl: String? = null)
+
+@Serializable
+data class SourceExtensionTestItem(
+    val packageName: String,
+    val name: String,
+    val language: String? = null,
+    val installed: Boolean,
+    val available: Boolean,
+    val hasUpdate: Boolean,
+    val sources: List<SourceExtensionTestSource>,
+)
+
+@Serializable
+data class SourceExtensionStoredFailedUnit(val unitId: String, val error: SourceExtensionStoredAppError)
+
+@Serializable
+data class SourceExtensionStoredAppError(
+    val type: String,
+    val statusCode: Int? = null,
+    val retryAfterSeconds: Long? = null,
+    val message: String? = null,
+    val failures: List<SourceExtensionStoredAppError> = emptyList(),
+    val failedUnits: List<SourceExtensionStoredFailedUnit> = emptyList(),
+)
+
+@Serializable
+data class SourceExtensionRepositoryError(
+    val repositoryBaseUrl: String,
+    val repositoryName: String,
+    val repositoryFingerprint: String,
+    val error: SourceExtensionStoredAppError,
+)
+
+@Serializable
+data class SourceExtensionTrustSnapshot(
+    val packageName: String,
+    val requestId: String,
+    val existingFingerprint: String,
+    val incomingFingerprint: String,
+    val reasons: List<String>,
+)
+
+@Serializable
+data class SourceExtensionTestSnapshot(
+    val searchQuery: String,
+    val refreshing: Boolean,
+    val installed: List<SourceExtensionTestItem>,
+    val available: List<SourceExtensionTestItem>,
+    val updates: List<SourceExtensionTestItem>,
+    val installSteps: Map<String, String>,
+    val errors: Map<String, SourceExtensionStoredAppError>,
+    val repositoryErrors: List<SourceExtensionRepositoryError>,
+    val pendingTrust: SourceExtensionTrustSnapshot? = null,
 )
 
 @Serializable

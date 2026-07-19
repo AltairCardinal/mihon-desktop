@@ -2,6 +2,7 @@ package mihon.test.desktop.robot
 
 import mihon.test.desktop.DesktopTestClient
 import mihon.test.desktop.ScreenshotResult
+import mihon.test.desktop.SourceExtensionTestSnapshot
 
 /**
  * Robot for More tab interactions.
@@ -79,51 +80,24 @@ class ExtensionsRobot(private val client: DesktopTestClient) {
         return this
     }
 
-    /**
-     * Select an extension by index.
-     */
-    fun selectExtension(index: Int): ExtensionsRobot {
-        client.executeAction("extension_select", mapOf("index" to index))
-        return this
-    }
+    fun state(): SourceExtensionTestSnapshot? = client.getState().extension
 
-    /**
-     * Enable an extension by index.
-     */
-    fun enableExtension(index: Int): ExtensionsRobot {
-        client.executeAction("extension_enable", mapOf("index" to index))
-        return this
-    }
+    fun refresh() = action("extension_refresh")
+    fun search(query: String) = action("extension_search", mapOf("query" to query))
+    fun install(packageName: String) = packageAction("extension_install", packageName)
+    fun update(packageName: String) = packageAction("extension_update", packageName)
+    fun retry(packageName: String) = packageAction("extension_retry", packageName)
+    fun cancel(packageName: String) = packageAction("extension_cancel", packageName)
+    fun updateAll() = action("extension_update_all")
+    fun uninstall(packageName: String) = packageAction("extension_uninstall", packageName)
+    fun trustConfirm(packageName: String) = packageAction("extension_trust_confirm", packageName)
+    fun trustDismiss(packageName: String) = packageAction("extension_trust_dismiss", packageName)
 
-    /**
-     * Disable an extension by index.
-     */
-    fun disableExtension(index: Int): ExtensionsRobot {
-        client.executeAction("extension_disable", mapOf("index" to index))
-        return this
-    }
+    private fun packageAction(name: String, packageName: String) = action(name, mapOf("packageName" to packageName))
 
-    /**
-     * Update an extension by index.
-     */
-    fun updateExtension(index: Int): ExtensionsRobot {
-        client.executeAction("extension_update", mapOf("index" to index))
-        return this
-    }
-
-    /**
-     * Update all extensions.
-     */
-    fun updateAll(): ExtensionsRobot {
-        client.executeAction("extension_update_all")
-        return this
-    }
-
-    /**
-     * Search extensions by name.
-     */
-    fun search(query: String): ExtensionsRobot {
-        client.executeAction("extension_search", mapOf("query" to query))
+    private fun action(name: String, params: Map<String, Any?> = emptyMap()): ExtensionsRobot {
+        val result = client.executeAction(name, params)
+        check(result.success) { "$name failed: ${result.error ?: "unknown error"}" }
         return this
     }
 
