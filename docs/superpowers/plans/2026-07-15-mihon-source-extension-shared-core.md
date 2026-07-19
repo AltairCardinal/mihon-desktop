@@ -1652,6 +1652,20 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Evidence: implementation `eb1271d8f`、loader-cleanup repair `40484b4fa`，5 files/185 text touched + 61,951-byte APK，repair 1 test file/4 touched。fixture commit/blob/SHA/size/package/version/class 全部复验；direct verification 未虚构产品 RED。真实 production converter/loader 构造 FavComic 时执行 `Base64.decode(String, DEFAULT=0)`，loaded HttpSource.client 以 `#true` 触发 APK 自身 interceptor；server exact `/cover.jpg`，固定 IV/cipher 解出 exact PNG 明文，真实 MIME 为 `application/octet-stream`。最初计划误写 image/jpeg，在写测试前基于真实 APK/OkHttp URL语义暂停并纠正，未修改产品迎合计划。inventory 18 required+33 unverified，evidence 19/19 unique；仅Base64升级required，production与未执行flags/overloads零修改。Real `1/0/0`、contract与AndroidCompat通过。首审唯一 Important 为loaded后的断言位于classloader finally外；唯一修复把全部loader/HTTP/AES断言纳入try，清理顺序classloader→DI→server→Injekt，复审 APPROVED。Java0；root Spotless仍仅被提交外既有`GlobalSearchSourcePolicyTest.kt`阻塞。
 
+##### Task 7C3e: Comix 真实 Bitmap/Canvas 图片解扰语义
+
+- Risk axis: `extension-graphics-semantics`
+- Platform boundary: `desktop`
+- Estimated scope: `8 files, 400 lines`
+- Verification: 复用 immutable Comix 1.4.34 APK/provenance，经 production DI/converter/loader取得真实 HttpSource.client；MockWebServer 返回固定 scrambled PNG/JPEG bytes 与 APK 实际识别的 `x-enc-*`/`x-scramble-*` headers，由 extension 自身 Descrambler interceptor 执行，禁止直接调用 shim 或在测试复制扩展算法。RED 必须证明当前 BitmapFactory 1×1占位/缺 `Bitmap.CompressFormat`、`Bitmap.compress`、Canvas/Paint/Rect 等会产生错误尺寸、LinkageError或错误像素；GREEN 只实现该真实链使用的 Android graphics ABI，以 Skia adapter 支持真实 decode、width/height/config、createBitmap、Rect、Canvas 两种 drawBitmap、Paint token、JPEG/PNG/WebP compress 与 recycle。测试用固定编码输入和独立 ImageIO oracle断言输出尺寸与各目标色块（JPEG允许明确容差），不得以“未抛异常”代替像素行为。Bitmap、BitmapFactory以及新增 top-level Canvas/Paint/Rect 只有真实 XOR/grid路径成功后才标 required；同步 inventory/evidence与 public surface contract真实计数，不升级 Color/Drawable/Html/WebKit。复跑 RealExtensionPreferenceCompatTest，确保无WebView引擎仍不影响Comix设置。文件限定 Bitmap.kt、BitmapFactory.kt、一个Canvas/Paint/Rect文件、真实Comix descrambler测试、固定文本内嵌或单一图片fixture、inventory、evidence、CompatEvidenceContractTest；若使用独立图片文件则总文件仍不得超过8。
+
+##### Task 7C3f: AsyncTask/JsonWriter 无消费者 compat prune
+
+- Risk axis: `unused-compat-prune`
+- Platform boundary: `desktop`
+- Estimated scope: `5 files, 300 lines`
+- Verification: 本项目的支持边界是当前可追溯、fixed-main-compatible 1.4 artifact集合，不承诺任意历史 APK。fixed main/current production/source-api、本地 Keiyoushi全源码 `900d108c`、六个已下载raw JAR与七个去重APK descriptor 对 `android.os.AsyncTask`、`android.util.JsonWriter` 的消费者均为0；两者只来自批量补桩提交和 `AndroidStubsPhase27Test` 自证。该direct prune不虚构产品行为RED：删除两个实现、对应stub自测与inventory条目，更新public surface contract计数；运行剩余Phase27、全部immutable fixture production converter/loader tests、contract和clean compile。若删除导致任何真实fixture或production编译失败则回滚本批并恢复unverified，不用新增shim绕过。该结论不自动扩张到Handler/Looper/Intent/Bundle/Uri，也不声称兼容任意历史扩展。
+
 ##### Task 7C4: Source/extension authority baseline 与恢复入口纠偏
 
 - Risk axis: `authority-resume-pointer`
