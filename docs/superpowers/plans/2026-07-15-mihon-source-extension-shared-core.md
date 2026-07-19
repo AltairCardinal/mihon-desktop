@@ -1849,6 +1849,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `3 files, 260 lines`
 - Verification: 仅在 7C3o1b 独立审查通过后继续。真实 RED 已证明 production converter 输出 JAR 缺少 APK 中存在的 `assets/i18n/messages_*.properties`，使 MangaDex `setupPreferenceScreen` 在 `InputStreamReader` 构造时 NPE。先用 synthetic APK asset test 锁定 converter 必须保留安全的 `assets/` classpath entries，再最小修改 ApkToJarConverter 将原 APK assets 合并进最终 edited JAR，拒绝路径穿越且不得覆盖转换后的 class/meta。真实 MangaDex 测试随后必须通过 `resolveSourcePreferencesState` → `DesktopAndroidPreferenceAdapter` 成功建立 preference Content，并验证原版 i18n 文案可读取；不得直接 classloader 注入测试资源绕过 production converter。文件限定 ApkToJarConverter.kt、ApkToJarConverterTest.kt、RealExtensionMangaDexFactoryCompatTest.kt。
 
+  Evidence: commits `a78ff97c4` + repair `860cf9b6a`。RED1 为最终 JAR 缺 safe asset；GREEN 保留安全 assets 字节并拒绝 traversal/absolute/backslash/class/meta/manifest/signature/DEX，真实 MangaDex production loader 仍为 61 且 preference `Content(12)` 读取 APK 原版 `Cover quality`/`Block groups by UUID`。首轮 review 发现 post-edit asset 冲突会遗留 raw/partial final 并覆盖既有产物；修复 RED 复现两种失败，GREEN 改为同输出目录唯一 workdir，全链成功后才 publish deterministic final，失败清理本轮产物并保留既有 final。唯一修复复审 APPROVED；13 classes/51 tests 0 failure/error，Java0。root Spotless 仍只被范围外既有 `GlobalSearchSourcePolicyTest.kt` 阻塞。
+
 ##### Task 7C3o2: MangaDex AppInfo 与 Build.RELEASE 真实 header 链
 
 - Risk axis: `mangadex-build-release-abi`
