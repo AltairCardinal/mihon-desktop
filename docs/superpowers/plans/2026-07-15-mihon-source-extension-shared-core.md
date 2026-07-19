@@ -1334,24 +1334,54 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Files: `ExtensionsScreenModel.kt`、`ExtensionListScreen.kt`、`ExtensionPresentationUiTest.kt`。
 - Authority: 语义来自 fixed `main@6fbf6dfc` 的 `ExtensionsScreenModel.search(query)`；不得以当前 Android consumer 或 Desktop legacy Test Mode 为权威。
 
-- [ ] RED：证明当前搜索只存在于 composition，无法由 ScreenModel/Test Mode 控制。
-- [ ] GREEN：最小上收 query/intent，不改变共享分类与 Desktop 独有安装能力。
-- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionPresentationUiTest"`
-- [ ] Commit: `refactor(desktop): align extension search state`
+- [x] RED：证明当前搜索只存在于 composition，无法由 ScreenModel/Test Mode 控制。
+- [x] GREEN：最小上收 query/intent，不改变共享分类与 Desktop 独有安装能力。
+- [x] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.extension.ExtensionPresentationUiTest"`
+- [x] Commit: `refactor(desktop): align extension search state`
 
-#### Task 6E3B: Extension Test Mode production bridge
+  Evidence: commit `405d3e0d3`；RED 精确复现同一 model 重挂载后 EditableText 由 `Beta` 变为空，GREEN 将 query 上收为 `DesktopExtensionsState` 的唯一搜索业务状态，UI 只消费 state 并发送 `model::search`。真实 Compose 测试 2/2 通过，覆盖输入、过滤、重挂载和 model intent；独立 review APPROVED；`3 files, 63 lines`。
 
-- Risk axis: `extension-automation-observability`
+#### Task 6E3B1: Extension Test Mode production controller contract
+
+- Risk axis: `extension-testmode-controller`
 - Platform boundary: `desktop`
-- Estimated scope: `8 files, 400 lines`
-- Verification: HTTP `/test/state` 读取真实 `ExtensionsScreenModel.state`，扩展 refresh/search/install/update/cancel/retry/updateAll/trust 动作调用同一 production model/intent；安装失败暴露类型化 step/error，不由 server 推演。动作按稳定 `packageName` 定位，不使用易漂移的 list index。移除 DI 注册、model dispatch 或 JSON/client 字段任一处时测试必须失败。
-- Files: 新增薄 `SourceExtensionTestModeController`（或等价 production adapter），修改 `TestHttpServer.kt`、`DesktopAppModule.kt`、`MihonDesktopTestClient.kt`、`MoreRobot.kt`，新增 app-desktop HTTP/DI 集成测试与 test-desktop 客户端契约测试；如 JSON DTO 独立成文件，总文件数仍不得超过 8。
-- Boundary: server 只做参数校验、序列化和 intent 转发；不得维护独立扩展列表、安装状态机、搜索规则或错误映射。删除 `extension_select/enable/disable` 遗留空操作：select 是 UI 导航而非扩展状态 intent，enable/disable 在原版属于 Source 管理。
+- Estimated scope: `2 files, 260 lines`
+- Verification: 薄 controller 的 snapshot 只消费真实 `ExtensionsScreenModel.state`，复用 production projection 与 `AppError.toStoredAppError()`；refresh/search/install/update/cancel/retry/updateAll/uninstall/trust confirm/dismiss 均按稳定 `packageName` 调用真实 model intent。未知 package、无 pending trust 或无可用动作时必须明确失败。
+- Files: 新增 `SourceExtensionTestModeController.kt` 与 `SourceExtensionTestModeControllerTest.kt`。
+- Boundary: 不得复制搜索 predicate、分类/reducer、安装状态机、错误字符串或信任规则；Desktop 两阶段指纹信任是平台安全增强，必须保留。
 
-- [ ] RED：真实 HTTP server 仍返回空扩展状态且空 action 不改变 production model。
-- [ ] GREEN：注册 production bridge，暴露稳定 DTO 并转发真实 model intent。
-- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "*SourceExtension*TestMode*" :test-desktop:test --tests "*SourceExtension*"`
+- [ ] RED：断言 controller 不存在，并以真实 model 覆盖状态、动作、失败与取消契约。
+- [ ] GREEN：实现不持有第二份业务状态的 controller。
+- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "*SourceExtensionTestModeControllerTest"`
+- [ ] Commit: `test(desktop): bridge extension production model`
+
+#### Task 6E3B2: Extension Test Mode HTTP 与 DI wiring
+
+- Risk axis: `extension-testmode-http-di`
+- Platform boundary: `desktop`
+- Estimated scope: `4 files, 260 lines`
+- Verification: embedded HTTP `/test/state` 来自与 Injekt 同一个 `ExtensionsScreenModel`；POST search 改变真实 model 与后续 state，安装失败经真实 model 暴露类型化 error，cancel 清理真实 operation。缺 bridge、缺参数、未知 package 和 DI/model/controller 断线时测试必须失败。
+- Files: `TestHttpServer.kt`、`DesktopAppModule.kt`、`DesktopDiWiringTest.kt`，新增 `SourceExtensionTestModeHttpTest.kt`。
+- Boundary: server 只校验参数、用 kotlinx serialization 序列化与转发 controller；不得手拼 JSON 或推演任何扩展状态。DI 重建必须替换旧 controller。
+
+- [ ] RED：真实 HTTP server 仍返回空扩展状态，空 action 不改变 production model。
+- [ ] GREEN：注册 controller，暴露稳定 DTO 并转发真实 intent。
+- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "*SourceExtensionTestModeHttpTest" --tests "*DesktopDiWiringTest"`
 - [ ] Commit: `test(desktop): expose extension production state`
+
+#### Task 6E3B3: Extension Test Mode client 与 Robot contract
+
+- Risk axis: `extension-testmode-client-contract`
+- Platform boundary: `desktop`
+- Estimated scope: `3 files, 220 lines`
+- Verification: client 能安全序列化包含引号/反斜杠的 query，解析 nested extension DTO；Robot 按 `packageName` 发送全部真实动作且不得吞掉 `ActionResult.success=false`。
+- Files: `MihonDesktopTestClient.kt`、`MoreRobot.kt`，新增 `SourceExtensionClientContractTest.kt`。
+- Boundary: 删除 server/Robot 中 legacy `extension_select/enable/disable` 空操作与 index API；select 已由真实导航契约覆盖，enable/disable 在 fixed main 属于 Source 管理，后续只能以 `source_toggle/source_pin` 调用真实 Source model。
+
+- [ ] RED：legacy index/no-op API 与手拼 JSON 不符合新契约。
+- [ ] GREEN：客户端与 Robot 仅暴露稳定、真实的 production action。
+- [ ] Verify: `./gradlew :test-desktop:test --tests "*SourceExtensionClientContractTest"`
+- [ ] Commit: `test(desktop): align extension automation client`
 
 #### Task 6E4: Source 状态与登录取消 Test Mode wiring
 
