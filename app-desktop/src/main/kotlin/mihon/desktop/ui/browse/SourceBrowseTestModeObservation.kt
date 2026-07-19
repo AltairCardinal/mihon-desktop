@@ -26,48 +26,34 @@ enum class SourceBrowseTestLoginFeedback { INVALID_HEADER, BROWSER_UNAVAILABLE, 
 
 @Serializable
 data class SourceBrowseTestRequest(
-    val sourceId: Long,
-    val page: Int,
-    val generation: Long,
-    val queryKind: SourceBrowseTestQueryKind,
-    val queryText: String? = null,
+    val sourceId: Long, val page: Int, val generation: Long,
+    val queryKind: SourceBrowseTestQueryKind, val queryText: String? = null,
 )
 
 @Serializable
 data class SourceBrowseTestLogin(
-    val host: String,
-    val feedback: SourceBrowseTestLoginFeedback? = null,
-    val terminal: Boolean,
-    val attemptToken: String,
+    val host: String, val feedback: SourceBrowseTestLoginFeedback? = null,
+    val terminal: Boolean, val attemptToken: String,
 )
 
 @Serializable
 data class SourceBrowseTestSnapshot(
-    val sourceId: Long,
-    val phase: SourceBrowseTestPhase = SourceBrowseTestPhase.IDLE,
-    val request: SourceBrowseTestRequest? = null,
-    val itemCount: Int = 0,
-    val loading: Boolean = false,
-    val hasNextPage: Boolean? = null,
-    val error: StoredAppError? = null,
-    val recovery: SourceBrowseTestRecovery? = null,
-    val login: SourceBrowseTestLogin? = null,
+    val sourceId: Long, val phase: SourceBrowseTestPhase = SourceBrowseTestPhase.IDLE,
+    val request: SourceBrowseTestRequest? = null, val itemCount: Int = 0, val loading: Boolean = false,
+    val hasNextPage: Boolean? = null, val error: StoredAppError? = null,
+    val recovery: SourceBrowseTestRecovery? = null, val login: SourceBrowseTestLogin? = null,
 )
 
 @Serializable
 enum class SourceBrowseTestFailureCode {
-    MISSING_TOKEN,
-    NO_ACTIVE_LOGIN,
-    ATTEMPT_MISMATCH,
-    TERMINAL,
-    OPERATION_REJECTED,
-    PORT_CLOSED,
+    MISSING_TOKEN, NO_ACTIVE_LOGIN,
+    ATTEMPT_MISMATCH, TERMINAL,
+    OPERATION_REJECTED, PORT_CLOSED,
 }
 
 @Serializable
 data class SourceBrowseTestActionResult(
-    val success: Boolean,
-    val snapshot: SourceBrowseTestSnapshot,
+    val success: Boolean, val snapshot: SourceBrowseTestSnapshot,
     val failureCode: SourceBrowseTestFailureCode? = null,
 )
 
@@ -104,15 +90,12 @@ class SourceBrowseTestModeObservationPort(
             },
             request = state?.request?.let {
                 SourceBrowseTestRequest(
-                    it.sourceId,
-                    it.page,
-                    it.generation,
+                    it.sourceId, it.page, it.generation,
                     when (it.query) {
                         SourceQuery.Popular -> SourceBrowseTestQueryKind.POPULAR
                         SourceQuery.Latest -> SourceBrowseTestQueryKind.LATEST
                         is SourceQuery.Search -> SourceBrowseTestQueryKind.SEARCH
-                    },
-                    (it.query as? SourceQuery.Search)?.query,
+                    }, (it.query as? SourceQuery.Search)?.query,
                 )
             },
             itemCount = state?.items?.size ?: 0,
@@ -126,33 +109,35 @@ class SourceBrowseTestModeObservationPort(
                     tachiyomi.domain.source.service.SourceRecoveryAction.None -> SourceBrowseTestRecovery.NONE
                 }
             },
-            login = loginState?.let { login ->
-                SourceBrowseTestLogin(
-                    login.host,
-                    login.feedback?.let {
-                        when (it) {
-                            DesktopSourceLoginFeedback.InvalidHeader -> SourceBrowseTestLoginFeedback.INVALID_HEADER
-                            DesktopSourceLoginFeedback.BrowserUnavailable -> SourceBrowseTestLoginFeedback.BROWSER_UNAVAILABLE
-                            DesktopSourceLoginFeedback.TimedOut -> SourceBrowseTestLoginFeedback.TIMED_OUT
-                            DesktopSourceLoginFeedback.InvalidCookies -> SourceBrowseTestLoginFeedback.INVALID_COOKIES
-                            DesktopSourceLoginFeedback.CommitFailed -> SourceBrowseTestLoginFeedback.COMMIT_FAILED
-                        }
-                    },
-                    login.terminal,
-                    tokenFor(login.attempt),
-                )
-            } ?: run { clearToken(); null },
+            login = synchronized(lock) {
+                if (closed || loginState == null) {
+                    clearTokenLocked()
+                    null
+                } else {
+                    SourceBrowseTestLogin(
+                        loginState.host, loginState.feedback?.toTestFeedback(),
+                        loginState.terminal, tokenForLocked(loginState.attempt),
+                    )
+                }
+            },
         )
     }
 
     suspend fun cancel(attemptToken: String?): SourceBrowseTestActionResult {
         return withContext(dispatcher) {
             if (attemptToken.isNullOrBlank()) return@withContext failure(SourceBrowseTestFailureCode.MISSING_TOKEN)
-            if (synchronized(lock) { closed }) return@withContext failure(SourceBrowseTestFailureCode.PORT_CLOSED)
-            val login = currentLogin() ?: return@withContext failure(SourceBrowseTestFailureCode.NO_ACTIVE_LOGIN)
-            val matches = synchronized(lock) { tokenAttempt === login.attempt && token == attemptToken }
-            if (!matches) return@withContext failure(SourceBrowseTestFailureCode.ATTEMPT_MISMATCH)
-            if (login.terminal) return@withContext failure(SourceBrowseTestFailureCode.TERMINAL)
+            val login = currentLogin()
+            val failureCode = synchronized(lock) {
+                when {
+                    closed -> SourceBrowseTestFailureCode.PORT_CLOSED
+                    login == null -> SourceBrowseTestFailureCode.NO_ACTIVE_LOGIN
+                    tokenAttempt !== login.attempt || token != attemptToken -> SourceBrowseTestFailureCode.ATTEMPT_MISMATCH
+                    login.terminal -> SourceBrowseTestFailureCode.TERMINAL
+                    else -> null
+                }
+            }
+            if (failureCode != null) return@withContext failure(failureCode)
+            requireNotNull(login)
             if (loginActions.cancel(login) != null) return@withContext failure(SourceBrowseTestFailureCode.OPERATION_REJECTED)
             setLogin(null)
             clearToken()
@@ -166,20 +151,32 @@ class SourceBrowseTestModeObservationPort(
         token = null
     }
 
-    private fun tokenFor(attempt: DesktopSourceLoginAttempt): String = synchronized(lock) {
+    private fun tokenForLocked(attempt: DesktopSourceLoginAttempt): String {
         if (tokenAttempt !== attempt) {
             tokenAttempt = attempt
             token = UUID.randomUUID().toString()
         }
-        requireNotNull(token)
+        return requireNotNull(token)
     }
 
     private fun clearToken() = synchronized(lock) {
+        clearTokenLocked()
+    }
+
+    private fun clearTokenLocked() {
         tokenAttempt = null
         token = null
     }
 
     private fun failure(code: SourceBrowseTestFailureCode) = SourceBrowseTestActionResult(false, snapshot(), code)
+}
+
+private fun DesktopSourceLoginFeedback.toTestFeedback() = when (this) {
+    DesktopSourceLoginFeedback.InvalidHeader -> SourceBrowseTestLoginFeedback.INVALID_HEADER
+    DesktopSourceLoginFeedback.BrowserUnavailable -> SourceBrowseTestLoginFeedback.BROWSER_UNAVAILABLE
+    DesktopSourceLoginFeedback.TimedOut -> SourceBrowseTestLoginFeedback.TIMED_OUT
+    DesktopSourceLoginFeedback.InvalidCookies -> SourceBrowseTestLoginFeedback.INVALID_COOKIES
+    DesktopSourceLoginFeedback.CommitFailed -> SourceBrowseTestLoginFeedback.COMMIT_FAILED
 }
 
 object SourceBrowseTestModeBridge {

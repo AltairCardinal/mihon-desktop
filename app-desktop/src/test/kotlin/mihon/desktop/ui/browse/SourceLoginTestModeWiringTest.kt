@@ -14,6 +14,7 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -29,7 +30,6 @@ import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
@@ -52,6 +52,10 @@ class SourceLoginTestModeWiringTest {
             val ticket = AtomicReference<DesktopBrowserLoginTicket?>()
             val dependencies = mockkDependencies(source, ticket)
             val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
+            var activePort: SourceBrowseTestModeObservationPort? = null
+            var validationPort: SourceBrowseTestModeObservationPort? = null
+            var racePort: SourceBrowseTestModeObservationPort? = null
+            try {
             fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
             fun nodes() = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
             val loginLabel = desktopSourceRecoveryActionLabel(tachiyomi.domain.source.service.SourceRecoveryAction.OpenLogin)!!
@@ -69,7 +73,7 @@ class SourceLoginTestModeWiringTest {
             val recovery = nodes().first { it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains(loginLabel) }
             assertTrue(requireNotNull(recovery.config[SemanticsActions.OnClick].action).invoke())
             withTimeout(2_000) { while (ticket.get() == null) { scene.render(); delay(10) } }
-            val port = requireNotNull(SourceBrowseTestModeBridge.port)
+            val port = requireNotNull(SourceBrowseTestModeBridge.port).also { activePort = it }
             val active = port.snapshot()
             assertEquals(source.id, active.sourceId)
             assertEquals(SourceBrowseTestPhase.FAILURE, active.phase)
@@ -91,47 +95,71 @@ class SourceLoginTestModeWiringTest {
 
             assertEquals(SourceBrowseTestFailureCode.MISSING_TOKEN, port.cancel(null).failureCode)
             assertEquals(SourceBrowseTestFailureCode.ATTEMPT_MISMATCH, port.cancel("wrong").failureCode)
-            assertNotNull(port.snapshot().login)
+            assertEquals(active.login, port.snapshot().login)
             assertTrue(port.cancel(requireNotNull(active.login).attemptToken).success)
             assertFalse(requireNotNull(ticket.get()).cancel())
             assertNull(port.snapshot().login)
             scene.render()
             assertTrue(nodes().none { it.config.contains(SemanticsActions.SetText) })
-            scene.close()
-            assertNull(SourceBrowseTestModeBridge.port)
-
             var login: DesktopSourceLoginUiState? = DesktopSourceLoginUiState(DesktopSourceLoginAttempt(), "fixture")
             var cancelCalls = 0
             val rejectedActions = DesktopSourceLoginUiActions({ _, _ -> false }) { cancelCalls++; false }
-            val validationPort = SourceBrowseTestModeObservationPort(
+            val validation = SourceBrowseTestModeObservationPort(
                 source.id,
                 SourceBrowseQueryCoordinator(SourceMangaSearchService()),
                 this,
                 { login },
                 { login = it },
                 rejectedActions,
-            )
-            val stale = requireNotNull(validationPort.snapshot().login).attemptToken
+            ).also { validationPort = it }
+            val stale = requireNotNull(validation.snapshot().login).attemptToken
             login = DesktopSourceLoginUiState(DesktopSourceLoginAttempt(), "replacement")
-            val current = requireNotNull(validationPort.snapshot().login).attemptToken
+            val current = requireNotNull(validation.snapshot().login).attemptToken
             assertNotEquals(stale, current)
-            assertEquals(SourceBrowseTestFailureCode.ATTEMPT_MISMATCH, validationPort.cancel(stale).failureCode)
+            assertEquals(SourceBrowseTestFailureCode.ATTEMPT_MISMATCH, validation.cancel(stale).failureCode)
             login = requireNotNull(login).copy(feedback = DesktopSourceLoginFeedback.TimedOut, terminal = true)
-            assertEquals(SourceBrowseTestLoginFeedback.TIMED_OUT, validationPort.snapshot().login?.feedback)
-            assertTrue(validationPort.snapshot().login?.terminal == true)
-            assertEquals(SourceBrowseTestFailureCode.TERMINAL, validationPort.cancel(current).failureCode)
+            assertEquals(SourceBrowseTestLoginFeedback.TIMED_OUT, validation.snapshot().login?.feedback)
+            assertTrue(validation.snapshot().login?.terminal == true)
+            assertEquals(SourceBrowseTestFailureCode.TERMINAL, validation.cancel(current).failureCode)
             login = null
-            assertEquals(SourceBrowseTestFailureCode.NO_ACTIVE_LOGIN, validationPort.cancel(current).failureCode)
+            assertEquals(SourceBrowseTestFailureCode.NO_ACTIVE_LOGIN, validation.cancel(current).failureCode)
             login = DesktopSourceLoginUiState(DesktopSourceLoginAttempt(), "rejected")
-            val rejectedToken = requireNotNull(validationPort.snapshot().login).attemptToken
-            assertEquals(SourceBrowseTestFailureCode.OPERATION_REJECTED, validationPort.cancel(rejectedToken).failureCode)
+            val rejectedToken = requireNotNull(validation.snapshot().login).attemptToken
+            assertEquals(SourceBrowseTestFailureCode.OPERATION_REJECTED, validation.cancel(rejectedToken).failureCode)
             assertEquals(1, cancelCalls)
+
+            val raceLogin = DesktopSourceLoginUiState(DesktopSourceLoginAttempt(), "race")
+            val loginRead = java.util.concurrent.CountDownLatch(1)
+            val releaseLogin = java.util.concurrent.CountDownLatch(1)
+            val racing = SourceBrowseTestModeObservationPort(
+                source.id,
+                SourceBrowseQueryCoordinator(SourceMangaSearchService()),
+                this,
+                { raceLogin.also { loginRead.countDown(); releaseLogin.await() } },
+                {},
+                rejectedActions,
+            ).also { racePort = it }
+            val racedSnapshot = async(kotlinx.coroutines.Dispatchers.Default) { racing.snapshot() }
+            assertTrue(loginRead.await(2, java.util.concurrent.TimeUnit.SECONDS))
+            racing.close()
+            releaseLogin.countDown()
+            assertNull(racedSnapshot.await().login)
+            assertEquals(SourceBrowseTestFailureCode.PORT_CLOSED, racing.cancel("closed").failureCode)
+
             SourceBrowseTestModeBridge.install(port)
-            SourceBrowseTestModeBridge.install(validationPort)
+            SourceBrowseTestModeBridge.install(validation)
             assertFalse(SourceBrowseTestModeBridge.clear(port))
-            assertSame(validationPort, SourceBrowseTestModeBridge.port)
-            assertTrue(SourceBrowseTestModeBridge.clear(validationPort))
-            validationPort.close()
+            assertSame(validation, SourceBrowseTestModeBridge.port)
+            assertTrue(SourceBrowseTestModeBridge.clear(validation))
+            } finally {
+                listOf(racePort, validationPort, activePort).forEach { candidate ->
+                    candidate?.close()
+                    candidate?.let(SourceBrowseTestModeBridge::clear)
+                }
+                ticket.get()?.cancel()
+                scene.close()
+                assertNull(SourceBrowseTestModeBridge.port)
+            }
         }
     }
 
