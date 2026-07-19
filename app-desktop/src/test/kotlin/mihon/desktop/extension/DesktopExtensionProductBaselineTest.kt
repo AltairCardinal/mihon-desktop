@@ -35,6 +35,7 @@ class DesktopExtensionProductBaselineTest {
 
     @Test
     fun `every compat API has a real fixture and protection test`() {
+        val root = repositoryRoot()
         val evidence = loadCompatEvidence("extensions/compat-evidence.json")
 
         assertTrue(evidence.isNotEmpty(), "Compat evidence must contain at least one observed API")
@@ -45,23 +46,25 @@ class DesktopExtensionProductBaselineTest {
             val versionSeparator = item.fixture.lastIndexOf('@')
             assertTrue(
                 versionSeparator in 1..<item.fixture.lastIndex,
-                "${item.symbol}: fixture must use path-or-package@version",
+                "${item.symbol}: fixture must use artifact-path@digest",
             )
             assertTrue(item.status in COMPAT_STATUSES, "${item.symbol}: invalid status ${item.status}")
             assertTrue(item.removalCondition.isNotBlank(), "${item.symbol}: removalCondition must not be blank")
+            val artifact = root.resolve(item.fixture.substringBeforeLast('@')).normalize()
+            assertTrue(artifact.startsWith(root), "${item.symbol}: artifact must remain inside the repository")
+            assertTrue(Files.isRegularFile(artifact), "${item.symbol}: missing real artifact $artifact")
             assertTrue(
-                Files.isRegularFile(repositoryRoot().resolve(item.test)),
+                Files.isRegularFile(root.resolve(item.test)),
                 "${item.symbol}: missing protection test ${item.test}",
             )
         }
-        val manhuagui = evidence.single { it.fixture.startsWith(MANHUAGUI_PACKAGE) }
-        assertEquals("$MANHUAGUI_PACKAGE@$MANHUAGUI_VERSION", manhuagui.fixture)
-        assertEquals("unsupported", manhuagui.status)
-        val protection = Files.readString(repositoryRoot().resolve(manhuagui.test))
-        assertTrue(protection.contains("PINNED_MANHUAGUI_PACKAGE = \"$MANHUAGUI_PACKAGE\""))
-        assertTrue(protection.contains("PINNED_MANHUAGUI_VERSION = \"$MANHUAGUI_VERSION\""))
-        assertTrue(protection.contains("DesktopExtensionLoader("))
-        assertTrue(protection.contains("android.app.Application"))
+        val resolved = evidence.associateBy { it.symbol }
+        assertEquals(RESOLVED_SYMBOLS, resolved.keys)
+        resolved.values.forEach { item ->
+            assertEquals("required", item.status)
+            assertEquals(REAL_FIXTURE, item.fixture)
+            assertEquals(REAL_FIXTURE_TEST, item.test)
+        }
     }
 
     @Test
@@ -141,22 +144,26 @@ class DesktopExtensionProductBaselineTest {
             "ZGV4CjAzNQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAcAAAAHhWNBIAAAAAAAAAAHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAcAAAAAEAAAAAAAAAAQAAAAAAAAA="
         val COMPAT_FIELDS = setOf("symbol", "fixture", "test", "status", "removalCondition")
         val COMPAT_STATUSES = setOf("required", "unsupported")
-        const val MANHUAGUI_PACKAGE = "eu.kanade.tachiyomi.extension.zh.manhuagui"
-        const val MANHUAGUI_VERSION = "1.4.28"
+        const val REAL_FIXTURE =
+            "app-desktop/src/test/resources/extensions/real/keiyoushi-manhuagui-1.4.28.apk@" +
+                "sha256:200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8"
+        const val REAL_FIXTURE_TEST =
+            "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt"
+        val RESOLVED_SYMBOLS = setOf("android.app.Application", "eu.kanade.tachiyomi.source.Source")
         val REQUIRED_AUTHORITY_SYMBOLS =
             setOf(
-                "eu.kanade.tachiyomi.extension.api.ExtensionApi",
-                "eu.kanade.tachiyomi.extension.ExtensionManager",
-                "eu.kanade.tachiyomi.extension.util.ExtensionLoader",
-                "eu.kanade.tachiyomi.ui.browse.source.SourcesScreenModel",
-                "eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreenModel",
-                "eu.kanade.tachiyomi.ui.browse.extension.ExtensionsScreenModel",
-                "mihon.desktop.extension.DesktopExtensionApi",
-                "mihon.desktop.extension.DesktopExtensionManager",
-                "mihon.desktop.extension.DesktopExtensionLoader",
-                "mihon.desktop.ui.browse.BrowseTab",
-                "mihon.desktop.ui.browse.GlobalSearchScreen",
-                "mihon.desktop.ui.extension.ExtensionListScreen",
+                "`ExtensionApi`",
+                "`ExtensionManager`",
+                "`ExtensionLoader`",
+                "`SourcesScreenModel`",
+                "`GlobalSearchScreenModel`",
+                "`ExtensionsScreenModel`",
+                "`DesktopExtensionApi`",
+                "`DesktopExtensionManager`",
+                "`DesktopExtensionLoader`",
+                "`BrowseTab`",
+                "`GlobalSearchScreen`",
+                "`ExtensionListScreen`",
             )
     }
 }

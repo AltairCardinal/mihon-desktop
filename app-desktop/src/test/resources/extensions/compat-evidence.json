@@ -1,9 +1,16 @@
 [
   {
+    "symbol": "android.app.Application",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-manhuagui-1.4.28.apk@sha256:200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt",
+    "status": "required",
+    "removalCondition": "Remove only when real APK extensions no longer request the exact Application binding."
+  },
+  {
     "symbol": "eu.kanade.tachiyomi.source.Source",
-    "fixture": "eu.kanade.tachiyomi.extension.zh.manhuagui@1.4.28",
-    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/KeiyoushiChineseCompatibilityTest.kt",
-    "status": "unsupported",
-    "removalCondition": "Change to required only after Task 4 provides the android.app.Application compatibility binding and this exact fixture exposes Source through DesktopExtensionLoader."
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-manhuagui-1.4.28.apk@sha256:200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt",
+    "status": "required",
+    "removalCondition": "Remove only when converted APK extensions no longer expose the fixed-main Source ABI."
   }
 ]

@@ -2,8 +2,8 @@
   "authorityRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
   "adapterRoots": ["app-desktop/src/main/kotlin/android", "app-desktop/src/main/kotlin/androidx"],
   "entries": [
-    {"symbol":"android.app.Application","status":"unverified",
-      "nextEvidence":"7B real local fixture invocation or 7C removal"},
+    {"symbol":"android.app.Application","status":"required",
+      "nextEvidence":"RealExtensionCompatEvidenceTest production loader invocation"},
     {"symbol":"android.content.ComponentCallbacks","status":"unverified",
       "nextEvidence":"7B real local fixture invocation or 7C removal"},
     {"symbol":"android.content.ComponentCallbacks2","status":"unverified",
