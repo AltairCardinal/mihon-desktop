@@ -429,7 +429,7 @@ private fun AvailableTab(
 }
 
 @Composable
-internal fun ExtensionCard(
+private fun ExtensionCard(
     extension: InstalledExtension,
     onUninstall: () -> Unit,
     onOpen: () -> Unit,
