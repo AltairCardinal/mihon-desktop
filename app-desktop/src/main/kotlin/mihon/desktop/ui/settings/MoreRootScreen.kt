@@ -33,9 +33,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import cafe.adriel.voyager.core.screen.Screen
@@ -69,14 +66,12 @@ class MoreRootScreen : Screen {
         val downloadQueue by downloadManager.queue.collectAsState()
         val activeDownloads = downloadQueue.size
 
-        // Handle pending screen navigation from test automation
-        // Use local state to track if we've handled the pending navigation
-        var hasHandledPending by remember { mutableStateOf(false) }
+        // Observe pending screen navigation from test automation after this screen is mounted.
+        val pendingScreen by TestScreenNavigator.pendingScreen.collectAsState()
 
-        // Check pending navigation on every composition
-        LaunchedEffect(hasHandledPending) {
-            if (!hasHandledPending) {
-                val screen = TestScreenNavigator.pendingScreen.value
+        LaunchedEffect(pendingScreen) {
+            if (pendingScreen != null) {
+                val screen = pendingScreen
                 if (screen != null) {
                     when (screen) {
                         "open_general_settings" -> navigator.push(GeneralSettingsScreen())
@@ -89,7 +84,6 @@ class MoreRootScreen : Screen {
                         "open_tracking" -> onTracking(navigator)
                     }
                     TestScreenNavigator.clear()
-                    hasHandledPending = true
                 }
             }
         }
