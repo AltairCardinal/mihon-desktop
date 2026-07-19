@@ -1313,9 +1313,9 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `more-source-extension-i18n`
 - Platform boundary: `desktop`
-- Estimated scope: `4 files, 160 lines`
+- Estimated scope: `5 files, 180 lines`
 - Verification: 以 Locale.US/zh-CN 挂载真实 `MoreRootScreen`，断言 source/extension 相关入口 title/summary 来自生成资源并能点击；不扫描源码，不扩大到 More 其他功能。
-- Files: `MoreRootScreen.kt`、base/zh-rCN `strings.xml`、`MoreSourceExtensionRenderedCopyTest.kt`。
+- Files: `MoreRootScreen.kt`、base/zh-rCN `strings.xml`、`MoreSourceExtensionRenderedCopyTest.kt`、`SourceExtensionNavigationContractTest.kt`（既有真实点击 selector 使用同一 MR accessor，不得硬编码英文或强制 Locale.US）。
 - Authority: 复用 fixed main 的 `label_extensions`、`label_extension_repos`；两个 Desktop More 导航 summary 新增 Desktop key。扩展名、仓库名等动态产品数据不本地化。
 
 - [ ] RED：zh-CN 真实 More 仍渲染 source/extension 英文入口时失败。
