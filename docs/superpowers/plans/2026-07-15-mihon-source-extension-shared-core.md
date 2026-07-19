@@ -1350,10 +1350,12 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Files: 新增 `SourceExtensionTestModeController.kt` 与 `SourceExtensionTestModeControllerTest.kt`，并修改共享 `ExtensionPresentationContract.kt` 与 Desktop `ExtensionListScreen.kt`。
 - Boundary: 不得复制搜索 predicate、分类/reducer、安装状态机、错误字符串或信任规则；Desktop 两阶段指纹信任是平台安全增强，必须保留。动作可用性必须复用 fixed main `InstallStep.isCompleted()` 语义的共享契约，UI 与 Test Mode 不得各自维护一套。
 
-- [ ] RED：断言 controller 不存在，并以真实 model 覆盖状态、动作、失败与取消契约。
-- [ ] GREEN：实现不持有第二份业务状态的 controller。
-- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "*SourceExtensionTestModeControllerTest"`
-- [ ] Commit: `test(desktop): bridge extension production model`
+- [x] RED：断言 controller 不存在，并以真实 model 覆盖状态、动作、失败与取消契约。
+- [x] GREEN：实现不持有第二份业务状态的 controller。
+- [x] Verify: `./gradlew :app-desktop:jvmTest --tests "*SourceExtensionTestModeControllerTest"`
+- [x] Commit: `test(desktop): bridge extension production model`
+
+  Evidence: commits `d3685df05` + `489dda981`；初始 RED 为 controller unresolved，真实 model 契约 1/1 与 production UI 2/2 全绿。首轮 review 发现缺 query、动作资格、bridge 并发清理与 repository error 证据四项 P1；修复后 UI/controller 共用 fixed-main 式 enum member `isCompleted()` 语义，bridge 使用 `AtomicReference.compareAndSet`，repository identity + `StoredAppError` 受真实 projection 测试保护，唯一复审 APPROVED。累计 `4 files, 322 lines`；根 `spotlessCheck` 仅被范围外既有 `GlobalSearchSourcePolicyTest.kt` 阻断，本轮文件无违规。
 
 #### Task 6E3B2: Extension Test Mode HTTP 与 DI wiring
 
