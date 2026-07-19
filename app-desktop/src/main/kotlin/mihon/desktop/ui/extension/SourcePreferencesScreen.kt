@@ -282,22 +282,35 @@ private fun EditTextRow(item: EditTextPreference, prefStore: DesktopPreferenceSt
 
     if (showDialog) {
         var draft by remember { mutableStateOf(storedValue) }
+        var validationError by remember { mutableStateOf(item.validator?.invoke(storedValue)) }
         AlertDialog(
             onDismissRequest = { showDialog = false },
             title = { Text(item.dialogTitle ?: item.title) },
             text = {
                 OutlinedTextField(
                     value = draft,
-                    onValueChange = { draft = it },
+                    onValueChange = { value ->
+                        draft = value
+                        validationError = item.validator?.invoke(value)
+                    },
                     singleLine = true,
+                    isError = validationError != null,
+                    supportingText = validationError?.let { error ->
+                        { Text(error) }
+                    },
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
-                    storedValue = draft
-                    pref.set(draft)
-                    showDialog = false
-                }) { Text("OK") }
+                TextButton(
+                    enabled = validationError == null,
+                    onClick = {
+                        if (validationError == null) {
+                            storedValue = draft
+                            pref.set(draft)
+                            showDialog = false
+                        }
+                    },
+                ) { Text("OK") }
             },
             dismissButton = {
                 TextButton(onClick = { showDialog = false }) { Text("Cancel") }

@@ -9,6 +9,7 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.AnnotatedString
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
@@ -41,6 +42,7 @@ import mihon.desktop.ui.browse.SourceBrowseScreen
 import mihon.domain.extension.model.ExtensionCatalogResult
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -322,6 +324,86 @@ class ExtensionDetailsPreferencesWiringTest {
         }
     }
 
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
+    fun `edit text preference validator blocks invalid values and exposes feedback`() = runBlocking {
+        val sourceId = 987654323L
+        val item = EditTextPreference(
+            key = "validated_text",
+            title = "Validated text",
+        ).apply {
+            validator = { value -> VALIDATION_ERROR.takeUnless { value == "valid" } }
+        }
+        val stored = Preferences.userRoot().node("/mihon/source_$sourceId")
+        stored.put(item.key, "stored-invalid")
+        val manager = mockk<DesktopExtensionManager>(relaxed = true)
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+            every { extensionManager } returns manager
+        }
+        val scene = ImageComposeScene(700, 600, coroutineContext = coroutineContext) {}
+        try {
+            scene.setContent {
+                CompositionLocalProvider(
+                    LocalDesktopUiDependencies provides dependencies,
+                    LocalSourcePreferencesStateResolver provides { SourcePreferencesState.Content(listOf(item)) },
+                ) { Navigator(SourcePreferencesScreen(sourceId, "Source settings")) { CurrentScreen() } }
+            }
+            scene.render()
+            click(scene, item.title)
+            scene.render()
+            assertValidationError(scene)
+            disabledConfirm(scene)
+
+            replaceText(scene, "invalid")
+            scene.render()
+            assertValidationError(scene)
+            val invalidConfirm = disabledConfirm(scene)
+            if (invalidConfirm.config.contains(SemanticsActions.OnClick)) {
+                invalidConfirm.config[SemanticsActions.OnClick].action?.invoke()
+            }
+            scene.render()
+            assertEquals("stored-invalid", stored.get(item.key, null))
+
+            replaceText(scene, "valid")
+            scene.render()
+            assertFalse(nodes(scene).any { it.config.toString().contains(VALIDATION_ERROR) })
+            val validConfirm = buttonNode(scene, "OK")
+            assertFalse(validConfirm.config.contains(SemanticsProperties.Disabled))
+            assertTrue(requireNotNull(validConfirm.config[SemanticsActions.OnClick].action).invoke())
+            scene.render()
+            assertEquals("valid", stored.get(item.key, null))
+        } finally {
+            scene.close()
+            stored.remove(item.key)
+        }
+    }
+
+    private fun assertValidationError(scene: ImageComposeScene) {
+        assertTrue(
+            nodes(scene).any { it.config.toString().contains(VALIDATION_ERROR) },
+            "validator feedback must be visible",
+        )
+    }
+
+    private fun replaceText(scene: ImageComposeScene, value: String) {
+        val input = nodes(scene).single { it.config.contains(SemanticsActions.SetText) }
+        assertTrue(requireNotNull(input.config[SemanticsActions.SetText].action).invoke(AnnotatedString(value)))
+    }
+
+    private fun buttonNode(scene: ImageComposeScene, label: String): SemanticsNode = nodes(scene).last {
+        it.config.contains(SemanticsProperties.Text) &&
+            it.config[SemanticsProperties.Text].any { text -> text.text == label } &&
+            (it.config.contains(SemanticsActions.OnClick) || it.config.contains(SemanticsProperties.Disabled))
+    }
+
+    private fun disabledConfirm(scene: ImageComposeScene): SemanticsNode = buttonNode(scene, "OK").also { confirm ->
+        assertTrue(
+            confirm.config.contains(SemanticsProperties.Disabled) ||
+                !confirm.config.contains(SemanticsActions.OnClick),
+            "invalid confirmation must be disabled or expose no click action",
+        )
+    }
+
     private suspend fun uninstall(scene: ImageComposeScene) {
         click(scene, MR.strings.ext_uninstall.localized())
         scene.render()
@@ -367,5 +449,9 @@ class ExtensionDetailsPreferencesWiringTest {
     private data object DetailsRoot : Screen {
         @Composable
         override fun Content() = Text("Details root")
+    }
+
+    private companion object {
+        const val VALIDATION_ERROR = "Only valid is accepted"
     }
 }
