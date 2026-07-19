@@ -1876,6 +1876,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `2 files, 260 lines`
 - Verification: RED 证明 Desktop edit dialog 对无效输入仍可确认并落盘。GREEN 让 EditTextRow 在初值和每次 onValueChange 调用 descriptor validator，OutlinedTextField 显示真实错误，错误存在时禁用确认且不写 preference，有效后恢复确认；无 validator 保持既有行为。UI/state test 使用 sentinel validator 验通用 wiring，不复制 UUID 规则；真实 UUID 语义由 7C3o3b1 的 MangaDex integration test保护。文件限定 SourcePreferencesScreen.kt、ExtensionDetailsPreferencesWiringTest.kt。
 
+  Evidence: commit `f3de0de74`，严格 2 files/111 text touched。RED 为初始 invalid 未显示 feedback；GREEN 打开及每次 SetText 均执行 validator，isError/supportingText 可见，confirm disabled 且 onClick 二次守卫阻止 invalid 落盘，valid 恢复保存，validator=null 保持旧路径。UI test 只用 sentinel，不复制 UUID；新增 UI 4/4、真实 MangaDex 1/1、contract 4/4 通过。独立 review APPROVED；Incognito 2/2 NoSuchElement 经零diff/零调用路径/执行顺序证据判为范围外既有失败（未另切父基线复跑），Java0。
+
 ##### Task 7C3o3c: MangaDex validator evidence ledger
 
 - Risk axis: `mangadex-validator-evidence`
