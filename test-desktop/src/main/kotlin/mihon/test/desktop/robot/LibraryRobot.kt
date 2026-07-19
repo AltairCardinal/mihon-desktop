@@ -2,6 +2,7 @@ package mihon.test.desktop.robot
 
 import mihon.test.desktop.DesktopTestClient
 import mihon.test.desktop.ScreenshotResult
+import mihon.test.desktop.SourceBrowseTestSnapshot
 
 /**
  * Robot for Library screen interactions.
@@ -241,12 +242,12 @@ class BrowseRobot(private val client: DesktopTestClient) {
         return this
     }
 
-    /**
-     * Search for manga in source.
-     */
-    fun search(query: String): BrowseRobot {
-        client.executeAction("browse_search", mapOf("query" to query))
-        return this
+    fun state(): SourceBrowseTestSnapshot? = client.getState().source
+
+    fun cancelLogin(attemptToken: String): SourceBrowseTestSnapshot? {
+        val result = client.executeAction("source_login_cancel", mapOf("attemptToken" to attemptToken))
+        check(result.success) { "source_login_cancel failed: ${result.error ?: "unknown error"}" }
+        return result.source
     }
 
     /**

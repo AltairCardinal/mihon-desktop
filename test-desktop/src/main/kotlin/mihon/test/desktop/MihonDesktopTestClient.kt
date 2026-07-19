@@ -246,6 +246,7 @@ data class AppState(
     val historyCount: Int? = null,
     val migrationQueueCount: Int? = null,
     val extension: SourceExtensionTestSnapshot? = null,
+    val source: SourceBrowseTestSnapshot? = null,
 )
 
 @Serializable
@@ -269,6 +270,64 @@ data class ActionResult(
     val error: String? = null,
     val timestamp: String = Instant.now().toString(),
     val extension: SourceExtensionTestSnapshot? = null,
+    val source: SourceBrowseTestSnapshot? = null,
+)
+
+@Serializable
+enum class SourceBrowseTestPhase { IDLE, LOADING, EMPTY, CONTENT, FAILURE }
+
+@Serializable
+enum class SourceBrowseTestQueryKind { POPULAR, LATEST, SEARCH }
+
+@Serializable
+enum class SourceBrowseTestRecovery { OPEN_LOGIN, RETRY, NONE }
+
+@Serializable
+enum class SourceBrowseTestLoginFeedback {
+    INVALID_HEADER, BROWSER_UNAVAILABLE, TIMED_OUT, INVALID_COOKIES, COMMIT_FAILED
+}
+
+@Serializable
+data class SourceBrowseTestRequest(
+    val sourceId: Long,
+    val page: Int,
+    val generation: Long,
+    val queryKind: SourceBrowseTestQueryKind,
+    val queryText: String? = null,
+)
+
+@Serializable
+data class SourceBrowseTestLogin(
+    val host: String,
+    val feedback: SourceBrowseTestLoginFeedback? = null,
+    val terminal: Boolean,
+    val attemptToken: String,
+)
+
+@Serializable
+data class SourceBrowseStoredFailedUnit(val unitId: String, val error: SourceBrowseStoredAppError)
+
+@Serializable
+data class SourceBrowseStoredAppError(
+    val type: String,
+    val statusCode: Int? = null,
+    val retryAfterSeconds: Long? = null,
+    val message: String? = null,
+    val failures: List<SourceBrowseStoredAppError> = emptyList(),
+    val failedUnits: List<SourceBrowseStoredFailedUnit> = emptyList(),
+)
+
+@Serializable
+data class SourceBrowseTestSnapshot(
+    val sourceId: Long,
+    val phase: SourceBrowseTestPhase = SourceBrowseTestPhase.IDLE,
+    val request: SourceBrowseTestRequest? = null,
+    val itemCount: Int = 0,
+    val loading: Boolean = false,
+    val hasNextPage: Boolean? = null,
+    val error: SourceBrowseStoredAppError? = null,
+    val recovery: SourceBrowseTestRecovery? = null,
+    val login: SourceBrowseTestLogin? = null,
 )
 
 @Serializable
