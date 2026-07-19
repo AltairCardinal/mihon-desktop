@@ -161,9 +161,9 @@ class ExtensionDetailsPreferencesWiringTest {
             val rendered = nodes(scene).joinToString { it.config.toString() }
             listOf("Details extension", jar.absolutePath, MR.strings.desktop_extension_metadata_size.localized(Locale.getDefault(), jar.length()), MR.strings.desktop_extension_metadata_sha256.localized(Locale.getDefault(), "sha-details"), MR.strings.desktop_extension_metadata_repository.localized(Locale.getDefault(), "Details repository"), MR.strings.desktop_extension_metadata_fingerprint.localized(Locale.getDefault(), "fingerprint-details"), MR.strings.desktop_extension_origin_native.localized())
                 .forEach { assertTrue(rendered.contains(it), "missing Desktop capability: $it") }
-            click(scene, "Open folder")
+            click(scene, MR.strings.desktop_extension_open_folder.localized())
             assertEquals(jar.parentFile, openedDirectories.single())
-            click(scene, "Repository")
+            click(scene, MR.strings.action_open_repo.localized())
             assertEquals(installed.repoUrl, openedUrls.single())
             click(scene, MR.strings.desktop_extension_open_source_website.localized(Locale.getDefault(), "Configurable web source"))
             assertEquals("https://source.example/path", openedUrls.last())
@@ -179,13 +179,13 @@ class ExtensionDetailsPreferencesWiringTest {
             scene.render()
             click(scene, MR.strings.desktop_extension_incognito_for.localized(Locale.getDefault(), installed.pkgName))
             assertTrue(installed.pkgName in preferences.incognitoExtensions.get())
-            click(scene, "Clear extension cookies")
+            click(scene, MR.strings.pref_clear_cookies.localized())
             verify { cookies.clearDomains(setOf("source.example")) }
-            renderUntil(scene, "cookie feedback") { nodes(scene).any { it.config.toString().contains("Cleared cookies for 2 domain(s)") } }
+            renderUntil(scene, "cookie feedback") { nodes(scene).any { it.config.toString().contains(MR.strings.desktop_extension_cookies_cleared.localized(Locale.getDefault(), 2)) } }
             dismissSnackbar(scene)
             directoryResult = false
-            click(scene, "Open folder")
-            renderUntil(scene, "directory failure feedback") { nodes(scene).any { it.config.toString().contains("Unable to open extension folder") } }
+            click(scene, MR.strings.desktop_extension_open_folder.localized())
+            renderUntil(scene, "directory failure feedback") { nodes(scene).any { it.config.toString().contains(MR.strings.desktop_extension_open_folder_failed.localized()) } }
             dismissSnackbar(scene)
             navigator?.push(ExtensionDetailsScreen(converted.jarFile.absolutePath))
             renderUntil(scene, "converted origin") { nodes(scene).any { it.config.toString().contains(MR.strings.desktop_extension_origin_converted.localized()) } }

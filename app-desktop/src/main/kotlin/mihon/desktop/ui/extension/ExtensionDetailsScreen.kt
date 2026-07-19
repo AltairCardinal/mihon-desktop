@@ -113,7 +113,7 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
 
         fun openUrl(url: String) {
             platformActions.openUrl(url)
-                .onFailure { scope.launch { snackbar.showSnackbar("Unable to open link: ${it.message}") } }
+                .onFailure { scope.launch { snackbar.showSnackbar(MR.strings.desktop_extension_open_link_failed.localized(Locale.getDefault(), it.message.orEmpty())) } }
         }
 
         Scaffold(
@@ -175,16 +175,16 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 OutlinedButton(onClick = {
                                     if (!platformActions.openDirectory(extension.jarFile.parentFile)) {
-                                        scope.launch { snackbar.showSnackbar("Unable to open extension folder") }
+                                        scope.launch { snackbar.showSnackbar(MR.strings.desktop_extension_open_folder_failed.localized()) }
                                     }
                                 }) {
                                     Icon(Icons.Default.FolderOpen, contentDescription = null)
-                                    Text("Open folder", Modifier.padding(start = 6.dp))
+                                    Text(MR.strings.desktop_extension_open_folder.localized(), Modifier.padding(start = 6.dp))
                                 }
                                 if (extension.repoUrl.isNotBlank()) {
                                     OutlinedButton(onClick = { openUrl(extension.repoUrl) }) {
                                         Icon(Icons.Default.Public, contentDescription = null)
-                                        Text("Repository", Modifier.padding(start = 6.dp))
+                                        Text(MR.strings.action_open_repo.localized(), Modifier.padding(start = 6.dp))
                                     }
                                 }
                             }
@@ -255,8 +255,8 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                                     .mapNotNull { runCatching { URI(it.baseUrl).host }.getOrNull() }
                                     .toSet()
                                 val removed = dependencies.networkHelper.cookieJar.clearDomains(domains)
-                                scope.launch { snackbar.showSnackbar("Cleared cookies for $removed domain(s)") }
-                            }) { Text("Clear extension cookies") }
+                                scope.launch { snackbar.showSnackbar(MR.strings.desktop_extension_cookies_cleared.localized(Locale.getDefault(), removed)) }
+                            }) { Text(MR.strings.pref_clear_cookies.localized()) }
                         }
                     }
                 }
@@ -271,8 +271,8 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
             if (confirmUninstall) {
                 AlertDialog(
                     onDismissRequest = { confirmUninstall = false },
-                    title = { Text("Uninstall extension?") },
-                    text = { Text("Remove ${extension.name} and its metadata?") },
+                    title = { Text(MR.strings.ext_confirm_remove.localized()) },
+                    text = { Text(MR.strings.desktop_extension_remove_metadata_confirmation.localized(Locale.getDefault(), extension.name)) },
                     confirmButton = {
                         TextButton(onClick = {
                             confirmUninstall = false

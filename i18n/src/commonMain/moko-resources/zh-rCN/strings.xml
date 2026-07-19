@@ -107,6 +107,10 @@
     <string name="desktop_extension_metadata_repository">仓库：%s</string>
     <string name="desktop_extension_metadata_fingerprint">仓库指纹：%s</string>
     <string name="desktop_extension_incognito_for">%s 的无痕模式</string>
+    <string name="desktop_extension_open_folder">打开文件夹</string>
+    <string name="desktop_extension_open_folder_failed">无法打开扩展文件夹</string>
+    <string name="desktop_extension_cookies_cleared">已清除 %d 个域名的 Cookie</string>
+    <string name="desktop_extension_remove_metadata_confirmation">移除 %s 及其元数据？</string>
     <string name="desktop_extension_remove_confirmation">移除“%s”及其所有来源？此操作无法撤销。</string>
     <string name="desktop_source_preferences_missing">该图源已不可用。</string>
     <string name="desktop_source_preferences_non_configurable">该图源未提供设置。</string>
