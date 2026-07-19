@@ -1739,6 +1739,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `5 files, 120 lines`
 - Verification: ComponentCallbacks/ComponentCallbacks2没有fixed-main显式消费者、Keiyoushi源码或有效artifact调用；Desktop仅由Application shim自身实现/派发，真实ManHuaGui加载只发生类型链接而未注册或执行回调。删除接口文件，简化Application继承/注册占位，移除Phase1自证与两项inventory，contract从39/49更新为38/47；真实ManHuaGui Application loader、全部immutable fixture和clean compile必须通过，否则恢复。
 
+  Evidence: commit `e13339c1be`，5 files/107 touched（4 additions/103 deletions）。删除两个接口、Application内部占位回调链、Phase1四项自证/import与两项inventory；Context/ContextWrapper/Application真实evidence零改，surface 38 files/47 symbols。clean compile成功（3m18s），Phase1/7、contract、baseline与6个真实fixture共 `34/34`，ManHuaGui production loader通过。独立 `javap` 确认 Application 仍继承ContextWrapper并保留onCreate/onTerminate/attach；fixed-main/current/Keiyoushi及22个本地真实/原始APK/JAR均零消费者。独立scanner/inventory 38/47、set delta与duplicates均0，review APPROVED、Java0。
+
 ##### Task 7C3j: PackageInfo/PackageManager Android系统占位 prune
 
 - Risk axis: `package-manager-prune`
