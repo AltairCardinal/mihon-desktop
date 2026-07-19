@@ -1405,18 +1405,32 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Evidence: commits `07fec9822` + `fc778cad6`；RED 证明 client/Robot/DTO 契约缺失，并暴露 `test-desktop` 未应用 serialization plugin 导致既有 DTO 运行时不可解析。GREEN 后契约测试 1/1 通过，安全编码、非 2xx 结构化错误、10 个真实 action 与 Robot 失败传播均覆盖。首轮 review 发现 stub 与 client DTO 自洽 round-trip；修复为独立固定 server-shaped JSON，并覆盖非空递归 `PartialFailure/failures/failedUnits`，唯一复审 APPROVED；累计 `4 files, 323 lines`。
 
-#### Task 6E4: Source 状态与登录取消 Test Mode wiring
+#### Task 6E4A: SourceBrowse production observation 与 Compose 生命周期
 
-- Risk axis: `source-login-automation-wiring`
+- Risk axis: `source-login-observation-lifecycle`
 - Platform boundary: `desktop`
-- Estimated scope: `6 files, 320 lines`
-- Verification: Source query/loading/error/recovery 取自真实 query state；活跃登录 host/feedback/terminal 取自真实 `DesktopSourceLoginUiState`；HTTP cancel 经真实 `DesktopSourceLoginUiActions`/controller 取消当前 attempt，取消后 UI 与 HTTP 状态同时消失。错误 attempt、无活跃登录和已终止登录不得伪造成功。原版 Source toggle/pin 若纳入自动化，必须使用明确的 `source_toggle/source_pin` 并调用真实 Source model，不得伪装成 extension action。
-- Files: `SourceBrowseScreen.kt`、6E2 的 test-mode controller/server/client DTO、app-desktop HTTP/Compose wiring 测试、test-desktop 客户端契约测试。
-- Boundary: 只在当前 `SourceBrowseScreen` 生命周期注册/注销薄 observation port；不得把 Desktop 登录状态移入 shared authority，也不得用 Android platform shim 代替 fixed main 的登录语义。
+- Estimated scope: `3 files, 400 lines`
+- Verification: snapshot 每次直接读取 `SourceBrowseQueryCoordinator.state` 的 phase/request/itemCount/loading/hasNextPage/error/recovery，并用 `AppError.toStoredAppError()`；login host/feedback/terminal 每次直接读取当前 Compose-local `sourceLoginUiState`，不序列化 cookieHeader。取消携带当前 attempt 对象身份对应的临时 UUID token，回到 composition scope 后调用真实 `DesktopSourceLoginUiActions.cancel()`；错 token、无活跃登录、terminal 与 operation rejected 必须失败。
+- Files: 新增 `SourceBrowseTestModeObservation.kt`、修改 `SourceBrowseScreen.kt`，新增 `SourceLoginTestModeWiringTest.kt`。
+- Boundary: attempt token 仅存在于 automation port，不写回 UI/业务状态，不使用 `identityHashCode/toString`；只在当前 `SourceBrowseScreen` 的 `DisposableEffect` 注册并 compare-and-set 注销，不在 GlobalSearch 共用的 dialog host 注册，不写 shared/global TestState。authority 是 shared `SourceQueryState/SourceRecoveryAction` 与 Desktop 平台 `DesktopSourceLoginController/UiActions`；当前 `app/` consumer 与 Desktop Android shim 不是权威。
 
-- [ ] RED：真实 Screen 有登录 attempt 时 HTTP 不可见/不可取消。
-- [ ] GREEN：composition 生命周期注册真实 UI port，HTTP 仅转发 cancel 并读取 UI state。
-- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "*SourceLogin*TestMode*" :test-desktop:test --tests "*SourceLogin*"`
+- [ ] RED：真实 SourceBrowse 403/OpenLogin 产生的 attempt 不可观察/不可经 port 取消。
+- [ ] GREEN：composition 生命周期注册真实 UI port，取消后 ticket/UI/snapshot 同时终止，旧 token 不得取消新 attempt，旧 screen 注销不得清新 port。
+- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.browse.SourceLoginTestModeWiringTest"`
+- [ ] Commit: `test(desktop): observe source login lifecycle`
+
+#### Task 6E4B: Source/Login HTTP 与 client contract
+
+- Risk axis: `source-login-http-client-contract`
+- Platform boundary: `desktop`
+- Estimated scope: `5 files, 400 lines`
+- Verification: GET `/test/state` 暴露 port 的 nested source snapshot；POST `source_login_cancel` 必须携 GET 取得的 `attemptToken` 并仅转发 active port。app HTTP 测试证明 HTTP 取消真实 ticket/UI state；client 解析同一 DTO，Robot 传播结构化失败。bridge 缺失为 503，missing token 为 400，NO_ACTIVE/ATTEMPT_MISMATCH/TERMINAL/REJECTED 为 409。
+- Files: `TestHttpServer.kt`，新增 `SourceLoginTestModeHttpTest.kt`，`MihonDesktopTestClient.kt`、`BrowseRobot.kt`，新增 `SourceLoginClientContractTest.kt`。
+- Boundary: server/client 不得复制 query/login 状态机或暴露 cookieHeader；删除 `browse_search` 遗留空操作/Robot API，不得伪装已接入 query coordinator。Source toggle/pin 不在本项范围，后续若实现必须使用 `source_toggle/source_pin` 调用真实 Source model。
+
+- [ ] RED：HTTP/client 不可见 active source/login state，`browse_search` 仍伪成功。
+- [ ] GREEN：HTTP 只读取/转发 active port，client/Robot 使用稳定 token 契约并不吞失败。
+- [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.test.http.SourceLoginTestModeHttpTest" :test-desktop:test --tests "mihon.test.desktop.SourceLoginClientContractTest"`
 - [ ] Commit: `test(desktop): expose source login cancellation`
 
 #### Task 6E closure
