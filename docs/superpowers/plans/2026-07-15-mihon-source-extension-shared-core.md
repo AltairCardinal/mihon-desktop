@@ -2003,7 +2003,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `parity-runtime-evidence`
 - Platform boundary: `verification`
-- Estimated scope: `7 files, 350 lines`
+- Estimated scope: `20 files, 700 lines across independently gated child Tasks`
+- Split waiver: Task 7D 是汇总结构化证据、自动验证、三平台运行时验收与最终审查的 umbrella；Step 3 与 Step 4 修复均继续拆成下列单 risk-axis child Tasks，每个 child Task 不超过 8 files/400 lines，无法作为一个可独立调度的单提交执行。
 - Verification: 仅消费 7A–7C 已闭合证据更新 parity 28–40、87，再运行全量测试、Android/Windows/macOS 验收与 thorough review；结构化 provenance 必须区分 fixed main、shared output、当前 Android consumer 与 Desktop adapter。
 
 **Files:**
@@ -2051,6 +2052,38 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
   ```
 
   Expected: 全部 BUILD SUCCESSFUL；报告精确测试数、失败数与既有 skipped，不用缓存结果冒充 fresh evidence。
+
+  Initial full-run evidence: root Spotless 首次唯一失败为 `GlobalSearchSourcePolicyTest.kt` 的格式，单文件 commit `de3a17730` 修复后 61 tasks GREEN；`:domain:allTests` 首次因进程缺 ANDROID_HOME 未进入测试，改用 repo-local SDK 后 130 tasks GREEN；`:app:testReleaseUnitTest` 209 tasks GREEN。`:app-desktop:jvmTest` fresh 运行 1763 tests / 9 failures / 2 skipped，故 Step 4 暂不勾选并进入以下独立修复 Tasks；`GlobalSearchResultProductionWiringTest` 随后单类 GREEN，暂不以增大超时掩盖。
+
+##### Task 7D4a: Extension UI model dependency boundary
+
+- Risk axis: `desktop-ui-model-dependency-boundary`
+- Platform boundary: `desktop`
+- Estimated scope: `4 files, 100 lines`
+- Verification: `ExtensionListScreen` 与 `ExtensionDetailsScreen` 当前在 UI 内直接 `Injekt.get<ExtensionsScreenModel>()`，全量 ArchitectureGuard 精确 RED 为 baseline 0 / actual 2。将同一 application singleton 暴露为中央 CompositionLocal/desktop dependency boundary，两个 Screen 只消费该 boundary；focused wiring 必须提供一个与全局 Injekt 不同的 local model并证明 UI 使用 local model，防止只把 service locator 藏到 helper。生产默认仍解析 `DesktopAppContext.extensionScreenModel`/同一 Injekt singleton，不创建第二套状态。不得提高 architecture baseline 或新增白名单。
+
+##### Task 7D4b: Compat multi-evidence contract refresh
+
+- Risk axis: `compat-multi-evidence-contract`
+- Platform boundary: `verification`
+- Estimated scope: `2 files, 40 lines`
+- Verification: 更新陈旧的 verifier/product baseline：Uri declared methods 必须精确为 abstract `toString` + public static `encode(String):String`，并以代表性 UTF-8/emoji percent encoding保护；product baseline 不再错误要求 symbol 全局唯一，而要求 evidence identity `(symbol, fixture, test)` 唯一。Uri 两条正交 evidence 继续由 `CompatEvidenceContractTest` 精确约束为 Comix return token 与 ComicFury encode execution，其他 resolved symbol仍恰好一条；不得删除或合并真实 evidence。
+
+##### Task 7D4c: Localized extension Compose semantics tests
+
+- Risk axis: `localized-extension-compose-semantics`
+- Platform boundary: `verification`
+- Estimated scope: `3 files, 80 lines`
+- Verification: `SourceSharedStateWiringTest` 与 `ExtensionIncognitoPreferenceWiringTest` 不再硬编码英文 contentDescription，使用 MR 当前 locale 文案并直接读取 `SemanticsProperties.ContentDescription`；在 zh-CN/current locale 下保护导航落点与 incognito 开关真实点击。`ExtensionPresentationUiTest` 对 StateFlow→collectAsState 的异步传播使用有界 render/yield 等待目标语义，替换“model state已更新后只render一次”的竞态，不改 production reducer或用无限等待掩盖错误。
+
+##### Task 7D4d: Desktop preference listener removal safety
+
+- Risk axis: `desktop-preference-listener-cleanup`
+- Platform boundary: `shared+desktop`
+- Estimated scope: `2 files, 60 lines`
+- Verification: full Desktop suite 捕获 `DesktopPreference.changes()` 在 backing Preferences node 已删除后执行 `removePreferenceChangeListener` 的 `IllegalStateException: Node has been removed`，异常泄漏到后续 coroutine test。先在 core/common JVM test 建立“active changes collector→外部 removeNode→cancel collector 不产生 cleanup failure” RED，再让 awaitClose 只吞掉 node-removed 的 cleanup exception；其他 listener 注册/移除异常仍传播。运行 core focused、GlobalSearchAuthority+Challenge 顺序组合、extension UI focused与 full Desktop JVM。
+
+  Conditional flow: 完成 7D4a–7D4d 后重跑 full Desktop JVM；若 `GlobalSearchResultProductionWiringTest` 仍只在 full-suite 负载下超时，另立 ≤2 files/60 lines 的 `global-search-compose-await` Task，先以有界重复/组合复现证明 frame propagation root cause，再调整测试 pump；若不再失败则不创建该 Task。
 
 - [ ] **Step 5: Android 模拟器运行时验收**
 
