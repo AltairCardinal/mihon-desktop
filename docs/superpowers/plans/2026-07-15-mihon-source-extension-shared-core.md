@@ -1815,19 +1815,47 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Evidence: commit `33eedb52f6`，3 ledger files/71 touched（63 additions/8 deletions）。contract RED精确为Handler expected required/actual unverified；GREEN把真实执行成功的Handler/Looper/WebResourceResponse标required，把明确Desktop engine边界的WebView标unsupported，各自唯一绑定tracked Comix APK SHA与RealExtensionWebViewUnsupportedCompatTest，并反向约束该test恰好只覆盖四项。surface仍32 files/38 symbols；View/ViewGroup与CookieManager/ValueCallback/WebResourceRequest/WebSettings/WebViewClient保持unverified。contract、真实WebView、Comix preference/graphics通过，独立review APPROVED、Java0。
 
-##### Task 7C3o0: MangaDex SourceFactory preference 嵌套 ABI 前置修复
+##### Task 7C3o0: MangaDex fixture authority freeze
 
-- Risk axis: `mangadex-preference-nested-abi`
+- Risk axis: `mangadex-fixture-authority`
+- Platform boundary: `verification`
+- Estimated scope: `3 files, 150 lines plus one 111,390-byte APK`
+- Verification: 固定 artifact repository snapshot commit `7d5052fb895d086ae2ec6e3cca861146ee3ea0ec`（root tree `35127622c9911a3f7e50c809a71dfc0057843e34`、parent `0dae9cf45bef459a60cefb1f3ad1b4eedea3554b`）、APK blob `2110eaccdbce98e2bf10c827f1136b63c9c35481`、SHA-256 `eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236`、111390 bytes、package `eu.kanade.tachiyomi.extension.all.mangadex`、version 1.4.211/ext-lib1.4、entry `ExtensionGenerated`。提交 tracked APK、provenance 与只验证 authority/ref/blob/SHA/size/manifest 的 `MangaDexFixtureProvenanceTest`；不执行 factory、不修改 production 或 compat ledger。本 Task 将二进制权威与后续行为修复分离，避免 fixture、loader、ABI adapter 混在同一提交。
+
+##### Task 7C3o1: MangaDex SourceFactory 61-source 与 preference link closure
+
+- Risk axis: `mangadex-source-factory-link`
 - Platform boundary: `desktop`
-- Estimated scope: `8 files, 260 lines plus one 111,390-byte APK`
-- Verification: 固定 artifact repository snapshot commit `7d5052fb895d086ae2ec6e3cca861146ee3ea0ec`（root tree `35127622c9911a3f7e50c809a71dfc0057843e34`、parent `0dae9cf45bef459a60cefb1f3ad1b4eedea3554b`）、APK blob `2110eaccdbce98e2bf10c827f1136b63c9c35481`、SHA-256 `eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236`、111390 bytes、package `eu.kanade.tachiyomi.extension.all.mangadex`、version 1.4.211/ext-lib1.4、entry `ExtensionGenerated`。原 7C3o RED 已证明 production converter/classloader 调用真实 `ExtensionGenerated.createSources()` 时先于 AppInfo 精确失败于 `NoClassDefFoundError: androidx/preference/EditTextPreference$OnBindEditTextListener`，因此不得在原 7 文件范围内静默增加第 8 文件。AndroidX 1.2.1 与真实 MangaDex `j2`/`l2` 字节码共同确认精确方法 descriptor 为 `onBindEditText(Landroid/widget/EditText;)V`，不得以空接口或 `Any` 伪造。本前置 Task 保留 fixture、provenance 与真实测试，新增最小 `android.widget.EditText` ABI 类型并补齐 `EditTextPreference.OnBindEditTextListener` 与 setter 的精确二进制形状；RED 必须来自该真实 factory 调用，GREEN 必须成功创建 61 个 sources，并反射校验真实实现类与 host interface 的 descriptor 一致。inventory/evidence/contract 必须纳入新增类型并说明这里只证明真实扩展类链接所需的 ABI token 与 listener 存储，不宣称 Desktop 已实现 Android 文本控件 UI 语义。文件限定 fixture、provenance、真实测试、EditText.kt、EditTextPreference.kt、inventory、evidence、contract。
+- Estimated scope: `8 files, 320 lines`
+- Verification: 仅在 7C3o0 独立审查通过后继续。synthetic loader test 先 RED 证明 manifest `SourceFactory` 未展开；最小 loader GREEN 必须与 fixed main 的 `obj.createSources()` 语义一致，返回完整 61 个 source，不得只反射构造 English source 或在 loader 内提前筛选。真实 MangaDex 测试必须走 production converter/meta/loader 并断言 61、diagnostics empty、可选中 English，随后通过 `resolveSourcePreferencesState` → `DesktopAndroidPreferenceAdapter` 执行真实 legacy preference setup，证明 `j2/l2` listener 在产品链构造。只补该链实际需要的精确 `android.widget.EditText` descriptor token、`EditTextPreference.OnBindEditTextListener` 与 setter/listener storage；AndroidX 1.2.1 和真实 `j2/l2` descriptor 均为 `(Landroid/widget/EditText;)V`，不得用空接口或 `Any`。inventory/evidence 必须明确不宣称 EditText 构造、回调或渲染；contract 同提交更新。文件限定 DesktopExtensionLoader.kt、DesktopExtensionLoaderTest.kt、EditText.kt、EditTextPreference.kt、RealExtensionMangaDexFactoryCompatTest.kt、inventory、evidence、contract。
 
-##### Task 7C3o1: MangaDex SourceFactory、AppInfo 与 Build.RELEASE 真实链
+##### Task 7C3o2: MangaDex AppInfo 与 Build.RELEASE 真实 header 链
 
 - Risk axis: `mangadex-build-release-abi`
 - Platform boundary: `desktop`
 - Estimated scope: `5 files, 220 lines`
-- Verification: 仅在 7C3o0 独立审查通过后继续。RED 由 production converter/loader 真实暴露 manifest `SourceFactory` 尚未展开；最小 loader GREEN 必须按原版语义实例化 factory 并展开 61 个 sources、保持 host ABI parent-first，随后真实英文 MangaDex headers 读取时精确暴露缺 `eu.kanade.tachiyomi.AppInfo`。再新增原版 ABI 形状的 production `object AppInfo`，本 Task 只实现真实执行的 `getVersionName()` 并返回 Desktop `APP_VERSION`；未执行 getVersionCode/getSupportedImageMimeTypes 不虚构支持。最终通过公开 headers/getHeaders 链真实执行 `Build.VERSION.RELEASE`，断言 User-Agent、Referer、Origin 与 `Extra="Android/9 Tachiyomi/<APP_VERSION> MangaDex/1.4.211 Keiyoushi"`；只将 Build 以该 APK/test 标 required，不宣称 SDK_INT 已执行。文件限定真实测试、DesktopExtensionLoader.kt、AppInfo.kt、inventory、evidence；contract 只运行不修改。测试需隔离 DI/Injekt 与 http.agent、关闭去重 classloader，复跑全部 immutable fixture/loader。
+- Verification: 仅在 7C3o1 独立审查通过后继续。真实 61-source production loader 中选 English source，公开 `headers/getHeaders` 链先精确 RED 于缺 `eu.kanade.tachiyomi.AppInfo`；新增 fixed-main ABI 形状的 production `object AppInfo`，只实现实际执行的 `getVersionName() = APP_VERSION`，不虚构 getVersionCode/MIME API。GREEN 断言 User-Agent、Referer、Origin 与 `Extra="Android/9 Tachiyomi/<APP_VERSION> MangaDex/1.4.211 Keiyoushi"`，设置并 finally 恢复 `http.agent`。inventory/evidence 只将 Build 标 required 且限定为 RELEASE，不宣称 SDK_INT；contract 同提交更新。文件限定 AppInfo.kt、RealExtensionBuildCompatTest.kt、inventory、evidence、contract。
+
+##### Task 7C3o3a: MangaDex text watcher adapter ABI
+
+- Risk axis: `mangadex-text-watcher-abi`
+- Platform boundary: `desktop`
+- Estimated scope: `7 files, 300 lines`
+- Verification: 在真实 MangaDex preference wiring 的后续实现前，先以 fixed Android descriptor 写 RED，覆盖 Editable/TextWatcher 三回调、TextView/EditText/Button 继承关系，以及 View root/find/enabled 访问形状；GREEN 只建立可由 Desktop preference adapter 驱动的最小内存模型，禁止伪装 Android widget 渲染或 UI engine。文件限定 android.text compat、TextView/Button compat、EditText compat、View.kt、focused ABI test、inventory、contract；新符号暂保持 unverified，行为证据留给 7C3o3b/3c。
+
+##### Task 7C3o3b: MangaDex UUID validator production wiring 与 Compose 反馈
+
+- Risk axis: `mangadex-validator-wiring`
+- Platform boundary: `shared+desktop`
+- Estimated scope: `6 files, 380 lines`
+- Verification: RED 必须从真实 MangaDex `setupPreferenceScreen` 证明当前 OnBindEditTextListener 在 AndroidX preference → JVM descriptor conversion 中丢失，并从 Desktop edit dialog 证明无效 UUID 仍可确认。GREEN 使 listener 经 EditTextPreference、PreferenceScreen conversion 与 JVM EditText descriptor 保留为 Desktop 可执行 validator；Compose 输入实时显示原版 invalid UUID 错误并在无效时禁用确认，空值或全部逗号分隔 UUID 有效。必须由真实 fixture 驱动 integration test，并补 focused UI/state test；不得在测试中复制 UUID regex 或绕过 production adapter。
+
+##### Task 7C3o3c: MangaDex validator evidence ledger
+
+- Risk axis: `mangadex-validator-evidence`
+- Platform boundary: `verification`
+- Estimated scope: `3 files, 100 lines`
+- Verification: 仅在 7C3o3a/3b 独立审查通过后修改 inventory/evidence/contract；按真实产品链实际执行结果标记 Editable/TextWatcher/TextView/EditText/Button/View 相关边界，区分 required callback semantics 与 unsupported Android widget rendering。不得把仅被 descriptor 链接但未执行的 UI engine 行为写成已支持；反向契约必须唯一绑定 tracked MangaDex fixture 与真实 preference validation test。
 
 ##### Task 7C4: Source/extension authority baseline 与恢复入口纠偏
 
