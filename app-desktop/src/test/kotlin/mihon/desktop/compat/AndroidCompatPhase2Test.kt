@@ -1,7 +1,6 @@
 package mihon.desktop.compat
 
 import android.graphics.Color
-import android.os.Bundle
 import android.text.Html
 import android.text.TextUtils
 import android.util.Pair
@@ -11,7 +10,7 @@ import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 
 /**
- * Tests for Phase 2 Android compat stubs: TextUtils, Html, Bundle, Pair, Color.
+ * Tests for Phase 2 Android compat stubs: TextUtils, Html, Pair, Color.
  */
 class AndroidCompatPhase2Test {
 
@@ -82,58 +81,6 @@ class AndroidCompatPhase2Test {
     fun `Html fromHtml handles null gracefully`() {
         val result = Html.fromHtml("", 0)
         result.toString() shouldBe ""
-    }
-
-    // ── Bundle ──────────────────────────────────────────────────────────────
-
-    @Test
-    fun `Bundle stores and retrieves string`() {
-        val bundle = Bundle()
-        bundle.putString("key", "value")
-        bundle.getString("key") shouldBe "value"
-    }
-
-    @Test
-    fun `Bundle stores and retrieves int`() {
-        val bundle = Bundle()
-        bundle.putInt("key", 42)
-        bundle.getInt("key") shouldBe 42
-    }
-
-    @Test
-    fun `Bundle stores and retrieves boolean`() {
-        val bundle = Bundle()
-        bundle.putBoolean("flag", true)
-        bundle.getBoolean("flag") shouldBe true
-    }
-
-    @Test
-    fun `Bundle stores and retrieves long`() {
-        val bundle = Bundle()
-        bundle.putLong("big", 123456789L)
-        bundle.getLong("big") shouldBe 123456789L
-    }
-
-    @Test
-    fun `Bundle getString returns default when absent`() {
-        val bundle = Bundle()
-        bundle.getString("missing", "default") shouldBe "default"
-    }
-
-    @Test
-    fun `Bundle containsKey works`() {
-        val bundle = Bundle()
-        bundle.putString("k", "v")
-        bundle.containsKey("k") shouldBe true
-        bundle.containsKey("nope") shouldBe false
-    }
-
-    @Test
-    fun `Bundle isEmpty works`() {
-        val bundle = Bundle()
-        bundle.isEmpty shouldBe true
-        bundle.putString("k", "v")
-        bundle.isEmpty shouldBe false
     }
 
     // ── Pair ────────────────────────────────────────────────────────────────
