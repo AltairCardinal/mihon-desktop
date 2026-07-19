@@ -77,6 +77,13 @@
     "removalCondition": "Remove when real APK source clients no longer execute the Android SystemClock rate-limit ABI."
   },
   {
+    "symbol": "android.os.Build",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-mangadex-1.4.211.apk@sha256:eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionBuildCompatTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the immutable MangaDex APK no longer reads Build.VERSION.RELEASE for its Extra header; this evidence covers RELEASE only and does not evidence SDK_INT."
+  },
+  {
     "symbol": "android.os.Handler",
     "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-comix-1.4.34.apk@sha256:5d46a6ef98c1ac4f2ab22a29347748a36eb32b6995fb8a08e092446424e366d8",
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt",
