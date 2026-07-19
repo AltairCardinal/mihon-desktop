@@ -1526,6 +1526,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `4 files, 350 lines`
 - Verification: 7B2 注册 Application 后真实 fixture 推进到 `Duration.Companion.getZERO_UwyO8pc`，而宿主 Kotlin 真实 JVM 方法名为 `getZERO-UwyO8pc`，证明 gap 来自 dex2jar 将合法 JVM `-` 净化为 `_`，不是原版业务差异或缺少 Android shim。Bytecode post-process 必须按外部 owner + 完整 descriptor 查询宿主真实方法并只恢复唯一匹配名称；不得硬编码 Duration/方法名，不得改写 extension JAR 自有 owner 或无唯一宿主匹配的方法。单元 RED/GREEN 与真实 fixture success 必须同时通过；若出现下一 gap，停止并继续拆分。
 
+  Evidence: commits `902960ce8` + `84ffeb86f`；RED 证明 dex2jar 输出调用 `getZERO_UwyO8pc`，宿主唯一真实方法为同 descriptor 的 `getZERO-UwyO8pc`，真实 fixture 同时精确失败。GREEN 使用 input-JAR owner 边界、外部 host class 无初始化加载、完整 descriptor 与 conversion-scope cache 做通用唯一恢复，production 无 Duration/方法名硬编码；真实 APK 已通过 converter/loader、converted-JAR CodeSource 与 Source id/name/lang。首轮 review 发现精确 underscore 方法与 hyphen 候选并存时可能误改；唯一修复先保持原测试全绿，再以 exact-priority 单一 RED 补齐精确优先、ambiguous、constructor/clinit 和 descriptor 隔离，最终 Bytecode `10/0/0`、Real `1/0/0`，复审 APPROVED；范围 `4 files, 246 touched lines`。
+
 ##### Task 7B3: Resolved evidence 与旧 baseline 收口
 
 - Risk axis: `compat-resolved-evidence-baseline`
