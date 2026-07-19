@@ -1,10 +1,10 @@
 # Desktop 扩展诊断基线
 
-日期：2026-06-30
+日期：2026-07-20
 
 ## 目标
 
-Windows 发布前，扩展加载失败必须可诊断。当前阶段先建立分类和验证基线，后续 W3 逐步收敛实现。
+Windows 扩展加载已输出 `LOAD_OK`、`STUB_MISSING`、`DI_FAILURE`、`LOAD_ERROR`，失败诊断保留 `(jarName, category, errorType, message)`；兼容证据只证明 ABI/runtime 边界，不等于业务语义 parity。
 
 ## 失败分类
 
@@ -24,9 +24,9 @@ Windows 发布前，扩展加载失败必须可诊断。当前阶段先建立分
 ./gradlew :app-desktop:jvmTest --tests "mihon.desktop.extension.ExtensionCompatibilityTest"
 ```
 
-## W3 收敛要求
+## 持续门禁
 
 - 不再用 `catch (_: Throwable)` 静默丢失扩展加载失败。
 - 用户可见错误必须非空。
 - 开发者日志必须包含扩展文件路径和失败分类。
-- 至少一组真实扩展成功/失败样本纳入测试。
+- ledger 当前 45 types＝44 required＋1 unsupported＋0 unverified，覆盖 6 个不可变 fixture、9 个 real test class/11 tests；`WebView` engine 明确 unsupported，`loadByClassName`/scan 仍按类 catch-and-skip，须保留为剩余限制。

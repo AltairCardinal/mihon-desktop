@@ -33,11 +33,11 @@
 
 作者聚合、Upcoming、阅读器双页、Webtoon 自动滚动以及 Test Mode 导航/HTTP 属于全局 Desktop 产品证据池：契约测试独立验证这些真实测试存在，但它们不对应 64 项中的普通对齐条目，因此不会被写入无关条目的 `protectionTests`。
 
-逐项 `protectionTests` 只保护该条目上明确标记的 `DESKTOP-PRODUCT` 增强。当前 APK→JAR、FlareSolverr 后备、宽页拆分/边缘匹配和双页点击区域分别绑定能在对应能力回退时失败的具体测试；其他条目保留空数组。manifest 不允许自引用契约测试或 `MISSING:` 占位。
+逐项 `protectionTests` 绑定所有已提升条目的真实 production behavior/wiring；`DESKTOP-PRODUCT` 还必须零回退。契约测试、自引用、源码符号扫描或 `MISSING:` 占位均不能替代行为证据。
 
 ## 维护方式
 
-只修改 manifest 中对应条目推进状态；本文仅在治理规则或标签语义变化时更新。比较报告原评分保持不变，直到单项达到 `VERIFIED` 或有充分证据达到 `EXEMPT` 后，再单独评审评分变化。
+机器状态以 manifest 为准：28、32 保持 `NOT_STARTED`，29、30、33–40 为 `WIRED`，87 为 `SHARED`，设计表没有 ID 31；原版 Mihon 仅指固定 `main@6fbf6dfc…`，current Android/shared/Desktop 都只是消费者、迁移输出或平台适配，Step 4–6 完成前不得标为 `VERIFIED`。
 
 ## 71–74 备份对齐进展
 

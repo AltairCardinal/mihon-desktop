@@ -43,7 +43,23 @@ class DesktopProductCapabilityContractTest {
             "PLATFORM-EXEMPT",
         )
     private val structuredProvenanceIds =
-        setOf(28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 43, 67, 68, 69, 70)
+        setOf(28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 43, 67, 68, 69, 70, 87)
+    private val sourceExtensionParityStatuses =
+        mapOf(
+            28 to "NOT_STARTED",
+            29 to "WIRED",
+            30 to "WIRED",
+            32 to "NOT_STARTED",
+            33 to "WIRED",
+            34 to "WIRED",
+            35 to "WIRED",
+            36 to "WIRED",
+            37 to "WIRED",
+            38 to "WIRED",
+            39 to "WIRED",
+            40 to "WIRED",
+            87 to "SHARED",
+        )
     private val allowedDeviationClassifications =
         setOf(
             "PLATFORM_ADAPTER",
@@ -112,6 +128,12 @@ class DesktopProductCapabilityContractTest {
                     "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
                     "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/ExtensionDetailsScreenModel.kt",
                 ),
+            87 to
+                setOf(
+                    "app/src/main/java/eu/kanade/presentation/more/settings/screen/appearance/AppLanguageScreen.kt",
+                    "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAppearanceScreen.kt",
+                    "core/common/src/main/kotlin/tachiyomi/core/common/i18n/Localize.kt",
+                ),
         )
     private val requiredAuthorityBoundaryTerms =
         mapOf(
@@ -171,8 +193,19 @@ class DesktopProductCapabilityContractTest {
         )
     private val expectedCapabilityEvidence =
         mapOf(
-            34 to setOf("app-desktop/src/test/kotlin/mihon/desktop/extension/ApkToJarConverterTest.kt"),
-            40 to setOf("app-desktop/src/test/kotlin/mihon/desktop/network/FlareSolverrClientTest.kt"),
+            34 to
+                setOf(
+                    "domain/src/jvmTest/kotlin/mihon/domain/extension/ExtensionInstallCoordinatorTest.kt",
+                    "app-desktop/src/test/kotlin/mihon/desktop/extension/ApkToJarConverterTest.kt",
+                    "app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionInstallTransactionTest.kt",
+                ),
+            40 to
+                setOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/network/DesktopChallengeRecoveryPolicyTest.kt",
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/cloudflare/DesktopChallengeLoginWiringTest.kt",
+                    "app-desktop/src/test/kotlin/mihon/desktop/network/CloudflareCookieImportTest.kt",
+                    "app-desktop/src/test/kotlin/mihon/desktop/network/FlareSolverrClientTest.kt",
+                ),
             43 to
                 setOf(
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
@@ -662,6 +695,24 @@ class DesktopProductCapabilityContractTest {
                 val testFile = repositoryRoot.resolve(path)
                 assertTrue(Files.isRegularFile(testFile), "ID $id: missing product protection test $path")
                 assertTrue(Files.readString(testFile).contains("@Test"), "ID $id: product protection must be a test file")
+            }
+        }
+    }
+
+    @Test
+    fun `source extension and i18n parity states reflect only closed evidence`() {
+        val items = manifestItems(repositoryRoot()).associateBy { validatedId(it.jsonObject) }
+
+        assertEquals(
+            sourceExtensionParityStatuses.keys,
+            items.keys.intersect(sourceExtensionParityStatuses.keys),
+            "the source-extension parity ID set must stay exact; ID 31 is not in the design set",
+        )
+        sourceExtensionParityStatuses.forEach { (id, status) ->
+            val item = items.getValue(id).jsonObject
+            assertEquals(status, item.getValue("status").jsonPrimitive.content, "ID $id status")
+            if (status in setOf("SHARED", "WIRED", "VERIFIED")) {
+                assertTrue(item.getValue("protectionTests").jsonArray.isNotEmpty(), "ID $id needs production protection")
             }
         }
     }
@@ -1202,8 +1253,10 @@ class DesktopProductCapabilityContractTest {
         }
 
         validateCurrentPaths(item, "sharedImplementationPaths", id, repositoryRoot, allowEmpty = true)
-        validateCurrentPaths(item, "currentAndroidConsumerPaths", id, repositoryRoot, requiredPrefix = "app/src/main/")
-        validateCurrentPaths(item, "desktopConsumerAdapterPaths", id, repositoryRoot, requiredPrefix = "app-desktop/src/main/")
+        val androidRoots =
+            if (id == 40) setOf("app/src/main/", "core/common/src/androidMain/") else setOf("app/src/main/")
+        validateCurrentPaths(item, "currentAndroidConsumerPaths", id, repositoryRoot, requiredPrefixes = androidRoots)
+        validateCurrentPaths(item, "desktopConsumerAdapterPaths", id, repositoryRoot, requiredPrefixes = setOf("app-desktop/src/main/"))
 
         val deviations = item["deviations"]?.jsonArray
             ?: throw AssertionError("ID $id: deviations must be an explicit array")
@@ -1240,7 +1293,7 @@ class DesktopProductCapabilityContractTest {
         field: String,
         id: Int,
         repositoryRoot: Path,
-        requiredPrefix: String? = null,
+        requiredPrefixes: Set<String>? = null,
         allowEmpty: Boolean = false,
     ) {
         val paths = item[field]?.jsonArray
@@ -1249,8 +1302,8 @@ class DesktopProductCapabilityContractTest {
         paths.forEachIndexed { index, element ->
             val path = element.jsonPrimitive.content
             assertTrue(path.isNotBlank(), "ID $id: $field[$index] must not be blank")
-            if (requiredPrefix != null) {
-                assertTrue(path.startsWith(requiredPrefix), "ID $id: $field[$index] must start with $requiredPrefix")
+            if (requiredPrefixes != null) {
+                assertTrue(requiredPrefixes.any(path::startsWith), "ID $id: $field[$index] must start with one of $requiredPrefixes")
             }
             assertTrue(Files.isRegularFile(repositoryRoot.resolve(path)), "ID $id: missing $field path $path")
         }
