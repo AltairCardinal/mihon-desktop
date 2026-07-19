@@ -159,25 +159,25 @@ class ExtensionDetailsPreferencesWiringTest {
                     nodes(scene).any { it.config.toString().contains("Details extension") }
             }
             val rendered = nodes(scene).joinToString { it.config.toString() }
-            listOf("Details extension", jar.absolutePath, "Size: ${jar.length()} bytes", "SHA-256: sha-details", "Repository: Details repository", "Repository fingerprint: fingerprint-details", "Native desktop JAR")
+            listOf("Details extension", jar.absolutePath, MR.strings.desktop_extension_metadata_size.localized(Locale.getDefault(), jar.length()), MR.strings.desktop_extension_metadata_sha256.localized(Locale.getDefault(), "sha-details"), MR.strings.desktop_extension_metadata_repository.localized(Locale.getDefault(), "Details repository"), MR.strings.desktop_extension_metadata_fingerprint.localized(Locale.getDefault(), "fingerprint-details"), MR.strings.desktop_extension_origin_native.localized())
                 .forEach { assertTrue(rendered.contains(it), "missing Desktop capability: $it") }
             click(scene, "Open folder")
             assertEquals(jar.parentFile, openedDirectories.single())
             click(scene, "Repository")
             assertEquals(installed.repoUrl, openedUrls.single())
-            click(scene, "Open Configurable web source website")
+            click(scene, MR.strings.desktop_extension_open_source_website.localized(Locale.getDefault(), "Configurable web source"))
             assertEquals("https://source.example/path", openedUrls.last())
             toggle(scene, 0)
             verify { sourceManager.setSourceEnabled(42L, false) }
-            click(scene, "Settings for Configurable web source")
+            click(scene, MR.strings.desktop_extension_source_settings.localized(Locale.getDefault(), "Configurable web source"))
             assertTrue((navigator?.lastItem as SourcePreferencesScreen).let { it.sourceId == 42L && it.sourceName == "Configurable web source" })
             navigator?.pop()
             scene.render()
-            click(scene, "Browse")
+            click(scene, MR.strings.browse.localized())
             assertTrue((navigator?.lastItem as SourceBrowseScreen).sourceId == 42L)
             navigator?.pop()
             scene.render()
-            click(scene, "Incognito mode for ${installed.pkgName}")
+            click(scene, MR.strings.desktop_extension_incognito_for.localized(Locale.getDefault(), installed.pkgName))
             assertTrue(installed.pkgName in preferences.incognitoExtensions.get())
             click(scene, "Clear extension cookies")
             verify { cookies.clearDomains(setOf("source.example")) }
@@ -188,7 +188,7 @@ class ExtensionDetailsPreferencesWiringTest {
             renderUntil(scene, "directory failure feedback") { nodes(scene).any { it.config.toString().contains("Unable to open extension folder") } }
             dismissSnackbar(scene)
             navigator?.push(ExtensionDetailsScreen(converted.jarFile.absolutePath))
-            renderUntil(scene, "converted origin") { nodes(scene).any { it.config.toString().contains("Converted from Android APK") } }
+            renderUntil(scene, "converted origin") { nodes(scene).any { it.config.toString().contains(MR.strings.desktop_extension_origin_converted.localized()) } }
             navigator?.pop()
             scene.render()
 

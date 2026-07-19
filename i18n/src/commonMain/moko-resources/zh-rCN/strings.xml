@@ -98,6 +98,15 @@
     <string name="ext_uninstall">卸载</string>
     <string name="desktop_extension_details_title">扩展详情</string>
     <string name="desktop_extension_uninstall_failed">无法卸载扩展</string>
+    <string name="desktop_extension_origin_native">原生桌面 JAR</string>
+    <string name="desktop_extension_origin_converted">由 Android APK 转换</string>
+    <string name="desktop_extension_metadata_title">Windows 扩展信息</string>
+    <string name="desktop_extension_metadata_file">文件：%s</string>
+    <string name="desktop_extension_metadata_size">大小：%d 字节</string>
+    <string name="desktop_extension_metadata_sha256">SHA-256：%s</string>
+    <string name="desktop_extension_metadata_repository">仓库：%s</string>
+    <string name="desktop_extension_metadata_fingerprint">仓库指纹：%s</string>
+    <string name="desktop_extension_incognito_for">%s 的无痕模式</string>
     <string name="desktop_extension_remove_confirmation">移除“%s”及其所有来源？此操作无法撤销。</string>
     <string name="desktop_source_preferences_missing">该图源已不可用。</string>
     <string name="desktop_source_preferences_non_configurable">该图源未提供设置。</string>

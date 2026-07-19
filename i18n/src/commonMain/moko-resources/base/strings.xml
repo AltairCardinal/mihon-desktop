@@ -341,6 +341,15 @@
     <string name="ext_uninstall">Uninstall</string>
     <string name="desktop_extension_details_title">Extension details</string>
     <string name="desktop_extension_uninstall_failed">Unable to uninstall extension</string>
+    <string name="desktop_extension_origin_native">Native desktop JAR</string>
+    <string name="desktop_extension_origin_converted">Converted from Android APK</string>
+    <string name="desktop_extension_metadata_title">Windows extension information</string>
+    <string name="desktop_extension_metadata_file">File: %s</string>
+    <string name="desktop_extension_metadata_size">Size: %d bytes</string>
+    <string name="desktop_extension_metadata_sha256">SHA-256: %s</string>
+    <string name="desktop_extension_metadata_repository">Repository: %s</string>
+    <string name="desktop_extension_metadata_fingerprint">Repository fingerprint: %s</string>
+    <string name="desktop_extension_incognito_for">Incognito mode for %s</string>
     <string name="desktop_extension_remove_confirmation">Remove “%s” and all its sources? This cannot be undone.</string>
     <string name="desktop_source_preferences_missing">Source is no longer available.</string>
     <string name="desktop_source_preferences_non_configurable">This source does not provide settings.</string>

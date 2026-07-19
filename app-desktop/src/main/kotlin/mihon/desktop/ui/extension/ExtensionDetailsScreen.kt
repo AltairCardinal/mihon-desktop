@@ -65,6 +65,7 @@ import uy.kohesive.injekt.api.get
 import java.awt.Desktop
 import java.io.File
 import java.net.URI
+import java.util.Locale
 
 internal data class ExtensionDetailsPlatformActions(
     val openDirectory: (File) -> Boolean,
@@ -121,7 +122,7 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                     title = { Text(extension?.name ?: MR.strings.desktop_extension_details_title.localized()) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = MR.strings.action_bar_up_description.localized())
                         }
                     },
                 )
@@ -156,20 +157,20 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                         )
                         Column {
                             Text(extension.name, style = MaterialTheme.typography.titleLarge)
-                            Text("Version ${extension.versionName.ifBlank { "unknown" }}")
-                            Text(extension.origin.label, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("${MR.strings.version.localized()}: ${extension.versionName.ifBlank { MR.strings.unknown.localized() }}")
+                            Text(extension.origin.localizedLabel(), color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
                 item {
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Windows extension information", style = MaterialTheme.typography.titleMedium)
-                            Text("File: ${extension.jarFile.absolutePath}")
-                            Text("Size: ${extension.jarFile.length()} bytes")
-                            Text("SHA-256: ${extension.artifactSha256.ifBlank { "not recorded" }}")
-                            Text("Repository: ${extension.repoName.ifBlank { extension.repoUrl.ifBlank { "unknown" } }}")
-                            Text("Repository fingerprint: ${extension.repoFingerprint.ifBlank { "not available" }}")
+                            Text(MR.strings.desktop_extension_metadata_title.localized(), style = MaterialTheme.typography.titleMedium)
+                            Text(MR.strings.desktop_extension_metadata_file.localized(Locale.getDefault(), extension.jarFile.absolutePath))
+                            Text(MR.strings.desktop_extension_metadata_size.localized(Locale.getDefault(), extension.jarFile.length()))
+                            Text(MR.strings.desktop_extension_metadata_sha256.localized(Locale.getDefault(), extension.artifactSha256.ifBlank { MR.strings.unknown.localized() }))
+                            Text(MR.strings.desktop_extension_metadata_repository.localized(Locale.getDefault(), extension.repoName.ifBlank { extension.repoUrl.ifBlank { MR.strings.unknown.localized() } }))
+                            Text(MR.strings.desktop_extension_metadata_fingerprint.localized(Locale.getDefault(), extension.repoFingerprint.ifBlank { MR.strings.unknown.localized() }))
                             Spacer(Modifier.height(4.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 OutlinedButton(onClick = {
@@ -190,7 +191,7 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                         }
                     }
                 }
-                item { Text("Sources", style = MaterialTheme.typography.titleMedium) }
+                item { Text(MR.strings.label_sources.localized(), style = MaterialTheme.typography.titleMedium) }
                 items(extension.sources, key = { it.id }) { source ->
                     Card(Modifier.fillMaxWidth()) {
                         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -212,15 +213,15 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                             }
                             if (source is HttpSource && source.baseUrl.startsWith("http")) {
                                 IconButton(onClick = { openUrl(source.baseUrl) }) {
-                                    Icon(Icons.Default.Public, contentDescription = "Open ${source.name} website")
+                                    Icon(Icons.Default.Public, contentDescription = MR.strings.desktop_extension_open_source_website.localized(Locale.getDefault(), source.name))
                                 }
                             }
                             if (source is ConfigurableSource) {
                                 IconButton(onClick = { onSettings(navigator, source.id, source.name) }) {
-                                    Icon(Icons.Default.Settings, contentDescription = "Settings for ${source.name}")
+                                    Icon(Icons.Default.Settings, contentDescription = MR.strings.desktop_extension_source_settings.localized(Locale.getDefault(), source.name))
                                 }
                             }
-                            TextButton(onClick = { onBrowse(navigator, source.id) }) { Text("Browse") }
+                            TextButton(onClick = { onBrowse(navigator, source.id) }) { Text(MR.strings.browse.localized()) }
                         }
                     }
                 }
@@ -233,8 +234,8 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                             val incognito = extension.pkgName in incognitoExtensions
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
-                                    Text("Incognito mode", style = MaterialTheme.typography.titleSmall)
-                                    Text("Do not record reading history", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(MR.strings.pref_incognito_mode.localized(), style = MaterialTheme.typography.titleSmall)
+                                    Text(MR.strings.pref_incognito_mode_extension_summary.localized(), color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Switch(
                                     checked = incognito,
@@ -244,7 +245,7 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                                         }
                                     },
                                     modifier = Modifier.semantics {
-                                        contentDescription = "Incognito mode for ${extension.pkgName}"
+                                        contentDescription = MR.strings.desktop_extension_incognito_for.localized(Locale.getDefault(), extension.pkgName)
                                     },
                                 )
                             }
@@ -287,8 +288,8 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
     }
 }
 
-private val ExtensionOrigin.label: String
-    get() = when (this) {
-        ExtensionOrigin.COMPILED_JAR -> "Native desktop JAR"
-        ExtensionOrigin.CONVERTED_APK -> "Converted from Android APK"
+private fun ExtensionOrigin.localizedLabel(): String =
+    when (this) {
+        ExtensionOrigin.COMPILED_JAR -> MR.strings.desktop_extension_origin_native.localized()
+        ExtensionOrigin.CONVERTED_APK -> MR.strings.desktop_extension_origin_converted.localized()
     }
