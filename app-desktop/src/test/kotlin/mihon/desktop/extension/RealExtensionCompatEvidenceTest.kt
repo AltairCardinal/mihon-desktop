@@ -22,6 +22,7 @@ import uy.kohesive.injekt.api.get
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
+import java.util.UUID
 import java.util.prefs.Preferences
 
 class RealExtensionCompatEvidenceTest {
@@ -101,14 +102,15 @@ class RealExtensionCompatEvidenceTest {
                 val sourceNode = Preferences.userRoot().node("/mihon/source_${source.id}")
                 val applicationPreferences = Injekt.get<Application>()
                     .getSharedPreferences("source_${source.id}", 0)
-                sourceNode.remove(RATE_LIMIT_KEY)
-                applicationPreferences.edit().remove(RATE_LIMIT_KEY).commit()
+                val sentinelKey = "mihon_test_real_extension_${UUID.randomUUID()}"
                 try {
-                    DesktopPreferenceStore(sourceNode).getString(RATE_LIMIT_KEY, "10").set("12")
-                    assertEquals("12", applicationPreferences.getString(RATE_LIMIT_KEY, null))
+                    DesktopPreferenceStore(sourceNode).getString(sentinelKey, "10").set("12")
+                    assertEquals("12", applicationPreferences.getString(sentinelKey, null))
                 } finally {
-                    sourceNode.remove(RATE_LIMIT_KEY)
-                    applicationPreferences.edit().remove(RATE_LIMIT_KEY).commit()
+                    sourceNode.remove(sentinelKey)
+                    applicationPreferences.edit().remove(sentinelKey).commit()
+                    assertTrue(!sourceNode.keys().contains(sentinelKey))
+                    assertTrue(!applicationPreferences.contains(sentinelKey))
                 }
             } finally {
                 loaded.map { it.classLoader }.distinct().filterIsInstance<AutoCloseable>().forEach { it.close() }
