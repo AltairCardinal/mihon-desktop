@@ -1721,6 +1721,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `4 files, 270 lines`
 - Verification: fixed main production、current production/source-api、4个已跟踪immutable APK与当前有效1.4 fixture集合均无 `android.util.JsonReader` 消费者；唯一命中是已隔离的 Mangalix 1.6.1，它超出 fixed-main ext-lib 1.5支持上限，且字节码要求当前不存在的 top-level `android.util.JsonToken`，不能作为兼容证据。direct prune 删除 JsonReader.kt、Phase27中对应自证/import、inventory条目并把contract真实surface从42 files/52 symbols更新为41/51；运行剩余Phase27、contract、全部immutable fixture与clean compile。若有效fixture或production compile因删除失败则恢复本批，不新增shim。
 
+  Evidence: commit `d23d782761`，4 files/246 touched（2 additions/244 deletions）。删除JsonReader实现、Phase27两项自证/import与inventory项，surface 41 files/51 symbols；evidence、JsonToken、Mangalix与其他shim零改。fresh clean compile成功（一次10分钟外层工具超时后Java0，同命令唯一重试1m59s成功），Phase27、contract、product baseline与6个真实fixture共 `29/29`。独立全量archive复核仅Mangalix1.6.1同时含JsonReader/top-level JsonToken，fixed-main的`LIB_VERSION_MAX=1.5`且当前无top-level JsonToken；有效1.4 artifacts均零命中、无dotted反射字符串。独立scanner 41/51、inventory51且set delta=0，review APPROVED、Java0；review自身focused命令仅因120秒工具窗口超时，无失败输出。
+
 ##### Task 7C3h: Intent/Bundle dormant Activity compat prune
 
 - Risk axis: `dormant-activity-token-prune`
