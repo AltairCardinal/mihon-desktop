@@ -1549,8 +1549,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `real-androidx-settings-bridge`
 - Platform boundary: `desktop`
-- Estimated scope: `7 files, 360 lines`
-- Verification: immutable ManHuaGui APK 必须经 production converter/loader 后，从 Desktop production settings resolver 调用其真实 `setupPreferenceScreen(androidx.preference.PreferenceScreen)`，得到 4 个真实设置项（`preferred_mirror`、`mainSiteRatelimitPreference`、`imgCDNRatelimitPreference`、`showR18Default`）。RED 先固定当前 `AbstractMethodError`，桥接旧 descriptor 后继续固定 `addPreference(Preference):Z` ABI gap；GREEN 将反射兼容限定在 Desktop adapter、让 `addPreference` 返回 AndroidX 兼容 `Boolean`，并证明 Desktop UI 写入与真实 extension `Application.getSharedPreferences("source_$id")` 读取同一 `/mihon/source_$id` 节点。只有行为成功后才将 Context/SharedPreferences/AndroidX 继承闭包解析为 `required`。
+- Estimated scope: `8 files, 390 lines`
+- Verification: immutable ManHuaGui APK 必须经 production converter/loader 后，从 Desktop production settings resolver 调用其真实 `setupPreferenceScreen(androidx.preference.PreferenceScreen)`，得到 4 个真实设置项（`preferred_mirror`、`mainSiteRatelimitPreference`、`imgCDNRatelimitPreference`、`showR18Default`）及原版 `setDefaultValue` 语义。RED 先固定当前 `AbstractMethodError`，桥接旧 descriptor 后继续固定 `addPreference(Preference):Z` ABI gap；若 ABI 闭合后 JVM descriptor 仍因只读取 `ListPreference.value` 而丢失 inherited `defaultValue`，必须以同一真实 fixture 取得第三个精确 RED，且只允许在 `source-api` JVM adapter 修复转换，不改 common/Android authority。GREEN 将反射兼容限定在 Desktop adapter、让 `addPreference` 返回 AndroidX 兼容 `Boolean`，并证明 Desktop UI 写入与真实 extension `Application.getSharedPreferences("source_$id")` 读取同一 `/mihon/source_$id` 节点。只有行为成功后才将 Context/SharedPreferences/AndroidX 继承闭包解析为 `required`。
 
 ##### Task 7C2: Fixed-main Page(Uri) ABI 与真实 page-list 行为
 
