@@ -1,8 +1,10 @@
 package android.view
 
-open class ViewGroup : View() {
+import android.content.Context
+
+abstract class ViewGroup(context: Context) : View(context) {
     open class LayoutParams(
-        @JvmField val width: Int,
-        @JvmField val height: Int,
+        @JvmField var width: Int,
+        @JvmField var height: Int,
     )
 }

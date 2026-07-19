@@ -2,6 +2,7 @@ package mihon.desktop.compat
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -14,6 +15,7 @@ class AndroidWebViewVerifierAbiTest {
     @Test
     fun `WebView verifier tokens keep exact shapes while engine methods fail fast`() {
         val context = Class.forName("android.content.Context")
+        val view = Class.forName("android.view.View")
         val viewGroup = Class.forName("android.view.ViewGroup")
         val bitmap = Class.forName("android.graphics.Bitmap")
         val uri = Class.forName("android.net.Uri")
@@ -28,6 +30,7 @@ class AndroidWebViewVerifierAbiTest {
             assertEquals(null, it.enclosingClass, "${it.name} must remain a top-level verifier type")
         }
         assertTrue(Modifier.isAbstract(uri.modifiers))
+        assertTrue(Modifier.isAbstract(webSettings.modifiers))
         val uriToString = uri.getMethod("toString")
         assertTrue(Modifier.isAbstract(uriToString.modifiers))
         assertEquals(String::class.java, uriToString.returnType)
@@ -76,6 +79,8 @@ class AndroidWebViewVerifierAbiTest {
         val contextInstance = context.getConstructor().newInstance()
         val webViewInstance = webView.getConstructor(context).newInstance(contextInstance)
         assertEquals(webView, webViewInstance.javaClass)
+        val storedContext = view.getDeclaredField("context").apply { isAccessible = true }
+        assertSame(contextInstance, storedContext.get(webViewInstance))
         assertUnsupported { getSettings.invoke(webViewInstance) }
         val clientInstance = webViewClient.getConstructor().newInstance()
         listOf(
@@ -87,12 +92,6 @@ class AndroidWebViewVerifierAbiTest {
         ).forEach { (method, arguments) ->
             assertUnsupported { method.invoke(webViewInstance, *arguments) }
         }
-
-        val settingsInstance = webSettings.getConstructor().newInstance()
-        booleanSettingMethods.forEach { method ->
-            assertUnsupported { method.invoke(settingsInstance, true) }
-        }
-        assertUnsupported { setUserAgentString.invoke(settingsInstance, "Mihon Desktop") }
 
         assertNull(onPageFinished.invoke(clientInstance, webViewInstance, "https://example.com"))
         assertNull(onPageStarted.invoke(clientInstance, webViewInstance, "https://example.com", null))

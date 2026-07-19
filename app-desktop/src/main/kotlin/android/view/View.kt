@@ -1,6 +1,10 @@
 package android.view
 
-open class View {
+import android.content.Context
+
+open class View(
+    private val context: Context,
+) {
     private var enabled = true
 
     open fun getRootView(): View = this

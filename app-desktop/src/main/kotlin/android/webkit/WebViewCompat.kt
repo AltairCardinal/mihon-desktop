@@ -6,7 +6,7 @@ import android.net.Uri
 import android.view.ViewGroup
 import java.io.InputStream
 
-open class WebView(context: Context) : ViewGroup() {
+open class WebView(context: Context) : ViewGroup(context) {
     open fun getSettings(): WebSettings = unavailable()
 
     open fun addJavascriptInterface(instance: Any, name: String) {
@@ -36,7 +36,7 @@ open class WebView(context: Context) : ViewGroup() {
     }
 }
 
-open class WebSettings {
+abstract class WebSettings {
     open fun setJavaScriptEnabled(enabled: Boolean) {
         unavailable()
     }

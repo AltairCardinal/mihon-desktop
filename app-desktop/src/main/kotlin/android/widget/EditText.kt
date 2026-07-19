@@ -1,5 +1,6 @@
 package android.widget
 
+import android.content.Context
 import android.text.TextWatcher
 import android.view.View
 
@@ -8,7 +9,7 @@ import android.view.View
  * These types retain callback and enabled/error state but do not render widgets
  * or invoke text callbacks.
  */
-open class TextView : View() {
+open class TextView(context: Context) : View(context) {
     private val textWatchers = mutableListOf<TextWatcher>()
 
     var error: CharSequence? = null
@@ -18,6 +19,6 @@ open class TextView : View() {
     }
 }
 
-open class EditText : TextView()
+open class EditText(context: Context) : TextView(context)
 
-open class Button : TextView()
+open class Button(context: Context) : TextView(context)
