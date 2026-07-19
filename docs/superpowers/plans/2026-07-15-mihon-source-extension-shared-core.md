@@ -1578,6 +1578,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `5 files, 280 lines plus one 96,835-byte APK`
 - Verification: 固定 Comix 1.4.34 fixture/provenance 与下述 commit/blob/hash/package/class 完全相同。RED 必须由 production converter/loader 精确得到 JVM verifier 拒绝 `android.app.Application` 传给需要 `android.content.Context` 的 preference 构造器，根因是 Desktop `ContextWrapper` 未按 fixed main/Android API 继承 `Context`；不得把 loader 空结果当充分诊断。GREEN 只将 Desktop `ContextWrapper` 恢复为 `Context` 子类并正确 override 委托方法，同时用 unit ABI 断言与真实 Comix invocation 证明 Application 可作为 Context、原 VerifyError 已消失。若真实 fixture 随后推进到新的独立 linkage gap，本 Task 应把该精确 root 固定为结构化下一 gap 后提交，不把后续平台 ABI 偷塞进同一修复；本 Task 不要求 settings Content、不修默认值/dialog title、不更新 compat evidence。
 
+  Evidence: implementation `6fdb493f8`、review repair `6ee0f04b5`。unit RED `14 tests/1 failed` 与真实 Comix production loader VerifyError 同时证明 Application/ContextWrapper 不可赋给 Context；GREEN 恢复 `ContextWrapper : Context()` 与委托 overrides，AndroidCompat `14/0/0`、ManHuaGui `1/0/0`。真实 Comix 经 immutable APK/provenance、production converter/metadata/loader 后越过原 VerifyError，并将 next-gap 固定为 `ClassNotFoundException: android.view.View`；provenance 记录 unsupported/root type/message，loader empty 且 diagnostics empty排除 outer wiring，direct helper只诊断per-class swallow。Real Comix `1/0/0`，合计 `16/0/0`、Java0。首审两个关联 Important 为 outcome 写 success 与 production empty 原因未约束；修复后复审 APPROVED。范围 5 files/164 text touched + APK，repair 2 files。
+
 ##### Task 7C3a0b: Android View verifier ABI token
 
 - Risk axis: `android-view-verifier-token`
