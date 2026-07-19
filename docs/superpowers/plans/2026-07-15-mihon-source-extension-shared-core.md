@@ -1831,6 +1831,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `2 files, 160 lines`
 - Verification: 仅在 7C3o0 独立审查通过后继续。synthetic loader test 先 RED 证明 manifest `SourceFactory` 未展开；最小 loader GREEN 必须与 fixed main 的 `obj.createSources()` 语义一致，保持 host SourceFactory ABI parent-first，并返回 factory 完整列表，不得只反射构造某个 source 或在 loader 内提前按语言筛选。覆盖单 Source、SourceFactory、多 manifest class 与无效类隔离，复跑现有 loader suite；本 Task 不引入 MangaDex compat 类型或 ledger 结论。
 
+  Evidence: commit `4444405a7`，严格 2 files/74 touched。RED 为 synthetic factory expected `[2,3]`/actual `[]`；GREEN 与 fixed main 一致地将 Source 包成单项、将 SourceFactory 完整 `createSources()` 结果 flatMap，并保持 manifest/factory 内顺序与逐项失败隔离。SourceFactory host parent-first、单 Source、多 manifest、missing/非 Source/构造失败均受测；loader 13/13 与 ManHuaGui/converter 回归通过。独立 review APPROVED，diff clean、Java0，其他 dirty 未入提交。
+
 ##### Task 7C3o1b: MangaDex 61-source 与 preference link closure
 
 - Risk axis: `mangadex-source-factory-link`
