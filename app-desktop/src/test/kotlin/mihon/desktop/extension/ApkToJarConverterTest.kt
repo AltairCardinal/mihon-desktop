@@ -82,6 +82,44 @@ class ApkToJarConverterTest {
     }
 
     @Test
+    fun `conversion preserves only safe asset classpath entries`(@TempDir tmp: Path) {
+        val apk = tmp.resolve("assets.apk").toFile()
+        val safeAsset = "title=MangaDex\n".toByteArray()
+        val injected = "must-not-reach-output".toByteArray()
+        buildZip(apk) {
+            putEntry("classes.dex", minimalDexBytes())
+            putEntry("assets/i18n/messages_en.properties", safeAsset)
+            putEntry("assets/../escaped.txt", injected)
+            putEntry("/assets/absolute.txt", injected)
+            putEntry("assets\\windows.txt", injected)
+            putEntry("assets/../../Injected.class", injected)
+            putEntry("assets/../../META-INF/MANIFEST.MF", injected)
+            putEntry("AndroidManifest.xml", injected)
+            putEntry("META-INF/CERT.RSA", injected)
+        }
+
+        val jar = converter.convert(apk, tmp.toFile()).shouldNotBeNull()
+        JarFile(jar).use { archive ->
+            val assetEntry = archive.getJarEntry("assets/i18n/messages_en.properties").shouldNotBeNull()
+            archive.getInputStream(assetEntry).readBytes().contentEquals(safeAsset) shouldBe true
+            listOf(
+                "assets/../escaped.txt",
+                "/assets/absolute.txt",
+                "assets\\windows.txt",
+                "assets/../../Injected.class",
+                "assets/../../META-INF/MANIFEST.MF",
+                "Injected.class",
+                "AndroidManifest.xml",
+                "META-INF/CERT.RSA",
+                "classes.dex",
+            ).forEach { archive.getJarEntry(it).shouldBeNull() }
+            archive.getJarEntry("META-INF/MANIFEST.MF")?.let { manifest ->
+                archive.getInputStream(manifest).readBytes().contentEquals(injected) shouldBe false
+            }
+        }
+    }
+
+    @Test
     fun `real Comix conversion preserves p0 b exception handlers`(@TempDir tmp: Path) {
         val apk = repositoryRoot().resolve(COMIX_APK).toFile()
         val jar = converter.convert(apk, tmp.toFile()).shouldNotBeNull()

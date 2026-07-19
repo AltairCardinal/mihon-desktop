@@ -2,6 +2,9 @@ package mihon.desktop.extension
 
 import com.googlecode.d2j.dex.Dex2jar
 import java.io.File
+import java.nio.file.FileSystems
+import java.nio.file.Files
+import java.nio.file.InvalidPathException
 import java.util.zip.ZipException
 import java.util.zip.ZipFile
 
@@ -34,12 +37,40 @@ class ApkToJarConverter {
             // Post-process: recompute stack map frames to fix VerifyErrors from dex2jar output
             val outputJar = File(outputDir, apkFile.nameWithoutExtension + ".jar")
             BytecodeEditor.fixBytecode(rawJar, outputJar)
+            copyClasspathAssets(apkFile, outputJar)
             rawJar.delete()
             outputJar.takeIf { it.exists() && it.length() > 0 }
         } catch (_: Exception) {
             null
         }
     }
+
+    /** Copies safe APK assets after bytecode editing without replacing generated JAR entries. */
+    private fun copyClasspathAssets(apkFile: File, outputJar: File) {
+        ZipFile(apkFile).use { apk ->
+            FileSystems.newFileSystem(outputJar.toPath()).use { jar ->
+                val root = jar.getPath("/")
+                val assetsRoot = root.resolve("assets")
+                apk.entries().asSequence()
+                    .filter { !it.isDirectory && isSafeAssetPath(it.name) }
+                    .forEach { entry ->
+                        val target = try {
+                            root.resolve(entry.name).normalize()
+                        } catch (_: InvalidPathException) {
+                            return@forEach
+                        }
+                        if (!target.startsWith(assetsRoot) || Files.exists(target)) return@forEach
+                        Files.createDirectories(target.parent)
+                        apk.getInputStream(entry).use { input -> Files.copy(input, target) }
+                    }
+            }
+        }
+    }
+
+    private fun isSafeAssetPath(name: String): Boolean =
+        name.startsWith("assets/") &&
+            '\\' !in name &&
+            name.split('/').none { it == "." || it == ".." }
 
     /**
      * Returns true if [apkFile] is a valid ZIP and contains at least one DEX entry.

@@ -7,6 +7,8 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import mihon.desktop.di.initDesktopDIForTest
+import mihon.desktop.ui.extension.SourcePreferencesState
+import mihon.desktop.ui.extension.resolveSourcePreferencesState
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -57,6 +59,16 @@ class RealExtensionMangaDexFactoryCompatTest {
                     assertTrue(loader.diagnostics.isEmpty(), "MangaDex loader diagnostics: ${loader.diagnostics}")
                     val english = loaded.single { it.source.lang == "en" }
                     assertEquals("MangaDex", english.source.name)
+
+                    val preferenceState = resolveSourcePreferencesState(english.source)
+                    assertTrue(preferenceState is SourcePreferencesState.Content) {
+                        val error = (preferenceState as? SourcePreferencesState.SetupFailure)?.error
+                        "MangaDex preferences failed: ${error?.javaClass?.name}: ${error?.message}"
+                    }
+                    val preferences = (preferenceState as SourcePreferencesState.Content).items
+                    assertEquals(12, preferences.size)
+                    assertEquals("Cover quality", preferences.single { it.key == "thumbnailQuality_en" }.title)
+                    assertEquals("Block groups by UUID", preferences.single { it.key == "blockedGroups_en" }.title)
 
                     val listenerType = EditTextPreference.OnBindEditTextListener::class.java
                     assertEquals(
