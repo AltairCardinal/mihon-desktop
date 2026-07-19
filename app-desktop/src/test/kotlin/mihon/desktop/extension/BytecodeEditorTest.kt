@@ -162,6 +162,38 @@ class BytecodeEditorTest {
         methodCalls(output, "UnknownCaller").single { it.owner == "missing/Host" }.name shouldBe "unknown_name"
     }
 
+    @Test
+    fun `host exact method name wins over a normalized candidate`() {
+        resolveDex2JarMethodName(
+            emittedName = "foo_bar",
+            descriptor = "()V",
+            hostCandidates = listOf("foo_bar" to "()V", "foo-bar" to "()V"),
+        ) shouldBe "foo_bar"
+    }
+
+    @Test
+    fun `ambiguous normalized host method names preserve the emitted name`() {
+        resolveDex2JarMethodName(
+            emittedName = "foo__bar",
+            descriptor = "()V",
+            hostCandidates = listOf("foo--bar" to "()V", "foo-_bar" to "()V"),
+        ) shouldBe "foo__bar"
+    }
+
+    @Test
+    fun `constructors and descriptor mismatches preserve the emitted name`() {
+        resolveDex2JarMethodName(
+            emittedName = "<init>",
+            descriptor = "()V",
+            hostCandidates = listOf("-init-" to "()V"),
+        ) shouldBe "<init>"
+        resolveDex2JarMethodName(
+            emittedName = "foo_bar",
+            descriptor = "()V",
+            hostCandidates = listOf("foo-bar" to "()J"),
+        ) shouldBe "foo_bar"
+    }
+
     private fun buildCaller(className: String, owner: String, name: String, descriptor: String): ByteArray {
         val writer = ClassWriter(ClassWriter.COMPUTE_FRAMES)
         writer.visit(Opcodes.V11, Opcodes.ACC_PUBLIC, className, null, "java/lang/Object", null)

@@ -11,6 +11,22 @@ import java.util.jar.JarFile
 import java.util.jar.JarOutputStream
 import java.util.zip.ZipEntry
 
+internal fun resolveDex2JarMethodName(
+    emittedName: String,
+    descriptor: String,
+    hostCandidates: List<Pair<String, String>>,
+): String {
+    if (emittedName.startsWith('<')) return emittedName
+    val matchingDescriptor = hostCandidates.filter { (_, actualDescriptor) -> actualDescriptor == descriptor }
+    if (matchingDescriptor.any { (actualName) -> actualName == emittedName }) return emittedName
+    return matchingDescriptor.asSequence()
+        .map { (actualName) -> actualName }
+        .filter { actualName -> actualName.replace('-', '_') == emittedName }
+        .distinct()
+        .singleOrNull()
+        ?: emittedName
+}
+
 /**
  * Post-processes a JAR produced by dex2jar to fix common bytecode issues.
  *
@@ -123,11 +139,11 @@ object BytecodeEditor {
                 return null
             }
             return try {
-                ownerClass.declaredMethods.filter { method ->
-                    method.name != call.emittedName &&
-                        method.name.replace('-', '_') == call.emittedName &&
-                        Type.getMethodDescriptor(method) == call.descriptor
-                }.singleOrNull()?.name
+                val candidates = ownerClass.declaredMethods.map { method ->
+                    method.name to Type.getMethodDescriptor(method)
+                }
+                resolveDex2JarMethodName(call.emittedName, call.descriptor, candidates)
+                    .takeIf { it != call.emittedName }
             } catch (_: LinkageError) {
                 null
             } catch (_: SecurityException) {
