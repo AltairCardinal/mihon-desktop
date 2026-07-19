@@ -12,74 +12,85 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.parallel.Isolated
 import tachiyomi.core.common.preference.DesktopPreferenceStore
+import uy.kohesive.injekt.Injekt
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
 
+@Isolated
 class RealExtensionPreferenceCompatTest {
 
     @Test
     fun `real Comix conversion loads after the WebView verifier closure`(
         @TempDir tempDir: Path,
     ) = runBlocking {
-        val provenance = Json.parseToJsonElement(
-            Files.readString(repositoryRoot().resolve(PROVENANCE_PATH)),
-        ).jsonObject
-        assertEquals(PROVENANCE_FIELDS, provenance.keys)
-        assertEquals(AUTHORITY_REF, provenance.string("authorityRef"))
-        assertEquals(REPOSITORY_COMMIT, provenance.string("repositoryCommit"))
-        assertEquals(GIT_BLOB, provenance.string("gitBlob"))
-        assertEquals("Apache-2.0", provenance.string("license"))
-        assertEquals(RETRIEVED_AT, provenance.string("retrievedAt"))
-        assertEquals(RAW_URL, provenance.url("rawUrl"))
-
-        val apkPath = repositoryRoot().resolve(provenance.string("fixturePath"))
-        assertTrue(Files.isRegularFile(apkPath), "Missing immutable Comix fixture: $apkPath")
-        assertEquals(provenance.string("sizeBytes").toLong(), Files.size(apkPath))
-        assertEquals(provenance.string("sha256"), sha256(apkPath))
-        assertEquals(EXTENSION_CLASS, ManifestClassExtractor.extractFromApk(apkPath.toFile()))
-        assertEquals(PACKAGE_NAME, provenance.string("packageName"))
-        assertEquals(VERSION_CODE, provenance.string("versionCode").toLong())
-        assertEquals(VERSION_NAME, provenance.string("versionName"))
-        assertEquals(EXTENSION_CLASS, provenance.string("extensionClass"))
-        assertEquals("success", provenance.string("expectedOutcome"))
-
-        val diContext = initDesktopDIForTest(
-            appDir = tempDir.resolve("app").toFile(),
-            preferenceStore = DesktopPreferenceStore(),
-        )
+        val previousInjekt = Injekt
         try {
-            val convertedJar = ApkToJarConverter().convert(apkPath.toFile(), tempDir.toFile())
-            assertNotNull(convertedJar, "Production converter rejected the immutable Comix APK")
-            val jar = requireNotNull(convertedJar)
-            writeExtensionMeta(
-                jar,
-                ExtensionMeta(
-                    pkgName = PACKAGE_NAME,
-                    versionCode = VERSION_CODE,
-                    versionName = VERSION_NAME,
-                    artifactSha256 = provenance.string("sha256"),
-                    source = ExtensionOrigin.CONVERTED_APK,
-                    name = "Comix",
-                    language = "en",
-                    extensionClass = EXTENSION_CLASS,
-                ),
+            val provenance = Json.parseToJsonElement(
+                Files.readString(repositoryRoot().resolve(PROVENANCE_PATH)),
+            ).jsonObject
+            assertEquals(PROVENANCE_FIELDS, provenance.keys)
+            assertEquals(AUTHORITY_REF, provenance.string("authorityRef"))
+            assertEquals(REPOSITORY_COMMIT, provenance.string("repositoryCommit"))
+            assertEquals(GIT_BLOB, provenance.string("gitBlob"))
+            assertEquals("Apache-2.0", provenance.string("license"))
+            assertEquals(RETRIEVED_AT, provenance.string("retrievedAt"))
+            assertEquals(RAW_URL, provenance.url("rawUrl"))
+
+            val apkPath = repositoryRoot().resolve(provenance.string("fixturePath"))
+            assertTrue(Files.isRegularFile(apkPath), "Missing immutable Comix fixture: $apkPath")
+            assertEquals(provenance.string("sizeBytes").toLong(), Files.size(apkPath))
+            assertEquals(provenance.string("sha256"), sha256(apkPath))
+            assertEquals(EXTENSION_CLASS, ManifestClassExtractor.extractFromApk(apkPath.toFile()))
+            assertEquals(PACKAGE_NAME, provenance.string("packageName"))
+            assertEquals(VERSION_CODE, provenance.string("versionCode").toLong())
+            assertEquals(VERSION_NAME, provenance.string("versionName"))
+            assertEquals(EXTENSION_CLASS, provenance.string("extensionClass"))
+            assertEquals("success", provenance.string("expectedOutcome"))
+
+            val diContext = initDesktopDIForTest(
+                appDir = tempDir.resolve("app").toFile(),
+                preferenceStore = DesktopPreferenceStore(),
             )
-            val loader = DesktopExtensionLoader(tempDir.toFile())
-            val loaded = loader.loadFromSingleJar(jar)
             try {
-                assertEquals(1, loaded.size, "Comix did not load through production Desktop DI")
-                assertTrue(loader.diagnostics.isEmpty(), "Comix failed in outer loader wiring: ${loader.diagnostics}")
-                val source = loaded.single().source
-                assertEquals(EXTENSION_CLASS, source.javaClass.name)
-                val codeSource = java.io.File(source.javaClass.protectionDomain.codeSource.location.toURI())
-                assertEquals(jar.canonicalFile, codeSource.canonicalFile)
+                val convertedJar = ApkToJarConverter().convert(apkPath.toFile(), tempDir.toFile())
+                assertNotNull(convertedJar, "Production converter rejected the immutable Comix APK")
+                val jar = requireNotNull(convertedJar)
+                writeExtensionMeta(
+                    jar,
+                    ExtensionMeta(
+                        pkgName = PACKAGE_NAME,
+                        versionCode = VERSION_CODE,
+                        versionName = VERSION_NAME,
+                        artifactSha256 = provenance.string("sha256"),
+                        source = ExtensionOrigin.CONVERTED_APK,
+                        name = "Comix",
+                        language = "en",
+                        extensionClass = EXTENSION_CLASS,
+                    ),
+                )
+                val loader = DesktopExtensionLoader(tempDir.toFile())
+                val loaded = loader.loadFromSingleJar(jar)
+                try {
+                    assertEquals(1, loaded.size, "Comix did not load through production Desktop DI")
+                    assertTrue(
+                        loader.diagnostics.isEmpty(),
+                        "Comix failed in outer loader wiring: ${loader.diagnostics}",
+                    )
+                    val source = loaded.single().source
+                    assertEquals(EXTENSION_CLASS, source.javaClass.name)
+                    val codeSource = java.io.File(source.javaClass.protectionDomain.codeSource.location.toURI())
+                    assertEquals(jar.canonicalFile, codeSource.canonicalFile)
+                } finally {
+                    loaded.map { it.classLoader }.distinct().filterIsInstance<AutoCloseable>().forEach { it.close() }
+                }
             } finally {
-                loaded.map { it.classLoader }.distinct().filterIsInstance<AutoCloseable>().forEach { it.close() }
+                diContext.closeAndJoin()
             }
         } finally {
-            diContext.closeAndJoin()
+            Injekt = previousInjekt
         }
     }
 
