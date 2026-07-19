@@ -1393,8 +1393,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `extension-testmode-client-contract`
 - Platform boundary: `desktop`
-- Estimated scope: `3 files, 220 lines`
-- Verification: client 能安全序列化包含引号/反斜杠的 query，解析 nested extension DTO；Robot 按 `packageName` 发送全部真实动作且不得吞掉 `ActionResult.success=false`。
+- Estimated scope: `3 files, 400 lines`
+- Verification: client 能安全序列化包含引号/反斜杠的 query，解析 state/action 共用的 nested extension DTO 与非 2xx 结构化错误；Robot 按 `packageName` 发送全部真实动作且不得吞掉 `ActionResult.success=false`。
 - Files: `MihonDesktopTestClient.kt`、`MoreRobot.kt`，新增 `SourceExtensionClientContractTest.kt`。
 - Boundary: 删除 server/Robot 中 legacy `extension_select/enable/disable` 空操作与 index API；select 已由真实导航契约覆盖，enable/disable 在 fixed main 属于 Source 管理，后续只能以 `source_toggle/source_pin` 调用真实 Source model。
 
