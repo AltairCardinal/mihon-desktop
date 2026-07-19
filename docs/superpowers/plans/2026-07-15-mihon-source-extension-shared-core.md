@@ -1730,6 +1730,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `6 files, 250 lines`
 - Verification: fixed main 的 Intent/Bundle 属于 Activity、broadcast 与 saved-state 平台链；有效扩展中的命中只在随包 `UrlActivity`，Desktop没有Activity/manifest dispatch且production loader不加载该类。direct prune 删除 Intent.kt、Bundle.kt、Phase6/Phase2自证、两项inventory并把surface从41/51更新为39/49；全部immutable loader/converter/product tests与clean compile必须通过。若真实Desktop产品链执行该Activity token则恢复并重规划平台入口，不得以空实现保留。
 
+  Evidence: commit `57a829f6f5`，6 files/197 touched（4 additions/193 deletions）。删除Intent/Bundle、Phase6/Phase2仅自证/import与两项inventory，surface 39 files/49 symbols；evidence、Activity与其他shim零改。clean compile成功（2m36s），Phase2、Phase6、contract、product baseline与6个真实fixture共 `38/38`。全部raw JAR命中均精确归属 `keiyoushi/source/UrlActivity.class`，有效源码亦仅该共享Activity导入；Desktop ManifestClassExtractor只读`tachiyomi.extension.class`，loader只加载声明的ExtensionGenerated/SourceFactory，不解析或dispatch manifest Activity。独立scanner 39/49、inventory49且set delta=0，review APPROVED、Java0。
+
 ##### Task 7C3i: ComponentCallbacks 生命周期占位 prune
 
 - Risk axis: `component-callbacks-prune`
