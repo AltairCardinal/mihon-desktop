@@ -44,10 +44,14 @@ import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.test.state.applicationState
-import mihon.desktop.ui.extension.ExtensionListScreen
+import mihon.desktop.ui.extension.extensionListDestination
 import mihon.desktop.ui.migration.MigrationSearchScreen
 
 class MoreRootScreen : Screen {
+
+    internal fun onExtensions(navigator: Navigator) {
+        navigator.push(extensionListDestination())
+    }
 
     internal fun onTracking(navigator: Navigator) {
         mihon.desktop.ui.tracking.pushTrackingSettings(navigator)
@@ -78,7 +82,7 @@ class MoreRootScreen : Screen {
                         "open_general_settings" -> navigator.push(GeneralSettingsScreen())
                         "open_download_settings" -> navigator.push(DownloadSettingsScreen())
                         "open_backup_settings" -> navigator.push(BackupSettingsScreen())
-                        "open_extensions" -> navigator.push(ExtensionListScreen())
+                        "open_extensions" -> onExtensions(navigator)
                         "open_migration" -> navigator.push(
                             MigrationSearchScreen(sourceMangaId = 0L, sourceMangaTitle = ""),
                         )
@@ -173,7 +177,7 @@ class MoreRootScreen : Screen {
                         icon = Icons.Default.Extension,
                         title = "Extensions",
                         subtitle = "Manage installed source extensions",
-                        onClick = { navigator.push(mihon.desktop.ui.extension.ExtensionListScreen()) },
+                        onClick = { onExtensions(navigator) },
                     )
                     HorizontalDivider()
                 }

@@ -49,6 +49,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -56,7 +57,6 @@ import kotlinx.coroutines.launch
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.extension.ExtensionOrigin
 import mihon.desktop.source.DesktopSourceManager
-import mihon.desktop.ui.browse.SourceBrowseScreen
 import mihon.desktop.ui.settings.DesktopDirectoryOpener
 import tachiyomi.core.common.preference.getAndSet
 import tachiyomi.i18n.MR
@@ -79,6 +79,14 @@ internal val LocalExtensionDetailsPlatformActions = staticCompositionLocalOf {
 }
 
 data class ExtensionDetailsScreen(val jarPath: String) : Screen {
+    internal fun onSettings(navigator: Navigator, sourceId: Long, sourceName: String) {
+        navigator.push(sourcePreferencesDestination(sourceId, sourceName))
+    }
+
+    internal fun onBrowse(navigator: Navigator, sourceId: Long) {
+        navigator.push(sourceBrowseDestination(sourceId))
+    }
+
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     override fun Content() {
@@ -208,11 +216,11 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                                 }
                             }
                             if (source is ConfigurableSource) {
-                                IconButton(onClick = { navigator.push(SourcePreferencesScreen(source.id, source.name)) }) {
+                                IconButton(onClick = { onSettings(navigator, source.id, source.name) }) {
                                     Icon(Icons.Default.Settings, contentDescription = "Settings for ${source.name}")
                                 }
                             }
-                            TextButton(onClick = { navigator.push(SourceBrowseScreen(source.id)) }) { Text("Browse") }
+                            TextButton(onClick = { onBrowse(navigator, source.id) }) { Text("Browse") }
                         }
                     }
                 }

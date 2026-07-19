@@ -62,6 +62,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import kotlinx.coroutines.launch
 import eu.kanade.tachiyomi.source.ConfigurableSource
@@ -69,6 +70,7 @@ import mihon.desktop.extension.DesktopAvailableExtension
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.extension.InstalledExtension
 import mihon.desktop.extension.isExtensionAvailableOnDesktop
+import mihon.desktop.ui.browse.SourceBrowseScreen
 import mihon.domain.error.AppError
 import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
@@ -82,6 +84,14 @@ import java.util.Locale
 /** Lists installed extensions and available extensions from registered repositories. */
 class ExtensionListScreen : Screen {
 
+    internal fun onOpen(navigator: Navigator, extension: InstalledExtension) {
+        navigator.push(extensionDetailsDestination(extension.jarFile.absolutePath))
+    }
+
+    internal fun onSettings(navigator: Navigator, sourceId: Long, sourceName: String) {
+        navigator.push(sourcePreferencesDestination(sourceId, sourceName))
+    }
+
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     override fun Content() {
@@ -91,11 +101,20 @@ class ExtensionListScreen : Screen {
             model = remember { Injekt.get<ExtensionsScreenModel>() },
             manager = manager,
             onBack = navigator::pop,
-            onOpen = { navigator.push(ExtensionDetailsScreen(it.jarFile.absolutePath)) },
-            onSettings = { sourceId, sourceName -> navigator.push(SourcePreferencesScreen(sourceId, sourceName)) },
+            onOpen = { onOpen(navigator, it) },
+            onSettings = { sourceId, sourceName -> onSettings(navigator, sourceId, sourceName) },
         )
     }
 }
+
+internal fun extensionListDestination() = ExtensionListScreen()
+
+internal fun extensionDetailsDestination(jarPath: String) = ExtensionDetailsScreen(jarPath)
+
+internal fun sourcePreferencesDestination(sourceId: Long, sourceName: String) =
+    SourcePreferencesScreen(sourceId, sourceName)
+
+internal fun sourceBrowseDestination(sourceId: Long) = SourceBrowseScreen(sourceId)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
