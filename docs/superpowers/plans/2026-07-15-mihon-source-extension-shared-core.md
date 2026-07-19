@@ -1419,6 +1419,19 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - [ ] Verify: `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.browse.SourceLoginTestModeWiringTest"`
 - [ ] Commit: `test(desktop): observe source login lifecycle`
 
+#### Task 6E4AF: Source login observation 格式门禁收口
+
+- Risk axis: `source-login-observation-format`
+- Platform boundary: `desktop`
+- Estimated scope: `2 files, 80 lines`
+- Verification: 仅对 6E4A 的 observation 与 wiring test 做机械换行、缩进和 Spotless 收口，不改变竞态、token、取消或清理语义；格式化后原 focused test 必须仍通过。
+- Files: `SourceBrowseTestModeObservation.kt`、`SourceLoginTestModeWiringTest.kt`。
+- Boundary: 本项是 6E4A 唯一复审发现的非行为阻塞；不得借机修改生产语义或扩大 6E4B HTTP/client 范围。
+
+- [ ] GREEN：两文件满足仓库 Spotless/ktlint，且 6E4A focused test 保持通过。
+- [ ] Verify: `./gradlew :app-desktop:spotlessKotlinCheck :app-desktop:jvmTest --tests "mihon.desktop.ui.browse.SourceLoginTestModeWiringTest"`
+- [ ] Commit: `style(desktop): format source login observation`
+
 #### Task 6E4B: Source/Login HTTP 与 client contract
 
 - Risk axis: `source-login-http-client-contract`
