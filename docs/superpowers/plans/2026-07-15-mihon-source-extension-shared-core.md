@@ -1561,6 +1561,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `4 files, 300 lines`
 - Verification: fixed main `Page` 的旧扩展 ABI 使用主构造 `(I,String,String,android.net.Uri)V` 与默认参数构造 `(I,String,String,android.net.Uri,I,DefaultConstructorMarker)V`，真实 ManHuaGui `pageListParse` 调用后者；当前 common `Object` descriptors 不能作为 authority。immutable APK 经 production converter/loader 后，必须由本地 MockWebServer 返回真实 Dean-Edwards packed-script HTML，再反射执行 extension 自身 protected parser；RED 精确解包到 `NoSuchMethodError`，不得停在输入解析错误。GREEN 只允许 Desktop `BytecodeEditor` 对 owner `eu/kanade/tachiyomi/source/model/Page` 的上述两个 `<init>` descriptors 做 exact allowlist `Uri→Object` 重写，其他 owner/方法/descriptor 原样保留；不得修改 common `Page`、不得将 `android.net.Uri` 下沉到 shared authority。真实 parser 必须返回 parent-loaded host Page 及 `https://i.hamreus.com/comic/123/001.jpg?e=1700000000&m=sig`，并继续通过 Desktop reader Page 消费回归。该调用的 Uri 实参为 `null`，只证明 fixed-main Page binary ABI 兼容需求，不足以将 Uri shim 行为解析为 `required`。
 
+  Evidence: commit `57462ea71`。ASM RED 为 BytecodeEditor `11 tests/1 failed`，精确证明 fixed-main Page 主 descriptor 仍为 Uri；真实 immutable APK RED 经 production converter/loader、MockWebServer packed HTML 与 extension 自身 protected parser，精确解包到默认参数 Page(Uri) `NoSuchMethodError`，不是 parser input failure。GREEN 仅 exact allowlist 两个 Page `<init>` descriptors，Bytecode `11/0/0`、real parser `1/0/0`、Desktop reader `2/0/0`，共 `14/0/0`；返回 exact parent-loaded host Page、index 0 与完整 i.hamreus URL。范围 4 files/190 touched，Java0；Uri inventory 保持 unverified、evidence 未新增 Uri，独立 review APPROVED。root Spotless 唯一阻塞仍为提交外既有 `GlobalSearchSourcePolicyTest.kt`。
+
 ##### Task 7C3: Representative fixture matrix 与 compat prune batches
 
 - Risk axis: `compat-fixture-matrix-pruning`
