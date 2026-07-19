@@ -1714,6 +1714,55 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Evidence: commit `63431fceec`，5 files/263 touched（2 additions/261 deletions）。首次删除后31-test集合唯一失败为7C3f0已证明的陈旧基线，按规则完整恢复、修复并审查该独立问题后重新施工。最终 clean `compileKotlinJvm`/`compileTestKotlinJvm` BUILD SUCCESSFUL（4m30s），Phase27、contract、product baseline与6个真实fixture共 `31/31`。全仓库production/source-api/test源码与4个全部已跟踪immutable APK的DEX descriptor、slash/dotted反射字符串均无AsyncTask/JsonWriter消费者；inventory 52/52 unique、scanner 42 files/52 symbols集合完全一致，evidence 24/24 unique且零改。Handler/Looper/Intent/Bundle/Uri保持存在且diff为0，独立review APPROVED，Java0。
 
+##### Task 7C3g: JsonReader 无有效消费者 compat prune
+
+- Risk axis: `json-reader-prune`
+- Platform boundary: `desktop`
+- Estimated scope: `4 files, 270 lines`
+- Verification: fixed main production、current production/source-api、4个已跟踪immutable APK与当前有效1.4 fixture集合均无 `android.util.JsonReader` 消费者；唯一命中是已隔离的 Mangalix 1.6.1，它超出 fixed-main ext-lib 1.5支持上限，且字节码要求当前不存在的 top-level `android.util.JsonToken`，不能作为兼容证据。direct prune 删除 JsonReader.kt、Phase27中对应自证/import、inventory条目并把contract真实surface从42 files/52 symbols更新为41/51；运行剩余Phase27、contract、全部immutable fixture与clean compile。若有效fixture或production compile因删除失败则恢复本批，不新增shim。
+
+##### Task 7C3h: Intent/Bundle dormant Activity compat prune
+
+- Risk axis: `dormant-activity-token-prune`
+- Platform boundary: `desktop`
+- Estimated scope: `6 files, 250 lines`
+- Verification: fixed main 的 Intent/Bundle 属于 Activity、broadcast 与 saved-state 平台链；有效扩展中的命中只在随包 `UrlActivity`，Desktop没有Activity/manifest dispatch且production loader不加载该类。direct prune 删除 Intent.kt、Bundle.kt、Phase6/Phase2自证、两项inventory并把surface从41/51更新为39/49；全部immutable loader/converter/product tests与clean compile必须通过。若真实Desktop产品链执行该Activity token则恢复并重规划平台入口，不得以空实现保留。
+
+##### Task 7C3i: ComponentCallbacks 生命周期占位 prune
+
+- Risk axis: `component-callbacks-prune`
+- Platform boundary: `desktop`
+- Estimated scope: `5 files, 120 lines`
+- Verification: ComponentCallbacks/ComponentCallbacks2没有fixed-main显式消费者、Keiyoushi源码或有效artifact调用；Desktop仅由Application shim自身实现/派发，真实ManHuaGui加载只发生类型链接而未注册或执行回调。删除接口文件，简化Application继承/注册占位，移除Phase1自证与两项inventory，contract从39/49更新为38/47；真实ManHuaGui Application loader、全部immutable fixture和clean compile必须通过，否则恢复。
+
+##### Task 7C3j: PackageInfo/PackageManager Android系统占位 prune
+
+- Risk axis: `package-manager-prune`
+- Platform boundary: `desktop`
+- Estimated scope: `7 files, 150 lines`
+- Verification: fixed main 对两类型的调用属于Android包发现、签名、权限、WebView、图标与安装安全；Desktop只有 `AndroidCompat.packageManager` 持有无方法调用的占位实例，有效扩展源码/DEX/反射均无消费者。删除两个shim与该占位属性，清理Phase6/Phase7自证、inventory并把surface从38/47更新为36/45；运行全部immutable loader/converter、DI/AndroidCompat相关测试与clean compile。任何production调用失败即恢复并重规划真实平台adapter。
+
+##### Task 7C3k: Environment/TextUtils/Pair 无消费者 prune
+
+- Risk axis: `utility-token-prune`
+- Platform boundary: `desktop`
+- Estimated scope: `7 files, 200 lines`
+- Verification: 三类型在fixed-main/current production/source-api、完整Keiyoushi源码及有效artifact descriptor/反射字符串中均无Desktop扩展消费者；fixed-main Environment仅服务Android外部存储，Desktop应使用自身文件系统，仓库其他 `Pair` 均为Kotlin Pair。删除三个shim、Phase2/Phase3自证、inventory并把surface从36/45更新为33/42；运行全部immutable fixture、文件工具回归、contract与clean compile，明确证明Kotlin Pair未受影响。
+
+##### Task 7C3l: PreferenceManager 未消费属性 prune
+
+- Risk axis: `preference-manager-prune`
+- Platform boundary: `desktop`
+- Estimated scope: `3 files, 50 lines`
+- Verification: fixed main PreferenceManager只提供Android默认SharedPreferences；Desktop `PreferenceScreen.preferenceManager` 仅自动构造但Keiyoushi和真实偏好fixture均不读取，产品设置已使用Desktop preference bridge/store。删除该公开类型/属性与inventory条目，surface保持33 files但symbols从42降为41；真实Comix/ManHuaGui preference fixture、contract与clean compile必须通过，否则恢复。
+
+##### Task 7C3m: Drawable verification-only family prune
+
+- Risk axis: `drawable-family-prune`
+- Platform boundary: `desktop`
+- Estimated scope: `4 files, 80 lines`
+- Verification: Drawable、BitmapDrawable、ColorDrawable在fixed main仅服务Android reader/resources/icon链，Desktop loader/UI与完整Keiyoushi/有效artifact均无消费者；当前单文件三个类型仅由Phase27自证。删除该文件与自证、三项inventory，contract从33/41更新为32/38；运行Comix graphics、全部immutable loader/product fixture、contract与clean compile。不得把该结论扩张到已有真实消费者但尚缺fixture的 Color/Html。
+
 ##### Task 7C4: Source/extension authority baseline 与恢复入口纠偏
 
 - Risk axis: `authority-resume-pointer`
