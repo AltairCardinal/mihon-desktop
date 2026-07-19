@@ -1703,12 +1703,16 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `1 file, 60 lines`
 - Verification: 7C3f 首次删除后的 31-test fixture 集合暴露 `DesktopExtensionProductBaselineTest` 仍把早期 ManHuaGui 两符号证据固定为整个 resolved symbol 集合；恢复全部裁剪后，在 HEAD `1ccb2518a` 单跑仍稳定为 `5 tests/1 failed`，期望2项而当前真实 ledger 为24项，证明与裁剪无关。只修改该测试文件：移除 `RESOLVED_SYMBOLS`、单一 `REAL_FIXTURE`/`REAL_FIXTURE_TEST` 的重复全集假设，保留 evidence 非空、symbol唯一、schema/status、仓库内本地 artifact 与 protection test 存在检查；动态 surface/inventory/evidence一一对应继续由 `CompatEvidenceContractTest` 唯一负责，不在此复制实现。运行 product baseline、compat contract 与 immutable fixture集合；不得修改 JSON ledger 或 production。
 
+  Evidence: commit `ab7099df0`，1 file/13 deletions。恢复后的 HEAD 先单跑稳定复现 product baseline `5 tests/1 failed`，精确证明旧固定2-symbol集合与当前24项真实evidence冲突且与裁剪无关；GREEN 删除重复全集/单一fixture假设，但保留 evidence 非空、symbol唯一、schema/status、artifact-path@digest、仓库内本地artifact/protection test存在与removalCondition门禁。product baseline `5/0/0`、compat contract与6个immutable fixture `10/0/0`，独立审查确认动态surface/inventory/evidence一致性仍只由contract负责，APPROVED、Java0。
+
 ##### Task 7C3f: AsyncTask/JsonWriter 无消费者 compat prune
 
 - Risk axis: `unused-compat-prune`
 - Platform boundary: `desktop`
 - Estimated scope: `5 files, 300 lines`
 - Verification: 本项目的支持边界是当前可追溯、fixed-main-compatible 1.4 artifact集合，不承诺任意历史 APK。fixed main/current production/source-api、本地 Keiyoushi全源码 `900d108c`、六个已下载raw JAR与七个去重APK descriptor 对 `android.os.AsyncTask`、`android.util.JsonWriter` 的消费者均为0；两者只来自批量补桩提交和 `AndroidStubsPhase27Test` 自证。该direct prune不虚构产品行为RED：删除两个实现、对应stub自测与inventory条目，更新public surface contract计数；运行剩余Phase27、全部immutable fixture production converter/loader tests、contract和clean compile。若删除导致任何真实fixture或production编译失败则回滚本批并恢复unverified，不用新增shim绕过。该结论不自动扩张到Handler/Looper/Intent/Bundle/Uri，也不声称兼容任意历史扩展。
+
+  Evidence: commit `63431fceec`，5 files/263 touched（2 additions/261 deletions）。首次删除后31-test集合唯一失败为7C3f0已证明的陈旧基线，按规则完整恢复、修复并审查该独立问题后重新施工。最终 clean `compileKotlinJvm`/`compileTestKotlinJvm` BUILD SUCCESSFUL（4m30s），Phase27、contract、product baseline与6个真实fixture共 `31/31`。全仓库production/source-api/test源码与4个全部已跟踪immutable APK的DEX descriptor、slash/dotted反射字符串均无AsyncTask/JsonWriter消费者；inventory 52/52 unique、scanner 42 files/52 symbols集合完全一致，evidence 24/24 unique且零改。Handler/Looper/Intent/Bundle/Uri保持存在且diff为0，独立review APPROVED，Java0。
 
 ##### Task 7C4: Source/extension authority baseline 与恢复入口纠偏
 
