@@ -439,3 +439,23 @@
 - Replan report: `.superpowers/sdd/align-sources-task-4c-replan.md`; all C1-C3, I1-I4 and M1 findings verified against production code and accepted as technically valid.
 - Execution order: Task 4C `android-install-session-lifecycle` (7 files, 390 lines, Android) → Task 4D `android-install-trust-rollback` (8 files, 620 lines, Android, concrete Split waiver). Task 4D depends on Task 4C's bounded transaction/session primitive; no parallel Gradle or implementation.
 - Next stage after coordination checkpoint: `implementing` Task 4C from baseline `9965e22577746c31e59435cdd35f4b30e677c020`.
+
+## Task 7D32 Review History
+
+- Reviewed task: `Task 7D32: Download queue ScreenModel dependency boundary`
+- Stage: `complete`
+- Risk axis: `download-queue-screen-model-boundary`
+- Platform boundary: `desktop`
+- Trigger: Step 6 BUILD28 fresh Desktop run executed 1810 tests with one failure and stopped before packaging; `DownloadQueueScreen.kt` directly called `ChapterRepository` and violated `DesktopArchitectureGuardTest`.
+- Authority: fixed-main `6fbf6dfc` owns queue behavior in `DownloadQueueScreenModel`; current Android and Desktop are consumers/adapters, not authority.
+- Implementer: `/root/download_upstream_alignment`
+- Implementation commit: `00846fd7b` (`refactor(desktop): route download queue through screen model`).
+- RED evidence: architecture guard 1/4 expected failure; boundary/Compose test compilation failed only because the model/factory was absent.
+- GREEN evidence: focused order/Compose 3/3; architecture/manager/reorder/order/Compose 25/25; root Spotless, diff and Comet guard PASS.
+- Initial reviewer: `/root/review_7d22`; result `CHANGES_REQUIRED`, Critical/Important/Minor `0/1/0`. The injected test scope used a detached SupervisorJob and survived caller cancellation.
+- Repair commit: `9cd771774` (`fix(desktop): bind download model to caller lifecycle`). Mutation RED observed expected `[1]` but actual `[1, 2]` after caller cancellation.
+- Repair evidence: lifecycle 1/1; affected matrix 26/26; root Spotless, diff and Comet guard PASS.
+- Repair re-review: `APPROVED`, Critical/Important/Minor `0/0/0`; original lifecycle finding CLOSED.
+- Final scope: 5 files, 337 touched lines; no AppVersion, plan, unrelated whitespace or untracked files in product commits.
+- Delivery state: BUILD28 is rejected and produced no fresh EXE. Resume Task 7 Step 6 by allocating a newer BUILD, then run Windows and macOS acceptance serially.
+- Review/fix round: 1/1
