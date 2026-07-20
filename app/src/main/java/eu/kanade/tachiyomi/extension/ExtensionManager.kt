@@ -332,9 +332,7 @@ class ExtensionManager internal constructor(
     private suspend fun reloadInstalledExtension(pkgName: String) {
         when (val result = extensionLoader(context, pkgName)) {
             is LoadResult.Success -> {
-                untrustedExtensionMapFlow.update { it - pkgName }
-                registerUpdatedExtension(result.extension.withUpdateCheck())
-                updatePendingUpdatesCount()
+                acceptInstallationEvent(InstallationEvent.Reloaded(result.extension.withUpdateCheck()))
             }
             is LoadResult.Untrusted -> {
                 throw ExtensionInstallFailure(
@@ -422,6 +420,14 @@ class ExtensionManager internal constructor(
             override fun applyToInstalled(extensions: Map<String, Extension.Installed>) =
                 extensions + (extension.pkgName to extension)
             override fun applyToUntrusted(extensions: Map<String, Extension.Untrusted>) = extensions
+        }
+
+        data class Reloaded(val extension: Extension.Installed) : InstallationEvent {
+            override fun applyToInstalled(extensions: Map<String, Extension.Installed>) =
+                extensions + (extension.pkgName to extension)
+
+            override fun applyToUntrusted(extensions: Map<String, Extension.Untrusted>) =
+                extensions - extension.pkgName
         }
 
         data class Untrusted(val extension: Extension.Untrusted) : InstallationEvent {
