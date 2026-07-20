@@ -42,8 +42,16 @@ class DesktopProductCapabilityContractTest {
             "TEMP-COMPAT",
             "PLATFORM-EXEMPT",
         )
+    private val platformProvenanceBatchOneIds = setOf(3, 4, 7, 8)
+    private val platformProvenanceBatchOneStatuses =
+        mapOf(
+            3 to "CHARACTERIZED",
+            4 to "WIRED",
+            7 to "WIRED",
+            8 to "SHARED",
+        )
     private val structuredProvenanceIds =
-        setOf(28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 43, 67, 68, 69, 70, 87)
+        platformProvenanceBatchOneIds + setOf(28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 43, 67, 68, 69, 70, 87)
     private val sourceExtensionParityStatuses =
         mapOf(
             28 to "WIRED",
@@ -86,6 +94,22 @@ class DesktopProductCapabilityContractTest {
         "app-desktop/src/test/resources/parity/fixed-main-path-inventory.json"
     private val exactAuthorityPaths =
         mapOf(
+            3 to setOf("app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt"),
+            4 to
+                setOf(
+                    "app/src/main/java/eu/kanade/tachiyomi/di/AppModule.kt",
+                    "app/src/main/java/eu/kanade/domain/DomainModule.kt",
+                ),
+            7 to
+                setOf(
+                    "core/common/src/main/kotlin/tachiyomi/core/common/preference/PreferenceStore.kt",
+                    "core/common/src/main/kotlin/tachiyomi/core/common/preference/AndroidPreferenceStore.kt",
+                ),
+            8 to
+                setOf(
+                    "core/common/src/main/kotlin/eu/kanade/tachiyomi/network/NetworkHelper.kt",
+                    "core/common/src/main/kotlin/eu/kanade/tachiyomi/network/OkHttpExtensions.kt",
+                ),
             28 to
                 setOf(
                     "app/src/main/java/eu/kanade/domain/source/interactor/GetEnabledSources.kt",
@@ -173,6 +197,13 @@ class DesktopProductCapabilityContractTest {
         )
     private val exactAuthorityBlobIds =
         mapOf(
+            "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt" to "0f777f7e58b653e458bba240127f8446b0e2ae28",
+            "app/src/main/java/eu/kanade/tachiyomi/di/AppModule.kt" to "9828155df3a543165f8b52a71bda27653e90fc5c",
+            "app/src/main/java/eu/kanade/domain/DomainModule.kt" to "6d3ddc35b91e5baf8a02c05490a678ed3f83dbe9",
+            "core/common/src/main/kotlin/tachiyomi/core/common/preference/PreferenceStore.kt" to "2016f3d442c73947e75463c7149c97373f9364fd",
+            "core/common/src/main/kotlin/tachiyomi/core/common/preference/AndroidPreferenceStore.kt" to "78f98f2042964fcd5162e5cd68fe02055415324f",
+            "core/common/src/main/kotlin/eu/kanade/tachiyomi/network/NetworkHelper.kt" to "202c39063fcd2cb5e1847955265cb2c445fc896b",
+            "core/common/src/main/kotlin/eu/kanade/tachiyomi/network/OkHttpExtensions.kt" to "072c50c81e788143385a07a6874c037ae503b0eb",
             "app/src/main/java/eu/kanade/tachiyomi/source/AndroidSourceManager.kt" to "0fa40ba9d693e0495d3b21e8db6c37b63f5ee350",
             "data/src/main/java/tachiyomi/data/source/SourcePagingSource.kt" to "bd34a91b5d13d1900b16aeb3b2f2b80df48c7dbe",
             "domain/src/main/java/tachiyomi/domain/manga/interactor/NetworkToLocalManga.kt" to "69137d9e9688175ee4edf4992c3345727268bb2d",
@@ -186,6 +217,59 @@ class DesktopProductCapabilityContractTest {
             "app/src/main/java/eu/kanade/presentation/browse/ExtensionsScreen.kt" to "e460467861a925bce4e00613de4a9be47c632ba9",
             "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsTab.kt" to "30561baeda7ccd06cd4ce41844cc6185759dd365",
             "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/ExtensionDetailsScreen.kt" to "8cac9c5cceb94cb53cff3f8f1074e30e45a376c2",
+        )
+    private val exactBatchOneSharedPaths =
+        mapOf(
+            3 to
+                setOf(
+                    "domain/src/commonMain/kotlin/mihon/domain/error/AppError.kt",
+                    "domain/src/commonMain/kotlin/mihon/domain/task/TaskState.kt",
+                ),
+            4 to emptySet<String>(),
+            7 to
+                setOf(
+                    "core/common/src/commonMain/kotlin/tachiyomi/core/common/preference/Preference.kt",
+                    "core/common/src/commonMain/kotlin/tachiyomi/core/common/preference/PreferenceStore.kt",
+                ),
+            8 to
+                setOf(
+                    "domain/src/commonMain/kotlin/mihon/domain/error/AppError.kt",
+                    "domain/src/commonMain/kotlin/mihon/domain/network/NetworkErrorMapper.kt",
+                ),
+        )
+    private val exactBatchOneAndroidPaths =
+        mapOf(
+            3 to setOf("app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt"),
+            4 to
+                setOf(
+                    "app/src/main/java/eu/kanade/tachiyomi/di/AppModule.kt",
+                    "app/src/main/java/eu/kanade/domain/DomainModule.kt",
+                ),
+            7 to setOf("app/src/main/java/eu/kanade/tachiyomi/di/PreferenceModule.kt"),
+            8 to setOf("app/src/main/java/eu/kanade/tachiyomi/di/AppModule.kt"),
+        )
+    private val exactBatchOneDesktopPaths =
+        mapOf(
+            3 to setOf("app-desktop/src/main/kotlin/mihon/desktop/history/HistoryScreenModel.kt"),
+            4 to setOf("app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt"),
+            7 to
+                setOf(
+                    "core/common/src/jvmMain/kotlin/tachiyomi/core/common/preference/DesktopPreferenceStore.kt",
+                    "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
+                ),
+            8 to
+                setOf(
+                    "app-desktop/src/main/kotlin/mihon/desktop/source/MangaDexSource.kt",
+                    "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopNetworkHelper.kt",
+                    "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
+                ),
+        )
+    private val exactBatchOneDeviationClassifications =
+        mapOf(
+            3 to setOf("MIGRATION_OUTPUT", "UNCLASSIFIED_DEBT"),
+            4 to setOf("PLATFORM_ADAPTER", "UNCLASSIFIED_DEBT"),
+            7 to setOf("PLATFORM_ADAPTER", "MIGRATION_OUTPUT"),
+            8 to setOf("PLATFORM_ADAPTER", "MIGRATION_OUTPUT"),
         )
     private val requiredAuthorityBoundaryTerms =
         mapOf(
@@ -911,6 +995,95 @@ class DesktopProductCapabilityContractTest {
     }
 
     @Test
+    fun `platform provenance batch rejects wrong layer missing consumer and debt reclassification`() {
+        val repositoryRoot = repositoryRoot()
+        val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
+        val inventory = fixedMainPathInventory(repositoryRoot)
+
+        val wrongLayer =
+            JsonObject(
+                items.getValue(8).jsonObject.toMutableMap().apply {
+                    put(
+                        "upstreamSymbols",
+                        buildJsonArray {
+                            add(
+                                buildJsonObject {
+                                    put("path", "app-desktop/src/main/kotlin/mihon/desktop/source/MangaDexSource.kt")
+                                    put("symbol", "current Desktop mapper consumer")
+                                },
+                            )
+                        },
+                    )
+                },
+            )
+        val layerFailure = assertThrows(AssertionError::class.java) {
+            validateSourceExtensionProvenance(
+                wrongLayer,
+                repositoryRoot,
+                inventory + ("app-desktop/src/main/kotlin/mihon/desktop/source/MangaDexSource.kt" to "0".repeat(40)),
+            )
+        }
+        assertTrue(layerFailure.message.orEmpty().contains("exact fixed-main authority paths"), layerFailure.message)
+
+        val missingConsumer =
+            JsonObject(
+                items.getValue(8).jsonObject.toMutableMap().apply {
+                    put(
+                        "desktopConsumerAdapterPaths",
+                        buildJsonArray {
+                            add("app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopNetworkHelper.kt")
+                            add("app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt")
+                        },
+                    )
+                },
+            )
+        val consumerFailure = assertThrows(AssertionError::class.java) {
+            validateSourceExtensionProvenance(missingConsumer, repositoryRoot, inventory)
+        }
+        assertTrue(consumerFailure.message.orEmpty().contains("exact desktopConsumerAdapterPaths"), consumerFailure.message)
+
+        val debtAsEnhancement =
+            JsonObject(
+                items.getValue(3).jsonObject.toMutableMap().apply {
+                    put(
+                        "deviations",
+                        buildJsonArray {
+                            items.getValue(3).jsonObject.getValue("deviations").jsonArray.forEach { element ->
+                                val deviation = element.jsonObject
+                                add(
+                                    if (deviation.getValue("classification").jsonPrimitive.content == "UNCLASSIFIED_DEBT") {
+                                        JsonObject(
+                                            deviation.toMutableMap().apply {
+                                                put("classification", Json.parseToJsonElement("\"CROSS_PLATFORM_RELIABILITY_ENHANCEMENT\""))
+                                            },
+                                        )
+                                    } else {
+                                        deviation
+                                    },
+                                )
+                            }
+                        },
+                    )
+                },
+            )
+        val classificationFailure = assertThrows(AssertionError::class.java) {
+            validateSourceExtensionProvenance(debtAsEnhancement, repositoryRoot, inventory)
+        }
+        assertTrue(classificationFailure.message.orEmpty().contains("exact deviation classifications"), classificationFailure.message)
+
+        val promotedState =
+            JsonObject(
+                items.getValue(3).jsonObject.toMutableMap().apply {
+                    put("status", Json.parseToJsonElement("\"SHARED\""))
+                },
+            )
+        val stateFailure = assertThrows(AssertionError::class.java) {
+            validateSourceExtensionProvenance(promotedState, repositoryRoot, inventory)
+        }
+        assertTrue(stateFailure.message.orEmpty().contains("exact evidence status"), stateFailure.message)
+    }
+
+    @Test
     fun `migration and tracker authority rejects wrong ref consumer confusion and omitted debt`() {
         val repositoryRoot = repositoryRoot()
         val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
@@ -1314,6 +1487,21 @@ class DesktopProductCapabilityContractTest {
         val id = validatedId(item)
         val upstreamRef = requiredText(item, "upstreamRef", id)
         assertEquals(fixedOriginalMihonRef, upstreamRef, "ID $id must use the exact fixed original Mihon ref")
+        if (id in platformProvenanceBatchOneIds) {
+            assertEquals(
+                platformProvenanceBatchOneStatuses.getValue(id),
+                requiredText(item, "status", id),
+                "ID $id must retain its exact evidence status",
+            )
+            val authority = requiredText(item, "authoritativeImplementation", id)
+            assertTrue(
+                authority.startsWith("Fixed-main original Mihon capability #$id:"),
+                "ID $id authority must name fixed-main original Mihon",
+            )
+            listOf("current android", "current desktop", "/src/commonmain/", "/src/jvmmain/", "shared implementation").forEach { marker ->
+                assertFalse(authority.lowercase().contains(marker), "ID $id authority must not promote current/shared code: $marker")
+            }
+        }
 
         val upstreamSymbols = item["upstreamSymbols"]?.jsonArray
             ?: throw AssertionError("ID $id: upstreamSymbols must be an explicit array")
@@ -1354,7 +1542,12 @@ class DesktopProductCapabilityContractTest {
                 else -> setOf("app/src/main/")
             }
         validateCurrentPaths(item, "currentAndroidConsumerPaths", id, repositoryRoot, requiredPrefixes = androidRoots)
-        validateCurrentPaths(item, "desktopConsumerAdapterPaths", id, repositoryRoot, requiredPrefixes = setOf("app-desktop/src/main/"))
+        val desktopRoots =
+            if (id == 7) setOf("app-desktop/src/main/", "core/common/src/jvmMain/") else setOf("app-desktop/src/main/")
+        validateCurrentPaths(item, "desktopConsumerAdapterPaths", id, repositoryRoot, requiredPrefixes = desktopRoots)
+        exactBatchOneSharedPaths[id]?.let { assertExactPaths(item, "sharedImplementationPaths", id, it) }
+        exactBatchOneAndroidPaths[id]?.let { assertExactPaths(item, "currentAndroidConsumerPaths", id, it) }
+        exactBatchOneDesktopPaths[id]?.let { assertExactPaths(item, "desktopConsumerAdapterPaths", id, it) }
 
         val deviations = item["deviations"]?.jsonArray
             ?: throw AssertionError("ID $id: deviations must be an explicit array")
@@ -1367,6 +1560,10 @@ class DesktopProductCapabilityContractTest {
                 "ID $id: $context.classification must be one of $allowedDeviationClassifications",
             )
             requiredText(deviation, "description", id, context)
+        }
+        exactBatchOneDeviationClassifications[id]?.let { expected ->
+            val actual = deviations.map { it.jsonObject.getValue("classification").jsonPrimitive.content }.toSet()
+            assertEquals(expected, actual, "ID $id must retain exact deviation classifications")
         }
         requiredAuthorityBoundaryTerms[id]?.forEach { (requiredTerm, expectedClassification) ->
             val matches =
@@ -1384,6 +1581,11 @@ class DesktopProductCapabilityContractTest {
                 "ID $id deviations containing `$requiredTerm` must be classified as $expectedClassification",
             )
         }
+    }
+
+    private fun assertExactPaths(item: JsonObject, field: String, id: Int, expected: Set<String>) {
+        val actual = item.getValue(field).jsonArray.map { it.jsonPrimitive.content }.toSet()
+        assertEquals(expected, actual, "ID $id must retain exact $field")
     }
 
     private fun validateCurrentPaths(

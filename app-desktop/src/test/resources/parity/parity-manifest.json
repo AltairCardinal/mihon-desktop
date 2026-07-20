@@ -5,9 +5,27 @@
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "SHARED",
-    "authoritativeImplementation": "Legacy capability summary #3: 状态管理; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 状态管理",
+    "status": "CHARACTERIZED",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #3: SourcesScreenModel uses Voyager StateScreenModel, immutable State snapshots, Flow collection, and an explicit Event channel.",
+    "desktopImplementation": "Current Android SourcesScreenModel and Desktop HistoryScreenModel are independent state-container examples. Shared TaskState/AppError primitives exist, but no production wiring proves that either screen model consumes them as one cross-platform state-management capability.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt", "symbol": "SourcesScreenModel : StateScreenModel<State>; immutable State and Event channel" }
+    ],
+    "sharedImplementationPaths": [
+      "domain/src/commonMain/kotlin/mihon/domain/error/AppError.kt",
+      "domain/src/commonMain/kotlin/mihon/domain/task/TaskState.kt"
+    ],
+    "currentAndroidConsumerPaths": [
+      "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt"
+    ],
+    "desktopConsumerAdapterPaths": [
+      "app-desktop/src/main/kotlin/mihon/desktop/history/HistoryScreenModel.kt"
+    ],
+    "deviations": [
+      { "classification": "MIGRATION_OUTPUT", "description": "TaskState and AppError are fork-added shared primitives with unit coverage; they are not evidence that the listed Android and Desktop screen models share a production state-management chain." },
+      { "classification": "UNCLASSIFIED_DEBT", "description": "Cross-platform screen-state wiring remains unproved, and Desktop screen models still commonly expose ad-hoc MutableStateFlow state instead of the fixed-main StateScreenModel plus immutable State and Event pattern." }
+    ],
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/error/AppErrorTest.kt",
       "domain/src/commonTest/kotlin/mihon/domain/task/TaskStateTest.kt"
@@ -22,8 +40,25 @@
       "SHARE-EXTRACT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Legacy capability summary #4: 依赖注入; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 依赖注入",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #4: AppModule and DomainModule register application and domain dependency graphs through InjektModule boundaries.",
+    "desktopImplementation": "Current Desktop registers Injekt services from DesktopAppModule during JVM bootstrap.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/di/AppModule.kt", "symbol": "AppModule.registerInjectables" },
+      { "path": "app/src/main/java/eu/kanade/domain/DomainModule.kt", "symbol": "DomainModule.registerInjectables" }
+    ],
+    "sharedImplementationPaths": [],
+    "currentAndroidConsumerPaths": [
+      "app/src/main/java/eu/kanade/tachiyomi/di/AppModule.kt",
+      "app/src/main/java/eu/kanade/domain/DomainModule.kt"
+    ],
+    "desktopConsumerAdapterPaths": [
+      "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt"
+    ],
+    "deviations": [
+      { "classification": "PLATFORM_ADAPTER", "description": "Desktop has a JVM lifecycle and platform services, so its composition root cannot reuse Android Application bindings directly." },
+      { "classification": "UNCLASSIFIED_DEBT", "description": "DesktopAppModule remains a broad manual composition root rather than matching fixed-main's smaller InjektModule boundaries." }
+    ],
     "protectionTests": [
       "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
     ],
@@ -37,8 +72,28 @@
       "SHARE-EXTRACT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Legacy capability summary #7: 偏好存储; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 偏好存储",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #7: PreferenceStore defines typed observable preferences and AndroidPreferenceStore adapts them to SharedPreferences.",
+    "desktopImplementation": "Current Desktop reuses the common PreferenceStore contract through a java.util.prefs-backed DesktopPreferenceStore and startup migration.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [
+      { "path": "core/common/src/main/kotlin/tachiyomi/core/common/preference/PreferenceStore.kt", "symbol": "PreferenceStore typed preference API" },
+      { "path": "core/common/src/main/kotlin/tachiyomi/core/common/preference/AndroidPreferenceStore.kt", "symbol": "AndroidPreferenceStore SharedPreferences adapter" }
+    ],
+    "sharedImplementationPaths": [
+      "core/common/src/commonMain/kotlin/tachiyomi/core/common/preference/Preference.kt",
+      "core/common/src/commonMain/kotlin/tachiyomi/core/common/preference/PreferenceStore.kt"
+    ],
+    "currentAndroidConsumerPaths": [
+      "app/src/main/java/eu/kanade/tachiyomi/di/PreferenceModule.kt"
+    ],
+    "desktopConsumerAdapterPaths": [
+      "core/common/src/jvmMain/kotlin/tachiyomi/core/common/preference/DesktopPreferenceStore.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt"
+    ],
+    "deviations": [
+      { "classification": "PLATFORM_ADAPTER", "description": "Desktop uses java.util.prefs because Android SharedPreferences is unavailable, while retaining the fixed-main typed PreferenceStore semantics." },
+      { "classification": "MIGRATION_OUTPUT", "description": "Desktop startup migration preserves preferences written by earlier Desktop-specific storage." }
+    ],
     "protectionTests": [
       "core/common/src/jvmTest/kotlin/tachiyomi/core/common/preference/DesktopPreferenceStoreTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/settings/DesktopPreferenceMigrationTest.kt"
@@ -54,8 +109,29 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "SHARED",
-    "authoritativeImplementation": "Legacy capability summary #8: 网络栈; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 网络栈",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #8: NetworkHelper owns configured OkHttp clients, cookies, user-agent and Cloudflare integration; OkHttpExtensions centralizes response and JSON handling.",
+    "desktopImplementation": "Current Desktop MangaDexSource is the production consumer protected by NetworkErrorContractTest for the shared HTTP error mapper. DesktopNetworkHelper and DesktopAppModule are separate platform client adapters and are not claimed as mapper-test coverage.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [
+      { "path": "core/common/src/main/kotlin/eu/kanade/tachiyomi/network/NetworkHelper.kt", "symbol": "NetworkHelper configured OkHttp client family" },
+      { "path": "core/common/src/main/kotlin/eu/kanade/tachiyomi/network/OkHttpExtensions.kt", "symbol": "HTTP success, coroutine and JSON response extensions" }
+    ],
+    "sharedImplementationPaths": [
+      "domain/src/commonMain/kotlin/mihon/domain/error/AppError.kt",
+      "domain/src/commonMain/kotlin/mihon/domain/network/NetworkErrorMapper.kt"
+    ],
+    "currentAndroidConsumerPaths": [
+      "app/src/main/java/eu/kanade/tachiyomi/di/AppModule.kt"
+    ],
+    "desktopConsumerAdapterPaths": [
+      "app-desktop/src/main/kotlin/mihon/desktop/source/MangaDexSource.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopNetworkHelper.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt"
+    ],
+    "deviations": [
+      { "classification": "PLATFORM_ADAPTER", "description": "DesktopNetworkHelper and DesktopAppModule replace Android context, cookie and WebView integration with JVM and browser client wiring; NetworkErrorContractTest does not protect those client adapters." },
+      { "classification": "MIGRATION_OUTPUT", "description": "The shared NetworkErrorMapper is proven through the production Desktop MangaDexSource for authentication, throttling, server and malformed-payload failures; current Android mapper consumption is not claimed." }
+    ],
     "protectionTests": [
       "app-desktop/src/test/kotlin/mihon/desktop/network/NetworkErrorContractTest.kt"
     ],
