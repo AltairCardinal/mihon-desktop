@@ -1,5 +1,8 @@
 # Mihon Android 与 Mihon Desktop 功能实现方式差异清单
 
+> [!WARNING]
+> **此文档是 2026-07-12 的历史比较快照，权威来源口径已被废止，不得作为当前施工或验收结论。** 文中把当前工作树 `app/` 称为“原版 Android”的内容仅为保留原文；现行原版 Mihon 权威固定为 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`，当前 `app/` 只是 Android consumer，Desktop Android shim 只是平台 adapter。请以[修正版主路线图](superpowers/plans/2026-07-12-mihon-desktop-upstream-parity-roadmap-main-authority.md)和[权威来源代码审计](superpowers/reports/2026-07-18-upstream-authority-code-audit.md)为准。
+
 > 核验日期：2026-07-12
 > 核验口径：当前工作树中的 `app/`（原版 Android）与 `app-desktop/`（Desktop），并追踪两端共同使用的 `domain/`、`data/`、`source-api/`、`source-local/`。
 > 注意：当前工作树含尚未提交的 Desktop 扩展兼容改动；相关结论描述当前代码，不代表某个已发布版本。

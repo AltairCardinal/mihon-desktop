@@ -28,7 +28,7 @@
 
 ## Migration Plan
 
-先锁定 Android 权威行为和 Desktop 产品增强，再让新旧 Desktop 路径对同一 fixture 双轨比较；随后依次切换查询 ScreenModel、扩展目录/事务协调器和挑战登录。每个切换点通过测试后删除对应重复规则；安装事务成功前始终保留旧产物。最后更新 parity manifest、执行 Android 模拟器与 Windows/macOS 产品验收。
+先锁定固定 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` 的原版 Mihon 权威行为和 Desktop 产品增强，再让新旧 Desktop 路径对同一 fixture 双轨比较；随后依次切换查询 ScreenModel、扩展目录/事务协调器和挑战登录。当前分支 `app/` 是迁移后的 Android consumer，Desktop 的 Android shim 是平台 adapter，二者都不是原版权威来源。每个切换点通过测试后删除对应重复规则；安装事务成功前始终保留旧产物。最后更新 parity manifest、执行 Android 模拟器与 Windows/macOS 产品验收。
 
 ## Open Questions
 

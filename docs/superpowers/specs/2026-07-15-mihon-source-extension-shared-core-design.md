@@ -50,7 +50,7 @@ canonical_spec: openspec
 - `SourceQuery`：Popular、Latest、Search(query, filters)。
 - `SourcePageRequest`：sourceId、query、page、generation；generation 用于丢弃旧请求结果。
 - `SourcePageResult`：Content(items, hasNextPage)、Empty、Failure(AppError, recoveryAction)。
-- `SourceRecoveryAction`：Retry、OpenLogin、OpenSettings、InstallExtension；只表达动作，不导航。
+- `SourceRecoveryAction`：当前真实集合为 `Retry`、`OpenLogin`、`None`；只表达共享查询恢复动作，不导航。设置入口与扩展安装是 UI/扩展管理链路的独立动作，当前未建模为该类型的成员。
 - `SourceCatalogState`：加载中、成功项、逐源/逐仓库错误、刷新状态。
 
 Android 与 Desktop adapter 都把真实 `CatalogueSource` 传给同一服务。UI ScreenModel 负责取消旧 generation 和组合展示状态，不再自行决定分页终止、空列表或异常字符串。

@@ -23,7 +23,7 @@
 
 ## 状态推进门槛
 
-1. `CHARACTERIZED`：已有测试锁定 Android 权威行为与 Desktop 当前行为。
+1. `CHARACTERIZED`：已有测试锁定固定 `main@6fbf6dfc…` 的原版 Mihon 权威行为，并分别刻画当前 Android consumer 与 Desktop consumer/adapter 的行为；当前 `app/` 不能作为 expected-value 来源。
 2. `SHARED`：业务实现已复用或抽取到共享链路，临时兼容层有退出说明。
 3. `WIRED`：用户入口、加载、空状态、错误和权限/数据缺失反馈均已接通。
 4. `VERIFIED`：相关单元、集成及 Test Mode 场景通过，且保护测试写入 manifest。

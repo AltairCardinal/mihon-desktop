@@ -127,7 +127,7 @@ class ExtensionSharedContractTest {
     }
 
     @Test
-    fun `lib version compatibility uses the Android authoritative inclusive boundary`() {
+    fun `lib version compatibility preserves the fixed-main fixture inclusive boundary for both consumers`() {
         assertEquals(ExtensionCompatibility.Compatible, artifact(versionName = "1.4.0").compatibility())
         assertEquals(ExtensionCompatibility.Compatible, artifact(versionName = "1.5.99").compatibility())
         assertInstanceOf(
