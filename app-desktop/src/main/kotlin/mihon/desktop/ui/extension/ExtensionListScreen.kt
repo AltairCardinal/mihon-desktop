@@ -1,6 +1,7 @@
 package mihon.desktop.ui.extension
 
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.LocalExtensionScreenModel
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -76,8 +77,6 @@ import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
 import mihon.domain.extension.presentation.extensionActionEligibility
 import tachiyomi.i18n.MR
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 import java.awt.Desktop
 import java.net.URI
 import java.util.Locale
@@ -99,7 +98,7 @@ class ExtensionListScreen : Screen {
         val navigator = LocalNavigator.currentOrThrow
         val manager = LocalDesktopUiDependencies.current.extensionManager
         ExtensionListContent(
-            model = remember { Injekt.get<ExtensionsScreenModel>() },
+            model = LocalExtensionScreenModel.current,
             manager = manager,
             onBack = navigator::pop,
             onOpen = { onOpen(navigator, it) },

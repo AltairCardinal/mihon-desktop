@@ -22,6 +22,7 @@ import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.tracking.DesktopTrackerServiceRegistry
 import mihon.desktop.source.LocalSourceScanService
+import mihon.desktop.ui.extension.ExtensionsScreenModel
 import mihon.domain.extensionrepo.interactor.CreateExtensionRepo
 import mihon.domain.extensionrepo.interactor.DeleteExtensionRepo
 import mihon.domain.extensionrepo.interactor.GetExtensionRepo
@@ -151,3 +152,5 @@ data class DesktopUiDependencies(
 val LocalDesktopUiDependencies = compositionLocalOf<DesktopUiDependencies> {
     error("DesktopUiDependencies is not provided")
 }
+
+val LocalExtensionScreenModel = compositionLocalOf<ExtensionsScreenModel> { Injekt.get() }

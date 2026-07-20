@@ -12,6 +12,7 @@ import cafe.adriel.voyager.navigator.Navigator
 import dev.mihon.injekt.patchInjekt
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -26,6 +27,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.LocalExtensionScreenModel
 import mihon.desktop.extension.DesktopAvailableExtension
 import mihon.desktop.extension.DesktopAvailableSource
 import mihon.desktop.extension.DesktopExtensionApi
@@ -50,6 +52,41 @@ import uy.kohesive.injekt.api.addSingleton
 import java.io.File
 
 class ExtensionPresentationUiTest {
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
+    fun `both extension screens consume the local model instead of the global singleton`() = runBlocking {
+        val localState = MutableStateFlow(DesktopExtensionsState(options = ExtensionPresentationOptions(false, emptySet())))
+        val localModel = mockk<ExtensionsScreenModel>(relaxed = true)
+        val globalModel = mockk<ExtensionsScreenModel>(relaxed = true)
+        every { localModel.state } returns localState
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true)
+        val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
+        val previous = Injekt
+        fun mount(screen: cafe.adriel.voyager.core.screen.Screen) {
+            scene.setContent {
+                CompositionLocalProvider(
+                    LocalDesktopUiDependencies provides dependencies,
+                    LocalExtensionScreenModel provides localModel,
+                ) { Navigator(screen) { CurrentScreen() } }
+            }
+            scene.render()
+        }
+        try {
+            patchInjekt()
+            Injekt.addSingleton(globalModel)
+            mount(ExtensionListScreen())
+            verify(atLeast = 1) { localModel.state }
+            verify(exactly = 0) { globalModel.state }
+            clearMocks(localModel, answers = false, recordedCalls = true)
+            mount(ExtensionDetailsScreen("local-model.jar"))
+            verify(atLeast = 1) { localModel.state }
+            verify(exactly = 0) { globalModel.state }
+        } finally {
+            scene.close()
+            Injekt = previous
+        }
+    }
+
     @OptIn(ExperimentalComposeUiApi::class)
     @Test
     fun `search input filters through model state and survives content remount`() = runBlocking {

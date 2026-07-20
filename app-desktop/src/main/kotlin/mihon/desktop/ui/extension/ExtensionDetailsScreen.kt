@@ -55,13 +55,12 @@ import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.launch
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.LocalExtensionScreenModel
 import mihon.desktop.extension.ExtensionOrigin
 import mihon.desktop.source.DesktopSourceManager
 import mihon.desktop.ui.settings.DesktopDirectoryOpener
 import tachiyomi.core.common.preference.getAndSet
 import tachiyomi.i18n.MR
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 import java.awt.Desktop
 import java.io.File
 import java.net.URI
@@ -94,7 +93,7 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
         val navigator = LocalNavigator.currentOrThrow
         val dependencies = LocalDesktopUiDependencies.current
         val platformActions = LocalExtensionDetailsPlatformActions.current
-        val model = remember { Injekt.get<ExtensionsScreenModel>() }
+        val model = LocalExtensionScreenModel.current
         val state by model.state.collectAsState()
         val sourceManager = dependencies.sourceManager as? DesktopSourceManager
         val appPreferences = dependencies.appPreferences
