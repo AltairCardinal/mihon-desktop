@@ -2,14 +2,17 @@ package mihon.desktop.ui.extension
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
 import mihon.desktop.extension.DesktopAvailableExtension
 import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopExtensionInstallStart
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.extension.InstalledExtension
+import mihon.desktop.settings.DesktopAppPreferences
 import mihon.domain.extension.model.ExtensionCatalogResult
 import mihon.domain.extension.model.extractExtensionLibVersion
 import mihon.domain.extension.presentation.ExtensionPresentationAdapter
@@ -24,6 +27,9 @@ import mihon.domain.extension.presentation.ExtensionPresentationStore
 import mihon.domain.extension.service.ExtensionInstallState
 import mihon.domain.extension.service.ExtensionUpdatePolicy
 import mihon.domain.extension.service.SharedExtensionUpdatePolicy
+import tachiyomi.core.common.preference.getAndSet
+import tachiyomi.i18n.MR
+import java.util.Locale
 
 data class DesktopExtensionItem(
     val presentation: ExtensionPresentationItem,
@@ -37,6 +43,39 @@ data class DesktopExtensionProjection(
     val available: List<DesktopExtensionItem>,
     val failures: List<mihon.domain.extension.model.RepositoryCatalogFailure>,
 )
+
+data class DesktopExtensionSourceItem(
+    val source: Source,
+    val enabled: Boolean,
+    val labelAsName: Boolean,
+) {
+    fun displayName(locale: Locale): String = source.name.takeIf { labelAsName }
+        ?: when (source.lang) {
+            "all" -> MR.strings.multi_lang.localized(locale)
+            "other" -> MR.strings.other_source.localized(locale)
+            else -> Locale.forLanguageTag(source.lang.normalizedLanguageTag())
+                .getDisplayName(locale)
+                .ifBlank { source.lang }
+        }
+}
+
+class DesktopExtensionSourcePreferenceAdapter(
+    preferences: DesktopAppPreferences,
+) {
+    private val disabledSourcePreference = preferences.disabledSources
+    val disabledSources: Flow<Set<String>> = disabledSourcePreference.changes()
+
+    fun setEnabled(sourceId: Long, enabled: Boolean) {
+        setAllEnabled(listOf(sourceId), enabled)
+    }
+
+    fun setAllEnabled(sourceIds: List<Long>, enabled: Boolean) {
+        val ids = sourceIds.mapTo(mutableSetOf()) { it.toString() }
+        disabledSourcePreference.getAndSet { disabled ->
+            if (enabled) disabled - ids else disabled + ids
+        }
+    }
+}
 
 data class DesktopPresentationInstallEvent(
     val step: ExtensionPresentationInstallStep,
@@ -59,8 +98,10 @@ class DesktopExtensionPresentationPort(
     private val manager: DesktopExtensionManager,
     installedExtensions: StateFlow<List<InstalledExtension>> = manager.installedExtensions,
     private val updatePolicy: ExtensionUpdatePolicy = SharedExtensionUpdatePolicy,
+    private val sourcePreferences: DesktopExtensionSourcePreferenceAdapter? = null,
 ) {
     val installedExtensions: StateFlow<List<InstalledExtension>> = installedExtensions
+    val disabledSources: Flow<Set<String>> = sourcePreferences?.disabledSources ?: flowOf(emptySet())
 
     suspend fun refresh(): DesktopExtensionCatalogState {
         val catalog = api.refreshCatalog()
@@ -97,6 +138,22 @@ class DesktopExtensionPresentationPort(
 
     fun uninstall(item: DesktopExtensionItem): Boolean =
         item.installed?.let(manager::removeExtensionWithMeta) == true
+
+    fun extensionSources(extension: InstalledExtension, disabledSources: Set<String>): List<DesktopExtensionSourceItem> {
+        val isMultiSource = extension.sources.size > 1
+        val labelAsName = isMultiSource && extension.sources.map(Source::name).distinct().size > 1
+        return desktopExtensionPresentationStore.enabledFirst(
+            extension.sources.map { source ->
+                DesktopExtensionSourceItem(source, source.id.toString() !in disabledSources, labelAsName)
+            },
+            DesktopExtensionSourceItem::enabled,
+        ) { it.displayName(Locale.getDefault()).lowercase() }
+    }
+
+    fun setSourceEnabled(sourceId: Long, enabled: Boolean) = sourcePreferences?.setEnabled(sourceId, enabled)
+
+    fun setSourcesEnabled(extension: InstalledExtension, enabled: Boolean) =
+        sourcePreferences?.setAllEnabled(extension.sources.map(Source::id), enabled)
 
     fun canonicalCandidates(catalog: DesktopExtensionCatalogState): Map<String, DesktopAvailableExtension> =
         catalog.available.associateBy(DesktopAvailableExtension::pkgName)
@@ -191,5 +248,11 @@ private fun ExtensionInstallState.presentationStep() = when (this) {
 }
 
 private fun String.normalizedRepo() = trim().removeSuffix("/")
+
+private fun String.normalizedLanguageTag() = when (this) {
+    "zh-CN" -> "zh-Hans"
+    "zh-TW" -> "zh-Hant"
+    else -> this
+}
 
 private const val BUNDLED_MANGADEX = "eu.kanade.tachiyomi.extension.all.mangadex"

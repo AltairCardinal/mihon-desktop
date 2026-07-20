@@ -57,7 +57,6 @@ import kotlinx.coroutines.launch
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.LocalExtensionScreenModel
 import mihon.desktop.extension.ExtensionOrigin
-import mihon.desktop.source.DesktopSourceManager
 import mihon.desktop.ui.settings.DesktopDirectoryOpener
 import tachiyomi.core.common.preference.getAndSet
 import tachiyomi.i18n.MR
@@ -95,10 +94,10 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
         val platformActions = LocalExtensionDetailsPlatformActions.current
         val model = LocalExtensionScreenModel.current()
         val state by model.state.collectAsState()
-        val sourceManager = dependencies.sourceManager as? DesktopSourceManager
         val appPreferences = dependencies.appPreferences
         val item = state.projection?.installed?.firstOrNull { it.installed?.jarFile?.absolutePath == jarPath }
         val extension = item?.installed
+        val sources = item?.let(model::extensionSources).orEmpty()
         val snackbar = remember { SnackbarHostState() }
         val scope = rememberCoroutineScope()
         var confirmUninstall by remember { mutableStateOf(false) }
@@ -190,26 +189,37 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                         }
                     }
                 }
-                item { Text(MR.strings.label_sources.localized(), style = MaterialTheme.typography.titleMedium) }
-                items(extension.sources, key = { it.id }) { source ->
+                item {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            MR.strings.label_sources.localized(),
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = { item?.let { model.setSourcesEnabled(it, true) } }) {
+                            Text(MR.strings.action_enable_all.localized())
+                        }
+                        TextButton(onClick = { item?.let { model.setSourcesEnabled(it, false) } }) {
+                            Text(MR.strings.action_disable_all.localized())
+                        }
+                    }
+                }
+                items(sources, key = { it.source.id }) { sourceItem ->
+                    val source = sourceItem.source
                     Card(Modifier.fillMaxWidth()) {
                         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text(source.name, style = MaterialTheme.typography.titleSmall)
-                                Text(source.lang, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            if (sourceManager != null) {
-                                var enabled by remember(source.id) {
-                                    mutableStateOf(sourceManager.isSourceEnabled(source.id))
-                                }
-                                Switch(
-                                    checked = enabled,
-                                    onCheckedChange = {
-                                        enabled = it
-                                        sourceManager.setSourceEnabled(source.id, it)
-                                    },
+                                val displayName = sourceItem.displayName(Locale.getDefault())
+                                Text(displayName, style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    listOf(source.name.takeUnless { it == displayName }, source.lang).filterNotNull().joinToString(" · "),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
+                            Switch(
+                                checked = sourceItem.enabled,
+                                onCheckedChange = { model.setSourceEnabled(source.id, it) },
+                            )
                             if (source is HttpSource && source.baseUrl.startsWith("http")) {
                                 IconButton(onClick = { openUrl(source.baseUrl) }) {
                                     Icon(Icons.Default.Public, contentDescription = MR.strings.desktop_extension_open_source_website.localized(Locale.getDefault(), source.name))

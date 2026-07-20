@@ -42,6 +42,7 @@ data class DesktopExtensionsState(
     val rawInstallStates: Map<String, ExtensionInstallState> = emptyMap(),
     val installErrors: Map<String, AppError> = emptyMap(),
     val pendingTrust: DesktopPendingTrust? = null,
+    val disabledSourceIds: Set<String> = emptySet(),
 )
 
 class ExtensionsScreenModel(
@@ -64,8 +65,12 @@ class ExtensionsScreenModel(
 
     init {
         scope.launch {
-            combine(port.installedExtensions, options) { _, currentOptions -> currentOptions }
-                .collect(::publish)
+            combine(port.installedExtensions, options, port.disabledSources) { _, currentOptions, disabledSources ->
+                currentOptions to disabledSources
+            }.collect { (currentOptions, disabledSources) ->
+                mutableState.update { it.copy(disabledSourceIds = disabledSources) }
+                publish(currentOptions)
+            }
         }
     }
 
@@ -153,6 +158,15 @@ class ExtensionsScreenModel(
     }
 
     fun uninstall(item: DesktopExtensionItem): Boolean = port.uninstall(item)
+
+    fun extensionSources(item: DesktopExtensionItem): List<DesktopExtensionSourceItem> =
+        item.installed?.let { port.extensionSources(it, state.value.disabledSourceIds) }.orEmpty()
+
+    fun setSourceEnabled(sourceId: Long, enabled: Boolean) = port.setSourceEnabled(sourceId, enabled)
+
+    fun setSourcesEnabled(item: DesktopExtensionItem, enabled: Boolean) {
+        item.installed?.let { port.setSourcesEnabled(it, enabled) }
+    }
 
     suspend fun closeAndJoin() {
         val shouldClose = synchronized(lock) { (!isClosed).also { if (it) isClosed = true } }

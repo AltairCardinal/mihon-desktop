@@ -40,6 +40,7 @@ import tachiyomi.domain.reader.interactor.RecordReadingProgress
 import mihon.data.repository.ExtensionRepoRepositoryImpl
 import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.ui.extension.DesktopExtensionPresentationPort
+import mihon.desktop.ui.extension.DesktopExtensionSourcePreferenceAdapter
 import mihon.desktop.ui.extension.ExtensionsScreenModel
 import mihon.desktop.domain.DesktopCustomCoverStore
 import mihon.desktop.domain.DesktopNotificationService
@@ -405,22 +406,27 @@ private fun registerDesktopExtension(paths: DesktopPlatformPaths, networkHelper:
     extensionManager.loadAll()
     Injekt.addSingleton(extensionManager)
     Injekt.addSingleton(extensionApi)
-    val presentationPort = DesktopExtensionPresentationPort(extensionApi, extensionManager)
+    val appPreferences = Injekt.get<DesktopAppPreferences>()
+    val sourceManager = DesktopSourceManager(extensionManager, appPreferences)
+    Injekt.addSingleton<SourceManager>(sourceManager)
+    Injekt.addSingleton(sourceManager)
+    val presentationPort = DesktopExtensionPresentationPort(
+        extensionApi,
+        extensionManager,
+        sourcePreferences = DesktopExtensionSourcePreferenceAdapter(appPreferences),
+    )
     Injekt.addSingleton(presentationPort)
     val extensionScreenModel = ExtensionsScreenModel(
         port = presentationPort,
         initialOptions = ExtensionPresentationOptions(
             showNsfw = false,
-            enabledLanguages = Injekt.get<DesktopAppPreferences>().enabledLanguages.get(),
+            enabledLanguages = appPreferences.enabledLanguages.get(),
         ),
     )
     Injekt.addSingleton(extensionScreenModel)
     val extensionController = SourceExtensionTestModeController(extensionScreenModel)
     Injekt.addSingleton(extensionController)
     SourceExtensionTestModeBridge.install(extensionController)
-    val sourceManager = DesktopSourceManager(extensionManager, Injekt.get())
-    Injekt.addSingleton<SourceManager>(sourceManager)
-    Injekt.addSingleton(sourceManager)
     registerDesktopTracking(sourceManager, networkHelper.client)
     Injekt.addSingleton<SourceRepository>(DesktopSourceRepository(sourceManager, handler))
     val extensionRepoService = ExtensionRepoService(Injekt.get<NetworkHelper>(), Injekt.get<Json>())

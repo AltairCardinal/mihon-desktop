@@ -9,6 +9,7 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.AnnotatedString
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
@@ -100,19 +101,23 @@ class ExtensionDetailsPreferencesWiringTest {
             coEvery { loadExtensionIcon(any()) } returns null
         }
         val manager = mockk<DesktopExtensionManager> {
+            every { installedExtensions } returns installedFlow
             every { removeExtensionWithMeta(installed) } returnsMany listOf(false, true)
         }
-        val model = ExtensionsScreenModel(
-            DesktopExtensionPresentationPort(api, manager, installedFlow),
-            this,
-            ExtensionPresentationOptions(false, setOf("en")),
-        )
         val preferences = DesktopAppPreferences(
             DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")),
         )
-        val sourceManager = mockk<DesktopSourceManager>(relaxed = true) {
-            every { isSourceEnabled(42L) } returns true
-        }
+        val sourceManager = DesktopSourceManager(manager, preferences, emptyList())
+        val model = ExtensionsScreenModel(
+            DesktopExtensionPresentationPort(
+                api,
+                manager,
+                installedFlow,
+                sourcePreferences = DesktopExtensionSourcePreferenceAdapter(preferences),
+            ),
+            this,
+            ExtensionPresentationOptions(false, setOf("en")),
+        )
         val cookies = mockk<DesktopCookieJar> {
             every { clearDomains(setOf("source.example")) } returns 2
         }
@@ -170,8 +175,19 @@ class ExtensionDetailsPreferencesWiringTest {
             assertEquals(installed.repoUrl, openedUrls.single())
             click(scene, MR.strings.desktop_extension_open_source_website.localized(Locale.getDefault(), "Configurable web source"))
             assertEquals("https://source.example/path", openedUrls.last())
+            assertEquals(ToggleableState.On, sourceToggleState(scene))
+            preferences.disabledSources.set(setOf("42"))
+            renderUntil(scene, "external source disable") { sourceToggleState(scene) == ToggleableState.Off }
+            preferences.disabledSources.set(emptySet())
+            renderUntil(scene, "external source enable") { sourceToggleState(scene) == ToggleableState.On }
+            click(scene, MR.strings.action_disable_all.localized())
+            assertEquals(setOf("42"), preferences.disabledSources.get())
+            renderUntil(scene, "disable all state") { sourceToggleState(scene) == ToggleableState.Off }
+            click(scene, MR.strings.action_enable_all.localized())
+            assertEquals(emptySet<String>(), preferences.disabledSources.get())
+            renderUntil(scene, "enable all state") { sourceToggleState(scene) == ToggleableState.On }
             toggle(scene, 0)
-            verify { sourceManager.setSourceEnabled(42L, false) }
+            assertEquals(setOf("42"), preferences.disabledSources.get())
             click(scene, MR.strings.desktop_extension_source_settings.localized(Locale.getDefault(), "Configurable web source"))
             assertTrue((navigator?.lastItem as SourcePreferencesScreen).let { it.sourceId == 42L && it.sourceName == "Configurable web source" })
             navigator?.pop()
@@ -438,6 +454,10 @@ class ExtensionDetailsPreferencesWiringTest {
         val node = nodes(scene).filter { it.config.contains(SemanticsProperties.ToggleableState) }[index]
         assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
     }
+
+    private fun sourceToggleState(scene: ImageComposeScene): ToggleableState =
+        nodes(scene).first { it.config.contains(SemanticsProperties.ToggleableState) }
+            .config[SemanticsProperties.ToggleableState]
 
     private suspend fun dismissSnackbar(scene: ImageComposeScene) {
         nodes(scene).first { it.config.contains(SemanticsActions.Dismiss) }.config[SemanticsActions.Dismiss]?.action?.invoke()
