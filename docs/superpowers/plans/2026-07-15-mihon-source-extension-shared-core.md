@@ -2246,6 +2246,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Platform boundary: `desktop`
 - Estimated scope: `8 files, 400 lines`
 - Verification: fixed main `TrustExtension` compares the downloaded APK's actual signer fingerprint with the repository signing fingerprint. Desktop currently trusts repository identity and an index-provided digest without authenticating the artifact signer, so an attacker controlling the repository can replace both index and executable bytes. First characterize APK and native-JAR artifact formats with real production download/install seams. APK acceptance must verify an actual signer bound to `RepositoryIdentity.signingKeyFingerprint`; native JAR must use a cryptographically verifiable signer or authenticated detached/index signature bound to the same identity, and must fail closed when authenticity cannot be established. A matching digest from the same unauthenticated index is insufficient. Add attack REDs where index and digest are replaced together but the artifact signer is wrong. Preserve Desktop APK→JAR conversion, native-JAR support only when its authenticity is provable, trust prompts, atomic rollback and installed-sidecar continuity. If a secure native-JAR protocol cannot fit this boundary, split characterization/protocol tasks before implementation rather than weakening the requirement.
+- Evidence: RED `e455d55b0`, GREEN `f8a054a04`; real APK signer mismatch/correct signer, unsigned/signed native JAR and digest-order focused tests 5/5, adjacent install/trust/rollback 51/51, root Spotless GREEN. Independent review APPROVED with Critical 0 / Important 0 / Minor 0.
 
 ##### Task 7D20: Android extension/source initialization atomicity
 
@@ -2253,6 +2254,14 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Platform boundary: `android`
 - Estimated scope: `4 files, 300 lines`
 - Verification: fixed main exposes installed/untrusted extensions synchronously before source initialization completes. Add a delayed real loader integration RED proving `AndroidSourceManager.isInitialized` cannot become true while the extension snapshot is still the initial empty value. Either restore atomic initialization or explicitly gate SourceManager on `ExtensionManager.isInitialized`; the first initialized source snapshot must already contain extension sources. Preserve asynchronous follow-up updates, receiver reloads and cancellation behavior.
+- Status: implementation commits `6058fbd58`, `9f7ebef9c`, `550edea9b`, `2aff28df3` fixed synchronous first-snapshot projection and atomic concurrent map updates, but the single allowed repair review found a suspend-loader receiver-registration gap and an insufficient first-chain test barrier. Do not treat Task 7D20 as approved; the remaining work is replanned as Task 7D20B.
+
+##### Task 7D20B: Android initialization event handoff
+
+- Risk axis: `android-extension-initialization-event-handoff`
+- Platform boundary: `android`
+- Estimated scope: `4 files, 320 lines`
+- Verification: preserve the current suspend extension loader without creating a package-event blind window. Register a production buffering listener when the manager is constructed; while the initial snapshot is loading, record install/update/untrusted/uninstall events in arrival order. Under one lock or serialized actor, publish the loader snapshot, replay the buffered events, switch the same listener to live application and only then publish `isInitialized = true`. Add a delayed-loader behavior RED that captures the real production listener, injects events after the loader snapshot is fixed but before publication, and proves the initialized installed/untrusted snapshots reflect ordered replay. Replace the AndroidSourceManager negative timing assertion with a deterministic barrier on the actual installed-extension collection chain. Preserve the single Map StateFlow and atomic update work from Task 7D20, receiver reload/update behavior and fixed-main load-before-initialized semantics.
 
 ##### Task 7D21: Extension refresh failure presentation
 
@@ -2260,6 +2269,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Platform boundary: `desktop`
 - Estimated scope: `5 files, 320 lines`
 - Verification: `ExtensionsScreenModel.refreshError` is currently stored but neither list nor details consumes it; an initial catalog failure leaves `projection == null` and a permanent spinner. Add real mounted REDs for list error/retry and locally installed details under remote-catalog failure. List must show localized failure plus retry; details must continue from authoritative installed state and must not require a successful remote catalog to render local metadata/actions. Preserve Desktop details capabilities and 7D15/7D16 routing.
+- Evidence: initial RED/GREEN `c4d7b27db` / `3be2de3b1`, repair RED/GREEN `db8c902e8` / `c2d4517b3`; focused 5/5, adjacent production UI/state 14/14 and root Spotless GREEN. First catalog failure keeps local installed state and retry feedback, refresh is single-flight, and installed details automatically return on uninstall with a root-screen fallback. Repair review APPROVED with Critical 0 / Important 0 / Minor 0.
 
 ##### Task 7D22: Android shared-query production wiring evidence
 
