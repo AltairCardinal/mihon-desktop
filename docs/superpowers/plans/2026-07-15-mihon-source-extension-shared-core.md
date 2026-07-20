@@ -2083,6 +2083,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Platform boundary: `shared+desktop`
 - Estimated scope: `2 files, 60 lines`
 - Verification: full Desktop suite 捕获 `DesktopPreference.changes()` 在 backing Preferences node 已删除后执行 `removePreferenceChangeListener` 的 `IllegalStateException: Node has been removed`，异常泄漏到后续 coroutine test。先在 core/common JVM test 建立“active changes collector→外部 removeNode→cancel collector 不产生 cleanup failure” RED，再让 awaitClose 只吞掉 node-removed 的 cleanup exception；其他 listener 注册/移除异常仍传播。运行 core focused、GlobalSearchAuthority+Challenge 顺序组合、extension UI focused与 full Desktop JVM。
+  Evidence: commit `ece4035d3`，严格 2 files / 23 touched lines。新增测试先启动 active `changes()` collector并 `runCurrent()` 确认 listener 已注册，再由外部删除 backing node、取消 collector；旧实现精确 RED 为 awaitClose 泄漏 `IllegalStateException: Node has been removed.`。GREEN 仅包围 `removePreferenceChangeListener` cleanup，只忽略该 exact ISE message；注册异常、其他 ISE及其他异常仍传播。focused 单测与完整 `DesktopPreferenceStoreTest` 20/20；独立 review APPROVED、diff-check clean。
 
   Conditional flow: 完成 7D4a–7D4d 后重跑 full Desktop JVM；若 `GlobalSearchResultProductionWiringTest` 仍只在 full-suite 负载下超时，另立 ≤2 files/60 lines 的 `global-search-compose-await` Task，先以有界重复/组合复现证明 frame propagation root cause，再调整测试 pump；若不再失败则不创建该 Task。
 
