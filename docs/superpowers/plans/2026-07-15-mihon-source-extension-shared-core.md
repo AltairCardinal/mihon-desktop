@@ -2294,6 +2294,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Platform boundary: `verification`
 - Estimated scope: `2 files, 120 lines`
 - Verification: build and deploy the latest current Android consumer to the project-managed emulator after shared ordering/error/query changes. Reverify representative extension loading plus global-search source order, first-page empty feedback, append-empty retry/recovery and the affected browse path. Record the exact HEAD/APK/device/API/evidence; this runtime evidence validates the current consumer only and must not be described as original Mihon authority.
+- Evidence: partial current-consumer runtime evidence is recorded in `docs/superpowers/reports/2026-07-20-align-sources-extensions-android-runtime.md`. Latest APK build/install, two real extension fixtures, Trust→source membership, source/global ordering, affected Browse entry and failure→Retry wiring passed; first-page successful empty and append-empty recovery remain unverified because foreign provider HTTP could not use the host-only proxy. Task 7D24 and OpenSpec 3.4.3/4.4 intentionally remain unchecked.
 
 - [ ] **Step 7: 独立批次与最终审查**
 
