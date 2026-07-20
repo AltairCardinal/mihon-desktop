@@ -16,10 +16,13 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.SaveSourceMangaForDetails
@@ -73,7 +76,13 @@ class GlobalSearchAuthorityWiringTest {
             every { sourceLoginSessionFactory } returns mockk(relaxed = true)
         }
         var coordinator: DesktopGlobalSearchCoordinator? = null
-        var scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
+        fun newScene(lifecycle: Job) = ImageComposeScene(900, 700, coroutineContext = coroutineContext + lifecycle) {}
+        var lifecycle = Job(coroutineContext[Job])
+        var scene = newScene(lifecycle)
+        suspend fun closeScene() {
+            scene.close()
+            lifecycle.cancelAndJoin()
+        }
         fun mount() {
             scene.setContent {
                 CompositionLocalProvider(
@@ -114,7 +123,7 @@ class GlobalSearchAuthorityWiringTest {
             assertTrue(semantics(scene).contains("4 / 4"))
 
             click(scene, hasResults)
-            scene.render()
+            awaitSelected(scene, hasResults)
             val filtered = semantics(scene)
             assertTrue(selected(scene, hasResults))
             assertTrue(filtered.contains("Content source (1)"))
@@ -122,10 +131,11 @@ class GlobalSearchAuthorityWiringTest {
             assertFalse(filtered.contains("Empty source (0)"))
             assertFalse(filtered.contains("Failure source (0)"))
             assertTrue(preferences.globalSearchFilterState.get())
-            scene.close()
+            closeScene()
             activePreferences = DesktopAppPreferences(DesktopPreferenceStore(root.node("store")), root.node("legacy"))
             coordinator = null
-            scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
+            lifecycle = Job(coroutineContext[Job])
+            scene = newScene(lifecycle)
             mount()
             scene.render()
             withTimeout(2_000) {
@@ -135,6 +145,7 @@ class GlobalSearchAuthorityWiringTest {
             }
             scene.render()
             scene.render()
+            awaitSelected(scene, hasResults)
             val restored = semantics(scene)
             assertTrue(selected(scene, hasResults))
             assertTrue(restored.contains("Content source (1)"))
@@ -142,7 +153,7 @@ class GlobalSearchAuthorityWiringTest {
             assertFalse(restored.contains("Empty source (0)"))
             assertFalse(restored.contains("Failure source (0)"))
         } finally {
-            scene.close()
+            closeScene()
             root.removeNode()
         }
     }
@@ -164,6 +175,12 @@ class GlobalSearchAuthorityWiringTest {
     private fun semantics(scene: ImageComposeScene) = nodes(scene).joinToString { it.config.toString() }
     private fun selected(scene: ImageComposeScene, label: String) = nodes(scene).any {
         it.config.toString().contains(label) && it.config.contains(SemanticsProperties.Selected) && it.config[SemanticsProperties.Selected]
+    }
+    private suspend fun awaitSelected(scene: ImageComposeScene, label: String) = withTimeout(2_000) {
+        while (!selected(scene, label)) {
+            scene.render()
+            yield()
+        }
     }
     private fun click(scene: ImageComposeScene, label: String) {
         val node = nodes(scene).first { it.config.toString().contains(label) && it.config.contains(SemanticsActions.OnClick) }
