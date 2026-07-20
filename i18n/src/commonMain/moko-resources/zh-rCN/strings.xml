@@ -586,6 +586,7 @@
     <string name="desktop_extension_updating_message">正在更新 %d 个插件…</string>
     <string name="desktop_extension_updated_message">已更新 %1$d/%2$d 个插件</string>
     <string name="desktop_extension_reload_installed">重新加载已安装扩展</string>
+    <string name="desktop_extension_reload_failed">无法重新加载已安装扩展：%s</string>
     <string name="desktop_extension_refresh_available">刷新可用扩展</string>
     <string name="desktop_extension_filter_by_language">按语言筛选</string>
     <string name="desktop_extension_show_nsfw">显示成人扩展</string>

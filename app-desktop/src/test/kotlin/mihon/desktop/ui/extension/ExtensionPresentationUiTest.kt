@@ -50,6 +50,7 @@ import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
 import java.io.File
+import java.util.Locale
 
 class ExtensionPresentationUiTest {
     @OptIn(ExperimentalComposeUiApi::class)
@@ -297,14 +298,71 @@ class ExtensionPresentationUiTest {
             Injekt = previous
         }
     }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
+    fun `installed actions route through screen model and failures stay visible`() = runBlocking {
+        val previousLocale = Locale.getDefault()
+        Locale.setDefault(Locale.SIMPLIFIED_CHINESE)
+        val extension = InstalledExtension(File("pkg.routed.jar"), emptyList(), displayName = "Routed extension")
+        val api = mockk<DesktopExtensionApi> {
+            coEvery { refreshCatalog() } returns ExtensionCatalogResult(emptyList(), emptyList())
+            every { availableExtensions(any()) } returns emptyList()
+            coEvery { loadExtensionIcon(any()) } returns null
+        }
+        val authorityManager = mockk<DesktopExtensionManager>()
+        every { authorityManager.removeExtensionWithMeta(extension) } returns false
+        every { authorityManager.reloadAll() } throws IllegalStateException("reload failed")
+        val bypassManager = mockk<DesktopExtensionManager>(relaxed = true)
+        val model = ExtensionsScreenModel(
+            DesktopExtensionPresentationPort(api, authorityManager, MutableStateFlow(listOf(extension))),
+            this,
+            ExtensionPresentationOptions(false, setOf("en")),
+        )
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { extensionApi } returns api
+            every { extensionManager } returns bypassManager
+        }
+        val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
+        try {
+            model.refresh().join()
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    ExtensionListContent(model, bypassManager)
+                }
+            }
+            awaitText(scene, extension.name)
+
+            click(scene, MR.strings.ext_uninstall.localized())
+            scene.render()
+            click(scene, MR.strings.ext_uninstall.localized(), last = true)
+            awaitText(scene, MR.strings.desktop_extension_uninstall_failed.localized())
+            verify(exactly = 1) { authorityManager.removeExtensionWithMeta(match { it === extension }) }
+            verify(exactly = 0) { bypassManager.removeExtensionWithMeta(any()) }
+
+            click(scene, MR.strings.desktop_extension_reload_installed.localized())
+            awaitText(
+                scene,
+                MR.strings.desktop_extension_reload_failed.localized(Locale.SIMPLIFIED_CHINESE, "reload failed"),
+            )
+            verify(exactly = 1) { authorityManager.reloadAll() }
+            verify(exactly = 0) { bypassManager.reloadAll() }
+        } finally {
+            scene.close()
+            model.closeAndJoin()
+            Locale.setDefault(previousLocale)
+        }
+    }
+
     @OptIn(ExperimentalComposeUiApi::class)
     private fun nodes(scene: ImageComposeScene): List<SemanticsNode> = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
-    private fun click(scene: ImageComposeScene, label: String) {
-        val node = nodes(scene).single {
+    private fun click(scene: ImageComposeScene, label: String, last: Boolean = false) {
+        val matches = nodes(scene).filter {
             it.config.contains(SemanticsActions.OnClick) &&
                 (it.config.contains(SemanticsProperties.Text) && it.config[SemanticsProperties.Text].any { text -> text.text == label } ||
                     it.config.contains(SemanticsProperties.ContentDescription) && it.config[SemanticsProperties.ContentDescription].contains(label))
         }
+        val node = if (last) matches.last() else matches.single()
         assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
     }
     private fun toggle(scene: ImageComposeScene, index: Int) {

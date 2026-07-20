@@ -384,6 +384,7 @@
     <string name="desktop_extension_updating_message">Updating %d extension(s)…</string>
     <string name="desktop_extension_updated_message">Updated %1$d/%2$d extension(s)</string>
     <string name="desktop_extension_reload_installed">Reload installed extensions</string>
+    <string name="desktop_extension_reload_failed">Unable to reload installed extensions: %s</string>
     <string name="desktop_extension_refresh_available">Refresh available extensions</string>
     <string name="desktop_extension_filter_by_language">Filter by language</string>
     <string name="desktop_extension_show_nsfw">Show NSFW extensions</string>
