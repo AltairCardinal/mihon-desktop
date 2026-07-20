@@ -2240,6 +2240,48 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Verification: 将 OpenSpec design 中未固定的 “Android authority” 改为 fixed-main original Mihon authority，纠正 shared contract 测试的歧义命名，核对 source design 中尚未实现的 recovery action 描述，并给保留的旧比较文档增加 superseded 指引；不得改写历史原文证据、不得把当前 `app/`、shared output 或 Desktop shim 写成 authority。运行文本扫描、相关 focused contract（仅测试名/契约变化时）、`git diff --check` 与 Comet plan guard。
   Evidence: commit `7ad05831a`，严格 5 files / 11 touched lines。OpenSpec design、source/extension design 与 parity tracker 统一 fixed-main authority/current consumer/adapter 术语；保留的旧比较文档增加 superseded 指引；shared contract 测试名不再把当前 Android mapper 称为 authority。本 Task 仅改变文档与测试显示名，按机械文档流程未运行 Gradle、未进行独立代码审查；协调者随后完成逐项只读核验，定点文本复扫与 `git diff --check` 通过。
 
+##### Task 7D19: Desktop artifact signer authenticity
+
+- Risk axis: `desktop-extension-artifact-authenticity`
+- Platform boundary: `desktop`
+- Estimated scope: `8 files, 400 lines`
+- Verification: fixed main `TrustExtension` compares the downloaded APK's actual signer fingerprint with the repository signing fingerprint. Desktop currently trusts repository identity and an index-provided digest without authenticating the artifact signer, so an attacker controlling the repository can replace both index and executable bytes. First characterize APK and native-JAR artifact formats with real production download/install seams. APK acceptance must verify an actual signer bound to `RepositoryIdentity.signingKeyFingerprint`; native JAR must use a cryptographically verifiable signer or authenticated detached/index signature bound to the same identity, and must fail closed when authenticity cannot be established. A matching digest from the same unauthenticated index is insufficient. Add attack REDs where index and digest are replaced together but the artifact signer is wrong. Preserve Desktop APK→JAR conversion, native-JAR support only when its authenticity is provable, trust prompts, atomic rollback and installed-sidecar continuity. If a secure native-JAR protocol cannot fit this boundary, split characterization/protocol tasks before implementation rather than weakening the requirement.
+
+##### Task 7D20: Android extension/source initialization atomicity
+
+- Risk axis: `android-extension-initialization-atomicity`
+- Platform boundary: `android`
+- Estimated scope: `4 files, 300 lines`
+- Verification: fixed main exposes installed/untrusted extensions synchronously before source initialization completes. Add a delayed real loader integration RED proving `AndroidSourceManager.isInitialized` cannot become true while the extension snapshot is still the initial empty value. Either restore atomic initialization or explicitly gate SourceManager on `ExtensionManager.isInitialized`; the first initialized source snapshot must already contain extension sources. Preserve asynchronous follow-up updates, receiver reloads and cancellation behavior.
+
+##### Task 7D21: Extension refresh failure presentation
+
+- Risk axis: `extension-refresh-failure-feedback`
+- Platform boundary: `desktop`
+- Estimated scope: `5 files, 320 lines`
+- Verification: `ExtensionsScreenModel.refreshError` is currently stored but neither list nor details consumes it; an initial catalog failure leaves `projection == null` and a permanent spinner. Add real mounted REDs for list error/retry and locally installed details under remote-catalog failure. List must show localized failure plus retry; details must continue from authoritative installed state and must not require a successful remote catalog to render local metadata/actions. Preserve Desktop details capabilities and 7D15/7D16 routing.
+
+##### Task 7D22: Android shared-query production wiring evidence
+
+- Risk axis: `android-shared-query-production-wiring`
+- Platform boundary: `shared+android`
+- Estimated scope: `4 files, 300 lines`
+- Verification: remove source-text scanning as completion evidence. Add an injectable production page-loader/service boundary whose integration test returns a unique sentinel/error while the direct source path fails; the real Android ScreenModel must call the shared query service, publish the shared result/recovery action and never execute a duplicate direct source rule. A mutation that bypasses the shared service must fail behaviorally. Keep source HTTP execution inside the shared service and current Android UI semantics unchanged.
+
+##### Task 7D23: Final provenance manifest and audit reconciliation
+
+- Risk axis: `final-source-extension-provenance`
+- Platform boundary: `verification`
+- Estimated scope: `7 files, 350 lines`
+- Verification: correct parity ID 28 as source-list membership/projection, keep ID 29 for single-source canonical persistence/incognito write, and complete ID 30/37 fixed-main presentation symbols plus current-consumer/Desktop-adapter mappings and inventory blobs. Append—not rewrite—OpenSpec 2.3 closure to the authority audit, remove remaining active-manifest/proposal “Android authoritative/original” ambiguity, and keep all entries at most `WIRED` until current runtime verification. Contract tests must reject missing upstream symbols, wrong fixed-main blobs, current-app authority, and evidence assigned to the wrong capability.
+
+##### Task 7D24: Latest Android source/extension runtime verification
+
+- Risk axis: `latest-android-source-extension-runtime`
+- Platform boundary: `verification`
+- Estimated scope: `2 files, 120 lines`
+- Verification: build and deploy the latest current Android consumer to the project-managed emulator after shared ordering/error/query changes. Reverify representative extension loading plus global-search source order, first-page empty feedback, append-empty retry/recovery and the affected browse path. Record the exact HEAD/APK/device/API/evidence; this runtime evidence validates the current consumer only and must not be described as original Mihon authority.
+
 - [ ] **Step 7: 独立批次与最终审查**
 
   `review_mode: thorough`：每个高风险边界或最多 3 个 Task 运行合并 spec+quality review，最后对 `852221f42..HEAD` 运行完整审查。Critical/Important 必须修复并重新运行覆盖测试；Minor 记录到持久进度并交最终审查裁定。
