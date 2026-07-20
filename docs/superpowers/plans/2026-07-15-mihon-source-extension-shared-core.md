@@ -2061,7 +2061,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Platform boundary: `desktop`
 - Estimated scope: `4 files, 100 lines`
 - Verification: `ExtensionListScreen` 与 `ExtensionDetailsScreen` 当前在 UI 内直接 `Injekt.get<ExtensionsScreenModel>()`，全量 ArchitectureGuard 精确 RED 为 baseline 0 / actual 2。将同一 application singleton 暴露为中央 CompositionLocal/desktop dependency boundary，两个 Screen 只消费该 boundary；focused wiring 必须提供一个与全局 Injekt 不同的 local model并证明 UI 使用 local model，防止只把 service locator 藏到 helper。生产默认仍解析 `DesktopAppContext.extensionScreenModel`/同一 Injekt singleton，不创建第二套状态。不得提高 architecture baseline 或新增白名单。
-  Evidence: commit `d913ab29f`，严格 4 files / 50 touched lines。新增中央 `LocalExtensionScreenModel` boundary，默认 lambda 只从 Injekt 取得 DesktopAppModule 已注册的同一 application singleton；List/Details 两个真实 Screen 删除 UI 内 service locator并只消费 local。UI test 将不同的 local/global model分别放入 CompositionLocal/Injekt，依次真实挂载两个 Screen，证明 local state被读取且 global state累计零读取；ArchitectureGuard baseline/白名单零改。RED 为 local boundary unresolved，GREEN 为 presentation 3/3 + architecture 4/4；独立 review APPROVED、diff-check clean、Java0。
+  Evidence: implementation `d913ab29f`、唯一修复 `34ccbb90e`；累计仍严格 4 files，初始 50 touched + 4 个单行替换。新增中央 `LocalExtensionScreenModel` boundary；首版直接缓存默认 model，在顺序 Compose 测试中复用前一轮已关闭 singleton，表现为首项通过、后项 5s 无 UI。修复后 CompositionLocal 只缓存无状态 provider lambda，两个真实 Screen 每次组合从 boundary 调用当前 Injekt application singleton，不构造第二 model/state；UI test 用不同 local/global provider证明 local被读取且global零读取。ArchitectureGuard baseline/白名单零改；RED 为 local boundary unresolved及顺序测试旧 model 超时，最终 GREEN 为 Incognito 2/2 + presentation 3/3 + architecture 4/4；独立修复复审 APPROVED、diff-check clean、Java0。
 
 ##### Task 7D4b: Compat multi-evidence contract refresh
 
@@ -2077,6 +2077,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Platform boundary: `verification`
 - Estimated scope: `3 files, 80 lines`
 - Verification: `SourceSharedStateWiringTest` 与 `ExtensionIncognitoPreferenceWiringTest` 不再硬编码英文 contentDescription，使用 MR 当前 locale 文案并直接读取 `SemanticsProperties.ContentDescription`；在 zh-CN/current locale 下保护导航落点与 incognito 开关真实点击。`ExtensionPresentationUiTest` 对 StateFlow→collectAsState 的异步传播使用有界 render/yield 等待目标语义，替换“model state已更新后只render一次”的竞态，不改 production reducer或用无限等待掩盖错误。
+  Evidence: commit `dd677ad43`，严格 3 test files / 60 touched lines，无 production 变更。Source reload 与 Incognito toggle 均从 MR 取得 current-locale 文案并结构化读取 `SemanticsProperties.ContentDescription`；Incognito 与 Presentation 仅以 5s 有界 render/yield 等待真实 Compose 语义传播，错误文案、缺失节点或错误状态仍会超时/断言失败，未复制过滤、刷新或状态转换逻辑。RED 为 zh-CN 下英文硬编码失配及单帧语义竞态；在 7D4a provider 修复后最终 SourceShared 49/49、Incognito 2/2、Presentation 3/3，共54/54。独立 review APPROVED、diff-check clean、Java0。
 
 ##### Task 7D4d: Desktop preference listener removal safety
 
