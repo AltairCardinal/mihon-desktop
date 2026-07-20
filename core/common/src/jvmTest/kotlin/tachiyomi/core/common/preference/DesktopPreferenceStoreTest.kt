@@ -1,6 +1,10 @@
 package tachiyomi.core.common.preference
 
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -169,6 +173,17 @@ class DesktopPreferenceStoreTest {
         val pref = store.getString("reactive", "initial")
         val value = pref.changes().first()
         assertEquals("initial", value)
+    }
+
+    @Test
+    fun `changes collector cleanup tolerates externally removed node`() = runTest {
+        val removedNode = backingPrefs.node("removed")
+        val pref = DesktopPreferenceStore(removedNode).getString("reactive", "initial")
+        val collector = launch { pref.changes().collect() }
+        runCurrent()
+
+        removedNode.removeNode()
+        collector.cancelAndJoin()
     }
 
     // --- getAll ---

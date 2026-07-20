@@ -47,7 +47,13 @@ class DesktopPreference<T>(
             }
         }
         preferences.addPreferenceChangeListener(listener)
-        awaitClose { preferences.removePreferenceChangeListener(listener) }
+        awaitClose {
+            try {
+                preferences.removePreferenceChangeListener(listener)
+            } catch (error: IllegalStateException) {
+                if (error.message != "Node has been removed.") throw error
+            }
+        }
     }.onStart { emit(get()) }.conflate()
 
     override fun stateIn(scope: CoroutineScope): StateFlow<T> {
