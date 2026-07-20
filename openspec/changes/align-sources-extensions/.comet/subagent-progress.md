@@ -528,3 +528,12 @@
 - Final scope: 5 verification files in the implementation commit plus 1 of those files in the repair; no production file, BUILD31, DownloadQueue whitespace or unrelated user file was committed.
 - Delivery state: BUILD31 remains rejected because macOS failed before this repair. Resume Task 7 Step 6 by allocating BUILD32 from the post-repair HEAD and validate Windows/macOS serially.
 - Review/fix round: 1/1
+
+## BUILD32 Verification and Task 7D36 Dispatch
+
+- Verification head: `ad03a7bdca5736c95f2f65086f22981d42145b48`; allocated version `0.11.14.32.ad03a7b`.
+- Windows: build script and Desktop JVM suite PASS; fixed unpackaged EXE title matched exactly; official smoke 88/88; Test Mode health, ExtensionList navigation and extension search action PASS.
+- macOS: exact-head fresh clone allocated the same BUILD32, then stopped before packaging after 1814 tests with one failure.
+- RED: `DesktopChallengeLoginWiringTest` received `UncaughtExceptionsBeforeTest`, whose underlying `IllegalStateException: Node has been removed` originated from the preceding real `SourceLastUsedWiringTest` Compose preference collector at `DesktopPreference.changes()` listener registration.
+- Root cause: the source-list fixture closes `ImageComposeScene` and immediately removes its Preferences node without owning and joining the Compose child coroutine lifecycle. This is a verification-lifecycle leak, not a Challenge Login assertion, network, SSH or JDK failure.
+- Decision: reject BUILD32 and dispatch bounded Task 7D36 `source-list-preference-lifecycle-isolation`; do not rerun the full suite unchanged.

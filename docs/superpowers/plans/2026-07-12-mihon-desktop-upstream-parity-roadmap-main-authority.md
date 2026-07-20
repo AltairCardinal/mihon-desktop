@@ -402,10 +402,11 @@ Task 4B 的子计划编号，不是父 roadmap 在 Task 6 之后新增的同级�
 - [x] 子计划 Task 6A–6E：Browse/Extension 双端 production wiring、i18n、导航与 Test Mode
 - [ ] 子计划 Task 7：compat 去重、parity 证据、最终审查与 Windows/macOS 验收
 
-Task 7D35 fixture 隔离修复已在 `550bd0722` + `f9a76b4b0` 完成并通过 macOS focused/相邻矩阵及
-独立修复复审；Windows BUILD31 虽通过，但它基于修复前提交，因此不是可交付版本。当前下一步是从
-修复后同一 HEAD 分配 BUILD32，完成 Windows/macOS 验收、最终审查、OpenSpec checkoff 与归档；在这些
-证据全部通过前，子计划 Task 7 和父 Task 4B 保持未完成。
+Task 7D35 fixture 隔离修复已在 `550bd0722` + `f9a76b4b0` 完成并通过独立修复复审。BUILD32 随后通过
+Windows 全套构建、smoke 与运行验收，但 macOS fresh suite 暴露 `SourceLastUsedWiringTest` 在 Compose
+collector 完全停止前删除 Preferences 节点的生命周期泄漏，因此 BUILD32 仍被拒绝。当前由窄范围
+Task 7D36 修复该真实验收阻塞；修复、双平台新 BUILD、最终审查、OpenSpec checkoff 与归档全部通过前，
+子计划 Task 7 和父 Task 4B 保持未完成。
 
 **Files:**
 - Modify: 当前分支 `app/src/main/java/eu/kanade/tachiyomi/extension/`
