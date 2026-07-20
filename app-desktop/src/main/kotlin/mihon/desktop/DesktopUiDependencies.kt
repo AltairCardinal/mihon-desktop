@@ -12,6 +12,7 @@ import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.domain.SetExcludedScanlators
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DesktopDownloadPreferences
+import mihon.desktop.download.DownloadQueueScreenModel
 import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.network.CloudflareChallengeManager
@@ -99,6 +100,12 @@ data class DesktopUiDependencies(
     fun getSourcesWithFavoriteCount(): Flow<List<Pair<Source, Long>>> {
         return sourceRepository.getSourcesWithFavoriteCount()
     }
+
+    fun createDownloadQueueScreenModel(): DownloadQueueScreenModel = DownloadQueueScreenModel(
+        downloadManager = downloadManager,
+        chapterRepository = chapterRepository,
+        sourceManager = sourceManager,
+    )
 
     companion object {
         fun fromInjekt(): DesktopUiDependencies {

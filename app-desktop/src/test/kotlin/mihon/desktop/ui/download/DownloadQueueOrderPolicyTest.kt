@@ -7,6 +7,9 @@ import kotlinx.coroutines.test.runTest
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.download.DownloadItem
+import mihon.desktop.download.DownloadQueueOrder
+import mihon.desktop.download.DownloadQueueScreenModel
+import mihon.desktop.source.FakeDesktopSourceManager
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -42,8 +45,10 @@ class DownloadQueueOrderPolicyTest {
 
         expectations.forEach { (order, expected) ->
             val manager = manager(*queue.toTypedArray())
-            applyDownloadQueueOrder(manager, queue, repository, order)
+            val model = DownloadQueueScreenModel(manager, repository, FakeDesktopSourceManager(emptyList()), this)
+            model.sort(order).join()
             assertEquals(expected, manager.queue.first().map { it.chapterId }, order.name)
+            model.onDispose()
         }
     }
 
@@ -61,9 +66,11 @@ class DownloadQueueOrderPolicyTest {
             chapter(3L, dateUpload = 100),
         )
 
-        applyDownloadQueueOrder(manager, queue, repository, DownloadQueueOrder.UPLOAD_DATE_NEWEST)
+        val model = DownloadQueueScreenModel(manager, repository, FakeDesktopSourceManager(emptyList()), this)
+        model.sort(DownloadQueueOrder.UPLOAD_DATE_NEWEST).join()
 
         assertEquals(listOf(1L, 3L, 2L, 4L), manager.queue.first().map { it.chapterId })
+        model.onDispose()
     }
 
     private fun manager(vararg items: DownloadItem): DesktopDownloadManager {

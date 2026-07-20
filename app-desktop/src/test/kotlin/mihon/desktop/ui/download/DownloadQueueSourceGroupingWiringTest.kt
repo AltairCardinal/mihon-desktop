@@ -11,6 +11,7 @@ import cafe.adriel.voyager.navigator.Navigator
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
@@ -19,6 +20,7 @@ import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.download.DownloadItem
+import mihon.desktop.download.DownloadQueueScreenModel
 import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.desktop.source.FakeSource
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -48,15 +50,15 @@ class DownloadQueueSourceGroupingWiringTest {
             coEvery { getChapterById(3) } returns chapter(id = 3, dateUpload = 300)
             coEvery { getChapterById(4) } returns chapter(id = 4, dateUpload = 400)
         }
+        val sourceManager = FakeDesktopSourceManager(
+            listOf(
+                FakeSource(1, "en", "Source One"),
+                FakeSource(2, "ja", "Source Two"),
+            ),
+        )
+        val model = DownloadQueueScreenModel(manager, canonicalChapters, sourceManager, this)
         val dependencies = mockk<DesktopUiDependencies> {
-            every { downloadManager } returns manager
-            every { chapterRepository } returns canonicalChapters
-            every { sourceManager } returns FakeDesktopSourceManager(
-                listOf(
-                    FakeSource(1, "en", "Source One"),
-                    FakeSource(2, "ja", "Source Two"),
-                ),
-            )
+            every { createDownloadQueueScreenModel() } returns model
         }
         val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
 
@@ -66,6 +68,7 @@ class DownloadQueueSourceGroupingWiringTest {
             }
         }
         scene.render()
+        verify(exactly = 1) { dependencies.createDownloadQueueScreenModel() }
 
         val nodes = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
 

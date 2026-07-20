@@ -41,23 +41,21 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import kotlinx.coroutines.launch
-import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DownloadItem
+import mihon.desktop.download.DownloadQueueOrder
 import mihon.desktop.download.DownloadStatus
 import mihon.domain.error.AppError
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
-import tachiyomi.domain.chapter.repository.ChapterRepository
 
 class DownloadQueueScreen : Screen {
 
@@ -66,32 +64,23 @@ class DownloadQueueScreen : Screen {
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val dependencies = LocalDesktopUiDependencies.current
-        val manager = dependencies.downloadManager
-        val queue by manager.queue.collectAsState()
-        val isPaused by manager.isPaused.collectAsState()
-        val scope = rememberCoroutineScope()
-
-        val grouped = remember(queue, dependencies.sourceManager) {
-            queue.groupBy { it.sourceId }
-        }
+        val model = rememberScreenModel { dependencies.createDownloadQueueScreenModel() }
+        val state by model.state.collectAsState()
+        val queue = state.queue
+        val isPaused = state.isPaused
 
         // Two separate menus — mirrors Android's separate Sort + Overflow pattern
         var showSortMenu by remember { mutableStateOf(false) }
         var showOverflowMenu by remember { mutableStateOf(false) }
 
-        val hasErrors = queue.any { it.status == DownloadStatus.ERROR }
+        val hasErrors = state.hasErrors
 
         val lazyListState = rememberLazyListState()
         val reorderableLazyListState = rememberReorderableLazyListState(lazyListState) { from, to ->
             // Keys for chapter items are Long chapterId; header keys are strings
             val fromId = from.key as? Long ?: return@rememberReorderableLazyListState
             val toId = to.key as? Long ?: return@rememberReorderableLazyListState
-            val currentQueue = queue
-            val fromIdx = currentQueue.indexOfFirst { it.chapterId == fromId }
-            val toIdx = currentQueue.indexOfFirst { it.chapterId == toId }
-            if (fromIdx >= 0 && toIdx >= 0) {
-                scope.launch { manager.reorderItem(fromIdx, toIdx) }
-            }
+            model.reorder(fromId, toId)
         }
 
         Scaffold(
@@ -129,56 +118,28 @@ class DownloadQueueScreen : Screen {
                                         text = { Text("Upload date \u2014 Newest") },
                                         onClick = {
                                             showSortMenu = false
-                                            scope.launch {
-                                                applyDownloadQueueOrder(
-                                                    manager,
-                                                    queue,
-                                                    dependencies.chapterRepository,
-                                                    DownloadQueueOrder.UPLOAD_DATE_NEWEST,
-                                                )
-                                            }
+                                            model.sort(DownloadQueueOrder.UPLOAD_DATE_NEWEST)
                                         },
                                     )
                                     DropdownMenuItem(
                                         text = { Text("Upload date \u2014 Oldest") },
                                         onClick = {
                                             showSortMenu = false
-                                            scope.launch {
-                                                applyDownloadQueueOrder(
-                                                    manager,
-                                                    queue,
-                                                    dependencies.chapterRepository,
-                                                    DownloadQueueOrder.UPLOAD_DATE_OLDEST,
-                                                )
-                                            }
+                                            model.sort(DownloadQueueOrder.UPLOAD_DATE_OLDEST)
                                         },
                                     )
                                     DropdownMenuItem(
                                         text = { Text("Chapter number \u2014 Ascending") },
                                         onClick = {
                                             showSortMenu = false
-                                            scope.launch {
-                                                applyDownloadQueueOrder(
-                                                    manager,
-                                                    queue,
-                                                    dependencies.chapterRepository,
-                                                    DownloadQueueOrder.CHAPTER_NUMBER_ASCENDING,
-                                                )
-                                            }
+                                            model.sort(DownloadQueueOrder.CHAPTER_NUMBER_ASCENDING)
                                         },
                                     )
                                     DropdownMenuItem(
                                         text = { Text("Chapter number \u2014 Descending") },
                                         onClick = {
                                             showSortMenu = false
-                                            scope.launch {
-                                                applyDownloadQueueOrder(
-                                                    manager,
-                                                    queue,
-                                                    dependencies.chapterRepository,
-                                                    DownloadQueueOrder.CHAPTER_NUMBER_DESCENDING,
-                                                )
-                                            }
+                                            model.sort(DownloadQueueOrder.CHAPTER_NUMBER_DESCENDING)
                                         },
                                     )
                                 }
@@ -200,7 +161,7 @@ class DownloadQueueScreen : Screen {
                                                 Icon(Icons.Default.Refresh, contentDescription = null)
                                             },
                                             onClick = {
-                                                manager.retryErrors()
+                                                model.retryErrors()
                                                 showOverflowMenu = false
                                             },
                                         )
@@ -210,7 +171,7 @@ class DownloadQueueScreen : Screen {
                                                 Icon(Icons.Default.Close, contentDescription = null)
                                             },
                                             onClick = {
-                                                manager.clearErrors()
+                                                model.clearErrors()
                                                 showOverflowMenu = false
                                             },
                                         )
@@ -221,7 +182,7 @@ class DownloadQueueScreen : Screen {
                                             Text("Cancel all", color = MaterialTheme.colorScheme.error)
                                         },
                                         onClick = {
-                                            manager.cancelAll()
+                                            model.cancelAll()
                                             showOverflowMenu = false
                                         },
                                     )
@@ -242,7 +203,7 @@ class DownloadQueueScreen : Screen {
                                 contentDescription = null,
                             )
                         },
-                        onClick = { if (isPaused) manager.resumeAll() else manager.pauseAll() },
+                        onClick = { if (isPaused) model.resumeAll() else model.pauseAll() },
                     )
                 }
             },
@@ -287,11 +248,10 @@ class DownloadQueueScreen : Screen {
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        grouped.forEach { (sourceId, chapterItems) ->
-                            item(key = "hdr_$sourceId") {
+                        state.sourceGroups.forEach { sourceGroup ->
+                            item(key = "hdr_${sourceGroup.sourceId}") {
                                 Text(
-                                    text = dependencies.sourceManager.get(sourceId)?.name
-                                        ?: "Unknown source ($sourceId)",
+                                    text = sourceGroup.sourceName,
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.SemiBold,
                                     modifier = Modifier.padding(
@@ -302,12 +262,13 @@ class DownloadQueueScreen : Screen {
                                 )
                             }
 
-                            items(chapterItems, key = { it.chapterId }) { item ->
+                            items(sourceGroup.items, key = { it.chapterId }) { item ->
                                 ReorderableItem(reorderableLazyListState, key = item.chapterId) { isDragging ->
                                     DownloadItemCard(
                                         item = item,
-                                        manager = manager,
                                         isDragging = isDragging,
+                                        onCancel = model::cancel,
+                                        onRetry = model::retry,
                                         dragHandle = {
                                             Icon(
                                                 imageVector = Icons.Default.DragHandle,
@@ -326,51 +287,13 @@ class DownloadQueueScreen : Screen {
         }
     }
 }
-internal enum class DownloadQueueOrder {
-    UPLOAD_DATE_NEWEST,
-    UPLOAD_DATE_OLDEST,
-    CHAPTER_NUMBER_ASCENDING,
-    CHAPTER_NUMBER_DESCENDING,
-}
-
-internal suspend fun applyDownloadQueueOrder(
-    manager: DesktopDownloadManager,
-    queueSnapshot: List<DownloadItem>,
-    chapterRepository: ChapterRepository,
-    order: DownloadQueueOrder,
-) {
-    val chapters = queueSnapshot.associate { item ->
-        item.chapterId to chapterRepository.getChapterById(item.chapterId)
-    }
-    manager.sortQueue(
-        Comparator { left, right ->
-            val leftChapter = chapters[left.chapterId]
-            val rightChapter = chapters[right.chapterId]
-            when {
-                leftChapter == null && rightChapter == null -> 0
-                leftChapter == null -> 1
-                rightChapter == null -> -1
-                else -> when (order) {
-                    DownloadQueueOrder.UPLOAD_DATE_NEWEST ->
-                        rightChapter.dateUpload.compareTo(leftChapter.dateUpload)
-                    DownloadQueueOrder.UPLOAD_DATE_OLDEST ->
-                        leftChapter.dateUpload.compareTo(rightChapter.dateUpload)
-                    DownloadQueueOrder.CHAPTER_NUMBER_ASCENDING ->
-                        leftChapter.chapterNumber.compareTo(rightChapter.chapterNumber)
-                    DownloadQueueOrder.CHAPTER_NUMBER_DESCENDING ->
-                        rightChapter.chapterNumber.compareTo(leftChapter.chapterNumber)
-                }
-            }
-        },
-    )
-}
-
 
 @Composable
 private fun DownloadItemCard(
     item: DownloadItem,
-    manager: DesktopDownloadManager,
     isDragging: Boolean = false,
+    onCancel: (Long) -> Unit,
+    onRetry: (Long) -> Unit,
     dragHandle: (@Composable () -> Unit)? = null,
 ) {
     val statusLabel = when (item.status) {
@@ -426,7 +349,7 @@ private fun DownloadItemCard(
                 // Action button varies by status (mirrors Android per-item menu)
                 when (item.status) {
                     DownloadStatus.QUEUED, DownloadStatus.DOWNLOADING -> {
-                        IconButton(onClick = { manager.cancel(item.chapterId) }) {
+                        IconButton(onClick = { onCancel(item.chapterId) }) {
                             Icon(
                                 Icons.Default.Close,
                                 contentDescription = "Cancel this download",
@@ -435,7 +358,7 @@ private fun DownloadItemCard(
                         }
                     }
                     DownloadStatus.ERROR -> {
-                        IconButton(onClick = { manager.retryItem(item.chapterId) }) {
+                        IconButton(onClick = { onRetry(item.chapterId) }) {
                             Icon(
                                 Icons.Default.Refresh,
                                 contentDescription = "Retry",
