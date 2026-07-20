@@ -26,6 +26,7 @@ import mihon.domain.extension.service.ExtensionInstallPort
 import mihon.domain.extension.service.ExtensionInstallRequest
 import mihon.domain.extension.service.ExtensionInstallRollbackToken
 import mihon.domain.extension.service.PreparedExtensionInstallToken
+import mihon.desktop.platform.retryTransientAccessDenied
 
 internal typealias DesktopArtifactProvider = suspend (ExtensionArtifact, File) -> Unit
 
@@ -60,7 +61,9 @@ internal class NioDesktopExtensionFileSystem(
         val replacement = File(destination.parentFile, ".${destination.name}.${UUID.randomUUID()}.replace.tmp")
         try {
             Files.copy(snapshot.toPath(), replacement.toPath(), StandardCopyOption.REPLACE_EXISTING)
-            atomicMove(replacement.toPath(), destination.toPath())
+            retryTransientAccessDenied {
+                atomicMove(replacement.toPath(), destination.toPath())
+            }
         } finally {
             Files.deleteIfExists(replacement.toPath())
         }

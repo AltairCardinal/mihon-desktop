@@ -4,7 +4,11 @@ import eu.kanade.tachiyomi.source.Source
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
+import java.nio.file.AccessDeniedException
 import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.runBlocking
@@ -14,18 +18,20 @@ import mihon.domain.extension.model.RepositoryIdentity
 import mihon.domain.extension.service.ExtensionInstallFailure
 import mihon.domain.extension.service.ExtensionInstallRequest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
-import java.nio.file.Path
 
 class ExtensionArtifactReplacementTest {
     @Test
     fun `atomic move unsupported fails without replacing destination`(@TempDir directory: Path) {
         val destination = directory.resolve("extension.jar").toFile().also { it.writeText("old") }
         val snapshot = directory.resolve("candidate.jar").toFile().also { it.writeText("new") }
+        var attempts = 0
         val fileSystem = NioDesktopExtensionFileSystem { source, target ->
+            attempts++
             throw AtomicMoveNotSupportedException(source.toString(), target.toString(), "injected")
         }
 
@@ -33,6 +39,71 @@ class ExtensionArtifactReplacementTest {
             fileSystem.replaceFromSnapshot(snapshot, destination)
         }
 
+        assertEquals(1, attempts)
+        assertEquals("old", destination.readText())
+        assertEquals("new", snapshot.readText())
+        assertTrue(directory.toFile().listFiles().orEmpty().none { it.name.endsWith(".replace.tmp") })
+    }
+
+    @Test
+    fun `transient access denied retries atomic replacement until third attempt`(@TempDir directory: Path) {
+        val destination = directory.resolve("extension.jar").toFile().also { it.writeText("old") }
+        val snapshot = directory.resolve("candidate.jar").toFile().also { it.writeText("new") }
+        var attempts = 0
+        val fileSystem = NioDesktopExtensionFileSystem { source, target ->
+            attempts++
+            if (attempts < 3) {
+                throw AccessDeniedException(source.toString(), target.toString(), "injected-$attempts")
+            }
+            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+        }
+
+        fileSystem.replaceFromSnapshot(snapshot, destination)
+
+        assertEquals(3, attempts)
+        assertEquals("new", destination.readText())
+        assertEquals("new", snapshot.readText())
+        assertTrue(directory.toFile().listFiles().orEmpty().none { it.name.endsWith(".replace.tmp") })
+    }
+
+    @Test
+    fun `persistent access denied exhausts three attempts and preserves replacement inputs`(@TempDir directory: Path) {
+        val destination = directory.resolve("extension.jar").toFile().also { it.writeText("old") }
+        val snapshot = directory.resolve("candidate.jar").toFile().also { it.writeText("new") }
+        val failures = mutableListOf<AccessDeniedException>()
+        val fileSystem = NioDesktopExtensionFileSystem { source, target ->
+            throw AccessDeniedException(source.toString(), target.toString(), "injected-${failures.size + 1}")
+                .also(failures::add)
+        }
+
+        val thrown = assertThrows(AccessDeniedException::class.java) {
+            fileSystem.replaceFromSnapshot(snapshot, destination)
+        }
+
+        assertEquals(3, failures.size)
+        assertSame(failures.last(), thrown)
+        assertEquals("old", destination.readText())
+        assertEquals("new", snapshot.readText())
+        assertTrue(directory.toFile().listFiles().orEmpty().none { it.name.endsWith(".replace.tmp") })
+    }
+
+    @Test
+    fun `ordinary io failure is not retried and preserves destination`(@TempDir directory: Path) {
+        val destination = directory.resolve("extension.jar").toFile().also { it.writeText("old") }
+        val snapshot = directory.resolve("candidate.jar").toFile().also { it.writeText("new") }
+        var attempts = 0
+        val failure = IOException("injected")
+        val fileSystem = NioDesktopExtensionFileSystem { _, _ ->
+            attempts++
+            throw failure
+        }
+
+        val thrown = assertThrows(IOException::class.java) {
+            fileSystem.replaceFromSnapshot(snapshot, destination)
+        }
+
+        assertEquals(1, attempts)
+        assertSame(failure, thrown)
         assertEquals("old", destination.readText())
         assertEquals("new", snapshot.readText())
         assertTrue(directory.toFile().listFiles().orEmpty().none { it.name.endsWith(".replace.tmp") })
