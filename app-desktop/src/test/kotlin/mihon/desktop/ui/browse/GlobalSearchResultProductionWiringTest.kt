@@ -22,8 +22,6 @@ import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
@@ -100,7 +98,8 @@ class GlobalSearchResultProductionWiringTest {
                 }
                 withTimeout(ASYNC_TIMEOUT_MS) {
                     while (!text(scene).contains("A listed 0") || !text(scene).contains("B listed 0") ||
-                        fixture.repository.latestRows[sourceA.id to "/shared"] == null || fixture.repository.latestRows[sourceB.id to "/shared"] == null
+                        !fixture.repository.observedRows.contains(Triple(sourceA.id, "/shared", "A listed 0")) ||
+                        !fixture.repository.observedRows.contains(Triple(sourceB.id, "/shared", "B listed 0"))
                     ) {
                         scene.render()
                         yield()
@@ -115,12 +114,10 @@ class GlobalSearchResultProductionWiringTest {
                 val observed = requireNotNull(fixture.mangas.getMangaByUrlAndSourceId("/shared", sourceA.id))
                 val untouched = requireNotNull(fixture.mangas.getMangaByUrlAndSourceId("/shared", sourceB.id))
                 assertTrue(fixture.mangas.update(MangaUpdate(observed.id, title = "DB updated", thumbnailUrl = "updated-cover", favorite = true)))
-                val repositoryUpdated = withTimeout(ASYNC_TIMEOUT_MS) {
-                    GetManga(fixture.mangas).subscribe("/shared", sourceA.id).filterNotNull().first { it.title == "DB updated" }
-                }
+                val repositoryUpdated = requireNotNull(fixture.mangas.getMangaByUrlAndSourceId("/shared", sourceA.id))
                 assertEquals("updated-cover", repositoryUpdated.thumbnailUrl)
                 withTimeout(ASYNC_TIMEOUT_MS) {
-                    while (fixture.repository.latestRows[sourceA.id to "/shared"]?.title != "DB updated") {
+                    while (!fixture.repository.observedRows.contains(Triple(sourceA.id, "/shared", "DB updated"))) {
                         scene.render()
                         yield()
                     }
@@ -287,7 +284,7 @@ class GlobalSearchResultProductionWiringTest {
     private class ControlledRepository(private val delegate: MangaRepository) : MangaRepository by delegate {
         val seenSubscriptions = ConcurrentHashMap.newKeySet<Pair<Long, String>>()
         val activeSubscriptions = ConcurrentHashMap.newKeySet<Pair<Long, String>>()
-        val latestRows = ConcurrentHashMap<Pair<Long, String>, Manga>()
+        val observedRows = ConcurrentHashMap.newKeySet<Triple<Long, String, String>>()
         val oldStarted = CompletableDeferred<Unit>()
         val releaseOld = CompletableDeferred<Unit>()
         val oldInserted = CompletableDeferred<Unit>()
@@ -298,7 +295,7 @@ class GlobalSearchResultProductionWiringTest {
             (sourceId to url).let { key ->
                 delegate.getMangaByUrlAndSourceIdAsFlow(url, sourceId)
                     .onStart { seenSubscriptions += key; activeSubscriptions += key }
-                    .onEach { it?.let { manga -> latestRows[key] = manga } }
+                    .onEach { it?.let { manga -> observedRows += Triple(sourceId, url, manga.title) } }
                     .onCompletion { activeSubscriptions -= key }
             }
 
