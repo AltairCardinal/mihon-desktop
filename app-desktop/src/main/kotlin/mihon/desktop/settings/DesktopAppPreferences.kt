@@ -119,6 +119,10 @@ class DesktopAppPreferences(
         store.getStringSet(key = "pinned_catalogues", defaultValue = emptySet())
     }
 
+    val lastUsedSource: Preference<Long> by lazy {
+        store.getLong(Preference.appStateKey("last_catalogue_source"), -1L)
+    }
+
     /** Whether global search only displays sources with results. */
     val globalSearchFilterState: Preference<Boolean> by lazy {
         store.getBoolean(Preference.appStateKey("has_filters_toggle_state"), false)

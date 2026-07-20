@@ -74,6 +74,8 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.SaveSourceMangaForDetails
+import mihon.desktop.extension.DesktopExtensionManager
+import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.ui.library.MangaDetailScreen
 import mihon.domain.error.AppError
 import tachiyomi.domain.manga.model.Manga
@@ -152,6 +154,18 @@ data class DesktopSourceLoginDialogEvents(
 )
 
 internal val LocalSourceLoginDialogInitialState = staticCompositionLocalOf<DesktopSourceLoginUiState?> { null }
+
+internal class DesktopSourceLastUsedRecorder(
+    private val preferences: DesktopAppPreferences,
+    private val extensionManager: DesktopExtensionManager,
+) {
+    fun record(sourceId: Long) {
+        val extensionPackage = extensionManager.getExtensionPackage(sourceId)
+        val incognito = preferences.incognitoMode.get() ||
+            extensionPackage != null && extensionPackage in preferences.incognitoExtensions.get()
+        if (!incognito) preferences.lastUsedSource.set(sourceId)
+    }
+}
 
 internal fun sourceLoginDialogEvents(
     rendered: DesktopSourceLoginUiState,
@@ -241,6 +255,15 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
         val getManga = dependencies.getManga
         val source = remember { sourceManager.getCatalogueSources().find { it.id == sourceId } }
         val scope = rememberCoroutineScope()
+        val lastUsedRecorder = source?.let {
+            val preferences = dependencies.appPreferences
+            val extensionManager = dependencies.extensionManager
+            remember(preferences, extensionManager) { DesktopSourceLastUsedRecorder(preferences, extensionManager) }
+        }
+
+        LaunchedEffect(source?.id) {
+            source?.id?.let { lastUsedRecorder?.record(it) }
+        }
 
         val queryCoordinator = remember { SourceBrowseQueryCoordinator(sourceMangaSearchService) }
         val queryState by queryStates(queryCoordinator).collectAsState(initial = null)

@@ -28,6 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -124,6 +125,10 @@ class SourceSharedStateWiringTest {
         every { this@mockk.pinnedSources } returns mockk<Preference<Set<String>>> {
             every { get() } returns pinnedSources
             every { changes() } returns flowOf(pinnedSources)
+        }
+        every { lastUsedSource } returns mockk<Preference<Long>> {
+            every { get() } returns -1L
+            every { changes() } returns flowOf(-1L)
         }
         every { globalSearchFilterState } returns mockk<Preference<Boolean>> {
             every { get() } returns false
@@ -264,6 +269,21 @@ class SourceSharedStateWiringTest {
                         it.hasContentDescription(label)
                 }
                 while (!hasFeedback()) {
+                    val list = semantics(scene).firstOrNull {
+                        it.config.contains(SemanticsActions.ScrollToIndex) &&
+                            it.config.contains(SemanticsProperties.CollectionInfo) &&
+                            it.config.toString().contains("VerticalScrollAxisRange")
+                    }
+                    val rowCount = list?.config?.get(SemanticsProperties.CollectionInfo)?.rowCount ?: 0
+                    for (index in 0 until rowCount) {
+                        val currentList = semantics(scene).firstOrNull {
+                            it.config.contains(SemanticsActions.ScrollToIndex) &&
+                                it.config.toString().contains("VerticalScrollAxisRange")
+                        }
+                        requireNotNull(currentList?.config?.get(SemanticsActions.ScrollToIndex)?.action).invoke(index)
+                        scene.render()
+                        if (hasFeedback()) return@withTimeout
+                    }
                     scene.render()
                     delay(10)
                 }
@@ -337,6 +357,19 @@ class SourceSharedStateWiringTest {
                 val node = nodes(scene).last { it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains(label) }
                 assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
             }
+            suspend fun awaitClick(scene: ImageComposeScene, label: String) = withTimeout(2_000) {
+                while (nodes(scene).none { it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains(label) }) {
+                    scene.render()
+                    delay(10)
+                }
+                click(scene, label)
+            }
+            suspend fun awaitMissing(scene: ImageComposeScene, text: String) = withTimeout(2_000) {
+                while (nodes(scene).joinToString { it.config.toString() }.contains(text)) {
+                    scene.render()
+                    delay(10)
+                }
+            }
             fun rendered(scene: ImageComposeScene) = nodes(scene).joinToString { it.config.toString() }
             fun selected(scene: ImageComposeScene, label: String) = nodes(scene).any {
                 it.config.toString().contains(label) &&
@@ -373,17 +406,16 @@ class SourceSharedStateWiringTest {
             assertEquals(setOf("en"), preferences.enabledLanguages.get())
             assertTrue(selected(firstScene, "All"))
             assertTrue(rendered(firstScene).contains(english.name))
-            assertFalse(rendered(firstScene).contains(french.name))
+            awaitMissing(firstScene, french.name)
 
             preferences.enabledLanguages.set(setOf("en", "fr"))
-            firstScene.render()
-            click(firstScene, "FR")
+            awaitClick(firstScene, "FR")
             firstScene.render()
             preferences.enabledLanguages.set(setOf("en"))
             firstScene.render()
             assertTrue(selected(firstScene, "All"))
             assertTrue(rendered(firstScene).contains(english.name))
-            assertFalse(rendered(firstScene).contains(french.name))
+            awaitMissing(firstScene, french.name)
             firstScene.close()
 
             preferences.enabledLanguages.set(setOf("en", "fr"))
@@ -659,6 +691,7 @@ class SourceSharedStateWiringTest {
             scene.render()
             val cookieHeader = nodes().filter { it.config.contains(SemanticsActions.SetText) }.last()
             assertTrue(requireNotNull(cookieHeader.config[SemanticsActions.SetText].action).invoke(AnnotatedString("invalid")))
+            scene.render()
             assertTrue(click(copy.submit))
             scene.render()
             assertTrue(nodes().joinToString { it.config.toString() }.contains(copy.invalidHeader))
@@ -865,37 +898,45 @@ class SourceSharedStateWiringTest {
     fun `completed global search detaches compat callback from later exact recovery`() = runBlocking {
         listOf(CancellationException("late callback"), AssertionError("late callback")).forEachIndexed { index, lateError ->
             val attempts = mutableMapOf<String, Int>()
+            val successGate = Channel<Unit>(Channel.UNLIMITED)
             val source = object : NamedSource(30L + index, "Detached callback") {
                 override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
                     if (attempts.put(query, attempts.getOrDefault(query, 0) + 1) == null) throw HttpException(500)
-                    delay(25)
+                    successGate.receive()
                     return MangasPage(listOf(manga("/$query")), false)
                 }
             }
             val lateFailure = AtomicReference<Throwable?>()
             val callbacks = Collections.synchronizedList(mutableListOf<Unit>())
             val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
-            withTimeout(2_000) {
-                coordinator.search(listOf(source), "first") {
-                    callbacks += Unit
-                    lateFailure.get()?.let { throw it }
+            try {
+                withTimeout(2_000) {
+                    coordinator.search(listOf(source), "first") {
+                        callbacks += Unit
+                        lateFailure.get()?.let { throw it }
+                    }
                 }
+                val child = requireNotNull(coordinator.coordinatorFor(source.id))
+                val callbackCount = callbacks.size.also { lateFailure.set(lateError) }
+                val firstRetry = async(start = CoroutineStart.UNDISPATCHED) { child.retry(source) }
+                withTimeout(2_000) { coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Loading } }
+                successGate.send(Unit)
+                firstRetry.await()
+                withTimeout(2_000) { coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Content } }
+                child.load(source, 1, SourceQuery.Search("second", FilterList()))
+                withTimeout(2_000) { coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Failure } }
+                val secondRetry = async(start = CoroutineStart.UNDISPATCHED) { child.retry(source) }
+                withTimeout(2_000) { coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Loading } }
+                successGate.send(Unit)
+                secondRetry.await()
+                withTimeout(2_000) { coordinator.states.first { (it.queryStates[source.id] as? SourceQueryState.Content)?.items?.singleOrNull()?.url == "/second" } }
+                assertEquals(callbackCount, callbacks.size)
+                assertTrue(child.subscriberCount > 0)
+            } finally {
+                successGate.trySend(Unit)
+                successGate.close()
+                coordinator.close()
             }
-            val child = requireNotNull(coordinator.coordinatorFor(source.id))
-            val callbackCount = callbacks.size.also { lateFailure.set(lateError) }
-            val firstRetry = async(start = CoroutineStart.UNDISPATCHED) { child.retry(source) }
-            withTimeout(2_000) { coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Loading } }
-            firstRetry.await()
-            withTimeout(2_000) { coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Content } }
-            child.load(source, 1, SourceQuery.Search("second", FilterList()))
-            withTimeout(2_000) { coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Failure } }
-            val secondRetry = async(start = CoroutineStart.UNDISPATCHED) { child.retry(source) }
-            withTimeout(2_000) { coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Loading } }
-            secondRetry.await()
-            withTimeout(2_000) { coordinator.states.first { (it.queryStates[source.id] as? SourceQueryState.Content)?.items?.singleOrNull()?.url == "/second" } }
-            assertEquals(callbackCount, callbacks.size)
-            assertTrue(child.subscriberCount > 0)
-            coordinator.close()
         }
     }
 

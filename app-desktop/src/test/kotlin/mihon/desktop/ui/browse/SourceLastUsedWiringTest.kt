@@ -17,6 +17,7 @@ import kotlinx.coroutines.withTimeout
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.SaveSourceMangaForDetails
+import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.desktop.source.FakeSource
@@ -31,9 +32,22 @@ import tachiyomi.i18n.MR
 import java.util.prefs.Preferences
 import kotlin.coroutines.CoroutineContext
 
+internal fun sourceBrowseHistoryPreferences() = mockk<DesktopAppPreferences> {
+    every { incognitoMode } returns sourceBrowseIncognitoPreference()
+    every { incognitoExtensions } returns sourceBrowseExtensionIncognitoPreference()
+    every { lastUsedSource } returns sourceBrowseLastUsedPreference()
+}
+internal fun sourceBrowseIncognitoPreference() = mockk<tachiyomi.core.common.preference.Preference<Boolean>>(relaxed = true) {
+    every { get() } returns false
+}
+
+internal fun sourceBrowseExtensionIncognitoPreference() =
+    mockk<tachiyomi.core.common.preference.Preference<Set<String>>>(relaxed = true) { every { get() } returns emptySet() }
+internal fun sourceBrowseLastUsedPreference() = mockk<tachiyomi.core.common.preference.Preference<Long>>(relaxed = true)
+internal fun sourceBrowseExtensionManager() = mockk<DesktopExtensionManager>(relaxed = true)
+
 @OptIn(ExperimentalComposeUiApi::class)
 class SourceLastUsedWiringTest {
-
     @Test
     fun `real navigation records last used outside incognito and the same mounted list reorders reactively`() = runBlocking {
         val root = Preferences.userRoot().node("/mihon/source-last-used/${System.nanoTime()}")
@@ -49,8 +63,14 @@ class SourceLastUsedWiringTest {
             awaitRows(scene, listOf(alpha.name, zeta.name))
 
             clickSource(scene, zeta.name)
-            awaitPreference(scene, lastUsed, zeta.id)
-            click(scene, "Back")
+            withTimeout(2_000) {
+                while (lastUsed.get() != zeta.id) {
+                    scene.render()
+                    delay(10)
+                }
+            }
+            val back = nodes(scene).first { it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains("Back") }
+            assertTrue(requireNotNull(back.config[SemanticsActions.OnClick].action).invoke())
             awaitRows(scene, listOf(zeta.name, alpha.name, zeta.name))
             assertTrue(rendered(scene).contains(MR.strings.last_used_source.localized()))
 
@@ -63,33 +83,32 @@ class SourceLastUsedWiringTest {
     }
 
     @Test
-    fun `real navigation does not replace last used while global incognito is enabled`() = runBlocking {
-        val root = Preferences.userRoot().node("/mihon/source-last-used-incognito/${System.nanoTime()}")
-        val store = DesktopPreferenceStore(root)
-        val preferences = DesktopAppPreferences(store).apply {
-            enabledLanguages.set(setOf("en"))
-            incognitoMode.set(true)
-        }
-        val lastUsed = store.getLong(Preference.appStateKey("last_catalogue_source"), -1L).apply { set(301L) }
-        val source = FakeSource(302, "en", "Incognito projection source")
-        val scene = mountedScene(preferences, listOf(source), coroutineContext)
-
-        try {
-            clickSource(scene, source.name)
-            withTimeout(2_000) {
-                while (!rendered(scene).contains(source.name)) {
+    fun `real navigation does not replace last used in global or extension incognito`() = runBlocking {
+        listOf(
+            Triple(true, emptySet<String>(), null),
+            Triple(false, setOf("incognito.extension"), "incognito.extension"),
+        ).forEachIndexed { index, (globalIncognito, incognitoExtensions, extensionPackage) ->
+            val root = Preferences.userRoot().node("/mihon/source-last-used-incognito/$index-${System.nanoTime()}")
+            val store = DesktopPreferenceStore(root)
+            val preferences = DesktopAppPreferences(store).apply {
+                enabledLanguages.set(setOf("en"))
+                incognitoMode.set(globalIncognito)
+                this.incognitoExtensions.set(incognitoExtensions)
+            }
+            val lastUsed = store.getLong(Preference.appStateKey("last_catalogue_source"), -1L).apply { set(301L) }
+            val source = FakeSource(302 + index.toLong(), "en", "Incognito projection source $index")
+            val scene = mountedScene(preferences, listOf(source), coroutineContext, extensionPackage)
+            try {
+                clickSource(scene, source.name)
+                repeat(5) {
                     scene.render()
                     delay(10)
                 }
+                assertEquals(301L, lastUsed.get())
+            } finally {
+                scene.close()
+                root.removeNode()
             }
-            repeat(5) {
-                scene.render()
-                delay(10)
-            }
-            assertEquals(301L, lastUsed.get())
-        } finally {
-            scene.close()
-            root.removeNode()
         }
     }
 
@@ -97,8 +116,12 @@ class SourceLastUsedWiringTest {
         preferences: DesktopAppPreferences,
         sources: List<FakeSource>,
         coroutineContext: CoroutineContext,
+        extensionPackage: String? = null,
     ): ImageComposeScene {
         val sourceManager = FakeDesktopSourceManager(sources)
+        val extensionManager = mockk<DesktopExtensionManager> {
+            every { getExtensionPackage(any()) } returns extensionPackage
+        }
         val saver = mockk<SaveSourceMangaForDetails> {
             coEvery { awaitSearchResults(any(), any()) } returns emptyList()
         }
@@ -110,6 +133,7 @@ class SourceLastUsedWiringTest {
             every { getManga } returns mockk<GetManga> {
                 every { subscribe(any<String>(), any<Long>()) } returns flowOf(null)
             }
+            every { this@mockk.extensionManager } returns extensionManager
             every { sourceLoginSessionFactory } returns mockk(relaxed = true)
         }
         return ImageComposeScene(900, 1_200, coroutineContext = coroutineContext) {}.also { scene ->
@@ -119,17 +143,6 @@ class SourceLastUsedWiringTest {
                 }
             }
             scene.render()
-        }
-    }
-
-    private suspend fun awaitPreference(
-        scene: ImageComposeScene,
-        preference: tachiyomi.core.common.preference.Preference<Long>,
-        expected: Long,
-    ) = withTimeout(2_000) {
-        while (preference.get() != expected) {
-            scene.render()
-            delay(10)
         }
     }
 
@@ -143,14 +156,6 @@ class SourceLastUsedWiringTest {
     private fun clickSource(scene: ImageComposeScene, name: String) {
         val node = nodes(scene).first {
             it.config.contains(SemanticsActions.OnLongClick) && it.config.toString().contains(name)
-        }
-        assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
-    }
-
-    private fun click(scene: ImageComposeScene, label: String) {
-        val node = nodes(scene).first {
-            it.config.contains(SemanticsActions.OnClick) &&
-                it.config.toString().contains(label)
         }
         assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
     }

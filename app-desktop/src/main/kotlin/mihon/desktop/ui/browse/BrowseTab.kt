@@ -61,6 +61,45 @@ import tachiyomi.core.common.preference.getAndSet
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.MR
 
+sealed interface DesktopSourceGroupKey {
+    data object LastUsed : DesktopSourceGroupKey
+    data object Pinned : DesktopSourceGroupKey
+    data class Language(val code: String) : DesktopSourceGroupKey
+}
+
+data class DesktopSourceListItem(val source: CatalogueSource, val isUsedLast: Boolean = false)
+
+data class DesktopSourceListGroup(val key: DesktopSourceGroupKey, val items: List<DesktopSourceListItem>)
+
+object DesktopSourceListProjector {
+    fun project(
+        sources: List<CatalogueSource>,
+        pinnedSourceIds: Set<String>,
+        lastUsedSourceId: Long,
+    ): List<DesktopSourceListGroup> {
+        val sorted = sources.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+        return buildList {
+            sorted.firstOrNull { it.id == lastUsedSourceId }?.let {
+                add(DesktopSourceListGroup(DesktopSourceGroupKey.LastUsed, listOf(DesktopSourceListItem(it, true))))
+            }
+            sorted.filter { it.id.toString() in pinnedSourceIds }.takeIf { it.isNotEmpty() }?.let {
+                add(DesktopSourceListGroup(DesktopSourceGroupKey.Pinned, it.map { source -> DesktopSourceListItem(source) }))
+            }
+            sorted.filterNot { it.id.toString() in pinnedSourceIds }
+                .groupBy { it.lang }
+                .toSortedMap(compareBy<String> { it.isEmpty() }.thenBy { it })
+                .forEach { (language, languageSources) ->
+                    add(
+                        DesktopSourceListGroup(
+                            DesktopSourceGroupKey.Language(language),
+                            languageSources.map { source -> DesktopSourceListItem(source) },
+                        ),
+                    )
+                }
+        }
+    }
+}
+
 object BrowseTab : Tab {
 
     override val options: TabOptions
@@ -109,6 +148,9 @@ class BrowseSourceListScreen : Screen {
         val pinnedSourceIds by appPreferences.pinnedSources.changes().collectAsState(
             initial = appPreferences.pinnedSources.get(),
         )
+        val lastUsedSourceId by appPreferences.lastUsedSource.changes().collectAsState(
+            initial = appPreferences.lastUsedSource.get(),
+        )
         val allSources = remember(installedSources, enabledLanguages, disabledSources) {
             selectEnabledCatalogueSourceCandidates(installedSources, enabledLanguages, disabledSources)
         }
@@ -124,16 +166,13 @@ class BrowseSourceListScreen : Screen {
             installedSources.map { it.lang }.distinct().sorted()
         }
 
-        val displayedSources = remember(allSources, effectiveSelectedLang, pinnedSourceIds) {
+        val displayedSourceGroups = remember(allSources, effectiveSelectedLang, pinnedSourceIds, lastUsedSourceId) {
             val filtered = if (effectiveSelectedLang == null) {
                 allSources
             } else {
                 allSources.filter { it.lang == effectiveSelectedLang }
             }
-            val sorted = filtered.sortedBy { it.name.lowercase() }
-            val pinned = sorted.filter { it.id.toString() in pinnedSourceIds }
-            val rest = sorted.filter { it.id.toString() !in pinnedSourceIds }
-            pinned + rest
+            DesktopSourceListProjector.project(filtered, pinnedSourceIds, lastUsedSourceId)
         }
 
         fun togglePin(sourceId: Long) {
@@ -234,46 +273,53 @@ class BrowseSourceListScreen : Screen {
                 )
                 HorizontalDivider()
 
-                if (displayedSources.isEmpty()) {
+                if (displayedSourceGroups.isEmpty()) {
                     EmptySources(onExtensionsClick = { navigator.push(ExtensionListScreen()) })
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(vertical = 4.dp),
                     ) {
-                        items(displayedSources, key = { it.id }) { source ->
-                            val isPinned = source.id.toString() in pinnedSourceIds
-                            ListItem(
-                                headlineContent = { Text(source.name) },
-                                supportingContent = { Text(source.lang.uppercase()) },
-                                trailingContent = {
-                                    IconButton(onClick = {
-                                        togglePin(source.id)
-                                    }) {
-                                        Icon(
-                                            if (isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
-                                            contentDescription =
-                                                "${if (isPinned) MR.strings.action_unpin.localized() else MR.strings.action_pin.localized()} ${source.name}",
-                                            tint = if (isPinned) {
-                                                MaterialTheme.colorScheme.primary
-                                            } else {
-                                                MaterialTheme.colorScheme.outline
-                                            },
-                                        )
-                                    }
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .combinedClickable(
-                                        onClick = {
-                                            navigator.push(SourceBrowseScreen(sourceId = source.id))
-                                        },
-                                        onLongClick = {
-                                            togglePin(source.id)
-                                        },
-                                    ),
-                            )
-                            Divider(modifier = Modifier.padding(horizontal = 16.dp))
+                        displayedSourceGroups.forEach { group ->
+                            item(key = "source-header-${group.key}") {
+                                Text(
+                                    text = when (val key = group.key) {
+                                        DesktopSourceGroupKey.LastUsed -> MR.strings.last_used_source.localized()
+                                        DesktopSourceGroupKey.Pinned -> MR.strings.pinned_sources.localized()
+                                        is DesktopSourceGroupKey.Language -> key.code.uppercase()
+                                    },
+                                    style = MaterialTheme.typography.titleSmall,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                )
+                            }
+                            items(
+                                items = group.items,
+                                key = { "${group.key}-${it.source.id}-${it.isUsedLast}" },
+                            ) { entry ->
+                                val source = entry.source
+                                val isPinned = source.id.toString() in pinnedSourceIds
+                                ListItem(
+                                    headlineContent = { Text(source.name) },
+                                    supportingContent = { Text(source.lang.uppercase()) },
+                                    trailingContent = {
+                                        IconButton(onClick = { togglePin(source.id) }) {
+                                            Icon(
+                                                if (isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+                                                contentDescription =
+                                                    "${if (isPinned) MR.strings.action_unpin.localized() else MR.strings.action_pin.localized()} ${source.name}",
+                                                tint = if (isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                            )
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .combinedClickable(
+                                            onClick = { navigator.push(SourceBrowseScreen(sourceId = source.id)) },
+                                            onLongClick = { togglePin(source.id) },
+                                        ),
+                                )
+                                Divider(modifier = Modifier.padding(horizontal = 16.dp))
+                            }
                         }
                     }
                 }
