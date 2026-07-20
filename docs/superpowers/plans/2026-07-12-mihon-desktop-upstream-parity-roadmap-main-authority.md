@@ -402,11 +402,11 @@ Task 4B 的子计划编号，不是父 roadmap 在 Task 6 之后新增的同级�
 - [x] 子计划 Task 6A–6E：Browse/Extension 双端 production wiring、i18n、导航与 Test Mode
 - [ ] 子计划 Task 7：compat 去重、parity 证据、最终审查与 Windows/macOS 验收
 
-Task 7D35、7D36 已关闭 real-extension fixture 污染与 source-list collector 生命周期泄漏。Task 7D37
-先在 `ceb0200a5` 收敛 global-search selected/rows/persistence，再由 BUILD34 证明 child Job 前还需实际应用
-composition disposal；唯一修复 `d3527f6e6` 通过 empty-content render 后再 close/cancel-join/remove node，
-Windows/macOS 相邻 Authority→Challenge 15/15 及修复复审均通过。当前下一步从最终证据 HEAD 分配 BUILD35；
-双平台验收、最终审查、OpenSpec checkoff 与归档全部通过前，子计划 Task 7 和父 Task 4B 保持未完成。
+Task 7D35–7D37 已关闭 real-extension、source-list 与 global-search fixture 隔离/收敛问题。BUILD35 随后
+通过 Windows 全套验收，但 macOS fresh suite 暴露 `ExtensionPresentationUiTest` 在卸载失败 Snackbar 仍活跃时
+立即触发 reload，第二条真实失败反馈排队并超过五秒 fixture 边界。当前由单文件 Task 7D38 使用既有真实
+Snackbar Dismiss semantics 分隔两次用户动作，保留 ScreenModel、localized feedback 与 authority routing 断言。
+双平台新 BUILD、最终审查、OpenSpec checkoff 与归档全部通过前，子计划 Task 7 和父 Task 4B 保持未完成。
 
 **Files:**
 - Modify: 当前分支 `app/src/main/java/eu/kanade/tachiyomi/extension/`

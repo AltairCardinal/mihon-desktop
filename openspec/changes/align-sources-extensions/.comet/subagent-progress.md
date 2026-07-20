@@ -596,3 +596,11 @@
 - Closure: empty-content render applies real old-tree `collectAsState` and `DisposableEffect` disposal; selected, four outcomes, rows, progress and persisted remount assertions remain intact.
 - Final Task 7D37 result: complete at `d3527f6e6`; review/fix round `1/1`.
 - Delivery state: BUILD34 remains rejected. Resume Step 6 by allocating BUILD35 from the final D37 evidence HEAD.
+
+## BUILD35 Verification and Task 7D38 Dispatch
+
+- Verification head: `6edd1ce3fcf40c0a1ecf87c97465423f461fb215`; allocated version `0.11.14.35.6edd1ce`.
+- Windows: Desktop JVM suite and distributable PASS; WMI descendant enumeration was unavailable, but direct fixed-EXE title matched exactly; official smoke and Test Mode health/ExtensionList/extension search PASS.
+- macOS fresh suite: 1814 tests, 1 failed; stopped before distributable and runtime acceptance.
+- RED: `ExtensionPresentationUiTest` proved uninstall failure feedback, then clicked Reload Installed while the first Snackbar was still active; exact reload failure feedback did not appear inside five seconds. The post-wait authority-manager verification therefore did not execute.
+- Decision: reject BUILD35 and dispatch bounded Task 7D38 `extension-reload-feedback-convergence`. Use the existing real Snackbar Dismiss semantics fixture boundary before the second action; do not inflate timeouts or change production behavior.
