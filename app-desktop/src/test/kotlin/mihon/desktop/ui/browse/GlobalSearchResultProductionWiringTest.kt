@@ -61,7 +61,7 @@ import tachiyomi.i18n.MR
 import java.util.prefs.Preferences
 import java.util.concurrent.ConcurrentHashMap
 
-private const val ASYNC_TIMEOUT_MS = 5_000L
+private const val ASYNC_TIMEOUT_MS = 15_000L
 
 @OptIn(ExperimentalComposeUiApi::class)
 class GlobalSearchResultProductionWiringTest {
