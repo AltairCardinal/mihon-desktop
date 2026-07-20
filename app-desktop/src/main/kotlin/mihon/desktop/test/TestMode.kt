@@ -1,6 +1,7 @@
 package mihon.desktop.test
 
 import io.ktor.server.engine.embeddedServer
+import io.ktor.server.engine.ApplicationEngine
 import io.ktor.server.netty.Netty
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,8 +28,10 @@ object TestMode {
 
     private var isStarted = false
     private var serverJob: Job? = null
+    private var server: ApplicationEngine? = null
     private val serverScope = CoroutineScope(Dispatchers.Default)
-    private var termination = CountDownLatch(0)
+    private val lifecycleLock = Any()
+    private var activeRun: TestModeRun? = null
 
     /**
      * Start test mode with the given configuration.
@@ -40,7 +43,10 @@ object TestMode {
         }
 
         logger.info("Starting test mode with config: httpPort=${args.httpPort}, headless=${args.headless}")
-        termination = CountDownLatch(1)
+        val run = TestModeRun()
+        synchronized(lifecycleLock) {
+            activeRun = run
+        }
 
         // Initialize screenshot service
         ScreenshotService.initialize(args.screenshotDir)
@@ -88,7 +94,7 @@ object TestMode {
         )
 
         // Start HTTP server
-        startHttpServer(args.httpPort)
+        startHttpServer(args.httpPort, run)
 
         isStarted = true
         logger.info("Test mode started successfully on port ${args.httpPort}")
@@ -97,16 +103,38 @@ object TestMode {
     /**
      * Start the HTTP test server.
      */
-    private fun startHttpServer(port: Int) {
-        serverJob = serverScope.launch {
+    private fun startHttpServer(port: Int, run: TestModeRun) {
+        val job = serverScope.launch {
+            var startedServer: ApplicationEngine? = null
             try {
-                embeddedServer(Netty, port = port) {
+                startedServer = embeddedServer(Netty, port = port) {
                     testHttpServer()
-                }.start(wait = true)
+                }.start(wait = false)
+
+                val belongsToActiveRun = synchronized(lifecycleLock) {
+                    if (activeRun === run) {
+                        server = startedServer
+                        true
+                    } else {
+                        false
+                    }
+                }
+                if (!belongsToActiveRun) {
+                    startedServer.stop(SERVER_STOP_GRACE_MS, SERVER_STOP_TIMEOUT_MS)
+                }
             } catch (e: Exception) {
+                startedServer?.runCatching {
+                    stop(SERVER_STOP_GRACE_MS, SERVER_STOP_TIMEOUT_MS)
+                }
                 logger.error("HTTP test server failed to start", e)
-            } finally {
-                termination.countDown()
+                run.terminate()
+            }
+        }
+        synchronized(lifecycleLock) {
+            if (activeRun === run) {
+                serverJob = job
+            } else {
+                job.cancel()
             }
         }
 
@@ -124,10 +152,19 @@ object TestMode {
 
         logger.info("Stopping test mode")
 
-        // Stop HTTP server
-        serverJob?.cancel()
-        serverJob = null
-        termination.countDown()
+        // Stop HTTP server and release only this start generation.
+        val (run, activeServer, activeJob) = synchronized(lifecycleLock) {
+            val currentRun = activeRun ?: return
+            activeRun = null
+            val currentServer = server
+            val currentJob = serverJob
+            server = null
+            serverJob = null
+            Triple(currentRun, currentServer, currentJob)
+        }
+        activeServer?.stop(SERVER_STOP_GRACE_MS, SERVER_STOP_TIMEOUT_MS)
+        activeJob?.cancel()
+        run.terminate()
 
         // Disable screenshot service
         ScreenshotService.disable()
@@ -148,12 +185,25 @@ object TestMode {
     /**
      * Keep a headless test process alive for as long as its HTTP server is running.
      */
-    fun awaitTermination() = termination.await()
+    fun awaitTermination() {
+        synchronized(lifecycleLock) { activeRun }?.awaitTermination()
+    }
 
     /**
      * Get the HTTP server port.
      */
     fun getHttpPort(): Int = 8080
+
+    private const val SERVER_STOP_GRACE_MS = 100L
+    private const val SERVER_STOP_TIMEOUT_MS = 1_000L
+}
+
+internal class TestModeRun {
+    private val termination = CountDownLatch(1)
+
+    fun awaitTermination() = termination.await()
+
+    fun terminate() = termination.countDown()
 }
 
 /**

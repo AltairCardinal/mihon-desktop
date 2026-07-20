@@ -11,6 +11,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.test.TestArguments
+import mihon.desktop.test.TestModeRun
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -105,6 +106,24 @@ class DesktopAppRuntimeTest {
         assertFalse(handled)
         assertTrue(runtime.isRunning)
         runtime.close()
+    }
+
+    @Test
+    fun `previous test mode run cannot terminate a restarted run`() = runBlocking {
+        val previous = TestModeRun()
+        val current = TestModeRun()
+        val waiting = CountDownLatch(1)
+        val waiter = async(Dispatchers.Default) {
+            waiting.countDown()
+            current.awaitTermination()
+        }
+
+        assertTrue(waiting.await(1, TimeUnit.SECONDS))
+        previous.terminate()
+        assertFalse(waiter.isCompleted)
+
+        current.terminate()
+        waiter.await()
     }
 
     private fun headlessRuntime() = DesktopAppRuntime(
