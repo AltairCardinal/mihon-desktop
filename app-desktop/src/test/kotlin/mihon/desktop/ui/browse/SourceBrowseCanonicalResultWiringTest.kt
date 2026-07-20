@@ -101,6 +101,8 @@ class SourceBrowseCanonicalResultWiringTest {
         }
         val dependencies = mockk<DesktopUiDependencies> {
             every { sourceManager } returns FakeDesktopSourceManager(listOf(source))
+            every { appPreferences } returns sourceBrowseHistoryPreferences()
+            every { extensionManager } returns sourceBrowseExtensionManager()
             every { sourceMangaSearchService } returns SourceMangaSearchService()
             every { saveSourceMangaForDetails } returns mockk(relaxed = true)
             every { getManga } returns mockk(relaxed = true)
@@ -165,6 +167,8 @@ class SourceBrowseCanonicalResultWiringTest {
         }
         val dependencies = mockk<DesktopUiDependencies> {
             every { sourceManager } returns FakeDesktopSourceManager(listOf(source))
+            every { appPreferences } returns sourceBrowseHistoryPreferences()
+            every { extensionManager } returns sourceBrowseExtensionManager()
             every { sourceMangaSearchService } returns SourceMangaSearchService()
             every { saveSourceMangaForDetails } returns saver
             every { getManga } returns GetManga(repository)

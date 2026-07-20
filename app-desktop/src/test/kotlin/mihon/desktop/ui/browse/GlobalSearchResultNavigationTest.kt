@@ -154,6 +154,9 @@ class GlobalSearchResultNavigationTest {
             every { enabledLanguages } returns preference(setOf("en"))
             every { disabledSources } returns preference(emptySet())
             every { pinnedSources } returns preference(setOf(source.id.toString()))
+            every { incognitoMode } returns sourceBrowseIncognitoPreference()
+            every { incognitoExtensions } returns sourceBrowseExtensionIncognitoPreference()
+            every { lastUsedSource } returns sourceBrowseLastUsedPreference()
             every { globalSearchFilterState } returns mockk {
                 every { get() } returns false
                 every { changes() } returns flowOf(false)
@@ -168,6 +171,7 @@ class GlobalSearchResultNavigationTest {
         private val dependencies = mockk<DesktopUiDependencies> {
             every { sourceManager } returns FakeDesktopSourceManager(listOf(source))
             every { appPreferences } returns preferences
+            every { extensionManager } returns sourceBrowseExtensionManager()
             every { sourceMangaSearchService } returns SourceMangaSearchService()
             every { saveSourceMangaForDetails } returns saver
             every { getManga } returns mockk<GetManga> {

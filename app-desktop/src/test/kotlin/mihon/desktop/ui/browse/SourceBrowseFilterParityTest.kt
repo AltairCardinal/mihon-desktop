@@ -124,6 +124,8 @@ class SourceBrowseFilterParityTest {
     private fun CoroutineScope.sourceScene(source: RecordingSource): ImageComposeScene {
         val dependencies = mockk<DesktopUiDependencies> {
             every { sourceManager } returns FakeDesktopSourceManager(listOf(source))
+            every { appPreferences } returns sourceBrowseHistoryPreferences()
+            every { extensionManager } returns sourceBrowseExtensionManager()
             every { sourceMangaSearchService } returns SourceMangaSearchService()
             every { saveSourceMangaForDetails } returns mockk(relaxed = true)
             every { getManga } returns mockk<GetManga>(relaxed = true)

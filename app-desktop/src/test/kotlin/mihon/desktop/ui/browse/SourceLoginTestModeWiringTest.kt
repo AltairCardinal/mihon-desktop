@@ -178,6 +178,8 @@ class SourceLoginTestModeWiringTest {
     private fun mockkDependencies(source: HttpSource, ticket: AtomicReference<DesktopBrowserLoginTicket?>) =
         io.mockk.mockk<DesktopUiDependencies> {
             io.mockk.every { sourceManager } returns FakeDesktopSourceManager(listOf(source))
+            io.mockk.every { appPreferences } returns sourceBrowseHistoryPreferences()
+            io.mockk.every { extensionManager } returns sourceBrowseExtensionManager()
             io.mockk.every { sourceMangaSearchService } returns SourceMangaSearchService()
             io.mockk.every { saveSourceMangaForDetails } returns
                 io.mockk.mockk<SaveSourceMangaForDetails>(relaxed = true)
