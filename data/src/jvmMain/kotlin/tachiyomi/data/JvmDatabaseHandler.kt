@@ -10,19 +10,8 @@ import app.cash.sqldelight.db.SqlDriver
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlin.coroutines.AbstractCoroutineContextElement
-import kotlin.coroutines.CoroutineContext
-import kotlin.coroutines.coroutineContext
-
-private class JvmTransactionElement(
-    val owner: JvmDatabaseHandler,
-) : AbstractCoroutineContextElement(JvmTransactionElement) {
-    companion object Key : CoroutineContext.Key<JvmTransactionElement>
-}
 
 class JvmDatabaseHandler(
     val db: Database,
@@ -31,13 +20,15 @@ class JvmDatabaseHandler(
 ) : DatabaseHandler, AutoCloseable {
     @Volatile
     private var closed = false
-    private val transactionMutex = Mutex()
+    internal val transactionMutex = Mutex()
 
     override fun close() {
         if (closed) return
         closed = true
         driver.close()
     }
+
+    internal fun checkOpen() = check(!closed) { "Database handler is closed" }
 
     override suspend fun <T> await(inTransaction: Boolean, block: suspend Database.() -> T): T {
         return dispatch(inTransaction, block)
@@ -91,27 +82,15 @@ class JvmDatabaseHandler(
     }
 
     private suspend fun <T> dispatch(inTransaction: Boolean, block: suspend Database.() -> T): T {
-        check(!closed) { "Database handler is closed" }
-        if (coroutineContext[JvmTransactionElement]?.owner === this) {
-            return block(db)
-        }
+        checkOpen()
         if (inTransaction) {
-            return transactionMutex.withLock {
-                check(!closed) { "Database handler is closed" }
-                withContext(queryDispatcher) {
-                    db.transactionWithResult {
-                        runBlocking(queryDispatcher + JvmTransactionElement(this@JvmDatabaseHandler)) {
-                            block(db)
-                        }
-                    }
-                }
-            }
+            return withTransaction { block(db) }
         }
 
         if (driver.currentTransaction() != null) {
             return block(db)
         }
 
-        return withContext(queryDispatcher) { block(db) }
+        return withContext(getCurrentDatabaseContext()) { block(db) }
     }
 }
