@@ -74,6 +74,7 @@ class ExtensionArtifactReplacementTest {
             artifactProvider = { _, destination -> destination.writeBytes(sourceJar(FixtureNewSource::class.java)) },
             apkConverter = ApkToJarConverter(),
             loader = DesktopExtensionLoader(directory.toFile()),
+            artifactAuthenticator = DesktopArtifactAuthenticator { _, _, _ -> },
             releaseRuntime = {},
             reloadRuntime = { _, _ -> },
             fileSystem = fileSystem,

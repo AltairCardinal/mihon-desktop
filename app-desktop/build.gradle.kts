@@ -121,6 +121,9 @@ kotlin {
                 // DEX to JVM bytecode conversion (for loading Android extension APKs on desktop)
                 implementation(libs.dex.tools)
 
+                // Verify APK signer certificates before converting repository artifacts.
+                implementation("com.android.tools.build:apksig:8.13.2")
+
                 // Test HTTP Server (Ktor)
                 implementation("io.ktor:ktor-server-core:2.3.12")
                 implementation("io.ktor:ktor-server-netty:2.3.12")

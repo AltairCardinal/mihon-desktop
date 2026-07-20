@@ -166,6 +166,7 @@ internal class DesktopExtensionInstallPort(
     private val artifactProvider: DesktopArtifactProvider,
     private val apkConverter: ApkToJarConverter,
     private val loader: DesktopExtensionLoader,
+    private val artifactAuthenticator: DesktopArtifactAuthenticator,
     private val releaseRuntime: (String) -> Unit,
     private val reloadRuntime: (String, Set<Long>?) -> Unit,
     private val fileSystem: DesktopExtensionFileSystem = DefaultDesktopExtensionFileSystem,
@@ -223,6 +224,11 @@ internal class DesktopExtensionInstallPort(
         }
 
         val content = inspect(install.download)
+        artifactAuthenticator.authenticate(
+            file = install.download,
+            repositoryFingerprint = install.artifact.repository.signingKeyFingerprint,
+            isApk = content.hasDex,
+        )
         val candidate = File(install.transactionDirectory, "candidate.jar")
         when {
             content.hasJvmClasses -> fileSystem.copy(install.download, candidate)

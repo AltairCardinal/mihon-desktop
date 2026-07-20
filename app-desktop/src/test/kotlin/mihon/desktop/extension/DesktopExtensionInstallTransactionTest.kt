@@ -249,7 +249,7 @@ class DesktopExtensionInstallTransactionTest {
     @Test
     fun `cancelled and rollback restore failures keep exact error taxonomy`(@TempDir directory: Path) = runBlocking {
         val api = api()
-        val cancelledManager = DesktopExtensionManager(
+        val cancelledManager = transactionManager(
             loader = DesktopExtensionLoader(directory.resolve("cancelled").toFile()),
             artifactProvider = { _, _ -> throw ExtensionInstallFailure(AppError.Cancelled) },
         )
@@ -264,7 +264,7 @@ class DesktopExtensionInstallTransactionTest {
         val partialDirectory = directory.resolve("partial")
         val snapshot = installedSnapshot(partialDirectory)
         val loader = FailCountLoader(partialDirectory.toFile())
-        val partialManager = DesktopExtensionManager(
+        val partialManager = transactionManager(
             loader = loader,
             artifactProvider = { _, destination -> destination.writeBytes(sourceJar(FixtureNewSource::class.java)) },
         ).also { it.loadAll() }
@@ -289,7 +289,7 @@ class DesktopExtensionInstallTransactionTest {
     fun `cleanup failure after candidate reload releases new runtime before restoring old snapshot`(@TempDir directory: Path) = runBlocking {
         val snapshot = installedSnapshot(directory)
         val fileSystem = CleanupFailureFileSystem()
-        val manager = DesktopExtensionManager(
+        val manager = transactionManager(
             loader = DesktopExtensionLoader(directory.toFile()),
             artifactProvider = { _, destination -> destination.writeBytes(sourceJar(FixtureNewSource::class.java)) },
             fileSystem = fileSystem,
@@ -330,7 +330,7 @@ class DesktopExtensionInstallTransactionTest {
     fun `remove waits from installed snapshot through failed install rollback`(@TempDir directory: Path) = runBlocking {
         installedSnapshot(directory)
         val loader = FailOnceLoader(directory.toFile())
-        val manager = DesktopExtensionManager(
+        val manager = transactionManager(
             loader = loader,
             artifactProvider = { _, destination -> destination.writeBytes(sourceJar(BlockingValidationSource::class.java)) },
         ).also { it.loadAll() }
@@ -365,7 +365,7 @@ class DesktopExtensionInstallTransactionTest {
     @Test
     fun `validation failure after install window releases public lifecycle`(@TempDir directory: Path) = runBlocking {
         val snapshot = installedSnapshot(directory)
-        val manager = DesktopExtensionManager(
+        val manager = transactionManager(
             loader = DesktopExtensionLoader(directory.toFile()),
             artifactProvider = { _, destination -> destination.writeBytes(classOnlyJar(DesktopExtensionInstallTransactionTest::class.java)) },
         ).also { it.loadAll() }
@@ -385,7 +385,7 @@ class DesktopExtensionInstallTransactionTest {
     @Test
     fun `install after close is Cancelled without artifacts`(@TempDir directory: Path) = runBlocking {
         val downloads = AtomicInteger()
-        val manager = DesktopExtensionManager(
+        val manager = transactionManager(
             loader = DesktopExtensionLoader(directory.toFile()),
             artifactProvider = { _, destination ->
                 downloads.incrementAndGet()
@@ -444,7 +444,7 @@ class DesktopExtensionInstallTransactionTest {
     @Test
     fun `public operation queued before close is rejected after install window releases`(@TempDir directory: Path) = runBlocking {
         installedSnapshot(directory)
-        val manager = DesktopExtensionManager(
+        val manager = transactionManager(
             loader = DesktopExtensionLoader(directory.toFile()),
             artifactProvider = { _, destination -> destination.writeBytes(sourceJar(BlockingValidationSource::class.java)) },
         ).also { it.loadAll() }
@@ -475,7 +475,7 @@ class DesktopExtensionInstallTransactionTest {
     @Test
     fun `partial cleanup cannot consume rollback material`(@TempDir directory: Path) = runBlocking {
         val snapshot = installedSnapshot(directory)
-        val manager = DesktopExtensionManager(
+        val manager = transactionManager(
             loader = DesktopExtensionLoader(directory.toFile()),
             artifactProvider = { _, destination -> destination.writeBytes(sourceJar(FixtureNewSource::class.java)) },
             fileSystem = PartiallyDeletingCleanupFileSystem(),
@@ -500,7 +500,7 @@ class DesktopExtensionInstallTransactionTest {
                 destination.name.startsWith(".recovery-") && occurrence == 1
             },
         )
-        val manager = DesktopExtensionManager(
+        val manager = transactionManager(
             loader = DesktopExtensionLoader(directory.toFile()),
             artifactProvider = { _, destination -> destination.writeBytes(sourceJar(FixtureNewSource::class.java)) },
             fileSystem = fileSystem,
@@ -530,7 +530,7 @@ class DesktopExtensionInstallTransactionTest {
 
     @Test
     fun `prepare failure and cleanup failure return Network plus Storage partial failure`(@TempDir directory: Path) = runBlocking {
-        val manager = DesktopExtensionManager(
+        val manager = transactionManager(
             loader = DesktopExtensionLoader(directory.toFile()),
             artifactProvider = { _, destination ->
                 destination.writeText("partial")
@@ -554,7 +554,7 @@ class DesktopExtensionInstallTransactionTest {
     @Test
     fun `real cancellation during prepare removes partial transaction`(@TempDir directory: Path) = runBlocking {
         val providerStarted = kotlinx.coroutines.CompletableDeferred<Unit>()
-        val manager = DesktopExtensionManager(
+        val manager = transactionManager(
             loader = DesktopExtensionLoader(directory.toFile()),
             artifactProvider = { _, destination ->
                 destination.writeText("partial")
@@ -648,7 +648,7 @@ class DesktopExtensionInstallTransactionTest {
     fun `public close waits for cancelled prepare cleanup`(@TempDir directory: Path) = runBlocking {
         val providerStarted = kotlinx.coroutines.CompletableDeferred<Unit>()
         val fileSystem = BlockingCleanupFileSystem()
-        val manager = DesktopExtensionManager(
+        val manager = transactionManager(
             loader = DesktopExtensionLoader(directory.toFile()),
             artifactProvider = { _, destination ->
                 destination.writeText("partial")
@@ -678,7 +678,7 @@ class DesktopExtensionInstallTransactionTest {
     fun `real cancellation during reload restores old runtime and files`(@TempDir directory: Path) = runBlocking {
         val snapshot = installedSnapshot(directory)
         val loader = BlockingReloadLoader(directory.toFile())
-        val manager = DesktopExtensionManager(
+        val manager = transactionManager(
             loader = loader,
             artifactProvider = { _, destination -> destination.writeBytes(sourceJar(FixtureNewSource::class.java)) },
         ).also { it.loadAll() }
@@ -707,7 +707,7 @@ class DesktopExtensionInstallTransactionTest {
     fun `real cancellation during cleanup restores old runtime and files`(@TempDir directory: Path) = runBlocking {
         val snapshot = installedSnapshot(directory)
         val fileSystem = BlockingCleanupFileSystem()
-        val manager = DesktopExtensionManager(
+        val manager = transactionManager(
             loader = DesktopExtensionLoader(directory.toFile()),
             artifactProvider = { _, destination -> destination.writeBytes(sourceJar(FixtureNewSource::class.java)) },
             fileSystem = fileSystem,
@@ -781,7 +781,7 @@ class DesktopExtensionInstallTransactionTest {
     fun `runtime rejection maps to MalformedData`(@TempDir directory: Path) = runBlocking {
         installedSnapshot(directory)
         val loader = EmptyOnceReloadLoader(directory.toFile())
-        val manager = DesktopExtensionManager(
+        val manager = transactionManager(
             loader = loader,
             artifactProvider = { _, destination -> destination.writeBytes(sourceJar(FixtureNewSource::class.java)) },
         ).also { it.loadAll() }
@@ -876,7 +876,7 @@ class DesktopExtensionInstallTransactionTest {
     fun `reload failure restores old artifact metadata and runtime`(@TempDir directory: Path) = runBlocking {
         val snapshot = installedSnapshot(directory)
         val loader = FailOnceLoader(directory.toFile())
-        val manager = DesktopExtensionManager(
+        val manager = transactionManager(
             loader = loader,
             artifactProvider = { _, destination -> destination.writeBytes(sourceJar(FixtureNewSource::class.java)) },
         ).also { it.loadAll() }
@@ -901,7 +901,7 @@ class DesktopExtensionInstallTransactionTest {
     ) = coroutineScope {
         val snapshot = installedSnapshot(directory)
         val fileSystem = BlockingFirstReplaceFileSystem()
-        val manager = DesktopExtensionManager(
+        val manager = transactionManager(
             loader = DesktopExtensionLoader(directory.toFile()),
             artifactProvider = { _, destination -> destination.writeBytes(sourceJar(FixtureNewSource::class.java)) },
             fileSystem = fileSystem,
@@ -944,11 +944,22 @@ class DesktopExtensionInstallTransactionTest {
         directory: File,
         loader: DesktopExtensionLoader = DesktopExtensionLoader(directory),
         fileSystem: DesktopExtensionFileSystem = DefaultDesktopExtensionFileSystem,
-    ) = DesktopExtensionManager(
+    ) = transactionManager(
         loader = loader,
         artifactProvider = api::downloadArtifact,
         fileSystem = fileSystem,
     ).also { it.loadAll() }
+
+    private fun transactionManager(
+        loader: DesktopExtensionLoader,
+        artifactProvider: DesktopArtifactProvider,
+        fileSystem: DesktopExtensionFileSystem = DefaultDesktopExtensionFileSystem,
+    ) = DesktopExtensionManager(
+        loader = loader,
+        artifactProvider = artifactProvider,
+        fileSystem = fileSystem,
+        artifactAuthenticator = DesktopArtifactAuthenticator { _, _, _ -> },
+    )
 
     private suspend fun install(
         bytes: ByteArray,

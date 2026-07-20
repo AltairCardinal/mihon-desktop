@@ -28,6 +28,7 @@ class DesktopExtensionManager(
     },
     apkConverter: ApkToJarConverter = ApkToJarConverter(),
     fileSystem: DesktopExtensionFileSystem = DefaultDesktopExtensionFileSystem,
+    artifactAuthenticator: DesktopArtifactAuthenticator = DefaultDesktopArtifactAuthenticator,
 ) : AutoCloseable {
 
     private val loadedExtensions = mutableListOf<LoadedExtension>()
@@ -39,6 +40,7 @@ class DesktopExtensionManager(
         artifactProvider = artifactProvider,
         apkConverter = apkConverter,
         loader = loader,
+        artifactAuthenticator = artifactAuthenticator,
         releaseRuntime = ::releaseRuntime,
         reloadRuntime = ::reloadRuntime,
         fileSystem = fileSystem,
