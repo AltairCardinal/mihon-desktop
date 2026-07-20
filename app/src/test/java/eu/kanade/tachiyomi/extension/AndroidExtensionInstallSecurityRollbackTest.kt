@@ -155,6 +155,48 @@ class AndroidExtensionInstallSecurityRollbackTest {
     }
 
     @Test
+    fun `rollback before system commit leaves healthy package untouched`(@TempDir directory: Path) = runTest {
+        withServer(CANDIDATE_BYTES) { server ->
+            val gateway = FakeGateway(directory.toFile(), AndroidInstallLocation.SYSTEM).apply {
+                systemPackage = installed(directory, "healthy-system", REPOSITORY)
+            }
+            val before = gateway.systemPackage
+            val port = port(gateway, server)
+            val token = port.prepare(ExtensionInstallRequest(artifact(server)))
+            val rollback = port.validate(token)
+
+            port.rollback(rollback)
+
+            assertEquals(0, gateway.systemRemoveCount)
+            assertEquals(0, gateway.systemInstallCount)
+            assertEquals(before, gateway.systemPackage)
+            assertEquals(AndroidLoaderOrigin.SYSTEM, gateway.topology(PACKAGE_NAME).loaderOrigin)
+        }
+    }
+
+    @Test
+    fun `rollback restores matching metadata when system APK bytes differ`(@TempDir directory: Path) = runTest {
+        withServer(CANDIDATE_BYTES) { server ->
+            val gateway = FakeGateway(directory.toFile(), AndroidInstallLocation.SYSTEM).apply {
+                systemPackage = installed(directory, "original-system", REPOSITORY)
+            }
+            val port = port(gateway, server)
+            val token = port.prepare(ExtensionInstallRequest(artifact(server)))
+            val rollback = port.validate(token)
+            val differentApk = directory.resolve("different-system.apk").toFile().apply {
+                writeText("different-system")
+            }
+            gateway.systemPackage = checkNotNull(gateway.systemPackage).copy(apk = differentApk)
+
+            port.rollback(rollback)
+
+            assertEquals(1, gateway.systemRemoveCount)
+            assertEquals(1, gateway.systemInstallCount)
+            assertEquals("original-system", gateway.systemPackage?.apk?.readText())
+        }
+    }
+
+    @Test
     fun `rollback restores a downgraded system package and is idempotent`(@TempDir directory: Path) = runTest {
         withServer(CANDIDATE_BYTES) { server ->
             val gateway = FakeGateway(directory.toFile(), AndroidInstallLocation.SYSTEM).apply {
@@ -458,11 +500,17 @@ class AndroidExtensionInstallSecurityRollbackTest {
         runTest {
             val filesDirectory = directory.resolve("files").toFile().apply(File::mkdirs)
             val cacheDirectory = directory.resolve("cache").toFile().apply(File::mkdirs)
+            val installedSystem = directory.resolve("installed-system.apk").toFile()
             var installed = false
             val packageInstaller = mockk<PackageInstaller>(relaxed = true)
             val packageManager = mockk<PackageManager>(relaxed = true)
-            every { packageManager.getPackageInfo(PACKAGE_NAME, any<Int>()) } throws
-                PackageManager.NameNotFoundException()
+            every { packageManager.getPackageInfo(PACKAGE_NAME, any<Int>()) } answers {
+                if (!installed) throw PackageManager.NameNotFoundException()
+                PackageInfo().apply {
+                    packageName = PACKAGE_NAME
+                    applicationInfo = ApplicationInfo().apply { sourceDir = installedSystem.absolutePath }
+                }
+            }
             every { packageManager.getApplicationInfo(PACKAGE_NAME, any<Int>()) } answers {
                 if (installed) ApplicationInfo() else throw PackageManager.NameNotFoundException()
             }
@@ -471,7 +519,10 @@ class AndroidExtensionInstallSecurityRollbackTest {
             every { context.packageName } returns "eu.kanade.tachiyomi"
             val gateway = DefaultAndroidInstallGateway(
                 context = context,
-                installSystem = { _, _, _ -> installed = true },
+                installSystem = { _, file, _ ->
+                    file.copyTo(installedSystem, overwrite = true)
+                    installed = true
+                },
                 commitPlanProvider = {
                     AndroidCommitPlan(
                         AndroidInstallLocation.SYSTEM,
@@ -1023,6 +1074,8 @@ class AndroidExtensionInstallSecurityRollbackTest {
         var canonicalFailure: IOException? = null
         var copyCount = 0
         var readonlyCount = 0
+        var systemInstallCount = 0
+        var systemRemoveCount = 0
 
         override fun commitPlan(packageName: String) = AndroidCommitPlan(
             location = commitTarget,
@@ -1104,6 +1157,7 @@ class AndroidExtensionInstallSecurityRollbackTest {
             metadata: AndroidInstalledPackage,
             installer: BasePreferences.ExtensionInstaller,
         ) {
+            systemInstallCount++
             systemPackage =
                 metadata.copy(apk = file.copyTo(File(transactionRoot, "installed-system.apk"), overwrite = true))
         }
@@ -1115,6 +1169,7 @@ class AndroidExtensionInstallSecurityRollbackTest {
         }
 
         override suspend fun removeSystem(packageName: String) {
+            systemRemoveCount++
             systemPackage = null
         }
 

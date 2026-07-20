@@ -782,6 +782,10 @@ internal class AndroidInstallPort(
     override suspend fun rollback(token: ExtensionInstallRollbackToken) {
         val install = prepared[token.value] ?: failStorage("Unknown Android extension rollback")
         val state = install.preState ?: failStorage("Missing Android extension rollback state")
+        if (topologyMatchesPreState(install.artifact.packageName, state)) {
+            if (state.expectedAbsent) expectedAbsentAfterRollback += install.artifact.packageName
+            return
+        }
         when (state.commitTarget) {
             AndroidInstallLocation.PRIVATE -> {
                 val snapshot = state.privatePackage
@@ -820,11 +824,20 @@ internal class AndroidInstallPort(
                         installer = checkNotNull(state.systemInstaller),
                     )
                     val restored = storage { gateway.topology(install.artifact.packageName) }
-                    if (
-                        !restored.systemPackage.sameIdentity(snapshot) ||
-                        !restored.privatePackage.sameIdentity(state.privatePackage) ||
-                        restored.loaderOrigin != state.loaderOrigin
-                    ) {
+                    val restoredMatches = storage {
+                        installedIdentityMatches(
+                            install.artifact.packageName,
+                            restored.systemPackage,
+                            snapshot,
+                        ) &&
+                            installedIdentityMatches(
+                                install.artifact.packageName,
+                                restored.privatePackage,
+                                state.privatePackage,
+                            ) &&
+                            restored.loaderOrigin == state.loaderOrigin
+                    }
+                    if (!restoredMatches) {
                         failStorage("Restored system extension topology does not match snapshot")
                     }
                 }
@@ -854,15 +867,40 @@ internal class AndroidInstallPort(
         throw ExtensionInstallFailure(AppError.Storage(error))
     }
 
-    private fun AndroidInstalledPackage?.sameIdentity(expected: AndroidInstalledPackage?): Boolean =
-        (this == null && expected == null) ||
-            (
-                this != null && expected != null &&
-                    versionName == expected.versionName &&
-                    versionCode == expected.versionCode &&
-                    signers == expected.signers &&
-                    trust == expected.trust
-                )
+    private fun topologyMatchesPreState(packageName: String, state: InstallPreState): Boolean = try {
+        val current = gateway.topology(packageName)
+        current.loaderOrigin == state.loaderOrigin &&
+            installedIdentityMatches(packageName, current.privatePackage, state.privatePackage) &&
+            installedIdentityMatches(packageName, current.systemPackage, state.systemPackage)
+    } catch (failure: CancellationException) {
+        throw failure
+    } catch (_: Throwable) {
+        false
+    }
+
+    private fun installedIdentityMatches(
+        packageName: String,
+        current: AndroidInstalledPackage?,
+        expected: AndroidInstalledPackage?,
+    ): Boolean {
+        if (current == null || expected == null) return current == null && expected == null
+        if (
+            current.versionName != expected.versionName ||
+            current.versionCode != expected.versionCode ||
+            current.signers != expected.signers ||
+            current.trust != expected.trust ||
+            digest(current.apk) != digest(expected.apk)
+        ) {
+            return false
+        }
+        val currentApk = gateway.inspect(current.apk) ?: return false
+        val expectedApk = gateway.inspect(expected.apk) ?: return false
+        return currentApk.isExtension && expectedApk.isExtension &&
+            currentApk.packageName == packageName && expectedApk.packageName == packageName &&
+            currentApk.versionName == current.versionName && expectedApk.versionName == expected.versionName &&
+            currentApk.versionCode == current.versionCode && expectedApk.versionCode == expected.versionCode &&
+            currentApk.signers == current.signers && expectedApk.signers == expected.signers
+    }
 
     private fun ensureContained(root: File, child: File) {
         if (!child.toPath().startsWith(root.toPath())) failStorage("Extension transaction escaped cache root")
