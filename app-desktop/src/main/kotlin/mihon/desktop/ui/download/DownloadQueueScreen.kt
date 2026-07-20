@@ -57,6 +57,7 @@ import mihon.desktop.download.DownloadStatus
 import mihon.domain.error.AppError
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
+import tachiyomi.domain.chapter.repository.ChapterRepository
 
 class DownloadQueueScreen : Screen {
 
@@ -125,18 +126,59 @@ class DownloadQueueScreen : Screen {
                                     onDismissRequest = { showSortMenu = false },
                                 ) {
                                     DropdownMenuItem(
-                                        text = { Text("Sort A \u2192 Z") },
+                                        text = { Text("Upload date \u2014 Newest") },
                                         onClick = {
-                                            manager.sortQueue { it.mangaTitle }
                                             showSortMenu = false
+                                            scope.launch {
+                                                applyDownloadQueueOrder(
+                                                    manager,
+                                                    queue,
+                                                    dependencies.chapterRepository,
+                                                    DownloadQueueOrder.UPLOAD_DATE_NEWEST,
+                                                )
+                                            }
                                         },
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Sort Z \u2192 A") },
+                                        text = { Text("Upload date \u2014 Oldest") },
                                         onClick = {
-                                            manager.sortQueue { it.mangaTitle }
-                                            manager.reverseQueue()
                                             showSortMenu = false
+                                            scope.launch {
+                                                applyDownloadQueueOrder(
+                                                    manager,
+                                                    queue,
+                                                    dependencies.chapterRepository,
+                                                    DownloadQueueOrder.UPLOAD_DATE_OLDEST,
+                                                )
+                                            }
+                                        },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Chapter number \u2014 Ascending") },
+                                        onClick = {
+                                            showSortMenu = false
+                                            scope.launch {
+                                                applyDownloadQueueOrder(
+                                                    manager,
+                                                    queue,
+                                                    dependencies.chapterRepository,
+                                                    DownloadQueueOrder.CHAPTER_NUMBER_ASCENDING,
+                                                )
+                                            }
+                                        },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Chapter number \u2014 Descending") },
+                                        onClick = {
+                                            showSortMenu = false
+                                            scope.launch {
+                                                applyDownloadQueueOrder(
+                                                    manager,
+                                                    queue,
+                                                    dependencies.chapterRepository,
+                                                    DownloadQueueOrder.CHAPTER_NUMBER_DESCENDING,
+                                                )
+                                            }
                                         },
                                     )
                                 }
@@ -284,6 +326,45 @@ class DownloadQueueScreen : Screen {
         }
     }
 }
+internal enum class DownloadQueueOrder {
+    UPLOAD_DATE_NEWEST,
+    UPLOAD_DATE_OLDEST,
+    CHAPTER_NUMBER_ASCENDING,
+    CHAPTER_NUMBER_DESCENDING,
+}
+
+internal suspend fun applyDownloadQueueOrder(
+    manager: DesktopDownloadManager,
+    queueSnapshot: List<DownloadItem>,
+    chapterRepository: ChapterRepository,
+    order: DownloadQueueOrder,
+) {
+    val chapters = queueSnapshot.associate { item ->
+        item.chapterId to chapterRepository.getChapterById(item.chapterId)
+    }
+    manager.sortQueue(
+        Comparator { left, right ->
+            val leftChapter = chapters[left.chapterId]
+            val rightChapter = chapters[right.chapterId]
+            when {
+                leftChapter == null && rightChapter == null -> 0
+                leftChapter == null -> 1
+                rightChapter == null -> -1
+                else -> when (order) {
+                    DownloadQueueOrder.UPLOAD_DATE_NEWEST ->
+                        rightChapter.dateUpload.compareTo(leftChapter.dateUpload)
+                    DownloadQueueOrder.UPLOAD_DATE_OLDEST ->
+                        leftChapter.dateUpload.compareTo(rightChapter.dateUpload)
+                    DownloadQueueOrder.CHAPTER_NUMBER_ASCENDING ->
+                        leftChapter.chapterNumber.compareTo(rightChapter.chapterNumber)
+                    DownloadQueueOrder.CHAPTER_NUMBER_DESCENDING ->
+                        rightChapter.chapterNumber.compareTo(leftChapter.chapterNumber)
+                }
+            }
+        },
+    )
+}
+
 
 @Composable
 private fun DownloadItemCard(

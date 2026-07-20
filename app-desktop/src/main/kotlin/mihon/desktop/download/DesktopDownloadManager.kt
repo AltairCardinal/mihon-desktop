@@ -152,29 +152,51 @@ class DesktopDownloadManager(
         if (from == to) return
         _queue.update { items ->
             if (from !in items.indices || to !in items.indices) return@update items
+            val sourceId = items[from].sourceId
+            if (items[to].sourceId != sourceId) return@update items
+            val sourceIndices = items.indices.filter { items[it].sourceId == sourceId }
+            val fromInSource = sourceIndices.indexOf(from)
+            val toInSource = sourceIndices.indexOf(to)
+            if (fromInSource < 0 || toInSource < 0) return@update items
+            val reorderedSource = sourceIndices.map(items::get).toMutableList().apply {
+                add(toInSource, removeAt(fromInSource))
+            }
             val mutable = items.toMutableList()
-            mutable.add(to, mutable.removeAt(from))
+            sourceIndices.forEachIndexed { index, queueIndex -> mutable[queueIndex] = reorderedSource[index] }
             mutable
         }
         persistQueue()
     }
 
-    /** Sort the queue by a key selector, keeping DOWNLOADING items first. */
+    /** Sort each source group by a key selector while preserving source group order. */
     fun <R : Comparable<R>> sortQueue(selector: (DownloadItem) -> R) {
         _queue.update { items ->
-            val downloading = items.filter { it.status == DownloadStatus.DOWNLOADING }
-            val rest = items.filter { it.status != DownloadStatus.DOWNLOADING }.sortedBy(selector)
-            downloading + rest
+            items.groupBy(DownloadItem::sourceId).values.flatMap { sourceItems ->
+                val (downloading, pending) = sourceItems.partition { it.status == DownloadStatus.DOWNLOADING }
+                downloading + pending.sortedBy(selector)
+            }
         }
         persistQueue()
     }
 
-    /** Reverse the order of non-DOWNLOADING items in the queue. */
+    /** Sort each source group by a comparator while preserving source group order. */
+    fun sortQueue(comparator: Comparator<DownloadItem>) {
+        _queue.update { items ->
+            items.groupBy(DownloadItem::sourceId).values.flatMap { sourceItems ->
+                val (downloading, pending) = sourceItems.partition { it.status == DownloadStatus.DOWNLOADING }
+                downloading + pending.sortedWith(comparator)
+            }
+        }
+        persistQueue()
+    }
+
+    /** Reverse items inside each source group while preserving source group order. */
     fun reverseQueue() {
         _queue.update { items ->
-            val downloading = items.filter { it.status == DownloadStatus.DOWNLOADING }
-            val rest = items.filter { it.status != DownloadStatus.DOWNLOADING }.reversed()
-            downloading + rest
+            items.groupBy(DownloadItem::sourceId).values.flatMap { sourceItems ->
+                val (downloading, pending) = sourceItems.partition { it.status == DownloadStatus.DOWNLOADING }
+                downloading + pending.reversed()
+            }
         }
         persistQueue()
     }
