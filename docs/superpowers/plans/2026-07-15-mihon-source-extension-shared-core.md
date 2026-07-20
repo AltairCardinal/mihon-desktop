@@ -2123,8 +2123,16 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `desktop-headless-test-lifecycle`
 - Platform boundary: `desktop`
-- Estimated scope: `3 files, 100 lines`
+- Estimated scope: `3 files, 160 lines`
+- Scope correction: macOS packaged runtime proved that Ktor's `start(wait = true)` can return after binding, so the repair must give each start generation an independent termination signal, retain and explicitly stop the engine, and cover stop/restart isolation in the existing lifecycle test file; this remains three files and below the Task split threshold.
 - Verification: Windows canonical EXE `0.11.14.22.df46bdd` 已通过build script窗口版本验收，但按文档以 `--test-mode --test-http-port=8080 --headless` 启动后约4秒正常退出且8080无listener；production `Main` 在异步 `TestMode.start()` 后遇headless直接return，JVM只剩daemon线程。先以可控await/stop与真实 `DesktopAppRuntime` 建立生命周期RED：test-mode+headless必须阻塞、释放后stop TestMode并close runtime；非headless不得阻塞或关闭。GREEN让 TestMode暴露等待server job结束的边界，Main只在test-mode headless进入该边界并finally清理；不得用sleep/无限轮询或让普通GUI启动阻塞。focused/full tests后重新完整构建固定EXE，实启headless并读取 `/test/state`，再运行desktop smoke。
+
+##### Task 7D6b: Test Mode state capability response
+
+- Risk axis: `desktop-test-state-capabilities`
+- Platform boundary: `desktop`
+- Estimated scope: `2 files, 80 lines`
+- Verification: macOS packaged GUI test mode proves `/test/state` reports `testMode=true` while `screens` and `actions` are always empty because the production HTTP route hard-codes empty arrays instead of reading the lists registered by `TestMode.start`. First add a production HTTP integration RED that registers sentinel capabilities and observes the state endpoint, then serialize `applicationState.screens/actions` without copying registration rules into the route. Preserve reset semantics and existing endpoint fields; focused/full tests and packaged Windows/macOS `/test/state` must show non-empty registered capabilities.
 
 - [ ] **Step 7: 独立批次与最终审查**
 
