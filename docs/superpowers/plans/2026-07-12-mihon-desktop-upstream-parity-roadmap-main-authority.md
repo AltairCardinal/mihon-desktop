@@ -390,6 +390,22 @@ resume-order: complete the active child plan through Task 7D, then resume the fi
 
 ## 12. Task 4B：源、扩展与挑战处理
 
+**当前执行映射：** 本节是父 roadmap 的 Task 4B；详细施工位于
+`docs/superpowers/plans/2026-07-15-mihon-source-extension-shared-core.md`。下列 Task 1–7 是
+Task 4B 的子计划编号，不是父 roadmap 在 Task 6 之后新增的同级任务。
+
+- [x] 子计划 Task 1：权威 fixture、调用链清单与产品保护网
+- [x] 子计划 Task 2：共享源查询状态、分页与错误语义
+- [x] 子计划 Task 3：共享扩展目录、版本、仓库部分失败与信任模型
+- [x] 子计划 Task 4A–4D：共享安装事务及 Android/Desktop 平台事务 adapter
+- [x] 子计划 Task 5A–5C：共享登录会话、Desktop 挑战恢复、设置与 UI wiring
+- [x] 子计划 Task 6A–6E：Browse/Extension 双端 production wiring、i18n、导航与 Test Mode
+- [ ] 子计划 Task 7：compat 去重、parity 证据、最终审查与 Windows/macOS 验收
+
+Task 7 当前停在 macOS fresh-suite 暴露的 Task 7D35 fixture 隔离修复；Windows BUILD31 已通过但
+BUILD31 不是可交付版本。Task 7 完成、OpenSpec checkoff、双平台验收和归档全部通过前，父 Task 4B
+保持未完成。
+
 **Files:**
 - Modify: 当前分支 `app/src/main/java/eu/kanade/tachiyomi/extension/`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/extension/`
@@ -406,16 +422,16 @@ resume-order: complete the active child plan through Task 7D, then resume the fi
 - Produces: 与固定原版默认语义一致的共享源列表/浏览/搜索状态，扩展发现/安装/安全/更新契约；Desktop web login/challenge adapter。
 - Consumes: 固定原版快照中的 ExtensionApi/Manager/Loader、Sources/GlobalSearch/Extensions UI state 和 index 行为；当前分支 extensionrepo domain、网络/任务/通知、PreferenceStore、AppError。
 
-- [ ] **Step 1: 从固定原版快照及其真实产物建立 index、已安装包、source、状态与操作 fixture；每项记录 commit、符号、包版本和测试来源**
-- [ ] **Step 2: MockWebServer 覆盖原版源分页成功/空/403/429/500/畸形响应，并证明 shared 解析路径消费同一 fixture**
-- [ ] **Step 3: 写 JAR、APK→JAR、损坏产物、版本替换、回滚和不兼容 API 测试；APK→JAR 是 Desktop 产品能力，不冒充原版流程**
-- [ ] **Step 4: 写 Desktop Android API 兼容 shim 使用清单测试，未被真实扩展引用的 stub 不得扩张；该 shim 不参与原版权威实现映射**
-- [ ] **Step 5: 从固定原版快照提取源/扩展状态、版本、安全和 preference schema 到 shared；先比较当前 Android 构建版与原版，分离已发生的 fork 改动**
-- [ ] **Step 6: Desktop loader/installer 只实现目录、ClassLoader、转换和进程隔离 side effect**
-- [ ] **Step 7: 以固定原版安装/信任/更新语义为默认实现签名/哈希信任、仓库信任、更新事务和失败回滚；若修复原版 bug，另建 cross-platform bugfix 并记录偏差**
-- [ ] **Step 8: 实现 Desktop 浏览器登录/Cookie 回传；FlareSolverr 保留为可选后备**
-- [ ] **Step 9: 当前 Android 构建版与 Desktop 的源列表、单源浏览、全局搜索、扩展详情/设置分别接入 shared state/intent；不得用当前 Android UI 行为反向生成原版 fixture**
-- [ ] **Step 10: 将所有 Desktop 文案迁入 i18n 资源并测试缺 key**
+- [x] **Step 1: 从固定原版快照及其真实产物建立 index、已安装包、source、状态与操作 fixture；每项记录 commit、符号、包版本和测试来源**
+- [x] **Step 2: MockWebServer 覆盖原版源分页成功/空/403/429/500/畸形响应，并证明 shared 解析路径消费同一 fixture**
+- [x] **Step 3: 写 JAR、APK→JAR、损坏产物、版本替换、回滚和不兼容 API 测试；APK→JAR 是 Desktop 产品能力，不冒充原版流程**
+- [x] **Step 4: 写 Desktop Android API 兼容 shim 使用清单测试，未被真实扩展引用的 stub 不得扩张；该 shim 不参与原版权威实现映射**
+- [x] **Step 5: 从固定原版快照提取源/扩展状态、版本、安全和 preference schema 到 shared；先比较当前 Android 构建版与原版，分离已发生的 fork 改动**
+- [x] **Step 6: Desktop loader/installer 只实现目录、ClassLoader、转换和进程隔离 side effect**
+- [x] **Step 7: 以固定原版安装/信任/更新语义为默认实现签名/哈希信任、仓库信任、更新事务和失败回滚；若修复原版 bug，另建 cross-platform bugfix 并记录偏差**
+- [x] **Step 8: 实现 Desktop 浏览器登录/Cookie 回传；FlareSolverr 保留为可选后备**
+- [x] **Step 9: 当前 Android 构建版与 Desktop 的源列表、单源浏览、全局搜索、扩展详情/设置分别接入 shared state/intent；不得用当前 Android UI 行为反向生成原版 fixture**
+- [x] **Step 10: 将所有 Desktop 文案迁入 i18n 资源并测试缺 key**
 - [ ] **Step 11: 运行 shared、当前 Android extension/source、Desktop network/DI/navigation/Test Mode 全链测试，并单独核验原版 provenance**
 - [ ] **Step 12: 删除 Desktop 重复搜索、版本判断、错误字符串和无使用证据的 compat shim；保留有真实扩展证据的平台 API**
 - [ ] **Step 13: 更新追踪项 28–40、87 的原版来源、shared、当前 Android/Desktop 消费、Desktop 增强和 shim 证据**
