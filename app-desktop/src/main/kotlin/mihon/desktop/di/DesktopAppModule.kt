@@ -10,9 +10,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import mihon.desktop.extension.DesktopExtensionLoader
+import mihon.desktop.extension.DesktopArtifactAuthenticator
 import mihon.desktop.compat.AndroidCompat
 import mihon.desktop.backup.BackupRestoreScreenModelFactory
 import mihon.desktop.extension.DesktopExtensionManager
+import mihon.desktop.extension.DefaultDesktopArtifactAuthenticator
 import mihon.desktop.source.DesktopSourceManager
 import eu.kanade.tachiyomi.network.NetworkHelper
 import mihon.desktop.platform.DesktopNetworkHelper
@@ -176,6 +178,7 @@ internal suspend fun initDesktopDIForTest(
     startDownloadWorker: Boolean = false,
     downloadFileOperations: mihon.desktop.download.DownloadFileOperations = mihon.desktop.download.DefaultDownloadFileOperations,
     browserOpener: DesktopBrowserOpener? = null,
+    artifactAuthenticator: DesktopArtifactAuthenticator = DefaultDesktopArtifactAuthenticator,
 ): DesktopTestDIContext {
     activeDesktopTestDIContext?.closeAndJoin()
     patchInjekt()
@@ -184,7 +187,7 @@ internal suspend fun initDesktopDIForTest(
     initDesktopConfigurationForTest(appDir, preferenceStore)
     val networkHelper = initNetworkLayer(paths, preferenceStore, browserOpener)
     val handler = initDataLayer(paths)
-    initExtensionLayer(paths, networkHelper, handler)
+    initExtensionLayer(paths, networkHelper, handler, artifactAuthenticator)
     initDomainLayer(handler)
     initUILayer(
         paths,
@@ -388,11 +391,21 @@ private fun desktopPaths(appDir: File) =
 // Extension loader, source manager, extension API.
 // Depends on: data layer (extensionRepoRepository), network layer.
 
-internal fun initExtensionLayer(paths: DesktopPlatformPaths, networkHelper: DesktopNetworkHelper, handler: DatabaseHandler) {
-    registerDesktopExtension(paths, networkHelper, handler)
+internal fun initExtensionLayer(
+    paths: DesktopPlatformPaths,
+    networkHelper: DesktopNetworkHelper,
+    handler: DatabaseHandler,
+    artifactAuthenticator: DesktopArtifactAuthenticator = DefaultDesktopArtifactAuthenticator,
+) {
+    registerDesktopExtension(paths, networkHelper, handler, artifactAuthenticator)
 }
 
-private fun registerDesktopExtension(paths: DesktopPlatformPaths, networkHelper: DesktopNetworkHelper, handler: DatabaseHandler) {
+private fun registerDesktopExtension(
+    paths: DesktopPlatformPaths,
+    networkHelper: DesktopNetworkHelper,
+    handler: DatabaseHandler,
+    artifactAuthenticator: DesktopArtifactAuthenticator,
+) {
     val extensionRepoRepository = Injekt.get<ExtensionRepoRepository>()
     val extensionApi = DesktopExtensionApi(
         client = networkHelper.client,
@@ -402,6 +415,7 @@ private fun registerDesktopExtension(paths: DesktopPlatformPaths, networkHelper:
     val extensionManager = DesktopExtensionManager(
         loader = DesktopExtensionLoader(paths.extensionsDir),
         artifactProvider = extensionApi::downloadArtifact,
+        artifactAuthenticator = artifactAuthenticator,
     )
     extensionManager.loadAll()
     Injekt.addSingleton(extensionManager)

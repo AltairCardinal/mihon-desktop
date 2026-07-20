@@ -25,6 +25,7 @@ import mihon.desktop.download.DownloadFileOperations
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.download.DownloadStatus
 import mihon.desktop.extension.DesktopExtensionManager
+import mihon.desktop.extension.DesktopArtifactAuthenticator
 import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopAvailableExtension
 import mihon.desktop.extension.DesktopAvailableSource
@@ -205,6 +206,7 @@ class DesktopDiWiringTest {
         val context = initDesktopDIForTest(
             tempDir,
             DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")),
+            artifactAuthenticator = DesktopArtifactAuthenticator { _, _, _ -> },
         )
         try {
             val manager = Injekt.get<DesktopExtensionManager>()

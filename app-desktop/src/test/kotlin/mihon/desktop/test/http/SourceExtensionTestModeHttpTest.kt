@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -114,7 +114,9 @@ class SourceExtensionTestModeHttpTest {
                     assertEquals(200, it.status)
                     assertActionEnvelope(it.json, "extension_refresh", true)
                 }
-                withTimeout(5_000) { model.state.first { it.projection != null } }
+                awaitState(model, "extension refresh did not publish the requested package") {
+                    it.projection?.available?.any { item -> item.operationPackageName == extension.pkgName } == true
+                }
 
                 assertEquals(400, post(baseUrl, "/test/action/extension_search", "{}").status)
                 assertEquals(400, post(baseUrl, "/test/action/extension_install", "{}").status)
@@ -123,8 +125,9 @@ class SourceExtensionTestModeHttpTest {
                 assertEquals(400, unsupported.status)
                 assertEquals("UNSUPPORTED_ACTION", unsupported.json.getValue("error").jsonPrimitive.content)
 
-                post(baseUrl, "/test/action/extension_install", """{"packageName":"pkg.http"}""")
-                withTimeout(5_000) { model.state.first { extension.pkgName in it.installErrors } }
+                val install = post(baseUrl, "/test/action/extension_install", """{"packageName":"pkg.http"}""")
+                assertEquals(200, install.status, install.json.toString())
+                awaitState(model, "failed install did not publish its error") { extension.pkgName in it.installErrors }
                 val failed = get(baseUrl, "/test/state").extensionState()
                 val storedError = failed.getValue("errors").jsonObject.getValue(extension.pkgName).jsonObject
                 assertEquals("Network", storedError.getValue("type").jsonPrimitive.content)
@@ -132,8 +135,8 @@ class SourceExtensionTestModeHttpTest {
                 assertEquals(409, post(baseUrl, "/test/action/extension_install", """{"packageName":"pkg.http"}""").status)
 
                 assertEquals(200, post(baseUrl, "/test/action/extension_retry", """{"packageName":"pkg.http"}""").status)
-                withTimeout(5_000) {
-                    model.state.first { it.actions.installSteps[extension.pkgName] == ExtensionPresentationInstallStep.Downloading }
+                awaitState(model, "retry did not enter Downloading") {
+                    it.actions.installSteps[extension.pkgName] == ExtensionPresentationInstallStep.Downloading
                 }
                 assertEquals(
                     "Downloading",
@@ -141,8 +144,8 @@ class SourceExtensionTestModeHttpTest {
                         .getValue(extension.pkgName).jsonPrimitive.content,
                 )
                 assertEquals(200, post(baseUrl, "/test/action/extension_cancel", """{"packageName":"pkg.http"}""").status)
-                withTimeout(5_000) {
-                    model.state.first { extension.pkgName !in it.actions.installSteps && extension.pkgName !in it.installErrors }
+                awaitState(model, "cancel did not clear install state and error") {
+                    extension.pkgName !in it.actions.installSteps && extension.pkgName !in it.installErrors
                 }
                 val cleared = get(baseUrl, "/test/state").extensionState()
                 assertFalse(extension.pkgName in cleared.getValue("installSteps").jsonObject)
@@ -161,6 +164,15 @@ class SourceExtensionTestModeHttpTest {
         } finally {
             server.stop(0, 0)
         }
+    }
+
+    private suspend fun awaitState(
+        model: ExtensionsScreenModel,
+        description: String,
+        predicate: (mihon.desktop.ui.extension.DesktopExtensionsState) -> Boolean,
+    ) {
+        val observed = withTimeoutOrNull(5_000) { model.state.first(predicate) }
+        assertNotNull(observed, "$description; last state=${model.state.value}")
     }
 
     private fun get(baseUrl: String, path: String) = request(HttpRequest.newBuilder(URI.create(baseUrl + path)).GET().build())

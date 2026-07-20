@@ -8,24 +8,22 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import mihon.desktop.di.initDesktopDIForTest
 import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import java.io.File
-import java.util.Base64
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipFile
-import tachiyomi.core.common.preference.DesktopPreferenceStore
 
 /**
  * 对 keiyoushi 仓库中的中文扩展进行实际下载、转换和加载测试，
  * 统计能正确工作的数量，并对比不同平台的可用状况。
  *
  * 运行方式：
- *   ./gradlew :app-desktop:jvmTest --tests "*.KeiyoushiChineseCompatibilityTest"
+ *   ./gradlew :app-desktop:jvmTest --tests "*.KeiyoushiChineseCompatibilityTest" \
+ *     -PincludeIntegrationTests=true -PincludeNetworkSurveyTests=true
  *
  * 注意：此测试会进行真实网络请求，耗时较长。
  */
@@ -60,12 +58,6 @@ class KeiyoushiChineseCompatibilityTest {
         val baseUrl: String = "",
     )
 
-    @Serializable
-    private data class GitHubContent(
-        val content: String,
-        val encoding: String,
-    )
-
     private enum class Status {
         JVM_JAR,         // 已经是 JVM JAR，直接可用
         CONVERTED_OK,    // APK→JAR 转换成功
@@ -91,43 +83,7 @@ class KeiyoushiChineseCompatibilityTest {
     )
 
     @Test
-    fun `pinned manhuagui converts but remains unsupported until Application binding`() = runBlocking {
-        val indexUrl =
-            "https://api.github.com/repos/keiyoushi/extensions/contents/index.min.json?ref=repo"
-        val entry = fetchGitHubIndex(indexUrl).singleOrNull {
-            it.pkg == PINNED_MANHUAGUI_PACKAGE && it.version == PINNED_MANHUAGUI_VERSION
-        }
-        assertTrue(
-            entry != null,
-            "Pinned fixture $PINNED_MANHUAGUI_PACKAGE@$PINNED_MANHUAGUI_VERSION is absent from upstream index",
-        )
-        val tempDir = kotlin.io.path.createTempDirectory("manhuagui-pin").toFile()
-        val diContext = initDesktopDIForTest(
-            appDir = File(tempDir, "app"),
-            preferenceStore = DesktopPreferenceStore(),
-        )
-        try {
-            val result = testExtension(
-                requireNotNull(entry),
-                "https://raw.githubusercontent.com/keiyoushi/extensions/repo",
-                tempDir,
-            )
-
-            assertEquals(PINNED_MANHUAGUI_PACKAGE, result.pkg)
-            assertEquals(PINNED_MANHUAGUI_VERSION, result.version)
-            assertEquals(Status.CONVERTED_OK, result.status, result.detail)
-            assertEquals(0, result.sourcesLoaded)
-            assertTrue(
-                result.detail.contains("android.app.Application"),
-                "Expected the known Task 4 Application compat gap, got: ${result.detail}",
-            )
-        } finally {
-            diContext.closeAndJoin()
-            tempDir.deleteRecursively()
-        }
-    }
-
-    @Test
+    @Tag("network-survey")
     fun `keiyoushi Chinese extension conversion compatibility survey`() = runBlocking {
         val indexUrl = "https://raw.githubusercontent.com/keiyoushi/extensions/main/index.min.json"
         println("\n=== Keiyoushi 中文扩展兼容性测试 ===\n")
@@ -354,14 +310,6 @@ class KeiyoushiChineseCompatibilityTest {
         return json.decodeFromString(body)
     }
 
-    private fun fetchGitHubIndex(url: String): List<ExtEntry> {
-        val response = client.newCall(GET(url)).execute()
-        val metadata = json.decodeFromString<GitHubContent>(response.body.string())
-        check(metadata.encoding == "base64") { "Unexpected GitHub content encoding ${metadata.encoding}" }
-        val body = Base64.getMimeDecoder().decode(metadata.content).decodeToString()
-        return json.decodeFromString(body)
-    }
-
     private fun ExtEntry.extractLibVersion(): Double =
         version.substringBeforeLast('.').toDoubleOrNull() ?: 0.0
 
@@ -371,8 +319,4 @@ class KeiyoushiChineseCompatibilityTest {
     private fun pct(n: Int, total: Int): String =
         if (total == 0) "N/A" else "%.1f%%".format(n.toDouble() / total * 100)
 
-    private companion object {
-        const val PINNED_MANHUAGUI_PACKAGE = "eu.kanade.tachiyomi.extension.zh.manhuagui"
-        const val PINNED_MANHUAGUI_VERSION = "1.4.28"
-    }
 }

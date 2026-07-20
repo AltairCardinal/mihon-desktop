@@ -162,6 +162,12 @@ tasks.withType<Test> {
         if (!includeIntegrationTests) {
             excludeTags("integration")
         }
+        val includeNetworkSurveyTests = providers.gradleProperty("includeNetworkSurveyTests")
+            .map(String::toBoolean)
+            .getOrElse(false)
+        if (!includeNetworkSurveyTests) {
+            excludeTags("network-survey")
+        }
     }
 }
 
