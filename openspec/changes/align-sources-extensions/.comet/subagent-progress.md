@@ -537,3 +537,19 @@
 - RED: `DesktopChallengeLoginWiringTest` received `UncaughtExceptionsBeforeTest`, whose underlying `IllegalStateException: Node has been removed` originated from the preceding real `SourceLastUsedWiringTest` Compose preference collector at `DesktopPreference.changes()` listener registration.
 - Root cause: the source-list fixture closes `ImageComposeScene` and immediately removes its Preferences node without owning and joining the Compose child coroutine lifecycle. This is a verification-lifecycle leak, not a Challenge Login assertion, network, SSH or JDK failure.
 - Decision: reject BUILD32 and dispatch bounded Task 7D36 `source-list-preference-lifecycle-isolation`; do not rerun the full suite unchanged.
+
+## Task 7D36 Review History
+
+- Reviewed task: `Task 7D36: Source-list Compose preference lifecycle isolation`
+- Stage: `complete`
+- Risk axis: `source-list-preference-lifecycle-isolation`
+- Platform boundary: `verification`
+- Implementer: `/root/task7d36_source_pref_lifecycle`.
+- Implementation commit: `2cd33545e` (`test(desktop): join source preference collectors`).
+- Change: mounted source-list fixtures own a child Job; cleanup closes the real scene, cancels and joins that lifecycle, then each caller removes its Preferences node.
+- GREEN evidence: Windows focused 3/3; exact-parent macOS fresh clone with SHA-256-identical single-file overlay focused 3/3; root Spotless, diff check and Comet guard PASS.
+- Independent reviewer: `/root/review_task7d36`; result `APPROVED`, Critical/Important/Minor `0/0/0`.
+- Review conclusion: the child replaces only the Job context element, inherits the test parent, cannot cancel the parent, retains the dispatcher/test scheduler and covers both mounted fixture cleanup paths without weakening production wiring or assertions.
+- Final scope: 1 verification file, 19 touched lines; no production, BUILD32, DownloadQueue or unrelated user file was committed.
+- Delivery state: BUILD32 remains rejected. Resume Step 6 by allocating BUILD33 from the post-repair evidence HEAD on Windows and macOS serially.
+- Review/fix round: 0/1
