@@ -1,7 +1,6 @@
 package mihon.desktop.ui.extension
 
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsActions
@@ -92,13 +91,26 @@ class ExtensionPresentationUiTest {
                 ) {
                     Navigator(ExtensionListScreen()) { current ->
                         navigator = current
-                        LaunchedEffect(Unit) { current.push(ExtensionDetailsScreen(installed.jarFile.absolutePath)) }
                         CurrentScreen()
                     }
                 }
             }
-            awaitText(scene, installed.name)
+            withTimeout(5_000) {
+                while (navigator?.lastItem !is ExtensionListScreen) {
+                    scene.render()
+                    yield()
+                }
+            }
+            navigator!!.push(ExtensionDetailsScreen(installed.jarFile.absolutePath))
+            withTimeout(5_000) {
+                while (navigator?.lastItem !is ExtensionDetailsScreen) {
+                    scene.render()
+                    yield()
+                }
+            }
+            scene.render()
             assertTrue(navigator?.lastItem is ExtensionDetailsScreen)
+            awaitText(scene, installed.name)
 
             installedFlow.value = emptyList()
             withTimeout(5_000) {
@@ -326,8 +338,10 @@ class ExtensionPresentationUiTest {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) { Navigator(ExtensionListScreen()) { CurrentScreen() } }
             }
             awaitText(scene, extensionListCopy().emptyInstalled)
+            withTimeout(5_000) { while (refreshCalls < 1) yield() }
+            val initialRefresh = model.refresh()
             catalogs.send(ExtensionCatalogResult(emptyList(), emptyList()))
-            withTimeout(5_000) { model.state.first { it.projection != null } }
+            initialRefresh.join()
             scene.render()
             assertTrue(nodes(scene).any { it.config.toString().contains(extensionListCopy().emptyInstalled) })
             installedFlow.value = listOf(installed)

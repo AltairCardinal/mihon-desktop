@@ -58,6 +58,7 @@ class ExtensionsScreenModel(
     val state: StateFlow<DesktopExtensionsState> = mutableState.asStateFlow()
     private val lock = Any()
     private val packageJobs = mutableMapOf<String, Job>()
+    private var refreshJob: Job? = null
     private var pendingTrust: DesktopPendingTrust? = null
     private var isClosed = false
     private var latestCatalog: DesktopExtensionCatalogState? = null
@@ -75,17 +76,24 @@ class ExtensionsScreenModel(
         }
     }
 
-    fun refresh(): Job = scope.launch {
-        dispatch(ExtensionPresentationAction.RefreshStarted)
-        try {
-            latestCatalog = port.refresh()
-            publish(options.value, clearRefreshError = true)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (error: Exception) {
-            mutableState.update { it.copy(refreshError = error) }
-        } finally {
-            dispatch(ExtensionPresentationAction.RefreshFinished)
+    fun refresh(): Job = synchronized(lock) {
+        refreshJob?.takeIf(Job::isActive) ?: scope.launch(start = CoroutineStart.LAZY) {
+            val self = currentCoroutineContext()[Job]!!
+            dispatch(ExtensionPresentationAction.RefreshStarted)
+            try {
+                latestCatalog = port.refresh()
+                publish(options.value, clearRefreshError = true)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                mutableState.update { it.copy(refreshError = error) }
+            } finally {
+                dispatch(ExtensionPresentationAction.RefreshFinished)
+                synchronized(lock) { if (refreshJob === self) refreshJob = null }
+            }
+        }.also { job ->
+            refreshJob = job
+            job.start()
         }
     }
 

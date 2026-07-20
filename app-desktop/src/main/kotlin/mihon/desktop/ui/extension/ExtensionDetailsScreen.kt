@@ -108,6 +108,9 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
         LaunchedEffect(model) {
             if (model.state.value.projection == null) model.refresh().join()
         }
+        LaunchedEffect(state.projection, extension, jarPath) {
+            if (state.projection != null && extension == null) navigator.pop()
+        }
         fun openUrl(url: String) {
             platformActions.openUrl(url)
                 .onFailure { scope.launch { snackbar.showSnackbar(MR.strings.desktop_extension_open_link_failed.localized(Locale.getDefault(), it.message.orEmpty())) } }
