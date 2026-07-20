@@ -12,13 +12,13 @@ import io.mockk.mockk
 import io.mockk.mockkConstructor
 import io.mockk.unmockkConstructor
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.domain.source.repository.StubSourceRepository
@@ -48,8 +48,12 @@ class AndroidSourceManagerInitializationTest {
             },
             installReceiverRegistrar = {},
         )
+        val sourceManagerWiringStarted = CompletableDeferred<Unit>()
         val sourceRepository = mockk<StubSourceRepository>(relaxed = true) {
-            every { subscribeAll() } returns emptyFlow()
+            every { subscribeAll() } returns flow {
+                sourceManagerWiringStarted.complete(Unit)
+                awaitCancellation()
+            }
         }
         val localSourceFileSystem: LocalSourceFileSystem = mockk(relaxed = true)
         val localCoverManager: LocalCoverManager = mockk(relaxed = true)
@@ -63,7 +67,8 @@ class AndroidSourceManagerInitializationTest {
                 sourceRepository = sourceRepository,
             )
 
-            assertNull(withTimeoutOrNull(100) { sourceManager.isInitialized.first { it } })
+            withTimeout(5_000) { sourceManagerWiringStarted.await() }
+            assertFalse(sourceManager.isInitialized.value)
 
             releaseLoader.complete(Unit)
 

@@ -28,8 +28,62 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.Preference
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.CyclicBarrier
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class ExtensionManagerTest {
+
+    @Test
+    fun `concurrent receiver mutations preserve every extension snapshot`() = runBlocking {
+        val workerCount = 32
+        val extensionCount = 128
+        val gate = CyclicBarrier(workerCount)
+        val installer = mockk<ExtensionInstaller>(relaxed = true) {
+            every { isInstallTransactionActive(any()) } answers {
+                gate.await(5, TimeUnit.SECONDS)
+                false
+            }
+        }
+        lateinit var receiver: ExtensionInstallReceiver.Listener
+        val manager = manager(
+            initial = emptyList(),
+            installer = installer,
+            receiver = { receiver = it },
+        )
+        manager.isInitialized.await { it }
+        val installed = (1..extensionCount).map { index ->
+            installed().copy(
+                name = "Example $index",
+                pkgName = "$PACKAGE.$index",
+                hasUpdate = true,
+            )
+        }
+
+        runConcurrently(workerCount, installed.map { extension ->
+            { receiver.onExtensionInstalled(extension) }
+        })
+
+        assertEquals(installed.map { it.pkgName }.toSet(), manager.installedExtensionsFlow.value.map { it.pkgName }.toSet())
+
+        val untrusted = installed.map { extension ->
+            Extension.Untrusted(
+                name = extension.name,
+                pkgName = extension.pkgName,
+                versionName = extension.versionName,
+                versionCode = extension.versionCode,
+                libVersion = extension.libVersion,
+                signatureHash = "signature",
+            )
+        }
+        runConcurrently(workerCount, untrusted.map { extension ->
+            { receiver.onExtensionUntrusted(extension) }
+        })
+
+        assertTrue(manager.installedExtensionsFlow.value.isEmpty())
+        assertEquals(untrusted.map { it.pkgName }.toSet(), manager.untrustedExtensionsFlow.value.map { it.pkgName }.toSet())
+    }
 
     @Test
     fun `fixed main routes package actions and waits for uninstall receiver`() = runBlocking {
@@ -202,6 +256,23 @@ class ExtensionManagerTest {
 
     private suspend fun <T> Flow<T>.await(predicate: (T) -> Boolean): T =
         withTimeout(5_000) { first(predicate) }
+
+    private fun runConcurrently(workerCount: Int, actions: List<() -> Unit>) {
+        val executor = Executors.newFixedThreadPool(workerCount)
+        val start = CountDownLatch(1)
+        try {
+            val futures = actions.map { action ->
+                executor.submit {
+                    start.await()
+                    action()
+                }
+            }
+            start.countDown()
+            futures.forEach { it.get(10, TimeUnit.SECONDS) }
+        } finally {
+            executor.shutdownNow()
+        }
+    }
 
     private fun installed() = Extension.Installed(
         "Example", PACKAGE, "1.0", 1, 1.4, "en", false, null, emptyList(), null, isShared = false,
