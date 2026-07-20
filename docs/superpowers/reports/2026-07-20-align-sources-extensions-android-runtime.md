@@ -8,16 +8,16 @@ Authority boundary: this report verifies the current Android consumer only. Fixe
 
 ## Artifact and device
 
-- Base APK build record HEAD: `de3e4adfe1597fae802816bde539644442e7eb7e`; fresh-AVD execution worktree HEAD: `d7648781b3561f5cf832b7b5374955a1ebb72c28` plus the Task 7D24R instrumentation change.
+- Base APK build record HEAD: `de3e4adfe1597fae802816bde539644442e7eb7e`; test APK compilation worktree: `d7648781b3561f5cf832b7b5374955a1ebb72c28` plus the Task 7D24R instrumentation change; repair fresh-AVD execution worktree HEAD: `334af6130bad2dbb094384a3b809202f1b62f9f2`.
 - Build: `./gradlew :app:assembleDebug --stacktrace` — GREEN in 6m36s, 287 tasks (61 executed, 226 up-to-date).
 - APK: `app/build/outputs/apk/debug/app-universal-debug.apk`
 - APK SHA-256: `8e1892fe68cdcd1138ccce96517391b22401d49894ab04af76e8069be82b3460`
 - Test APK: `app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk`
 - Test APK SHA-256: `1fce797f052d35834e6cd56df58bd2946ae5c8958462be301b3c0f321ec74773`
 - Package/version: `app.mihon.dev`, `0.19.4-8352`; device install reported `Success`.
-- Real-fixture AVD: `mihon-api36`; fresh instrumentation AVD: `mihon-7d24f-api36`, serial `emulator-5556`; model `sdk_gphone64_x86_64`; Android 16 / API 36.
+- Real-fixture AVD: `mihon-api36`; repair fresh instrumentation AVD: `mihon-7d24f-repair-api36`, serial `emulator-5556`; model `sdk_gphone64_x86_64`; Android 16 / API 36.
 - Fingerprint: `google/sdk_gphone64_x86_64/emu64xa:16/BE2A.250530.026.F3/13894323:userdebug/dev-keys`.
-- Runtime crash scan: logcat matches for `FATAL EXCEPTION|OutOfMemoryError|SIGSEGV|Fatal signal` = 0.
+- Real-fixture runtime crash scan: logcat matches for `FATAL EXCEPTION|OutOfMemoryError|SIGSEGV|Fatal signal` = 0.
 
 ## Real extension fixtures
 
@@ -38,7 +38,7 @@ The Extensions dump after trust shows both packages under Installed. The Sources
 | Affected browse entry | PASS | both TCB Scans and MangaDex open their real Browse screens; dumps include source title, Popular and source-specific actions |
 | Failure feedback and Retry intent | PASS | unreachable provider requests render localized `No Internet connection` plus Retry/WebView/Help; tapping Retry leaves the error state, enters loading, and issues a new request before the provider fails again |
 | First-page empty on latest real fixture | PASS | `adb reverse tcp:10809 tcp:10808` plus device proxy `127.0.0.1:10809` routed MangaDex through the host proxy; query `zzzz7d24rnoresult` rendered localized `No results found` |
-| Append-empty retry and successful recovery | PASS | the fresh API 36 AVD ran the corrected instrumentation through production `SharedSourcePagingSource`/Pager/Compose/Scaffold wiring: page 2 returned empty, page-1 rows remained visible, Retry was visible, its click requested page 2 again, and recovered content rendered |
+| Append-empty retry and successful recovery | PASS | the [tracked fresh-AVD transcript](evidence/2026-07-20-7d24f-android-runtime.txt) records the corrected instrumentation through production `SharedSourcePagingSource`/Pager/Compose/Scaffold wiring: page 2 returned empty, page-1 rows remained visible, Retry was visible, its click requested page 2 again, and recovered content rendered |
 
 OpenSpec 4.4 is complete from the combined real-fixture Task 7D24 evidence and deterministic production-wiring Task 7D24R/7D24F evidence. OpenSpec 3.4.3 remains pending for Windows/macOS Desktop final verification and cross-check.
 
@@ -61,12 +61,12 @@ Result:
 
 ```text
 INSTRUMENTATION_STATUS: numtests=4
-Time: 24.009
+Time: 17.567
 OK (4 tests)
 INSTRUMENTATION_CODE: -1
 ```
 
-The four cases cover the two existing Browse UI boundaries, localized first-page `No results found`, and deterministic append-empty recovery. The controlled catalogue source is not a real/original fixture; its value is that it executes the current consumer's production paging and visible Snackbar retry wiring on-device.
+The complete command transcript, both APK hashes, device/API/fingerprint, both install outputs and every instrumentation status line are preserved in [`evidence/2026-07-20-7d24f-android-runtime.txt`](evidence/2026-07-20-7d24f-android-runtime.txt). The four cases cover the two existing Browse UI boundaries, localized first-page `No results found`, and deterministic append-empty recovery. The controlled catalogue source is not a real/original fixture; its value is that it executes the current consumer's production paging and visible Snackbar retry wiring on-device.
 
 ## Environment diagnosis and local evidence
 
@@ -78,3 +78,5 @@ Reproducible command output, UI dumps, screenshots and logs are under `.test-tmp
 - `04-extensions.*`, `06-extensions-trusted.*`, `07-sources.*`, `08-sources-pinned.xml`
 - `10-global-empty.*`, `14-tcb-popular-wait.*`, `18-mangadex-popular.*`
 - `7d24r-mangadex-empty.*`, `7d24r-instrumentation.log`
+
+Those untracked files document the earlier real-fixture run and the original offline/failed instrumentation diagnosis. They are not proof of the Task 7D24F fresh-AVD pass; the tracked raw transcript above is the authoritative evidence for the 17.567s `OK (4 tests)` result.
