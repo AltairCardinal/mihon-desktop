@@ -28,6 +28,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.net.ServerSocket
+import java.util.Collections
 
 class MangaDexSourceTest {
 
@@ -222,19 +223,38 @@ class MangaDexSourceTest {
     @Tag("integration")
     @Test
     fun `large MangaDex feed completes inside desktop source timeout`() = runBlocking {
-        val source = source("https://api.mangadex.org")
+        val chapters = (1..1_901).map { index ->
+            ChapterFixture(id = "chapter-$index", translatedLanguage = "en", number = index.toString())
+        }
+        val requestedOffsets = Collections.synchronizedList(mutableListOf<Int>())
+        val port = freePort()
+        val server = embeddedServer(Netty, port = port) {
+            routing {
+                get("/manga/manga-id/feed") {
+                    val offset = call.request.queryParameters["offset"]?.toIntOrNull() ?: 0
+                    requestedOffsets += offset
+                    call.respondText(
+                        chapterFeedJson(chapters.drop(offset).take(500), offset, chapters.size),
+                        ContentType.Application.Json,
+                    )
+                }
+            }
+        }.start(wait = false)
+        val source = source("http://localhost:$port")
         val listedManga = SManga.create().apply {
-            url = "/manga/d8a959f7-648e-4c8d-8f23-f1f3f8e129f3"
-            title = "One Punch-Man"
+            url = "/manga/manga-id"
+            title = "Large fixture"
         }
 
-        val result = safeSourceCall {
-            val details = source.getMangaDetails(listedManga)
-            source.getChapterList(details)
-        }
+        try {
+            val result = safeSourceCall { source.getChapterList(listedManga) }
 
-        assertTrue(result is SourceCallResult.Success, "Expected the full feed to finish before the 30 second timeout")
-        assertEquals(1899, (result as SourceCallResult.Success).value.size)
+            assertTrue(result is SourceCallResult.Success, "Expected the full feed to finish before the 30 second timeout")
+            assertEquals(1_901, (result as SourceCallResult.Success).value.size)
+            assertEquals(listOf(0, 500, 1_000, 1_500), requestedOffsets.toList())
+        } finally {
+            server.stop(gracePeriodMillis = 0, timeoutMillis = 500)
+        }
     }
 
     private fun source(baseUrl: String) = MangaDexSource(
@@ -259,7 +279,11 @@ class MangaDexSourceTest {
         val externalUrl: String? = null,
     )
 
-    private fun chapterFeedJson(chapters: List<ChapterFixture>): String {
+    private fun chapterFeedJson(
+        chapters: List<ChapterFixture>,
+        offset: Int = 0,
+        total: Int = chapters.size,
+    ): String {
         return """
             {
               "result": "ok",
@@ -267,9 +291,9 @@ class MangaDexSourceTest {
               "data": [
                 ${chapters.joinToString(",") { chapterJson(it) }}
               ],
-              "limit": 96,
-              "offset": 0,
-              "total": ${chapters.size}
+              "limit": 500,
+              "offset": $offset,
+              "total": $total
             }
         """.trimIndent()
     }

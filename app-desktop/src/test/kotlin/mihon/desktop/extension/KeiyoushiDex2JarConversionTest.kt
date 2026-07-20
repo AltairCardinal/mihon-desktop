@@ -23,7 +23,8 @@ import java.util.concurrent.TimeUnit
  * 由于已知全部都是 Android APK（DEX 格式），跳过类型检测，
  * 直接调用 ApkToJarConverter.convert() 并尝试 ServiceLoader 加载。
  *
- * 运行：./gradlew :app-desktop:jvmTest --tests "*.KeiyoushiDex2JarConversionTest"
+ * 运行：./gradlew :app-desktop:jvmTest --tests "*.KeiyoushiDex2JarConversionTest" \
+ *   -PincludeIntegrationTests=true -PincludeNetworkSurveyTests=true
  */
 @Tag("integration")
 class KeiyoushiDex2JarConversionTest {
@@ -57,6 +58,7 @@ class KeiyoushiDex2JarConversionTest {
     )
 
     @Test
+    @Tag("network-survey")
     fun `keiyoushi Chinese APK dex2jar conversion and source loading test`() = runBlocking {
         val indexUrl = "https://raw.githubusercontent.com/keiyoushi/extensions/main/index.min.json"
         val repoBase = "https://raw.githubusercontent.com/keiyoushi/extensions/main"

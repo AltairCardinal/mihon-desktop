@@ -2342,6 +2342,13 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Platform boundary: `verification`
 - Estimated scope: `7 files, 180 lines`
 - Verification: the first final `build-desktop.sh full-tests` run completed 1806 tests with 46 failures. Focused reruns proved the Reader/network contract failures were socket-resource cascades, while three deterministic failures came from a refresh test accepting the initial empty projection, a DI transaction fixture bypassed by the new signer requirement, and a baseline missing fixed-main `BrowseTab`. Keep the HTTP behavioral assertions but wait for the requested package; isolate artifact authentication in the already dedicated authenticity suite while the DI test continues through the production manager transaction; restore `BrowseTab` to the fixed-main baseline. Remove the obsolete live ManHuaGui “Application unsupported” hypothesis already superseded by immutable real-fixture evidence, and make the assertion-free live repository survey opt-in via `-PincludeNetworkSurveyTests=true` so full verification uses deterministic fixtures and does not consume unbounded host sockets. Run the focused regression set, Spotless, then the exact full-tests wrapper again.
+
+##### Task 7D28R: Remaining live-integration determinism repair
+
+- Risk axis: `live-integration-determinism`
+- Platform boundary: `verification`
+- Estimated scope: `3 files, 75 lines`
+- Verification: the first post-7D28 exact full-tests run reduced failures from 46 to 2. Tag the second assertion-free Keiyoushi whole-repository download/conversion survey with the same explicit `network-survey` opt-in. The live MangaDex large-feed call first passed with the upstream total changed from 1899 to 1901, then timed out in a focused rerun, proving both data and latency are unsuitable as fixed evidence. Replace only that large-feed fixture with a localhost 1901-chapter/four-page HTTP integration that still executes production OkHttp, JSON parsing, pagination and the unchanged 30-second `safeSourceCall` boundary, and assert exact `0/500/1000/1500` offsets plus all 1901 results. Keep the smaller live MangaDex product smoke tests. Run the focused test, Spotless and the exact full-tests wrapper; no production code or timeout changes are allowed.
 - [x] **Step 7: 独立批次与最终审查**
 
   `review_mode: thorough`：每个高风险边界或最多 3 个 Task 运行合并 spec+quality review，最后对 `852221f42..HEAD` 运行完整审查。Critical/Important 必须修复并重新运行覆盖测试；Minor 记录到持久进度并交最终审查裁定。
