@@ -15,6 +15,7 @@ import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
 import io.mockk.verify
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -25,6 +26,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.Preference
@@ -34,6 +36,61 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class ExtensionManagerTest {
+
+    @Test
+    fun `receiver events after loader snapshot are replayed before initialization is published`() = runBlocking {
+        val snapshotFixed = CompletableDeferred<Unit>()
+        val allowSnapshotPublication = CompletableDeferred<Unit>()
+        val receiverRegistered = CompletableDeferred<ExtensionInstallReceiver.Listener>()
+        val initial = installed().copy(pkgName = "$PACKAGE.initial", versionCode = 1)
+        val installedAfterSnapshot = installed().copy(pkgName = "$PACKAGE.installed-after-snapshot")
+        val updatedInitial = initial.copy(versionName = "2.0", versionCode = 2)
+        val untrustedAfterSnapshot = Extension.Untrusted(
+            name = installedAfterSnapshot.name,
+            pkgName = installedAfterSnapshot.pkgName,
+            versionName = installedAfterSnapshot.versionName,
+            versionCode = installedAfterSnapshot.versionCode,
+            libVersion = installedAfterSnapshot.libVersion,
+            signatureHash = "signature",
+        )
+        val manager = ExtensionManager(
+            context = mockk(relaxed = true),
+            preferences = preferences(),
+            trustExtension = mockk(relaxed = true),
+            installedExtensionsLoader = {
+                snapshotFixed.complete(Unit)
+                allowSnapshotPublication.await()
+                listOf(LoadResult.Success(initial))
+            },
+            installerFactory = { mockk(relaxed = true) },
+            installReceiverRegistrar = { receiverRegistered.complete(it) },
+        )
+
+        assertTrue(receiverRegistered.isCompleted, "package receiver must be registered during construction")
+        snapshotFixed.await()
+        val receiver = receiverRegistered.await()
+        mockkObject(ExtensionLoader)
+        try {
+            every { ExtensionLoader.uninstallPrivateExtension(any(), initial.pkgName) } returns Unit
+            receiver.onExtensionInstalled(installedAfterSnapshot)
+            receiver.onExtensionUpdated(updatedInitial)
+            receiver.onExtensionUntrusted(untrustedAfterSnapshot)
+            receiver.onPackageUninstalled(initial.pkgName)
+            assertFalse(manager.isInitialized.value)
+
+            allowSnapshotPublication.complete(Unit)
+
+            manager.isInitialized.await { it }
+            assertTrue(manager.installedExtensionsFlow.value.isEmpty())
+            assertEquals(
+                listOf(untrustedAfterSnapshot),
+                manager.untrustedExtensionsFlow.value,
+            )
+            verify(exactly = 1) { ExtensionLoader.uninstallPrivateExtension(any(), initial.pkgName) }
+        } finally {
+            unmockkObject(ExtensionLoader)
+        }
+    }
 
     @Test
     fun `concurrent receiver mutations preserve every extension snapshot`() = runBlocking {

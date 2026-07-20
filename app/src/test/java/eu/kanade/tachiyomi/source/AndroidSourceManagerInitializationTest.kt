@@ -12,9 +12,8 @@ import io.mockk.mockk
 import io.mockk.mockkConstructor
 import io.mockk.unmockkConstructor
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -33,8 +32,12 @@ class AndroidSourceManagerInitializationTest {
     @Test
     fun `source manager initializes only after the first installed extension snapshot is complete`() = runBlocking {
         val releaseLoader = CompletableDeferred<Unit>()
+        val installedExtensionCollectionStarted = CompletableDeferred<Unit>()
         val extensionSource = mockk<HttpSource> {
-            every { id } returns 7L
+            every { id } answers {
+                installedExtensionCollectionStarted.complete(Unit)
+                7L
+            }
             every { lang } returns "en"
             every { name } returns "Example"
         }
@@ -48,12 +51,8 @@ class AndroidSourceManagerInitializationTest {
             },
             installReceiverRegistrar = {},
         )
-        val sourceManagerWiringStarted = CompletableDeferred<Unit>()
         val sourceRepository = mockk<StubSourceRepository>(relaxed = true) {
-            every { subscribeAll() } returns flow {
-                sourceManagerWiringStarted.complete(Unit)
-                awaitCancellation()
-            }
+            every { subscribeAll() } returns flowOf(emptyList())
         }
         val localSourceFileSystem: LocalSourceFileSystem = mockk(relaxed = true)
         val localCoverManager: LocalCoverManager = mockk(relaxed = true)
@@ -67,11 +66,12 @@ class AndroidSourceManagerInitializationTest {
                 sourceRepository = sourceRepository,
             )
 
-            withTimeout(5_000) { sourceManagerWiringStarted.await() }
             assertFalse(sourceManager.isInitialized.value)
+            assertFalse(installedExtensionCollectionStarted.isCompleted)
 
             releaseLoader.complete(Unit)
 
+            withTimeout(5_000) { installedExtensionCollectionStarted.await() }
             withTimeout(5_000) { sourceManager.isInitialized.first { it } }
             assertEquals(extensionSource, sourceManager.get(7L))
         } finally {
