@@ -440,3 +440,45 @@ Task 7 compatibility 施工仍固定 `authorityRef = main@6fbf6dfc`，真实 APK
 - 7D20B Android initialization event handoff：`385b87283`、`8380f0807`、`51e74c60a` 暴露并修复 receiver/event handoff 后又取得 runtime reload RED；当前 repair 已实现但仍等待独立 repair review，因此不得记为 APPROVED。
 
 本次 provenance reconciliation 只把 IDs 28、29、30、37 提升或保持到 `WIRED`，并补齐 fixed-main 路径/blob、当前 Android consumer、Desktop adapter 与保护测试映射。OpenSpec 3.4.3、4.4、4.5、4.6 以及计划 Step 7/8 继续未完成；任何 capability 均未因本文档更新提升为 `VERIFIED`。
+
+## 13. 2026-07-18 原版身份混淆并行整改复核
+
+本轮继续以 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` 为唯一原版权威。两个子代理分别核验 Reader 与下载链路，并互相执行一次独立审查；当前 `app/` 仍只作为 current Android consumer，Desktop Android shim 未参与 expected value 生成。
+
+### 已闭合或确认已由后续提交闭合
+
+| 审计项 | 当前结论 | 闭合证据 |
+|---|---|---|
+| C2 Reader 双页配对身份混淆 | **已闭合。** fixed-main 默认恢复为一源页一显示单元，RTL 只反转；fork 相邻 portrait 配对改为显式 `pairAdjacentPortraitPages=true` 增强。当前 Android facade 与 Desktop 双页 adapter 显式启用，封面单页、forced single、edge matched pairs 和 landscape parity 均保留。 | `e9b34857e`；shared/current Android/Desktop focused GREEN；独立 repair review APPROVED，0 Critical/Important/Minor。 |
+| C3 备份 fixture 来源 | **已由后续提交闭合。** generator 从 `android-full.original-mihon-ref` 读取固定 main，README 记录九个 fixed-main blob；重新生成与原 artifact 字节相同，SHA-256 仍为 `43FA65A3469932F4DA2794E8BDF69C7BEF7D65D4E77FE894E1B1798ED1EFAD8D`。 | `data/src/commonTest/resources/backup/README.md`、`scripts/generate-android-backup-fixture.ps1`。 |
+| C4 下载默认分组 | **已由后续提交闭合。** 当前 Desktop 按 `sourceId` 分组并显示 source name，真实 Compose 测试会在退回 `mangaTitle` header 时失败。 | `483278b4d`、`275826c64`、`DownloadQueueSourceGroupingWiringTest`。 |
+| C5 批量迁移增强分类 | **已由后续提交闭合。** manifest ID 68 已把 fixed-main 的顺序遍历/普通失败继续/取消，与 checkpoint、`WaitingForUser`、retry、Desktop 持久队列分别记录。 | `parity-manifest.json` ID 68；增强保留，没有反写为原版行为。 |
+| C19 source/extension 基线漂移 | **已由后续提交闭合。** authority baseline 已固定 main，并追加 6C/6D、真实 ManHuaGui 与兼容证据的 superseded/closure 状态。 | `a2a4fd416` 与 `docs/roadmap/source-extension-authority-baseline.md`。 |
+| C20 活动恢复指针 | **已由后续提交闭合。** live progress 已指向修正版主路线图，修正版父计划与 source/extension 子计划互相引用；保留的原路线图未改写。 | `a2a4fd416`、`.superpowers/sdd/progress.md`。 |
+
+### 本轮新发现并已修复
+
+#### C24. 下载排序与拖拽边界仍是 Desktop 简化规则
+
+固定 main 只在每个 source header 内按 `dateUpload` 或 `chapterNumber` 排序，并禁止跨 source header 拖拽。Desktop 此前虽然已按 source 分组，但菜单仍全局按漫画标题排序，manager 也没有拒绝跨 source reorder。
+
+`465a534ec` 已改为从 production `ChapterRepository` 读取 canonical 章节元数据，在每个 source 内提供上传日期最新/最旧与章节号升/降序；跨 source 拖拽为 no-op，同 source 即使在底层队列交错也只重排本 source 槽位。Desktop 原有的 `DOWNLOADING` 稳定优先、暂停/恢复、重试、清错和取消反馈全部保留。真实 Compose 测试点击菜单并观察 manager queue，helper/manager 测试另覆盖四方向、null-last、tie 稳定、活动下载和跨 source 边界。独立 repair review APPROVED，0 Critical/Important/Minor。
+
+#### C25. Desktop fresh 阅读方向与显式双页入口未遵循原版默认
+
+固定 main 的 fresh reader 默认 `RIGHT_TO_LEFT`；Desktop 此前默认 LTR。初轮 C2 修复又暴露 `DesktopReaderScreen(isDualPage=true)` 没有进入 production model，若只把全局双页默认改为 false 会让该显式入口失效。
+
+`fbe35cbe3` 已将 fresh 默认改为 RTL，保留 current/legacy/per-manga LTR；shared navigation 不再提供容易被误作原版事实的隐式 LTR default，consumer 必须显式传方向。双页解析顺序固定为 per-manga flags > nullable screen override > global preference，screen override 经真实 runtime factory 到达 `ReaderScreenModel`；legacy dual-page true 继续迁移并持久化。独立 repair review APPROVED，0 Critical/Important/Minor。
+
+### 红绿与验证证据
+
+- shared pairing RED：恢复旧自动配对默认后，`ReaderParityContractTest` 38 项中固定-main LTR/RTL 两项精确失败；GREEN 为 40/40。
+- Desktop defaults/override RED：恢复 fresh LTR、screen 默认 true 并忽略 override 后，204 项中 7 项精确失败；GREEN 已恢复。
+- download RED：测试先于 production helper 落盘，`compileTestKotlinJvm` 因 `DownloadQueueOrder`/`applyDownloadQueueOrder` 四处未解析而失败。
+- 最终 focused GREEN：domain 40、current Android reader 29、Desktop reader/download 231，共 300 tests，0 failures/0 errors；root `spotlessCheck` 通过。
+
+### 仍待分批处理
+
+- C1/C12：64 项 parity manifest 仍有 46 项缺少固定 `upstreamRef`/symbols；必须按每批最多 8 项补 fixed-main path/blob 与四层 consumer/adapter 映射，不能用 shared/current `app/` 循环自证。
+- C13：历史主比较表已有 superseded 警示，但 95 项正文仍保留“当前 `app/` = 原版”的旧口径；修正版路线图存在不等于该比较结果已经重新核验，仍需按固定 main 重建可执行比较表。
+- 下载拖拽的 Compose gesture harness 尚未直接模拟跨 header 手势；manager production boundary 已有行为测试，但 UI gesture 集成证据应在不复制 reorder 逻辑的独立 Task 中补齐。
