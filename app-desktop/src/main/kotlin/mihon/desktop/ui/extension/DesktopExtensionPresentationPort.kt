@@ -1,10 +1,12 @@
 package mihon.desktop.ui.extension
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.withContext
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
 import mihon.desktop.extension.DesktopAvailableExtension
@@ -138,6 +140,8 @@ class DesktopExtensionPresentationPort(
 
     fun uninstall(item: DesktopExtensionItem): Boolean =
         item.installed?.let(manager::removeExtensionWithMeta) == true
+
+    suspend fun reloadInstalled() = withContext(Dispatchers.IO) { manager.reloadAll() }
 
     fun extensionSources(extension: InstalledExtension, disabledSources: Set<String>): List<DesktopExtensionSourceItem> {
         val isMultiSource = extension.sources.size > 1

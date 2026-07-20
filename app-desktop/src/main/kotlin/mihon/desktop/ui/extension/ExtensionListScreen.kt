@@ -68,7 +68,6 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import kotlinx.coroutines.launch
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import mihon.desktop.extension.DesktopAvailableExtension
-import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.extension.InstalledExtension
 import mihon.desktop.extension.isExtensionAvailableOnDesktop
 import mihon.desktop.ui.browse.SourceBrowseScreen
@@ -96,10 +95,8 @@ class ExtensionListScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val manager = LocalDesktopUiDependencies.current.extensionManager
         ExtensionListContent(
             model = LocalExtensionScreenModel.current(),
-            manager = manager,
             onBack = navigator::pop,
             onOpen = { onOpen(navigator, it) },
             onSettings = { sourceId, sourceName -> onSettings(navigator, sourceId, sourceName) },
@@ -120,7 +117,6 @@ internal fun sourceBrowseDestination(sourceId: Long) = SourceBrowseScreen(source
 @Composable
 internal fun ExtensionListContent(
     model: ExtensionsScreenModel,
-    manager: DesktopExtensionManager,
     onBack: () -> Unit = {},
     onOpen: (InstalledExtension) -> Unit = {},
     onSettings: (Long, String) -> Unit = { _, _ -> },
@@ -131,7 +127,7 @@ internal fun ExtensionListContent(
         val snackbarHostState = remember { SnackbarHostState() }
 
         var selectedTab by remember { mutableStateOf(0) }
-        var pendingRemoval by remember { mutableStateOf<InstalledExtension?>(null) }
+        var pendingRemoval by remember { mutableStateOf<DesktopExtensionItem?>(null) }
         var showLangFilter by remember { mutableStateOf(false) }
         val ui = remember(state) { state.toExtensionListUiProjection(state.searchQuery) }
         val installedExtensions = state.projection?.installed.orEmpty().mapNotNull(DesktopExtensionItem::installed)
@@ -151,14 +147,31 @@ internal fun ExtensionListContent(
 
         LaunchedEffect(model) { model.refresh() }
 
-        pendingRemoval?.let { ext ->
+        LaunchedEffect(state.reloadError) {
+            state.reloadError?.let { error ->
+                snackbarHostState.showSnackbar(
+                    MR.strings.desktop_extension_reload_failed.localized(
+                        Locale.getDefault(),
+                        error.message?.takeIf(String::isNotBlank) ?: MR.strings.unknown_error.localized(),
+                    ),
+                )
+                model.acknowledgeReloadError(error)
+            }
+        }
+
+        pendingRemoval?.let { item ->
+            val ext = requireNotNull(item.installed)
             AlertDialog(
                 onDismissRequest = { pendingRemoval = null },
                 title = { Text(MR.strings.ext_confirm_remove.localized()) },
                 text = { Text(MR.strings.desktop_extension_remove_confirmation.localized(Locale.getDefault(), ext.name)) },
                 confirmButton = {
                     TextButton(onClick = {
-                        manager.removeExtensionWithMeta(ext)
+                        if (!model.uninstall(item)) {
+                            scope.launch {
+                                snackbarHostState.showSnackbar(MR.strings.desktop_extension_uninstall_failed.localized())
+                            }
+                        }
                         pendingRemoval = null
                     }) { Text(MR.strings.ext_uninstall.localized(), color = MaterialTheme.colorScheme.error) }
                 },
@@ -230,9 +243,7 @@ internal fun ExtensionListContent(
                                 }
                             }
                             if (selectedTab == 0) {
-                                IconButton(onClick = {
-                                    manager.reloadAll()
-                                }) {
+                                IconButton(onClick = { model.reloadInstalled() }) {
                                     Icon(Icons.Default.Refresh, contentDescription = MR.strings.desktop_extension_reload_installed.localized())
                                 }
                             } else {
@@ -297,7 +308,7 @@ internal fun ExtensionListContent(
                     }
                 } else when (selectedTab) {
                 0 -> InstalledTab(
-                    extensions = ui.installed.mapNotNull(DesktopExtensionItem::installed),
+                    extensions = ui.installed,
                     onUninstall = { pendingRemoval = it },
                     onOpen = onOpen,
                     onSettings = onSettings,
@@ -342,8 +353,8 @@ internal fun ExtensionListContent(
 
 @Composable
 private fun InstalledTab(
-    extensions: List<InstalledExtension>,
-    onUninstall: (InstalledExtension) -> Unit,
+    extensions: List<DesktopExtensionItem>,
+    onUninstall: (DesktopExtensionItem) -> Unit,
     onOpen: (InstalledExtension) -> Unit,
     onSettings: (sourceId: Long, sourceName: String) -> Unit,
     emptyCopy: ExtensionListCopy,
@@ -357,10 +368,11 @@ private fun InstalledTab(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
         ) {
-            items(extensions, key = { it.jarFile.absolutePath }) { ext ->
+            items(extensions, key = { requireNotNull(it.installed).jarFile.absolutePath }) { item ->
+                val ext = requireNotNull(item.installed)
                 ExtensionCard(
                     extension = ext,
-                    onUninstall = { onUninstall(ext) },
+                    onUninstall = { onUninstall(item) },
                     onOpen = { onOpen(ext) },
                     onSettings = onSettings,
                 )

@@ -107,7 +107,7 @@ class ExtensionPresentationUiTest {
         val dependencies = mockk<DesktopUiDependencies> { every { extensionApi } returns api; every { extensionManager } returns manager }
         val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
         fun mount() = scene.setContent {
-            CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) { ExtensionListContent(model, manager) }
+            CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) { ExtensionListContent(model) }
         }
         try {
             model.refresh().join()
@@ -328,7 +328,7 @@ class ExtensionPresentationUiTest {
             model.refresh().join()
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
-                    ExtensionListContent(model, bypassManager)
+                    ExtensionListContent(model)
                 }
             }
             awaitText(scene, extension.name)

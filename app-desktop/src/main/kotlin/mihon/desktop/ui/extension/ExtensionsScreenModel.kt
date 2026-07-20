@@ -39,6 +39,7 @@ data class DesktopExtensionsState(
     val actions: ExtensionPresentationActionState = ExtensionPresentationActionState(),
     val options: ExtensionPresentationOptions,
     val refreshError: Throwable? = null,
+    val reloadError: Throwable? = null,
     val rawInstallStates: Map<String, ExtensionInstallState> = emptyMap(),
     val installErrors: Map<String, AppError> = emptyMap(),
     val pendingTrust: DesktopPendingTrust? = null,
@@ -158,6 +159,23 @@ class ExtensionsScreenModel(
     }
 
     fun uninstall(item: DesktopExtensionItem): Boolean = port.uninstall(item)
+
+    fun reloadInstalled(): Job = scope.launch {
+        try {
+            port.reloadInstalled()
+            mutableState.update { it.copy(reloadError = null) }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            mutableState.update { it.copy(reloadError = error) }
+        }
+    }
+
+    fun acknowledgeReloadError(error: Throwable) {
+        mutableState.update { state ->
+            if (state.reloadError === error) state.copy(reloadError = null) else state
+        }
+    }
 
     fun extensionSources(item: DesktopExtensionItem): List<DesktopExtensionSourceItem> =
         item.installed?.let { port.extensionSources(it, state.value.disabledSourceIds) }.orEmpty()
