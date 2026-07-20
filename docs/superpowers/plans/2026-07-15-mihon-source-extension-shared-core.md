@@ -2109,9 +2109,11 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Final full-run evidence: root `spotlessCheck` 61 tasks GREEN；`:domain:allTests` 130 tasks GREEN；`:app:testReleaseUnitTest` 209 tasks GREEN；`:app-desktop:jvmTest` fresh 1764 tests / 0 failed / 2 skipped；`:test-desktop:test` 17/17 GREEN；`build-desktop.sh test-only` 在版本不变 `0.11.14.21.f1f97d8` 下 GREEN。首次 wrapper 执行异常无输出并遗留单个 Gradle daemon，10分钟后终止且 `gradlew --stop` 清理；设置仅本进程 `GRADLE_OPTS=-Dorg.gradle.daemon=false` 后同一脚本20.4s成功，未修改全局配置或版本号。
 
-- [ ] **Step 5: Android 模拟器运行时验收**
+- [x] **Step 5: Android 模拟器运行时验收**
 
   自行启动 API 36 x86_64 AVD，`assembleDebug` 后安装匹配 ABI APK 与代表性纯 HTTP 扩展。验收：扩展发现/安装/加载、源列表、单源浏览、全局搜索、空/403/失败反馈和设置入口；收集 UI dump、截图与 logcat，FATAL/OOM/SIGSEGV 必须为 0。
+
+  Evidence: repo-local API 36 `google_apis;x86_64` AVD `mihon-api36` cold boot完成，`:app:assembleDebug` GREEN并安装 `app-universal-debug.apk`（package `app.mihon.dev`）与 tracked `keiyoushi-tcbscans-1.4.12.apk`。Android Mihon先显示 TCB Scans `UNTRUSTED`，经真实 Trust确认后 Sources显示 English/TCB Scans，Popular实际解析出 Jujutsu Kaisen等漫画；不存在查询显示 `No results found` + Retry/WebView/Help，airplane-mode显示 `No Internet connection` + Retry/WebView/Help，恢复网络后 Global search `jujutsu` 在 All过滤下显示 TCB Scans/Jujutsu Kaisen/Jujutsu Kaisen Modulo。Settings→About显示 `Mihon Debug 752875f53`；UI dump与截图保存在本地 `.test-tmp/mihon-android-*`（不纳入Git）。尝试以Android系统HTTP proxy注入403时确认production OkHttp不采用该代理，故未把无限loading冒充403；403仍由Step4已通过的真实production MockWebServer失败矩阵覆盖。清除proxy、关闭app/emulator后 logcat `FATAL EXCEPTION=0`、`OutOfMemoryError=0`、`SIGSEGV=0`、`Fatal signal=0`。
 
 - [ ] **Step 6: Windows 固定 EXE 与 macOS 验收**
 
