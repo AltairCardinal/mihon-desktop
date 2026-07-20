@@ -510,3 +510,21 @@
 - Final scope: 1 verification file, 1 changed line; no production or timeout change.
 - Delivery state: BUILD29 is rejected and produced no fresh EXE. Resume Task 7 Step 6 by allocating BUILD30, then run Windows and macOS acceptance serially.
 - Review/fix round: 0/1
+
+## Task 7D35 Review History
+
+- Reviewed task: `Task 7D35: Cross-platform real-extension fixture isolation`
+- Stage: `complete`
+- Risk axis: `cross-platform-extension-fixture-isolation`
+- Platform boundary: `verification`
+- Trigger: BUILD31 passed Windows but four immutable real-extension tests failed on macOS because the installed user's DoH preference and host proxy leaked into localhost fixtures.
+- Implementer: `/root/task7d35_fixture_isolation`.
+- Implementation commit: `550bd0722` (`test(desktop): isolate real extension fixtures`).
+- GREEN evidence: exact staged-patch Windows focused 5/5; exact patch-id macOS snapshot focused 5/5 and adjacent immutable matrix 11/11; root Spotless, diff check and Comet guard PASS.
+- Initial reviewer: `/root/review_task7d35`; result `CHANGES_REQUESTED`, Critical/Important/Minor `0/1/1`. The fixture DNS fallback replaced production DNS for non-target hosts; cleanup exception masking was recorded as non-blocking Minor.
+- Repair commit: `f9a76b4b0` (`test(desktop): preserve extension dns outside fixtures`). Non-target hosts now delegate to the loaded source client's DNS; only the fixture target is mapped to MockWebServer and `Proxy.NO_PROXY` remains fixture-only transport isolation.
+- Repair evidence: PageList focused 2/2 executed; root Spotless, diff check and Comet guard PASS.
+- Repair re-review: `APPROVED`, Critical/Important/Minor `0/0/1`; the Important is CLOSED and the cleanup-diagnostic Minor remains recorded without blocking.
+- Final scope: 5 verification files in the implementation commit plus 1 of those files in the repair; no production file, BUILD31, DownloadQueue whitespace or unrelated user file was committed.
+- Delivery state: BUILD31 remains rejected because macOS failed before this repair. Resume Task 7 Step 6 by allocating BUILD32 from the post-repair HEAD and validate Windows/macOS serially.
+- Review/fix round: 1/1
