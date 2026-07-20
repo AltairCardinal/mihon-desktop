@@ -2104,6 +2104,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Scope correction: 统一该测试类 10 个异步边界与 4 个 Compose pump，并移除固定 delay import 后实际为 31 touched lines；保持单文件机械测试修复。
 - Verification: 7D4e 后 full Desktop 1764 tests 仅 `GlobalSearchResultProductionWiringTest.only composed cards observe canonical database rows without another search` 在初始 2s render/delay轮询超时；同类 focused 曾通过且前一次 full suite亦通过，证明是 suite负载下的有界调度竞态，不是稳定的 production state失败。统一该类异步等待的非零但负载容忍上限，并将 Compose pump 的固定10ms睡眠改为 render/yield，让等待释放调度而不累计人为延迟；所有状态/DB/导航/错误断言保持不变。focused 连续验证后重跑 full Desktop JVM；不得改 production、删除断言或使用无限等待。
   Evidence: commit `f1f97d84b`，严格 1 test file / 31 touched lines。统一 10 个异步边界为有界 5s，4处 Compose固定 delay改为 render/yield；DB写入/订阅集合、导航栈幂等、详情输入、查询次数、新旧结果隔离与错误反馈断言全部保留。RED 为 full-suite 2s timeout；focused 2/2连续两轮 GREEN（第二轮 `--rerun-tasks`），随后 full Desktop 1764 tests / 0 failed / 2 skipped。独立 review APPROVED、diff-check clean、Java0。
+  Follow-up evidence: full Desktop under the later headless lifecycle changes proved the same initial propagation boundary can exceed 5s under suite load while focused remains green. Commit `8c3c1ff6f` raises only the shared bounded test timeout to 15s; no production code or assertion changed. Forced focused rerun 2/2 and fresh full Desktop 1769 tests / 0 failed / 0 errors / 2 skipped passed; independent review APPROVED.
 
   Conditional flow: 完成 7D4a–7D4d 后重跑 full Desktop JVM；若 `GlobalSearchResultProductionWiringTest` 仍只在 full-suite 负载下超时，另立 ≤2 files/60 lines 的 `global-search-compose-await` Task，先以有界重复/组合复现证明 frame propagation root cause，再调整测试 pump；若不再失败则不创建该 Task。
 
@@ -2123,9 +2124,10 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `desktop-headless-test-lifecycle`
 - Platform boundary: `desktop`
-- Estimated scope: `3 files, 160 lines`
+- Estimated scope: `3 files, 240 lines`
 - Scope correction: macOS packaged runtime proved that Ktor's `start(wait = true)` can return after binding, so the repair must give each start generation an independent termination signal, retain and explicitly stop the engine, and cover stop/restart isolation in the existing lifecycle test file; this remains three files and below the Task split threshold.
 - Verification: Windows canonical EXE `0.11.14.22.df46bdd` 已通过build script窗口版本验收，但按文档以 `--test-mode --test-http-port=8080 --headless` 启动后约4秒正常退出且8080无listener；production `Main` 在异步 `TestMode.start()` 后遇headless直接return，JVM只剩daemon线程。先以可控await/stop与真实 `DesktopAppRuntime` 建立生命周期RED：test-mode+headless必须阻塞、释放后stop TestMode并close runtime；非headless不得阻塞或关闭。GREEN让 TestMode暴露等待server job结束的边界，Main只在test-mode headless进入该边界并finally清理；不得用sleep/无限轮询或让普通GUI启动阻塞。focused/full tests后重新完整构建固定EXE，实启headless并读取 `/test/state`，再运行desktop smoke。
+  Evidence: commits `f1b32eee6`, `43682df5a`, `970ecdd10`, and `302b1fb17`, cumulatively 3 files / 236 touched. RED was the canonical EXE exiting in about four seconds plus unresolved production helper compilation. GREEN gives each start generation an immutable `TestModeRun`, retains the actual Ktor engine after non-blocking start, releases only on startup failure or stop, explicitly stops the engine, and guarantees every cleanup step plus termination even when engine stop throws. Regression tests cover headless wait/cleanup, GUI non-blocking behavior, old-run isolation, and throwing-stop release; focused 12/12 and fresh full Desktop 1769/0/2 passed. Two repair reviews found and drove the cross-generation and stop-exception fixes; final independent review APPROVED.
 
 ##### Task 7D6b: Test Mode state capability response
 
@@ -2133,6 +2135,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Platform boundary: `desktop`
 - Estimated scope: `2 files, 80 lines`
 - Verification: macOS packaged GUI test mode proves `/test/state` reports `testMode=true` while `screens` and `actions` are always empty because the production HTTP route hard-codes empty arrays instead of reading the lists registered by `TestMode.start`. First add a production HTTP integration RED that registers sentinel capabilities and observes the state endpoint, then serialize `applicationState.screens/actions` without copying registration rules into the route. Preserve reset semantics and existing endpoint fields; focused/full tests and packaged Windows/macOS `/test/state` must show non-empty registered capabilities.
+  Evidence: commit `743ffffef`, strictly 2 files / 40 touched. The real embedded production HTTP route RED returned empty arrays after sentinel registration; GREEN serializes `applicationState.screens/actions` directly without copying capability rules. Focused 2/2 and fresh full Desktop 1769/0/2 passed; independent review APPROVED.
 
 - [ ] **Step 7: 独立批次与最终审查**
 
