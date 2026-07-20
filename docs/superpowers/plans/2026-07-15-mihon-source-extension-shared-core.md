@@ -2068,6 +2068,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Platform boundary: `verification`
 - Estimated scope: `2 files, 40 lines`
 - Verification: 更新陈旧的 verifier/product baseline：Uri declared methods 必须精确为 abstract `toString` + public static `encode(String):String`，并以代表性 UTF-8/emoji percent encoding保护；product baseline 不再错误要求 symbol 全局唯一，而要求 evidence identity `(symbol, fixture, test)` 唯一。Uri 两条正交 evidence 继续由 `CompatEvidenceContractTest` 精确约束为 Comix return token 与 ComicFury encode execution，其他 resolved symbol仍恰好一条；不得删除或合并真实 evidence。
+  Evidence: commit `5e80153be`，严格 2 files / 20 touched lines。`AndroidWebViewVerifierAbiTest` 将 Uri ABI 精确约束为 abstract `toString` 与 public static `encode(String): String` 两个 declared methods，并验证默认 allow-list、空格 `%20` 与 UTF-8 emoji 大写 percent encoding；`DesktopExtensionProductBaselineTest` 改为 `(symbol, fixture, test)` evidence identity 唯一，并用真实重复 tuple 负例证明门禁。`CompatEvidenceContractTest` 继续要求 Uri 恰好两条正交 evidence、其他 resolved symbol 恰好一条；focused 12/12、独立 review APPROVED、diff-check clean、Java0。
 
 ##### Task 7D4c: Localized extension Compose semantics tests
 
