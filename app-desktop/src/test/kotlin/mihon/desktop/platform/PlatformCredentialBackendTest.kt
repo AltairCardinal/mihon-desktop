@@ -165,15 +165,12 @@ class PlatformCredentialBackendTest {
     }
 
     private fun assumeMacKeychainAccessible() {
-        val result = try {
-            ProcessCommandRunner().run(listOf("security", "show-keychain-info"))
-        } catch (_: CommandUnavailableException) {
-            return
-        }
+        val result = ProcessCommandRunner().run(listOf("security", "show-keychain-info"))
         assumeFalse(
             result.exitCode == 36 && result.stderr.contains("User interaction is not allowed"),
             "macOS Keychain interaction is unavailable for this test session",
         )
+        assertEquals(0, result.exitCode, "macOS Keychain interaction probe failed")
     }
 
     private class RecordingCommandRunner(
