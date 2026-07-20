@@ -2169,15 +2169,19 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `source-empty-page-recovery`
 - Platform boundary: `shared`
-- Estimated scope: `5 files, 260 lines`
+- Estimated scope: `8 files, 180 lines`
+- Scope correction: the explicit shared `AppError.NoResults` correctly forced one mechanically unreachable extension-install exhaustive branch, while the two consumers each need their existing presentation adapter and focused test; the final implementation is exactly the 8-file Task ceiling but only 142 touched lines. The global AppError variant inventory was repaired separately in one test-only follow-up.
 - Verification: fixed main converts every empty source page to `NoResultsException`; the presentation renders an empty first page but an empty append remains a visible retryable append error. Current shared `SourcePageResult.Empty` silently terminates append pagination and current Android/Desktop consumers inherited that rewrite. Add shared reducer RED plus current Android and Desktop consumer assertions: first-page empty remains the localized no-results product state, while page>1 empty preserves existing rows and exposes a retry action for the same request. Implement an explicit shared no-results error/state instead of `Unknown` or copied UI rules, and keep 403/429/500/malformed/cancellation behavior unchanged.
+  Evidence: implementation `6557cdb22` plus variant-contract follow-up `3c3fa6881`. Shared/desktop REDs proved empty append had no page error or retry. GREEN adds explicit `AppError.NoResults`; the reducer keeps rows and same-page Retry, current Android exposes fixed-main `NoResultsException`, and Desktop maps to localized `no_results_found`. Domain 12/12, Desktop 14/14, Android 5/5 with repo SDK, AppError contract 3/3, root/domain Spotless, and diff-check passed. First-page Desktop rendered copy was intentionally closed in 7D11 because that Task owns `SourceBrowseScreen`.
 
 ##### Task 7D11: Desktop source-browse canonical result wiring
 
 - Risk axis: `source-browse-canonical-result`
 - Platform boundary: `desktop`
-- Estimated scope: `6 files, 360 lines`
+- Estimated scope: `3 files, 360 lines`
+- Scope correction: reuse was stronger than planned: generalizing the existing Global Search materializer let Source Browse consume the same canonical persistence, generation/attempt CAS, retry, and close behavior without a new helper or dependency file. The dedicated real-DB Compose test brings the final range to 339 touched lines across only three files.
 - Verification: fixed main `BaseSourcePagingSource` performs URL de-duplication, `SManga.toDomainManga(sourceId)`, and `NetworkToLocalManga` before publishing rows; `BrowseSourceScreenModel` then observes `GetManga.subscribe(url, source)` so favorite/title/cover changes propagate. Desktop currently renders raw `SManga` and only persists on click. First add a real repository/Compose RED proving rows are canonical before click and a DB update changes the mounted card without a new network search. Reuse the existing repository/interactors and dependency boundary; preserve Desktop wide-grid layout, login recovery, generation/CAS behavior, de-duplicated detail navigation, raw-source background refresh, and all file tools.
+  Evidence: commit `c221ac0b1`, 3 files / 339 touched lines. The mounted real-SQLite RED timed out because no row existed before click. GREEN reuses generalized `SourceResultMaterializer` for URL de-duplication, `toDomainManga`/`NetworkToLocalManga`, and generation+attempt publication; `GetManga` flows update DB title/cover/favorite without another source request, while raw `SManga` remains only for detail background refresh. A separate mutation RED proved a NonCancellable old attempt could publish after close until close invalidated attempts. The same zh-CN mounted test also replaced the wrong “no sources” empty copy with fixed-main `no_results_found`. Final dedicated + Global materializer/projection matrix 7/7, root Spotless and diff-check passed.
 
 ##### Task 7D12: Reactive Desktop source membership
 
