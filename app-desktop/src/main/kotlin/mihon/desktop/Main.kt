@@ -40,10 +40,7 @@ fun main(args: Array<String>) {
     val uiDependencies = DesktopUiDependencies.fromInjekt()
     runtime.start()
 
-    // Skip UI in headless mode
-    if (testArgs.headless) {
-        return
-    }
+    if (runHeadlessMode(testArgs, runtime)) return
 
     application {
         Window(
@@ -63,4 +60,21 @@ fun main(args: Array<String>) {
             }
         }
     }
+}
+
+internal fun runHeadlessMode(
+    args: TestArguments,
+    runtime: DesktopAppRuntime,
+    awaitTestModeTermination: () -> Unit = TestMode::awaitTermination,
+    stopTestMode: () -> Unit = TestMode::stop,
+): Boolean {
+    if (!args.headless) return false
+
+    try {
+        if (args.testMode) awaitTestModeTermination()
+    } finally {
+        if (args.testMode) stopTestMode()
+        runtime.close()
+    }
+    return true
 }

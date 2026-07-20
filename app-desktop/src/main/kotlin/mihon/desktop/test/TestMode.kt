@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import mihon.desktop.test.http.testHttpServer
 import mihon.desktop.test.screenshot.ScreenshotService
 import mihon.desktop.test.state.applicationState
@@ -138,6 +139,13 @@ object TestMode {
      * Check if test mode is active.
      */
     fun isActive(): Boolean = isStarted
+
+    /**
+     * Keep a headless test process alive for as long as its HTTP server is running.
+     */
+    fun awaitTermination() = runBlocking {
+        serverJob?.join()
+    }
 
     /**
      * Get the HTTP server port.
