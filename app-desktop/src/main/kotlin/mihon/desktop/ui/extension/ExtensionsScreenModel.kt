@@ -79,7 +79,7 @@ class ExtensionsScreenModel(
         dispatch(ExtensionPresentationAction.RefreshStarted)
         try {
             latestCatalog = port.refresh()
-            publish(options.value)
+            publish(options.value, clearRefreshError = true)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
@@ -194,15 +194,15 @@ class ExtensionsScreenModel(
         drainPending()
     }
 
-    private fun publish(currentOptions: ExtensionPresentationOptions) {
-        val catalog = latestCatalog ?: return
+    private fun publish(currentOptions: ExtensionPresentationOptions, clearRefreshError: Boolean = false) {
+        val catalog = latestCatalog ?: EMPTY_CATALOG
         val projection = port.project(catalog)
         mutableState.update {
             it.copy(
                 projection = projection,
                 presentation = port.classify(projection, currentOptions),
                 options = currentOptions,
-                refreshError = null,
+                refreshError = if (clearRefreshError) null else it.refreshError,
             )
         }
     }
@@ -291,4 +291,11 @@ class ExtensionsScreenModel(
     }
 
     private fun checkOpen() = check(!closed) { "ExtensionsScreenModel is closed" }
+
+    private companion object {
+        val EMPTY_CATALOG = DesktopExtensionCatalogState(
+            catalog = mihon.domain.extension.model.ExtensionCatalogResult(emptyList(), emptyList()),
+            available = emptyList(),
+        )
+    }
 }

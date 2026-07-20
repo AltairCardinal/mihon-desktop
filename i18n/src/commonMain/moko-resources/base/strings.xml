@@ -386,6 +386,8 @@
     <string name="desktop_extension_reload_installed">Reload installed extensions</string>
     <string name="desktop_extension_reload_failed">Unable to reload installed extensions: %s</string>
     <string name="desktop_extension_refresh_available">Refresh available extensions</string>
+    <string name="desktop_extension_refresh_failed">Unable to refresh available extensions: %s</string>
+    <string name="desktop_extension_not_installed">This extension is not installed.</string>
     <string name="desktop_extension_filter_by_language">Filter by language</string>
     <string name="desktop_extension_show_nsfw">Show NSFW extensions</string>
     <string name="desktop_extension_source_settings">Settings for %s</string>

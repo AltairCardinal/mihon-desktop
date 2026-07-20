@@ -288,6 +288,22 @@ internal fun ExtensionListContent(
             snackbarHost = { SnackbarHost(snackbarHostState) },
         ) { padding ->
             Column(Modifier.padding(padding).fillMaxSize()) {
+                state.refreshError?.let { error ->
+                    ElevatedCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                            Text(
+                                MR.strings.desktop_extension_refresh_failed.localized(
+                                    Locale.getDefault(),
+                                    error.message?.takeIf(String::isNotBlank) ?: error.toString(),
+                                ),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            TextButton(onClick = model::refresh, modifier = Modifier.align(Alignment.End)) {
+                                Text(copy.retry)
+                            }
+                        }
+                    }
+                }
                 if (ui.failures.isNotEmpty()) {
                     ElevatedCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                         Column(Modifier.fillMaxWidth().padding(12.dp)) {

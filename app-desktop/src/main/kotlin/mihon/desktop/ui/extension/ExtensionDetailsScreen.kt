@@ -108,10 +108,6 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
         LaunchedEffect(model) {
             if (model.state.value.projection == null) model.refresh().join()
         }
-        LaunchedEffect(state.projection, jarPath) {
-            if (state.projection != null && extension == null) navigator.pop()
-        }
-
         fun openUrl(url: String) {
             platformActions.openUrl(url)
                 .onFailure { scope.launch { snackbar.showSnackbar(MR.strings.desktop_extension_open_link_failed.localized(Locale.getDefault(), it.message.orEmpty())) } }
@@ -142,6 +138,20 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                 return@Scaffold
             }
             if (extension == null) {
+                Column(
+                    Modifier.fillMaxSize().padding(padding).padding(24.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        MR.strings.desktop_extension_not_installed.localized(),
+                        style = MaterialTheme.typography.titleMedium,
+                        textAlign = TextAlign.Center,
+                    )
+                    Button(onClick = { navigator.pop() }, modifier = Modifier.padding(top = 16.dp)) {
+                        Text(MR.strings.action_bar_up_description.localized())
+                    }
+                }
                 return@Scaffold
             }
             LazyColumn(

@@ -34,6 +34,7 @@ import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopExtensionInstallStart
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.extension.InstalledExtension
+import mihon.desktop.settings.DesktopAppPreferences
 import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionCatalogResult
 import mihon.domain.extension.model.RepositoryCatalogFailure
@@ -47,10 +48,13 @@ import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.i18n.MR
+import tachiyomi.core.common.preference.DesktopPreferenceStore
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
 import java.io.File
 import java.util.Locale
+import java.util.UUID
+import java.util.prefs.Preferences
 
 class ExtensionPresentationUiTest {
     @OptIn(ExperimentalComposeUiApi::class)
@@ -64,6 +68,10 @@ class ExtensionPresentationUiTest {
             coEvery { loadExtensionIcon(any()) } returns null
         }
         val manager = mockk<DesktopExtensionManager>(relaxed = true)
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { extensionApi } returns api
+            every { extensionManager } returns manager
+        }
         val model = ExtensionsScreenModel(
             DesktopExtensionPresentationPort(api, manager, MutableStateFlow(listOf(installed))),
             this,
@@ -71,7 +79,11 @@ class ExtensionPresentationUiTest {
         )
         val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
         try {
-            scene.setContent { ExtensionListContent(model) }
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    ExtensionListContent(model)
+                }
+            }
 
             awaitText(scene, installed.name)
             awaitText(scene, "catalog offline")
@@ -106,7 +118,9 @@ class ExtensionPresentationUiTest {
         val dependencies = mockk<DesktopUiDependencies> {
             every { extensionApi } returns api
             every { extensionManager } returns manager
-            every { appPreferences } returns mockk(relaxed = true)
+            every { appPreferences } returns DesktopAppPreferences(
+                DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")),
+            )
         }
         val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
         fun mount(path: String) = scene.setContent {
@@ -214,7 +228,7 @@ class ExtensionPresentationUiTest {
 
     @OptIn(ExperimentalComposeUiApi::class)
     @Test
-    fun `production content renders loading empty data with failure and retries`() = runBlocking {
+    fun `production content renders local empty data with failure and retries`() = runBlocking {
         val candidate = extension(
             "Update extension", "pkg.visible",
             listOf(source(1, "en", "English source"), source(2, "fr", "French source")),
@@ -254,7 +268,7 @@ class ExtensionPresentationUiTest {
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) { Navigator(ExtensionListScreen()) { CurrentScreen() } }
             }
-            awaitText(scene, extensionListCopy().loading)
+            awaitText(scene, extensionListCopy().emptyInstalled)
             catalogs.send(ExtensionCatalogResult(emptyList(), emptyList()))
             withTimeout(5_000) { model.state.first { it.projection != null } }
             scene.render()
