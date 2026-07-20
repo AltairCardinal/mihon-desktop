@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.settings.DesktopAppPreferences
 import tachiyomi.core.common.preference.getAndSet
@@ -28,8 +28,9 @@ class DesktopSourceManager(
     private val _isInitialized = MutableStateFlow(true)
     override val isInitialized: StateFlow<Boolean> = _isInitialized.asStateFlow()
 
-    override val catalogueSources: Flow<List<CatalogueSource>>
-        get() = flowOf(getCatalogueSources())
+    override val catalogueSources: Flow<List<CatalogueSource>> = extensionManager.installedExtensions.map { extensions ->
+        builtinSources + extensions.flatMap { it.sources }.filterIsInstance<CatalogueSource>()
+    }
 
     override fun get(sourceKey: Long): Source? {
         return builtinSources.find { it.id == sourceKey }
@@ -48,7 +49,9 @@ class DesktopSourceManager(
     }
 
     override fun getCatalogueSources(): List<CatalogueSource> {
-        return (builtinSources + extensionManager.getInstalledSources().filterIsInstance<CatalogueSource>())
+        return builtinSources + extensionManager.installedExtensions.value
+            .flatMap { it.sources }
+            .filterIsInstance<CatalogueSource>()
     }
 
     /** Discovery/search candidates; disabled sources remain available through [get]. */

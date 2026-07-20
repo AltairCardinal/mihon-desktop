@@ -97,7 +97,9 @@ class BrowseSourceListScreen : Screen {
         val dependencies = LocalDesktopUiDependencies.current
         val sourceManager = dependencies.sourceManager
         val appPreferences = dependencies.appPreferences
-        val installedSources = remember(sourceManager) { sourceManager.getCatalogueSources() }
+        val installedSources by sourceManager.catalogueSources.collectAsState(
+            initial = sourceManager.getCatalogueSources(),
+        )
         val enabledLanguages by appPreferences.enabledLanguages.changes().collectAsState(
             initial = appPreferences.enabledLanguages.get(),
         )
