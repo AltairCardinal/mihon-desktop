@@ -506,6 +506,14 @@ class ExtensionPresentationUiTest {
             awaitText(scene, MR.strings.desktop_extension_uninstall_failed.localized())
             verify(exactly = 1) { authorityManager.removeExtensionWithMeta(match { it === extension }) }
             verify(exactly = 0) { bypassManager.removeExtensionWithMeta(any()) }
+            val dismiss = nodes(scene).first { it.config.contains(SemanticsActions.Dismiss) }
+            assertTrue(requireNotNull(dismiss.config[SemanticsActions.Dismiss].action).invoke())
+            withTimeout(5_000) {
+                while (nodes(scene).any { it.config.contains(SemanticsActions.Dismiss) }) {
+                    scene.render()
+                    yield()
+                }
+            }
 
             click(scene, MR.strings.desktop_extension_reload_installed.localized())
             awaitText(
