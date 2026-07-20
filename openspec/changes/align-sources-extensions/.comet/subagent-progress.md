@@ -553,3 +553,11 @@
 - Final scope: 1 verification file, 19 touched lines; no production, BUILD32, DownloadQueue or unrelated user file was committed.
 - Delivery state: BUILD32 remains rejected. Resume Step 6 by allocating BUILD33 from the post-repair evidence HEAD on Windows and macOS serially.
 - Review/fix round: 0/1
+
+## BUILD33 Verification and Task 7D37 Dispatch
+
+- Verification head: `a56fb6374f92cd82fc0383b6ed78e08a22416ea9`; allocated version `0.11.14.33.a56fb63`.
+- Windows fresh suite: 1814 tests, 1 failed, 2 skipped; stopped before distributable, smoke and Test Mode. macOS did not start.
+- RED: `GlobalSearchAuthorityWiringTest` clicked the real Has Results filter, rendered one frame and immediately observed selected semantics false; exact filtered rows and persisted preference assertions did not execute.
+- Root cause: the real Compose UI/state update is asynchronous but the fixture uses a single-frame assumption. The same test also remounts scenes and removes its Preferences root without an owned/joined scene lifecycle.
+- Decision: reject BUILD33 and dispatch bounded Task 7D37 `global-search-compose-fixture-lifecycle`; preserve all real UI, row, state and persistence assertions and do not rerun the full suite unchanged.
