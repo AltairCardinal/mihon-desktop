@@ -162,18 +162,15 @@ object TestMode {
             serverJob = null
             Triple(currentRun, currentServer, currentJob)
         }
-        activeServer?.stop(SERVER_STOP_GRACE_MS, SERVER_STOP_TIMEOUT_MS)
-        activeJob?.cancel()
-        run.terminate()
-
-        // Disable screenshot service
-        ScreenshotService.disable()
-
-        // Reset state
-        applicationState.testMode = false
-        applicationState.reset()
-
-        isStarted = false
+        completeTestModeStop(
+            run,
+            { activeServer?.stop(SERVER_STOP_GRACE_MS, SERVER_STOP_TIMEOUT_MS) },
+            { activeJob?.cancel() },
+            ScreenshotService::disable,
+            { applicationState.testMode = false },
+            applicationState::reset,
+            { isStarted = false },
+        )
         logger.info("Test mode stopped")
     }
 
@@ -204,6 +201,23 @@ internal class TestModeRun {
     fun awaitTermination() = termination.await()
 
     fun terminate() = termination.countDown()
+}
+
+internal fun completeTestModeStop(run: TestModeRun, vararg cleanupSteps: () -> Unit) {
+    var failure: Throwable? = null
+    cleanupSteps.forEach { step ->
+        try {
+            step()
+        } catch (caught: Throwable) {
+            if (failure == null) {
+                failure = caught
+            } else if (failure !== caught) {
+                failure.addSuppressed(caught)
+            }
+        }
+    }
+    run.terminate()
+    failure?.let { throw it }
 }
 
 /**

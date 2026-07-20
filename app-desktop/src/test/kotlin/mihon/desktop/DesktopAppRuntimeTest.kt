@@ -10,10 +10,13 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import mihon.desktop.test.TestArguments
 import mihon.desktop.test.TestModeRun
+import mihon.desktop.test.completeTestModeStop
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.util.concurrent.CountDownLatch
@@ -124,6 +127,31 @@ class DesktopAppRuntimeTest {
 
         current.terminate()
         waiter.await()
+    }
+
+    @Test
+    fun `test mode stop releases waiter and runs remaining cleanup after engine failure`() = runBlocking {
+        val run = TestModeRun()
+        val waiting = CountDownLatch(1)
+        val waiter = async(Dispatchers.Default) {
+            waiting.countDown()
+            run.awaitTermination()
+        }
+        val cleanup = mutableListOf<String>()
+
+        assertTrue(waiting.await(1, TimeUnit.SECONDS))
+        val failure = assertThrows(IllegalStateException::class.java) {
+            completeTestModeStop(
+                run,
+                { throw IllegalStateException("engine stop failed") },
+                { cleanup += "job" },
+                { cleanup += "state" },
+            )
+        }
+
+        assertEquals("engine stop failed", failure.message)
+        assertEquals(listOf("job", "state"), cleanup)
+        withTimeout(1_000) { waiter.await() }
     }
 
     private fun headlessRuntime() = DesktopAppRuntime(
