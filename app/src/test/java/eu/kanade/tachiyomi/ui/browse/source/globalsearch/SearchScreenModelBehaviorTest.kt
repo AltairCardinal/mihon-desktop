@@ -10,6 +10,7 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
@@ -26,6 +27,7 @@ import mihon.domain.error.AppError
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.domain.manga.interactor.GetManga
@@ -33,6 +35,8 @@ import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourceMangaSearchService
+import tachiyomi.domain.source.service.SourcePageResult
+import tachiyomi.domain.source.service.SourceQuery
 import tachiyomi.domain.source.service.SourceRecoveryAction
 
 class SearchScreenModelBehaviorTest {
@@ -91,7 +95,40 @@ class SearchScreenModelBehaviorTest {
         assertEquals(2, source.requestCount)
     }
 
-    private fun kotlinx.coroutines.test.TestScope.screenModel(source: CatalogueSource): SearchScreenModel {
+    @Test
+    fun `production global search uses shared failure and recovery without direct source call`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val source = DirectSearchRejectingSource()
+        val service = mockk<SourceMangaSearchService>()
+        val sentinelError = AppError.MalformedData(IllegalStateException("shared-service-sentinel"))
+        coEvery { service.loadPageResult(source, any()) } answers {
+            SourcePageResult.Failure(secondArg(), sentinelError, SourceRecoveryAction.OpenLogin)
+        }
+        val model = screenModel(source, service)
+
+        model.updateSearchQuery("shared-only")
+        model.search()
+        runCurrent()
+
+        val failure = assertInstanceOf(SearchItemResult.Error::class.java, model.state.value.items[source])
+        assertSame(sentinelError, failure.pageError.error)
+        assertEquals(SourceRecoveryAction.OpenLogin, failure.pageError.recoveryAction)
+        coVerify(exactly = 1) {
+            service.loadPageResult(
+                source,
+                match {
+                    it.sourceId == source.id &&
+                        it.page == 1 &&
+                        (it.query as? SourceQuery.Search)?.query == "shared-only"
+                },
+            )
+        }
+    }
+
+    private fun kotlinx.coroutines.test.TestScope.screenModel(
+        source: CatalogueSource,
+        sourceMangaSearchService: SourceMangaSearchService = SourceMangaSearchService(),
+    ): SearchScreenModel {
         val preferences = preferences()
         val repository = mockk<MangaRepository>()
         coEvery { repository.insertNetworkManga(any()) } answers { firstArg() }
@@ -102,7 +139,7 @@ class SearchScreenModelBehaviorTest {
             networkToLocalManga = NetworkToLocalManga(repository),
             getManga = mockk<GetManga>(),
             preferences = preferences,
-            sourceMangaSearchService = SourceMangaSearchService(),
+            sourceMangaSearchService = sourceMangaSearchService,
             workerScope = this,
             coroutineDispatcher = StandardTestDispatcher(testScheduler),
         ) {
@@ -149,6 +186,11 @@ class SearchScreenModelBehaviorTest {
             if (requestCount == 1) throw HttpException(500)
             return MangasPage(emptyList(), false)
         }
+    }
+
+    private class DirectSearchRejectingSource : BaseCatalogueSource() {
+        override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage =
+            error("Production global search bypassed SourceMangaSearchService")
     }
 
     private abstract class BaseCatalogueSource : CatalogueSource {

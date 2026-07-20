@@ -13,6 +13,7 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
@@ -45,6 +46,8 @@ import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourceMangaSearchService
+import tachiyomi.domain.source.service.SourcePageResult
+import tachiyomi.domain.source.service.SourceQuery
 
 class BrowseSourceScreenModelBehaviorTest {
 
@@ -89,7 +92,35 @@ class BrowseSourceScreenModelBehaviorTest {
         assertSame(newPager, model.mangaPagerFlowFlow.value)
     }
 
-    private fun kotlinx.coroutines.test.TestScope.screenModel(source: CatalogueSource): BrowseSourceScreenModel {
+    @Test
+    fun `production Pager publishes shared service content without calling source directly`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        val source = DirectBrowseRejectingSource()
+        val service = mockk<SourceMangaSearchService>()
+        val sentinel = manga("/shared-service-sentinel", "Shared service sentinel")
+        coEvery { service.loadPageResult(source, any()) } answers {
+            SourcePageResult.Content(secondArg(), listOf(sentinel), hasNextPage = false)
+        }
+        val model = screenModel(source, service)
+        backgroundScope.launch(dispatcher) { model.mangaPagerFlowFlow.collect() }
+        runCurrent()
+
+        val snapshot = backgroundScope.async(dispatcher) { model.mangaPagerFlowFlow.value.asSnapshot() }
+        runCurrent()
+        coVerify(exactly = 1) {
+            service.loadPageResult(
+                source,
+                match { it.sourceId == source.id && it.page == 1 && it.query == SourceQuery.Popular },
+            )
+        }
+        assertEquals(listOf(sentinel.url), snapshot.await().map { it.value.url })
+    }
+
+    private fun kotlinx.coroutines.test.TestScope.screenModel(
+        source: CatalogueSource,
+        sourceMangaSearchService: SourceMangaSearchService = SourceMangaSearchService(),
+    ): BrowseSourceScreenModel {
         val preferenceStore = InMemoryPreferenceStore()
         val repository = mockk<MangaRepository>()
         coEvery { repository.insertNetworkManga(any()) } answers { firstArg() }
@@ -110,7 +141,7 @@ class BrowseSourceScreenModelBehaviorTest {
             sourcePreferences = SourcePreferences(preferenceStore),
             libraryPreferences = LibraryPreferences(preferenceStore),
             coverCache = mockk<CoverCache>(),
-            sourceMangaSearchService = SourceMangaSearchService(),
+            sourceMangaSearchService = sourceMangaSearchService,
             networkToLocalManga = NetworkToLocalManga(repository),
             getDuplicateLibraryManga = mockk<GetDuplicateLibraryManga>(),
             getCategories = mockk<GetCategories>(),
@@ -146,6 +177,27 @@ class BrowseSourceScreenModelBehaviorTest {
         }
 
         override suspend fun getLatestUpdates(page: Int) = MangasPage(emptyList(), false)
+        override fun getFilterList() = FilterList()
+        override suspend fun getMangaDetails(manga: SManga) = manga
+        override suspend fun getChapterList(manga: SManga) = emptyList<SChapter>()
+        override suspend fun getPageList(chapter: SChapter) = emptyList<Page>()
+    }
+
+    private class DirectBrowseRejectingSource : CatalogueSource {
+        override val id = 17L
+        override val name = "Direct browse rejecting source"
+        override val lang = "en"
+        override val supportsLatest = true
+
+        override suspend fun getPopularManga(page: Int): MangasPage =
+            error("Production Pager bypassed SourceMangaSearchService for popular")
+
+        override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage =
+            error("Production Pager bypassed SourceMangaSearchService for search")
+
+        override suspend fun getLatestUpdates(page: Int): MangasPage =
+            error("Production Pager bypassed SourceMangaSearchService for latest")
+
         override fun getFilterList() = FilterList()
         override suspend fun getMangaDetails(manga: SManga) = manga
         override suspend fun getChapterList(manga: SManga) = emptyList<SChapter>()
