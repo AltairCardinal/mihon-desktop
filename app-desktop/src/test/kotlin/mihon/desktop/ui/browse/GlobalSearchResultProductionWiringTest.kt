@@ -36,6 +36,7 @@ import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.desktop.ui.library.MangaDetailScreen
+import mihon.domain.manga.model.toDomainManga
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -55,16 +56,59 @@ import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
+import tachiyomi.domain.source.service.SourcePageRequest
+import tachiyomi.domain.source.service.SourceQuery
+import tachiyomi.domain.source.service.SourceQueryState
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.i18n.MR
 import java.util.prefs.Preferences
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
 private const val ASYNC_TIMEOUT_MS = 15_000L
 private const val INITIAL_RENDER_TIMEOUT_MS = 30_000L
 
 @OptIn(ExperimentalComposeUiApi::class)
 class GlobalSearchResultProductionWiringTest {
+
+    @Test
+    fun `materializer serializes canonical persistence across sources`() = runBlocking {
+        val firstEntered = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        val activeSource = AtomicLong()
+        val materializer = SourceResultMaterializer(this) { items, sourceId ->
+            check(activeSource.compareAndSet(0L, sourceId)) {
+                "source $sourceId entered persistence while source ${activeSource.get()} was active"
+            }
+            try {
+                if (sourceId == 9L) {
+                    firstEntered.complete(Unit)
+                    releaseFirst.await()
+                }
+                items.map { it.toDomainManga(sourceId) }
+            } finally {
+                check(activeSource.compareAndSet(sourceId, 0L))
+            }
+        }
+        fun content(sourceId: Long) = SourceQueryState.Content(
+            SourcePageRequest(sourceId, page = 1, generation = 1, query = SourceQuery.Popular),
+            listOf(SManga.create().apply { url = "/$sourceId"; title = "Source $sourceId" }),
+            hasNextPage = false,
+        )
+
+        materializer.sync(1, linkedMapOf(9L to content(9L), 10L to content(10L)))
+        withTimeout(ASYNC_TIMEOUT_MS) { firstEntered.await() }
+        releaseFirst.complete(Unit)
+        withTimeout(ASYNC_TIMEOUT_MS) {
+            while (materializer.results.size < 2) yield()
+        }
+
+        assertTrue(
+            materializer.results.values.all { it is CanonicalSearchResult.Content },
+            "both sources must publish content after serialized persistence: ${materializer.results}",
+        )
+        materializer.close()
+    }
 
     @Test
     fun `only composed cards observe canonical database rows without another search`() = runBlocking {
@@ -88,10 +132,16 @@ class GlobalSearchResultProductionWiringTest {
                 every { sourceLoginSessionFactory } returns mockk(relaxed = true)
             }
             var navigator: Navigator? = null
+            var resultMaterializer: SourceResultMaterializer? = null
             val scene = ImageComposeScene(320, 1_400, coroutineContext = coroutineContext) {}
             try {
                 scene.setContent {
-                    CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    CompositionLocalProvider(
+                        LocalDesktopUiDependencies provides dependencies,
+                        LocalSourceResultMaterializerFactory provides { scope, persist ->
+                            SourceResultMaterializer(scope, persist).also { resultMaterializer = it }
+                        },
+                    ) {
                         Navigator(GlobalSearchScreen("observe")) {
                             navigator = LocalNavigator.currentOrThrow
                             CurrentScreen()
@@ -111,7 +161,8 @@ class GlobalSearchResultProductionWiringTest {
                 } ?: false
                 check(initialRowsReady) {
                     "Initial rows did not settle: observed=${fixture.repository.observedRows}, " +
-                        "active=${fixture.repository.activeSubscriptions}, text=${text(scene).take(2_000)}"
+                        "active=${fixture.repository.activeSubscriptions}, canonical=${resultMaterializer.diagnostic()}, " +
+                        "text=${text(scene).take(2_000)}"
                 }
                 scene.render()
                 yield()
@@ -193,6 +244,8 @@ class GlobalSearchResultProductionWiringTest {
                 setText(scene, "new")
                 scene.render()
                 click(scene, "Search")
+                fixture.repository.releaseOld.complete(Unit)
+                withTimeout(ASYNC_TIMEOUT_MS) { fixture.repository.oldInserted.await() }
                 withTimeout(ASYNC_TIMEOUT_MS) {
                     while (!fixture.repository.newFailed.isCompleted) {
                         scene.render()
@@ -208,8 +261,6 @@ class GlobalSearchResultProductionWiringTest {
                 assertTrue(text(scene).contains("new canonical"))
                 assertNotNull(fixture.mangas.getMangaByUrlAndSourceId("/new/0", source.id))
 
-                fixture.repository.releaseOld.complete(Unit)
-                withTimeout(ASYNC_TIMEOUT_MS) { fixture.repository.oldInserted.await() }
                 scene.render()
                 assertTrue(text(scene).contains("new canonical"))
                 assertFalse(text(scene).contains("old canonical"))
@@ -264,6 +315,14 @@ class GlobalSearchResultProductionWiringTest {
     private fun setText(scene: ImageComposeScene, value: String) = requireNotNull(
         nodes(scene).first { it.config.contains(SemanticsActions.SetText) }.config[SemanticsActions.SetText].action,
     ).invoke(AnnotatedString(value))
+
+    private fun SourceResultMaterializer?.diagnostic(): Map<Long, String>? = this?.results?.mapValues { (_, result) ->
+        when (result) {
+            is CanonicalSearchResult.Content -> "Content(${result.items.size})"
+            is CanonicalSearchResult.Failure ->
+                "Failure(${result.cause::class.simpleName}: ${result.cause.message})"
+        }
+    }
 
     private class Fixture : AutoCloseable {
         val preferenceRoot = Preferences.userRoot().node("mihon-global-search-${System.nanoTime()}")

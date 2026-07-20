@@ -66,6 +66,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.network.DesktopSourceLoginSessionFactory
 import mihon.desktop.settings.DesktopAppPreferences
@@ -110,6 +112,7 @@ internal class SourceResultMaterializer(
     private val requests = mutableMapOf<Long, List<SManga>>()
     private val jobs = mutableMapOf<Long, Job>()
     private val activeAttempts = mutableMapOf<Long, Long>()
+    private val persistenceMutex = Mutex()
     private var activeGeneration = 0L
     private var nextAttempt = 0L
 
@@ -155,7 +158,7 @@ internal class SourceResultMaterializer(
         jobs[sourceId]?.cancel()
         jobs[sourceId] = scope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
-                val canonical = persist(listed, sourceId)
+                val canonical = persistenceMutex.withLock { persist(listed, sourceId) }
                 if (activeGeneration == expectedGeneration && activeAttempts[sourceId] == expectedAttempt) {
                     results[sourceId] = CanonicalSearchResult.Content(
                         expectedGeneration,
@@ -261,6 +264,15 @@ internal val LocalGlobalSearchCoordinatorFactory = staticCompositionLocalOf<(Sou
     { service -> DesktopGlobalSearchCoordinator(service) }
 }
 
+internal typealias SourceResultMaterializerFactory = (
+    CoroutineScope,
+    suspend (List<SManga>, Long) -> List<Manga>,
+) -> SourceResultMaterializer
+
+internal val LocalSourceResultMaterializerFactory = staticCompositionLocalOf<SourceResultMaterializerFactory> {
+    { scope, persist -> SourceResultMaterializer(scope, persist) }
+}
+
 /** Searches all installed sources simultaneously, grouped by source. */
 class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
 
@@ -321,9 +333,10 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
         var sourceFilter by remember { mutableStateOf(GlobalSearchSourceFilter.PinnedOnly) }
         var openingMangaUrl by remember { mutableStateOf<String?>(null) }
         val coordinatorFactory = LocalGlobalSearchCoordinatorFactory.current
+        val materializerFactory = LocalSourceResultMaterializerFactory.current
         val queryCoordinator = remember(sourceMangaSearchService, coordinatorFactory) { coordinatorFactory(sourceMangaSearchService) }
-        val resultMaterializer = remember(saveSourceMangaForDetails, scope) {
-            SourceResultMaterializer(scope, saveSourceMangaForDetails::awaitSearchResults)
+        val resultMaterializer = remember(saveSourceMangaForDetails, scope, materializerFactory) {
+            materializerFactory(scope, saveSourceMangaForDetails::awaitSearchResults)
         }
         val searchState by queryCoordinator.states.collectAsState()
         LaunchedEffect(searchState.generation, searchState.publicationOrdinal) {
