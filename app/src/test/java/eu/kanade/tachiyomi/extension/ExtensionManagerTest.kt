@@ -47,8 +47,9 @@ class ExtensionManagerTest {
             }
         }
         lateinit var receiver: ExtensionInstallReceiver.Listener
+        val sentinel = installed().copy(pkgName = "$PACKAGE.sentinel", hasUpdate = true)
         val manager = manager(
-            initial = emptyList(),
+            initial = listOf(LoadResult.Success(sentinel)),
             installer = installer,
             receiver = { receiver = it },
         )
@@ -61,13 +62,21 @@ class ExtensionManagerTest {
             )
         }
 
-        runConcurrently(workerCount, installed.map { extension ->
-            { receiver.onExtensionInstalled(extension) }
-        })
+        runConcurrently(
+            workerCount,
+            installed.map { extension ->
+                { receiver.onExtensionInstalled(extension) }
+            },
+        )
 
-        assertEquals(installed.map { it.pkgName }.toSet(), manager.installedExtensionsFlow.value.map { it.pkgName }.toSet())
+        assertEquals(
+            (installed + sentinel).map { it.pkgName }.toSet(),
+            manager.installedExtensionsFlow.value.map { it.pkgName }.toSet(),
+        )
 
-        val untrusted = installed.map { extension ->
+        val updated = installed.filterIndexed { index, _ -> index % 3 == 0 }
+            .map { it.copy(versionName = "2.0", versionCode = 2) }
+        val untrusted = installed.filterIndexed { index, _ -> index % 3 == 1 }.map { extension ->
             Extension.Untrusted(
                 name = extension.name,
                 pkgName = extension.pkgName,
@@ -77,12 +86,47 @@ class ExtensionManagerTest {
                 signatureHash = "signature",
             )
         }
-        runConcurrently(workerCount, untrusted.map { extension ->
-            { receiver.onExtensionUntrusted(extension) }
-        })
+        val uninstalled = installed.filterIndexed { index, _ -> index % 3 == 2 }
+        val updatedByPackage = updated.associateBy { it.pkgName }
+        val untrustedByPackage = untrusted.associateBy { it.pkgName }
+        mockkObject(ExtensionLoader)
+        try {
+            every { ExtensionLoader.uninstallPrivateExtension(any(), any()) } returns Unit
+            runConcurrently(
+                workerCount,
+                installed.map { extension ->
+                    {
+                        when (extension.pkgName) {
+                            in updatedByPackage -> receiver.onExtensionUpdated(
+                                updatedByPackage.getValue(extension.pkgName),
+                            )
+                            in untrustedByPackage -> receiver.onExtensionUntrusted(
+                                untrustedByPackage.getValue(extension.pkgName),
+                            )
+                            else -> receiver.onPackageUninstalled(extension.pkgName)
+                        }
+                    }
+                },
+            )
+        } finally {
+            unmockkObject(ExtensionLoader)
+        }
 
-        assertTrue(manager.installedExtensionsFlow.value.isEmpty())
-        assertEquals(untrusted.map { it.pkgName }.toSet(), manager.untrustedExtensionsFlow.value.map { it.pkgName }.toSet())
+        val remainingByPackage = manager.installedExtensionsFlow.value.associateBy { it.pkgName }
+        assertEquals(updatedByPackage.keys + sentinel.pkgName, remainingByPackage.keys)
+        updatedByPackage.forEach { (pkgName, extension) ->
+            assertEquals(extension.versionCode, remainingByPackage.getValue(pkgName).versionCode)
+        }
+        assertEquals(
+            untrusted.map { it.pkgName }.toSet(),
+            manager.untrustedExtensionsFlow.value.map { it.pkgName }.toSet(),
+        )
+        assertTrue(uninstalled.none { it.pkgName in remainingByPackage })
+        assertTrue(
+            uninstalled.none { extension ->
+                manager.untrustedExtensionsFlow.value.any { it.pkgName == extension.pkgName }
+            },
+        )
     }
 
     @Test
