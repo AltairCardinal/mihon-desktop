@@ -369,6 +369,101 @@ Task 6B、authority baseline ID 37 与 manifest ID 37 只列出 `ExtensionsScree
 
 `docs/MIHON_ANDROID_DESKTOP_FEATURE_IMPLEMENTATION_COMPARISON.md:4,74` 仍写“当前工作树中的 `app/`（原版 Android）”及“原版配对规则更成熟”；`docs/desktop-parity/PARITY_TRACKER.md:26` 仍使用未固定 ref 的“Android 权威行为”。固定 main 不存在 `PagePairingAlgorithm.kt`，该算法由 fork 提交 `bef51fc69` 引入。应以 fixed main 重新核验整份 95 项表，而不是只机械改两行；docs Task 预计 2 文件、200–250 行。
 
+#### C13 后续施工清单：主比较文档逐行权威纠错（2026-07-18）
+
+本清单只记录施工边界，不修改历史比较文档。唯一原版权威固定为 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`；“当前 Android consumer”只表示 fork 当前消费端，不能反向证明原版行为。原表实际有 **96** 项，不是 C13 初审所写的 95 项。分类：`UPSTREAM_PARITY` 表示应以固定原版语义为准，`PLATFORM_ADAPTER` 表示只允许平台边界不同，`FORK_ENHANCEMENT` 表示当前 Android fork 新增、不可归因于原版，`DESKTOP_ENHANCEMENT` 表示 Desktop 产品增强且不得在对齐时删除。
+
+路径缩写：`U:` 固定原版，`A:` 当前 Android consumer，`D:` Desktop。下列 48 项已完成证据复核；每批不超过 8 行，可独立施工和审查。
+
+##### Batch C13-1：源发现、浏览与仓库（rows 28–32，5 项）
+
+| 行 | 旧结论 | 固定原版路径/符号 | 当前 Android consumer | Desktop 实现 | 应改评分与差异明细 | 分类 |
+|---:|---|---|---|---|---|---|
+| 28 | 原版更优；管理维度/排序更成熟 | U:`GetEnabledSources.subscribe`、`AndroidSourceManager.sourcesMapFlow`、`SourcesScreenModel` | A:同名 consumer，另消费 fork 的 shared projection | D:`DesktopSourceManager`、`BrowseTab`、shared source projection | **不相上下**；Desktop 已恢复 reactive membership、last-used→pinned→language、筛选与 incognito gate；平台只保留源加载 adapter | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+| 29 | 原版更优；paging/错误恢复更成熟 | U:`BrowseSourceScreenModel`、`data/.../SourcePagingSource`、`NetworkToLocalManga` | A:`BrowseSourceScreenModel` 消费 source-api/shared mapper | D:`SourceBrowseScreen`、source query coordinator、`SaveSourceMangaForDetails` | **原版更优**；两端查询语义接近，但固定原版 Paging 生命周期、重试与长期扩展兼容仍更完整 | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+| 30 | 原版更优；配置/异常处理更成熟 | U:`GlobalSearchScreenModel`、`SearchScreenModel`、`GlobalSearchCardRow` | A:同名 UI/ScreenModel，消费 shared source policy | D:`GlobalSearchScreen`、global query coordinator | **原版更优**；Desktop 已有并发、过滤、分组和重试，差距收敛为固定原版的成熟状态/错误编排 | UPSTREAM_PARITY |
+| 31 | 不相上下；原版格式生态、Desktop 文件监听 | U:`source-local/.../LocalSource`、`LocalSourceFileSystem` | A:Android SAF adapter 消费 common local-source | D:`LocalSourceReader`、`LocalSourceScanService` | **不相上下**；原版的 SAF/格式/metadata 与 Desktop 的直接文件系统/监听是平台能力，不应互相复制 | PLATFORM_ADAPTER |
+| 32 | 原版更优；Desktop 尚在补仓库兼容 | U:`ExtensionReposScreenModel`、extension repo domain | A:设置页 consumer 与当前 shared repo domain | D:`ExtensionRepoScreen`、shared repository/use cases | **原版更优**；核心仓库 CRUD 已共用，固定原版的 index 验证、更新联动与发布生态仍更成熟 | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+
+##### Batch C13-2：扩展生命周期、安全与登录（rows 33–40，8 项）
+
+| 行 | 旧结论 | 固定原版路径/符号 | 当前 Android consumer | Desktop 实现 | 应改评分与差异明细 | 分类 |
+|---:|---|---|---|---|---|---|
+| 33 | 原版更优；APK 发布格式天然一致 | U:`ExtensionManager.findAvailableExtensions`、`ExtensionApi`、`ExtensionLoader` | A:同名 consumer + 当前 shared catalog | D:`DesktopExtensionManager`、`DesktopExtensionApi`、artifact scanner | **原版更优**；catalog 语义应上游对齐，APK/JAR 发现差异只能留在 adapter；Android 扩展生态仍是权威格式 | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+| 34 | 原版更优；Desktop 转换/隔离较弱 | U:`ExtensionManager.install/update/cancel`、`ExtensionInstaller` | A:PackageInstaller/Shizuku consumer | D:`DesktopExtensionManager` install transaction、APK→JAR adapter | **原版更优**；Desktop 已有替换回滚/取消，但系统安装、签名与隔离只能由平台 adapter 实现 | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+| 35 | 原版更优；Desktop stub/修补不保证全部 API | U:`ExtensionLoader` 的 PackageManager、签名、APK runtime | A:当前 `ExtensionLoader` 仍走 Android runtime | D:`DesktopExtensionLoader`、child-first loader、compat shim | **原版更优**；shim 是兼容 adapter，真实 APK fixture 证据不能改写成原版实现或完整 Android API 等价 | PLATFORM_ADAPTER |
+| 36 | 原版更优；签名与平台隔离更强 | U:`ExtensionLoader.LoadResult.Untrusted`、`ExtensionManager.trust` | A:`ExtensionsScreenModel` 信任 consumer | D:artifact authenticity、trusted fingerprint、同 JVM loader | **原版更优**；信任状态机可对齐，进程/包隔离能力不可伪造，Desktop 需明确剩余风险 | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+| 37 | 原版更优；Desktop 边缘状态不足 | U:`GetExtensionsByType`、`GetExtensionSources`、`ExtensionsScreenModel`、`ExtensionDetailsScreenModel` | A:同名 model/presentation | D:shared extension state、typed presentation port、详情/更新/卸载 | **不相上下**；Desktop 已接入 obsolete、NSFW、enable-all、model-routed actions；安全隔离差距归 row 36，不应重复降分 | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+| 38 | 原版更优；复杂 Android preference 不兼容 | U:`SourcePreferencesScreen` | A:AndroidX Preference/Compose bridge | D:`SourcePreferencesScreen` + JVM preference compat | **原版更优**；常见设置语义可对齐，自定义 Android View/Preference 只能判为 adapter 不兼容 | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+| 39 | 原版更优；内嵌 WebView 闭环更自然 | U:`WebViewScreenModel`、`WebViewScreen`、Android `CookieManager` | A:同名 WebView consumer | D:cookie import、source-login UI、外部浏览器/挑战 adapter | **原版更优**；Desktop 不得宣称拥有原版内嵌 WebView，只能保留清晰的外部登录与 cookie 同步降级 | PLATFORM_ADAPTER |
+| 40 | 原版更优；Desktop 依赖手工 cookie/外部服务 | U:`CloudflareInterceptor`、WebView challenge flow | A:OkHttp + WebView cookie consumer | D:`DesktopCloudflareInterceptor`、`CloudflareChallengeManager`、FlareSolverr | **原版更优**；重试/cookie 语义可参考原版，挑战 UI 是不可共用的平台 adapter；外部自动化属于 Desktop 增强 | UPSTREAM_PARITY + PLATFORM_ADAPTER + DESKTOP_ENHANCEMENT |
+
+##### Batch C13-3：阅读器模式、跨页与加载（rows 41–47，7 项）
+
+| 行 | 旧结论 | 固定原版路径/符号 | 当前 Android consumer | Desktop 实现 | 应改评分与差异明细 | 分类 |
+|---:|---|---|---|---|---|---|
+| 41 | 不相上下；原版模式更多、Desktop 双页重要 | U:`ReadingMode`、`ReaderPreferences`、viewer factories | A:同名 consumer，另含 fork 双页 viewer | D:`ReaderModeState`、pager/webtoon/dual-page viewer | **不相上下**；固定原版提供 LTR/RTL/vertical/webtoon/continuous，Desktop 双页是大屏增强，不能归因给原版 | UPSTREAM_PARITY + DESKTOP_ENHANCEMENT |
+| 42 | 不相上下；“原版已有配对算法且更成熟” | U:`PagerViewerAdapter.setChapters` 每源页一项；`PagerViewers` 仅方向差异；固定原版无 `PagePairingAlgorithm` | A:`PagePairingAlgorithm`、`PairingState`、`DualPageViewerAdapter` 是 fork 增强 | D:`DualPageState`、`DualPagePagerViewer`、edge matching | **Mihon Desktop 更优**；固定原版只拆单张宽页，不会配对相邻竖页；Desktop 有显式配对、封面/奇偶/edge matching，当前 Android 类不得写成原版证据 | FORK_ENHANCEMENT + DESKTOP_ENHANCEMENT |
+| 43 | 原版更优；覆盖 webtoon/反转/旋转更多 | U:`PagerViewerAdapter.onPageSplit`、`PagerPageHolder.splitInHalf`、`WebtoonPageHolder`、`ImageUtil.splitInHalf` | A:固定逻辑 consumer + fork pairing | D:`VirtualPageList`、`PageSplitHalf` | **原版更优**；固定原版权威是单张宽图拆分，不含相邻页配对；Desktop 仍缺 webtoon/旋转组合的完整等价 | UPSTREAM_PARITY |
+| 44 | 原版更优；区域解码大图更稳 | U:`ReaderPageImageView`/subsampling pipeline、`PagerPageHolder` | A:Android image holder/view | D:Compose zoom + Skia decode/crop | **原版更优**；手势可平台化，但区域解码与内存峰值属于尚未对齐的工程能力 | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+| 45 | 原版更优；缓存/生命周期结合更深 | U:reader page loaders、`PagerPageHolder.process`、adapter lifecycle | A:当前 loader/holder consumer | D:`DesktopReaderPageLoader`、page preloader/cache | **原版更优**；Desktop 已有邻页预取和取消，仍需以固定原版的状态、失败重试和生命周期为语义基线 | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+| 46 | 不相上下；Desktop 有自动滚动 | U:`WebtoonViewer`、`WebtoonAdapter.setChapters`、`WebtoonPageHolder.process` | A:同名 consumer | D:webtoon LazyColumn、auto-scroll/speed | **不相上下**；虚拟化/章节状态优先参考原版，自动滚动是 Desktop 独有增强不得因对齐删除 | UPSTREAM_PARITY + DESKTOP_ENHANCEMENT |
+| 47 | 原版更优；章节边界反馈更完整 | U:`PagerViewerAdapter.setChapters`、reader transition/error models | A:当前 reader transition consumer | D:`ReaderScreenModel`、chapter transition/retry UI | **原版更优**；Desktop 已补章节切换、加载与重试，剩余差距是缺章/首尾过渡信息密度，不再描述为仅有底栏 | UPSTREAM_PARITY |
+
+##### Batch C13-4：阅读交互、显示与进度（rows 48–55，8 项）
+
+| 行 | 旧结论 | 固定原版路径/符号 | 当前 Android consumer | Desktop 实现 | 应改评分与差异明细 | 分类 |
+|---:|---|---|---|---|---|---|
+| 48 | 不相上下；各自适配主要输入 | U:`ViewerNavigation`、pager/webtoon input handlers | A:触摸/音量键 consumer | D:`ReaderKeyboardAction`、mouse/wheel/context menu | **不相上下**；只共享导航意图与方向语义，输入事件必须留在平台 adapter | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+| 49 | 原版更优；预设/反转组合更多 | U:`ViewerNavigation` presets、reader navigation preferences | A:当前 preset consumer | D:`ReaderNavigator`、tap zones/navigation modes | **原版更优**；Desktop 已消费主要预设，但完整反转矩阵与可验证的可视化映射仍少于固定原版 | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+| 50 | 不相上下；Desktop 不需要移动端显示项 | U:`ReaderPreferences`、reader settings pages | A:方向锁/刘海/常亮等 Android consumer | D:`ReaderPreferences`、scale/background/crop/margin | **不相上下**；缩放与显示语义参考原版，方向锁/刘海/常亮和窗口设置分别是平台边界 | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+| 51 | 原版更优；多灰度/反色/BlendMode | U:`ReaderPreferences`、reader color-filter presentation | A:Android color matrix/blend consumer | D:`ReaderColorFilter`、background theme | **原版更优**；Desktop 已有 RGBA、亮度、灰度与反色，仍缺固定原版完整 BlendMode/组合行为 | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+| 52 | 不相上下；Desktop 保存自然、原版分享/封面完整 | U:`ReaderViewModel`/page actions 的 save-share-cover flow | A:Android permission/share/cover adapters | D:`PageSaveHelper`、context menu | **不相上下**；保存核心一致；系统分享、通知、封面和目录选择均按平台实现，不应强行共用 UI | PLATFORM_ADAPTER |
+| 53 | 原版更优；“Desktop 尚无 tracker 联动” | U:`ReaderViewModel` progress、`TrackChapter.await` | A:当前 reader + tracking consumer | D:`ReaderProgressTracker`、tracker scheduler/session | **不相上下**；Desktop 已写 history/last-page/read 并联动 tracker；延迟/失败恢复的差距单列 row 70 | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+| 54 | 原版更优；“Desktop 主要仅跳过已读” | U:`ReaderViewModel` chapter selection/skip predicates | A:当前 shared/fork skip consumer | D:`ReaderNavigator` 与 shared skip rules | **不相上下**；Desktop 已覆盖已读、过滤、重复章节三类规则，旧差异已失效 | UPSTREAM_PARITY |
+| 55 | 不相上下；漫画级阅读模式对齐 | U:`ReaderViewModel`/manga `viewerFlags` | A:当前 manga settings consumer | D:`ReaderModeState`、manga-level persistence | **不相上下**；保持固定原版 viewerFlags 语义，Desktop 全局默认仅作缺省值 | UPSTREAM_PARITY |
+
+##### Batch C13-5：下载、书库更新与预测（rows 56–63，8 项）
+
+| 行 | 旧结论 | 固定原版路径/符号 | 当前 Android consumer | Desktop 实现 | 应改评分与差异明细 | 分类 |
+|---:|---|---|---|---|---|---|
+| 56 | 原版更优；Desktop 仅窗口内队列 | U:`DownloadManager`、`Downloader`、`DownloadStore`、`DownloadCache`、`DownloadJob` | A:同名 Android background consumer | D:`DesktopDownloadManager`、shared `DownloadQueueStateMachine`、persistent queue | **原版更优**；“仅窗口内”已失效，Desktop 已持久恢复并统一状态机；固定原版仍有更成熟的后台 Job/通知/缓存联动 | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+| 57 | 原版更优；Desktop 只有 Semaphore | U:`Downloader` 按 source 分组、parallel source limit、retry | A:Android network/power constrained consumer | D:source-fair scheduler、retry/concurrency preferences | **原版更优**；“只有 Semaphore”已失效，Desktop 已对齐按源调度；OS 电量/网络约束与后台恢复仍是原版优势 | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+| 58 | 不相上下；两端目录/CBZ | U:`DownloadProvider`、download archive pipeline | A:SAF/archive consumer | D:`DesktopDownloadProvider`、CBZ writer | **不相上下**；下载产物语义可共享，路径/SAF 与桌面文件可见性属于平台 adapter | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+| 59 | 原版更优；Desktop 规则较少 | U:`DownloadPreferences`、`FilterChaptersForDownload`、`LibraryUpdateJob` | A:Android WorkManager consumer | D:`DesktopDownloadPreferences`、shared filter、scheduler | **原版更优**；Desktop 已接入共享筛选和持久设置，差距集中于后台约束、触发可靠性和完整规则矩阵 | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+| 60 | Mihon Desktop 更优；直接文件系统 | U:`DownloadProvider` SAF storage | A:Android storage adapter | D:`DesktopDownloadProvider`、open-directory flow | **Mihon Desktop 更优**；这是平台带来的可见优势，不要求模拟 SAF，但目录语义与命名仍应上游兼容 | PLATFORM_ADAPTER |
+| 61 | 原版更优；后台可靠/系统约束 | U:`LibraryUpdateJob`、library update notifier/preferences | A:WorkManager consumer | D:`LibraryUpdateScheduler`、`LibraryUpdateChecker`、category filter | **原版更优**；核心检查/分类/反馈已存在，差距是应用退出后的调度与系统级约束，不应复制 Android WorkManager | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+| 62 | 原版更优；操作/后台联动更成熟 | U:`UpdatesScreenModel`、updates presentation | A:当前 updates consumer | D:`UpdatesScreenModel`、`UpdatesTab`、filter logic | **原版更优**；查看/过滤已接近，固定原版的多选、下载状态和后台联动仍更完整 | UPSTREAM_PARITY |
+| 63 | Mihon Desktop 更优；原版无 upcoming | U:固定原版无独立 upcoming screen | A:`mihon/feature/upcoming/**` 是当前 fork 增强，不是原版 | D:`UpcomingScreen`、shared `GetUpcomingManga` | **Mihon Desktop 更优**（相对固定原版）；当前 Android 也消费该 fork 增强，但不得据此改写原版能力；预测边界保持明确 | FORK_ENHANCEMENT + DESKTOP_ENHANCEMENT |
+
+##### Batch C13-6：历史、统计、迁移与追踪（rows 64–70，7 项）
+
+| 行 | 旧结论 | 固定原版路径/符号 | 当前 Android consumer | Desktop 实现 | 应改评分与差异明细 | 分类 |
+|---:|---|---|---|---|---|---|
+| 64 | 原版更优；Desktop 管理动作不完整 | U:`HistoryScreenModel`、`HistoryScreen` | A:同名 history consumer | D:`HistoryScreenModel`、`HistoryTab` | **不相上下**；Desktop 已有搜索、继续阅读、单条删除、清空及确认，旧差异已失效 | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+| 65 | 不相上下；隐身语义一致 | U:`GetIncognitoState`、`ToggleIncognito`、reader/source gates | A:当前 settings/reader/source consumers | D:general preference、reader/source-extension gates | **不相上下**；需持续用共享契约保证所有写历史/last-used/tracker 链路短路 | UPSTREAM_PARITY |
+| 66 | 原版更优；统计维度更多 | U:`StatsScreenModel`、`StatsScreenContent`/`StatsData` | A:同名 consumer | D:`StatsScreenModel`、`StatsScreen`、shared aggregate | **原版更优**；Desktop 基础聚合已接线，来源/语言/状态等维度和可视化仍少于固定原版 | UPSTREAM_PARITY |
+| 67 | 原版更优；原版选项/异常路径成熟 | U:`MigrateMangaUseCase`、`MigrateMangaDialog` | A:同名 use case/dialog consumer | D:`DesktopMigrateMangaUseCase`、`MigrationMangaScreen` | **不相上下**；Desktop 已重放分类、章节、历史、收藏/删除等固定语义，并以事务保留桌面可靠性增强 | UPSTREAM_PARITY + DESKTOP_ENHANCEMENT |
+| 68 | 原版更优；Desktop 批量编排较轻 | U:`MigrationListScreenModel.migrateMangas`、`MigrationProgressDialog` | A:`AndroidBatchMigrationRunner`/shared durable runner 是 fork 增强 | D:`DesktopBatchMigrationController`、durable queue UI | **Mihon Desktop 更优**（相对固定原版）；Desktop 已有持久、可恢复批量队列；当前 Android runner 不能冒充固定原版证据 | FORK_ENHANCEMENT + DESKTOP_ENHANCEMENT |
+| 69 | 原版更优；“Desktop 实际不可用” | U:`TrackerManager`、`TrackInfoDialog`、`TrackerSearch`、MAL/AniList/Kitsu/Shikimori/Bangumi/MangaUpdates/Komga/Kavita/Suwayomi providers | A:当前 tracking UI/provider consumers | D:tracker registry/services、`TrackingScreenModel`、认证与 scheduler | **原版更优**；旧“Desktop 无 UI/不可用”已失效，但 manifest ID 69 所列 production 配置、bind new/existing、refresh-before-update、状态/日期、provider-specific errors/search/private/date/delete/auto-match/Suwayomi 等债务仍未闭合 | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+| 70 | 原版更优；“Desktop 无自动追踪” | U:`TrackChapter.await`、`DelayedTrackingStore`、`DelayedTrackingUpdateJob`、`ReaderViewModel.updateTrackChapterRead` | A:reader/tracking worker consumer | D:`ReaderProgressTracker`、`DesktopTrackerSyncScheduler` | **原版更优**；Desktop 已自动推送且有手动同步，旧“无”错误；固定原版的 delayed durable work、过滤/刷新和失败恢复仍更成熟 | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+
+##### Batch C13-7：备份、恢复与同步（rows 71–75，5 项）
+
+| 行 | 旧结论 | 固定原版路径/符号 | 当前 Android consumer | Desktop 实现 | 应改评分与差异明细 | 分类 |
+|---:|---|---|---|---|---|---|
+| 71 | 原版更优；Desktop 字段更少 | U:`BackupCreator`、各 `*BackupCreator`、`Backup`/`BackupManga`/`BackupTracking`/`BackupPreference` | A:当前 app creator 消费 `data/commonMain` wire model | D:`DesktopBackupCreator`、共享 wire model typealiases | **不相上下**；Desktop 已使用共享 protobuf+gzip schema并覆盖漫画、章节、分类、历史、追踪、偏好、源与仓库，旧字段差异已失效 | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+| 72 | 原版更优；恢复/错误汇总更成熟 | U:`BackupFileValidator`、`BackupRestoreJob`、`BackupRestorer` 及各 restorer | A:Android background restore consumer | D:`DesktopBackupRestorer`、`BackupWorkflow`、restore ScreenModel | **原版更优**；Desktop 已支持固定原版 fixture 与逐项/部分恢复，固定原版后台 Job、通知和错误汇总仍更成熟 | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+| 73 | 原版更优；退出后系统仍可调度 | U:`BackupCreateJob`、`BackupPreferences`、setup migration | A:WorkManager consumer | D:`AutoBackupScheduler`、retention cleanup | **原版更优**；内容格式已对齐，差距仅为应用退出后的系统调度/约束，不应把 WorkManager 搬到 Desktop | UPSTREAM_PARITY + PLATFORM_ADAPTER |
+| 74 | 原版更优；“自有序列化、不能互通” | U:`Backup` serializers + protobuf/gzip decoder | A:当前 app 消费共享 `data/commonMain` schema/`BackupCodec` | D:`BackupCodec`、共享 model typealiases、fixed-main `android-full.tachibk` fixture | **不相上下**；已有双向 codec 和固定原版 fixture 证明 wire 互通；仍需按新增字段保持向前/向后兼容，不能只凭扩展名宣称兼容 | UPSTREAM_PARITY |
+| 75 | 不相上下；两端均无通用云同步 | U:固定原版无通用 library cloud-sync | A:tracker/第三方能力只是局部同步 | D:同样仅 tracker/备份文件链路 | **不相上下**；不得把 tracker、备份文件或 fork 试验能力写成原版通用云同步 | PLATFORM_ADAPTER |
+
+##### 尚未逐行复核的后续批次
+
+- C13-8：rows 1–8；C13-9：rows 9–16；C13-10：rows 17–24；C13-11：rows 25–27。
+- C13-12：rows 76–83；C13-13：rows 84–91；C13-14：rows 92–96。
+- 每批仍须使用同一固定 ref，逐行给出 `U/A/D` 三层证据；不得以当前 `app/`、`shared/` 或 Desktop Android compatibility shim 补作固定原版权威。
+
 ### C14. Desktop 源列表仍是一次性快照，未响应扩展安装、卸载与 reload
 
 `DesktopSourceManager.kt:28-32` 使用 `flowOf(getCatalogueSources())`，`BrowseTab.kt:100-135` 又以 `remember(sourceManager) { getCatalogueSources() }` 固定列表。固定 main 的 `AndroidSourceManager.kt:40-67` 订阅 `installedExtensionsFlow` 并重建 `sourcesMapFlow`，`SourcesScreenModel.kt:36-44` 持续收集；Desktop 已有 `DesktopExtensionManager.installedExtensions: StateFlow`，因此这不是平台限制。建议 Task `source-membership-reactivity`，desktop，5 文件/≤300 行；RED 必须证明不重建 Screen 也能观察安装/卸载后的列表变化。
@@ -480,5 +575,5 @@ Task 7 compatibility 施工仍固定 `authorityRef = main@6fbf6dfc`，真实 APK
 ### 仍待分批处理
 
 - C1/C12：64 项 parity manifest 仍有 46 项缺少固定 `upstreamRef`/symbols；必须按每批最多 8 项补 fixed-main path/blob 与四层 consumer/adapter 映射，不能用 shared/current `app/` 循环自证。
-- C13：历史主比较表已有 superseded 警示，但 95 项正文仍保留“当前 `app/` = 原版”的旧口径；修正版路线图存在不等于该比较结果已经重新核验，仍需按固定 main 重建可执行比较表。
+- C13：历史主比较表已有 superseded 警示，但 96 项正文仍保留“当前 `app/` = 原版”的旧口径；修正版路线图存在不等于该比较结果已经重新核验，仍需按固定 main 重建可执行比较表。
 - 下载拖拽的 Compose gesture harness 尚未直接模拟跨 header 手势；manager production boundary 已有行为测试，但 UI gesture 集成证据应在不复制 reorder 逻辑的独立 Task 中补齐。
