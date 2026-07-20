@@ -1,5 +1,6 @@
 package mihon.desktop.ui.extension
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -46,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -101,6 +103,7 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
         val snackbar = remember { SnackbarHostState() }
         val scope = rememberCoroutineScope()
         var confirmUninstall by remember { mutableStateOf(false) }
+        var showNsfwWarning by remember { mutableStateOf(false) }
 
         LaunchedEffect(model) {
             if (model.state.value.projection == null) model.refresh().join()
@@ -146,6 +149,17 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                if (item?.presentation?.isObsolete == true) {
+                    item {
+                        Text(
+                            text = MR.strings.obsolete_extension_message.localized(),
+                            color = MaterialTheme.colorScheme.onError,
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.error).padding(16.dp),
+                        )
+                    }
+                }
                 item {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         ExtensionIcon(
@@ -157,6 +171,17 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                             Text(extension.name, style = MaterialTheme.typography.titleLarge)
                             Text(extensionVersionCopy(extension.versionName, Locale.getDefault()))
                             Text(extension.origin.localizedLabel(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (item?.presentation?.isNsfw == true) {
+                                TextButton(onClick = { showNsfwWarning = true }) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(
+                                            text = MR.strings.ext_nsfw_short.localized(),
+                                            color = MaterialTheme.colorScheme.error,
+                                        )
+                                        Text(MR.strings.ext_info_age_rating.localized())
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -291,6 +316,17 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                         }) { Text(MR.strings.ext_uninstall.localized()) }
                     },
                     dismissButton = { TextButton(onClick = { confirmUninstall = false }) { Text(MR.strings.action_cancel.localized()) } },
+                )
+            }
+            if (showNsfwWarning) {
+                AlertDialog(
+                    onDismissRequest = { showNsfwWarning = false },
+                    text = { Text(MR.strings.ext_nsfw_warning.localized()) },
+                    confirmButton = {
+                        TextButton(onClick = { showNsfwWarning = false }) {
+                            Text(MR.strings.action_ok.localized())
+                        }
+                    },
                 )
             }
         }

@@ -101,13 +101,12 @@ class ExtensionDetailsPreferencesWiringTest {
             coEvery { loadExtensionIcon(any()) } returns null
         }
         val manager = mockk<DesktopExtensionManager> {
-            every { installedExtensions } returns installedFlow
             every { removeExtensionWithMeta(installed) } returnsMany listOf(false, true)
         }
         val preferences = DesktopAppPreferences(
             DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")),
         )
-        val sourceManager = DesktopSourceManager(manager, preferences, emptyList())
+        val sourceManager = mockk<DesktopSourceManager>(relaxed = true)
         val model = ExtensionsScreenModel(
             DesktopExtensionPresentationPort(
                 api,
