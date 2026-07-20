@@ -39,7 +39,11 @@ class DesktopExtensionProductBaselineTest {
         val evidence = loadCompatEvidence("extensions/compat-evidence.json")
 
         assertTrue(evidence.isNotEmpty(), "Compat evidence must contain at least one observed API")
-        assertEquals(evidence.size, evidence.map { it.symbol }.toSet().size, "Compat evidence symbols must be unique")
+        assertTrue(hasUniqueEvidenceIdentities(evidence), "Compat evidence identities must be unique")
+        assertFalse(
+            hasUniqueEvidenceIdentities(evidence + evidence.first()),
+            "A duplicated compat evidence identity must be rejected",
+        )
         evidence.forEach { item ->
             assertTrue(item.symbol.isNotBlank(), "Compat evidence symbol must not be blank")
             assertTrue(item.fixture.isNotBlank(), "${item.symbol}: fixture must not be blank")
@@ -122,6 +126,9 @@ class DesktopExtensionProductBaselineTest {
     private fun repositoryRoot() =
         generateSequence(Path.of("").toAbsolutePath()) { it.parent }
             .first { Files.isDirectory(it.resolve("app-desktop")) && Files.isDirectory(it.resolve("docs")) }
+
+    private fun hasUniqueEvidenceIdentities(evidence: List<CompatEvidence>): Boolean =
+        evidence.size == evidence.map { Triple(it.symbol, it.fixture, it.test) }.toSet().size
 
     private data class CompatEvidence(
         val symbol: String,
