@@ -27,6 +27,7 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.source.service.AuthenticatedSessionCommitter
 import tachiyomi.domain.source.service.SourceMangaSearchService
+import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.i18n.MR
 import java.util.Locale
 
@@ -125,6 +126,7 @@ class SourceBrowseFilterParityTest {
             every { sourceManager } returns FakeDesktopSourceManager(listOf(source))
             every { sourceMangaSearchService } returns SourceMangaSearchService()
             every { saveSourceMangaForDetails } returns mockk(relaxed = true)
+            every { getManga } returns mockk<GetManga>(relaxed = true)
             every { sourceLoginSessionFactory } returns DesktopSourceLoginSessionFactory(
                 AuthenticatedSessionCommitter { _, _ -> },
                 DesktopBrowserOpener { _, _ -> false },

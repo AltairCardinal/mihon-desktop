@@ -39,6 +39,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.source.service.AuthenticatedSessionCommitter
 import tachiyomi.domain.source.service.SourceMangaSearchService
+import tachiyomi.domain.manga.interactor.GetManga
 import java.util.concurrent.atomic.AtomicReference
 
 class SourceLoginTestModeWiringTest {
@@ -180,6 +181,7 @@ class SourceLoginTestModeWiringTest {
             io.mockk.every { sourceMangaSearchService } returns SourceMangaSearchService()
             io.mockk.every { saveSourceMangaForDetails } returns
                 io.mockk.mockk<SaveSourceMangaForDetails>(relaxed = true)
+            io.mockk.every { getManga } returns io.mockk.mockk<GetManga>(relaxed = true)
             io.mockk.every { sourceLoginSessionFactory } returns DesktopSourceLoginSessionFactory(
                 AuthenticatedSessionCommitter { _, _ -> },
                 DesktopBrowserOpener { _, completion -> ticket.set(completion); true },

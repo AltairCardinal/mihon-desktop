@@ -499,6 +499,7 @@ class SourceSharedStateWiringTest {
             every { sourceManager } returns FakeDesktopSourceManager(emptyList())
             every { sourceMangaSearchService } returns SourceMangaSearchService()
             every { saveSourceMangaForDetails } returns mockk(relaxed = true)
+            every { getManga } returns mockk<GetManga>(relaxed = true)
             every { sourceLoginSessionFactory } returns DesktopSourceLoginSessionFactory(
                 AuthenticatedSessionCommitter { _, _ -> },
                 DesktopBrowserOpener { _, _ -> false },
