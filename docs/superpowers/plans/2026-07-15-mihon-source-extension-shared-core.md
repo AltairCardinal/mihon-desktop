@@ -2229,8 +2229,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Risk axis: `source-extension-status-provenance`
 - Platform boundary: `docs`
 - Estimated scope: `5 files, 300 lines`
-- Verification: 仅以 7D13/7D15/7D16 已通过的 fixed-main fixture、shared output、当前 Android consumer 与 Desktop production wiring 四层证据纠正活动计划、authority audit、OpenSpec、parity manifest IDs 29/37 和 authority baseline；状态最高保持 `WIRED`，最终 Windows/macOS/Android 运行验收未完成前不得勾选 OpenSpec 3.4 父项或提升为 `VERIFIED`。JSON 变更运行 `DesktopProductCapabilityContractTest`，并检查 JSON parse、`git diff --check` 与 Comet plan guard。
-  Evidence: 严格 5 files、远低于 300 touched lines。OpenSpec 3.4 父项恢复未完成，只勾具备四层证据的 source query/result 与 Desktop extension presentation 子项；列表 projection 明确为两端从同一 fixed-main fixture 分别实现，不冒充 shared output。manifest IDs 29/37 保持 `WIRED`，29 补齐 `GetEnabledSources`/`SourcesScreenModel`/`GetIncognitoState`/`BrowseSourceScreenModel` 的 fixed-main blob 与双端 consumer provenance，37 补齐本轮真实保护测试并明确 shared reducer 只是 migration output。focused capability contract 首轮仅因一个测试路径目录写错失败，修正为真实 `desktop/i18n` 路径后 24/24；两个 JSON parse、`git diff --check`、OpenSpec strict validation 与 Comet plan guard 通过。authority baseline 未重复改写：commit `a2a4fd416` 已在现有行 30/51/62 闭合 6C/6D 与 ManHuaGui Application 的 superseded 状态。
+- Verification: 仅以 7D13/7D15/7D16 已通过的 fixed-main fixture、shared output、当前 Android consumer 与 Desktop production wiring 四层证据纠正活动计划、authority audit、OpenSpec、parity manifest IDs 29/37 和 authority baseline；状态最高保持 `WIRED`，最新 Windows/macOS Desktop 运行验收未完成前不得勾选 OpenSpec 3.4 父项或提升为 `VERIFIED`。当前 Android consumer 的既有模拟器证据只用于运行核对，不构成原版权威。JSON 变更运行 `DesktopProductCapabilityContractTest`，并检查 JSON parse、`git diff --check` 与 Comet plan guard。
+  Evidence: commit `e2533edc4`，严格 5 files / 82 touched lines。OpenSpec 3.4 父项恢复未完成，只勾具备四层证据的 source query/result 与 Desktop extension presentation 子项；列表 projection 明确为两端从同一 fixed-main fixture 分别实现，不冒充 shared output。manifest IDs 29/37 保持 `WIRED`，29 补齐 `GetEnabledSources`/`SourcesScreenModel`/`GetIncognitoState`/`BrowseSourceScreenModel` 的 fixed-main blob 与双端 consumer provenance，37 补齐本轮真实保护测试并明确 shared reducer 只是 migration output。focused capability contract 首轮仅因一个测试路径目录写错失败，修正为真实 `desktop/i18n` 路径后 24/24；两个 JSON parse、`git diff --check`、OpenSpec strict validation 与 Comet plan guard 通过。authority baseline 未重复改写：commit `a2a4fd416` 已在现有行 30/51/62 闭合 6C/6D 与 ManHuaGui Application 的 superseded 状态。
 
 ##### Task 7D18: Remaining authority terminology and stale design cleanup
 
@@ -2238,7 +2238,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Platform boundary: `docs`
 - Estimated scope: `5 files, 180 lines`
 - Verification: 将 OpenSpec design 中未固定的 “Android authority” 改为 fixed-main original Mihon authority，纠正 shared contract 测试的歧义命名，核对 source design 中尚未实现的 recovery action 描述，并给保留的旧比较文档增加 superseded 指引；不得改写历史原文证据、不得把当前 `app/`、shared output 或 Desktop shim 写成 authority。运行文本扫描、相关 focused contract（仅测试名/契约变化时）、`git diff --check` 与 Comet plan guard。
-  Evidence: commit `7ad05831a`，严格 5 files / 11 touched lines。OpenSpec design、source/extension design 与 parity tracker 统一固定 main authority/current consumer/adapter 术语；保留的旧比较文档增加 superseded 指引；shared contract 测试名不再把当前 Android mapper 称为 authority。相关 domain focused 7/7、文本扫描、`git diff --check` 与 Comet plan guard 通过；review APPROVED、0 Critical/Important/Minor。
+  Evidence: commit `7ad05831a`，严格 5 files / 11 touched lines。OpenSpec design、source/extension design 与 parity tracker 统一 fixed-main authority/current consumer/adapter 术语；保留的旧比较文档增加 superseded 指引；shared contract 测试名不再把当前 Android mapper 称为 authority。本 Task 仅改变文档与测试显示名，按机械文档流程未运行 Gradle、未进行独立代码审查；协调者随后完成逐项只读核验，定点文本复扫与 `git diff --check` 通过。
 
 - [ ] **Step 7: 独立批次与最终审查**
 
