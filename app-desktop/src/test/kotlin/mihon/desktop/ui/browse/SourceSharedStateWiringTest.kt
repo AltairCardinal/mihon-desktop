@@ -87,6 +87,7 @@ import tachiyomi.i18n.MR
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import java.util.Collections
+import java.util.Locale
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -229,6 +230,9 @@ class SourceSharedStateWiringTest {
     @OptIn(ExperimentalComposeUiApi::class)
     fun `browse pin buttons and long click update feedback and ordering in the mounted scene`() = runBlocking {
         val root = Preferences.userRoot().node("/mihon/browse-pin/${System.nanoTime()}")
+        val previousLocale = Locale.getDefault()
+        val locale = Locale.SIMPLIFIED_CHINESE
+        Locale.setDefault(locale)
         try {
             val alpha = FakeSource(87, "en", "Alpha authority source")
             val zeta = FakeSource(88, "en", "Zeta authority source")
@@ -251,13 +255,13 @@ class SourceSharedStateWiringTest {
             fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
             fun semantics(scene: ImageComposeScene) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
             fun rendered(scene: ImageComposeScene) = semantics(scene).joinToString { it.config.toString() }
+            fun SemanticsNode.hasContentDescription(label: String) =
+                config.contains(SemanticsProperties.ContentDescription) &&
+                    config[SemanticsProperties.ContentDescription].contains(label)
             suspend fun awaitFeedback(scene: ImageComposeScene, label: String) = withTimeout(2_000) {
-                val conflictingLabel = label.takeIf { it.startsWith("Pin ") }?.let { "Unpin ${it.removePrefix("Pin ")}" }
                 fun hasFeedback() = semantics(scene).any {
-                    val text = it.config.toString()
                     it.config.contains(SemanticsActions.OnClick) &&
-                        text.contains(label) &&
-                        (conflictingLabel == null || !text.contains(conflictingLabel))
+                        it.hasContentDescription(label)
                 }
                 while (!hasFeedback()) {
                     scene.render()
@@ -268,19 +272,21 @@ class SourceSharedStateWiringTest {
             val preferences = DesktopAppPreferences(DesktopPreferenceStore(root))
             preferences.enabledLanguages.set(setOf("en"))
             val mountedScene = scene(preferences)
+            val pinLabel = "${MR.strings.action_pin.localized(locale)} ${zeta.name}"
+            val unpinLabel = "${MR.strings.action_unpin.localized(locale)} ${zeta.name}"
             val pin = semantics(mountedScene).first {
-                it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains("Pin ${zeta.name}")
+                it.config.contains(SemanticsActions.OnClick) && it.hasContentDescription(pinLabel)
             }
             assertTrue(requireNotNull(pin.config[SemanticsActions.OnClick].action).invoke())
-            awaitFeedback(mountedScene, "Unpin ${zeta.name}")
+            awaitFeedback(mountedScene, unpinLabel)
             assertEquals(setOf(zeta.id.toString()), preferences.pinnedSources.get())
             assertTrue(rendered(mountedScene).indexOf(zeta.name) < rendered(mountedScene).indexOf(alpha.name))
 
             val unpin = semantics(mountedScene).first {
-                it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains("Unpin ${zeta.name}")
+                it.config.contains(SemanticsActions.OnClick) && it.hasContentDescription(unpinLabel)
             }
             assertTrue(requireNotNull(unpin.config[SemanticsActions.OnClick].action).invoke())
-            awaitFeedback(mountedScene, "Pin ${zeta.name}")
+            awaitFeedback(mountedScene, pinLabel)
             assertEquals(emptySet<String>(), preferences.pinnedSources.get())
             assertTrue(rendered(mountedScene).indexOf(alpha.name) < rendered(mountedScene).indexOf(zeta.name))
 
@@ -288,11 +294,12 @@ class SourceSharedStateWiringTest {
                 it.config.contains(SemanticsActions.OnLongClick) && it.config.toString().contains(zeta.name)
             }
             assertTrue(requireNotNull(longClick.config[SemanticsActions.OnLongClick].action).invoke())
-            awaitFeedback(mountedScene, "Unpin ${zeta.name}")
+            awaitFeedback(mountedScene, unpinLabel)
             assertEquals(setOf(zeta.id.toString()), preferences.pinnedSources.get())
             assertTrue(rendered(mountedScene).indexOf(zeta.name) < rendered(mountedScene).indexOf(alpha.name))
             mountedScene.close()
         } finally {
+            Locale.setDefault(previousLocale)
             root.removeNode()
         }
     }

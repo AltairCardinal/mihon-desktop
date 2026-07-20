@@ -410,7 +410,15 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
                                 listingQuery = query
                                 loadPage(1, query)
                             },
-                            label = { Text(if (mode == BrowseMode.POPULAR) "Popular" else "Latest") },
+                            label = {
+                                Text(
+                                    if (mode == BrowseMode.POPULAR) {
+                                        MR.strings.popular.localized()
+                                    } else {
+                                        MR.strings.latest.localized()
+                                    },
+                                )
+                            },
                         )
                     }
                     if (hasFilters) {
@@ -418,7 +426,7 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
                             selected = listingQuery is SourceQuery.Search,
                             onClick = { showFilterDialog = true },
                             leadingIcon = { Icon(Icons.Default.FilterList, contentDescription = null) },
-                            label = { Text("Filter") },
+                            label = { Text(MR.strings.action_filter.localized()) },
                         )
                     }
                 }
@@ -541,21 +549,21 @@ private fun FilterDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Filter") },
+        title = { Text(MR.strings.action_filter.localized()) },
         text = {
             Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                 draft.forEach { FilterItem(it) }
             }
         },
         confirmButton = {
-            TextButton(onClick = { onApply(draft) }) { Text("Apply") }
+            TextButton(onClick = { onApply(draft) }) { Text(MR.strings.action_apply.localized()) }
         },
         dismissButton = {
             Row {
                 TextButton(onClick = { draft = freshSourceTree() }) {
-                    Text("Reset", color = MaterialTheme.colorScheme.error)
+                    Text(MR.strings.action_reset.localized(), color = MaterialTheme.colorScheme.error)
                 }
-                TextButton(onClick = onDismiss) { Text("Cancel") }
+                TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
             }
         },
     )
@@ -635,7 +643,13 @@ private fun FilterItem(filter: Filter<*>) {
                 filter.values.forEachIndexed { index, value ->
                     val selected = selection?.index == index
                     val direction = selection?.takeIf { selected }
-                        ?.let { if (it.ascending) "Ascending" else "Descending" }
+                        ?.let {
+                            if (it.ascending) {
+                                MR.strings.action_asc.localized()
+                            } else {
+                                MR.strings.action_desc.localized()
+                            }
+                        }
                     FilterChoice(listOfNotNull(value, direction?.let { "($it)" }).joinToString(" "), selected) {
                         selection = Filter.Sort.Selection(
                             index,

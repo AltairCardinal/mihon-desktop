@@ -250,7 +250,8 @@ class BrowseSourceListScreen : Screen {
                                     }) {
                                         Icon(
                                             if (isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
-                                            contentDescription = if (isPinned) "Unpin ${source.name}" else "Pin ${source.name}",
+                                            contentDescription =
+                                                "${if (isPinned) MR.strings.action_unpin.localized() else MR.strings.action_pin.localized()} ${source.name}",
                                             tint = if (isPinned) {
                                                 MaterialTheme.colorScheme.primary
                                             } else {
