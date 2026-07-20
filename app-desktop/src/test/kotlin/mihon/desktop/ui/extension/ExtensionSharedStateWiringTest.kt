@@ -40,6 +40,30 @@ import kotlin.coroutines.suspendCoroutine
 
 class ExtensionSharedStateWiringTest {
     @Test
+    fun `installed snapshot remains available when the first catalog refresh fails`() = runTest {
+        val installed = installed("pkg.local", "https://repo")
+        val installedFlow = MutableStateFlow(listOf(installed))
+        val refreshError = IllegalStateException("catalog offline")
+        val api = mockk<DesktopExtensionApi> {
+            coEvery { refreshCatalog() } throws refreshError
+        }
+        val model = ExtensionsScreenModel(
+            DesktopExtensionPresentationPort(api, mockk(), installedFlow),
+            backgroundScope,
+            ExtensionPresentationOptions(false, setOf("en")),
+        )
+
+        testScheduler.runCurrent()
+        assertSame(installed, model.state.value.projection?.installed?.single()?.installed)
+
+        model.refresh().join()
+
+        assertSame(installed, model.state.value.projection?.installed?.single()?.installed)
+        assertSame(refreshError, model.state.value.refreshError)
+        assertFalse(model.state.value.actions.isRefreshing)
+    }
+
+    @Test
     fun `real port refresh reducer and authoritative flow preserve partial failure identity`() = runTest {
         val installedFlow = MutableStateFlow<List<InstalledExtension>>(emptyList())
         val api = mockk<DesktopExtensionApi>()

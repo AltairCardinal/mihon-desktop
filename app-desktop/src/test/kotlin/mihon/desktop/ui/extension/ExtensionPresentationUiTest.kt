@@ -55,6 +55,88 @@ import java.util.Locale
 class ExtensionPresentationUiTest {
     @OptIn(ExperimentalComposeUiApi::class)
     @Test
+    fun `first catalog failure keeps local extensions visible with retry feedback`() = runBlocking {
+        val previousLocale = Locale.getDefault()
+        Locale.setDefault(Locale.ENGLISH)
+        val installed = InstalledExtension(File("local.jar"), emptyList(), displayName = "Local extension")
+        val api = mockk<DesktopExtensionApi> {
+            coEvery { refreshCatalog() } throws IllegalStateException("catalog offline")
+            coEvery { loadExtensionIcon(any()) } returns null
+        }
+        val manager = mockk<DesktopExtensionManager>(relaxed = true)
+        val model = ExtensionsScreenModel(
+            DesktopExtensionPresentationPort(api, manager, MutableStateFlow(listOf(installed))),
+            this,
+            ExtensionPresentationOptions(false, setOf("en")),
+        )
+        val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
+        try {
+            scene.setContent { ExtensionListContent(model) }
+
+            awaitText(scene, installed.name)
+            awaitText(scene, "catalog offline")
+            assertFalse(nodes(scene).any { it.config.toString().contains(extensionListCopy().loading) })
+
+            click(scene, MR.strings.action_retry.localized())
+            withTimeout(5_000) { coVerify(atLeast = 2) { api.refreshCatalog() } }
+        } finally {
+            scene.close()
+            model.closeAndJoin()
+            Locale.setDefault(previousLocale)
+        }
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
+    fun `installed details render before catalog completes and missing details offer navigation back`() = runBlocking {
+        val previousLocale = Locale.getDefault()
+        Locale.setDefault(Locale.ENGLISH)
+        val installed = InstalledExtension(File("local-details.jar"), emptyList(), displayName = "Local details")
+        val catalogs = Channel<ExtensionCatalogResult>(Channel.UNLIMITED)
+        val api = mockk<DesktopExtensionApi> {
+            coEvery { refreshCatalog() } coAnswers { catalogs.receive() }
+            coEvery { loadExtensionIcon(any()) } returns null
+        }
+        val manager = mockk<DesktopExtensionManager>(relaxed = true)
+        val model = ExtensionsScreenModel(
+            DesktopExtensionPresentationPort(api, manager, MutableStateFlow(listOf(installed))),
+            this,
+            ExtensionPresentationOptions(false, setOf("en")),
+        )
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { extensionApi } returns api
+            every { extensionManager } returns manager
+            every { appPreferences } returns mockk(relaxed = true)
+        }
+        val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
+        fun mount(path: String) = scene.setContent {
+            CompositionLocalProvider(
+                LocalDesktopUiDependencies provides dependencies,
+                LocalExtensionScreenModel provides { model },
+            ) { Navigator(ExtensionDetailsScreen(path)) { CurrentScreen() } }
+        }
+        try {
+            mount(installed.jarFile.absolutePath)
+            awaitText(scene, installed.name)
+
+            mount("missing.jar")
+            awaitText(scene, "This extension is not installed")
+            assertTrue(
+                nodes(scene).any {
+                    it.config.contains(SemanticsActions.OnClick) &&
+                        it.config.toString().contains(MR.strings.action_bar_up_description.localized())
+                },
+            )
+        } finally {
+            catalogs.trySend(ExtensionCatalogResult(emptyList(), emptyList()))
+            scene.close()
+            model.closeAndJoin()
+            Locale.setDefault(previousLocale)
+        }
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
     fun `both extension screens consume the local model instead of the global singleton`() = runBlocking {
         val localState = MutableStateFlow(DesktopExtensionsState(options = ExtensionPresentationOptions(false, emptySet())))
         val localModel = mockk<ExtensionsScreenModel>(relaxed = true)
