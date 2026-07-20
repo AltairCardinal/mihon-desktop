@@ -40,6 +40,8 @@ import tachiyomi.core.common.preference.Preference
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.CoroutineContext
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -71,7 +73,7 @@ class GlobalSearchResultNavigationTest {
                 assertEquals(listOf("initial query", edited ?: "initial query"), fixture.searchQueries)
                 assertTrue(fixture.searchFilters.all(FilterList::isNotEmpty))
                 assertTrue(fixture.searchFilters[0] !== fixture.searchFilters[1])
-                assertEquals(0, fixture.popularCalls)
+                assertEquals(0, fixture.popularCalls.get())
                 assertTrue(text(scene).contains(edited ?: "initial query"))
             } finally {
                 scene.close()
@@ -116,7 +118,7 @@ class GlobalSearchResultNavigationTest {
         val scene = fixture.mount(SourceBrowseScreen(fixture.source.id), coroutineContext)
         try {
             withTimeout(2_000) {
-                while (fixture.popularCalls == 0) {
+                while (fixture.popularCalls.get() == 0) {
                     scene.render()
                     yield()
                 }
@@ -128,25 +130,25 @@ class GlobalSearchResultNavigationTest {
     }
 
     private class Fixture {
-        val searchQueries = mutableListOf<String>()
-        val searchFilters = mutableListOf<FilterList>()
+        val searchQueries = CopyOnWriteArrayList<String>()
+        val searchFilters = CopyOnWriteArrayList<FilterList>()
         val seenSubscriptions = ConcurrentHashMap.newKeySet<Pair<Long, String>>()
         val activeSubscriptions = ConcurrentHashMap.newKeySet<Pair<Long, String>>()
-        var filterListCalls = 0
-        var popularCalls = 0
+        private val filterListCalls = AtomicInteger()
+        val popularCalls = AtomicInteger()
         val source: CatalogueSource = mockk {
             every { id } returns 91L
             every { name } returns "Authority"
             every { lang } returns "en"
             every { supportsLatest } returns false
-            every { getFilterList() } answers { FilterList(Filter.Header("filters-${++filterListCalls}")) }
+            every { getFilterList() } answers { FilterList(Filter.Header("filters-${filterListCalls.incrementAndGet()}")) }
             coEvery { getSearchManga(1, any(), any()) } answers {
                 searchQueries += secondArg<String>()
                 searchFilters += thirdArg<FilterList>()
                 MangasPage((0 until 12).map(::manga), false)
             }
             coEvery { getPopularManga(1) } answers {
-                popularCalls++
+                popularCalls.incrementAndGet()
                 MangasPage(emptyList(), false)
             }
         }
