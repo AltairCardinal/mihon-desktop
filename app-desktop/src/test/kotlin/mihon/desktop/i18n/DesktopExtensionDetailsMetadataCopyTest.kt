@@ -4,6 +4,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import cafe.adriel.voyager.navigator.Navigator
 import dev.mihon.injekt.patchInjekt
@@ -29,6 +30,10 @@ import mihon.desktop.ui.extension.ExtensionDetailsScreen
 import mihon.desktop.ui.extension.ExtensionsScreenModel
 import mihon.desktop.ui.extension.extensionVersionCopy
 import mihon.domain.extension.model.ExtensionCatalogResult
+import mihon.domain.extension.model.ExtensionArtifact
+import mihon.domain.extension.model.ExtensionCatalogEntry
+import mihon.domain.extension.model.ExtensionCompatibility
+import mihon.domain.extension.model.RepositoryIdentity
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -50,7 +55,7 @@ class DesktopExtensionDetailsMetadataCopyTest {
     lateinit var directory: File
 
     @Test
-    fun `extension details metadata and source copy follows locale`() = runBlocking {
+    fun `extension details metadata and upstream safety feedback follows locale`() = runBlocking {
         val jar = directory.resolve("example.jar").also { it.writeText("desktop-extension") }
         val source = mockk<HttpSource>(relaxed = true, moreInterfaces = arrayOf(ConfigurableSource::class)) {
             every { id } returns 42L
@@ -60,10 +65,32 @@ class DesktopExtensionDetailsMetadataCopyTest {
         }
         val extension = InstalledExtension(
             jar, listOf(source), displayName = "Example Extension", versionName = "1.2.3-raw", artifactSha256 = "sha-example",
-            repoName = "Example Repository", repoFingerprint = "fingerprint-example", origin = ExtensionOrigin.COMPILED_JAR,
+            repoUrl = "https://obsolete.example", repoName = "Example Repository", repoFingerprint = "fingerprint-example",
+            origin = ExtensionOrigin.COMPILED_JAR, isNsfw = true,
+        )
+        val catalog = ExtensionCatalogResult(
+            entries = listOf(
+                ExtensionCatalogEntry(
+                    artifact = ExtensionArtifact(
+                        name = "Other Extension",
+                        packageName = "other-extension",
+                        versionName = "1.0.0",
+                        versionCode = 1,
+                        language = "en",
+                        isNsfw = false,
+                        sources = emptyList(),
+                        repository = RepositoryIdentity("https://obsolete.example", "Example Repository", "fingerprint-example"),
+                        downloadUrl = "",
+                        iconUrl = "",
+                        declaredSha256 = null,
+                    ),
+                    compatibility = ExtensionCompatibility.UnsupportedLib(1.3, 1.4, 1.5),
+                ),
+            ),
+            failures = emptyList(),
         )
         val api = mockk<DesktopExtensionApi> {
-            coEvery { refreshCatalog() } returns ExtensionCatalogResult(emptyList(), emptyList())
+            coEvery { refreshCatalog() } returns catalog
             every { availableExtensions(any()) } returns emptyList()
             coEvery { loadExtensionIcon(any()) } returns null
         }
@@ -99,13 +126,15 @@ class DesktopExtensionDetailsMetadataCopyTest {
                 renderUntil(scene, extension.name)
                 val rendered = texts(scene)
                 listOf(
-                    "${MR.strings.ext_info_version.localized(locale)}: ${extension.versionName}", source.lang,
+                    "${MR.strings.ext_info_version.localized(locale)}: ${extension.versionName}",
                     MR.strings.desktop_extension_origin_native.localized(locale), MR.strings.desktop_extension_metadata_title.localized(locale),
                     MR.strings.desktop_extension_metadata_file.localized(locale, jar.absolutePath), MR.strings.desktop_extension_metadata_size.localized(locale, jar.length()),
                     MR.strings.desktop_extension_metadata_sha256.localized(locale, extension.artifactSha256), MR.strings.desktop_extension_metadata_repository.localized(locale, extension.repoName),
                     MR.strings.desktop_extension_metadata_fingerprint.localized(locale, extension.repoFingerprint), MR.strings.label_sources.localized(locale),
                     MR.strings.browse.localized(locale), MR.strings.pref_incognito_mode.localized(locale),
                     MR.strings.pref_incognito_mode_extension_summary.localized(locale),
+                    MR.strings.obsolete_extension_message.localized(locale), MR.strings.ext_nsfw_short.localized(locale),
+                    MR.strings.ext_info_age_rating.localized(locale),
                 ).forEach { assertTrue(it in rendered, "Missing '$it': $rendered") }
                 assertTrue(extensionVersionCopy("", locale) == "${MR.strings.ext_info_version.localized(locale)}: ${MR.strings.unknown.localized(locale)}")
                 val descriptions = descriptions(scene)
@@ -117,6 +146,10 @@ class DesktopExtensionDetailsMetadataCopyTest {
                 if (locale.language == "zh") {
                     assertNotEquals(MR.strings.label_sources.localized(Locale.US), MR.strings.label_sources.localized(locale))
                     assertTrue(rendered.any { it.contains(jar.absolutePath) } && rendered.any { it.contains(source.name) })
+                    click(scene, MR.strings.ext_info_age_rating.localized(locale))
+                    renderUntil(scene, MR.strings.ext_nsfw_warning.localized(locale))
+                    assertTrue(MR.strings.ext_nsfw_warning.localized(locale) in texts(scene))
+                    click(scene, MR.strings.action_ok.localized(locale))
                 }
             }
         } finally {
@@ -129,6 +162,13 @@ class DesktopExtensionDetailsMetadataCopyTest {
 
     private suspend fun renderUntil(scene: ImageComposeScene, text: String) = withTimeout(5_000) {
         while (texts(scene).none { it.contains(text) }) { scene.render(); yield() }
+    }
+
+    private fun click(scene: ImageComposeScene, label: String) {
+        val node = nodes(scene).first {
+            it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains(label)
+        }
+        assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
     }
 
     private fun texts(scene: ImageComposeScene) = nodes(scene).flatMap {
