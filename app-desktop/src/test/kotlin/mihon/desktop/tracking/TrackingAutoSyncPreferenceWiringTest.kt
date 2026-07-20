@@ -12,6 +12,8 @@ import cafe.adriel.voyager.navigator.Navigator
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.settings.DesktopAppPreferences
@@ -41,23 +43,31 @@ class TrackingAutoSyncPreferenceWiringTest {
         }
         val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
 
-        scene.setContent {
-            CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
-                Navigator(TrackingSettingsScreen()) { CurrentScreen() }
+        try {
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    Navigator(TrackingSettingsScreen()) { CurrentScreen() }
+                }
             }
+            scene.render()
+
+            assertTrue(autoUpdateTrack.get())
+            assertTrue(nodes(scene).any { it.config.toString().contains("Automatically update tracking") })
+            val enabledToggle = toggleNode(scene)
+            assertEquals(ToggleableState.On, enabledToggle.config[SemanticsProperties.ToggleableState])
+            assertTrue(requireNotNull(enabledToggle.config[SemanticsActions.OnClick].action).invoke())
+            assertFalse(autoUpdateTrack.get())
+            withTimeout(15_000) {
+                while (toggleNode(scene).config[SemanticsProperties.ToggleableState] != ToggleableState.Off) {
+                    scene.render()
+                    yield()
+                }
+            }
+
+            assertEquals(ToggleableState.Off, toggleNode(scene).config[SemanticsProperties.ToggleableState])
+        } finally {
+            scene.close()
         }
-        scene.render()
-
-        assertTrue(autoUpdateTrack.get())
-        assertTrue(nodes(scene).any { it.config.toString().contains("Automatically update tracking") })
-        val enabledToggle = toggleNode(scene)
-        assertEquals(ToggleableState.On, enabledToggle.config[SemanticsProperties.ToggleableState])
-        assertTrue(requireNotNull(enabledToggle.config[SemanticsActions.OnClick].action).invoke())
-        scene.render()
-
-        assertFalse(autoUpdateTrack.get())
-        assertEquals(ToggleableState.Off, toggleNode(scene).config[SemanticsProperties.ToggleableState])
-        scene.close()
     }
 
     @OptIn(ExperimentalComposeUiApi::class)
