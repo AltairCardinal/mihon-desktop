@@ -73,8 +73,11 @@ internal fun runHeadlessMode(
     try {
         if (args.testMode) awaitTestModeTermination()
     } finally {
-        if (args.testMode) stopTestMode()
-        runtime.close()
+        try {
+            if (args.testMode) stopTestMode()
+        } finally {
+            runtime.close()
+        }
     }
     return true
 }

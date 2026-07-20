@@ -154,6 +154,23 @@ class DesktopAppRuntimeTest {
         withTimeout(1_000) { waiter.await() }
     }
 
+    @Test
+    fun `headless mode closes runtime when test mode stop fails`() {
+        val runtime = headlessRuntime().also(DesktopAppRuntime::start)
+
+        val failure = assertThrows(IllegalStateException::class.java) {
+            runHeadlessMode(
+                args = TestArguments(testMode = true, headless = true),
+                runtime = runtime,
+                awaitTestModeTermination = {},
+                stopTestMode = { throw IllegalStateException("test mode stop failed") },
+            )
+        }
+
+        assertEquals("test mode stop failed", failure.message)
+        assertFalse(runtime.isRunning)
+    }
+
     private fun headlessRuntime() = DesktopAppRuntime(
         libraryUpdateScheduler = RecordingRuntimeService(),
         localSourceScanService = RecordingRuntimeService(),
