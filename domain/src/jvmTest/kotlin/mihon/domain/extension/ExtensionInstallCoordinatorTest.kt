@@ -203,6 +203,33 @@ class ExtensionInstallCoordinatorTest {
     }
 
     @Test
+    fun `same package different request waits for current flight then installs requested artifact`() = runTest {
+        val port = RecordingInstallPort(blockPreparation = true)
+        val coordinator = ExtensionInstallCoordinator(port, backgroundScope)
+        val firstRequest = request()
+        val secondRequest = firstRequest.copy(
+            artifact = firstRequest.artifact.copy(
+                versionName = "2.0",
+                versionCode = 2,
+                downloadUrl = "https://repo.example/example-v2.apk",
+                declaredSha256 = "digest-v2",
+            ),
+        )
+        val first = async { coordinator.install(firstRequest).toList() }
+        port.preparationStarted.await()
+        val second = async { coordinator.install(secondRequest).toList() }
+        runCurrent()
+
+        assertEquals(1, port.prepareCalls)
+        port.releasePreparation.complete(Unit)
+
+        assertEquals(firstRequest.artifact, (first.await().last() as ExtensionInstallState.Installed).artifact)
+        assertEquals(secondRequest.artifact, (second.await().last() as ExtensionInstallState.Installed).artifact)
+        assertEquals(2, port.prepareCalls)
+        assertEquals(2, port.commitCalls)
+    }
+
+    @Test
     fun `one of two collectors can cancel without cancelling shared transaction`() = runTest {
         val port = RecordingInstallPort(blockPreparation = true)
         val coordinator = ExtensionInstallCoordinator(port, backgroundScope)

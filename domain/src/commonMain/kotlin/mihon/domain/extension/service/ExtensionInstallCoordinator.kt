@@ -56,7 +56,7 @@ class ExtensionInstallCoordinator(
             var waitForCompletion: CompletableDeferred<Unit>? = null
             val flight = synchronized(flightLock) {
                 val current = inFlight[packageName]
-                if (current != null && !current.acceptsSubscribers) {
+                if (current != null && (current.request != request || !current.acceptsSubscribers)) {
                     waitForCompletion = current.completion
                     null
                 } else {
@@ -70,7 +70,7 @@ class ExtensionInstallCoordinator(
 
     private fun createFlight(request: ExtensionInstallRequest): InstallFlight {
         val packageName = request.artifact.packageName
-        return InstallFlight().also { created ->
+        return InstallFlight(request).also { created ->
             created.job = scope.launch(start = CoroutineStart.LAZY) {
                 var terminalState: ExtensionInstallState? = null
                 try {
@@ -197,7 +197,9 @@ class ExtensionInstallCoordinator(
     }
 }
 
-private class InstallFlight {
+private class InstallFlight(
+    val request: ExtensionInstallRequest,
+) {
     val events = MutableSharedFlow<InstallEvent>(replay = 16)
     val completion = CompletableDeferred<Unit>()
     lateinit var job: Job

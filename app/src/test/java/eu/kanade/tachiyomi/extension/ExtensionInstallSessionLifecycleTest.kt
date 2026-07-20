@@ -1117,6 +1117,127 @@ class ExtensionInstallSessionLifecycleTest {
     }
 
     @Test
+    fun `same package retry waits for cancelled platform flight and installs only new artifact`() = runTest {
+        val harness = packageInstallerHarness()
+        val context = mockk<Context>(relaxed = true) {
+            every { packageName } returns "eu.kanade.tachiyomi"
+        }
+        val rollbackStarted = CompletableDeferred<Unit>()
+        val allowRollback = CompletableDeferred<Unit>()
+        val cleanupStarted = CompletableDeferred<Unit>()
+        val allowCleanup = CompletableDeferred<Unit>()
+        val calls = mutableListOf<String>()
+        val artifactsByToken = mutableMapOf<String, ExtensionArtifact>()
+        lateinit var installer: ExtensionInstaller
+        val port = object : ExtensionInstallPort {
+            override suspend fun prepare(request: ExtensionInstallRequest): PreparedExtensionInstallToken {
+                val token = PreparedExtensionInstallToken(
+                    checkNotNull(activeTransactionIds(installer)[request.artifact.packageName]),
+                )
+                artifactsByToken[token.value] = request.artifact
+                calls += "prepare:${request.artifact.versionCode}"
+                return token
+            }
+
+            override suspend fun validate(token: PreparedExtensionInstallToken): ExtensionInstallRollbackToken {
+                calls += "validate:${artifactsByToken.getValue(token.value).versionCode}"
+                return ExtensionInstallRollbackToken(token.value)
+            }
+
+            override suspend fun commit(token: PreparedExtensionInstallToken) {
+                val versionCode = artifactsByToken.getValue(token.value).versionCode
+                calls += "commit:$versionCode"
+                if (versionCode == 1L) {
+                    installPrepared(installer, token.value, File("extension-v1.apk"))
+                }
+            }
+
+            override suspend fun reload(packageName: String) {
+                calls += "reload"
+            }
+
+            override suspend fun rollback(token: ExtensionInstallRollbackToken) {
+                calls += "rollback:${artifactsByToken.getValue(token.value).versionCode}"
+                rollbackStarted.complete(Unit)
+                allowRollback.await()
+            }
+
+            override suspend fun cleanup(token: PreparedExtensionInstallToken) {
+                val versionCode = artifactsByToken.getValue(token.value).versionCode
+                calls += "cleanup:$versionCode"
+                if (versionCode == 1L) {
+                    cleanupStarted.complete(Unit)
+                    allowCleanup.await()
+                }
+            }
+        }
+        installer = ExtensionInstaller(context, scope = backgroundScope, installPort = port)
+        val preference = mockk<ExtensionInstallerPreference> {
+            every { get() } returns BasePreferences.ExtensionInstaller.PACKAGEINSTALLER
+        }
+        ExtensionInstaller::class.java.getDeclaredField("extensionInstaller\$delegate").apply {
+            isAccessible = true
+            set(installer, lazyOf(preference))
+        }
+        mockkStatic(FileProvider::class)
+        every { FileProvider.getUriForFile(any(), any(), any()) } returns mockk()
+        every { ContextCompat.startForegroundService(context, any()) } answers {
+            harness.enqueue(activeTransactionIds(installer).values.single())
+            mockk()
+        }
+        val firstExtension = availableExtension("extension.package.same-flight-retry")
+        val firstSteps = installer.downloadAndInstall("https://repo.example/extension-v1.apk", firstExtension)
+        val firstTerminal = async { firstSteps.first(InstallStep::isCompleted) }
+
+        try {
+            runCurrent()
+            val firstTransactionId = activeTransactionIds(installer).getValue(firstExtension.pkgName)
+            assertTrue(platformResults(installer).containsKey(firstTransactionId))
+
+            val secondExtension = firstExtension.copy(versionName = "2.0", versionCode = 2)
+            val secondSteps = installer.downloadAndInstall(
+                "https://repo.example/extension-v2.apk",
+                secondExtension,
+            )
+            val secondTerminal = async { secondSteps.first(InstallStep::isCompleted) }
+            runCurrent()
+
+            assertEquals(listOf("prepare:1", "validate:1", "commit:1"), calls)
+            assertFalse(firstTerminal.isCompleted)
+            assertFalse(secondTerminal.isCompleted)
+
+            harness.installer.onDestroy()
+            rollbackStarted.await()
+            assertEquals(listOf("prepare:1", "validate:1", "commit:1", "rollback:1"), calls)
+            assertFalse(secondTerminal.isCompleted)
+
+            allowRollback.complete(Unit)
+            cleanupStarted.await()
+            assertEquals(
+                listOf("prepare:1", "validate:1", "commit:1", "rollback:1", "reload", "cleanup:1"),
+                calls,
+            )
+            assertFalse(secondTerminal.isCompleted)
+
+            allowCleanup.complete(Unit)
+            assertEquals(InstallStep.Idle, firstTerminal.await())
+            assertEquals(InstallStep.Installed, secondTerminal.await())
+            assertEquals(
+                listOf(
+                    "prepare:1", "validate:1", "commit:1", "rollback:1", "reload", "cleanup:1",
+                    "prepare:2", "validate:2", "commit:2", "reload", "cleanup:2",
+                ),
+                calls,
+            )
+            assertTrue(coordinatorFlights(installer).isEmpty())
+        } finally {
+            allowRollback.complete(Unit)
+            allowCleanup.complete(Unit)
+            unmockkStatic(FileProvider::class)
+        }
+    }
+
+    @Test
     fun `public cancellation after platform result waits for coordinator finishing`() = runTest {
         val harness = packageInstallerHarness()
         val context = mockk<Context>(relaxed = true) {
