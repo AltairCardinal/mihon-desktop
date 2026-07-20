@@ -1700,8 +1700,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `compat-baseline-evidence-drift`
 - Platform boundary: `verification`
-- Estimated scope: `1 file, 80 lines`
-- Scope correction: self-contained fixture 必须显式构造 production presentation port/model并在 finally 关闭 Compose scene与 model；保留完整导航及语义断言后实际为 79 touched lines，仍远低于 Task 拆分阈值。
+- Estimated scope: `1 file, 60 lines`
 - Verification: 7C3f 首次删除后的 31-test fixture 集合暴露 `DesktopExtensionProductBaselineTest` 仍把早期 ManHuaGui 两符号证据固定为整个 resolved symbol 集合；恢复全部裁剪后，在 HEAD `1ccb2518a` 单跑仍稳定为 `5 tests/1 failed`，期望2项而当前真实 ledger 为24项，证明与裁剪无关。只修改该测试文件：移除 `RESOLVED_SYMBOLS`、单一 `REAL_FIXTURE`/`REAL_FIXTURE_TEST` 的重复全集假设，保留 evidence 非空、symbol唯一、schema/status、仓库内本地 artifact 与 protection test 存在检查；动态 surface/inventory/evidence一一对应继续由 `CompatEvidenceContractTest` 唯一负责，不在此复制实现。运行 product baseline、compat contract 与 immutable fixture集合；不得修改 JSON ledger 或 production。
 
   Evidence: commit `ab7099df0`，1 file/13 deletions。恢复后的 HEAD 先单跑稳定复现 product baseline `5 tests/1 failed`，精确证明旧固定2-symbol集合与当前24项真实evidence冲突且与裁剪无关；GREEN 删除重复全集/单一fixture假设，但保留 evidence 非空、symbol唯一、schema/status、artifact-path@digest、仓库内本地artifact/protection test存在与removalCondition门禁。product baseline `5/0/0`、compat contract与6个immutable fixture `10/0/0`，独立审查确认动态surface/inventory/evidence一致性仍只由contract负责，APPROVED、Java0。
@@ -2092,8 +2091,17 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `extension-navigation-test-isolation`
 - Platform boundary: `verification`
-- Estimated scope: `1 file, 60 lines`
+- Estimated scope: `1 file, 80 lines`
+- Scope correction: self-contained fixture 必须显式构造 production presentation port/model并在 finally 关闭 Compose scene与 model；保留完整导航及语义断言后实际为 79 touched lines，仍远低于 Task 拆分阈值。
 - Verification: full Desktop JVM 在 1764 tests 顺序中只剩 `SourceSharedStateWiringTest.browse tab extensions action renders extension list screen` 于 mock setup 读取未初始化的真实 `DesktopExtensionManager.installedExtensions`，证明该导航测试既依赖 final-class mock interception，也未显式提供 7D4a 新 boundary 的 model。保留真实 Browse action→Navigator→ExtensionListScreen 链，但以真实 `ExtensionsScreenModel` + production presentation port、可控空 catalog/installed flow与 relaxed manager建立自包含 fixture，并通过 `LocalExtensionScreenModel` 显式提供；不得回退全局 Injekt、不得 mock UI content或删除本地化 reload 语义断言。focused 后重跑 full Desktop JVM；只有 Global Search 仍失败才启用下述条件 Task。
+  Evidence: commit `29de21b4c`，严格 1 test file / 79 touched lines。保留真实 Browse action语义点击→Voyager导航→`ExtensionListScreen`→MR localized reload `ContentDescription`；fixture 改为真实 `ExtensionsScreenModel` + production `DesktopExtensionPresentationPort`、可控 empty catalog/installed flow与 relaxed manager，并显式提供 local model，不再依赖 global Injekt或 final-class getter mock。RED 为 full-suite setup NPE，GREEN focused 1/1；独立 review APPROVED、diff-check clean、Java0。
+
+##### Task 7D4f: Global search Compose await under full-suite load
+
+- Risk axis: `global-search-compose-await`
+- Platform boundary: `verification`
+- Estimated scope: `1 file, 30 lines`
+- Verification: 7D4e 后 full Desktop 1764 tests 仅 `GlobalSearchResultProductionWiringTest.only composed cards observe canonical database rows without another search` 在初始 2s render/delay轮询超时；同类 focused 曾通过且前一次 full suite亦通过，证明是 suite负载下的有界调度竞态，不是稳定的 production state失败。统一该类异步等待的非零但负载容忍上限，并将 Compose pump 的固定10ms睡眠改为 render/yield，让等待释放调度而不累计人为延迟；所有状态/DB/导航/错误断言保持不变。focused 连续验证后重跑 full Desktop JVM；不得改 production、删除断言或使用无限等待。
 
   Conditional flow: 完成 7D4a–7D4d 后重跑 full Desktop JVM；若 `GlobalSearchResultProductionWiringTest` 仍只在 full-suite 负载下超时，另立 ≤2 files/60 lines 的 `global-search-compose-await` Task，先以有界重复/组合复现证明 frame propagation root cause，再调整测试 pump；若不再失败则不创建该 Task。
 
