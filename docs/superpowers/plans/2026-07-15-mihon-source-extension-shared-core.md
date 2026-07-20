@@ -37,7 +37,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - [x] Task 4A：共享安装事务状态机
 - [x] Task 4B：Desktop install port 与 reload 回滚
 - [x] Task 4C：Android 安装事务/session 生命周期
-- [ ] Task 4D：Android 信任、receiver 可见性与精确回滚（7D25 关闭真实 SYSTEM 降级回滚后恢复完成）
+- [x] Task 4D：Android 信任、receiver 可见性与精确回滚
 - [x] Task 5A：共享登录会话与 Desktop Cookie 原子提交
 - [x] Task 5B：Desktop 挑战恢复策略与 FlareSolverr 显式后备
 - [x] Task 5C：Desktop 登录设置、UI 与 production wiring
@@ -2318,6 +2318,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Platform boundary: `android`
 - Estimated scope: `5 files, 360 lines`
 - Verification: write a production-gateway RED that installs a higher-version candidate, forces post-commit reload or cleanup failure, and proves the lower-version signed snapshot is physically restored before runtime reload. The recovery path must use bounded PackageInstaller/uninstall callbacks, validate package/signers/version after restoration, preserve trust metadata, and fail visibly if uninstall, reinstall, verification or reload fails. Fake file-copy gateways are supplementary only; the completion evidence must include a project-managed emulator PackageInstaller/instrumentation run. Reopen Task 4D until this test and its independent review pass.
+- Evidence: implementation `f02fd92e9` plus repair `d0183b84e`. The API 36 RED reached real PackageInstaller and failed with `INSTALL_FAILED_VERSION_DOWNGRADE`; GREEN physically restored the same-signer v2 snapshot after v3 reload failure and externally recorded PackageManager v2/signer evidence. The repair RED proved pre-commit rollback removed a healthy package; GREEN compares topology, package/extension identity, version, signers, artifact digest, trust and loader origin before deciding whether recovery is a no-op or a physical restore. Security/rollback 23/23, session/coordinator 34/34, Spotless and device instrumentation passed. Independent review APPROVED with Critical 0 / Important 0 / Minor 0, so Task 4D is restored to complete.
 
 ##### Task 7D26: Android same-package retry flight handoff
 
@@ -2325,6 +2326,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Platform boundary: `shared+android`
 - Estimated scope: `4 files, 320 lines`
 - Verification: add a public `downloadAndInstall` RED that holds request A at platform handoff, immediately submits a same-package request B with a distinct immutable artifact/version, and proves B cannot subscribe to A's coordinator flight or publish A's terminal. The implementation must await A's bounded cancel/rollback/cleanup completion before B starts, or use an equivalent request-identity-safe flight key, while preserving same-request subscriber sharing and different-package concurrency.
+- Evidence: commit `5cdcfbada`. Shared RED returned request A's v1 artifact to request B; the public Android RED left B `Idle` after it subscribed to A. GREEN stores the complete immutable request on each flight, shares only equal requests, and waits outside the mutex for a different same-package request's rollback/cleanup completion before retrying acquisition. Coordinator 22/22, Android session/wiring 35/35 and Spotless passed. Independent review APPROVED with Critical 0 / Important 0 / Minor 0.
 
 ##### Task 7D27: Desktop update-all trust request queue
 
@@ -2332,10 +2334,13 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Platform boundary: `desktop`
 - Estimated scope: `3 files, 280 lines`
 - Verification: add a production ScreenModel/UI RED with at least two update-all candidates that concurrently reach `TrustRequired`. Every candidate must remain reachable through a FIFO confirmation flow (or receive an explicit visible cancellation terminal), and confirm/reject must clear that package's action/install step before advancing. No package may remain indefinitely `Pending`/`Installing`; single-update and Desktop-specific file/transaction actions must remain unchanged.
+- Evidence: implementation `cd041553d` plus repair `bf4aa2bb5`. The original RED showed the second trust request overwrote the first; repair REDs proved early next-dialog publication, missing active-request cleanup on throw/cancel/close, and a non-atomic StateFlow update that erased a concurrent storage error. GREEN separates `activeTrust` from the FIFO queue, advances only after terminal cleanup, drains active and queued requests on close, and uses atomic updates. Focused repair 5/5, ScreenModel 12/12, UI 7/7 and Spotless passed. Independent review APPROVED with Critical 0 / Important 0 / Minor 0.
 
-- [ ] **Step 7: 独立批次与最终审查**
+- [x] **Step 7: 独立批次与最终审查**
 
   `review_mode: thorough`：每个高风险边界或最多 3 个 Task 运行合并 spec+quality review，最后对 `852221f42..HEAD` 运行完整审查。Critical/Important 必须修复并重新运行覆盖测试；Minor 记录到持久进度并交最终审查裁定。
+
+  Evidence: the full review found three Important issues and no Critical issue. Tasks 7D25/7D26/7D27 closed real SYSTEM downgrade rollback, same-package request/flight confusion and Desktop multi-trust queue loss. The single final repair review APPROVED with Critical 0 / Important 0 / Minor 1. The remaining Minor is evidence formatting only: the tracked Android transcript contains all four test statuses, `OK (4 tests)` and `INSTRUMENTATION_CODE: -1`, but does not separately print the host adb process exit code; final reporting must retain that limitation.
 
 - [ ] **Step 8: 提交 Task 7**
 
