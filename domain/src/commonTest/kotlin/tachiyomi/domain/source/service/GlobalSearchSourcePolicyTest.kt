@@ -30,16 +30,45 @@ class GlobalSearchSourcePolicyTest {
     }
 
     @Test
-    fun `all filter includes every allowed source while preserving candidate order`() {
+    fun `all filter orders pinned sources first then normalizes name and language`() {
+        val unpinnedZulu = FakeCatalogueSource(5, "Zulu", "en")
+        val pinnedBeta = FakeCatalogueSource(6, "Beta", "ja")
+        val unpinnedAlphaJapanese = FakeCatalogueSource(7, "alpha", "ja")
+        val pinnedAlphaJapanese = FakeCatalogueSource(8, "Alpha", "ja")
+        val pinnedAlphaEnglish = FakeCatalogueSource(9, "alpha", "en")
+        val unpinnedAlphaEnglish = FakeCatalogueSource(10, "Alpha", "en")
+        val interleavedSources = listOf(
+            unpinnedZulu,
+            pinnedBeta,
+            unpinnedAlphaJapanese,
+            pinnedAlphaJapanese,
+            pinnedAlphaEnglish,
+            unpinnedAlphaEnglish,
+        )
+
         val selected = GlobalSearchSourcePolicy.select(
-            sources = sources,
-            enabledLanguages = setOf("en"),
-            hiddenSourceIds = setOf(hidden.id.toString()),
-            pinnedSourceIds = setOf(englishPinned.id.toString()),
+            sources = interleavedSources,
+            enabledLanguages = setOf("en", "ja"),
+            hiddenSourceIds = emptySet(),
+            pinnedSourceIds = setOf(
+                pinnedBeta.id.toString(),
+                pinnedAlphaJapanese.id.toString(),
+                pinnedAlphaEnglish.id.toString(),
+            ),
             filter = GlobalSearchSourceFilter.All,
         )
 
-        assertEquals(listOf(englishPinned, englishUnpinned), selected)
+        assertEquals(
+            listOf(
+                pinnedAlphaEnglish,
+                pinnedAlphaJapanese,
+                pinnedBeta,
+                unpinnedAlphaEnglish,
+                unpinnedAlphaJapanese,
+                unpinnedZulu,
+            ),
+            selected,
+        )
     }
 
     private class FakeCatalogueSource(

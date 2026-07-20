@@ -14,9 +14,16 @@ object GlobalSearchSourcePolicy {
         hiddenSourceIds: Set<String>,
         pinnedSourceIds: Set<String>,
         filter: GlobalSearchSourceFilter = GlobalSearchSourceFilter.PinnedOnly,
-    ): List<CatalogueSource> = sources.filter { source ->
-        source.lang in enabledLanguages &&
-            source.id.toString() !in hiddenSourceIds &&
-            (filter == GlobalSearchSourceFilter.All || source.id.toString() in pinnedSourceIds)
-    }
+    ): List<CatalogueSource> = sources
+        .filter { source ->
+            source.lang in enabledLanguages &&
+                source.id.toString() !in hiddenSourceIds &&
+                (filter == GlobalSearchSourceFilter.All || source.id.toString() in pinnedSourceIds)
+        }
+        .sortedWith(
+            compareBy(
+                { source -> source.id.toString() !in pinnedSourceIds },
+                { source -> "${source.name.lowercase()} (${source.lang})" },
+            ),
+        )
 }
