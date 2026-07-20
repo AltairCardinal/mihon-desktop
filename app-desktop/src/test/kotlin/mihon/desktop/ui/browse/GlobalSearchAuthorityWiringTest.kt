@@ -80,6 +80,8 @@ class GlobalSearchAuthorityWiringTest {
         var lifecycle = Job(coroutineContext[Job])
         var scene = newScene(lifecycle)
         suspend fun closeScene() {
+            scene.setContent {}
+            scene.render()
             scene.close()
             lifecycle.cancelAndJoin()
         }
