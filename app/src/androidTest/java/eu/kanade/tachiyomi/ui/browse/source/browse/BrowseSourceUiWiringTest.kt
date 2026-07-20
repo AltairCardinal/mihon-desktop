@@ -3,20 +3,25 @@ package eu.kanade.tachiyomi.ui.browse.source.browse
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
 import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.map
 import cafe.adriel.voyager.navigator.Navigator
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.network.HttpException
@@ -29,7 +34,9 @@ import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.webview.WebViewScreen
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -38,12 +45,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import tachiyomi.domain.library.model.LibraryDisplayMode
+import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourcePageRequest
 import tachiyomi.domain.source.service.SourcePageResult
 import tachiyomi.domain.source.service.SourceQuery
+import tachiyomi.presentation.core.components.material.Scaffold
+import java.lang.reflect.Proxy
 import java.util.concurrent.atomic.AtomicInteger
 
 class BrowseSourceUiWiringTest {
@@ -120,6 +131,85 @@ class BrowseSourceUiWiringTest {
         }
     }
 
+    @Test
+    fun firstPageEmptyFromProductionPagingShowsLocalizedNoResults() {
+        val source = EmptyFirstPageCatalogueSource()
+
+        showBrowse(source, productionPagingFlow(source))
+
+        composeTestRule.waitForText("No results found")
+    }
+
+    @Test
+    fun appendEmptyKeepsRowsAndVisibleRetryRecoversTheSameProductionPage() {
+        val source = RecoveringAppendCatalogueSource()
+
+        showBrowse(source, productionPagingFlow(source))
+
+        composeTestRule.waitForText("First row")
+        composeTestRule.onNode(hasScrollAction()).performScrollToNode(hasText("Last row"))
+        composeTestRule.waitUntil(10_000) { source.pageTwoRequests.get() == 1 }
+        composeTestRule.waitForText("Retry")
+        composeTestRule.onNodeWithText("Retry").performClick()
+        composeTestRule.waitUntil(10_000) { source.pageTwoRequests.get() == 2 }
+        composeTestRule.waitForText("Recovered row")
+        composeTestRule.onNode(hasScrollAction()).performScrollToNode(hasText("First row"))
+        composeTestRule.waitForText("First row")
+    }
+
+    private fun showBrowse(
+        source: CatalogueSource,
+        pagingFlow: Flow<PagingData<StateFlow<Manga>>>,
+    ) {
+        composeTestRule.setContent {
+            MaterialTheme {
+                Navigator(RootScreen) { navigator ->
+                    val snackbarHostState = remember { SnackbarHostState() }
+                    Scaffold(
+                        snackbarHost = { SnackbarHost(snackbarHostState) },
+                    ) { contentPadding ->
+                        BrowseSourceScreenContent(
+                            source = source,
+                            mangaList = pagingFlow.collectAsLazyPagingItems(),
+                            navigator = navigator,
+                            columns = GridCells.Fixed(1),
+                            displayMode = LibraryDisplayMode.List,
+                            snackbarHostState = snackbarHostState,
+                            contentPadding = contentPadding,
+                            onWebViewClick = {},
+                            onHelpClick = {},
+                            onLocalSourceHelpClick = {},
+                            onMangaClick = {},
+                            onMangaLongClick = {},
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private fun productionPagingFlow(source: CatalogueSource): Flow<PagingData<StateFlow<Manga>>> {
+        val repository = Proxy.newProxyInstance(
+            MangaRepository::class.java.classLoader,
+            arrayOf(MangaRepository::class.java),
+        ) { _, method, args ->
+            if (method.name == "insertNetworkManga") args?.first() else error("Unexpected ${method.name}")
+        } as MangaRepository
+        return Pager(PagingConfig(pageSize = 1, prefetchDistance = 1)) {
+            SharedSourcePagingSource(
+                source = source,
+                listing = BrowseSourceScreenModel.Listing.Popular,
+                generation = 1,
+                sourceMangaSearchService = SourceMangaSearchService(),
+                networkToLocalManga = NetworkToLocalManga(repository),
+            )
+        }.flow.map { pagingData -> pagingData.map { MutableStateFlow(it) as StateFlow<Manga> } }
+    }
+
+    private fun androidx.compose.ui.test.junit4.ComposeContentTestRule.waitForText(text: String) {
+        waitUntil(10_000) { onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
+    }
+
     private fun pagingFlow(source: CatalogueSource): Flow<PagingData<StateFlow<Manga>>> {
         return Pager(PagingConfig(pageSize = 25)) {
             FailingThenEmptyPagingSource(source)
@@ -165,6 +255,36 @@ class BrowseSourceUiWiringTest {
         }
     }
 
+    private class EmptyFirstPageCatalogueSource : BaseCatalogueSource() {
+        override suspend fun getPopularManga(page: Int) = MangasPage(emptyList(), false)
+    }
+
+    private class RecoveringAppendCatalogueSource : BaseCatalogueSource() {
+        val pageTwoRequests = AtomicInteger()
+
+        override suspend fun getPopularManga(page: Int): MangasPage = when (page) {
+            1 -> MangasPage(
+                (1..30).map {
+                    manga(
+                        "/row-$it",
+                        when (it) {
+                            1 -> "First row"
+                            30 -> "Last row"
+                            else -> "Row $it"
+                        },
+                    )
+                },
+                true,
+            )
+            2 -> if (pageTwoRequests.incrementAndGet() == 1) {
+                MangasPage(emptyList(), false)
+            } else {
+                MangasPage(listOf(manga("/recovered", "Recovered row")), false)
+            }
+            else -> error("Unexpected page $page")
+        }
+    }
+
     private class LoginCatalogueSource : HttpSource() {
         val requestCount = AtomicInteger()
         override val id = 8L
@@ -205,5 +325,13 @@ class BrowseSourceUiWiringTest {
         override suspend fun getMangaDetails(manga: SManga) = manga
         override suspend fun getChapterList(manga: SManga) = emptyList<SChapter>()
         override suspend fun getPageList(chapter: SChapter) = emptyList<Page>()
+    }
+
+    private companion object {
+        fun manga(url: String, title: String) = SManga.create().apply {
+            this.url = url
+            this.title = title
+            initialized = true
+        }
     }
 }

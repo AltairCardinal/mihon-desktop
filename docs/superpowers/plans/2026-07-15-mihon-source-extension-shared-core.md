@@ -2294,7 +2294,23 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Platform boundary: `verification`
 - Estimated scope: `2 files, 120 lines`
 - Verification: build and deploy the latest current Android consumer to the project-managed emulator after shared ordering/error/query changes. Reverify representative extension loading plus global-search source order, first-page empty feedback, append-empty retry/recovery and the affected browse path. Record the exact HEAD/APK/device/API/evidence; this runtime evidence validates the current consumer only and must not be described as original Mihon authority.
-- Evidence: partial current-consumer runtime evidence is recorded in `docs/superpowers/reports/2026-07-20-align-sources-extensions-android-runtime.md`. Latest APK build/install, two real extension fixtures, Trust→source membership, source/global ordering, affected Browse entry and failure→Retry wiring passed; first-page successful empty and append-empty recovery remain unverified because foreign provider HTTP could not use the host-only proxy. Task 7D24 and OpenSpec 3.4.3/4.4 intentionally remain unchecked.
+- Evidence: complete current-consumer Android runtime evidence is recorded in `docs/superpowers/reports/2026-07-20-align-sources-extensions-android-runtime.md`. The hashed base APK, two real extension fixtures, Trust→source membership, source/global ordering, affected Browse entry, failure→Retry wiring and real MangaDex first-page `No results found` all passed. Task 7D24R/7D24F supply the remaining deterministic production-wiring append-empty recovery evidence. OpenSpec 4.4 is complete; 3.4.3 remains pending only for the Windows/macOS Desktop verification and cross-check. None of this evidence is fixed-main original authority.
+
+##### Task 7D24R: Deterministic Android empty-page recovery verification
+
+- Risk axis: `android-empty-page-runtime-verification`
+- Platform boundary: `verification`
+- Estimated scope: `3 files, 180 lines`
+- Verification: use the existing Android Browse instrumentation and the production `SharedSourcePagingSource`/Compose/Pager wiring to prove localized first-page no-results plus page-2 empty preserving page-1 rows, exposing Retry, retrying the same page and rendering recovered content. The test must fail if production append-empty mapping or visible retry wiring is bypassed; real-extension loading remains separately evidenced and the controlled source must not be described as an original Mihon fixture.
+- Evidence: real MangaDex first-page empty passed through the verified ADB reverse/global-proxy path. Task 7D24R produced the corrected four-test APK against real production `SharedSourcePagingSource`/Pager/Compose/Scaffold wiring, but its original AVD remained offline; Task 7D24F then ran that exact hashed APK unchanged on a fresh AVD and obtained `OK (4 tests)`. The controlled source is deterministic runtime wiring evidence, not an original Mihon fixture.
+
+##### Task 7D24F: Fresh-emulator Android empty-page runtime verification
+
+- Risk axis: `fresh-android-emulator-verification`
+- Platform boundary: `verification`
+- Estimated scope: `4 files, 180 lines`
+- Verification: take over the already compiled Task 7D24R base/test APKs without running Gradle or changing production/test design. Create a fresh project-managed API 36 AVD with cold boot and snapshots disabled to isolate the prior offline emulator failure, install both APKs, and run all four `BrowseSourceUiWiringTest` cases. Record exact APK hashes, device/API and instrumentation output. The controlled source proves current Android consumer production `SharedSourcePagingSource`/Pager/Compose/Scaffold wiring only; it is not an original Mihon fixture or fixed-main authority.
+- Evidence: fresh cold/no-snapshot AVD `mihon-7d24f-api36` (`emulator-5556`, `sdk_gphone64_x86_64`, Android 16 / API 36) reached `device` and `sys.boot_completed=1`. Base SHA-256 `8e1892fe68cdcd1138ccce96517391b22401d49894ab04af76e8069be82b3460` and test SHA-256 `1fce797f052d35834e6cd56df58bd2946ae5c8958462be301b3c0f321ec74773` both installed with `Success`; the unchanged targeted instrumentation finished in 24.009s with `OK (4 tests)`. It proved localized first-page empty plus append-empty preserving rows, visible Retry, a second request for the same page and recovered content through production wiring. OpenSpec 4.4 is checked; 3.4.3 remains pending for Desktop.
 
 - [ ] **Step 7: 独立批次与最终审查**
 

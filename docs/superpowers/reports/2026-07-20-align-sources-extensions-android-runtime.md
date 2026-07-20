@@ -2,18 +2,20 @@
 
 Date: 2026-07-20
 
-Scope: `align-sources-extensions` Task 7D24
+Scope: `align-sources-extensions` Tasks 7D24, 7D24R and 7D24F
 
-Authority boundary: this report verifies the current Android consumer only. It is not evidence for fixed-main original Mihon authority.
+Authority boundary: this report verifies the current Android consumer only. Fixed-main commit `6fbf6dfc` remains the original Mihon authority; none of the runtime or controlled-source evidence below replaces it.
 
 ## Artifact and device
 
-- HEAD: `de3e4adfe1597fae802816bde539644442e7eb7e`
+- Base APK build record HEAD: `de3e4adfe1597fae802816bde539644442e7eb7e`; fresh-AVD execution worktree HEAD: `d7648781b3561f5cf832b7b5374955a1ebb72c28` plus the Task 7D24R instrumentation change.
 - Build: `./gradlew :app:assembleDebug --stacktrace` — GREEN in 6m36s, 287 tasks (61 executed, 226 up-to-date).
 - APK: `app/build/outputs/apk/debug/app-universal-debug.apk`
 - APK SHA-256: `8e1892fe68cdcd1138ccce96517391b22401d49894ab04af76e8069be82b3460`
+- Test APK: `app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk`
+- Test APK SHA-256: `1fce797f052d35834e6cd56df58bd2946ae5c8958462be301b3c0f321ec74773`
 - Package/version: `app.mihon.dev`, `0.19.4-8352`; device install reported `Success`.
-- AVD: `mihon-api36`; model `sdk_gphone64_x86_64`; Android 16 / API 36.
+- Real-fixture AVD: `mihon-api36`; fresh instrumentation AVD: `mihon-7d24f-api36`, serial `emulator-5556`; model `sdk_gphone64_x86_64`; Android 16 / API 36.
 - Fingerprint: `google/sdk_gphone64_x86_64/emu64xa:16/BE2A.250530.026.F3/13894323:userdebug/dev-keys`.
 - Runtime crash scan: logcat matches for `FATAL EXCEPTION|OutOfMemoryError|SIGSEGV|Fatal signal` = 0.
 
@@ -35,10 +37,10 @@ The Extensions dump after trust shows both packages under Installed. The Sources
 | Global-search source order | PASS | `10-global-empty.xml` lists pinned TCB Scans before alphabetically earlier MangaDex under All, matching pinned-first then normalized name/language ordering |
 | Affected browse entry | PASS | both TCB Scans and MangaDex open their real Browse screens; dumps include source title, Popular and source-specific actions |
 | Failure feedback and Retry intent | PASS | unreachable provider requests render localized `No Internet connection` plus Retry/WebView/Help; tapping Retry leaves the error state, enters loading, and issues a new request before the provider fails again |
-| First-page empty on latest real fixture | NOT VERIFIED | foreign provider HTTP could not be routed through the host-only `127.0.0.1:10808` proxy from the AVD, so both providers failed before returning an empty successful page |
-| Append-empty retry and successful recovery | NOT VERIFIED | the tracked real fixtures expose no deterministic append-empty response, and the provider network limitation prevented a successful recovery cycle |
+| First-page empty on latest real fixture | PASS | `adb reverse tcp:10809 tcp:10808` plus device proxy `127.0.0.1:10809` routed MangaDex through the host proxy; query `zzzz7d24rnoresult` rendered localized `No results found` |
+| Append-empty retry and successful recovery | PASS | the fresh API 36 AVD ran the corrected instrumentation through production `SharedSourcePagingSource`/Pager/Compose/Scaffold wiring: page 2 returned empty, page-1 rows remained visible, Retry was visible, its click requested page 2 again, and recovered content rendered |
 
-OpenSpec 3.4.3 and 4.4 therefore remain pending. Existing JVM/shared tests prove the reducer contract, but are not substituted for missing current-emulator evidence.
+OpenSpec 4.4 is complete from the combined real-fixture Task 7D24 evidence and deterministic production-wiring Task 7D24R/7D24F evidence. OpenSpec 3.4.3 remains pending for Windows/macOS Desktop final verification and cross-check.
 
 ## Emulator cross-check
 
@@ -46,20 +48,33 @@ The existing production-wiring instrumentation was built without adding infrastr
 
 ```text
 ./gradlew :app:assembleDebugAndroidTest --stacktrace
-adb -e install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-adb -e shell am instrument -w -r \
+adb -s emulator-5556 install -r app/build/outputs/apk/debug/app-universal-debug.apk
+adb -s emulator-5556 install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s emulator-5556 shell am instrument -w -r \
   -e class eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceUiWiringTest \
   app.mihon.dev.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
-Result: `OK (2 tests)` in 3.247s. The real Compose/Pager screen wiring covered 403 → Login navigation and failure → Retry → second request/empty result. This cross-check supports Retry wiring, but does not upgrade the missing append-empty real-fixture evidence.
+Task 7D24R compiled this test APK; Task 7D24F reused it byte-for-byte without Gradle, production changes or test-design changes. The fresh AVD was created from the project SDK's `system-images;android-36;google_apis;x86_64`, started with `-no-snapshot -no-snapshot-save`, reached `device` and `sys.boot_completed=1`, and had no global proxy configured.
+
+Result:
+
+```text
+INSTRUMENTATION_STATUS: numtests=4
+Time: 24.009
+OK (4 tests)
+INSTRUMENTATION_CODE: -1
+```
+
+The four cases cover the two existing Browse UI boundaries, localized first-page `No results found`, and deterministic append-empty recovery. The controlled catalogue source is not a real/original fixture; its value is that it executes the current consumer's production paging and visible Snackbar retry wiring on-device.
 
 ## Environment diagnosis and local evidence
 
-The first AVD boot lacked `NET_CAPABILITY_VALIDATED` because Google connectivity probes timed out. Setting captive-portal ignore mode and reconnecting produced a Wi-Fi network with `EVER_VALIDATED&IS_VALIDATED`. Raw IP/MangaDex DNS checks succeeded before proxying, but foreign HTTP still requires the host proxy. Restarting the AVD with proxy environment and disabling virtual cellular did not make extension OkHttp requests use `127.0.0.1:10808`; diagnosis stopped after that bounded retry.
+The real-fixture proxy path was proven with `adb reverse tcp:10809 tcp:10808` and device global proxy `127.0.0.1:10809`: opening MangaDex increased host-port established connections from 54 to 60, loaded real titles, and query `zzzz7d24rnoresult` rendered `No results found`. The original AVD later remained offline, so Task 7D24F isolated that environment failure with one fresh cold/no-snapshot AVD. The fresh AVD needed no proxy because its catalogue source is instrumentation-controlled and performs no external request.
 
 Reproducible command output, UI dumps, screenshots and logs are under `.test-tmp/7d24-android-runtime/`, notably:
 
 - `device-summary.txt`, `install.log`, `instrumentation-browse-retry.log`
 - `04-extensions.*`, `06-extensions-trusted.*`, `07-sources.*`, `08-sources-pinned.xml`
 - `10-global-empty.*`, `14-tcb-popular-wait.*`, `18-mangadex-popular.*`
+- `7d24r-mangadex-empty.*`, `7d24r-instrumentation.log`
