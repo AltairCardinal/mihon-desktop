@@ -12,6 +12,8 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
@@ -101,7 +103,7 @@ class SourceLastUsedWiringTest {
             lastUsed.set(alpha.id)
             awaitRows(scene, listOf(alpha.name, alpha.name, zeta.name))
         } finally {
-            scene.close()
+            mounted.cleanup()
             root.removeNode()
         }
     }
@@ -140,7 +142,7 @@ class SourceLastUsedWiringTest {
                 }
                 assertEquals(expected, lastUsed.get())
             } finally {
-                mounted.scene.close()
+                mounted.cleanup()
                 root.removeNode()
             }
         }
@@ -174,7 +176,8 @@ class SourceLastUsedWiringTest {
             every { this@mockk.extensionManager } returns extensionManager
             every { sourceLoginSessionFactory } returns mockk(relaxed = true)
         }
-        val scene = ImageComposeScene(900, 1_200, coroutineContext = coroutineContext) {}.also { scene ->
+        val lifecycle = Job(coroutineContext[Job])
+        val scene = ImageComposeScene(900, 1_200, coroutineContext = coroutineContext + lifecycle) {}.also { scene ->
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
                     Navigator(BrowseSourceListScreen()) { CurrentScreen() }
@@ -182,7 +185,7 @@ class SourceLastUsedWiringTest {
             }
             scene.render()
         }
-        return MountedBrowseScene(scene, extensionLookups)
+        return MountedBrowseScene(scene, extensionLookups, lifecycle)
     }
 
     private suspend fun awaitBrowseDetails(
@@ -243,7 +246,13 @@ class SourceLastUsedWiringTest {
     private data class MountedBrowseScene(
         val scene: ImageComposeScene,
         val extensionLookups: AtomicInteger,
-    )
+        val lifecycle: Job,
+    ) {
+        suspend fun cleanup() {
+            scene.close()
+            lifecycle.cancelAndJoin()
+        }
+    }
 
     private data class LastUsedScenario(
         val globalIncognito: Boolean,
