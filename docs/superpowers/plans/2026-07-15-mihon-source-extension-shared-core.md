@@ -2262,6 +2262,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Platform boundary: `android`
 - Estimated scope: `4 files, 320 lines`
 - Verification: preserve the current suspend extension loader without creating a package-event blind window. Register a production buffering listener when the manager is constructed; while the initial snapshot is loading, record install/update/untrusted/uninstall events in arrival order. Under one lock or serialized actor, publish the loader snapshot, replay the buffered events, switch the same listener to live application and only then publish `isInitialized = true`. Add a delayed-loader behavior RED that captures the real production listener, injects events after the loader snapshot is fixed but before publication, and proves the initialized installed/untrusted snapshots reflect ordered replay. Replace the AndroidSourceManager negative timing assertion with a deterministic barrier on the actual installed-extension collection chain. Preserve the single Map StateFlow and atomic update work from Task 7D20, receiver reload/update behavior and fixed-main load-before-initialized semantics.
+- Evidence: initial RED/GREEN `385b87283` / `8380f0807`, repair RED/GREEN `51e74c60a` / `cbef7e0ba`; focused 8/8, adjacent install/session/coordinator/security rollback 57/57 and root Spotless GREEN. Construction-time receiver buffering, ordered snapshot replay, deterministic source collection and active runtime reload all share the initialization/live gate. Repair review APPROVED with Critical 0 / Important 0 / Minor 0.
 
 ##### Task 7D21: Extension refresh failure presentation
 
@@ -2277,6 +2278,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Platform boundary: `shared+android`
 - Estimated scope: `4 files, 300 lines`
 - Verification: remove source-text scanning as completion evidence. Add an injectable production page-loader/service boundary whose integration test returns a unique sentinel/error while the direct source path fails; the real Android ScreenModel must call the shared query service, publish the shared result/recovery action and never execute a duplicate direct source rule. A mutation that bypasses the shared service must fail behaviorally. Keep source HTTP execution inside the shared service and current Android UI semantics unchanged.
+- Evidence: commit `53affec75`; production Browse Pager and Global Search behavior tests replace all source-text scanning, related regression 13/13 and root Spotless GREEN. A temporary direct-source mutation made the new Browse test fail and was restored byte-for-byte before commit. Independent review APPROVED with Critical 0 / Important 0 / Minor 0.
 
 ##### Task 7D23: Final provenance manifest and audit reconciliation
 
@@ -2284,6 +2286,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Platform boundary: `verification`
 - Estimated scope: `7 files, 350 lines`
 - Verification: correct parity ID 28 as source-list membership/projection, keep ID 29 for single-source canonical persistence/incognito write, and complete ID 30/37 fixed-main presentation symbols plus current-consumer/Desktop-adapter mappings and inventory blobs. Append—not rewrite—OpenSpec 2.3 closure to the authority audit, remove remaining active-manifest/proposal “Android authoritative/original” ambiguity, and keep all entries at most `WIRED` until current runtime verification. Contract tests must reject missing upstream symbols, wrong fixed-main blobs, current-app authority, and evidence assigned to the wrong capability.
+- Evidence: commit `9487514ce`; capability contract 25/25, manifest 64 entries, fixed-main inventory 71/71 real blobs, JSON parse, OpenSpec strict, Comet guard and root Spotless GREEN. IDs 28/29/30/37 now have distinct fixed-main/current-consumer/Desktop-adapter evidence, active authority terminology is unambiguous, and runtime/checkoff items remain pending. Independent review APPROVED with Critical 0 / Important 0 / Minor 0.
 
 ##### Task 7D24: Latest Android source/extension runtime verification
 
