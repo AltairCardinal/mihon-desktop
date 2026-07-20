@@ -24,7 +24,7 @@ import java.util.concurrent.TimeUnit
  * 直接调用 ApkToJarConverter.convert() 并尝试 ServiceLoader 加载。
  *
  * 运行：./gradlew :app-desktop:jvmTest --tests "*.KeiyoushiDex2JarConversionTest" \
- *   -PincludeIntegrationTests=true -PincludeNetworkSurveyTests=true
+ *   -PincludeIntegrationTests=true -PincludeLiveNetworkTests=true -PincludeNetworkSurveyTests=true
  */
 @Tag("integration")
 class KeiyoushiDex2JarConversionTest {
@@ -58,6 +58,7 @@ class KeiyoushiDex2JarConversionTest {
     )
 
     @Test
+    @Tag("live-network")
     @Tag("network-survey")
     fun `keiyoushi Chinese APK dex2jar conversion and source loading test`() = runBlocking {
         val indexUrl = "https://raw.githubusercontent.com/keiyoushi/extensions/main/index.min.json"

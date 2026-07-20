@@ -151,16 +151,31 @@ tasks.named("compileTestKotlinJvm") { dependsOn(generateBuildInfo) }
 
 tasks.withType<Test> {
     val testTempDir = layout.buildDirectory.dir("test-tmp").get().asFile
+    val includeLiveNetworkTests = providers.gradleProperty("includeLiveNetworkTests")
+        .map(String::toBoolean)
+        .getOrElse(false)
     doFirst {
         testTempDir.mkdirs()
     }
     systemProperty("java.io.tmpdir", testTempDir.absolutePath)
+    if (includeLiveNetworkTests) {
+        val proxyHost = providers.environmentVariable("MIHON_LIVE_PROXY_HOST").getOrElse("127.0.0.1")
+        val proxyPort = providers.environmentVariable("MIHON_LIVE_PROXY_PORT").getOrElse("10808")
+        systemProperty("http.proxyHost", proxyHost)
+        systemProperty("http.proxyPort", proxyPort)
+        systemProperty("https.proxyHost", proxyHost)
+        systemProperty("https.proxyPort", proxyPort)
+        systemProperty("http.nonProxyHosts", "localhost|127.*|[::1]")
+    }
     useJUnitPlatform {
         val includeIntegrationTests = providers.gradleProperty("includeIntegrationTests")
             .map(String::toBoolean)
             .getOrElse(false)
         if (!includeIntegrationTests) {
             excludeTags("integration")
+        }
+        if (!includeLiveNetworkTests) {
+            excludeTags("live-network")
         }
         val includeNetworkSurveyTests = providers.gradleProperty("includeNetworkSurveyTests")
             .map(String::toBoolean)

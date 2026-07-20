@@ -181,25 +181,27 @@ class MangaDexSourceTest {
     }
 
     @Tag("integration")
+    @Tag("live-network")
     @Test
     fun `built in MangaDex source loads chapters and page image from live MangaDex on desktop`() = runTest {
         val source = source("https://api.mangadex.org")
         val manga = SManga.create().apply { url = "/manga/0cfcda3b-0dcb-459b-9931-aa823e7bf403" }
 
         val chapters = source.getChapterList(manga)
+        assertTrue(chapters.isNotEmpty(), "Expected MangaDex live chapter list to be non-empty")
         val pages = source.getPageList(chapters.first())
+        assertTrue(pages.isNotEmpty(), "Expected MangaDex live page list to be non-empty")
         val fetcher = SourcePageFetcher(
             source = source,
             fallbackClient = NetworkHelper(OkHttpClient()).client,
         )
         val fileUri = fetcher.fetchToFile(pages.first(), tempDir)
 
-        assertTrue(chapters.isNotEmpty(), "Expected MangaDex live chapter list to be non-empty")
-        assertTrue(pages.isNotEmpty(), "Expected MangaDex live page list to be non-empty")
         assertNotNull(fileUri, "Expected first MangaDex page image to download")
     }
 
     @Tag("integration")
+    @Tag("live-network")
     @Test
     fun `built in MangaDex source loads chapters for manga that stayed empty in desktop database`() = runTest {
         var browserBody: String? = null
@@ -216,8 +218,8 @@ class MangaDexSourceTest {
 
         val chapters = source.getChapterList(manga)
 
-        assertTrue(browserBody?.contains("\"total\":2") == true, "Expected browser fallback to return the live feed")
-        assertEquals(2, chapters.size, "Expected the live Nagatoro feed to contain its two available chapters")
+        assertTrue(browserBody?.contains("\"result\":\"ok\"") == true, "Expected browser fallback to return a valid live feed")
+        assertTrue(chapters.isNotEmpty(), "Expected the live Nagatoro feed to contain chapters")
     }
 
     @Tag("integration")

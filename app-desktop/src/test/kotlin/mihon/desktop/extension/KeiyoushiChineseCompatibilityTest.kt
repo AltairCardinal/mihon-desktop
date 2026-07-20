@@ -23,7 +23,7 @@ import java.util.zip.ZipFile
  *
  * 运行方式：
  *   ./gradlew :app-desktop:jvmTest --tests "*.KeiyoushiChineseCompatibilityTest" \
- *     -PincludeIntegrationTests=true -PincludeNetworkSurveyTests=true
+ *     -PincludeIntegrationTests=true -PincludeLiveNetworkTests=true -PincludeNetworkSurveyTests=true
  *
  * 注意：此测试会进行真实网络请求，耗时较长。
  */
@@ -83,6 +83,7 @@ class KeiyoushiChineseCompatibilityTest {
     )
 
     @Test
+    @Tag("live-network")
     @Tag("network-survey")
     fun `keiyoushi Chinese extension conversion compatibility survey`() = runBlocking {
         val indexUrl = "https://raw.githubusercontent.com/keiyoushi/extensions/main/index.min.json"
