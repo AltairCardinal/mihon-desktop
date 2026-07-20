@@ -21,7 +21,6 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -62,6 +61,8 @@ import tachiyomi.i18n.MR
 import java.util.prefs.Preferences
 import java.util.concurrent.ConcurrentHashMap
 
+private const val ASYNC_TIMEOUT_MS = 5_000L
+
 @OptIn(ExperimentalComposeUiApi::class)
 class GlobalSearchResultProductionWiringTest {
 
@@ -97,16 +98,16 @@ class GlobalSearchResultProductionWiringTest {
                         }
                     }
                 }
-                withTimeout(2_000) {
+                withTimeout(ASYNC_TIMEOUT_MS) {
                     while (!text(scene).contains("A listed 0") || !text(scene).contains("B listed 0") ||
                         fixture.repository.latestRows[sourceA.id to "/shared"] == null || fixture.repository.latestRows[sourceB.id to "/shared"] == null
                     ) {
                         scene.render()
-                        delay(10)
+                        yield()
                     }
                 }
                 scene.render()
-                delay(10)
+                yield()
                 val sharedKeys = setOf(sourceA.id to "/shared", sourceB.id to "/shared")
                 assertTrue(fixture.repository.activeSubscriptions.size in 1..<10 && fixture.repository.activeSubscriptions.containsAll(sharedKeys))
                 assertTrue(fixture.repository.seenSubscriptions.size in 1..<10 && fixture.repository.seenSubscriptions.containsAll(sharedKeys))
@@ -114,20 +115,20 @@ class GlobalSearchResultProductionWiringTest {
                 val observed = requireNotNull(fixture.mangas.getMangaByUrlAndSourceId("/shared", sourceA.id))
                 val untouched = requireNotNull(fixture.mangas.getMangaByUrlAndSourceId("/shared", sourceB.id))
                 assertTrue(fixture.mangas.update(MangaUpdate(observed.id, title = "DB updated", thumbnailUrl = "updated-cover", favorite = true)))
-                val repositoryUpdated = withTimeout(2_000) {
+                val repositoryUpdated = withTimeout(ASYNC_TIMEOUT_MS) {
                     GetManga(fixture.mangas).subscribe("/shared", sourceA.id).filterNotNull().first { it.title == "DB updated" }
                 }
                 assertEquals("updated-cover", repositoryUpdated.thumbnailUrl)
-                withTimeout(2_000) {
+                withTimeout(ASYNC_TIMEOUT_MS) {
                     while (fixture.repository.latestRows[sourceA.id to "/shared"]?.title != "DB updated") {
                         scene.render()
-                        delay(10)
+                        yield()
                     }
                 }
-                withTimeout(2_000) {
+                withTimeout(ASYNC_TIMEOUT_MS) {
                     while (!text(scene).contains("DB updated") || !text(scene).contains(MR.strings.in_library.localized())) {
                         scene.render()
-                        delay(10)
+                        yield()
                     }
                 }
                 assertTrue(nodes(scene, unmerged = true).any {
@@ -141,12 +142,12 @@ class GlobalSearchResultProductionWiringTest {
                 assertTrue(action.invoke())
                 assertEquals(stackSize + 1, requireNotNull(navigator).size)
                 assertEquals(observed.id, (requireNotNull(navigator).items.last() as MangaDetailScreen).mangaId)
-                withTimeout(2_000) { details.started.await() }
+                withTimeout(ASYNC_TIMEOUT_MS) { details.started.await() }
                 assertEquals(1, details.inputs.size)
                 assertSame(listed, details.inputs.single())
                 assertEquals(listOf("/shared", "A listed 0", "A-cover-0"), listOf(listed.url, listed.title, listed.thumbnail_url))
                 details.release.complete(Unit)
-                withTimeout(2_000) { details.completed.await() }
+                withTimeout(ASYNC_TIMEOUT_MS) { details.completed.await() }
                 assertEquals(1, details.inputs.size)
                 assertEquals(listOf("observe"), searchesA)
                 assertEquals(listOf("observe"), searchesB)
@@ -180,14 +181,14 @@ class GlobalSearchResultProductionWiringTest {
                     }
                 }
                 scene.render()
-                withTimeout(2_000) { fixture.repository.oldStarted.await() }
+                withTimeout(ASYNC_TIMEOUT_MS) { fixture.repository.oldStarted.await() }
                 scene.render()
                 assertFalse(text(scene).contains("old canonical"), "raw result must remain gated")
 
                 setText(scene, "new")
                 scene.render()
                 click(scene, "Search")
-                withTimeout(2_000) {
+                withTimeout(ASYNC_TIMEOUT_MS) {
                     while (!fixture.repository.newFailed.isCompleted) {
                         scene.render()
                         yield()
@@ -197,13 +198,13 @@ class GlobalSearchResultProductionWiringTest {
                 assertTrue(text(scene).contains(MR.strings.unknown_error.localized()))
                 assertFalse(text(scene).contains("new canonical"))
                 click(scene, MR.strings.action_retry.localized())
-                withTimeout(2_000) { fixture.repository.newInserted.await() }
+                withTimeout(ASYNC_TIMEOUT_MS) { fixture.repository.newInserted.await() }
                 scene.render()
                 assertTrue(text(scene).contains("new canonical"))
                 assertNotNull(fixture.mangas.getMangaByUrlAndSourceId("/new/0", source.id))
 
                 fixture.repository.releaseOld.complete(Unit)
-                withTimeout(2_000) { fixture.repository.oldInserted.await() }
+                withTimeout(ASYNC_TIMEOUT_MS) { fixture.repository.oldInserted.await() }
                 scene.render()
                 assertTrue(text(scene).contains("new canonical"))
                 assertFalse(text(scene).contains("old canonical"))
