@@ -102,7 +102,7 @@ class DesktopExtensionDetailsActionCopyTest {
                 dismissSnackbar(scene)
 
                 click(scene, MR.strings.ext_uninstall.localized(locale))
-                scene.render()
+                awaitText(scene, MR.strings.ext_confirm_remove.localized(locale))
                 listOf(MR.strings.ext_confirm_remove.localized(locale), MR.strings.desktop_extension_remove_metadata_confirmation.localized(locale, extension.name),
                     MR.strings.ext_uninstall.localized(locale), MR.strings.action_cancel.localized(locale))
                     .forEach { assertTrue(it in texts(scene), "Missing dialog '$it': ${texts(scene)}") }
