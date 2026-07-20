@@ -40,8 +40,11 @@ import io.mockk.every
 import io.mockk.coEvery
 import io.mockk.mockk
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.LocalExtensionScreenModel
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.domain.SaveSourceMangaForDetails
+import mihon.desktop.extension.DesktopExtensionApi
+import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.network.ChallengeRecoveryIntent
 import mihon.desktop.network.CloudflareChallengeManager
 import mihon.desktop.network.DesktopBrowserOpener
@@ -51,7 +54,11 @@ import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.desktop.source.FakeSource
+import mihon.desktop.ui.extension.DesktopExtensionPresentationPort
+import mihon.desktop.ui.extension.ExtensionsScreenModel
 import mihon.domain.error.AppError
+import mihon.domain.extension.model.ExtensionCatalogResult
+import mihon.domain.extension.presentation.ExtensionPresentationOptions
 import mihon.domain.manga.model.toDomainManga
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -126,10 +133,17 @@ class SourceSharedStateWiringTest {
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
     fun `browse tab extensions action renders extension list screen`() = runBlocking {
-        val extensionApi = mockk<mihon.desktop.extension.DesktopExtensionApi>()
-        val extensionManager = mockk<mihon.desktop.extension.DesktopExtensionManager> {
-            every { getInstalledExtensions() } returns emptyList()
+        val extensionApi = mockk<DesktopExtensionApi> {
+            coEvery { refreshCatalog() } returns ExtensionCatalogResult(emptyList(), emptyList())
+            every { availableExtensions(any()) } returns emptyList()
+            coEvery { loadExtensionIcon(any()) } returns null
         }
+        val extensionManager = mockk<DesktopExtensionManager>(relaxed = true)
+        val extensionModel = ExtensionsScreenModel(
+            DesktopExtensionPresentationPort(extensionApi, extensionManager, MutableStateFlow(emptyList())),
+            this,
+            ExtensionPresentationOptions(false, emptySet()),
+        )
         val dependencies = mockk<DesktopUiDependencies> {
             every { sourceManager } returns FakeDesktopSourceManager(emptyList())
             every { appPreferences } returns sourcePreferences()
@@ -140,37 +154,44 @@ class SourceSharedStateWiringTest {
 
         fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
 
-        scene.setContent {
-            CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
-                TabNavigator(BrowseTab) {
-                    CurrentTab()
+        try {
+            scene.setContent {
+                CompositionLocalProvider(
+                    LocalDesktopUiDependencies provides dependencies,
+                    LocalExtensionScreenModel provides { extensionModel },
+                ) {
+                    TabNavigator(BrowseTab) {
+                        CurrentTab()
+                    }
                 }
             }
+            scene.render()
+
+            val extensionsAction = requireNotNull(
+                scene.semanticsOwners
+                    .flatMap { flatten(it.rootSemanticsNode) }
+                    .firstOrNull {
+                        it.config.contains(SemanticsActions.OnClick) &&
+                            it.config.toString().contains(MR.strings.label_extensions.localized())
+                    },
+            )
+
+            assertTrue(requireNotNull(extensionsAction.config[SemanticsActions.OnClick].action).invoke())
+            scene.render()
+
+            assertTrue(
+                scene.semanticsOwners
+                    .flatMap { flatten(it.rootSemanticsNode) }
+                    .any {
+                        it.config.contains(SemanticsProperties.ContentDescription) &&
+                            it.config[SemanticsProperties.ContentDescription]
+                                .contains(MR.strings.desktop_extension_reload_installed.localized())
+                    },
+            )
+        } finally {
+            scene.close()
+            extensionModel.closeAndJoin()
         }
-        scene.render()
-
-        val extensionsAction = requireNotNull(
-            scene.semanticsOwners
-                .flatMap { flatten(it.rootSemanticsNode) }
-                .firstOrNull {
-                    it.config.contains(SemanticsActions.OnClick) &&
-                        it.config.toString().contains(MR.strings.label_extensions.localized())
-                },
-        )
-
-        assertTrue(requireNotNull(extensionsAction.config[SemanticsActions.OnClick].action).invoke())
-        scene.render()
-
-        assertTrue(
-            scene.semanticsOwners
-                .flatMap { flatten(it.rootSemanticsNode) }
-                .any {
-                    it.config.contains(SemanticsProperties.ContentDescription) &&
-                        it.config[SemanticsProperties.ContentDescription]
-                            .contains(MR.strings.desktop_extension_reload_installed.localized())
-                },
-        )
-        scene.close()
     }
 
     @Test
