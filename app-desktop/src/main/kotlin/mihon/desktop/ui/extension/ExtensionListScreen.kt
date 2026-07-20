@@ -98,7 +98,7 @@ class ExtensionListScreen : Screen {
         val navigator = LocalNavigator.currentOrThrow
         val manager = LocalDesktopUiDependencies.current.extensionManager
         ExtensionListContent(
-            model = LocalExtensionScreenModel.current,
+            model = LocalExtensionScreenModel.current(),
             manager = manager,
             onBack = navigator::pop,
             onOpen = { onOpen(navigator, it) },

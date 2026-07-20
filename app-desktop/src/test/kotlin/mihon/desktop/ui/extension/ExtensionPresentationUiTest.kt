@@ -66,7 +66,7 @@ class ExtensionPresentationUiTest {
             scene.setContent {
                 CompositionLocalProvider(
                     LocalDesktopUiDependencies provides dependencies,
-                    LocalExtensionScreenModel provides localModel,
+                    LocalExtensionScreenModel provides { localModel },
                 ) { Navigator(screen) { CurrentScreen() } }
             }
             scene.render()

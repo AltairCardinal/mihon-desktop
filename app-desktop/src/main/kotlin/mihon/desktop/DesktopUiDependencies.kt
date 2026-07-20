@@ -153,4 +153,4 @@ val LocalDesktopUiDependencies = compositionLocalOf<DesktopUiDependencies> {
     error("DesktopUiDependencies is not provided")
 }
 
-val LocalExtensionScreenModel = compositionLocalOf<ExtensionsScreenModel> { Injekt.get() }
+val LocalExtensionScreenModel = compositionLocalOf<() -> ExtensionsScreenModel> { { Injekt.get() } }

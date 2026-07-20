@@ -93,7 +93,7 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
         val navigator = LocalNavigator.currentOrThrow
         val dependencies = LocalDesktopUiDependencies.current
         val platformActions = LocalExtensionDetailsPlatformActions.current
-        val model = LocalExtensionScreenModel.current
+        val model = LocalExtensionScreenModel.current()
         val state by model.state.collectAsState()
         val sourceManager = dependencies.sourceManager as? DesktopSourceManager
         val appPreferences = dependencies.appPreferences
