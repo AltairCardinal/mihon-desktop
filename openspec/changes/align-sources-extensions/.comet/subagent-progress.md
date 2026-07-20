@@ -604,3 +604,19 @@
 - macOS fresh suite: 1814 tests, 1 failed; stopped before distributable and runtime acceptance.
 - RED: `ExtensionPresentationUiTest` proved uninstall failure feedback, then clicked Reload Installed while the first Snackbar was still active; exact reload failure feedback did not appear inside five seconds. The post-wait authority-manager verification therefore did not execute.
 - Decision: reject BUILD35 and dispatch bounded Task 7D38 `extension-reload-feedback-convergence`. Use the existing real Snackbar Dismiss semantics fixture boundary before the second action; do not inflate timeouts or change production behavior.
+
+## Task 7D38 Review History
+
+- Reviewed task: `Task 7D38: Extension reload failure feedback fixture`
+- Stage: `complete`
+- Risk axis: `extension-reload-feedback-convergence`
+- Platform boundary: `verification`
+- Implementer: `/root/task7d38_reload_feedback`.
+- Implementation commit: `011662ee1` (`test(desktop): dismiss prior extension feedback`).
+- Change: after real uninstall failure copy and exact manager routing assertions, invoke the actual Snackbar Dismiss semantics and await disappearance before the unchanged reload action/error assertions.
+- GREEN evidence: Windows adjacent extension UI matrix PASS; exact-parent/SHA macOS clone passed ExtensionPresentation 7/7, DetailsActionCopy 1/1 and DetailsPreferences 4/4; root Spotless, diff check and Comet guard PASS.
+- Independent reviewer: `/root/review_task7d35`; result `APPROVED`, Critical/Important/Minor `0/0/0`.
+- Review conclusion: the Dismiss node is the active Snackbar, the wait is bounded, and both real user actions retain localized feedback plus authority/bypass routing evidence without production changes.
+- Final scope: 1 verification file, 8 added lines; no production, BUILD35, DownloadQueue or unrelated user file was committed.
+- Delivery state: BUILD35 remains rejected. Resume Step 6 by allocating BUILD36 from the D38 evidence HEAD.
+- Review/fix round: 0/1
