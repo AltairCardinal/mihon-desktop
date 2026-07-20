@@ -55,13 +55,14 @@ class RealExtensionPageListCompatTest {
                         val source = loaded.first().source as HttpSource
                         val targetHost = source.baseUrl.toHttpUrl().host
                         val sourceClient = source.client
+                        val productionDns = sourceClient.dns
                         val extensionNetworkInterceptors = sourceClient.networkInterceptors
                         val rewrittenClient = sourceClient.newBuilder()
                             .dns { hostname ->
                                 if (hostname == targetHost) {
                                     Dns.SYSTEM.lookup(server.hostName)
                                 } else {
-                                    Dns.SYSTEM.lookup(hostname)
+                                    productionDns.lookup(hostname)
                                 }
                             }
                             .proxy(Proxy.NO_PROXY)
