@@ -47,6 +47,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -56,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -68,9 +70,13 @@ import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.ui.library.MangaDetailScreen
+import mihon.domain.error.AppError
+import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourcePageError
 import tachiyomi.domain.source.service.SourceQuery
@@ -232,12 +238,27 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
         val sourceManager = dependencies.sourceManager
         val sourceMangaSearchService = dependencies.sourceMangaSearchService
         val saveSourceMangaForDetails = dependencies.saveSourceMangaForDetails
+        val getManga = dependencies.getManga
         val source = remember { sourceManager.getCatalogueSources().find { it.id == sourceId } }
         val scope = rememberCoroutineScope()
 
         val queryCoordinator = remember { SourceBrowseQueryCoordinator(sourceMangaSearchService) }
         val queryState by queryStates(queryCoordinator).collectAsState(initial = null)
         val queryUiState = projectState(queryState)
+        val resultMaterializer = remember(saveSourceMangaForDetails, scope) {
+            SourceResultMaterializer(scope, saveSourceMangaForDetails::awaitSearchResults)
+        }
+        LaunchedEffect(queryState) {
+            resultMaterializer.sync(
+                queryState?.request?.generation ?: 0,
+                mapOf(sourceId to queryState),
+            )
+        }
+        val canonicalResult = queryState?.let { state ->
+            resultMaterializer.results[sourceId]?.takeIf { it.generation == state.request.generation }
+        }
+        val canonicalContent = canonicalResult as? CanonicalSearchResult.Content
+        val canonicalFailure = canonicalResult as? CanonicalSearchResult.Failure
         var openingMangaUrl by remember { mutableStateOf<String?>(null) }
         val loginController = remember(queryCoordinator, dependencies.sourceLoginSessionFactory) {
             DesktopSourceLoginController(dependencies.sourceLoginSessionFactory, queryCoordinator)
@@ -267,6 +288,9 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
                 testModePort.close()
                 SourceBrowseTestModeBridge.clear(testModePort)
             }
+        }
+        DisposableEffect(resultMaterializer) {
+            onDispose(resultMaterializer::close)
         }
 
         // Search state
@@ -440,7 +464,7 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
 
                     queryUiState.empty -> {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text(MR.strings.source_empty_screen.localized())
+                            Text(MR.strings.no_results_found.localized())
                         }
                     }
 
@@ -464,6 +488,29 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
                         }
                     }
 
+                    queryState is SourceQueryState.Content && canonicalFailure != null -> {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    desktopSourceErrorMessage(AppError.Unknown(canonicalFailure.cause)),
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                                androidx.compose.material3.Button(
+                                    onClick = { resultMaterializer.retry(sourceId) },
+                                    modifier = Modifier.padding(top = 8.dp),
+                                ) {
+                                    Text(MR.strings.action_retry.localized())
+                                }
+                            }
+                        }
+                    }
+
+                    queryState is SourceQueryState.Content && canonicalContent == null -> {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
+                    }
+
                     else -> {
                         LazyVerticalGrid(
                             columns = GridCells.Adaptive(minSize = 120.dp),
@@ -472,19 +519,27 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxSize(),
                         ) {
-                            items(queryUiState.items, key = { it.url }) { manga ->
+                            items(canonicalContent?.items.orEmpty(), key = { it.source to it.url }) { initialManga ->
+                                val manga by produceState(initialManga, initialManga.source, initialManga.url) {
+                                    getManga.subscribe(initialManga.url, initialManga.source)
+                                        .filterNotNull()
+                                        .collectLatest { value = it }
+                                }
                                 MangaCard(manga = manga) {
                                     val catalogueSource = source ?: return@MangaCard
+                                    val listed = canonicalContent?.listedByUrl?.get(manga.url) ?: return@MangaCard
                                     if (openingMangaUrl != null) return@MangaCard
                                     openingMangaUrl = manga.url
+                                    navigator.push(MangaDetailScreen(manga.id))
                                     scope.launch {
-                                        val details = saveSourceMangaForDetails.awaitListedForDetails(manga, sourceId)
-                                        val saved = details.manga
-                                        navigator.push(MangaDetailScreen(saved.id))
-                                        if (details.needsRefresh) {
-                                            saveSourceMangaForDetails.refreshFromSource(catalogueSource, manga)
+                                        try {
+                                            val details = saveSourceMangaForDetails.awaitListedForDetails(listed, sourceId)
+                                            if (details.needsRefresh) {
+                                                saveSourceMangaForDetails.refreshFromSource(catalogueSource, listed)
+                                            }
+                                        } finally {
+                                            openingMangaUrl = null
                                         }
-                                        openingMangaUrl = null
                                     }
                                 }
                             }
@@ -688,16 +743,16 @@ private fun FilterChoice(label: String, selected: Boolean, onClick: () -> Unit) 
 }
 
 @Composable
-private fun MangaCard(manga: SManga, onClick: () -> Unit) {
+private fun MangaCard(manga: Manga, onClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
     ) {
         Box {
             AsyncImage(
-                model = manga.thumbnail_url,
+                model = manga.thumbnailUrl,
                 contentDescription = manga.title,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxWidth().aspectRatio(0.7f),
+                modifier = Modifier.fillMaxWidth().aspectRatio(0.7f).testTag("source-browse-cover:${manga.thumbnailUrl}"),
             )
             // Gradient overlay
             Box(
@@ -721,6 +776,9 @@ private fun MangaCard(manga: SManga, onClick: () -> Unit) {
                     .align(Alignment.BottomStart)
                     .padding(6.dp),
             )
+            if (manga.favorite) {
+                Text(MR.strings.in_library.localized(), color = Color.White, modifier = Modifier.padding(6.dp))
+            }
         }
     }
 }

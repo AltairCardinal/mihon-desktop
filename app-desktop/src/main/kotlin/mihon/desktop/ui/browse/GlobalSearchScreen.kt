@@ -102,27 +102,37 @@ internal sealed interface CanonicalSearchResult {
     data class Failure(override val generation: Long, val cause: Throwable) : CanonicalSearchResult
 }
 
-internal class GlobalSearchResultMaterializer(
+internal class SourceResultMaterializer(
     private val scope: CoroutineScope,
     private val persist: suspend (List<SManga>, Long) -> List<Manga>,
 ) {
     val results = mutableStateMapOf<Long, CanonicalSearchResult>()
     private val requests = mutableMapOf<Long, List<SManga>>()
     private val jobs = mutableMapOf<Long, Job>()
-    private var generation = 0L
+    private val activeAttempts = mutableMapOf<Long, Long>()
+    private var activeGeneration = 0L
+    private var nextAttempt = 0L
 
     fun sync(state: DesktopGlobalSearchState) {
-        if (generation != state.generation) {
+        sync(state.generation, state.queryStates)
+    }
+
+    fun sync(generation: Long, queryStates: Map<Long, SourceQueryState?>) {
+        if (activeGeneration != generation) {
             jobs.values.forEach(Job::cancel)
             jobs.clear()
             requests.clear()
+            activeAttempts.clear()
             results.clear()
-            generation = state.generation
+            activeGeneration = generation
         }
-        state.queryStates.forEach { (sourceId, queryState) ->
-            if (queryState is SourceQueryState.Content && sourceId !in requests) {
-                requests[sourceId] = queryState.items
-                start(sourceId, queryState.items)
+        queryStates.forEach { (sourceId, queryState) ->
+            if (queryState is SourceQueryState.Content) {
+                val listed = queryState.items.distinctBy(SManga::url)
+                if (requests[sourceId] != listed) {
+                    requests[sourceId] = listed
+                    start(sourceId, listed)
+                }
             }
         }
     }
@@ -132,15 +142,21 @@ internal class GlobalSearchResultMaterializer(
         requests[sourceId]?.let { start(sourceId, it) }
     }
 
-    fun close() = jobs.values.forEach(Job::cancel)
+    fun close() {
+        jobs.values.forEach(Job::cancel)
+        jobs.clear()
+        activeAttempts.clear()
+    }
 
     private fun start(sourceId: Long, listed: List<SManga>) {
-        val expectedGeneration = generation
+        val expectedGeneration = activeGeneration
+        val expectedAttempt = ++nextAttempt
+        activeAttempts[sourceId] = expectedAttempt
         jobs[sourceId]?.cancel()
         jobs[sourceId] = scope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
                 val canonical = persist(listed, sourceId)
-                if (generation == expectedGeneration) {
+                if (activeGeneration == expectedGeneration && activeAttempts[sourceId] == expectedAttempt) {
                     results[sourceId] = CanonicalSearchResult.Content(
                         expectedGeneration,
                         canonical,
@@ -150,7 +166,9 @@ internal class GlobalSearchResultMaterializer(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
-                if (generation == expectedGeneration) results[sourceId] = CanonicalSearchResult.Failure(expectedGeneration, error)
+                if (activeGeneration == expectedGeneration && activeAttempts[sourceId] == expectedAttempt) {
+                    results[sourceId] = CanonicalSearchResult.Failure(expectedGeneration, error)
+                }
             }
         }
     }
@@ -305,7 +323,7 @@ class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
         val coordinatorFactory = LocalGlobalSearchCoordinatorFactory.current
         val queryCoordinator = remember(sourceMangaSearchService, coordinatorFactory) { coordinatorFactory(sourceMangaSearchService) }
         val resultMaterializer = remember(saveSourceMangaForDetails, scope) {
-            GlobalSearchResultMaterializer(scope, saveSourceMangaForDetails::awaitSearchResults)
+            SourceResultMaterializer(scope, saveSourceMangaForDetails::awaitSearchResults)
         }
         val searchState by queryCoordinator.states.collectAsState()
         LaunchedEffect(searchState.generation, searchState.publicationOrdinal) {
