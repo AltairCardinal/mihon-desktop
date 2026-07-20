@@ -1,11 +1,19 @@
 package mihon.desktop.ui.extension
 
 import java.io.File
+import java.lang.reflect.Proxy
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -212,7 +220,13 @@ class ExtensionSharedStateWiringTest {
         every { api.availableExtensions(catalog) } returns listOf(first, second)
         coEvery { api.beginInstall(first, manager) } returns trust("trust-first")
         coEvery { api.beginInstall(second, manager) } returns trust("trust-second")
-        every { api.confirmTrust("trust-first", manager) } returns flowOf(ExtensionInstallState.Installed(mockk()))
+        val confirmationStarted = CompletableDeferred<Unit>()
+        val releaseConfirmation = CompletableDeferred<Unit>()
+        every { api.confirmTrust("trust-first", manager) } returns flow {
+            confirmationStarted.complete(Unit)
+            releaseConfirmation.await()
+            emit(ExtensionInstallState.Installed(mockk()))
+        }
         every { api.discardTrust("trust-first") } returns true
         every { api.discardTrust("trust-second") } returns true
         val model = ExtensionsScreenModel(
@@ -229,15 +243,16 @@ class ExtensionSharedStateWiringTest {
             backgroundScope,
             ExtensionPresentationOptions(false, setOf("en")),
         )
-
         model.refresh().join()
         model.updateAll().forEach { it.join() }
-
         assertEquals("trust-first", model.state.value.pendingTrust?.request?.requestId)
-        model.confirmTrust()?.join()
+        val confirmation = checkNotNull(model.confirmTrust())
+        confirmationStarted.await()
+        assertTrue(model.state.value.pendingTrust?.request?.requestId != "trust-second")
+        releaseConfirmation.complete(Unit)
+        confirmation.join()
         assertEquals("trust-second", model.state.value.pendingTrust?.request?.requestId)
         assertTrue(model.dismissTrust())
-
         assertEquals(null, model.state.value.pendingTrust)
         assertTrue(
             listOf(first.pkgName, second.pkgName).none { packageName ->
@@ -250,6 +265,152 @@ class ExtensionSharedStateWiringTest {
         verify(exactly = 1) { api.confirmTrust("trust-first", manager) }
         verify(exactly = 1) { api.discardTrust("trust-second") }
         verify(exactly = 0) { api.discardTrust("trust-first") }
+    }
+
+    @Test
+    fun `port and flow failures discard active trust before advancing the queue`() = runTest {
+        val api = mockk<DesktopExtensionApi>()
+        val manager = mockk<DesktopExtensionManager>()
+        val one = available("pkg.failure.one")
+        val two = available("pkg.failure.two")
+        val three = available("pkg.failure.three")
+        coEvery { api.beginInstall(one, manager) } returns trust("failure-one")
+        coEvery { api.beginInstall(two, manager) } returns trust("failure-two")
+        coEvery { api.beginInstall(three, manager) } returns trust("failure-three")
+        every { api.confirmTrust("failure-one", manager) } throws IllegalStateException("port failure")
+        every { api.confirmTrust("failure-two", manager) } returns flow { throw IllegalStateException("flow failure") }
+        every { api.discardTrust(any()) } returns true
+        val uncaught = mutableListOf<Throwable>()
+        val parentScope = exceptionCapturingScope(uncaught)
+        val model = model(api, manager, parentScope)
+        try {
+            listOf(one, two, three).forEach { model.install(it.item()).join() }
+            checkNotNull(model.confirmTrust()).join()
+            checkNotNull(model.confirmTrust()).join()
+            verify(exactly = 1) { api.discardTrust("failure-one") }
+            verify(exactly = 1) { api.discardTrust("failure-two") }
+            assertEquals(emptyList<Throwable>(), uncaught)
+            assertEquals("failure-three", model.state.value.pendingTrust?.request?.requestId)
+            assertTrue(
+                listOf(one.pkgName, two.pkgName).none { packageName ->
+                    model.state.value.actions.installSteps[packageName] in setOf(
+                        ExtensionPresentationInstallStep.Pending,
+                        ExtensionPresentationInstallStep.Installing,
+                    )
+                },
+            )
+        } finally {
+            model.closeAndJoin()
+            parentScope.cancel()
+        }
+    }
+
+    @Test
+    fun `cancelling confirmation discards active trust before exposing the next request`() = runTest {
+        val api = mockk<DesktopExtensionApi>()
+        val manager = mockk<DesktopExtensionManager>()
+        val one = available("pkg.cancel.one")
+        val two = available("pkg.cancel.two")
+        val confirmationStarted = CompletableDeferred<Unit>()
+        coEvery { api.beginInstall(one, manager) } returns trust("cancel-one")
+        coEvery { api.beginInstall(two, manager) } returns trust("cancel-two")
+        every { api.confirmTrust("cancel-one", manager) } returns flow {
+            confirmationStarted.complete(Unit)
+            awaitCancellation()
+        }
+        every { api.discardTrust(any()) } returns true
+        val model = model(api, manager, backgroundScope)
+        model.install(one.item()).join()
+        model.install(two.item()).join()
+        val confirmation = checkNotNull(model.confirmTrust())
+        confirmationStarted.await()
+        confirmation.cancel()
+        confirmation.join()
+        verify(exactly = 1) { api.discardTrust("cancel-one") }
+        assertEquals("cancel-two", model.state.value.pendingTrust?.request?.requestId)
+        assertEquals(null, model.state.value.actions.installSteps[one.pkgName])
+    }
+
+    @Test
+    fun `closing during confirmation discards active and queued trust without pending actions`() = runTest {
+        val api = mockk<DesktopExtensionApi>()
+        val manager = mockk<DesktopExtensionManager>()
+        val one = available("pkg.close.one")
+        val two = available("pkg.close.two")
+        val confirmationStarted = CompletableDeferred<Unit>()
+        coEvery { api.beginInstall(one, manager) } returns trust("close-one")
+        coEvery { api.beginInstall(two, manager) } returns trust("close-two")
+        every { api.confirmTrust("close-one", manager) } returns flow {
+            confirmationStarted.complete(Unit)
+            awaitCancellation()
+        }
+        every { api.discardTrust(any()) } returns true
+        val model = model(api, manager, backgroundScope)
+        model.install(one.item()).join()
+        model.install(two.item()).join()
+        checkNotNull(model.confirmTrust())
+        confirmationStarted.await()
+        model.closeAndJoin()
+        verify(exactly = 1) { api.discardTrust("close-one") }
+        verify(exactly = 1) { api.discardTrust("close-two") }
+        assertEquals(null, model.state.value.pendingTrust)
+        assertTrue(
+            listOf(one.pkgName, two.pkgName).none { packageName ->
+                model.state.value.actions.installSteps[packageName] in setOf(
+                    ExtensionPresentationInstallStep.Pending,
+                    ExtensionPresentationInstallStep.Installing,
+                )
+            },
+        )
+    }
+
+    @Test
+    fun `pending cleanup preserves a concurrent package error update`() = runTest {
+        val api = mockk<DesktopExtensionApi>()
+        val manager = mockk<DesktopExtensionManager>()
+        val pending = available("pkg.interleave.pending")
+        val rejected = available("pkg.interleave.rejected")
+        val rejection = AppError.Storage()
+        val releaseFailure = CompletableDeferred<Unit>()
+        coEvery { api.beginInstall(pending, manager) } returns trust("interleave-pending")
+        coEvery { api.beginInstall(rejected, manager) } returns DesktopExtensionInstallStart.Started(flow {
+            releaseFailure.await()
+            emit(ExtensionInstallState.Failed(rejection))
+            awaitCancellation()
+        })
+        every { api.discardTrust("interleave-pending") } returns true
+        val parentScope = exceptionCapturingScope(mutableListOf())
+        val model = model(api, manager, parentScope)
+        val (stateRead, releaseStateWrite) = List(2) { CountDownLatch(1) }
+        try {
+            model.install(pending.item()).join()
+            val rejectedInstall = model.install(rejected.item())
+            val armed = AtomicBoolean(false)
+            interceptStateFlow(model) { method, delegate, arguments ->
+                val value = method.invoke(delegate, *arguments)
+                if (method.name == "getValue" && armed.compareAndSet(true, false)) {
+                    stateRead.countDown()
+                    assertTrue(releaseStateWrite.await(5, TimeUnit.SECONDS))
+                }
+                value
+            }
+            armed.set(true)
+            val dismissing = async(Dispatchers.Default) { model.dismissTrust() }
+            assertTrue(stateRead.await(5, TimeUnit.SECONDS))
+            releaseFailure.complete(Unit)
+            assertSame(rejection, model.state.value.installErrors[rejected.pkgName])
+            releaseStateWrite.countDown()
+            assertTrue(dismissing.await())
+            assertSame(rejection, model.state.value.installErrors[rejected.pkgName])
+            assertEquals(ExtensionPresentationInstallStep.Error, model.state.value.actions.installSteps[rejected.pkgName])
+            rejectedInstall.cancel()
+            rejectedInstall.join()
+        } finally {
+            releaseFailure.complete(Unit)
+            releaseStateWrite.countDown()
+            model.closeAndJoin()
+            parentScope.cancel()
+        }
     }
 
     @Test
@@ -417,6 +578,23 @@ class ExtensionSharedStateWiringTest {
         scope,
         ExtensionPresentationOptions(false, setOf("en")),
     )
+
+    private fun exceptionCapturingScope(errors: MutableList<Throwable>) = CoroutineScope(
+        SupervisorJob() + Dispatchers.Unconfined + CoroutineExceptionHandler { _, error -> errors += error },
+    )
+
+    @Suppress("UNCHECKED_CAST")
+    private fun interceptStateFlow(
+        model: ExtensionsScreenModel,
+        invoke: (java.lang.reflect.Method, MutableStateFlow<DesktopExtensionsState>, Array<out Any?>) -> Any?,
+    ) {
+        val field = ExtensionsScreenModel::class.java.getDeclaredField("mutableState").apply { isAccessible = true }
+        val delegate = field.get(model) as MutableStateFlow<DesktopExtensionsState>
+        field.set(model, Proxy.newProxyInstance(
+            MutableStateFlow::class.java.classLoader,
+            arrayOf(MutableStateFlow::class.java),
+        ) { _, method, arguments -> invoke(method, delegate, arguments.orEmpty()) })
+    }
 
     private fun trust(id: String) = DesktopExtensionInstallStart.TrustRequired(id, "old", "new", emptySet(), mockk())
 }

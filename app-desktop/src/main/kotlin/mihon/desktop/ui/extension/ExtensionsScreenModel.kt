@@ -60,6 +60,7 @@ class ExtensionsScreenModel(
     private val packageJobs = mutableMapOf<String, Job>()
     private var refreshJob: Job? = null
     private val pendingTrustQueue = mutableListOf<DesktopPendingTrust>()
+    private var activeTrust: DesktopPendingTrust? = null
     private var isClosed = false
     private var latestCatalog: DesktopExtensionCatalogState? = null
     internal val closed get() = synchronized(lock) { isClosed }
@@ -145,24 +146,38 @@ class ExtensionsScreenModel(
             synchronized(lock) { packageJobs[packageName] }?.cancelAndJoin()
             takePending(packageName)?.let { port.discardTrust(it.request.requestId) }
             clearTerminal(packageName)
+            publishPending()
         }
     }
 
     fun confirmTrust(): Job? {
         checkOpen()
-        val pending = takePending() ?: return null
+        val pending = activatePending() ?: return null
         return launchPackage(pending.packageName) {
-            val events = port.confirmPresentationTrust(pending.request.requestId)
-            if (events == null) clearTerminal(pending.packageName) else collectInstall(pending.packageName, events)
+            var completed = false
+            try {
+                port.confirmPresentationTrust(pending.request.requestId)?.let {
+                    collectInstall(pending.packageName, it)
+                }
+                completed = true
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+            } finally {
+                finishActive(pending, completed)
+            }
         }
     }
 
     fun dismissTrust(): Boolean {
         checkOpen()
         val pending = takePending() ?: return false
-        val discarded = port.discardTrust(pending.request.requestId)
-        clearTerminal(pending.packageName)
-        return discarded
+        return try {
+            port.discardTrust(pending.request.requestId)
+        } finally {
+            clearTerminal(pending.packageName)
+            publishPending()
+        }
     }
 
     fun uninstall(item: DesktopExtensionItem): Boolean = port.uninstall(item)
@@ -199,6 +214,7 @@ class ExtensionsScreenModel(
         drainPending()
         ownerJob.cancelAndJoin()
         drainPending()
+        drainActive()
     }
 
     private fun publish(currentOptions: ExtensionPresentationOptions, clearRefreshError: Boolean = false) {
@@ -276,7 +292,9 @@ class ExtensionsScreenModel(
                 } else {
                     pendingTrustQueue += next
                 }
-                mutableState.value = mutableState.value.copy(pendingTrust = pendingTrustQueue.first())
+                mutableState.update {
+                    it.copy(pendingTrust = if (activeTrust == null) pendingTrustQueue.first() else null)
+                }
                 true
             }
         }
@@ -291,27 +309,77 @@ class ExtensionsScreenModel(
 
     private fun takePending(packageName: String? = null): DesktopPendingTrust? {
         val pending = synchronized(lock) {
-            val index = if (packageName == null) {
+            val index = if (packageName == null && activeTrust != null) {
+                null
+            } else if (packageName == null) {
                 pendingTrustQueue.indices.firstOrNull()
             } else {
                 pendingTrustQueue.indexOfFirst { it.packageName == packageName }.takeIf { it >= 0 }
             }
-            index?.let(pendingTrustQueue::removeAt).also {
-                mutableState.value = mutableState.value.copy(pendingTrust = pendingTrustQueue.firstOrNull())
+            index?.let(pendingTrustQueue::removeAt).also { removed ->
+                if (removed != null) {
+                    mutableState.update {
+                        it.copy(
+                            pendingTrust = if (activeTrust == null && index != 0) pendingTrustQueue.firstOrNull() else null,
+                        )
+                    }
+                }
             }
         }
         return pending
+    }
+
+    private fun activatePending(): DesktopPendingTrust? = synchronized(lock) {
+        if (activeTrust != null) return@synchronized null
+        pendingTrustQueue.removeFirstOrNull()?.also { pending ->
+            activeTrust = pending
+            mutableState.update { it.copy(pendingTrust = null) }
+        }
+    }
+
+    private fun finishActive(pending: DesktopPendingTrust, completed: Boolean) {
+        val isActive = synchronized(lock) { activeTrust?.request?.requestId == pending.request.requestId }
+        if (!isActive) return
+        if (!completed) runCatching { port.discardTrust(pending.request.requestId) }
+        if (!completed || state.value.actions.installSteps[pending.packageName] != ExtensionPresentationInstallStep.Error) {
+            clearTerminal(pending.packageName)
+        }
+        synchronized(lock) {
+            if (activeTrust?.request?.requestId == pending.request.requestId) activeTrust = null
+            mutableState.update {
+                it.copy(pendingTrust = if (isClosed) null else pendingTrustQueue.firstOrNull())
+            }
+        }
+    }
+
+    private fun publishPending() = synchronized(lock) {
+        mutableState.update {
+            it.copy(pendingTrust = if (isClosed || activeTrust != null) null else pendingTrustQueue.firstOrNull())
+        }
     }
 
     private fun drainPending() {
         val pending = synchronized(lock) {
             pendingTrustQueue.toList().also {
                 pendingTrustQueue.clear()
-                mutableState.value = mutableState.value.copy(pendingTrust = null)
+                mutableState.update { state -> state.copy(pendingTrust = null) }
             }
         }
         pending.forEach {
             port.discardTrust(it.request.requestId)
+            clearTerminal(it.packageName)
+        }
+    }
+
+    private fun drainActive() {
+        val active = synchronized(lock) {
+            activeTrust.also {
+                activeTrust = null
+                mutableState.update { state -> state.copy(pendingTrust = null) }
+            }
+        }
+        active?.let {
+            runCatching { port.discardTrust(it.request.requestId) }
             clearTerminal(it.packageName)
         }
     }
