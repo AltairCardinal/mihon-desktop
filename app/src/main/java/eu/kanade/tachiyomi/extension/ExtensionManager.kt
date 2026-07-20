@@ -17,12 +17,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import logcat.LogPriority
 import mihon.domain.error.AppError
@@ -78,13 +76,34 @@ class ExtensionManager internal constructor(
     private val iconMap = mutableMapOf<String, Drawable>()
 
     private val installedExtensionMapFlow = MutableStateFlow(emptyMap<String, Extension.Installed>())
-    val installedExtensionsFlow = installedExtensionMapFlow.mapExtensions(scope)
+    private val installedExtensionsState = MutableStateFlow(emptyList<Extension.Installed>())
+    val installedExtensionsFlow = installedExtensionsState.asStateFlow()
+    private var installedExtensionMap: Map<String, Extension.Installed>
+        get() = installedExtensionMapFlow.value
+        set(value) {
+            installedExtensionMapFlow.value = value
+            installedExtensionsState.value = value.values.toList()
+        }
 
     private val availableExtensionMapFlow = MutableStateFlow(emptyMap<String, Extension.Available>())
-    val availableExtensionsFlow = availableExtensionMapFlow.mapExtensions(scope)
+    private val availableExtensionsState = MutableStateFlow(emptyList<Extension.Available>())
+    val availableExtensionsFlow = availableExtensionsState.asStateFlow()
+    private var availableExtensionMap: Map<String, Extension.Available>
+        get() = availableExtensionMapFlow.value
+        set(value) {
+            availableExtensionMapFlow.value = value
+            availableExtensionsState.value = value.values.toList()
+        }
 
     private val untrustedExtensionMapFlow = MutableStateFlow(emptyMap<String, Extension.Untrusted>())
-    val untrustedExtensionsFlow = untrustedExtensionMapFlow.mapExtensions(scope)
+    private val untrustedExtensionsState = MutableStateFlow(emptyList<Extension.Untrusted>())
+    val untrustedExtensionsFlow = untrustedExtensionsState.asStateFlow()
+    private var untrustedExtensionMap: Map<String, Extension.Untrusted>
+        get() = untrustedExtensionMapFlow.value
+        set(value) {
+            untrustedExtensionMapFlow.value = value
+            untrustedExtensionsState.value = value.values.toList()
+        }
 
     init {
         initExtensions()
@@ -136,13 +155,15 @@ class ExtensionManager internal constructor(
         scope.launch {
             val extensions = installedExtensionsLoader(context)
 
-            installedExtensionMapFlow.value = extensions
+            val installedExtensions = extensions
                 .filterIsInstance<LoadResult.Success>()
                 .associate { it.extension.pkgName to it.extension }
-
-            untrustedExtensionMapFlow.value = extensions
+            val untrustedExtensions = extensions
                 .filterIsInstance<LoadResult.Untrusted>()
                 .associate { it.extension.pkgName to it.extension }
+
+            installedExtensionMap = installedExtensions
+            untrustedExtensionMap = untrustedExtensions
 
             _isInitialized.value = true
         }
@@ -162,7 +183,7 @@ class ExtensionManager internal constructor(
 
         enableAdditionalSubLanguages(extensions)
 
-        availableExtensionMapFlow.value = extensions.associateBy { it.pkgName }
+        availableExtensionMap = extensions.associateBy { it.pkgName }
         updatedInstalledExtensionsStatuses(extensions)
         setupAvailableExtensionsSourcesDataMap(extensions)
     }
@@ -208,7 +229,7 @@ class ExtensionManager internal constructor(
             return
         }
 
-        val installedExtensionsMap = installedExtensionMapFlow.value.toMutableMap()
+        val installedExtensionsMap = installedExtensionMap.toMutableMap()
         var changed = false
         for ((pkgName, extension) in installedExtensionsMap) {
             val availableExt = availableExtensions.find { it.pkgName == pkgName }
@@ -232,7 +253,7 @@ class ExtensionManager internal constructor(
             }
         }
         if (changed) {
-            installedExtensionMapFlow.value = installedExtensionsMap
+            installedExtensionMap = installedExtensionsMap
         }
         updatePendingUpdatesCount()
     }
@@ -256,7 +277,7 @@ class ExtensionManager internal constructor(
      * @param extension The extension to be updated.
      */
     fun updateExtension(extension: Extension.Installed): Flow<InstallStep> {
-        val availableExt = availableExtensionMapFlow.value[extension.pkgName] ?: return emptyFlow()
+        val availableExt = availableExtensionMap[extension.pkgName] ?: return emptyFlow()
         return installExtension(availableExt)
     }
 
@@ -293,11 +314,11 @@ class ExtensionManager internal constructor(
      * @param extension the extension to trust
      */
     suspend fun trust(extension: Extension.Untrusted) {
-        untrustedExtensionMapFlow.value[extension.pkgName] ?: return
+        untrustedExtensionMap[extension.pkgName] ?: return
 
         trustExtension.trust(extension.pkgName, extension.versionCode, extension.signatureHash)
 
-        untrustedExtensionMapFlow.value -= extension.pkgName
+        untrustedExtensionMap -= extension.pkgName
 
         extensionLoader(context, extension.pkgName)
             .let { it as? LoadResult.Success }
@@ -310,7 +331,7 @@ class ExtensionManager internal constructor(
      * @param extension The extension to be registered.
      */
     private fun registerNewExtension(extension: Extension.Installed) {
-        installedExtensionMapFlow.value += extension
+        installedExtensionMap += extension
     }
 
     /**
@@ -320,13 +341,13 @@ class ExtensionManager internal constructor(
      * @param extension The extension to be registered.
      */
     private fun registerUpdatedExtension(extension: Extension.Installed) {
-        installedExtensionMapFlow.value += extension
+        installedExtensionMap += extension
     }
 
     private suspend fun reloadInstalledExtension(pkgName: String) {
         when (val result = extensionLoader(context, pkgName)) {
             is LoadResult.Success -> {
-                untrustedExtensionMapFlow.value -= pkgName
+                untrustedExtensionMap -= pkgName
                 registerUpdatedExtension(result.extension.withUpdateCheck())
                 updatePendingUpdatesCount()
             }
@@ -350,8 +371,8 @@ class ExtensionManager internal constructor(
      * @param pkgName The package name of the uninstalled application.
      */
     private fun unregisterExtension(pkgName: String) {
-        installedExtensionMapFlow.value -= pkgName
-        untrustedExtensionMapFlow.value -= pkgName
+        installedExtensionMap -= pkgName
+        untrustedExtensionMap -= pkgName
     }
 
     /**
@@ -373,8 +394,8 @@ class ExtensionManager internal constructor(
 
         override fun onExtensionUntrusted(extension: Extension.Untrusted) {
             if (installer.isInstallTransactionActive(extension.pkgName)) return
-            installedExtensionMapFlow.value -= extension.pkgName
-            untrustedExtensionMapFlow.value += extension
+            installedExtensionMap -= extension.pkgName
+            untrustedExtensionMap += extension
             updatePendingUpdatesCount()
         }
 
@@ -399,7 +420,7 @@ class ExtensionManager internal constructor(
 
     private fun Extension.Installed.updateExists(availableExtension: Extension.Available? = null): Boolean {
         val availableExt = availableExtension
-            ?: availableExtensionMapFlow.value[pkgName]
+            ?: availableExtensionMap[pkgName]
             ?: return false
 
         return updatePolicy.isUpdateAvailable(
@@ -411,7 +432,7 @@ class ExtensionManager internal constructor(
     }
 
     private fun updatePendingUpdatesCount() {
-        val pendingUpdateCount = installedExtensionMapFlow.value.values.count { it.hasUpdate }
+        val pendingUpdateCount = installedExtensionMap.values.count { it.hasUpdate }
         preferences.extensionUpdatesCount().set(pendingUpdateCount)
         if (pendingUpdateCount == 0) {
             ExtensionUpdateNotifier(context).dismiss()
@@ -419,8 +440,4 @@ class ExtensionManager internal constructor(
     }
 
     private operator fun <T : Extension> Map<String, T>.plus(extension: T) = plus(extension.pkgName to extension)
-
-    private fun <T : Extension> StateFlow<Map<String, T>>.mapExtensions(scope: CoroutineScope): StateFlow<List<T>> {
-        return map { it.values.toList() }.stateIn(scope, SharingStarted.Lazily, value.values.toList())
-    }
 }
