@@ -160,10 +160,10 @@ internal class DesktopSourceLastUsedRecorder(
     private val extensionManager: DesktopExtensionManager,
 ) {
     fun record(sourceId: Long) {
+        if (preferences.incognitoMode.get()) return
         val extensionPackage = extensionManager.getExtensionPackage(sourceId)
-        val incognito = preferences.incognitoMode.get() ||
-            extensionPackage != null && extensionPackage in preferences.incognitoExtensions.get()
-        if (!incognito) preferences.lastUsedSource.set(sourceId)
+        if (extensionPackage != null && extensionPackage in preferences.incognitoExtensions.get()) return
+        preferences.lastUsedSource.set(sourceId)
     }
 }
 

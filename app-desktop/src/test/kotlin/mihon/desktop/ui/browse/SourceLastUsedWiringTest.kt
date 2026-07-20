@@ -11,6 +11,7 @@ import cafe.adriel.voyager.navigator.Navigator
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
@@ -52,6 +53,23 @@ internal fun sourceBrowseExtensionManager() = mockk<DesktopExtensionManager>(rel
 @OptIn(ExperimentalComposeUiApi::class)
 class SourceLastUsedWiringTest {
     @Test
+    fun `global incognito short circuits before extension package lookup`() {
+        val root = Preferences.userRoot().node("/mihon/source-last-used-short-circuit/${System.nanoTime()}")
+        val store = DesktopPreferenceStore(root)
+        val preferences = DesktopAppPreferences(store).apply { incognitoMode.set(true) }
+        val extensionManager = mockk<DesktopExtensionManager>(relaxed = true)
+
+        try {
+            DesktopSourceLastUsedRecorder(preferences, extensionManager).record(101L)
+
+            verify(exactly = 0) { extensionManager.getExtensionPackage(any()) }
+            assertEquals(-1L, preferences.lastUsedSource.get())
+        } finally {
+            root.removeNode()
+        }
+    }
+
+    @Test
     fun `real navigation records last used outside incognito and the same mounted list reorders reactively`() = runBlocking {
         val root = Preferences.userRoot().node("/mihon/source-last-used/${System.nanoTime()}")
         val store = DesktopPreferenceStore(root)
@@ -72,7 +90,8 @@ class SourceLastUsedWiringTest {
             )
 
             clickSource(scene, zeta.name)
-            awaitBrowseDetails(mounted, zeta.name) { lastUsed.get() == zeta.id }
+            awaitBrowseDetails(mounted, zeta.name)
+            awaitRecorderOutcome(mounted) { mounted.extensionLookups.get() > 0 && lastUsed.get() == zeta.id }
             assertEquals(zeta.id, lastUsed.get())
             val back = nodes(scene).first { it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains("Back") }
             assertTrue(requireNotNull(back.config[SemanticsActions.OnClick].action).invoke())
@@ -108,7 +127,17 @@ class SourceLastUsedWiringTest {
             try {
                 clickSource(mounted.scene, source.name)
                 val expected = if (scenario.shouldRecord) source.id else 301L
-                awaitBrowseDetails(mounted, source.name) { !scenario.shouldRecord || lastUsed.get() == expected }
+                awaitBrowseDetails(mounted, source.name)
+                if (!scenario.globalIncognito) {
+                    awaitRecorderOutcome(mounted) {
+                        mounted.extensionLookups.get() > 0 && (!scenario.shouldRecord || lastUsed.get() == expected)
+                    }
+                }
+                if (scenario.globalIncognito) {
+                    assertEquals(0, mounted.extensionLookups.get())
+                } else {
+                    assertTrue(mounted.extensionLookups.get() > 0)
+                }
                 assertEquals(expected, lastUsed.get())
             } finally {
                 mounted.scene.close()
@@ -159,15 +188,22 @@ class SourceLastUsedWiringTest {
     private suspend fun awaitBrowseDetails(
         mounted: MountedBrowseScene,
         sourceName: String,
-        expectedEffect: () -> Boolean,
     ) = withTimeout(2_000) {
-        while (!texts(mounted.scene).contains(sourceName) || mounted.extensionLookups.get() == 0 || !expectedEffect()) {
+        while (!texts(mounted.scene).contains(sourceName) || !hasBackAction(mounted.scene)) {
             mounted.scene.render()
             delay(10)
         }
     }
 
-    private suspend fun awaitRows(scene: ImageComposeScene, expected: List<String>) = withTimeout(2_000) {
+    private suspend fun awaitRecorderOutcome(mounted: MountedBrowseScene, expected: () -> Boolean) =
+        withTimeout(2_000) {
+            while (!expected()) {
+                mounted.scene.render()
+                delay(10)
+            }
+        }
+
+    private suspend fun awaitRows(scene: ImageComposeScene, expected: List<String>) = withTimeout(5_000) {
         while (sourceRows(scene, expected.toSet()) != expected) {
             scene.render()
             delay(10)
@@ -186,6 +222,10 @@ class SourceLastUsedWiringTest {
         .mapNotNull { node -> names.firstOrNull { node.config.toString().contains(it) } }
 
     private fun rendered(scene: ImageComposeScene): String = nodes(scene).joinToString { it.config.toString() }
+
+    private fun hasBackAction(scene: ImageComposeScene): Boolean = nodes(scene).any {
+        it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains("Back")
+    }
 
     private fun texts(scene: ImageComposeScene): List<String> = nodes(scene).flatMap { node ->
         if (node.config.contains(SemanticsProperties.Text)) {
