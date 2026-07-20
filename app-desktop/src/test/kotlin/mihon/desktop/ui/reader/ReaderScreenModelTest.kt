@@ -1,7 +1,9 @@
 package mihon.desktop.ui.reader
 
+import io.mockk.mockk
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
+import mihon.desktop.reader.DesktopReaderPageLoader
 import mihon.desktop.reader.ReaderBackgroundTheme
 import mihon.desktop.reader.ReaderColorFilter
 import mihon.desktop.reader.ReaderPreferences
@@ -20,7 +22,10 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
+import tachiyomi.core.common.preference.DesktopPreferenceStore
+import java.util.prefs.Preferences
 
 /**
  * Stage 25.0 — ReaderScreenModel tests.
@@ -30,6 +35,20 @@ import org.junit.jupiter.api.Test
  * for all state transitions without Compose or DI.
  */
 class ReaderScreenModelTest {
+
+    private val preferenceRoots = mutableListOf<Preferences>()
+
+    @AfterEach
+    fun removePreferenceRoots() {
+        preferenceRoots.asReversed().forEach { root -> runCatching { root.removeNode() } }
+        preferenceRoots.clear()
+    }
+
+    private fun testPreferences(configure: ReaderPreferences.() -> Unit = {}): ReaderPreferences {
+        val root = Preferences.userRoot().node("/mihon/reader-screen-model/${System.nanoTime()}-${preferenceRoots.size}")
+        preferenceRoots += root
+        return ReaderPreferences(DesktopPreferenceStore(root.node("current")), root.node("legacy")).apply(configure)
+    }
 
     // ── Construction ────────────────────────────────────────────────────────
 
@@ -64,30 +83,49 @@ class ReaderScreenModelTest {
     }
 
     @Test
-    fun `reader defaults to dual page mode`() {
-        val prefs = ReaderPreferences().apply { clearDualPageForTests() }
+    fun `reader defaults to fixed main single page mode when enhancement is unset`() {
+        val prefs = testPreferences()
         val model = ReaderScreenModel(prefs = prefs)
 
-        assertTrue(model.state.value.dualPageMode)
+        assertFalse(model.state.value.dualPageMode)
     }
 
     @Test
-    fun `reader defaults to dual page mode even when old global preference was single page`() {
-        val prefs = ReaderPreferences().apply { isDualPage = false }
-        val model = ReaderScreenModel(prefs = prefs)
+    fun `desktop dual page enhancement follows explicit global preference`() {
+        val prefs = testPreferences { isDualPage = false }
+        assertFalse(ReaderScreenModel(prefs = prefs).state.value.dualPageMode)
 
-        assertTrue(model.state.value.dualPageMode)
+        prefs.isDualPage = true
+        assertTrue(ReaderScreenModel(prefs = prefs).state.value.dualPageMode)
     }
 
     @Test
-    fun `manga viewer flags override global dual page mode`() {
-        val prefs = ReaderPreferences().apply { isDualPage = true }
+    fun `dual page resolution is manga flags then explicit screen override then global preference`() {
+        val prefs = testPreferences { isDualPage = true }
         val model = ReaderScreenModel(
             mangaViewerFlags = viewerFlagsWithDualPage(0L, enabled = false),
+            dualPageOverride = true,
             prefs = prefs,
         )
 
         assertFalse(model.state.value.dualPageMode)
+        assertFalse(ReaderScreenModel(dualPageOverride = false, prefs = prefs).state.value.dualPageMode)
+
+        prefs.isDualPage = false
+        assertTrue(ReaderScreenModel(dualPageOverride = true, prefs = prefs).state.value.dualPageMode)
+    }
+
+    @Test
+    fun `DesktopReaderScreen explicit dual-page override reaches production runtime factory`() {
+        val prefs = testPreferences { isDualPage = false }
+        val screen = DesktopReaderScreen(chapterTitle = "Chapter 1", isDualPage = true)
+
+        val model = screen.createReaderScreenModel(
+            prefs = prefs,
+            pageLoader = mockk<DesktopReaderPageLoader>(relaxed = true),
+        )
+
+        assertTrue(model.state.value.dualPageMode)
     }
 
     @Test
@@ -97,11 +135,19 @@ class ReaderScreenModelTest {
     }
 
     @Test
-    fun `non-webtoon chapter uses prefs reading mode`() {
-        val prefs = ReaderPreferences()
-        val model = ReaderScreenModel(isWebtoon = false, mangaViewerFlags = 0L, prefs = prefs)
-        // Mode should come from prefs (whatever it is), not be forced to WEBTOON
-        assertEquals(prefs.readingMode, model.state.value.readingMode)
+    fun `fresh reader defaults RTL while explicit current and per-manga LTR remain supported`() {
+        val prefs = testPreferences()
+        assertEquals(ReadingMode.RTL, ReaderScreenModel(prefs = prefs).state.value.readingMode)
+
+        prefs.readingMode = ReadingMode.LTR
+        assertEquals(ReadingMode.LTR, ReaderScreenModel(prefs = prefs).state.value.readingMode)
+
+        prefs.readingMode = ReadingMode.RTL
+        val flags = viewerFlagsWithReadingMode(0L, ReadingMode.LTR)
+        assertEquals(
+            ReadingMode.LTR,
+            ReaderScreenModel(mangaViewerFlags = flags, prefs = prefs).state.value.readingMode,
+        )
     }
 
     @Test
@@ -263,7 +309,7 @@ class ReaderScreenModelTest {
 
     @Test
     fun `reader model loads and persists all chapter skip preferences`() {
-        val prefs = ReaderPreferences().apply {
+        val prefs = testPreferences {
             skipReadChapters = false
             skipFilteredChapters = true
             skipDuplicateChapters = true

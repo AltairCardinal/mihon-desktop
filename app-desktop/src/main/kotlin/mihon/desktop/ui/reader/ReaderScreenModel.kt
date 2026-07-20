@@ -46,6 +46,7 @@ class ReaderScreenModel(
     val sourceId: Long = 0L,
     val chapterUrl: String = "",
     val mangaViewerFlags: Long = 0L,
+    private val dualPageOverride: Boolean? = null,
     prefs: ReaderPreferences = ReaderPreferences(),
     private val persistViewerFlags: suspend (mangaId: Long, flags: Long) -> Unit = { _, _ -> },
     private val adjacentChapterLoader: AdjacentChapterLoader = AdjacentChapterLoader { chapter ->
@@ -81,7 +82,7 @@ class ReaderScreenModel(
             isLoadingPages = pageUrls.isEmpty() && sourceId != 0L && chapterUrl.isNotBlank(),
             chapterState = chapterState,
             readingMode = resolvedMode,
-            dualPageMode = dualPageFromViewerFlags(mangaViewerFlags) ?: true,
+            dualPageMode = dualPageFromViewerFlags(mangaViewerFlags) ?: dualPageOverride ?: prefs.isDualPage,
             autoSplitPages = prefs.autoSplitPages,
             autoSpreadMatching = prefs.isAutoSpreadMatching,
             backgroundTheme = prefs.backgroundTheme,

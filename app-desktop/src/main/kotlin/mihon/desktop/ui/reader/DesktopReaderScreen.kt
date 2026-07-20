@@ -94,8 +94,8 @@ data class DesktopReaderScreen(
     val mangaViewerFlags: Long = 0L,
     /** RTL (right-to-left) pager mode. */
     val isRtl: Boolean = false,
-    /** Show two pages side-by-side (dual-page spread). */
-    val isDualPage: Boolean = true,
+    /** Explicit dual-page override; null resolves per-manga flags, then the global preference. */
+    val isDualPage: Boolean? = null,
     @Transient val progressTracker: ReaderProgressTracker? = null,
 ) : Screen {
 
@@ -110,19 +110,7 @@ data class DesktopReaderScreen(
         val scope = rememberCoroutineScope()
         val runtime = remember { DesktopReaderRuntimeFactory.createRuntime(progressTracker) }
         val model = rememberScreenModel {
-            DesktopReaderRuntimeFactory.createModel(
-                chapterTitle = chapterTitle,
-                pageUrls = pageUrls,
-                initialPage = initialPage,
-                chapterId = chapterId,
-                isWebtoon = isWebtoon,
-                sourceId = sourceId,
-                chapterUrl = chapterUrl,
-                mangaTitle = mangaTitle,
-                mangaViewerFlags = mangaViewerFlags,
-                prefs = runtime.prefs,
-                pageLoader = runtime.pageLoader,
-            )
+            createReaderScreenModel(runtime.prefs, runtime.pageLoader)
         }
         val state by model.state.collectAsState()
         val focusRequester = remember { FocusRequester() }
@@ -320,6 +308,24 @@ data class DesktopReaderScreen(
         chapters = chapters, currentChapterIndex = newIndex, initialPage = initialPage,
         isRtl = isRtl, isDualPage = isDualPage, progressTracker = progressTracker,
     )
+
+    internal fun createReaderScreenModel(
+        prefs: ReaderPreferences,
+        pageLoader: DesktopReaderPageLoader,
+    ): ReaderScreenModel = DesktopReaderRuntimeFactory.createModel(
+        chapterTitle = chapterTitle,
+        pageUrls = pageUrls,
+        initialPage = initialPage,
+        chapterId = chapterId,
+        isWebtoon = isWebtoon,
+        sourceId = sourceId,
+        chapterUrl = chapterUrl,
+        mangaTitle = mangaTitle,
+        mangaViewerFlags = mangaViewerFlags,
+        dualPageOverride = isDualPage,
+        prefs = prefs,
+        pageLoader = pageLoader,
+    )
 }
 
 internal object ReaderInitialPage {
@@ -383,6 +389,7 @@ private fun ReaderPageLoaderEffect(
             model.setLoadError(e.message ?: "Unknown error loading pages")
         }
     }
+
 }
 
 @Composable

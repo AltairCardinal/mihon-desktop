@@ -42,6 +42,7 @@ object DesktopReaderRuntimeFactory {
         chapterUrl: String,
         mangaTitle: String,
         mangaViewerFlags: Long,
+        dualPageOverride: Boolean?,
         prefs: ReaderPreferences,
         pageLoader: DesktopReaderPageLoader,
     ): ReaderScreenModel {
@@ -55,6 +56,7 @@ object DesktopReaderRuntimeFactory {
             sourceId = sourceId,
             chapterUrl = chapterUrl,
             mangaViewerFlags = mangaViewerFlags,
+            dualPageOverride = dualPageOverride,
             prefs = prefs,
             adjacentChapterLoader = { chapter ->
                 pageLoader.loadAdjacentChapter(

@@ -57,8 +57,8 @@ object ReaderNavigation {
         x: Float,
         y: Float,
         preset: NavigationPreset,
+        direction: ReaderDirection,
         inversion: NavigationInversion = NavigationInversion.NONE,
-        direction: ReaderDirection = ReaderDirection.LTR,
     ): ReaderNavigationCommand {
         if (x !in 0f..1f || y !in 0f..1f) return ReaderNavigationCommand.Menu
         val transformedX = if (inversion.horizontal) 1f - x else x

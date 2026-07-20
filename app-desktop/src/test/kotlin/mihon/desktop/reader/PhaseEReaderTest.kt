@@ -3,6 +3,7 @@ package mihon.desktop.reader
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertFalse
 
@@ -352,13 +353,13 @@ class PhaseEReaderTest {
             isDualPage = true,
         )
         assertNotNull(screen)
-        assertTrue(screen.isDualPage)
+        assertEquals(true, screen.isDualPage)
     }
 
     @Test
-    fun `DesktopReaderScreen isDualPage defaults to true`() {
+    fun `DesktopReaderScreen isDualPage defaults to no explicit override`() {
         val screen = mihon.desktop.ui.reader.DesktopReaderScreen(chapterTitle = "Chapter 1")
-        assertTrue(screen.isDualPage)
+        assertNull(screen.isDualPage)
     }
 
     // ── 4. ReadingMode derivation ──────────────────────────────────────────

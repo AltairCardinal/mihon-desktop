@@ -21,11 +21,11 @@ class ReaderPreferences(
     private fun <T> Preference<T>.legacy(key: String, read: () -> T?): Preference<T> =
         migrateFrom(legacy, key) { read() }
 
-    private val readingModePref = store.getEnum("reader_reading_mode", ReadingMode.LTR)
+    private val readingModePref = store.getEnum("reader_reading_mode", ReadingMode.RTL)
         .legacy("readingMode") { legacy.get("readingMode", null)?.let { runCatching { ReadingMode.valueOf(it) }.getOrNull() } }
     private val navigationModePref = store.getEnum("reader_navigation_mode", NavigationMode.RightAndLeft)
         .legacy("navigationMode") { legacy.get("navigationMode", null)?.let { runCatching { NavigationMode.valueOf(it) }.getOrNull() } }
-    private val dualPagePref = store.getBoolean("reader_dual_page", true).legacy("isDualPage") { legacy.getBoolean("isDualPage", true) }
+    private val dualPagePref = store.getBoolean("reader_dual_page", false).legacy("isDualPage") { legacy.getBoolean("isDualPage", false) }
     private val autoSplitPref = store.getBoolean("reader_auto_split_pages", false).legacy("autoSplitPages") { legacy.getBoolean("autoSplitPages", false) }
     private val autoSpreadPref = store.getBoolean("reader_auto_spread_matching", false).legacy("autoSpreadMatching") { legacy.getBoolean("autoSpreadMatching", false) }
     private val backgroundPref = store.getEnum("reader_background_theme", ReaderBackgroundTheme.DEFAULT)

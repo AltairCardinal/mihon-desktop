@@ -33,9 +33,9 @@ class DesktopPreferenceMigrationTest {
     )
 
     private val readerCases = listOf(
-        MigrationCase("readingMode", "reader_reading_mode", "WEBTOON", "RTL", ReadingMode.LTR) { s, l -> ReaderPreferences(s, l).readingMode },
+        MigrationCase("readingMode", "reader_reading_mode", "WEBTOON", "LTR", ReadingMode.RTL) { s, l -> ReaderPreferences(s, l).readingMode },
         MigrationCase("navigationMode", "reader_navigation_mode", "L", "RightAndLeft", NavigationMode.RightAndLeft) { s, l -> ReaderPreferences(s, l).navigationMode },
-        MigrationCase("isDualPage", "reader_dual_page", "false", "true", true) { s, l -> ReaderPreferences(s, l).isDualPage },
+        MigrationCase("isDualPage", "reader_dual_page", "false", "true", false) { s, l -> ReaderPreferences(s, l).isDualPage },
         MigrationCase("autoSplitPages", "reader_auto_split_pages", "true", "false", false) { s, l -> ReaderPreferences(s, l).autoSplitPages },
         MigrationCase("autoSpreadMatching", "reader_auto_spread_matching", "true", "false", false) { s, l -> ReaderPreferences(s, l).isAutoSpreadMatching },
         MigrationCase("backgroundTheme", "reader_background_theme", "BLACK", "WHITE", ReaderBackgroundTheme.DEFAULT) { s, l -> ReaderPreferences(s, l).backgroundTheme },
@@ -115,6 +115,32 @@ class DesktopPreferenceMigrationTest {
         is Float -> raw.toFloat()
         is Enum<*> -> sample::class.java.enumConstants.first { (it as Enum<*>).name == raw }
         else -> raw
+    }
+
+    @Test
+    fun `legacy explicit dual-page enhancement remains enabled when current value is absent`() {
+        val node = root.node("reader-dual-page-legacy-true")
+        val legacy = node.node("legacy")
+        val current = node.node("current")
+        legacy.putBoolean("isDualPage", true)
+
+        val migrated = ReaderPreferences(DesktopPreferenceStore(current), legacy)
+
+        assertEquals(true, migrated.isDualPage)
+        assertEquals("true", current.get("reader_dual_page", null))
+    }
+
+    @Test
+    fun `legacy explicit LTR reader direction remains enabled when current value is absent`() {
+        val node = root.node("reader-direction-legacy-ltr")
+        val legacy = node.node("legacy")
+        val current = node.node("current")
+        legacy.put("readingMode", "LTR")
+
+        val migrated = ReaderPreferences(DesktopPreferenceStore(current), legacy)
+
+        assertEquals(ReadingMode.LTR, migrated.readingMode)
+        assertEquals("LTR", current.get("reader_reading_mode", null))
     }
 
     @TestFactory
