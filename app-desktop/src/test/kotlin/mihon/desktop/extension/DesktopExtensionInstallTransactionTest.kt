@@ -16,9 +16,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.last
@@ -26,6 +29,7 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import kotlinx.serialization.json.Json
 import mihon.desktop.domain.fakes.FakeExtensionRepoRepository
 import mihon.domain.error.AppError
@@ -707,15 +711,25 @@ class DesktopExtensionInstallTransactionTest {
     fun `real cancellation during cleanup restores old runtime and files`(@TempDir directory: Path) = runBlocking {
         val snapshot = installedSnapshot(directory)
         val fileSystem = BlockingCleanupFileSystem()
+        val installFlight = CompletableDeferred<Job>()
         val manager = transactionManager(
             loader = DesktopExtensionLoader(directory.toFile()),
-            artifactProvider = { _, destination -> destination.writeBytes(sourceJar(FixtureNewSource::class.java)) },
+            artifactProvider = { _, destination ->
+                installFlight.complete(requireNotNull(currentCoroutineContext()[Job]))
+                destination.writeBytes(sourceJar(FixtureNewSource::class.java))
+            },
             fileSystem = fileSystem,
         ).also { it.loadAll() }
         val install = async { manager.installExtension(artifact(FixtureNewSource.ID)) }
         fileSystem.cleanupEntered.awaitLatch()
 
         install.cancel()
+        yield()
+        withTimeout(2_000) {
+            while (!installFlight.await().isCancelled) {
+                yield()
+            }
+        }
         fileSystem.allowCleanup.countDown()
         install.join()
         waitUntil { manager.getSource(FixtureOldSource.ID) != null }
