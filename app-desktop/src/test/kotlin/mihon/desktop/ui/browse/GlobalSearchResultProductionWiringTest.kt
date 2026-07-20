@@ -86,7 +86,7 @@ class GlobalSearchResultProductionWiringTest {
                 every { sourceLoginSessionFactory } returns mockk(relaxed = true)
             }
             var navigator: Navigator? = null
-            val scene = ImageComposeScene(320, 700, coroutineContext = coroutineContext) {}
+            val scene = ImageComposeScene(320, 1_400, coroutineContext = coroutineContext) {}
             try {
                 scene.setContent {
                     CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
