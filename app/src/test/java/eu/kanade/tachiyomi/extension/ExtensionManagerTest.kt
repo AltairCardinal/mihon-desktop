@@ -23,6 +23,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -38,11 +40,12 @@ import java.util.concurrent.TimeUnit
 class ExtensionManagerTest {
 
     @Test
-    fun `receiver events after loader snapshot are replayed before initialization is published`() = runBlocking {
+    fun `receiver events after loader snapshot are replayed before initialization is published`() = runTest {
         val snapshotFixed = CompletableDeferred<Unit>()
         val allowSnapshotPublication = CompletableDeferred<Unit>()
         val receiverRegistered = CompletableDeferred<ExtensionInstallReceiver.Listener>()
         val initial = installed().copy(pkgName = "$PACKAGE.initial", versionCode = 1)
+        val sentinel = installed().copy(pkgName = "$PACKAGE.sentinel", hasUpdate = true)
         val installedAfterSnapshot = installed().copy(pkgName = "$PACKAGE.installed-after-snapshot")
         val updatedInitial = initial.copy(versionName = "2.0", versionCode = 2)
         val untrustedAfterSnapshot = Extension.Untrusted(
@@ -60,14 +63,16 @@ class ExtensionManagerTest {
             installedExtensionsLoader = {
                 snapshotFixed.complete(Unit)
                 allowSnapshotPublication.await()
-                listOf(LoadResult.Success(initial))
+                listOf(LoadResult.Success(initial), LoadResult.Success(sentinel))
             },
             installerFactory = { mockk(relaxed = true) },
             installReceiverRegistrar = { receiverRegistered.complete(it) },
+            scope = backgroundScope,
         )
 
         assertTrue(receiverRegistered.isCompleted, "package receiver must be registered during construction")
-        snapshotFixed.await()
+        runCurrent()
+        assertTrue(snapshotFixed.isCompleted)
         val receiver = receiverRegistered.await()
         mockkObject(ExtensionLoader)
         try {
@@ -79,9 +84,10 @@ class ExtensionManagerTest {
             assertFalse(manager.isInitialized.value)
 
             allowSnapshotPublication.complete(Unit)
+            runCurrent()
 
-            manager.isInitialized.await { it }
-            assertTrue(manager.installedExtensionsFlow.value.isEmpty())
+            assertTrue(manager.isInitialized.value)
+            assertEquals(listOf(sentinel), manager.installedExtensionsFlow.value)
             assertEquals(
                 listOf(untrustedAfterSnapshot),
                 manager.untrustedExtensionsFlow.value,

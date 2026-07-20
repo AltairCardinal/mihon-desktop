@@ -59,9 +59,8 @@ class ExtensionManager internal constructor(
     private val installReceiverRegistrar: (ExtensionInstallReceiver.Listener) -> Unit = { listener ->
         ExtensionInstallReceiver(listener).register(context)
     },
+    val scope: CoroutineScope = CoroutineScope(SupervisorJob()),
 ) {
-
-    val scope = CoroutineScope(SupervisorJob())
 
     private val _isInitialized = MutableStateFlow(false)
     val isInitialized: StateFlow<Boolean> = _isInitialized.asStateFlow()
@@ -89,7 +88,12 @@ class ExtensionManager internal constructor(
     private val untrustedExtensionMapFlow = MutableStateFlow(emptyMap<String, Extension.Untrusted>())
     val untrustedExtensionsFlow = untrustedExtensionMapFlow.mapValues()
 
+    private val installationStateLock = Any()
+    private val pendingInstallationEvents = ArrayDeque<InstallationEvent>()
+    private var installationEventsLive = false
+
     init {
+        installReceiverRegistrar(InstallationListener())
         initExtensions()
     }
 
@@ -138,18 +142,27 @@ class ExtensionManager internal constructor(
         scope.launch {
             val extensions = installedExtensionsLoader(context)
 
-            val installedExtensions = extensions
+            var installedExtensions = extensions
                 .filterIsInstance<LoadResult.Success>()
                 .associate { it.extension.pkgName to it.extension }
-            val untrustedExtensions = extensions
+            var untrustedExtensions = extensions
                 .filterIsInstance<LoadResult.Untrusted>()
                 .associate { it.extension.pkgName to it.extension }
 
-            installedExtensionMapFlow.value = installedExtensions
-            untrustedExtensionMapFlow.value = untrustedExtensions
-
-            installReceiverRegistrar(InstallationListener())
-            _isInitialized.value = true
+            val replayedEvents = synchronized(installationStateLock) {
+                pendingInstallationEvents.forEach { event ->
+                    installedExtensions = event.applyToInstalled(installedExtensions)
+                    untrustedExtensions = event.applyToUntrusted(untrustedExtensions)
+                }
+                val replayedEvents = pendingInstallationEvents.isNotEmpty()
+                pendingInstallationEvents.clear()
+                installedExtensionMapFlow.value = installedExtensions
+                untrustedExtensionMapFlow.value = untrustedExtensions
+                installationEventsLive = true
+                _isInitialized.value = true
+                replayedEvents
+            }
+            if (replayedEvents) updatePendingUpdatesCount()
         }
     }
 
@@ -354,28 +367,74 @@ class ExtensionManager internal constructor(
 
         override fun onExtensionInstalled(extension: Extension.Installed) {
             if (installer.isInstallTransactionActive(extension.pkgName)) return
-            registerNewExtension(extension.withUpdateCheck())
-            updatePendingUpdatesCount()
+            acceptInstallationEvent(InstallationEvent.Installed(extension.withUpdateCheck()))
         }
 
         override fun onExtensionUpdated(extension: Extension.Installed) {
             if (installer.isInstallTransactionActive(extension.pkgName)) return
-            registerUpdatedExtension(extension.withUpdateCheck())
-            updatePendingUpdatesCount()
+            acceptInstallationEvent(InstallationEvent.Updated(extension.withUpdateCheck()))
         }
 
         override fun onExtensionUntrusted(extension: Extension.Untrusted) {
             if (installer.isInstallTransactionActive(extension.pkgName)) return
-            installedExtensionMapFlow.update { it - extension.pkgName }
-            untrustedExtensionMapFlow.update { it + extension }
-            updatePendingUpdatesCount()
+            acceptInstallationEvent(InstallationEvent.Untrusted(extension))
         }
 
         override fun onPackageUninstalled(pkgName: String) {
             if (installer.isInstallTransactionActive(pkgName)) return
             ExtensionLoader.uninstallPrivateExtension(context, pkgName)
-            unregisterExtension(pkgName)
+            acceptInstallationEvent(InstallationEvent.Uninstalled(pkgName))
+        }
+    }
+
+    private fun acceptInstallationEvent(event: InstallationEvent) {
+        val applied = synchronized(installationStateLock) {
+            if (!installationEventsLive) {
+                pendingInstallationEvents += event
+                false
+            } else {
+                installedExtensionMapFlow.update(event::applyToInstalled)
+                untrustedExtensionMapFlow.update(event::applyToUntrusted)
+                true
+            }
+        }
+        if (applied) {
             updatePendingUpdatesCount()
+        }
+    }
+
+    private sealed interface InstallationEvent {
+        fun applyToInstalled(
+            extensions: Map<String, Extension.Installed>,
+        ): Map<String, Extension.Installed>
+
+        fun applyToUntrusted(
+            extensions: Map<String, Extension.Untrusted>,
+        ): Map<String, Extension.Untrusted>
+
+        data class Installed(val extension: Extension.Installed) : InstallationEvent {
+            override fun applyToInstalled(extensions: Map<String, Extension.Installed>) =
+                extensions + (extension.pkgName to extension)
+            override fun applyToUntrusted(extensions: Map<String, Extension.Untrusted>) = extensions
+        }
+
+        data class Updated(val extension: Extension.Installed) : InstallationEvent {
+            override fun applyToInstalled(extensions: Map<String, Extension.Installed>) =
+                extensions + (extension.pkgName to extension)
+            override fun applyToUntrusted(extensions: Map<String, Extension.Untrusted>) = extensions
+        }
+
+        data class Untrusted(val extension: Extension.Untrusted) : InstallationEvent {
+            override fun applyToInstalled(extensions: Map<String, Extension.Installed>) =
+                extensions - extension.pkgName
+
+            override fun applyToUntrusted(extensions: Map<String, Extension.Untrusted>) =
+                extensions + (extension.pkgName to extension)
+        }
+
+        data class Uninstalled(val pkgName: String) : InstallationEvent {
+            override fun applyToInstalled(extensions: Map<String, Extension.Installed>) = extensions - pkgName
+            override fun applyToUntrusted(extensions: Map<String, Extension.Untrusted>) = extensions - pkgName
         }
     }
 

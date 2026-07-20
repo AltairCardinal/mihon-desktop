@@ -7,17 +7,18 @@ import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.LoadResult
 import eu.kanade.tachiyomi.source.online.HttpSource
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkConstructor
 import io.mockk.unmockkConstructor
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.domain.source.repository.StubSourceRepository
@@ -30,7 +31,7 @@ import uy.kohesive.injekt.api.addSingleton
 class AndroidSourceManagerInitializationTest {
 
     @Test
-    fun `source manager initializes only after the first installed extension snapshot is complete`() = runBlocking {
+    fun `source manager initializes only after the first installed extension snapshot is complete`() = runTest {
         val releaseLoader = CompletableDeferred<Unit>()
         val installedExtensionCollectionStarted = CompletableDeferred<Unit>()
         val extensionSource = mockk<HttpSource> {
@@ -50,9 +51,11 @@ class AndroidSourceManagerInitializationTest {
                 listOf(LoadResult.Success(installed(extensionSource)))
             },
             installReceiverRegistrar = {},
+            scope = backgroundScope,
         )
         val sourceRepository = mockk<StubSourceRepository>(relaxed = true) {
             every { subscribeAll() } returns flowOf(emptyList())
+            coEvery { getStubSource(any()) } returns null
         }
         val localSourceFileSystem: LocalSourceFileSystem = mockk(relaxed = true)
         val localCoverManager: LocalCoverManager = mockk(relaxed = true)
@@ -64,15 +67,18 @@ class AndroidSourceManagerInitializationTest {
                 context = mockk(relaxed = true),
                 extensionManager = extensionManager,
                 sourceRepository = sourceRepository,
+                scope = backgroundScope,
             )
 
+            runCurrent()
             assertFalse(sourceManager.isInitialized.value)
             assertFalse(installedExtensionCollectionStarted.isCompleted)
 
             releaseLoader.complete(Unit)
+            runCurrent()
 
-            withTimeout(5_000) { installedExtensionCollectionStarted.await() }
-            withTimeout(5_000) { sourceManager.isInitialized.first { it } }
+            assertTrue(installedExtensionCollectionStarted.isCompleted)
+            assertTrue(sourceManager.isInitialized.value)
             assertEquals(extensionSource, sourceManager.get(7L))
         } finally {
             unmockkConstructor(LocalSource::class)
