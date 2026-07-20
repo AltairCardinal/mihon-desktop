@@ -561,3 +561,19 @@
 - RED: `GlobalSearchAuthorityWiringTest` clicked the real Has Results filter, rendered one frame and immediately observed selected semantics false; exact filtered rows and persisted preference assertions did not execute.
 - Root cause: the real Compose UI/state update is asynchronous but the fixture uses a single-frame assumption. The same test also remounts scenes and removes its Preferences root without an owned/joined scene lifecycle.
 - Decision: reject BUILD33 and dispatch bounded Task 7D37 `global-search-compose-fixture-lifecycle`; preserve all real UI, row, state and persistence assertions and do not rerun the full suite unchanged.
+
+## Task 7D37 Review History
+
+- Reviewed task: `Task 7D37: Global-search Compose filter convergence fixture`
+- Stage: `complete`
+- Risk axis: `global-search-compose-fixture-lifecycle`
+- Platform boundary: `verification`
+- Implementer: `/root/task7d36_source_pref_lifecycle` (same Browse/Compose context cluster).
+- Implementation commit: `ceb0200a5` (`test(desktop): await global search filter convergence`).
+- Change: bounded render/yield waits for exact Has Results selected semantics after click and persisted remount; each scene owns and joins a child Job before replacement or Preferences removal.
+- GREEN evidence: Windows focused 1/1; exact-parent macOS fresh clone with SHA-256-identical single-file overlay focused 1/1; root Spotless, diff check and Comet guard PASS.
+- Independent reviewer: `/root/review_task7d36`; result `APPROVED`, Critical/Important/Minor `0/0/0`.
+- Review conclusion: real screen/coordinator/click/four outcomes/rows/preferences remain authoritative; the wait is bounded and exact, and scene lifecycle cleanup cannot cancel the parent or bypass product assertions.
+- Final scope: 1 verification file, 27 touched lines; no production, BUILD33, DownloadQueue or unrelated user file was committed.
+- Delivery state: BUILD33 remains rejected. Resume Step 6 by allocating BUILD34 from the post-repair evidence HEAD on Windows and macOS serially.
+- Review/fix round: 0/1
