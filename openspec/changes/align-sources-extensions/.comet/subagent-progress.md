@@ -585,3 +585,14 @@
 - The initial selected/rows/persistence repair passed, but `globalSearchFilterState.changes().onStart { get() }` ran after the fixture removed its Preferences root and leaked `Node has been removed` into the next Challenge test.
 - Review correction: a joined child Job is insufficient evidence that `ImageComposeScene.close()` synchronously applied composition disposal. Reopen Task 7D37 for its single repair round; explicitly install/render empty content before close/cancel-join/remove-node and verify the adjacent authority→challenge boundary on both platforms.
 - BUILD34 is rejected; do not create Task 7D38 or rerun the unchanged full suite.
+
+## Task 7D37 Repair Review History
+
+- Repair implementer: `/root/task7d36_source_pref_lifecycle`.
+- Repair commit: `d3527f6e6` (`test(desktop): dispose global search preference collectors`).
+- Change: apply an empty composition with a real render before scene close and child-Job cancel/join; Preferences removal remains last.
+- GREEN evidence: Windows Authority 1/1 + adjacent Challenge Login 14/14 in one invocation; exact-parent/SHA macOS clone passed the same 15/15 boundary; root Spotless, diff check and Comet guard PASS.
+- Repair re-reviewer: `/root/review_task7d36`; result `APPROVED`, Critical/Important/Minor `0/0/0`.
+- Closure: empty-content render applies real old-tree `collectAsState` and `DisposableEffect` disposal; selected, four outcomes, rows, progress and persisted remount assertions remain intact.
+- Final Task 7D37 result: complete at `d3527f6e6`; review/fix round `1/1`.
+- Delivery state: BUILD34 remains rejected. Resume Step 6 by allocating BUILD35 from the final D37 evidence HEAD.
