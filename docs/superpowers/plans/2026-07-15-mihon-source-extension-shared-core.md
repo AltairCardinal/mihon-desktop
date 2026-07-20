@@ -2100,7 +2100,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `global-search-compose-await`
 - Platform boundary: `verification`
-- Estimated scope: `1 file, 30 lines`
+- Estimated scope: `1 file, 35 lines`
+- Scope correction: 统一该测试类 10 个异步边界与 4 个 Compose pump，并移除固定 delay import 后实际为 31 touched lines；保持单文件机械测试修复。
 - Verification: 7D4e 后 full Desktop 1764 tests 仅 `GlobalSearchResultProductionWiringTest.only composed cards observe canonical database rows without another search` 在初始 2s render/delay轮询超时；同类 focused 曾通过且前一次 full suite亦通过，证明是 suite负载下的有界调度竞态，不是稳定的 production state失败。统一该类异步等待的非零但负载容忍上限，并将 Compose pump 的固定10ms睡眠改为 render/yield，让等待释放调度而不累计人为延迟；所有状态/DB/导航/错误断言保持不变。focused 连续验证后重跑 full Desktop JVM；不得改 production、删除断言或使用无限等待。
 
   Conditional flow: 完成 7D4a–7D4d 后重跑 full Desktop JVM；若 `GlobalSearchResultProductionWiringTest` 仍只在 full-suite 负载下超时，另立 ≤2 files/60 lines 的 `global-search-compose-await` Task，先以有界重复/组合复现证明 frame propagation root cause，再调整测试 pump；若不再失败则不创建该 Task。
