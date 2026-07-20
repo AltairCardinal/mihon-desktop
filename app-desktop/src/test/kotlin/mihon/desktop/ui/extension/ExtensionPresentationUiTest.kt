@@ -113,20 +113,16 @@ class ExtensionPresentationUiTest {
             mount()
             scene.render()
             setText(scene, "Beta")
-            scene.render()
             assertEquals("Beta", model.state.value.searchQuery)
-            assertTrue(nodes(scene).any { it.config.toString().contains(beta.name) })
-            assertFalse(nodes(scene).any { it.config.toString().contains(alpha.name) })
+            awaitExtensionNames(scene, visible = beta.name, hidden = alpha.name)
             mount()
-            scene.render()
+            awaitExtensionNames(scene, visible = beta.name, hidden = alpha.name)
             val input = nodes(scene).single { it.config.contains(SemanticsProperties.EditableText) }
             assertEquals(AnnotatedString("Beta"), input.config[SemanticsProperties.EditableText])
             assertFalse(nodes(scene).any { it.config.toString().contains(alpha.name) })
             model.search("Alpha")
-            scene.render()
             assertEquals("Alpha", model.state.value.searchQuery)
-            assertTrue(nodes(scene).any { it.config.toString().contains(alpha.name) })
-            assertFalse(nodes(scene).any { it.config.toString().contains(beta.name) })
+            awaitExtensionNames(scene, visible = alpha.name, hidden = beta.name)
         } finally {
             scene.close()
             model.closeAndJoin()
@@ -175,8 +171,7 @@ class ExtensionPresentationUiTest {
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) { Navigator(ExtensionListScreen()) { CurrentScreen() } }
             }
-            scene.render()
-            assertTrue(nodes(scene).any { it.config.toString().contains(extensionListCopy().loading) })
+            awaitText(scene, extensionListCopy().loading)
             catalogs.send(ExtensionCatalogResult(emptyList(), emptyList()))
             withTimeout(5_000) { model.state.first { it.projection != null } }
             scene.render()
@@ -320,6 +315,24 @@ class ExtensionPresentationUiTest {
         val input = nodes(scene).single { it.config.contains(SemanticsActions.SetText) }
         assertTrue(requireNotNull(input.config[SemanticsActions.SetText].action).invoke(AnnotatedString(value)))
     }
+
+    private suspend fun awaitExtensionNames(scene: ImageComposeScene, visible: String, hidden: String) = withTimeout(5_000) {
+        while (true) {
+            scene.render()
+            val content = nodes(scene).map { it.config.toString() }
+            if (content.any { visible in it } && content.none { hidden in it }) return@withTimeout
+            yield()
+        }
+    }
+
+    private suspend fun awaitText(scene: ImageComposeScene, expected: String) = withTimeout(5_000) {
+        while (true) {
+            scene.render()
+            if (nodes(scene).any { expected in it.config.toString() }) return@withTimeout
+            yield()
+        }
+    }
+
     private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
     private fun source(id: Long, lang: String, name: String) = DesktopAvailableSource(id, lang, name, "https://$id")
     private fun extension(name: String, pkg: String, sources: List<DesktopAvailableSource>) = DesktopAvailableExtension(

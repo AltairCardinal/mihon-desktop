@@ -164,7 +164,11 @@ class SourceSharedStateWiringTest {
         assertTrue(
             scene.semanticsOwners
                 .flatMap { flatten(it.rootSemanticsNode) }
-                .any { it.config.toString().contains("Reload installed") },
+                .any {
+                    it.config.contains(SemanticsProperties.ContentDescription) &&
+                        it.config[SemanticsProperties.ContentDescription]
+                            .contains(MR.strings.desktop_extension_reload_installed.localized())
+                },
         )
         scene.close()
     }

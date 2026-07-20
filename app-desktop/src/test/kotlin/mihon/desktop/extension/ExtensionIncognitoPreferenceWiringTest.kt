@@ -5,6 +5,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import dev.mihon.injekt.patchInjekt
@@ -17,6 +18,8 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.platform.DesktopNetworkHelper
@@ -33,9 +36,11 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.core.common.preference.DesktopPreferenceStore
+import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
 import java.io.File
+import java.util.Locale
 import java.util.UUID
 import java.util.prefs.Preferences
 
@@ -104,11 +109,19 @@ class ExtensionIncognitoPreferenceWiringTest {
                     Navigator(ExtensionDetailsScreen(jar.absolutePath)) { CurrentScreen() }
                 }
             }
-            scene.render()
-
-            val toggle = nodes(scene).single {
-                it.config.contains(SemanticsActions.OnClick) &&
-                    it.config.toString().contains("Incognito mode for extension.hidden")
+            val description = MR.strings.desktop_extension_incognito_for.localized(Locale.getDefault(), "extension.hidden")
+            val toggle = withTimeout(5_000) {
+                var match: SemanticsNode?
+                do {
+                    scene.render()
+                    match = nodes(scene).singleOrNull {
+                        it.config.contains(SemanticsActions.OnClick) &&
+                            it.config.contains(SemanticsProperties.ContentDescription) &&
+                            it.config[SemanticsProperties.ContentDescription].contains(description)
+                    }
+                    if (match == null) yield()
+                } while (match == null)
+                requireNotNull(match)
             }
             assertFalse(preferences.incognitoMode.get())
             assertEquals(initialExtensions, preferences.incognitoExtensions.get())
