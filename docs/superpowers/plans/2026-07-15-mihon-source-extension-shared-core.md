@@ -2038,7 +2038,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Evidence: implementation `c629ca506`、唯一修复 `91f976ea5`，累计严格 5 files / 248 task touched（最终 range净 touched 246）。RED 23 tests中2项精确为 ID29 expected WIRED/actual NOT_STARTED 与 ID87 upstreamRef blank；GREEN 后契约 24/24。最终 28/32 保持 NOT_STARTED，29/30/33–40 为 WIRED，87 为 SHARED，无 VERIFIED、ID31按设计不存在；87 以 AppLanguage/SettingsAppearance/Localize 三条 fixed-main path/blob 为权威，ID40 的 current Android interceptor/NetworkHelper 保持 androidMain consumer而非shared。首审发现 diagnostics 旧枚举残留和 shared path gate 只验存在；唯一修复改为真实四枚举与 per-JAR/class-level remaining limitation，并新增 commonMain 强制门禁及 platform-path 负例。tracker 要求所有已提升项绑定 production behavior/wiring 测试；独立复审 APPROVED，JSON/path/blob static核验、diff-check、Java0。root Spotless 仍被范围外既有 `GlobalSearchSourcePolicyTest.kt` 格式问题阻断。
 
-- [ ] **Step 4: 运行全量自动验证**
+- [x] **Step 4: 运行全量自动验证**
 
   Run:
 
@@ -2103,8 +2103,11 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `1 file, 35 lines`
 - Scope correction: 统一该测试类 10 个异步边界与 4 个 Compose pump，并移除固定 delay import 后实际为 31 touched lines；保持单文件机械测试修复。
 - Verification: 7D4e 后 full Desktop 1764 tests 仅 `GlobalSearchResultProductionWiringTest.only composed cards observe canonical database rows without another search` 在初始 2s render/delay轮询超时；同类 focused 曾通过且前一次 full suite亦通过，证明是 suite负载下的有界调度竞态，不是稳定的 production state失败。统一该类异步等待的非零但负载容忍上限，并将 Compose pump 的固定10ms睡眠改为 render/yield，让等待释放调度而不累计人为延迟；所有状态/DB/导航/错误断言保持不变。focused 连续验证后重跑 full Desktop JVM；不得改 production、删除断言或使用无限等待。
+  Evidence: commit `f1f97d84b`，严格 1 test file / 31 touched lines。统一 10 个异步边界为有界 5s，4处 Compose固定 delay改为 render/yield；DB写入/订阅集合、导航栈幂等、详情输入、查询次数、新旧结果隔离与错误反馈断言全部保留。RED 为 full-suite 2s timeout；focused 2/2连续两轮 GREEN（第二轮 `--rerun-tasks`），随后 full Desktop 1764 tests / 0 failed / 2 skipped。独立 review APPROVED、diff-check clean、Java0。
 
   Conditional flow: 完成 7D4a–7D4d 后重跑 full Desktop JVM；若 `GlobalSearchResultProductionWiringTest` 仍只在 full-suite 负载下超时，另立 ≤2 files/60 lines 的 `global-search-compose-await` Task，先以有界重复/组合复现证明 frame propagation root cause，再调整测试 pump；若不再失败则不创建该 Task。
+
+  Final full-run evidence: root `spotlessCheck` 61 tasks GREEN；`:domain:allTests` 130 tasks GREEN；`:app:testReleaseUnitTest` 209 tasks GREEN；`:app-desktop:jvmTest` fresh 1764 tests / 0 failed / 2 skipped；`:test-desktop:test` 17/17 GREEN；`build-desktop.sh test-only` 在版本不变 `0.11.14.21.f1f97d8` 下 GREEN。首次 wrapper 执行异常无输出并遗留单个 Gradle daemon，10分钟后终止且 `gradlew --stop` 清理；设置仅本进程 `GRADLE_OPTS=-Dorg.gradle.daemon=false` 后同一脚本20.4s成功，未修改全局配置或版本号。
 
 - [ ] **Step 5: Android 模拟器运行时验收**
 
