@@ -476,3 +476,20 @@
 - Final scope: 4 files, 117 touched lines; BUILD29 remains rejected and uncommitted.
 - Next task: `Task 7D33B` closes the independent Compose convergence fixture failure before Step 6 resumes.
 - Review/fix round: 0/1
+
+## Task 7D33B Review History
+
+- Reviewed task: `Task 7D33B: Extension-details Compose convergence fixture`
+- Stage: `complete`
+- Risk axis: `extension-details-compose-convergence`
+- Platform boundary: `verification`
+- Trigger: Step 6 BUILD29 full suite missed the localized confirmation dialog after a real uninstall click because the test rendered only one frame.
+- Implementer: `/root/reader_upstream_alignment`
+- Implementation commit: `5c6b95320` (`test(desktop): await extension uninstall dialog`).
+- Change: one test line replaces a single render with the existing five-second localized confirmation-title convergence helper; all real screen, click, dialog copy, uninstall failure and cleanup assertions remain.
+- GREEN evidence: focused 1/1; target plus adjacent extension presentation 8/8; root Spotless, diff and Comet guard PASS.
+- Independent reviewer: `/root/review_7d22`; result `APPROVED`, Critical/Important/Minor `0/0/0`.
+- Adjacent observation: one unchanged trust-confirm MockK failure did not reproduce in the unchanged single or combined reruns and has no call-path relationship to 7D33B. Replan only if it recurs.
+- Final scope: 1 verification file, 1 changed line; no production or timeout change.
+- Delivery state: BUILD29 is rejected and produced no fresh EXE. Resume Task 7 Step 6 by allocating BUILD30, then run Windows and macOS acceptance serially.
+- Review/fix round: 0/1
