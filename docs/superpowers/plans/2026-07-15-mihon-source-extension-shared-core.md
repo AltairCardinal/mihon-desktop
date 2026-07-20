@@ -1700,7 +1700,8 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `compat-baseline-evidence-drift`
 - Platform boundary: `verification`
-- Estimated scope: `1 file, 60 lines`
+- Estimated scope: `1 file, 80 lines`
+- Scope correction: self-contained fixture 必须显式构造 production presentation port/model并在 finally 关闭 Compose scene与 model；保留完整导航及语义断言后实际为 79 touched lines，仍远低于 Task 拆分阈值。
 - Verification: 7C3f 首次删除后的 31-test fixture 集合暴露 `DesktopExtensionProductBaselineTest` 仍把早期 ManHuaGui 两符号证据固定为整个 resolved symbol 集合；恢复全部裁剪后，在 HEAD `1ccb2518a` 单跑仍稳定为 `5 tests/1 failed`，期望2项而当前真实 ledger 为24项，证明与裁剪无关。只修改该测试文件：移除 `RESOLVED_SYMBOLS`、单一 `REAL_FIXTURE`/`REAL_FIXTURE_TEST` 的重复全集假设，保留 evidence 非空、symbol唯一、schema/status、仓库内本地 artifact 与 protection test 存在检查；动态 surface/inventory/evidence一一对应继续由 `CompatEvidenceContractTest` 唯一负责，不在此复制实现。运行 product baseline、compat contract 与 immutable fixture集合；不得修改 JSON ledger 或 production。
 
   Evidence: commit `ab7099df0`，1 file/13 deletions。恢复后的 HEAD 先单跑稳定复现 product baseline `5 tests/1 failed`，精确证明旧固定2-symbol集合与当前24项真实evidence冲突且与裁剪无关；GREEN 删除重复全集/单一fixture假设，但保留 evidence 非空、symbol唯一、schema/status、artifact-path@digest、仓库内本地artifact/protection test存在与removalCondition门禁。product baseline `5/0/0`、compat contract与6个immutable fixture `10/0/0`，独立审查确认动态surface/inventory/evidence一致性仍只由contract负责，APPROVED、Java0。
