@@ -65,7 +65,7 @@ class GlobalSearchResultNavigationTest {
                 assertEquals(edited ?: "initial query", target.initialQuery)
 
                 withTimeout(2_000) {
-                    while (fixture.searchQueries.size < 2) {
+                    while (fixture.searchQueries.size < 2 || fixture.searchFilters.size < 2) {
                         scene.render()
                         yield()
                     }
