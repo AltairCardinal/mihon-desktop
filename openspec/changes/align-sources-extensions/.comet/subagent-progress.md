@@ -577,3 +577,11 @@
 - Final scope: 1 verification file, 27 touched lines; no production, BUILD33, DownloadQueue or unrelated user file was committed.
 - Delivery state: BUILD33 remains rejected. Resume Step 6 by allocating BUILD34 from the post-repair evidence HEAD on Windows and macOS serially.
 - Review/fix round: 0/1
+
+## BUILD34 Task 7D37 Repair Trigger
+
+- Verification head: `21bad00b81a674c3a4e579babdeb3cd0001bede1`; allocated version `0.11.14.34.21bad00`.
+- Windows fresh suite: 1814 tests, 1 failed, 2 skipped; stopped before distributable, smoke and Test Mode. macOS did not start.
+- The initial selected/rows/persistence repair passed, but `globalSearchFilterState.changes().onStart { get() }` ran after the fixture removed its Preferences root and leaked `Node has been removed` into the next Challenge test.
+- Review correction: a joined child Job is insufficient evidence that `ImageComposeScene.close()` synchronously applied composition disposal. Reopen Task 7D37 for its single repair round; explicitly install/render empty content before close/cancel-join/remove-node and verify the adjacent authority→challenge boundary on both platforms.
+- BUILD34 is rejected; do not create Task 7D38 or rerun the unchanged full suite.

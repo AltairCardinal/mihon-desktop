@@ -402,11 +402,11 @@ Task 4B 的子计划编号，不是父 roadmap 在 Task 6 之后新增的同级�
 - [x] 子计划 Task 6A–6E：Browse/Extension 双端 production wiring、i18n、导航与 Test Mode
 - [ ] 子计划 Task 7：compat 去重、parity 证据、最终审查与 Windows/macOS 验收
 
-Task 7D35、7D36 已分别关闭 real-extension fixture 污染与 source-list collector 生命周期泄漏；BUILD33
-随后暴露 global-search filter 的单帧收敛假设并被拒绝。Task 7D37 已在 `ceb0200a5` 通过有界 render/yield
-收敛真实 selected、rows 与持久化 fixture，并复用 scene child-lifecycle 清理边界，Windows/macOS focused
-及独立审查均通过。当前下一步是从证据 HEAD 分配 BUILD34；双平台验收、最终审查、OpenSpec checkoff 与
-归档全部通过前，子计划 Task 7 和父 Task 4B 保持未完成。
+Task 7D35、7D36 已关闭 real-extension fixture 污染与 source-list collector 生命周期泄漏。Task 7D37
+在 `ceb0200a5` 收敛 global-search selected/rows/persistence 后，BUILD34 证明 child Job 清理仍未等待真实 Compose
+树应用 disposal：偏好 collector 在节点删除后延迟读取并把异常泄漏到下一测试。该证据重新打开同一 Task
+的唯一修复轮，不新增 Task；当前修复边界是清空并 render composition 后再 close/cancel-join/remove node。
+双平台新 BUILD、最终审查、OpenSpec checkoff 与归档全部通过前，子计划 Task 7 和父 Task 4B 保持未完成。
 
 **Files:**
 - Modify: 当前分支 `app/src/main/java/eu/kanade/tachiyomi/extension/`
