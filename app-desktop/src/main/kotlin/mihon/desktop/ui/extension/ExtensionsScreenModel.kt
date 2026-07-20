@@ -59,7 +59,7 @@ class ExtensionsScreenModel(
     private val lock = Any()
     private val packageJobs = mutableMapOf<String, Job>()
     private var refreshJob: Job? = null
-    private var pendingTrust: DesktopPendingTrust? = null
+    private val pendingTrustQueue = mutableListOf<DesktopPendingTrust>()
     private var isClosed = false
     private var latestCatalog: DesktopExtensionCatalogState? = null
     internal val closed get() = synchronized(lock) { isClosed }
@@ -120,7 +120,7 @@ class ExtensionsScreenModel(
             dispatchStep(item.operationPackageName, ExtensionPresentationInstallStep.Pending)
             when (val start = port.beginPresentationInstall(extension)) {
                 is DesktopPresentationInstallStart.Started -> collectInstall(item.operationPackageName, start.events)
-                is DesktopPresentationInstallStart.TrustRequired -> replacePending(
+                is DesktopPresentationInstallStart.TrustRequired -> enqueuePending(
                     DesktopPendingTrust(item.operationPackageName, start.request),
                 )
                 is DesktopPresentationInstallStart.Rejected -> recordError(item.operationPackageName, start.error)
@@ -152,9 +152,8 @@ class ExtensionsScreenModel(
         checkOpen()
         val pending = takePending() ?: return null
         return launchPackage(pending.packageName) {
-            port.confirmPresentationTrust(pending.request.requestId)?.let {
-                collectInstall(pending.packageName, it)
-            }
+            val events = port.confirmPresentationTrust(pending.request.requestId)
+            if (events == null) clearTerminal(pending.packageName) else collectInstall(pending.packageName, events)
         }
     }
 
@@ -267,35 +266,54 @@ class ExtensionsScreenModel(
         clearEvidence(packageName)
     }
 
-    private fun replacePending(next: DesktopPendingTrust) {
-        var previous: DesktopPendingTrust? = null
+    private fun enqueuePending(next: DesktopPendingTrust) {
+        var replaced: DesktopPendingTrust? = null
         val accepted = synchronized(lock) {
             if (isClosed) false else {
-                previous = pendingTrust
-                pendingTrust = next
-                mutableState.value = mutableState.value.copy(pendingTrust = next)
+                val existingIndex = pendingTrustQueue.indexOfFirst { it.packageName == next.packageName }
+                if (existingIndex >= 0) {
+                    replaced = pendingTrustQueue.set(existingIndex, next)
+                } else {
+                    pendingTrustQueue += next
+                }
+                mutableState.value = mutableState.value.copy(pendingTrust = pendingTrustQueue.first())
                 true
             }
         }
-        if (!accepted) port.discardTrust(next.request.requestId) else {
-            previous?.takeIf { it.request.requestId != next.request.requestId }
+        if (!accepted) {
+            port.discardTrust(next.request.requestId)
+            clearTerminal(next.packageName)
+        } else {
+            replaced?.takeIf { it.request.requestId != next.request.requestId }
                 ?.let { port.discardTrust(it.request.requestId) }
         }
     }
 
     private fun takePending(packageName: String? = null): DesktopPendingTrust? {
         val pending = synchronized(lock) {
-            pendingTrust?.takeIf { packageName == null || it.packageName == packageName }
-                ?.also {
-                    pendingTrust = null
-                    mutableState.value = mutableState.value.copy(pendingTrust = null)
-                }
+            val index = if (packageName == null) {
+                pendingTrustQueue.indices.firstOrNull()
+            } else {
+                pendingTrustQueue.indexOfFirst { it.packageName == packageName }.takeIf { it >= 0 }
+            }
+            index?.let(pendingTrustQueue::removeAt).also {
+                mutableState.value = mutableState.value.copy(pendingTrust = pendingTrustQueue.firstOrNull())
+            }
         }
         return pending
     }
 
     private fun drainPending() {
-        takePending()?.let { port.discardTrust(it.request.requestId) }
+        val pending = synchronized(lock) {
+            pendingTrustQueue.toList().also {
+                pendingTrustQueue.clear()
+                mutableState.value = mutableState.value.copy(pendingTrust = null)
+            }
+        }
+        pending.forEach {
+            port.discardTrust(it.request.requestId)
+            clearTerminal(it.packageName)
+        }
     }
 
     private fun checkOpen() = check(!closed) { "ExtensionsScreenModel is closed" }

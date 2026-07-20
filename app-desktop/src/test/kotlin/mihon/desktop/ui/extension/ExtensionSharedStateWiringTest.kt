@@ -202,6 +202,57 @@ class ExtensionSharedStateWiringTest {
     }
 
     @Test
+    fun `update all queues concurrent trust requests until every package is resolved`() = runTest {
+        val first = available("pkg.update.first")
+        val second = available("pkg.update.second")
+        val catalog = ExtensionCatalogResult(emptyList(), emptyList())
+        val api = mockk<DesktopExtensionApi>()
+        val manager = mockk<DesktopExtensionManager>()
+        coEvery { api.refreshCatalog() } returns catalog
+        every { api.availableExtensions(catalog) } returns listOf(first, second)
+        coEvery { api.beginInstall(first, manager) } returns trust("trust-first")
+        coEvery { api.beginInstall(second, manager) } returns trust("trust-second")
+        every { api.confirmTrust("trust-first", manager) } returns flowOf(ExtensionInstallState.Installed(mockk()))
+        every { api.discardTrust("trust-first") } returns true
+        every { api.discardTrust("trust-second") } returns true
+        val model = ExtensionsScreenModel(
+            DesktopExtensionPresentationPort(
+                api,
+                manager,
+                MutableStateFlow(
+                    listOf(
+                        installed(first.pkgName, first.repoUrl),
+                        installed(second.pkgName, second.repoUrl),
+                    ),
+                ),
+            ),
+            backgroundScope,
+            ExtensionPresentationOptions(false, setOf("en")),
+        )
+
+        model.refresh().join()
+        model.updateAll().forEach { it.join() }
+
+        assertEquals("trust-first", model.state.value.pendingTrust?.request?.requestId)
+        model.confirmTrust()?.join()
+        assertEquals("trust-second", model.state.value.pendingTrust?.request?.requestId)
+        assertTrue(model.dismissTrust())
+
+        assertEquals(null, model.state.value.pendingTrust)
+        assertTrue(
+            listOf(first.pkgName, second.pkgName).none { packageName ->
+                model.state.value.actions.installSteps[packageName] in setOf(
+                    ExtensionPresentationInstallStep.Pending,
+                    ExtensionPresentationInstallStep.Installing,
+                )
+            },
+        )
+        verify(exactly = 1) { api.confirmTrust("trust-first", manager) }
+        verify(exactly = 1) { api.discardTrust("trust-second") }
+        verify(exactly = 0) { api.discardTrust("trust-first") }
+    }
+
+    @Test
     fun `typed install flow stops after installed while exact error remains and idle cleans`() = runTest {
         val api = mockk<DesktopExtensionApi>()
         val manager = mockk<DesktopExtensionManager>()
@@ -292,7 +343,7 @@ class ExtensionSharedStateWiringTest {
         coEvery { api.beginInstall(two, manager) } returns trust("two")
         every { api.discardTrust(any()) } returns true
         val error = AppError.Storage()
-        every { api.confirmTrust("two", manager) } returns flowOf(ExtensionInstallState.Failed(error))
+        every { api.confirmTrust("one", manager) } returns flowOf(ExtensionInstallState.Failed(error))
         val lateEntered = CompletableDeferred<Unit>()
         val releaseLate = CompletableDeferred<Unit>()
         val closeFinally = CompletableDeferred<Unit>()
@@ -312,11 +363,13 @@ class ExtensionSharedStateWiringTest {
         model.install(one.item()).join()
         assertEquals("one", model.state.value.pendingTrust?.request?.requestId)
         model.install(two.item()).join()
-        verify(exactly = 1) { api.discardTrust("one") }
+        assertEquals("one", model.state.value.pendingTrust?.request?.requestId)
         model.confirmTrust()?.join()
-        assertSame(error, model.state.value.installErrors[two.pkgName])
+        assertSame(error, model.state.value.installErrors[one.pkgName])
+        assertEquals("two", model.state.value.pendingTrust?.request?.requestId)
         model.install(one.item()).join()
         assertTrue(model.dismissTrust())
+        assertEquals("one", model.state.value.pendingTrust?.request?.requestId)
         model.install(two.item()).join()
         model.install(late.item())
         lateEntered.await()
@@ -330,8 +383,8 @@ class ExtensionSharedStateWiringTest {
         closing.await()
         assertEquals(null, model.state.value.pendingTrust)
         assertTrue(parentSibling.isActive)
-        verify(exactly = 2) { api.discardTrust("one") }
-        verify(exactly = 1) { api.discardTrust("two") }
+        verify(exactly = 1) { api.discardTrust("one") }
+        verify(exactly = 2) { api.discardTrust("two") }
         verify(exactly = 1) { api.discardTrust("late") }
         assertThrows(IllegalStateException::class.java) { model.install(late.item()) }
     }
