@@ -6,11 +6,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import mihon.desktop.test.http.testHttpServer
 import mihon.desktop.test.screenshot.ScreenshotService
 import mihon.desktop.test.state.applicationState
 import org.slf4j.LoggerFactory
+import java.util.concurrent.CountDownLatch
 
 /**
  * Manages test mode lifecycle for the desktop application.
@@ -28,6 +28,7 @@ object TestMode {
     private var isStarted = false
     private var serverJob: Job? = null
     private val serverScope = CoroutineScope(Dispatchers.Default)
+    private var termination = CountDownLatch(0)
 
     /**
      * Start test mode with the given configuration.
@@ -39,6 +40,7 @@ object TestMode {
         }
 
         logger.info("Starting test mode with config: httpPort=${args.httpPort}, headless=${args.headless}")
+        termination = CountDownLatch(1)
 
         // Initialize screenshot service
         ScreenshotService.initialize(args.screenshotDir)
@@ -103,6 +105,8 @@ object TestMode {
                 }.start(wait = true)
             } catch (e: Exception) {
                 logger.error("HTTP test server failed to start", e)
+            } finally {
+                termination.countDown()
             }
         }
 
@@ -123,6 +127,7 @@ object TestMode {
         // Stop HTTP server
         serverJob?.cancel()
         serverJob = null
+        termination.countDown()
 
         // Disable screenshot service
         ScreenshotService.disable()
@@ -143,9 +148,7 @@ object TestMode {
     /**
      * Keep a headless test process alive for as long as its HTTP server is running.
      */
-    fun awaitTermination() = runBlocking {
-        serverJob?.join()
-    }
+    fun awaitTermination() = termination.await()
 
     /**
      * Get the HTTP server port.
