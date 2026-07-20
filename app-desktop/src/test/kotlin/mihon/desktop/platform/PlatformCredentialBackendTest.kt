@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assumptions.assumeFalse
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import java.util.Locale
@@ -148,6 +149,7 @@ class PlatformCredentialBackendTest {
     @Tag("integration")
     fun `macOS Keychain credential round trip overwrite and delete on current machine`() {
         if (!System.getProperty("os.name").lowercase(Locale.ROOT).contains("mac")) return
+        assumeMacKeychainAccessible()
         val key = "integration.${UUID.randomUUID()}"
         val store = DesktopCredentialStore(PlatformCredentialBackend(OperatingSystem.MACOS))
         try {
@@ -160,6 +162,18 @@ class PlatformCredentialBackendTest {
         } finally {
             store.delete(key)
         }
+    }
+
+    private fun assumeMacKeychainAccessible() {
+        val result = try {
+            ProcessCommandRunner().run(listOf("security", "show-keychain-info"))
+        } catch (_: CommandUnavailableException) {
+            return
+        }
+        assumeFalse(
+            result.exitCode == 36 && result.stderr.contains("User interaction is not allowed"),
+            "macOS Keychain interaction is unavailable for this test session",
+        )
     }
 
     private class RecordingCommandRunner(
