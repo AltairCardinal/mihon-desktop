@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
@@ -60,6 +61,7 @@ import java.util.prefs.Preferences
 import java.util.concurrent.ConcurrentHashMap
 
 private const val ASYNC_TIMEOUT_MS = 15_000L
+private const val INITIAL_RENDER_TIMEOUT_MS = 30_000L
 
 @OptIn(ExperimentalComposeUiApi::class)
 class GlobalSearchResultProductionWiringTest {
@@ -96,14 +98,20 @@ class GlobalSearchResultProductionWiringTest {
                         }
                     }
                 }
-                withTimeout(ASYNC_TIMEOUT_MS) {
-                    while (!text(scene).contains("A listed 0") || !text(scene).contains("B listed 0") ||
-                        !fixture.repository.observedRows.contains(Triple(sourceA.id, "/shared", "A listed 0")) ||
-                        !fixture.repository.observedRows.contains(Triple(sourceB.id, "/shared", "B listed 0"))
-                    ) {
+                fun initialRowsReady(): Boolean =
+                    text(scene).contains("A listed 0") && text(scene).contains("B listed 0") &&
+                        fixture.repository.observedRows.contains(Triple(sourceA.id, "/shared", "A listed 0")) &&
+                        fixture.repository.observedRows.contains(Triple(sourceB.id, "/shared", "B listed 0"))
+                val initialRowsReady = withTimeoutOrNull(INITIAL_RENDER_TIMEOUT_MS) {
+                    while (!initialRowsReady()) {
                         scene.render()
                         yield()
                     }
+                    true
+                } ?: false
+                check(initialRowsReady) {
+                    "Initial rows did not settle: observed=${fixture.repository.observedRows}, " +
+                        "active=${fixture.repository.activeSubscriptions}, text=${text(scene).take(2_000)}"
                 }
                 scene.render()
                 yield()
