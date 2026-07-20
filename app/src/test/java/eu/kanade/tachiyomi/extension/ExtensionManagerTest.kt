@@ -40,6 +40,62 @@ import java.util.concurrent.TimeUnit
 class ExtensionManagerTest {
 
     @Test
+    fun `runtime reload before initial publication is replayed over the loader snapshot`() = runTest {
+        val snapshotFixed = CompletableDeferred<Unit>()
+        val allowSnapshotPublication = CompletableDeferred<Unit>()
+        val runtimeReloader = CompletableDeferred<suspend (String) -> Unit>()
+        val pkgName = "$PACKAGE.runtime-reload"
+        val initialUntrusted = Extension.Untrusted(
+            name = "Initial untrusted",
+            pkgName = pkgName,
+            versionName = "1.0",
+            versionCode = 1,
+            libVersion = 1.4,
+            signatureHash = "old-signature",
+        )
+        val reloaded = installed().copy(
+            pkgName = pkgName,
+            versionName = "2.0",
+            versionCode = 2,
+            hasUpdate = true,
+        )
+        val manager = ExtensionManager(
+            context = mockk(relaxed = true),
+            preferences = preferences(),
+            trustExtension = mockk(relaxed = true),
+            installedExtensionsLoader = {
+                snapshotFixed.complete(Unit)
+                allowSnapshotPublication.await()
+                listOf(LoadResult.Untrusted(initialUntrusted))
+            },
+            extensionLoader = { _, requestedPackage ->
+                assertEquals(pkgName, requestedPackage)
+                LoadResult.Success(reloaded)
+            },
+            installerFactory = { reload ->
+                runtimeReloader.complete(reload)
+                mockk(relaxed = true)
+            },
+            installReceiverRegistrar = {},
+            scope = backgroundScope,
+        )
+
+        manager.cancelInstallUpdateExtension(reloaded)
+        runCurrent()
+        assertTrue(snapshotFixed.isCompleted)
+
+        runtimeReloader.await()(pkgName)
+        assertFalse(manager.isInitialized.value)
+
+        allowSnapshotPublication.complete(Unit)
+        runCurrent()
+
+        assertTrue(manager.isInitialized.value)
+        assertEquals(listOf(reloaded), manager.installedExtensionsFlow.value)
+        assertTrue(manager.untrustedExtensionsFlow.value.isEmpty())
+    }
+
+    @Test
     fun `receiver events after loader snapshot are replayed before initialization is published`() = runTest {
         val snapshotFixed = CompletableDeferred<Unit>()
         val allowSnapshotPublication = CompletableDeferred<Unit>()
