@@ -37,6 +37,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.yield
 import io.mockk.every
 import io.mockk.coEvery
 import io.mockk.mockk
@@ -673,42 +675,66 @@ class SourceSharedStateWiringTest {
                 })
                 return requireNotNull(node.config[SemanticsActions.OnClick].action).invoke()
             }
-            val copy = desktopSourceLoginCopy { it.localized() }
+            try {
+                val copy = desktopSourceLoginCopy { it.localized() }
 
-            scene.setContent {
-                CompositionLocalProvider(
-                    LocalDesktopUiDependencies provides dependencies,
-                    LocalGlobalSearchCoordinatorFactory provides { service -> DesktopGlobalSearchCoordinator(service).also { coordinator = it } },
-                ) { Navigator(GlobalSearchScreen("captured")) { CurrentScreen() } }
+                scene.setContent {
+                    CompositionLocalProvider(
+                        LocalDesktopUiDependencies provides dependencies,
+                        LocalGlobalSearchCoordinatorFactory provides { service -> DesktopGlobalSearchCoordinator(service).also { coordinator = it } },
+                    ) { Navigator(GlobalSearchScreen("captured")) { CurrentScreen() } }
+                }
+                scene.render()
+                withTimeout(2_000) { requireNotNull(coordinator).states.first { !it.isSearching } }
+                val child = requireNotNull(requireNotNull(coordinator).coordinatorFor(source.id))
+                val failed = requireNotNull(coordinator).state.queryStates.getValue(source.id).request
+                scene.render()
+
+                assertTrue(click(copy.title))
+                scene.render()
+                val cookieHeader = nodes().filter { it.config.contains(SemanticsActions.SetText) }.last()
+                assertTrue(requireNotNull(cookieHeader.config[SemanticsActions.SetText].action).invoke(AnnotatedString("invalid")))
+                scene.render()
+                assertTrue(click(copy.submit))
+                scene.render()
+                assertTrue(nodes().joinToString { it.config.toString() }.contains(copy.invalidHeader))
+                assertTrue(requireNotNull(cookieHeader.config[SemanticsActions.SetText].action).invoke(AnnotatedString("session=secret")))
+                assertTrue(click(copy.submit))
+
+                val contentState = async(start = CoroutineStart.UNDISPATCHED) {
+                    requireNotNull(coordinator).states.first { state ->
+                        server.requestCount >= 2 &&
+                            state.queryStates[source.id] is SourceQueryState.Content &&
+                            child.state is SourceQueryState.Content
+                    }
+                }
+                val converged = try {
+                    withTimeoutOrNull(5_000) {
+                        while (!contentState.isCompleted) {
+                            scene.render()
+                            yield()
+                        }
+                        contentState.await()
+                        true
+                    } == true
+                } finally {
+                    contentState.cancelAndJoin()
+                }
+                assertTrue(
+                    converged,
+                    "Global login retry did not converge: requestCount=${server.requestCount}, " +
+                        "queryState=${child.state}, renderedSemantics=${nodes().joinToString { it.config.toString() }}",
+                )
+                scene.render()
+                scene.render()
+                assertSame(child, requireNotNull(coordinator).coordinatorFor(source.id))
+                assertEquals(failed, requireNotNull(coordinator).state.queryStates.getValue(source.id).request)
+                assertEquals(null, server.takeRequest().headers["Cookie"])
+                assertEquals("session=secret", server.takeRequest().headers["Cookie"])
+                assertTrue(nodes().joinToString { it.config.toString() }.contains("Routed (1)"))
+            } finally {
+                scene.close()
             }
-            scene.render()
-            withTimeout(2_000) { requireNotNull(coordinator).states.first { !it.isSearching } }
-            val child = requireNotNull(coordinator).coordinatorFor(source.id)
-            val failed = requireNotNull(coordinator).state.queryStates.getValue(source.id).request
-            scene.render()
-
-            assertTrue(click(copy.title))
-            scene.render()
-            val cookieHeader = nodes().filter { it.config.contains(SemanticsActions.SetText) }.last()
-            assertTrue(requireNotNull(cookieHeader.config[SemanticsActions.SetText].action).invoke(AnnotatedString("invalid")))
-            scene.render()
-            assertTrue(click(copy.submit))
-            scene.render()
-            assertTrue(nodes().joinToString { it.config.toString() }.contains(copy.invalidHeader))
-            assertTrue(requireNotNull(cookieHeader.config[SemanticsActions.SetText].action).invoke(AnnotatedString("session=secret")))
-            assertTrue(click(copy.submit))
-
-            withTimeout(2_000) {
-                requireNotNull(coordinator).states.first { it.queryStates[source.id] is SourceQueryState.Content }
-            }
-            scene.render()
-            scene.render()
-            assertSame(child, requireNotNull(coordinator).coordinatorFor(source.id))
-            assertEquals(failed, requireNotNull(coordinator).state.queryStates.getValue(source.id).request)
-            assertEquals(null, server.takeRequest().headers["Cookie"])
-            assertEquals("session=secret", server.takeRequest().headers["Cookie"])
-            assertTrue(nodes().joinToString { it.config.toString() }.contains("Routed (1)"))
-            scene.close()
         }
     }
 
