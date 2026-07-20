@@ -2087,6 +2087,13 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Verification: full Desktop suite 捕获 `DesktopPreference.changes()` 在 backing Preferences node 已删除后执行 `removePreferenceChangeListener` 的 `IllegalStateException: Node has been removed`，异常泄漏到后续 coroutine test。先在 core/common JVM test 建立“active changes collector→外部 removeNode→cancel collector 不产生 cleanup failure” RED，再让 awaitClose 只吞掉 node-removed 的 cleanup exception；其他 listener 注册/移除异常仍传播。运行 core focused、GlobalSearchAuthority+Challenge 顺序组合、extension UI focused与 full Desktop JVM。
   Evidence: commit `ece4035d3`，严格 2 files / 23 touched lines。新增测试先启动 active `changes()` collector并 `runCurrent()` 确认 listener 已注册，再由外部删除 backing node、取消 collector；旧实现精确 RED 为 awaitClose 泄漏 `IllegalStateException: Node has been removed.`。GREEN 仅包围 `removePreferenceChangeListener` cleanup，只忽略该 exact ISE message；注册异常、其他 ISE及其他异常仍传播。focused 单测与完整 `DesktopPreferenceStoreTest` 20/20；独立 review APPROVED、diff-check clean。
 
+##### Task 7D4e: Extension navigation test dependency isolation
+
+- Risk axis: `extension-navigation-test-isolation`
+- Platform boundary: `verification`
+- Estimated scope: `1 file, 60 lines`
+- Verification: full Desktop JVM 在 1764 tests 顺序中只剩 `SourceSharedStateWiringTest.browse tab extensions action renders extension list screen` 于 mock setup 读取未初始化的真实 `DesktopExtensionManager.installedExtensions`，证明该导航测试既依赖 final-class mock interception，也未显式提供 7D4a 新 boundary 的 model。保留真实 Browse action→Navigator→ExtensionListScreen 链，但以真实 `ExtensionsScreenModel` + production presentation port、可控空 catalog/installed flow与 relaxed manager建立自包含 fixture，并通过 `LocalExtensionScreenModel` 显式提供；不得回退全局 Injekt、不得 mock UI content或删除本地化 reload 语义断言。focused 后重跑 full Desktop JVM；只有 Global Search 仍失败才启用下述条件 Task。
+
   Conditional flow: 完成 7D4a–7D4d 后重跑 full Desktop JVM；若 `GlobalSearchResultProductionWiringTest` 仍只在 full-suite 负载下超时，另立 ≤2 files/60 lines 的 `global-search-compose-await` Task，先以有界重复/组合复现证明 frame propagation root cause，再调整测试 pump；若不再失败则不创建该 Task。
 
 - [ ] **Step 5: Android 模拟器运行时验收**
