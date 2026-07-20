@@ -28,13 +28,15 @@ class AppErrorTest {
             AppError.Server(500),
             AppError.Permission(),
             AppError.MalformedData(),
+            AppError.NoResults,
             AppError.Storage(),
             AppError.Cancelled,
             AppError.PartialFailure(emptyList()),
             AppError.Unknown(),
         )
 
-        assertEquals(11, variants.map { it::class }.distinct().size)
+        assertEquals(12, variants.map { it::class }.distinct().size)
+        assertEquals(null, AppError.NoResults.cause)
     }
 
     @Test
