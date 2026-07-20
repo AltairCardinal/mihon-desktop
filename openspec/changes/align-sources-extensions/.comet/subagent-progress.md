@@ -459,3 +459,20 @@
 - Final scope: 5 files, 337 touched lines; no AppVersion, plan, unrelated whitespace or untracked files in product commits.
 - Delivery state: BUILD28 is rejected and produced no fresh EXE. Resume Task 7 Step 6 by allocating a newer BUILD, then run Windows and macOS acceptance serially.
 - Review/fix round: 1/1
+
+## Task 7D33A Review History
+
+- Reviewed task: `Task 7D33A: Windows transient atomic-replace policy`
+- Stage: `complete`
+- Risk axis: `windows-atomic-replace-retry`
+- Platform boundary: `desktop`
+- Trigger: Step 6 BUILD29 fresh Desktop run executed 1811 tests with two failures; the product failure was a real Windows `AccessDeniedException` during atomic extension snapshot replacement.
+- Implementer: `/root/download_upstream_alignment`
+- Implementation commit: `7d668b0ee` (`fix(desktop): retry transient atomic replacements`).
+- RED evidence: two of six replacement tests failed because transient access denial was not retried and persistent denial attempted only once.
+- GREEN evidence: replacement 6/6; replacement/transaction/checkpoint matrix 74/74; root Spotless, diff and Comet guard PASS.
+- Reuse evidence: `FileTaskCheckpointStore` and `NioDesktopExtensionFileSystem` consume one internal three-attempt/10ms Desktop helper; no duplicate loop remains.
+- Independent reviewer: `/root/review_7d22`; result `APPROVED`, Critical/Important/Minor `0/0/0`.
+- Final scope: 4 files, 117 touched lines; BUILD29 remains rejected and uncommitted.
+- Next task: `Task 7D33B` closes the independent Compose convergence fixture failure before Step 6 resumes.
+- Review/fix round: 0/1
