@@ -117,6 +117,8 @@ class ExtensionInstallSessionLifecycleTest {
         val filesDirectory = directory.resolve("files").toFile().apply(File::mkdirs)
         val installedSystem = directory.resolve("installed-system.apk").toFile().apply { writeText("old-system") }
         val packageManager = mockk<PackageManager>(relaxed = true) {
+            every { getApplicationInfo(PACKAGE_NAME, any<Int>()) } throws
+                PackageManager.NameNotFoundException()
             every { getPackageInfo(PACKAGE_NAME, any<Int>()) } answers {
                 android.content.pm.PackageInfo().apply {
                     packageName = PACKAGE_NAME

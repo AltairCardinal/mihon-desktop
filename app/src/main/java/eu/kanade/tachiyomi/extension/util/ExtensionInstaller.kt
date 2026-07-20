@@ -801,12 +801,32 @@ internal class AndroidInstallPort(
                 if (snapshot == null) {
                     gateway.removeSystem(install.artifact.packageName)
                 } else {
+                    val snapshotApk = storage { gateway.inspect(snapshot.apk) }
+                        ?: failMalformed("System extension snapshot is not an APK")
+                    if (
+                        !snapshotApk.isExtension ||
+                        snapshotApk.packageName != install.artifact.packageName ||
+                        snapshotApk.versionName != snapshot.versionName ||
+                        snapshotApk.versionCode != snapshot.versionCode ||
+                        snapshotApk.signers != snapshot.signers
+                    ) {
+                        failMalformed("System extension snapshot identity changed")
+                    }
+                    gateway.removeSystem(install.artifact.packageName)
                     gateway.installSystem(
                         parentTransactionId = token.value,
                         file = snapshot.apk,
                         metadata = snapshot,
                         installer = checkNotNull(state.systemInstaller),
                     )
+                    val restored = storage { gateway.topology(install.artifact.packageName) }
+                    if (
+                        !restored.systemPackage.sameIdentity(snapshot) ||
+                        !restored.privatePackage.sameIdentity(state.privatePackage) ||
+                        restored.loaderOrigin != state.loaderOrigin
+                    ) {
+                        failStorage("Restored system extension topology does not match snapshot")
+                    }
                 }
             }
         }
@@ -833,6 +853,16 @@ internal class AndroidInstallPort(
     } catch (error: Throwable) {
         throw ExtensionInstallFailure(AppError.Storage(error))
     }
+
+    private fun AndroidInstalledPackage?.sameIdentity(expected: AndroidInstalledPackage?): Boolean =
+        (this == null && expected == null) ||
+            (
+                this != null && expected != null &&
+                    versionName == expected.versionName &&
+                    versionCode == expected.versionCode &&
+                    signers == expected.signers &&
+                    trust == expected.trust
+                )
 
     private fun ensureContained(root: File, child: File) {
         if (!child.toPath().startsWith(root.toPath())) failStorage("Extension transaction escaped cache root")

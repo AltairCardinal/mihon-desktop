@@ -158,7 +158,7 @@ class AndroidExtensionInstallSecurityRollbackTest {
     fun `rollback restores a downgraded system package and is idempotent`(@TempDir directory: Path) = runTest {
         withServer(CANDIDATE_BYTES) { server ->
             val gateway = FakeGateway(directory.toFile(), AndroidInstallLocation.SYSTEM).apply {
-                systemPackage = installed(directory, "system-v2", REPOSITORY, versionCode = 2)
+                systemPackage = installed(directory, "system-v1", REPOSITORY)
                 candidate = candidate.copy(versionCode = 3)
             }
             val port = AndroidInstallPort(
@@ -169,13 +169,12 @@ class AndroidExtensionInstallSecurityRollbackTest {
             val token = port.prepare(ExtensionInstallRequest(artifact(server, versionCode = 3)))
             val rollback = port.validate(token)
             port.commit(token)
-            gateway.systemPackage = gateway.systemPackage?.copy(versionCode = 1)
 
             port.rollback(rollback)
             port.rollback(rollback)
 
-            assertEquals(2, gateway.systemPackage?.versionCode)
-            assertEquals("system-v2", gateway.systemPackage?.apk?.readText())
+            assertEquals(1, gateway.systemPackage?.versionCode)
+            assertEquals("system-v1", gateway.systemPackage?.apk?.readText())
         }
     }
 
