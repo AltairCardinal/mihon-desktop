@@ -31,6 +31,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotSame
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -39,6 +40,55 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
 class ExtensionSharedStateWiringTest {
+    @Test
+    fun `refresh is single flight and a failed request can be retried successfully`() = runTest {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val firstFailure = IllegalStateException("catalog offline")
+        val catalog = ExtensionCatalogResult(emptyList(), emptyList())
+        var refreshCalls = 0
+        val api = mockk<DesktopExtensionApi> {
+            coEvery { refreshCatalog() } coAnswers {
+                refreshCalls++
+                if (refreshCalls == 1) {
+                    entered.complete(Unit)
+                    release.await()
+                    throw firstFailure
+                }
+                catalog
+            }
+            every { availableExtensions(catalog) } returns emptyList()
+        }
+        val model = ExtensionsScreenModel(
+            DesktopExtensionPresentationPort(api, mockk(), MutableStateFlow(emptyList())),
+            backgroundScope,
+            ExtensionPresentationOptions(false, setOf("en")),
+        )
+
+        val first = model.refresh()
+        entered.await()
+        val duplicate = model.refresh()
+        testScheduler.runCurrent()
+        val callsWhileFirstIsActive = refreshCalls
+        release.complete(Unit)
+        first.join()
+        duplicate.join()
+
+        assertSame(first, duplicate)
+        assertEquals(1, callsWhileFirstIsActive)
+        assertSame(firstFailure, model.state.value.refreshError)
+        assertFalse(model.state.value.actions.isRefreshing)
+
+        val retry = model.refresh()
+        assertNotSame(first, retry)
+        retry.join()
+
+        assertEquals(2, refreshCalls)
+        assertEquals(emptyList<DesktopExtensionItem>(), model.state.value.projection?.available)
+        assertEquals(null, model.state.value.refreshError)
+        assertFalse(model.state.value.actions.isRefreshing)
+    }
+
     @Test
     fun `installed snapshot remains available when the first catalog refresh fails`() = runTest {
         val installed = installed("pkg.local", "https://repo")

@@ -1,6 +1,7 @@
 package mihon.desktop.ui.extension
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsActions
@@ -57,6 +58,62 @@ import java.util.UUID
 import java.util.prefs.Preferences
 
 class ExtensionPresentationUiTest {
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
+    fun `details opened from the list return to the list when the installed extension disappears`() = runBlocking {
+        val installed = InstalledExtension(File("removed-details.jar"), emptyList(), displayName = "Removed details")
+        val installedFlow = MutableStateFlow(listOf(installed))
+        val catalog = ExtensionCatalogResult(emptyList(), emptyList())
+        val api = mockk<DesktopExtensionApi> {
+            coEvery { refreshCatalog() } returns catalog
+            every { availableExtensions(catalog) } returns emptyList()
+            coEvery { loadExtensionIcon(any()) } returns null
+        }
+        val manager = mockk<DesktopExtensionManager>(relaxed = true)
+        val model = ExtensionsScreenModel(
+            DesktopExtensionPresentationPort(api, manager, installedFlow),
+            this,
+            ExtensionPresentationOptions(false, setOf("en")),
+        )
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { extensionApi } returns api
+            every { extensionManager } returns manager
+            every { appPreferences } returns DesktopAppPreferences(
+                DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")),
+            )
+        }
+        val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
+        var navigator: Navigator? = null
+        try {
+            scene.setContent {
+                CompositionLocalProvider(
+                    LocalDesktopUiDependencies provides dependencies,
+                    LocalExtensionScreenModel provides { model },
+                ) {
+                    Navigator(ExtensionListScreen()) { current ->
+                        navigator = current
+                        LaunchedEffect(Unit) { current.push(ExtensionDetailsScreen(installed.jarFile.absolutePath)) }
+                        CurrentScreen()
+                    }
+                }
+            }
+            awaitText(scene, installed.name)
+            assertTrue(navigator?.lastItem is ExtensionDetailsScreen)
+
+            installedFlow.value = emptyList()
+            withTimeout(5_000) {
+                while (navigator?.lastItem !is ExtensionListScreen) {
+                    scene.render()
+                    yield()
+                }
+            }
+            assertTrue(navigator?.lastItem is ExtensionListScreen)
+        } finally {
+            scene.close()
+            model.closeAndJoin()
+        }
+    }
+
     @OptIn(ExperimentalComposeUiApi::class)
     @Test
     fun `first catalog failure keeps local extensions visible with retry feedback`() = runBlocking {
