@@ -477,6 +477,23 @@
 - Next task: `Task 7D33B` closes the independent Compose convergence fixture failure before Step 6 resumes.
 - Review/fix round: 0/1
 
+## Task 7D34 Review History
+
+- Reviewed task: `Task 7D34: Global-login retry fixture convergence`
+- Stage: `complete`
+- Risk axis: `global-login-retry-convergence`
+- Platform boundary: `verification`
+- Trigger: Step 6 BUILD30 ran 1814 tests with one failure and two skips; the real global-login retry test timed out after two seconds waiting for Content.
+- Implementer: `/root/reader_upstream_alignment`
+- Implementation commit: `6f03f9422` (`test(desktop): await global login retry convergence`).
+- Boundary: production unchanged; five-second bounded render/yield requires the second localhost request, global Content and the same captured child Content while retaining cookie, request identity and final UI assertions.
+- GREEN evidence: focused class 49/49; adjacent source/global-search 51/51; root Spotless, diff and Comet guard PASS.
+- Independent reviewer: `/root/review_7d22`; result `APPROVED`, Critical/Important/Minor `0/0/0`.
+- Cleanup/mutation evidence: content wait is cancelled/joined and scene/server close on failure; removing the second request, same child, either state update or render pump fails the bounded wait or retained assertions.
+- Final scope: 1 verification file; no production or global timeout change.
+- Delivery state: BUILD30 is rejected and produced no fresh EXE. Resume Task 7 Step 6 by allocating BUILD31, then run Windows and macOS acceptance serially.
+- Review/fix round: 0/1
+
 ## Task 7D33B Review History
 
 - Reviewed task: `Task 7D33B: Extension-details Compose convergence fixture`
