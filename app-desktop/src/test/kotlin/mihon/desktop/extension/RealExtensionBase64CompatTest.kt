@@ -19,7 +19,6 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
-import tachiyomi.core.common.preference.DesktopPreferenceStore
 import uy.kohesive.injekt.Injekt
 import java.nio.file.Files
 import java.nio.file.Path
@@ -32,6 +31,7 @@ class RealExtensionBase64CompatTest {
     fun `real FavComic client decrypts an encrypted image after production loading`(
         @TempDir tempDir: Path,
     ) = runBlocking {
+        val preferences = IsolatedDesktopPreferenceStore.create()
         val previousInjekt = Injekt
         try {
             val provenance = Json.parseToJsonElement(
@@ -61,7 +61,7 @@ class RealExtensionBase64CompatTest {
                 server.enqueue(MockResponse.Builder().body(Buffer().write(ENCRYPTED_IMAGE)).build())
                 val diContext = initDesktopDIForTest(
                     appDir = tempDir.resolve("app").toFile(),
-                    preferenceStore = DesktopPreferenceStore(),
+                    preferenceStore = preferences.store,
                 )
                 try {
                     val convertedJar = ApkToJarConverter().convert(apkPath.toFile(), tempDir.toFile())
@@ -109,6 +109,7 @@ class RealExtensionBase64CompatTest {
             }
         } finally {
             Injekt = previousInjekt
+            preferences.close()
         }
     }
 

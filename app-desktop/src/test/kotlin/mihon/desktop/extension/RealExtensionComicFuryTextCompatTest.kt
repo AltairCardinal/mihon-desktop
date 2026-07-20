@@ -18,7 +18,6 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
-import tachiyomi.core.common.preference.DesktopPreferenceStore
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.awt.image.BufferedImage
@@ -36,6 +35,7 @@ class RealExtensionComicFuryTextCompatTest {
     fun `real ComicFury page list renders author notes through its public image pipeline`(
         @TempDir tempDir: Path,
     ) = runBlocking {
+        val preferences = IsolatedDesktopPreferenceStore.create()
         val previousInjekt = Injekt
         try {
             val paint = Paint().apply { setTypeface(Typeface.DEFAULT) }
@@ -45,7 +45,7 @@ class RealExtensionComicFuryTextCompatTest {
             assertTrue(Files.isRegularFile(apkPath), "Missing immutable ComicFury fixture: $apkPath")
             val diContext = initDesktopDIForTest(
                 appDir = tempDir.resolve("app").toFile(),
-                preferenceStore = DesktopPreferenceStore(),
+                preferenceStore = preferences.store,
             )
             try {
                 val jar = requireNotNull(ApkToJarConverter().convert(apkPath.toFile(), tempDir.toFile()))
@@ -119,6 +119,7 @@ class RealExtensionComicFuryTextCompatTest {
             }
         } finally {
             Injekt = previousInjekt
+            preferences.close()
         }
     }
 

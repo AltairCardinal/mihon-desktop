@@ -18,7 +18,6 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
-import tachiyomi.core.common.preference.DesktopPreferenceStore
 import uy.kohesive.injekt.Injekt
 import java.awt.Color
 import java.awt.image.BufferedImage
@@ -36,6 +35,7 @@ class RealExtensionComixDescramblerCompatTest {
     fun `real Comix client decodes XOR and restores every grid tile`(
         @TempDir tempDir: Path,
     ) = runBlocking {
+        val preferences = IsolatedDesktopPreferenceStore.create()
         val previousInjekt = Injekt
         try {
             val root = repositoryRoot()
@@ -55,7 +55,7 @@ class RealExtensionComixDescramblerCompatTest {
                 server.enqueue(scrambledResponse(fixture, includeGrid = true))
                 val diContext = initDesktopDIForTest(
                     appDir = tempDir.resolve("app").toFile(),
-                    preferenceStore = DesktopPreferenceStore(),
+                    preferenceStore = preferences.store,
                 )
                 try {
                     val jar = requireNotNull(ApkToJarConverter().convert(apkPath.toFile(), tempDir.toFile()))
@@ -102,6 +102,7 @@ class RealExtensionComixDescramblerCompatTest {
             }
         } finally {
             Injekt = previousInjekt
+            preferences.close()
         }
     }
 

@@ -18,9 +18,9 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
-import tachiyomi.core.common.preference.DesktopPreferenceStore
 import uy.kohesive.injekt.Injekt
 import java.lang.reflect.InvocationTargetException
+import java.net.Proxy
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
@@ -32,6 +32,7 @@ class RealExtensionPageListCompatTest {
     fun `real ManHuaGui source client executes its rate limit interceptor`(
         @TempDir tempDir: Path,
     ) = runBlocking {
+        val preferences = IsolatedDesktopPreferenceStore.create()
         val previousInjekt = Injekt
         try {
             val apkPath = repositoryRoot().resolve(APK_PATH)
@@ -41,7 +42,7 @@ class RealExtensionPageListCompatTest {
                 server.enqueue(MockResponse(body = "ok"))
                 val diContext = initDesktopDIForTest(
                     appDir = tempDir.resolve("app").toFile(),
-                    preferenceStore = DesktopPreferenceStore(),
+                    preferenceStore = preferences.store,
                 )
                 try {
                     val convertedJar = ApkToJarConverter().convert(apkPath.toFile(), tempDir.toFile())
@@ -63,8 +64,10 @@ class RealExtensionPageListCompatTest {
                                     Dns.SYSTEM.lookup(hostname)
                                 }
                             }
+                            .proxy(Proxy.NO_PROXY)
                             .build()
                         assertTrue(rewrittenClient.networkInterceptors.containsAll(extensionNetworkInterceptors))
+                        assertSame(Proxy.NO_PROXY, rewrittenClient.proxy)
 
                         val request = Request.Builder()
                             .url("http://$targetHost:${server.port}/codex-rate-limit")
@@ -84,6 +87,7 @@ class RealExtensionPageListCompatTest {
             }
         } finally {
             Injekt = previousInjekt
+            preferences.close()
         }
     }
 
@@ -91,6 +95,7 @@ class RealExtensionPageListCompatTest {
     fun `real ManHuaGui parser returns host Pages through fixed-main constructor ABI`(
         @TempDir tempDir: Path,
     ) = runBlocking {
+        val preferences = IsolatedDesktopPreferenceStore.create()
         val previousInjekt = Injekt
         try {
             val apkPath = repositoryRoot().resolve(APK_PATH)
@@ -98,7 +103,7 @@ class RealExtensionPageListCompatTest {
             assertEquals(APK_SHA256, sha256(apkPath))
             val diContext = initDesktopDIForTest(
                 appDir = tempDir.resolve("app").toFile(),
-                preferenceStore = DesktopPreferenceStore(),
+                preferenceStore = preferences.store,
             )
             try {
                 val convertedJar = ApkToJarConverter().convert(apkPath.toFile(), tempDir.toFile())
@@ -136,6 +141,7 @@ class RealExtensionPageListCompatTest {
             }
         } finally {
             Injekt = previousInjekt
+            preferences.close()
         }
     }
 
