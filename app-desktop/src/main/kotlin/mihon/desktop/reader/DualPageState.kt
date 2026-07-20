@@ -14,8 +14,8 @@ internal fun singlePageBoxOnRight(side: SinglePageSide, isRtl: Boolean): Boolean
 }
 
 /**
- * Desktop product adapter over the shared Mihon pairing state.
- * Cover placement, edge-matched pairs, and landscape parity are explicit Desktop enhancements.
+ * Desktop product adapter that explicitly opts into the fork-added adjacent-page pairing enhancement.
+ * Cover placement, edge-matched pairs, and landscape parity are additional explicit Desktop enhancements.
  */
 class DualPageState(
     val totalPages: Int,
@@ -27,6 +27,7 @@ class DualPageState(
         pageCount = totalPages,
         isRtl = false,
         options = PagePairingOptions(
+            pairAdjacentPortraitPages = true,
             forceFirstPageSingle = true,
             forcedSinglePages = forcedSinglePages,
             matchedPairs = matchedPairs.mapTo(mutableSetOf()) { PagePair(it.first, it.second) },

@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.pager
 
 import mihon.domain.reader.PageLayout
+import mihon.domain.reader.PagePairingOptions
 import mihon.domain.reader.ReaderPagePairing
 
 /** Android compatibility facade over the fork-added shared dual-page pairing enhancement. */
@@ -19,5 +20,6 @@ object PagePairingAlgorithm {
             }
         },
         offset = offset,
+        options = PagePairingOptions(pairAdjacentPortraitPages = true),
     )
 }

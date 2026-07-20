@@ -23,6 +23,7 @@ import mihon.domain.reader.ChapterSkipPolicy
 import mihon.domain.reader.NavigationInversion
 import mihon.domain.reader.NavigationPreset
 import mihon.domain.reader.PageLayout
+import mihon.domain.reader.PagePairingOptions
 import mihon.domain.reader.ReaderChapterEntry
 import mihon.domain.reader.ReaderColorFilterEffect
 import mihon.domain.reader.ReaderNavigation
@@ -43,6 +44,7 @@ class ReaderSharedParityWiringTest {
         val shared = ReaderPagePairing.build(
             pageCount = 5,
             layoutAt = { index -> if (index == 2) PageLayout.SPREAD else PageLayout.PORTRAIT },
+            options = PagePairingOptions(pairAdjacentPortraitPages = true),
         )
 
         assertEquals(shared.map(IntArray::toList), android.map(IntArray::toList))

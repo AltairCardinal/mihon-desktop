@@ -107,12 +107,18 @@ data class PagePair(val first: Int, val second: Int) {
 }
 
 data class PagePairingOptions(
+    /** Fork-added dual-page enhancement; fixed main displays adjacent source pages individually. */
+    val pairAdjacentPortraitPages: Boolean = false,
     val forceFirstPageSingle: Boolean = false,
     val forcedSinglePages: Set<Int> = emptySet(),
     val matchedPairs: Set<PagePair> = emptySet(),
     val preserveParityAfterSpread: Boolean = false,
 )
 
+/**
+ * Shared pairing primitive whose default matches fixed-main pager semantics: one display unit per source page.
+ * Adjacent portrait pairing is a fork-added product enhancement and must be explicitly enabled by a platform adapter.
+ */
 object ReaderPagePairing {
     fun build(
         pageCount: Int,
@@ -156,7 +162,8 @@ object ReaderPagePairing {
                     result += intArrayOf(index, index + 1)
                     index += 2
                 }
-                index + 1 < pageCount &&
+                options.pairAdjacentPortraitPages &&
+                    index + 1 < pageCount &&
                     index + 1 !in singles &&
                     layoutAt(index + 1) == PageLayout.PORTRAIT &&
                     matched[index + 1] != index + 2 -> {
@@ -184,6 +191,7 @@ object ReaderPagePairing {
     }
 }
 
+/** Stateful wrapper over [ReaderPagePairing]; it preserves the caller's explicit pairing options across rebuilds. */
 class ReaderPairingState(
     val pageCount: Int,
     val isRtl: Boolean,

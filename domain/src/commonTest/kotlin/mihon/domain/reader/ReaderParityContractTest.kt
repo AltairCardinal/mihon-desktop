@@ -17,10 +17,32 @@ import org.junit.jupiter.api.Test
 class ReaderParityContractTest {
 
     @Test
+    fun `fixed main pager baseline keeps adjacent source pages as singles`() {
+        val pairings = ReaderPagePairing.build(
+            pageCount = 4,
+            layoutAt = { PageLayout.PORTRAIT },
+        )
+
+        assertEquals(listOf(listOf(0), listOf(1), listOf(2), listOf(3)), pairings.map(IntArray::toList))
+    }
+
+    @Test
+    fun `fixed main R2L pager baseline reverses source pages without pairing them`() {
+        val state = ReaderPairingState(
+            pageCount = 4,
+            isRtl = true,
+            defaultLayout = PageLayout.PORTRAIT,
+        )
+
+        assertEquals(listOf(listOf(3), listOf(2), listOf(1), listOf(0)), state.pairings.map(IntArray::toList))
+    }
+
+    @Test
     fun `fork-added shared portrait pairing enhancement groups adjacent pages`() {
         val pairings = ReaderPagePairing.build(
             pageCount = 4,
             layoutAt = { PageLayout.PORTRAIT },
+            options = PagePairingOptions(pairAdjacentPortraitPages = true),
         )
 
         assertEquals(2, pairings.size)
@@ -29,11 +51,53 @@ class ReaderParityContractTest {
     }
 
     @Test
+    fun `fixed main single-page baseline survives non-pairing Desktop options`() {
+        val layouts: (Int) -> PageLayout = { index ->
+            if (index == 3) PageLayout.SPREAD else PageLayout.PORTRAIT
+        }
+        val optionSets = listOf(
+            PagePairingOptions(forceFirstPageSingle = true),
+            PagePairingOptions(forcedSinglePages = setOf(2)),
+            PagePairingOptions(preserveParityAfterSpread = true),
+            PagePairingOptions(
+                forceFirstPageSingle = true,
+                forcedSinglePages = setOf(2),
+                preserveParityAfterSpread = true,
+            ),
+        )
+
+        optionSets.forEach { options ->
+            val pairings = ReaderPagePairing.build(
+                pageCount = 7,
+                layoutAt = layouts,
+                options = options,
+            )
+
+            assertEquals((0..6).map(::listOf), pairings.map(IntArray::toList), options.toString())
+        }
+    }
+
+    @Test
+    fun `Desktop matched pair remains an independent explicit enhancement`() {
+        val pairings = ReaderPagePairing.build(
+            pageCount = 4,
+            layoutAt = { PageLayout.PORTRAIT },
+            options = PagePairingOptions(
+                pairAdjacentPortraitPages = false,
+                matchedPairs = setOf(PagePair(1, 2)),
+            ),
+        )
+
+        assertEquals(listOf(listOf(0), listOf(1, 2), listOf(3)), pairings.map(IntArray::toList))
+    }
+
+    @Test
     fun `unknown and spread pages stay single without relying on offset`() {
         val layouts = listOf(PageLayout.UNKNOWN, PageLayout.SPREAD, PageLayout.PORTRAIT, PageLayout.PORTRAIT)
         val pairings = ReaderPagePairing.build(
             pageCount = layouts.size,
             layoutAt = layouts::get,
+            options = PagePairingOptions(pairAdjacentPortraitPages = true),
         )
 
         assertEquals(listOf(listOf(0), listOf(1), listOf(2, 3)), pairings.map(IntArray::toList))
@@ -41,7 +105,11 @@ class ReaderParityContractTest {
 
     @Test
     fun `R2L pairing state reverses display units without reversing pages inside a pair`() {
-        val state = ReaderPairingState(pageCount = 4, isRtl = true)
+        val state = ReaderPairingState(
+            pageCount = 4,
+            isRtl = true,
+            options = PagePairingOptions(pairAdjacentPortraitPages = true),
+        )
         repeat(4) { state.updateDimensions(it, width = 100, height = 200) }
 
         assertEquals(listOf(listOf(2, 3), listOf(0, 1)), state.pairings.map(IntArray::toList))
@@ -50,11 +118,18 @@ class ReaderParityContractTest {
 
     @Test
     fun `Desktop cover single is disabled by default and independently enabled`() {
-        val defaultPairings = ReaderPagePairing.build(4, { PageLayout.PORTRAIT })
+        val defaultPairings = ReaderPagePairing.build(
+            4,
+            { PageLayout.PORTRAIT },
+            options = PagePairingOptions(pairAdjacentPortraitPages = true),
+        )
         val coverSingle = ReaderPagePairing.build(
             pageCount = 4,
             layoutAt = { PageLayout.PORTRAIT },
-            options = PagePairingOptions(forceFirstPageSingle = true),
+            options = PagePairingOptions(
+                pairAdjacentPortraitPages = true,
+                forceFirstPageSingle = true,
+            ),
         )
 
         assertEquals(listOf(listOf(0, 1), listOf(2, 3)), defaultPairings.map(IntArray::toList))
@@ -63,11 +138,18 @@ class ReaderParityContractTest {
 
     @Test
     fun `Desktop forced singles are disabled by default and independently enabled`() {
-        val defaultPairings = ReaderPagePairing.build(4, { PageLayout.PORTRAIT })
+        val defaultPairings = ReaderPagePairing.build(
+            4,
+            { PageLayout.PORTRAIT },
+            options = PagePairingOptions(pairAdjacentPortraitPages = true),
+        )
         val forcedSingle = ReaderPagePairing.build(
             pageCount = 4,
             layoutAt = { PageLayout.PORTRAIT },
-            options = PagePairingOptions(forcedSinglePages = setOf(1)),
+            options = PagePairingOptions(
+                pairAdjacentPortraitPages = true,
+                forcedSinglePages = setOf(1),
+            ),
         )
 
         assertEquals(listOf(listOf(0, 1), listOf(2, 3)), defaultPairings.map(IntArray::toList))
@@ -76,11 +158,18 @@ class ReaderParityContractTest {
 
     @Test
     fun `Desktop edge matching is disabled by default and independently enabled`() {
-        val defaultPairings = ReaderPagePairing.build(5, { PageLayout.PORTRAIT })
+        val defaultPairings = ReaderPagePairing.build(
+            5,
+            { PageLayout.PORTRAIT },
+            options = PagePairingOptions(pairAdjacentPortraitPages = true),
+        )
         val edgeMatched = ReaderPagePairing.build(
             pageCount = 5,
             layoutAt = { PageLayout.PORTRAIT },
-            options = PagePairingOptions(matchedPairs = setOf(PagePair(1, 2))),
+            options = PagePairingOptions(
+                pairAdjacentPortraitPages = true,
+                matchedPairs = setOf(PagePair(1, 2)),
+            ),
         )
 
         assertEquals(listOf(listOf(0, 1), listOf(2, 3), listOf(4)), defaultPairings.map(IntArray::toList))
@@ -90,11 +179,18 @@ class ReaderParityContractTest {
     @Test
     fun `Desktop landscape parity is disabled by default and independently enabled`() {
         val layoutAt: (Int) -> PageLayout = { if (it == 1) PageLayout.SPREAD else PageLayout.PORTRAIT }
-        val defaultPairings = ReaderPagePairing.build(5, layoutAt)
+        val defaultPairings = ReaderPagePairing.build(
+            5,
+            layoutAt,
+            options = PagePairingOptions(pairAdjacentPortraitPages = true),
+        )
         val parityPreserved = ReaderPagePairing.build(
             pageCount = 5,
             layoutAt = layoutAt,
-            options = PagePairingOptions(preserveParityAfterSpread = true),
+            options = PagePairingOptions(
+                pairAdjacentPortraitPages = true,
+                preserveParityAfterSpread = true,
+            ),
         )
 
         assertEquals(listOf(listOf(0), listOf(1), listOf(2, 3), listOf(4)), defaultPairings.map(IntArray::toList))
@@ -236,7 +332,12 @@ class ReaderParityContractTest {
     fun `fixed original Mihon navigation presets support horizontal vertical and combined inversion`() {
         assertEquals(
             ReaderNavigationCommand.Previous,
-            ReaderNavigation.commandAt(0.1f, 0.5f, NavigationPreset.RIGHT_AND_LEFT),
+            ReaderNavigation.commandAt(
+                0.1f,
+                0.5f,
+                NavigationPreset.RIGHT_AND_LEFT,
+                direction = ReaderDirection.LTR,
+            ),
         )
         assertEquals(
             ReaderNavigationCommand.Next,
@@ -244,6 +345,7 @@ class ReaderParityContractTest {
                 0.1f,
                 0.5f,
                 NavigationPreset.RIGHT_AND_LEFT,
+                direction = ReaderDirection.LTR,
                 inversion = NavigationInversion.HORIZONTAL,
             ),
         )
@@ -253,6 +355,7 @@ class ReaderParityContractTest {
                 0.5f,
                 0.1f,
                 NavigationPreset.L,
+                direction = ReaderDirection.LTR,
                 inversion = NavigationInversion.VERTICAL,
             ),
         )
@@ -262,6 +365,7 @@ class ReaderParityContractTest {
                 0.5f,
                 0.9f,
                 NavigationPreset.L,
+                direction = ReaderDirection.LTR,
                 inversion = NavigationInversion.BOTH,
             ),
         )
