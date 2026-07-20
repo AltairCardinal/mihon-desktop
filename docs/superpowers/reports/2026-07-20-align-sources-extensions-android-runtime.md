@@ -1,7 +1,9 @@
 # Android source/extension runtime evidence (current consumer)
 
-Date: 2026-07-20  
-Scope: `align-sources-extensions` Task 7D24  
+Date: 2026-07-20
+
+Scope: `align-sources-extensions` Task 7D24
+
 Authority boundary: this report verifies the current Android consumer only. It is not evidence for fixed-main original Mihon authority.
 
 ## Artifact and device
@@ -61,4 +63,3 @@ Reproducible command output, UI dumps, screenshots and logs are under `.test-tmp
 - `device-summary.txt`, `install.log`, `instrumentation-browse-retry.log`
 - `04-extensions.*`, `06-extensions-trusted.*`, `07-sources.*`, `08-sources-pinned.xml`
 - `10-global-empty.*`, `14-tcb-popular-wait.*`, `18-mangadex-popular.*`
-
