@@ -2100,11 +2100,12 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
 - Risk axis: `global-search-compose-await`
 - Platform boundary: `verification`
-- Estimated scope: `1 file, 35 lines`
-- Scope correction: 统一该测试类 10 个异步边界与 4 个 Compose pump，并移除固定 delay import 后实际为 31 touched lines；保持单文件机械测试修复。
+- Estimated scope: `1 file, 75 lines`
+- Scope correction: 统一该测试类 10 个异步边界与 4 个 Compose pump，并移除固定 delay import 后初始为 31 touched lines；后续 full-build RED 证明单槽 latest-row 探针受多个真实 collector 乱序覆盖，最终单文件累计约 48 touched，仍保持在一个机械测试修复 Task 内。
 - Verification: 7D4e 后 full Desktop 1764 tests 仅 `GlobalSearchResultProductionWiringTest.only composed cards observe canonical database rows without another search` 在初始 2s render/delay轮询超时；同类 focused 曾通过且前一次 full suite亦通过，证明是 suite负载下的有界调度竞态，不是稳定的 production state失败。统一该类异步等待的非零但负载容忍上限，并将 Compose pump 的固定10ms睡眠改为 render/yield，让等待释放调度而不累计人为延迟；所有状态/DB/导航/错误断言保持不变。focused 连续验证后重跑 full Desktop JVM；不得改 production、删除断言或使用无限等待。
   Evidence: commit `f1f97d84b`，严格 1 test file / 31 touched lines。统一 10 个异步边界为有界 5s，4处 Compose固定 delay改为 render/yield；DB写入/订阅集合、导航栈幂等、详情输入、查询次数、新旧结果隔离与错误反馈断言全部保留。RED 为 full-suite 2s timeout；focused 2/2连续两轮 GREEN（第二轮 `--rerun-tasks`），随后 full Desktop 1764 tests / 0 failed / 2 skipped。独立 review APPROVED、diff-check clean、Java0。
-  Follow-up evidence: full Desktop under the later headless lifecycle changes proved the same initial propagation boundary can exceed 5s under suite load while focused remains green. Commit `8c3c1ff6f` raises only the shared bounded test timeout to 15s; no production code or assertion changed. Forced focused rerun 2/2 and fresh full Desktop 1769 tests / 0 failed / 0 errors / 2 skipped passed; independent review APPROVED.
+  Follow-up evidence: later full Desktop first exceeded the 5s suite-load budget, so commit `8c3c1ff6f` raised the still-bounded timeout to 15s; a subsequent `build-desktop.sh` RED still timed out at the wrapped repository's single-slot `latestRows` probe, disproving timeout-only sufficiency. Final commit `0545cbb04` replaces that non-monotonic probe with a concurrent set of observed `(source,url,title)` emissions and removes a test-only extra unwrapped `GetManga.subscribe().first` collector. Database update/current read, production wrapped Flow emission, and final Compose title/favorite/cover/navigation assertions all remain. Focused 2/2, full Desktop 1769/0/2, BUILD24 packaging, and smoke 88/88 passed; final independent review APPROVED.
+  Final-load evidence: Windows `build-desktop.sh` and the independent macOS run each later observed one initial-render timeout while the same focused class immediately passed, and all subsequent full-suite assertions remained green. Commit `848be99cc` therefore keeps the shared 15s budget for every later boundary, gives only the initial combined repository-observation plus two-row Compose materialization boundary a bounded 30s budget, and emits observed rows, active subscriptions, and rendered text on failure. It does not change production, collection topology, or assertions. A fresh direct full Desktop run passed 1770/0/2; the final build-script run remains the delivery gate.
 
   Conditional flow: 完成 7D4a–7D4d 后重跑 full Desktop JVM；若 `GlobalSearchResultProductionWiringTest` 仍只在 full-suite 负载下超时，另立 ≤2 files/60 lines 的 `global-search-compose-await` Task，先以有界重复/组合复现证明 frame propagation root cause，再调整测试 pump；若不再失败则不创建该 Task。
 
@@ -2120,11 +2121,13 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Windows 只运行 `./scripts/build-desktop.sh`，启动 `D:\Shell\Github\mihon\app-desktop\tmp\mihon-dist\main\app\Mihon Desktop\Mihon Desktop.exe`，核对窗口完整版本、mtime、安装/更新/失败回滚、浏览/搜索、登录后备和文件工具；运行 `./scripts/desktop-smoke-test.sh`。通过 `ssh mbp` 在安全临时 clone 运行相关测试/构建，部署并启动 `/Applications/Mihon Desktop.app`，不覆盖远端用户仓库。
 
+  Windows evidence: the first post-repair build consumed BUILD23 but stopped at the now-superseded Global Search probe RED and produced no accepted artifact. The next required `scripts/build-desktop.sh` run advanced to and validated `Mihon Desktop 0.11.14.24.0545cbb`; full Desktop was 1769 tests / 0 failed / 2 skipped, and the canonical unpackaged EXE is `D:\Shell\Github\mihon\app-desktop\tmp\mihon-dist\main\app\Mihon Desktop\Mihon Desktop.exe`. The same packaged EXE in `--test-mode --test-http-port=8080 --headless` remained alive after HTTP readiness plus 8 seconds, returned health `ok`, `testMode=true`, 9 screens and 18 actions, then was cleaned up. `scripts/desktop-smoke-test.sh` was routed through Git Bash with process-local JDK21 because the default `bash` was WSL and mangled Windows `JAVA_HOME`; the real smoke run passed 8 suites / 88 tests / 0 failures.
+
 ##### Task 7D6a: Headless Test Mode process lifetime
 
 - Risk axis: `desktop-headless-test-lifecycle`
 - Platform boundary: `desktop`
-- Estimated scope: `3 files, 240 lines`
+- Estimated scope: `3 files, 260 lines`
 - Scope correction: macOS packaged runtime proved that Ktor's `start(wait = true)` can return after binding, so the repair must give each start generation an independent termination signal, retain and explicitly stop the engine, and cover stop/restart isolation in the existing lifecycle test file; this remains three files and below the Task split threshold.
 - Verification: Windows canonical EXE `0.11.14.22.df46bdd` 已通过build script窗口版本验收，但按文档以 `--test-mode --test-http-port=8080 --headless` 启动后约4秒正常退出且8080无listener；production `Main` 在异步 `TestMode.start()` 后遇headless直接return，JVM只剩daemon线程。先以可控await/stop与真实 `DesktopAppRuntime` 建立生命周期RED：test-mode+headless必须阻塞、释放后stop TestMode并close runtime；非headless不得阻塞或关闭。GREEN让 TestMode暴露等待server job结束的边界，Main只在test-mode headless进入该边界并finally清理；不得用sleep/无限轮询或让普通GUI启动阻塞。focused/full tests后重新完整构建固定EXE，实启headless并读取 `/test/state`，再运行desktop smoke。
   Evidence: commits `f1b32eee6`, `43682df5a`, `970ecdd10`, and `302b1fb17`, cumulatively 3 files / 236 touched. RED was the canonical EXE exiting in about four seconds plus unresolved production helper compilation. GREEN gives each start generation an immutable `TestModeRun`, retains the actual Ktor engine after non-blocking start, releases only on startup failure or stop, explicitly stops the engine, and guarantees every cleanup step plus termination even when engine stop throws. Regression tests cover headless wait/cleanup, GUI non-blocking behavior, old-run isolation, and throwing-stop release; focused 12/12 and fresh full Desktop 1769/0/2 passed. Two repair reviews found and drove the cross-generation and stop-exception fixes; final independent review APPROVED.
@@ -2136,6 +2139,80 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `2 files, 80 lines`
 - Verification: macOS packaged GUI test mode proves `/test/state` reports `testMode=true` while `screens` and `actions` are always empty because the production HTTP route hard-codes empty arrays instead of reading the lists registered by `TestMode.start`. First add a production HTTP integration RED that registers sentinel capabilities and observes the state endpoint, then serialize `applicationState.screens/actions` without copying registration rules into the route. Preserve reset semantics and existing endpoint fields; focused/full tests and packaged Windows/macOS `/test/state` must show non-empty registered capabilities.
   Evidence: commit `743ffffef`, strictly 2 files / 40 touched. The real embedded production HTTP route RED returned empty arrays after sentinel registration; GREEN serializes `applicationState.screens/actions` directly without copying capability rules. Focused 2/2 and fresh full Desktop 1769/0/2 passed; independent review APPROVED.
+
+##### Task 7D7: Touched source browse UI localization
+
+- Risk axis: `desktop-source-ui-localization`
+- Platform boundary: `desktop`
+- Estimated scope: `4 files, 220 lines`
+- Scope correction: the existing end-to-end filter scenario is intentionally kept as one behavior test and wrapped in an explicit locale restoration boundary; together with exact structured ContentDescription checks this produced 204 touched lines across the same four files, still below the Task split threshold.
+- Verification: final thorough review found newly touched SourceBrowse/Browse controls and Pin/Unpin semantics hard-coded in English while existing MR resources already provide popular/latest/filter/apply/reset/cancel/ascending/descending/pin/unpin. First change the existing production Compose wiring tests to run under zh-CN and assert current-locale MR strings through rendered semantics, proving the English constants fail. Then replace only the touched production literals with MR accessors; do not add duplicate resources or change filter/query/pin behavior. Focused source browse/filter tests, full Desktop, and final review must pass.
+  Evidence: commit `211b50ad3`, strictly 2 production + 2 existing test files / 204 touched lines. The zh-CN RED had exactly the two target tests fail because localized labels could not be found; GREEN reuses the fixed-main MR resources for Popular/Latest/Filter/Apply/Reset/Cancel/Ascending/Descending and Pin/Unpin, while retaining the source name in accessibility descriptions. Pin/Unpin tests read exact `ContentDescription` list values so Chinese `取消置顶` containing `置顶` cannot create a substring false positive. Focused 2 suites / 50 tests / 0 failures and root Spotless 61 tasks passed; independent re-review APPROVED with 0 Critical/Important/Minor.
+
+##### Task 7D8: Fixed-main global-search source ordering
+
+- Risk axis: `global-search-source-order`
+- Platform boundary: `shared`
+- Estimated scope: `2 files, 100 lines`
+- Verification: the current shared `GlobalSearchSourcePolicy.select` only filters and explicitly preserves candidate order, while fixed main `SearchScreenModel.getEnabledSources()` orders pinned sources first and then by normalized name plus language. First add a fixed-main-derived contract RED with interleaved pinned/unpinned and name/language inputs, then implement the same comparator after filtering. `PinnedOnly` must still exclude unpinned sources; `All` must retain them after pinned sources. Do not use the current Android consumer as expected-value authority.
+  Evidence: commit `cc223a10a`, strictly shared policy + existing contract test. The interleaved candidate RED failed only the new fixed-main ordering assertion; GREEN filters first, then orders pinned sources before unpinned and normalizes name/language exactly as fixed-main `SearchScreenModel`. Focused 2/2 and shared `:domain:spotlessCheck` passed; diff-check clean.
+
+##### Task 7D9: Fixed-main extension presentation comparator
+
+- Risk axis: `extension-presentation-sort`
+- Platform boundary: `shared`
+- Estimated scope: `2 files, 100 lines`
+- Verification: shared extension projection currently sorts through `name.lowercase()`, whereas fixed main uses `String.CASE_INSENSITIVE_ORDER` for installed, untrusted, and available lists. Add mixed-case/non-ASCII comparator fixtures derived from fixed main and prove the current ordering differs where relevant; then use one locale-independent case-insensitive comparator for all three lists without changing obsolete/update partitioning, NSFW filtering, language projection, or Desktop-only metadata.
+  Evidence: commit `f0534755e`, strictly shared store + existing contract test. The Unicode RED proved lowercase-key reordered `İ/i` and `Σ/ς` that fixed-main's case-insensitive comparator treats as equal with stable input order. GREEN uses common `compareTo(ignoreCase = true)` for installed after the obsolete key, untrusted, and available; focused 5/5 and shared `:domain:spotlessCheck` passed, diff-check clean.
+
+##### Task 7D10: Fixed-main empty-page and append-retry semantics
+
+- Risk axis: `source-empty-page-recovery`
+- Platform boundary: `shared`
+- Estimated scope: `5 files, 260 lines`
+- Verification: fixed main converts every empty source page to `NoResultsException`; the presentation renders an empty first page but an empty append remains a visible retryable append error. Current shared `SourcePageResult.Empty` silently terminates append pagination and current Android/Desktop consumers inherited that rewrite. Add shared reducer RED plus current Android and Desktop consumer assertions: first-page empty remains the localized no-results product state, while page>1 empty preserves existing rows and exposes a retry action for the same request. Implement an explicit shared no-results error/state instead of `Unknown` or copied UI rules, and keep 403/429/500/malformed/cancellation behavior unchanged.
+
+##### Task 7D11: Desktop source-browse canonical result wiring
+
+- Risk axis: `source-browse-canonical-result`
+- Platform boundary: `desktop`
+- Estimated scope: `6 files, 360 lines`
+- Verification: fixed main `BaseSourcePagingSource` performs URL de-duplication, `SManga.toDomainManga(sourceId)`, and `NetworkToLocalManga` before publishing rows; `BrowseSourceScreenModel` then observes `GetManga.subscribe(url, source)` so favorite/title/cover changes propagate. Desktop currently renders raw `SManga` and only persists on click. First add a real repository/Compose RED proving rows are canonical before click and a DB update changes the mounted card without a new network search. Reuse the existing repository/interactors and dependency boundary; preserve Desktop wide-grid layout, login recovery, generation/CAS behavior, de-duplicated detail navigation, raw-source background refresh, and all file tools.
+
+##### Task 7D12: Reactive Desktop source membership
+
+- Risk axis: `source-membership-reactivity`
+- Platform boundary: `desktop`
+- Estimated scope: `5 files, 300 lines`
+- Verification: fixed main `AndroidSourceManager.sourcesMapFlow` is rebuilt from installed-extension flow and `SourcesScreenModel` continuously collects it; Desktop still returns `flowOf(getCatalogueSources())` and `BrowseTab` snapshots via `remember`. Add a production wiring RED that installs/reloads/uninstalls a controlled extension while the same mounted Browse screen remains alive and observes source membership changes. Drive the flow from `DesktopExtensionManager.installedExtensions`, keep built-in/local sources and Desktop loader/repository behavior, and do not poll or rebuild the Screen manually.
+
+##### Task 7D13: Fixed-main source list projection and last-used boundary
+
+- Risk axis: `source-list-upstream-projection`
+- Platform boundary: `desktop`
+- Estimated scope: `6 files, 360 lines`
+- Verification: fixed main projects last-used first, then pinned, then language groups, and records last-used only outside incognito. Desktop currently renders pinned then alphabetic and never records last-used. Add projection contract REDs from fixed-main `GetEnabledSources`/`SourcesScreenModel`, plus a real navigation/wiring RED proving entry into a source updates last-used only when incognito is off and reorders the still-mounted list. Reuse Desktop preferences and reactive membership from 7D12; preserve wide-screen cards, pin buttons, hidden/language filters, Extensions empty action, and long-click pin behavior.
+
+##### Task 7D14: Extension-details source state ownership
+
+- Risk axis: `extension-details-source-state`
+- Platform boundary: `desktop`
+- Estimated scope: `6 files, 360 lines`
+- Verification: fixed main `GetExtensionSources` continuously observes disabled-source preferences, sorts enabled-first/display-name, and exposes single plus enable-all/disable-all actions through `ExtensionDetailsScreenModel`. Desktop details currently stores enabled flags in per-row `remember`. Add external-preference-update and enable-all/disable-all production wiring REDs, then move ownership into the existing shared presentation model/port and real preference adapter. Keep Desktop repository metadata, cookie tools, folder actions, uninstall behavior, and wide layout unchanged.
+
+##### Task 7D15: Fixed-main obsolete and NSFW details feedback
+
+- Risk axis: `extension-details-upstream-feedback`
+- Platform boundary: `desktop`
+- Estimated scope: `5 files, 300 lines`
+- Verification: fixed-main extension details presents obsolete and NSFW/age-rating warnings with user-visible feedback; Desktop details omits both despite having the projection data and existing MR resources. Add zh-CN rendered-semantics REDs for representative obsolete and NSFW extensions, then wire the fixed-main copy and acknowledgement behavior through the Desktop screen/model. Do not remove Desktop SHA/repository/folder/cookie metadata or invent a platform exception.
+
+##### Task 7D16: Extension-list ScreenModel action routing
+
+- Risk axis: `extension-list-action-routing`
+- Platform boundary: `desktop`
+- Estimated scope: `5 files, 320 lines`
+- Verification: fixed main routes refresh/install/update/cancel/trust/uninstall actions through `ExtensionsScreenModel`; Desktop list still calls the manager directly for reload and uninstall, bypassing typed state/error feedback already present in its model/port. Add mutation-sensitive wiring REDs proving the visible actions call the model and surface failure without direct manager calls, then remove only the bypass. Preserve Desktop transactional installer, rollback, repository identity, update-all, cancellation, and terminal diagnostics.
 
 - [ ] **Step 7: 独立批次与最终审查**
 

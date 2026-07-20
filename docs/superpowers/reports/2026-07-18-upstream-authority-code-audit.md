@@ -398,3 +398,24 @@ Desktop `ExtensionDetailsScreen.kt:146-269` 没有呈现 projection 中的 `isOb
 ### 本轮未发现新增混淆的区域
 
 Task 7 compatibility 施工仍固定 `authorityRef = main@6fbf6dfc`，真实 APK 均有本地 SHA/provenance；Page ABI 以 fixed-main Uri descriptor 为兼容目标，View/WebView 仅完成 verifier 的类型仍保持 `unverified`，WebView fail-fast 也没有冒充 Android 浏览器支持。因此 Task 7C 当前施工没有新增“当前 app 或 Desktop Android shim 充当原版权威”的证据。
+
+## 11. 2026-07-18 Task 7 最终门禁并行复扫
+
+审查范围为 `852221f42..211b50ad3` 的 source/extension production、shared contract、当前 Android consumer、Desktop consumer/adapter、测试 fixture、manifest、OpenSpec 与维护文档。固定原版权威仍为 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`；当前 `app/` 只作为 consumer，Desktop `android/**` 只作为平台 adapter。
+
+本轮没有发现 Critical、Desktop 独有能力删除或 shim 冒充原版。确认下列尚未闭合的 Important，并已追加到活动计划：
+
+| 审计项 | 当前偏差 | fixed-main 证据 | 整改 Task |
+|---|---|---|---|
+| C21 | 单源 Browse 发布 raw `SManga`，仅点击时持久化，数据库变化不回写卡片 | `data/.../SourcePagingSource.kt:42-59` 的去重、domain mapping、`NetworkToLocalManga`；`BrowseSourceScreenModel.kt:105-117` 的 DB 观察 | 7D11 `source-browse-canonical-result` |
+| C22 | 空 append page 静默结束，丢失原版 retryable append error | `SourcePagingSource.kt:49-67` 对任意空页产生 `NoResultsException`/`LoadResult.Error` | 7D10 `source-empty-page-recovery` |
+| C23 | Global Search 请求调度保留候选输入顺序 | fixed-main `SearchScreenModel.kt:86-94` 为 pinned-first，再按 name/language | 7D8 `global-search-source-order` |
+| C14 复核 | Desktop 源成员仍为 `flowOf` + Compose `remember` 快照 | `AndroidSourceManager.kt:40-68` 与 `SourcesScreenModel.kt:36-44` 持续收集安装扩展变化 | 7D12 `source-membership-reactivity` |
+| C15 复核 | 缺 last-used、incognito 写入边界及 last-used/pinned/language 投影 | `GetEnabledSources.kt:18-40`、`SourcesScreenModel.kt:47-80`、`BrowseSourceScreenModel.kt:97-99` | 7D13 `source-list-upstream-projection` |
+| C16 复核 | Extension Details 在 Composable `remember` 中维护源启停，无外部观察与全部启停 | `GetExtensionSources.kt:13-29`、`ExtensionDetailsScreenModel.kt:64-85,125-133` | 7D14 `extension-details-source-state` |
+| C17 复核 | Extension Details 未显示 obsolete/NSFW 反馈 | fixed-main presentation `ExtensionDetailsScreen.kt:168-215` | 7D15 `extension-details-upstream-feedback` |
+| C18 复核 | Extension List 卸载/reload 绕过已有 ScreenModel/typed port | fixed-main `ExtensionsTab.kt:57-92` 所有动作经 ScreenModel | 7D16 `extension-list-action-routing` |
+
+同时确认一个 Minor：shared 扩展排序的 `name.lowercase()` 与 fixed-main `String.CASE_INSENSITIVE_ORDER` 不是逐字同一 comparator；无参 `lowercase()` 本身是 locale-invariant，不能错误归因为 Turkish locale。7D9 必须先以 Unicode/mixed-case 对抗 fixture 证明真实差异；若不能取得 RED，则只保留 characterization，不得为对齐外观伪造 production 变更。
+
+完成状态也必须在上述行为 Task 通过后再纠正：OpenSpec 3.4、parity manifest ID 29/37、source-extension authority baseline 以及本报告旧结论不得先于真实 wiring 提升。历史比较文档继续保留原文，但需增加 superseded 提示；“Android authority”统一改为“fixed-main original Mihon authority”，避免再次把当前 Android consumer 当作 expected-value 来源。
