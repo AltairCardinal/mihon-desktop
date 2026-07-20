@@ -2119,6 +2119,13 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Windows 只运行 `./scripts/build-desktop.sh`，启动 `D:\Shell\Github\mihon\app-desktop\tmp\mihon-dist\main\app\Mihon Desktop\Mihon Desktop.exe`，核对窗口完整版本、mtime、安装/更新/失败回滚、浏览/搜索、登录后备和文件工具；运行 `./scripts/desktop-smoke-test.sh`。通过 `ssh mbp` 在安全临时 clone 运行相关测试/构建，部署并启动 `/Applications/Mihon Desktop.app`，不覆盖远端用户仓库。
 
+##### Task 7D6a: Headless Test Mode process lifetime
+
+- Risk axis: `desktop-headless-test-lifecycle`
+- Platform boundary: `desktop`
+- Estimated scope: `3 files, 100 lines`
+- Verification: Windows canonical EXE `0.11.14.22.df46bdd` 已通过build script窗口版本验收，但按文档以 `--test-mode --test-http-port=8080 --headless` 启动后约4秒正常退出且8080无listener；production `Main` 在异步 `TestMode.start()` 后遇headless直接return，JVM只剩daemon线程。先以可控await/stop与真实 `DesktopAppRuntime` 建立生命周期RED：test-mode+headless必须阻塞、释放后stop TestMode并close runtime；非headless不得阻塞或关闭。GREEN让 TestMode暴露等待server job结束的边界，Main只在test-mode headless进入该边界并finally清理；不得用sleep/无限轮询或让普通GUI启动阻塞。focused/full tests后重新完整构建固定EXE，实启headless并读取 `/test/state`，再运行desktop smoke。
+
 - [ ] **Step 7: 独立批次与最终审查**
 
   `review_mode: thorough`：每个高风险边界或最多 3 个 Task 运行合并 spec+quality review，最后对 `852221f42..HEAD` 运行完整审查。Critical/Important 必须修复并重新运行覆盖测试；Minor 记录到持久进度并交最终审查裁定。
