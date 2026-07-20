@@ -33,6 +33,7 @@ import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.extension.DesktopExtensionApi
+import mihon.desktop.extension.DesktopExtensionLoader
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.extension.ExtensionOrigin
 import mihon.desktop.extension.InstalledExtension
@@ -106,7 +107,10 @@ class ExtensionDetailsPreferencesWiringTest {
         val preferences = DesktopAppPreferences(
             DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")),
         )
-        val sourceManager = mockk<DesktopSourceManager>(relaxed = true)
+        val sourceExtensionManager = DesktopExtensionManager(
+            loader = DesktopExtensionLoader(tempDir.resolve("source-manager-extensions")),
+        )
+        val sourceManager = DesktopSourceManager(sourceExtensionManager, preferences, emptyList())
         val model = ExtensionsScreenModel(
             DesktopExtensionPresentationPort(
                 api,
@@ -225,6 +229,7 @@ class ExtensionDetailsPreferencesWiringTest {
         } finally {
             scene.close()
             model.closeAndJoin()
+            sourceExtensionManager.close()
             Injekt = previous
         }
     }

@@ -3,8 +3,8 @@ package mihon.desktop.i18n
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
-import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import cafe.adriel.voyager.navigator.Navigator
 import dev.mihon.injekt.patchInjekt
@@ -29,12 +29,13 @@ import mihon.desktop.ui.extension.DesktopExtensionPresentationPort
 import mihon.desktop.ui.extension.ExtensionDetailsScreen
 import mihon.desktop.ui.extension.ExtensionsScreenModel
 import mihon.desktop.ui.extension.extensionVersionCopy
-import mihon.domain.extension.model.ExtensionCatalogResult
 import mihon.domain.extension.model.ExtensionArtifact
 import mihon.domain.extension.model.ExtensionCatalogEntry
+import mihon.domain.extension.model.ExtensionCatalogResult
 import mihon.domain.extension.model.ExtensionCompatibility
 import mihon.domain.extension.model.RepositoryIdentity
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -68,6 +69,14 @@ class DesktopExtensionDetailsMetadataCopyTest {
             repoUrl = "https://obsolete.example", repoName = "Example Repository", repoFingerprint = "fingerprint-example",
             origin = ExtensionOrigin.COMPILED_JAR, isNsfw = true,
         )
+        val ordinaryJar = directory.resolve("ordinary.jar").also { it.writeText("ordinary-extension") }
+        val ordinaryExtension = InstalledExtension(
+            ordinaryJar,
+            listOf(source),
+            displayName = "Ordinary Extension",
+            versionName = "1.2.3-raw",
+            origin = ExtensionOrigin.COMPILED_JAR,
+        )
         val catalog = ExtensionCatalogResult(
             entries = listOf(
                 ExtensionCatalogEntry(
@@ -96,7 +105,7 @@ class DesktopExtensionDetailsMetadataCopyTest {
         }
         val manager = mockk<DesktopExtensionManager>(relaxed = true)
         val model = ExtensionsScreenModel(
-            DesktopExtensionPresentationPort(api, manager, MutableStateFlow(listOf(extension))), this,
+            DesktopExtensionPresentationPort(api, manager, MutableStateFlow(listOf(extension, ordinaryExtension))), this,
             ExtensionPresentationOptions(false, setOf("en")),
         )
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
@@ -114,7 +123,7 @@ class DesktopExtensionDetailsMetadataCopyTest {
             patchInjekt()
             Injekt.addSingleton(model)
             withTimeout(5_000) { model.refresh().join() }
-            withTimeout(5_000) { model.state.first { it.projection?.installed?.singleOrNull()?.installed === extension } }
+            withTimeout(5_000) { model.state.first { state -> state.projection?.installed?.any { it.installed === extension } == true } }
             listOf(Locale.forLanguageTag("zh-CN"), Locale.US).forEach { locale ->
                 Locale.setDefault(locale)
                 scene.setContent {
@@ -150,6 +159,25 @@ class DesktopExtensionDetailsMetadataCopyTest {
                     renderUntil(scene, MR.strings.ext_nsfw_warning.localized(locale))
                     assertTrue(MR.strings.ext_nsfw_warning.localized(locale) in texts(scene))
                     click(scene, MR.strings.action_ok.localized(locale))
+                    renderUntilAbsent(scene, MR.strings.ext_nsfw_warning.localized(locale))
+
+                    scene.setContent {
+                        CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                            Navigator(ExtensionDetailsScreen(ordinaryJar.absolutePath)) {
+                                ExtensionDetailsScreen(ordinaryJar.absolutePath).Content()
+                            }
+                        }
+                    }
+                    renderUntil(scene, ordinaryExtension.name)
+                    val ordinaryRendered = texts(scene)
+                    listOf(
+                        MR.strings.obsolete_extension_message.localized(locale),
+                        MR.strings.ext_nsfw_short.localized(locale),
+                        MR.strings.ext_info_age_rating.localized(locale),
+                        MR.strings.ext_nsfw_warning.localized(locale),
+                    ).forEach { copy ->
+                        assertFalse(copy in ordinaryRendered, "Ordinary extension unexpectedly rendered '$copy': $ordinaryRendered")
+                    }
                 }
             }
         } finally {
@@ -162,6 +190,10 @@ class DesktopExtensionDetailsMetadataCopyTest {
 
     private suspend fun renderUntil(scene: ImageComposeScene, text: String) = withTimeout(5_000) {
         while (texts(scene).none { it.contains(text) }) { scene.render(); yield() }
+    }
+
+    private suspend fun renderUntilAbsent(scene: ImageComposeScene, text: String) = withTimeout(5_000) {
+        while (text in texts(scene)) { scene.render(); yield() }
     }
 
     private fun click(scene: ImageComposeScene, label: String) {
