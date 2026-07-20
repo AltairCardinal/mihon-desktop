@@ -5,6 +5,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import io.mockk.coEvery
@@ -29,6 +30,8 @@ import tachiyomi.core.common.preference.Preference
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.i18n.MR
+import java.util.Locale
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.prefs.Preferences
 import kotlin.coroutines.CoroutineContext
 
@@ -56,19 +59,21 @@ class SourceLastUsedWiringTest {
         val lastUsed = store.getLong(Preference.appStateKey("last_catalogue_source"), -1L)
         val alpha = FakeSource(201, "en", "Alpha projection source")
         val zeta = FakeSource(202, "en", "Zeta projection source")
-        val scene = mountedScene(preferences, listOf(alpha, zeta), coroutineContext)
+        val mounted = mountedScene(preferences, listOf(alpha, zeta), coroutineContext)
+        val scene = mounted.scene
 
         try {
             assertEquals(-1L, lastUsed.get())
             awaitRows(scene, listOf(alpha.name, zeta.name))
+            assertTrue(
+                texts(scene).contains(
+                    DesktopSourceGroupLabeler.displayName(DesktopSourceGroupKey.Language("en"), Locale.getDefault()),
+                ),
+            )
 
             clickSource(scene, zeta.name)
-            withTimeout(2_000) {
-                while (lastUsed.get() != zeta.id) {
-                    scene.render()
-                    delay(10)
-                }
-            }
+            awaitBrowseDetails(mounted, zeta.name) { lastUsed.get() == zeta.id }
+            assertEquals(zeta.id, lastUsed.get())
             val back = nodes(scene).first { it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains("Back") }
             assertTrue(requireNotNull(back.config[SemanticsActions.OnClick].action).invoke())
             awaitRows(scene, listOf(zeta.name, alpha.name, zeta.name))
@@ -83,30 +88,30 @@ class SourceLastUsedWiringTest {
     }
 
     @Test
-    fun `real navigation does not replace last used in global or extension incognito`() = runBlocking {
+    fun `real navigation records last used except for matching global or extension incognito`() = runBlocking {
         listOf(
-            Triple(true, emptySet<String>(), null),
-            Triple(false, setOf("incognito.extension"), "incognito.extension"),
-        ).forEachIndexed { index, (globalIncognito, incognitoExtensions, extensionPackage) ->
+            LastUsedScenario(true, emptySet(), null, shouldRecord = false),
+            LastUsedScenario(false, setOf("incognito.extension"), "incognito.extension", shouldRecord = false),
+            LastUsedScenario(false, setOf("other.extension"), "current.extension", shouldRecord = true),
+            LastUsedScenario(false, setOf("other.extension"), null, shouldRecord = true),
+        ).forEachIndexed { index, scenario ->
             val root = Preferences.userRoot().node("/mihon/source-last-used-incognito/$index-${System.nanoTime()}")
             val store = DesktopPreferenceStore(root)
             val preferences = DesktopAppPreferences(store).apply {
                 enabledLanguages.set(setOf("en"))
-                incognitoMode.set(globalIncognito)
-                this.incognitoExtensions.set(incognitoExtensions)
+                incognitoMode.set(scenario.globalIncognito)
+                incognitoExtensions.set(scenario.incognitoExtensions)
             }
             val lastUsed = store.getLong(Preference.appStateKey("last_catalogue_source"), -1L).apply { set(301L) }
             val source = FakeSource(302 + index.toLong(), "en", "Incognito projection source $index")
-            val scene = mountedScene(preferences, listOf(source), coroutineContext, extensionPackage)
+            val mounted = mountedScene(preferences, listOf(source), coroutineContext, scenario.extensionPackage)
             try {
-                clickSource(scene, source.name)
-                repeat(5) {
-                    scene.render()
-                    delay(10)
-                }
-                assertEquals(301L, lastUsed.get())
+                clickSource(mounted.scene, source.name)
+                val expected = if (scenario.shouldRecord) source.id else 301L
+                awaitBrowseDetails(mounted, source.name) { !scenario.shouldRecord || lastUsed.get() == expected }
+                assertEquals(expected, lastUsed.get())
             } finally {
-                scene.close()
+                mounted.scene.close()
                 root.removeNode()
             }
         }
@@ -117,10 +122,14 @@ class SourceLastUsedWiringTest {
         sources: List<FakeSource>,
         coroutineContext: CoroutineContext,
         extensionPackage: String? = null,
-    ): ImageComposeScene {
+    ): MountedBrowseScene {
         val sourceManager = FakeDesktopSourceManager(sources)
+        val extensionLookups = AtomicInteger()
         val extensionManager = mockk<DesktopExtensionManager> {
-            every { getExtensionPackage(any()) } returns extensionPackage
+            every { getExtensionPackage(any()) } answers {
+                extensionLookups.incrementAndGet()
+                extensionPackage
+            }
         }
         val saver = mockk<SaveSourceMangaForDetails> {
             coEvery { awaitSearchResults(any(), any()) } returns emptyList()
@@ -136,13 +145,25 @@ class SourceLastUsedWiringTest {
             every { this@mockk.extensionManager } returns extensionManager
             every { sourceLoginSessionFactory } returns mockk(relaxed = true)
         }
-        return ImageComposeScene(900, 1_200, coroutineContext = coroutineContext) {}.also { scene ->
+        val scene = ImageComposeScene(900, 1_200, coroutineContext = coroutineContext) {}.also { scene ->
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
                     Navigator(BrowseSourceListScreen()) { CurrentScreen() }
                 }
             }
             scene.render()
+        }
+        return MountedBrowseScene(scene, extensionLookups)
+    }
+
+    private suspend fun awaitBrowseDetails(
+        mounted: MountedBrowseScene,
+        sourceName: String,
+        expectedEffect: () -> Boolean,
+    ) = withTimeout(2_000) {
+        while (!texts(mounted.scene).contains(sourceName) || mounted.extensionLookups.get() == 0 || !expectedEffect()) {
+            mounted.scene.render()
+            delay(10)
         }
     }
 
@@ -166,8 +187,28 @@ class SourceLastUsedWiringTest {
 
     private fun rendered(scene: ImageComposeScene): String = nodes(scene).joinToString { it.config.toString() }
 
+    private fun texts(scene: ImageComposeScene): List<String> = nodes(scene).flatMap { node ->
+        if (node.config.contains(SemanticsProperties.Text)) {
+            node.config[SemanticsProperties.Text].map { it.text }
+        } else {
+            emptyList()
+        }
+    }
+
     private fun nodes(scene: ImageComposeScene): List<SemanticsNode> = scene.semanticsOwners.flatMap { owner ->
         fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
         flatten(owner.rootSemanticsNode)
     }
+
+    private data class MountedBrowseScene(
+        val scene: ImageComposeScene,
+        val extensionLookups: AtomicInteger,
+    )
+
+    private data class LastUsedScenario(
+        val globalIncognito: Boolean,
+        val incognitoExtensions: Set<String>,
+        val extensionPackage: String?,
+        val shouldRecord: Boolean,
+    )
 }

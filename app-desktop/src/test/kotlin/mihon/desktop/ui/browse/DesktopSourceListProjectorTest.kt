@@ -2,7 +2,10 @@ package mihon.desktop.ui.browse
 
 import mihon.desktop.source.FakeSource
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
+import tachiyomi.i18n.MR
+import java.util.Locale
 
 class DesktopSourceListProjectorTest {
     @Test
@@ -11,7 +14,7 @@ class DesktopSourceListProjectorTest {
         val lastUsed = FakeSource(2, "fr", "Zulu")
         val pinned = FakeSource(3, "en", "Pinned")
         val languageUnknown = FakeSource(4, "", "Unknown")
-        val bravo = FakeSource(5, "en", "bravo")
+        val bravo = FakeSource(5, "en", "Bravo")
         val groups = DesktopSourceListProjector.project(
             sources = listOf(lastUsed, languageUnknown, pinned, bravo, alpha),
             pinnedSourceIds = setOf(pinned.id.toString()),
@@ -47,4 +50,43 @@ class DesktopSourceListProjectorTest {
         assertEquals(listOf(DesktopSourceGroupKey.LastUsed, DesktopSourceGroupKey.Pinned), groups.map { it.key })
         assertEquals(listOf(source.id, source.id), groups.flatMap { it.items }.map { it.source.id })
     }
+
+    @Test
+    fun `source group labels follow fixed-main localized language names`() {
+        val defaultLocale = Locale.ENGLISH
+
+        assertEquals(
+            MR.strings.last_used_source.localized(defaultLocale),
+            DesktopSourceGroupLabeler.displayName(DesktopSourceGroupKey.LastUsed, defaultLocale),
+        )
+        assertEquals(
+            MR.strings.pinned_sources.localized(defaultLocale),
+            DesktopSourceGroupLabeler.displayName(DesktopSourceGroupKey.Pinned, defaultLocale),
+        )
+        assertEquals(
+            MR.strings.other_source.localized(defaultLocale),
+            DesktopSourceGroupLabeler.displayName(DesktopSourceGroupKey.Language("other"), defaultLocale),
+        )
+        assertEquals(
+            MR.strings.multi_lang.localized(defaultLocale),
+            DesktopSourceGroupLabeler.displayName(DesktopSourceGroupKey.Language("all"), defaultLocale),
+        )
+        assertEquals(
+            Locale.forLanguageTag("zh-Hans").selfDisplayName(),
+            DesktopSourceGroupLabeler.displayName(DesktopSourceGroupKey.Language("zh-CN"), defaultLocale),
+        )
+        assertEquals(
+            Locale.forLanguageTag("zh-Hant").selfDisplayName(),
+            DesktopSourceGroupLabeler.displayName(DesktopSourceGroupKey.Language("zh-TW"), defaultLocale),
+        )
+        assertEquals(
+            Locale.FRENCH.selfDisplayName(),
+            DesktopSourceGroupLabeler.displayName(DesktopSourceGroupKey.Language("fr"), defaultLocale),
+        )
+        val defaultLanguage = DesktopSourceGroupLabeler.displayName(DesktopSourceGroupKey.Language(""), defaultLocale)
+        assertEquals(defaultLocale.selfDisplayName(), defaultLanguage)
+        assertFalse(defaultLanguage.isBlank())
+    }
+
+    private fun Locale.selfDisplayName() = getDisplayName(this).replaceFirstChar { it.uppercase(this) }
 }

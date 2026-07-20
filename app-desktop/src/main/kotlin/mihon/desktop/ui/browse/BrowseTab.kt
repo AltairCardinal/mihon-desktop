@@ -60,6 +60,7 @@ import mihon.desktop.source.selectEnabledCatalogueSourceCandidates
 import tachiyomi.core.common.preference.getAndSet
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.MR
+import java.util.Locale
 
 sealed interface DesktopSourceGroupKey {
     data object LastUsed : DesktopSourceGroupKey
@@ -70,6 +71,26 @@ sealed interface DesktopSourceGroupKey {
 data class DesktopSourceListItem(val source: CatalogueSource, val isUsedLast: Boolean = false)
 
 data class DesktopSourceListGroup(val key: DesktopSourceGroupKey, val items: List<DesktopSourceListItem>)
+
+object DesktopSourceGroupLabeler {
+    fun displayName(key: DesktopSourceGroupKey, defaultLocale: Locale = Locale.getDefault()): String = when (key) {
+        DesktopSourceGroupKey.LastUsed -> MR.strings.last_used_source.localized(defaultLocale)
+        DesktopSourceGroupKey.Pinned -> MR.strings.pinned_sources.localized(defaultLocale)
+        is DesktopSourceGroupKey.Language -> when (key.code) {
+            "other" -> MR.strings.other_source.localized(defaultLocale)
+            "all" -> MR.strings.multi_lang.localized(defaultLocale)
+            else -> key.code.sourceLocale(defaultLocale)
+                .let { it.getDisplayName(it).replaceFirstChar { character -> character.uppercase(it) } }
+        }
+    }
+}
+
+private fun String.sourceLocale(defaultLocale: Locale): Locale = when (this) {
+    "" -> defaultLocale
+    "zh-CN" -> Locale.forLanguageTag("zh-Hans")
+    "zh-TW" -> Locale.forLanguageTag("zh-Hant")
+    else -> Locale.forLanguageTag(this)
+}
 
 object DesktopSourceListProjector {
     fun project(
@@ -283,11 +304,7 @@ class BrowseSourceListScreen : Screen {
                         displayedSourceGroups.forEach { group ->
                             item(key = "source-header-${group.key}") {
                                 Text(
-                                    text = when (val key = group.key) {
-                                        DesktopSourceGroupKey.LastUsed -> MR.strings.last_used_source.localized()
-                                        DesktopSourceGroupKey.Pinned -> MR.strings.pinned_sources.localized()
-                                        is DesktopSourceGroupKey.Language -> key.code.uppercase()
-                                    },
+                                    text = DesktopSourceGroupLabeler.displayName(group.key),
                                     style = MaterialTheme.typography.titleSmall,
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                                 )
