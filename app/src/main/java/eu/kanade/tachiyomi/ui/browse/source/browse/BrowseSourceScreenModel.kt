@@ -36,10 +36,12 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import mihon.domain.error.AppError
 import mihon.domain.manga.model.toDomainManga
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.mapAsCheckboxState
 import tachiyomi.core.common.util.lang.launchIO
+import tachiyomi.data.source.NoResultsException
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
@@ -414,7 +416,11 @@ internal class SharedSourcePagingSource(
 
         return when (reduced) {
             is SourceQueryState.Content -> {
-                reduced.pageError?.let { return LoadResult.Error(SourcePageException(it)) }
+                reduced.pageError?.let {
+                    return LoadResult.Error(
+                        if (it.error == AppError.NoResults) NoResultsException() else SourcePageException(it),
+                    )
+                }
                 val newItems = reduced.items
                     .filterNot { it.url in previousUrls }
                     .map { it.toDomainManga(source.id) }

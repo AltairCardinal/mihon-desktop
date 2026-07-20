@@ -122,7 +122,12 @@ class SourceQueryReducer {
             is SourcePageResult.Empty -> if (current.items.isEmpty()) {
                 SourceQueryState.Empty(result.request)
             } else {
-                SourceQueryState.Content(result.request, current.items, hasNextPage = false)
+                SourceQueryState.Content(
+                    request = result.request,
+                    items = current.items,
+                    hasNextPage = false,
+                    pageError = SourcePageError(AppError.NoResults, SourceRecoveryAction.Retry),
+                )
             }
             is SourcePageResult.Failure -> if (current.items.isEmpty()) {
                 SourceQueryState.Failure(result.request, result.error, result.recoveryAction)

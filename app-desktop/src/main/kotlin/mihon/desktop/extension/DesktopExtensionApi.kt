@@ -204,6 +204,8 @@ class DesktopExtensionApi(
             } else {
                 cause?.message ?: "Extension artifact is malformed"
             }
+            // Source browsing owns this error; extension installation cannot produce it.
+            AppError.NoResults -> "Extension installation returned no result"
             is AppError.Storage -> cause?.message ?: "Unable to store extension artifact"
             AppError.Cancelled -> "Extension installation was cancelled"
             is AppError.PartialFailure -> failures.joinToString(

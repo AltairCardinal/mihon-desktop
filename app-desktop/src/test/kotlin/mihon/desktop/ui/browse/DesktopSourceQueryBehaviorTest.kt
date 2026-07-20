@@ -52,6 +52,10 @@ class DesktopSourceQueryBehaviorTest {
             desktopSourceErrorMessage(AppError.Server(500), Locale.ENGLISH),
         )
         assertEquals(
+            MR.strings.no_results_found.localized(Locale.SIMPLIFIED_CHINESE),
+            desktopSourceErrorMessage(AppError.NoResults, Locale.SIMPLIFIED_CHINESE),
+        )
+        assertEquals(
             MR.strings.action_retry.localized(Locale.SIMPLIFIED_CHINESE),
             desktopSourceRecoveryActionLabel(SourceRecoveryAction.Retry, Locale.SIMPLIFIED_CHINESE),
         )
@@ -86,6 +90,28 @@ class DesktopSourceQueryBehaviorTest {
 
         val retried = coordinator.retry(source) as SourceQueryState.Content
 
+        assertEquals(listOf(1, 2, 2), source.requestedPages)
+        assertEquals(listOf("/first", "/second"), retried.items.map { it.url })
+    }
+
+    @Test
+    fun `empty first page stays empty while empty append keeps rows and retries the same page`() = runBlocking {
+        val firstPageCoordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
+        assertInstanceOf(
+            SourceQueryState.Empty::class.java,
+            firstPageCoordinator.load(EmptyPageSource(emptyFirstPage = true), 1, SourceQuery.Popular),
+        )
+
+        val source = EmptyPageSource(emptyFirstPage = false)
+        val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
+        coordinator.load(source, page = 1, query = SourceQuery.Popular)
+        val emptyAppend = coordinator.load(source, page = 2, query = SourceQuery.Popular) as SourceQueryState.Content
+
+        assertEquals(listOf("/first"), emptyAppend.items.map { it.url })
+        assertEquals(2, emptyAppend.request.page)
+        assertEquals(SourceRecoveryAction.Retry, emptyAppend.pageError?.recoveryAction)
+
+        val retried = coordinator.retry(source) as SourceQueryState.Content
         assertEquals(listOf(1, 2, 2), source.requestedPages)
         assertEquals(listOf("/first", "/second"), retried.items.map { it.url })
     }
@@ -309,6 +335,31 @@ class DesktopSourceQueryBehaviorTest {
             requestedPages += page
             return when (requestedPages.count { it == page }) {
                 1 -> if (page == 1) MangasPage(listOf(manga("/first", "First")), true) else throw HttpException(500)
+                else -> MangasPage(listOf(manga("/second", "Second")), false)
+            }
+        }
+
+        override suspend fun getLatestUpdates(page: Int) = MangasPage(emptyList(), false)
+        override suspend fun getSearchManga(page: Int, query: String, filters: FilterList) = MangasPage(emptyList(), false)
+        override fun getFilterList() = FilterList()
+        override suspend fun getMangaDetails(manga: SManga) = manga
+        override suspend fun getChapterList(manga: SManga) = emptyList<SChapter>()
+        override suspend fun getPageList(chapter: SChapter) = emptyList<Page>()
+    }
+
+    private class EmptyPageSource(private val emptyFirstPage: Boolean) : CatalogueSource {
+        val requestedPages = mutableListOf<Int>()
+        override val id = 8L
+        override val name = "Empty page"
+        override val lang = "en"
+        override val supportsLatest = false
+
+        override suspend fun getPopularManga(page: Int): MangasPage {
+            requestedPages += page
+            return when {
+                emptyFirstPage -> MangasPage(emptyList(), false)
+                page == 1 -> MangasPage(listOf(manga("/first", "First")), true)
+                requestedPages.count { it == page } == 1 -> MangasPage(emptyList(), false)
                 else -> MangasPage(listOf(manga("/second", "Second")), false)
             }
         }

@@ -147,6 +147,30 @@ class SourceMangaSearchServiceTest {
     }
 
     @Test
+    fun `empty append preserves loaded items and exposes retry for the same request`() {
+        val reducer = SourceQueryReducer()
+        val firstRequest = request(page = 1, generation = 9, query = SourceQuery.Popular)
+        val firstItem = smanga("/first", "First")
+        val content = reducer.reduce(
+            reducer.start(firstRequest),
+            SourcePageResult.Content(firstRequest, listOf(firstItem), hasNextPage = true),
+        )
+        val appendRequest = firstRequest.copy(page = 2)
+
+        val reduced = reducer.reduce(
+            reducer.start(appendRequest, content),
+            SourcePageResult.Empty(appendRequest),
+        ) as SourceQueryState.Content
+
+        assertEquals(listOf(firstItem), reduced.items)
+        assertEquals(appendRequest, reduced.request)
+        assertFalse(reduced.isLoading)
+        assertEquals(SourceRecoveryAction.Retry, reduced.pageError?.recoveryAction)
+        assertTrue(reduced.pageError?.error !is AppError.Unknown)
+        assertTrue(reduced.pageError?.error !is AppError.MalformedData)
+    }
+
+    @Test
     fun `searchAllPages reuses source search pagination until last page`() = runBlocking {
         val source = StubSource(
             pages = mapOf(

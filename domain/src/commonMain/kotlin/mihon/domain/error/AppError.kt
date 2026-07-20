@@ -10,6 +10,9 @@ sealed interface AppError {
     data class Server(val statusCode: Int, override val cause: Throwable? = null) : AppError
     data class Permission(override val cause: Throwable? = null) : AppError
     data class MalformedData(override val cause: Throwable? = null) : AppError
+    data object NoResults : AppError {
+        override val cause: Throwable? = null
+    }
     data class Storage(override val cause: Throwable? = null) : AppError
     data object Cancelled : AppError {
         override val cause: Throwable? = null

@@ -21,7 +21,9 @@ import okhttp3.Response
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Test
+import tachiyomi.data.source.NoResultsException
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
+import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.source.service.SourcePageError
@@ -50,6 +52,25 @@ class BrowseSourceRecoveryBehaviorTest {
         val pageError = assertInstanceOf(SourcePageException::class.java, error.throwable).pageError
 
         assertEquals(SourceRecoveryAction.OpenLogin, pageError.recoveryAction)
+    }
+
+    @Test
+    fun `empty refresh stays no results while empty append is retryable through the real paging source`() = runTest {
+        val emptyRefresh = assertInstanceOf(
+            PagingSource.LoadResult.Page::class.java,
+            pagingSource(EmptyPageCatalogueSource(emptyFirstPage = true)).load(refresh()),
+        )
+        assertEquals(emptyList<Any>(), emptyRefresh.data)
+        assertEquals(null, emptyRefresh.nextKey)
+
+        val appendSource = EmptyPageCatalogueSource(emptyFirstPage = false)
+        val pagingSource = pagingSource(appendSource)
+        val first = pagingSource.load(refresh()) as PagingSource.LoadResult.Page<Long, Manga>
+        assertEquals(listOf("/first"), first.data.map { it.url })
+
+        val append = assertInstanceOf(PagingSource.LoadResult.Error::class.java, pagingSource.load(append(2)))
+        assertInstanceOf(NoResultsException::class.java, append.throwable)
+        assertEquals(listOf(1, 2), appendSource.requestedPages)
     }
 
     @Test
@@ -112,6 +133,31 @@ class BrowseSourceRecoveryBehaviorTest {
         override suspend fun getPopularManga(page: Int): MangasPage {
             if (page == failPage) throw HttpException(403)
             return MangasPage(listOf(manga("/first", "First")), true)
+        }
+
+        override suspend fun getLatestUpdates(page: Int) = MangasPage(emptyList(), false)
+        override suspend fun getSearchManga(page: Int, query: String, filters: FilterList) =
+            MangasPage(emptyList(), false)
+        override fun getFilterList() = FilterList()
+        override suspend fun getMangaDetails(manga: SManga) = manga
+        override suspend fun getChapterList(manga: SManga) = emptyList<SChapter>()
+        override suspend fun getPageList(chapter: SChapter) = emptyList<Page>()
+    }
+
+    private class EmptyPageCatalogueSource(private val emptyFirstPage: Boolean) : CatalogueSource {
+        val requestedPages = mutableListOf<Int>()
+        override val id = 2L
+        override val name = "Empty paging source"
+        override val lang = "en"
+        override val supportsLatest = false
+
+        override suspend fun getPopularManga(page: Int): MangasPage {
+            requestedPages += page
+            return if (emptyFirstPage || page > 1) {
+                MangasPage(emptyList(), false)
+            } else {
+                MangasPage(listOf(manga("/first", "First")), true)
+            }
         }
 
         override suspend fun getLatestUpdates(page: Int) = MangasPage(emptyList(), false)

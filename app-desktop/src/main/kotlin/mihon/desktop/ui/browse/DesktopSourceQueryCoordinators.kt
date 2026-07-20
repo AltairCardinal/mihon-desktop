@@ -47,6 +47,7 @@ sealed interface DesktopSourceRecoveryIntent {
 internal fun desktopSourceErrorMessage(error: AppError, locale: Locale = Locale.getDefault()): String = when (error) {
     is AppError.Network -> MR.strings.exception_offline.localized(locale)
     is AppError.Authentication -> MR.strings.login.localized(locale)
+    AppError.NoResults -> MR.strings.no_results_found.localized(locale)
     else -> MR.strings.unknown_error.localized(locale)
 }
 
