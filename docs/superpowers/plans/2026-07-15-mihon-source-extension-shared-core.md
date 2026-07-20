@@ -2061,6 +2061,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Platform boundary: `desktop`
 - Estimated scope: `4 files, 100 lines`
 - Verification: `ExtensionListScreen` 与 `ExtensionDetailsScreen` 当前在 UI 内直接 `Injekt.get<ExtensionsScreenModel>()`，全量 ArchitectureGuard 精确 RED 为 baseline 0 / actual 2。将同一 application singleton 暴露为中央 CompositionLocal/desktop dependency boundary，两个 Screen 只消费该 boundary；focused wiring 必须提供一个与全局 Injekt 不同的 local model并证明 UI 使用 local model，防止只把 service locator 藏到 helper。生产默认仍解析 `DesktopAppContext.extensionScreenModel`/同一 Injekt singleton，不创建第二套状态。不得提高 architecture baseline 或新增白名单。
+  Evidence: commit `d913ab29f`，严格 4 files / 50 touched lines。新增中央 `LocalExtensionScreenModel` boundary，默认 lambda 只从 Injekt 取得 DesktopAppModule 已注册的同一 application singleton；List/Details 两个真实 Screen 删除 UI 内 service locator并只消费 local。UI test 将不同的 local/global model分别放入 CompositionLocal/Injekt，依次真实挂载两个 Screen，证明 local state被读取且 global state累计零读取；ArchitectureGuard baseline/白名单零改。RED 为 local boundary unresolved，GREEN 为 presentation 3/3 + architecture 4/4；独立 review APPROVED、diff-check clean、Java0。
 
 ##### Task 7D4b: Compat multi-evidence contract refresh
 
