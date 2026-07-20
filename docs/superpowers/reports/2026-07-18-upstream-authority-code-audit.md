@@ -373,7 +373,9 @@ Task 6B、authority baseline ID 37 与 manifest ID 37 只列出 `ExtensionsScree
 
 ### C15. Desktop 源列表遗漏 fixed-main last-used 投影与 incognito 边界
 
-`BrowseTab.kt:114-135` 仍直接执行 pinned + alphabetic 简化规则，Desktop preferences 和浏览入口没有 `lastUsedSource`。固定 main 的 `GetEnabledSources.kt:18-40` 投影 last-used/pinned/language，`SourcesScreenModel.kt:47-67` 定义分组顺序，`BrowseSourceScreenModel.kt:97-99` 只在非 incognito 时记录 last-used。这是用户可见的发现/排序规则，不是平台差异。建议 Task `source-list-upstream-projection`，7–8 文件/≤400 行，不与 C14 合并。
+**状态：已闭合。** RED `87efbf3a9`、production/fixture `50d9bef77`/`7e77a9a1b`、本地化 repair `ef571737c` 与 incognito short-circuit repair `9acf0d8c4` 已恢复 fixed-main 的 last-used→pinned→language 投影及持久化边界。首轮 8 类 62/62、repair 54/54、最终 LastUsed+Projector 6/6；最终 review APPROVED、0 Critical/Important。Global login render/Channel 仅为矩阵稳定性 fixture follow-up，不计作业务闭合证据。
+
+**审计时现象：** `BrowseTab.kt:114-135` 仍直接执行 pinned + alphabetic 简化规则，Desktop preferences 和浏览入口没有 `lastUsedSource`。固定 main 的 `GetEnabledSources.kt:18-40` 投影 last-used/pinned/language，`SourcesScreenModel.kt:47-67` 定义分组顺序，`BrowseSourceScreenModel.kt:97-99` 只在非 incognito 时记录 last-used。这是用户可见的发现/排序规则，不是平台差异。建议 Task `source-list-upstream-projection`，7–8 文件/≤400 行，不与 C14 合并。
 
 ### C16. Extension details 仍在 Composable 内维护源启停规则
 
@@ -381,11 +383,15 @@ Task 6B、authority baseline ID 37 与 manifest ID 37 只列出 `ExtensionsScree
 
 ### C17. Extension details 丢失 obsolete 与 NSFW 用户反馈
 
-Desktop `ExtensionDetailsScreen.kt:146-269` 没有呈现 projection 中的 `isObsolete`，详情页也没有原版 NSFW age-rating warning；fixed-main presentation `ExtensionDetailsScreen.kt:168,173-176,191-215,457-470` 有警告与对话框。这些 Compose 反馈不存在平台障碍。建议 Task `extension-details-upstream-feedback`，desktop，4 文件/≤250 行，与 C16 分开。
+**状态：已闭合。** RED `bd2a8862a`、GREEN `f609d182a` 与 wiring repair `f81566d05` 已在真实 zh-CN details projection 中呈现 obsolete、NSFW age-rating 与确认反馈；Metadata+Preferences 5/5、root Spotless 61/61，final review APPROVED、0 Critical/Important/Minor。
+
+**审计时现象：** Desktop `ExtensionDetailsScreen.kt:146-269` 没有呈现 projection 中的 `isObsolete`，详情页也没有原版 NSFW age-rating warning；fixed-main presentation `ExtensionDetailsScreen.kt:168,173-176,191-215,457-470` 有警告与对话框。这些 Compose 反馈不存在平台障碍。建议 Task `extension-details-upstream-feedback`，desktop，4 文件/≤250 行，与 C16 分开。
 
 ### C18. Extension list 的 uninstall/reload 绕过 ScreenModel 并形成第二条业务路径
 
-`ExtensionListScreen.kt:155-163,232-240` 直接调用 manager，卸载时忽略 Boolean 失败；但 `ExtensionsScreenModel.kt:155` 与 `DesktopExtensionPresentationPort.kt:98-99` 已有 typed uninstall。fixed main 的 `ExtensionsTab.kt:61-99` 统一经 ScreenModel。Desktop adapter 可以保留 reload 实现，但状态和错误反馈必须归 ScreenModel/port。建议 Task `extension-list-manager-bypass`，desktop，4 文件/≤250 行。
+**状态：已闭合。** RED `c05f914e9` 与 GREEN `7c26a059e` 已将 reload/uninstall 的可见动作统一路由到 `ExtensionsScreenModel` / typed port，并保留 Desktop manager 的平台 side effect、事务 rollback、update-all、取消和 diagnostics。focused 1/1、整类 4/4、root Spotless 通过，review APPROVED、0 Critical/Important/Minor。
+
+**审计时现象：** `ExtensionListScreen.kt:155-163,232-240` 直接调用 manager，卸载时忽略 Boolean 失败；但 `ExtensionsScreenModel.kt:155` 与 `DesktopExtensionPresentationPort.kt:98-99` 已有 typed uninstall。fixed main 的 `ExtensionsTab.kt:61-99` 统一经 ScreenModel。Desktop adapter 可以保留 reload 实现，但状态和错误反馈必须归 ScreenModel/port。建议 Task `extension-list-manager-bypass`，desktop，4 文件/≤250 行。
 
 ### C19. Source/extension 权威基线与当前真实施工状态漂移
 
@@ -403,7 +409,7 @@ Task 7 compatibility 施工仍固定 `authorityRef = main@6fbf6dfc`，真实 APK
 
 审查范围为 `852221f42..211b50ad3` 的 source/extension production、shared contract、当前 Android consumer、Desktop consumer/adapter、测试 fixture、manifest、OpenSpec 与维护文档。固定原版权威仍为 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`；当前 `app/` 只作为 consumer，Desktop `android/**` 只作为平台 adapter。
 
-本轮没有发现 Critical、Desktop 独有能力删除或 shim 冒充原版。确认下列尚未闭合的 Important，并已追加到活动计划：
+本轮没有发现 Critical、Desktop 独有能力删除或 shim 冒充原版。下表保留审计时发现的 Important；行为修复证据已进入活动计划，其中 C15/C17/C18 的最终闭合证据同步列于本节之后。该行为闭合不替代尚未完成的最新 Windows/macOS/Android 运行验收。
 
 | 审计项 | 当前偏差 | fixed-main 证据 | 整改 Task |
 |---|---|---|---|
@@ -416,6 +422,8 @@ Task 7 compatibility 施工仍固定 `authorityRef = main@6fbf6dfc`，真实 APK
 | C17 复核 | Extension Details 未显示 obsolete/NSFW 反馈 | fixed-main presentation `ExtensionDetailsScreen.kt:168-215` | 7D15 `extension-details-upstream-feedback` |
 | C18 复核 | Extension List 卸载/reload 绕过已有 ScreenModel/typed port | fixed-main `ExtensionsTab.kt:57-92` 所有动作经 ScreenModel | 7D16 `extension-list-action-routing` |
 
+闭合更新：C15 由 `87efbf3a9`/`50d9bef77`/`7e77a9a1b`/`ef571737c`/`9acf0d8c4` 完成并通过最终 review（0 Critical/Important）；C17 由 `bd2a8862a`/`f609d182a`/`f81566d05` 完成并通过 final review（0 Critical/Important/Minor）；C18 由 `c05f914e9`/`7c26a059e` 完成并通过 review（0 Critical/Important/Minor）。C21/C22/C23/C14/C16 的逐项实现、测试和审查证据见活动计划 7D8–7D14；本次账本修正不重复提升其 parity 等级。
+
 同时确认一个 Minor：shared 扩展排序的 `name.lowercase()` 与 fixed-main `String.CASE_INSENSITIVE_ORDER` 不是逐字同一 comparator；无参 `lowercase()` 本身是 locale-invariant，不能错误归因为 Turkish locale。7D9 必须先以 Unicode/mixed-case 对抗 fixture 证明真实差异；若不能取得 RED，则只保留 characterization，不得为对齐外观伪造 production 变更。
 
-完成状态也必须在上述行为 Task 通过后再纠正：OpenSpec 3.4、parity manifest ID 29/37、source-extension authority baseline 以及本报告旧结论不得先于真实 wiring 提升。历史比较文档继续保留原文，但需增加 superseded 提示；“Android authority”统一改为“fixed-main original Mihon authority”，避免再次把当前 Android consumer 当作 expected-value 来源。
+行为 Task 已通过后，OpenSpec 3.4 仍须保持父项未完成：IDs 29/37 只能记录到四层 production wiring 支持的 `WIRED`，不能在最新 Windows/macOS/Android 运行验收前提升为 `VERIFIED`。source-extension authority baseline 与本报告只追加 closure/superseded 状态，不篡改历史证据。历史比较文档的 superseded 提示和其余 “Android authority” 术语清理由 7D18 完成，避免再次把当前 Android consumer 当作 expected-value 来源。

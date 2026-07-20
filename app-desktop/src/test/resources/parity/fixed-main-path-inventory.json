@@ -1,6 +1,7 @@
 {
   "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
   "paths": [
+    { "path": "app/src/main/java/eu/kanade/domain/source/interactor/GetEnabledSources.kt", "blobId": "104897c623bc2c5bad4d79514ccf459b42bb6d67" },
     { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt", "blobId": "0f777f7e58b653e458bba240127f8446b0e2ae28" },
     { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModel.kt", "blobId": "bf55f35f63f1db54e8aa5a48ac270658f210b4b2" },
     { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/GlobalSearchScreenModel.kt", "blobId": "33c71576818c890947556fe5a09237eb46626aa0" },

@@ -2198,6 +2198,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Platform boundary: `desktop`
 - Estimated scope: `6 files, 360 lines`
 - Verification: fixed main projects last-used first, then pinned, then language groups, and records last-used only outside incognito. Desktop currently renders pinned then alphabetic and never records last-used. Add projection contract REDs from fixed-main `GetEnabledSources`/`SourcesScreenModel`, plus a real navigation/wiring RED proving entry into a source updates last-used only when incognito is off and reorders the still-mounted list. Reuse Desktop preferences and reactive membership from 7D12; preserve wide-screen cards, pin buttons, hidden/language filters, Extensions empty action, and long-click pin behavior.
+  Evidence: RED `87efbf3a9` 固定 last-used/pinned/language 投影及真实导航写入边界；core `50d9bef77` 接入 `last_catalogue_source`、reactive projector 与 Browse/SourceBrowse production wiring，fixture follow-up `7e77a9a1b` 只为既有严格测试提供新增依赖。首轮 8 类 62/62、root Spotless 61/61；review repair `ef571737c` 将分组标题改为 MR 本地化并通过 focused 54/54；short-circuit repair `9acf0d8c4` 让 global/extension-package incognito 在持久化前返回，LastUsed 3 + Projector 3 = 6/6。最终 review APPROVED、0 Critical/Important。Global login render/Channel 的改动仅是矩阵稳定性 fixture follow-up，不作为 last-used 或 incognito 业务行为证据。
 
 ##### Task 7D14: Extension-details source state ownership
 
@@ -2213,6 +2214,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Platform boundary: `desktop`
 - Estimated scope: `5 files, 300 lines`
 - Verification: fixed-main extension details presents obsolete and NSFW/age-rating warnings with user-visible feedback; Desktop details omits both despite having the projection data and existing MR resources. Add zh-CN rendered-semantics REDs for representative obsolete and NSFW extensions, then wire the fixed-main copy and acknowledgement behavior through the Desktop screen/model. Do not remove Desktop SHA/repository/folder/cookie metadata or invent a platform exception.
+  Evidence: RED `bd2a8862a` 在 zh-CN rendered semantics 中固定 obsolete banner、NSFW age-rating 入口与确认反馈；GREEN `f609d182a` 复用既有 MR 文案接入详情页，repair `f81566d05` 加固真实 projection/wiring，保留 SHA、仓库、目录、Cookie 与源设置入口。Metadata 1 + Preferences 4 = 5/5，root Spotless 61/61；final review APPROVED、0 Critical/Important/Minor。
 
 ##### Task 7D16: Extension-list ScreenModel action routing
 
@@ -2220,6 +2222,23 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Platform boundary: `desktop`
 - Estimated scope: `5 files, 320 lines`
 - Verification: fixed main routes refresh/install/update/cancel/trust/uninstall actions through `ExtensionsScreenModel`; Desktop list still calls the manager directly for reload and uninstall, bypassing typed state/error feedback already present in its model/port. Add mutation-sensitive wiring REDs proving the visible actions call the model and surface failure without direct manager calls, then remove only the bypass. Preserve Desktop transactional installer, rollback, repository identity, update-all, cancellation, and terminal diagnostics.
+  Evidence: RED `c05f914e9` 证明 reload/uninstall 的可见动作必须经 model 并保留 typed failure；GREEN `7c26a059e` 将两个 bypass 收口到 `ExtensionsScreenModel` / `DesktopExtensionPresentationPort`，Desktop manager 继续只承担 reload/uninstall side effect，事务安装、rollback、仓库 identity、update-all、取消及 diagnostics 均保留。focused 1/1、`ExtensionPresentationUiTest` 4/4、root Spotless 通过；review APPROVED、0 Critical/Important/Minor。
+
+##### Task 7D17: Closed-behavior status and provenance bookkeeping
+
+- Risk axis: `source-extension-status-provenance`
+- Platform boundary: `docs`
+- Estimated scope: `5 files, 300 lines`
+- Verification: 仅以 7D13/7D15/7D16 已通过的 fixed-main fixture、shared output、当前 Android consumer 与 Desktop production wiring 四层证据纠正活动计划、authority audit、OpenSpec、parity manifest IDs 29/37 和 authority baseline；状态最高保持 `WIRED`，最终 Windows/macOS/Android 运行验收未完成前不得勾选 OpenSpec 3.4 父项或提升为 `VERIFIED`。JSON 变更运行 `DesktopProductCapabilityContractTest`，并检查 JSON parse、`git diff --check` 与 Comet plan guard。
+  Evidence: 严格 5 files、远低于 300 touched lines。OpenSpec 3.4 父项恢复未完成，只勾具备四层证据的 source query/result 与 Desktop extension presentation 子项；列表 projection 明确为两端从同一 fixed-main fixture 分别实现，不冒充 shared output。manifest IDs 29/37 保持 `WIRED`，29 补齐 `GetEnabledSources`/`SourcesScreenModel`/`GetIncognitoState`/`BrowseSourceScreenModel` 的 fixed-main blob 与双端 consumer provenance，37 补齐本轮真实保护测试并明确 shared reducer 只是 migration output。focused capability contract 首轮仅因一个测试路径目录写错失败，修正为真实 `desktop/i18n` 路径后 24/24；两个 JSON parse、`git diff --check`、OpenSpec strict validation 与 Comet plan guard 通过。authority baseline 未重复改写：commit `a2a4fd416` 已在现有行 30/51/62 闭合 6C/6D 与 ManHuaGui Application 的 superseded 状态。
+
+##### Task 7D18: Remaining authority terminology and stale design cleanup
+
+- Risk axis: `authority-terminology-cleanup`
+- Platform boundary: `docs`
+- Estimated scope: `5 files, 180 lines`
+- Verification: 将 OpenSpec design 中未固定的 “Android authority” 改为 fixed-main original Mihon authority，纠正 shared contract 测试的歧义命名，核对 source design 中尚未实现的 recovery action 描述，并给保留的旧比较文档增加 superseded 指引；不得改写历史原文证据、不得把当前 `app/`、shared output 或 Desktop shim 写成 authority。运行文本扫描、相关 focused contract（仅测试名/契约变化时）、`git diff --check` 与 Comet plan guard。
+  Evidence: commit `7ad05831a`，严格 5 files / 11 touched lines。OpenSpec design、source/extension design 与 parity tracker 统一固定 main authority/current consumer/adapter 术语；保留的旧比较文档增加 superseded 指引；shared contract 测试名不再把当前 Android mapper 称为 authority。相关 domain focused 7/7、文本扫描、`git diff --check` 与 Comet plan guard 通过；review APPROVED、0 Critical/Important/Minor。
 
 - [ ] **Step 7: 独立批次与最终审查**
 

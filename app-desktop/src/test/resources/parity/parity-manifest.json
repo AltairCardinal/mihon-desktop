@@ -266,23 +266,39 @@
       "SHARE-EXTRACT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #29: 单源浏览",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #29: 单源浏览及非 incognito 的 last-used 记录",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
-      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModel.kt", "symbol": "BrowseSourceScreenModel → CatalogueSource pagination" }
+      { "path": "app/src/main/java/eu/kanade/domain/source/interactor/GetEnabledSources.kt", "symbol": "GetEnabledSources → last-used/pinned/language projection" },
+      { "path": "app/src/main/java/eu/kanade/domain/source/interactor/GetIncognitoState.kt", "symbol": "GetIncognitoState → global and extension-package incognito" },
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt", "symbol": "SourcesScreenModel → LastUsed/Pinned/Language groups" },
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModel.kt", "symbol": "BrowseSourceScreenModel → CatalogueSource pagination and non-incognito last-used write" }
     ],
     "sharedImplementationPaths": ["domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaSearchService.kt", "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceQueryState.kt"],
-    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModel.kt"],
+    "currentAndroidConsumerPaths": [
+      "app/src/main/java/eu/kanade/domain/source/interactor/GetEnabledSources.kt",
+      "app/src/main/java/eu/kanade/domain/source/interactor/GetIncognitoState.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModel.kt"
+    ],
     "desktopConsumerAdapterPaths": [
+      "app-desktop/src/main/kotlin/mihon/desktop/settings/DesktopAppPreferences.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/BrowseTab.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceQueryCoordinators.kt"
     ],
     "deviations": [
       { "classification": "MIGRATION_OUTPUT", "description": "Shared paging, recovery and query state replay fixed-main behavior but remain migration output." },
+      { "classification": "PLATFORM_ADAPTER", "description": "Last-used/pinned/language projection is implemented separately by the current Android consumer and Desktop consumer from the same fixed-main fixture; it is not claimed as shared output." },
       { "classification": "PLATFORM_ADAPTER", "description": "Desktop keyboard and layout behavior is platform-specific." }
     ],
-    "desktopImplementation": "Desktop current implementation to characterize and align: 单源浏览",
-    "protectionTests": ["app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModelBehaviorTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceSharedStateWiringTest.kt"],
+    "desktopImplementation": "Desktop production consumer uses shared query state and fixed-main-derived source projection; platform preferences persist last-used only outside global or extension-package incognito.",
+    "protectionTests": [
+      "app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModelBehaviorTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/DesktopSourceListProjectorTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceLastUsedWiringTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceSharedStateWiringTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -488,7 +504,7 @@
       "SHARE-EXTRACT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #37: 扩展详情与更新",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #37: 扩展详情、反馈与经 ScreenModel 路由的更新/卸载动作",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
       { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsScreenModel.kt", "symbol": "ExtensionsScreenModel" },
@@ -510,10 +526,17 @@
       "app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionsScreenModel.kt"
     ],
     "deviations": [
+      { "classification": "MIGRATION_OUTPUT", "description": "Shared extension presentation state and reducers are migration output consumed by both current products, not original Mihon authority." },
       { "classification": "DESKTOP_PRODUCT", "description": "File detail and Open folder are retained Desktop capabilities." }
     ],
-    "desktopImplementation": "Desktop current implementation to characterize and align: 扩展详情与更新",
-    "protectionTests": ["app/src/test/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionPresentationWiringTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionSharedStateWiringTest.kt"],
+    "desktopImplementation": "Desktop production consumer renders shared extension state, fixed-main obsolete/NSFW feedback and model-routed list actions while retaining Desktop file and transaction adapters.",
+    "protectionTests": [
+      "app/src/test/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionPresentationWiringTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/i18n/DesktopExtensionDetailsMetadataCopyTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionDetailsPreferencesWiringTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionPresentationUiTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionSharedStateWiringTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },

@@ -21,7 +21,10 @@
 - [x] 3.1 将 Desktop loader/installer 收敛为目录、ClassLoader、APK→JAR 与隔离 side effect
 - [x] 3.2 实现仓库身份/摘要信任、下载校验与 reload 失败原子回滚
 - [x] 3.3 实现可取消/超时的 Desktop 浏览器登录与 Cookie 回传；FlareSolverr 仅作显式后备
-- [x] 3.4 将源列表、单源浏览、全局搜索、扩展详情/设置接入共享 ScreenModel 与 UI 状态
+- [ ] 3.4 将源列表、单源浏览、全局搜索、扩展详情/设置接入共享 ScreenModel 与 UI 状态；production wiring 已闭合，待最新 Desktop 运行验收并与当前 Android consumer 的既有模拟器证据核对后完成父项
+  - [x] 3.4.1 单源 canonical result 与全局搜索已有 fixed-main fixture、shared query/page/error output、当前 Android consumer 和 Desktop production wiring 四层证据；last-used/pinned/language 列表投影由当前两端分别从同一 fixed-main fixture 实现，不冒充 shared output
+  - [x] 3.4.2 Desktop extension presentation、详情源状态/obsolete/NSFW 反馈及列表动作路由已有同样四层证据，并保留 Desktop 独有文件与事务能力
+  - [ ] 3.4.3 使用最新提交完成 Windows/macOS Desktop 构建运行验收，并与当前 Android consumer 已有的代表性源/扩展模拟器证据共同核对；该证据不构成原版权威
 - [x] 3.5 将触达的 Desktop 文案迁入 i18n，并覆盖资源缺 key
 
 ## 4. 去重与验证
