@@ -1,6 +1,6 @@
 ## Why
 
-Mihon Desktop 的源浏览、扩展发现/安装/更新、安全校验和挑战登录仍存在与 Android 原版并行的业务实现，以及不断扩张的兼容 stub。Desktop 当初为快速交付重写了这些链路；除 ClassLoader、APK→JAR、文件目录和浏览器会话等真实平台差异外，其余状态与规则都应回归原版共享实现。
+Mihon Desktop 的源浏览、扩展发现/安装/更新、安全校验和挑战登录仍存在与 fixed-main 原始 Mihon 并行的业务实现，以及不断扩张的兼容 stub。唯一原版权威固定为 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`；当前 `app/` 只是 Android consumer，`app-desktop/` 只保留 Desktop 产品与平台 adapter。Desktop 当初为快速交付重写了这些链路；除 ClassLoader、APK→JAR、文件目录和浏览器会话等真实平台差异外，其余状态与规则都应回归原版共享实现。
 
 ## What Changes
 

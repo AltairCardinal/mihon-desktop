@@ -345,6 +345,8 @@ Task 6B、authority baseline ID 37 与 manifest ID 37 只列出 `ExtensionsScree
 
 **闭合证据：** OpenSpec 2.3.1–2.3.4 分别记录 source query、extension transaction、当前 Android presentation 与 Desktop source result；2.3.5 Desktop extension presentation 仍未完成，因此 2.3 父项继续保持未勾选。
 
+**2026-07-20 追加闭合（supersedes 上一段的实时状态，不改写历史审计）：** `e501c67a8a` 已完成 2.3.5 Desktop extension presentation production wiring，随后 OpenSpec 2.3 父项与 2.3.1–2.3.5 均保持已勾选。该 checkoff 只证明 production manager/ScreenModel 消费共同状态与错误；它不等于 3.4.3、4.4、4.5、4.6 或 Step 7/8 所要求的最新 Android/Windows/macOS 运行时验收、最终审查和 change 完成。
+
 ### C11. Desktop Android shim 尚未被直接冒充原版，但 Task 7 证据会循环自证
 
 **状态：未发现代码直接把 shim 称为原版；现有证据不足以支持 Task 7 checkoff。**
@@ -427,3 +429,14 @@ Task 7 compatibility 施工仍固定 `authorityRef = main@6fbf6dfc`，真实 APK
 同时确认一个 Minor：shared 扩展排序的 `name.lowercase()` 与 fixed-main `String.CASE_INSENSITIVE_ORDER` 不是逐字同一 comparator；无参 `lowercase()` 本身是 locale-invariant，不能错误归因为 Turkish locale。7D9 必须先以 Unicode/mixed-case 对抗 fixture 证明真实差异；若不能取得 RED，则只保留 characterization，不得为对齐外观伪造 production 变更。
 
 行为 Task 已通过后，OpenSpec 3.4 仍须保持父项未完成：IDs 29/37 只能记录到四层 production wiring 支持的 `WIRED`，不能在最新 Windows/macOS/Android 运行验收前提升为 `VERIFIED`。source-extension authority baseline 与本报告只追加 closure/superseded 状态，不篡改历史证据。历史比较文档的 superseded 提示和其余 “Android authority” 术语清理由 7D18 完成，避免再次把当前 Android consumer 当作 expected-value 来源。
+
+## 12. 2026-07-20 最终审查 repair 状态（Task 7D23 记录点）
+
+以下状态只说明独立代码审查结论，不提前宣布运行时或 change 完成：
+
+- 7D19 Desktop artifact signer authenticity：`e455d55b0` 建立攻击 RED，`f8a054a04` 将 APK/JAR 实际签名绑定到 repository fingerprint；独立 review 为 APPROVED。
+- 7D21 extension refresh failure presentation：`c4d7b27db` / `3be2de3b1` 闭合离线本地详情与失败反馈，`db8c902e8` / `c2d4517b3` 进一步串行化并发 refresh；独立 review 为 APPROVED。
+- 7D22 当前 Android shared-query production wiring：`53affec75` 以可注入 production loader/service 的行为测试替代源码字符串扫描；独立 review 为 APPROVED。
+- 7D20B Android initialization event handoff：`385b87283`、`8380f0807`、`51e74c60a` 暴露并修复 receiver/event handoff 后又取得 runtime reload RED；当前 repair 已实现但仍等待独立 repair review，因此不得记为 APPROVED。
+
+本次 provenance reconciliation 只把 IDs 28、29、30、37 提升或保持到 `WIRED`，并补齐 fixed-main 路径/blob、当前 Android consumer、Desktop adapter 与保护测试映射。OpenSpec 3.4.3、4.4、4.5、4.6 以及计划 Step 7/8 继续未完成；任何 capability 均未因本文档更新提升为 `VERIFIED`。

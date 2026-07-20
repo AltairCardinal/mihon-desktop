@@ -46,7 +46,7 @@ class DesktopProductCapabilityContractTest {
         setOf(28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 43, 67, 68, 69, 70, 87)
     private val sourceExtensionParityStatuses =
         mapOf(
-            28 to "NOT_STARTED",
+            28 to "WIRED",
             29 to "WIRED",
             30 to "WIRED",
             32 to "NOT_STARTED",
@@ -86,6 +86,42 @@ class DesktopProductCapabilityContractTest {
         "app-desktop/src/test/resources/parity/fixed-main-path-inventory.json"
     private val exactAuthorityPaths =
         mapOf(
+            28 to
+                setOf(
+                    "app/src/main/java/eu/kanade/domain/source/interactor/GetEnabledSources.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/source/AndroidSourceManager.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt",
+                ),
+            29 to
+                setOf(
+                    "app/src/main/java/eu/kanade/domain/source/interactor/GetIncognitoState.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModel.kt",
+                    "data/src/main/java/tachiyomi/data/source/SourcePagingSource.kt",
+                    "domain/src/main/java/mihon/domain/manga/model/SManga.kt",
+                    "domain/src/main/java/tachiyomi/domain/manga/interactor/NetworkToLocalManga.kt",
+                ),
+            30 to
+                setOf(
+                    "app/src/main/java/eu/kanade/presentation/browse/GlobalSearchScreen.kt",
+                    "app/src/main/java/eu/kanade/presentation/browse/components/GlobalSearchCardRow.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/GlobalSearchScreen.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/GlobalSearchScreenModel.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/SearchScreenModel.kt",
+                    "domain/src/main/java/mihon/domain/manga/model/SManga.kt",
+                    "domain/src/main/java/tachiyomi/domain/manga/interactor/NetworkToLocalManga.kt",
+                ),
+            37 to
+                setOf(
+                    "app/src/main/java/eu/kanade/domain/extension/interactor/GetExtensionSources.kt",
+                    "app/src/main/java/eu/kanade/domain/extension/interactor/GetExtensionsByType.kt",
+                    "app/src/main/java/eu/kanade/presentation/browse/ExtensionDetailsScreen.kt",
+                    "app/src/main/java/eu/kanade/presentation/browse/ExtensionsScreen.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsScreenModel.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsTab.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/ExtensionDetailsScreen.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/ExtensionDetailsScreenModel.kt",
+                ),
             67 to setOf("app/src/main/java/mihon/domain/migration/usecases/MigrateMangaUseCase.kt"),
             68 to
                 setOf(
@@ -134,6 +170,22 @@ class DesktopProductCapabilityContractTest {
                     "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAppearanceScreen.kt",
                     "core/common/src/main/kotlin/tachiyomi/core/common/i18n/Localize.kt",
                 ),
+        )
+    private val exactAuthorityBlobIds =
+        mapOf(
+            "app/src/main/java/eu/kanade/tachiyomi/source/AndroidSourceManager.kt" to "0fa40ba9d693e0495d3b21e8db6c37b63f5ee350",
+            "data/src/main/java/tachiyomi/data/source/SourcePagingSource.kt" to "bd34a91b5d13d1900b16aeb3b2f2b80df48c7dbe",
+            "domain/src/main/java/tachiyomi/domain/manga/interactor/NetworkToLocalManga.kt" to "69137d9e9688175ee4edf4992c3345727268bb2d",
+            "domain/src/main/java/mihon/domain/manga/model/SManga.kt" to "033f313d06a8427aefa2a2158e906ca4836013dc",
+            "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/GlobalSearchScreen.kt" to "44164f49b7ea223cae94f1f4494fc68d35640f69",
+            "app/src/main/java/eu/kanade/presentation/browse/GlobalSearchScreen.kt" to "8d949235a95fac8ca0b2df16d03690fd1385f7ba",
+            "app/src/main/java/eu/kanade/presentation/browse/components/GlobalSearchCardRow.kt" to "456269b7c604a18009c6d17bee615a547492b37d",
+            "app/src/main/java/eu/kanade/domain/extension/interactor/GetExtensionsByType.kt" to "c2bfd49f8e576cbca178ecc1664f7997b9c4a766",
+            "app/src/main/java/eu/kanade/domain/extension/interactor/GetExtensionSources.kt" to "76d2abe014b6583d46cdc322aaa37f37d4683697",
+            "app/src/main/java/eu/kanade/presentation/browse/ExtensionDetailsScreen.kt" to "c2219c395532ab5efc1bfbce6615adf42ad53861",
+            "app/src/main/java/eu/kanade/presentation/browse/ExtensionsScreen.kt" to "e460467861a925bce4e00613de4a9be47c632ba9",
+            "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsTab.kt" to "30561baeda7ccd06cd4ce41844cc6185759dd365",
+            "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/ExtensionDetailsScreen.kt" to "8cac9c5cceb94cb53cff3f8f1074e30e45a376c2",
         )
     private val requiredAuthorityBoundaryTerms =
         mapOf(
@@ -718,6 +770,29 @@ class DesktopProductCapabilityContractTest {
     }
 
     @Test
+    fun `active source extension authority language distinguishes fixed main from current consumers`() {
+        val repositoryRoot = repositoryRoot()
+        val manifest = Files.readString(repositoryRoot.resolve("app-desktop/src/test/resources/parity/parity-manifest.json"))
+        val proposal = Files.readString(repositoryRoot.resolve("openspec/changes/align-sources-extensions/proposal.md"))
+
+        listOf("Android authoritative", "Android original", "Android 原版").forEach { ambiguousAuthority ->
+            assertFalse(manifest.contains(ambiguousAuthority), "Active manifest must not use ambiguous authority term: $ambiguousAuthority")
+            assertFalse(proposal.contains(ambiguousAuthority), "Active proposal must not use ambiguous authority term: $ambiguousAuthority")
+        }
+        manifestItems(repositoryRoot)
+            .filter { validatedId(it.jsonObject) in sourceExtensionParityStatuses && validatedId(it.jsonObject) != 87 }
+            .forEach { item ->
+                val id = validatedId(item.jsonObject)
+                assertTrue(
+                    item.jsonObject.getValue("authoritativeImplementation").jsonPrimitive.content.startsWith(
+                        "Fixed-main original Mihon capability #$id:",
+                    ),
+                    "ID $id must name fixed-main original Mihon as authority, not a current consumer or adapter",
+                )
+            }
+    }
+
+    @Test
     fun `source extension provenance rejects an invalid second consumer path`() {
         createSyntheticConsumerFiles()
         val item = syntheticSourceExtensionItem(
@@ -824,6 +899,15 @@ class DesktopProductCapabilityContractTest {
             )
         }
         assertTrue(blobFailure.message.orEmpty().contains("lowercase 40-hex"), blobFailure.message)
+
+        val wrongKnownBlobFailure = assertThrows(AssertionError::class.java) {
+            fixedMainPathInventory(
+                buildFixedMainPathInventory(
+                    paths = listOf("app/src/main/java/eu/kanade/tachiyomi/source/AndroidSourceManager.kt" to "0".repeat(40)),
+                ),
+            )
+        }
+        assertTrue(wrongKnownBlobFailure.message.orEmpty().contains("wrong blob"), wrongKnownBlobFailure.message)
     }
 
     @Test
@@ -1264,7 +1348,11 @@ class DesktopProductCapabilityContractTest {
 
         validateCurrentPaths(item, "sharedImplementationPaths", id, repositoryRoot, allowEmpty = true)
         val androidRoots =
-            if (id == 40) setOf("app/src/main/", "core/common/src/androidMain/") else setOf("app/src/main/")
+            when (id) {
+                29 -> setOf("app/src/main/", "data/src/androidMain/")
+                40 -> setOf("app/src/main/", "core/common/src/androidMain/")
+                else -> setOf("app/src/main/")
+            }
         validateCurrentPaths(item, "currentAndroidConsumerPaths", id, repositoryRoot, requiredPrefixes = androidRoots)
         validateCurrentPaths(item, "desktopConsumerAdapterPaths", id, repositoryRoot, requiredPrefixes = setOf("app-desktop/src/main/"))
 
@@ -1357,6 +1445,11 @@ class DesktopProductCapabilityContractTest {
                 )
                 assertTrue(put(path, blobId!!) == null, "Fixed-main inventory path must be unique: $path")
             }
+            exactAuthorityBlobIds.forEach { (path, expectedBlobId) ->
+                get(path)?.let { actualBlobId ->
+                    assertEquals(expectedBlobId, actualBlobId, "Fixed-main inventory has the wrong blob for $path")
+                }
+            }
         }
     }
 
@@ -1390,7 +1483,7 @@ class DesktopProductCapabilityContractTest {
     }
 
     private fun syntheticSourceExtensionItem(
-        id: Int = 28,
+        id: Int = 32,
         upstreamPath: String = "app/src/main/Upstream.kt",
         sharedImplementationPaths: List<String> = emptyList(),
         currentAndroidConsumerPaths: List<String> = listOf("app/src/main/Current.kt"),

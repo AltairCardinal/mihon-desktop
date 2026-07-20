@@ -6,7 +6,7 @@
       "SHARE-EXTRACT"
     ],
     "status": "SHARED",
-    "authoritativeImplementation": "Android authoritative capability #3: 状态管理",
+    "authoritativeImplementation": "Legacy capability summary #3: 状态管理; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 状态管理",
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/error/AppErrorTest.kt",
@@ -22,7 +22,7 @@
       "SHARE-EXTRACT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #4: 依赖注入",
+    "authoritativeImplementation": "Legacy capability summary #4: 依赖注入; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 依赖注入",
     "protectionTests": [
       "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
@@ -37,7 +37,7 @@
       "SHARE-EXTRACT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #7: 偏好存储",
+    "authoritativeImplementation": "Legacy capability summary #7: 偏好存储; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 偏好存储",
     "protectionTests": [
       "core/common/src/jvmTest/kotlin/tachiyomi/core/common/preference/DesktopPreferenceStoreTest.kt",
@@ -54,7 +54,7 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "SHARED",
-    "authoritativeImplementation": "Android authoritative capability #8: 网络栈",
+    "authoritativeImplementation": "Legacy capability summary #8: 网络栈; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 网络栈",
     "protectionTests": [
       "app-desktop/src/test/kotlin/mihon/desktop/network/NetworkErrorContractTest.kt"
@@ -88,7 +88,7 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #10: 后台任务",
+    "authoritativeImplementation": "Legacy capability summary #10: 后台任务; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 后台任务",
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/task/BackgroundTaskContractTest.kt",
@@ -106,7 +106,7 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #11: 通知",
+    "authoritativeImplementation": "Legacy capability summary #11: 通知; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 通知",
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/task/BackgroundTaskContractTest.kt",
@@ -123,7 +123,7 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #12: 崩溃与诊断",
+    "authoritativeImplementation": "Legacy capability summary #12: 崩溃与诊断; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 崩溃与诊断",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -137,7 +137,7 @@
       "SHARE-EXTRACT"
     ],
     "status": "SHARED",
-    "authoritativeImplementation": "Android authoritative capability #16: 分类",
+    "authoritativeImplementation": "Legacy capability summary #16: 分类; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 分类",
     "protectionTests": [
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryCategoryBehaviorTest.kt",
@@ -153,7 +153,7 @@
       "SHARE-EXTRACT"
     ],
     "status": "SHARED",
-    "authoritativeImplementation": "Android authoritative capability #17: 书库筛选",
+    "authoritativeImplementation": "Legacy capability summary #17: 书库筛选; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 书库筛选",
     "protectionTests": [
       "app/src/test/java/eu/kanade/tachiyomi/ui/library/LibrarySharedEvaluationWiringTest.kt",
@@ -172,7 +172,7 @@
       "SHARE-EXTRACT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #19: 书库多选批处理",
+    "authoritativeImplementation": "Legacy capability summary #19: 书库多选批处理; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 书库多选批处理",
     "protectionTests": [
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt"
@@ -187,7 +187,7 @@
       "SHARE-DIRECT"
     ],
     "status": "SHARED",
-    "authoritativeImplementation": "Android authoritative capability #22: 收藏与分类联动",
+    "authoritativeImplementation": "Legacy capability summary #22: 收藏与分类联动; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 收藏与分类联动",
     "protectionTests": [
       "data/src/jvmTest/kotlin/tachiyomi/data/manga/MangaRepositoryMembershipIntegrationTest.kt",
@@ -203,7 +203,7 @@
       "SHARE-EXTRACT"
     ],
     "status": "SHARED",
-    "authoritativeImplementation": "Android authoritative capability #24: 章节批量操作",
+    "authoritativeImplementation": "Legacy capability summary #24: 章节批量操作; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 章节批量操作",
     "protectionTests": [
       "domain/src/commonTest/kotlin/tachiyomi/domain/chapter/interactor/BatchUpdateChaptersTest.kt",
@@ -220,7 +220,7 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #26: 封面管理",
+    "authoritativeImplementation": "Legacy capability summary #26: 封面管理; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 封面管理",
     "protectionTests": [
       "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/UpdateCustomCoverTest.kt",
@@ -237,24 +237,33 @@
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #28: 源列表",
+    "status": "WIRED",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #28: reactive source membership and last-used/pinned/language projection",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
-      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt", "symbol": "SourcesScreenModel → enabled/language/pin source interactors" }
+      { "path": "app/src/main/java/eu/kanade/domain/source/interactor/GetEnabledSources.kt", "symbol": "GetEnabledSources → last-used/pinned/language projection" },
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/source/AndroidSourceManager.kt", "symbol": "AndroidSourceManager → extension-driven reactive source membership" },
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt", "symbol": "SourcesScreenModel → reactive source groups" }
     ],
     "sharedImplementationPaths": [],
-    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt"],
+    "currentAndroidConsumerPaths": [
+      "app/src/main/java/eu/kanade/domain/source/interactor/GetEnabledSources.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/source/AndroidSourceManager.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt"
+    ],
     "desktopConsumerAdapterPaths": [
       "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/BrowseTab.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/source/DesktopSourceManager.kt"
     ],
     "deviations": [
-      { "classification": "PLATFORM_ADAPTER", "description": "Desktop wide-screen Compose and Voyager navigation." },
-      { "classification": "UNCLASSIFIED_DEBT", "description": "Source-list shared-state differences remain to be replayed against fixed main." }
+      { "classification": "PLATFORM_ADAPTER", "description": "Current Android and Desktop consumers independently project the same fixed-main grouping fixture; Desktop keeps wide-screen Compose and Voyager navigation." }
     ],
-    "desktopImplementation": "Desktop current implementation to characterize and align: 源列表",
-    "protectionTests": [],
+    "desktopImplementation": "DesktopSourceManager publishes extension-driven membership and DesktopSourceListProjector applies fixed-main last-used, pinned and localized language groups.",
+    "protectionTests": [
+      "app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/SourceSharedQueryWiringTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/DesktopSourceListProjectorTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceMembershipReactiveWiringTest.kt"
+    ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -269,34 +278,33 @@
     "authoritativeImplementation": "Fixed-main original Mihon capability #29: 单源浏览及非 incognito 的 last-used 记录",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
-      { "path": "app/src/main/java/eu/kanade/domain/source/interactor/GetEnabledSources.kt", "symbol": "GetEnabledSources → last-used/pinned/language projection" },
       { "path": "app/src/main/java/eu/kanade/domain/source/interactor/GetIncognitoState.kt", "symbol": "GetIncognitoState → global and extension-package incognito" },
-      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt", "symbol": "SourcesScreenModel → LastUsed/Pinned/Language groups" },
-      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModel.kt", "symbol": "BrowseSourceScreenModel → CatalogueSource pagination and non-incognito last-used write" }
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModel.kt", "symbol": "BrowseSourceScreenModel → CatalogueSource pagination, canonical observation and non-incognito last-used write" },
+      { "path": "data/src/main/java/tachiyomi/data/source/SourcePagingSource.kt", "symbol": "SourcePagingSource → URL de-duplication, canonical persistence and empty-page errors" },
+      { "path": "domain/src/main/java/mihon/domain/manga/model/SManga.kt", "symbol": "SManga.toDomainManga → complete canonical field mapping" },
+      { "path": "domain/src/main/java/tachiyomi/domain/manga/interactor/NetworkToLocalManga.kt", "symbol": "NetworkToLocalManga → canonical manga insert/update" }
     ],
-    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaSearchService.kt", "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceQueryState.kt"],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/manga/model/SManga.kt", "domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/NetworkToLocalManga.kt", "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaSearchService.kt", "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceQueryState.kt"],
     "currentAndroidConsumerPaths": [
-      "app/src/main/java/eu/kanade/domain/source/interactor/GetEnabledSources.kt",
       "app/src/main/java/eu/kanade/domain/source/interactor/GetIncognitoState.kt",
-      "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt",
-      "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModel.kt"
+      "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModel.kt",
+      "data/src/androidMain/kotlin/tachiyomi/data/source/SourcePagingSource.kt"
     ],
     "desktopConsumerAdapterPaths": [
       "app-desktop/src/main/kotlin/mihon/desktop/settings/DesktopAppPreferences.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/BrowseTab.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/domain/SaveSourceMangaForDetails.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceQueryCoordinators.kt"
     ],
     "deviations": [
       { "classification": "MIGRATION_OUTPUT", "description": "Shared paging, recovery and query state replay fixed-main behavior but remain migration output." },
-      { "classification": "PLATFORM_ADAPTER", "description": "Last-used/pinned/language projection is implemented separately by the current Android consumer and Desktop consumer from the same fixed-main fixture; it is not claimed as shared output." },
       { "classification": "PLATFORM_ADAPTER", "description": "Desktop keyboard and layout behavior is platform-specific." }
     ],
     "desktopImplementation": "Desktop production consumer uses shared query state and fixed-main-derived source projection; platform preferences persist last-used only outside global or extension-package incognito.",
     "protectionTests": [
       "app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModelBehaviorTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/DesktopSourceListProjectorTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceLastUsedWiringTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceBrowseCanonicalResultWiringTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceSharedStateWiringTest.kt"
     ],
     "platformExemptionEvidence": "NONE",
@@ -309,27 +317,36 @@
       "SHARE-DIRECT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #30: 全局搜索",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #30: canonical global search, observation and presentation",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
       { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/GlobalSearchScreenModel.kt", "symbol": "GlobalSearchScreenModel" },
-      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/SearchScreenModel.kt", "symbol": "SearchScreenModel → enabled CatalogueSource" }
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/SearchScreenModel.kt", "symbol": "SearchScreenModel → enabled CatalogueSource, canonical persistence and database observation" },
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/GlobalSearchScreen.kt", "symbol": "GlobalSearchScreen → query-preserving source navigation" },
+      { "path": "app/src/main/java/eu/kanade/presentation/browse/GlobalSearchScreen.kt", "symbol": "GlobalSearchScreen presentation → complete result rendering" },
+      { "path": "app/src/main/java/eu/kanade/presentation/browse/components/GlobalSearchCardRow.kt", "symbol": "GlobalSearchCardRow → observable canonical manga cards" },
+      { "path": "domain/src/main/java/mihon/domain/manga/model/SManga.kt", "symbol": "SManga.toDomainManga → complete canonical field mapping" },
+      { "path": "domain/src/main/java/tachiyomi/domain/manga/interactor/NetworkToLocalManga.kt", "symbol": "NetworkToLocalManga → canonical manga insert/update" }
     ],
-    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaSearchService.kt", "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceQueryState.kt", "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/GlobalSearchSourcePolicy.kt"],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/manga/model/SManga.kt", "domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/NetworkToLocalManga.kt", "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaSearchService.kt", "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceQueryState.kt", "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/GlobalSearchSourcePolicy.kt"],
     "currentAndroidConsumerPaths": [
       "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/GlobalSearchScreenModel.kt",
-      "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/SearchScreenModel.kt"
+      "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/SearchScreenModel.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/GlobalSearchScreen.kt",
+      "app/src/main/java/eu/kanade/presentation/browse/GlobalSearchScreen.kt",
+      "app/src/main/java/eu/kanade/presentation/browse/components/GlobalSearchCardRow.kt"
     ],
     "desktopConsumerAdapterPaths": [
       "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/GlobalSearchScreen.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/domain/SaveSourceMangaForDetails.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceQueryCoordinators.kt"
     ],
     "deviations": [
       { "classification": "MIGRATION_OUTPUT", "description": "Generation and unified error aggregation are shared migration semantics." },
       { "classification": "PLATFORM_ADAPTER", "description": "Desktop rendering must not redefine fixed-main search behavior." }
     ],
-    "desktopImplementation": "Desktop current implementation to characterize and align: 全局搜索",
-    "protectionTests": ["app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/GlobalSearchRecoveryBehaviorTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/GlobalSearchResultProductionWiringTest.kt"],
+    "desktopImplementation": "Desktop consumes shared ordering/query state, canonicalizes results before publication, observes visible cards and preserves the query when entering one source.",
+    "protectionTests": ["app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/GlobalSearchRecoveryBehaviorTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/SearchScreenModelBehaviorTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/GlobalSearchResultNavigationTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/GlobalSearchResultProductionWiringTest.kt"],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -340,7 +357,7 @@
       "SHARE-DIRECT"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #32: 扩展仓库",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #32: 扩展仓库",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
       { "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/browse/ExtensionReposScreenModel.kt", "symbol": "ExtensionReposScreenModel → extension-repo interactors" }
@@ -372,7 +389,7 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #33: 扩展发现",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #33: 扩展发现",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
       { "path": "app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt", "symbol": "ExtensionManager.findAvailableExtensions" },
@@ -408,7 +425,7 @@
       "DESKTOP-PRODUCT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #34: 扩展安装",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #34: 扩展安装",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
       { "path": "app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt", "symbol": "installExtension/updateExtension/cancelInstallUpdateExtension" },
@@ -445,7 +462,7 @@
       "TEMP-COMPAT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #35: 扩展加载",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #35: 扩展加载",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
       { "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt", "symbol": "ExtensionLoader → PackageManager/signature/private APK loading" }
@@ -468,7 +485,7 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #36: 扩展安全",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #36: 扩展安全",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
       { "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt", "symbol": "untrusted LoadResult" },
@@ -507,22 +524,34 @@
     "authoritativeImplementation": "Fixed-main original Mihon capability #37: 扩展详情、反馈与经 ScreenModel 路由的更新/卸载动作",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
+      { "path": "app/src/main/java/eu/kanade/domain/extension/interactor/GetExtensionsByType.kt", "symbol": "GetExtensionsByType → update/installed/available/untrusted, NSFW, obsolete and language classification" },
+      { "path": "app/src/main/java/eu/kanade/domain/extension/interactor/GetExtensionSources.kt", "symbol": "GetExtensionSources → reactive enabled-first source projection" },
       { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsScreenModel.kt", "symbol": "ExtensionsScreenModel" },
       { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/ExtensionDetailsScreenModel.kt", "symbol": "ExtensionDetailsScreenModel" },
-      { "path": "app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt", "symbol": "updateExtension/uninstallExtension" }
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt", "symbol": "updateExtension/uninstallExtension" },
+      { "path": "app/src/main/java/eu/kanade/presentation/browse/ExtensionsScreen.kt", "symbol": "ExtensionsScreen presentation → catalog state, errors and install progress" },
+      { "path": "app/src/main/java/eu/kanade/presentation/browse/ExtensionDetailsScreen.kt", "symbol": "ExtensionDetailsScreen presentation → metadata, source toggles and feedback" },
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsTab.kt", "symbol": "ExtensionsTab → model-routed actions and details navigation" },
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/ExtensionDetailsScreen.kt", "symbol": "ExtensionDetailsScreen → details lifecycle and uninstall exit" }
     ],
     "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/extension/presentation/ExtensionPresentationContract.kt", "domain/src/commonMain/kotlin/mihon/domain/extension/presentation/ExtensionPresentationStore.kt"],
     "currentAndroidConsumerPaths": [
       "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsScreenModel.kt",
       "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/ExtensionDetailsScreenModel.kt",
       "app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt",
-      "app/src/main/java/eu/kanade/domain/extension/interactor/GetExtensionsByType.kt"
+      "app/src/main/java/eu/kanade/domain/extension/interactor/GetExtensionsByType.kt",
+      "app/src/main/java/eu/kanade/domain/extension/interactor/GetExtensionSources.kt",
+      "app/src/main/java/eu/kanade/presentation/browse/ExtensionsScreen.kt",
+      "app/src/main/java/eu/kanade/presentation/browse/ExtensionDetailsScreen.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsTab.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/ExtensionDetailsScreen.kt"
     ],
     "desktopConsumerAdapterPaths": [
       "app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionListScreen.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionDetailsScreen.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionManager.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/extension/DesktopExtensionPresentationPort.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionListUiProjection.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionsScreenModel.kt"
     ],
     "deviations": [
@@ -548,7 +577,7 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #38: 源偏好设置",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #38: 源偏好设置",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
       { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/details/SourcePreferencesScreen.kt", "symbol": "SourcePreferencesScreen → source preference schema rendering" }
@@ -574,7 +603,7 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #39: WebView/源登录",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #39: WebView/源登录",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
       { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/webview/WebViewScreenModel.kt", "symbol": "WebViewScreenModel" },
@@ -609,7 +638,7 @@
       "DESKTOP-PRODUCT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #40: Cloudflare 绕过",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #40: Cloudflare 绕过",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
       { "path": "core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareInterceptor.kt", "symbol": "CloudflareInterceptor" },
@@ -790,7 +819,7 @@
       "SHARE-DIRECT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #53: 章节进度",
+    "authoritativeImplementation": "Legacy capability summary #53: 章节进度; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop reader submits ReadingProgressEvent to the shared SQLDelight transaction repository",
     "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerIntegrationTest.kt"],
     "platformExemptionEvidence": "NONE",
@@ -820,7 +849,7 @@
       "SHARE-EXTRACT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #56: 下载队列",
+    "authoritativeImplementation": "Legacy capability summary #56: 下载队列; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop file adapter consumes the shared queue state machine backed by SQLDelight",
     "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/download/DesktopDownloadRecoveryIntegrationTest.kt"],
     "platformExemptionEvidence": "NONE",
@@ -833,7 +862,7 @@
       "SHARE-EXTRACT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #57: 下载并发",
+    "authoritativeImplementation": "Legacy capability summary #57: 下载并发; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop worker consumes shared fair scheduling and Android retry backoff rules",
     "protectionTests": ["domain/src/commonTest/kotlin/mihon/domain/download/DownloadQueueStateMachineTest.kt"],
     "platformExemptionEvidence": "NONE",
@@ -847,7 +876,7 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #59: 自动下载",
+    "authoritativeImplementation": "Legacy capability summary #59: 自动下载; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Library update forwards new chapters through shared FilterChaptersForDownload into the persistent queue",
     "protectionTests": [
       "app-desktop/src/test/kotlin/mihon/desktop/domain/FilterChaptersForDownloadIntegrationTest.kt",
@@ -864,7 +893,7 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #61: 书库更新",
+    "authoritativeImplementation": "Legacy capability summary #61: 书库更新; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 书库更新",
     "protectionTests": [
       "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateSchedulerTest.kt",
@@ -881,7 +910,7 @@
       "SHARE-DIRECT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #62: 更新列表",
+    "authoritativeImplementation": "Legacy capability summary #62: 更新列表; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop UpdatesScreenModel consumes shared GetUpdates and UpdateChapter use cases",
     "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/updates/UpdatesScreenModelTest.kt"],
     "platformExemptionEvidence": "NONE",
@@ -894,7 +923,7 @@
       "SHARE-DIRECT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Android authoritative capability #64: 历史记录",
+    "authoritativeImplementation": "Legacy capability summary #64: 历史记录; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop HistoryScreenModel consumes shared history/chapter/manga use cases",
     "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/history/HistoryScreenModelTest.kt"],
     "platformExemptionEvidence": "NONE",
@@ -908,7 +937,7 @@
       "SHARE-EXTRACT"
     ],
     "status": "SHARED",
-    "authoritativeImplementation": "Android authoritative capability #66: 统计",
+    "authoritativeImplementation": "Legacy capability summary #66: 统计; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 统计",
     "protectionTests": [
       "domain/src/commonTest/kotlin/tachiyomi/domain/library/interactor/AggregateLibraryStatsTest.kt",
@@ -1339,7 +1368,7 @@
       "SHARE-EXTRACT"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #71: 手动备份",
+    "authoritativeImplementation": "Legacy capability summary #71: 手动备份; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 手动备份",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -1352,7 +1381,7 @@
       "SHARE-EXTRACT"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #72: 备份恢复",
+    "authoritativeImplementation": "Legacy capability summary #72: 备份恢复; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 备份恢复",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -1365,7 +1394,7 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #73: 自动备份",
+    "authoritativeImplementation": "Legacy capability summary #73: 自动备份; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 自动备份",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -1379,7 +1408,7 @@
       "TEMP-COMPAT"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #74: 跨端备份兼容",
+    "authoritativeImplementation": "Legacy capability summary #74: 跨端备份兼容; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 跨端备份兼容",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -1392,7 +1421,7 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #81: Deep link",
+    "authoritativeImplementation": "Legacy capability summary #81: Deep link; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: Deep link",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -1405,7 +1434,7 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #82: 分享/系统 Intent",
+    "authoritativeImplementation": "Legacy capability summary #82: 分享/系统 Intent; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 分享/系统 Intent",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -1418,7 +1447,7 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #83: 安全锁",
+    "authoritativeImplementation": "Legacy capability summary #83: 安全锁; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 安全锁",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -1432,7 +1461,7 @@
       "PLATFORM-EXEMPT"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #84: 屏幕与截图安全",
+    "authoritativeImplementation": "Legacy capability summary #84: 屏幕与截图安全; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 屏幕与截图安全",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -1445,7 +1474,7 @@
       "PLATFORM-EXEMPT"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #85: 桌面/系统 Widget",
+    "authoritativeImplementation": "Legacy capability summary #85: 桌面/系统 Widget; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 桌面/系统 Widget",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -1458,7 +1487,7 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #86: 应用更新",
+    "authoritativeImplementation": "Legacy capability summary #86: 应用更新; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 应用更新",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -1513,7 +1542,7 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #88: 无障碍",
+    "authoritativeImplementation": "Legacy capability summary #88: 无障碍; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 无障碍",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -1526,7 +1555,7 @@
       "SHARE-EXTRACT"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #90: 设置搜索",
+    "authoritativeImplementation": "Legacy capability summary #90: 设置搜索; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 设置搜索",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -1540,7 +1569,7 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #91: 外观",
+    "authoritativeImplementation": "Legacy capability summary #91: 外观; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 外观",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -1554,7 +1583,7 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #92: 安全设置",
+    "authoritativeImplementation": "Legacy capability summary #92: 安全设置; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 安全设置",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -1567,7 +1596,7 @@
       "SHARE-EXTRACT"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #93: 高级维护",
+    "authoritativeImplementation": "Legacy capability summary #93: 高级维护; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 高级维护",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -1581,7 +1610,7 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #94: 开源许可与构建信息",
+    "authoritativeImplementation": "Legacy capability summary #94: 开源许可与构建信息; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 开源许可与构建信息",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -1594,7 +1623,7 @@
       "SHARE-EXTRACT"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #95: 代码模块边界",
+    "authoritativeImplementation": "Legacy capability summary #95: 代码模块边界; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 代码模块边界",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
@@ -1608,7 +1637,7 @@
       "TEMP-COMPAT"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Android authoritative capability #96: 平台兼容层成本",
+    "authoritativeImplementation": "Legacy capability summary #96: 平台兼容层成本; fixed-main original Mihon provenance pending",
     "desktopImplementation": "Desktop current implementation to characterize and align: 平台兼容层成本",
     "protectionTests": [],
     "platformExemptionEvidence": "NONE",
