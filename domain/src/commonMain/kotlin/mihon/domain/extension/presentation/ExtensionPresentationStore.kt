@@ -3,6 +3,10 @@ package mihon.domain.extension.presentation
 class ExtensionPresentationStore<T>(
     private val adapter: ExtensionPresentationAdapter<T>,
 ) : ExtensionPresentationClassifier<T> {
+    private val caseInsensitiveNameComparator = Comparator<T> { left, right ->
+        adapter.describe(left).name.compareTo(adapter.describe(right).name, ignoreCase = true)
+    }
+
     fun reduce(
         state: ExtensionPresentationActionState,
         action: ExtensionPresentationAction,
@@ -41,10 +45,10 @@ class ExtensionPresentationStore<T>(
             .filter { options.showNsfw || !adapter.describe(it).isNsfw }
             .sortedWith(
                 compareBy<T> { !adapter.describe(it).isObsolete }
-                    .thenBy { adapter.describe(it).name.lowercase() },
+                    .then(caseInsensitiveNameComparator),
             )
         val (updates, remainingInstalled) = sortedInstalled.partition { adapter.describe(it).hasUpdate }
-        val sortedUntrusted = untrusted.sortedBy { adapter.describe(it).name.lowercase() }
+        val sortedUntrusted = untrusted.sortedWith(caseInsensitiveNameComparator)
         val projectedAvailable = available
             .filter {
                 val item = adapter.describe(it)
@@ -62,7 +66,7 @@ class ExtensionPresentationStore<T>(
                         .map { adapter.projectAvailableSource(extension, it) }
                 }
             }
-            .sortedBy { adapter.describe(it).name.lowercase() }
+            .sortedWith(caseInsensitiveNameComparator)
 
         return ExtensionPresentationResult(updates, remainingInstalled, projectedAvailable, sortedUntrusted)
     }

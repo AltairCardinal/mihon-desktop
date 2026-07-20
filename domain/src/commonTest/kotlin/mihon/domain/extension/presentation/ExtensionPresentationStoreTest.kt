@@ -113,6 +113,37 @@ class ExtensionPresentationStoreTest {
     }
 
     @Test
+    fun `fixed main case insensitive ordering preserves Unicode and mixed case equality in every bucket`() {
+        fun adversarial(prefix: String) = listOf(
+            item("İ", "$prefix.dotted"),
+            item("i", "$prefix.ascii"),
+            item("Alpha", "$prefix.alpha-title"),
+            item("aLPHA", "$prefix.alpha-mixed"),
+            item("Σ", "$prefix.sigma"),
+            item("ς", "$prefix.final-sigma"),
+        )
+        val expectedSuffixes = listOf(
+            "alpha-title",
+            "alpha-mixed",
+            "dotted",
+            "ascii",
+            "sigma",
+            "final-sigma",
+        )
+
+        val result = store.classify(
+            installed = adversarial("installed"),
+            untrusted = adversarial("untrusted"),
+            available = adversarial("available"),
+            options = ExtensionPresentationOptions(showNsfw = false, enabledLanguages = setOf("en")),
+        )
+
+        assertEquals(expectedSuffixes, result.installed.map { it.pkgName.substringAfter('.') })
+        assertEquals(expectedSuffixes, result.untrusted.map { it.pkgName.substringAfter('.') })
+        assertEquals(expectedSuffixes, result.available.map { it.pkgName.substringAfter('.') })
+    }
+
+    @Test
     fun `fixed main comma search is OR across extension and source fields with package opt in`() {
         val extension = item(
             "Reader Plus",
