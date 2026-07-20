@@ -11,7 +11,18 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.coroutineContext
+
+private class JvmTransactionElement(
+    val owner: JvmDatabaseHandler,
+) : AbstractCoroutineContextElement(JvmTransactionElement) {
+    companion object Key : CoroutineContext.Key<JvmTransactionElement>
+}
 
 class JvmDatabaseHandler(
     val db: Database,
@@ -20,6 +31,7 @@ class JvmDatabaseHandler(
 ) : DatabaseHandler, AutoCloseable {
     @Volatile
     private var closed = false
+    private val transactionMutex = Mutex()
 
     override fun close() {
         if (closed) return
@@ -80,11 +92,17 @@ class JvmDatabaseHandler(
 
     private suspend fun <T> dispatch(inTransaction: Boolean, block: suspend Database.() -> T): T {
         check(!closed) { "Database handler is closed" }
+        if (coroutineContext[JvmTransactionElement]?.owner === this) {
+            return block(db)
+        }
         if (inTransaction) {
-            return withContext(queryDispatcher) {
-                db.transactionWithResult {
-                    runBlocking(queryDispatcher) {
-                        block(db)
+            return transactionMutex.withLock {
+                check(!closed) { "Database handler is closed" }
+                withContext(queryDispatcher) {
+                    db.transactionWithResult {
+                        runBlocking(queryDispatcher + JvmTransactionElement(this@JvmDatabaseHandler)) {
+                            block(db)
+                        }
                     }
                 }
             }

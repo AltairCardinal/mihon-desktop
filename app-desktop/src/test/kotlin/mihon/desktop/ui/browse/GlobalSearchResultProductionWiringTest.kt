@@ -36,7 +36,6 @@ import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.desktop.ui.library.MangaDetailScreen
-import mihon.domain.manga.model.toDomainManga
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -56,59 +55,16 @@ import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
-import tachiyomi.domain.source.service.SourcePageRequest
-import tachiyomi.domain.source.service.SourceQuery
-import tachiyomi.domain.source.service.SourceQueryState
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.i18n.MR
 import java.util.prefs.Preferences
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicLong
 
 private const val ASYNC_TIMEOUT_MS = 15_000L
 private const val INITIAL_RENDER_TIMEOUT_MS = 30_000L
 
 @OptIn(ExperimentalComposeUiApi::class)
 class GlobalSearchResultProductionWiringTest {
-
-    @Test
-    fun `materializer serializes canonical persistence across sources`() = runBlocking {
-        val firstEntered = CompletableDeferred<Unit>()
-        val releaseFirst = CompletableDeferred<Unit>()
-        val activeSource = AtomicLong()
-        val materializer = SourceResultMaterializer(this) { items, sourceId ->
-            check(activeSource.compareAndSet(0L, sourceId)) {
-                "source $sourceId entered persistence while source ${activeSource.get()} was active"
-            }
-            try {
-                if (sourceId == 9L) {
-                    firstEntered.complete(Unit)
-                    releaseFirst.await()
-                }
-                items.map { it.toDomainManga(sourceId) }
-            } finally {
-                check(activeSource.compareAndSet(sourceId, 0L))
-            }
-        }
-        fun content(sourceId: Long) = SourceQueryState.Content(
-            SourcePageRequest(sourceId, page = 1, generation = 1, query = SourceQuery.Popular),
-            listOf(SManga.create().apply { url = "/$sourceId"; title = "Source $sourceId" }),
-            hasNextPage = false,
-        )
-
-        materializer.sync(1, linkedMapOf(9L to content(9L), 10L to content(10L)))
-        withTimeout(ASYNC_TIMEOUT_MS) { firstEntered.await() }
-        releaseFirst.complete(Unit)
-        withTimeout(ASYNC_TIMEOUT_MS) {
-            while (materializer.results.size < 2) yield()
-        }
-
-        assertTrue(
-            materializer.results.values.all { it is CanonicalSearchResult.Content },
-            "both sources must publish content after serialized persistence: ${materializer.results}",
-        )
-        materializer.close()
-    }
 
     @Test
     fun `only composed cards observe canonical database rows without another search`() = runBlocking {
@@ -247,6 +203,15 @@ class GlobalSearchResultProductionWiringTest {
                 fixture.repository.releaseOld.complete(Unit)
                 withTimeout(ASYNC_TIMEOUT_MS) { fixture.repository.oldInserted.await() }
                 withTimeout(ASYNC_TIMEOUT_MS) {
+                    while (!fixture.repository.newStarted.isCompleted) {
+                        scene.render()
+                        yield()
+                    }
+                }
+                scene.render()
+                assertFalse(text(scene).contains("old canonical"), "stale completion must be rejected before the new result publishes")
+                fixture.repository.releaseNew.complete(Unit)
+                withTimeout(ASYNC_TIMEOUT_MS) {
                     while (!fixture.repository.newFailed.isCompleted) {
                         scene.render()
                         yield()
@@ -355,6 +320,8 @@ class GlobalSearchResultProductionWiringTest {
         val oldStarted = CompletableDeferred<Unit>()
         val releaseOld = CompletableDeferred<Unit>()
         val oldInserted = CompletableDeferred<Unit>()
+        val newStarted = CompletableDeferred<Unit>()
+        val releaseNew = CompletableDeferred<Unit>()
         val newFailed = CompletableDeferred<Unit>()
         val newInserted = CompletableDeferred<Unit>()
         private var rejectNew = true
@@ -373,6 +340,8 @@ class GlobalSearchResultProductionWiringTest {
                 delegate.insertNetworkManga(manga).also { oldInserted.complete(Unit) }
             }
             manga.first().url.startsWith("/new/") && rejectNew -> {
+                newStarted.complete(Unit)
+                releaseNew.await()
                 rejectNew = false
                 newFailed.complete(Unit)
                 error("controlled materialization failure")
