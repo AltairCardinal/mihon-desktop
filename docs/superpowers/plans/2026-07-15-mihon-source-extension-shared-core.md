@@ -37,7 +37,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - [x] Task 4A：共享安装事务状态机
 - [x] Task 4B：Desktop install port 与 reload 回滚
 - [x] Task 4C：Android 安装事务/session 生命周期
-- [x] Task 4D：Android 信任、receiver 可见性与精确回滚
+- [ ] Task 4D：Android 信任、receiver 可见性与精确回滚（7D25 关闭真实 SYSTEM 降级回滚后恢复完成）
 - [x] Task 5A：共享登录会话与 Desktop Cookie 原子提交
 - [x] Task 5B：Desktop 挑战恢复策略与 FlareSolverr 显式后备
 - [x] Task 5C：Desktop 登录设置、UI 与 production wiring
@@ -2311,6 +2311,27 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 - Estimated scope: `5 files, 240 lines`
 - Verification: take over the already compiled Task 7D24R base/test APKs without running Gradle or changing production/test design. Create a fresh project-managed API 36 AVD with cold boot and snapshots disabled to isolate the prior offline emulator failure, install both APKs, and run all four `BrowseSourceUiWiringTest` cases. Record exact APK hashes, device/API and instrumentation output. The controlled source proves current Android consumer production `SharedSourcePagingSource`/Pager/Compose/Scaffold wiring only; it is not an original Mihon fixture or fixed-main authority. The single repair review adds one tracked raw-evidence file so the claimed fresh run is independently auditable; the resulting five-file scope remains below the split threshold and does not need a split waiver.
 - Evidence: repair-review fresh cold/no-snapshot AVD `mihon-7d24f-repair-api36` (`emulator-5556`, `sdk_gphone64_x86_64`, Android 16 / API 36) reached `device` and `sys.boot_completed=1`. Base SHA-256 `8e1892fe68cdcd1138ccce96517391b22401d49894ab04af76e8069be82b3460` and test SHA-256 `1fce797f052d35834e6cd56df58bd2946ae5c8958462be301b3c0f321ec74773` both installed with `Success`; the unchanged targeted instrumentation finished in 17.567s with `OK (4 tests)`. The complete commands, device identity, install output and instrumentation stdout are tracked in `docs/superpowers/reports/evidence/2026-07-20-7d24f-android-runtime.txt`. It proved localized first-page empty plus append-empty preserving rows, visible Retry, a second request for the same page and recovered content through production wiring. OpenSpec 4.4 is checked; 3.4.3 remains pending for Desktop.
+
+##### Task 7D25: Android SYSTEM downgrade rollback closure
+
+- Risk axis: `android-system-downgrade-rollback`
+- Platform boundary: `android`
+- Estimated scope: `5 files, 360 lines`
+- Verification: write a production-gateway RED that installs a higher-version candidate, forces post-commit reload or cleanup failure, and proves the lower-version signed snapshot is physically restored before runtime reload. The recovery path must use bounded PackageInstaller/uninstall callbacks, validate package/signers/version after restoration, preserve trust metadata, and fail visibly if uninstall, reinstall, verification or reload fails. Fake file-copy gateways are supplementary only; the completion evidence must include a project-managed emulator PackageInstaller/instrumentation run. Reopen Task 4D until this test and its independent review pass.
+
+##### Task 7D26: Android same-package retry flight handoff
+
+- Risk axis: `android-same-package-retry-flight`
+- Platform boundary: `shared+android`
+- Estimated scope: `4 files, 320 lines`
+- Verification: add a public `downloadAndInstall` RED that holds request A at platform handoff, immediately submits a same-package request B with a distinct immutable artifact/version, and proves B cannot subscribe to A's coordinator flight or publish A's terminal. The implementation must await A's bounded cancel/rollback/cleanup completion before B starts, or use an equivalent request-identity-safe flight key, while preserving same-request subscriber sharing and different-package concurrency.
+
+##### Task 7D27: Desktop update-all trust request queue
+
+- Risk axis: `desktop-update-all-trust-queue`
+- Platform boundary: `desktop`
+- Estimated scope: `3 files, 280 lines`
+- Verification: add a production ScreenModel/UI RED with at least two update-all candidates that concurrently reach `TrustRequired`. Every candidate must remain reachable through a FIFO confirmation flow (or receive an explicit visible cancellation terminal), and confirm/reject must clear that package's action/install step before advancing. No package may remain indefinitely `Pending`/`Installing`; single-update and Desktop-specific file/transaction actions must remain unchanged.
 
 - [ ] **Step 7: 独立批次与最终审查**
 
