@@ -2,7 +2,11 @@ package mihon.desktop.ui.download
 
 import io.mockk.coEvery
 import io.mockk.mockk
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DesktopDownloadProvider
@@ -11,6 +15,7 @@ import mihon.desktop.download.DownloadQueueOrder
 import mihon.desktop.download.DownloadQueueScreenModel
 import mihon.desktop.source.FakeDesktopSourceManager
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.domain.chapter.model.Chapter
@@ -71,6 +76,47 @@ class DownloadQueueOrderPolicyTest {
 
         assertEquals(listOf(1L, 3L, 2L, 4L), manager.queue.first().map { it.chapterId })
         model.onDispose()
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `injected scope follows caller lifecycle without canceling caller on dispose`() = runTest {
+        val callerJob = SupervisorJob()
+        val callerScope = CoroutineScope(coroutineContext + callerJob)
+        val manager = manager()
+        val model = DownloadQueueScreenModel(manager, repository(), FakeDesktopSourceManager(emptyList()), callerScope)
+        try {
+            manager.enqueue(item(1L, sourceId = 1L))
+            advanceUntilIdle()
+            assertEquals(listOf(1L), model.state.value.queue.map { it.chapterId })
+
+            callerJob.cancel()
+            manager.enqueue(item(2L, sourceId = 1L))
+            advanceUntilIdle()
+            assertEquals(listOf(1L), model.state.value.queue.map { it.chapterId })
+        } finally {
+            model.onDispose()
+            callerJob.cancel()
+        }
+
+        val activeCallerJob = SupervisorJob()
+        val activeCallerScope = CoroutineScope(coroutineContext + activeCallerJob)
+        val secondManager = manager(item(3L, sourceId = 1L))
+        val disposableModel =
+            DownloadQueueScreenModel(secondManager, repository(), FakeDesktopSourceManager(emptyList()), activeCallerScope)
+        try {
+            advanceUntilIdle()
+            val stateBeforeDispose = disposableModel.state.value
+            disposableModel.onDispose()
+            assertTrue(activeCallerJob.isActive)
+
+            secondManager.enqueue(item(4L, sourceId = 1L))
+            advanceUntilIdle()
+            assertEquals(stateBeforeDispose, disposableModel.state.value)
+        } finally {
+            disposableModel.onDispose()
+            activeCallerJob.cancel()
+        }
     }
 
     private fun manager(vararg items: DownloadItem): DesktopDownloadManager {

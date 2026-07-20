@@ -41,7 +41,10 @@ class DownloadQueueScreenModel(
     private val sourceManager: SourceManager,
     coroutineScope: CoroutineScope? = null,
 ) : ScreenModel {
-    private val injectedScope = coroutineScope?.let { CoroutineScope(it.coroutineContext + SupervisorJob()) }
+    private val injectedScope =
+        coroutineScope?.let {
+            CoroutineScope(it.coroutineContext + SupervisorJob(it.coroutineContext[Job]))
+        }
     private val scope = injectedScope ?: screenModelScope
     val queue: StateFlow<List<DownloadItem>> = downloadManager.queue
     val isPaused: StateFlow<Boolean> = downloadManager.isPaused
