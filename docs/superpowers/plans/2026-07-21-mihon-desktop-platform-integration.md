@@ -872,15 +872,17 @@ status-source: this-file
 
 **Platform boundary:** verification
 
-**Estimated scope:** 6 files, 300 lines
+**Estimated scope:** 8 files, 400 lines
 
 **Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.parity.DesktopProductCapabilityContractTest" --tests "mihon.desktop.parity.WidgetPrivacyBoundaryTest"`
 
 **Files:**
 
 - Modify: `app-desktop/src/test/resources/parity/parity-manifest.json`
+- Modify: `app-desktop/src/test/resources/parity/fixed-main-path-inventory.json`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/parity/WidgetPrivacyBoundaryTest.kt`
+- Modify: `presentation-widget/src/test/java/tachiyomi/presentation/widget/WidgetPrivacyProductionWiringTest.kt`
 - Create: `docs/architecture/desktop-platform-integration.md`
 - Modify: `docs/superpowers/plans/2026-07-21-mihon-desktop-platform-integration.md`
 - Modify: `.superpowers/sdd/progress.md`
@@ -896,6 +898,8 @@ status-source: this-file
 5. 架构文档说明入口、状态、adapter、能力探测、安全失败、维护/新增 OS 方法和 updater 回滚。
 6. 只有相应 Task 审查通过才更新状态；真实 OS 尚未验证的条目标为 CANDIDATE/有限，不预先写 VERIFIED。
 7. 运行 Verification、`git diff --check` 和文档路径/链接检查。
+
+**Review status（修复中）：** 初始实现提交 `c57383a23`、结构化证据修订 `d1f068de6`、权威路径修复 `9981e2929`；协调者强制复跑 Desktop parity/Widget/Updates/privacy 35/35、Android Widget 2/2、根 Spotless、JSON/current/fixed-main 路径与 diff 均通过。独立首审仍以 Critical/Important/Minor `2/4/0` 拒绝：ID 81 把 fork 的 `ExternalActionParser` 倒写为 fixed-main 行为；平台契约未接入 fixed-main blob inventory、精确 per-ID 路径/符号与可杀死 production wiring 的行为证据；多个 ID 只列 adapter 而漏 UI/DI consumer；Android Widget 测试未实例化/执行 `BaseUpdatesGridGlanceWidget` production wiring；ID 86 缺 fixed-main `GetApplicationRelease` 节流/版本路径；ID 92 无 Desktop consumer 的 notification/telemetry 错标为 CANDIDATE。唯一修复轮因此在同一 Task 内加入 fixed-main inventory 与 Android Widget production 测试，范围调整为 8 files/400 lines；不新增 Task。
 
 ### Task 16：独立最终审查与三平台 change verify
 
