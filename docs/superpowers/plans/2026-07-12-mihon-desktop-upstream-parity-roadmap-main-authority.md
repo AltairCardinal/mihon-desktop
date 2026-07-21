@@ -463,7 +463,7 @@ Windows `0.11.14.43.84e386c` 固定 EXE 与 macOS `0.11.14.44.84e386c` 部署应
 - [ ] **Step 1: 从固定原版快照为 URI 解析、无效链接、分享 payload、锁定超时、版本比较建立 fixture，并写共享 RED 测试**
 - [ ] **Step 2: 为当前 OS 能力探测和平台豁免显示写 Desktop RED 测试**
 - [ ] **Step 3: 将固定原版 URI parser、分享模型、安全策略和 release 状态中的平台无关语义迁入 shared；当前 Android 构建版仅作为 Android adapter/consumer**
-- [ ] **Step 4: 实现 Windows/macOS/Linux scheme 注册与单实例转发 adapter**
+- [x] **Step 4: 实现 Windows/macOS/Linux scheme 注册与单实例转发 adapter**
 - [ ] **Step 5: 实现系统分享/剪贴板后备和 OS credential-backed app lock**
 - [ ] **Step 6: 在支持的平台实现窗口隐私；不支持时 UI 明确说明而非静默成功**
 - [ ] **Step 7: 对齐固定原版的下载、校验、安装、失败回滚更新状态机；平台安装 side effect 由各端 adapter 实现**
@@ -472,7 +472,7 @@ Windows `0.11.14.43.84e386c` 固定 EXE 与 macOS `0.11.14.44.84e386c` 部署应
 - [ ] **Step 10: 运行三 OS 可执行的单元测试矩阵及当前 Windows 集成验收**
 - [ ] **Step 11: 更新追踪项 81–86、92 的原版 provenance、shared/adapter 证据和豁免说明**
 
-**Current progress:** 子计划 Task 1–6 已完成。固定原版 fixture/shared 外部动作与安全契约、当前 Android consumer、Desktop target resolution、冷启动导航、FIFO/取消恢复、有界非阻塞反馈及 loopback 单实例安全转发已具备实现、TDD 和独立审查证据；对应父 Step 1、3、4、9 仍因 URI scheme 注册、分享、完整安全/更新与其余设置 wiring 尚未完成而保持未勾选。下一项为子计划 Task 7 Windows/macOS/Linux URI scheme 注册。
+**Current progress:** 子计划 Task 1–7 已完成。固定原版 fixture/shared 外部动作与安全契约、当前 Android consumer、Desktop target resolution、冷启动导航、FIFO/取消恢复、有界非阻塞反馈、loopback 单实例安全转发及三平台 canonical URI scheme 注册已具备实现、TDD 和独立审查证据；父 Step 4 已勾选，Step 1、3、9 仍因分享、完整安全/更新与其余设置 wiring 尚未完成而保持未勾选。下一项为子计划 Task 8 Desktop 系统分享与剪贴板/保存后备。
 
 ## 14. Task 5B：设置、外观、无障碍与许可
 

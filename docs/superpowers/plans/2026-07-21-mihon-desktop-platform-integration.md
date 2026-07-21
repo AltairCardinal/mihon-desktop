@@ -27,7 +27,7 @@ status-source: this-file
 - [x] Task 5：Desktop 外部动作导航、入口与可见反馈
 - [x] Task 5R：Desktop 外部动作非阻塞反馈收口
 - [x] Task 6：Desktop 单实例安全转发
-- [ ] Task 7：Windows/macOS/Linux URI scheme 注册
+- [x] Task 7：Windows/macOS/Linux URI scheme 注册
 - [ ] Task 8：Desktop 系统分享与剪贴板/保存后备
 - [ ] Task 9：Desktop credential-backed 应用锁核心
 - [ ] Task 10：Desktop Security 设置与 unlock UI
@@ -297,7 +297,7 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 8 files, 450 lines
+**Estimated scope:** 8 files, 750 lines
 
 **Split waiver:** 三 OS 元数据、可探测注册 adapter 与 owner-only 启动接线共同组成同一个 URI scheme capability；如果把 `Main` production wiring 拆到后续 Task，本 Task 会留下只能被测试直接实例化、Windows/Linux 实际从不注册的死基础设施。8 个文件反复共享同一 scheme/当前可执行文件契约，且必须用同一 mutation test 证明删除启动接线会失败，因此保留为单 Task。
 
@@ -322,6 +322,8 @@ status-source: this-file
 2. GREEN：生产 adapter 仅注册当前可执行文件/应用包；路径参数严格转义，卸载/重装不会留下指向旧 BUILD 的入口。只有 Task 6 选出的 owner 执行注册，删除 `Main` 的 production 调用时 wiring 测试必须失败。
 3. capability/result 必须结构化，不能把“命令返回成功”冒充完整动作链成功；真实 OS 协议启动留到 Task 16，未验证平台不得标记完成。
 4. 运行 Verification、打包配置静态检查和 `git diff --check`。
+
+**Evidence:** 实现提交 `2ab6c0eb3`，打包判定/模板防漂移修复 `f7ae98520`。Windows owner 以 HKCU `URL Protocol` 和覆盖式 `reg add /f` 注册 canonical `tachiyomi`，资源模板渲染后的完整 registry entry 集合必须与实际命令等价；Linux 原子写入带 `%u`/`x-scheme-handler/tachiyomi` 的 desktop entry 并执行 desktop database/xdg-mime；macOS plist 片段通过 Compose `infoPlist.extraKeysRawXml` 进入打包配置。只允许真实 jpackage launcher 文件及三平台 marker/runtime 布局，普通 binary、错误目录、缺 marker/runtime、命令缺失、权限/命令/意外失败均返回结构化结果；只有 Task 6 owner 执行注册，registration/report 异常不阻止 owner 应用。`Configured.endToEndActionVerified` 保持 `false`，未冒充真实 OS 动作链验收。实现与修复最终 Task 7 12/12 + Runtime 11/11，根 Spotless/diff/scope 通过；协调者强制重跑同一 23/23、根 Spotless 与 diff check 通过。唯一修复复审 APPROVED，Critical/Important/Minor `0/0/0`；累计范围 8 files/743 touched lines，真实 Windows/macOS/Linux URI→broker→导航留待 Task 16。
 
 ### Task 8：Desktop 系统分享与剪贴板/保存后备
 
