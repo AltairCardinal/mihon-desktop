@@ -38,7 +38,7 @@ status-source: this-file
 - [x] Task 11：Desktop 窗口隐私能力与真实反馈
 - [x] Task 12：固定原版发布语义与当前 Android 兼容
 - [x] Task 13A：Desktop release discovery 与 canonical 包契约
-- [ ] Task 13B：无兼容包 shared 结果与当前 Android 兼容
+- [x] Task 13B：无兼容包 shared 结果与当前 Android 兼容
 - [ ] Task 13C：Desktop 安全下载、临时路径与 SHA-256
 - [ ] Task 13D：Desktop 签名验证与平台安装交接
 - [ ] Task 13E：Desktop 更新控制器状态机
@@ -678,6 +678,8 @@ status-source: this-file
 1. RED：service null 必须产生 `NoCompatiblePackage`，但 throttle 仍是 `NoNewUpdate` 且 service 0 调用；Android production checker 必须把新结果映射回既有 no-update 行为，About exhaustive consumer 显式复用同一无更新反馈。
 2. GREEN：只区分“检查被节流/版本不新”和“release 存在但 target 不兼容”；三日节流、force、preview/release 比较保持 fixed-main，不借机改 SemVer。
 3. Android adapter 测试必须经过 production mapping seam；断开 mapping 时失败。运行 Verification、Android app compile 与 `git diff --check`。
+
+**Evidence:** 范围修订提交 `58372164b`，实现提交 `96ec59b13`。shared `GetApplicationRelease` 现在只在 release service 找不到当前 target 的兼容资产时返回 `NoCompatiblePackage`；节流仍返回 `NoNewUpdate` 且不调用 service，既有 force、preview/release 比较和 `lastChecked` 时序未改变。当前 Android production checker 将新结果映射回既有 `NoNewUpdate` 行为，About 页面继续显示同一“无更新”反馈，新版本仍只触发一次真实 notifier。RED 证明 service null 原先错误折叠为 `NoNewUpdate`，Android mapping 缺失时兼容测试失败；mutation 临时断开 mapping 后同样被测试杀死。协调者强制复跑 shared parity 4/4、Android production adapter 3/3，Android `:app:compileDebugKotlin`、根 Spotless、diff 与 secret scan 均通过；独立审查 APPROVED，Critical/Important/Minor `0/0/0`。最终范围 5 files/110 touched；Desktop 对该状态的独立可见反馈留给 Task 14。
 
 ### Task 13C：Desktop 安全下载、临时路径与 SHA-256
 
