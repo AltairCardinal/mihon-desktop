@@ -11,19 +11,119 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
+import mihon.desktop.platform.DesktopExternalActionBroker
+import mihon.desktop.platform.DesktopExternalActionTarget
 import mihon.desktop.test.TestArguments
 import mihon.desktop.test.TestModeRun
 import mihon.desktop.test.completeTestModeStop
+import mihon.desktop.test.state.TestState
+import mihon.desktop.ui.ExternalActionNavigator
+import mihon.desktop.ui.navigatorFixture
+import mihon.domain.platform.ExternalActionInput
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DesktopAppRuntimeTest {
+
+    @Test
+    fun `secondary acknowledgement exits without starting runtime services`(@org.junit.jupiter.api.io.TempDir tempDir: File) {
+        val stateFile = File(tempDir, "instance.json")
+        val owner = DesktopExternalActionBroker(stateFile)
+        assertTrue(owner.startOrForward(null) is DesktopExternalActionBroker.StartResult.Owner)
+        val secondary = DesktopExternalActionBroker(stateFile)
+        val service = RecordingRuntimeService()
+        val runtime = DesktopAppRuntime(
+            libraryUpdateScheduler = service,
+            localSourceScanService = RecordingRuntimeService(),
+            autoBackupScheduler = RecordingRuntimeService(),
+            startupCleanup = {},
+        )
+        var ownerStarts = 0
+
+        val result = startDesktopInstance(secondary, "tachiyomi://raw") {
+            ownerStarts++
+            runtime.start()
+        }
+
+        assertEquals(DesktopInstanceStartResult.Forwarded, result)
+        assertEquals(0, ownerStarts)
+        assertFalse(service.started)
+        owner.close()
+    }
+
+    @Test
+    fun `owner runtime close releases broker state and repeated close is harmless`(@org.junit.jupiter.api.io.TempDir tempDir: File) {
+        val stateFile = File(tempDir, "instance.json")
+        val broker = DesktopExternalActionBroker(stateFile)
+        val runtime = headlessRuntime()
+
+        assertEquals(
+            DesktopInstanceStartResult.Owner,
+            startDesktopInstance(broker, null) {
+                runtime.attachInstanceBroker(it)
+                runtime.start()
+            },
+        )
+        assertTrue(stateFile.exists())
+
+        runtime.close()
+        runtime.close()
+
+        assertFalse(runtime.isRunning)
+        assertFalse(stateFile.exists())
+    }
+
+    @Test
+    fun `startup failure reports only structured reason without starting owner`(@org.junit.jupiter.api.io.TempDir tempDir: File) {
+        val broker = DesktopExternalActionBroker(File(tempDir, "instance.json"))
+        val failures = mutableListOf<DesktopExternalActionBroker.Failure>()
+        var ownerStarts = 0
+
+        val result = startDesktopInstance(
+            broker = broker,
+            rawAction = "secret".repeat(DesktopExternalActionBroker.MAX_PAYLOAD_CHARS),
+            reportFailure = failures::add,
+        ) { ownerStarts++ }
+
+        assertEquals(DesktopInstanceStartResult.Failed(DesktopExternalActionBroker.Failure.MessageTooLarge), result)
+        assertEquals(listOf(DesktopExternalActionBroker.Failure.MessageTooLarge), failures)
+        assertEquals(0, ownerStarts)
+    }
+
+    @Test
+    fun `owner broker submits forwarded raw string to Task5 ViewUri ingress`(@org.junit.jupiter.api.io.TempDir tempDir: File) = runTest {
+        val stateFile = File(tempDir, "instance.json")
+        val owner = DesktopExternalActionBroker(stateFile)
+        owner.startOrForward(null)
+        var resolvedInput: ExternalActionInput? = null
+        val navigator = ExternalActionNavigator(
+            resolveTarget = { input ->
+                resolvedInput = input
+                DesktopExternalActionTarget.Rejected(DesktopExternalActionTarget.Rejection.ParserRejected)
+            },
+            chapterDestination = { error("not a chapter") },
+            testState = TestState(),
+        )
+        wireDesktopExternalActionBroker(owner, navigator)
+        val secondary = DesktopExternalActionBroker(stateFile)
+        val raw = "tachiyomi://manga?url=raw%2Fvalue"
+        assertEquals(DesktopExternalActionBroker.StartResult.Forwarded, secondary.startOrForward(raw))
+        val fixture = navigatorFixture()
+
+        navigator.consumePending(fixture.navigator) {}
+
+        assertEquals(ExternalActionInput.ViewUri(raw), resolvedInput)
+        fixture.close()
+        secondary.close()
+        owner.close()
+    }
 
     @Test
     fun `start launches services and startup cleanup without blocking caller`() = runTest {

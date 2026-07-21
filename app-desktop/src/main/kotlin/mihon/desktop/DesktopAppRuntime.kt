@@ -9,6 +9,7 @@ import kotlinx.coroutines.launch
 import mihon.desktop.backup.AutoBackupScheduler
 import mihon.desktop.domain.LibraryUpdateScheduler
 import mihon.desktop.domain.ReaderModeMemoryCleaner
+import mihon.desktop.platform.DesktopExternalActionBroker
 import mihon.desktop.source.LocalSourceScanService
 
 interface DesktopRuntimeService {
@@ -26,6 +27,7 @@ class DesktopAppRuntime(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) {
     private var startupJob: Job? = null
+    private var instanceBroker: DesktopExternalActionBroker? = null
     var isRunning: Boolean = false
         private set
 
@@ -55,8 +57,21 @@ class DesktopAppRuntime(
     }
 
     fun close() {
-        stop()
-        scope.cancel()
+        try {
+            stop()
+        } finally {
+            try {
+                instanceBroker?.close()
+                instanceBroker = null
+            } finally {
+                scope.cancel()
+            }
+        }
+    }
+
+    fun attachInstanceBroker(broker: DesktopExternalActionBroker) {
+        check(instanceBroker == null || instanceBroker === broker) { "A different instance broker is already attached" }
+        instanceBroker = broker
     }
 
     companion object {
@@ -77,6 +92,40 @@ class DesktopAppRuntime(
                 startupCleanup = { readerModeMemoryCleaner.clearNonFavoriteManga() },
             )
         }
+    }
+}
+
+internal sealed interface DesktopInstanceStartResult {
+    data object Owner : DesktopInstanceStartResult
+    data object Forwarded : DesktopInstanceStartResult
+    data class Failed(val failure: DesktopExternalActionBroker.Failure) : DesktopInstanceStartResult
+}
+
+internal fun startDesktopInstance(
+    broker: DesktopExternalActionBroker,
+    rawAction: String?,
+    reportFailure: (DesktopExternalActionBroker.Failure) -> Unit = {
+        System.err.println("Desktop single-instance startup failed: ${it.name}")
+    },
+    startOwner: (DesktopExternalActionBroker) -> Unit,
+): DesktopInstanceStartResult = when (val result = broker.startOrForward(rawAction)) {
+    is DesktopExternalActionBroker.StartResult.Owner -> {
+        try {
+            startOwner(broker)
+            DesktopInstanceStartResult.Owner
+        } catch (failure: Throwable) {
+            broker.close()
+            throw failure
+        }
+    }
+    DesktopExternalActionBroker.StartResult.Forwarded -> {
+        broker.close()
+        DesktopInstanceStartResult.Forwarded
+    }
+    is DesktopExternalActionBroker.StartResult.Failed -> {
+        broker.close()
+        reportFailure(result.failure)
+        DesktopInstanceStartResult.Failed(result.failure)
     }
 }
 

@@ -13,6 +13,7 @@ data class DesktopPlatformPaths(
     val logsDir: File,
     val backupsDir: File,
     val testScreenshotsDir: File,
+    val instanceStateFile: File = File(configDir, "desktop-instance.json"),
 ) {
     companion object {
         fun current(createDirectories: Boolean = true): DesktopPlatformPaths = resolve(
