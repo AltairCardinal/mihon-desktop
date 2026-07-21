@@ -45,6 +45,7 @@ import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.ui.more.StatsScreenModel
 import mihon.desktop.update.DesktopUpdateController
+import mihon.desktop.ui.settings.DesktopUpdateScreenModel
 import mihon.desktop.task.DesktopTaskScheduler
 import mihon.desktop.test.http.SourceExtensionTestModeBridge
 import mihon.desktop.test.http.SourceExtensionTestModeController
@@ -133,6 +134,8 @@ class DesktopDiWiringTest {
             assertNotNull(Injekt.get<GetApplicationRelease>())
             val controller = Injekt.get<DesktopUpdateController>()
             assertSame(controller, DesktopUiDependencies.fromInjekt().updateController)
+            assertSame(Injekt.get<DesktopUpdateScreenModel>(), DesktopUiDependencies.fromInjekt().updateScreenModel)
+            assertSame(controller, Injekt.get<DesktopUpdateScreenModel>().controller)
         } finally {
             context.closeAndJoin()
         }

@@ -1,7 +1,10 @@
 package mihon.desktop.ui.settings
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import mihon.desktop.APP_VERSION
 import mihon.desktop.update.DesktopUpdateController
@@ -9,6 +12,7 @@ import mihon.desktop.update.DesktopUpdateState
 import tachiyomi.domain.release.interactor.GetApplicationRelease
 import java.awt.Desktop
 import java.net.URI
+import kotlin.coroutines.CoroutineContext
 
 enum class DesktopUpdateIntent { CHECK, DOWNLOAD, CANCEL, RETRY, CONFIRM, DECLINE, MANUAL }
 data class DesktopUpdatePresentation(
@@ -55,17 +59,24 @@ class DesktopUpdateScreenModel(
     val controller: DesktopUpdateController,
     private val scope: CoroutineScope,
     private val openUrl: (String) -> Boolean = ::openDesktopUpdateUrl,
+    private val executionContext: CoroutineContext = Dispatchers.IO,
 ) {
     val state = controller.state
+    private val mutableFeedback = MutableStateFlow<String?>(null)
+    val feedback = mutableFeedback.asStateFlow()
     private var job: Job? = null
-    fun intent(intent: DesktopUpdateIntent) {
-        if (intent == DesktopUpdateIntent.CANCEL) return job?.cancel().let { Unit }
+    @Synchronized
+    fun intent(intent: DesktopUpdateIntent): Boolean {
+        if (intent !in state.value.presentation().actions) return false
+        if (intent == DesktopUpdateIntent.CANCEL) return job?.takeIf(Job::isActive)?.let { it.cancel(); true } ?: false
         if (intent == DesktopUpdateIntent.MANUAL) {
-            state.value.presentation().releasePage?.let(openUrl)
-            return
+            val page = state.value.presentation().releasePage ?: return false
+            mutableFeedback.value = if (runCatching { openUrl(page) }.getOrDefault(false)) null else "Could not open update page. Copy this URL: $page"
+            return true
         }
-        if (job?.isActive == true) return
-        job = scope.launch {
+        if (job?.isActive == true) return false
+        mutableFeedback.value = null
+        job = scope.launch(executionContext) {
             when (intent) {
                 DesktopUpdateIntent.CHECK -> controller.check(releaseArguments())
                 DesktopUpdateIntent.DOWNLOAD -> controller.download()
@@ -75,6 +86,7 @@ class DesktopUpdateScreenModel(
                 DesktopUpdateIntent.CANCEL, DesktopUpdateIntent.MANUAL -> Unit
             }
         }
+        return true
     }
     fun dispose() = job?.cancel()
     companion object {

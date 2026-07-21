@@ -111,6 +111,7 @@ import tachiyomi.domain.release.service.ReleaseService
 import mihon.desktop.update.DesktopUpdateController
 import mihon.desktop.update.DesktopUpdateDownloader
 import mihon.desktop.update.DesktopUpdateInstaller
+import mihon.desktop.ui.settings.DesktopUpdateScreenModel
 import tachiyomi.domain.category.interactor.CreateCategoryWithName
 import tachiyomi.domain.category.interactor.DeleteCategory
 import tachiyomi.domain.category.interactor.GetCategories
@@ -595,7 +596,9 @@ internal fun initUILayer(
     Injekt.addSingleton(releaseChecker)
     Injekt.addSingleton(updateDownloader)
     Injekt.addSingleton(updateInstaller)
-    Injekt.addSingleton(DesktopUpdateController(releaseChecker, updateDownloader, updateInstaller))
+    val updateController = DesktopUpdateController(releaseChecker, updateDownloader, updateInstaller)
+    Injekt.addSingleton(updateController)
+    Injekt.addSingleton(DesktopUpdateScreenModel(updateController, CoroutineScope(SupervisorJob() + Dispatchers.Default)))
     val mangaRepository = Injekt.get<MangaRepository>()
     val chapterRepository = Injekt.get<ChapterRepository>()
     val categoryRepository = Injekt.get<CategoryRepository>()

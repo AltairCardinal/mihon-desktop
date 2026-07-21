@@ -24,13 +24,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
@@ -53,11 +51,9 @@ class AboutScreen : Screen {
         val dbFile = remember(paths) { paths.databaseFile }
         val extensionsDir = remember(paths) { paths.extensionsDir }
         val extensionManager = LocalDesktopUiDependencies.current.extensionManager
-        val updateController = requireNotNull(LocalDesktopUiDependencies.current.updateController)
-        val updateScope = rememberCoroutineScope()
-        val updateModel = remember(updateController, updateScope) { DesktopUpdateScreenModel(updateController, updateScope) }
-        DisposableEffect(updateModel) { onDispose(updateModel::dispose) }
+        val updateModel = requireNotNull(LocalDesktopUiDependencies.current.updateScreenModel)
         val updateState by updateModel.state.collectAsState()
+        val updateFeedback by updateModel.feedback.collectAsState()
 
         var cacheSizeText by remember {
             mutableStateOf(formatBytes(cacheDir.walkBottomUp().filter { it.isFile }.sumOf { it.length() }))
@@ -96,7 +92,7 @@ class AboutScreen : Screen {
                     text = "Mihon Desktop",
                     style = MaterialTheme.typography.headlineMedium,
                 )
-                AboutUpdateSection(APP_VERSION, updateState.presentation(), updateModel::intent)
+                AboutUpdateSection(APP_VERSION, updateState.presentation(), updateFeedback, updateModel::intent)
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = "A KMP + Compose Multiplatform port of the Mihon Android manga reader.",
@@ -163,12 +159,14 @@ class AboutScreen : Screen {
 internal fun AboutUpdateSection(
     version: String,
     presentation: DesktopUpdatePresentation,
+    feedback: String?,
     onIntent: (DesktopUpdateIntent) -> Unit,
 ) {
     Spacer(modifier = Modifier.height(8.dp))
     Text("Version $version", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Spacer(modifier = Modifier.height(8.dp))
     Text(presentation.message, style = MaterialTheme.typography.bodyMedium)
+    feedback?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     presentation.progress?.let { LinearProgressIndicator(progress = { it / 100f }) }
     if (presentation.status == "ready") {
         AlertDialog(

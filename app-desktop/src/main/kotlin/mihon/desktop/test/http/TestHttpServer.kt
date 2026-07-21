@@ -32,7 +32,7 @@ import java.time.Instant
 import mihon.desktop.migration.BatchMigrationRequest
 import mihon.desktop.migration.DesktopBatchMigrationController
 import mihon.desktop.tracking.TrackingTestModeController
-import mihon.desktop.update.DesktopUpdateController
+import mihon.desktop.ui.settings.DesktopUpdateIntent
 import mihon.desktop.ui.settings.DesktopUpdateScreenModel
 import mihon.desktop.ui.settings.presentation
 import uy.kohesive.injekt.Injekt
@@ -78,7 +78,7 @@ private val nestedScreenActions = mapOf(
 
 internal fun nestedTestScreenAction(screenId: String): String? = nestedScreenActions[screenId]
 
-internal fun currentTestStateJson(updateController: DesktopUpdateController? = null): String {
+internal fun currentTestStateJson(updateModel: DesktopUpdateScreenModel? = null): String {
     val state = applicationState
     val dlState = downloadState
     val upState = updatesState
@@ -98,7 +98,7 @@ internal fun currentTestStateJson(updateController: DesktopUpdateController? = n
         put("hasUnreadUpdates", JsonPrimitive(upState.hasUnread))
         put("historyCount", JsonPrimitive(histState.count))
         put("migrationQueueCount", JsonPrimitive(migrationQueues))
-        val update = updateController?.state?.value?.presentation()
+        val update = updateModel?.state?.value?.presentation()
         put("updateStatus", update?.status?.let(::JsonPrimitive) ?: JsonNull)
         put("updateProgress", update?.progress?.let(::JsonPrimitive) ?: JsonNull)
         put("updateReleasePage", update?.releasePage?.let(::JsonPrimitive) ?: JsonNull)
@@ -139,7 +139,7 @@ private fun actionJson(
  * Configure HTTP test routes.
  */
 fun Application.testHttpServer(
-    updateController: DesktopUpdateController? = runCatching { Injekt.get<DesktopUpdateController>() }.getOrNull(),
+    updateModel: DesktopUpdateScreenModel? = runCatching { Injekt.get<DesktopUpdateScreenModel>() }.getOrNull(),
 ) {
     routing {
         // Health check
@@ -157,7 +157,7 @@ fun Application.testHttpServer(
             call.respondText(
                 contentType = ContentType.Application.Json,
                 status = HttpStatusCode.OK,
-            ) { currentTestStateJson(updateController) }
+            ) { currentTestStateJson(updateModel) }
         }
 
         // Get list of available screens
@@ -253,23 +253,25 @@ fun Application.testHttpServer(
             applicationState.recordAction(action, params)
 
             if (action.startsWith("update_")) {
-                if (updateController == null) {
+                val intent = when (action) {
+                    "update_check" -> DesktopUpdateIntent.CHECK
+                    "update_download" -> DesktopUpdateIntent.DOWNLOAD
+                    "update_retry" -> DesktopUpdateIntent.RETRY
+                    "update_confirm" -> DesktopUpdateIntent.CONFIRM
+                    "update_decline" -> DesktopUpdateIntent.DECLINE
+                    "update_cancel" -> DesktopUpdateIntent.CANCEL
+                    else -> null
+                }
+                if (intent == null) {
+                    call.respondText(jsonText(actionJson(action, false, "UNKNOWN_UPDATE_ACTION")), ContentType.Application.Json, HttpStatusCode.BadRequest)
+                    return@post
+                }
+                if (updateModel == null) {
                     call.respondText(jsonText(actionJson(action, false, "UPDATE_CONTROLLER_UNAVAILABLE")), ContentType.Application.Json, HttpStatusCode.ServiceUnavailable)
                     return@post
                 }
-                val accepted = when (action) {
-                    "update_check" -> updateController.check(DesktopUpdateScreenModel.releaseArguments())
-                    "update_download" -> updateController.download()
-                    "update_retry" -> updateController.retry()
-                    "update_confirm" -> updateController.handoff(true)
-                    "update_decline" -> updateController.handoff(false)
-                    else -> null
-                }
-                val status = when (accepted) {
-                    true -> HttpStatusCode.OK
-                    false -> HttpStatusCode.Conflict
-                    null -> HttpStatusCode.BadRequest
-                }
+                val accepted = updateModel.intent(intent)
+                val status = if (accepted) HttpStatusCode.OK else HttpStatusCode.Conflict
                 call.respondText(jsonText(actionJson(action, accepted == true, if (accepted == true) null else "UPDATE_ACTION_REJECTED")), ContentType.Application.Json, status)
                 return@post
             }
