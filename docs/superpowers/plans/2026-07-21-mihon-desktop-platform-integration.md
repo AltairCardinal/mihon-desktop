@@ -488,7 +488,9 @@ status-source: this-file
 
 **Platform boundary:** shared+desktop
 
-**Estimated scope:** 8 files, 400 lines
+**Estimated scope:** 10 files, 650 lines
+
+**Split waiver:** Security 设置、credential capability probe、passphrase 创建/确认/变更、根窗口锁覆盖层、focus lifecycle 与 Test Mode 真实状态共同组成一个不可拆的用户闭环。只交付设置会产生“可启用但无法解锁”，只交付覆盖层会产生“有锁但无配置入口”，只改 `TestState` 又不能让真实 `/test/state` 响应可观察。上述入口共同消费同一 `DesktopAppLock`/verifier/state，必须由同一 Compose/DI/Test Mode 矩阵证明锁定时 Home 从未构造且成功认证后恢复；因此纳入 verifier probe 与 HTTP response 两个遗漏文件并保留为单一 Task。
 
 **Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.settings.SecuritySettingsWiringTest" --tests "mihon.desktop.ui.ScreenInstantiationSmokeTest"`
 
@@ -496,9 +498,11 @@ status-source: this-file
 
 - Create: `app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SecuritySettingsScreen.kt`
 - Create: `app-desktop/src/main/kotlin/mihon/desktop/ui/security/DesktopUnlockSurface.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/security/DesktopPassphraseVerifier.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/settings/MoreRootScreen.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/Main.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/test/state/TestState.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/test/http/TestHttpServer.kt`
 - Modify: `i18n/src/commonMain/moko-resources/base/strings.xml`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/settings/SecuritySettingsWiringTest.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/ScreenInstantiationSmokeTest.kt`
