@@ -1,25 +1,42 @@
 package mihon.desktop
 
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.transitions.SlideTransition
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import mihon.desktop.di.initDesktopDI
 import mihon.desktop.platform.DesktopExternalActionBroker
 import mihon.desktop.platform.DesktopPlatformPaths
 import mihon.desktop.platform.DesktopUriSchemeRegistrar
 import mihon.desktop.platform.DesktopUriSchemeRegistration
+import mihon.desktop.security.DesktopAppLock
+import mihon.desktop.security.DesktopAppLockLifecycle
 import mihon.desktop.test.TestArguments
 import mihon.desktop.test.TestMode
+import mihon.desktop.test.state.TestState
+import mihon.desktop.test.state.applicationState
 import mihon.desktop.ui.ExternalActionNavigator
 import mihon.desktop.ui.home.HomeScreen
+import mihon.desktop.ui.security.DesktopProtectedRoot
 import mihon.desktop.ui.theme.DesktopTheme
 import mihon.domain.platform.ExternalActionInput
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.awt.Window as AwtWindow
+import java.awt.event.WindowEvent
+import java.awt.event.WindowFocusListener
 
 /**
  * Main entry point for Mihon Desktop application.
@@ -67,37 +84,141 @@ private fun runOwnerApplication(
     broker: DesktopExternalActionBroker,
 ) {
     initDesktopDI()
-    // Start test mode if enabled
-    if (testArgs.testMode) {
-        TestMode.start(testArgs)
-    }
-
     val runtime = Injekt.get<DesktopAppRuntime>()
+    val appLock = Injekt.get<DesktopAppLock>()
     val uiDependencies = DesktopUiDependencies.fromInjekt()
     wireDesktopExternalActionBroker(broker, uiDependencies.externalActionNavigator)
     submitDesktopExternalAction(args, uiDependencies.externalActionNavigator)
     runtime.attachInstanceBroker(broker)
-    runtime.start()
+    bootstrapDesktopRuntime(runtime, appLock, applicationState) {
+        if (testArgs.testMode) TestMode.start(testArgs)
+    }.use { bootstrap ->
 
-    if (runHeadlessMode(testArgs, runtime)) return
+        if (runHeadlessMode(testArgs, runtime, closeRuntime = bootstrap::close)) return
 
-    application {
-        Window(
-            onCloseRequest = {
-                runtime.close()
-                exitApplication()
-            },
-            title = "Mihon Desktop $APP_VERSION",
-            state = rememberWindowState(width = 1024.dp, height = 768.dp),
-        ) {
-            CompositionLocalProvider(LocalDesktopUiDependencies provides uiDependencies) {
-                DesktopTheme {
-                    Navigator(HomeScreen()) { navigator ->
-                        SlideTransition(navigator)
+        application {
+            Window(
+                onCloseRequest = {
+                    bootstrap.close()
+                    exitApplication()
+                },
+                title = "Mihon Desktop $APP_VERSION",
+                state = rememberWindowState(width = 1024.dp, height = 768.dp),
+            ) {
+                BindDesktopWindowFocus(window, appLock)
+                CompositionLocalProvider(LocalDesktopUiDependencies provides uiDependencies) {
+                    DesktopTheme {
+                        DesktopProtectedRoot(appLock) {
+                            Navigator(HomeScreen()) { navigator ->
+                                SlideTransition(navigator)
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+internal fun bootstrapDesktopRuntime(
+    runtime: DesktopAppRuntime,
+    appLock: DesktopAppLock,
+    testState: TestState,
+    startTestMode: () -> Unit,
+): DesktopRuntimeBootstrapSession {
+    val session = DesktopRuntimeBootstrapSession(runtime, DesktopAppLockTestStateBinding(appLock, testState))
+    return try {
+        runtime.start()
+        startTestMode()
+        session
+    } catch (failure: Throwable) {
+        try {
+            session.close()
+        } catch (cleanupFailure: Throwable) {
+            if (cleanupFailure !== failure) failure.addSuppressed(cleanupFailure)
+        }
+        throw failure
+    }
+}
+
+internal class DesktopRuntimeBootstrapSession(
+    private val runtime: DesktopAppRuntime,
+    private val lockStateBinding: DesktopAppLockTestStateBinding,
+) : AutoCloseable {
+    private var closed = false
+
+    @Synchronized
+    override fun close() {
+        if (closed) return
+        closed = true
+        var primaryFailure: Throwable? = null
+        try {
+            runtime.close()
+        } catch (failure: Throwable) {
+            primaryFailure = failure
+        }
+        try {
+            lockStateBinding.close()
+        } catch (failure: Throwable) {
+            val primary = primaryFailure
+            if (primary == null) primaryFailure = failure else if (failure !== primary) primary.addSuppressed(failure)
+        }
+        primaryFailure?.let { throw it }
+    }
+}
+
+internal class DesktopAppLockTestStateBinding(
+    appLock: DesktopAppLock,
+    private val testState: TestState,
+) : AutoCloseable {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+
+    init {
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            appLock.state.collect { state -> testState.setAppLocked(state.requiresUnlock) }
+        }
+    }
+
+    override fun close() {
+        scope.cancel()
+    }
+}
+
+internal class DesktopWindowFocusListener(
+    private val lifecycle: DesktopAppLockLifecycle,
+) : WindowFocusListener {
+    override fun windowGainedFocus(event: WindowEvent?) = lifecycle.onApplicationStarted()
+    override fun windowLostFocus(event: WindowEvent?) = lifecycle.onApplicationStopped()
+}
+
+internal class DesktopWindowFocusRegistration(
+    lifecycle: DesktopAppLockLifecycle,
+    private val removeListener: (WindowFocusListener) -> Unit,
+    addListener: (WindowFocusListener) -> Unit,
+) : AutoCloseable {
+    private val listener = DesktopWindowFocusListener(lifecycle)
+    private var closed = false
+
+    init {
+        addListener(listener)
+    }
+
+    override fun close() {
+        if (closed) return
+        closed = true
+        removeListener(listener)
+    }
+}
+
+@Composable
+private fun BindDesktopWindowFocus(window: AwtWindow, lifecycle: DesktopAppLockLifecycle) {
+    DisposableEffect(window, lifecycle) {
+        val registration = DesktopWindowFocusRegistration(
+            lifecycle = lifecycle,
+            removeListener = window::removeWindowFocusListener,
+            addListener = window::addWindowFocusListener,
+        )
+        onDispose(registration::close)
     }
 }
 
@@ -122,6 +243,7 @@ internal fun runHeadlessMode(
     runtime: DesktopAppRuntime,
     awaitTestModeTermination: () -> Unit = TestMode::awaitTermination,
     stopTestMode: () -> Unit = TestMode::stop,
+    closeRuntime: () -> Unit = runtime::close,
 ): Boolean {
     if (!args.headless) return false
 
@@ -131,7 +253,7 @@ internal fun runHeadlessMode(
         try {
             if (args.testMode) stopTestMode()
         } finally {
-            runtime.close()
+            closeRuntime()
         }
     }
     return true

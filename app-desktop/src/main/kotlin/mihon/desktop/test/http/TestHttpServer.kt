@@ -60,6 +60,55 @@ private fun parseJsonBody(body: String): Map<String, String> {
 
 private fun jsonText(value: JsonObject) = Json.encodeToString(JsonObject.serializer(), value)
 
+private val nestedScreenActions = mapOf(
+    "SettingsScreen" to "open_general_settings",
+    "GeneralSettingsScreen" to "open_general_settings",
+    "DownloadSettingsScreen" to "open_download_settings",
+    "BackupSettingsScreen" to "open_backup_settings",
+    "ExtensionListScreen" to "open_extensions",
+    "MigrationSearchScreen" to "open_migration",
+    "TrackingSettingsScreen" to "open_tracking",
+    "SecuritySettingsScreen" to "open_security_settings",
+)
+
+internal fun nestedTestScreenAction(screenId: String): String? = nestedScreenActions[screenId]
+
+internal fun currentTestStateJson(): String {
+    val state = applicationState
+    val dlState = downloadState
+    val upState = updatesState
+    val histState = historyState
+    val migrationQueues = MigrationBatchTestBridge.controller?.queues?.value?.size ?: 0
+    return jsonText(buildJsonObject {
+        put("currentScreen", JsonPrimitive(state.currentScreen.value ?: "HomeScreen"))
+        put("isLoading", JsonPrimitive(state.isLoading.value))
+        put("appLocked", JsonPrimitive(state.appLocked.value))
+        put("notifications", JsonArray(emptyList()))
+        put("screens", JsonArray(state.screens.value.map(::JsonPrimitive)))
+        put("actions", JsonArray(state.actions.value.map(::JsonPrimitive)))
+        put("testMode", JsonPrimitive(state.testMode))
+        put("downloadQueueSize", JsonPrimitive(dlState.queueSize))
+        put("downloadsPaused", JsonPrimitive(dlState.isPaused))
+        put("updateCount", JsonPrimitive(upState.count))
+        put("hasUnreadUpdates", JsonPrimitive(upState.hasUnread))
+        put("historyCount", JsonPrimitive(histState.count))
+        put("migrationQueueCount", JsonPrimitive(migrationQueues))
+        put("timestamp", JsonPrimitive(Instant.now().toString()))
+        put(
+            "extension",
+            SourceExtensionTestModeBridge.controller?.snapshot()?.let {
+                Json.encodeToJsonElement(SourceExtensionTestSnapshot.serializer(), it)
+            } ?: JsonNull,
+        )
+        put(
+            "source",
+            SourceBrowseTestModeBridge.port?.snapshot()?.let {
+                Json.encodeToJsonElement(SourceBrowseTestSnapshot.serializer(), it)
+            } ?: JsonNull,
+        )
+    })
+}
+
 private fun actionJson(
     action: String,
     success: Boolean,
@@ -97,40 +146,7 @@ fun Application.testHttpServer() {
             call.respondText(
                 contentType = ContentType.Application.Json,
                 status = HttpStatusCode.OK,
-            ) {
-                val state = applicationState
-                val dlState = downloadState
-                val upState = updatesState
-                val histState = historyState
-                val migrationQueues = MigrationBatchTestBridge.controller?.queues?.value?.size ?: 0
-                jsonText(buildJsonObject {
-                    put("currentScreen", JsonPrimitive(state.currentScreen.value ?: "HomeScreen"))
-                    put("isLoading", JsonPrimitive(state.isLoading.value))
-                    put("notifications", JsonArray(emptyList()))
-                    put("screens", JsonArray(state.screens.value.map(::JsonPrimitive)))
-                    put("actions", JsonArray(state.actions.value.map(::JsonPrimitive)))
-                    put("testMode", JsonPrimitive(state.testMode))
-                    put("downloadQueueSize", JsonPrimitive(dlState.queueSize))
-                    put("downloadsPaused", JsonPrimitive(dlState.isPaused))
-                    put("updateCount", JsonPrimitive(upState.count))
-                    put("hasUnreadUpdates", JsonPrimitive(upState.hasUnread))
-                    put("historyCount", JsonPrimitive(histState.count))
-                    put("migrationQueueCount", JsonPrimitive(migrationQueues))
-                    put("timestamp", JsonPrimitive(Instant.now().toString()))
-                    put(
-                        "extension",
-                        SourceExtensionTestModeBridge.controller?.snapshot()?.let {
-                            Json.encodeToJsonElement(SourceExtensionTestSnapshot.serializer(), it)
-                        } ?: JsonNull,
-                    )
-                    put(
-                        "source",
-                        SourceBrowseTestModeBridge.port?.snapshot()?.let {
-                            Json.encodeToJsonElement(SourceBrowseTestSnapshot.serializer(), it)
-                        } ?: JsonNull,
-                    )
-                })
-            }
+            ) { currentTestStateJson() }
         }
 
         // Get list of available screens
@@ -169,30 +185,20 @@ fun Application.testHttpServer() {
                 }
             } else {
                 // Check if this is a known screen that needs special navigation
-                val screenMap = mapOf(
-                    "SettingsScreen" to "open_general_settings",
-                    "GeneralSettingsScreen" to "open_general_settings",
-                    "DownloadSettingsScreen" to "open_download_settings",
-                    "BackupSettingsScreen" to "open_backup_settings",
-                    "ExtensionListScreen" to "open_extensions",
-                    "MigrationSearchScreen" to "open_migration",
-                    "TrackingSettingsScreen" to "open_tracking",
-                )
-
                 // DEBUG: Record in action history
                 applicationState.recordAction(
                     "DEBUG_screenMapCheck",
                     mapOf(
                         "screenId" to screenId,
-                        "inMap" to screenMap.containsKey(screenId).toString(),
+                        "inMap" to (nestedTestScreenAction(screenId) != null).toString(),
                     ),
                 )
 
-                if (screenMap.containsKey(screenId)) {
+                val action = nestedTestScreenAction(screenId)
+                if (action != null) {
                     // First navigate to MoreTab
                     TestNavigationController.navigateToTab("MoreTab")
                     // Then trigger the screen navigation via shared state
-                    val action = screenMap[screenId]!!
                     applicationState.setCurrentScreen(screenId)
                     applicationState.recordAction(
                         "navigate",

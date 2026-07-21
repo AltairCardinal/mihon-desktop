@@ -39,6 +39,7 @@ import mihon.desktop.ui.settings.GeneralSettingsScreen
 import mihon.desktop.ui.settings.LibrarySettingsScreen
 import mihon.desktop.ui.settings.MoreRootScreen
 import mihon.desktop.ui.settings.ReaderSettingsScreen
+import mihon.desktop.ui.settings.SecuritySettingsScreen
 import mihon.desktop.ui.updates.UpcomingScreen
 import mihon.desktop.ui.updates.UpdatesTab
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -310,6 +311,12 @@ class ScreenInstantiationSmokeTest {
         val s = ReaderSettingsScreen()
         assert(s is Screen)
         assert(s !is Tab)
+    }
+
+    @Test fun `SecuritySettingsScreen is Screen not Tab`() {
+        val screen = SecuritySettingsScreen()
+        assert(screen is Screen)
+        assert(screen !is Tab)
     }
 
     // ── Updates ─────────────────────────────────────────────────────────────

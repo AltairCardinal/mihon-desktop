@@ -18,6 +18,9 @@ class TestState {
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    private val _appLocked = MutableStateFlow(false)
+    val appLocked: StateFlow<Boolean> = _appLocked.asStateFlow()
+
     private val _notifications = MutableStateFlow<List<String>>(emptyList())
     val notifications: StateFlow<List<String>> = _notifications.asStateFlow()
 
@@ -36,6 +39,10 @@ class TestState {
 
     fun setLoading(loading: Boolean) {
         _isLoading.value = loading
+    }
+
+    fun setAppLocked(locked: Boolean) {
+        _appLocked.value = locked
     }
 
     fun addNotification(message: String) {
@@ -69,6 +76,7 @@ class TestState {
     fun reset() {
         _currentScreen.value = null
         _isLoading.value = false
+        _appLocked.value = false
         _notifications.value = emptyList()
         _actionHistory.value = emptyList()
     }

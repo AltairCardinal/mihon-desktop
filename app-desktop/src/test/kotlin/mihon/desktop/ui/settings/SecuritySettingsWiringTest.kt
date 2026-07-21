@@ -1,0 +1,557 @@
+package mihon.desktop.ui.settings
+
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
+import cafe.adriel.voyager.core.screen.Screen
+import cafe.adriel.voyager.navigator.tab.Tab
+import eu.kanade.tachiyomi.core.security.SecurityPreferences
+import java.util.UUID
+import java.util.prefs.Preferences
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import mihon.desktop.DesktopAppRuntime
+import mihon.desktop.DesktopRuntimeService
+import mihon.desktop.DesktopWindowFocusListener
+import mihon.desktop.DesktopWindowFocusRegistration
+import mihon.desktop.bootstrapDesktopRuntime
+import mihon.desktop.platform.CredentialBackend
+import mihon.desktop.platform.DesktopCredentialStore
+import mihon.desktop.platform.OperatingSystem
+import mihon.desktop.platform.PlatformCredentialUnavailableException
+import mihon.desktop.security.DesktopAppLock
+import mihon.desktop.security.DesktopAppLockLifecycle
+import mihon.desktop.security.DesktopPassphraseVerifier
+import mihon.desktop.test.http.currentTestStateJson
+import mihon.desktop.test.http.nestedTestScreenAction
+import mihon.desktop.test.state.applicationState
+import mihon.desktop.ui.navigatorFixture
+import mihon.desktop.ui.security.DesktopProtectedRoot
+import mihon.desktop.ui.security.DesktopPasswordField
+import mihon.domain.security.AuthenticationResult
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import tachiyomi.core.common.preference.DesktopPreferenceStore
+
+@OptIn(ExperimentalComposeUiApi::class)
+class SecuritySettingsWiringTest {
+    private val preferenceNodes = mutableListOf<Preferences>()
+
+    @AfterEach
+    fun cleanUp() {
+        applicationState.reset()
+        preferenceNodes.forEach { runCatching { it.removeNode() } }
+    }
+
+    @Test
+    fun `More pushes Security as a regular Screen and automation maps the same destination`() = runBlocking {
+        val fixture = navigatorFixture()
+        try {
+            MoreRootScreen().onSecurity(fixture.navigator)
+
+            assertTrue(fixture.navigator.lastItem is SecuritySettingsScreen)
+            assertTrue(fixture.navigator.lastItem is Screen)
+            assertFalse(fixture.navigator.lastItem is Tab)
+            assertEquals("open_security_settings", nestedTestScreenAction("SecuritySettingsScreen"))
+        } finally {
+            fixture.close()
+        }
+    }
+
+    @Test
+    fun `unavailable protected backend disables configuration without changing preferences`() {
+        val preferences = preferences(enabled = false, delay = 5)
+        val backend = MemoryCredentialBackend().apply {
+            failure = PlatformCredentialUnavailableException(OperatingSystem.WINDOWS)
+        }
+        val controller = controller(preferences, backend)
+
+        assertEquals(SecurityBackendCapability.Unavailable, controller.state.value.backendCapability)
+        assertFalse(controller.state.value.canConfigure)
+        assertEquals(SecuritySettingsFeedback.BackendUnavailable, controller.state.value.feedback)
+        assertEquals(
+            AuthenticationResult.Unavailable,
+            controller.enable("new secret".toCharArray(), "new secret".toCharArray()),
+        )
+        assertFalse(preferences.useAuthenticator().get())
+        assertEquals(null, backend.secret)
+    }
+
+    @Test
+    fun `enable requires matching confirmation and successful credential save before preference`() {
+        val preferences = preferences(enabled = false, delay = 0)
+        val backend = MemoryCredentialBackend()
+        val controller = controller(preferences, backend)
+        val mismatch = "different".toCharArray()
+        val candidate = "candidate".toCharArray()
+
+        assertEquals(AuthenticationResult.Failed, controller.enable(candidate, mismatch))
+        assertTrue(candidate.all { it == '\u0000' })
+        assertTrue(mismatch.all { it == '\u0000' })
+        assertFalse(preferences.useAuthenticator().get())
+
+        backend.saveFailuresRemaining = 1
+        assertEquals(
+            AuthenticationResult.Error,
+            controller.enable("new secret".toCharArray(), "new secret".toCharArray()),
+        )
+        assertFalse(preferences.useAuthenticator().get())
+
+        val recoveredController = controller(preferences, backend)
+        assertEquals(
+            AuthenticationResult.Success,
+            recoveredController.enable("saved secret".toCharArray(), "saved secret".toCharArray()),
+        )
+        assertTrue(preferences.useAuthenticator().get())
+        assertEquals("saved secret", backend.secret?.concatToString())
+    }
+
+    @Test
+    fun `disable and delay changes require current passphrase while cancel preserves old values`() {
+        val preferences = preferences(enabled = true, delay = 5)
+        val backend = MemoryCredentialBackend("current".toCharArray())
+        val controller = controller(preferences, backend)
+
+        assertEquals(AuthenticationResult.Cancelled, controller.changeDelay(0, null))
+        assertEquals(5, preferences.lockAppAfter().get())
+        assertEquals(AuthenticationResult.Failed, controller.disable("wrong".toCharArray()))
+        assertTrue(preferences.useAuthenticator().get())
+        assertEquals("current", backend.secret?.concatToString())
+        assertEquals(AuthenticationResult.Failed, controller.changeDelay(0, "wrong".toCharArray()))
+        assertEquals(5, preferences.lockAppAfter().get())
+
+        backend.failNextDelete = true
+        assertEquals(AuthenticationResult.Error, controller.disable("current".toCharArray()))
+        assertTrue(preferences.useAuthenticator().get())
+        assertEquals("current", backend.secret?.concatToString())
+
+        val recoveredController = controller(preferences, backend)
+        assertEquals(AuthenticationResult.Success, recoveredController.changeDelay(0, "current".toCharArray()))
+        assertEquals(0, preferences.lockAppAfter().get())
+        assertEquals(AuthenticationResult.Success, recoveredController.disable("current".toCharArray()))
+        assertFalse(preferences.useAuthenticator().get())
+        assertEquals(null, backend.secret)
+    }
+
+    @Test
+    fun `passphrase change rejects mismatch and rolls back failed replacement`() {
+        val preferences = preferences(enabled = true, delay = 0)
+        val backend = MemoryCredentialBackend("old secret".toCharArray())
+        val verifier = DesktopPassphraseVerifier(DesktopCredentialStore(backend))
+        val controller = SecuritySettingsController(preferences, verifier)
+        assertEquals(0, backend.saveCalls)
+        assertEquals(0, backend.deleteCalls)
+        assertEquals("old secret", backend.secret?.concatToString())
+
+        assertEquals(
+            AuthenticationResult.Failed,
+            controller.changePassphrase(
+                "old secret".toCharArray(),
+                "new secret".toCharArray(),
+                "mismatch".toCharArray(),
+            ),
+        )
+        assertEquals("old secret", backend.secret?.concatToString())
+
+        backend.saveFailuresRemaining = 1
+        assertEquals(
+            AuthenticationResult.Error,
+            controller.changePassphrase(
+                "old secret".toCharArray(),
+                "new secret".toCharArray(),
+                "new secret".toCharArray(),
+            ),
+        )
+        assertEquals("old secret", backend.secret?.concatToString())
+        assertTrue(preferences.useAuthenticator().get())
+
+        val recoveredController = SecuritySettingsController(preferences, verifier)
+        assertEquals(
+            AuthenticationResult.Success,
+            recoveredController.changePassphrase(
+                "old secret".toCharArray(),
+                "new secret".toCharArray(),
+                "new secret".toCharArray(),
+            ),
+        )
+        assertEquals(AuthenticationResult.Failed, verifier.verify("old secret".toCharArray()))
+        assertEquals(AuthenticationResult.Success, verifier.verify("new secret".toCharArray()))
+    }
+
+    @Test
+    fun `failed passphrase rollback disables lock instead of leaving enabled without a verifier`() {
+        val preferences = preferences(enabled = true, delay = 0)
+        val backend = MemoryCredentialBackend("old secret".toCharArray()).apply { saveFailuresRemaining = 2 }
+        val controller = controller(preferences, backend)
+
+        assertEquals(
+            AuthenticationResult.Error,
+            controller.changePassphrase(
+                "old secret".toCharArray(),
+                "new secret".toCharArray(),
+                "new secret".toCharArray(),
+            ),
+        )
+
+        assertFalse(preferences.useAuthenticator().get())
+        assertEquals(SecuritySettingsFeedback.BackendError, controller.state.value.feedback)
+    }
+
+    @Test
+    fun `production bootstrap finalizes real lock state before test mode opens`() {
+        assertBootstrapSnapshot(
+            enabledAtConstruction = false,
+            enabledAtStart = true,
+            delayMinutes = 0,
+            expectedLocked = true,
+        )
+        applicationState.reset()
+        assertBootstrapSnapshot(
+            enabledAtConstruction = true,
+            enabledAtStart = false,
+            delayMinutes = 5,
+            expectedLocked = false,
+        )
+    }
+
+    @Test
+    fun `production bootstrap closes runtime and lock binding when test mode start fails`() {
+        val preferences = preferences(enabled = true, delay = 0)
+        val appLock = DesktopAppLock(
+            preferences,
+            DesktopPassphraseVerifier(DesktopCredentialStore(MemoryCredentialBackend("secret".toCharArray()))),
+        )
+        var stops = 0
+        val service = object : DesktopRuntimeService {
+            override fun start() = Unit
+            override fun stop() {
+                stops++
+            }
+        }
+        val runtime = DesktopAppRuntime(service, service, service, startupCleanup = {}, appLock = appLock)
+
+        org.junit.jupiter.api.assertThrows<IllegalStateException> {
+            bootstrapDesktopRuntime(runtime, appLock, applicationState) {
+                throw IllegalStateException("test mode failed")
+            }
+        }
+
+        assertFalse(runtime.isRunning)
+        assertEquals(3, stops)
+        assertTrue(applicationState.appLocked.value)
+        preferences.useAuthenticator().set(false)
+        appLock.onApplicationStarted()
+        assertTrue(applicationState.appLocked.value)
+    }
+
+    @Test
+    fun `enable rolls credential and preference back when enabling preference write throws`() {
+        val persistence = FailingSecuritySettingsPersistence(enabled = false, delayMinutes = 5).apply {
+            failEnabledValue = true
+        }
+        val backend = MemoryCredentialBackend()
+        val controller = controller(persistence, backend)
+        val candidate = "new secret".toCharArray()
+        val confirmation = "new secret".toCharArray()
+
+        assertEquals(AuthenticationResult.Error, controller.enable(candidate, confirmation))
+
+        assertFalse(persistence.enabled)
+        assertEquals(null, backend.secret)
+        assertEquals(SecuritySettingsFeedback.BackendError, controller.state.value.feedback)
+        assertTrue(candidate.all { it == '\u0000' })
+        assertTrue(confirmation.all { it == '\u0000' })
+    }
+
+    @Test
+    fun `disable restores enabled preference when disabling preference write throws`() {
+        val persistence = FailingSecuritySettingsPersistence(enabled = true, delayMinutes = 5).apply {
+            failEnabledValue = false
+        }
+        val backend = MemoryCredentialBackend("current".toCharArray())
+        val controller = controller(persistence, backend)
+        val current = "current".toCharArray()
+
+        assertEquals(AuthenticationResult.Error, controller.disable(current))
+
+        assertTrue(persistence.enabled)
+        assertEquals("current", backend.secret?.concatToString())
+        assertEquals(SecuritySettingsFeedback.BackendError, controller.state.value.feedback)
+        assertTrue(current.all { it == '\u0000' })
+    }
+
+    @Test
+    fun `delay restores previous value when preference write throws`() {
+        val persistence = FailingSecuritySettingsPersistence(enabled = true, delayMinutes = 5).apply {
+            failDelayWrite = true
+        }
+        val backend = MemoryCredentialBackend("current".toCharArray())
+        val controller = controller(persistence, backend)
+        val current = "current".toCharArray()
+
+        assertEquals(AuthenticationResult.Error, controller.changeDelay(0, current))
+
+        assertEquals(5, persistence.delayMinutes)
+        assertEquals("current", backend.secret?.concatToString())
+        assertEquals(SecuritySettingsFeedback.BackendError, controller.state.value.feedback)
+        assertTrue(current.all { it == '\u0000' })
+    }
+
+    @Test
+    fun `passphrase change restores old credential when re-enabling preference throws`() {
+        val persistence = FailingSecuritySettingsPersistence(enabled = true, delayMinutes = 0).apply {
+            failEnabledValue = true
+        }
+        val backend = MemoryCredentialBackend("old secret".toCharArray())
+        val controller = controller(persistence, backend)
+        val current = "old secret".toCharArray()
+        val replacement = "new secret".toCharArray()
+        val confirmation = "new secret".toCharArray()
+
+        assertEquals(
+            AuthenticationResult.Error,
+            controller.changePassphrase(current, replacement, confirmation),
+        )
+
+        assertTrue(persistence.enabled)
+        assertEquals("old secret", backend.secret?.concatToString())
+        assertEquals(SecuritySettingsFeedback.BackendError, controller.state.value.feedback)
+        assertTrue(current.all { it == '\u0000' })
+        assertTrue(replacement.all { it == '\u0000' })
+        assertTrue(confirmation.all { it == '\u0000' })
+    }
+
+    @Test
+    fun `double rollback failure converges to disabled structured error`() {
+        val persistence = FailingSecuritySettingsPersistence(enabled = false, delayMinutes = 0).apply {
+            enabledFailuresRemaining = 2
+        }
+        val backend = MemoryCredentialBackend().apply { deleteFailuresAfterWriteRemaining = 1 }
+        val controller = controller(persistence, backend)
+
+        assertEquals(
+            AuthenticationResult.Error,
+            controller.enable("new secret".toCharArray(), "new secret".toCharArray()),
+        )
+
+        assertFalse(persistence.enabled)
+        assertEquals(null, backend.secret)
+        assertFalse(controller.state.value.enabled)
+        assertEquals(SecuritySettingsFeedback.BackendError, controller.state.value.feedback)
+    }
+
+    @Test
+    fun `locked root never constructs protected content and only successful unlock restores it`() = runBlocking {
+        val preferences = preferences(enabled = true, delay = 0)
+        val verifier = DesktopPassphraseVerifier(DesktopCredentialStore(MemoryCredentialBackend()))
+        assertEquals(AuthenticationResult.Success, verifier.set("secret".toCharArray()))
+        val appLock = DesktopAppLock(preferences, verifier)
+        var protectedConstructions = 0
+        val scene = ImageComposeScene(640, 480, coroutineContext = coroutineContext) {}
+        try {
+            scene.setContent {
+                DesktopProtectedRoot(appLock) {
+                    protectedConstructions++
+                    Unit
+                }
+            }
+            scene.render()
+            assertEquals(0, protectedConstructions)
+            assertEquals(AuthenticationResult.Failed, appLock.authenticate("wrong".toCharArray()))
+            scene.render()
+            assertEquals(0, protectedConstructions)
+
+            assertEquals(AuthenticationResult.Success, appLock.authenticate("secret".toCharArray()))
+            scene.render()
+            assertTrue(protectedConstructions > 0)
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    fun `window focus listener forwards one lost and gained lifecycle event`() {
+        val events = mutableListOf<String>()
+        val listener = DesktopWindowFocusListener(object : DesktopAppLockLifecycle {
+            override fun onApplicationStarted() {
+                events += "gained"
+            }
+            override fun onApplicationStopped() {
+                events += "lost"
+            }
+        })
+
+        listener.windowLostFocus(null)
+        listener.windowGainedFocus(null)
+
+        assertEquals(listOf("lost", "gained"), events)
+    }
+
+    @Test
+    fun `window focus registration installs once and removes the same listener once`() {
+        val listeners = mutableListOf<java.awt.event.WindowFocusListener>()
+        val lifecycle = object : DesktopAppLockLifecycle {
+            override fun onApplicationStarted() = Unit
+            override fun onApplicationStopped() = Unit
+        }
+        val registration = DesktopWindowFocusRegistration(
+            lifecycle = lifecycle,
+            addListener = listeners::add,
+            removeListener = listeners::remove,
+        )
+
+        assertEquals(1, listeners.size)
+        registration.close()
+        registration.close()
+        assertTrue(listeners.isEmpty())
+    }
+
+    @Test
+    fun `shared desktop passphrase field exposes password semantics`() = runBlocking {
+        val scene = ImageComposeScene(400, 200, coroutineContext = coroutineContext) {}
+        try {
+            scene.setContent { DesktopPasswordField("not-visible", {}, "Passphrase") }
+            scene.render()
+            assertTrue(
+                scene.semanticsOwners
+                    .flatMap { flatten(it.rootSemanticsNode) }
+                    .any { it.config.contains(SemanticsProperties.Password) },
+            )
+        } finally {
+            scene.close()
+        }
+    }
+
+    private fun preferences(enabled: Boolean, delay: Int): SecurityPreferences {
+        val node = Preferences.userRoot().node("/mihon-test/security-settings/${UUID.randomUUID()}")
+        preferenceNodes += node
+        return SecurityPreferences(DesktopPreferenceStore(node)).apply {
+            useAuthenticator().set(enabled)
+            lockAppAfter().set(delay)
+        }
+    }
+
+    private fun controller(preferences: SecurityPreferences, backend: CredentialBackend) =
+        SecuritySettingsController(preferences, DesktopPassphraseVerifier(DesktopCredentialStore(backend)))
+
+    private fun assertBootstrapSnapshot(
+        enabledAtConstruction: Boolean,
+        enabledAtStart: Boolean,
+        delayMinutes: Int,
+        expectedLocked: Boolean,
+    ) {
+        val preferences = preferences(enabled = enabledAtConstruction, delay = delayMinutes)
+        val appLock = DesktopAppLock(
+            preferences,
+            DesktopPassphraseVerifier(DesktopCredentialStore(MemoryCredentialBackend("secret".toCharArray()))),
+        )
+        preferences.useAuthenticator().set(enabledAtStart)
+        val service = object : DesktopRuntimeService {
+            override fun start() = Unit
+            override fun stop() = Unit
+        }
+        val runtime = DesktopAppRuntime(service, service, service, startupCleanup = {}, appLock = appLock)
+        var testModeStarts = 0
+
+        bootstrapDesktopRuntime(runtime, appLock, applicationState) {
+            testModeStarts++
+            assertTrue(runtime.isRunning)
+            assertEquals(expectedLocked, appLock.state.value.requiresUnlock)
+            assertEquals(expectedLocked, applicationState.appLocked.value)
+            assertEquals(
+                expectedLocked,
+                Json.parseToJsonElement(currentTestStateJson()).jsonObject["appLocked"]!!.jsonPrimitive.boolean,
+            )
+        }.use {}
+
+        assertEquals(1, testModeStarts)
+        assertFalse(runtime.isRunning)
+    }
+
+    private fun controller(persistence: SecuritySettingsPersistence, backend: CredentialBackend) =
+        SecuritySettingsController(persistence, DesktopPassphraseVerifier(DesktopCredentialStore(backend)))
+
+    private class FailingSecuritySettingsPersistence(
+        var enabled: Boolean,
+        var delayMinutes: Int,
+    ) : SecuritySettingsPersistence {
+        var failEnabledValue: Boolean? = null
+        var enabledFailuresRemaining = 0
+        var failDelayWrite = false
+
+        override fun readEnabled() = enabled
+
+        override fun writeEnabled(enabled: Boolean) {
+            this.enabled = enabled
+            if (failEnabledValue == enabled) {
+                failEnabledValue = null
+                throw IllegalStateException("enabled write failed after persistence")
+            }
+            if (enabledFailuresRemaining > 0) {
+                enabledFailuresRemaining--
+                throw IllegalStateException("enabled write failed after persistence")
+            }
+        }
+
+        override fun readDelayMinutes() = delayMinutes
+
+        override fun writeDelayMinutes(delayMinutes: Int) {
+            this.delayMinutes = delayMinutes
+            if (failDelayWrite) {
+                failDelayWrite = false
+                throw IllegalStateException("delay write failed after persistence")
+            }
+        }
+    }
+
+    private class MemoryCredentialBackend(initial: CharArray? = null) : CredentialBackend {
+        var secret = initial?.copyOf()
+        var failure: RuntimeException? = null
+        var saveFailuresRemaining = 0
+        var failNextDelete = false
+        var deleteFailuresAfterWriteRemaining = 0
+        var saveCalls = 0
+        var deleteCalls = 0
+
+        override fun save(account: String, secret: CharArray) {
+            failure?.let { throw it }
+            saveCalls++
+            this.secret?.fill('\u0000')
+            this.secret = secret.copyOf()
+            if (saveFailuresRemaining > 0) {
+                saveFailuresRemaining--
+                throw IllegalStateException("save failed after write")
+            }
+        }
+
+        override fun load(account: String): CharArray? {
+            failure?.let { throw it }
+            return secret?.copyOf()
+        }
+
+        override fun delete(account: String) {
+            failure?.let { throw it }
+            deleteCalls++
+            if (failNextDelete) {
+                failNextDelete = false
+                throw IllegalStateException("delete failed")
+            }
+            secret?.fill('\u0000')
+            secret = null
+            if (deleteFailuresAfterWriteRemaining > 0) {
+                deleteFailuresAfterWriteRemaining--
+                throw IllegalStateException("delete failed after write")
+            }
+        }
+    }
+
+    private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+}

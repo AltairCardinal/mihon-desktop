@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.SaveAlt
@@ -55,6 +56,10 @@ class MoreRootScreen : Screen {
         mihon.desktop.ui.tracking.pushTrackingSettings(navigator)
     }
 
+    internal fun onSecurity(navigator: Navigator) {
+        navigator.push(SecuritySettingsScreen())
+    }
+
     companion object {
         fun backupSettingsDestination(): Screen = BackupSettingsScreen()
     }
@@ -83,6 +88,7 @@ class MoreRootScreen : Screen {
                             MigrationSearchScreen(sourceMangaId = 0L, sourceMangaTitle = ""),
                         )
                         "open_tracking" -> onTracking(navigator)
+                        "open_security_settings" -> onSecurity(navigator)
                     }
                     TestScreenNavigator.clear()
                 }
@@ -110,6 +116,15 @@ class MoreRootScreen : Screen {
                         title = "General",
                         subtitle = "Incognito mode, page turn animation",
                         onClick = { navigator.push(GeneralSettingsScreen()) },
+                    )
+                    HorizontalDivider()
+                }
+                item {
+                    SettingsEntry(
+                        icon = Icons.Default.Lock,
+                        title = MR.strings.desktop_security_title.localized(),
+                        subtitle = MR.strings.desktop_security_summary.localized(),
+                        onClick = { onSecurity(navigator) },
                     )
                     HorizontalDivider()
                 }
