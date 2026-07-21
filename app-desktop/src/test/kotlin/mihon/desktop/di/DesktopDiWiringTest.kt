@@ -95,8 +95,10 @@ import tachiyomi.data.JvmDatabaseHandler
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
-import java.net.ServerSocket
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
@@ -453,27 +455,16 @@ class DesktopDiWiringTest {
 
     @Test
     fun `reinitializing stops active download worker before installing fresh context`(@TempDir tempDir: File): Unit = runBlocking {
-        val server = ServerSocket(0)
-        val requestStarted = CompletableDeferred<Unit>()
+        val downloadExecuteStarted = CompletableDeferred<Unit>()
         val downloadReadStarted = CompletableDeferred<Unit>()
         val downloadFinallyEntered = CompletableDeferred<Unit>()
         val releaseDownloadFinally = CompletableDeferred<Unit>()
-        val serverThread = Thread {
-            server.accept().use { socket ->
-                socket.getInputStream().bufferedReader().readLine()
-                socket.getOutputStream().bufferedWriter().apply {
-                    write("HTTP/1.1 200 OK\r\nContent-Length: 1000000\r\n\r\n")
-                    flush()
-                }
-                requestStarted.complete(Unit)
-                runCatching { while (socket.getInputStream().read() >= 0) Unit }
-            }
-        }.apply { isDaemon = true; start() }
         val firstContext = initDesktopDIForTest(
             tempDir.resolve("download-first"),
             DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")),
             startDownloadWorker = true,
             downloadFileOperations = FinallyTrackingDownloadFileOperations(
+                downloadExecuteStarted,
                 downloadReadStarted,
                 downloadFinallyEntered,
                 releaseDownloadFinally,
@@ -487,10 +478,10 @@ class DesktopDiWiringTest {
                     mangaTitle = "Old manga",
                     chapterName = "Old chapter",
                     chapterId = 401,
-                    pageUrls = listOf("http://127.0.0.1:${server.localPort}/page.jpg"),
+                    pageUrls = listOf("https://downloads.example.test/page.jpg"),
                 ),
             )
-            withTimeout(2_000) { requestStarted.await() }
+            withTimeout(2_000) { downloadExecuteStarted.await() }
             withTimeout(2_000) { downloadReadStarted.await() }
             assertEquals(DownloadStatus.DOWNLOADING, oldManager.queue.value.single().status)
             val closeOldManager = async(Dispatchers.IO) { oldManager.stopAndJoin() }
@@ -534,16 +525,26 @@ class DesktopDiWiringTest {
         } finally {
             releaseDownloadFinally.complete(Unit)
             firstContext.closeAndJoin()
-            server.close()
-            serverThread.join(1_000)
         }
     }
 
     private class FinallyTrackingDownloadFileOperations(
+        private val executeStarted: CompletableDeferred<Unit>,
         private val started: CompletableDeferred<Unit>,
         private val finallyEntered: CompletableDeferred<Unit>,
         private val releaseFinally: CompletableDeferred<Unit>,
     ) : DownloadFileOperations by DefaultDownloadFileOperations {
+        override fun execute(client: OkHttpClient, url: String): Response {
+            executeStarted.complete(Unit)
+            return Response.Builder()
+                .request(Request.Builder().url(url).build())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body(byteArrayOf().toResponseBody())
+                .build()
+        }
+
         override suspend fun readBody(response: Response): ByteArray = try {
             started.complete(Unit)
             awaitCancellation()
