@@ -1,0 +1,56 @@
+{
+  "fixedMain": {
+    "ref": "6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "sources": [
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/main/MainActivity.kt", "symbol": "MainActivity.handleIntentAction" },
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/base/delegate/SecureActivityDelegate.kt", "symbol": "SecureActivityDelegate.onApplicationStopped/onApplicationStart/unlock" },
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/util/system/IntentExtensions.kt", "symbol": "Uri.toShareIntent" },
+      { "path": "core/common/src/commonMain/kotlin/eu/kanade/tachiyomi/core/security/SecurityPreferences.kt", "symbol": "SecurityPreferences.SecureScreenMode" }
+    ]
+  },
+  "externalActions": [
+    { "input": "tachiyomi://add-repo?url=https%3A%2F%2Fexample.com%2Frepo.json", "result": "AddRepository", "provenance": "fixed-main" },
+    { "input": "tachiyomi://unknown?url=https%3A%2F%2Fexample.com", "result": "Rejected", "hardening": true },
+    { "input": "unknown://add-repo?url=https%3A%2F%2Fexample.com", "result": "Rejected", "hardening": true },
+    { "input": "tachiyomi://add-repo/path?url=https%3A%2F%2Fexample.com", "result": "Rejected", "hardening": true },
+    { "input": "tachiyomi://add-repo", "result": "Rejected", "hardening": true },
+    { "input": "tachiyomi://add-repo?url=https%3A%2F%2Fone.example&url=https%3A%2F%2Ftwo.example", "result": "Rejected", "hardening": true },
+    { "input": "tachiyomi://add-repo?url=ftp%3A%2F%2Fexample.com", "result": "Rejected", "hardening": true },
+    { "input": "tachiyomi://add-repo?url=https%3A%2F%2Fexample.com%2F%FF", "result": "Rejected", "hardening": true },
+    { "input": "tachiyomi://add-repo?url=https%3A%2F%2Fexample.com#fragment", "result": "Rejected", "hardening": true },
+    { "input": "file:///downloads/library.tachibk", "result": "RestoreBackup" },
+    { "input": "content://provider/backups/library.tachibk", "result": "RestoreBackup" },
+    { "input": "SEARCH query=https://source.example/manga/one", "result": "Search", "note": "A source URL is search text; fixed-main does not route HTTP(S) ACTION_VIEW URIs." },
+    { "input": "ACTION_SEARCH QUERY=query EXTRA_TEXT=fallback", "result": "Search(query)", "provenance": "fixed-main", "note": "An Android action, not a URI scheme" },
+    { "input": "ACTION_SEARCH QUERY=null EXTRA_TEXT=fallback", "result": "Search(fallback)", "provenance": "fixed-main" },
+    { "input": "ACTION_SEARCH QUERY='' EXTRA_TEXT=fallback", "result": "NoOp", "provenance": "fixed-main" },
+    { "input": "ACTION_SEARCH QUERY='  ' EXTRA_TEXT=fallback", "result": "Search('  ')", "provenance": "fixed-main" },
+    { "input": "ACTION_SEND text/plain", "result": "SearchAction", "provenance": "fixed-main", "note": "An Android action, not a URI scheme" }
+  ],
+  "share": [
+    { "input": "https://example.com/manga", "result": "Text" },
+    { "input": "content://provider/page/1", "mimeType": "image/png", "message": "page", "result": "Stream" }
+  ],
+  "security": {
+    "lockVectors": [
+      { "event": "initial", "enabled": true, "expected": "locked", "provenance": "fixed-main" },
+      { "event": "start", "delayMinutes": -1, "state": "unlocked", "expected": "unlocked", "provenance": "fixed-main" },
+      { "event": "start", "delayMinutes": 0, "state": "unlocked", "expected": "locked", "provenance": "fixed-main" },
+      { "event": "start", "delayMinutes": 5, "closedAt": 1000, "now": 300999, "expected": "unlocked", "provenance": "fixed-main" },
+      { "event": "start", "delayMinutes": 5, "closedAt": 1000, "now": 301000, "expected": "locked", "provenance": "fixed-main" },
+      { "event": "stop", "state": "locked", "closedAt": 77, "expectedClosedAt": 77, "provenance": "fixed-main" },
+      { "event": "start", "closedAt": 100, "expectedClosedAt": null, "provenance": "fixed-main" },
+      { "event": "authentication", "result": "failure", "expected": "locked", "hardening": true }
+    ],
+    "secureScreenVectors": [
+      { "mode": "ALWAYS", "incognito": false, "protected": true, "provenance": "fixed-main" },
+      { "mode": "INCOGNITO", "incognito": false, "protected": false, "provenance": "fixed-main" },
+      { "mode": "INCOGNITO", "incognito": true, "protected": true, "provenance": "fixed-main" },
+      { "mode": "NEVER", "incognito": true, "protected": false, "provenance": "fixed-main" }
+    ],
+    "hardening": [
+      "Malformed, unknown, and non-HTTP(S) repository URIs are rejected before a platform consumer can navigate.",
+      "Authentication cancellation, failure, exception, and unavailable credentials remain locked."
+    ]
+  }
+}
