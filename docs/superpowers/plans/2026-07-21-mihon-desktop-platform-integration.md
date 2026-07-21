@@ -769,7 +769,9 @@ status-source: this-file
 
 **Platform boundary:** shared+desktop
 
-**Estimated scope:** 8 files, 390 lines
+**Estimated scope:** 8 files, 480 lines
+
+**Split waiver:** 独立审查证明 Test Mode 取消、About 手动后备失败反馈和阻塞式签名验证必须共用同一个 `DesktopUpdateScreenModel` 作业所有权：若把取消单独放入 Test Mode 或 controller，只能改变状态而不能取消 UI/Test Mode 实际持有的协程；若把后台调度另拆，取消测试又无法证明它作用于同一 production job。因此本轮修复必须同时调整既有 ScreenModel、About/Test Mode consumer 与对应行为测试，不新增第二套状态机或生产文件。累计触达仍限定在原 8 个文件内。
 
 **Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.settings.AboutUpdateWiringTest" --tests "mihon.desktop.di.DesktopDiWiringTest" --tests "mihon.desktop.test.http.DesktopPlatformTestModeControllerTest"`
 
