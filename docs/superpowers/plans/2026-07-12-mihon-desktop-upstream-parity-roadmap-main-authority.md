@@ -472,7 +472,7 @@ Windows `0.11.14.43.84e386c` 固定 EXE 与 macOS `0.11.14.44.84e386c` 部署应
 - [ ] **Step 10: 运行三 OS 可执行的单元测试矩阵及当前 Windows 集成验收**
 - [ ] **Step 11: 更新追踪项 81–86、92 的原版 provenance、shared/adapter 证据和豁免说明**
 
-**Current progress:** 子计划 Task 1–5R 已完成。固定原版 fixture/shared 外部动作与安全契约、当前 Android consumer、Desktop target resolution、冷启动导航、FIFO/取消恢复及有界非阻塞反馈已具备实现、TDD 和独立审查证据；对应父 Step 1、3、9 仍因分享、完整安全/更新与其余设置 wiring 尚未完成而保持未勾选。下一项为子计划 Task 6 单实例安全转发。
+**Current progress:** 子计划 Task 1–6 已完成。固定原版 fixture/shared 外部动作与安全契约、当前 Android consumer、Desktop target resolution、冷启动导航、FIFO/取消恢复、有界非阻塞反馈及 loopback 单实例安全转发已具备实现、TDD 和独立审查证据；对应父 Step 1、3、4、9 仍因 URI scheme 注册、分享、完整安全/更新与其余设置 wiring 尚未完成而保持未勾选。下一项为子计划 Task 7 Windows/macOS/Linux URI scheme 注册。
 
 ## 14. Task 5B：设置、外观、无障碍与许可
 

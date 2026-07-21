@@ -26,7 +26,7 @@ status-source: this-file
 - [x] Task 4：Desktop 源 URI/备份/仓库动作解析
 - [x] Task 5：Desktop 外部动作导航、入口与可见反馈
 - [x] Task 5R：Desktop 外部动作非阻塞反馈收口
-- [ ] Task 6：Desktop 单实例安全转发
+- [x] Task 6：Desktop 单实例安全转发
 - [ ] Task 7：Windows/macOS/Linux URI scheme 注册
 - [ ] Task 8：Desktop 系统分享与剪贴板/保存后备
 - [ ] Task 9：Desktop credential-backed 应用锁核心
@@ -265,7 +265,7 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 6 files, 650 lines
+**Estimated scope:** 6 files, 850 lines
 
 **Split waiver:** owner 选举、认证/有界传输协议、ACK、崩溃接管、Runtime 生命周期和 Main 的 secondary 退出判断构成同一个原子安全边界。拆分会产生“已监听但未绑定真实 ingress”“secondary 仍启动服务/UI”或“新 owner 状态被旧 owner 清理”的不可验收中间态；安全与并发 RED 也必须共同作用于同一 broker/state codec，因此保留为一个 Task、严格限制在列出的 6 个文件内。
 
@@ -288,6 +288,8 @@ status-source: this-file
 2. GREEN：只有 owner 启动 UI/runtime；secondary 等待明确 ACK 后退出。token/port 文件权限尽可能收紧，日志不记录 payload secret。
 3. broker 不解析业务动作，只传输有界字符串；所有验证仍由 shared parser/handler 完成。
 4. 运行 Verification、重复启动/关闭压力测试和 `git diff --check`。
+
+**Evidence:** 实现提交 `cccd277299`。broker 仅绑定 IPv4 loopback，使用随机 token、有界长度帧和 requestId 匹配 ACK；单 owner 文件锁、原子状态写入、stale endpoint 有界重试接管、ownerId 防旧实例误删、权限 best-effort、临时文件清理与重复 close 均由真实 loopback/文件测试覆盖。Main 仅在 owner 回调中初始化 DI/runtime/UI，secondary 收到 ACK 后直接退出；production helper 将 broker 原始字符串接入 Task 5 `ExternalActionInput.ViewUri`，runtime close 释放 broker。实现代理最终组合 30/30、broker 另行压力 3 轮、根 Spotless 与 diff check 通过；协调者强制重跑 Broker 11 + Runtime 11 + Task 5 Navigation 8 = 30/30，根 Spotless 通过。独立审查 APPROVED，Critical/Important/Minor `0/0/0`；最终范围 6 files/808 touched lines，未运行全量 Desktop 套件或递增版本构建，留待 Task 16。
 
 ### Task 7：Windows、macOS、Linux URI scheme 注册
 
