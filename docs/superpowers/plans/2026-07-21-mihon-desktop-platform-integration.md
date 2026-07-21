@@ -265,7 +265,9 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 6 files, 350 lines
+**Estimated scope:** 6 files, 650 lines
+
+**Split waiver:** owner 选举、认证/有界传输协议、ACK、崩溃接管、Runtime 生命周期和 Main 的 secondary 退出判断构成同一个原子安全边界。拆分会产生“已监听但未绑定真实 ingress”“secondary 仍启动服务/UI”或“新 owner 状态被旧 owner 清理”的不可验收中间态；安全与并发 RED 也必须共同作用于同一 broker/state codec，因此保留为一个 Task、严格限制在列出的 6 个文件内。
 
 **Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.platform.DesktopExternalActionBrokerTest" --tests "mihon.desktop.DesktopAppRuntimeTest"`
 
