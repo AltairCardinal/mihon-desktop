@@ -235,7 +235,7 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 4 files, 260 lines
+**Estimated scope:** 4 files, 300 lines
 
 **Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.ExternalActionNavigationTest" --tests "mihon.desktop.ui.ExternalActionFeedbackWiringTest" --rerun-tasks`
 
