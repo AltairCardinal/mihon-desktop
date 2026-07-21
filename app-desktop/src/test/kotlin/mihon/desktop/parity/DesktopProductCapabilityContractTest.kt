@@ -116,6 +116,14 @@ class DesktopProductCapabilityContractTest {
         86 to ("app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AboutUpdateWiringTest.kt" to "about renders full version and routes ready confirmation intents"),
         92 to ("app-desktop/src/test/kotlin/mihon/desktop/ui/settings/SecuritySettingsWiringTest.kt" to "unsupported desktop privacy integrations show info without rendering controls"),
     )
+    private val exactPlatformCapabilityMarkers = mapOf(
+        81 to setOf("wireDesktopExternalActionBroker", "ExternalActionInput.ViewUri"),
+        82 to setOf("MangaDetailActionRow", "DesktopShareService"),
+        83 to setOf("assertBootstrapSnapshot", "expectedLocked"),
+        84 to setOf("DesktopSecureScreenSettings", "not available on this platform"),
+        86 to setOf("AboutUpdateSection", "DesktopUpdateIntent.CONFIRM"),
+        92 to setOf("DesktopPrivacyCapabilities.production", "nativeNotificationControls", "telemetryControls"),
+    )
     private val forkOnlyReaderPairingPaths =
         setOf(
             "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagePairingAlgorithm.kt",
@@ -1482,6 +1490,9 @@ class DesktopProductCapabilityContractTest {
             assertTrue(testPath in item.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content })
             val method = kotlinTestMethod(Files.readString(repositoryRoot.resolve(testPath)), methodName, "ID $id protection")
             assertTrue(method.contains("assert"), "ID $id protection method must execute assertions")
+            exactPlatformCapabilityMarkers.getValue(id).forEach { marker ->
+                assertTrue(method.contains(marker), "ID $id protection method must execute production marker `$marker`")
+            }
             val deviations = item.getValue("deviations").jsonArray
             assertTrue(deviations.isNotEmpty(), "ID $id requires an honest deviation")
             assertTrue(requiredText(item, "verificationScope", id).contains("CANDIDATE"), "ID $id must remain limited until OS acceptance")
