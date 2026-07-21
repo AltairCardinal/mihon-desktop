@@ -45,7 +45,7 @@ status-source: this-file
 - [x] Task 13D：Desktop 签名验证与平台安装交接
 - [x] Task 13E：Desktop 更新控制器状态机
 - [ ] Task 14：Desktop 更新 UI、DI 与 Test Mode wiring
-- [ ] Task 14A：Desktop verifier 可取消进程边界
+- [x] Task 14A：Desktop verifier 可取消进程边界
 - [ ] Task 14B：Desktop updater 应用生命周期所有权
 - [ ] Task 15：Widget 豁免、parity 证据与维护文档
 - [ ] Task 16：独立最终审查与三平台 change verify
@@ -830,6 +830,8 @@ status-source: this-file
 3. GREEN：将 installer verifier 边界改为 suspend runner；controller 的 prepare/handoff 二次验证沿同一可取消链传播 `CancellationException`。不得修改 credential/URI registration 共用的同步 `CommandRunner` 语义。
 4. 在 verifier 返回后、写入 Ready/Failed 前保留 cancellation checkpoint；Cancel 后 `Cancelled` 不得被迟到结果覆盖，artifact 保留/清理继续遵守 Task 13C/13D 契约。
 5. 运行 Verification、Downloader 真实 MockWebServer 链、Spotless、`git diff --check` 和子进程/PID 清理检查。
+
+**Evidence:** 实现提交 `2afcc9af5`、唯一审查修复 `e62ccf035`。首轮 RED 通过 ScreenModel→Controller→Installer→真实 JVM helper 证明旧同步 `CommandRunner.waitFor()` 令 Cancel 两秒内无法进入 `Cancelled`；新增 updater 专用 suspend runner 并发排空约 2 MiB stdout/stderr、清零 stdin，在取消时按 stdin close→graceful destroy→forced destroy→PID wait→stream close→reader join 的顺序清理。Controller 的 prepare/handoff delegate 改为 suspend，并在 Ready/Failed 前执行 cancellation checkpoint；Task 13D 的 Windows/macOS 首次与 handoff 二次复验、exact path/call-count、hash/name/trust/artifact 断言保持。首审发现 forced wait Boolean 被忽略 1 个 Important；唯一修复在两次 wait=false 且 PID 仍 alive 时生成明确 termination-timeout，并在 NonCancellable 清理完三流/reader 后把失败 suppressed 到同一个主 `CancellationException`，false 后已死亡不误报。确定性 seam 测试与真实 block/resist PID 用例共同证明同一取消实例、普通/强杀、超时诊断、PID 两秒内死亡和 reader=0；迟到 success/failure 均不能覆盖 `Cancelled`。协调者强制复跑 Runner 4 + Installer 10 + Controller 8 + About 3 + Downloader 10 = 35/35，0 failure/error/skip，helper 残留 0；根 Spotless、diff 与 secret scan 通过。唯一修复复审 APPROVED，Critical/Important/Minor `0/0/0`。最终范围 7 files/400 touched；Task 14B 仍负责 runtime 生命周期所有权。
 
 ### 子 Task 14B：Desktop updater 应用生命周期所有权
 
