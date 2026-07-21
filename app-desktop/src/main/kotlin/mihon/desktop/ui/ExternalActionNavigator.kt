@@ -42,21 +42,22 @@ class ExternalActionNavigator internal constructor(
 
     suspend fun consumePending(
         navigator: Navigator,
-        showFeedback: suspend (String) -> Unit,
+        publishFeedback: (String) -> Unit,
     ) = consumerMutex.withLock {
         while (true) {
             val input = synchronized(pendingLock) { pending.pollFirst() } ?: return@withLock
-            try {
+            val feedback = try {
                 when (val target = resolveTarget(input)) {
                     is DesktopExternalActionTarget.Rejected -> {
                         testState.recordExternalAction("Rejected", target.reason.name)
-                        showFeedback(rejectionFeedback(target))
+                        rejectionFeedback(target)
                     }
                     else -> {
                         val destination = destination(target)
                         navigator.push(destination)
                         testState.setCurrentScreen(destination::class.simpleName ?: destination.key)
                         testState.recordExternalAction("Succeeded", destination::class.simpleName)
+                        null
                     }
                 }
             } catch (cancelled: CancellationException) {
@@ -65,13 +66,14 @@ class ExternalActionNavigator internal constructor(
                 throw cancelled
             } catch (_: Exception) {
                 testState.recordExternalAction("Failed")
-                showFeedback(MR.strings.unknown_error.localized())
+                MR.strings.unknown_error.localized()
             }
+            feedback?.let { publishFeedbackSafely(publishFeedback, it) }
         }
     }
 
-    suspend fun consumeSignals(navigator: Navigator, showFeedback: suspend (String) -> Unit) {
-        _pendingSignals.collect { consumePending(navigator, showFeedback) }
+    suspend fun consumeSignals(navigator: Navigator, publishFeedback: (String) -> Unit) {
+        _pendingSignals.collect { consumePending(navigator, publishFeedback) }
     }
 
     private fun signalPending() {
@@ -85,6 +87,14 @@ class ExternalActionNavigator internal constructor(
         is DesktopExternalActionTarget.Backup -> BackupSettingsScreen(target.file)
         is DesktopExternalActionTarget.ExtensionRepo -> ExtensionRepoScreen(target.url)
         is DesktopExternalActionTarget.Rejected -> error("Rejected actions do not have destinations")
+    }
+}
+
+private fun publishFeedbackSafely(publishFeedback: (String) -> Unit, message: String) {
+    try {
+        publishFeedback(message)
+    } catch (_: Exception) {
+        // Feedback is best-effort UI output after the external action has reached a terminal state.
     }
 }
 

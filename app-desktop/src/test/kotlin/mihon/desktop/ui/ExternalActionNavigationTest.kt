@@ -205,6 +205,93 @@ class ExternalActionNavigationTest {
         fixture.close()
     }
 
+    @Test
+    fun `suspended rejection feedback does not block the next action`() = runTest {
+        val state = TestState()
+        val feedbackStarted = CompletableDeferred<Unit>()
+        val controller = ExternalActionNavigator(
+            resolveTarget = { input ->
+                when ((input as ExternalActionInput.Search).primaryQuery) {
+                    "A" -> DesktopExternalActionTarget.Rejected(DesktopExternalActionTarget.Rejection.ParserRejected)
+                    else -> DesktopExternalActionTarget.GlobalSearch("B")
+                }
+            },
+            chapterDestination = { error("not a chapter") },
+            testState = state,
+        )
+        val fixture = navigatorFixture()
+        var feedbackJob: kotlinx.coroutines.Job? = null
+        val consumer = backgroundScope.launch {
+            controller.consumeSignals(fixture.navigator) {
+                feedbackJob = backgroundScope.launch {
+                    feedbackStarted.complete(Unit)
+                    awaitCancellation()
+                }
+            }
+        }
+
+        try {
+            controller.submit(ExternalActionInput.Search("A"))
+            testScheduler.runCurrent()
+            feedbackStarted.await()
+            controller.submit(ExternalActionInput.Search("B"))
+            testScheduler.runCurrent()
+
+            assertEquals(listOf("ExternalActionRejected", "ExternalActionSucceeded"), state.terminalExternalActions())
+            assertEquals(listOf("B"), fixture.pushedSearchQueries())
+        } finally {
+            feedbackJob?.cancel()
+            consumer.cancel()
+            fixture.close()
+        }
+    }
+
+    @Test
+    fun `cancelling rejection feedback does not replay its terminal action`() = runTest {
+        val state = TestState()
+        val feedbackStarted = CompletableDeferred<Unit>()
+        val attempts = mutableListOf<String>()
+        val controller = ExternalActionNavigator(
+            resolveTarget = { input ->
+                val query = (input as ExternalActionInput.Search).primaryQuery!!
+                attempts += query
+                when (query) {
+                    "A" -> DesktopExternalActionTarget.Rejected(DesktopExternalActionTarget.Rejection.ParserRejected)
+                    else -> DesktopExternalActionTarget.GlobalSearch(query)
+                }
+            },
+            chapterDestination = { error("not a chapter") },
+            testState = state,
+        )
+        val fixture = navigatorFixture()
+        var feedbackJob: kotlinx.coroutines.Job? = null
+        val firstConsumer = launch {
+            controller.consumeSignals(fixture.navigator) {
+                feedbackJob = backgroundScope.launch {
+                    feedbackStarted.complete(Unit)
+                    awaitCancellation()
+                }
+            }
+        }
+
+        controller.submit(ExternalActionInput.Search("A"))
+        testScheduler.runCurrent()
+        feedbackStarted.await()
+        controller.submit(ExternalActionInput.Search("B"))
+        testScheduler.runCurrent()
+        feedbackJob?.cancelAndJoin()
+        firstConsumer.cancelAndJoin()
+
+        val nextConsumer = backgroundScope.launch { controller.consumeSignals(fixture.navigator) {} }
+        testScheduler.runCurrent()
+
+        assertEquals(listOf("A", "B"), attempts)
+        assertEquals(listOf("ExternalActionRejected", "ExternalActionSucceeded"), state.terminalExternalActions())
+        assertEquals(listOf("B"), fixture.pushedSearchQueries())
+        nextConsumer.cancel()
+        fixture.close()
+    }
+
     private fun searchController(
         state: TestState,
         beforeResolve: suspend (String) -> Unit = {},

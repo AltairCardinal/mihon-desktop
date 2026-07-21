@@ -23,6 +23,7 @@ import mihon.desktop.ui.settings.ExtensionRepoScreen
 import mihon.desktop.ui.theme.DesktopTheme
 import mihon.domain.platform.ExternalActionInput
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
@@ -104,6 +105,44 @@ class ExternalActionFeedbackWiringTest {
                     yield()
                 }
             }
+        } finally {
+            scene.close()
+            applicationState.reset()
+            context.closeAndJoin()
+        }
+    }
+
+    @Test
+    fun `Home consumes a successful action while rejection Snackbar remains visible`(@TempDir tempDir: File) = runTest {
+        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore(), startDownloadWorker = false)
+        val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
+        try {
+            applicationState.reset()
+            val dependencies = DesktopUiDependencies.fromInjekt()
+            submitDesktopExternalAction(arrayOf("unsupported://external"), dependencies.externalActionNavigator)
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    ProvideLibraryNavigationHost(mockk<LibraryNavigationHost>(relaxed = true)) {
+                        DesktopTheme { HomeScreen().Content() }
+                    }
+                }
+            }
+            scene.render()
+            val feedback = MR.strings.error_no_match.localized()
+            withTimeout(5_000) {
+                while (!scene.semanticsOwners.joinToString { semantics(it.rootSemanticsNode) }.contains(feedback)) {
+                    scene.render()
+                    yield()
+                }
+            }
+
+            dependencies.externalActionNavigator.submit(ExternalActionInput.Search("after-feedback"))
+            withTimeout(1_000) {
+                applicationState.actionHistory.first { records -> records.any { it.action == "ExternalActionSucceeded" } }
+            }
+            scene.render()
+
+            assertTrue(scene.semanticsOwners.joinToString { semantics(it.rootSemanticsNode) }.contains(feedback))
         } finally {
             scene.close()
             applicationState.reset()
