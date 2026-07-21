@@ -20,6 +20,10 @@ import mihon.desktop.platform.DesktopExternalActionTarget
 import mihon.desktop.platform.DesktopOpenUriEventPort
 import mihon.desktop.platform.DesktopOpenUriInstallResult
 import mihon.desktop.platform.DesktopOpenUriRegistration
+import mihon.desktop.platform.DesktopOpenUriEnvironment
+import mihon.desktop.platform.DesktopOpenUriPlatform
+import mihon.desktop.platform.OperatingSystem
+import mihon.desktop.platform.AwtDesktopOpenUriEventPort
 import mihon.desktop.test.TestArguments
 import mihon.desktop.test.TestModeRun
 import mihon.desktop.test.completeTestModeStop
@@ -213,6 +217,76 @@ class DesktopAppRuntimeTest {
     }
 
     @Test
+    fun `elected owner installs open URI ingress while secondary only forwards`(@org.junit.jupiter.api.io.TempDir tempDir: File) = runTest {
+        val stateFile = File(tempDir, "instance.json")
+        val owner = DesktopExternalActionBroker(stateFile)
+        val port = QueuingOpenUriPort()
+        val navigator = externalActionNavigator()
+        val runtime = headlessRuntime()
+
+        assertEquals(
+            DesktopInstanceStartResult.Owner,
+            startDesktopInstance(owner, null) { ownerBroker ->
+                initializeDesktopOwnerExternalActionIngress(ownerBroker, navigator, runtime, port)
+            },
+        )
+        val secondary = DesktopExternalActionBroker(stateFile)
+        assertEquals(DesktopInstanceStartResult.Forwarded, startDesktopInstance(secondary, "tachiyomi://manga?url=secondary") { error("secondary must not start") })
+        assertEquals(1, port.installs)
+
+        runtime.close()
+        assertEquals(1, port.closes)
+        secondary.close()
+    }
+
+    @Test
+    fun `AWT open URI adapter installs only on supported macOS and unregisters once`() {
+        val platform = RecordingOpenUriPlatform()
+        val received = mutableListOf<String>()
+
+        val result = AwtDesktopOpenUriEventPort(
+            environment = FakeOpenUriEnvironment(OperatingSystem.MACOS),
+            platform = platform,
+        ).install(received::add)
+
+        val registration = (result as DesktopOpenUriInstallResult.Installed).registration
+        platform.emit("tachiyomi://manga?url=event")
+        registration.close()
+        registration.close()
+        platform.emit("tachiyomi://manga?url=after-close")
+
+        assertEquals(listOf("tachiyomi://manga?url=event"), received)
+        assertEquals(1, platform.setCalls)
+        assertEquals(1, platform.clearCalls)
+    }
+
+    @Test
+    fun `AWT open URI adapter skips unsupported environments and reports install failures`() {
+        listOf(
+            FakeOpenUriEnvironment(OperatingSystem.WINDOWS),
+            FakeOpenUriEnvironment(OperatingSystem.LINUX),
+            FakeOpenUriEnvironment(OperatingSystem.MACOS, isHeadless = true),
+        ).forEach { environment ->
+            val platform = RecordingOpenUriPlatform()
+
+            assertEquals(DesktopOpenUriInstallResult.Unsupported, AwtDesktopOpenUriEventPort(environment, platform).install {})
+            assertEquals(0, platform.setCalls)
+            assertEquals(0, platform.clearCalls)
+        }
+        val unsupportedPlatform = RecordingOpenUriPlatform(openUriSupported = false)
+        assertEquals(
+            DesktopOpenUriInstallResult.Unsupported,
+            AwtDesktopOpenUriEventPort(FakeOpenUriEnvironment(OperatingSystem.MACOS), unsupportedPlatform).install {},
+        )
+        assertEquals(0, unsupportedPlatform.setCalls)
+        val failure = AwtDesktopOpenUriEventPort(
+            FakeOpenUriEnvironment(OperatingSystem.MACOS),
+            RecordingOpenUriPlatform(installFailure = IllegalStateException("unsupported handler")),
+        ).install {}
+        assertTrue(failure is DesktopOpenUriInstallResult.Failed)
+    }
+
+    @Test
     fun `start launches services and startup cleanup without blocking caller`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val scope = TestScope(dispatcher)
@@ -378,12 +452,20 @@ class DesktopAppRuntimeTest {
         DesktopUpdateController({ error("unused") }, { _, _ -> error("unused") }, { _, _ -> error("unused") }, { _, _ -> error("unused") }),
         scope,
     )
+
+    private fun externalActionNavigator() = ExternalActionNavigator(
+        resolveTarget = { DesktopExternalActionTarget.Rejected(DesktopExternalActionTarget.Rejection.ParserRejected) },
+        chapterDestination = { error("not a chapter") },
+        testState = TestState(),
+    )
 }
 
 private class QueuingOpenUriPort : DesktopOpenUriEventPort {
     private val queued = mutableListOf<String>()
     private var consumer: ((String) -> Unit)? = null
     var installs = 0
+        private set
+    var closes = 0
         private set
 
     fun emit(uri: String) {
@@ -396,9 +478,46 @@ private class QueuingOpenUriPort : DesktopOpenUriEventPort {
         queued.toList().also { queued.clear() }.forEach(consumer)
         return DesktopOpenUriInstallResult.Installed(
             DesktopOpenUriRegistration {
-                if (this.consumer === consumer) this.consumer = null
+                if (this.consumer === consumer) {
+                    closes++
+                    this.consumer = null
+                }
             },
         )
+    }
+}
+
+private class FakeOpenUriEnvironment(
+    override val operatingSystem: OperatingSystem,
+    override val isHeadless: Boolean = false,
+) : DesktopOpenUriEnvironment
+
+private class RecordingOpenUriPlatform(
+    override val isDesktopSupported: Boolean = true,
+    private val openUriSupported: Boolean = true,
+    private val installFailure: Throwable? = null,
+) : DesktopOpenUriPlatform {
+    private var consumer: ((String) -> Unit)? = null
+    var setCalls = 0
+        private set
+    var clearCalls = 0
+        private set
+
+    override fun isOpenUriSupported() = openUriSupported
+
+    override fun setOpenUriHandler(consumer: (String) -> Unit) {
+        installFailure?.let { throw it }
+        setCalls++
+        this.consumer = consumer
+    }
+
+    override fun clearOpenUriHandler() {
+        clearCalls++
+        consumer = null
+    }
+
+    fun emit(uri: String) {
+        consumer?.invoke(uri)
     }
 }
 

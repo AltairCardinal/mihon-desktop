@@ -97,11 +97,8 @@ private fun runOwnerApplication(
     val appLock = Injekt.get<DesktopAppLock>()
     val windowPrivacyController = Injekt.get<DesktopWindowPrivacyController>()
     val uiDependencies = DesktopUiDependencies.fromInjekt()
-    wireDesktopExternalActionBroker(broker, uiDependencies.externalActionNavigator)
-    val openUriResult = wireDesktopOpenUriEvents(AwtDesktopOpenUriEventPort, uiDependencies.externalActionNavigator)
     submitDesktopExternalAction(args, uiDependencies.externalActionNavigator)
-    runtime.attachInstanceBroker(broker)
-    (openUriResult as? DesktopOpenUriInstallResult.Installed)?.let { runtime.attachCloseable(it.registration) }
+    initializeDesktopOwnerExternalActionIngress(broker, uiDependencies.externalActionNavigator, runtime, AwtDesktopOpenUriEventPort())
     bootstrapDesktopRuntime(runtime, appLock, applicationState) {
         if (testArgs.testMode) TestMode.start(testArgs)
     }.use { bootstrap ->
@@ -307,6 +304,18 @@ internal fun wireDesktopOpenUriEvents(
     port: mihon.desktop.platform.DesktopOpenUriEventPort,
     navigator: ExternalActionNavigator,
 ) = port.install { raw -> submitDesktopExternalAction(raw, navigator) }
+
+internal fun initializeDesktopOwnerExternalActionIngress(
+    broker: DesktopExternalActionBroker,
+    navigator: ExternalActionNavigator,
+    runtime: DesktopAppRuntime,
+    openUriEventPort: mihon.desktop.platform.DesktopOpenUriEventPort,
+) {
+    wireDesktopExternalActionBroker(broker, navigator)
+    val openUriResult = wireDesktopOpenUriEvents(openUriEventPort, navigator)
+    runtime.attachInstanceBroker(broker)
+    (openUriResult as? DesktopOpenUriInstallResult.Installed)?.let { runtime.attachCloseable(it.registration) }
+}
 
 internal fun runHeadlessMode(
     args: TestArguments,
