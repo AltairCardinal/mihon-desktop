@@ -424,10 +424,11 @@ class MainActivity : BaseActivity() {
             "com.google.android.gms.actions.SEARCH_ACTION",
             Intent.ACTION_VIEW,
             -> {
-                intent.toExternalAction()?.navigationScreen()?.let { screen ->
-                    navigator.popUntilRoot()
-                    navigator.push(screen)
-                }
+                // If the intent match the "standard" Android search intent
+                // or the Google-specific search intent (triggered by saying or typing "search *query* on *Tachiyomi*" in Google Search/Google Assistant)
+
+                // Get the search query provided in extras, and if not null, perform a global search with it.
+                intent.navigateExternalAction(navigator)
                 null
             }
             INTENT_SEARCH -> {
@@ -478,6 +479,13 @@ internal fun ExternalAction.navigationScreen(): Screen? = when (this) {
     ExternalAction.NoOp,
     is ExternalAction.Rejected,
     -> null
+}
+
+internal fun Intent.navigateExternalAction(navigator: Navigator): Boolean {
+    val screen = toExternalAction()?.navigationScreen() ?: return false
+    navigator.popUntilRoot()
+    navigator.push(screen)
+    return true
 }
 
 // Splash screen

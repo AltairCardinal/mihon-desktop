@@ -3,6 +3,8 @@ package eu.kanade.tachiyomi.ui.deeplink
 import android.app.SearchManager
 import android.content.Intent
 import android.net.Uri
+import cafe.adriel.voyager.core.screen.Screen
+import cafe.adriel.voyager.navigator.Navigator
 import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
 import eu.kanade.presentation.more.settings.screen.browse.ExtensionReposScreen
 import eu.kanade.presentation.more.settings.screen.data.RestoreBackupScreen
@@ -11,11 +13,13 @@ import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.source.online.ResolvableSource
 import eu.kanade.tachiyomi.source.online.UriType
-import eu.kanade.tachiyomi.ui.main.navigationScreen
+import eu.kanade.tachiyomi.ui.main.navigateExternalAction
 import eu.kanade.tachiyomi.ui.main.toExternalAction
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkObject
+import io.mockk.unmockkAll
 import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,10 +32,9 @@ import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import mihon.domain.platform.ExternalAction
-import mihon.domain.platform.RejectionReason
+import mihon.domain.platform.ExternalActionParser
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.chapter.interactor.GetChapterByUrlAndMangaId
@@ -41,55 +44,49 @@ import tachiyomi.domain.source.service.SourceManager
 
 class AndroidExternalActionSharedWiringTest {
     @AfterEach
-    fun tearDown() = Dispatchers.resetMain()
+    fun tearDown() {
+        Dispatchers.resetMain()
+        unmockkAll()
+    }
 
     @Test
     fun `Android search and send inputs preserve fixed main values through shared parser`() {
-        assertEquals(ExternalAction.Search("fallback"), action(Intent.ACTION_SEARCH, text = "fallback"))
-        assertEquals(ExternalAction.NoOp, action(Intent.ACTION_SEARCH, query = "", text = "fallback"))
-        assertEquals(ExternalAction.Search(" \t"), action(Intent.ACTION_SEARCH, query = " \t"))
-        assertEquals(
-            ExternalAction.Search("send query"),
-            action(Intent.ACTION_SEND, query = "send query", text = "shared text"),
-        )
-        assertEquals(ExternalAction.Search("shared text"), action(Intent.ACTION_SEND, text = "shared text"))
-        assertEquals(ExternalAction.NoOp, action(Intent.ACTION_SEND, query = "", text = "shared text"))
+        mockkObject(ExternalActionParser)
+        every { ExternalActionParser.resolve(any()) } answers { callOriginal() }
+        assertEquals(ExternalAction.Search("fallback"), act(Intent.ACTION_SEARCH, text = "fallback"))
+        assertEquals(ExternalAction.NoOp, act(Intent.ACTION_SEARCH, query = "", text = "fallback"))
+        assertEquals(ExternalAction.Search(" \t"), act(Intent.ACTION_SEARCH, query = " \t"))
+        val send = act(Intent.ACTION_SEND, query = "send query", text = "shared text")
+        assertEquals(ExternalAction.Search("send query"), send)
+        assertEquals(ExternalAction.Search("shared text"), act(Intent.ACTION_SEND, text = "shared text"))
+        assertEquals(ExternalAction.NoOp, act(Intent.ACTION_SEND, query = "", text = "shared text"))
+        val googleAction = "com.google.android.gms.actions.SEARCH_ACTION"
+        assertEquals(ExternalAction.Search("google"), act(googleAction, query = "google"))
+        verify(exactly = 7) { ExternalActionParser.resolve(any()) }
     }
 
     @Test
-    fun `Android view inputs use backup first canonical repository and reject unsupported values`() {
+    fun `external intents navigate accepted screens and ignore rejected or empty actions`() {
+        mockkObject(ExternalActionParser)
+        every { ExternalActionParser.resolve(any()) } answers { callOriginal() }
         val backup = "tachiyomi://add-repo?url=https%3A%2F%2Fexample.org%2Frepo.tachibk"
         val repository = "tachiyomi://add-repo?url=https%3A%2F%2Fexample.org%2Findex.min.json"
-        assertEquals(
-            listOf(
-                ExternalAction.RestoreBackup(backup),
-                ExternalAction.AddRepository("https://example.org/index.min.json"),
-                ExternalAction.Rejected(RejectionReason.INVALID_REPOSITORY_URL),
-                ExternalAction.Rejected(RejectionReason.UNSUPPORTED_URI),
-            ),
-            listOf(backup, repository, "tachiyomi://add-repo?url=%", "https://example.org/manga/1")
-                .map { intent(Intent.ACTION_VIEW, data = it).toExternalAction() },
-        )
-        assertNull(intent("unknown.action").toExternalAction())
-    }
-
-    @Test
-    fun `shared external actions map only accepted values to existing Android screens`() {
-        assertEquals(
-            DeepLinkScreen::class.java,
-            ExternalAction.Search("query").navigationScreen()?.javaClass,
-        )
-        assertEquals(
-            RestoreBackupScreen::class.java,
-            ExternalAction.RestoreBackup("content://backup.tachibk").navigationScreen()?.javaClass,
-        )
-        assertEquals(
-            ExtensionReposScreen::class.java,
-            ExternalAction.AddRepository("https://example.org/repo").navigationScreen()?.javaClass,
-        )
-        assertNull(ExternalAction.NoOp.navigationScreen())
-        assertNull(ExternalAction.Rejected(RejectionReason.MALFORMED_URI).navigationScreen())
-        assertEquals("query", (ExternalAction.Search("query").navigationScreen() as DeepLinkScreen).query)
+        val navigator = mockk<Navigator>(relaxed = true)
+        val pushed = mutableListOf<Screen>()
+        every { navigator.push(capture(pushed)) } answers { Unit }
+        listOf(
+            intent(Intent.ACTION_SEARCH, query = "query"),
+            intent(Intent.ACTION_VIEW, data = backup),
+            intent(Intent.ACTION_VIEW, data = repository),
+            intent(Intent.ACTION_VIEW, data = "tachiyomi://add-repo?url=%"),
+            intent(Intent.ACTION_VIEW, data = "https://example.org/manga/1"),
+            intent(Intent.ACTION_SEARCH, query = ""),
+        ).forEach { it.navigateExternalAction(navigator) }
+        assertEquals("query", (pushed[0] as DeepLinkScreen).query)
+        assertEquals(backup, (pushed[1] as RestoreBackupScreen).field("uri"))
+        assertEquals("https://example.org/index.min.json", (pushed[2] as ExtensionReposScreen).field("url"))
+        verify(exactly = 6) { ExternalActionParser.resolve(any()) }
+        verify(exactly = 3) { navigator.popUntilRoot() }
     }
 
     @Test
@@ -102,7 +99,7 @@ class AndroidExternalActionSharedWiringTest {
         coEvery { (selected as ResolvableSource).getManga(url) } returns null
         val sourceManager = TestSourceManager(listOf(unknown, selected, later))
         val model = DeepLinkScreenModel(
-            query = (action(Intent.ACTION_SEND, text = url) as ExternalAction.Search).query,
+            query = (act(Intent.ACTION_SEND, text = url) as ExternalAction.Search).query,
             sourceManager = sourceManager,
             networkToLocalManga = mockk<NetworkToLocalManga>(relaxed = true),
             getChapterByUrlAndMangaId = mockk<GetChapterByUrlAndMangaId>(relaxed = true),
@@ -116,7 +113,7 @@ class AndroidExternalActionSharedWiringTest {
         verify(atLeast = 1) { (selected as ResolvableSource).getUriType(url) }
         verify(exactly = 0) { (later as ResolvableSource).getUriType(any()) }
     }
-    private fun action(action: String, query: String? = null, text: String? = null) =
+    private fun act(action: String, query: String? = null, text: String? = null) =
         intent(action, query, text).toExternalAction()
     private fun intent(action: String, query: String? = null, text: String? = null, data: String? = null): Intent {
         val uri = data?.let { value -> mockk<Uri>().also { every { it.toString() } returns value } }
@@ -131,6 +128,7 @@ class AndroidExternalActionSharedWiringTest {
         mockk(moreInterfaces = arrayOf(ResolvableSource::class), relaxed = true) {
             every { (this@mockk as ResolvableSource).getUriType(any()) } returns type
         }
+    private fun Any.field(name: String) = javaClass.getDeclaredField(name).also { it.isAccessible = true }.get(this)
     private class TestSourceManager(private val sources: List<CatalogueSource>) : SourceManager {
         override val isInitialized = MutableStateFlow(true)
         override val catalogueSources = flowOf(sources)

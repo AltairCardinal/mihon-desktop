@@ -22,9 +22,7 @@ internal fun Uri.buildShareIntent(
     chooserTitle: String,
 ): Intent {
     val uri = this
-    val payload = requireNotNull(ExternalShare.fromUri(uri.toString(), type, message)) {
-        "Unsupported share URI"
-    }
+    val payload = ExternalShare.fromUri(uri.toString(), type, message)
 
     val shareIntent = Intent(Intent.ACTION_SEND).apply {
         when (payload) {
@@ -33,6 +31,7 @@ internal fun Uri.buildShareIntent(
                 payload.message?.let { putExtra(Intent.EXTRA_TEXT, it) }
                 putExtra(Intent.EXTRA_STREAM, uri)
             }
+            null -> Unit
         }
         clipData = ClipData.newRawUri(null, uri)
         setType(type)
