@@ -33,8 +33,10 @@ import cafe.adriel.voyager.navigator.tab.CurrentTab
 import cafe.adriel.voyager.navigator.tab.LocalTabNavigator
 import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabNavigator
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.DesktopNotificationService
 import mihon.desktop.network.CloudflareChallenge
@@ -78,9 +80,17 @@ class HomeScreen : Screen {
         val scope = rememberCoroutineScope()
         var actionJob by remember { mutableStateOf<Job?>(null) }
         val snackbarHostState = remember { SnackbarHostState() }
+        val externalActionFeedback = remember { ExternalActionFeedbackDispatcher() }
 
-        DisposableEffect(Unit) {
-            onDispose { actionJob?.cancel() }
+        DisposableEffect(externalActionFeedback) {
+            onDispose {
+                actionJob?.cancel()
+                externalActionFeedback.close()
+            }
+        }
+
+        LaunchedEffect(externalActionFeedback, snackbarHostState) {
+            externalActionFeedback.consume { message -> snackbarHostState.showSnackbar(message) }
         }
 
         // Cloudflare challenges
@@ -135,7 +145,7 @@ class HomeScreen : Screen {
         Navigator(LibraryTab) { navigator ->
             LaunchedEffect(dependencies.externalActionNavigator, navigator) {
                 dependencies.externalActionNavigator.consumeSignals(navigator) { message ->
-                    scope.launch { snackbarHostState.showSnackbar(message) }
+                    externalActionFeedback.tryPublish(message)
                 }
             }
             // Create TabNavigator for tab navigation
@@ -209,6 +219,31 @@ class HomeScreen : Screen {
                 }
             }
         }
+    }
+}
+
+internal class ExternalActionFeedbackDispatcher(
+    capacity: Int = DEFAULT_CAPACITY,
+) {
+    private val messages = Channel<String>(
+        capacity = capacity,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    fun tryPublish(message: String): Boolean = messages.trySend(message).isSuccess
+
+    suspend fun consume(showFeedback: suspend (String) -> Unit) {
+        for (message in messages) {
+            showFeedback(message)
+        }
+    }
+
+    fun close() {
+        messages.close()
+    }
+
+    private companion object {
+        const val DEFAULT_CAPACITY = 8
     }
 }
 
