@@ -13,11 +13,12 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.SaveSourceMangaForDetails
@@ -81,10 +82,11 @@ class SourceLastUsedWiringTest {
         val zeta = FakeSource(202, "en", "Zeta projection source")
         val mounted = mountedScene(preferences, listOf(alpha, zeta), coroutineContext)
         val scene = mounted.scene
+        val scenario = "normal"
 
         try {
             assertEquals(-1L, lastUsed.get())
-            awaitRows(scene, listOf(alpha.name, zeta.name))
+            awaitRows(mounted, listOf(alpha.name, zeta.name), lastUsed, "initial rows", scenario)
             assertTrue(
                 texts(scene).contains(
                     DesktopSourceGroupLabeler.displayName(DesktopSourceGroupKey.Language("en"), Locale.getDefault()),
@@ -92,16 +94,18 @@ class SourceLastUsedWiringTest {
             )
 
             clickSource(scene, zeta.name)
-            awaitBrowseDetails(mounted, zeta.name)
-            awaitRecorderOutcome(mounted) { mounted.extensionLookups.get() > 0 && lastUsed.get() == zeta.id }
+            awaitBrowseDetails(mounted, zeta.name, lastUsed, "browse details", scenario)
+            awaitRecorderOutcome(mounted, lastUsed, "recorder", scenario) {
+                mounted.extensionLookups.get() > 0 && lastUsed.get() == zeta.id
+            }
             assertEquals(zeta.id, lastUsed.get())
             val back = nodes(scene).first { it.config.contains(SemanticsActions.OnClick) && it.config.toString().contains("Back") }
             assertTrue(requireNotNull(back.config[SemanticsActions.OnClick].action).invoke())
-            awaitRows(scene, listOf(zeta.name, alpha.name, zeta.name))
+            awaitRows(mounted, listOf(zeta.name, alpha.name, zeta.name), lastUsed, "back reorder", scenario)
             assertTrue(rendered(scene).contains(MR.strings.last_used_source.localized()))
 
             lastUsed.set(alpha.id)
-            awaitRows(scene, listOf(alpha.name, alpha.name, zeta.name))
+            awaitRows(mounted, listOf(alpha.name, alpha.name, zeta.name), lastUsed, "reactive reorder", scenario)
         } finally {
             mounted.cleanup()
             root.removeNode()
@@ -129,9 +133,10 @@ class SourceLastUsedWiringTest {
             try {
                 clickSource(mounted.scene, source.name)
                 val expected = if (scenario.shouldRecord) source.id else 301L
-                awaitBrowseDetails(mounted, source.name)
+                val diagnosticScenario = scenario.diagnosticName(index)
+                awaitBrowseDetails(mounted, source.name, lastUsed, "browse details", diagnosticScenario)
                 if (!scenario.globalIncognito) {
-                    awaitRecorderOutcome(mounted) {
+                    awaitRecorderOutcome(mounted, lastUsed, "recorder", diagnosticScenario) {
                         mounted.extensionLookups.get() > 0 && (!scenario.shouldRecord || lastUsed.get() == expected)
                     }
                 }
@@ -191,25 +196,53 @@ class SourceLastUsedWiringTest {
     private suspend fun awaitBrowseDetails(
         mounted: MountedBrowseScene,
         sourceName: String,
-    ) = withTimeout(2_000) {
-        while (!texts(mounted.scene).contains(sourceName) || !hasBackAction(mounted.scene)) {
-            mounted.scene.render()
-            delay(10)
-        }
+        lastUsed: Preference<Long>,
+        phase: String,
+        scenario: String,
+    ) = awaitConvergence(mounted, lastUsed, phase, scenario) {
+        texts(mounted.scene).contains(sourceName) && hasBackAction(mounted.scene)
     }
 
-    private suspend fun awaitRecorderOutcome(mounted: MountedBrowseScene, expected: () -> Boolean) =
-        withTimeout(2_000) {
-            while (!expected()) {
-                mounted.scene.render()
-                delay(10)
-            }
-        }
+    private suspend fun awaitRecorderOutcome(
+        mounted: MountedBrowseScene,
+        lastUsed: Preference<Long>,
+        phase: String,
+        scenario: String,
+        expected: () -> Boolean,
+    ) = awaitConvergence(mounted, lastUsed, phase, scenario, expected)
 
-    private suspend fun awaitRows(scene: ImageComposeScene, expected: List<String>) = withTimeout(5_000) {
-        while (sourceRows(scene, expected.toSet()) != expected) {
-            scene.render()
-            delay(10)
+    private suspend fun awaitRows(
+        mounted: MountedBrowseScene,
+        expected: List<String>,
+        lastUsed: Preference<Long>,
+        phase: String,
+        scenario: String,
+    ) = awaitConvergence(mounted, lastUsed, phase, scenario) {
+        sourceRows(mounted.scene, expected.toSet()) == expected
+    }
+
+    private suspend fun awaitConvergence(
+        mounted: MountedBrowseScene,
+        lastUsed: Preference<Long>,
+        phase: String,
+        scenario: String,
+        condition: () -> Boolean,
+    ) {
+        try {
+            withTimeout(5_000) {
+                while (!condition()) {
+                    mounted.scene.render()
+                    yield()
+                }
+            }
+        } catch (error: TimeoutCancellationException) {
+            val renderedSemantics = rendered(mounted.scene).replace(Regex("\\s+"), " ").take(1_000)
+            throw AssertionError(
+                "Source last-used Compose convergence timed out: phase=$phase, scenario=$scenario, " +
+                    "extensionLookups=${mounted.extensionLookups.get()}, lastUsed=${lastUsed.get()}, " +
+                    "renderedSemantics=$renderedSemantics",
+                error,
+            )
         }
     }
 
@@ -259,5 +292,9 @@ class SourceLastUsedWiringTest {
         val incognitoExtensions: Set<String>,
         val extensionPackage: String?,
         val shouldRecord: Boolean,
-    )
+    ) {
+        fun diagnosticName(index: Int): String =
+            "case=$index, globalIncognito=$globalIncognito, extensionIncognitoConfigured=${incognitoExtensions.isNotEmpty()}, " +
+                "extensionPackageConfigured=${extensionPackage != null}, shouldRecord=$shouldRecord"
+    }
 }
