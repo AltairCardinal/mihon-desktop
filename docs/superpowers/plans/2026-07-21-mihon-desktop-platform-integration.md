@@ -559,7 +559,7 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 9 files, 720 lines
+**Estimated scope:** 9 files, 731 lines
 
 **Split waiver:** Windows JNA ABI/query adapter、真实 AWT window handle 生命周期、`SecureScreenPolicy(mode, incognito)` reconciliation、设置回滚和 Supported/Limited/Unsupported/Failed 的 MR-backed 用户反馈共同决定同一个截图保护承诺。只交付 native adapter 会留下没有 production window consumer 的死基础设施；只交付 UI/lifecycle 会把未验证的系统能力暴露给用户。两个部分反复共享同一 result/capability/state，且 macOS/Linux 的诚实降级必须与 Windows 状态使用同一 UI；因此保留为单一 Task，并用独立 bridge 测试与 production wiring 测试分别杀死 ABI 和接线错误。
 
