@@ -48,3 +48,11 @@ internal class WidgetPrivacyDataSource(
             }
         }
 }
+
+internal class WidgetPrivacyConsumer(private val dataSource: WidgetPrivacyDataSource) {
+    fun subscribe(afterMillis: Long) = dataSource.subscribe(afterMillis)
+
+    fun refreshes(afterMillis: Long): Flow<WidgetRefreshIdentity> = subscribe(afterMillis)
+        .map(WidgetPrivacyData::refreshIdentity)
+        .distinctUntilChanged()
+}

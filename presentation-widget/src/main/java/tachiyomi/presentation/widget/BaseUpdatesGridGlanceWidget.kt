@@ -53,8 +53,9 @@ import java.time.ZonedDateTime
 
 abstract class BaseUpdatesGridGlanceWidget internal constructor(
     private val context: Context = Injekt.get<Application>(),
-    private val dataSource: WidgetPrivacyDataSource =
+    private val privacyConsumer: WidgetPrivacyConsumer = WidgetPrivacyConsumer(
         WidgetPrivacyDataSource(Injekt.get<GetUpdates>(), Injekt.get<SecurityPreferences>()),
+    ),
 ) : GlanceAppWidget() {
 
     override val sizeMode = SizeMode.Exact
@@ -81,16 +82,14 @@ abstract class BaseUpdatesGridGlanceWidget internal constructor(
 
         provideContent {
             val flow = remember {
-                dataSource
-                    .subscribe(DateLimit.toEpochMilli())
-                    .map { privacyData ->
-                        when (privacyData) {
-                            WidgetPrivacyData.Locked -> WidgetDisplayData.Locked
-                            is WidgetPrivacyData.Content -> WidgetDisplayData.Content(
-                                privacyData.updates.prepareData(rowCount, columnCount),
-                            )
-                        }
+                privacyConsumer.subscribe(DateLimit.toEpochMilli()).map {
+                    when (it) {
+                        WidgetPrivacyData.Locked -> WidgetDisplayData.Locked
+                        is WidgetPrivacyData.Content -> WidgetDisplayData.Content(
+                            it.updates.prepareData(rowCount, columnCount),
+                        )
                     }
+                }
             }
             val data by flow.collectAsState(initial = null)
             when (val current = data) {

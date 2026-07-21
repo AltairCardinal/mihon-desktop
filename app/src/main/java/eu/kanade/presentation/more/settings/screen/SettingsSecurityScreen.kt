@@ -47,11 +47,9 @@ object SettingsSecurityScreen : SearchableSettings {
         val authSupported = remember { context.isAuthenticationSupported() }
         val useAuthPref = securityPreferences.useAuthenticator()
         val useAuth by useAuthPref.collectAsState()
-        val availability = AndroidSecuritySettingsPolicy.availability(authSupported, useAuth)
-        LaunchedEffect(availability.authenticatorEnabled) {
-            if (useAuth != availability.authenticatorEnabled) {
-                useAuthPref.set(availability.authenticatorEnabled)
-            }
+        val availability = AndroidSecuritySettingsConsumer.availability(authSupported, useAuth)
+        LaunchedEffect(authSupported) {
+            AndroidSecuritySettingsConsumer.enforceAvailability(authSupported, useAuthPref)
         }
 
         return Preference.PreferenceGroup(
@@ -61,12 +59,10 @@ object SettingsSecurityScreen : SearchableSettings {
                     preference = useAuthPref,
                     title = stringResource(MR.strings.lock_with_biometrics),
                     enabled = authSupported,
-                    onValueChanged = {
-                        AndroidSecuritySettingsPolicy.confirmChange(authSupported) {
-                            (context as FragmentActivity).authenticate(
-                                title = context.stringResource(MR.strings.lock_with_biometrics),
-                            )
-                        }
+                    onValueChanged = AndroidSecuritySettingsConsumer.changeHandler(authSupported) {
+                        (context as FragmentActivity).authenticate(
+                            title = context.stringResource(MR.strings.lock_with_biometrics),
+                        )
                     },
                 ),
                 Preference.PreferenceItem.ListPreference(
@@ -82,12 +78,10 @@ object SettingsSecurityScreen : SearchableSettings {
                         .toImmutableMap(),
                     title = stringResource(MR.strings.lock_when_idle),
                     enabled = availability.lockDelayEnabled,
-                    onValueChanged = {
-                        AndroidSecuritySettingsPolicy.confirmChange(authSupported) {
-                            (context as FragmentActivity).authenticate(
-                                title = context.stringResource(MR.strings.lock_when_idle),
-                            )
-                        }
+                    onValueChanged = AndroidSecuritySettingsConsumer.changeHandler(authSupported) {
+                        (context as FragmentActivity).authenticate(
+                            title = context.stringResource(MR.strings.lock_when_idle),
+                        )
                     },
                 ),
 
@@ -135,17 +129,24 @@ internal data class AndroidSecuritySettingsAvailability(
     val lockDelayEnabled: Boolean,
 )
 
-internal object AndroidSecuritySettingsPolicy {
+internal object AndroidSecuritySettingsConsumer {
     fun availability(authenticationSupported: Boolean, authenticatorEnabled: Boolean) =
         AndroidSecuritySettingsAvailability(
             authenticatorEnabled = authenticationSupported && authenticatorEnabled,
             lockDelayEnabled = authenticationSupported && authenticatorEnabled,
         )
 
-    suspend fun confirmChange(
+    fun enforceAvailability(
+        authenticationSupported: Boolean,
+        preference: tachiyomi.core.common.preference.Preference<Boolean>,
+    ) = availability(authenticationSupported, preference.get()).also {
+        if (preference.get() != it.authenticatorEnabled) preference.set(it.authenticatorEnabled)
+    }
+
+    fun <T> changeHandler(
         authenticationSupported: Boolean,
         authenticate: suspend () -> Boolean,
-    ) = authenticationSupported && authenticate()
+    ): suspend (T) -> Boolean = { authenticationSupported && authenticate() }
 }
 
 private val LockAfterValues = persistentListOf(
