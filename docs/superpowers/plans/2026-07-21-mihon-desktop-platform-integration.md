@@ -962,7 +962,7 @@ status-source: this-file
 
 **Platform boundary:** verification
 
-**Estimated scope:** 6 files, 220 lines
+**Estimated scope:** verification artifacts 6 files, 220 lines；whole-change review repair 8 files, 400 lines
 
 **Verification:** shared/Android/Desktop 全量测试、Windows 固定 EXE、macOS 应用包和可用 Linux matrix 均基于同一最终提交
 
@@ -978,6 +978,13 @@ status-source: this-file
 **Consumes:** Tasks 1–15 已审查提交和当前平台 adapter。
 
 **Produces:** whole-change 独立审查、三 OS/Android 必要验证、完整版本/产物/失败数和父子计划最终一致性证据。
+
+**Whole-change review status（唯一修复轮）：** 对 `952be2f...HEAD` 的独立审查以 Critical/Important/Minor `0/2/0` 拒绝。更新仓库、APK-only release 和缺失 Desktop trust root 属于计划已记录的 `NoCompatiblePackage`/`ManualOnly` 边界，不列为缺陷。需要在唯一修复轮关闭两个真实产品风险：
+
+1. Desktop app-lock preference 已启用但 OS credential 被外部删除时，`probe()` 错把 `null` secret 报为 Available，根 UI 随后永久锁死且没有安全恢复路径。RED 必须证明 missing credential 与 backend unavailable/error 分离、应用保持 fail-closed、受保护内容不构造，并在锁屏显示明确的数据影响说明与“打开完整本地 profile 目录”入口；入口不得静默禁用锁，用户只能关闭应用后重置完整 profile。production DI 必须传入本轮真实 `DesktopPlatformPaths.configDir` 与目录 opener。
+2. macOS native picker 为异步 session，但连续 `shareImage()` 复用同一个 `mihon-shared-page.png`，第二次分享会覆盖第一会话的内容。RED 必须同时打开两个 session，断言路径唯一、首个像素在第二次调用后不变、文件在各自 terminal 前存在并仅由对应 terminal 清理；fallback saved/cancelled/failed 也必须清理。GREEN 使用权限收紧的唯一临时快照，不得以全局锁禁止用户并发分享，也不得在 `Opened` 时提前删除。
+
+修复范围最多为 `DesktopPassphraseVerifier.kt`、`DesktopAppLock.kt`、`DesktopUnlockSurface.kt`、`DesktopAppModule.kt`、`SecuritySettingsWiringTest.kt`（或 `DesktopAppLockTest.kt` 二选一）、`DesktopShareService.kt`、`DesktopShareServiceTest.kt` 与一份 i18n 字符串资源。由一个实现代理完成两项 RED→GREEN，协调者定向复跑后由原独立 reviewer 只进行一次修复复审；仍有 Critical/Important 时停止并重新规划，不直接进入全量验收。
 
 1. 由未参与实现的 reviewer 审查 `base-ref..HEAD`：逐 ID 对照 fixed-main、shared/Android/Desktop production chain、安全模型、Desktop 独有功能、测试有效性和提交范围。Critical/Important 按全局门禁只允许一轮修复复审。
 2. 在同一最终提交运行：
