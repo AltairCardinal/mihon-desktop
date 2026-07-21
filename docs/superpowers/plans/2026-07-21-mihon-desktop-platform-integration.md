@@ -47,9 +47,9 @@ status-source: this-file
 - [x] Task 14：Desktop 更新 UI、DI 与 Test Mode wiring
 - [x] Task 14A：Desktop verifier 可取消进程边界
 - [x] Task 14B：Desktop updater 应用生命周期所有权
-- [ ] Task 15：Widget 豁免、parity 证据与维护文档
+- [x] Task 15：Widget 豁免、parity 证据与维护文档
 - [x] Task 15A：平台证据的 per-ID 不可变 provenance 合同
-- [ ] Task 15B：Android Widget 默认隐私 wiring 证明
+- [x] Task 15B：Android Widget 默认隐私 wiring 证明
 - [ ] Task 16：独立最终审查与三平台 change verify
 
 ## 全局任务门禁
@@ -951,6 +951,10 @@ status-source: this-file
 3. 运行 Verification、Spotless、`git diff --check` 和范围检查；Android 模拟器留给 Task 16，当前纯 JVM Android production wiring 测试不另起模拟器。
 
 **Implementation note：** 初始 RED 发现 `InMemoryPreferenceStore` 是快照/预览实现，同一 key 的重复读取不会共享 Flow；直接用它会让 production 恢复后也无法完成锁定→解锁测试。该限制不属于 Widget 产品行为，且修复公共 store 会影响约 32 个既有调用点。Task 15B 因此保持单测试文件边界，通过 `PreferenceStore` seam 复用同一个真实 `InMemoryPreference<Boolean>`，只验证本 Task 所需的默认 Widget→Injekt `SecurityPreferences` production wiring。
+
+**Review status：** 实现提交 `a2ba3b2c9`。固定未锁定、绕过注入的 production mutation 先使新增用例 RED（3 项中 1 项失败）；恢复后，同一个默认 Widget/consumer 在注入的真实 `SecurityPreferences` 锁定时返回 `Locked` 且不查询更新，切换同一 preference 解锁后返回 `Content` 并精确查询一次。协调者以 `--rerun-tasks` 复跑 3/3、根 `spotlessCheck` 和 `git diff --check` 均通过；独立审查 APPROVED，Critical/Important/Minor `0/0/0`；实际范围 1 file，12 insertions/3 deletions。
+
+**Task 15 closure：** 初始实现、唯一修复及重新拆分的 15A/15B 已共同关闭所有审查项。最终证据同时覆盖逐 ID fixed-main provenance、shared/当前 Android/Desktop consumer、真实 protection test、Widget 平台豁免和 Android 默认 Widget 隐私 wiring；真实 OS 状态仍按合同保持 CANDIDATE/有限，等待 Task 16。Task 15、15A、15B 已统一关闭，下一项为 Task 16。
 
 ### Task 16：独立最终审查与三平台 change verify
 

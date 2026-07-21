@@ -461,18 +461,18 @@ Windows `0.11.14.43.84e386c` 固定 EXE 与 macOS `0.11.14.44.84e386c` 部署应
 - Consumes: 固定原版快照中的 URI parser、分享、安全和更新状态；当前分支 AppError/TaskState、ReleaseService、PreferenceStore、Desktop task/notifier。
 
 - [x] **Step 1: 从固定原版快照为 URI 解析、无效链接、分享 payload、锁定超时、版本比较建立 fixture，并写共享 RED 测试**
-- [ ] **Step 2: 为当前 OS 能力探测和平台豁免显示写 Desktop RED 测试**
+- [x] **Step 2: 为当前 OS 能力探测和平台豁免显示写 Desktop RED 测试**
 - [x] **Step 3: 将固定原版 URI parser、分享模型、安全策略和 release 状态中的平台无关语义迁入 shared；当前 Android 构建版仅作为 Android adapter/consumer**
 - [x] **Step 4: 实现 Windows/macOS/Linux scheme 注册与单实例转发 adapter**
 - [x] **Step 5: 实现系统分享/剪贴板后备和 OS credential-backed app lock**
 - [x] **Step 6: 在支持的平台实现窗口隐私；不支持时 UI 明确说明而非静默成功**
 - [x] **Step 7: 对齐固定原版的下载、校验、安装、失败回滚更新状态机；平台安装 side effect 由各端 adapter 实现**
-- [ ] **Step 8: 将 Widget 标记为平台豁免，仅共享更新数据 provider 契约**
+- [x] **Step 8: 将 Widget 标记为平台豁免，仅共享更新数据 provider 契约**
 - [x] **Step 9: 补设置 UI、确认对话框、错误反馈和导航/DI 测试**
 - [ ] **Step 10: 运行三 OS 可执行的单元测试矩阵及当前 Windows 集成验收**
-- [ ] **Step 11: 更新追踪项 81–86、92 的原版 provenance、shared/adapter 证据和豁免说明**
+- [x] **Step 11: 更新追踪项 81–86、92 的原版 provenance、shared/adapter 证据和豁免说明**
 
-**Current progress:** 子计划 Task 1–15A 已完成。固定原版 fixture/shared 外部动作、安全与发布检查契约、当前 Android consumer、Desktop target resolution、冷启动导航、FIFO/取消恢复、有界非阻塞反馈、loopback 单实例安全转发、三平台 canonical URI scheme 注册、Desktop 分享 fallback/Reader-Manga production wiring、macOS native picker/session/terminal/cleanup、隔离 tracker/app-lock 的三平台 credential namespace、安全 CharArray API、消费 shared policy 的 fail-closed Desktop 应用锁核心、More → Security/passphrase/根级 unlock/headless lock 状态、通知隐私/telemetry/Widget/shared Updates 的真实 capability、消费 shared SecureScreenPolicy 的 Windows HWND 窗口隐私与三平台诚实反馈、结构化 release target/asset/checksum 和 Android APK/FOSS 兼容、不虚报已发布能力的 Desktop MSI/DMG discovery 契约、shared 无兼容包结果与当前 Android 兼容映射、cacheless/限额/安全临时路径/SHA-256/失败清理的 Desktop 下载 adapter、`.part` 原子 package finalization、Windows exact Authenticode publisher、macOS exact team/notarization 与确认后外部安装交接，以及具有迟到 progress generation 门禁和四阶段取消/精确重试证据的 Desktop 更新控制器均已通过 TDD、production delegate 变异和独立修复复审。子 Task 14 已完成 About/DI/Test Mode production wiring；14A 完成 updater 专用可取消进程 runner、真实 PID/reader 回收、强杀超时诊断和取消终态门禁；14B 将 singleton updater scope/model 绑定到 `DesktopAppRuntime`，并让 GUI/headless 真实退出等待 operation、进程与 reader 清理完成；15A 已锁定平台 parity 证据的逐 ID provenance 与 fixed-main blob。父 Step 1、3、4、5、6、7、9 已勾选；父 Step 2、8、11 仍等待 Task 15 完整关闭，下一项为子 Task 15B。
+**Current progress:** 子计划 Task 1–15B 已完成。固定原版 fixture/shared 外部动作、安全与发布检查契约、当前 Android consumer、Desktop target resolution、冷启动导航、FIFO/取消恢复、有界非阻塞反馈、loopback 单实例安全转发、三平台 canonical URI scheme 注册、Desktop 分享 fallback/Reader-Manga production wiring、macOS native picker/session/terminal/cleanup、隔离 tracker/app-lock 的三平台 credential namespace、安全 CharArray API、消费 shared policy 的 fail-closed Desktop 应用锁核心、More → Security/passphrase/根级 unlock/headless lock 状态、通知隐私/telemetry/Widget/shared Updates 的真实 capability、消费 shared SecureScreenPolicy 的 Windows HWND 窗口隐私与三平台诚实反馈、结构化 release target/asset/checksum 和 Android APK/FOSS 兼容、不虚报已发布能力的 Desktop MSI/DMG discovery 契约、shared 无兼容包结果与当前 Android 兼容映射、cacheless/限额/安全临时路径/SHA-256/失败清理的 Desktop 下载 adapter、`.part` 原子 package finalization、Windows exact Authenticode publisher、macOS exact team/notarization 与确认后外部安装交接，以及具有迟到 progress generation 门禁和四阶段取消/精确重试证据的 Desktop 更新控制器均已通过 TDD、production delegate 变异和独立修复复审。子 Task 14–14B 已关闭 updater UI/DI/Test Mode、可取消进程和 runtime 生命周期；15A 已锁定平台 parity 证据的逐 ID provenance 与 fixed-main blob；15B 已证明 Android 默认 Widget 从注入的 `SecurityPreferences` 执行锁定隐私门禁。父 Step 1–9、11 已勾选；只剩 Step 10 的 Task 16 三平台集中验收，下一项为子 Task 16。
 
 ## 14. Task 5B：设置、外观、无障碍与许可
 
