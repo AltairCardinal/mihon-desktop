@@ -527,7 +527,7 @@ status-source: this-file
 
 **Platform boundary:** shared+desktop
 
-**Estimated scope:** 6 files, 300 lines
+**Estimated scope:** 7 files, 350 lines
 
 **Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.security.DesktopPrivacyCapabilitiesTest" --tests "mihon.desktop.ui.settings.SecuritySettingsWiringTest"`
 
@@ -537,6 +537,7 @@ status-source: this-file
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SecuritySettingsScreen.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/DesktopUiDependencies.kt`
+- Modify: `i18n/src/commonMain/moko-resources/base/strings.xml`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/security/DesktopPrivacyCapabilitiesTest.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/settings/SecuritySettingsWiringTest.kt`
 
@@ -547,7 +548,7 @@ status-source: this-file
 1. RED：production capability 明确区分 native system notification、应用内 Snackbar、telemetry runtime 和 system Widget provider；DI 缺失或 UI 错误显示开关时测试失败。
 2. GREEN：`hideNotificationContent` 只在真实 native system notifier 能消费时显示；当前应用内 Snackbar 不冒充系统通知，不被错误静默脱敏。
 3. Desktop 未包含 crashlytics/analytics runtime 时沿用 fixed-main `telemetryIncluded=false` 语义，不注册或显示无消费的 PrivacyPreferences switches。
-4. Widget capability 明确 Unsupported，并指向现有 Desktop `GetUpdates` consumer；不新增伪 Widget provider。所有“不适用”都有用户可见边界和 parity 可消费的结构化原因。
+4. Widget capability 明确 Unsupported，并指向现有 Desktop `GetUpdates` consumer；不新增伪 Widget provider。所有“不适用”都有 MR-backed 用户可见边界和 parity 可消费的结构化原因，不得硬编码英文说明。
 5. 运行 Verification、DI/Screen 回归和 `git diff --check`。
 
 ### Task 11：Desktop 窗口隐私能力与真实反馈
