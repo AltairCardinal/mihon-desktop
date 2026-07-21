@@ -39,6 +39,9 @@ import mihon.desktop.privacy.DesktopCapabilitySupport
 import mihon.desktop.security.DesktopAppLock
 import mihon.desktop.security.DesktopAppLockLifecycle
 import mihon.desktop.security.DesktopPassphraseVerifier
+import mihon.desktop.reader.ReaderPreferences
+import mihon.desktop.settings.DesktopAppPreferences
+import mihon.desktop.settings.ThemeMode
 import mihon.desktop.test.http.currentTestStateJson
 import mihon.desktop.test.http.nestedTestScreenAction
 import mihon.desktop.test.state.applicationState
@@ -491,6 +494,39 @@ class SecuritySettingsWiringTest {
             scene.close()
             context.closeAndJoin()
         }
+    }
+
+    @Test
+    fun `deleted recovery profile clears the same preferences before production restart`(@TempDir appDir: java.io.File) = runBlocking {
+        val node = Preferences.userRoot().node("mihon-reset-${UUID.randomUUID()}").also(preferenceNodes::add)
+        val store = DesktopPreferenceStore(node)
+        appDir.mkdirs()
+        node.node("desktop/app").put("theme_mode", "DARK")
+        node.node("desktop/reader").put("readingMode", "WEBTOON")
+        var first = mihon.desktop.di.initDesktopDIForTest(appDir, store, credentialBackendFactory = { MemoryCredentialBackend() })
+        Injekt.get<SecurityPreferences>().useAuthenticator().set(true)
+        val locked = Injekt.get<DesktopAppLock>().also(DesktopAppLock::onApplicationStarted)
+        assertTrue(locked.state.value.requiresUnlock)
+        first.closeAndJoin()
+        appDir.deleteRecursively()
+
+        val second = mihon.desktop.di.initDesktopDIForTest(appDir, store, credentialBackendFactory = { MemoryCredentialBackend() })
+        try {
+            val freshLock = Injekt.get<DesktopAppLock>().also(DesktopAppLock::onApplicationStarted)
+            var constructed = 0
+            val scene = ImageComposeScene(300, 200, coroutineContext = coroutineContext) {}
+            try {
+                scene.setContent { DesktopProtectedRoot(freshLock) { constructed++ } }
+                scene.render()
+                assertTrue(appDir.isDirectory)
+                assertFalse(Injekt.get<SecurityPreferences>().useAuthenticator().get())
+                assertEquals(ThemeMode.SYSTEM, Injekt.get<DesktopAppPreferences>().themeMode.get())
+                assertEquals(mihon.desktop.reader.ReadingMode.RTL, Injekt.get<ReaderPreferences>().readingMode)
+                assertTrue(node.node("desktop/app").keys().isEmpty())
+                assertTrue(node.node("desktop/reader").keys().isEmpty())
+                assertTrue(constructed > 0)
+            } finally { scene.close() }
+        } finally { second.closeAndJoin() }
     }
 
     @Test

@@ -197,6 +197,29 @@ class DesktopPreferenceStoreTest {
         assertTrue(all.containsKey("b"))
     }
 
+    @Test
+    fun `clearAndFlush clears every stored value from the backing node`() {
+        store.getString("text", "").set("value")
+        store.getBoolean("flag", false).set(true)
+        store.getLong("count", 0).set(3L)
+
+        store.clearAndFlush()
+
+        assertTrue(backingPrefs.keys().isEmpty())
+        assertTrue(store.getAll().isEmpty())
+    }
+
+    @Test
+    fun `clearAndFlush clears legacy child nodes without removing them`() {
+        backingPrefs.node("desktop/app").put("theme_mode", "DARK")
+        backingPrefs.node("desktop/reader/deeper").put("readingMode", "LTR")
+
+        store.clearAndFlush()
+
+        assertTrue(backingPrefs.node("desktop/app").keys().isEmpty())
+        assertTrue(backingPrefs.node("desktop/reader/deeper").keys().isEmpty())
+    }
+
     // --- defaultValue ---
 
     @Test

@@ -1173,9 +1173,9 @@
     <string name="desktop_security_cancelled">No security settings were changed</string>
     <string name="desktop_unlock_title">Mihon Desktop is locked</string>
     <string name="desktop_unlock_summary">Enter your desktop passphrase to continue</string>
-    <string name="desktop_unlock_recovery_summary">The protected credential is missing. Close the app before resetting the entire local profile. This removes local library, settings, extensions, and cache; external downloads may not be removed.</string>
-    <string name="desktop_unlock_recovery_open_profile">Open local profile folder</string>
-    <string name="desktop_unlock_recovery_open_failed">Could not open the local profile folder</string>
+    <string name="desktop_unlock_recovery_summary">The protected credential is missing. Close the app, delete the opened configuration folder, then restart to create a fresh library, settings, and session profile. Platform-local downloads, backups, extensions, and caches may remain.</string>
+    <string name="desktop_unlock_recovery_open_profile">Open configuration folder</string>
+    <string name="desktop_unlock_recovery_open_failed">Could not open the configuration folder</string>
     <string name="desktop_unlock_passphrase">Passphrase</string>
     <string name="desktop_unlock_action">Unlock</string>
     <string name="desktop_privacy_capabilities_title">Desktop privacy capabilities</string>

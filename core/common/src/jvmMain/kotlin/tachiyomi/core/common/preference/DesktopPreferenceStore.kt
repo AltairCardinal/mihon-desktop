@@ -6,6 +6,11 @@ class DesktopPreferenceStore(
     private val preferences: Preferences = Preferences.userRoot().node("/mihon"),
 ) : PreferenceStore {
 
+    fun childNode(relativePath: String): Preferences {
+        require(relativePath.split('/').all { it.isNotBlank() && it != "." && it != ".." })
+        return preferences.node(relativePath)
+    }
+
     override fun getString(key: String, defaultValue: String): Preference<String> {
         return DesktopPreference(
             preferences = preferences,
@@ -117,6 +122,15 @@ class DesktopPreferenceStore(
 
     override fun getAll(): Map<String, *> {
         return preferences.keys().associateWith { preferences.get(it, null) }
+    }
+
+    fun clearAndFlush() {
+        fun clear(node: Preferences) {
+            node.clear()
+            node.childrenNames().forEach { clear(node.node(it)) }
+            node.flush()
+        }
+        clear(preferences)
     }
 
     companion object {

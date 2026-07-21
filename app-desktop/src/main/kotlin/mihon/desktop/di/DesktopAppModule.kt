@@ -164,8 +164,10 @@ import java.io.File
  */
 fun initDesktopDI() {
     initAndroidCompatApplication()
-    val paths = DesktopPlatformPaths.current()
-    val preferenceStore = initConfigLayer(paths.configDir)
+    val paths = DesktopPlatformPaths.current(createDirectories = false)
+    val preferenceStore = DesktopPreferenceStore()
+    prepareDesktopProfile(paths, preferenceStore)
+    initConfigLayer(paths.configDir, preferenceStore)
     val networkHelper = initNetworkLayer(paths, preferenceStore)
     val handler = initDataLayer(paths)
     initExtensionLayer(paths, networkHelper, handler)
@@ -205,6 +207,7 @@ internal suspend fun initDesktopDIForTest(
     patchInjekt()
     initAndroidCompatApplication()
     val paths = desktopPaths(appDir)
+    prepareDesktopProfile(paths, preferenceStore)
     initDesktopConfigurationForTest(appDir, preferenceStore)
     val networkHelper = initNetworkLayer(paths, preferenceStore, browserOpener)
     val handler = initDataLayer(paths)
@@ -232,6 +235,13 @@ internal suspend fun initDesktopDIForTest(
         extensionController = Injekt.get(),
         runtime = Injekt.get(),
     ).also { activeDesktopTestDIContext = it }
+}
+
+private fun prepareDesktopProfile(paths: DesktopPlatformPaths, preferenceStore: PreferenceStore) {
+    if (!paths.configDir.exists() && preferenceStore is DesktopPreferenceStore && preferenceStore.getBoolean("use_biometric_lock", false).get()) {
+        preferenceStore.clearAndFlush()
+    }
+    paths.defaultDirectories().forEach(File::mkdirs)
 }
 
 private var activeDesktopTestDIContext: DesktopTestDIContext? = null
@@ -275,8 +285,7 @@ internal class DesktopTestDIContext(
 // Preferences, storage, platform metadata.
 // No external dependencies.
 
-internal fun initConfigLayer(appDir: File): DesktopPreferenceStore {
-    val preferenceStore = DesktopPreferenceStore()
+internal fun initConfigLayer(appDir: File, preferenceStore: DesktopPreferenceStore = DesktopPreferenceStore()): DesktopPreferenceStore {
     Injekt.addSingleton<PreferenceStore>(preferenceStore)
     registerDesktopSettings(preferenceStore)
     registerDesktopReader(preferenceStore)
@@ -286,14 +295,26 @@ internal fun initConfigLayer(appDir: File): DesktopPreferenceStore {
 }
 
 private fun registerDesktopSettings(preferenceStore: PreferenceStore) {
-    Injekt.addSingleton(DesktopAppPreferences(preferenceStore))
+    Injekt.addSingleton(
+        if (preferenceStore is DesktopPreferenceStore) {
+            DesktopAppPreferences(preferenceStore, preferenceStore.childNode("desktop/app"))
+        } else {
+            DesktopAppPreferences(preferenceStore)
+        },
+    )
     Injekt.addSingleton(SecurityPreferences(preferenceStore))
     Injekt.addSingleton(DesktopPrivacyCapabilities.production)
     Injekt.addSingleton(LibraryCategoryPrefs(preferenceStore))
 }
 
 private fun registerDesktopReader(preferenceStore: PreferenceStore) {
-    Injekt.addSingleton(ReaderPreferences(preferenceStore))
+    Injekt.addSingleton(
+        if (preferenceStore is DesktopPreferenceStore) {
+            ReaderPreferences(preferenceStore, preferenceStore.childNode("desktop/reader"))
+        } else {
+            ReaderPreferences(preferenceStore)
+        },
+    )
 }
 
 // ── Network layer ─────────────────────────────────────────────────────────────
