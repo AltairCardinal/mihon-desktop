@@ -83,6 +83,14 @@ class DesktopProductCapabilityContractTest {
     private val fixedOriginalMihonRef =
         "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8"
     private val platformCapabilityEvidenceIds = setOf(81, 82, 83, 84, 86, 92)
+    private val platformCapabilityFixedMainPaths = setOf(
+        "app/src/main/java/eu/kanade/tachiyomi/ui/main/MainActivity.kt",
+        "app/src/main/java/eu/kanade/tachiyomi/util/system/IntentExtensions.kt",
+        "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSecurityScreen.kt",
+        "presentation-widget/src/main/java/tachiyomi/presentation/widget/BaseUpdatesGridGlanceWidget.kt",
+        "app/src/main/java/eu/kanade/tachiyomi/data/updater/AppUpdateChecker.kt",
+        "app/src/main/java/eu/kanade/presentation/more/NewUpdateScreen.kt",
+    )
     private val forkOnlyReaderPairingPaths =
         setOf(
             "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagePairingAlgorithm.kt",
@@ -858,11 +866,11 @@ class DesktopProductCapabilityContractTest {
     fun `active source extension authority language distinguishes fixed main from current consumers`() {
         val repositoryRoot = repositoryRoot()
         val manifest = Files.readString(repositoryRoot.resolve("app-desktop/src/test/resources/parity/parity-manifest.json"))
-        val proposal = Files.readString(repositoryRoot.resolve("openspec/changes/align-sources-extensions/proposal.md"))
+        val proposal = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-15-mihon-source-extension-shared-core.md"))
 
         listOf("Android authoritative", "Android original", "Android 原版").forEach { ambiguousAuthority ->
             assertFalse(manifest.contains(ambiguousAuthority), "Active manifest must not use ambiguous authority term: $ambiguousAuthority")
-            assertFalse(proposal.contains(ambiguousAuthority), "Active proposal must not use ambiguous authority term: $ambiguousAuthority")
+            assertFalse(proposal.contains(ambiguousAuthority), "Completed source-extension plan must not use ambiguous authority term: $ambiguousAuthority")
         }
         manifestItems(repositoryRoot)
             .filter { validatedId(it.jsonObject) in sourceExtensionParityStatuses && validatedId(it.jsonObject) != 87 }
@@ -1428,7 +1436,9 @@ class DesktopProductCapabilityContractTest {
             val symbols = item.getValue("upstreamSymbols").jsonArray
             assertTrue(symbols.isNotEmpty(), "ID $id requires fixed-main path and symbol")
             symbols.forEach { symbol ->
-                assertTrue(requiredText(symbol.jsonObject, "path", id).endsWith(".kt"))
+                val path = requiredText(symbol.jsonObject, "path", id)
+                assertTrue(path.endsWith(".kt"))
+                assertTrue(path in platformCapabilityFixedMainPaths, "ID $id upstream path is not fixed-main verified: $path")
                 requiredText(symbol.jsonObject, "symbol", id)
             }
             listOf("sharedImplementationPaths", "currentAndroidConsumerPaths", "desktopConsumerAdapterPaths", "protectionTests")
@@ -1443,7 +1453,32 @@ class DesktopProductCapabilityContractTest {
         }
         val widget = items.getValue(85).jsonObject
         assertEquals("EXEMPT", requiredText(widget, "status", 85))
-        assertTrue(requiredText(widget, "platformExemptionEvidence", 85).endsWith("WidgetPrivacyBoundaryTest.kt"))
+        assertEquals(
+            setOf(
+                "presentation-widget/src/test/java/tachiyomi/presentation/widget/WidgetPrivacyProductionWiringTest.kt",
+                "app-desktop/src/test/kotlin/mihon/desktop/updates/UpdatesScreenModelTest.kt",
+                "app-desktop/src/test/kotlin/mihon/desktop/parity/WidgetPrivacyBoundaryTest.kt",
+            ),
+            widget.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content }.toSet(),
+        )
+        val update = items.getValue(86).jsonObject
+        assertTrue(requiredText(update, "fixedMainSemantics", 86).contains("throttle"))
+        assertTrue(requiredText(update, "fixedMainSemantics", 86).contains("version"))
+        assertTrue(requiredText(update, "fixedMainSemantics", 86).contains("visible"))
+        assertTrue(requiredText(update, "desktopSecurityHardening", 86).contains("checksum"))
+        assertTrue(requiredText(update, "desktopSecurityHardening", 86).contains("signature"))
+        assertTrue(requiredText(update, "desktopSecurityHardening", 86).contains("size"))
+        assertTrue(requiredText(update, "desktopSecurityHardening", 86).contains("redirect"))
+        assertTrue(requiredText(update, "desktopSecurityHardening", 86).contains("not fixed-main provenance"))
+        val privacy = items.getValue(92).jsonObject.getValue("privacyCapabilities").jsonObject
+        assertEquals(setOf("appLock", "delay", "screenPrivacy", "nativeNotificationContent", "telemetry"), privacy.keys)
+        privacy.forEach { (name, value) ->
+            val capability = value.jsonObject
+            assertTrue(requiredText(capability, "androidConsumer", 92, name).isNotBlank())
+            assertTrue(requiredText(capability, "desktopConsumer", 92, name).isNotBlank())
+            assertTrue(requiredText(capability, "status", 92, name) != "VERIFIED" || requiredText(capability, "desktopConsumer", 92, name) != "NONE")
+            requiredText(capability, "reason", 92, name); requiredText(capability, "uiBehavior", 92, name)
+        }
     }
 
     @Test

@@ -1600,6 +1600,8 @@
     "status": "CANDIDATE",
     "authoritativeImplementation": "Fixed-main original Mihon capability #86: AppUpdateChecker and NewUpdateScreen govern Android update visibility and version checks.",
     "desktopImplementation": "DesktopUpdateController preserves its own explicit state machine; checksum, redirect, size and signature validation are Desktop hardening, not fixed-main provenance.",
+    "fixedMainSemantics": "Android fixed-main throttle, version comparison and visible update state.",
+    "desktopSecurityHardening": "Desktop checksum, signature, size and redirect validation is not fixed-main provenance.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [{ "path": "app/src/main/java/eu/kanade/tachiyomi/data/updater/AppUpdateChecker.kt", "symbol": "AppUpdateChecker" }, { "path": "app/src/main/java/eu/kanade/presentation/more/NewUpdateScreen.kt", "symbol": "NewUpdateScreen" }],
     "sharedImplementationPaths": ["domain/src/commonMain/kotlin/tachiyomi/domain/release/interactor/GetApplicationRelease.kt"],
@@ -1703,6 +1705,13 @@
     "status": "CANDIDATE",
     "authoritativeImplementation": "Fixed-main original Mihon capability #92: SettingsSecurityScreen consumes SecurityPreferences, PrivacyPreferences, notification-content and telemetry controls.",
     "desktopImplementation": "Desktop provides app lock, delay and screen-privacy consumers. Native notification content and telemetry runtime are Unsupported, and in-app feedback is not presented as a native notification control.",
+    "privacyCapabilities": {
+      "appLock": { "androidConsumer": "SettingsSecurityScreen", "desktopConsumer": "DesktopAppLock", "status": "CANDIDATE", "reason": "Desktop credential adapter", "uiBehavior": "lock settings are shown" },
+      "delay": { "androidConsumer": "SettingsSecurityScreen", "desktopConsumer": "DesktopAppLock", "status": "CANDIDATE", "reason": "Desktop lifecycle delay", "uiBehavior": "delay settings are shown" },
+      "screenPrivacy": { "androidConsumer": "SettingsSecurityScreen", "desktopConsumer": "DesktopWindowPrivacy", "status": "CANDIDATE", "reason": "OS capture affinity is limited", "uiBehavior": "limited or unsupported state is shown" },
+      "nativeNotificationContent": { "androidConsumer": "SettingsSecurityScreen", "desktopConsumer": "NONE", "status": "CANDIDATE", "reason": "native notification consumer unavailable", "uiBehavior": "no deceptive native-content switch" },
+      "telemetry": { "androidConsumer": "SettingsSecurityScreen", "desktopConsumer": "NONE", "status": "CANDIDATE", "reason": "telemetry runtime not included", "uiBehavior": "unavailable message is shown" }
+    },
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [{ "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSecurityScreen.kt", "symbol": "SettingsSecurityScreen getSecurityGroup/getFirebaseGroup" }],
     "sharedImplementationPaths": ["core/common/src/commonMain/kotlin/eu/kanade/tachiyomi/core/security/SecurityPreferences.kt"],
