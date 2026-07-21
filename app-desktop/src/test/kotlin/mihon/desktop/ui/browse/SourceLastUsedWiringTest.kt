@@ -282,6 +282,8 @@ class SourceLastUsedWiringTest {
         val lifecycle: Job,
     ) {
         suspend fun cleanup() {
+            scene.setContent {}
+            scene.render()
             scene.close()
             lifecycle.cancelAndJoin()
         }
