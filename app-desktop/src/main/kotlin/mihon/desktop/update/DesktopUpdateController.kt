@@ -4,9 +4,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import tachiyomi.domain.release.interactor.GetApplicationRelease
 import tachiyomi.domain.release.model.Release
+import java.util.concurrent.atomic.AtomicLong
 
 class DesktopUpdateController(
     private val checkRelease: suspend (GetApplicationRelease.Arguments) -> GetApplicationRelease.Result,
@@ -24,6 +26,8 @@ class DesktopUpdateController(
     private val mutableState = MutableStateFlow<DesktopUpdateState>(DesktopUpdateState.Idle)
     val state: StateFlow<DesktopUpdateState> = mutableState.asStateFlow()
     private val operationLock = Mutex()
+    private val downloadGeneration = AtomicLong()
+    private val activeDownload = AtomicLong()
     private var retryAction: RetryAction? = null
     suspend fun check(arguments: GetApplicationRelease.Arguments) = operate {
         if (retryAction != null || mutableState.value is DesktopUpdateState.UpdateAvailable || mutableState.value is DesktopUpdateState.ReadyToInstall) return@operate false
@@ -71,16 +75,25 @@ class DesktopUpdateController(
         }
     }
     private suspend fun downloadNow(release: Release) {
+        val generation = downloadGeneration.incrementAndGet()
+        activeDownload.set(generation)
         mutableState.value = DesktopUpdateState.Downloading(release)
         val result = try {
-            downloadRelease(release) { mutableState.value = DesktopUpdateState.Downloading(release, it) }
+            downloadRelease(release) { progress ->
+                mutableState.update { current ->
+                    if (activeDownload.get() == generation && current is DesktopUpdateState.Downloading) current.copy(progress = progress) else current
+                }
+            }
         } catch (error: CancellationException) {
+            activeDownload.compareAndSet(generation, 0)
             cancel(release.releaseLink)
             throw error
         } catch (error: Exception) {
+            activeDownload.compareAndSet(generation, 0)
             downloadFailed(release, cause = error)
             return
         }
+        activeDownload.compareAndSet(generation, 0)
         when (result) {
             is VerifiedDownload -> verifyNow(release, result)
             is ManualOnly -> manual(result.releasePage)
