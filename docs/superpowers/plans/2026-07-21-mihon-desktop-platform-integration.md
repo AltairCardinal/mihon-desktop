@@ -20,6 +20,8 @@ status-source: this-file
 
 ## 执行状态
 
+以下编号全部是父 roadmap **Task 5A** 内部的子 Task，不是父 roadmap 在 Task 6 之后新增的同级任务。
+
 - [x] Task 1：固定原版 fixture 与 shared 外部动作/安全契约
 - [x] Task 2：当前 Android 外部动作与分享消费 shared
 - [x] Task 3：当前 Android 应用锁与屏幕安全消费 shared
@@ -43,6 +45,8 @@ status-source: this-file
 - [x] Task 13D：Desktop 签名验证与平台安装交接
 - [x] Task 13E：Desktop 更新控制器状态机
 - [ ] Task 14：Desktop 更新 UI、DI 与 Test Mode wiring
+- [ ] Task 14A：Desktop verifier 可取消进程边界
+- [ ] Task 14B：Desktop updater 应用生命周期所有权
 - [ ] Task 15：Widget 豁免、parity 证据与维护文档
 - [ ] Task 16：独立最终审查与三平台 change verify
 
@@ -68,9 +72,9 @@ status-source: this-file
 | Step 4 scheme / 单实例 | 4–7 |
 | Step 5 share / credential app lock | 8A、8B、9–10 |
 | Step 6 窗口隐私 | 11 |
-| Step 7 更新状态机与 side effect | 12、13A–13E、14 |
+| Step 7 更新状态机与 side effect | 12、13A–13E、14–14B |
 | Step 8 Widget 豁免 | 3、10A、15 |
-| Step 9 UI / 确认 / 错误 / 导航 / DI | 5、8A、8B、10、10A、14 |
+| Step 9 UI / 确认 / 错误 / 导航 / DI | 5、8A、8B、10、10A、14、14B |
 | Step 10 三 OS 与 Windows 集成 | 16 |
 | Step 11 parity 81–86、92 | 15、16 |
 
@@ -795,6 +799,67 @@ status-source: this-file
 3. Test Mode 只暴露 production 状态/动作，不复制 updater 状态机；断开 DI/controller 时测试必须失败。
 4. 运行 Verification、Screen 实例化/导航回归、MockWebServer 集成和 `git diff --check`。
 
+**Review status（未完成）：** 初始实现 `ff3811a0f`、范围重规划 `440d1a513`、唯一修复 `87e109527`。主代理强制复跑 focused 15/15、Screen/Navigation 47/47、MockWebServer 10/10 与根 Spotless 均通过。首审的 Test Mode 同一 job 取消和发布页打开失败可见反馈已经关闭；唯一修复复审仍以 2 个 Important 拒绝：production `ProcessCommandRunner` 的同步 pipe/wait 不会被 `Job.cancel()` 可靠中断，验证完成后可能覆盖 `Cancelled`；DI singleton scope 也未绑定 `DesktopAppRuntime.close()`。因此本 Task 保持未勾选，并将剩余真实产品风险按依赖拆为 14A、14B；两项均通过后再统一完成 Task 14。
+
+### 子 Task 14A：Desktop verifier 可取消进程边界
+
+**Risk axis:** desktop-update-verifier-cancel
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 7 files, 400 lines
+
+**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.update.DesktopUpdateProcessRunnerTest" --tests "mihon.desktop.update.DesktopUpdateInstallerTest" --tests "mihon.desktop.update.DesktopUpdateControllerTest" --tests "mihon.desktop.ui.settings.AboutUpdateWiringTest"`
+
+**Files:**
+
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/update/DesktopUpdateController.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/update/DesktopUpdateInstaller.kt`
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/update/DesktopUpdateProcessRunner.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/update/DesktopUpdateControllerTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/update/DesktopUpdateInstallerTest.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/update/DesktopUpdateProcessRunnerTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AboutUpdateWiringTest.kt`
+
+**Consumes:** Task 13D 的 exact signature/notarization 与二次复验契约；Task 13E/14 的 controller、ScreenModel job owner 和 `Cancelled` 终态。
+
+**Produces:** 只供 updater verifier 使用的 suspend、可取消进程 runner；取消时关闭 stdin/stdout/stderr、终止并有界回收子进程，controller 不再在取消后推进 Ready/Failed。
+
+1. RED：用当前 JVM 启动可阻塞、可记录 PID 的真实 helper process；进入 Windows/macOS verifier 等价命令后取消 ScreenModel job，旧 production runner 必须因进程仍存活或终态被覆盖而失败。fake 自行调用 `runInterruptible` 不可作为证据。
+2. RED：覆盖 stdout/stderr 同时输出、stdin 写入、正常退出、启动失败、取消和强制终止；测试必须证明取消异常保持原实例、PID 在有界时间内死亡且没有 reader thread 遗留。
+3. GREEN：将 installer verifier 边界改为 suspend runner；controller 的 prepare/handoff 二次验证沿同一可取消链传播 `CancellationException`。不得修改 credential/URI registration 共用的同步 `CommandRunner` 语义。
+4. 在 verifier 返回后、写入 Ready/Failed 前保留 cancellation checkpoint；Cancel 后 `Cancelled` 不得被迟到结果覆盖，artifact 保留/清理继续遵守 Task 13C/13D 契约。
+5. 运行 Verification、Downloader 真实 MockWebServer 链、Spotless、`git diff --check` 和子进程/PID 清理检查。
+
+### 子 Task 14B：Desktop updater 应用生命周期所有权
+
+**Risk axis:** desktop-update-lifecycle
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 6 files, 320 lines
+
+**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.DesktopAppRuntimeTest" --tests "mihon.desktop.di.DesktopDiWiringTest" --tests "mihon.desktop.test.http.DesktopPlatformTestModeControllerTest" --tests "mihon.desktop.ui.settings.AboutUpdateWiringTest"`
+
+**Files:**
+
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/DesktopAppRuntime.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/settings/DesktopUpdateScreenModel.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/DesktopAppRuntimeTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/test/http/DesktopPlatformTestModeControllerTest.kt`
+
+**Consumes:** Task 14A 可取消 production runner；Task 14 中 About 与 Test Mode 共用的 singleton ScreenModel。
+
+**Produces:** 由 `DesktopAppRuntime` 唯一拥有的 updater parent scope/model；GUI、headless Test Mode、应用退出和测试 DI 重建都执行同一有界取消/关闭链。
+
+1. RED：启动真实可挂起 update job 后调用 `DesktopAppRuntime.close()`，旧实现必须因 delegate 未取消、旧 model 仍可接收动作或 test-DI 重建后旧状态继续推进而失败。
+2. GREEN：为 updater 创建 runtime-owned parent scope；ScreenModel 使用有父 Job 的子 owner，不取消调用者 scope。`close()` 幂等地阻止新 intent、取消当前 job，并由 runtime 聚合清理异常。
+3. `DesktopTestDIContext.closeAndJoin()` 必须关闭并等待 updater；下一次 DI 初始化不得复用旧 model/controller/job。About 与 Test Mode 仍解析同一新实例。
+4. 覆盖 GUI close、headless shutdown、重复 close、未启动 runtime close、取消异常和旧实例不可再驱动；断开 runtime→updater cleanup 时测试必须失败。
+5. 运行 Verification、Screen/Navigation 回归、Spotless、`git diff --check` 与 scope/job 泄漏检查。
+
 ### Task 15：Widget 豁免、parity 证据与维护文档
 
 **Risk axis:** platform-parity-evidence
@@ -814,7 +879,7 @@ status-source: this-file
 - Modify: `docs/superpowers/plans/2026-07-21-mihon-desktop-platform-integration.md`
 - Modify: `.superpowers/sdd/progress.md`
 
-**Consumes:** Tasks 1–14 production wiring/test evidence；Task 3 的 Android Widget production test；Task 10A 的 Desktop Widget/notification/telemetry capability；fixed-main WidgetManager/GetUpdates/SecurityPreferences；三 OS capability 结论。
+**Consumes:** Tasks 1–14B production wiring/test evidence；Task 3 的 Android Widget production test；Task 10A 的 Desktop Widget/notification/telemetry capability；fixed-main WidgetManager/GetUpdates/SecurityPreferences；三 OS capability 结论。
 
 **Produces:** IDs 81–84、86、92 的 VERIFIED 候选证据，ID 85 的 roadmap-approved EXEMPT 证据，以及维护边界。
 
