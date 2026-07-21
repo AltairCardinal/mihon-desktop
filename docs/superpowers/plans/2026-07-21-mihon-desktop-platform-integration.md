@@ -51,6 +51,7 @@ status-source: this-file
 - [x] Task 15A：平台证据的 per-ID 不可变 provenance 合同
 - [x] Task 15B：Android Widget 默认隐私 wiring 证明
 - [x] Task 16A：Desktop missing-credential profile reset 闭环
+- [ ] Task 16B：macOS OpenURI production ingress
 - [ ] Task 16：独立最终审查与三平台 change verify
 
 ## 全局任务门禁
@@ -988,6 +989,35 @@ status-source: this-file
 
 **Review status:** 实现及唯一修复最终提交 `815a96c9a`。现存 profile+missing credential 保持 fail-closed；删除锁屏所打开的 exact `configDir` 后，production/test 共用的启动 preparation 在重建目录前递归清同一 `DesktopPreferenceStore` 根及 legacy app/reader 子树，并从 fresh profile 启动。production 顺序固定为 store 创建→profile prepare→settings/reader 注册，legacy 节点由同一 store 的 `childNode` 派生。初始实现没有保留 red-first 日志，后置 reset mutation 仅证明主测试可证伪；唯一修复中将递归清理退化为 root-only 后，真实 DI 的 DARK/WEBTOON→SYSTEM/RTL 断言先 RED，恢复后 GREEN。协调者复跑 core 22 + Desktop AppLock/Security/DI 40，共 62/62，失败/错误/跳过为 0；根 Spotless、diff 与 5 files/112 touched scope 通过。唯一修复复审 APPROVED，Critical/Important/Minor `0/0/0`。
 
+### 子 Task 16B：macOS OpenURI production ingress
+
+**Risk axis:** macos-open-uri-ingress
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 6 files, 320 lines
+
+**Verification:** queued/running OpenURI lifecycle tests、owner production wiring、ID 81 parity contract、macOS bundle runtime acceptance retained for Task 16
+
+**Files:**
+
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopOpenUriEventBridge.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/Main.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopOpenUriEventBridgeTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/DesktopAppRuntimeTest.kt`
+- Modify: `app-desktop/src/test/resources/parity/parity-manifest.json`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt`
+
+**Consumes:** Task 7 的 CFBundleURLTypes 注册、Task 5/6 的 `ExternalActionInput.ViewUri`→navigator/broker 链，以及 Task 16 重规划后 whole-change review 的唯一 `0/1/0` finding。Oracle JDK `Desktop.setOpenURIHandler` 文档明确说明该 handler 接收应用 open-URL 请求，handler 为 null 时请求会排队直到再次安装；仅有 Info.plist 与 argv ingress 不能消费已运行 bundled macOS 应用的 APP_OPEN_URI 事件。
+
+**Produces:** owner application 生命周期内唯一、可关闭的 OpenURI event registration。macOS 冷启动时排队的事件和运行中事件均逐个进入既有 `ExternalActionInput.ViewUri` production ingress；secondary、Windows/Linux、headless/unsupported 和安装失败路径保持结构化且不伪报支持，不创建第二套 URI parser/navigation。
+
+1. RED：fake event source 在 install 前排队两个 URI，install 后必须按序各消费一次；install 后事件立即各消费一次；close 后不得继续交付，重新 install 只能交付仍排队且未消费的事件。production wiring test 必须证明 owner 安装，secondary 不安装，删除 `setOpenURIHandler`/owner registration/close 任一环都会失败。
+2. GREEN：通过小型 port 隔离 `java.awt.Desktop`。production adapter 只在 macOS、非 headless、`Desktop.isDesktopSupported()` 且 `APP_OPEN_URI` supported 时调用 `setOpenURIHandler`，把 `event.uri.toString()` 原样提交到与 argv/broker 相同的 `ExternalActionInput.ViewUri` ingress；不在 adapter 解析业务 URI，不记录 payload。安装结果区分 Installed/Unsupported/Failed，失败不让 owner 应用崩溃或冒充 OS 验收。
+3. registration 在 owner 已有 production navigator 后、首个 UI 之前安装，并随 owner runtime/bootstrap 确定关闭；不得由 secondary 安装或让 handler 脱离应用生命周期。测试覆盖 queued cold-start、running event、乱序/重复回调的逐事件语义、安装异常、close 幂等与 unsupported 平台。
+4. 更新 ID 81 的 Desktop consumer/protection 精确集合，使移除新的 OpenURI production path 或测试会使 per-ID contract 失败；不把它写成 fixed-main Android provenance，而标为 macOS 平台 adapter。
+5. 运行 bridge/runtime/navigation/parity focused tests、根 Spotless、`git diff --check` 与 6-file/320-line scope gate。独立审查通过后回到 Task 16；同一最终提交的真实冷启动/运行中 `open tachiyomi://...` bundle 验收仍集中在 Task 16，不在普通实现 Task 递增版本。
+
 ### Task 16：独立最终审查与三平台 change verify
 
 **Risk axis:** platform-change-verify
@@ -1012,6 +1042,8 @@ status-source: this-file
 **Produces:** whole-change 独立审查、三 OS/Android 必要验证、完整版本/产物/失败数和父子计划最终一致性证据。
 
 **Whole-change review status（已按门禁重规划）：** 对 `952be2f...HEAD` 的独立审查以 Critical/Important/Minor `0/2/0` 拒绝。提交 `0d8b16c07` 完成唯一修复轮；协调者强制复跑 4 类 50/50、Spotless 与 diff check 通过。唯一修复复审确认 macOS 分享风险已关闭，但以 `0/1/0` 拒绝 missing-credential 恢复：UI 打开的 `configDir` 不包含 Java Preferences `/mihon`，Windows `localRoot` 也与文案不符。按全局门禁停止 Task 16 内继续修补，将该单一产品风险拆为 Task 16A；16A 独立通过后重新执行 whole-change review 与三平台验证。更新仓库、APK-only release 和缺失 Desktop trust root 仍是计划已记录的 `NoCompatiblePackage`/`ManualOnly` 边界，不列为缺陷。
+
+**Whole-change re-review after 16A:** `050dca5c1` 的重新审查确认 fixed-main inventory 84/84、逐 ID 证据、Android consumers、分享、profile reset、安全/隐私、更新和 Widget 边界均无阻塞，但以 `0/1/0` 发现 macOS bundle 只有 CFBundleURLTypes 和 argv ingress，没有 JDK `OpenURIHandler` production consumer；运行中 URL 事件以及冷启动排队事件无法进入 navigator。该单一平台 production-wiring 风险按门禁拆为 Task 16B，Task 16 保持未完成且不提前执行全量/版本构建。
 
 1. Desktop app-lock preference 已启用但 OS credential 被外部删除时，`probe()` 错把 `null` secret 报为 Available，根 UI 随后永久锁死且没有安全恢复路径。RED 必须证明 missing credential 与 backend unavailable/error 分离、应用保持 fail-closed、受保护内容不构造，并在锁屏显示明确的数据影响说明与“打开完整本地 profile 目录”入口；入口不得静默禁用锁，用户只能关闭应用后重置完整 profile。production DI 必须传入本轮真实 `DesktopPlatformPaths.configDir` 与目录 opener。
 2. macOS native picker 为异步 session，但连续 `shareImage()` 复用同一个 `mihon-shared-page.png`，第二次分享会覆盖第一会话的内容。RED 必须同时打开两个 session，断言路径唯一、首个像素在第二次调用后不变、文件在各自 terminal 前存在并仅由对应 terminal 清理；fallback saved/cancelled/failed 也必须清理。GREEN 使用权限收紧的唯一临时快照，不得以全局锁禁止用户并发分享，也不得在 `Opened` 时提前删除。
