@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.domain.updates.interactor.GetUpdates
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
@@ -31,10 +32,15 @@ import uy.kohesive.injekt.api.addSingleton
 class WidgetPrivacyProductionWiringTest {
 
     @Test
-    fun `base widget default constructor wires injected privacy consumer`() = runTest {
+    fun `base widget default constructor observes injected security preferences`() = runTest {
         patchInjekt()
         val getUpdates = mockk<GetUpdates> { every { subscribe(any(), any()) } returns flowOf(emptyList()) }
-        val preferences = SecurityPreferences(InMemoryPreferenceStore())
+        val useAuthenticator = InMemoryPreferenceStore.InMemoryPreference<Boolean>("use_biometric_lock", null, false)
+        val store = mockk<PreferenceStore> {
+            every { getBoolean("use_biometric_lock", false) } returns useAuthenticator
+        }
+        val preferences = SecurityPreferences(store)
+        preferences.useAuthenticator().set(true)
         Injekt.addSingleton<Application>(mockk(relaxed = true))
         Injekt.addSingleton(getUpdates)
         Injekt.addSingleton(preferences)
@@ -43,8 +49,11 @@ class WidgetPrivacyProductionWiringTest {
             it.isAccessible =
                 true
         }.get(widget) as WidgetPrivacyConsumer
+        assertTrue(consumer.subscribe(0).first() is WidgetPrivacyData.Locked)
+        verify(exactly = 0) { getUpdates.subscribe(any(), any()) }
+        preferences.useAuthenticator().set(false)
         assertTrue(consumer.subscribe(0).first() is WidgetPrivacyData.Content)
-        verify { getUpdates.subscribe(read = false, after = 0) }
+        verify(exactly = 1) { getUpdates.subscribe(read = false, after = 0) }
     }
 
     @Test
