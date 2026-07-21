@@ -20,7 +20,7 @@ status-source: this-file
 
 ## 执行状态
 
-- [ ] Task 1：固定原版 fixture 与 shared 外部动作/安全契约
+- [x] Task 1：固定原版 fixture 与 shared 外部动作/安全契约
 - [ ] Task 2：当前 Android 外部动作与分享消费 shared
 - [ ] Task 3：当前 Android 应用锁与屏幕安全消费 shared
 - [ ] Task 4：Desktop 源 URI/备份/仓库动作解析
@@ -94,6 +94,8 @@ status-source: this-file
 3. GREEN：实现纯模型和纯函数；不得引用 Intent、URI grant、Window、Compose、Voyager、AWT 或 Desktop OS 类型。
 4. 对原版未定义的非法输入补安全拒绝属于 cross-platform correctness；必须在 fixture 中标记为显式加固，不得反写成原版行为。
 5. 重构后运行 Verification、`:domain:jvmTest` 相关回归和 `git diff --check`。
+
+**Evidence:** 实现提交 `39c99e93d`，审查修复提交 `355122cff`；RED 由缺失 `onUnlockAuthentication` 等 shared contract 符号触发，GREEN 为 `PlatformParityContractTest` 3/3 与 `AppSecurityPolicyTest` 6/6。`:domain:spotlessCheck`、focused `:domain:jvmTest`、`git diff --check` 和 fixed-main 六条 ref/path `git cat-file -e` 均通过；独立修复复审 APPROVED，Critical/Important/Minor `0/0/0`。最终范围 6 files / 400 lines。
 
 ### Task 2：当前 Android 外部动作与分享消费 shared
 
