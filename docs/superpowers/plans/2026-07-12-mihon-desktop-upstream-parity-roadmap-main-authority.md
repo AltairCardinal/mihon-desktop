@@ -42,7 +42,7 @@ resume-order: complete the active child plan through Task 7D, then resume the fi
 - 导航、DI、HTTP、数据库和后台任务接点必须有集成测试。
 - 数据迁移不得要求用户清空数据库、偏好、下载、备份或扩展目录。
 - 一次发布只切换一个可独立验收的能力链。
-- 普通 Comet Task 使用定向测试或测试模式；Desktop 阶段交付和 Comet verify 使用 `scripts/build-desktop.sh`，并启动 `app-desktop/tmp/mihon-dist/main/app/Mihon Desktop/Mihon Desktop.exe` 核验完整版本号。
+- 普通 Task 使用定向测试或测试模式；Desktop change 的 verify/阶段交付使用 `scripts/build-desktop.sh`，并启动 `app-desktop/tmp/mihon-dist/main/app/Mihon Desktop/Mihon Desktop.exe` 核验完整版本号。
 - 提交行为遵守当前 `AGENTS.md`；本路线图不另行扩大或收紧自动提交权限。
 - 权威设计：`docs/superpowers/specs/2026-07-12-mihon-desktop-upstream-parity-design.md`；若其原版定义与本计划冲突，以本计划的固定 `original-ref` 和概念边界为准并同步修正文档。
 
@@ -440,6 +440,12 @@ Windows `0.11.14.43.84e386c` 固定 EXE 与 macOS `0.11.14.44.84e386c` 部署应
 
 ## 13. Task 5A：系统集成、隐私与应用更新
 
+**Executable child plan:** `docs/superpowers/plans/2026-07-21-mihon-desktop-platform-integration.md`
+
+**Technical design:** `docs/superpowers/specs/2026-07-21-mihon-desktop-platform-integration-design.md`
+
+子计划恢复既有 `align-desktop-platform` change，并把本节 11 个父步骤拆为有 TDD、范围、审查和验证门禁的 Task；本节只在相应子计划证据完成后同步勾选。
+
 **Files:**
 - Create: `domain/src/commonMain/kotlin/mihon/domain/platform/ExternalAction.kt`
 - Create: `app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopDeepLinkHandler.kt`
@@ -576,4 +582,4 @@ app-desktop/tmp/mihon-dist/main/app/Mihon Desktop/Mihon Desktop.exe
 - 未通过 Desktop 独有能力回归，不得删除旧路径。
 - 未完成原版、当前 Android 历史产物和 Desktop 历史产物的数据兼容验证，不得切换 writer。
 - 未具备真实系统能力，不得把平台豁免条目标记为 VERIFIED。
-- 提交、推送和 PR 行为遵守当前 `AGENTS.md` 与活动 `/goal`/Comet change 的权限和门禁，本路线图不覆盖它们。
+- 提交、推送和 PR 行为遵守当前 `AGENTS.md`、活动 `/goal` 与当前 Task 计划的权限和门禁，本路线图不覆盖它们。

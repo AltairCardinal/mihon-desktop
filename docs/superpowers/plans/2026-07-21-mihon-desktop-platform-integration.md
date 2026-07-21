@@ -1,0 +1,580 @@
+---
+change: align-desktop-platform
+design-doc: docs/superpowers/specs/2026-07-21-mihon-desktop-platform-integration-design.md
+base-ref: 952be2f7897f9221b2e07bf7e52891a8fdaa8696
+original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
+status-source: this-file
+---
+
+# Mihon Desktop 系统集成、隐私与发布实施计划
+
+> 本计划恢复父 roadmap 的 Task 5A `align-desktop-platform`，不创建平行 change。此前工具生成的 change 目录只作为需求输入；从本计划建立后，施工状态以本文件、父 roadmap、任务提交和验证证据为准。
+
+> 固定原版唯一权威为 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`。当前 `app/` 是 fork 后 Android consumer；`app-desktop/src/main/kotlin/android/` 是 Desktop Android API compatibility shim，二者均不得冒充原版实现。
+
+**目标：** 对齐 parity 81–86、92：把固定原版的外部动作、分享、安全、隐私和发布语义提取为共享契约；让当前 Android consumer 与 Desktop production wiring 消费它；用真实 Windows/macOS/Linux adapter 实现系统 side effect，并为无法等价支持的 Widget/窗口/安装能力提供明确边界。
+
+**架构：** common 只拥有 parser、policy、payload 和 state machine；Android 保留 Intent/Biometric/Window/WorkManager/APK adapter；Desktop 保留 argv/loopback IPC、Voyager、AWT/OS credential/window/installer adapter。所有 capability 都返回结构化结果并进入用户可见反馈。
+
+**技术栈：** Kotlin Multiplatform、Coroutines/Flow、Voyager、Compose Desktop、OkHttp/MockWebServer、Injekt、Android JVM/Emulator、Windows/macOS/Linux 系统命令与仓库构建脚本。
+
+## 执行状态
+
+- [ ] Task 1：固定原版 fixture 与 shared 外部动作/安全契约
+- [ ] Task 2：当前 Android 外部动作与分享消费 shared
+- [ ] Task 3：当前 Android 应用锁与屏幕安全消费 shared
+- [ ] Task 4：Desktop 源 URI/备份/仓库动作解析
+- [ ] Task 5：Desktop 外部动作导航、入口与可见反馈
+- [ ] Task 6：Desktop 单实例安全转发
+- [ ] Task 7：Windows/macOS/Linux URI scheme 注册
+- [ ] Task 8：Desktop 系统分享与剪贴板/保存后备
+- [ ] Task 9：Desktop credential-backed 应用锁核心
+- [ ] Task 10：Desktop Security 设置与 unlock UI
+- [ ] Task 10A：Desktop 通知隐私、telemetry 与 Widget capability 边界
+- [ ] Task 11：Desktop 窗口隐私能力与真实反馈
+- [ ] Task 12：固定原版发布语义与当前 Android 兼容
+- [ ] Task 13：Desktop 更新下载、校验与平台安装交接
+- [ ] Task 14：Desktop 更新 UI、DI 与 Test Mode wiring
+- [ ] Task 15：Widget 豁免、parity 证据与维护文档
+- [ ] Task 16：独立最终审查与三平台 change verify
+
+## 全局任务门禁
+
+以下规则适用于 Task 1–15，不为每项重复创建“准备/审查/收尾”子任务：
+
+1. 协调者先从本计划复制当前 Task 的最小上下文给一个实现代理；实现代理先执行指定 RED，并证明失败来自缺失/错误 production 行为。
+2. 实现代理完成最小 GREEN 和重构，运行定向测试、`git diff --check` 与范围检查；协调者独立复跑关键命令。
+3. 只显式暂存当前 Task 文件并提交。始终排除既有用户改动 `AGENTS.md`、`AppVersion.kt`、`DownloadQueueScreen.kt`、SDK/Gradle/构建目录和无关未跟踪文件。
+4. 一个未参与实现的审查代理检查固定原版 provenance、shared/platform 边界、production wiring、测试有效性、用户反馈、安全与提交范围。
+5. 审查若有 Critical/Important，交回同一实现代理按 RED→GREEN 修复并提交，随后最多复审一次；仍未通过则在本计划中重新拆分当前产品风险，不无限追加 closure/review Task。
+6. 只有实现、测试、提交和审查全部通过，协调者才勾选当前 Task，并在 `.superpowers/sdd/progress.md` 记录提交和验证证据；随后进入下一 Task。
+7. 普通 Task 不递增 Desktop 版本、不运行全量构建；全量测试、版本构建和真实三平台验收集中在 Task 16。
+
+## 父 roadmap 映射
+
+| 父 Task 5A Step | 本计划 Task |
+|---|---|
+| Step 1 固定原版 fixture / shared RED | 1、12 |
+| Step 2 OS capability / 豁免 RED | 7、10A、11、15 |
+| Step 3 shared URI/share/security/release | 1–3、12 |
+| Step 4 scheme / 单实例 | 4–7 |
+| Step 5 share / credential app lock | 8–10 |
+| Step 6 窗口隐私 | 11 |
+| Step 7 更新状态机与 side effect | 12–14 |
+| Step 8 Widget 豁免 | 3、10A、15 |
+| Step 9 UI / 确认 / 错误 / 导航 / DI | 5、8、10、10A、14 |
+| Step 10 三 OS 与 Windows 集成 | 16 |
+| Step 11 parity 81–86、92 | 15、16 |
+
+### Task 1：固定原版 fixture 与 shared 外部动作/安全契约
+
+**Risk axis:** platform-contract
+
+**Platform boundary:** shared
+
+**Estimated scope:** 6 files, 360 lines
+
+**Verification:** `./gradlew :domain:jvmTest --tests "mihon.domain.platform.PlatformParityContractTest" --tests "mihon.domain.security.AppSecurityPolicyTest"`
+
+**Files:**
+
+- Create: `domain/src/commonMain/kotlin/mihon/domain/platform/ExternalAction.kt`
+- Create: `domain/src/commonMain/kotlin/mihon/domain/platform/ExternalShare.kt`
+- Create: `domain/src/commonMain/kotlin/mihon/domain/security/AppSecurityPolicy.kt`
+- Create: `domain/src/commonTest/kotlin/mihon/domain/platform/PlatformParityContractTest.kt`
+- Create: `domain/src/commonTest/kotlin/mihon/domain/security/AppSecurityPolicyTest.kt`
+- Create: `domain/src/commonTest/resources/parity/task5a/fixed-main-platform-fixtures.json`
+
+**Consumes:** fixed-main 的 `MainActivity.handleIntentAction`、`DeepLinkScreenModel`、`IntentExtensions.toShareIntent`、`SecureActivityDelegate`、`SecurityPreferences` 和 `Window.setSecureScreen`。
+
+**Produces:** 不依赖 OS/UI 的 ExternalAction、SharePayload、AppLockPolicy、SecureScreenPolicy 和带 ref/path/symbol 的 fixture。
+
+1. RED：fixture 覆盖搜索 query 优先级、空输入 no-op、canonical `tachiyomi://add-repo?url=<https-url>`、未知 scheme/host/path、缺/重复/非 HTTP(S) query、`.tachibk`、source URL 作为搜索文本、无结果 fallback、HTTP/content 分享、锁延迟 `-1/0/>0`、首次必锁、关闭时间清除和 secure-screen 三态组合；Android SEARCH/SEND 明确标为 action 而非 URI scheme。
+2. 先运行两个新测试，确认因 shared 类型/行为缺失失败；不能以 fixture JSON 存在或字符串扫描作为 RED。
+3. GREEN：实现纯模型和纯函数；不得引用 Intent、URI grant、Window、Compose、Voyager、AWT 或 Desktop OS 类型。
+4. 对原版未定义的非法输入补安全拒绝属于 cross-platform correctness；必须在 fixture 中标记为显式加固，不得反写成原版行为。
+5. 重构后运行 Verification、`:domain:jvmTest` 相关回归和 `git diff --check`。
+
+### Task 2：当前 Android 外部动作与分享消费 shared
+
+**Risk axis:** android-external-action
+
+**Platform boundary:** shared+android
+
+**Estimated scope:** 6 files, 340 lines
+
+**Verification:** `./gradlew :app:testReleaseUnitTest --tests "eu.kanade.tachiyomi.ui.deeplink.AndroidExternalActionSharedWiringTest" --tests "eu.kanade.tachiyomi.util.system.AndroidSharePayloadAdapterTest"`
+
+**Files:**
+
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/ui/main/MainActivity.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/ui/deeplink/DeepLinkActivity.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/ui/deeplink/DeepLinkScreenModel.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/util/system/IntentExtensions.kt`
+- Create: `app/src/test/java/eu/kanade/tachiyomi/ui/deeplink/AndroidExternalActionSharedWiringTest.kt`
+- Create: `app/src/test/java/eu/kanade/tachiyomi/util/system/AndroidSharePayloadAdapterTest.kt`
+
+**Consumes:** Task 1 shared contracts；fixed-main Android Intent/Activity 行为。
+
+**Produces:** 当前 fork Android 作为真实 consumer/adapter，默认结果与 fixed-main fixture 一致。
+
+1. RED：用真实 production mapping 验证 QUERY 优先于 EXTRA_TEXT、空值 no-op、source URI NoResults 回退、backup/add-repo 目标和 HTTP/content 分享字段；破坏 shared delegate 时测试必须失败。
+2. GREEN：Intent 只负责读取 action/extras/Uri、授权和 Activity flags；业务分类与 share payload 委托 Task 1。
+3. 保留 Android ReaderActivity、Content URI、chooser、ClipData 与读权限；不为了 Desktop 把平台 side effect 移入 common。
+4. 重构后运行 Verification、相关 DeepLink/Intent 回归和 `git diff --check`。
+
+### Task 3：当前 Android 应用锁与屏幕安全消费 shared
+
+**Risk axis:** android-security-policy
+
+**Platform boundary:** shared+android
+
+**Estimated scope:** 8 files, 400 lines
+
+**Verification:** `./gradlew :app:testReleaseUnitTest --tests "eu.kanade.tachiyomi.ui.security.AndroidSecuritySharedPolicyTest" --tests "eu.kanade.tachiyomi.ui.security.AndroidSecuritySettingsWiringTest" && ./gradlew :presentation-widget:testReleaseUnitTest --tests "tachiyomi.presentation.widget.WidgetPrivacyProductionWiringTest"`
+
+**Files:**
+
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/ui/base/delegate/SecureActivityDelegate.kt`
+- Modify: `app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSecurityScreen.kt`
+- Create: `presentation-widget/src/main/java/tachiyomi/presentation/widget/WidgetPrivacyDataSource.kt`
+- Modify: `presentation-widget/src/main/java/tachiyomi/presentation/widget/WidgetManager.kt`
+- Modify: `presentation-widget/src/main/java/tachiyomi/presentation/widget/BaseUpdatesGridGlanceWidget.kt`
+- Create: `app/src/test/java/eu/kanade/tachiyomi/ui/security/AndroidSecuritySharedPolicyTest.kt`
+- Create: `app/src/test/java/eu/kanade/tachiyomi/ui/security/AndroidSecuritySettingsWiringTest.kt`
+- Create: `presentation-widget/src/test/java/tachiyomi/presentation/widget/WidgetPrivacyProductionWiringTest.kt`
+
+**Consumes:** Task 1 AppLockPolicy/SecureScreenPolicy；fixed-main SecureActivityDelegate 与设置可用性矩阵。
+
+**Produces:** 当前 Android lifecycle/Biometric/Window adapter 不再私有复制锁延迟和 secure-screen 决策；真实 Widget 数据链在锁启用时拒绝查询/展示更新内容。
+
+1. RED：覆盖首次启动、`-1/0/>0`、已锁不覆盖关闭时间、恢复后删除时间、认证失败保持锁定、Unsupported 关闭开关和三态 window flag；Widget production data source 在锁开启时必须对 `GetUpdates` 保持 0 调用，manager 的刷新 identity 必须包含 lock state。
+2. GREEN：shared 决定锁/保护布尔结果；Android 只执行生命周期、BiometricPrompt、Activity finish 和 `FLAG_SECURE`。
+3. 设置页仍在变更锁开关/延迟前认证；通知隐藏和 telemetry 项不因本 Task 回退。
+4. Widget gate 必须被 `BaseUpdatesGridGlanceWidget` 真实消费；不得用 Desktop 测试、源码扫描或测试内复制逻辑证明 Android Glance 隐私。
+5. 运行 Verification、相关 Android security/widget 回归、`git diff --check`。
+
+### Task 4：Desktop 源 URI、备份与仓库动作解析
+
+**Risk axis:** desktop-action-resolution
+
+**Platform boundary:** shared+desktop
+
+**Estimated scope:** 7 files, 380 lines
+
+**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.platform.DesktopDeepLinkHandlerTest"`
+
+**Files:**
+
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopDeepLinkHandler.kt`
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopExternalActionTarget.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/domain/SaveSourceMangaForDetails.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/GlobalSearchScreen.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/backup/BackupRestoreScreenModelFactory.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopDeepLinkHandlerTest.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopDeepLinkProductionWiringTest.kt`
+
+**Consumes:** Task 1 ExternalAction；现有 SourceManager/ResolvableSource、漫画落地、章节同步、备份恢复和扩展仓库能力。
+
+**Produces:** 类型安全的 GlobalSearch/Manga/Chapter/Backup/ExtensionRepo/Rejected 目标，不包含 Voyager 或 OS 注册。
+
+1. RED：用代表性 CatalogueSource 验证首个可解析源、漫画/章节解析、数据库落地、NoResults → GlobalSearch、非法 backup 路径拒绝和 add-repo 参数。
+2. 测试必须经过真实 handler 与已有 use case/repository wiring；不能在测试复制 URI 分类。
+3. GREEN：复用现有服务，不另建第二套源搜索、漫画写入或章节同步；错误映射为结构化结果。
+4. 运行 Verification、相关 source/browse/backup 回归和 `git diff --check`。
+
+### Task 5：Desktop 外部动作导航、入口与可见反馈
+
+**Risk axis:** desktop-action-navigation
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 8 files, 390 lines
+
+**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.ExternalActionNavigationTest" --tests "mihon.desktop.ui.ScreenInstantiationSmokeTest"`
+
+**Files:**
+
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/Main.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/DesktopUiDependencies.kt`
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/ui/ExternalActionNavigator.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/home/HomeScreen.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/test/state/TestState.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/ExternalActionNavigationTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/ScreenInstantiationSmokeTest.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/ExternalActionFeedbackWiringTest.kt`
+
+**Consumes:** Task 4 类型安全目标；现有根 Navigator、Screen、Snackbar/TestState。
+
+**Produces:** 冷启动 argv 动作进入 production Navigator，运行结果和拒绝错误对用户/Test Mode 可观察。
+
+1. RED：实例化每个目标 Screen；验证普通 Navigator/TabNavigator 类型兼容；测试启动前 pending action 在根 Navigator 就绪后只消费一次。
+2. GREEN：Main 只提交原始 action；handler/resolver 后由单一 navigator adapter 执行，不能在多个 Screen 重复分类。
+3. NoResults 导航 GlobalSearch；Rejected/Failed 显示本地化错误且不部分导航；成功动作清除 pending state。
+4. 运行 Verification、导航/DI/TestState 回归和 `git diff --check`。
+
+### Task 6：Desktop 单实例安全转发
+
+**Risk axis:** single-instance-ipc
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 6 files, 350 lines
+
+**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.platform.DesktopExternalActionBrokerTest" --tests "mihon.desktop.DesktopAppRuntimeTest"`
+
+**Files:**
+
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopExternalActionBroker.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/DesktopAppRuntime.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/Main.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopPlatformPaths.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopExternalActionBrokerTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/DesktopAppRuntimeTest.kt`
+
+**Consumes:** Task 5 action ingress；Desktop runtime/paths。
+
+**Produces:** 只监听 loopback、带 owner/token/长度限制/ACK 的单实例 broker，关闭时无残留 owner 状态。
+
+1. RED：真实 loopback 测试 owner 选举、第二实例转发、并发动作顺序、伪 token、超长/畸形消息、owner crash 后接管和 runtime close。
+2. GREEN：只有 owner 启动 UI/runtime；secondary 等待明确 ACK 后退出。token/port 文件权限尽可能收紧，日志不记录 payload secret。
+3. broker 不解析业务动作，只传输有界字符串；所有验证仍由 shared parser/handler 完成。
+4. 运行 Verification、重复启动/关闭压力测试和 `git diff --check`。
+
+### Task 7：Windows、macOS、Linux URI scheme 注册
+
+**Risk axis:** uri-scheme-registration
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 7 files, 380 lines
+
+**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.platform.DesktopUriSchemeRegistrationTest"`
+
+**Files:**
+
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopUriSchemeRegistration.kt`
+- Modify: `app-desktop/build.gradle.kts`
+- Create: `app-desktop/src/main/resources/platform/windows/tachiyomi-url-protocol.reg.template`
+- Create: `app-desktop/src/main/resources/platform/linux/mihon-desktop.desktop`
+- Create: `app-desktop/src/main/resources/platform/macos/tachiyomi-url-types.plist`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopUriSchemeRegistrationTest.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopUriSchemeCapabilityTest.kt`
+
+**Consumes:** Task 6 broker；Compose Desktop native distribution 配置。
+
+**Produces:** 三 OS 可探测注册 adapter 与打包元数据；不把“写入成功”当作“动作链成功”。
+
+1. RED：fixture 精确要求三 OS 注册 canonical `tachiyomi` scheme，并只接受 `tachiyomi://add-repo?url=<https-url>`；覆盖缺/重复/非 HTTP(S) query、未知 host/path、未注册 alias、Windows HKCU URL Protocol、macOS bundle URL types、Linux desktop entry/xdg-mime，以及无权限、命令缺失、非打包运行。
+2. GREEN：生产 adapter 仅注册当前可执行文件/应用包；路径参数严格转义，卸载/重装不会留下指向旧 BUILD 的入口。
+3. 设置/诊断 UI 只显示 capability/result；真实 OS 协议启动留到 Task 16，未验证平台不得标记完成。
+4. 运行 Verification、打包配置静态检查和 `git diff --check`。
+
+### Task 8：Desktop 系统分享与剪贴板/保存后备
+
+**Risk axis:** desktop-share
+
+**Platform boundary:** shared+desktop
+
+**Estimated scope:** 7 files, 340 lines
+
+**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.platform.DesktopShareServiceTest" --tests "mihon.desktop.ui.library.MangaShareWiringTest"`
+
+**Files:**
+
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopShareService.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/DesktopUiDependencies.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/reader/PageContextMenu.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopShareServiceTest.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaShareWiringTest.kt`
+
+**Consumes:** Task 1 SharePayload；现有 Manga/Reader 分享入口和 clipboard 能力。
+
+**Produces:** native share/copy/save/cancel/unavailable/failed 的真实结构化结果与 UI 反馈。
+
+1. RED：覆盖 native available、headless、clipboard busy、save cancel/成功/失败、HTTP 文本和本地文件 payload；移除 production service 注入时 wiring 测试必须失败。
+2. GREEN：UI 不直接调用 Toolkit/Desktop；service 选择 adapter/fallback，只有确认 side effect 成功才显示成功。
+3. 保留 Desktop Copy 增强，但“Share”不得静默降级且仍报告系统分享成功；fallback 文案说明实际发生了复制或保存。
+4. 运行 Verification、详情/reader action 回归和 `git diff --check`。
+
+### Task 9：Desktop credential-backed 应用锁核心
+
+**Risk axis:** desktop-app-lock
+
+**Platform boundary:** shared+desktop
+
+**Estimated scope:** 7 files, 390 lines
+
+**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.security.DesktopAppLockTest" --tests "mihon.desktop.platform.PlatformCredentialBackendTest"`
+
+**Files:**
+
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/security/DesktopAppLock.kt`
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/security/DesktopPassphraseVerifier.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopCredentialStore.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/DesktopAppRuntime.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/security/DesktopAppLockTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/platform/PlatformCredentialBackendTest.kt`
+
+**Consumes:** Task 1 AppLockPolicy；SecurityPreferences；现有 DPAPI/Keychain/Secret Service backend。
+
+**Produces:** versioned credential namespace、passphrase verifier、启动/离开/恢复/关闭状态机和 fail-closed DI service。
+
+1. RED：首次必锁、`-1/0/>0`、关闭时间写入/清除、成功/错误/取消、backend unavailable、重设/删除、并发验证和 secret 清零。
+2. GREEN：复用单一 SecurityPreferences；不能在 DesktopAppPreferences 复制 key。verifier 存入 OS protected backend，普通偏好不含明文、可逆 secret 或 hash material。
+3. tracker credential namespace 与 app-lock namespace 隔离；删除 app lock 不得删除 tracker session，反之亦然。
+4. 运行 Verification、Desktop DI focused test、真实 Windows backend tagged test（本机可用时）和 `git diff --check`。
+
+### Task 10：Desktop Security 设置与 unlock UI
+
+**Risk axis:** security-ui-wiring
+
+**Platform boundary:** shared+desktop
+
+**Estimated scope:** 8 files, 400 lines
+
+**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.settings.SecuritySettingsWiringTest" --tests "mihon.desktop.ui.ScreenInstantiationSmokeTest"`
+
+**Files:**
+
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SecuritySettingsScreen.kt`
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/ui/security/DesktopUnlockSurface.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/settings/MoreRootScreen.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/Main.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/test/state/TestState.kt`
+- Modify: `i18n/src/commonMain/moko-resources/base/strings.xml`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/settings/SecuritySettingsWiringTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/ScreenInstantiationSmokeTest.kt`
+
+**Consumes:** Task 9 DesktopAppLock；原版 SettingsSecurityScreen 可用性矩阵。
+
+**Produces:** More → Security、设置/确认/错误反馈和根级锁定覆盖层；Test Mode 可观察真实 lock state。
+
+1. RED：导航类型/实例化、backend unavailable 禁用、启用/关闭/改延迟前验证、passphrase mismatch、锁定时受保护 Home 不渲染、成功解锁恢复。
+2. GREEN：根窗口只在 unlocked 时构造应用内容；锁 surface 不通过导航 back 绕过。设置变化失败恢复旧值并显示原因。
+3. 所有新文案进入 MR；不把 Android “Biometric” 文案直接用于 Desktop passphrase/OS credential。
+4. 运行 Verification、DI wiring、Compose wiring mutation 和 `git diff --check`。
+
+### Task 10A：Desktop 通知隐私、telemetry 与 Widget capability 边界
+
+**Risk axis:** desktop-privacy-capabilities
+
+**Platform boundary:** shared+desktop
+
+**Estimated scope:** 6 files, 300 lines
+
+**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.security.DesktopPrivacyCapabilitiesTest" --tests "mihon.desktop.ui.settings.SecuritySettingsWiringTest"`
+
+**Files:**
+
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/security/DesktopPrivacyCapabilities.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SecuritySettingsScreen.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/DesktopUiDependencies.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/security/DesktopPrivacyCapabilitiesTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/settings/SecuritySettingsWiringTest.kt`
+
+**Consumes:** Task 10 Security UI；fixed-main `hideNotificationContent` 和 telemetryIncluded 可见性规则；当前 DesktopNotificationService/构建依赖事实。
+
+**Produces:** ID 92 每个设置项的真实 Desktop consumer/capability 归宿，不显示无消费者开关。
+
+1. RED：production capability 明确区分 native system notification、应用内 Snackbar、telemetry runtime 和 system Widget provider；DI 缺失或 UI 错误显示开关时测试失败。
+2. GREEN：`hideNotificationContent` 只在真实 native system notifier 能消费时显示；当前应用内 Snackbar 不冒充系统通知，不被错误静默脱敏。
+3. Desktop 未包含 crashlytics/analytics runtime 时沿用 fixed-main `telemetryIncluded=false` 语义，不注册或显示无消费的 PrivacyPreferences switches。
+4. Widget capability 明确 Unsupported，并指向现有 Desktop `GetUpdates` consumer；不新增伪 Widget provider。所有“不适用”都有用户可见边界和 parity 可消费的结构化原因。
+5. 运行 Verification、DI/Screen 回归和 `git diff --check`。
+
+### Task 11：Desktop 窗口隐私能力与真实反馈
+
+**Risk axis:** window-privacy
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 8 files, 400 lines
+
+**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.platform.DesktopWindowPrivacyTest" --tests "mihon.desktop.ui.settings.WindowPrivacyWiringTest"`
+
+**Files:**
+
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopWindowPrivacy.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/Main.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SecuritySettingsScreen.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt`
+- Modify: `app-desktop/build.gradle.kts`
+- Modify: `gradle/libs.versions.toml`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopWindowPrivacyTest.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/settings/WindowPrivacyWiringTest.kt`
+
+**Consumes:** Task 1 SecureScreenPolicy；Task 10 Security UI；真实 Compose window handle。
+
+**Produces:** Windows/macOS/Linux capability/result adapter，以及 Supported/Limited/Unsupported/Failed 的准确 UI。
+
+1. RED：fake native bridge 覆盖 apply/clear/query、窗口未就绪、调用失败、OS 不支持、mode×incognito 变化和设置回滚。
+2. GREEN：通过版本锁定的 JNA/JNA Platform 实现 Windows HWND、`SetWindowDisplayAffinity`/query 与错误清理；native handle 绑定 Window 生命周期。macOS 只声明实际可执行、可查询的窗口共享限制；Linux 默认 Unsupported，不能只凭 OS 名称标成功，也不能在本 Task 静默扩张第二套 JNI。
+3. 应用锁的 Compose 遮挡保持独立；不能用遮挡冒充系统截图保护，也不能用有限 macOS 能力声称等价 Android FLAG_SECURE。
+4. 运行 Verification、Windows 本机 focused integration（有 tagged gate 时）和 `git diff --check`；真实跨 OS 结论留 Task 16。
+
+### Task 12：固定原版发布语义与当前 Android 兼容
+
+**Risk axis:** release-contract
+
+**Platform boundary:** shared+android
+
+**Estimated scope:** 7 files, 390 lines
+
+**Verification:** `./gradlew :domain:jvmTest --tests "tachiyomi.domain.release.interactor.GetApplicationReleaseParityTest" && ./gradlew :data:jvmTest --tests "tachiyomi.data.release.ReleaseServiceImplTest"`
+
+**Files:**
+
+- Modify: `domain/src/commonMain/kotlin/tachiyomi/domain/release/model/Release.kt`
+- Modify: `data/src/commonMain/kotlin/tachiyomi/data/release/PlatformInfo.kt`
+- Modify: `data/src/androidMain/kotlin/tachiyomi/data/release/AndroidPlatformInfo.kt`
+- Modify: `data/src/commonMain/kotlin/tachiyomi/data/release/ReleaseServiceImpl.kt`
+- Modify: `data/src/commonMain/kotlin/tachiyomi/data/release/GithubRelease.kt`
+- Create: `domain/src/jvmTest/kotlin/tachiyomi/domain/release/interactor/GetApplicationReleaseParityTest.kt`
+- Create: `data/src/jvmTest/kotlin/tachiyomi/data/release/ReleaseServiceImplTest.kt`
+
+**Consumes:** fixed-main GetApplicationRelease/ReleaseService；Task 1 provenance 规则。
+
+**Produces:** 保留三日节流/force/version 的 shared 发布结果，显式 target/asset/checksum metadata，并保持 Android APK/FOSS 选择兼容。
+
+1. RED：确认新 shared 契约测试位于 `domain/src/jvmTest` 且由 Verification 精确执行；MockWebServer 覆盖成功、无兼容 asset、空 asset、403/429/500、畸形 JSON、缺少 checksum；domain 覆盖节流时 service 0 调用、force check、preview/release 同/新/旧版本。
+2. GREEN：asset 选择使用结构化 target，不用任意文件名子串 map 覆盖；Android ABI/FOSS 行为由 AndroidPlatformInfo adapter 保持。旧 `domain/src/test/java/.../GetApplicationReleaseTest.kt` 不作为本 Task 执行证据。
+3. 若 fixed-main 版本比较对位数不一致会越界，先以 fixed-main fixture记录，再将安全处理标为 cross-platform bugfix；不能悄悄换成不同 SemVer 规则。
+4. 运行 Verification、Android updater compile/test 回归和 `git diff --check`。
+
+### Task 13：Desktop 更新下载、校验与平台安装交接
+
+**Risk axis:** desktop-update-transport
+
+**Platform boundary:** shared+desktop
+
+**Estimated scope:** 8 files, 400 lines
+
+**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.update.DesktopUpdateControllerTest" --tests "mihon.desktop.update.DesktopUpdateInstallerTest"`
+
+**Files:**
+
+- Modify: `data/src/jvmMain/kotlin/tachiyomi/data/release/DesktopPlatformInfo.kt`
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/update/DesktopUpdateState.kt`
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/update/DesktopUpdateController.kt`
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/update/DesktopUpdateDownloader.kt`
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/update/DesktopUpdateInstaller.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/update/DesktopUpdateControllerTest.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/update/DesktopUpdateDownloaderTest.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/update/DesktopUpdateInstallerTest.kt`
+
+**Consumes:** Task 12 release target/asset；DesktopNetworkHelper、DesktopPlatformPaths、任务/错误状态。
+
+**Produces:** Windows MSI、macOS DMG 和 Linux 手动后备的检查/下载/校验/确认/交接状态机；失败保持当前应用可启动。
+
+1. RED：MockWebServer 覆盖进度、取消、重定向限制、超限、连接中断、SHA mismatch、缺签名、临时文件清理、重试；fake installer 覆盖确认/取消/启动失败。
+2. GREEN：只写安全临时路径；先 hash 再平台签名/发布者验证。校验元数据不足时禁止自动安装并返回 release-page fallback。SHA-256、签名/发布者、体积/重定向限制和细化状态机全部标为 Desktop security enhancement / cross-platform hardening，不得记作 fixed-main 原版行为。
+3. Windows/macOS 只交接已验证的当前 target 包；Linux 没有项目产物时明确 ManualOnly，不虚构自动安装成功。
+4. 运行 Verification、下载路径 containment/cleanup 回归和 `git diff --check`。
+
+### Task 14：Desktop 更新 UI、DI 与 Test Mode wiring
+
+**Risk axis:** desktop-update-ui
+
+**Platform boundary:** shared+desktop
+
+**Estimated scope:** 8 files, 390 lines
+
+**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.settings.AboutUpdateWiringTest" --tests "mihon.desktop.di.DesktopDiWiringTest" --tests "mihon.desktop.test.http.DesktopPlatformTestModeControllerTest"`
+
+**Files:**
+
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AboutScreen.kt`
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/ui/settings/DesktopUpdateScreenModel.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/DesktopUiDependencies.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/test/http/TestHttpServer.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AboutUpdateWiringTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/test/http/DesktopPlatformTestModeControllerTest.kt`
+
+**Consumes:** Task 12 ReleaseService/GetApplicationRelease；Task 13 DesktopUpdateController；APP_VERSION。
+
+**Produces:** About 显示真实版本、Check for updates、确认/进度/取消/重试/手动后备，以及 DI/Test Mode production observation。
+
+1. RED：About 必须显示 APP_VERSION；手动 force check、无更新、新版本、无兼容包、网络失败、下载/验证/安装状态和确认取消都经真实 ScreenModel/controller。
+2. GREEN：生产 DI 注册 ReleaseService、GetApplicationRelease、DesktopUpdateController；UI 不直接发 HTTP、写文件或启动安装器。
+3. Test Mode 只暴露 production 状态/动作，不复制 updater 状态机；断开 DI/controller 时测试必须失败。
+4. 运行 Verification、Screen 实例化/导航回归、MockWebServer 集成和 `git diff --check`。
+
+### Task 15：Widget 豁免、parity 证据与维护文档
+
+**Risk axis:** platform-parity-evidence
+
+**Platform boundary:** verification
+
+**Estimated scope:** 6 files, 300 lines
+
+**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.parity.DesktopProductCapabilityContractTest" --tests "mihon.desktop.parity.WidgetPrivacyBoundaryTest"`
+
+**Files:**
+
+- Modify: `app-desktop/src/test/resources/parity/parity-manifest.json`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/parity/WidgetPrivacyBoundaryTest.kt`
+- Create: `docs/architecture/desktop-platform-integration.md`
+- Modify: `docs/superpowers/plans/2026-07-21-mihon-desktop-platform-integration.md`
+- Modify: `.superpowers/sdd/progress.md`
+
+**Consumes:** Tasks 1–14 production wiring/test evidence；Task 3 的 Android Widget production test；Task 10A 的 Desktop Widget/notification/telemetry capability；fixed-main WidgetManager/GetUpdates/SecurityPreferences；三 OS capability 结论。
+
+**Produces:** IDs 81–84、86、92 的 VERIFIED 候选证据，ID 85 的 roadmap-approved EXEMPT 证据，以及维护边界。
+
+1. RED：parity contract 要求每项包含 fixed-main ref/path/symbol、shared contract、当前 Android/Desktop consumer、adapter、保护测试和偏差；空字段、源码字符串测试或断开的 production wiring 必须失败。
+2. ID 85 引用 Task 3 的 `presentation-widget` production test 证明 Android Widget 使用 GetUpdates 且锁开启不泄露；Desktop 测试只证明 Updates 页面消费同一 GetUpdates 与 Task 10A 的 Widget Unsupported capability。不要让 Desktop 测试冒充 Android Glance 证据，也不要新增无 production consumer 的 Widget abstraction。
+3. ID 86 把 fixed-main 节流/版本/可见状态与 Desktop checksum/signature/size/redirect hardening 分栏记录；后者不得标成原版 provenance。
+4. ID 92 逐项记录 app lock、delay、screen privacy、native notification content 和 telemetry：有 consumer 才 VERIFIED；Task 10A 判定不适用的项记录能力原因和 UI 行为。
+5. 架构文档说明入口、状态、adapter、能力探测、安全失败、维护/新增 OS 方法和 updater 回滚。
+6. 只有相应 Task 审查通过才更新状态；真实 OS 尚未验证的条目标为 CANDIDATE/有限，不预先写 VERIFIED。
+7. 运行 Verification、`git diff --check` 和文档路径/链接检查。
+
+### Task 16：独立最终审查与三平台 change verify
+
+**Risk axis:** platform-change-verify
+
+**Platform boundary:** verification
+
+**Estimated scope:** 6 files, 220 lines
+
+**Verification:** shared/Android/Desktop 全量测试、Windows 固定 EXE、macOS 应用包和可用 Linux matrix 均基于同一最终提交
+
+**Files/Artifacts:**
+
+- Modify: `docs/superpowers/plans/2026-07-21-mihon-desktop-platform-integration.md`
+- Modify: `docs/superpowers/plans/2026-07-12-mihon-desktop-upstream-parity-roadmap-main-authority.md`
+- Modify: `.superpowers/sdd/progress.md`
+- Create: `docs/superpowers/reports/2026-07-21-align-desktop-platform-verify.md`
+- Verify: `app-desktop/src/test/resources/parity/parity-manifest.json`
+- Artifact: `app-desktop/tmp/mihon-dist/main/app/Mihon Desktop/Mihon Desktop.exe`
+
+**Consumes:** Tasks 1–15 已审查提交和当前平台 adapter。
+
+**Produces:** whole-change 独立审查、三 OS/Android 必要验证、完整版本/产物/失败数和父子计划最终一致性证据。
+
+1. 由未参与实现的 reviewer 审查 `base-ref..HEAD`：逐 ID 对照 fixed-main、shared/Android/Desktop production chain、安全模型、Desktop 独有功能、测试有效性和提交范围。Critical/Important 按全局门禁只允许一轮修复复审。
+2. 在同一最终提交运行：
+
+   ```powershell
+   ./gradlew spotlessCheck
+   ./gradlew :domain:allTests
+   ./gradlew :data:allTests
+   ./gradlew testReleaseUnitTest
+   ./gradlew :app-desktop:jvmTest
+   ./gradlew :test-desktop:test
+   ```
+
+3. 部署 Android 模拟器并执行最小强制矩阵：入站 `ACTION_SEARCH`、`ACTION_SEND text/plain`、`tachiyomi://add-repo?url=...`；lock delay `-1/0/>0` 与认证失败保持锁定；secure-screen `ALWAYS/INCOGNITO/NEVER`；手动 update 的 force/no-update/new-update。记录设备/API、APK 和结果，不把它当作 fixed-main provenance。
+4. Windows：通过 `scripts/build-desktop.sh` 生成一个新 BUILD，启动固定未打包 EXE，核对 mtime、完整版本和窗口标题；真实验证冷启动/运行中 URI、分享 fallback、DPAPI app lock、窗口 capability、About 更新状态和 Test Mode/smoke。
+5. macOS：用 `ssh mbp`，失败再用 `ssh mbp-lan`，在同一提交运行 full-tests/build，部署 `/Applications/Mihon Desktop.app`；验证 bundle scheme、Keychain、分享、窗口能力、更新 handoff 和 smoke/Test Mode。GUI Keychain 若 SSH 明确拒绝交互，记录精确有限边界，不能外推成功。
+6. Linux：使用可用本机/CI/容器执行不依赖 GUI 的 broker、desktop entry、secret-tool capability、clipboard/portal probe 和 ManualOnly updater；没有真实 GUI/Secret Service 证据的项保持有限/豁免，不伪造通过。
+7. 报告每条命令、测试数/失败/跳过、OS/版本、完整 Desktop 版本、固定 EXE 绝对路径、剩余有意偏差和豁免。清理本轮进程/临时文件。
+8. 只有 review 清零、所有必需验证通过、parity 状态真实、子计划全部勾选后，才勾选父 roadmap Task 5A Steps 1–11，并把 progress 切到 Task 5B；否则保持对应项未完成并继续修复。
