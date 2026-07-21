@@ -10,6 +10,8 @@ import cafe.adriel.voyager.transitions.SlideTransition
 import mihon.desktop.di.initDesktopDI
 import mihon.desktop.platform.DesktopExternalActionBroker
 import mihon.desktop.platform.DesktopPlatformPaths
+import mihon.desktop.platform.DesktopUriSchemeRegistrar
+import mihon.desktop.platform.DesktopUriSchemeRegistration
 import mihon.desktop.test.TestArguments
 import mihon.desktop.test.TestMode
 import mihon.desktop.ui.ExternalActionNavigator
@@ -29,12 +31,34 @@ fun main(args: Array<String>) {
     // Install crash handler FIRST
     CrashHandler.install()
 
-    val testArgs = TestArguments.parse(args)
-    val broker = DesktopExternalActionBroker(DesktopPlatformPaths.current().instanceStateFile)
-    val rawAction = desktopExternalActionRaw(args)
-    startDesktopInstance(broker, rawAction) { ownerBroker ->
-        runOwnerApplication(args, testArgs, ownerBroker)
+    startDesktopApplication(args)
+}
+
+internal fun startDesktopApplication(
+    args: Array<String>,
+    broker: DesktopExternalActionBroker = DesktopExternalActionBroker(DesktopPlatformPaths.current().instanceStateFile),
+    registrar: DesktopUriSchemeRegistrar = DesktopUriSchemeRegistration(),
+    reportRegistration: (DesktopUriSchemeRegistration.Result) -> Unit = ::reportUriSchemeRegistration,
+    startOwnerApplication: (DesktopExternalActionBroker) -> Unit = { ownerBroker ->
+        runOwnerApplication(args, TestArguments.parse(args), ownerBroker)
+    },
+): DesktopInstanceStartResult {
+    return startDesktopInstance(broker, desktopExternalActionRaw(args)) { ownerBroker ->
+        val registrationResult = try {
+            registrar.register()
+        } catch (_: Exception) {
+            DesktopUriSchemeRegistration.Result.Failed(
+                DesktopUriSchemeRegistration.FailureReason.UNEXPECTED_FAILURE,
+            )
+        }
+        runCatching { reportRegistration(registrationResult) }
+        startOwnerApplication(ownerBroker)
     }
+}
+
+private fun reportUriSchemeRegistration(result: DesktopUriSchemeRegistration.Result) {
+    if (result is DesktopUriSchemeRegistration.Result.Configured) return
+    System.err.println("Desktop URI scheme capability: ${result::class.simpleName}")
 }
 
 private fun runOwnerApplication(

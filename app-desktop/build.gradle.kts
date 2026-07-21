@@ -208,6 +208,11 @@ compose.desktop {
 
             macOS {
                 bundleID = "mihon.desktop"
+                infoPlist {
+                    extraKeysRawXml = project.file(
+                        "src/main/resources/platform/macos/tachiyomi-url-types.plist",
+                    ).readText()
+                }
             }
 
             windows {

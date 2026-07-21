@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Mihon Desktop
+Exec="{{EXECUTABLE}}" %u
+Terminal=false
+MimeType=x-scheme-handler/tachiyomi;
+Categories=Graphics;Viewer;
