@@ -488,9 +488,9 @@ status-source: this-file
 
 **Platform boundary:** shared+desktop
 
-**Estimated scope:** 10 files, 650 lines
+**Estimated scope:** 10 files, 1500 lines
 
-**Split waiver:** Security 设置、credential capability probe、passphrase 创建/确认/变更、根窗口锁覆盖层、focus lifecycle 与 Test Mode 真实状态共同组成一个不可拆的用户闭环。只交付设置会产生“可启用但无法解锁”，只交付覆盖层会产生“有锁但无配置入口”，只改 `TestState` 又不能让真实 `/test/state` 响应可观察。上述入口共同消费同一 `DesktopAppLock`/verifier/state，必须由同一 Compose/DI/Test Mode 矩阵证明锁定时 Home 从未构造且成功认证后恢复；因此纳入 verifier probe 与 HTTP response 两个遗漏文件并保留为单一 Task。
+**Split waiver:** Security 设置、credential capability probe、passphrase 创建/确认/变更、凭据与偏好的非原子补偿、根窗口锁覆盖层、focus lifecycle、production bootstrap 顺序与 Test Mode 真实状态共同组成一个不可拆的用户闭环。只交付设置会产生“可启用但无法解锁”，只交付覆盖层会产生“有锁但无配置入口”，只改 `TestState` 又不能证明真实 `/test/state` 在服务开放时已经观察到 `runtime.start()` 后的锁状态。上述入口反复消费同一 `DesktopAppLock`/verifier/state，必须由同一 Compose/DI/Test Mode 矩阵证明锁定时 Home 从未构造、成功认证后恢复，并证明 headless HTTP 不暴露启动瞬态。首轮 650 行估算遗漏了四类非原子失败补偿、production bootstrap 可杀死 seam 及其故障注入测试；重规划时当前实际为 1424 touched lines，保留至 1500 行上限并在 Evidence 记录最终精确范围，不能拆成会暂时留下 enabled-without-verifier、假 lock state 或不可解锁根窗口的独立交付。
 
 **Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.settings.SecuritySettingsWiringTest" --tests "mihon.desktop.ui.ScreenInstantiationSmokeTest"`
 
@@ -512,9 +512,12 @@ status-source: this-file
 **Produces:** More → Security、设置/确认/错误反馈和根级锁定覆盖层；Test Mode 可观察真实 lock state。
 
 1. RED：导航类型/实例化、backend unavailable 禁用、启用/关闭/改延迟前验证、passphrase mismatch、锁定时受保护 Home 不渲染、成功解锁恢复。
-2. GREEN：根窗口只在 unlocked 时构造应用内容；锁 surface 不通过导航 back 绕过。设置变化失败恢复旧值并显示原因。
-3. 所有新文案进入 MR；不把 Android “Biometric” 文案直接用于 Desktop passphrase/OS credential。
-4. 运行 Verification、DI wiring、Compose wiring mutation 和 `git diff --check`。
+2. RED：通过 production bootstrap seam 证明 `runtime.start()` 完成后才开放 Test Mode HTTP，并证明删除或错放 `DesktopAppLock`→`TestState` binding 会让 headless `/test/state` 行为测试失败；不得以手工 set state 或只组合 `DesktopProtectedRoot` 代替。
+3. GREEN：根窗口只在 unlocked 时构造应用内容；锁 surface 不通过导航 back 绕过。设置变化失败恢复旧值并显示原因；production 启动顺序不得让 HTTP 观察到 runtime 初始化前的瞬态锁状态。
+4. 所有新文案进入 MR；不把 Android “Biometric” 文案直接用于 Desktop passphrase/OS credential。
+5. 运行 Verification、DI wiring、Compose wiring mutation 和 `git diff --check`。
+
+**Replan evidence:** 首审发现 headless lock state 仅由 Compose `SideEffect` 写入，以及偏好写失败没有结构化补偿。唯一修复已用 persistence seam、四类故障注入、双回滚 fail-closed 与 CharArray 清零关闭设置事务风险；修复复审仍证明测试手工安装 binding，无法杀死 Main production wiring，且 Test Mode HTTP 早于 `runtime.start()` 开放。Task 10 保持未完成，不新增 closure Task；本次重规划只补上述 production bootstrap 风险和最终精确范围。
 
 ### Task 10A：Desktop 通知隐私、telemetry 与 Widget capability 边界
 
