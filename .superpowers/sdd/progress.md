@@ -3,11 +3,11 @@
 Baseline: 470cb44db2f4c2b090713a0cc6e3e7231346a064
 Plan: docs/superpowers/plans/2026-07-12-mihon-desktop-upstream-parity-roadmap-main-authority.md
 Active change: align-desktop-platform (corrected parent Task 5A)
-Active child plan: docs/superpowers/plans/2026-07-21-mihon-desktop-platform-integration.md (Tasks 1–4 approved; Task 5 pending)
+Active child plan: docs/superpowers/plans/2026-07-21-mihon-desktop-platform-integration.md (Tasks 1–7 complete; Task 8A pending)
 Technical design: docs/superpowers/specs/2026-07-21-mihon-desktop-platform-integration-design.md
 Task base: 952be2f7897f9221b2e07bf7e52891a8fdaa8696
 Original authority: main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8
-Resume order: finish the Task 5A child-plan review, then execute Task 1–10、10A、11–16 in order; never resume the preserved original roadmap as executable authority and do not create a duplicate change.
+Resume order: execute Task 8A→8B→9→10→10A→11–16 in order; never resume the preserved original roadmap as executable authority and do not create a duplicate change.
 
 Task 0: complete (commits 470cb44..0eeeccb, review clean)
 Task 1A: complete (commits 0eeeccb..3609dc3, review clean)
@@ -57,3 +57,4 @@ Task 5A / align-desktop-platform Task 5: complete (implementation `6dd8bdfb0` + 
 Task 5A / align-desktop-platform Task 5R: complete (implementation `e880ab5d8` + bounded-feedback repair `a28e6d2bc`; terminal actions publish nonblocking feedback, Home uses one lifecycle consumer over an 8-entry DROP_OLDEST channel, and real Compose/mutation tests kill both await-feedback and per-message-launch regressions. Coordinator forced Navigation/Feedback/Screen 55/55, root Spotless and diff pass; independent repair re-review APPROVED with Critical/Important/Minor `0/0/0`).
 Task 5A / align-desktop-platform Task 6: complete (implementation `cccd277299`; loopback/token/framed ACK broker, single-owner election, stale-state takeover, ownerId-safe cleanup, secondary no-DI/runtime/UI exit, runtime lifecycle and real broker-to-Task5 ViewUri ingress are covered. Implementer final 30/30 plus three broker stress rounds; coordinator forced Broker 11 + Runtime 11 + Navigation 8 = 30/30 and root Spotless; independent review APPROVED with Critical/Important/Minor `0/0/0`; final scope 6 files/808 touched).
 Task 5A / align-desktop-platform Task 7: complete (implementation `2ab6c0eb3` + packaged-layout/template-equivalence repair `f7ae98520`; canonical tachiyomi scheme is registered through Windows HKCU, Linux desktop/xdg-mime and Compose macOS plist metadata only by the elected owner, with structured non-packaged/command/permission failures and no false end-to-end claim. Coordinator forced Registration 8 + Capability 4 + Runtime 11 = 23/23, root Spotless and diff passed; unique repair re-review APPROVED with Critical/Important/Minor `0/0/0`; cumulative scope 8 files/743 touched; real three-OS scheme launch remains Task 16, Task 8 pending).
+Task 5A / align-desktop-platform Task 8 replan: original combined Task first review rejected missing production native adapter and weak UI wiring; its unique repair re-review rejected macOS `READY` being reported as completed share without proven cancel/completion helper cleanup. The accepted fallback/Reader/Manga wiring risk is now Task 8A; macOS picker/session/process lifecycle is Task 8B. Neither is complete or checked yet; next is Task 8A.

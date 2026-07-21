@@ -28,7 +28,8 @@ status-source: this-file
 - [x] Task 5R：Desktop 外部动作非阻塞反馈收口
 - [x] Task 6：Desktop 单实例安全转发
 - [x] Task 7：Windows/macOS/Linux URI scheme 注册
-- [ ] Task 8：Desktop 系统分享与剪贴板/保存后备
+- [ ] Task 8A：Desktop 分享 fallback、Reader/Manga wiring 与真实反馈
+- [ ] Task 8B：macOS 原生分享异步生命周期
 - [ ] Task 9：Desktop credential-backed 应用锁核心
 - [ ] Task 10：Desktop Security 设置与 unlock UI
 - [ ] Task 10A：Desktop 通知隐私、telemetry 与 Widget capability 边界
@@ -59,11 +60,11 @@ status-source: this-file
 | Step 2 OS capability / 豁免 RED | 7、10A、11、15 |
 | Step 3 shared URI/share/security/release | 1–3、12 |
 | Step 4 scheme / 单实例 | 4–7 |
-| Step 5 share / credential app lock | 8–10 |
+| Step 5 share / credential app lock | 8A、8B、9–10 |
 | Step 6 窗口隐私 | 11 |
 | Step 7 更新状态机与 side effect | 12–14 |
 | Step 8 Widget 豁免 | 3、10A、15 |
-| Step 9 UI / 确认 / 错误 / 导航 / DI | 5、8、10、10A、14 |
+| Step 9 UI / 确认 / 错误 / 导航 / DI | 5、8A、8B、10、10A、14 |
 | Step 10 三 OS 与 Windows 集成 | 16 |
 | Step 11 parity 81–86、92 | 15、16 |
 
@@ -325,13 +326,15 @@ status-source: this-file
 
 **Evidence:** 实现提交 `2ab6c0eb3`，打包判定/模板防漂移修复 `f7ae98520`。Windows owner 以 HKCU `URL Protocol` 和覆盖式 `reg add /f` 注册 canonical `tachiyomi`，资源模板渲染后的完整 registry entry 集合必须与实际命令等价；Linux 原子写入带 `%u`/`x-scheme-handler/tachiyomi` 的 desktop entry 并执行 desktop database/xdg-mime；macOS plist 片段通过 Compose `infoPlist.extraKeysRawXml` 进入打包配置。只允许真实 jpackage launcher 文件及三平台 marker/runtime 布局，普通 binary、错误目录、缺 marker/runtime、命令缺失、权限/命令/意外失败均返回结构化结果；只有 Task 6 owner 执行注册，registration/report 异常不阻止 owner 应用。`Configured.endToEndActionVerified` 保持 `false`，未冒充真实 OS 动作链验收。实现与修复最终 Task 7 12/12 + Runtime 11/11，根 Spotless/diff/scope 通过；协调者强制重跑同一 23/23、根 Spotless 与 diff check 通过。唯一修复复审 APPROVED，Critical/Important/Minor `0/0/0`；累计范围 8 files/743 touched lines，真实 Windows/macOS/Linux URI→broker→导航留待 Task 16。
 
-### Task 8：Desktop 系统分享与剪贴板/保存后备
+### Task 8A：Desktop 分享 fallback、Reader/Manga wiring 与真实反馈
 
-**Risk axis:** desktop-share
+**Risk axis:** desktop-share-fallback
 
 **Platform boundary:** shared+desktop
 
-**Estimated scope:** 7 files, 340 lines
+**Estimated scope:** 8 files, 760 lines
+
+**Split waiver:** clipboard/save fallback、结构化结果、Reader 的 Share/Copy/Save 入口和 Manga production wiring 共同决定同一次用户动作的真实反馈；service 与两个入口反复共享同一 action/result 契约，拆开会形成“有 UI 无 side effect”或“有 adapter 无消费者”的不可验收中间态。macOS native helper 的异步生命周期不再混入本 Task，独立交给 Task 8B。
 
 **Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.platform.DesktopShareServiceTest" --tests "mihon.desktop.ui.library.MangaShareWiringTest"`
 
@@ -344,15 +347,49 @@ status-source: this-file
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/reader/PageContextMenu.kt`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopShareServiceTest.kt`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaShareWiringTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/reader/PageContextMenuActionTest.kt`
 
 **Consumes:** Task 1 SharePayload；现有 Manga/Reader 分享入口和 clipboard 能力。
 
-**Produces:** native share/copy/save/cancel/unavailable/failed 的真实结构化结果与 UI 反馈。
+**Produces:** copy/save/cancel/unavailable/failed 的真实结构化结果、Reader/Manga UI 反馈和供 Task 8B 消费的 native-share port 边界；在 Task 8B 完成前 production native capability 必须明确 unavailable。
 
-1. RED：覆盖 native available、headless、clipboard busy、save cancel/成功/失败、HTTP 文本和本地文件 payload；移除 production service 注入时 wiring 测试必须失败。
-2. GREEN：UI 不直接调用 Toolkit/Desktop；service 选择 adapter/fallback，只有确认 side effect 成功才显示成功。
-3. 保留 Desktop Copy 增强，但“Share”不得静默降级且仍报告系统分享成功；fallback 文案说明实际发生了复制或保存。
+1. RED：覆盖 headless、clipboard busy、save cancel/成功/失败、HTTP 文本和本地文件 payload；移除 production service 注入、Manga action 或真实 Reader ContextMenu 消费时 wiring 测试必须失败。
+2. GREEN：UI 不直接调用 Toolkit/Desktop；service 在 native unavailable 时选择 clipboard/save fallback，只有确认 side effect 成功才显示成功。
+3. Reader 保留独立 Share/Copy/Save/可选封面、受控最后分享图片缓存、`share_page_info`、默认保存目录和 best-effort reveal；fallback 文案必须说明实际发生了复制或保存。
 4. 运行 Verification、详情/reader action 回归和 `git diff --check`。
+
+**Replan evidence:** 原合并 Task 8 首审因 production native adapter 缺失和 wiring 测试过弱被拒绝；唯一修复复审又证明 macOS helper 把 picker `READY` 误报为分享完成，且取消/完成后的窗口与进程生命周期没有证据。已通过的 fallback/wiring 与未闭合的 macOS 异步生命周期属于两个可独立验证的产品风险，因此按门禁拆为 8A/8B，不在原 Task 无限追加修复轮。
+
+### Task 8B：macOS 原生分享异步生命周期
+
+**Risk axis:** macos-share-lifecycle
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 7 files, 650 lines
+
+**Split waiver:** picker 打开、选择、系统服务完成/失败、用户取消、helper 超时/退出和 UI 终态反馈组成一个异步会话；若把 process/session 与 Manga/Reader terminal feedback 分开，会暂时重新引入“已打开即成功”或无人消费终态的错误链路。Windows/Linux 不实现伪 native adapter，继续消费 8A 的诚实 fallback。
+
+**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.platform.MacOsNativeSharePortTest" --tests "mihon.desktop.platform.DesktopShareServiceTest" --tests "mihon.desktop.ui.library.MangaShareWiringTest"`
+
+**Files:**
+
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/platform/MacOsNativeSharePort.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopShareService.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/DesktopUiDependencies.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/reader/PageContextMenu.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/platform/MacOsNativeSharePortTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaShareWiringTest.kt`
+
+**Consumes:** Task 8A native-share port、SharePayload/local-file message、notification wiring；Apple `NSSharingServicePickerDelegate` 与 `NSSharingServiceDelegate` 生命周期。
+
+**Produces:** macOS picker `Opened`、真正 `Shared`、`Cancelled`、`Failed` 的异步会话与确定的 helper/window/process cleanup；Windows/Linux 保持 unavailable fallback。
+
+1. RED：`READY` 只能得到 `Opened`，不得得到完成；覆盖选择服务后 `didShare`、`didFail`、取消/空 service、picker/helper EOF、启动超时、终态超时、重复/乱序输出和进程销毁。
+2. GREEN：JXA 通过 picker delegate 和 sharing-service delegate 输出单一终态；关闭 picker/window 并终止 helper。runner 持有 process/session 直到终态或超时，任何非成功路径均清理。
+3. Manga/Reader 在 `Opened` 时只依赖可见系统面板或中性“已打开”反馈；只有 `didShare` 才发布完成，取消/失败发布对应终态。payload 继续以独立 argv 传入，禁止插值、mail/browser/open 冒充 share。
+4. 运行 Verification、`git diff --check`、根 Spotless；通过 `ssh mbp`（失败再 `mbp-lan`）验证真实 picker 的打开、取消后 helper 退出和一次可执行分享终态，记录 PID/exit/输出，正式打包验收仍留 Task 16。
 
 ### Task 9：Desktop credential-backed 应用锁核心
 

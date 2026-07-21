@@ -472,7 +472,7 @@ Windows `0.11.14.43.84e386c` 固定 EXE 与 macOS `0.11.14.44.84e386c` 部署应
 - [ ] **Step 10: 运行三 OS 可执行的单元测试矩阵及当前 Windows 集成验收**
 - [ ] **Step 11: 更新追踪项 81–86、92 的原版 provenance、shared/adapter 证据和豁免说明**
 
-**Current progress:** 子计划 Task 1–7 已完成。固定原版 fixture/shared 外部动作与安全契约、当前 Android consumer、Desktop target resolution、冷启动导航、FIFO/取消恢复、有界非阻塞反馈、loopback 单实例安全转发及三平台 canonical URI scheme 注册已具备实现、TDD 和独立审查证据；父 Step 4 已勾选，Step 1、3、9 仍因分享、完整安全/更新与其余设置 wiring 尚未完成而保持未勾选。下一项为子计划 Task 8 Desktop 系统分享与剪贴板/保存后备。
+**Current progress:** 子计划 Task 1–7 已完成。固定原版 fixture/shared 外部动作与安全契约、当前 Android consumer、Desktop target resolution、冷启动导航、FIFO/取消恢复、有界非阻塞反馈、loopback 单实例安全转发及三平台 canonical URI scheme 注册已具备实现、TDD 和独立审查证据；父 Step 4 已勾选。原子计划 Task 8 在唯一修复复审中暴露 macOS picker “已打开即完成”和 helper 生命周期风险，已按门禁拆为 Task 8A fallback/wiring 与 Task 8B macOS 异步生命周期，两者均未勾选；父 Step 1、3、5、9 仍因分享、完整安全/更新与其余设置 wiring 尚未完成而保持未勾选。下一项为子计划 Task 8A。
 
 ## 14. Task 5B：设置、外观、无障碍与许可
 
