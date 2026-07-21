@@ -68,6 +68,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.network.DesktopSourceLoginSessionFactory
+import mihon.desktop.platform.DesktopExternalActionTarget
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.getEnabledCatalogueSourceCandidates
 import mihon.desktop.ui.library.MangaDetailScreen
@@ -271,7 +272,12 @@ internal val LocalSourceResultMaterializerFactory = staticCompositionLocalOf<Sou
 }
 
 /** Searches all installed sources simultaneously, grouped by source. */
-class GlobalSearchScreen(private val initialQuery: String = "") : Screen {
+class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
+
+    companion object {
+        internal fun fromExternalActionTarget(target: DesktopExternalActionTarget.GlobalSearch) =
+            GlobalSearchScreen(target.query)
+    }
 
     internal suspend fun search(
         sourceManager: SourceManager,

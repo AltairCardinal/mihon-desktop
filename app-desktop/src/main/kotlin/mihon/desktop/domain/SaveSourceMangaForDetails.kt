@@ -53,6 +53,19 @@ class SaveSourceMangaForDetails(
         return await(details, source.id, chapters)
     }
 
+    suspend fun awaitLinkedChapter(
+        source: CatalogueSource,
+        listedManga: SManga,
+        linkedChapter: SChapter?,
+    ): ResolvedSourceChapter {
+        val manga = awaitSearchResults(listOf(listedManga), source.id).single()
+        val existing = linkedChapter?.let { chapterRepository.getChapterByUrlAndMangaId(it.url, manga.id) }
+        if (linkedChapter == null || existing != null) return ResolvedSourceChapter(manga, existing)
+        await(listedManga, source.id, source.getChapterList(listedManga))
+        val chapter = chapterRepository.getChapterByUrlAndMangaId(linkedChapter.url, manga.id)
+        return ResolvedSourceChapter(manga, chapter)
+    }
+
     suspend fun awaitListed(
         sManga: SManga,
         sourceId: Long,
@@ -141,6 +154,11 @@ class SaveSourceMangaForDetails(
 data class ListedMangaForDetails(
     val manga: Manga,
     val needsRefresh: Boolean,
+)
+
+data class ResolvedSourceChapter(
+    val manga: Manga,
+    val chapter: Chapter?,
 )
 
 internal fun mergeSourceMangaDetails(original: SManga, details: SManga): SManga = details.also { d ->
