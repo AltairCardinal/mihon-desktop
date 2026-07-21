@@ -29,8 +29,8 @@ status-source: this-file
 - [x] Task 6：Desktop 单实例安全转发
 - [x] Task 7：Windows/macOS/Linux URI scheme 注册
 - [x] Task 8A：Desktop 分享 fallback、Reader/Manga wiring 与真实反馈
-- [ ] Task 8B：macOS 原生分享异步生命周期
-- [ ] Task 8C：production JXA 分享终态可执行验证
+- [x] Task 8B：macOS 原生分享异步生命周期
+- [x] Task 8C：production JXA 分享终态可执行验证
 - [ ] Task 9：Desktop credential-backed 应用锁核心
 - [ ] Task 10：Desktop Security 设置与 unlock UI
 - [ ] Task 10A：Desktop 通知隐私、telemetry 与 Widget capability 边界
@@ -397,6 +397,8 @@ status-source: this-file
 3. Manga/Reader 在 `Opened` 时只依赖可见系统面板或中性“已打开”反馈；只有 `didShare` 才发布完成，取消/失败发布对应终态。payload 继续以独立 argv 传入，禁止插值、mail/browser/open 冒充 share。
 4. 运行 Verification、`git diff --check`、根 Spotless；通过 `ssh mbp`（失败再 `mbp-lan`）验证真实 picker 的打开、取消后 helper 退出和一次可执行分享终态，记录 PID/exit/输出，正式打包验收仍留 Task 16。
 
+**Evidence:** 实现提交 `07bf54191`。launch contract 只有 `Opened(session) / Unavailable / Failed`，`SharedNatively` 只来自 session 的 `Shared` 终态；Manga/Reader 对 Shared/Cancelled/Failed 分别反馈。`DesktopAppModule` 单例注册 native port/service，`DesktopUiDependencies.fromInjekt()` 解析同一实例；Windows/Linux 保持明确 unavailable fallback。首轮审查发现 JXA selector 参数和 DI wiring 盲区，唯一修复关闭两项后又把 exact production JXA 终态证据拆到 8C。协调者强制执行 8 类 54 tests、补跑 PageContextMenu 6 tests，合计实际执行 59、跳过 mac-only 1、failure/error 0；根 Spotless 与 diff 通过。原生 AppKit 无副作用 probe 分别得到 `READY→SHARED→EXIT 0→PID dead` 与真实 picker `READY→CANCELLED→EXIT 0→PID dead`；打包应用交互仍留 Task 16。
+
 ### Task 8C：production JXA 分享终态可执行验证
 
 **Risk axis:** macos-share-jxa-terminal-proof
@@ -420,6 +422,8 @@ status-source: this-file
 2. GREEN：测试只向固定 production script 注入本地、无外部副作用的确定性终态触发点，仍通过真实 `/usr/bin/osascript`、production runner/session 和真实 registered delegate；不得发送邮件/消息、修改用户数据或留下临时文件。
 3. 断言 `Opened` 不等于完成、终态只交付一次、真实输出为 `MIHON_SHARE:READY` 后 `MIHON_SHARE:SHARED` 或 `FAILED`、进程在有界时间内退出且 PID 不存活；Windows/Linux 测试继续只验证 unavailable 和脚本构造，不伪报 native runtime。
 4. 运行 Verification、macOS tagged probe、根 Spotless 和 `git diff --check`；独立审查通过后与 Task 8B 一并勾选。
+
+**Evidence:** 与 8B 共用实现提交 `07bf54191`，本 Task 在同两个文件净增 33 行。macOS-only integration test 从同一 `MAC_OS_NATIVE_SHARE_SCRIPT` 只在 READY 后注入 `sharingDelegate.sharingServiceDidShareItems(null, items)`，真实执行 production `ObjC.registerSubclass` delegate、runner/session/protocol 与 cleanup；Windows focused 编译及非 mac runner tests 通过。`ssh mbp` 无现有 clone，按计划用 stdin 执行当前 production script 的同一 probe，得到 `PID 90848 / MIHON_SHARE:READY / MIHON_SHARE:SHARED / EXIT 0 / ALIVE:no`，无文件、外部发送或用户数据修改。独立审查 APPROVED，Critical/Important/Minor `0/0/0`；Task 8B/8C 累计范围 10 files/698 touched lines。
 
 ### Task 9：Desktop credential-backed 应用锁核心
 
