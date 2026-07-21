@@ -7,23 +7,25 @@ import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import tachiyomi.domain.release.interactor.GetApplicationRelease
 import tachiyomi.domain.release.model.Release
+import tachiyomi.domain.release.model.ReleaseVariant
 import tachiyomi.domain.release.service.ReleaseService
 
 class ReleaseServiceImpl(
     private val client: OkHttpClient,
     private val json: Json,
     private val platformInfo: PlatformInfo,
+    private val apiBaseUrl: String = "https://api.github.com",
 ) : ReleaseService {
 
     override suspend fun latest(arguments: GetApplicationRelease.Arguments): Release? {
         val release = with(json) {
             client
-                .newCall(GET("https://api.github.com/repos/${arguments.repository}/releases/latest"))
+                .newCall(GET("${apiBaseUrl.trimEnd('/')}/repos/${arguments.repository}/releases/latest"))
                 .awaitSuccess()
                 .parseAs<GithubRelease>()
         }
 
-        val downloadLink = getDownloadLink(release = release, isFoss = arguments.isFoss) ?: return null
+        val asset = getAsset(release, platformInfo.releaseTarget(arguments.isFoss)) ?: return null
 
         return Release(
             version = release.version,
@@ -31,26 +33,20 @@ class ReleaseServiceImpl(
                 "[${mention.value}](https://github.com/${mention.value.substring(1)})"
             },
             releaseLink = release.releaseLink,
-            downloadLink = downloadLink,
+            downloadLink = asset.downloadLink,
+            asset = asset.metadata,
         )
     }
 
-    private fun getDownloadLink(release: GithubRelease, isFoss: Boolean): String? {
-        val map = release.assets.associate { asset ->
-            BUILD_TYPES.find { "-$it" in asset.name } to asset.downloadLink
-        }
-
-        return if (!isFoss) {
-            platformInfo.preferredAbi?.let { map[it] } ?: map[null]
-        } else {
-            map[FOSS]
-        }
+    private fun getAsset(release: GithubRelease, target: tachiyomi.domain.release.model.ReleaseTarget): ParsedAsset? {
+        val assets = release.assets.mapNotNull { it.parse(release.version) }
+        return assets.firstOrNull { it.metadata.target == target }
+            ?: target.arch
+                ?.takeIf { target.variant == ReleaseVariant.STANDARD }
+                ?.let { assets.firstOrNull { asset -> asset.metadata.target == target.copy(arch = null) } }
     }
 
     companion object {
-        private const val FOSS = "foss"
-        private val BUILD_TYPES = listOf(FOSS, "arm64-v8a", "armeabi-v7a", "x86_64", "x86")
-
         private val gitHubUsernameMentionRegex = """\B@([a-z0-9](?:-(?=[a-z0-9])|[a-z0-9]){0,38}(?<=[a-z0-9]))"""
             .toRegex(RegexOption.IGNORE_CASE)
     }
