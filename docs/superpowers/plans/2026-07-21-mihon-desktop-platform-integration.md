@@ -200,7 +200,9 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 8 files, 390 lines
+**Estimated scope:** 10 files, 450 lines
+
+**Split waiver:** Task 4 的 Backup target 只有由现有 `BackupSettingsScreen` 调用 target-aware factory 才能显示所选文件，ExtensionRepo target 也只有由现有 `ExtensionRepoScreen` 打开并预填原有确认对话框才不会丢失 URL 或绕过用户确认。因此本 Task 必须同时修改这两个真实 consumer；它们与单一 navigator/pending/feedback 状态机及同一导航测试矩阵反复修改相同边界，拆分会产生“已导航但 payload 丢失”或“自动添加绕过确认”的不可验收中间态。
 
 **Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.ExternalActionNavigationTest" --tests "mihon.desktop.ui.ScreenInstantiationSmokeTest"`
 
@@ -210,6 +212,8 @@ status-source: this-file
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/DesktopUiDependencies.kt`
 - Create: `app-desktop/src/main/kotlin/mihon/desktop/ui/ExternalActionNavigator.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/home/HomeScreen.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/settings/BackupSettingsScreen.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/settings/ExtensionRepoScreen.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/test/state/TestState.kt`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/ExternalActionNavigationTest.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/ScreenInstantiationSmokeTest.kt`
