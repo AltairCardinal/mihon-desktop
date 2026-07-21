@@ -3,7 +3,7 @@
 Baseline: 470cb44db2f4c2b090713a0cc6e3e7231346a064
 Plan: docs/superpowers/plans/2026-07-12-mihon-desktop-upstream-parity-roadmap-main-authority.md
 Active change: align-desktop-platform (corrected parent Task 5A)
-Active child plan: docs/superpowers/plans/2026-07-21-mihon-desktop-platform-integration.md (Task 1 approved; Task 2 pending)
+Active child plan: docs/superpowers/plans/2026-07-21-mihon-desktop-platform-integration.md (Tasks 1–2 approved; Task 3 pending)
 Technical design: docs/superpowers/specs/2026-07-21-mihon-desktop-platform-integration-design.md
 Task base: 952be2f7897f9221b2e07bf7e52891a8fdaa8696
 Original authority: main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8
@@ -49,4 +49,5 @@ Authority correction wave 3E: reader-triggered tracker gates complete (commits 3
 Authority correction wave 4A: source-query fixed-main audit complete (read-only; shared cancellation/error enhancements retained; Desktop FilterList, paging serialization, and global-search policy identified as three bounded implementation Tasks, with `desktop-source-listing-filter` first.)
 Task 4B / align-sources-extensions Task 7 and change: complete and archived (final HEAD `84e386c49`; lifecycle leak fix `d9eb4b2dd` + rejection coverage `39248dd2a`; mac fixture isolation `b7d1400d2`; final review 0 Critical/Important/Minor; Windows `0.11.14.43.84e386c` and macOS `0.11.14.44.84e386c`; full/smoke/Test Mode passed; OpenSpec archived at `openspec/changes/archive/2026-07-21-align-sources-extensions`).
 Task 5A / align-desktop-platform planning: complete (fixed-main and current Desktop inventories completed read-only; 17 executable Task entries map parent Steps 1–11; first independent planning review found 2 Critical/4 Important/2 Minor, one repair review approved with all findings closed; project plan guard, file-count/dependency, ref/path and diff checks passed).
-Task 5A / align-desktop-platform Task 1: complete (implementation `39c99e93d` + review repair `355122cff`; fixed-main external action/share/app-lock/secure-screen contracts and structured provenance fixture; focused 9/9, Spotless, diff and six fixed-ref paths passed; independent repair re-review APPROVED with Critical/Important/Minor `0/0/0`; Task 2 pending).
+Task 5A / align-desktop-platform Task 1: complete (implementation `39c99e93d` + review repair `355122cff`; fixed-main external action/share/app-lock/secure-screen contracts and structured provenance fixture; focused 9/9, Spotless, diff and six fixed-ref paths passed; independent repair re-review APPROVED with Critical/Important/Minor `0/0/0`).
+Task 5A / align-desktop-platform Task 2: complete (implementation `50ffcb07c` + review repair `b3df26ef0`; current Android Intent/deep-link/share adapters consume shared contracts while preserving fixed-main navigation, chooser and forwarding behavior; focused 7/7, app Spotless and diff passed; independent repair re-review APPROVED with Critical/Important/Minor `0/0/0`; Task 3 pending).

@@ -21,7 +21,7 @@ status-source: this-file
 ## 执行状态
 
 - [x] Task 1：固定原版 fixture 与 shared 外部动作/安全契约
-- [ ] Task 2：当前 Android 外部动作与分享消费 shared
+- [x] Task 2：当前 Android 外部动作与分享消费 shared
 - [ ] Task 3：当前 Android 应用锁与屏幕安全消费 shared
 - [ ] Task 4：Desktop 源 URI/备份/仓库动作解析
 - [ ] Task 5：Desktop 外部动作导航、入口与可见反馈
@@ -124,6 +124,8 @@ status-source: this-file
 2. GREEN：Intent 只负责读取 action/extras/Uri、授权和 Activity flags；业务分类与 share payload 委托 Task 1。
 3. 保留 Android ReaderActivity、Content URI、chooser、ClipData 与读权限；不为了 Desktop 把平台 side effect 移入 common。
 4. 重构后运行 Verification、相关 DeepLink/Intent 回归和 `git diff --check`。
+
+**Evidence:** 实现提交 `50ffcb07c`，审查修复提交 `b3df26ef0`；RED 由缺失 `toExternalAction`、`navigateExternalAction`、分享和 forwarding production seam 触发。最终 focused 测试 `AndroidExternalActionSharedWiringTest` 3/3、`AndroidSharePayloadAdapterTest` 4/4，`:app:spotlessCheck` 与 `git diff --check` 通过；shared parser/share delegate 调用次数、普通 Navigator push、fixed-main unsupported share envelope 与原 Intent 转发均有 production-path 保护。独立修复复审 APPROVED，Critical/Important/Minor `0/0/0`；最终范围 6 files / 339 touched lines。
 
 ### Task 3：当前 Android 应用锁与屏幕安全消费 shared
 
