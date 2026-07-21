@@ -31,7 +31,7 @@ status-source: this-file
 - [x] Task 8A：Desktop 分享 fallback、Reader/Manga wiring 与真实反馈
 - [x] Task 8B：macOS 原生分享异步生命周期
 - [x] Task 8C：production JXA 分享终态可执行验证
-- [ ] Task 9A：Desktop credential namespace 与安全 CharArray API
+- [x] Task 9A：Desktop credential namespace 与安全 CharArray API
 - [ ] Task 9B：Desktop credential-backed 应用锁核心
 - [ ] Task 10：Desktop Security 设置与 unlock UI
 - [ ] Task 10A：Desktop 通知隐私、telemetry 与 Widget capability 边界
@@ -448,6 +448,8 @@ status-source: this-file
 1. RED：同 account 的 tracker 与 app-lock secret 必须落入不同 Windows preference node、macOS Keychain service 和 Linux Secret Service attribute；删除任一 namespace 不得影响另一方。
 2. GREEN：保留 tracker 的既有 service/node 和 String API；新增 app-lock v1 namespace 与会清零副本的 CharArray API，不增加 plaintext/file/preference fallback。
 3. 运行 Verification、真实 Windows backend tagged round-trip/isolation（本机可用时）、tracker credential 回归和 `git diff --check`。
+
+**Evidence:** 实现提交 `95aea97b4`。tracker 默认 Windows `v2`、macOS/Linux `mihon-desktop-tracker` 保持兼容，app-lock 使用独立 Windows `app-lock/v1` 与三平台 service/attribute；CharArray save/withSecret 的正常和异常清零由 mutation RED 证明。协调者强制执行 credential + tracker 31/31、0 failure/error/skip，真实 Windows DPAPI 用例实际运行 1.421s；根 Spotless 61 tasks 与 diff 通过。唯一修复复审 APPROVED，Critical/Important/Minor `0/0/0`；最终范围 2 files/200 touched lines。
 
 ### Task 9B：Desktop credential-backed 应用锁核心
 
