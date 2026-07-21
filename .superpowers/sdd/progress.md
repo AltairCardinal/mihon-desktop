@@ -3,11 +3,11 @@
 Baseline: 470cb44db2f4c2b090713a0cc6e3e7231346a064
 Plan: docs/superpowers/plans/2026-07-12-mihon-desktop-upstream-parity-roadmap-main-authority.md
 Active change: align-desktop-platform (corrected parent Task 5A)
-Active child plan: docs/superpowers/plans/2026-07-21-mihon-desktop-platform-integration.md (Tasks 1–7 and 8A complete; Task 8B pending)
+Active child plan: docs/superpowers/plans/2026-07-21-mihon-desktop-platform-integration.md (Tasks 1–7 and 8A complete; Task 8B implementation pending Task 8C exact-JXA closure)
 Technical design: docs/superpowers/specs/2026-07-21-mihon-desktop-platform-integration-design.md
 Task base: 952be2f7897f9221b2e07bf7e52891a8fdaa8696
 Original authority: main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8
-Resume order: execute Task 8B→9→10→10A→11–16 in order; never resume the preserved original roadmap as executable authority and do not create a duplicate change.
+Resume order: execute Task 8C, then close Task 8B/8C and continue 9→10→10A→11–16 in order; never resume the preserved original roadmap as executable authority and do not create a duplicate change.
 
 Task 0: complete (commits 470cb44..0eeeccb, review clean)
 Task 1A: complete (commits 0eeeccb..3609dc3, review clean)
@@ -59,3 +59,4 @@ Task 5A / align-desktop-platform Task 6: complete (implementation `cccd277299`; 
 Task 5A / align-desktop-platform Task 7: complete (implementation `2ab6c0eb3` + packaged-layout/template-equivalence repair `f7ae98520`; canonical tachiyomi scheme is registered through Windows HKCU, Linux desktop/xdg-mime and Compose macOS plist metadata only by the elected owner, with structured non-packaged/command/permission failures and no false end-to-end claim. Coordinator forced Registration 8 + Capability 4 + Runtime 11 = 23/23, root Spotless and diff passed; unique repair re-review APPROVED with Critical/Important/Minor `0/0/0`; cumulative scope 8 files/743 touched; real three-OS scheme launch remains Task 16, Task 8 pending).
 Task 5A / align-desktop-platform Task 8 replan: original combined Task first review rejected missing production native adapter and weak UI wiring; its unique repair re-review rejected macOS `READY` being reported as completed share without proven cancel/completion helper cleanup. The accepted fallback/Reader/Manga wiring risk is now Task 8A; macOS picker/session/process lifecycle is Task 8B. Neither is complete or checked yet; next is Task 8A.
 Task 5A / align-desktop-platform Task 8A: complete (implementation `cdb0f25ad`; all-OS production native capability remains honestly unavailable pending 8B, while Manga/Reader production wiring now provides exact clipboard/save/cancel/failure feedback, independent Reader Share/Copy/Save, page-info payload, last-image cache, default-save and reveal behavior. Coordinator forced 7-class 42/42 plus root Spotless/diff; independent review APPROVED with Critical/Important/Minor `0/0/0`; 8 files/792 touched. Task 8B pending).
+Task 5A / align-desktop-platform Task 8B replan: lifecycle implementation now uses Opened/session terminal separation, production JXA picker delegates, bounded helper cleanup, Manga/Reader terminal feedback and singleton DI; focused/DI/Reader-Manga tests and root Spotless are green. Its unique repair re-review closed the original JXA argument and DI-wiring findings but rejected the remaining exact production JXA `didShare`/`didFail` runtime evidence gap (Critical/Important/Minor `0/1/0`). Native Swift/AppKit probes proved READY→SHARED and READY→CANCELLED with exit 0/PID dead, but do not execute the production JXA registered delegate. This single uncovered product risk is Task 8C; 8B/8C remain unchecked until its macOS executable probe and independent review pass.

@@ -30,6 +30,7 @@ status-source: this-file
 - [x] Task 7：Windows/macOS/Linux URI scheme 注册
 - [x] Task 8A：Desktop 分享 fallback、Reader/Manga wiring 与真实反馈
 - [ ] Task 8B：macOS 原生分享异步生命周期
+- [ ] Task 8C：production JXA 分享终态可执行验证
 - [ ] Task 9：Desktop credential-backed 应用锁核心
 - [ ] Task 10：Desktop Security 设置与 unlock UI
 - [ ] Task 10A：Desktop 通知隐私、telemetry 与 Widget capability 边界
@@ -368,20 +369,23 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 7 files, 650 lines
+**Estimated scope:** 10 files, 700 lines
 
-**Split waiver:** picker 打开、选择、系统服务完成/失败、用户取消、helper 超时/退出和 UI 终态反馈组成一个异步会话；若把 process/session 与 Manga/Reader terminal feedback 分开，会暂时重新引入“已打开即成功”或无人消费终态的错误链路。Windows/Linux 不实现伪 native adapter，继续消费 8A 的诚实 fallback。
+**Split waiver:** picker 打开、选择、系统服务完成/失败、用户取消、helper 超时/退出、DI 单例和 UI 终态反馈组成一个异步会话；若把 process/session、production DI 与 Manga/Reader terminal feedback 分开，会暂时重新引入“已打开即成功”、macOS native adapter 静默断线或无人消费终态的错误链路。独立审查要求用真实 DI identity 测试保护 `DesktopAppModule → DesktopUiDependencies`，因此范围增至 10 个反复共享同一 native-share/session 契约的文件；Windows/Linux 不实现伪 native adapter，继续消费 8A 的诚实 fallback。exact production JXA 终态的可执行 macOS 证据因修复复审仍不足，独立拆为 Task 8C，不再扩大本 Task 的修复轮次。
 
-**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.platform.MacOsNativeSharePortTest" --tests "mihon.desktop.platform.DesktopShareServiceTest" --tests "mihon.desktop.ui.library.MangaShareWiringTest"`
+**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.platform.MacOsNativeSharePortTest" --tests "mihon.desktop.platform.DesktopShareServiceTest" --tests "mihon.desktop.di.DesktopDiWiringTest" --tests "mihon.desktop.ui.library.MangaShareWiringTest"`
 
 **Files:**
 
 - Create: `app-desktop/src/main/kotlin/mihon/desktop/platform/MacOsNativeSharePort.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopShareService.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/DesktopUiDependencies.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/reader/PageContextMenu.kt`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/platform/MacOsNativeSharePortTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopShareServiceTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaShareWiringTest.kt`
 
 **Consumes:** Task 8A native-share port、SharePayload/local-file message、notification wiring；Apple `NSSharingServicePickerDelegate` 与 `NSSharingServiceDelegate` 生命周期。
@@ -392,6 +396,30 @@ status-source: this-file
 2. GREEN：JXA 通过 picker delegate 和 sharing-service delegate 输出单一终态；关闭 picker/window 并终止 helper。runner 持有 process/session 直到终态或超时，任何非成功路径均清理。
 3. Manga/Reader 在 `Opened` 时只依赖可见系统面板或中性“已打开”反馈；只有 `didShare` 才发布完成，取消/失败发布对应终态。payload 继续以独立 argv 传入，禁止插值、mail/browser/open 冒充 share。
 4. 运行 Verification、`git diff --check`、根 Spotless；通过 `ssh mbp`（失败再 `mbp-lan`）验证真实 picker 的打开、取消后 helper 退出和一次可执行分享终态，记录 PID/exit/输出，正式打包验收仍留 Task 16。
+
+### Task 8C：production JXA 分享终态可执行验证
+
+**Risk axis:** macos-share-jxa-terminal-proof
+
+**Platform boundary:** verification
+
+**Estimated scope:** 2 files, 180 lines
+
+**Verification:** Windows 执行 `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.platform.MacOsNativeSharePortTest"`；macOS 通过 `ssh mbp`（失败再 `mbp-lan`）执行同一测试类中的 tagged native probe，并记录真实 production JXA `READY → SHARED/FAILED → exit → PID dead`。
+
+**Files:**
+
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/platform/MacOsNativeSharePort.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/platform/MacOsNativeSharePortTest.kt`
+
+**Consumes:** Task 8B 的固定 production JXA 脚本、`MihonSharingDelegate`、runner/session/protocol cleanup；首轮修复复审确认的唯一剩余 Important 缺口。
+
+**Produces:** 可重复、无外部 side effect、仅在 macOS 执行的 exact production JXA bridge 终态探针；证明真实 `ObjC.registerSubclass` delegate 能输出 runner 消费的单一终态并回收 helper。它不创建第二套分享实现，也不替代 Task 16 的打包 UI 交互验收。
+
+1. RED：macOS native probe 必须执行 production JXA 中同一个 `MihonSharingDelegate`；只伪造 stdout、扫描脚本文本或仅运行 Swift/AppKit 等价实现均不算通过。
+2. GREEN：测试只向固定 production script 注入本地、无外部副作用的确定性终态触发点，仍通过真实 `/usr/bin/osascript`、production runner/session 和真实 registered delegate；不得发送邮件/消息、修改用户数据或留下临时文件。
+3. 断言 `Opened` 不等于完成、终态只交付一次、真实输出为 `MIHON_SHARE:READY` 后 `MIHON_SHARE:SHARED` 或 `FAILED`、进程在有界时间内退出且 PID 不存活；Windows/Linux 测试继续只验证 unavailable 和脚本构造，不伪报 native runtime。
+4. 运行 Verification、macOS tagged probe、根 Spotless 和 `git diff --check`；独立审查通过后与 Task 8B 一并勾选。
 
 ### Task 9：Desktop credential-backed 应用锁核心
 
