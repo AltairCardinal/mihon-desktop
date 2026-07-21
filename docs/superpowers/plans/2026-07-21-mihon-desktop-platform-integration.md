@@ -169,7 +169,7 @@ status-source: this-file
 
 **Platform boundary:** shared+desktop
 
-**Estimated scope:** 7 files, 380 lines
+**Estimated scope:** 7 files, 400 lines
 
 **Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.platform.DesktopDeepLinkHandlerTest"`
 
