@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.coroutineContext
@@ -126,6 +127,34 @@ class JvmDatabaseHandlerTest {
             }
 
             assertEquals(3L, fixture.count())
+        }
+    }
+
+    @Test
+    fun `thread acquisition rejection releases parent lifecycle and allows next transaction`() = runBlocking {
+        Fixture(RejectFirstDispatcher()).use { fixture ->
+            val parentJob = requireNotNull(coroutineContext[Job])
+            val failure = runCatching {
+                fixture.handler.await(inTransaction = true) {
+                    error("rejected transaction must not enter its body")
+                }
+            }.exceptionOrNull()
+
+            assertEquals(IllegalStateException::class.java, failure?.javaClass)
+            assertEquals("Unable to acquire a thread for a JVM database transaction", failure?.message)
+            assertTrue(
+                generateSequence(failure) { it.cause }.any { it is RejectedExecutionException },
+                "production failure must retain the rejected dispatch as its cause",
+            )
+            assertTrue(
+                parentJob.children.none(),
+                "rejected acquisition must detach its control job from the long-lived parent",
+            )
+
+            fixture.handler.await(inTransaction = true) { fixture.insert(1) }
+
+            assertEquals(1L, fixture.count(), "the same handler and mutex must recover after rejection")
+            assertTrue(parentJob.children.none(), "successful retry must also release its transaction lifecycle")
         }
     }
 
@@ -302,6 +331,19 @@ class JvmDatabaseHandlerTest {
 
         override fun close() {
             executors.forEach(ExecutorService::shutdownNow)
+        }
+    }
+
+    private class RejectFirstDispatcher(
+        private val delegate: CoroutineDispatcher = Dispatchers.IO,
+    ) : CoroutineDispatcher() {
+        private val dispatchCount = AtomicInteger()
+
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            if (dispatchCount.getAndIncrement() == 0) {
+                throw RejectedExecutionException("reject first transaction thread acquisition")
+            }
+            delegate.dispatch(context, block)
         }
     }
 }
