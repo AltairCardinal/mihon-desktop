@@ -59,8 +59,7 @@ private suspend fun <T> JvmDatabaseHandler.runTransaction(
 }
 
 private suspend fun JvmDatabaseHandler.createTransactionState(): JvmTransactionState {
-    val controlJob = Job()
-    coroutineContext[Job]?.invokeOnCompletion { controlJob.cancel() }
+    val controlJob = Job(coroutineContext[Job])
     val dispatcher = queryDispatcher.acquireTransactionThread(controlJob)
     return JvmTransactionState(controlJob, dispatcher)
 }

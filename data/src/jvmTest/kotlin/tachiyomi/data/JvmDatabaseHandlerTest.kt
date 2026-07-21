@@ -5,6 +5,7 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -19,6 +20,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.coroutineContext
 
 /**
  * Basic structural test for JvmDatabaseHandler.
@@ -98,6 +100,32 @@ class JvmDatabaseHandlerTest {
             assertEquals(0L, fixture.count(), "cancelled transaction must roll back")
             fixture.handler.await(inTransaction = true) { fixture.insert(2) }
             assertEquals(1L, fixture.count(), "mutex and transaction thread must be released after cancellation")
+        }
+    }
+
+    @Test
+    fun `long lived parent owns and releases every transaction control job`() = runBlocking {
+        Fixture().use { fixture ->
+            val parentJob = requireNotNull(coroutineContext[Job])
+
+            repeat(3) { round ->
+                fixture.handler.await(inTransaction = true) {
+                    val activeChildren = parentJob.children.count()
+                    assertEquals(
+                        2,
+                        activeChildren,
+                        "round $round must expose the transaction body and its structured control job",
+                    )
+                    fixture.insert(round)
+                }
+
+                assertTrue(
+                    parentJob.children.none(),
+                    "round $round must detach its completed transaction lifecycle from the long-lived parent",
+                )
+            }
+
+            assertEquals(3L, fixture.count())
         }
     }
 
