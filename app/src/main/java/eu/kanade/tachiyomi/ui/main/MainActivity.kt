@@ -49,6 +49,7 @@ import androidx.core.util.Consumer
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import androidx.interpolator.view.animation.LinearOutSlowInInterpolator
 import androidx.lifecycle.lifecycleScope
+import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.NavigatorDisposeBehavior
@@ -93,6 +94,9 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import logcat.LogPriority
 import mihon.core.migration.Migrator
+import mihon.domain.platform.ExternalAction
+import mihon.domain.platform.ExternalActionInput
+import mihon.domain.platform.ExternalActionParser
 import tachiyomi.core.common.Constants
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.system.logcat
@@ -415,15 +419,14 @@ class MainActivity : BaseActivity() {
                 navigator.popUntilRoot()
                 HomeScreen.Tab.More(toDownloads = true)
             }
-            Intent.ACTION_SEARCH, Intent.ACTION_SEND, "com.google.android.gms.actions.SEARCH_ACTION" -> {
-                // If the intent match the "standard" Android search intent
-                // or the Google-specific search intent (triggered by saying or typing "search *query* on *Tachiyomi*" in Google Search/Google Assistant)
-
-                // Get the search query provided in extras, and if not null, perform a global search with it.
-                val query = intent.getStringExtra(SearchManager.QUERY) ?: intent.getStringExtra(Intent.EXTRA_TEXT)
-                if (!query.isNullOrEmpty()) {
+            Intent.ACTION_SEARCH,
+            Intent.ACTION_SEND,
+            "com.google.android.gms.actions.SEARCH_ACTION",
+            Intent.ACTION_VIEW,
+            -> {
+                intent.toExternalAction()?.navigationScreen()?.let { screen ->
                     navigator.popUntilRoot()
-                    navigator.push(DeepLinkScreen(query))
+                    navigator.push(screen)
                 }
                 null
             }
@@ -433,21 +436,6 @@ class MainActivity : BaseActivity() {
                     val filter = intent.getStringExtra(INTENT_SEARCH_FILTER)
                     navigator.popUntilRoot()
                     navigator.push(GlobalSearchScreen(query, filter))
-                }
-                null
-            }
-            Intent.ACTION_VIEW -> {
-                // Handling opening of backup files
-                if (intent.data.toString().endsWith(".tachibk")) {
-                    navigator.popUntilRoot()
-                    navigator.push(RestoreBackupScreen(intent.data.toString()))
-                }
-                // Deep link to add extension repo
-                else if (intent.scheme == "tachiyomi" && intent.data?.host == "add-repo") {
-                    intent.data?.getQueryParameter("url")?.let { repoUrl ->
-                        navigator.popUntilRoot()
-                        navigator.push(ExtensionReposScreen(repoUrl))
-                    }
                 }
                 null
             }
@@ -467,6 +455,29 @@ class MainActivity : BaseActivity() {
         const val INTENT_SEARCH_QUERY = "query"
         const val INTENT_SEARCH_FILTER = "filter"
     }
+}
+
+internal fun Intent.toExternalAction(): ExternalAction? = when (action) {
+    Intent.ACTION_SEARCH,
+    Intent.ACTION_SEND,
+    "com.google.android.gms.actions.SEARCH_ACTION",
+    -> ExternalActionParser.resolve(
+        ExternalActionInput.Search(
+            primaryQuery = getStringExtra(SearchManager.QUERY),
+            fallbackText = getStringExtra(Intent.EXTRA_TEXT),
+        ),
+    )
+    Intent.ACTION_VIEW -> ExternalActionParser.resolve(ExternalActionInput.ViewUri(data?.toString()))
+    else -> null
+}
+
+internal fun ExternalAction.navigationScreen(): Screen? = when (this) {
+    is ExternalAction.Search -> DeepLinkScreen(query)
+    is ExternalAction.RestoreBackup -> RestoreBackupScreen(uri)
+    is ExternalAction.AddRepository -> ExtensionReposScreen(url)
+    ExternalAction.NoOp,
+    is ExternalAction.Rejected,
+    -> null
 }
 
 // Splash screen

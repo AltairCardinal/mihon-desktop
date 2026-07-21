@@ -30,9 +30,7 @@ class DeepLinkScreenModel(
 
     init {
         screenModelScope.launchIO {
-            val source = sourceManager.getCatalogueSources()
-                .filterIsInstance<ResolvableSource>()
-                .firstOrNull { it.getUriType(query) != UriType.Unknown }
+            val source = sourceManager.firstResolvableSource(query)
 
             val manga = source?.getManga(query)?.let {
                 networkToLocalManga(it.toDomainManga(source.id))
@@ -81,3 +79,8 @@ class DeepLinkScreenModel(
         data class Result(val manga: Manga, val chapterId: Long? = null) : State
     }
 }
+
+internal fun SourceManager.firstResolvableSource(query: String): ResolvableSource? =
+    getCatalogueSources()
+        .filterIsInstance<ResolvableSource>()
+        .firstOrNull { it.getUriType(query) != UriType.Unknown }
