@@ -595,7 +595,7 @@ status-source: this-file
 
 **Platform boundary:** shared+android
 
-**Estimated scope:** 7 files, 390 lines
+**Estimated scope:** 8 files, 400 lines
 
 **Verification:** `./gradlew :domain:jvmTest --tests "tachiyomi.domain.release.interactor.GetApplicationReleaseParityTest" && ./gradlew :data:jvmTest --tests "tachiyomi.data.release.ReleaseServiceImplTest"`
 
@@ -606,6 +606,7 @@ status-source: this-file
 - Modify: `data/src/androidMain/kotlin/tachiyomi/data/release/AndroidPlatformInfo.kt`
 - Modify: `data/src/commonMain/kotlin/tachiyomi/data/release/ReleaseServiceImpl.kt`
 - Modify: `data/src/commonMain/kotlin/tachiyomi/data/release/GithubRelease.kt`
+- Modify: `data/build.gradle.kts`
 - Create: `domain/src/jvmTest/kotlin/tachiyomi/domain/release/interactor/GetApplicationReleaseParityTest.kt`
 - Create: `data/src/jvmTest/kotlin/tachiyomi/data/release/ReleaseServiceImplTest.kt`
 
