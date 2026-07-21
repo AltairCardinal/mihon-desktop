@@ -235,7 +235,7 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 4 files, 180 lines
+**Estimated scope:** 4 files, 260 lines
 
 **Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.ExternalActionNavigationTest" --tests "mihon.desktop.ui.ExternalActionFeedbackWiringTest" --rerun-tasks`
 
@@ -251,7 +251,7 @@ status-source: this-file
 **Produces:** 终态动作与 Snackbar 生命周期解耦；反馈显示期间后续动作继续消费，已终态动作不因 UI scope 取消而重放。
 
 1. RED：使用会挂起的反馈消费者证明 A Rejected 后 B Success 不等待反馈；取消反馈并重建 consumer 后 A 不重复。真实 Home Compose 场景在错误 Snackbar 仍显示时继续消费后续成功动作。
-2. GREEN：navigator 只发布非挂起反馈事件，并在发布前记录动作终态；Home 在已有 lifecycle scope 中独立显示 Snackbar，队列 drain 不等待 Snackbar 生命周期。
+2. GREEN：navigator 只发布非挂起反馈事件，并在发布前记录动作终态；Home 使用有界反馈队列和单一 lifecycle consumer 显示 Snackbar，满载时丢弃最旧反馈，动作 drain 不等待 Snackbar 生命周期且不会创建无界挂起 job。
 3. 保持 resolver/destination 取消时当前动作回队首、后续动作保留；终态后的 UI 取消不得重新入队或重复反馈。
 4. 运行 Verification、既有 50 项 Task 5 回归、根 Spotless 和 `git diff --check`。
 
