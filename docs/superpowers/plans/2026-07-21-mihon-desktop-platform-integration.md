@@ -37,7 +37,7 @@ status-source: this-file
 - [x] Task 10A：Desktop 通知隐私、telemetry 与 Widget capability 边界
 - [x] Task 11：Desktop 窗口隐私能力与真实反馈
 - [x] Task 12：固定原版发布语义与当前 Android 兼容
-- [ ] Task 13A：Desktop release discovery 与 canonical 包契约
+- [x] Task 13A：Desktop release discovery 与 canonical 包契约
 - [ ] Task 13B：无兼容包 shared 结果与当前 Android 兼容
 - [ ] Task 13C：Desktop 安全下载、临时路径与 SHA-256
 - [ ] Task 13D：Desktop 签名验证与平台安装交接
@@ -650,6 +650,8 @@ status-source: this-file
 2. GREEN：`DesktopPlatformInfo` 只映射真实 OS/arch/package type；`GitHubAsset.parse` 增加稳定、无空格、含 OS/arch/tag 的 anchored desktop 名称（如 `mihon-desktop-windows-x86_64-<tag>.msi`、`mihon-desktop-macos-arm64-<tag>.dmg`），不把本地 jpackage 名称或尚不存在的 CI asset 冒充已发布事实。
 3. release workflow 当前没有 Desktop job，因此本 Task 只能建立 future-compatible discovery 契约并证明当前无兼容包；Task 15 必须记录发布流水线需按同一契约重命名、生成 checksum 并配置签名信任根。
 4. 运行 Verification、Task 12 Android asset 回归、DesktopPlatformInfo 回归和 `git diff --check`。
+
+**Evidence:** 范围修订提交 `4514ff5e4`，实现提交 `09b6e730f`。`DesktopPlatformInfo` 通过 production 可测试 seam 将 Windows→WINDOWS/x86_64/MSI、macOS/Darwin→MACOS/x86_64|arm64/DMG、Linux→LINUX/UNKNOWN，消除 Desktop ARM 被写成 Android `arm64-v8a` 的混淆；Darwin RED 证明 OS 判断顺序能杀死 `darwin` 被 `win` 子串误判。`GitHubAsset.parse` 只接受 anchored future canonical MSI/DMG 名称并对 release tag 使用 `Regex.escape`，拒绝错误 OS/arch/扩展、空格、`.bak`、substring 和本地 jpackage 名；Task 12 Android ABI/universal/FOSS/checksum 保持。真实 MockWebServer production 链证明 canonical Desktop asset 可选中，而当前 APK-only release 对 Desktop target 返回 null，不冒充已发布能力。协调者强制复跑 ReleaseService 10/10、PlatformInfo 2/2，根 Spotless 与 diff/secret scan 通过；独立审查 APPROVED，Critical/Important/Minor `0/0/0`。最终范围 4 files/214 touched；release workflow、checksum 发布与签名信任根仍是明确后续边界。
 
 ### Task 13B：无兼容包 shared 结果与当前 Android 兼容
 
