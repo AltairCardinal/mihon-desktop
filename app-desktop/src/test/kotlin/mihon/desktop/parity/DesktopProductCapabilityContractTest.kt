@@ -101,20 +101,20 @@ class DesktopProductCapabilityContractTest {
         92 to setOf("SettingsSecurityScreen getSecurityGroup/getFirebaseGroup"),
     )
     private val exactPlatformCapabilityConsumers = mapOf(
-        81 to setOf("app-desktop/src/main/kotlin/mihon/desktop/DesktopAppRuntime.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/ExternalActionNavigator.kt"),
-        82 to setOf("app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopShareService.kt"),
-        83 to setOf("app-desktop/src/main/kotlin/mihon/desktop/security/DesktopAppLock.kt"),
+        81 to setOf("app-desktop/src/main/kotlin/mihon/desktop/Main.kt", "app-desktop/src/main/kotlin/mihon/desktop/DesktopAppRuntime.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/ExternalActionNavigator.kt"),
+        82 to setOf("app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopShareService.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/PageContextMenu.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt"),
+        83 to setOf("app-desktop/src/main/kotlin/mihon/desktop/Main.kt", "app-desktop/src/main/kotlin/mihon/desktop/security/DesktopAppLock.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/security/DesktopUnlockSurface.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SecuritySettingsScreen.kt"),
         84 to setOf("app-desktop/src/main/kotlin/mihon/desktop/privacy/DesktopWindowPrivacy.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SecuritySettingsScreen.kt"),
-        86 to setOf("app-desktop/src/main/kotlin/mihon/desktop/ui/settings/DesktopUpdateScreenModel.kt", "app-desktop/src/main/kotlin/mihon/desktop/update/DesktopUpdateController.kt", "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt"),
+        86 to setOf("app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AboutScreen.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/DesktopUpdateScreenModel.kt", "app-desktop/src/main/kotlin/mihon/desktop/update/DesktopUpdateController.kt", "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt"),
         92 to setOf("app-desktop/src/main/kotlin/mihon/desktop/security/DesktopAppLock.kt", "app-desktop/src/main/kotlin/mihon/desktop/privacy/DesktopWindowPrivacy.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SecuritySettingsScreen.kt"),
     )
     private val exactPlatformCapabilityProtection = mapOf(
         81 to ("app-desktop/src/test/kotlin/mihon/desktop/DesktopAppRuntimeTest.kt" to "owner broker submits forwarded raw string to Task5 ViewUri ingress"),
-        82 to ("app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt" to "desktop DI shares one native share service instance with UI"),
-        83 to ("app-desktop/src/test/kotlin/mihon/desktop/security/DesktopAppLockTest.kt" to "never and immediate delays follow shared policy after unlock"),
+        82 to ("app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaShareWiringTest.kt" to "rendered manga actions bind copy and share through the desktop share service"),
+        83 to ("app-desktop/src/test/kotlin/mihon/desktop/ui/settings/SecuritySettingsWiringTest.kt" to "production bootstrap finalizes real lock state before test mode opens"),
         84 to ("app-desktop/src/test/kotlin/mihon/desktop/privacy/WindowPrivacyWiringTest.kt" to "security UI exposes modes and structured window feedback"),
-        86 to ("app-desktop/src/test/kotlin/mihon/desktop/update/DesktopUpdateControllerTest.kt" to "successful flow publishes progress and invokes every delegate in order"),
-        92 to ("app-desktop/src/test/kotlin/mihon/desktop/privacy/WindowPrivacyWiringTest.kt" to "desktop DI shares one privacy adapter and controller with real preferences"),
+        86 to ("app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AboutUpdateWiringTest.kt" to "about renders full version and routes ready confirmation intents"),
+        92 to ("app-desktop/src/test/kotlin/mihon/desktop/ui/settings/SecuritySettingsWiringTest.kt" to "unsupported desktop privacy integrations show info without rendering controls"),
     )
     private val forkOnlyReaderPairingPaths =
         setOf(
