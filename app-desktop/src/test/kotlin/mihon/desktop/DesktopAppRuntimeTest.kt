@@ -166,7 +166,6 @@ class DesktopAppRuntimeTest {
         val raw = "tachiyomi://manga?url=raw%2Fvalue"
         assertEquals(DesktopExternalActionBroker.StartResult.Forwarded, secondary.startOrForward(raw))
         val fixture = navigatorFixture()
-
         navigator.consumePending(fixture.navigator) {}
 
         assertEquals(ExternalActionInput.ViewUri(raw), resolvedInput)
@@ -192,7 +191,6 @@ class DesktopAppRuntimeTest {
         )
         val registration = (wireDesktopOpenUriEvents(port, navigator) as DesktopOpenUriInstallResult.Installed).registration
         val fixture = navigatorFixture()
-
         navigator.consumePending(fixture.navigator) {}
         port.emit("tachiyomi://manga?url=second")
         navigator.consumePending(fixture.navigator) {}
@@ -203,7 +201,6 @@ class DesktopAppRuntimeTest {
         port.emit("tachiyomi://manga?url=after-close")
         wireDesktopOpenUriEvents(port, navigator)
         navigator.consumePending(fixture.navigator) {}
-
         assertEquals(
             listOf(
                 ExternalActionInput.ViewUri("tachiyomi://manga?url=second"),
@@ -216,7 +213,6 @@ class DesktopAppRuntimeTest {
         assertEquals(2, port.installs)
         fixture.close()
     }
-
     @Test
     fun `elected owner installs open URI ingress while secondary only forwards`(@org.junit.jupiter.api.io.TempDir tempDir: File) = runTest {
         val stateFile = File(tempDir, "instance.json")
@@ -226,7 +222,6 @@ class DesktopAppRuntimeTest {
         val runtime = headlessRuntime()
         val ownerEntered = CountDownLatch(1)
         val releaseOwner = CountDownLatch(1)
-
         val ownerStart = async(Dispatchers.Default) {
             startDesktopApplication(
                 args = emptyArray(),
@@ -254,19 +249,16 @@ class DesktopAppRuntimeTest {
             ),
         )
         assertEquals(1, port.installs)
-
         releaseOwner.countDown()
         assertEquals(DesktopInstanceStartResult.Owner, ownerStart.await())
         assertEquals(1, port.closes)
         secondary.close()
     }
-
     @Test
     fun `owner ingress does not install open URI handler when broker attachment is rejected`(@org.junit.jupiter.api.io.TempDir tempDir: File) {
         val runtime = headlessRuntime()
         runtime.attachInstanceBroker(DesktopExternalActionBroker(File(tempDir, "attached.json")))
         val port = QueuingOpenUriPort()
-
         assertThrows(IllegalStateException::class.java) {
             initializeDesktopOwnerExternalActionIngress(
                 DesktopExternalActionBroker(File(tempDir, "different.json")),
@@ -275,21 +267,17 @@ class DesktopAppRuntimeTest {
                 port,
             )
         }
-
         assertEquals(0, port.installs)
         runtime.close()
     }
-
     @Test
     fun `AWT open URI adapter installs only on supported macOS and unregisters once`() {
         val platform = RecordingOpenUriPlatform()
         val received = mutableListOf<String>()
-
         val result = AwtDesktopOpenUriEventPort(
             environment = FakeOpenUriEnvironment(OperatingSystem.MACOS),
             platform = platform,
         ).install(received::add)
-
         val registration = (result as DesktopOpenUriInstallResult.Installed).registration
         platform.emit("tachiyomi://manga?url=event")
         registration.close()
@@ -300,20 +288,16 @@ class DesktopAppRuntimeTest {
         assertEquals(1, platform.setCalls)
         assertEquals(1, platform.clearCalls)
     }
-
     @Test
     fun `AWT open URI adapter retries a failed unregister before becoming closed`() {
         val platform = RecordingOpenUriPlatform(clearFailuresRemaining = 1)
         val registration = (AwtDesktopOpenUriEventPort(FakeOpenUriEnvironment(OperatingSystem.MACOS), platform).install {} as DesktopOpenUriInstallResult.Installed).registration
         val runtime = headlessRuntime().also { it.attachCloseable(registration) }
-
         assertThrows(IllegalStateException::class.java) { runtime.close() }
         runtime.close()
         runtime.close()
-
         assertEquals(2, platform.clearCalls)
     }
-
     @Test
     fun `AWT open URI adapter skips unsupported environments and reports install failures`() {
         listOf(
@@ -322,7 +306,6 @@ class DesktopAppRuntimeTest {
             FakeOpenUriEnvironment(OperatingSystem.MACOS, isHeadless = true),
         ).forEach { environment ->
             val platform = RecordingOpenUriPlatform()
-
             assertEquals(DesktopOpenUriInstallResult.Unsupported, AwtDesktopOpenUriEventPort(environment, platform).install {})
             assertEquals(0, platform.setCalls)
             assertEquals(0, platform.clearCalls)
@@ -339,7 +322,6 @@ class DesktopAppRuntimeTest {
         ).install {}
         assertTrue(failure is DesktopOpenUriInstallResult.Failed)
     }
-
     @Test
     fun `start launches services and startup cleanup without blocking caller`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
@@ -513,7 +495,6 @@ class DesktopAppRuntimeTest {
         testState = TestState(),
     )
 }
-
 private class QueuingOpenUriPort : DesktopOpenUriEventPort {
     private val queued = mutableListOf<String>()
     private var consumer: ((String) -> Unit)? = null
@@ -521,11 +502,9 @@ private class QueuingOpenUriPort : DesktopOpenUriEventPort {
         private set
     var closes = 0
         private set
-
     fun emit(uri: String) {
         consumer?.invoke(uri) ?: queued.add(uri)
     }
-
     override fun install(consumer: (String) -> Unit): DesktopOpenUriInstallResult {
         installs++
         this.consumer = consumer
@@ -540,12 +519,10 @@ private class QueuingOpenUriPort : DesktopOpenUriEventPort {
         )
     }
 }
-
 private class FakeOpenUriEnvironment(
     override val operatingSystem: OperatingSystem,
     override val isHeadless: Boolean = false,
 ) : DesktopOpenUriEnvironment
-
 private class RecordingOpenUriPlatform(
     override val isDesktopSupported: Boolean = true,
     private val openUriSupported: Boolean = true,
@@ -557,15 +534,12 @@ private class RecordingOpenUriPlatform(
         private set
     var clearCalls = 0
         private set
-
     override fun isOpenUriSupported() = openUriSupported
-
     override fun setOpenUriHandler(consumer: (String) -> Unit) {
         installFailure?.let { throw it }
         setCalls++
         this.consumer = consumer
     }
-
     override fun clearOpenUriHandler() {
         clearCalls++
         if (clearFailuresRemaining > 0) {
@@ -574,7 +548,6 @@ private class RecordingOpenUriPlatform(
         }
         consumer = null
     }
-
     fun emit(uri: String) {
         consumer?.invoke(uri)
     }
