@@ -9,7 +9,16 @@ import cafe.adriel.voyager.navigator.tab.Tab
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import java.util.UUID
 import java.util.prefs.Preferences
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonObject
@@ -19,6 +28,7 @@ import mihon.desktop.DesktopRuntimeService
 import mihon.desktop.DesktopWindowFocusListener
 import mihon.desktop.DesktopWindowFocusRegistration
 import mihon.desktop.bootstrapDesktopRuntime
+import mihon.desktop.runHeadlessMode
 import mihon.desktop.platform.CredentialBackend
 import mihon.desktop.platform.DesktopCredentialStore
 import mihon.desktop.platform.OperatingSystem
@@ -31,6 +41,11 @@ import mihon.desktop.security.DesktopPassphraseVerifier
 import mihon.desktop.test.http.currentTestStateJson
 import mihon.desktop.test.http.nestedTestScreenAction
 import mihon.desktop.test.state.applicationState
+import mihon.desktop.test.TestArguments
+import mihon.desktop.update.DesktopUpdateController
+import mihon.desktop.update.InstallCancelled
+import mihon.desktop.update.InstallManualOnly
+import mihon.desktop.update.ManualOnly
 import mihon.desktop.ui.navigatorFixture
 import mihon.desktop.ui.security.DesktopProtectedRoot
 import mihon.desktop.ui.security.DesktopPasswordField
@@ -252,6 +267,60 @@ class SecuritySettingsWiringTest {
         preferences.useAuthenticator().set(false)
         appLock.onApplicationStarted()
         assertTrue(applicationState.appLocked.value)
+    }
+
+    @Test
+    fun `GUI and headless bootstrap close wait for updater cleanup`() = runBlocking {
+        listOf(false, true).forEach { headless ->
+            val cleanupStarted = CompletableDeferred<Unit>()
+            val releaseCleanup = CompletableDeferred<Unit>()
+            val parentScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val model = DesktopUpdateScreenModel(
+                DesktopUpdateController(
+                    {
+                        try {
+                            awaitCancellation()
+                        } finally {
+                            withContext(NonCancellable) {
+                                cleanupStarted.complete(Unit)
+                                releaseCleanup.await()
+                            }
+                        }
+                    },
+                    { release, _ -> ManualOnly(release.releaseLink) },
+                    { _, _ -> InstallManualOnly },
+                    { _, _ -> InstallCancelled },
+                ),
+                parentScope,
+            )
+            val preferences = preferences(enabled = false, delay = 0)
+            val appLock = DesktopAppLock(
+                preferences,
+                DesktopPassphraseVerifier(DesktopCredentialStore(MemoryCredentialBackend("secret".toCharArray()))),
+            )
+            val service = object : DesktopRuntimeService {
+                override fun start() = Unit
+                override fun stop() = Unit
+            }
+            val runtime = DesktopAppRuntime(service, service, service, startupCleanup = {}, scope = parentScope, updateScreenModel = model)
+            val session = bootstrapDesktopRuntime(runtime, appLock, applicationState) {}
+            assertTrue(model.intent(DesktopUpdateIntent.CHECK))
+            val closing = async(Dispatchers.Default) {
+                if (headless) {
+                    runHeadlessMode(TestArguments(testMode = true, headless = true), runtime, {}, {}, session::close)
+                } else {
+                    session.close()
+                    true
+                }
+            }
+            try {
+                withTimeout(1_000) { cleanupStarted.await() }
+                assertFalse(closing.isCompleted)
+            } finally {
+                releaseCleanup.complete(Unit)
+            }
+            assertTrue(withTimeout(1_000) { closing.await() })
+        }
     }
 
     @Test

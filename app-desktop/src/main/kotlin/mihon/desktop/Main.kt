@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import mihon.desktop.di.initDesktopDI
 import mihon.desktop.platform.DesktopExternalActionBroker
 import mihon.desktop.platform.DesktopPlatformPaths
@@ -160,7 +161,7 @@ internal class DesktopRuntimeBootstrapSession(
         closed = true
         var primaryFailure: Throwable? = null
         try {
-            runtime.close()
+            runBlocking { runtime.closeAndJoin() }
         } catch (failure: Throwable) {
             primaryFailure = failure
         }
