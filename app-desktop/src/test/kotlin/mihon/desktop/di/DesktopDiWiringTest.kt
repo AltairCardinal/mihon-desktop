@@ -44,6 +44,7 @@ import mihon.desktop.library.MangaDetailScreenModelFactory
 import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.ui.more.StatsScreenModel
+import mihon.desktop.update.DesktopUpdateController
 import mihon.desktop.task.DesktopTaskScheduler
 import mihon.desktop.test.http.SourceExtensionTestModeBridge
 import mihon.desktop.test.http.SourceExtensionTestModeController
@@ -75,6 +76,8 @@ import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.TrackerSessionProvider
 import tachiyomi.domain.track.service.TrackerServiceRegistry
+import tachiyomi.domain.release.interactor.GetApplicationRelease
+import tachiyomi.domain.release.service.ReleaseService
 import mihon.desktop.platform.DesktopCredentialStore
 import mihon.desktop.platform.CredentialBackend
 import mihon.desktop.platform.CredentialNamespace
@@ -122,6 +125,19 @@ import okio.Buffer
 
 @Isolated
 class DesktopDiWiringTest {
+    @Test
+    fun `desktop DI shares the production updater controller with UI`(@TempDir tempDir: File) = runBlocking {
+        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+        try {
+            assertNotNull(Injekt.get<ReleaseService>())
+            assertNotNull(Injekt.get<GetApplicationRelease>())
+            val controller = Injekt.get<DesktopUpdateController>()
+            assertSame(controller, DesktopUiDependencies.fromInjekt().updateController)
+        } finally {
+            context.closeAndJoin()
+        }
+    }
+
     @Test
     fun `desktop DI wires one shared security core into runtime`(@TempDir tempDir: File) = runBlocking {
         val namespaces = mutableListOf<CredentialNamespace>()

@@ -105,6 +105,12 @@ import tachiyomi.data.manga.MangaRepositoryImpl
 import tachiyomi.data.updates.UpdatesRepositoryImpl
 import tachiyomi.data.release.DesktopPlatformInfo
 import tachiyomi.data.release.PlatformInfo
+import tachiyomi.data.release.ReleaseServiceImpl
+import tachiyomi.domain.release.interactor.GetApplicationRelease
+import tachiyomi.domain.release.service.ReleaseService
+import mihon.desktop.update.DesktopUpdateController
+import mihon.desktop.update.DesktopUpdateDownloader
+import mihon.desktop.update.DesktopUpdateInstaller
 import tachiyomi.domain.category.interactor.CreateCategoryWithName
 import tachiyomi.domain.category.interactor.DeleteCategory
 import tachiyomi.domain.category.interactor.GetCategories
@@ -576,6 +582,20 @@ internal fun initUILayer(
     val nativeSharePort = defaultDesktopNativeSharePort()
     Injekt.addSingleton<DesktopNativeSharePort>(nativeSharePort)
     Injekt.addSingleton(DesktopShareService(nativeSharePort = nativeSharePort))
+    val releaseService = ReleaseServiceImpl(networkHelper.client, Injekt.get<Json>(), Injekt.get<PlatformInfo>())
+    Injekt.addSingleton<ReleaseService>(releaseService)
+    val releaseChecker = GetApplicationRelease(releaseService, preferenceStore)
+    val updateDownloader = DesktopUpdateDownloader(
+        networkHelper.client,
+        paths.networkCacheDir.toPath().resolve("update"),
+        maxBytes = 512L * 1024 * 1024,
+        maxRedirects = 3,
+    )
+    val updateInstaller = DesktopUpdateInstaller(Injekt.get<PlatformInfo>().releaseTarget(isFoss = false))
+    Injekt.addSingleton(releaseChecker)
+    Injekt.addSingleton(updateDownloader)
+    Injekt.addSingleton(updateInstaller)
+    Injekt.addSingleton(DesktopUpdateController(releaseChecker, updateDownloader, updateInstaller))
     val mangaRepository = Injekt.get<MangaRepository>()
     val chapterRepository = Injekt.get<ChapterRepository>()
     val categoryRepository = Injekt.get<CategoryRepository>()

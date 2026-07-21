@@ -28,6 +28,7 @@ import mihon.desktop.tracking.DesktopTrackerServiceRegistry
 import mihon.desktop.source.LocalSourceScanService
 import mihon.desktop.ui.extension.ExtensionsScreenModel
 import mihon.desktop.ui.ExternalActionNavigator
+import mihon.desktop.update.DesktopUpdateController
 import mihon.domain.extensionrepo.interactor.CreateExtensionRepo
 import mihon.domain.extensionrepo.interactor.DeleteExtensionRepo
 import mihon.domain.extensionrepo.interactor.GetExtensionRepo
@@ -99,6 +100,7 @@ data class DesktopUiDependencies(
     val updateMangaNotes: UpdateMangaNotes,
     val trackRepository: TrackRepository,
     val trackerServiceRegistry: TrackerServiceRegistry = DesktopTrackerServiceRegistry(),
+    val updateController: DesktopUpdateController? = null,
 ) {
     suspend fun getMangaTitle(mangaId: Long): String {
         return mangaRepository.getMangaById(mangaId).title
@@ -165,6 +167,7 @@ data class DesktopUiDependencies(
                 updateMangaNotes = Injekt.get(),
                 trackRepository = Injekt.get(),
                 trackerServiceRegistry = Injekt.get(),
+                updateController = Injekt.get(),
             )
         }
     }

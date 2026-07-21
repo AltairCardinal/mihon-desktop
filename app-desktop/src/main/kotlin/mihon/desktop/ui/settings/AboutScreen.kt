@@ -3,6 +3,7 @@ package mihon.desktop.ui.settings
 import mihon.desktop.LocalDesktopUiDependencies
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -12,19 +13,24 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
@@ -32,6 +38,8 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.platform.DesktopPlatformPaths
+import mihon.desktop.APP_VERSION
+import tachiyomi.i18n.MR
 
 class AboutScreen : Screen {
 
@@ -45,6 +53,11 @@ class AboutScreen : Screen {
         val dbFile = remember(paths) { paths.databaseFile }
         val extensionsDir = remember(paths) { paths.extensionsDir }
         val extensionManager = LocalDesktopUiDependencies.current.extensionManager
+        val updateController = requireNotNull(LocalDesktopUiDependencies.current.updateController)
+        val updateScope = rememberCoroutineScope()
+        val updateModel = remember(updateController, updateScope) { DesktopUpdateScreenModel(updateController, updateScope) }
+        DisposableEffect(updateModel) { onDispose(updateModel::dispose) }
+        val updateState by updateModel.state.collectAsState()
 
         var cacheSizeText by remember {
             mutableStateOf(formatBytes(cacheDir.walkBottomUp().filter { it.isFile }.sumOf { it.length() }))
@@ -83,12 +96,7 @@ class AboutScreen : Screen {
                     text = "Mihon Desktop",
                     style = MaterialTheme.typography.headlineMedium,
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Version 1.0.0",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                AboutUpdateSection(APP_VERSION, updateState.presentation(), updateModel::intent)
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = "A KMP + Compose Multiplatform port of the Mihon Android manga reader.",
@@ -149,6 +157,48 @@ class AboutScreen : Screen {
         bytes >= 1024 -> "%.1f KB".format(bytes / 1024.0)
         else -> "$bytes B"
     }
+}
+
+@Composable
+internal fun AboutUpdateSection(
+    version: String,
+    presentation: DesktopUpdatePresentation,
+    onIntent: (DesktopUpdateIntent) -> Unit,
+) {
+    Spacer(modifier = Modifier.height(8.dp))
+    Text("Version $version", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Spacer(modifier = Modifier.height(8.dp))
+    Text(presentation.message, style = MaterialTheme.typography.bodyMedium)
+    presentation.progress?.let { LinearProgressIndicator(progress = { it / 100f }) }
+    if (presentation.status == "ready") {
+        AlertDialog(
+            onDismissRequest = { onIntent(DesktopUpdateIntent.DECLINE) },
+            title = { Text("Ready to install") },
+            text = {
+                Column {
+                    Text("Install the downloaded update now?")
+                    Button(onClick = { onIntent(DesktopUpdateIntent.MANUAL) }) { Text(MR.strings.update_check_open.localized()) }
+                }
+            },
+            confirmButton = { Button(onClick = { onIntent(DesktopUpdateIntent.CONFIRM) }) { Text("Install") } },
+            dismissButton = { Button(onClick = { onIntent(DesktopUpdateIntent.DECLINE) }) { Text("Not now") } },
+        )
+    } else {
+        Row {
+            presentation.actions.forEach { intent ->
+                Button(onClick = { onIntent(intent) }) { Text(intent.label()) }
+            }
+        }
+    }
+}
+
+private fun DesktopUpdateIntent.label() = when (this) {
+    DesktopUpdateIntent.CHECK -> MR.strings.check_for_updates.localized()
+    DesktopUpdateIntent.DOWNLOAD -> MR.strings.update_check_confirm.localized()
+    DesktopUpdateIntent.CANCEL, DesktopUpdateIntent.DECLINE -> MR.strings.action_cancel.localized()
+    DesktopUpdateIntent.RETRY -> MR.strings.action_retry.localized()
+    DesktopUpdateIntent.MANUAL -> MR.strings.update_check_open.localized()
+    DesktopUpdateIntent.CONFIRM -> "Install"
 }
 
 @Composable
