@@ -119,7 +119,7 @@ class DesktopProductCapabilityContractTest {
         86 to setOf("app/src/main/java/eu/kanade/tachiyomi/data/updater/AppUpdateChecker.kt"), 92 to setOf("app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSecurityScreen.kt"),
     )
     private val exactPlatformCapabilityConsumers = mapOf(
-        81 to setOf("app-desktop/src/main/kotlin/mihon/desktop/Main.kt", "app-desktop/src/main/kotlin/mihon/desktop/DesktopAppRuntime.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/ExternalActionNavigator.kt"),
+        81 to setOf("app-desktop/src/main/kotlin/mihon/desktop/Main.kt", "app-desktop/src/main/kotlin/mihon/desktop/DesktopAppRuntime.kt", "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopOpenUriEventPort.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/ExternalActionNavigator.kt"),
         82 to setOf("app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopShareService.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/PageContextMenu.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt"),
         83 to setOf("app-desktop/src/main/kotlin/mihon/desktop/Main.kt", "app-desktop/src/main/kotlin/mihon/desktop/security/DesktopAppLock.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/security/DesktopUnlockSurface.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SecuritySettingsScreen.kt"),
         84 to setOf("app-desktop/src/main/kotlin/mihon/desktop/privacy/DesktopWindowPrivacy.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SecuritySettingsScreen.kt"),
@@ -127,7 +127,7 @@ class DesktopProductCapabilityContractTest {
         92 to setOf("app-desktop/src/main/kotlin/mihon/desktop/security/DesktopAppLock.kt", "app-desktop/src/main/kotlin/mihon/desktop/privacy/DesktopWindowPrivacy.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SecuritySettingsScreen.kt"),
     )
     private val exactPlatformCapabilityProtection = mapOf(
-        81 to ("app-desktop/src/test/kotlin/mihon/desktop/DesktopAppRuntimeTest.kt" to "owner broker submits forwarded raw string to Task5 ViewUri ingress"),
+        81 to ("app-desktop/src/test/kotlin/mihon/desktop/DesktopAppRuntimeTest.kt" to "macOS open URI bridge drains queued events once and uses the shared ViewUri ingress"),
         82 to ("app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaShareWiringTest.kt" to "rendered manga actions bind copy and share through the desktop share service"),
         83 to ("app-desktop/src/test/kotlin/mihon/desktop/ui/settings/SecuritySettingsWiringTest.kt" to "production bootstrap finalizes real lock state before test mode opens"),
         84 to ("app-desktop/src/test/kotlin/mihon/desktop/privacy/WindowPrivacyWiringTest.kt" to "security UI exposes modes and structured window feedback"),
@@ -137,7 +137,7 @@ class DesktopProductCapabilityContractTest {
     private val exactPlatformCapabilityProtectionPaths =
         exactPlatformCapabilityProtection.mapValues { setOf(it.value.first) }
     private val exactPlatformCapabilityMarkers = mapOf(
-        81 to setOf("wireDesktopExternalActionBroker", "ExternalActionInput.ViewUri"),
+        81 to setOf("wireDesktopOpenUriEvents", "ExternalActionInput.ViewUri"),
         82 to setOf("MangaDetailActionRow", "DesktopShareService"),
         83 to setOf("assertBootstrapSnapshot", "expectedLocked"),
         84 to setOf("DesktopSecureScreenSettings", "not available on this platform"),

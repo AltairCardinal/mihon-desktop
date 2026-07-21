@@ -25,6 +25,8 @@ import mihon.desktop.platform.DesktopExternalActionBroker
 import mihon.desktop.platform.DesktopPlatformPaths
 import mihon.desktop.platform.DesktopUriSchemeRegistrar
 import mihon.desktop.platform.DesktopUriSchemeRegistration
+import mihon.desktop.platform.AwtDesktopOpenUriEventPort
+import mihon.desktop.platform.DesktopOpenUriInstallResult
 import mihon.desktop.privacy.DesktopWindowPrivacyController
 import mihon.desktop.security.DesktopAppLock
 import mihon.desktop.security.DesktopAppLockLifecycle
@@ -96,8 +98,10 @@ private fun runOwnerApplication(
     val windowPrivacyController = Injekt.get<DesktopWindowPrivacyController>()
     val uiDependencies = DesktopUiDependencies.fromInjekt()
     wireDesktopExternalActionBroker(broker, uiDependencies.externalActionNavigator)
+    val openUriResult = wireDesktopOpenUriEvents(AwtDesktopOpenUriEventPort, uiDependencies.externalActionNavigator)
     submitDesktopExternalAction(args, uiDependencies.externalActionNavigator)
     runtime.attachInstanceBroker(broker)
+    (openUriResult as? DesktopOpenUriInstallResult.Installed)?.let { runtime.attachCloseable(it.registration) }
     bootstrapDesktopRuntime(runtime, appLock, applicationState) {
         if (testArgs.testMode) TestMode.start(testArgs)
     }.use { bootstrap ->
@@ -288,12 +292,21 @@ internal fun submitDesktopExternalAction(args: Array<String>, navigator: mihon.d
     desktopExternalActionInput(args)?.let(navigator::submit)
 }
 
+internal fun submitDesktopExternalAction(raw: String, navigator: ExternalActionNavigator) {
+    navigator.submit(ExternalActionInput.ViewUri(raw))
+}
+
 internal fun wireDesktopExternalActionBroker(
     broker: DesktopExternalActionBroker,
     navigator: ExternalActionNavigator,
 ) {
-    broker.setActionConsumer { raw -> navigator.submit(ExternalActionInput.ViewUri(raw)) }
+    broker.setActionConsumer { raw -> submitDesktopExternalAction(raw, navigator) }
 }
+
+internal fun wireDesktopOpenUriEvents(
+    port: mihon.desktop.platform.DesktopOpenUriEventPort,
+    navigator: ExternalActionNavigator,
+) = port.install { raw -> submitDesktopExternalAction(raw, navigator) }
 
 internal fun runHeadlessMode(
     args: TestArguments,

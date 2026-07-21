@@ -17,6 +17,9 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import mihon.desktop.platform.DesktopExternalActionBroker
 import mihon.desktop.platform.DesktopExternalActionTarget
+import mihon.desktop.platform.DesktopOpenUriEventPort
+import mihon.desktop.platform.DesktopOpenUriInstallResult
+import mihon.desktop.platform.DesktopOpenUriRegistration
 import mihon.desktop.test.TestArguments
 import mihon.desktop.test.TestModeRun
 import mihon.desktop.test.completeTestModeStop
@@ -165,6 +168,48 @@ class DesktopAppRuntimeTest {
         fixture.close()
         secondary.close()
         owner.close()
+    }
+
+    @Test
+    fun `macOS open URI bridge drains queued events once and uses the shared ViewUri ingress`() = runTest {
+        val port = QueuingOpenUriPort().also {
+            it.emit("tachiyomi://manga?url=queued")
+            it.emit("tachiyomi://manga?url=second")
+        }
+        val resolvedInputs = mutableListOf<ExternalActionInput>()
+        val navigator = ExternalActionNavigator(
+            resolveTarget = { input ->
+                resolvedInputs += input
+                DesktopExternalActionTarget.Rejected(DesktopExternalActionTarget.Rejection.ParserRejected)
+            },
+            chapterDestination = { error("not a chapter") },
+            testState = TestState(),
+        )
+        val registration = (wireDesktopOpenUriEvents(port, navigator) as DesktopOpenUriInstallResult.Installed).registration
+        val fixture = navigatorFixture()
+
+        navigator.consumePending(fixture.navigator) {}
+        port.emit("tachiyomi://manga?url=running")
+        navigator.consumePending(fixture.navigator) {}
+        val runtime = headlessRuntime()
+        runtime.attachCloseable(registration)
+        runtime.close()
+        runtime.close()
+        port.emit("tachiyomi://manga?url=after-close")
+        wireDesktopOpenUriEvents(port, navigator)
+        navigator.consumePending(fixture.navigator) {}
+
+        assertEquals(
+            listOf(
+                ExternalActionInput.ViewUri("tachiyomi://manga?url=queued"),
+                ExternalActionInput.ViewUri("tachiyomi://manga?url=second"),
+                ExternalActionInput.ViewUri("tachiyomi://manga?url=running"),
+                ExternalActionInput.ViewUri("tachiyomi://manga?url=after-close"),
+            ),
+            resolvedInputs,
+        )
+        assertEquals(2, port.installs)
+        fixture.close()
     }
 
     @Test
@@ -333,6 +378,28 @@ class DesktopAppRuntimeTest {
         DesktopUpdateController({ error("unused") }, { _, _ -> error("unused") }, { _, _ -> error("unused") }, { _, _ -> error("unused") }),
         scope,
     )
+}
+
+private class QueuingOpenUriPort : DesktopOpenUriEventPort {
+    private val queued = mutableListOf<String>()
+    private var consumer: ((String) -> Unit)? = null
+    var installs = 0
+        private set
+
+    fun emit(uri: String) {
+        consumer?.invoke(uri) ?: queued.add(uri)
+    }
+
+    override fun install(consumer: (String) -> Unit): DesktopOpenUriInstallResult {
+        installs++
+        this.consumer = consumer
+        queued.toList().also { queued.clear() }.forEach(consumer)
+        return DesktopOpenUriInstallResult.Installed(
+            DesktopOpenUriRegistration {
+                if (this.consumer === consumer) this.consumer = null
+            },
+        )
+    }
 }
 
 private class RecordingRuntimeService : DesktopRuntimeService {

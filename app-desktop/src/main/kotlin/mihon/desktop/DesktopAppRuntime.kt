@@ -32,6 +32,7 @@ class DesktopAppRuntime(
 ) {
     private var startupJob: Job? = null
     private var instanceBroker: DesktopExternalActionBroker? = null
+    private val closeActions = mutableListOf<AutoCloseable>()
     var isRunning: Boolean = false
         private set
 
@@ -72,6 +73,8 @@ class DesktopAppRuntime(
             instanceBroker = null
             broker?.close()
         }
+        closeActions.forEach { failures.attempt(it::close) }
+        closeActions.clear()
         failures.attempt { updateScreenModel?.close() }
         failures.attempt(scope::cancel)
         failures.throwIfAny()
@@ -88,6 +91,10 @@ class DesktopAppRuntime(
     fun attachInstanceBroker(broker: DesktopExternalActionBroker) {
         check(instanceBroker == null || instanceBroker === broker) { "A different instance broker is already attached" }
         instanceBroker = broker
+    }
+
+    fun attachCloseable(closeable: AutoCloseable) {
+        closeActions += closeable
     }
 
     companion object {
