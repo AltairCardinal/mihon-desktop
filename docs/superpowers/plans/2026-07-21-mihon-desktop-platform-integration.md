@@ -35,7 +35,7 @@ status-source: this-file
 - [x] Task 9B：Desktop credential-backed 应用锁核心
 - [x] Task 10：Desktop Security 设置与 unlock UI
 - [x] Task 10A：Desktop 通知隐私、telemetry 与 Widget capability 边界
-- [ ] Task 11：Desktop 窗口隐私能力与真实反馈
+- [x] Task 11：Desktop 窗口隐私能力与真实反馈
 - [ ] Task 12：固定原版发布语义与当前 Android 兼容
 - [ ] Task 13：Desktop 更新下载、校验与平台安装交接
 - [ ] Task 14：Desktop 更新 UI、DI 与 Test Mode wiring
@@ -586,6 +586,8 @@ status-source: this-file
 3. 应用锁的 Compose 遮挡保持独立；不能用遮挡冒充系统截图保护，也不能用有限 macOS 能力声称等价 Android FLAG_SECURE。
 4. 所有 capability、失败与有限支持说明使用 MR 文案，不得把 native error 或英文 reason slug 直接暴露给用户。
 5. 运行 Verification、Windows 本机 focused integration（有 tagged gate 时）和 `git diff --check`；真实跨 OS 结论留 Task 16。
+
+**Evidence:** 实现提交 `742a8e511`。Windows 使用真实 AWT `Window`/HWND 调用版本锁定的 JNA/JNA Platform `5.19.1`；`WDA_EXCLUDEFROMCAPTURE` 失败时只在 `WDA_MONITOR` 设置且 query 精确确认后报告 Limited，其他失败会 best-effort 清理并返回结构化 Failed。Production `BindDesktopWindowLifecycle` 同时绑定 focus 与窗口隐私生命周期，消费 shared `SecureScreenPolicy`；状态区分期望保护与实际已应用保护，Security UI 只显示 MR-backed 的真实 active/off/limited/unsupported/failed 反馈，设置失败执行补偿回滚，macOS/Linux 不伪报支持。协调者强制复跑 Windows native integration 6/6（0 skipped）、focused 11/11、Task 10 安全链路回归 87/87，根 Spotless 与 diff/secret scan 通过。首审 3 项 Important 经同一实现者修复，唯一复审 APPROVED，Critical/Important/Minor `0/0/0`；最终范围 9 files，913 insertions/1 deletion。
 
 ### Task 12：固定原版发布语义与当前 Android 兼容
 
