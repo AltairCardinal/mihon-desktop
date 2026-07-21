@@ -47,6 +47,12 @@ internal fun GitHubAsset.parse(version: String): ParsedAsset? {
             ReleaseTarget(ReleaseOs.ANDROID, null, ReleasePackageType.APK, ReleaseVariant.FOSS)
         Regex("^mihon-$escapedVersion\\.apk$").matches(name) ->
             ReleaseTarget(ReleaseOs.ANDROID, null, ReleasePackageType.APK, ReleaseVariant.STANDARD)
+        Regex("^mihon-desktop-windows-x86_64-$escapedVersion\\.msi$").matches(name) ->
+            ReleaseTarget(ReleaseOs.WINDOWS, "x86_64", ReleasePackageType.MSI, ReleaseVariant.STANDARD)
+        Regex("^mihon-desktop-macos-x86_64-$escapedVersion\\.dmg$").matches(name) ->
+            ReleaseTarget(ReleaseOs.MACOS, "x86_64", ReleasePackageType.DMG, ReleaseVariant.STANDARD)
+        Regex("^mihon-desktop-macos-arm64-$escapedVersion\\.dmg$").matches(name) ->
+            ReleaseTarget(ReleaseOs.MACOS, "arm64", ReleasePackageType.DMG, ReleaseVariant.STANDARD)
         else -> {
             val match = Regex("^mihon-(arm64-v8a|armeabi-v7a|x86_64|x86)-$escapedVersion\\.apk$")
                 .matchEntire(name) ?: return null

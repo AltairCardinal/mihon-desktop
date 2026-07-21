@@ -75,6 +75,76 @@ class ReleaseServiceImplTest {
     }
 
     @Test
+    fun `desktop targets select only exact canonical MSI and DMG assets`() = runTest {
+        listOf(
+            DesktopFixture(
+                "Windows 11",
+                "amd64",
+                "mihon-desktop-windows-x86_64-v1.2.3.msi",
+                ReleaseOs.WINDOWS,
+                "x86_64",
+                ReleasePackageType.MSI,
+            ),
+            DesktopFixture(
+                "Mac OS X",
+                "amd64",
+                "mihon-desktop-macos-x86_64-v1.2.3.dmg",
+                ReleaseOs.MACOS,
+                "x86_64",
+                ReleasePackageType.DMG,
+            ),
+            DesktopFixture(
+                "Mac OS X",
+                "aarch64",
+                "mihon-desktop-macos-arm64-v1.2.3.dmg",
+                ReleaseOs.MACOS,
+                "arm64",
+                ReleasePackageType.DMG,
+            ),
+        ).forEach { fixture ->
+            withDesktopServer(fixture.osName, fixture.osArch) { server, service ->
+                server.enqueue(MockResponse(body = releaseFixture(asset(fixture.assetName))))
+
+                val release = service.latest(arguments())!!
+
+                assertEquals(fixture.assetName, release.asset.name)
+                assertEquals(fixture.releaseOs, release.asset.target.os)
+                assertEquals(fixture.releaseArch, release.asset.target.arch)
+                assertEquals(fixture.packageType, release.asset.target.packageType)
+                assertEquals(CHECKSUM, release.asset.checksum?.value)
+            }
+        }
+    }
+
+    @Test
+    fun `desktop discovery rejects disguised or incompatible package names`() = runTest {
+        val rejectedNames = listOf(
+            "mihon-desktop-macos-x86_64-v1.2.3.dmg",
+            "mihon-desktop-windows-arm64-v1.2.3.msi",
+            "mihon-desktop-windows-x86_64-v1.2.3.dmg",
+            "mihon desktop-windows-x86_64-v1.2.3.msi",
+            "mihon-desktop-windows-x86_64-v1.2.3.msi.bak",
+            "notes-mihon-desktop-windows-x86_64-v1.2.3.msi",
+            "Mihon Desktop-1.2.3.msi",
+        )
+        withDesktopServer("Windows 11", "amd64") { server, service ->
+            rejectedNames.forEach { name ->
+                server.enqueue(MockResponse(body = releaseFixture(asset(name))))
+                assertNull(service.latest(arguments()), name)
+            }
+        }
+    }
+
+    @Test
+    fun `APK-only release has no compatible desktop package`() = runTest {
+        withDesktopServer("Windows 11", "amd64") { server, service ->
+            server.enqueue(MockResponse(body = releaseFixture(canonicalAssets())))
+
+            assertNull(service.latest(arguments()))
+        }
+    }
+
+    @Test
     fun `invalid digest algorithm length and characters all produce null checksum`() = runTest {
         withServer { server, service ->
             listOf("md5:$CHECKSUM", "sha256:abcd", "sha256:${"g".repeat(64)}").forEach { digest ->
@@ -105,16 +175,33 @@ class ReleaseServiceImplTest {
     private suspend fun withServer(
         abi: String = ANDROID_ABIS.first(),
         block: suspend (MockWebServer, ReleaseServiceImpl) -> Unit,
+    ) = withServer(AndroidTargetInfo(abi), block)
+
+    private suspend fun withServer(
+        platformInfo: PlatformInfo,
+        block: suspend (MockWebServer, ReleaseServiceImpl) -> Unit,
     ) {
         MockWebServer().also { it.start() }.use { server ->
             val service = ReleaseServiceImpl(
                 OkHttpClient(),
                 Json { ignoreUnknownKeys = true },
-                AndroidTargetInfo(abi),
+                platformInfo,
                 server.url("/").toString(),
             )
             block(server, service)
         }
+    }
+
+    private suspend fun withDesktopServer(
+        osName: String,
+        osArch: String,
+        block: suspend (MockWebServer, ReleaseServiceImpl) -> Unit,
+    ) {
+        val platformInfo = DesktopPlatformInfo(
+            osNameProvider = { osName },
+            osArchProvider = { osArch },
+        )
+        withServer(platformInfo, block)
     }
 
     private fun arguments(isFoss: Boolean = false) = GetApplicationRelease.Arguments(
@@ -146,6 +233,15 @@ class ReleaseServiceImplTest {
         override val releaseOs = ReleaseOs.ANDROID
         override val releasePackageType = ReleasePackageType.APK
     }
+
+    private data class DesktopFixture(
+        val osName: String,
+        val osArch: String,
+        val assetName: String,
+        val releaseOs: ReleaseOs,
+        val releaseArch: String,
+        val packageType: ReleasePackageType,
+    )
 
     companion object {
         private val ANDROID_ABIS = listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
