@@ -22,6 +22,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import mihon.desktop.di.initDesktopDI
 import mihon.desktop.platform.DesktopExternalActionBroker
+import mihon.desktop.platform.DesktopOpenUriEventPort
 import mihon.desktop.platform.DesktopPlatformPaths
 import mihon.desktop.platform.DesktopUriSchemeRegistrar
 import mihon.desktop.platform.DesktopUriSchemeRegistration
@@ -65,8 +66,14 @@ internal fun startDesktopApplication(
     broker: DesktopExternalActionBroker = DesktopExternalActionBroker(DesktopPlatformPaths.current().instanceStateFile),
     registrar: DesktopUriSchemeRegistrar = DesktopUriSchemeRegistration(),
     reportRegistration: (DesktopUriSchemeRegistration.Result) -> Unit = ::reportUriSchemeRegistration,
+    openUriEventPort: DesktopOpenUriEventPort = AwtDesktopOpenUriEventPort(),
+    ownerIngressDependencies: () -> DesktopOwnerIngressDependencies = {
+        initDesktopDI()
+        DesktopOwnerIngressDependencies(Injekt.get(), DesktopUiDependencies.fromInjekt().externalActionNavigator)
+    },
+    ownerContinuation: ((DesktopAppRuntime) -> Unit)? = null,
     startOwnerApplication: (DesktopExternalActionBroker) -> Unit = { ownerBroker ->
-        runOwnerApplication(args, TestArguments.parse(args), ownerBroker)
+        runOwnerApplication(args, TestArguments.parse(args), ownerBroker, openUriEventPort, ownerIngressDependencies, ownerContinuation)
     },
 ): DesktopInstanceStartResult {
     return startDesktopInstance(broker, desktopExternalActionRaw(args)) { ownerBroker ->
@@ -82,6 +89,11 @@ internal fun startDesktopApplication(
     }
 }
 
+internal data class DesktopOwnerIngressDependencies(
+    val runtime: DesktopAppRuntime,
+    val navigator: ExternalActionNavigator,
+)
+
 private fun reportUriSchemeRegistration(result: DesktopUriSchemeRegistration.Result) {
     if (result is DesktopUriSchemeRegistration.Result.Configured) return
     System.err.println("Desktop URI scheme capability: ${result::class.simpleName}")
@@ -91,14 +103,26 @@ private fun runOwnerApplication(
     args: Array<String>,
     testArgs: TestArguments,
     broker: DesktopExternalActionBroker,
+    openUriEventPort: DesktopOpenUriEventPort,
+    ownerIngressDependencies: () -> DesktopOwnerIngressDependencies,
+    ownerContinuation: ((DesktopAppRuntime) -> Unit)?,
 ) {
-    initDesktopDI()
-    val runtime = Injekt.get<DesktopAppRuntime>()
+    val ownerIngress = ownerIngressDependencies()
+    val runtime = ownerIngress.runtime
+    val navigator = ownerIngress.navigator
+    submitDesktopExternalAction(args, navigator)
+    initializeDesktopOwnerExternalActionIngress(broker, navigator, runtime, openUriEventPort)
+    if (ownerContinuation != null) {
+        try {
+            ownerContinuation(runtime)
+        } finally {
+            runtime.close()
+        }
+        return
+    }
     val appLock = Injekt.get<DesktopAppLock>()
     val windowPrivacyController = Injekt.get<DesktopWindowPrivacyController>()
     val uiDependencies = DesktopUiDependencies.fromInjekt()
-    submitDesktopExternalAction(args, uiDependencies.externalActionNavigator)
-    initializeDesktopOwnerExternalActionIngress(broker, uiDependencies.externalActionNavigator, runtime, AwtDesktopOpenUriEventPort())
     bootstrapDesktopRuntime(runtime, appLock, applicationState) {
         if (testArgs.testMode) TestMode.start(testArgs)
     }.use { bootstrap ->
@@ -309,11 +333,11 @@ internal fun initializeDesktopOwnerExternalActionIngress(
     broker: DesktopExternalActionBroker,
     navigator: ExternalActionNavigator,
     runtime: DesktopAppRuntime,
-    openUriEventPort: mihon.desktop.platform.DesktopOpenUriEventPort,
+    openUriEventPort: DesktopOpenUriEventPort,
 ) {
     wireDesktopExternalActionBroker(broker, navigator)
-    val openUriResult = wireDesktopOpenUriEvents(openUriEventPort, navigator)
     runtime.attachInstanceBroker(broker)
+    val openUriResult = wireDesktopOpenUriEvents(openUriEventPort, navigator)
     (openUriResult as? DesktopOpenUriInstallResult.Installed)?.let { runtime.attachCloseable(it.registration) }
 }
 

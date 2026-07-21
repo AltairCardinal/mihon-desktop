@@ -20,6 +20,7 @@ import mihon.desktop.platform.DesktopExternalActionTarget
 import mihon.desktop.platform.DesktopOpenUriEventPort
 import mihon.desktop.platform.DesktopOpenUriInstallResult
 import mihon.desktop.platform.DesktopOpenUriRegistration
+import mihon.desktop.platform.DesktopUriSchemeRegistration
 import mihon.desktop.platform.DesktopOpenUriEnvironment
 import mihon.desktop.platform.DesktopOpenUriPlatform
 import mihon.desktop.platform.OperatingSystem
@@ -177,8 +178,8 @@ class DesktopAppRuntimeTest {
     @Test
     fun `macOS open URI bridge drains queued events once and uses the shared ViewUri ingress`() = runTest {
         val port = QueuingOpenUriPort().also {
-            it.emit("tachiyomi://manga?url=queued")
             it.emit("tachiyomi://manga?url=second")
+            it.emit("tachiyomi://manga?url=first")
         }
         val resolvedInputs = mutableListOf<ExternalActionInput>()
         val navigator = ExternalActionNavigator(
@@ -193,7 +194,7 @@ class DesktopAppRuntimeTest {
         val fixture = navigatorFixture()
 
         navigator.consumePending(fixture.navigator) {}
-        port.emit("tachiyomi://manga?url=running")
+        port.emit("tachiyomi://manga?url=second")
         navigator.consumePending(fixture.navigator) {}
         val runtime = headlessRuntime()
         runtime.attachCloseable(registration)
@@ -205,9 +206,9 @@ class DesktopAppRuntimeTest {
 
         assertEquals(
             listOf(
-                ExternalActionInput.ViewUri("tachiyomi://manga?url=queued"),
                 ExternalActionInput.ViewUri("tachiyomi://manga?url=second"),
-                ExternalActionInput.ViewUri("tachiyomi://manga?url=running"),
+                ExternalActionInput.ViewUri("tachiyomi://manga?url=first"),
+                ExternalActionInput.ViewUri("tachiyomi://manga?url=second"),
                 ExternalActionInput.ViewUri("tachiyomi://manga?url=after-close"),
             ),
             resolvedInputs,
@@ -223,20 +224,60 @@ class DesktopAppRuntimeTest {
         val port = QueuingOpenUriPort()
         val navigator = externalActionNavigator()
         val runtime = headlessRuntime()
+        val ownerEntered = CountDownLatch(1)
+        val releaseOwner = CountDownLatch(1)
 
-        assertEquals(
-            DesktopInstanceStartResult.Owner,
-            startDesktopInstance(owner, null) { ownerBroker ->
-                initializeDesktopOwnerExternalActionIngress(ownerBroker, navigator, runtime, port)
-            },
-        )
+        val ownerStart = async(Dispatchers.Default) {
+            startDesktopApplication(
+                args = emptyArray(),
+                broker = owner,
+                registrar = mihon.desktop.platform.DesktopUriSchemeRegistrar { DesktopUriSchemeRegistration.Result.Unavailable(DesktopUriSchemeRegistration.UnavailableReason.NON_PACKAGED_RUNTIME) },
+                openUriEventPort = port,
+                ownerIngressDependencies = { DesktopOwnerIngressDependencies(runtime, navigator) },
+                ownerContinuation = {
+                    ownerEntered.countDown()
+                    releaseOwner.await()
+                },
+            )
+        }
+        assertTrue(ownerEntered.await(1, TimeUnit.SECONDS))
         val secondary = DesktopExternalActionBroker(stateFile)
-        assertEquals(DesktopInstanceStartResult.Forwarded, startDesktopInstance(secondary, "tachiyomi://manga?url=secondary") { error("secondary must not start") })
+        assertEquals(
+            DesktopInstanceStartResult.Forwarded,
+            startDesktopApplication(
+                args = arrayOf("tachiyomi://manga?url=secondary"),
+                broker = secondary,
+                registrar = mihon.desktop.platform.DesktopUriSchemeRegistrar { error("secondary must not register") },
+                openUriEventPort = port,
+                ownerIngressDependencies = { error("secondary must not initialize owner dependencies") },
+                ownerContinuation = { error("secondary must not continue owner startup") },
+            ),
+        )
         assertEquals(1, port.installs)
 
-        runtime.close()
+        releaseOwner.countDown()
+        assertEquals(DesktopInstanceStartResult.Owner, ownerStart.await())
         assertEquals(1, port.closes)
         secondary.close()
+    }
+
+    @Test
+    fun `owner ingress does not install open URI handler when broker attachment is rejected`(@org.junit.jupiter.api.io.TempDir tempDir: File) {
+        val runtime = headlessRuntime()
+        runtime.attachInstanceBroker(DesktopExternalActionBroker(File(tempDir, "attached.json")))
+        val port = QueuingOpenUriPort()
+
+        assertThrows(IllegalStateException::class.java) {
+            initializeDesktopOwnerExternalActionIngress(
+                DesktopExternalActionBroker(File(tempDir, "different.json")),
+                externalActionNavigator(),
+                runtime,
+                port,
+            )
+        }
+
+        assertEquals(0, port.installs)
+        runtime.close()
     }
 
     @Test
@@ -258,6 +299,19 @@ class DesktopAppRuntimeTest {
         assertEquals(listOf("tachiyomi://manga?url=event"), received)
         assertEquals(1, platform.setCalls)
         assertEquals(1, platform.clearCalls)
+    }
+
+    @Test
+    fun `AWT open URI adapter retries a failed unregister before becoming closed`() {
+        val platform = RecordingOpenUriPlatform(clearFailuresRemaining = 1)
+        val registration = (AwtDesktopOpenUriEventPort(FakeOpenUriEnvironment(OperatingSystem.MACOS), platform).install {} as DesktopOpenUriInstallResult.Installed).registration
+        val runtime = headlessRuntime().also { it.attachCloseable(registration) }
+
+        assertThrows(IllegalStateException::class.java) { runtime.close() }
+        runtime.close()
+        runtime.close()
+
+        assertEquals(2, platform.clearCalls)
     }
 
     @Test
@@ -496,6 +550,7 @@ private class RecordingOpenUriPlatform(
     override val isDesktopSupported: Boolean = true,
     private val openUriSupported: Boolean = true,
     private val installFailure: Throwable? = null,
+    private var clearFailuresRemaining: Int = 0,
 ) : DesktopOpenUriPlatform {
     private var consumer: ((String) -> Unit)? = null
     var setCalls = 0
@@ -513,6 +568,10 @@ private class RecordingOpenUriPlatform(
 
     override fun clearOpenUriHandler() {
         clearCalls++
+        if (clearFailuresRemaining > 0) {
+            clearFailuresRemaining--
+            throw IllegalStateException("clear failed")
+        }
         consumer = null
     }
 

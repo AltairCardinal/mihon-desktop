@@ -2,7 +2,6 @@ package mihon.desktop.platform
 
 import java.awt.Desktop
 import java.awt.GraphicsEnvironment
-import java.util.concurrent.atomic.AtomicBoolean
 
 fun interface DesktopOpenUriEventPort {
     fun install(consumer: (String) -> Unit): DesktopOpenUriInstallResult
@@ -71,9 +70,12 @@ private object AwtDesktopOpenUriPlatform : DesktopOpenUriPlatform {
 private class IdempotentOpenUriRegistration(
     private val platform: DesktopOpenUriPlatform,
 ) : DesktopOpenUriRegistration {
-    private val closed = AtomicBoolean()
+    private var closed = false
 
+    @Synchronized
     override fun close() {
-        if (closed.compareAndSet(false, true)) platform.clearOpenUriHandler()
+        if (closed) return
+        platform.clearOpenUriHandler()
+        closed = true
     }
 }

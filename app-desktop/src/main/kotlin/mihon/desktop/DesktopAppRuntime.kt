@@ -73,8 +73,14 @@ class DesktopAppRuntime(
             instanceBroker = null
             broker?.close()
         }
-        closeActions.forEach { failures.attempt(it::close) }
-        closeActions.clear()
+        closeActions.toList().forEach { closeAction ->
+            var closed = false
+            failures.attempt {
+                closeAction.close()
+                closed = true
+            }
+            if (closed) closeActions.remove(closeAction)
+        }
         failures.attempt { updateScreenModel?.close() }
         failures.attempt(scope::cancel)
         failures.throwIfAny()
