@@ -31,6 +31,16 @@ class GetApplicationReleaseParityTest {
     }
 
     @Test
+    fun `compatible release missing for current target is distinct from no new update`() = runTest {
+        val service = FakeReleaseService(null)
+
+        val result = checker(service).await(arguments())
+
+        assertEquals(GetApplicationRelease.Result.NoCompatiblePackage, result)
+        assertEquals(1, service.calls)
+    }
+
+    @Test
     fun `fixed-main preview and release comparisons cover same newer and older`() = runTest {
         val cases = listOf(
             Case(true, 100, "", "r100", false),

@@ -6,11 +6,16 @@ import eu.kanade.tachiyomi.util.system.isFossBuildType
 import eu.kanade.tachiyomi.util.system.isPreviewBuildType
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.domain.release.interactor.GetApplicationRelease
-import uy.kohesive.injekt.injectLazy
+import tachiyomi.domain.release.model.Release
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
-class AppUpdateChecker {
-
-    private val getApplicationRelease: GetApplicationRelease by injectLazy()
+class AppUpdateChecker(
+    private val getApplicationRelease: GetApplicationRelease = Injekt.get(),
+    private val notifyUpdate: (Context, Release) -> Unit = { context, release ->
+        AppUpdateNotifier(context).promptUpdate(release)
+    },
+) {
 
     suspend fun checkForUpdate(context: Context, forceCheck: Boolean = false): GetApplicationRelease.Result {
         // Disable app update checks for older Android versions that we're going to drop support for
@@ -19,7 +24,7 @@ class AppUpdateChecker {
         // }
 
         return withIOContext {
-            val result = getApplicationRelease.await(
+            val sharedResult = getApplicationRelease.await(
                 GetApplicationRelease.Arguments(
                     isFossBuildType,
                     isPreviewBuildType,
@@ -29,9 +34,13 @@ class AppUpdateChecker {
                     forceCheck,
                 ),
             )
+            val result = when (sharedResult) {
+                GetApplicationRelease.Result.NoCompatiblePackage -> GetApplicationRelease.Result.NoNewUpdate
+                else -> sharedResult
+            }
 
             when (result) {
-                is GetApplicationRelease.Result.NewUpdate -> AppUpdateNotifier(context).promptUpdate(result.release)
+                is GetApplicationRelease.Result.NewUpdate -> notifyUpdate(context, result.release)
                 else -> {}
             }
 

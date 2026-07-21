@@ -25,7 +25,7 @@ class GetApplicationRelease(
             return Result.NoNewUpdate
         }
 
-        val release = service.latest(arguments) ?: return Result.NoNewUpdate
+        val release = service.latest(arguments) ?: return Result.NoCompatiblePackage
 
         lastChecked.set(now.toEpochMilli())
 
@@ -84,6 +84,7 @@ class GetApplicationRelease(
     sealed interface Result {
         data class NewUpdate(val release: Release) : Result
         data object NoNewUpdate : Result
+        data object NoCompatiblePackage : Result
         data object OsTooOld : Result
     }
 }

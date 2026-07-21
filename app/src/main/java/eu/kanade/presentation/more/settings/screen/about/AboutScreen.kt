@@ -222,6 +222,9 @@ object AboutScreen : Screen() {
                     is GetApplicationRelease.Result.NoNewUpdate -> {
                         context.toast(MR.strings.update_check_no_new_updates)
                     }
+                    is GetApplicationRelease.Result.NoCompatiblePackage -> {
+                        context.toast(MR.strings.update_check_no_new_updates)
+                    }
                     is GetApplicationRelease.Result.OsTooOld -> {
                         context.toast(MR.strings.update_check_eol)
                     }
