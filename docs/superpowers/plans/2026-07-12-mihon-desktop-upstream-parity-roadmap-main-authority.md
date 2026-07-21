@@ -3,8 +3,8 @@ original-roadmap: docs/superpowers/plans/2026-07-12-mihon-desktop-upstream-parit
 correction-list: docs/superpowers/plans/2026-07-12-mihon-desktop-upstream-parity-roadmap-concept-confusions.md
 original-branch: main
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
-active-child-plan: docs/superpowers/plans/2026-07-15-mihon-source-extension-shared-core.md
-resume-order: complete the active child plan through Task 7D, then resume the first unchecked task in this corrected parent plan
+active-child-plan: docs/superpowers/plans/2026-07-21-mihon-desktop-platform-integration.md
+resume-order: complete the active child plan through Task 16, then resume the first unchecked task in this corrected parent plan
 ---
 
 # Mihon Desktop 对齐原版 Mihon 实施计划（原版基线修正版）
@@ -23,7 +23,7 @@ resume-order: complete the active child plan through Task 7D, then resume the fi
 
 如果后续需要升级原版基线，必须先更新 `original-ref`，重新核验受影响的原版实现与 fixture，再更新计划和 parity evidence；不得让移动中的 `main` 静默改变任务语义。
 
-当前 source/extension 施工由 `active-child-plan` 承载。恢复执行时必须先完成该子计划至 Task 7D，再回到本修正版父计划的首个未完成 Task；保留的 `original-roadmap` 仅供历史对照，不得重新作为可执行权威入口。
+当前系统集成、隐私与应用更新施工由 `active-child-plan` 承载。恢复执行时必须先完成该子计划至 Task 16，再回到本修正版父计划的首个未完成 Task；保留的 `original-roadmap` 仅供历史对照，不得重新作为可执行权威入口。
 
 **Goal:** 以固定原版 Mihon 的成熟行为、流程和工程边界为权威契约，消除 Mihon Desktop 当初为快速完成功能而产生的非平台必要简化与重复实现；将适合共用的规则迁入当前分支 shared core，让当前 Android 构建版和 Desktop JVM 实现共同消费，同时保持全部 Desktop 独有产品能力零回退。
 
@@ -466,13 +466,13 @@ Windows `0.11.14.43.84e386c` 固定 EXE 与 macOS `0.11.14.44.84e386c` 部署应
 - [x] **Step 4: 实现 Windows/macOS/Linux scheme 注册与单实例转发 adapter**
 - [x] **Step 5: 实现系统分享/剪贴板后备和 OS credential-backed app lock**
 - [x] **Step 6: 在支持的平台实现窗口隐私；不支持时 UI 明确说明而非静默成功**
-- [ ] **Step 7: 对齐固定原版的下载、校验、安装、失败回滚更新状态机；平台安装 side effect 由各端 adapter 实现**
+- [x] **Step 7: 对齐固定原版的下载、校验、安装、失败回滚更新状态机；平台安装 side effect 由各端 adapter 实现**
 - [ ] **Step 8: 将 Widget 标记为平台豁免，仅共享更新数据 provider 契约**
-- [ ] **Step 9: 补设置 UI、确认对话框、错误反馈和导航/DI 测试**
+- [x] **Step 9: 补设置 UI、确认对话框、错误反馈和导航/DI 测试**
 - [ ] **Step 10: 运行三 OS 可执行的单元测试矩阵及当前 Windows 集成验收**
 - [ ] **Step 11: 更新追踪项 81–86、92 的原版 provenance、shared/adapter 证据和豁免说明**
 
-**Current progress:** 子计划 Task 1–13E 与 14A 已完成。固定原版 fixture/shared 外部动作、安全与发布检查契约、当前 Android consumer、Desktop target resolution、冷启动导航、FIFO/取消恢复、有界非阻塞反馈、loopback 单实例安全转发、三平台 canonical URI scheme 注册、Desktop 分享 fallback/Reader-Manga production wiring、macOS native picker/session/terminal/cleanup、隔离 tracker/app-lock 的三平台 credential namespace、安全 CharArray API、消费 shared policy 的 fail-closed Desktop 应用锁核心、More → Security/passphrase/根级 unlock/headless lock 状态、通知隐私/telemetry/Widget/shared Updates 的真实 capability、消费 shared SecureScreenPolicy 的 Windows HWND 窗口隐私与三平台诚实反馈、结构化 release target/asset/checksum 和 Android APK/FOSS 兼容、不虚报已发布能力的 Desktop MSI/DMG discovery 契约、shared 无兼容包结果与当前 Android 兼容映射、cacheless/限额/安全临时路径/SHA-256/失败清理的 Desktop 下载 adapter、`.part` 原子 package finalization、Windows exact Authenticode publisher、macOS exact team/notarization 与确认后外部安装交接，以及具有迟到 progress generation 门禁和四阶段取消/精确重试证据的 Desktop 更新控制器均已通过 TDD、production delegate 变异和独立修复复审。子 Task 14 的 About/DI/Test Mode 初始 wiring 已实现，Test Mode 同一 job 取消与发布页失败反馈已关闭；14A 又完成 updater 专用可取消进程 runner、真实 PID/reader 回收、强杀超时诊断和取消终态门禁。父 Step 1、3、4、5、6 已勾选；Task 14 与父 Step 7/9 仍因 updater scope 未绑定 runtime 而保持未勾选，下一项为子 Task 14B。父 Step 2、8 仍等待 Task 15。
+**Current progress:** 子计划 Task 1–14B 已完成。固定原版 fixture/shared 外部动作、安全与发布检查契约、当前 Android consumer、Desktop target resolution、冷启动导航、FIFO/取消恢复、有界非阻塞反馈、loopback 单实例安全转发、三平台 canonical URI scheme 注册、Desktop 分享 fallback/Reader-Manga production wiring、macOS native picker/session/terminal/cleanup、隔离 tracker/app-lock 的三平台 credential namespace、安全 CharArray API、消费 shared policy 的 fail-closed Desktop 应用锁核心、More → Security/passphrase/根级 unlock/headless lock 状态、通知隐私/telemetry/Widget/shared Updates 的真实 capability、消费 shared SecureScreenPolicy 的 Windows HWND 窗口隐私与三平台诚实反馈、结构化 release target/asset/checksum 和 Android APK/FOSS 兼容、不虚报已发布能力的 Desktop MSI/DMG discovery 契约、shared 无兼容包结果与当前 Android 兼容映射、cacheless/限额/安全临时路径/SHA-256/失败清理的 Desktop 下载 adapter、`.part` 原子 package finalization、Windows exact Authenticode publisher、macOS exact team/notarization 与确认后外部安装交接，以及具有迟到 progress generation 门禁和四阶段取消/精确重试证据的 Desktop 更新控制器均已通过 TDD、production delegate 变异和独立修复复审。子 Task 14 已完成 About/DI/Test Mode production wiring；14A 完成 updater 专用可取消进程 runner、真实 PID/reader 回收、强杀超时诊断和取消终态门禁；14B 将 singleton updater scope/model 绑定到 `DesktopAppRuntime`，并让 GUI/headless 真实退出等待 operation、进程与 reader 清理完成。父 Step 1、3、4、5、6、7、9 已勾选；父 Step 2、8 仍等待 Task 15，下一项为子 Task 15。
 
 ## 14. Task 5B：设置、外观、无障碍与许可
 

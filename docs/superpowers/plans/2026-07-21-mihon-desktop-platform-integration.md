@@ -44,9 +44,9 @@ status-source: this-file
 - [x] Task 13C：Desktop 安全下载、临时路径与 SHA-256
 - [x] Task 13D：Desktop 签名验证与平台安装交接
 - [x] Task 13E：Desktop 更新控制器状态机
-- [ ] Task 14：Desktop 更新 UI、DI 与 Test Mode wiring
+- [x] Task 14：Desktop 更新 UI、DI 与 Test Mode wiring
 - [x] Task 14A：Desktop verifier 可取消进程边界
-- [ ] Task 14B：Desktop updater 应用生命周期所有权
+- [x] Task 14B：Desktop updater 应用生命周期所有权
 - [ ] Task 15：Widget 豁免、parity 证据与维护文档
 - [ ] Task 16：独立最终审查与三平台 change verify
 
@@ -799,7 +799,7 @@ status-source: this-file
 3. Test Mode 只暴露 production 状态/动作，不复制 updater 状态机；断开 DI/controller 时测试必须失败。
 4. 运行 Verification、Screen 实例化/导航回归、MockWebServer 集成和 `git diff --check`。
 
-**Review status（未完成）：** 初始实现 `ff3811a0f`、范围重规划 `440d1a513`、唯一修复 `87e109527`。主代理强制复跑 focused 15/15、Screen/Navigation 47/47、MockWebServer 10/10 与根 Spotless 均通过。首审的 Test Mode 同一 job 取消和发布页打开失败可见反馈已经关闭；唯一修复复审仍以 2 个 Important 拒绝：production `ProcessCommandRunner` 的同步 pipe/wait 不会被 `Job.cancel()` 可靠中断，验证完成后可能覆盖 `Cancelled`；DI singleton scope 也未绑定 `DesktopAppRuntime.close()`。因此本 Task 保持未勾选，并将剩余真实产品风险按依赖拆为 14A、14B；两项均通过后再统一完成 Task 14。
+**Review status（已完成）：** 初始实现 `ff3811a0f`、范围重规划 `440d1a513`、唯一修复 `87e109527` 完成 About/DI/Test Mode wiring、同一 job 取消和发布页失败反馈；审查遗留的可取消 verifier 与 runtime 生命周期所有权分别由子 Task 14A、14B 关闭。14A 的实现/修复为 `2afcc9af5`、`e62ccf035`；14B 的实现/唯一审查修复为 `c3eb53a04`、`e3ce84dee`。两项修复复审均 APPROVED，Critical/Important/Minor `0/0/0`，因此本 Task 与其两个 closure 子 Task 统一完成。
 
 ### 子 Task 14A：Desktop verifier 可取消进程边界
 
@@ -839,18 +839,20 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 6 files, 320 lines
+**Estimated scope:** 8 files, 400 lines
 
 **Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.DesktopAppRuntimeTest" --tests "mihon.desktop.di.DesktopDiWiringTest" --tests "mihon.desktop.test.http.DesktopPlatformTestModeControllerTest" --tests "mihon.desktop.ui.settings.AboutUpdateWiringTest"`
 
 **Files:**
 
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/DesktopAppRuntime.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/Main.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/settings/DesktopUpdateScreenModel.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/DesktopAppRuntimeTest.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/test/http/DesktopPlatformTestModeControllerTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/settings/SecuritySettingsWiringTest.kt`
 
 **Consumes:** Task 14A 可取消 production runner；Task 14 中 About 与 Test Mode 共用的 singleton ScreenModel。
 
@@ -861,6 +863,8 @@ status-source: this-file
 3. `DesktopTestDIContext.closeAndJoin()` 必须关闭并等待 updater；下一次 DI 初始化不得复用旧 model/controller/job。About 与 Test Mode 仍解析同一新实例。
 4. 覆盖 GUI close、headless shutdown、重复 close、未启动 runtime close、取消异常和旧实例不可再驱动；断开 runtime→updater cleanup 时测试必须失败。
 5. 运行 Verification、Screen/Navigation 回归、Spotless、`git diff --check` 与 scope/job 泄漏检查。
+
+**Evidence:** 实现提交 `c3eb53a04`、唯一审查修复 `e3ce84dee`。RED 先证明 runtime close 和 Test DI 重建后旧 singleton model 仍能接收 CHECK；GREEN 让每次 updater operation 使用绑定唯一 application scope 的临时 child owner，operation `finally` 完成 owner，`close()` 先永久拒绝新 intent，再用同一取消实例终止当前 operation，`closeAndJoin()` 等待 owner 与 application scope。DI 重建会先关闭并等待旧 runtime/updater，About 与 Test Mode 始终解析同一新实例，`dispose()` 仍只取消页面 operation 且可重用，不夺取 caller scope。首审发现 GUI/headless 真实 bootstrap 只调用非等待式 `runtime.close()`；唯一修复用 production bootstrap RED 证明 NonCancellable updater cleanup 未释放时旧路径会提前返回，并让 `DesktopRuntimeBootstrapSession.close()` 同步等待 `runtime.closeAndJoin()`，GUI `onCloseRequest` 与 headless `runHeadlessMode` 共用该链。协调者强制复跑 Runtime 12 + DI 13 + Test Mode 1 + About 3 + Security/bootstrap 19 = 48/48，ScreenInstantiation 41 + Navigation 6 = 47/47，根 Spotless、diff、secret 与残留进程检查通过；唯一修复复审 APPROVED，Critical/Important/Minor `0/0/0`。最终范围 8 files/266 touched。Task 14、14A、14B 已统一关闭；下一项为 Task 15。
 
 ### Task 15：Widget 豁免、parity 证据与维护文档
 
