@@ -631,7 +631,7 @@ status-source: this-file
 
 **Platform boundary:** shared+desktop
 
-**Estimated scope:** 3 files, 180 lines
+**Estimated scope:** 4 files, 220 lines
 
 **Verification:** `./gradlew :data:jvmTest --tests "tachiyomi.data.release.ReleaseServiceImplTest"`
 
@@ -640,6 +640,7 @@ status-source: this-file
 - Modify: `data/src/jvmMain/kotlin/tachiyomi/data/release/DesktopPlatformInfo.kt`
 - Modify: `data/src/commonMain/kotlin/tachiyomi/data/release/GithubRelease.kt`
 - Modify: `data/src/jvmTest/kotlin/tachiyomi/data/release/ReleaseServiceImplTest.kt`
+- Modify: `data/src/jvmTest/kotlin/tachiyomi/data/release/DesktopPlatformInfoTest.kt`
 
 **Consumes:** Task 12 structured release target/asset/checksum；Compose Desktop 的 MSI/DMG package format；当前 release workflow 的真实 APK-only 事实。
 
