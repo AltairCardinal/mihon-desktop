@@ -50,7 +50,7 @@ status-source: this-file
 - [x] Task 15：Widget 豁免、parity 证据与维护文档
 - [x] Task 15A：平台证据的 per-ID 不可变 provenance 合同
 - [x] Task 15B：Android Widget 默认隐私 wiring 证明
-- [ ] Task 16A：Desktop missing-credential profile reset 闭环
+- [x] Task 16A：Desktop missing-credential profile reset 闭环
 - [ ] Task 16：独立最终审查与三平台 change verify
 
 ## 全局任务门禁
@@ -985,6 +985,8 @@ status-source: this-file
 2. GREEN：resolve production paths without pre-creating directories; before any layer recreates them, reset the real Desktop preference node only when the advertised profile folder is absent, then create required directories and initialize DI. `DesktopPreferenceStore` exposes an exception-safe clear/flush operation covered by a real `java.util.prefs.Preferences` test. Existing profiles, backend unavailable/error, and missing credential without profile deletion remain fail-closed; no normal start silently disables the lock.
 3. Update the recovery copy to name the actual sequence and boundary: close the app, delete the opened configuration folder, restart into a fresh library/settings/session profile; platform-local downloads, backups, extensions or caches may remain and are not represented as erased. The recovery button only opens the exact folder used by the startup detector and never changes preferences itself.
 4. Run the preference-store test, `DesktopAppLockTest`, `SecuritySettingsWiringTest`, `DesktopDiWiringTest`, root Spotless, `git diff --check` and the exact 7-file/320-line scope gate. One implementation review and one repair re-review maximum; after approval return to Task 16 whole-change review and three-platform verify.
+
+**Review status:** 实现及唯一修复最终提交 `815a96c9a`。现存 profile+missing credential 保持 fail-closed；删除锁屏所打开的 exact `configDir` 后，production/test 共用的启动 preparation 在重建目录前递归清同一 `DesktopPreferenceStore` 根及 legacy app/reader 子树，并从 fresh profile 启动。production 顺序固定为 store 创建→profile prepare→settings/reader 注册，legacy 节点由同一 store 的 `childNode` 派生。初始实现没有保留 red-first 日志，后置 reset mutation 仅证明主测试可证伪；唯一修复中将递归清理退化为 root-only 后，真实 DI 的 DARK/WEBTOON→SYSTEM/RTL 断言先 RED，恢复后 GREEN。协调者复跑 core 22 + Desktop AppLock/Security/DI 40，共 62/62，失败/错误/跳过为 0；根 Spotless、diff 与 5 files/112 touched scope 通过。唯一修复复审 APPROVED，Critical/Important/Minor `0/0/0`。
 
 ### Task 16：独立最终审查与三平台 change verify
 
