@@ -72,13 +72,13 @@ class PageContextMenuActionTest {
     }
 
     @Test
-    fun `reader context menu image actions use Chinese labels`() {
+    fun `reader context menu image actions use Chinese labels in share copy save order`() {
         assertEquals(
-            listOf("保存图片", "复制到剪贴板", "设为封面"),
+            listOf("分享图片", "复制到剪贴板", "保存图片", "设为封面"),
             pageContextMenuLabels(includeSetAsCover = true),
         )
         assertEquals(
-            listOf("保存图片", "复制到剪贴板"),
+            listOf("分享图片", "复制到剪贴板", "保存图片"),
             pageContextMenuLabels(includeSetAsCover = false),
         )
     }

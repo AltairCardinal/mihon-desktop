@@ -21,6 +21,7 @@ import mihon.desktop.network.DesktopSourceLoginSessionFactory
 import mihon.desktop.migration.DesktopBatchMigrationController
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.platform.DesktopDeepLinkHandler
+import mihon.desktop.platform.DesktopShareService
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.tracking.DesktopTrackerServiceRegistry
 import mihon.desktop.source.LocalSourceScanService
@@ -85,6 +86,7 @@ data class DesktopUiDependencies(
     val migrateManga: DesktopMigrateMangaUseCase,
     val networkHelper: DesktopNetworkHelper,
     val notificationService: DesktopNotificationService,
+    val shareService: DesktopShareService,
     val replaceExtensionRepo: ReplaceExtensionRepo,
     val saveSourceMangaForDetails: SaveSourceMangaForDetails,
     val setExcludedScanlators: SetExcludedScanlators,
@@ -149,6 +151,7 @@ data class DesktopUiDependencies(
                 migrateManga = Injekt.get(),
                 networkHelper = Injekt.get(),
                 notificationService = Injekt.get(),
+                shareService = DesktopShareService(),
                 replaceExtensionRepo = Injekt.get(),
                 saveSourceMangaForDetails = saveSourceMangaForDetails,
                 setExcludedScanlators = Injekt.get(),

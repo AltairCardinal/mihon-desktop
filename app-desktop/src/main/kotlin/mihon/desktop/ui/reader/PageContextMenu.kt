@@ -3,23 +3,28 @@ package mihon.desktop.ui.reader
 import androidx.compose.foundation.ContextMenuArea
 import androidx.compose.foundation.ContextMenuItem
 import androidx.compose.runtime.Composable
+import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.domain.DesktopNotificationService
+import mihon.desktop.platform.DesktopShareFailureReason
+import mihon.desktop.platform.DesktopShareResult
+import mihon.desktop.platform.DesktopShareService
+import mihon.desktop.platform.toDesktopNotification
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import mihon.desktop.reader.PageSaveHelper
 import mihon.domain.reader.PixelBounds
 import mihon.domain.reader.splitPageBounds
-import java.awt.Toolkit
-import java.awt.datatransfer.DataFlavor
-import java.awt.datatransfer.Transferable
-import java.awt.datatransfer.UnsupportedFlavorException
 import java.awt.image.BufferedImage
-import java.io.IOException
+import java.io.File
+import java.util.Locale
+import tachiyomi.i18n.MR
 
 /**
  * Wraps [content] in a right-click context menu with page actions:
- *   • 保存图片 → ~/Pictures/Mihon/{filename}.png
+ *   • 分享图片 → native share with manga/chapter/page info, otherwise an honest save fallback
  *   • 复制到剪贴板
+ *   • 保存图片 → ~/Pictures/Mihon/{filename}.png
  *   • 设为封面 (calls back to the parent)
  *
  * Android reference: presentation/reader/ReaderPageActionsDialog.kt
@@ -28,7 +33,7 @@ import java.io.IOException
  * @param mangaTitle    Used to build the save filename.
  * @param chapterTitle  Used to build the save filename.
  * @param pageIndex     0-based index; shown as p(n+1) in the filename.
- * @param scope         CoroutineScope for launching IO operations (save/copy).
+ * @param scope         CoroutineScope for launching IO operations (share/copy/save).
  * @param onSetAsCover  Called when the user selects "Set as Cover".
  *                      Null hides that menu item (e.g. when no manga is tracked).
  * @param content       The composable to wrap (i.e. the page image).
@@ -43,33 +48,59 @@ internal fun PageContextMenu(
     onSetAsCover: (() -> Unit)?,
     splitHalf: PageSplitHalf? = null,
     sourceBounds: PixelBounds? = null,
+    saveDirectory: File = PageSaveHelper.defaultSaveDirectory(),
     content: @Composable () -> Unit,
 ) {
+    val dependencies = LocalDesktopUiDependencies.current
     val labels = pageContextMenuLabels(includeSetAsCover = onSetAsCover != null)
     val items = buildList {
         add(ContextMenuItem(labels[0]) {
             scope.launch(Dispatchers.IO) {
-                val img = loadPageContextMenuImage(pageUrl, splitHalf, sourceBounds) ?: return@launch
-                val dir = PageSaveHelper.defaultSaveDirectory()
-                val file = dir.resolve(
-                    PageSaveHelper.buildSaveFileName(mangaTitle, chapterTitle, pageIndex),
+                val sharedImage = loadPageContextMenuImage(pageUrl, splitHalf, sourceBounds)
+                performPageContextMenuImageAction(
+                    PageContextMenuImageAction.SHARE,
+                    sharedImage,
+                    File(saveDirectory, "shared-page.png"),
+                    dependencies.shareService,
+                    dependencies.notificationService,
+                    shareMessage = MR.strings.share_page_info.localized(
+                        Locale.getDefault(),
+                        mangaTitle,
+                        chapterTitle,
+                        pageIndex + 1,
+                    ),
                 )
-                PageSaveHelper.saveImageToFile(img, file)
-                // Open the containing folder so user sees the result
-                try {
-                    java.awt.Desktop.getDesktop().open(dir)
-                } catch (_: Exception) { /* best-effort */ }
             }
         })
         add(ContextMenuItem(labels[1]) {
             scope.launch(Dispatchers.IO) {
-                val img = loadPageContextMenuImage(pageUrl, splitHalf, sourceBounds) ?: return@launch
-                val transferable = BufferedImageTransferable(img)
-                Toolkit.getDefaultToolkit().systemClipboard.setContents(transferable, null)
+                val img = loadPageContextMenuImage(pageUrl, splitHalf, sourceBounds)
+                performPageContextMenuImageAction(
+                    PageContextMenuImageAction.COPY,
+                    img,
+                    File(saveDirectory, "page.png"),
+                    dependencies.shareService,
+                    dependencies.notificationService,
+                )
+            }
+        })
+        add(ContextMenuItem(labels[2]) {
+            scope.launch(Dispatchers.IO) {
+                val img = loadPageContextMenuImage(pageUrl, splitHalf, sourceBounds)
+                val destination = saveDirectory.resolve(
+                    PageSaveHelper.buildSaveFileName(mangaTitle, chapterTitle, pageIndex),
+                )
+                performPageContextMenuImageAction(
+                    PageContextMenuImageAction.SAVE,
+                    img,
+                    destination,
+                    dependencies.shareService,
+                    dependencies.notificationService,
+                )
             }
         })
         if (onSetAsCover != null) {
-            add(ContextMenuItem(labels[2], onSetAsCover))
+            add(ContextMenuItem(labels[3], onSetAsCover))
         }
     }
 
@@ -100,19 +131,33 @@ internal fun loadPageContextMenuImage(
 }
 
 internal fun pageContextMenuLabels(includeSetAsCover: Boolean): List<String> = buildList {
-    add("保存图片")
+    add("分享图片")
     add("复制到剪贴板")
+    add("保存图片")
     if (includeSetAsCover) add("设为封面")
 }
 
-// ── AWT clipboard helpers ─────────────────────────────────────────────────────
+// ── Shared desktop action wiring ──────────────────────────────────────────────
 
-private class BufferedImageTransferable(private val image: BufferedImage) : Transferable {
-    override fun getTransferDataFlavors(): Array<DataFlavor> = arrayOf(DataFlavor.imageFlavor)
-    override fun isDataFlavorSupported(flavor: DataFlavor): Boolean = flavor == DataFlavor.imageFlavor
-    @Throws(UnsupportedFlavorException::class, IOException::class)
-    override fun getTransferData(flavor: DataFlavor): Any {
-        if (!isDataFlavorSupported(flavor)) throw UnsupportedFlavorException(flavor)
-        return image
+internal enum class PageContextMenuImageAction { SHARE, COPY, SAVE }
+
+internal fun performPageContextMenuImageAction(
+    action: PageContextMenuImageAction,
+    image: BufferedImage?,
+    destination: File,
+    shareService: DesktopShareService,
+    notificationService: DesktopNotificationService,
+    shareMessage: String? = null,
+): DesktopShareResult {
+    val result = if (image == null) {
+        DesktopShareResult.Failed(DesktopShareFailureReason.INVALID_PAYLOAD)
+    } else {
+        when (action) {
+            PageContextMenuImageAction.SHARE -> shareService.shareImage(image, shareMessage)
+            PageContextMenuImageAction.COPY -> shareService.copyImage(image)
+            PageContextMenuImageAction.SAVE -> shareService.saveImage(image, destination)
+        }
     }
+    notificationService.post(result.toDesktopNotification())
+    return result
 }

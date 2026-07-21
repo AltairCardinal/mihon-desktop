@@ -1,6 +1,9 @@
 package mihon.desktop.ui.library
 
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.domain.DesktopNotificationService
+import mihon.desktop.platform.DesktopShareService
+import mihon.desktop.platform.toDesktopNotification
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -89,6 +92,7 @@ import coil3.compose.AsyncImage
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.launch
 import mihon.domain.task.TaskState
+import mihon.domain.platform.SharePayload
 import mihon.desktop.library.MangaDetailScreenModelFactory
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.readingModeFromViewerFlags
@@ -99,13 +103,8 @@ import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.manga.model.Manga
-import java.awt.Toolkit
-import java.awt.datatransfer.StringSelection
 import java.awt.Desktop
 import java.net.URI
-import javax.swing.JFileChooser
-import javax.swing.SwingUtilities
-import javax.swing.filechooser.FileNameExtensionFilter
 import androidx.compose.foundation.layout.size as layoutSize
 
 @Composable
@@ -380,19 +379,18 @@ internal fun mangaStatusLabel(status: Long): String? =
 @Composable
 internal fun MangaDetailActionRow(
     manga: Manga,
-    isHttpSource: Boolean,
+    mangaUrl: String?,
     hasUnreadChapters: Boolean,
     onToggleLibrary: () -> Unit,
     onEditCategories: () -> Unit,
     onEditFetchInterval: () -> Unit,
     onTracking: () -> Unit,
     onOpenInBrowser: () -> Unit,
-    onCopyLink: () -> Unit,
-    onShare: () -> Unit,
 ) {
+    val linkActions = mangaUrl?.let { mangaLinkActions(it) }
     val actions = mangaDetailPrimaryActionTypes(
         isFavorite = manga.favorite,
-        isHttpSource = isHttpSource,
+        isHttpSource = linkActions != null,
         hasUnreadChapters = hasUnreadChapters,
     )
     Row(
@@ -430,11 +428,11 @@ internal fun MangaDetailActionRow(
                         Icon(Icons.Default.OpenInBrowser, contentDescription = "Open in browser")
                     }
                 MangaDetailPrimaryActionType.COPY_LINK ->
-                    IconButton(onClick = onCopyLink) {
+                    IconButton(onClick = linkActions!!.copyLink) {
                         Icon(Icons.Default.Link, contentDescription = "Copy link")
                     }
                 MangaDetailPrimaryActionType.SHARE ->
-                    IconButton(onClick = onShare) {
+                    IconButton(onClick = linkActions!!.share) {
                         Icon(Icons.Default.Share, contentDescription = "Share link")
                     }
                 MangaDetailPrimaryActionType.CONTINUE_READING -> Unit
@@ -553,11 +551,24 @@ internal val MangaDetailDownloadAction.label: String
         MangaDetailDownloadAction.BOOKMARKED_CHAPTERS -> "Bookmarked chapters"
     }
 
-internal fun copyText(text: String) {
-    runCatching {
-        val selection = StringSelection(text)
-        Toolkit.getDefaultToolkit().systemClipboard.setContents(selection, selection)
-    }
+internal data class MangaLinkActions(
+    val copyLink: () -> Unit,
+    val share: () -> Unit,
+)
+
+@Composable
+internal fun mangaLinkActions(url: String): MangaLinkActions {
+    val dependencies = LocalDesktopUiDependencies.current
+    val shareService: DesktopShareService = dependencies.shareService
+    val notificationService: DesktopNotificationService = dependencies.notificationService
+    return MangaLinkActions(
+    copyLink = {
+        notificationService.post(shareService.copyText(url).toDesktopNotification())
+    },
+    share = {
+        notificationService.post(shareService.share(SharePayload.Text(url)).toDesktopNotification())
+    },
+)
 }
 
 internal fun openExternalLink(url: String) {

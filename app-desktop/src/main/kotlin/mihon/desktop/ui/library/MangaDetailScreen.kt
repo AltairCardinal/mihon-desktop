@@ -100,13 +100,7 @@ import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.manga.model.Manga
-import java.awt.Toolkit
-import java.awt.datatransfer.StringSelection
-import java.awt.Desktop
-import java.net.URI
-import javax.swing.JFileChooser
-import javax.swing.SwingUtilities
-import javax.swing.filechooser.FileNameExtensionFilter
+import mihon.desktop.platform.toDesktopNotification
 import androidx.compose.foundation.layout.size as layoutSize
 
 data class MangaDetailScreen(val mangaId: Long) : Screen {
@@ -136,7 +130,8 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         val model = rememberScreenModel { MangaDetailScreenModelFactory.create(mangaId) }
         val state by model.state.collectAsState()
         val downloadQueue by model.downloadQueueFlow().collectAsState()
-        val appPreferences = LocalDesktopUiDependencies.current.appPreferences
+        val dependencies = LocalDesktopUiDependencies.current
+        val appPreferences = dependencies.appPreferences
         val hideMissingChapterIndicators by appPreferences.hideMissingChapterIndicators.changes().collectAsState(
             initial = appPreferences.hideMissingChapterIndicators.get(),
         )
@@ -215,7 +210,6 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         val source = remember(manga?.source) {
             manga?.let { m -> model.sourceFor(m) }
         }
-        val isHttpSource = source is eu.kanade.tachiyomi.source.online.HttpSource
         val mangaUrl = remember(manga?.url, source) {
             val m = manga
             val httpSource = source as? eu.kanade.tachiyomi.source.online.HttpSource
@@ -228,6 +222,9 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
             } else {
                 null
             }
+        }
+        val linkActions = mangaUrl?.let {
+            mangaLinkActions(it)
         }
         val nextUnread = remember(chapters) { nextUnreadChapter(chapters) }
 
@@ -269,10 +266,10 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                             IconButton(onClick = { openExternalLink(mangaUrl) }) {
                                 Icon(Icons.Default.OpenInBrowser, contentDescription = "Open in browser")
                             }
-                            IconButton(onClick = { copyText(mangaUrl) }) {
+                            IconButton(onClick = linkActions!!.copyLink) {
                                 Icon(Icons.Default.Link, contentDescription = "Copy link")
                             }
-                            IconButton(onClick = { copyText(mangaUrl) }) {
+                            IconButton(onClick = linkActions!!.share) {
                                 Icon(Icons.Default.Share, contentDescription = "Share link")
                             }
                         }
@@ -741,7 +738,11 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         onDeleteCover = { scope.launch { model.deleteCustomCover() } },
                         sourceName = source?.name,
                         onTagSearch = { tag -> navigator.push(GlobalSearchScreen(initialQuery = tag)) },
-                        onTagCopy = ::copyText,
+                        onTagCopy = { text ->
+                            dependencies.notificationService.post(
+                                dependencies.shareService.copyText(text).toDesktopNotification(),
+                            )
+                        },
                         onAuthorClick = { author ->
                             scope.launch {
                                 val creatorId = model.linkCreator(author, CreatorRole.AUTHOR)
@@ -760,7 +761,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 item {
                     MangaDetailActionRow(
                         manga = manga!!,
-                        isHttpSource = isHttpSource,
+                        mangaUrl = mangaUrl,
                         hasUnreadChapters = nextUnread != null,
                         onToggleLibrary = {
                             val current = manga ?: return@MangaDetailActionRow
@@ -774,8 +775,6 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                             onTracking(navigator, manga!!.title, chapters.size.toLong())
                         },
                         onOpenInBrowser = { mangaUrl?.let(::openExternalLink) },
-                        onCopyLink = { mangaUrl?.let(::copyText) },
-                        onShare = { mangaUrl?.let(::copyText) },
                     )
                 }
 
