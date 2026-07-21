@@ -23,7 +23,7 @@ status-source: this-file
 - [x] Task 1：固定原版 fixture 与 shared 外部动作/安全契约
 - [x] Task 2：当前 Android 外部动作与分享消费 shared
 - [x] Task 3：当前 Android 应用锁与屏幕安全消费 shared
-- [ ] Task 4：Desktop 源 URI/备份/仓库动作解析
+- [x] Task 4：Desktop 源 URI/备份/仓库动作解析
 - [ ] Task 5：Desktop 外部动作导航、入口与可见反馈
 - [ ] Task 6：Desktop 单实例安全转发
 - [ ] Task 7：Windows/macOS/Linux URI scheme 注册
@@ -191,6 +191,8 @@ status-source: this-file
 2. 测试必须经过真实 handler 与已有 use case/repository wiring；不能在测试复制 URI 分类。
 3. GREEN：复用现有服务，不另建第二套源搜索、漫画写入或章节同步；错误映射为结构化结果。
 4. 运行 Verification、相关 source/browse/backup 回归和 `git diff --check`。
+
+**Evidence:** 实现提交 `770b59b0a`。首轮 RED 因缺失 handler、target 与 production consumer seam 编译失败；固定 main 复核后的第二轮 RED 在 5 项 Handler 测试中准确暴露 Manga 额外详情/章节请求、Chapter 重复同步和取消被吞 3 个偏差。最终新测试 8/8；强制重跑 `DesktopDeepLinkHandlerTest`、`DesktopDeepLinkProductionWiringTest`、`SaveSourceMangaForDetailsTest`、`BackupRestoreScreenModelTest`、`GlobalSearchResultNavigationTest`、`GlobalSearchSourceFilterWiringTest` 共 31/31，0 failure/error/skip。根 `spotlessCheck`、提交范围与 diff check 通过；独立审查 APPROVED，Critical/Important/Minor `0/0/0`。Manga 只走既有落地，Chapter 先查本地且缺失才同步，取消继续传播；备份仅接受真实存在、非符号链接的本地普通 `.tachibk` 文件。最终范围 7 files / 387 touched lines；导航与 OS 注册留后续 Task。
 
 ### Task 5：Desktop 外部动作导航、入口与可见反馈
 
