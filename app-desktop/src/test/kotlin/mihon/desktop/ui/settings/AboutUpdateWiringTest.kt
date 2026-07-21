@@ -9,16 +9,31 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.withTimeout
 import mihon.desktop.APP_VERSION
 import mihon.desktop.update.*
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import tachiyomi.domain.release.model.ReleaseAsset
+import tachiyomi.domain.release.model.ReleaseChecksum
+import tachiyomi.domain.release.model.ReleaseOs
+import tachiyomi.domain.release.model.ReleasePackageType
+import tachiyomi.domain.release.model.ReleaseTarget
+import tachiyomi.domain.release.model.ReleaseVariant
 import tachiyomi.domain.release.model.Release
+import java.nio.file.Files
+import java.nio.file.Path
+import java.security.MessageDigest
 import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.CountDownLatch
@@ -129,6 +144,39 @@ class AboutUpdateWiringTest {
                 disposing.dispose()
                 disposing.state.first { it is DesktopUpdateState.Cancelled }
             }
+        }
+    }
+
+    @Test
+    fun `cancel kills the real verifier process before publishing Cancelled`(@TempDir tempDir: Path) = runBlocking {
+        val target = ReleaseTarget(ReleaseOs.WINDOWS, "x86_64", ReleasePackageType.MSI, ReleaseVariant.STANDARD)
+        val bytes = "artifact".toByteArray()
+        val file = tempDir.resolve("mihon-desktop-windows-x86_64-v1.msi").also { Files.write(it, bytes) }
+        val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        val asset = ReleaseAsset(file.fileName.toString(), target, ReleaseChecksum("sha256", hash))
+        val download = VerifiedDownload(file, asset, hash, bytes.size.toLong())
+        val release = Release("v1", "", "https://release", "https://download", asset)
+        val processRunner = DesktopUpdateProcessRunner()
+        val blockingRunner = DesktopUpdateCommandRunner { _, stdin ->
+            processRunner.run(updaterTestCommand("block", tempDir), stdin)
+        }
+        val installer = DesktopUpdateInstaller(target, InstallerTrust(windowsPublisher = "CN=Mihon"), blockingRunner)
+        val controller = DesktopUpdateController({ tachiyomi.domain.release.interactor.GetApplicationRelease.Result.NewUpdate(release) }, { _, _ -> download }, installer::prepare, installer::handoff)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val model = DesktopUpdateScreenModel(controller, scope)
+        try {
+            assertTrue(model.intent(DesktopUpdateIntent.CHECK))
+            withTimeout(2_000) { model.state.first { it is DesktopUpdateState.UpdateAvailable } }
+            assertTrue(model.intent(DesktopUpdateIntent.DOWNLOAD))
+            val childPid = awaitUpdaterPid(tempDir)
+            assertTrue(ProcessHandle.of(childPid).orElseThrow().isAlive)
+            assertTrue(model.intent(DesktopUpdateIntent.CANCEL))
+            withTimeout(2_000) { model.state.first { it is DesktopUpdateState.Cancelled } }
+            assertTrue(ProcessHandle.of(childPid).map { !it.isAlive }.orElse(true))
+            assertEquals(0, processRunner.activeReaderCount)
+        } finally {
+            model.dispose()
+            scope.cancel()
         }
     }
 

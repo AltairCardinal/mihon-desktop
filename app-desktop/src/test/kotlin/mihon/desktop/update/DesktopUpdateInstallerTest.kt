@@ -2,7 +2,6 @@ package mihon.desktop.update
 
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.platform.CommandResult
-import mihon.desktop.platform.CommandRunner
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.OkHttpClient
@@ -28,7 +27,7 @@ import java.util.Base64
 class DesktopUpdateInstallerTest {
     @TempDir lateinit var tempDir: Path
     @Test
-    fun `target and canonical package must exactly match current platform`() {
+    fun `target and canonical package must exactly match current platform`() = runTest {
         val runner = FakeRunner()
         val windows = target(ReleaseOs.WINDOWS, ReleasePackageType.MSI)
         val installer = installer(windows, runner)
@@ -42,7 +41,7 @@ class DesktopUpdateInstallerTest {
         assertTrue(runner.calls.isEmpty())
     }
     @Test
-    fun `only exact canonical asset names for release tag are accepted`() {
+    fun `only exact canonical asset names for release tag are accepted`() = runTest {
         val runner = FakeRunner()
         val installer = installer(WINDOWS, runner)
         val valid = download(WINDOWS)
@@ -78,7 +77,7 @@ class DesktopUpdateInstallerTest {
         }
     }
     @Test
-    fun `missing changed-size and same-size tampered files are rejected before verifier`() {
+    fun `missing changed-size and same-size tampered files are rejected before verifier`() = runTest {
         val runner = FakeRunner()
         val installer = installer(WINDOWS, runner)
         val missing = download(WINDOWS, write = false)
@@ -90,7 +89,7 @@ class DesktopUpdateInstallerTest {
         assertTrue(runner.calls.isEmpty())
     }
     @Test
-    fun `unsupported platforms and absent trust roots are manual only without commands`() {
+    fun `unsupported platforms and absent trust roots are manual only without commands`() = runTest {
         val runner = FakeRunner()
         listOf(LINUX, UNKNOWN).forEach { assertTrue(installer(it, runner).prepare(download(it), TAG) is InstallManualOnly) }
         assertTrue(DesktopUpdateInstaller(WINDOWS, InstallerTrust(), runner).prepare(download(WINDOWS), TAG) is InstallManualOnly)
@@ -98,7 +97,7 @@ class DesktopUpdateInstallerTest {
         assertTrue(runner.calls.isEmpty())
     }
     @Test
-    fun `Windows requires valid signature and exact configured publisher`() {
+    fun `Windows requires valid signature and exact configured publisher`() = runTest {
         listOf(31 to InstallFailure.SIGNATURE_INVALID, 32 to InstallFailure.PUBLISHER_MISMATCH).forEach { (code, failure) ->
             val runner = FakeRunner(code)
             val download = download(WINDOWS)
@@ -113,7 +112,7 @@ class DesktopUpdateInstallerTest {
         }
     }
     @Test
-    fun `macOS requires exact team requirement and notarization policy`() {
+    fun `macOS requires exact team requirement and notarization policy`() = runTest {
         val wrongTeam = FakeRunner(1)
         assertRejected(InstallFailure.SIGNATURE_INVALID, installer(MAC, wrongTeam).prepare(download(MAC), TAG))
         assertEquals("anchor apple generic and certificate leaf[subject.OU] = \"$TEAM\"", wrongTeam.calls.single()[5])
@@ -128,7 +127,7 @@ class DesktopUpdateInstallerTest {
         assertEquals(listOf("/usr/bin/open", ready.download.file.toString()), launches.single())
     }
     @Test
-    fun `confirmation gates handoff and launch result preserves artifact`() {
+    fun `confirmation gates handoff and launch result preserves artifact`() = runTest {
         val runner = FakeRunner(0, 0, 0, 0, 0)
         val launches = mutableListOf<List<String>>()
         val installer = installer(WINDOWS, runner) { args -> launches += args; args.none { it == "fail" } }
@@ -145,20 +144,20 @@ class DesktopUpdateInstallerTest {
         assertTrue(Files.exists(ready.download.file))
     }
     @Test
-    fun `handoff revalidates artifact after user confirmation`() {
+    fun `handoff revalidates artifact after user confirmation`() = runTest {
         val installer = installer(WINDOWS, FakeRunner(0, 0))
         val ready = installer.prepare(download(WINDOWS), TAG) as ReadyToInstall
         Files.writeString(ready.download.file, "fedcba")
         assertEquals(InstallFailure.HASH_MISMATCH, (installer.handoff(ready, true) as InstallHandoffFailed).reason)
     }
     @Test
-    fun `real Windows verifier fails closed for unsigned file`() {
+    fun `real Windows verifier fails closed for unsigned file`() = runTest {
         val actual = DesktopPlatformInfo().releaseTarget(isFoss = false)
         assumeTrue(actual.os == ReleaseOs.WINDOWS)
         val result = DesktopUpdateInstaller(actual, InstallerTrust(windowsPublisher = PUBLISHER)).prepare(download(actual), TAG)
         assertRejected(InstallFailure.SIGNATURE_INVALID, result)
     }
-    private fun installer(target: ReleaseTarget, runner: CommandRunner, launcher: (List<String>) -> Boolean = { true }) = DesktopUpdateInstaller(target, InstallerTrust(PUBLISHER, TEAM), runner, launcher)
+    private fun installer(target: ReleaseTarget, runner: DesktopUpdateCommandRunner, launcher: (List<String>) -> Boolean = { true }) = DesktopUpdateInstaller(target, InstallerTrust(PUBLISHER, TEAM), runner, launcher)
     private suspend fun downloaded(server: MockWebServer, target: ReleaseTarget): VerifiedDownload {
         val bytes = "abcdef".toByteArray()
         server.enqueue(MockResponse(body = bytes.decodeToString()))
@@ -181,11 +180,11 @@ class DesktopUpdateInstallerTest {
     private fun decode(value: String) = Base64.getDecoder().decode(value).decodeToString()
     private fun assertRejected(expected: InstallFailure, actual: InstallPreparation) = assertEquals(expected, (actual as InstallRejected).reason)
     private fun ByteArray.sha256() = MessageDigest.getInstance("SHA-256").digest(this).joinToString("") { "%02x".format(it) }
-    private class FakeRunner(vararg results: Int) : CommandRunner {
+    private class FakeRunner(vararg results: Int) : DesktopUpdateCommandRunner {
         val calls = mutableListOf<List<String>>()
         val stdins = mutableListOf<String?>()
         private val results = results.toMutableList()
-        override fun run(arguments: List<String>, stdin: CharArray?) =
+        override suspend fun run(arguments: List<String>, stdin: CharArray?) =
             CommandResult(if (results.isEmpty()) 0 else results.removeAt(0), "ignored", "ignored")
                 .also { calls += arguments; stdins += stdin?.concatToString() }
     }

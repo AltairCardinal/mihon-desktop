@@ -1,7 +1,11 @@
 package mihon.desktop.update
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertSame
@@ -151,6 +155,30 @@ class DesktopUpdateControllerTest {
         assertTrue(retrying.state.value is DesktopUpdateState.ReadyToInstall)
     }
     @Test
+    fun `late verifier result cannot replace Cancelled`() = runTest {
+        listOf(false, true).forEach { fail ->
+            val entered = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            val controller = controller(prepare = { _, _ ->
+                entered.complete(Unit)
+                withContext(NonCancellable) { release.await() }
+                if (fail) error("late verifier failure") else READY
+            })
+            controller.check(ARGUMENTS)
+            val completion = CompletableDeferred<Throwable?>()
+            val running = launch { controller.download() }.also { job ->
+                job.invokeOnCompletion { completion.complete(it) }
+            }
+            entered.await()
+            val cancellation = CancellationException("late verifier")
+            running.cancel(cancellation)
+            release.complete(Unit)
+            running.join()
+            assertSame(cancellation, completion.await())
+            assertEquals(DesktopUpdateState.Cancelled(RELEASE.releaseLink), controller.state.value)
+        }
+    }
+    @Test
     fun `wrong-state calls and delegate reentry are rejected`() = runTest {
         lateinit var controller: DesktopUpdateController
         controller = controller(
@@ -168,8 +196,8 @@ class DesktopUpdateControllerTest {
     private fun controller(
         check: suspend (GetApplicationRelease.Arguments) -> GetApplicationRelease.Result = { GetApplicationRelease.Result.NewUpdate(RELEASE) },
         download: suspend (Release, (DownloadProgress) -> Unit) -> DesktopUpdateDownloadResult = { _, _ -> DOWNLOAD },
-        prepare: (VerifiedDownload, String) -> InstallPreparation = { _, _ -> READY },
-        handoff: (ReadyToInstall, Boolean) -> InstallHandoffResult = { _, _ -> InstallHandedOff },
+        prepare: suspend (VerifiedDownload, String) -> InstallPreparation = { _, _ -> READY },
+        handoff: suspend (ReadyToInstall, Boolean) -> InstallHandoffResult = { _, _ -> InstallHandedOff },
     ) = DesktopUpdateController(check, download, prepare, handoff)
 
     companion object {

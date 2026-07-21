@@ -1,8 +1,6 @@
 package mihon.desktop.update
 
 import kotlinx.coroutines.CancellationException
-import mihon.desktop.platform.CommandRunner
-import mihon.desktop.platform.ProcessCommandRunner
 import tachiyomi.domain.release.model.ReleaseOs
 import tachiyomi.domain.release.model.ReleasePackageType
 import tachiyomi.domain.release.model.ReleaseTarget
@@ -36,9 +34,9 @@ data object InstallHandedOff : InstallHandoffResult
 data class InstallHandoffFailed(val reason: InstallFailure) : InstallHandoffResult
 class DesktopUpdateInstaller(
     private val currentTarget: ReleaseTarget, private val trust: InstallerTrust = InstallerTrust(),
-    private val runner: CommandRunner = ProcessCommandRunner(), private val launcher: (List<String>) -> Boolean = { ProcessBuilder(it).start(); true },
+    private val runner: DesktopUpdateCommandRunner = DesktopUpdateProcessRunner(), private val launcher: (List<String>) -> Boolean = { ProcessBuilder(it).start(); true },
 ) {
-    fun prepare(download: VerifiedDownload, releaseTag: String): InstallPreparation {
+    suspend fun prepare(download: VerifiedDownload, releaseTag: String): InstallPreparation {
         val os = currentTarget.os
         if (os != ReleaseOs.WINDOWS && os != ReleaseOs.MACOS) return InstallManualOnly
         val assetPattern = canonicalAssetPattern(currentTarget, releaseTag) ?: return rejected(InstallFailure.TARGET_MISMATCH)
@@ -57,7 +55,7 @@ class DesktopUpdateInstaller(
         }
         return verification?.let(::rejected) ?: ReadyToInstall(download, releaseTag, launchArguments(os, download))
     }
-    fun handoff(ready: ReadyToInstall, confirmed: Boolean): InstallHandoffResult {
+    suspend fun handoff(ready: ReadyToInstall, confirmed: Boolean): InstallHandoffResult {
         if (!confirmed) return InstallCancelled
         val refreshed = prepare(ready.download, ready.releaseTag)
         if (refreshed !is ReadyToInstall) {
@@ -98,7 +96,7 @@ class DesktopUpdateInstaller(
             InstallFailure.FILE_MISSING
         }
     }
-    private fun verifyWindows(download: VerifiedDownload, publisher: String): InstallFailure? {
+    private suspend fun verifyWindows(download: VerifiedDownload, publisher: String): InstallFailure? {
         val input = listOf(download.file.toString(), publisher)
             .joinToString("\n") { Base64.getEncoder().encodeToString(it.toByteArray(StandardCharsets.UTF_8)) }
             .toCharArray()
@@ -115,14 +113,16 @@ class DesktopUpdateInstaller(
             else -> InstallFailure.VERIFIER_UNAVAILABLE
         }
     }
-    private fun verifyMac(download: VerifiedDownload, teamId: String): InstallFailure? {
+    private suspend fun verifyMac(download: VerifiedDownload, teamId: String): InstallFailure? {
         val requirement = "anchor apple generic and certificate leaf[subject.OU] = \"$teamId\""
         val signed = runner.run(
             listOf("/usr/bin/codesign", "--verify", "--strict", "--deep", "--test-requirement", requirement, download.file.toString()),
+            null,
         )
         if (signed.exitCode != 0) return InstallFailure.SIGNATURE_INVALID
         val notarized = runner.run(
             listOf("/usr/sbin/spctl", "--assess", "--type", "open", "--context", "context:primary-signature", download.file.toString()),
+            null,
         )
         return InstallFailure.NOTARIZATION_FAILED.takeIf { notarized.exitCode != 0 }
     }

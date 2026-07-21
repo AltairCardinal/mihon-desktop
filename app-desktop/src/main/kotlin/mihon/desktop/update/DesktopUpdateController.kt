@@ -1,6 +1,8 @@
 package mihon.desktop.update
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,8 +15,8 @@ import java.util.concurrent.atomic.AtomicLong
 class DesktopUpdateController(
     private val checkRelease: suspend (GetApplicationRelease.Arguments) -> GetApplicationRelease.Result,
     private val downloadRelease: suspend (Release, (DownloadProgress) -> Unit) -> DesktopUpdateDownloadResult,
-    private val prepareInstall: (VerifiedDownload, String) -> InstallPreparation,
-    private val handoffInstall: (ReadyToInstall, Boolean) -> InstallHandoffResult,
+    private val prepareInstall: suspend (VerifiedDownload, String) -> InstallPreparation,
+    private val handoffInstall: suspend (ReadyToInstall, Boolean) -> InstallHandoffResult,
 ) {
     constructor(checker: GetApplicationRelease, downloader: DesktopUpdateDownloader, installer: DesktopUpdateInstaller) : this(
         checker::await,
@@ -101,14 +103,17 @@ class DesktopUpdateController(
         }
     }
 
-    private fun verifyNow(release: Release, download: VerifiedDownload) {
+    private suspend fun verifyNow(release: Release, download: VerifiedDownload) {
         mutableState.value = DesktopUpdateState.Verifying(release, download)
         val result = try {
-            prepareInstall(download, release.version)
+            val prepared = prepareInstall(download, release.version)
+            currentCoroutineContext().ensureActive()
+            prepared
         } catch (error: CancellationException) {
             cancel(release.releaseLink)
             throw error
         } catch (error: Exception) {
+            cancellationCheckpoint(release.releaseLink)
             installFailed(InstallStage.VERIFY, release.releaseLink, RetryAction.Verify(release, download), cause = error)
             return
         }
@@ -121,14 +126,17 @@ class DesktopUpdateController(
             is InstallRejected -> installFailed(InstallStage.VERIFY, release.releaseLink, RetryAction.Verify(release, download), result.reason)
         }
     }
-    private fun handoffNow(releasePage: String, ready: ReadyToInstall, confirmed: Boolean) {
+    private suspend fun handoffNow(releasePage: String, ready: ReadyToInstall, confirmed: Boolean) {
         mutableState.value = DesktopUpdateState.HandingOff(releasePage)
         val result = try {
-            handoffInstall(ready, confirmed)
+            val handedOff = handoffInstall(ready, confirmed)
+            currentCoroutineContext().ensureActive()
+            handedOff
         } catch (error: CancellationException) {
             cancel(releasePage)
             throw error
         } catch (error: Exception) {
+            cancellationCheckpoint(releasePage)
             installFailed(InstallStage.HANDOFF, releasePage, RetryAction.Handoff(releasePage, ready), cause = error)
             return
         }
@@ -159,6 +167,14 @@ class DesktopUpdateController(
     private fun cancel(releasePage: String?) {
         retryAction = null
         mutableState.value = DesktopUpdateState.Cancelled(releasePage)
+    }
+    private suspend fun cancellationCheckpoint(releasePage: String?) {
+        try {
+            currentCoroutineContext().ensureActive()
+        } catch (cancelled: CancellationException) {
+            cancel(releasePage)
+            throw cancelled
+        }
     }
     private suspend fun operate(block: suspend () -> Boolean): Boolean {
         if (!operationLock.tryLock()) return false
