@@ -866,7 +866,7 @@ class DesktopProductCapabilityContractTest {
     fun `active source extension authority language distinguishes fixed main from current consumers`() {
         val repositoryRoot = repositoryRoot()
         val manifest = Files.readString(repositoryRoot.resolve("app-desktop/src/test/resources/parity/parity-manifest.json"))
-        val proposal = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-15-mihon-source-extension-shared-core.md"))
+        val proposal = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-12-mihon-desktop-upstream-parity-roadmap-main-authority.md"))
 
         listOf("Android authoritative", "Android original", "Android 原版").forEach { ambiguousAuthority ->
             assertFalse(manifest.contains(ambiguousAuthority), "Active manifest must not use ambiguous authority term: $ambiguousAuthority")
