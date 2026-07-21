@@ -31,7 +31,8 @@ status-source: this-file
 - [x] Task 8A：Desktop 分享 fallback、Reader/Manga wiring 与真实反馈
 - [x] Task 8B：macOS 原生分享异步生命周期
 - [x] Task 8C：production JXA 分享终态可执行验证
-- [ ] Task 9：Desktop credential-backed 应用锁核心
+- [ ] Task 9A：Desktop credential namespace 与安全 CharArray API
+- [ ] Task 9B：Desktop credential-backed 应用锁核心
 - [ ] Task 10：Desktop Security 设置与 unlock UI
 - [ ] Task 10A：Desktop 通知隐私、telemetry 与 Widget capability 边界
 - [ ] Task 11：Desktop 窗口隐私能力与真实反馈
@@ -425,34 +426,55 @@ status-source: this-file
 
 **Evidence:** 与 8B 共用实现提交 `07bf54191`，本 Task 在同两个文件净增 33 行。macOS-only integration test 从同一 `MAC_OS_NATIVE_SHARE_SCRIPT` 只在 READY 后注入 `sharingDelegate.sharingServiceDidShareItems(null, items)`，真实执行 production `ObjC.registerSubclass` delegate、runner/session/protocol 与 cleanup；Windows focused 编译及非 mac runner tests 通过。`ssh mbp` 无现有 clone，按计划用 stdin 执行当前 production script 的同一 probe，得到 `PID 90848 / MIHON_SHARE:READY / MIHON_SHARE:SHARED / EXIT 0 / ALIVE:no`，无文件、外部发送或用户数据修改。独立审查 APPROVED，Critical/Important/Minor `0/0/0`；Task 8B/8C 累计范围 10 files/698 touched lines。
 
-### Task 9：Desktop credential-backed 应用锁核心
+### Task 9A：Desktop credential namespace 与安全 CharArray API
+
+**Risk axis:** desktop-credential-namespace
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 2 files, 140 lines
+
+**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.platform.PlatformCredentialBackendTest"`
+
+**Files:**
+
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopCredentialStore.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/platform/PlatformCredentialBackendTest.kt`
+
+**Consumes:** 现有 tracker 使用的 DPAPI/Keychain/Secret Service backend。
+
+**Produces:** 向后兼容 tracker 的 CharArray API，以及 Windows、macOS、Linux 均真实隔离的 versioned app-lock credential namespace。
+
+1. RED：同 account 的 tracker 与 app-lock secret 必须落入不同 Windows preference node、macOS Keychain service 和 Linux Secret Service attribute；删除任一 namespace 不得影响另一方。
+2. GREEN：保留 tracker 的既有 service/node 和 String API；新增 app-lock v1 namespace 与会清零副本的 CharArray API，不增加 plaintext/file/preference fallback。
+3. 运行 Verification、真实 Windows backend tagged round-trip/isolation（本机可用时）、tracker credential 回归和 `git diff --check`。
+
+### Task 9B：Desktop credential-backed 应用锁核心
 
 **Risk axis:** desktop-app-lock
 
 **Platform boundary:** shared+desktop
 
-**Estimated scope:** 7 files, 390 lines
+**Estimated scope:** 6 files, 360 lines
 
-**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.security.DesktopAppLockTest" --tests "mihon.desktop.platform.PlatformCredentialBackendTest"`
+**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.security.DesktopAppLockTest" --tests "mihon.desktop.di.DesktopDiWiringTest"`
 
 **Files:**
 
 - Create: `app-desktop/src/main/kotlin/mihon/desktop/security/DesktopAppLock.kt`
 - Create: `app-desktop/src/main/kotlin/mihon/desktop/security/DesktopPassphraseVerifier.kt`
-- Modify: `app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopCredentialStore.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/DesktopAppRuntime.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/security/DesktopAppLockTest.kt`
-- Modify: `app-desktop/src/test/kotlin/mihon/desktop/platform/PlatformCredentialBackendTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt`
 
-**Consumes:** Task 1 AppLockPolicy；SecurityPreferences；现有 DPAPI/Keychain/Secret Service backend。
+**Consumes:** Task 1 `AppLockPolicy`；单一 `SecurityPreferences`；Task 9A 的 app-lock v1 protected credential namespace。
 
-**Produces:** versioned credential namespace、passphrase verifier、启动/离开/恢复/关闭状态机和 fail-closed DI service。
+**Produces:** passphrase verifier、启动/离开/恢复/关闭状态机和 fail-closed DI service。
 
 1. RED：首次必锁、`-1/0/>0`、关闭时间写入/清除、成功/错误/取消、backend unavailable、重设/删除、并发验证和 secret 清零。
 2. GREEN：复用单一 SecurityPreferences；不能在 DesktopAppPreferences 复制 key。verifier 存入 OS protected backend，普通偏好不含明文、可逆 secret 或 hash material。
-3. tracker credential namespace 与 app-lock namespace 隔离；删除 app lock 不得删除 tracker session，反之亦然。
-4. 运行 Verification、Desktop DI focused test、真实 Windows backend tagged test（本机可用时）和 `git diff --check`。
+3. 运行 Verification、Desktop runtime/DI focused 回归、根 Spotless 和 `git diff --check`。
 
 ### Task 10：Desktop Security 设置与 unlock UI
 
