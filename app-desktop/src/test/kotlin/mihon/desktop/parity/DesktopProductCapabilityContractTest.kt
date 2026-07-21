@@ -90,6 +90,31 @@ class DesktopProductCapabilityContractTest {
         "presentation-widget/src/main/java/tachiyomi/presentation/widget/BaseUpdatesGridGlanceWidget.kt",
         "app/src/main/java/eu/kanade/tachiyomi/data/updater/AppUpdateChecker.kt",
         "app/src/main/java/eu/kanade/presentation/more/NewUpdateScreen.kt",
+        "domain/src/main/java/tachiyomi/domain/release/interactor/GetApplicationRelease.kt",
+    )
+    private val exactPlatformCapabilitySymbols = mapOf(
+        81 to setOf("MainActivity.handleIntentAction ACTION_VIEW tachibk/add-repo"),
+        82 to setOf("shareIntent"),
+        83 to setOf("SettingsSecurityScreen"),
+        84 to setOf("SettingsSecurityScreen secureScreen"),
+        86 to setOf("AppUpdateChecker", "NewUpdateScreen", "GetApplicationRelease.await isNewVersion"),
+        92 to setOf("SettingsSecurityScreen getSecurityGroup/getFirebaseGroup"),
+    )
+    private val exactPlatformCapabilityConsumers = mapOf(
+        81 to setOf("app-desktop/src/main/kotlin/mihon/desktop/DesktopAppRuntime.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/ExternalActionNavigator.kt"),
+        82 to setOf("app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopShareService.kt"),
+        83 to setOf("app-desktop/src/main/kotlin/mihon/desktop/security/DesktopAppLock.kt"),
+        84 to setOf("app-desktop/src/main/kotlin/mihon/desktop/privacy/DesktopWindowPrivacy.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SecuritySettingsScreen.kt"),
+        86 to setOf("app-desktop/src/main/kotlin/mihon/desktop/ui/settings/DesktopUpdateScreenModel.kt", "app-desktop/src/main/kotlin/mihon/desktop/update/DesktopUpdateController.kt", "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt"),
+        92 to setOf("app-desktop/src/main/kotlin/mihon/desktop/security/DesktopAppLock.kt", "app-desktop/src/main/kotlin/mihon/desktop/privacy/DesktopWindowPrivacy.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SecuritySettingsScreen.kt"),
+    )
+    private val exactPlatformCapabilityProtection = mapOf(
+        81 to ("app-desktop/src/test/kotlin/mihon/desktop/DesktopAppRuntimeTest.kt" to "owner broker submits forwarded raw string to Task5 ViewUri ingress"),
+        82 to ("app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt" to "desktop DI shares one native share service instance with UI"),
+        83 to ("app-desktop/src/test/kotlin/mihon/desktop/security/DesktopAppLockTest.kt" to "never and immediate delays follow shared policy after unlock"),
+        84 to ("app-desktop/src/test/kotlin/mihon/desktop/privacy/WindowPrivacyWiringTest.kt" to "security UI exposes modes and structured window feedback"),
+        86 to ("app-desktop/src/test/kotlin/mihon/desktop/update/DesktopUpdateControllerTest.kt" to "successful flow publishes progress and invokes every delegate in order"),
+        92 to ("app-desktop/src/test/kotlin/mihon/desktop/privacy/WindowPrivacyWiringTest.kt" to "desktop DI shares one privacy adapter and controller with real preferences"),
     )
     private val forkOnlyReaderPairingPaths =
         setOf(
@@ -1441,12 +1466,22 @@ class DesktopProductCapabilityContractTest {
                 assertTrue(path in platformCapabilityFixedMainPaths, "ID $id upstream path is not fixed-main verified: $path")
                 requiredText(symbol.jsonObject, "symbol", id)
             }
+            assertEquals(exactPlatformCapabilitySymbols.getValue(id), symbols.map { it.jsonObject.getValue("symbol").jsonPrimitive.content }.toSet())
             listOf("sharedImplementationPaths", "currentAndroidConsumerPaths", "desktopConsumerAdapterPaths", "protectionTests")
                 .forEach { field ->
                     val paths = item.getValue(field).jsonArray
                     assertTrue(paths.isNotEmpty(), "ID $id requires $field")
                     paths.forEach { path -> assertTrue(Files.isRegularFile(repositoryRoot.resolve(path.jsonPrimitive.content)), "ID $id missing $field path") }
                 }
+            assertEquals(
+                exactPlatformCapabilityConsumers.getValue(id),
+                item.getValue("desktopConsumerAdapterPaths").jsonArray.map { it.jsonPrimitive.content }.toSet(),
+                "ID $id must retain exact Desktop production consumers",
+            )
+            val (testPath, methodName) = exactPlatformCapabilityProtection.getValue(id)
+            assertTrue(testPath in item.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content })
+            val method = kotlinTestMethod(Files.readString(repositoryRoot.resolve(testPath)), methodName, "ID $id protection")
+            assertTrue(method.contains("assert"), "ID $id protection method must execute assertions")
             val deviations = item.getValue("deviations").jsonArray
             assertTrue(deviations.isNotEmpty(), "ID $id requires an honest deviation")
             assertTrue(requiredText(item, "verificationScope", id).contains("CANDIDATE"), "ID $id must remain limited until OS acceptance")
@@ -1476,7 +1511,9 @@ class DesktopProductCapabilityContractTest {
             val capability = value.jsonObject
             assertTrue(requiredText(capability, "androidConsumer", 92, name).isNotBlank())
             assertTrue(requiredText(capability, "desktopConsumer", 92, name).isNotBlank())
-            assertTrue(requiredText(capability, "status", 92, name) != "VERIFIED" || requiredText(capability, "desktopConsumer", 92, name) != "NONE")
+            val expectedStatus = if (name in setOf("nativeNotificationContent", "telemetry")) "UNSUPPORTED" else "CANDIDATE"
+            assertEquals(expectedStatus, requiredText(capability, "status", 92, name))
+            if (expectedStatus == "UNSUPPORTED") assertEquals("NONE", requiredText(capability, "desktopConsumer", 92, name))
             requiredText(capability, "reason", 92, name); requiredText(capability, "uiBehavior", 92, name)
         }
     }

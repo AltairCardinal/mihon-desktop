@@ -77,6 +77,13 @@
     { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "blobId": "4c227636a85e44c8abb35e6b73ec524a54931b41" },
     { "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/appearance/AppLanguageScreen.kt", "blobId": "b59b26acaccce2612ce34904c704a4930ec99dc3" },
     { "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAppearanceScreen.kt", "blobId": "a29cdcf4884ed1aa85caf4beffafb5f7176232a7" },
-    { "path": "core/common/src/main/kotlin/tachiyomi/core/common/i18n/Localize.kt", "blobId": "c698e856e517392c60ff3a6247ae9575b6318e2c" }
+    { "path": "core/common/src/main/kotlin/tachiyomi/core/common/i18n/Localize.kt", "blobId": "c698e856e517392c60ff3a6247ae9575b6318e2c" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/main/MainActivity.kt", "blobId": "e80e5c947829ebdba73bfbc263c4e8f16196056a" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/util/system/IntentExtensions.kt", "blobId": "65acbed18fc489e5cb088bf119ac04ce22ecb902" },
+    { "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSecurityScreen.kt", "blobId": "69a5993263fb36aead01ce75d2cff8160fba8fce" },
+    { "path": "presentation-widget/src/main/java/tachiyomi/presentation/widget/BaseUpdatesGridGlanceWidget.kt", "blobId": "17b8d41fc85bd891fae6fd09db9c44fd05211957" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/data/updater/AppUpdateChecker.kt", "blobId": "c6781277e453d4c5a6e15e7d62d3e0f721c97bd6" },
+    { "path": "app/src/main/java/eu/kanade/presentation/more/NewUpdateScreen.kt", "blobId": "f6b5f4b0b52a5af959866cc63c80ca2bd5af6399" },
+    { "path": "domain/src/main/java/tachiyomi/domain/release/interactor/GetApplicationRelease.kt", "blobId": "b95173688eded70cc10803c33d553c5af018cc3f" }
   ]
 }

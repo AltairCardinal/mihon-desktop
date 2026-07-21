@@ -1,5 +1,13 @@
 package tachiyomi.presentation.widget
 
+import android.app.Application
+import android.content.Context
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.glance.ImageProvider
+import androidx.glance.unit.ColorProvider
+import dev.mihon.injekt.patchInjekt
+import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -15,9 +23,29 @@ import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.domain.updates.interactor.GetUpdates
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.addSingleton
 
 class WidgetPrivacyProductionWiringTest {
+
+    @Test
+    fun `base widget default constructor wires injected privacy consumer`() = runTest {
+        patchInjekt()
+        val getUpdates = mockk<GetUpdates> { every { subscribe(any(), any()) } returns flowOf(emptyList()) }
+        val preferences = SecurityPreferences(InMemoryPreferenceStore())
+        Injekt.addSingleton<Application>(mockk(relaxed = true))
+        Injekt.addSingleton(getUpdates)
+        Injekt.addSingleton(preferences)
+        val widget = TestUpdatesWidget()
+        val consumer = BaseUpdatesGridGlanceWidget::class.java.getDeclaredField("privacyConsumer").also {
+            it.isAccessible =
+                true
+        }.get(widget) as WidgetPrivacyConsumer
+        assertTrue(consumer.subscribe(0).first() is WidgetPrivacyData.Content)
+        verify { getUpdates.subscribe(read = false, after = 0) }
+    }
 
     @Test
     fun `locked production data source never queries updates`() = runTest {
@@ -49,4 +77,11 @@ class WidgetPrivacyProductionWiringTest {
         assertEquals(listOf(true, false, true), refreshes.await().map { it.locked })
         verify(exactly = 2) { getUpdates.subscribe(read = false, after = 0) }
     }
+}
+
+private class TestUpdatesWidget() : BaseUpdatesGridGlanceWidget() {
+    override val foreground = ColorProvider(Color.Black)
+    override val background = mockk<ImageProvider>()
+    override val topPadding = 0.dp
+    override val bottomPadding = 0.dp
 }
