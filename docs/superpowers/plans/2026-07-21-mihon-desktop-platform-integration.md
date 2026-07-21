@@ -37,7 +37,11 @@ status-source: this-file
 - [x] Task 10A：Desktop 通知隐私、telemetry 与 Widget capability 边界
 - [x] Task 11：Desktop 窗口隐私能力与真实反馈
 - [x] Task 12：固定原版发布语义与当前 Android 兼容
-- [ ] Task 13：Desktop 更新下载、校验与平台安装交接
+- [ ] Task 13A：Desktop release discovery 与 canonical 包契约
+- [ ] Task 13B：无兼容包 shared 结果与当前 Android 兼容
+- [ ] Task 13C：Desktop 安全下载、临时路径与 SHA-256
+- [ ] Task 13D：Desktop 签名验证与平台安装交接
+- [ ] Task 13E：Desktop 更新控制器状态机
 - [ ] Task 14：Desktop 更新 UI、DI 与 Test Mode wiring
 - [ ] Task 15：Widget 豁免、parity 证据与维护文档
 - [ ] Task 16：独立最终审查与三平台 change verify
@@ -64,7 +68,7 @@ status-source: this-file
 | Step 4 scheme / 单实例 | 4–7 |
 | Step 5 share / credential app lock | 8A、8B、9–10 |
 | Step 6 窗口隐私 | 11 |
-| Step 7 更新状态机与 side effect | 12–14 |
+| Step 7 更新状态机与 side effect | 12、13A–13E、14 |
 | Step 8 Widget 豁免 | 3、10A、15 |
 | Step 9 UI / 确认 / 错误 / 导航 / DI | 5、8A、8B、10、10A、14 |
 | Step 10 三 OS 与 Windows 集成 | 16 |
@@ -621,35 +625,125 @@ status-source: this-file
 
 **Evidence:** 范围/测试依赖修订提交 `f98b2a33c`，实现提交 `9f40548c3`。直接从 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` 的 `GetApplicationRelease`、`ReleaseServiceImpl`、`GithubRelease`、`Release`、原测试与 `release.yml` 固化三日节流、force、preview/release 比较，以及 universal/四 ABI/FOSS canonical asset 命名。Shared `ReleaseTarget(os, arch, packageType, variant)`、`ReleaseAsset`、可空 SHA-256 metadata 保留旧 `downloadLink` consumer；Android adapter 明确 `ANDROID/APK`，选择 exact ABI 后仅回退 universal，FOSS 不回退 standard，空/不兼容 asset 返回 null，HTTP/JSON 失败保持失败。MockWebServer 覆盖成功、4 ABI、4 universal fallback、FOSS、空/不兼容、403/429/500、畸形 JSON、缺失及三类无效 digest；mutation RED 分别杀死 fallback 与 checksum validation 回归。协调者强制复跑 domain 3/3、data 7/7、Android `app:compileDebugKotlin` 成功，根 Spotless 与 diff/secret scan 通过。首审 2 项 Important 经唯一修复轮关闭，复审 APPROVED，Critical/Important/Minor `0/0/0`；最终范围 8 files/364 touched。
 
-### Task 13：Desktop 更新下载、校验与平台安装交接
+### Task 13A：Desktop release discovery 与 canonical 包契约
 
-**Risk axis:** desktop-update-transport
+**Risk axis:** desktop-release-discovery
 
 **Platform boundary:** shared+desktop
 
-**Estimated scope:** 8 files, 400 lines
+**Estimated scope:** 3 files, 180 lines
 
-**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.update.DesktopUpdateControllerTest" --tests "mihon.desktop.update.DesktopUpdateInstallerTest"`
+**Verification:** `./gradlew :data:jvmTest --tests "tachiyomi.data.release.ReleaseServiceImplTest"`
 
 **Files:**
 
 - Modify: `data/src/jvmMain/kotlin/tachiyomi/data/release/DesktopPlatformInfo.kt`
-- Create: `app-desktop/src/main/kotlin/mihon/desktop/update/DesktopUpdateState.kt`
-- Create: `app-desktop/src/main/kotlin/mihon/desktop/update/DesktopUpdateController.kt`
+- Modify: `data/src/commonMain/kotlin/tachiyomi/data/release/GithubRelease.kt`
+- Modify: `data/src/jvmTest/kotlin/tachiyomi/data/release/ReleaseServiceImplTest.kt`
+
+**Consumes:** Task 12 structured release target/asset/checksum；Compose Desktop 的 MSI/DMG package format；当前 release workflow 的真实 APK-only 事实。
+
+**Produces:** Windows/MSI、macOS/DMG 的平台 target 与 anchored canonical 远端文件名契约；Linux 和当前 APK-only release 如实返回 no compatible asset。
+
+1. RED：表驱动覆盖 Windows x86_64 MSI、macOS x86_64/arm64 DMG 的 exact target，拒绝错误 OS/arch/扩展名、空格和 `.bak` 伪装；当前仅含 fixed-main APK 的 release 必须返回 null。
+2. GREEN：`DesktopPlatformInfo` 只映射真实 OS/arch/package type；`GitHubAsset.parse` 增加稳定、无空格、含 OS/arch/tag 的 anchored desktop 名称（如 `mihon-desktop-windows-x86_64-<tag>.msi`、`mihon-desktop-macos-arm64-<tag>.dmg`），不把本地 jpackage 名称或尚不存在的 CI asset 冒充已发布事实。
+3. release workflow 当前没有 Desktop job，因此本 Task 只能建立 future-compatible discovery 契约并证明当前无兼容包；Task 15 必须记录发布流水线需按同一契约重命名、生成 checksum 并配置签名信任根。
+4. 运行 Verification、Task 12 Android asset 回归、DesktopPlatformInfo 回归和 `git diff --check`。
+
+### Task 13B：无兼容包 shared 结果与当前 Android 兼容
+
+**Risk axis:** no-compatible-release
+
+**Platform boundary:** shared+android
+
+**Estimated scope:** 4 files, 240 lines
+
+**Verification:** `./gradlew :domain:jvmTest --tests "tachiyomi.domain.release.interactor.GetApplicationReleaseParityTest" && ./gradlew :app:testReleaseUnitTest --tests "eu.kanade.tachiyomi.data.updater.AppUpdateCheckerCompatibilityTest"`
+
+**Files:**
+
+- Modify: `domain/src/commonMain/kotlin/tachiyomi/domain/release/interactor/GetApplicationRelease.kt`
+- Modify: `domain/src/jvmTest/kotlin/tachiyomi/domain/release/interactor/GetApplicationReleaseParityTest.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/data/updater/AppUpdateChecker.kt`
+- Create: `app/src/test/java/eu/kanade/tachiyomi/data/updater/AppUpdateCheckerCompatibilityTest.kt`
+
+**Consumes:** Task 13A 中 `ReleaseService.latest() == null` 表示 release 存在但当前 target 无兼容 asset 的 production 事实；fixed-main throttle/force/version 结果。
+
+**Produces:** shared `NoCompatiblePackage` 结果，以及当前 Android adapter 将其映射为既有 `NoNewUpdate` 可见行为的兼容层；Desktop 可在 Task 14 显示准确状态。
+
+1. RED：service null 必须产生 `NoCompatiblePackage`，但 throttle 仍是 `NoNewUpdate` 且 service 0 调用；Android production checker 必须把新结果映射回既有 no-update 行为，不能破坏通知/About exhaustive consumer。
+2. GREEN：只区分“检查被节流/版本不新”和“release 存在但 target 不兼容”；三日节流、force、preview/release 比较保持 fixed-main，不借机改 SemVer。
+3. Android adapter 测试必须经过 production mapping seam；断开 mapping 时失败。运行 Verification、Android app compile 与 `git diff --check`。
+
+### Task 13C：Desktop 安全下载、临时路径与 SHA-256
+
+**Risk axis:** desktop-update-download
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 2 files, 400 lines
+
+**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.update.DesktopUpdateDownloaderTest"`
+
+**Files:**
+
 - Create: `app-desktop/src/main/kotlin/mihon/desktop/update/DesktopUpdateDownloader.kt`
-- Create: `app-desktop/src/main/kotlin/mihon/desktop/update/DesktopUpdateInstaller.kt`
-- Create: `app-desktop/src/test/kotlin/mihon/desktop/update/DesktopUpdateControllerTest.kt`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/update/DesktopUpdateDownloaderTest.kt`
+
+**Consumes:** Task 12/13A release asset 与 checksum；DesktopNetworkHelper；可注入安全临时根。
+
+**Produces:** 仅在安全临时根内生成、通过 SHA-256 的 `VerifiedDownload`；所有非成功终态删除临时文件。
+
+1. RED：真实 MockWebServer 覆盖进度、取消、redirect 次数/跨 scheme 限制、Content-Length 与流式超限、连接中断、SHA mismatch、缺/无效 checksum、symlink/path escape、终态 cleanup 和 retry。
+2. GREEN：下载使用独立 cacheless client/call，只写 containment 验证后的临时文件；先限制响应与字节数，再验证 Task 12 的 SHA-256。缺可信 metadata 返回 ManualOnly/release-page fallback，不产生“已验证”对象。
+3. 该门禁是 Desktop security enhancement / cross-platform hardening，不冒充 fixed-main APK 行为。运行 Verification、mutation/cleanup 回归、Spotless 与 `git diff --check`。
+
+### Task 13D：Desktop 签名验证与平台安装交接
+
+**Risk axis:** desktop-update-install-handoff
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 2 files, 400 lines
+
+**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.update.DesktopUpdateInstallerTest"`
+
+**Files:**
+
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/update/DesktopUpdateInstaller.kt`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/update/DesktopUpdateInstallerTest.kt`
 
-**Consumes:** Task 12 release target/asset；DesktopNetworkHelper、DesktopPlatformPaths、任务/错误状态。
+**Consumes:** Task 13C `VerifiedDownload`；Task 13A current target；可注入 Authenticode/codesign 与 process launcher。
 
-**Produces:** Windows MSI、macOS DMG 和 Linux 手动后备的检查/下载/校验/确认/交接状态机；失败保持当前应用可启动。
+**Produces:** Windows MSI、macOS DMG 的结构化 signature/publisher verification 与确认/取消/hand-off 结果；Linux 和缺失信任根的平台为 ManualOnly。
 
-1. RED：MockWebServer 覆盖进度、取消、重定向限制、超限、连接中断、SHA mismatch、缺签名、临时文件清理、重试；fake installer 覆盖确认/取消/启动失败。
-2. GREEN：只写安全临时路径；先 hash 再平台签名/发布者验证。校验元数据不足时禁止自动安装并返回 release-page fallback。SHA-256、签名/发布者、体积/重定向限制和细化状态机全部标为 Desktop security enhancement / cross-platform hardening，不得记作 fixed-main 原版行为。
-3. Windows/macOS 只交接已验证的当前 target 包；Linux 没有项目产物时明确 ManualOnly，不虚构自动安装成功。
-4. 运行 Verification、下载路径 containment/cleanup 回归和 `git diff --check`。
+1. RED：fake command/process seam 覆盖 target/package mismatch、缺签名、错误 publisher/team-id、无信任根、确认取消、启动失败和成功 handoff；不得只检查“存在任意签名”。
+2. GREEN：Windows 只允许匹配配置可信 publisher 的 Authenticode MSI，macOS 只允许匹配配置 team-id/notarization policy 的 DMG；仓库当前无签名/信任根配置，生产默认必须 ManualOnly，不能伪报自动安装。
+3. handoff 只启动外部安装 side effect，不覆盖或删除当前应用；失败保留 verified artifact 供手动后备。运行 Verification、Windows 可执行的 verifier probe、Spotless 与 `git diff --check`。
+
+### Task 13E：Desktop 更新控制器状态机
+
+**Risk axis:** desktop-update-state
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 3 files, 400 lines
+
+**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.update.DesktopUpdateControllerTest" --tests "mihon.desktop.update.DesktopUpdateDownloaderTest" --tests "mihon.desktop.update.DesktopUpdateInstallerTest"`
+
+**Files:**
+
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/update/DesktopUpdateState.kt`
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/update/DesktopUpdateController.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/update/DesktopUpdateControllerTest.kt`
+
+**Consumes:** Task 13B `NoCompatiblePackage`；Task 13C downloader；Task 13D installer；既有 TaskState/AppError 可复用语义。
+
+**Produces:** `Idle → Checking → UpToDate | UpdateAvailable | NoCompatiblePackage | CheckFailed → Downloading → Verifying → ReadyToInstall → HandingOff → HandedOff | InstallFailed`，以及 Cancelled/RetryableFailure/ManualOnly。
+
+1. RED：fake release/downloader/installer 覆盖每条允许转换、非法重入、progress、取消、retry、确认拒绝、download/verify/install failure 和 release-page fallback；断开任一 production delegate 时测试失败。
+2. GREEN：controller 只编排 shared release + 两个平台 adapter，不重复 HTTP、hash、签名或进程规则；取消传播并清理下载，失败不改变当前可启动应用。
+3. 运行 Verification、Task 12/13B release 回归、Spotless 与 `git diff --check`。
 
 ### Task 14：Desktop 更新 UI、DI 与 Test Mode wiring
 
@@ -672,7 +766,7 @@ status-source: this-file
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/test/http/DesktopPlatformTestModeControllerTest.kt`
 
-**Consumes:** Task 12 ReleaseService/GetApplicationRelease；Task 13 DesktopUpdateController；APP_VERSION。
+**Consumes:** Task 12/13A/13B ReleaseService/GetApplicationRelease；Task 13E DesktopUpdateController；APP_VERSION。
 
 **Produces:** About 显示真实版本、Check for updates、确认/进度/取消/重试/手动后备，以及 DI/Test Mode production observation。
 
