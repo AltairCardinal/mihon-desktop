@@ -32,7 +32,7 @@ status-source: this-file
 - [x] Task 8B：macOS 原生分享异步生命周期
 - [x] Task 8C：production JXA 分享终态可执行验证
 - [x] Task 9A：Desktop credential namespace 与安全 CharArray API
-- [ ] Task 9B：Desktop credential-backed 应用锁核心
+- [x] Task 9B：Desktop credential-backed 应用锁核心
 - [ ] Task 10：Desktop Security 设置与 unlock UI
 - [ ] Task 10A：Desktop 通知隐私、telemetry 与 Widget capability 边界
 - [ ] Task 11：Desktop 窗口隐私能力与真实反馈
@@ -457,7 +457,9 @@ status-source: this-file
 
 **Platform boundary:** shared+desktop
 
-**Estimated scope:** 6 files, 360 lines
+**Estimated scope:** 6 files, 488 lines
+
+**Split waiver:** verifier/shared-policy state core 若不与 Desktop runtime、production DI 和 identity/namespace integration test 同时交付，会形成没有真实产品消费者的内部基础设施，违反 production wiring 完成条件，也不能独立验收。首审要求异常下完整 runtime cleanup 与可杀死的 DI namespace composition，新增约 130 行行为证据；六个文件反复共享同一 `DesktopAppLock`/verifier/runtime identity，拆分只会制造死中间态并重复同一测试矩阵，故保留为单一风险闭环。
 
 **Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.security.DesktopAppLockTest" --tests "mihon.desktop.di.DesktopDiWiringTest"`
 
@@ -477,6 +479,8 @@ status-source: this-file
 1. RED：首次必锁、`-1/0/>0`、关闭时间写入/清除、成功/错误/取消、backend unavailable、重设/删除、并发验证和 secret 清零。
 2. GREEN：复用单一 SecurityPreferences；不能在 DesktopAppPreferences 复制 key。verifier 存入 OS protected backend，普通偏好不含明文、可逆 secret 或 hash material。
 3. 运行 Verification、Desktop runtime/DI focused 回归、根 Spotless 和 `git diff --check`。
+
+**Evidence:** 实现提交 `aa62b6882`。Desktop 复用 shared `AppLockPolicy` 与单一 `SecurityPreferences`，verifier 只消费 Task 9A 的 app-lock v1 backend；首次启动、`-1/0/>0`、非成功认证 fail-closed、set/reset/delete、并发与 secret 清零均由行为测试覆盖。首审发现 runtime 异常会中断既有清理及 DI namespace 不可杀死；唯一修复加入尽力逆序 cleanup/首异常与 suppressed 传播，以及真实 DI backend factory composition。协调者强制执行 Desktop lock/runtime/DI 28/28 与 shared policy 6/6，0 failure/error/skip；Spotless/diff 通过。最终复审 APPROVED，Critical/Important/Minor `0/0/0`；最终范围 6 files/488 touched lines，split waiver 如上。
 
 ### Task 10：Desktop Security 设置与 unlock UI
 

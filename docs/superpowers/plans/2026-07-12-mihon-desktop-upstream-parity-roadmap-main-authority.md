@@ -464,7 +464,7 @@ Windows `0.11.14.43.84e386c` 固定 EXE 与 macOS `0.11.14.44.84e386c` 部署应
 - [ ] **Step 2: 为当前 OS 能力探测和平台豁免显示写 Desktop RED 测试**
 - [ ] **Step 3: 将固定原版 URI parser、分享模型、安全策略和 release 状态中的平台无关语义迁入 shared；当前 Android 构建版仅作为 Android adapter/consumer**
 - [x] **Step 4: 实现 Windows/macOS/Linux scheme 注册与单实例转发 adapter**
-- [ ] **Step 5: 实现系统分享/剪贴板后备和 OS credential-backed app lock**
+- [x] **Step 5: 实现系统分享/剪贴板后备和 OS credential-backed app lock**
 - [ ] **Step 6: 在支持的平台实现窗口隐私；不支持时 UI 明确说明而非静默成功**
 - [ ] **Step 7: 对齐固定原版的下载、校验、安装、失败回滚更新状态机；平台安装 side effect 由各端 adapter 实现**
 - [ ] **Step 8: 将 Widget 标记为平台豁免，仅共享更新数据 provider 契约**
@@ -472,7 +472,7 @@ Windows `0.11.14.43.84e386c` 固定 EXE 与 macOS `0.11.14.44.84e386c` 部署应
 - [ ] **Step 10: 运行三 OS 可执行的单元测试矩阵及当前 Windows 集成验收**
 - [ ] **Step 11: 更新追踪项 81–86、92 的原版 provenance、shared/adapter 证据和豁免说明**
 
-**Current progress:** 子计划 Task 1–9A 已完成。固定原版 fixture/shared 外部动作与安全契约、当前 Android consumer、Desktop target resolution、冷启动导航、FIFO/取消恢复、有界非阻塞反馈、loopback 单实例安全转发、三平台 canonical URI scheme 注册、Desktop 分享 fallback/Reader-Manga production wiring、macOS native picker/session/terminal/cleanup，以及隔离 tracker/app-lock 的三平台 credential namespace 与安全 CharArray API 均具备实现、TDD、真实平台证据和独立审查；父 Step 4 已勾选。父 Step 1、3、5、9 仍因完整安全/更新与其余设置 wiring 尚未完成而保持未勾选。下一项为子计划 Task 9B。
+**Current progress:** 子计划 Task 1–9B 已完成。固定原版 fixture/shared 外部动作与安全契约、当前 Android consumer、Desktop target resolution、冷启动导航、FIFO/取消恢复、有界非阻塞反馈、loopback 单实例安全转发、三平台 canonical URI scheme 注册、Desktop 分享 fallback/Reader-Manga production wiring、macOS native picker/session/terminal/cleanup、隔离 tracker/app-lock 的三平台 credential namespace、安全 CharArray API，以及消费 shared policy 的 fail-closed Desktop 应用锁核心均具备实现、TDD、真实平台证据和独立审查；父 Step 4、5 已勾选。父 Step 1、3、9 仍因完整更新语义与设置 wiring 尚未完成而保持未勾选。下一项为子计划 Task 10。
 
 ## 14. Task 5B：设置、外观、无障碍与许可
 
