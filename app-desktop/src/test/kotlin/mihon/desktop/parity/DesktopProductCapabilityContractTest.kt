@@ -100,6 +100,24 @@ class DesktopProductCapabilityContractTest {
         86 to setOf("AppUpdateChecker", "NewUpdateScreen", "GetApplicationRelease.await isNewVersion"),
         92 to setOf("SettingsSecurityScreen getSecurityGroup/getFirebaseGroup"),
     )
+    private val exactPlatformCapabilityUpstream = mapOf(
+        81 to setOf("app/src/main/java/eu/kanade/tachiyomi/ui/main/MainActivity.kt" to "MainActivity.handleIntentAction ACTION_VIEW tachibk/add-repo"),
+        82 to setOf("app/src/main/java/eu/kanade/tachiyomi/util/system/IntentExtensions.kt" to "shareIntent"),
+        83 to setOf("app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSecurityScreen.kt" to "SettingsSecurityScreen"),
+        84 to setOf("app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSecurityScreen.kt" to "SettingsSecurityScreen secureScreen"),
+        86 to setOf("app/src/main/java/eu/kanade/tachiyomi/data/updater/AppUpdateChecker.kt" to "AppUpdateChecker", "app/src/main/java/eu/kanade/presentation/more/NewUpdateScreen.kt" to "NewUpdateScreen", "domain/src/main/java/tachiyomi/domain/release/interactor/GetApplicationRelease.kt" to "GetApplicationRelease.await isNewVersion"),
+        92 to setOf("app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSecurityScreen.kt" to "SettingsSecurityScreen getSecurityGroup/getFirebaseGroup"),
+    )
+    private val exactPlatformCapabilityShared = mapOf(
+        81 to setOf("domain/src/commonMain/kotlin/mihon/domain/platform/ExternalAction.kt"), 82 to setOf("domain/src/commonMain/kotlin/mihon/domain/platform/ExternalShare.kt"),
+        83 to setOf("core/common/src/commonMain/kotlin/eu/kanade/tachiyomi/core/security/SecurityPreferences.kt"), 84 to setOf("core/common/src/commonMain/kotlin/eu/kanade/tachiyomi/core/security/SecurityPreferences.kt"),
+        86 to setOf("domain/src/commonMain/kotlin/tachiyomi/domain/release/interactor/GetApplicationRelease.kt"), 92 to setOf("core/common/src/commonMain/kotlin/eu/kanade/tachiyomi/core/security/SecurityPreferences.kt"),
+    )
+    private val exactPlatformCapabilityAndroid = mapOf(
+        81 to setOf("app/src/main/java/eu/kanade/tachiyomi/ui/main/MainActivity.kt"), 82 to setOf("app/src/main/java/eu/kanade/tachiyomi/util/system/IntentExtensions.kt"),
+        83 to setOf("app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSecurityScreen.kt"), 84 to setOf("app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSecurityScreen.kt"),
+        86 to setOf("app/src/main/java/eu/kanade/tachiyomi/data/updater/AppUpdateChecker.kt"), 92 to setOf("app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSecurityScreen.kt"),
+    )
     private val exactPlatformCapabilityConsumers = mapOf(
         81 to setOf("app-desktop/src/main/kotlin/mihon/desktop/Main.kt", "app-desktop/src/main/kotlin/mihon/desktop/DesktopAppRuntime.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/ExternalActionNavigator.kt"),
         82 to setOf("app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopShareService.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/PageContextMenu.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt"),
@@ -116,6 +134,8 @@ class DesktopProductCapabilityContractTest {
         86 to ("app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AboutUpdateWiringTest.kt" to "about renders full version and routes ready confirmation intents"),
         92 to ("app-desktop/src/test/kotlin/mihon/desktop/ui/settings/SecuritySettingsWiringTest.kt" to "unsupported desktop privacy integrations show info without rendering controls"),
     )
+    private val exactPlatformCapabilityProtectionPaths =
+        exactPlatformCapabilityProtection.mapValues { setOf(it.value.first) }
     private val exactPlatformCapabilityMarkers = mapOf(
         81 to setOf("wireDesktopExternalActionBroker", "ExternalActionInput.ViewUri"),
         82 to setOf("MangaDetailActionRow", "DesktopShareService"),
@@ -239,6 +259,13 @@ class DesktopProductCapabilityContractTest {
         )
     private val exactAuthorityBlobIds =
         mapOf(
+            "app/src/main/java/eu/kanade/tachiyomi/ui/main/MainActivity.kt" to "e80e5c947829ebdba73bfbc263c4e8f16196056a",
+            "app/src/main/java/eu/kanade/tachiyomi/util/system/IntentExtensions.kt" to "65acbed18fc489e5cb088bf119ac04ce22ecb902",
+            "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSecurityScreen.kt" to "69a5993263fb36aead01ce75d2cff8160fba8fce",
+            "presentation-widget/src/main/java/tachiyomi/presentation/widget/BaseUpdatesGridGlanceWidget.kt" to "17b8d41fc85bd891fae6fd09db9c44fd05211957",
+            "app/src/main/java/eu/kanade/tachiyomi/data/updater/AppUpdateChecker.kt" to "c6781277e453d4c5a6e15e7d62d3e0f721c97bd6",
+            "app/src/main/java/eu/kanade/presentation/more/NewUpdateScreen.kt" to "f6b5f4b0b52a5af959866cc63c80ca2bd5af6399",
+            "domain/src/main/java/tachiyomi/domain/release/interactor/GetApplicationRelease.kt" to "b95173688eded70cc10803c33d553c5af018cc3f",
             "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt" to "0f777f7e58b653e458bba240127f8446b0e2ae28",
             "app/src/main/java/eu/kanade/tachiyomi/di/AppModule.kt" to "9828155df3a543165f8b52a71bda27653e90fc5c",
             "app/src/main/java/eu/kanade/domain/DomainModule.kt" to "6d3ddc35b91e5baf8a02c05490a678ed3f83dbe9",
@@ -777,6 +804,13 @@ class DesktopProductCapabilityContractTest {
         val repositoryRoot = repositoryRoot()
         val items = manifestItems(repositoryRoot)
         val fixedMainPathInventory = fixedMainPathInventory(repositoryRoot)
+        platformCapabilityFixedMainPaths.forEach { path ->
+            assertEquals(
+                exactAuthorityBlobIds.getValue(path),
+                fixedMainPathInventory[path],
+                "Platform capability fixed-main inventory has the wrong or missing blob for $path",
+            )
+        }
 
         desktopProductEvidence.forEach { evidence ->
             assertTrue(Files.isRegularFile(repositoryRoot.resolve(evidence)), "Missing Desktop product evidence $evidence")
@@ -1475,6 +1509,9 @@ class DesktopProductCapabilityContractTest {
                 requiredText(symbol.jsonObject, "symbol", id)
             }
             assertEquals(exactPlatformCapabilitySymbols.getValue(id), symbols.map { it.jsonObject.getValue("symbol").jsonPrimitive.content }.toSet())
+            assertEquals(exactPlatformCapabilityUpstream.getValue(id), symbols.map { it.jsonObject.getValue("path").jsonPrimitive.content to it.jsonObject.getValue("symbol").jsonPrimitive.content }.toSet())
+            assertEquals(exactPlatformCapabilityShared.getValue(id), item.getValue("sharedImplementationPaths").jsonArray.map { it.jsonPrimitive.content }.toSet())
+            assertEquals(exactPlatformCapabilityAndroid.getValue(id), item.getValue("currentAndroidConsumerPaths").jsonArray.map { it.jsonPrimitive.content }.toSet())
             listOf("sharedImplementationPaths", "currentAndroidConsumerPaths", "desktopConsumerAdapterPaths", "protectionTests")
                 .forEach { field ->
                     val paths = item.getValue(field).jsonArray
@@ -1485,6 +1522,11 @@ class DesktopProductCapabilityContractTest {
                 exactPlatformCapabilityConsumers.getValue(id),
                 item.getValue("desktopConsumerAdapterPaths").jsonArray.map { it.jsonPrimitive.content }.toSet(),
                 "ID $id must retain exact Desktop production consumers",
+            )
+            assertEquals(
+                exactPlatformCapabilityProtectionPaths.getValue(id),
+                item.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content }.toSet(),
+                "ID $id must retain exact production protection tests",
             )
             val (testPath, methodName) = exactPlatformCapabilityProtection.getValue(id)
             assertTrue(testPath in item.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content })
