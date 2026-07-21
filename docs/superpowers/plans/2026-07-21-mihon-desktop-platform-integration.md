@@ -24,8 +24,8 @@ status-source: this-file
 - [x] Task 2：当前 Android 外部动作与分享消费 shared
 - [x] Task 3：当前 Android 应用锁与屏幕安全消费 shared
 - [x] Task 4：Desktop 源 URI/备份/仓库动作解析
-- [ ] Task 5：Desktop 外部动作导航、入口与可见反馈
-- [ ] Task 5R：Desktop 外部动作非阻塞反馈收口
+- [x] Task 5：Desktop 外部动作导航、入口与可见反馈
+- [x] Task 5R：Desktop 外部动作非阻塞反馈收口
 - [ ] Task 6：Desktop 单实例安全转发
 - [ ] Task 7：Windows/macOS/Linux URI scheme 注册
 - [ ] Task 8：Desktop 系统分享与剪贴板/保存后备
@@ -229,6 +229,8 @@ status-source: this-file
 3. NoResults 导航 GlobalSearch；Rejected/Failed 显示本地化错误且不部分导航；成功动作清除 pending state。
 4. 运行 Verification、导航/DI/TestState 回归和 `git diff --check`。
 
+**Evidence:** 实现 `6dd8bdfb0`，FIFO 修复 `6cd48ccee`。冷启动原始 argv 经共享 parser/Task 4 resolver 进入 Home 内层普通 Voyager Navigator；五类 target 保留 query/ID/文件/URL payload，Chapter 复用真实 MangaDetail reader request，Backup 使用 target-aware factory，add-repo 只首次预填并保留确认。首轮审查发现单槽会覆盖连续动作，RED 证明就绪前、解析挂起和取消三类丢动作；修复后 FIFO、单 consumer、取消回队首与 Rejected/Failed 后继续 drain 均通过。该 Task 的反馈生命周期残余按规则拆到 Task 5R；最终联合验证与 Task 5R 一并通过。
+
 ### Task 5R：Desktop 外部动作非阻塞反馈收口
 
 **Risk axis:** desktop-action-feedback
@@ -254,6 +256,8 @@ status-source: this-file
 2. GREEN：navigator 只发布非挂起反馈事件，并在发布前记录动作终态；Home 使用有界反馈队列和单一 lifecycle consumer 显示 Snackbar，满载时丢弃最旧反馈，动作 drain 不等待 Snackbar 生命周期且不会创建无界挂起 job。
 3. 保持 resolver/destination 取消时当前动作回队首、后续动作保留；终态后的 UI 取消不得重新入队或重复反馈。
 4. 运行 Verification、既有 50 项 Task 5 回归、根 Spotless 和 `git diff --check`。
+
+**Evidence:** 非阻塞反馈实现 `e880ab5d8`，有界队列修复 `a28e6d2bc`。Task 5 复审先证明 await `showSnackbar` 会阻塞 drain，Task 5R 首轮审查再发现逐消息 launch 会积累无界挂起 job；最终 Home 使用容量 8、`DROP_OLDEST` 的 Channel 和单一 `LaunchedEffect` consumer，navigator 只 `tryPublish`，dispose 关闭 channel。RED/变异测试分别杀死 await-feedback 与 per-message-launch 旧 wiring；协调者强制重编译 Navigation 8 + Feedback 7 + Screen 40 = 55/55，0 failure/error/skip，根 Spotless 与 diff check 通过。独立修复复审 APPROVED，Critical/Important/Minor `0/0/0`；最终范围 4 files/296 touched lines。
 
 ### Task 6：Desktop 单实例安全转发
 
