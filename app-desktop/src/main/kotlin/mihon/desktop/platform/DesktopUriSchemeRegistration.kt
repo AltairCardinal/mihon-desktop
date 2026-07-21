@@ -15,7 +15,6 @@ fun interface DesktopUriSchemeRegistrar {
 class DesktopUriSchemeRegistration(
     private val platform: OperatingSystem = OperatingSystem.detect(),
     private val executable: File = currentExecutable(),
-    private val packagedRuntime: Boolean = isPackagedExecutable(platform, executable),
     private val commandRunner: CommandRunner = ProcessCommandRunner(),
     private val linuxApplicationsDirectory: File = defaultLinuxApplicationsDirectory(),
     private val resourceLoader: (String) -> String? = ::loadResource,
@@ -25,7 +24,9 @@ class DesktopUriSchemeRegistration(
         if (platform == OperatingSystem.UNSUPPORTED) {
             return Result.Unavailable(UnavailableReason.UNSUPPORTED_PLATFORM)
         }
-        if (!packagedRuntime) return Result.Unavailable(UnavailableReason.NON_PACKAGED_RUNTIME)
+        if (!isPackagedExecutable(platform, executable)) {
+            return Result.Unavailable(UnavailableReason.NON_PACKAGED_RUNTIME)
+        }
         return try {
             when (platform) {
                 OperatingSystem.WINDOWS -> registerWindows()
@@ -138,15 +139,33 @@ class DesktopUriSchemeRegistration(
             .orElseGet { File("") }
 
         fun isPackagedExecutable(platform: OperatingSystem, executable: File): Boolean {
-            if (executable.path.isBlank()) return false
-            val name = executable.name.lowercase()
-            if (name == "java" || name == "java.exe" || name == "javaw.exe") return false
-            return when (platform) {
-                OperatingSystem.WINDOWS -> name.endsWith(".exe")
-                OperatingSystem.MACOS -> executable.invariantSeparatorsPath.contains(".app/Contents/MacOS/")
-                OperatingSystem.LINUX -> true
-                OperatingSystem.UNSUPPORTED -> false
+            if (!executable.isFile) return false
+            val layoutRoot = when (platform) {
+                OperatingSystem.WINDOWS -> executable.parentFile
+                OperatingSystem.MACOS -> executable.parentFile
+                    ?.takeIf { it.name == "MacOS" }
+                    ?.parentFile
+                    ?.takeIf { it.name == "Contents" }
+                OperatingSystem.LINUX -> executable.parentFile
+                    ?.takeIf { it.name == "bin" }
+                    ?.parentFile
+                OperatingSystem.UNSUPPORTED -> null
+            } ?: return false
+            val marker = when (platform) {
+                OperatingSystem.WINDOWS,
+                OperatingSystem.MACOS,
+                -> File(layoutRoot, "app/.jpackage.xml")
+                OperatingSystem.LINUX -> File(layoutRoot, "lib/app/.jpackage.xml")
+                OperatingSystem.UNSUPPORTED -> return false
             }
+            val runtime = when (platform) {
+                OperatingSystem.WINDOWS,
+                OperatingSystem.MACOS,
+                -> File(layoutRoot, "runtime")
+                OperatingSystem.LINUX -> File(layoutRoot, "lib/runtime")
+                OperatingSystem.UNSUPPORTED -> return false
+            }
+            return marker.isFile && runtime.isDirectory
         }
 
         private fun defaultLinuxApplicationsDirectory(): File = File(
@@ -165,7 +184,7 @@ class DesktopUriSchemeRegistration(
             if (!allowQuotes) require('"' !in executable.path)
         }
 
-        private fun escapeDesktopEntryExecutable(path: String): String {
+        internal fun escapeDesktopEntryExecutable(path: String): String {
             validateExecutable(File(path), allowQuotes = true)
             return buildString(path.length) {
                 path.forEach { character ->
