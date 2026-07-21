@@ -1,5 +1,5 @@
 workflow: full
-phase: verify
+phase: archive
 context_compression: beta
 build_mode: subagent-driven-development
 build_pause: null
@@ -14,9 +14,9 @@ design_doc: docs/superpowers/specs/2026-07-15-mihon-source-extension-shared-core
 plan: docs/superpowers/plans/2026-07-15-mihon-source-extension-shared-core.md
 verify_result: pass
 verification_report: docs/superpowers/plans/2026-07-15-mihon-source-extension-shared-core.md
-branch_status: pending
+branch_status: handled
 created_at: 2026-07-14
 verified_at: 2026-07-21
-archived: false
+archived: true
 handoff_context: openspec/changes/align-sources-extensions/.comet/handoff/design-context.json
 handoff_hash: c969b4d74263c9c73ee52acd829086f2afe0e802882dfe8ef451d107f7b7785e

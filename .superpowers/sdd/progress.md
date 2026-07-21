@@ -2,8 +2,9 @@
 
 Baseline: 470cb44db2f4c2b090713a0cc6e3e7231346a064
 Plan: docs/superpowers/plans/2026-07-12-mihon-desktop-upstream-parity-roadmap-main-authority.md
-Active child plan: docs/superpowers/plans/2026-07-15-mihon-source-extension-shared-core.md
-Resume order: finish the active child plan through Task 7D, then resume the first unchecked task in the corrected parent plan; never resume the preserved original roadmap as executable authority.
+Active change: openspec/changes/align-desktop-platform (corrected parent Task 5A)
+Active child plan: pending; resume the existing change and complete its design/plan before implementation, do not create a duplicate change.
+Resume order: begin corrected parent Task 5A from the existing align-desktop-platform change, then continue parent order; never resume the preserved original roadmap as executable authority.
 
 Task 0: complete (commits 470cb44..0eeeccb, review clean)
 Task 1A: complete (commits 0eeeccb..3609dc3, review clean)
@@ -43,3 +44,4 @@ Authority correction wave 3C: tracker/migration authority inventory complete (co
 Authority correction wave 3D: single-manga migration evidence closeout complete (commits c734dfe89 + a4f9be1b3 + 380d5a93a; follow-up independent chapter-metadata review approved 0/0/0; real Desktop DB/use-case tests protect category no-touch, flags/date/notes/membership, atomic rollback, returned-state reread, and matched bookmark/dateFetch while preserving unmatched/unknown metadata.)
 Authority correction wave 3E: reader-triggered tracker gates complete (commits 377e6024c + 557b4f662 + e41d518ce + ef95ee2af; original P1 fixed, extension-incognito atomic-toggle replanned as an independent Task and final re-review approved 0/0/0; 42-test trigger/DI/UI/parity matrix plus 2/2 atomic toggle tests and Spotless pass.)
 Authority correction wave 4A: source-query fixed-main audit complete (read-only; shared cancellation/error enhancements retained; Desktop FilterList, paging serialization, and global-search policy identified as three bounded implementation Tasks, with `desktop-source-listing-filter` first.)
+Task 4B / align-sources-extensions Task 7 and change: complete and archived (final HEAD `84e386c49`; lifecycle leak fix `d9eb4b2dd` + rejection coverage `39248dd2a`; mac fixture isolation `b7d1400d2`; final review 0 Critical/Important/Minor; Windows `0.11.14.43.84e386c` and macOS `0.11.14.44.84e386c`; full/smoke/Test Mode passed; OpenSpec archived at `openspec/changes/archive/2026-07-21-align-sources-extensions`).
