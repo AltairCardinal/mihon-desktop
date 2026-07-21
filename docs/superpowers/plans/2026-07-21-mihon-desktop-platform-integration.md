@@ -559,7 +559,9 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 8 files, 400 lines
+**Estimated scope:** 9 files, 600 lines
+
+**Split waiver:** Windows JNA ABI/query adapter、真实 AWT window handle 生命周期、`SecureScreenPolicy(mode, incognito)` reconciliation、设置回滚和 Supported/Limited/Unsupported/Failed 的 MR-backed 用户反馈共同决定同一个截图保护承诺。只交付 native adapter 会留下没有 production window consumer 的死基础设施；只交付 UI/lifecycle 会把未验证的系统能力暴露给用户。两个部分反复共享同一 result/capability/state，且 macOS/Linux 的诚实降级必须与 Windows 状态使用同一 UI；因此保留为单一 Task，并用独立 bridge 测试与 production wiring 测试分别杀死 ABI 和接线错误。
 
 **Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.platform.DesktopWindowPrivacyTest" --tests "mihon.desktop.ui.settings.WindowPrivacyWiringTest"`
 
@@ -571,6 +573,7 @@ status-source: this-file
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt`
 - Modify: `app-desktop/build.gradle.kts`
 - Modify: `gradle/libs.versions.toml`
+- Modify: `i18n/src/commonMain/moko-resources/base/strings.xml`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopWindowPrivacyTest.kt`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/settings/WindowPrivacyWiringTest.kt`
 
@@ -579,9 +582,10 @@ status-source: this-file
 **Produces:** Windows/macOS/Linux capability/result adapter，以及 Supported/Limited/Unsupported/Failed 的准确 UI。
 
 1. RED：fake native bridge 覆盖 apply/clear/query、窗口未就绪、调用失败、OS 不支持、mode×incognito 变化和设置回滚。
-2. GREEN：通过版本锁定的 JNA/JNA Platform 实现 Windows HWND、`SetWindowDisplayAffinity`/query 与错误清理；native handle 绑定 Window 生命周期。macOS 只声明实际可执行、可查询的窗口共享限制；Linux 默认 Unsupported，不能只凭 OS 名称标成功，也不能在本 Task 静默扩张第二套 JNI。
+2. GREEN：通过版本锁定的 JNA/JNA Platform `5.19.1` 实现 Windows HWND、`SetWindowDisplayAffinity`/query 与错误清理；native handle 绑定 Window 生命周期。macOS 只声明实际可执行、可查询的窗口共享限制；Linux 默认 Unsupported，不能只凭 OS 名称标成功，也不能在本 Task 静默扩张第二套 JNI。
 3. 应用锁的 Compose 遮挡保持独立；不能用遮挡冒充系统截图保护，也不能用有限 macOS 能力声称等价 Android FLAG_SECURE。
-4. 运行 Verification、Windows 本机 focused integration（有 tagged gate 时）和 `git diff --check`；真实跨 OS 结论留 Task 16。
+4. 所有 capability、失败与有限支持说明使用 MR 文案，不得把 native error 或英文 reason slug 直接暴露给用户。
+5. 运行 Verification、Windows 本机 focused integration（有 tagged gate 时）和 `git diff --check`；真实跨 OS 结论留 Task 16。
 
 ### Task 12：固定原版发布语义与当前 Android 兼容
 
