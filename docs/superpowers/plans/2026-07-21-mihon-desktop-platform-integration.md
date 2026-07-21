@@ -297,13 +297,16 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 7 files, 380 lines
+**Estimated scope:** 8 files, 450 lines
+
+**Split waiver:** 三 OS 元数据、可探测注册 adapter 与 owner-only 启动接线共同组成同一个 URI scheme capability；如果把 `Main` production wiring 拆到后续 Task，本 Task 会留下只能被测试直接实例化、Windows/Linux 实际从不注册的死基础设施。8 个文件反复共享同一 scheme/当前可执行文件契约，且必须用同一 mutation test 证明删除启动接线会失败，因此保留为单 Task。
 
 **Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.platform.DesktopUriSchemeRegistrationTest"`
 
 **Files:**
 
 - Create: `app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopUriSchemeRegistration.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/Main.kt`
 - Modify: `app-desktop/build.gradle.kts`
 - Create: `app-desktop/src/main/resources/platform/windows/tachiyomi-url-protocol.reg.template`
 - Create: `app-desktop/src/main/resources/platform/linux/mihon-desktop.desktop`
@@ -316,8 +319,8 @@ status-source: this-file
 **Produces:** 三 OS 可探测注册 adapter 与打包元数据；不把“写入成功”当作“动作链成功”。
 
 1. RED：fixture 精确要求三 OS 注册 canonical `tachiyomi` scheme，并只接受 `tachiyomi://add-repo?url=<https-url>`；覆盖缺/重复/非 HTTP(S) query、未知 host/path、未注册 alias、Windows HKCU URL Protocol、macOS bundle URL types、Linux desktop entry/xdg-mime，以及无权限、命令缺失、非打包运行。
-2. GREEN：生产 adapter 仅注册当前可执行文件/应用包；路径参数严格转义，卸载/重装不会留下指向旧 BUILD 的入口。
-3. 设置/诊断 UI 只显示 capability/result；真实 OS 协议启动留到 Task 16，未验证平台不得标记完成。
+2. GREEN：生产 adapter 仅注册当前可执行文件/应用包；路径参数严格转义，卸载/重装不会留下指向旧 BUILD 的入口。只有 Task 6 选出的 owner 执行注册，删除 `Main` 的 production 调用时 wiring 测试必须失败。
+3. capability/result 必须结构化，不能把“命令返回成功”冒充完整动作链成功；真实 OS 协议启动留到 Task 16，未验证平台不得标记完成。
 4. 运行 Verification、打包配置静态检查和 `git diff --check`。
 
 ### Task 8：Desktop 系统分享与剪贴板/保存后备
