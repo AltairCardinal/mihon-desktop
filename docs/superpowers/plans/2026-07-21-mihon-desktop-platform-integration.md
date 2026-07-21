@@ -559,23 +559,23 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 9 files, 600 lines
+**Estimated scope:** 9 files, 720 lines
 
 **Split waiver:** Windows JNA ABI/query adapter、真实 AWT window handle 生命周期、`SecureScreenPolicy(mode, incognito)` reconciliation、设置回滚和 Supported/Limited/Unsupported/Failed 的 MR-backed 用户反馈共同决定同一个截图保护承诺。只交付 native adapter 会留下没有 production window consumer 的死基础设施；只交付 UI/lifecycle 会把未验证的系统能力暴露给用户。两个部分反复共享同一 result/capability/state，且 macOS/Linux 的诚实降级必须与 Windows 状态使用同一 UI；因此保留为单一 Task，并用独立 bridge 测试与 production wiring 测试分别杀死 ABI 和接线错误。
 
-**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.platform.DesktopWindowPrivacyTest" --tests "mihon.desktop.ui.settings.WindowPrivacyWiringTest"`
+**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.privacy.DesktopWindowPrivacyTest" --tests "mihon.desktop.privacy.WindowPrivacyWiringTest"`
 
 **Files:**
 
-- Create: `app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopWindowPrivacy.kt`
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/privacy/DesktopWindowPrivacy.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/Main.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SecuritySettingsScreen.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt`
 - Modify: `app-desktop/build.gradle.kts`
 - Modify: `gradle/libs.versions.toml`
 - Modify: `i18n/src/commonMain/moko-resources/base/strings.xml`
-- Create: `app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopWindowPrivacyTest.kt`
-- Create: `app-desktop/src/test/kotlin/mihon/desktop/ui/settings/WindowPrivacyWiringTest.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/privacy/DesktopWindowPrivacyTest.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/privacy/WindowPrivacyWiringTest.kt`
 
 **Consumes:** Task 1 SecureScreenPolicy；Task 10 Security UI；真实 Compose window handle。
 
