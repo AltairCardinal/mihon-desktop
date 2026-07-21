@@ -48,7 +48,7 @@ status-source: this-file
 - [x] Task 14A：Desktop verifier 可取消进程边界
 - [x] Task 14B：Desktop updater 应用生命周期所有权
 - [ ] Task 15：Widget 豁免、parity 证据与维护文档
-- [ ] Task 15A：平台证据的 per-ID 不可变 provenance 合同
+- [x] Task 15A：平台证据的 per-ID 不可变 provenance 合同
 - [ ] Task 15B：Android Widget 默认隐私 wiring 证明
 - [ ] Task 16：独立最终审查与三平台 change verify
 
@@ -925,6 +925,8 @@ status-source: this-file
 2. GREEN：使用 per-ID exact 结构断言 path↔symbol 对、shared/current Android/Desktop/protection 集合；将 7 个新增路径加入 exact blob id 合同，不只检查全局白名单和文件存在。
 3. 不执行 `git` 或扫描移动中的当前 main 作为测试 oracle；expected blob 只来自固定 `main@6fbf6df...` 的已提交 inventory。
 4. 运行 Verification、Spotless、JSON/path/blob、`git diff --check` 和范围检查。
+
+**Review status：** 实现提交 `9f372f994`。四类交换/伪 blob 变异均先证明 RED；最终合同逐 ID 精确绑定 upstream path↔symbol、shared/current Android/Desktop consumer、protection test，并将 7 个新增 fixed-main 路径绑定到固定 inventory blob。协调者复跑 `DesktopProductCapabilityContractTest` 27/27、根 `spotlessCheck` 与 `git diff --check` 均通过；独立审查 APPROVED，Critical/Important/Minor `0/0/0`；实际范围 1 file/42 lines。Task 15 仍等待子 Task 15B。
 
 ### 子 Task 15B：Android Widget 默认隐私 wiring 证明
 
