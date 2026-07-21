@@ -12,10 +12,12 @@ import okhttp3.Request
 import tachiyomi.domain.release.model.Release
 import tachiyomi.domain.release.model.ReleaseAsset
 import tachiyomi.domain.release.model.ReleaseChecksum
+import tachiyomi.domain.release.model.ReleasePackageType
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.security.MessageDigest
 
@@ -47,6 +49,7 @@ class DesktopUpdateDownloader(
     private val maxBytes: Long,
     private val maxRedirects: Int,
     private val openOutput: (Path) -> java.io.OutputStream = { Files.newOutputStream(it, StandardOpenOption.TRUNCATE_EXISTING) },
+    private val moveFile: (Path, Path) -> Unit = { from, to -> Files.move(from, to, StandardCopyOption.ATOMIC_MOVE); Unit },
 ) {
     private val client = networkClient.newBuilder().cache(null).followRedirects(false).followSslRedirects(false).build()
 
@@ -56,17 +59,28 @@ class DesktopUpdateDownloader(
     }
 
     suspend fun download(release: Release, onProgress: (DownloadProgress) -> Unit = {}): DesktopUpdateDownloadResult {
+        val suffix = when (release.asset.target.packageType) {
+            ReleasePackageType.MSI -> ".msi"
+            ReleasePackageType.DMG -> ".dmg"
+            else -> return ManualOnly(release.releaseLink)
+        }
         val expectedHash = trustedChecksum(release.asset.checksum)
             ?: return ManualOnly(release.releaseLink)
         val root = secureRoot() ?: return DownloadFailed(DownloadFailure.UNSAFE_TEMP_ROOT)
         var file: Path? = null
+        var finalFile: Path? = null
         var verified = false
         return try {
             file = Files.createTempFile(root, "mihon-update-", ".part")
             if (!file.toRealPath().startsWith(root)) return DownloadFailed(DownloadFailure.UNSAFE_TEMP_ROOT)
             val result = transfer(release, file, expectedHash, onProgress)
-            verified = result is VerifiedDownload
-            result
+            if (result !is VerifiedDownload) return result
+            val final = file.resolveSibling(file.fileName.toString().removeSuffix(".part") + suffix)
+            finalFile = final
+            moveFile(file, final)
+            if (!final.toRealPath().startsWith(root)) return DownloadFailed(DownloadFailure.UNSAFE_TEMP_ROOT)
+            verified = true
+            result.copy(file = final)
         } catch (error: CancellationException) {
             throw error
         } catch (error: SecurityException) {
@@ -74,7 +88,7 @@ class DesktopUpdateDownloader(
         } catch (error: IOException) {
             DownloadFailed(DownloadFailure.STORAGE)
         } finally {
-            if (!verified) file?.let { runCatching { Files.deleteIfExists(it) } }
+            if (!verified) listOfNotNull(file, finalFile).forEach { runCatching { Files.deleteIfExists(it) } }
         }
     }
 

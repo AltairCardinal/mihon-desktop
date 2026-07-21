@@ -38,7 +38,8 @@ class DesktopUpdateDownloaderTest {
     fun `success reports progress stays contained and bypasses shared cache`() = runTest {
         withServer { server ->
             val cache = Cache(tempDir.resolve("http-cache").toFile(), 1024 * 1024)
-            val downloader = downloader(tempDir.resolve("downloads"), OkHttpClient.Builder().cache(cache).build())
+            val root = tempDir.resolve("downloads")
+            val downloader = downloader(root, OkHttpClient.Builder().cache(cache).build())
             val first = "first-payload".toByteArray()
             val second = "second-payload".toByteArray()
             server.enqueue(cacheable(first))
@@ -49,10 +50,12 @@ class DesktopUpdateDownloaderTest {
             assertTrue(firstResult is VerifiedDownload)
             firstResult as VerifiedDownload
             assertEquals(first.toList(), firstResult.file.readBytes().toList())
-            assertTrue(firstResult.file.startsWith(tempDir.resolve("downloads").toRealPath()))
+            assertTrue(firstResult.file.startsWith(root.toRealPath()))
+            assertTrue(firstResult.file.toString().endsWith(".msi"))
             assertEquals(first.size.toLong(), progress.last().downloadedBytes)
             assertEquals(first.size.toLong(), progress.last().totalBytes)
             assertTrue(secondResult is VerifiedDownload)
+            Files.list(root).use { assertFalse(it.anyMatch { file -> file.toString().endsWith(".part") }) }
             assertEquals(2, server.requestCount)
             cache.close()
         }
@@ -68,6 +71,7 @@ class DesktopUpdateDownloaderTest {
                 assertTrue(result is ManualOnly)
                 assertEquals(RELEASE_PAGE, (result as ManualOnly).releasePage)
             }
+            assertTrue(downloader(root).download(release(server, PAYLOAD, type = ReleasePackageType.ARCHIVE)) is ManualOnly)
             assertEquals(0, server.requestCount)
             assertEmpty(root)
         }
@@ -170,6 +174,18 @@ class DesktopUpdateDownloaderTest {
     }
 
     @Test
+    fun `atomic move failure cleans staging and partial final`() = runTest {
+        withServer { server ->
+            val root = tempDir.resolve("move-failure")
+            server.enqueue(MockResponse(body = PAYLOAD.decodeToString()))
+            val result = downloader(root, moveFile = { from, to -> Files.copy(from, to); throw IOException("move") })
+                .download(release(server, PAYLOAD))
+            assertEquals(DownloadFailure.STORAGE, (result as DownloadFailed).reason)
+            assertEmpty(root)
+        }
+    }
+
+    @Test
     fun `symlink root is rejected while hostile asset name cannot escape safe root`() = runTest {
         withServer { server ->
             val outside = Files.createDirectory(tempDir.resolve("outside"))
@@ -193,19 +209,21 @@ class DesktopUpdateDownloaderTest {
         maxBytes: Long = 1024,
         maxRedirects: Int = 3,
         openOutput: (Path) -> OutputStream = { Files.newOutputStream(it) },
-    ) = DesktopUpdateDownloader(client, root, maxBytes, maxRedirects, openOutput)
+        moveFile: (Path, Path) -> Unit = { from, to -> Files.move(from, to); Unit },
+    ) = DesktopUpdateDownloader(client, root, maxBytes, maxRedirects, openOutput, moveFile)
 
     private fun release(
         server: MockWebServer,
         bytes: ByteArray,
         checksum: ReleaseChecksum? = ReleaseChecksum("sha256", bytes.sha256()),
         name: String = "mihon-desktop-windows-x86_64-v1.msi",
+        type: ReleasePackageType = ReleasePackageType.MSI,
     ) = Release(
         version = "v1",
         info = "info",
         releaseLink = RELEASE_PAGE,
         downloadLink = server.url("/update").toString(),
-        asset = ReleaseAsset(name, ReleaseTarget(ReleaseOs.WINDOWS, "x86_64", ReleasePackageType.MSI, ReleaseVariant.STANDARD), checksum),
+        asset = ReleaseAsset(name, ReleaseTarget(ReleaseOs.WINDOWS, "x86_64", type, ReleaseVariant.STANDARD), checksum),
     )
 
     private suspend fun withServer(block: suspend (MockWebServer) -> Unit) = MockWebServer().also { it.start() }.use { block(it) }
