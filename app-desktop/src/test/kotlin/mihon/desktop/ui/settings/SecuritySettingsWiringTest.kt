@@ -23,6 +23,8 @@ import mihon.desktop.platform.CredentialBackend
 import mihon.desktop.platform.DesktopCredentialStore
 import mihon.desktop.platform.OperatingSystem
 import mihon.desktop.platform.PlatformCredentialUnavailableException
+import mihon.desktop.privacy.DesktopPrivacyCapabilities
+import mihon.desktop.privacy.DesktopCapabilitySupport
 import mihon.desktop.security.DesktopAppLock
 import mihon.desktop.security.DesktopAppLockLifecycle
 import mihon.desktop.security.DesktopPassphraseVerifier
@@ -425,6 +427,61 @@ class SecuritySettingsWiringTest {
                     .flatMap { flatten(it.rootSemanticsNode) }
                     .any { it.config.contains(SemanticsProperties.Password) },
             )
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    fun `unsupported desktop privacy integrations show info without rendering controls`() = runBlocking {
+        var nativeNotificationControls = 0
+        var telemetryControls = 0
+        val scene = ImageComposeScene(720, 480, coroutineContext = coroutineContext) {}
+        try {
+            scene.setContent {
+                DesktopPrivacySettings(
+                    capabilities = DesktopPrivacyCapabilities.production,
+                    nativeNotificationControl = { nativeNotificationControls++ },
+                    telemetryControls = { telemetryControls++ },
+                )
+            }
+            scene.render()
+            val nodes = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+            val visibleText = nodes
+                .flatMap {
+                    if (it.config.contains(SemanticsProperties.Text)) {
+                        it.config[SemanticsProperties.Text]
+                    } else {
+                        emptyList()
+                    }
+                }
+                .joinToString("\n") { it.text }
+
+            assertEquals(0, nativeNotificationControls)
+            assertEquals(0, telemetryControls)
+            assertFalse(nodes.any { it.config.contains(SemanticsProperties.ToggleableState) })
+            assertTrue(visibleText.contains("System notification privacy controls are unavailable"))
+            assertTrue(visibleText.contains("Crash and usage telemetry is not included"))
+            assertTrue(visibleText.contains("System widgets are unavailable"))
+            assertTrue(visibleText.contains("Updates remain available inside Mihon Desktop"))
+
+            scene.setContent {
+                DesktopPrivacySettings(
+                    capabilities = DesktopPrivacyCapabilities.production.copy(
+                        nativeSystemNotifications = DesktopPrivacyCapabilities.production.nativeSystemNotifications.copy(
+                            support = DesktopCapabilitySupport.Supported,
+                        ),
+                        telemetryRuntime = DesktopPrivacyCapabilities.production.telemetryRuntime.copy(
+                            support = DesktopCapabilitySupport.Supported,
+                        ),
+                    ),
+                    nativeNotificationControl = { nativeNotificationControls++ },
+                    telemetryControls = { telemetryControls++ },
+                )
+            }
+            scene.render()
+            assertEquals(1, nativeNotificationControls)
+            assertEquals(1, telemetryControls)
         } finally {
             scene.close()
         }

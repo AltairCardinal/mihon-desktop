@@ -1175,4 +1175,10 @@
     <string name="desktop_unlock_summary">Enter your desktop passphrase to continue</string>
     <string name="desktop_unlock_passphrase">Passphrase</string>
     <string name="desktop_unlock_action">Unlock</string>
+    <string name="desktop_privacy_capabilities_title">Desktop privacy capabilities</string>
+    <string name="desktop_security_hide_notification_content">Hide system notification content</string>
+    <string name="desktop_privacy_native_notifications_unavailable">System notification privacy controls are unavailable because Mihon Desktop currently uses in-app feedback only.</string>
+    <string name="desktop_privacy_telemetry_unavailable">Crash and usage telemetry is not included in this Desktop runtime, so telemetry controls are not shown.</string>
+    <string name="desktop_privacy_widget_unavailable">System widgets are unavailable in Mihon Desktop.</string>
+    <string name="desktop_privacy_widget_unavailable_updates_available">System widgets are unavailable. Updates remain available inside Mihon Desktop.</string>
 </resources>

@@ -35,6 +35,8 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.privacy.DesktopPrivacyCapabilities
 import mihon.desktop.security.DesktopPassphraseVerifier
 import mihon.desktop.ui.security.DesktopPasswordField
 import mihon.domain.security.AuthenticationResult
@@ -274,6 +276,7 @@ class SecuritySettingsScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
+        val privacyCapabilities = LocalDesktopUiDependencies.current.privacyCapabilities
         val controller = remember {
             SecuritySettingsController(Injekt.get<SecurityPreferences>(), Injekt.get<DesktopPassphraseVerifier>())
         }
@@ -341,6 +344,11 @@ class SecuritySettingsScreen : Screen {
                     }
                 }
                 state.feedback?.let { Text(feedbackText(it), modifier = Modifier.padding(horizontal = 16.dp)) }
+                DesktopPrivacySettings(
+                    capabilities = privacyCapabilities,
+                    nativeNotificationControl = { DesktopHideNotificationContentSetting() },
+                    telemetryControls = null,
+                )
             }
         }
         action?.let { pending ->
@@ -358,6 +366,49 @@ class SecuritySettingsScreen : Screen {
                 },
             )
         }
+    }
+}
+
+@Composable
+internal fun DesktopPrivacySettings(
+    capabilities: DesktopPrivacyCapabilities,
+    nativeNotificationControl: (@Composable () -> Unit)?,
+    telemetryControls: (@Composable () -> Unit)?,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(MR.strings.desktop_privacy_capabilities_title.localized(), style = MaterialTheme.typography.titleSmall)
+        if (capabilities.nativeSystemNotifications.isSupported) {
+            nativeNotificationControl?.invoke()
+        } else {
+            Text(MR.strings.desktop_privacy_native_notifications_unavailable.localized())
+        }
+        if (capabilities.telemetryRuntime.isSupported) {
+            telemetryControls?.invoke()
+        } else {
+            Text(MR.strings.desktop_privacy_telemetry_unavailable.localized())
+        }
+        if (!capabilities.systemWidgetProvider.isSupported) {
+            Text(
+                if (capabilities.sharedUpdatesData.isSupported) {
+                    MR.strings.desktop_privacy_widget_unavailable_updates_available.localized()
+                } else {
+                    MR.strings.desktop_privacy_widget_unavailable.localized()
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun DesktopHideNotificationContentSetting() {
+    val preference = remember { Injekt.get<SecurityPreferences>().hideNotificationContent() }
+    val hidden by preference.changes().collectAsState(initial = preference.get())
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(MR.strings.desktop_security_hide_notification_content.localized(), modifier = Modifier.weight(1f))
+        Switch(checked = hidden, onCheckedChange = preference::set)
     }
 }
 

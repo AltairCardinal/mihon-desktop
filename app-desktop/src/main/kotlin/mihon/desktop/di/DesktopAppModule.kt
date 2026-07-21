@@ -62,6 +62,7 @@ import mihon.desktop.domain.DesktopTrackerSessionProvider
 import mihon.desktop.platform.DesktopCredentialStore
 import mihon.desktop.platform.CredentialNamespace
 import mihon.desktop.platform.OsCredentialBackend
+import mihon.desktop.privacy.DesktopPrivacyCapabilities
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import mihon.desktop.security.DesktopAppLock
 import mihon.desktop.security.DesktopPassphraseVerifier
@@ -272,6 +273,7 @@ internal fun initConfigLayer(appDir: File): DesktopPreferenceStore {
 private fun registerDesktopSettings(preferenceStore: PreferenceStore) {
     Injekt.addSingleton(DesktopAppPreferences(preferenceStore))
     Injekt.addSingleton(SecurityPreferences(preferenceStore))
+    Injekt.addSingleton(DesktopPrivacyCapabilities.production)
     Injekt.addSingleton(LibraryCategoryPrefs(preferenceStore))
 }
 
