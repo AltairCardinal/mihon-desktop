@@ -33,7 +33,7 @@ status-source: this-file
 - [x] Task 8C：production JXA 分享终态可执行验证
 - [x] Task 9A：Desktop credential namespace 与安全 CharArray API
 - [x] Task 9B：Desktop credential-backed 应用锁核心
-- [ ] Task 10：Desktop Security 设置与 unlock UI
+- [x] Task 10：Desktop Security 设置与 unlock UI
 - [ ] Task 10A：Desktop 通知隐私、telemetry 与 Widget capability 边界
 - [ ] Task 11：Desktop 窗口隐私能力与真实反馈
 - [ ] Task 12：固定原版发布语义与当前 Android 兼容
@@ -488,9 +488,9 @@ status-source: this-file
 
 **Platform boundary:** shared+desktop
 
-**Estimated scope:** 10 files, 1500 lines
+**Estimated scope:** 10 files, 1519 lines
 
-**Split waiver:** Security 设置、credential capability probe、passphrase 创建/确认/变更、凭据与偏好的非原子补偿、根窗口锁覆盖层、focus lifecycle、production bootstrap 顺序与 Test Mode 真实状态共同组成一个不可拆的用户闭环。只交付设置会产生“可启用但无法解锁”，只交付覆盖层会产生“有锁但无配置入口”，只改 `TestState` 又不能证明真实 `/test/state` 在服务开放时已经观察到 `runtime.start()` 后的锁状态。上述入口反复消费同一 `DesktopAppLock`/verifier/state，必须由同一 Compose/DI/Test Mode 矩阵证明锁定时 Home 从未构造、成功认证后恢复，并证明 headless HTTP 不暴露启动瞬态。首轮 650 行估算遗漏了四类非原子失败补偿、production bootstrap 可杀死 seam 及其故障注入测试；重规划时当前实际为 1424 touched lines，保留至 1500 行上限并在 Evidence 记录最终精确范围，不能拆成会暂时留下 enabled-without-verifier、假 lock state 或不可解锁根窗口的独立交付。
+**Split waiver:** Security 设置、credential capability probe、passphrase 创建/确认/变更、凭据与偏好的非原子补偿、根窗口锁覆盖层、focus lifecycle、production bootstrap 顺序与 Test Mode 真实状态共同组成一个不可拆的用户闭环。只交付设置会产生“可启用但无法解锁”，只交付覆盖层会产生“有锁但无配置入口”，只改 `TestState` 又不能证明真实 `/test/state` 在服务开放时已经观察到 `runtime.start()` 后的锁状态。上述入口反复消费同一 `DesktopAppLock`/verifier/state，必须由同一 Compose/DI/Test Mode 矩阵证明锁定时 Home 从未构造、成功认证后恢复，并证明 headless HTTP 不暴露启动瞬态。首轮 650 行估算遗漏了四类非原子失败补偿、production bootstrap 可杀死 seam 及其故障注入测试；重规划前为 1424 touched lines，补齐可杀死的生产启动顺序与异常清理测试后最终为 1519 touched lines，不能拆成会暂时留下 enabled-without-verifier、假 lock state 或不可解锁根窗口的独立交付。
 
 **Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.settings.SecuritySettingsWiringTest" --tests "mihon.desktop.ui.ScreenInstantiationSmokeTest"`
 
@@ -518,6 +518,8 @@ status-source: this-file
 5. 运行 Verification、DI wiring、Compose wiring mutation 和 `git diff --check`。
 
 **Replan evidence:** 首审发现 headless lock state 仅由 Compose `SideEffect` 写入，以及偏好写失败没有结构化补偿。唯一修复已用 persistence seam、四类故障注入、双回滚 fail-closed 与 CharArray 清零关闭设置事务风险；修复复审仍证明测试手工安装 binding，无法杀死 Main production wiring，且 Test Mode HTTP 早于 `runtime.start()` 开放。Task 10 保持未完成，不新增 closure Task；本次重规划只补上述 production bootstrap 风险和最终精确范围。
+
+**Evidence:** 重规划提交 `d926f4a8d`，实现提交 `1319022cd`。首轮 RED 由缺失 Security Screen/controller/capability、More 导航、根锁覆盖层、focus listener 与真实 `appLocked` HTTP 状态触发；首审进一步发现 headless 假状态和 credential/preference 非原子失败。修复用 production persistence seam 覆盖 enable/disable/delay/change-passphrase 的写失败、补偿、双回滚 fail-closed 与 CharArray 清零；修复复审又证明手工 binding 测试无法杀死 Main 启动顺序。重规划后的 RED 因缺少 `bootstrapDesktopRuntime` 正确编译失败，GREEN 让 production 按 broker wiring/attach → lock-state binding → `runtime.start()` → Test Mode HTTP 开放，GUI/headless 共用可幂等关闭 session，并覆盖最终 locked、初始 locked→最终 unlocked 及 Test Mode 启动异常清理。协调者强制复跑 Security 17、Screen 41、AppLock 6、Runtime 11、DI 11、HTTP JSON 2，共 88/88，shared policy 6/6，0 failure/error/skip；根 Spotless、diff 与 TestState/TestHTTP secret scan 通过。重规划独立审查 APPROVED，Critical/Important/Minor `0/0/0`；最终范围 10 files/1519 touched lines。完整版本构建和 Windows/macOS 运行验收留至 Task 16。
 
 ### Task 10A：Desktop 通知隐私、telemetry 与 Widget capability 边界
 
