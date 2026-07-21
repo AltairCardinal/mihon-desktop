@@ -11,7 +11,9 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import cafe.adriel.voyager.navigator.tab.Tab
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
@@ -103,7 +105,125 @@ class ExternalActionNavigationTest {
         consumer.cancel()
         fixture.close()
     }
+
+    @Test
+    fun `actions submitted before Navigator is ready are consumed once in FIFO order`() = runTest {
+        val state = TestState()
+        val controller = searchController(state = state)
+        val fixture = navigatorFixture()
+
+        controller.submit(ExternalActionInput.Search("A"))
+        controller.submit(ExternalActionInput.Search("B"))
+        val consumer = backgroundScope.launch { controller.consumeSignals(fixture.navigator) {} }
+        testScheduler.runCurrent()
+
+        assertEquals(listOf("A", "B"), fixture.pushedSearchQueries())
+        assertEquals(listOf("ExternalActionSucceeded", "ExternalActionSucceeded"), state.terminalExternalActions())
+        assertFalse(controller.hasPendingAction)
+        consumer.cancel()
+        fixture.close()
+    }
+
+    @Test
+    fun `actions submitted while resolver is suspended retain order and each produce a result`() = runTest {
+        val state = TestState()
+        val resolverStarted = CompletableDeferred<Unit>()
+        val releaseResolver = CompletableDeferred<Unit>()
+        val resolved = mutableListOf<String>()
+        val feedback = mutableListOf<String>()
+        val controller = ExternalActionNavigator(
+            resolveTarget = { input ->
+                val query = (input as ExternalActionInput.Search).primaryQuery!!
+                resolved += query
+                if (query == "A") {
+                    resolverStarted.complete(Unit)
+                    releaseResolver.await()
+                }
+                when (query) {
+                    "B" -> DesktopExternalActionTarget.Rejected(DesktopExternalActionTarget.Rejection.ParserRejected)
+                    "C" -> error("resolver failed")
+                    else -> DesktopExternalActionTarget.GlobalSearch(query)
+                }
+            },
+            chapterDestination = { error("not a chapter") },
+            testState = state,
+        )
+        val fixture = navigatorFixture()
+        val consumer = backgroundScope.launch { controller.consumeSignals(fixture.navigator, feedback::add) }
+
+        controller.submit(ExternalActionInput.Search("A"))
+        testScheduler.runCurrent()
+        resolverStarted.await()
+        controller.submit(ExternalActionInput.Search("B"))
+        controller.submit(ExternalActionInput.Search("C"))
+        releaseResolver.complete(Unit)
+        testScheduler.runCurrent()
+
+        assertEquals(listOf("A", "B", "C"), resolved)
+        assertEquals(
+            listOf("ExternalActionSucceeded", "ExternalActionRejected", "ExternalActionFailed"),
+            state.terminalExternalActions(),
+        )
+        assertEquals(2, feedback.size)
+        assertFalse(controller.hasPendingAction)
+        consumer.cancel()
+        fixture.close()
+    }
+
+    @Test
+    fun `cancelling an in-flight action restores it ahead of later actions`() = runTest {
+        val state = TestState()
+        val resolverStarted = CompletableDeferred<Unit>()
+        val attempts = mutableListOf<String>()
+        var firstAttempt = true
+        val controller = searchController(state = state) { query ->
+            attempts += query
+            if (query == "A" && firstAttempt) {
+                firstAttempt = false
+                resolverStarted.complete(Unit)
+                awaitCancellation()
+            }
+        }
+        val fixture = navigatorFixture()
+        val firstConsumer = launch { controller.consumeSignals(fixture.navigator) {} }
+
+        controller.submit(ExternalActionInput.Search("A"))
+        testScheduler.runCurrent()
+        resolverStarted.await()
+        controller.submit(ExternalActionInput.Search("B"))
+        controller.submit(ExternalActionInput.Search("C"))
+        firstConsumer.cancelAndJoin()
+
+        val nextConsumer = backgroundScope.launch { controller.consumeSignals(fixture.navigator) {} }
+        testScheduler.runCurrent()
+
+        assertEquals(listOf("A", "A", "B", "C"), attempts)
+        assertEquals(listOf("A", "B", "C"), fixture.pushedSearchQueries())
+        assertEquals(3, state.terminalExternalActions().size)
+        assertFalse(controller.hasPendingAction)
+        nextConsumer.cancel()
+        fixture.close()
+    }
+
+    private fun searchController(
+        state: TestState,
+        beforeResolve: suspend (String) -> Unit = {},
+    ) = ExternalActionNavigator(
+        resolveTarget = { input ->
+            val query = (input as ExternalActionInput.Search).primaryQuery!!
+            beforeResolve(query)
+            DesktopExternalActionTarget.GlobalSearch(query)
+        },
+        chapterDestination = { error("not a chapter") },
+        testState = state,
+    )
 }
+
+private fun NavigatorFixture.pushedSearchQueries(): List<String> =
+    navigator.items.drop(1).map { (it as GlobalSearchScreen).initialQuery }
+
+private fun TestState.terminalExternalActions(): List<String> =
+    actionHistory.value.map { it.action }.filterNot { it == "ExternalActionPending" }
 
 internal suspend fun navigatorFixture(): NavigatorFixture {
     val root = NavigatorProbeScreen()

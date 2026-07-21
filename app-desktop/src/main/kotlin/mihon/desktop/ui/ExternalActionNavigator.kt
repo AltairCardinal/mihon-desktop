@@ -5,6 +5,8 @@ import cafe.adriel.voyager.navigator.Navigator
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import mihon.desktop.library.MangaDetailScreenModelFactory
 import mihon.desktop.platform.DesktopExternalActionTarget
 import mihon.desktop.test.state.TestState
@@ -16,55 +18,64 @@ import mihon.desktop.ui.settings.BackupSettingsScreen
 import mihon.desktop.ui.settings.ExtensionRepoScreen
 import mihon.domain.platform.ExternalActionInput
 import tachiyomi.i18n.MR
+import java.util.ArrayDeque
 import java.util.concurrent.atomic.AtomicLong
-import java.util.concurrent.atomic.AtomicReference
 
 class ExternalActionNavigator internal constructor(
     private val resolveTarget: suspend (ExternalActionInput) -> DesktopExternalActionTarget,
     private val chapterDestination: suspend (DesktopExternalActionTarget.Chapter) -> Screen = ::chapterDestination,
     private val testState: TestState = applicationState,
 ) {
-    private val pending = AtomicReference<ExternalActionInput?>()
+    private val pending = ArrayDeque<ExternalActionInput>()
+    private val pendingLock = Any()
+    private val consumerMutex = Mutex()
     private val generation = AtomicLong()
     private val _pendingSignals = MutableStateFlow(0L)
 
-    internal val hasPendingAction: Boolean get() = pending.get() != null
+    internal val hasPendingAction: Boolean get() = synchronized(pendingLock) { pending.isNotEmpty() }
 
     fun submit(input: ExternalActionInput) {
-        pending.set(input)
+        synchronized(pendingLock) { pending.addLast(input) }
         testState.recordExternalAction("Pending")
-        _pendingSignals.value = generation.incrementAndGet()
+        signalPending()
     }
 
     suspend fun consumePending(
         navigator: Navigator,
         showFeedback: suspend (String) -> Unit,
-    ) {
-        val input = pending.getAndSet(null) ?: return
-        try {
-            when (val target = resolveTarget(input)) {
-                is DesktopExternalActionTarget.Rejected -> {
-                    testState.recordExternalAction("Rejected", target.reason.name)
-                    showFeedback(rejectionFeedback(target))
+    ) = consumerMutex.withLock {
+        while (true) {
+            val input = synchronized(pendingLock) { pending.pollFirst() } ?: return@withLock
+            try {
+                when (val target = resolveTarget(input)) {
+                    is DesktopExternalActionTarget.Rejected -> {
+                        testState.recordExternalAction("Rejected", target.reason.name)
+                        showFeedback(rejectionFeedback(target))
+                    }
+                    else -> {
+                        val destination = destination(target)
+                        navigator.push(destination)
+                        testState.setCurrentScreen(destination::class.simpleName ?: destination.key)
+                        testState.recordExternalAction("Succeeded", destination::class.simpleName)
+                    }
                 }
-                else -> {
-                    val destination = destination(target)
-                    navigator.push(destination)
-                    testState.setCurrentScreen(destination::class.simpleName ?: destination.key)
-                    testState.recordExternalAction("Succeeded", destination::class.simpleName)
-                }
+            } catch (cancelled: CancellationException) {
+                synchronized(pendingLock) { pending.addFirst(input) }
+                signalPending()
+                throw cancelled
+            } catch (_: Exception) {
+                testState.recordExternalAction("Failed")
+                showFeedback(MR.strings.unknown_error.localized())
             }
-        } catch (cancelled: CancellationException) {
-            pending.compareAndSet(null, input)
-            throw cancelled
-        } catch (_: Exception) {
-            testState.recordExternalAction("Failed")
-            showFeedback(MR.strings.unknown_error.localized())
         }
     }
 
     suspend fun consumeSignals(navigator: Navigator, showFeedback: suspend (String) -> Unit) {
         _pendingSignals.collect { consumePending(navigator, showFeedback) }
+    }
+
+    private fun signalPending() {
+        _pendingSignals.value = generation.incrementAndGet()
     }
 
     internal suspend fun destination(target: DesktopExternalActionTarget): Screen = when (target) {
