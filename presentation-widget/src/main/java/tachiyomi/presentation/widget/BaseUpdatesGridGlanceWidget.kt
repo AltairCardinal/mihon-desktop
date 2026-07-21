@@ -51,10 +51,10 @@ import uy.kohesive.injekt.api.get
 import java.time.Instant
 import java.time.ZonedDateTime
 
-abstract class BaseUpdatesGridGlanceWidget(
+abstract class BaseUpdatesGridGlanceWidget internal constructor(
     private val context: Context = Injekt.get<Application>(),
-    private val getUpdates: GetUpdates = Injekt.get(),
-    private val preferences: SecurityPreferences = Injekt.get(),
+    private val dataSource: WidgetPrivacyDataSource =
+        WidgetPrivacyDataSource(Injekt.get<GetUpdates>(), Injekt.get<SecurityPreferences>()),
 ) : GlanceAppWidget() {
 
     override val sizeMode = SizeMode.Exact
@@ -65,7 +65,6 @@ abstract class BaseUpdatesGridGlanceWidget(
     abstract val bottomPadding: Dp
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val locked = preferences.useAuthenticator().get()
         val containerModifier = GlanceModifier
             .fillMaxSize()
             .background(background)
@@ -81,30 +80,32 @@ abstract class BaseUpdatesGridGlanceWidget(
             .calculateRowAndColumnCount(topPadding, bottomPadding)
 
         provideContent {
-            // If app lock enabled, don't do anything
-            if (locked) {
-                LockedWidget(
-                    foreground = foreground,
-                    modifier = containerModifier,
-                )
-                return@provideContent
-            }
-
             val flow = remember {
-                getUpdates
-                    .subscribe(false, DateLimit.toEpochMilli())
-                    .map { rawData ->
-                        rawData.prepareData(rowCount, columnCount)
+                dataSource
+                    .subscribe(DateLimit.toEpochMilli())
+                    .map { privacyData ->
+                        when (privacyData) {
+                            WidgetPrivacyData.Locked -> WidgetDisplayData.Locked
+                            is WidgetPrivacyData.Content -> WidgetDisplayData.Content(
+                                privacyData.updates.prepareData(rowCount, columnCount),
+                            )
+                        }
                     }
             }
             val data by flow.collectAsState(initial = null)
-            UpdatesWidget(
-                data = data,
-                contentColor = foreground,
-                topPadding = topPadding,
-                bottomPadding = bottomPadding,
-                modifier = containerModifier,
-            )
+            when (val current = data) {
+                WidgetDisplayData.Locked -> LockedWidget(
+                    foreground = foreground,
+                    modifier = containerModifier,
+                )
+                is WidgetDisplayData.Content, null -> UpdatesWidget(
+                    data = current?.updates,
+                    contentColor = foreground,
+                    topPadding = topPadding,
+                    bottomPadding = bottomPadding,
+                    modifier = containerModifier,
+                )
+            }
         }
     }
 
@@ -158,4 +159,10 @@ abstract class BaseUpdatesGridGlanceWidget(
         val DateLimit: Instant
             get() = ZonedDateTime.now().minusMonths(3).toInstant()
     }
+}
+
+private sealed interface WidgetDisplayData {
+    data object Locked : WidgetDisplayData
+
+    data class Content(val updates: ImmutableList<Pair<Long, Bitmap?>>) : WidgetDisplayData
 }

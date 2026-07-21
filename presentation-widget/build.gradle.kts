@@ -28,4 +28,8 @@ dependencies {
     implementation(libs.coil.core)
 
     api(libs.injekt)
+
+    testImplementation(libs.bundles.test)
+    testImplementation(kotlinx.coroutines.test)
+    testRuntimeOnly(libs.junit.platform.launcher)
 }

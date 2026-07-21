@@ -16,6 +16,10 @@ import eu.kanade.tachiyomi.util.view.setSecureScreen
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import mihon.domain.security.AppLockPolicy
+import mihon.domain.security.AppLockState
+import mihon.domain.security.AuthenticationResult
+import mihon.domain.security.SecureScreenPolicy
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
@@ -29,20 +33,22 @@ interface SecureActivityDelegate {
          *
          * Always require unlock if app is killed.
          */
-        var requireUnlock = true
+        private val appLockStateMachine = AndroidAppLockStateMachine(lockEnabled = true)
+
+        var requireUnlock: Boolean
+            get() = appLockStateMachine.state.requiresUnlock
+            set(value) = appLockStateMachine.overrideRequiresUnlock(value)
 
         fun onApplicationStopped() {
             val preferences = Injekt.get<SecurityPreferences>()
             if (!preferences.useAuthenticator().get()) return
 
-            if (!AuthenticatorUtil.isAuthenticating) {
-                // Return if app is closed in locked state
-                if (requireUnlock) return
-                // Save app close time if lock is delayed
-                if (preferences.lockAppAfter().get() > 0) {
-                    preferences.lastAppClosed().set(System.currentTimeMillis())
-                }
-            }
+            appLockStateMachine.onApplicationStopped(
+                lockEnabled = true,
+                delayMinutes = preferences.lockAppAfter().get(),
+                nowMillis = System.currentTimeMillis(),
+                isAuthenticating = AuthenticatorUtil.isAuthenticating,
+            ).lastClosedAtMillis?.let(preferences.lastAppClosed()::set)
         }
 
         /**
@@ -53,21 +59,18 @@ interface SecureActivityDelegate {
             if (!preferences.useAuthenticator().get()) return
 
             val lastClosedPref = preferences.lastAppClosed()
-
-            // `requireUnlock` can be true on process start or if app was closed in locked state
-            if (!AuthenticatorUtil.isAuthenticating && !requireUnlock) {
-                requireUnlock = when (val lockDelay = preferences.lockAppAfter().get()) {
-                    -1 -> false // Never
-                    0 -> true // Always
-                    else -> lastClosedPref.get() + lockDelay * 60_000 <= System.currentTimeMillis()
-                }
-            }
-
+            appLockStateMachine.onApplicationStart(
+                lockEnabled = true,
+                delayMinutes = preferences.lockAppAfter().get(),
+                lastClosedAtMillis = lastClosedPref.get().takeIf { lastClosedPref.isSet() },
+                nowMillis = System.currentTimeMillis(),
+                isAuthenticating = AuthenticatorUtil.isAuthenticating,
+            )
             lastClosedPref.delete()
         }
 
         fun unlock() {
-            requireUnlock = false
+            appLockStateMachine.onUnlockAuthentication(AuthenticationResult.Success)
         }
     }
 }
@@ -96,8 +99,7 @@ class SecureActivityDelegateImpl : SecureActivityDelegate, DefaultLifecycleObser
         val secureScreenFlow = securityPreferences.secureScreen().changes()
         val incognitoModeFlow = preferences.incognitoMode().changes()
         combine(secureScreenFlow, incognitoModeFlow) { secureScreen, incognitoMode ->
-            secureScreen == SecurityPreferences.SecureScreenMode.ALWAYS ||
-                (secureScreen == SecurityPreferences.SecureScreenMode.INCOGNITO && incognitoMode)
+            shouldProtectSecureScreen(secureScreen, incognitoMode)
         }
             .onEach(activity.window::setSecureScreen)
             .launchIn(activity.lifecycleScope)
@@ -119,3 +121,47 @@ class SecureActivityDelegateImpl : SecureActivityDelegate, DefaultLifecycleObser
         }
     }
 }
+
+internal class AndroidAppLockStateMachine(lockEnabled: Boolean) {
+    var state: AppLockState = AppLockPolicy.initial(lockEnabled)
+        private set
+
+    fun onApplicationStopped(
+        lockEnabled: Boolean,
+        delayMinutes: Int,
+        nowMillis: Long,
+        isAuthenticating: Boolean,
+    ): AppLockState = AppLockPolicy.onApplicationStopped(
+        state = state,
+        lockEnabled = lockEnabled,
+        delayMinutes = delayMinutes,
+        nowMillis = nowMillis,
+        isAuthenticating = isAuthenticating,
+    ).also { state = it }
+
+    fun onApplicationStart(
+        lockEnabled: Boolean,
+        delayMinutes: Int,
+        lastClosedAtMillis: Long?,
+        nowMillis: Long,
+        isAuthenticating: Boolean,
+    ): AppLockState = AppLockPolicy.onApplicationStart(
+        state = state.copy(lastClosedAtMillis = lastClosedAtMillis),
+        lockEnabled = lockEnabled,
+        delayMinutes = delayMinutes,
+        nowMillis = nowMillis,
+        isAuthenticating = isAuthenticating,
+    ).also { state = it }
+
+    fun onUnlockAuthentication(result: AuthenticationResult) =
+        AppLockPolicy.onUnlockAuthentication(state, result).also { state = it }
+
+    fun overrideRequiresUnlock(value: Boolean) {
+        state = state.copy(requiresUnlock = value)
+    }
+}
+
+internal fun shouldProtectSecureScreen(
+    mode: SecurityPreferences.SecureScreenMode,
+    incognito: Boolean,
+) = SecureScreenPolicy.isProtected(mode, incognito)

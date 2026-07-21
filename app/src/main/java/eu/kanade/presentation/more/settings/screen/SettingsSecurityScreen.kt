@@ -1,6 +1,7 @@
 package eu.kanade.presentation.more.settings.screen
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -34,8 +35,7 @@ object SettingsSecurityScreen : SearchableSettings {
         val privacyPreferences = remember { Injekt.get<PrivacyPreferences>() }
         return buildList(2) {
             add(getSecurityGroup(securityPreferences))
-            if (!telemetryIncluded) return@buildList
-            add(getFirebaseGroup(privacyPreferences))
+            if (telemetryIncluded) add(getFirebaseGroup(privacyPreferences))
         }
     }
 
@@ -47,6 +47,12 @@ object SettingsSecurityScreen : SearchableSettings {
         val authSupported = remember { context.isAuthenticationSupported() }
         val useAuthPref = securityPreferences.useAuthenticator()
         val useAuth by useAuthPref.collectAsState()
+        val availability = AndroidSecuritySettingsPolicy.availability(authSupported, useAuth)
+        LaunchedEffect(availability.authenticatorEnabled) {
+            if (useAuth != availability.authenticatorEnabled) {
+                useAuthPref.set(availability.authenticatorEnabled)
+            }
+        }
 
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.pref_security),
@@ -56,9 +62,11 @@ object SettingsSecurityScreen : SearchableSettings {
                     title = stringResource(MR.strings.lock_with_biometrics),
                     enabled = authSupported,
                     onValueChanged = {
-                        (context as FragmentActivity).authenticate(
-                            title = context.stringResource(MR.strings.lock_with_biometrics),
-                        )
+                        AndroidSecuritySettingsPolicy.confirmChange(authSupported) {
+                            (context as FragmentActivity).authenticate(
+                                title = context.stringResource(MR.strings.lock_with_biometrics),
+                            )
+                        }
                     },
                 ),
                 Preference.PreferenceItem.ListPreference(
@@ -73,11 +81,13 @@ object SettingsSecurityScreen : SearchableSettings {
                         }
                         .toImmutableMap(),
                     title = stringResource(MR.strings.lock_when_idle),
-                    enabled = authSupported && useAuth,
+                    enabled = availability.lockDelayEnabled,
                     onValueChanged = {
-                        (context as FragmentActivity).authenticate(
-                            title = context.stringResource(MR.strings.lock_when_idle),
-                        )
+                        AndroidSecuritySettingsPolicy.confirmChange(authSupported) {
+                            (context as FragmentActivity).authenticate(
+                                title = context.stringResource(MR.strings.lock_when_idle),
+                            )
+                        }
                     },
                 ),
 
@@ -118,6 +128,24 @@ object SettingsSecurityScreen : SearchableSettings {
             ),
         )
     }
+}
+
+internal data class AndroidSecuritySettingsAvailability(
+    val authenticatorEnabled: Boolean,
+    val lockDelayEnabled: Boolean,
+)
+
+internal object AndroidSecuritySettingsPolicy {
+    fun availability(authenticationSupported: Boolean, authenticatorEnabled: Boolean) =
+        AndroidSecuritySettingsAvailability(
+            authenticatorEnabled = authenticationSupported && authenticatorEnabled,
+            lockDelayEnabled = authenticationSupported && authenticatorEnabled,
+        )
+
+    suspend fun confirmChange(
+        authenticationSupported: Boolean,
+        authenticate: suspend () -> Boolean,
+    ) = authenticationSupported && authenticate()
 }
 
 private val LockAfterValues = persistentListOf(

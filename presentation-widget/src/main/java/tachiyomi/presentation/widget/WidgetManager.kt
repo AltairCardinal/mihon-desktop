@@ -5,7 +5,6 @@ import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.LifecycleCoroutineScope
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.launchIn
@@ -20,14 +19,10 @@ class WidgetManager(
 ) {
 
     fun Context.init(scope: LifecycleCoroutineScope) {
-        combine(
-            getUpdates.subscribe(read = false, after = BaseUpdatesGridGlanceWidget.DateLimit.toEpochMilli()),
-            securityPreferences.useAuthenticator().changes(),
-            transform = { a, b -> a to b },
-        )
+        WidgetPrivacyDataSource(getUpdates, securityPreferences)
+            .subscribe(afterMillis = BaseUpdatesGridGlanceWidget.DateLimit.toEpochMilli())
             .distinctUntilChanged { old, new ->
-                old.second == new.second &&
-                    old.first.map { it.chapterId }.toSet() == new.first.map { it.chapterId }.toSet()
+                old.refreshIdentity() == new.refreshIdentity()
             }
             .onEach {
                 try {
