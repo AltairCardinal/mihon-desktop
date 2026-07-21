@@ -19,6 +19,16 @@ interface CredentialBackend {
 class DesktopCredentialStore(
     private val backend: CredentialBackend = OsCredentialBackend(),
 ) {
+    fun save(account: String, secret: CharArray) {
+        require(account.isNotBlank())
+        val copy = secret.copyOf()
+        try {
+            backend.save(account, copy)
+        } finally {
+            copy.fill('\u0000')
+        }
+    }
+
     fun save(account: String, secret: String) {
         require(account.isNotBlank())
         val chars = secret.toCharArray()
@@ -26,6 +36,16 @@ class DesktopCredentialStore(
             backend.save(account, chars)
         } finally {
             chars.fill('\u0000')
+        }
+    }
+
+    internal fun <T> withSecret(account: String, operation: (CharArray?) -> T): T {
+        require(account.isNotBlank())
+        val chars = backend.load(account)
+        return try {
+            operation(chars)
+        } finally {
+            chars?.fill('\u0000')
         }
     }
 
@@ -65,6 +85,11 @@ enum class OperatingSystem {
             }
         }
     }
+}
+
+enum class CredentialNamespace(val service: String, val windowsNode: String, val label: String) {
+    TRACKER_V1("mihon-desktop-tracker", "v2", "Mihon Desktop"),
+    APP_LOCK_V1("mihon-desktop-app-lock-v1", "app-lock/v1", "Mihon Desktop App Lock"),
 }
 
 class CommandResult(
@@ -113,8 +138,10 @@ class ProcessCommandRunner : CommandRunner {
 class PlatformCredentialBackend(
     private val platform: OperatingSystem = OperatingSystem.detect(),
     private val runner: CommandRunner = ProcessCommandRunner(),
-    private val preferences: Preferences = Preferences.userRoot().node("mihon/desktop/credentials/v2"),
+    private val namespace: CredentialNamespace = CredentialNamespace.TRACKER_V1,
+    preferencesRoot: Preferences = Preferences.userRoot().node("mihon/desktop/credentials"),
 ) : CredentialBackend {
+    private val preferences = preferencesRoot.node(namespace.windowsNode)
     override fun save(account: String, secret: CharArray) {
         when (platform) {
             OperatingSystem.WINDOWS -> saveWindows(account, secret)
@@ -183,7 +210,7 @@ class PlatformCredentialBackend(
         try {
             requireSuccess(
                 runCommand(
-                    listOf("security", "add-generic-password", "-U", "-a", account, "-s", SERVICE, "-w"),
+                    listOf("security", "add-generic-password", "-U", "-a", account, "-s", namespace.service, "-w"),
                     stdin,
                     "save",
                 ),
@@ -197,7 +224,7 @@ class PlatformCredentialBackend(
 
     private fun loadMac(account: String): CharArray? {
         val result = runCommand(
-            listOf("security", "find-generic-password", "-a", account, "-s", SERVICE, "-w"),
+            listOf("security", "find-generic-password", "-a", account, "-s", namespace.service, "-w"),
             operation = "load",
         )
         if (result.exitCode == MAC_ITEM_NOT_FOUND) return null
@@ -236,7 +263,7 @@ class PlatformCredentialBackend(
 
     private fun deleteMac(account: String) {
         val result = runCommand(
-            listOf("security", "delete-generic-password", "-a", account, "-s", SERVICE),
+            listOf("security", "delete-generic-password", "-a", account, "-s", namespace.service),
             operation = "delete",
         )
         if (result.exitCode != MAC_ITEM_NOT_FOUND) requireSuccess(result, "delete")
@@ -245,7 +272,7 @@ class PlatformCredentialBackend(
     private fun saveLinux(account: String, secret: CharArray) {
         requireSuccess(
             runCommand(
-                listOf("secret-tool", "store", "--label=Mihon Desktop", "service", SERVICE, "account", account),
+                listOf("secret-tool", "store", "--label=${namespace.label}", "service", namespace.service, "account", account),
                 secret,
                 "save",
             ),
@@ -255,7 +282,7 @@ class PlatformCredentialBackend(
 
     private fun loadLinux(account: String): CharArray? {
         val result = runCommand(
-            listOf("secret-tool", "lookup", "service", SERVICE, "account", account),
+            listOf("secret-tool", "lookup", "service", namespace.service, "account", account),
             operation = "load",
         )
         if (result.exitCode == 1 && result.stdout.isBlank() && result.stderr.isBlank()) return null
@@ -265,7 +292,7 @@ class PlatformCredentialBackend(
 
     private fun deleteLinux(account: String) {
         val result = runCommand(
-            listOf("secret-tool", "clear", "service", SERVICE, "account", account),
+            listOf("secret-tool", "clear", "service", namespace.service, "account", account),
             operation = "delete",
         )
         if (result.exitCode != 1 || result.stdout.isNotBlank() || result.stderr.isNotBlank()) {
@@ -306,7 +333,6 @@ class PlatformCredentialBackend(
     override fun toString(): String = "PlatformCredentialBackend(platform=$platform, runner=${runner::class.simpleName})"
 
     companion object {
-        private const val SERVICE = "mihon-desktop-tracker"
         private const val MAC_VALUE_PREFIX = "mihon-v1:"
         private const val MAC_ITEM_NOT_FOUND = 44
         private const val PROTECT_SCRIPT =
@@ -327,9 +353,10 @@ class PlatformCredentialBackend(
 class OsCredentialBackend(
     osName: String = System.getProperty("os.name"),
     runner: CommandRunner = ProcessCommandRunner(),
+    namespace: CredentialNamespace = CredentialNamespace.TRACKER_V1,
 ) : CredentialBackend {
     private val platform = OperatingSystem.detect(osName)
-    private val delegate = PlatformCredentialBackend(platform, runner)
+    private val delegate = PlatformCredentialBackend(platform, runner, namespace)
 
     override fun save(account: String, secret: CharArray) = delegate.save(account, secret)
     override fun load(account: String): CharArray? = delegate.load(account)
