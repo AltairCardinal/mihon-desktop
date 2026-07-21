@@ -36,7 +36,7 @@ status-source: this-file
 - [x] Task 10：Desktop Security 设置与 unlock UI
 - [x] Task 10A：Desktop 通知隐私、telemetry 与 Widget capability 边界
 - [x] Task 11：Desktop 窗口隐私能力与真实反馈
-- [ ] Task 12：固定原版发布语义与当前 Android 兼容
+- [x] Task 12：固定原版发布语义与当前 Android 兼容
 - [ ] Task 13：Desktop 更新下载、校验与平台安装交接
 - [ ] Task 14：Desktop 更新 UI、DI 与 Test Mode wiring
 - [ ] Task 15：Widget 豁免、parity 证据与维护文档
@@ -618,6 +618,8 @@ status-source: this-file
 2. GREEN：asset 选择使用结构化 target，不用任意文件名子串 map 覆盖；Android ABI/FOSS 行为由 AndroidPlatformInfo adapter 保持。旧 `domain/src/test/java/.../GetApplicationReleaseTest.kt` 不作为本 Task 执行证据。
 3. 若 fixed-main 版本比较对位数不一致会越界，先以 fixed-main fixture记录，再将安全处理标为 cross-platform bugfix；不能悄悄换成不同 SemVer 规则。
 4. 运行 Verification、Android updater compile/test 回归和 `git diff --check`。
+
+**Evidence:** 范围/测试依赖修订提交 `f98b2a33c`，实现提交 `9f40548c3`。直接从 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` 的 `GetApplicationRelease`、`ReleaseServiceImpl`、`GithubRelease`、`Release`、原测试与 `release.yml` 固化三日节流、force、preview/release 比较，以及 universal/四 ABI/FOSS canonical asset 命名。Shared `ReleaseTarget(os, arch, packageType, variant)`、`ReleaseAsset`、可空 SHA-256 metadata 保留旧 `downloadLink` consumer；Android adapter 明确 `ANDROID/APK`，选择 exact ABI 后仅回退 universal，FOSS 不回退 standard，空/不兼容 asset 返回 null，HTTP/JSON 失败保持失败。MockWebServer 覆盖成功、4 ABI、4 universal fallback、FOSS、空/不兼容、403/429/500、畸形 JSON、缺失及三类无效 digest；mutation RED 分别杀死 fallback 与 checksum validation 回归。协调者强制复跑 domain 3/3、data 7/7、Android `app:compileDebugKotlin` 成功，根 Spotless 与 diff/secret scan 通过。首审 2 项 Important 经唯一修复轮关闭，复审 APPROVED，Critical/Important/Minor `0/0/0`；最终范围 8 files/364 touched。
 
 ### Task 13：Desktop 更新下载、校验与平台安装交接
 
