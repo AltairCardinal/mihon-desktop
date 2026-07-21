@@ -41,7 +41,7 @@ status-source: this-file
 - [x] Task 13B：无兼容包 shared 结果与当前 Android 兼容
 - [x] Task 13C：Desktop 安全下载、临时路径与 SHA-256
 - [x] Task 13D：Desktop 签名验证与平台安装交接
-- [ ] Task 13E：Desktop 更新控制器状态机
+- [x] Task 13E：Desktop 更新控制器状态机
 - [ ] Task 14：Desktop 更新 UI、DI 与 Test Mode wiring
 - [ ] Task 15：Widget 豁免、parity 证据与维护文档
 - [ ] Task 16：独立最终审查与三平台 change verify
@@ -760,6 +760,8 @@ status-source: this-file
 1. RED：fake release/downloader/installer 覆盖每条允许转换、非法重入、progress、取消、retry、确认拒绝、download/verify/install failure 和 release-page fallback；断开任一 production delegate 时测试失败。
 2. GREEN：controller 只编排 shared release + 两个平台 adapter，不重复 HTTP、hash、签名或进程规则；取消传播并清理下载，失败不改变当前可启动应用。
 3. 运行 Verification、Task 12/13B release 回归、Spotless 与 `git diff --check`。
+
+**Evidence:** 实现提交 `ee9382ac0`、审查修复 `878a11dda`。Controller 通过 `StateFlow` 编排 shared `GetApplicationRelease`、Desktop downloader 与 installer，覆盖检查、下载进度、验证、确认交接、手动后备、结构化失败和精确阶段重试；`OsTooOld` 保留为不可重试的 EOL 检查结果。首轮独立审查发现迟到 progress 可覆写终态及取消证据只覆盖下载两个 Important；唯一修复轮加入每次下载唯一 `AtomicLong` generation，并在 `MutableStateFlow.update` CAS 路径内校验 active token，取消、失败或完成前先失效 token。测试覆盖取消后、Ready 后和同 release retry 期间的旧 progress，以及 check/download/prepare/handoff 四阶段同实例取消传播、`Cancelled` 发布与 retry 清空；固定 token 和逐 catch 删除 cancel 的变异均被精确杀死。协调者强制复跑 Controller 7/7 + Downloader 10/10 + Installer 10/10、shared release parity 4/4、当前 Android consumer 3/3，根 Spotless、diff 与 secret scan 通过；修复复审 APPROVED，Critical/Important/Minor `0/0/0`。最终范围 3 files/396 touched。Task 14 仍负责 production DI、About UI 与 Test Mode wiring。
 
 ### Task 14：Desktop 更新 UI、DI 与 Test Mode wiring
 
