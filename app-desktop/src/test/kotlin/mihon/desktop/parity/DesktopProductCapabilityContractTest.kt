@@ -32,7 +32,7 @@ class DesktopProductCapabilityContractTest {
             53, 54, 56, 57, 59, 61, 62, 64, 66, 67, 68, 69, 70, 71, 72, 73,
             74, 81, 82, 83, 84, 85, 86, 87, 88, 90, 91, 92, 93, 94, 95, 96,
         )
-    private val validStatuses = setOf("NOT_STARTED", "CHARACTERIZED", "SHARED", "WIRED", "VERIFIED", "EXEMPT")
+    private val validStatuses = setOf("NOT_STARTED", "CHARACTERIZED", "SHARED", "WIRED", "VERIFIED", "CANDIDATE", "EXEMPT")
     private val validTags =
         setOf(
             "SHARE-DIRECT",
@@ -82,6 +82,7 @@ class DesktopProductCapabilityContractTest {
         )
     private val fixedOriginalMihonRef =
         "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8"
+    private val platformCapabilityEvidenceIds = setOf(81, 82, 83, 84, 86, 92)
     private val forkOnlyReaderPairingPaths =
         setOf(
             "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagePairingAlgorithm.kt",
@@ -1413,6 +1414,36 @@ class DesktopProductCapabilityContractTest {
             validateItem(syntheticItem(84, "EXEMPT", "missing.md"), tempDir)
         }
         assertTrue(missingFailure.message.orEmpty().contains("ID 84"))
+    }
+
+    @Test
+    fun `platform capability candidates have fixed-main provenance and production evidence`() {
+        val repositoryRoot = repositoryRoot()
+        val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
+
+        platformCapabilityEvidenceIds.forEach { id ->
+            val item = items.getValue(id).jsonObject
+            assertEquals("CANDIDATE", requiredText(item, "status", id))
+            assertEquals(fixedOriginalMihonRef, requiredText(item, "upstreamRef", id))
+            val symbols = item.getValue("upstreamSymbols").jsonArray
+            assertTrue(symbols.isNotEmpty(), "ID $id requires fixed-main path and symbol")
+            symbols.forEach { symbol ->
+                assertTrue(requiredText(symbol.jsonObject, "path", id).endsWith(".kt"))
+                requiredText(symbol.jsonObject, "symbol", id)
+            }
+            listOf("sharedImplementationPaths", "currentAndroidConsumerPaths", "desktopConsumerAdapterPaths", "protectionTests")
+                .forEach { field ->
+                    val paths = item.getValue(field).jsonArray
+                    assertTrue(paths.isNotEmpty(), "ID $id requires $field")
+                    paths.forEach { path -> assertTrue(Files.isRegularFile(repositoryRoot.resolve(path.jsonPrimitive.content)), "ID $id missing $field path") }
+                }
+            val deviations = item.getValue("deviations").jsonArray
+            assertTrue(deviations.isNotEmpty(), "ID $id requires an honest deviation")
+            assertTrue(requiredText(item, "verificationScope", id).contains("CANDIDATE"), "ID $id must remain limited until OS acceptance")
+        }
+        val widget = items.getValue(85).jsonObject
+        assertEquals("EXEMPT", requiredText(widget, "status", 85))
+        assertTrue(requiredText(widget, "platformExemptionEvidence", 85).endsWith("WidgetPrivacyBoundaryTest.kt"))
     }
 
     @Test
