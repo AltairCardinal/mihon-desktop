@@ -40,7 +40,7 @@ status-source: this-file
 - [x] Task 13A：Desktop release discovery 与 canonical 包契约
 - [x] Task 13B：无兼容包 shared 结果与当前 Android 兼容
 - [x] Task 13C：Desktop 安全下载、临时路径与 SHA-256
-- [ ] Task 13D：Desktop 签名验证与平台安装交接
+- [x] Task 13D：Desktop 签名验证与平台安装交接
 - [ ] Task 13E：Desktop 更新控制器状态机
 - [ ] Task 14：Desktop 更新 UI、DI 与 Test Mode wiring
 - [ ] Task 15：Widget 豁免、parity 证据与维护文档
@@ -734,6 +734,8 @@ status-source: this-file
 **Replan evidence:** 首轮实现与唯一修复已完成 target/hash/trust/confirmation、canonical asset 和 PowerShell stdin 安全门禁，但修复复审发现 Task 13C production 固定返回 `.part`，而 Task 13D 测试手工构造 `.msi/.dmg`，使 macOS DMG 签名与 `/usr/bin/open` 交接没有覆盖真实输入形状。该问题跨越 downloader finalization 与 installer verification，不能拆成可独立完成的后置 UI/state Task；因此在不新增编号的前提下把当前 Task 扩为上述 4 文件，并要求真实链测试。此前未提交的 13D 实现保留为重规划后的起点，完成状态仍未勾选。
 
 **Evidence replan:** 4 文件真实链实现已通过 Downloader/Installer 20/20，但新边界的修复复审发现路径断言使用 `all {}`，无法区分空集合、仅 prepare 验证和 prepare + handoff 完整复验。当前 Task 再次原位收紧验收证据：Windows 必须精确记录 2 次 stdin final path，macOS 必须精确记录 4 次 codesign/spctl final path；两组均须逐项等于同一个 production Downloader 产物。该修改只强化既有集成风险的可证伪性，不新增产品能力、文件或 Task 编号，完成状态继续保持未勾选。
+
+**Evidence:** 重规划提交 `c3db21ff2`、范围字段纠正 `56cb7438e`、证据门禁收紧 `b19f644f5`，实现提交 `7e6e91da0`。Downloader 只为 MSI/DMG 在安全根内写随机 `.part`，SHA-256 成功后同目录 `ATOMIC_MOVE` 为随机 `.msi/.dmg`，后缀只来自结构化 package type；unsupported 在建根和发请求前 `ManualOnly`，move/containment/取消/失败会清理 staging 与 final 候选。Installer 分离 `prepare(download, releaseTag)` 与确认后的 `handoff`，后者再次完整验证 exact target/standard variant/arch/Task 13A canonical asset、文件 size/hash、Windows Authenticode exact publisher 或 macOS exact team-id + notarization；默认无 trust/Linux 为 `ManualOnly`，成功只参数化启动 `msiexec /i` 或 `open`，所有取消/失败保留 artifact。Windows 路径与 publisher 只以 UTF-8 Base64 stdin 进入固定 PowerShell 脚本，真实含空格未签名 probe 到达 `SIGNATURE_INVALID`。重规划真实链 RED 为联合 19/3；`.part` finalization mutation 19/2、unsupported mutation 20/1，move 部分成功后异常仍清空。证据修复把真实 MockWebServer 产物贯穿 prepare、handoff 二次 verifier 和 launcher，精确证明 Windows 2 次、macOS 4 次验证路径均为同一 final artifact；断开二次复验为 10/2，删一次 stdin 记录为 10/1。协调者以 `--rerun-tasks` 强制复跑 Downloader 10/10 + Installer 10/10，根 Spotless、diff 与 secret scan 通过；最终独立审查 APPROVED，Critical/Important/Minor `0/0/0`。最终范围 4 files/400 touched。仓库仍无 Desktop trust root，production 默认不会虚报自动安装，发布信任配置留给 Task 15 的流水线边界记录。
 
 ### Task 13E：Desktop 更新控制器状态机
 
