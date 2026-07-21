@@ -200,7 +200,7 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 10 files, 560 lines
+**Estimated scope:** 10 files, 590 lines
 
 **Split waiver:** Task 4 的 Backup target 只有由现有 `BackupSettingsScreen` 调用 target-aware factory 才能显示所选文件，ExtensionRepo target 也只有由现有 `ExtensionRepoScreen` 打开并预填原有确认对话框才不会丢失 URL 或绕过用户确认。因此本 Task 必须同时修改这两个真实 consumer；它们与单一 navigator/pending/feedback 状态机及同一导航测试矩阵反复修改相同边界，拆分会产生“已导航但 payload 丢失”或“自动添加绕过确认”的不可验收中间态。独立审查进一步证明单槽 pending 会在 Task 6 的连续转发入口静默丢失动作；FIFO、取消回队首与既有单一 consumer/恰好一次测试必须在本 Task 内共同修复，否则下一 Task 会建立在已知丢动作的基础上。
 
