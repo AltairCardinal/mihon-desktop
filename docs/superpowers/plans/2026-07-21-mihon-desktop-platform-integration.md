@@ -48,6 +48,8 @@ status-source: this-file
 - [x] Task 14A：Desktop verifier 可取消进程边界
 - [x] Task 14B：Desktop updater 应用生命周期所有权
 - [ ] Task 15：Widget 豁免、parity 证据与维护文档
+- [ ] Task 15A：平台证据的 per-ID 不可变 provenance 合同
+- [ ] Task 15B：Android Widget 默认隐私 wiring 证明
 - [ ] Task 16：独立最终审查与三平台 change verify
 
 ## 全局任务门禁
@@ -899,7 +901,52 @@ status-source: this-file
 6. 只有相应 Task 审查通过才更新状态；真实 OS 尚未验证的条目标为 CANDIDATE/有限，不预先写 VERIFIED。
 7. 运行 Verification、`git diff --check` 和文档路径/链接检查。
 
-**Review status（修复中）：** 初始实现提交 `c57383a23`、结构化证据修订 `d1f068de6`、权威路径修复 `9981e2929`；协调者强制复跑 Desktop parity/Widget/Updates/privacy 35/35、Android Widget 2/2、根 Spotless、JSON/current/fixed-main 路径与 diff 均通过。独立首审仍以 Critical/Important/Minor `2/4/0` 拒绝：ID 81 把 fork 的 `ExternalActionParser` 倒写为 fixed-main 行为；平台契约未接入 fixed-main blob inventory、精确 per-ID 路径/符号与可杀死 production wiring 的行为证据；多个 ID 只列 adapter 而漏 UI/DI consumer；Android Widget 测试未实例化/执行 `BaseUpdatesGridGlanceWidget` production wiring；ID 86 缺 fixed-main `GetApplicationRelease` 节流/版本路径；ID 92 无 Desktop consumer 的 notification/telemetry 错标为 CANDIDATE。唯一修复轮因此在同一 Task 内加入 fixed-main inventory 与 Android Widget production 测试，范围调整为 8 files/400 lines；不新增 Task。
+**Review status（重规划）：** 初始实现提交 `c57383a23`、结构化证据修订 `d1f068de6`、权威路径修复 `9981e2929`；唯一修复提交 `dd98ab51d`、`52c99a486`、`17edabc43`。协调者最终强制复跑 Desktop parity 与六类真实 protection 共 78/78、Android Widget 3/3、根 Spotless、JSON/current path、7 个 fixed-main blob 与 diff，最终范围 8 files/320 touched。首审的 ID 81 错误 provenance、UI/DI consumer 缺失、ID 86 authority 分栏、ID 92 状态/UI 和 production marker 均已关闭；唯一修复复审仍以 Critical/Important/Minor `1/1/0` 拒绝：合同没有将每个 ID 的 path↔symbol、shared/current Android path 与 fixed-main blob 精确绑定，cross-ID 证据仍可能通过；Android Widget 默认构造测试只覆盖未锁定路径，不能证明它消费注入的 `SecurityPreferences`。两项风险文件不重合且可独立验证，分别重规划为子 Task 15A、15B；两项均通过后再统一关闭 Task 15。
+
+### 子 Task 15A：平台证据的 per-ID 不可变 provenance 合同
+
+**Risk axis:** platform-provenance-contract
+
+**Platform boundary:** verification
+
+**Estimated scope:** 1 file, 160 lines
+
+**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.parity.DesktopProductCapabilityContractTest"`
+
+**Files:**
+
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt`
+
+**Consumes:** Task 15 manifest、84 条 fixed-main blob inventory、IDs 81–86/92 的已核实 fixed-main/shared/current Android/Desktop 路径。
+
+**Produces:** 每个 ID 精确绑定 upstream path↔symbol、shared path、当前 Android consumer、Desktop consumer、protection test 和 fixed-main blob 的不可交换合同。
+
+1. RED：分别把 ID 81 upstream path 换成 ID 86 path、shared path 换成其他 ID 的现存文件、当前 Android consumer 换成其他 ID 的现存文件、inventory blob 换成合法 40-hex；旧合同必须至少有一项错误通过，新合同必须逐项失败。
+2. GREEN：使用 per-ID exact 结构断言 path↔symbol 对、shared/current Android/Desktop/protection 集合；将 7 个新增路径加入 exact blob id 合同，不只检查全局白名单和文件存在。
+3. 不执行 `git` 或扫描移动中的当前 main 作为测试 oracle；expected blob 只来自固定 `main@6fbf6df...` 的已提交 inventory。
+4. 运行 Verification、Spotless、JSON/path/blob、`git diff --check` 和范围检查。
+
+### 子 Task 15B：Android Widget 默认隐私 wiring 证明
+
+**Risk axis:** android-widget-privacy-wiring
+
+**Platform boundary:** android
+
+**Estimated scope:** 1 file, 100 lines
+
+**Verification:** `./gradlew :presentation-widget:testDebugUnitTest --tests "tachiyomi.presentation.widget.WidgetPrivacyProductionWiringTest"`
+
+**Files:**
+
+- Modify: `presentation-widget/src/test/java/tachiyomi/presentation/widget/WidgetPrivacyProductionWiringTest.kt`
+
+**Consumes:** Task 15 已实例化的 `BaseUpdatesGridGlanceWidget` 默认构造器、真实 Injekt `GetUpdates` 与 `SecurityPreferences`。
+
+**Produces:** 同一个默认构造 widget/consumer 在注入 preference 锁定时返回 Locked 且零查询，切换解锁后返回 Content 并恢复真实 `GetUpdates` 查询的 production wiring 证据。
+
+1. RED：让默认构造器消费固定未锁定 Flow、绕过注入 `SecurityPreferences`；现有测试会错误通过，新测试必须失败。
+2. GREEN：在默认构造测试中先设置真实 preference 为锁定，断言 Locked 与 `GetUpdates` 0 次；再切换同一 preference 解锁，断言 Content 与精确查询恢复。不得用另一个手工 `WidgetPrivacyDataSource` 替代默认构造器持有的 consumer。
+3. 运行 Verification、Spotless、`git diff --check` 和范围检查；Android 模拟器留给 Task 16，当前纯 JVM Android production wiring 测试不另起模拟器。
 
 ### Task 16：独立最终审查与三平台 change verify
 
