@@ -20,10 +20,12 @@ import mihon.desktop.network.DesktopChallengeBrowserLoginBridge
 import mihon.desktop.network.DesktopSourceLoginSessionFactory
 import mihon.desktop.migration.DesktopBatchMigrationController
 import mihon.desktop.platform.DesktopNetworkHelper
+import mihon.desktop.platform.DesktopDeepLinkHandler
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.tracking.DesktopTrackerServiceRegistry
 import mihon.desktop.source.LocalSourceScanService
 import mihon.desktop.ui.extension.ExtensionsScreenModel
+import mihon.desktop.ui.ExternalActionNavigator
 import mihon.domain.extensionrepo.interactor.CreateExtensionRepo
 import mihon.domain.extensionrepo.interactor.DeleteExtensionRepo
 import mihon.domain.extensionrepo.interactor.GetExtensionRepo
@@ -67,6 +69,7 @@ data class DesktopUiDependencies(
     val downloadPreferences: DesktopDownloadPreferences,
     val extensionApi: DesktopExtensionApi,
     val extensionManager: DesktopExtensionManager,
+    val externalActionNavigator: ExternalActionNavigator,
     val getExcludedScanlators: GetExcludedScanlators,
     val getExtensionRepo: GetExtensionRepo,
     val getFavorites: GetFavorites,
@@ -109,6 +112,8 @@ data class DesktopUiDependencies(
 
     companion object {
         fun fromInjekt(): DesktopUiDependencies {
+            val saveSourceMangaForDetails = Injekt.get<SaveSourceMangaForDetails>()
+            val sourceManager = Injekt.get<SourceManager>()
             return DesktopUiDependencies(
                 appPreferences = Injekt.get(),
                 backupRestoreScreenModelFactory = Injekt.get(),
@@ -126,6 +131,9 @@ data class DesktopUiDependencies(
                 downloadPreferences = Injekt.get(),
                 extensionApi = Injekt.get(),
                 extensionManager = Injekt.get(),
+                externalActionNavigator = ExternalActionNavigator(
+                    DesktopDeepLinkHandler(sourceManager, saveSourceMangaForDetails)::resolve,
+                ),
                 getExcludedScanlators = Injekt.get(),
                 getExtensionRepo = Injekt.get(),
                 getFavorites = Injekt.get(),
@@ -142,9 +150,9 @@ data class DesktopUiDependencies(
                 networkHelper = Injekt.get(),
                 notificationService = Injekt.get(),
                 replaceExtensionRepo = Injekt.get(),
-                saveSourceMangaForDetails = Injekt.get(),
+                saveSourceMangaForDetails = saveSourceMangaForDetails,
                 setExcludedScanlators = Injekt.get(),
-                sourceManager = Injekt.get(),
+                sourceManager = sourceManager,
                 sourceMangaSearchService = Injekt.get(),
                 sourceRepository = Injekt.get(),
                 updateExtensionRepo = Injekt.get(),

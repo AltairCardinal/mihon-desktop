@@ -12,6 +12,7 @@ import mihon.desktop.test.TestArguments
 import mihon.desktop.test.TestMode
 import mihon.desktop.ui.home.HomeScreen
 import mihon.desktop.ui.theme.DesktopTheme
+import mihon.domain.platform.ExternalActionInput
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -38,6 +39,7 @@ fun main(args: Array<String>) {
 
     val runtime = Injekt.get<DesktopAppRuntime>()
     val uiDependencies = DesktopUiDependencies.fromInjekt()
+    submitDesktopExternalAction(args, uiDependencies.externalActionNavigator)
     runtime.start()
 
     if (runHeadlessMode(testArgs, runtime)) return
@@ -60,6 +62,13 @@ fun main(args: Array<String>) {
             }
         }
     }
+}
+
+internal fun desktopExternalActionInput(args: Array<String>): ExternalActionInput? =
+    args.firstOrNull { !it.startsWith("--") }?.let(ExternalActionInput::ViewUri)
+
+internal fun submitDesktopExternalAction(args: Array<String>, navigator: mihon.desktop.ui.ExternalActionNavigator) {
+    desktopExternalActionInput(args)?.let(navigator::submit)
 }
 
 internal fun runHeadlessMode(

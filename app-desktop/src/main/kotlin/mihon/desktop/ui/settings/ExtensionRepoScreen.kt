@@ -66,14 +66,16 @@ import java.awt.Desktop
 import java.net.URI
 import kotlin.time.Duration.Companion.milliseconds
 
-private sealed interface RepoDialog {
-    data object Create : RepoDialog
+internal sealed interface RepoDialog {
+    data class Create(val initialUrl: String = "") : RepoDialog
     data class Delete(val baseUrl: String) : RepoDialog
     data class Conflict(val oldRepo: ExtensionRepo, val newRepo: ExtensionRepo) : RepoDialog
 }
 
 /** 扩展仓库管理页面：添加/删除/刷新仓库。 */
-class ExtensionRepoScreen : Screen {
+data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
+    internal fun initialCreatePrompt(): RepoDialog.Create? = initialUrl?.let(RepoDialog::Create)
+    internal fun freshCreatePrompt() = RepoDialog.Create()
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
@@ -90,7 +92,7 @@ class ExtensionRepoScreen : Screen {
         val updateExtensionRepo = LocalDesktopUiDependencies.current.updateExtensionRepo
 
         val repos by getExtensionRepo.subscribeAll().collectAsState(initial = emptyList())
-        var dialog by remember { mutableStateOf<RepoDialog?>(null) }
+        var dialog by remember { mutableStateOf<RepoDialog?>(initialCreatePrompt()) }
         var pendingRepoUrl by remember { mutableStateOf<String?>(null) }
 
         fun showSnackbar(message: String) {
@@ -101,6 +103,7 @@ class ExtensionRepoScreen : Screen {
         when (val d = dialog) {
             is RepoDialog.Create -> {
                 CreateRepoDialog(
+                    initialUrl = d.initialUrl,
                     existingUrls = repos.map { it.baseUrl }.toSet(),
                     onDismiss = { dialog = null },
                     onCreate = { url ->
@@ -163,7 +166,7 @@ class ExtensionRepoScreen : Screen {
                 )
             },
             floatingActionButton = {
-                FloatingActionButton(onClick = { dialog = RepoDialog.Create }) {
+                FloatingActionButton(onClick = { dialog = freshCreatePrompt() }) {
                     Icon(Icons.Outlined.Add, contentDescription = "Add repository")
                 }
             },
@@ -303,11 +306,12 @@ private fun RepoCard(
 
 @Composable
 private fun CreateRepoDialog(
+    initialUrl: String,
     existingUrls: Set<String>,
     onDismiss: () -> Unit,
     onCreate: (String) -> Unit,
 ) {
-    var url by remember { mutableStateOf("") }
+    var url by remember(initialUrl) { mutableStateOf(initialUrl) }
     val focusRequester = remember { FocusRequester() }
     val alreadyExists = url.isNotEmpty() && existingUrls.contains(url)
 

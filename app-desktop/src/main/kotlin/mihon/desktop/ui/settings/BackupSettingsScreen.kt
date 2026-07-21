@@ -45,12 +45,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import mihon.desktop.backup.BackupPreview
+import mihon.desktop.platform.DesktopExternalActionTarget
 import java.io.File
 import javax.swing.JFileChooser
 import javax.swing.SwingUtilities
 import javax.swing.filechooser.FileNameExtensionFilter
 
-class BackupSettingsScreen : Screen {
+data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
@@ -69,7 +70,11 @@ class BackupSettingsScreen : Screen {
 
         val backupFactory = LocalDesktopUiDependencies.current.backupRestoreScreenModelFactory
 
-        val restoreModel = rememberScreenModel { backupFactory.create() }
+        val restoreModel = if (initialBackup == null) {
+            rememberScreenModel { backupFactory.create() }
+        } else {
+            rememberScreenModel { backupFactory.create(DesktopExternalActionTarget.Backup(initialBackup)) }
+        }
         val restoreState by restoreModel.state.collectAsState()
 
         // ── Restore error dialog ──────────────────────────────────────────────

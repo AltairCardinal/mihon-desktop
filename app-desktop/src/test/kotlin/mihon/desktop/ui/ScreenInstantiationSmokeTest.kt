@@ -43,6 +43,7 @@ import mihon.desktop.ui.updates.UpcomingScreen
 import mihon.desktop.ui.updates.UpdatesTab
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test
+import java.io.File
 
 /**
  * Stage 24.1 — Screen instantiation smoke tests.
@@ -267,9 +268,11 @@ class ScreenInstantiationSmokeTest {
     }
 
     @Test fun `BackupSettingsScreen is Screen`() {
-        val s = BackupSettingsScreen()
+        val file = File("library.tachibk")
+        val s = BackupSettingsScreen(initialBackup = file)
         assert(s is Screen)
         assert(s !is Tab)
+        assert(s.initialBackup == file)
     }
 
     @Test fun `DownloadSettingsScreen is Screen`() {
@@ -279,9 +282,10 @@ class ScreenInstantiationSmokeTest {
     }
 
     @Test fun `ExtensionRepoScreen is Screen`() {
-        val s = ExtensionRepoScreen()
+        val s = ExtensionRepoScreen(initialUrl = "https://repo.example")
         assert(s is Screen)
         assert(s !is Tab)
+        assert(s.initialUrl == "https://repo.example")
     }
 
     @Test fun `GeneralSettingsScreen is Screen`() {

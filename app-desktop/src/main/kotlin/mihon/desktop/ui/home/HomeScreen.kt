@@ -133,6 +133,9 @@ class HomeScreen : Screen {
 
         // Create Navigator at top level for Screen navigation
         Navigator(LibraryTab) { navigator ->
+            LaunchedEffect(dependencies.externalActionNavigator, navigator) {
+                dependencies.externalActionNavigator.consumeSignals(navigator, snackbarHostState::showSnackbar)
+            }
             // Create TabNavigator for tab navigation
             TabNavigator(LibraryTab) { tabNavigator ->
                 // Observe test navigation requests for tabs

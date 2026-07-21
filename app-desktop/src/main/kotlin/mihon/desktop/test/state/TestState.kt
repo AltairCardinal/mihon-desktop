@@ -62,6 +62,10 @@ class TestState {
         )
     }
 
+    fun recordExternalAction(status: String, target: String? = null) {
+        recordAction("ExternalAction$status", target?.let { mapOf("target" to it) }.orEmpty())
+    }
+
     fun reset() {
         _currentScreen.value = null
         _isLoading.value = false
