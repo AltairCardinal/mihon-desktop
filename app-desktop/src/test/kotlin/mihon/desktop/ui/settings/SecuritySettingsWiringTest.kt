@@ -4,6 +4,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.SemanticsActions
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.tab.Tab
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
@@ -56,7 +57,11 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import tachiyomi.core.common.preference.DesktopPreferenceStore
+import tachiyomi.i18n.MR
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 @OptIn(ExperimentalComposeUiApi::class)
 class SecuritySettingsWiringTest {
@@ -445,6 +450,46 @@ class SecuritySettingsWiringTest {
             assertTrue(protectedConstructions > 0)
         } finally {
             scene.close()
+        }
+    }
+
+    @Test
+    fun `missing credential keeps root locked and exposes profile recovery action`(@TempDir appDir: java.io.File) = runBlocking {
+        val node = Preferences.userRoot().node("mihon-recovery-${UUID.randomUUID()}").also(preferenceNodes::add)
+        val opened = mutableListOf<java.io.File>()
+        val context = mihon.desktop.di.initDesktopDIForTest(
+            appDir,
+            DesktopPreferenceStore(node),
+            credentialBackendFactory = { MemoryCredentialBackend() },
+            profileDirectoryOpener = { opened += it; false },
+        )
+        val preferences = Injekt.get<SecurityPreferences>().also { it.useAuthenticator().set(true) }
+        val appLock = Injekt.get<DesktopAppLock>()
+        appLock.onApplicationStarted()
+        var protectedConstructions = 0
+        val scene = ImageComposeScene(640, 480, coroutineContext = coroutineContext) {}
+        try {
+            scene.setContent { DesktopProtectedRoot(appLock) { protectedConstructions++ } }
+            scene.render()
+            val nodes = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+            fun text(node: SemanticsNode) = if (node.config.contains(SemanticsProperties.Text)) {
+                node.config[SemanticsProperties.Text].joinToString()
+            } else {
+                ""
+            }
+            assertEquals(0, protectedConstructions)
+            assertTrue(nodes.any { text(it) == MR.strings.desktop_unlock_recovery_summary.localized() })
+            val action = nodes.first { text(it) == MR.strings.desktop_unlock_recovery_open_profile.localized() }
+                .config[SemanticsActions.OnClick]
+            assertTrue(requireNotNull(action).action?.invoke() == true)
+            scene.render()
+            assertTrue(scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.any { text(it) == MR.strings.desktop_unlock_recovery_open_failed.localized() })
+            assertEquals(listOf(appDir), opened)
+            assertTrue(preferences.useAuthenticator().get())
+            assertTrue(appLock.state.value.requiresUnlock)
+        } finally {
+            scene.close()
+            context.closeAndJoin()
         }
     }
 

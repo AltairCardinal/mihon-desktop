@@ -32,17 +32,23 @@ fun DesktopProtectedRoot(
     protectedContent: @Composable () -> Unit,
 ) {
     val lockState by appLock.state.collectAsState()
+    val recovery by appLock.recovery.collectAsState()
     if (lockState.requiresUnlock) {
-        DesktopUnlockSurface(appLock::authenticate)
+        DesktopUnlockSurface(appLock::authenticate, recovery, appLock::openRecoveryProfile)
     } else {
         protectedContent()
     }
 }
 
 @Composable
-fun DesktopUnlockSurface(authenticate: (CharArray?) -> AuthenticationResult) {
+fun DesktopUnlockSurface(
+    authenticate: (CharArray?) -> AuthenticationResult,
+    recovery: AuthenticationResult? = null,
+    openProfileDirectory: () -> Boolean = { false },
+) {
     var passphrase by remember { mutableStateOf("") }
     var feedback by remember { mutableStateOf<AuthenticationResult?>(null) }
+    var profileOpenFailed by remember { mutableStateOf(false) }
     Surface(modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(
@@ -51,6 +57,13 @@ fun DesktopUnlockSurface(authenticate: (CharArray?) -> AuthenticationResult) {
             ) {
                 Text(MR.strings.desktop_unlock_title.localized(), style = MaterialTheme.typography.headlineSmall)
                 Text(MR.strings.desktop_unlock_summary.localized())
+                if (recovery == AuthenticationResult.Failed) {
+                    Text(MR.strings.desktop_unlock_recovery_summary.localized())
+                    Button(onClick = { profileOpenFailed = !openProfileDirectory() }, modifier = Modifier.fillMaxWidth()) {
+                        Text(MR.strings.desktop_unlock_recovery_open_profile.localized())
+                    }
+                    if (profileOpenFailed) Text(MR.strings.desktop_unlock_recovery_open_failed.localized(), color = MaterialTheme.colorScheme.error)
+                }
                 DesktopPasswordField(
                     value = passphrase,
                     onValueChange = { passphrase = it },

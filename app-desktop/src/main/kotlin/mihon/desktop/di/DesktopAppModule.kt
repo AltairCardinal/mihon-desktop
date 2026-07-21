@@ -199,6 +199,7 @@ internal suspend fun initDesktopDIForTest(
     artifactAuthenticator: DesktopArtifactAuthenticator = DefaultDesktopArtifactAuthenticator,
     credentialBackendFactory: (CredentialNamespace) -> mihon.desktop.platform.CredentialBackend =
         { namespace -> OsCredentialBackend(namespace = namespace) },
+    profileDirectoryOpener: (File) -> Boolean = mihon.desktop.ui.settings.DesktopDirectoryOpener::open,
 ): DesktopTestDIContext {
     activeDesktopTestDIContext?.closeAndJoin()
     patchInjekt()
@@ -219,6 +220,7 @@ internal suspend fun initDesktopDIForTest(
         startDownloadWorker,
         downloadFileOperations,
         credentialBackendFactory,
+        profileDirectoryOpener,
     )
     return DesktopTestDIContext(
         handler = handler as JvmDatabaseHandler,
@@ -574,12 +576,18 @@ internal fun initUILayer(
     downloadFileOperations: mihon.desktop.download.DownloadFileOperations = mihon.desktop.download.DefaultDownloadFileOperations,
     credentialBackendFactory: (CredentialNamespace) -> mihon.desktop.platform.CredentialBackend =
         { namespace -> OsCredentialBackend(namespace = namespace) },
+    profileDirectoryOpener: (File) -> Boolean = mihon.desktop.ui.settings.DesktopDirectoryOpener::open,
 ) {
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val passphraseVerifier = DesktopPassphraseVerifier(
         DesktopCredentialStore(credentialBackendFactory(CredentialNamespace.APP_LOCK_V1)),
     )
-    val appLock = DesktopAppLock(Injekt.get(), passphraseVerifier)
+    val appLock = DesktopAppLock(
+        Injekt.get(),
+        passphraseVerifier,
+        profileDirectory = paths.configDir,
+        openProfileDirectory = profileDirectoryOpener,
+    )
     Injekt.addSingleton(passphraseVerifier)
     Injekt.addSingleton(appLock)
     val windowPrivacy = DesktopWindowPrivacy()

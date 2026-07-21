@@ -11,6 +11,7 @@ import java.awt.image.BufferedImage
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.PosixFilePermission
 import javax.imageio.ImageIO
 import javax.swing.JFileChooser
 import javax.swing.SwingUtilities
@@ -83,9 +84,14 @@ class DesktopShareService(
         onTerminal: (DesktopShareResult) -> Unit = {},
     ): DesktopShareResult {
         if (isHeadless()) return DesktopShareResult.Unavailable(DesktopShareUnavailableReason.HEADLESS)
-        val file = runCatching { LastSharedImageCache.replace(image) }
+        val file = runCatching { LastSharedImageCache.create(image) }
             .getOrElse { return DesktopShareResult.Failed(DesktopShareFailureReason.SAVE_FAILED) }
-        return share(SharePayload.Stream(file.toURI().toString(), "image/png", message), onTerminal)
+        val result = share(SharePayload.Stream(file.toURI().toString(), "image/png", message)) { terminal ->
+            runCatching { Files.deleteIfExists(file.toPath()) }
+            onTerminal(terminal)
+        }
+        if (result !is DesktopShareResult.OpenedNatively) runCatching { Files.deleteIfExists(file.toPath()) }
+        return result
     }
 
     private fun copyTextUnchecked(text: String) = runCatching { clipboardPort.copyText(text) }
@@ -204,15 +210,22 @@ private fun SharePayload.toDesktopContent(): DesktopNativeShareContent? = when (
 }
 
 private object LastSharedImageCache {
-    private val file = File(System.getProperty("java.io.tmpdir"), "mihon/mihon-shared-page.png")
-
-    @Synchronized
-    fun replace(image: BufferedImage): File {
-        file.parentFile.mkdirs()
-        val pending = File(file.parentFile, "${file.name}.pending")
-        check(ImageIO.write(image, "png", pending))
-        Files.move(pending.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
-        return file
+    fun create(image: BufferedImage): File {
+        val directory = File(System.getProperty("java.io.tmpdir"), "mihon").apply(File::mkdirs)
+        val file = Files.createTempFile(directory.toPath(), "mihon-shared-page-", ".png").toFile()
+        runCatching {
+            Files.setPosixFilePermissions(
+                file.toPath(),
+                setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE),
+            )
+        }
+        return try {
+            check(ImageIO.write(image, "png", file))
+            file
+        } catch (failure: Throwable) {
+            runCatching { Files.deleteIfExists(file.toPath()) }
+            throw failure
+        }
     }
 }
 

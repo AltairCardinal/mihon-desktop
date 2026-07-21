@@ -19,7 +19,9 @@ class DesktopPassphraseVerifier(
 
     @Synchronized
     fun probe(): AuthenticationResult = credentialResult {
-        credentialStore.withSecret(ACCOUNT) { AuthenticationResult.Success }
+        credentialStore.withSecret(ACCOUNT) { secret ->
+            if (secret == null) AuthenticationResult.Failed else AuthenticationResult.Success
+        }
     }
 
     @Synchronized

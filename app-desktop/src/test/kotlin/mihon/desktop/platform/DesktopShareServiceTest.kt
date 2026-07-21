@@ -3,6 +3,7 @@ package mihon.desktop.platform
 import java.awt.image.BufferedImage
 import java.io.File
 import java.nio.file.Files
+import java.nio.file.attribute.PosixFileAttributeView
 import mihon.domain.platform.SharePayload
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
@@ -29,6 +30,65 @@ class DesktopShareServiceTest {
         assertEquals(null, terminal)
         requireNotNull(complete)(DesktopNativeShareTerminal.Shared)
         assertEquals(DesktopShareResult.SharedNatively, terminal)
+    }
+
+    @Test
+    fun `image share snapshots are unique and each terminal cleans only its own file`() {
+        val files = mutableListOf<File>()
+        val terminals = mutableListOf<(DesktopNativeShareTerminal) -> Unit>()
+        val service = service(native = DesktopNativeSharePort { content ->
+            files += (content as DesktopNativeShareContent.LocalFile).file
+            DesktopNativeShareOutcome.Opened(DesktopNativeShareSession { terminals += it })
+        })
+        val first = BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB).also { it.setRGB(0, 0, 0xFFFF0000.toInt()) }
+        val second = BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB).also { it.setRGB(0, 0, 0xFF00FF00.toInt()) }
+
+        service.shareImage(first)
+        service.shareImage(second)
+        service.shareImage(second)
+
+        assertNotEquals(files[0], files[1])
+        assertEquals(0xFFFF0000.toInt(), javax.imageio.ImageIO.read(files[0]).getRGB(0, 0))
+        assertTrue(files.all(File::isFile))
+        if (Files.getFileAttributeView(files[0].toPath(), PosixFileAttributeView::class.java) != null) {
+            assertEquals(setOf(java.nio.file.attribute.PosixFilePermission.OWNER_READ, java.nio.file.attribute.PosixFilePermission.OWNER_WRITE), Files.getPosixFilePermissions(files[0].toPath()))
+        }
+        terminals[0](DesktopNativeShareTerminal.Shared)
+        assertTrue(!files[0].exists() && files[1].isFile)
+        terminals[1](DesktopNativeShareTerminal.Cancelled)
+        assertTrue(!files[1].exists() && files[2].isFile)
+        terminals[2](DesktopNativeShareTerminal.Failed)
+        assertTrue(files.none(File::exists))
+    }
+
+    @Test
+    fun `image fallback and native registration failures clean their snapshot`() {
+        val seen = mutableListOf<File>()
+        val image = BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB)
+        fun fallback(outcome: () -> DesktopSaveOutcome): DesktopShareResult = service(
+            native = DesktopNativeSharePort { content -> seen += (content as DesktopNativeShareContent.LocalFile).file; DesktopNativeShareOutcome.Unavailable },
+            save = DesktopSavePort { _, _ -> outcome() },
+        ).shareImage(image)
+        val destination = Files.createTempFile("mihon-shared-destination", ".png").toFile()
+        assertEquals(DesktopShareResult.Saved(destination), fallback { DesktopSaveOutcome.Saved(destination) })
+        assertTrue(!seen.removeLast().exists())
+        assertEquals(DesktopShareResult.Cancelled, fallback { DesktopSaveOutcome.Cancelled })
+        assertTrue(!seen.removeLast().exists())
+        assertEquals(DesktopShareResult.Failed(DesktopShareFailureReason.SAVE_FAILED), fallback { error("save") })
+        assertTrue(!seen.removeLast().exists())
+        val nativeFailure = service(native = DesktopNativeSharePort { content ->
+            seen += (content as DesktopNativeShareContent.LocalFile).file
+            error("launch")
+        })
+        assertEquals(DesktopShareResult.Failed(DesktopShareFailureReason.NATIVE_SHARE_FAILED), nativeFailure.shareImage(image))
+        assertTrue(!seen.removeLast().exists())
+        seen.clear()
+        val registrationFailure = service(native = DesktopNativeSharePort { content ->
+            seen += (content as DesktopNativeShareContent.LocalFile).file
+            DesktopNativeShareOutcome.Opened(DesktopNativeShareSession { error("register") })
+        })
+        assertEquals(DesktopShareResult.Failed(DesktopShareFailureReason.NATIVE_SHARE_FAILED), registrationFailure.shareImage(image))
+        assertTrue(!seen.single().exists())
     }
 
     @Test

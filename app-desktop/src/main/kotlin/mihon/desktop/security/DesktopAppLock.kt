@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import mihon.domain.security.AppLockPolicy
 import mihon.domain.security.AppLockState
 import mihon.domain.security.AuthenticationResult
+import java.io.File
 
 interface DesktopAppLockLifecycle {
     fun onApplicationStarted()
@@ -15,20 +16,30 @@ interface DesktopAppLockLifecycle {
 class DesktopAppLock(
     private val preferences: SecurityPreferences,
     private val verifier: DesktopPassphraseVerifier,
+    private val profileDirectory: File? = null,
+    private val openProfileDirectory: (File) -> Boolean = { false },
     private val nowMillis: () -> Long = System::currentTimeMillis,
 ) : DesktopAppLockLifecycle {
     private val mutableState = MutableStateFlow(AppLockPolicy.initial(preferences.useAuthenticator().get()))
     val state = mutableState.asStateFlow()
+    private val mutableRecovery = MutableStateFlow<AuthenticationResult?>(null)
+    val recovery = mutableRecovery.asStateFlow()
+
+    fun openRecoveryProfile() = profileDirectory?.let(openProfileDirectory) ?: false
 
     @Synchronized
     override fun onApplicationStarted() {
+        val enabled = preferences.useAuthenticator().get()
+        val probe = if (enabled) verifier.probe() else AuthenticationResult.Success
+        mutableRecovery.value = probe.takeUnless { it == AuthenticationResult.Success }
         val persisted = preferences.lastAppClosed().get().takeIf { it > 0 }
         mutableState.value = AppLockPolicy.onApplicationStart(
             mutableState.value.copy(lastClosedAtMillis = persisted),
-            preferences.useAuthenticator().get(),
+            enabled,
             preferences.lockAppAfter().get(),
             nowMillis(),
         )
+        if (probe == AuthenticationResult.Failed) mutableState.value = mutableState.value.copy(requiresUnlock = true)
         preferences.lastAppClosed().delete()
     }
 
