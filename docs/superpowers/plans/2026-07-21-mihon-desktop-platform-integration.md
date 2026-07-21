@@ -22,7 +22,7 @@ status-source: this-file
 
 - [x] Task 1：固定原版 fixture 与 shared 外部动作/安全契约
 - [x] Task 2：当前 Android 外部动作与分享消费 shared
-- [ ] Task 3：当前 Android 应用锁与屏幕安全消费 shared
+- [x] Task 3：当前 Android 应用锁与屏幕安全消费 shared
 - [ ] Task 4：Desktop 源 URI/备份/仓库动作解析
 - [ ] Task 5：Desktop 外部动作导航、入口与可见反馈
 - [ ] Task 6：Desktop 单实例安全转发
@@ -160,6 +160,8 @@ status-source: this-file
 3. 设置页仍在变更锁开关/延迟前认证；通知隐藏和 telemetry 项不因本 Task 回退。
 4. Widget gate 必须被 `BaseUpdatesGridGlanceWidget` 真实消费；不得用 Desktop 测试、源码扫描或测试内复制逻辑证明 Android Glance 隐私。
 5. 运行 Verification、相关 Android security/widget 回归、`git diff --check`。
+
+**Evidence:** 实现提交 `8fa6fa9a4`，独立审查修复提交 `f072c3fd1`；初始 RED 由缺失 shared security adapter、Widget privacy data source 和模块测试依赖触发，审查修复 RED 则证明旧 production 缺少 lifecycle/window/settings 与 Widget Base/Manager 的可杀死 consumer seam。最终 `AndroidSecuritySharedPolicyTest` 4/4、`AndroidSecuritySettingsWiringTest` 2/2、`WidgetPrivacyProductionWiringTest` 2/2；Widget 强制重跑验证 `Locked → Content → Locked`、refresh identity `true → false → true`、初始锁定时 `GetUpdates` 0 调用及解锁后恢复查询。`:app:spotlessCheck`、`:presentation-widget:spotlessCheck`、提交范围与 diff check 通过；独立修复复审 APPROVED，Critical/Important/Minor `0/0/0`。最终范围 9 files / 449 touched lines，符合具体 Split waiver；全量与运行时验证留在 Task 16。
 
 ### Task 4：Desktop 源 URI、备份与仓库动作解析
 
