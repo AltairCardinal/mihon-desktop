@@ -1181,4 +1181,11 @@
     <string name="desktop_privacy_telemetry_unavailable">Crash and usage telemetry is not included in this Desktop runtime, so telemetry controls are not shown.</string>
     <string name="desktop_privacy_widget_unavailable">System widgets are unavailable in Mihon Desktop.</string>
     <string name="desktop_privacy_widget_unavailable_updates_available">System widgets are unavailable. Updates remain available inside Mihon Desktop.</string>
+    <string name="desktop_secure_screen_title">Screen capture protection</string>
+    <string name="desktop_secure_screen_supported">The screen capture setting is active.</string>
+    <string name="desktop_secure_screen_not_protected">Screen capture protection is off.</string>
+    <string name="desktop_secure_screen_limited">Windows applied monitor-only protection. This is limited and is not equivalent to full capture exclusion.</string>
+    <string name="desktop_secure_screen_unsupported">Screen capture protection is not available on this platform.</string>
+    <string name="desktop_secure_screen_window_not_ready">The app window is not ready. The previous setting was kept.</string>
+    <string name="desktop_secure_screen_failed">Screen capture protection could not be verified. The previous setting was kept.</string>
 </resources>

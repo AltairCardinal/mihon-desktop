@@ -63,6 +63,8 @@ import mihon.desktop.platform.DesktopCredentialStore
 import mihon.desktop.platform.CredentialNamespace
 import mihon.desktop.platform.OsCredentialBackend
 import mihon.desktop.privacy.DesktopPrivacyCapabilities
+import mihon.desktop.privacy.DesktopWindowPrivacy
+import mihon.desktop.privacy.DesktopWindowPrivacyController
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import mihon.desktop.security.DesktopAppLock
 import mihon.desktop.security.DesktopPassphraseVerifier
@@ -568,6 +570,9 @@ internal fun initUILayer(
     val appLock = DesktopAppLock(Injekt.get(), passphraseVerifier)
     Injekt.addSingleton(passphraseVerifier)
     Injekt.addSingleton(appLock)
+    val windowPrivacy = DesktopWindowPrivacy()
+    Injekt.addSingleton(windowPrivacy)
+    Injekt.addSingleton(DesktopWindowPrivacyController(Injekt.get(), Injekt.get(), windowPrivacy))
     val nativeSharePort = defaultDesktopNativeSharePort()
     Injekt.addSingleton<DesktopNativeSharePort>(nativeSharePort)
     Injekt.addSingleton(DesktopShareService(nativeSharePort = nativeSharePort))

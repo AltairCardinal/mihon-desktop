@@ -14,6 +14,7 @@ markdown = "0.39.2"
 junit = "6.0.3"
 materialKolor = "5.0.0-alpha07"
 compose-multiplatform = "1.10.2"
+jna = "5.19.1"
 
 [libraries]
 desugar = "com.android.tools:desugar_jdk_libs:2.1.5"
@@ -96,6 +97,8 @@ sqldelight-dialects-sql = { module = "app.cash.sqldelight:sqlite-3-38-dialect", 
 
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
+jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
 kotest-assertions = "io.kotest:kotest-assertions-core:6.1.4"
 mockk = "io.mockk:mockk:1.14.9"
 

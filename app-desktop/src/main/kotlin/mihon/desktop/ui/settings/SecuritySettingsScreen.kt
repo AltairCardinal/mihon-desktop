@@ -37,6 +37,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.privacy.DesktopPrivacyCapabilities
+import mihon.desktop.privacy.DesktopWindowPrivacyController
+import mihon.desktop.privacy.DesktopWindowPrivacyResult
+import mihon.desktop.privacy.DesktopWindowPrivacyState
 import mihon.desktop.security.DesktopPassphraseVerifier
 import mihon.desktop.ui.security.DesktopPasswordField
 import mihon.domain.security.AuthenticationResult
@@ -277,6 +280,7 @@ class SecuritySettingsScreen : Screen {
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val privacyCapabilities = LocalDesktopUiDependencies.current.privacyCapabilities
+        val windowPrivacyController = remember { Injekt.get<DesktopWindowPrivacyController>() }
         val controller = remember {
             SecuritySettingsController(Injekt.get<SecurityPreferences>(), Injekt.get<DesktopPassphraseVerifier>())
         }
@@ -344,6 +348,7 @@ class SecuritySettingsScreen : Screen {
                     }
                 }
                 state.feedback?.let { Text(feedbackText(it), modifier = Modifier.padding(horizontal = 16.dp)) }
+                DesktopSecureScreenSettings(windowPrivacyController)
                 DesktopPrivacySettings(
                     capabilities = privacyCapabilities,
                     nativeNotificationControl = { DesktopHideNotificationContentSetting() },
@@ -367,6 +372,52 @@ class SecuritySettingsScreen : Screen {
             )
         }
     }
+}
+
+@Composable
+internal fun DesktopSecureScreenSettings(controller: DesktopWindowPrivacyController) {
+    val state by controller.state.collectAsState()
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(MR.strings.desktop_secure_screen_title.localized(), style = MaterialTheme.typography.titleSmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SecurityPreferences.SecureScreenMode.entries.forEach { mode ->
+                Button(
+                    onClick = { controller.changeMode(mode) },
+                    enabled = state.mode != mode,
+                ) {
+                    Text(
+                        when (mode) {
+                            SecurityPreferences.SecureScreenMode.ALWAYS -> MR.strings.lock_always.localized()
+                            SecurityPreferences.SecureScreenMode.INCOGNITO -> MR.strings.pref_incognito_mode.localized()
+                            SecurityPreferences.SecureScreenMode.NEVER -> MR.strings.lock_never.localized()
+                        },
+                    )
+                }
+            }
+        }
+        Text(windowPrivacyFeedback(state))
+    }
+}
+
+@Composable
+private fun windowPrivacyFeedback(state: DesktopWindowPrivacyState): String = when (val result = state.result) {
+    DesktopWindowPrivacyResult.Supported ->
+        if (state.appliedProtected == true) {
+            MR.strings.desktop_secure_screen_supported.localized()
+        } else {
+            MR.strings.desktop_secure_screen_not_protected.localized()
+        }
+    is DesktopWindowPrivacyResult.Limited -> MR.strings.desktop_secure_screen_limited.localized()
+    is DesktopWindowPrivacyResult.Unsupported -> MR.strings.desktop_secure_screen_unsupported.localized()
+    is DesktopWindowPrivacyResult.Failed ->
+        if (result.error.reasonSlug == "window_not_ready") {
+            MR.strings.desktop_secure_screen_window_not_ready.localized()
+        } else {
+            MR.strings.desktop_secure_screen_failed.localized()
+        }
 }
 
 @Composable

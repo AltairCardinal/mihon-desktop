@@ -90,6 +90,8 @@ kotlin {
 
                 // DI
                 implementation(libs.injekt)
+                implementation(libs.jna)
+                implementation(libs.jna.platform)
 
                 // Serialization
                 implementation(kotlinx.serialization.json)

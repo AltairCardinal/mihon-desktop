@@ -9,20 +9,25 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.transitions.SlideTransition
+import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import mihon.desktop.di.initDesktopDI
 import mihon.desktop.platform.DesktopExternalActionBroker
 import mihon.desktop.platform.DesktopPlatformPaths
 import mihon.desktop.platform.DesktopUriSchemeRegistrar
 import mihon.desktop.platform.DesktopUriSchemeRegistration
+import mihon.desktop.privacy.DesktopWindowPrivacyController
 import mihon.desktop.security.DesktopAppLock
 import mihon.desktop.security.DesktopAppLockLifecycle
+import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.test.TestArguments
 import mihon.desktop.test.TestMode
 import mihon.desktop.test.state.TestState
@@ -32,6 +37,7 @@ import mihon.desktop.ui.home.HomeScreen
 import mihon.desktop.ui.security.DesktopProtectedRoot
 import mihon.desktop.ui.theme.DesktopTheme
 import mihon.domain.platform.ExternalActionInput
+import mihon.domain.security.SecureScreenPolicy
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.awt.Window as AwtWindow
@@ -86,6 +92,7 @@ private fun runOwnerApplication(
     initDesktopDI()
     val runtime = Injekt.get<DesktopAppRuntime>()
     val appLock = Injekt.get<DesktopAppLock>()
+    val windowPrivacyController = Injekt.get<DesktopWindowPrivacyController>()
     val uiDependencies = DesktopUiDependencies.fromInjekt()
     wireDesktopExternalActionBroker(broker, uiDependencies.externalActionNavigator)
     submitDesktopExternalAction(args, uiDependencies.externalActionNavigator)
@@ -105,7 +112,7 @@ private fun runOwnerApplication(
                 title = "Mihon Desktop $APP_VERSION",
                 state = rememberWindowState(width = 1024.dp, height = 768.dp),
             ) {
-                BindDesktopWindowFocus(window, appLock)
+                BindDesktopWindowLifecycle(window, appLock, windowPrivacyController)
                 CompositionLocalProvider(LocalDesktopUiDependencies provides uiDependencies) {
                     DesktopTheme {
                         DesktopProtectedRoot(appLock) {
@@ -184,6 +191,32 @@ internal class DesktopAppLockTestStateBinding(
     }
 }
 
+internal class DesktopWindowPrivacyBinding(
+    window: AwtWindow?,
+    private val controller: DesktopWindowPrivacyController,
+    securityPreferences: SecurityPreferences,
+    appPreferences: DesktopAppPreferences,
+) : AutoCloseable {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+
+    init {
+        controller.attach(window)
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            combine(
+                securityPreferences.secureScreen().changes(),
+                appPreferences.incognitoMode.changes(),
+            ) { mode, incognito -> mode to SecureScreenPolicy.isProtected(mode, incognito) }
+                .distinctUntilChanged()
+                .collect { (mode, shouldProtect) -> controller.applyProtection(mode, shouldProtect) }
+        }
+    }
+
+    override fun close() {
+        scope.cancel()
+        controller.clearAndDetach()
+    }
+}
+
 internal class DesktopWindowFocusListener(
     private val lifecycle: DesktopAppLockLifecycle,
 ) : WindowFocusListener {
@@ -219,6 +252,29 @@ private fun BindDesktopWindowFocus(window: AwtWindow, lifecycle: DesktopAppLockL
             addListener = window::addWindowFocusListener,
         )
         onDispose(registration::close)
+    }
+}
+
+@Composable
+internal fun BindDesktopWindowLifecycle(
+    window: AwtWindow?,
+    appLockLifecycle: DesktopAppLockLifecycle,
+    windowPrivacyController: DesktopWindowPrivacyController,
+) {
+    window?.let { BindDesktopWindowFocus(it, appLockLifecycle) }
+    BindDesktopWindowPrivacy(window, windowPrivacyController)
+}
+
+@Composable
+private fun BindDesktopWindowPrivacy(window: AwtWindow?, controller: DesktopWindowPrivacyController) {
+    DisposableEffect(window, controller) {
+        val binding = DesktopWindowPrivacyBinding(
+            window = window,
+            controller = controller,
+            securityPreferences = controller.securityPreferences,
+            appPreferences = controller.appPreferences,
+        )
+        onDispose(binding::close)
     }
 }
 
