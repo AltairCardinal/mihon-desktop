@@ -330,6 +330,20 @@ class ExtensionPresentationUiTest {
         )
         val dependencies = mockk<DesktopUiDependencies> { every { extensionApi } returns api; every { extensionManager } returns manager }
         val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
+        suspend fun awaitAction(label: String) = withTimeout(5_000) {
+            while (true) {
+                scene.render()
+                if (nodes(scene).any {
+                        it.config.contains(SemanticsActions.OnClick) &&
+                            (it.config.contains(SemanticsProperties.Text) && it.config[SemanticsProperties.Text].any { text -> text.text == label } ||
+                                it.config.contains(SemanticsProperties.ContentDescription) && it.config[SemanticsProperties.ContentDescription].contains(label))
+                    }
+                ) {
+                    return@withTimeout
+                }
+                yield()
+            }
+        }
         val previous = Injekt
         try {
             patchInjekt()
@@ -342,7 +356,7 @@ class ExtensionPresentationUiTest {
             val initialRefresh = model.refresh()
             catalogs.send(ExtensionCatalogResult(emptyList(), emptyList()))
             initialRefresh.join()
-            scene.render()
+            awaitText(scene, extensionListCopy().emptyInstalled)
             assertTrue(nodes(scene).any { it.config.toString().contains(extensionListCopy().emptyInstalled) })
             installedFlow.value = listOf(installed)
             val partialRefresh = model.refresh()
@@ -355,7 +369,7 @@ class ExtensionPresentationUiTest {
             assertEquals(2, availableUi.size)
             assertEquals(2, availableUi.map { it.presentation.packageName }.toSet().size)
             assertTrue(availableUi.all { it.available === available })
-            scene.render()
+            awaitAction(extensionListCopy().available)
             click(scene, extensionListCopy().available)
             scene.render()
             val rendered = nodes(scene).joinToString { it.config.toString() }
@@ -388,62 +402,66 @@ class ExtensionPresentationUiTest {
             val preserved = model.state.value.projection?.installed?.single { it.operationPackageName == candidate.pkgName }
             assertSame(installed, preserved?.installed)
             assertEquals(installed.versionCode, preserved?.installed?.versionCode)
-            scene.render()
+            awaitText(scene, extensionInstallErrorCopy(candidate.name, updateError))
             assertTrue(nodes(scene).any { it.config.toString().contains(extensionInstallErrorCopy(candidate.name, updateError)) })
+            awaitAction("${MR.strings.action_retry.localized()} ${candidate.name}")
             click(scene, "${MR.strings.action_retry.localized()} ${candidate.name}")
             withTimeout(5_000) {
                 model.state.first { it.actions.installSteps[candidate.pkgName] == ExtensionPresentationInstallStep.Downloading }
             }
-            scene.render()
+            awaitText(scene, MR.strings.ext_downloading.localized())
             assertTrue(nodes(scene).any { it.config.toString().contains(MR.strings.ext_downloading.localized()) })
+            awaitAction("${MR.strings.action_cancel.localized()} ${candidate.name}")
             click(scene, "${MR.strings.action_cancel.localized()} ${candidate.name}")
             withTimeout(5_000) { model.state.first { candidate.pkgName !in it.actions.installSteps } }
-            scene.render()
+            awaitAction("${MR.strings.action_install.localized()} Alpha available source")
             click(scene, "${MR.strings.action_install.localized()} Alpha available source")
             withTimeout(5_000) { model.state.first { available.pkgName in it.installErrors } }
-            scene.render()
+            awaitText(scene, extensionInstallErrorCopy("Alpha available source", actionError))
             val errorFeedback = nodes(scene).joinToString { it.config.toString() }
             assertTrue(errorFeedback.contains(candidate.name) && errorFeedback.contains(extensionInstallErrorCopy("Alpha available source", actionError)))
+            awaitAction("${MR.strings.action_retry.localized()} Alpha available source")
             click(scene, "${MR.strings.action_retry.localized()} Alpha available source")
             withTimeout(5_000) {
                 model.state.first { it.actions.installSteps[available.pkgName] == ExtensionPresentationInstallStep.Downloading }
             }
-            scene.render()
+            awaitText(scene, MR.strings.ext_downloading.localized())
             assertTrue(nodes(scene).any { it.config.toString().contains(MR.strings.ext_downloading.localized()) })
+            awaitAction("${MR.strings.action_cancel.localized()} Alpha available source")
             click(scene, "${MR.strings.action_cancel.localized()} Alpha available source")
             withTimeout(5_000) { model.state.first { available.pkgName !in it.actions.installSteps } }
-            scene.render()
+            awaitAction("${MR.strings.action_install.localized()} Alpha available source")
             click(scene, "${MR.strings.action_install.localized()} Alpha available source")
             withTimeout(5_000) { model.state.first { it.pendingTrust?.request?.requestId == "trust-confirm" } }
-            scene.render()
+            awaitAction(MR.strings.ext_trust.localized())
             click(scene, MR.strings.ext_trust.localized())
             withTimeout(5_000) { model.state.first { it.pendingTrust == null } }
             verify(exactly = 1) { api.confirmTrust("trust-confirm", manager) }
-            scene.render()
+            awaitAction("${MR.strings.action_install.localized()} Alpha available source")
             click(scene, "${MR.strings.action_install.localized()} Alpha available source")
             withTimeout(5_000) { model.state.first { it.pendingTrust?.request?.requestId == "trust-dismiss" } }
-            scene.render()
+            awaitAction("${MR.strings.action_cancel.localized()} ${MR.strings.untrusted_extension.localized()}")
             click(scene, "${MR.strings.action_cancel.localized()} ${MR.strings.untrusted_extension.localized()}")
             withTimeout(5_000) { model.state.first { it.pendingTrust == null && available.pkgName !in it.actions.installSteps } }
             verify(exactly = 1) { api.discardTrust("trust-dismiss") }
-            scene.render()
+            awaitAction("${MR.strings.ext_update_all.localized()} (1)")
             click(scene, "${MR.strings.ext_update_all.localized()} (1)")
             withTimeout(5_000) { model.state.first { it.pendingTrust?.request?.requestId == "update-all-trust" } }
-            scene.render()
+            awaitAction("${MR.strings.action_cancel.localized()} ${MR.strings.untrusted_extension.localized()}")
             val successSummary = MR.strings.desktop_extension_updated_message.localized(java.util.Locale.getDefault(), 1, 1)
             assertFalse(nodes(scene).any { it.config.toString().contains(successSummary) })
             click(scene, "${MR.strings.action_cancel.localized()} ${MR.strings.untrusted_extension.localized()}")
             withTimeout(5_000) { model.state.first { it.pendingTrust == null && candidate.pkgName !in it.actions.installSteps } }
-            scene.render()
+            awaitAction("${MR.strings.ext_update.localized()} ${candidate.name}")
             assertTrue(nodes(scene).any { it.config.toString().contains("${MR.strings.ext_update.localized()} ${candidate.name}") })
             click(scene, "${MR.strings.ext_update_all.localized()} (1)")
             withTimeout(5_000) { coVerify(exactly = 4) { api.beginInstall(candidate, manager) } }
             withTimeout(5_000) { model.state.first { candidate.pkgName !in it.actions.installSteps } }
-            scene.render()
+            awaitAction("${MR.strings.ext_update.localized()} ${candidate.name}")
             assertFalse(nodes(scene).any { it.config.toString().contains(successSummary) })
             assertTrue(nodes(scene).any { it.config.toString().contains("${MR.strings.ext_update.localized()} ${candidate.name}") })
             click(scene, MR.strings.desktop_extension_filter_by_language.localized())
-            scene.render()
+            awaitText(scene, "French (fr)")
             assertTrue(nodes(scene).any { it.config.toString().contains("French (fr)") })
             toggle(scene, 2)
             toggle(scene, 0)
@@ -451,7 +469,7 @@ class ExtensionPresentationUiTest {
             assertEquals(setOf("en", "es", "fr"), model.state.value.options.enabledLanguages)
             assertTrue(model.state.value.options.showNsfw)
             click(scene, MR.strings.desktop_extension_filter_by_language.localized())
-            scene.render()
+            awaitAction(MR.strings.action_reset.localized())
             click(scene, MR.strings.action_reset.localized())
             assertEquals(setOf("de", "en", "es", "fr", "ja"), model.state.value.options.enabledLanguages)
             click(scene, MR.strings.action_retry.localized())
