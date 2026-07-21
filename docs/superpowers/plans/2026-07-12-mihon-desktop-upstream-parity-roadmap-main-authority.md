@@ -472,7 +472,7 @@ Windows `0.11.14.43.84e386c` 固定 EXE 与 macOS `0.11.14.44.84e386c` 部署应
 - [ ] **Step 10: 运行三 OS 可执行的单元测试矩阵及当前 Windows 集成验收**
 - [ ] **Step 11: 更新追踪项 81–86、92 的原版 provenance、shared/adapter 证据和豁免说明**
 
-**Current progress:** 子计划 Task 1–10 已完成。固定原版 fixture/shared 外部动作与安全契约、当前 Android consumer、Desktop target resolution、冷启动导航、FIFO/取消恢复、有界非阻塞反馈、loopback 单实例安全转发、三平台 canonical URI scheme 注册、Desktop 分享 fallback/Reader-Manga production wiring、macOS native picker/session/terminal/cleanup、隔离 tracker/app-lock 的三平台 credential namespace、安全 CharArray API、消费 shared policy 的 fail-closed Desktop 应用锁核心，以及 More → Security、passphrase/延迟事务补偿、根级 unlock surface、focus lifecycle 和真实 headless lock Test Mode 状态均具备实现、TDD、production wiring 证据和独立审查；父 Step 4、5 已勾选。父 Step 1、3、9 仍因完整更新语义、隐私 capability 与更新设置 wiring 尚未完成而保持未勾选。下一项为子计划 Task 10A。
+**Current progress:** 子计划 Task 1–10A 已完成。固定原版 fixture/shared 外部动作与安全契约、当前 Android consumer、Desktop target resolution、冷启动导航、FIFO/取消恢复、有界非阻塞反馈、loopback 单实例安全转发、三平台 canonical URI scheme 注册、Desktop 分享 fallback/Reader-Manga production wiring、macOS native picker/session/terminal/cleanup、隔离 tracker/app-lock 的三平台 credential namespace、安全 CharArray API、消费 shared policy 的 fail-closed Desktop 应用锁核心、More → Security/passphrase/根级 unlock/headless lock 状态，以及通知隐私、telemetry、Widget/shared Updates 的真实 capability 与 MR-backed 不适用反馈均具备实现、TDD、production wiring 证据和独立审查；父 Step 4、5 已勾选。父 Step 1、2、3、8、9 仍因窗口隐私、完整更新语义和最终 capability/parity wiring 尚未完成而保持未勾选。下一项为子计划 Task 11。
 
 ## 14. Task 5B：设置、外观、无障碍与许可
 

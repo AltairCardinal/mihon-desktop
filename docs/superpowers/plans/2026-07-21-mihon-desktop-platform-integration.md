@@ -34,7 +34,7 @@ status-source: this-file
 - [x] Task 9A：Desktop credential namespace 与安全 CharArray API
 - [x] Task 9B：Desktop credential-backed 应用锁核心
 - [x] Task 10：Desktop Security 设置与 unlock UI
-- [ ] Task 10A：Desktop 通知隐私、telemetry 与 Widget capability 边界
+- [x] Task 10A：Desktop 通知隐私、telemetry 与 Widget capability 边界
 - [ ] Task 11：Desktop 窗口隐私能力与真实反馈
 - [ ] Task 12：固定原版发布语义与当前 Android 兼容
 - [ ] Task 13：Desktop 更新下载、校验与平台安装交接
@@ -527,7 +527,7 @@ status-source: this-file
 
 **Platform boundary:** shared+desktop
 
-**Estimated scope:** 7 files, 350 lines
+**Estimated scope:** 7 files, 230 lines
 
 **Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.security.DesktopPrivacyCapabilitiesTest" --tests "mihon.desktop.ui.settings.SecuritySettingsWiringTest"`
 
@@ -550,6 +550,8 @@ status-source: this-file
 3. Desktop 未包含 crashlytics/analytics runtime 时沿用 fixed-main `telemetryIncluded=false` 语义，不注册或显示无消费的 PrivacyPreferences switches。
 4. Widget capability 明确 Unsupported，并指向现有 Desktop `GetUpdates` consumer；不新增伪 Widget provider。所有“不适用”都有 MR-backed 用户可见边界和 parity 可消费的结构化原因，不得硬编码英文说明。
 5. 运行 Verification、DI/Screen 回归和 `git diff --check`。
+
+**Evidence:** 范围修订提交 `14196e2`，实现提交 `8e6e63483`。固定原版 `SettingsSecurityScreen`/`telemetryIncluded` 取证确认通知内容开关只服务真实系统通知 consumer，Crashlytics/Analytics 只在 telemetry runtime 存在时显示。RED 因缺少结构化 capability、DI singleton、`DesktopUiDependencies` 字段和 Security UI 边界正确编译失败；GREEN 明确 native notification/in-app feedback/telemetry/system Widget/shared Updates 五类能力及稳定 reason slug。Production 如实声明 native notification、telemetry、system Widget Unsupported，in-app feedback 与 shared Updates Supported；不注册 `PrivacyPreferences`，不显示无消费者开关，以 MR 信息说明不适用边界，且真实 `GetUpdates` DI 可构造 `UpdatesScreenModelFactory`。协调者强制复跑 capability 2、Security 18、DI 11、Screen 41、Updates 5，共 77/77，0 failure/error/skip；根 Spotless、diff 与 production privacy runtime scan 通过。独立审查 APPROVED，Critical/Important/Minor `0/0/0`；最终范围 7 files/230 touched lines。
 
 ### Task 11：Desktop 窗口隐私能力与真实反馈
 
