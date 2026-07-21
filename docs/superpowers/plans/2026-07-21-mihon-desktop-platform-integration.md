@@ -39,7 +39,7 @@ status-source: this-file
 - [x] Task 12：固定原版发布语义与当前 Android 兼容
 - [x] Task 13A：Desktop release discovery 与 canonical 包契约
 - [x] Task 13B：无兼容包 shared 结果与当前 Android 兼容
-- [ ] Task 13C：Desktop 安全下载、临时路径与 SHA-256
+- [x] Task 13C：Desktop 安全下载、临时路径与 SHA-256
 - [ ] Task 13D：Desktop 签名验证与平台安装交接
 - [ ] Task 13E：Desktop 更新控制器状态机
 - [ ] Task 14：Desktop 更新 UI、DI 与 Test Mode wiring
@@ -703,6 +703,8 @@ status-source: this-file
 1. RED：真实 MockWebServer 覆盖进度、取消、redirect 次数/跨 scheme 限制、Content-Length 与流式超限、连接中断、SHA mismatch、缺/无效 checksum、symlink/path escape、终态 cleanup 和 retry。
 2. GREEN：下载使用独立 cacheless client/call，只写 containment 验证后的临时文件；先限制响应与字节数，再验证 Task 12 的 SHA-256。缺可信 metadata 返回 ManualOnly/release-page fallback，不产生“已验证”对象。
 3. 该门禁是 Desktop security enhancement / cross-platform hardening，不冒充 fixed-main APK 行为。运行 Verification、mutation/cleanup 回归、Spotless 与 `git diff --check`。
+
+**Evidence:** 实现提交 `b0c10552f`。Downloader 从现有 Desktop client 派生独立 `cache(null)` client，关闭自动重定向并手动限制次数/拒绝跨 scheme；只有合法 SHA-256 metadata、响应与流式累计均未超限、digest 匹配且临时文件位于 real-path/非 symlink 安全根内时才返回 `VerifiedDownload`。缺失或非法 checksum 在发请求前返回 `ManualOnly`；取消保持传播，连接、本地存储、HTTP、重定向、超限和 checksum 失败均为结构化结果并清理局部文件，失败后可重试。初始 RED 7 项中 6 项失败，首轮 GREEN 的 1 个取消残留失败被修复后 7/7；禁用 finally cleanup 的 mutation 使 4 项失败。独立审查发现 Long 加法溢出和本地 I/O 被误分类为网络错误两个 Important；唯一修复轮 RED 9/2，旧加法和旧 I/O 分类 mutation 分别为 9/1，修复后 9/9，open/write/close 均为 `STORAGE` 而网络 body 中断仍为 `CONNECTION`。协调者以 `--rerun-tasks` 强制复跑 9/9，根 Spotless、diff 与 secret scan 通过；修复复审 APPROVED，Critical/Important/Minor `0/0/0`。最终范围 2 files/399 touched。当前 APK-only workflow 没有 Desktop checksum，因此 production 将诚实停在 ManualOnly，不虚报自动下载能力。
 
 ### Task 13D：Desktop 签名验证与平台安装交接
 
