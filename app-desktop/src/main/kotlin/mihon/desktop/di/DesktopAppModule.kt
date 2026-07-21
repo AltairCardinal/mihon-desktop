@@ -60,6 +60,11 @@ import mihon.desktop.domain.ReaderModeMemoryCleaner
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.domain.DesktopTrackerSessionProvider
 import mihon.desktop.platform.DesktopCredentialStore
+import mihon.desktop.platform.CredentialNamespace
+import mihon.desktop.platform.OsCredentialBackend
+import eu.kanade.tachiyomi.core.security.SecurityPreferences
+import mihon.desktop.security.DesktopAppLock
+import mihon.desktop.security.DesktopPassphraseVerifier
 import mihon.desktop.tracking.DesktopTrackerServiceRegistry
 import mihon.desktop.tracking.DesktopTrackerSyncScheduler
 import mihon.desktop.migration.DesktopBatchMigrationController
@@ -182,6 +187,8 @@ internal suspend fun initDesktopDIForTest(
     downloadFileOperations: mihon.desktop.download.DownloadFileOperations = mihon.desktop.download.DefaultDownloadFileOperations,
     browserOpener: DesktopBrowserOpener? = null,
     artifactAuthenticator: DesktopArtifactAuthenticator = DefaultDesktopArtifactAuthenticator,
+    credentialBackendFactory: (CredentialNamespace) -> mihon.desktop.platform.CredentialBackend =
+        { namespace -> OsCredentialBackend(namespace = namespace) },
 ): DesktopTestDIContext {
     activeDesktopTestDIContext?.closeAndJoin()
     patchInjekt()
@@ -201,6 +208,7 @@ internal suspend fun initDesktopDIForTest(
         updateManga,
         startDownloadWorker,
         downloadFileOperations,
+        credentialBackendFactory,
     )
     return DesktopTestDIContext(
         handler = handler as JvmDatabaseHandler,
@@ -263,6 +271,7 @@ internal fun initConfigLayer(appDir: File): DesktopPreferenceStore {
 
 private fun registerDesktopSettings(preferenceStore: PreferenceStore) {
     Injekt.addSingleton(DesktopAppPreferences(preferenceStore))
+    Injekt.addSingleton(SecurityPreferences(preferenceStore))
     Injekt.addSingleton(LibraryCategoryPrefs(preferenceStore))
 }
 
@@ -548,7 +557,15 @@ internal fun initUILayer(
     updateManga: (suspend (tachiyomi.domain.manga.model.Manga) -> LibraryUpdateChecker.UpdateResult)? = null,
     startDownloadWorker: Boolean = true,
     downloadFileOperations: mihon.desktop.download.DownloadFileOperations = mihon.desktop.download.DefaultDownloadFileOperations,
+    credentialBackendFactory: (CredentialNamespace) -> mihon.desktop.platform.CredentialBackend =
+        { namespace -> OsCredentialBackend(namespace = namespace) },
 ) {
+    val passphraseVerifier = DesktopPassphraseVerifier(
+        DesktopCredentialStore(credentialBackendFactory(CredentialNamespace.APP_LOCK_V1)),
+    )
+    val appLock = DesktopAppLock(Injekt.get(), passphraseVerifier)
+    Injekt.addSingleton(passphraseVerifier)
+    Injekt.addSingleton(appLock)
     val nativeSharePort = defaultDesktopNativeSharePort()
     Injekt.addSingleton<DesktopNativeSharePort>(nativeSharePort)
     Injekt.addSingleton(DesktopShareService(nativeSharePort = nativeSharePort))
@@ -687,6 +704,7 @@ internal fun initUILayer(
             readerModeMemoryCleaner = Injekt.get<ReaderModeMemoryCleaner>(),
             trackerSyncScheduler = trackerSyncScheduler,
             batchMigrationController = batchMigrationController,
+            appLock = appLock,
         ),
     )
 }

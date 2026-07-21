@@ -11,6 +11,7 @@ import mihon.desktop.domain.LibraryUpdateScheduler
 import mihon.desktop.domain.ReaderModeMemoryCleaner
 import mihon.desktop.platform.DesktopExternalActionBroker
 import mihon.desktop.source.LocalSourceScanService
+import mihon.desktop.security.DesktopAppLockLifecycle
 
 interface DesktopRuntimeService {
     fun start()
@@ -25,6 +26,7 @@ class DesktopAppRuntime(
     private val batchMigrationController: DesktopRuntimeService = NoopRuntimeService,
     private val startupCleanup: suspend () -> Unit,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    internal val appLock: DesktopAppLockLifecycle = NoopAppLockLifecycle,
 ) {
     private var startupJob: Job? = null
     private var instanceBroker: DesktopExternalActionBroker? = null
@@ -33,6 +35,7 @@ class DesktopAppRuntime(
 
     fun start() {
         if (isRunning) return
+        appLock.onApplicationStarted()
         isRunning = true
         startupJob = scope.launch {
             runCatching { startupCleanup() }
@@ -46,27 +49,29 @@ class DesktopAppRuntime(
 
     fun stop() {
         if (!isRunning) return
-        startupJob?.cancel()
+        val failures = CleanupFailures()
+        failures.attempt(appLock::onApplicationStopped)
+        failures.attempt { startupJob?.cancel() }
         startupJob = null
-        batchMigrationController.stop()
-        trackerSyncScheduler.stop()
-        autoBackupScheduler.stop()
-        localSourceScanService.stop()
-        libraryUpdateScheduler.stop()
+        failures.attempt(batchMigrationController::stop)
+        failures.attempt(trackerSyncScheduler::stop)
+        failures.attempt(autoBackupScheduler::stop)
+        failures.attempt(localSourceScanService::stop)
+        failures.attempt(libraryUpdateScheduler::stop)
         isRunning = false
+        failures.throwIfAny()
     }
 
     fun close() {
-        try {
-            stop()
-        } finally {
-            try {
-                instanceBroker?.close()
-                instanceBroker = null
-            } finally {
-                scope.cancel()
-            }
+        val failures = CleanupFailures()
+        failures.attempt(::stop)
+        failures.attempt {
+            val broker = instanceBroker
+            instanceBroker = null
+            broker?.close()
         }
+        failures.attempt(scope::cancel)
+        failures.throwIfAny()
     }
 
     fun attachInstanceBroker(broker: DesktopExternalActionBroker) {
@@ -82,6 +87,7 @@ class DesktopAppRuntime(
             readerModeMemoryCleaner: ReaderModeMemoryCleaner,
             trackerSyncScheduler: DesktopRuntimeService = NoopRuntimeService,
             batchMigrationController: DesktopRuntimeService = NoopRuntimeService,
+            appLock: DesktopAppLockLifecycle = NoopAppLockLifecycle,
         ): DesktopAppRuntime {
             return DesktopAppRuntime(
                 libraryUpdateScheduler = libraryUpdateScheduler.asRuntimeService(),
@@ -90,6 +96,7 @@ class DesktopAppRuntime(
                 trackerSyncScheduler = trackerSyncScheduler,
                 batchMigrationController = batchMigrationController,
                 startupCleanup = { readerModeMemoryCleaner.clearNonFavoriteManga() },
+                appLock = appLock,
             )
         }
     }
@@ -132,6 +139,32 @@ internal fun startDesktopInstance(
 private object NoopRuntimeService : DesktopRuntimeService {
     override fun start() = Unit
     override fun stop() = Unit
+}
+
+private class CleanupFailures {
+    private var primary: Throwable? = null
+
+    fun attempt(block: () -> Unit) {
+        try {
+            block()
+        } catch (failure: Throwable) {
+            val first = primary
+            if (first == null) {
+                primary = failure
+            } else if (failure !== first) {
+                first.addSuppressed(failure)
+            }
+        }
+    }
+
+    fun throwIfAny() {
+        primary?.let { throw it }
+    }
+}
+
+private object NoopAppLockLifecycle : DesktopAppLockLifecycle {
+    override fun onApplicationStarted() = Unit
+    override fun onApplicationStopped() = Unit
 }
 
 private fun LibraryUpdateScheduler.asRuntimeService(): DesktopRuntimeService =

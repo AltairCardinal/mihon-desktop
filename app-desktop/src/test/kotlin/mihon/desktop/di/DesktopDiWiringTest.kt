@@ -12,6 +12,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import mihon.desktop.DesktopUiDependencies
+import mihon.desktop.DesktopAppRuntime
 import mihon.desktop.compat.AndroidCompat
 import mihon.desktop.backup.AutoBackupScheduler
 import mihon.desktop.backup.BackupRestoreScreenModelFactory
@@ -35,6 +36,9 @@ import mihon.desktop.ui.extension.ExtensionsScreenModel
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.platform.DesktopNativeSharePort
 import mihon.desktop.platform.DesktopShareService
+import eu.kanade.tachiyomi.core.security.SecurityPreferences
+import mihon.desktop.security.DesktopAppLock
+import mihon.desktop.security.DesktopPassphraseVerifier
 import mihon.desktop.library.LibraryScreenModelFactory
 import mihon.desktop.library.MangaDetailScreenModelFactory
 import mihon.desktop.reader.ReaderPreferences
@@ -72,6 +76,8 @@ import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.TrackerSessionProvider
 import tachiyomi.domain.track.service.TrackerServiceRegistry
 import mihon.desktop.platform.DesktopCredentialStore
+import mihon.desktop.platform.CredentialBackend
+import mihon.desktop.platform.CredentialNamespace
 import mihon.desktop.tracking.DesktopTrackerSyncScheduler
 import tachiyomi.domain.track.interactor.ReadingProgressTrackSync
 import tachiyomi.domain.source.service.AuthenticatedCookie
@@ -116,6 +122,33 @@ import okio.Buffer
 
 @Isolated
 class DesktopDiWiringTest {
+    @Test
+    fun `desktop DI wires one shared security core into runtime`(@TempDir tempDir: File) = runBlocking {
+        val namespaces = mutableListOf<CredentialNamespace>()
+        val backend = object : CredentialBackend {
+            override fun save(account: String, secret: CharArray) = Unit
+            override fun load(account: String): CharArray? = null
+            override fun delete(account: String) = Unit
+        }
+        val context = initDesktopDIForTest(
+            tempDir,
+            DesktopPreferenceStore(),
+            credentialBackendFactory = { namespace ->
+                namespaces += namespace
+                backend
+            },
+        )
+        try {
+            assertEquals(listOf(CredentialNamespace.APP_LOCK_V1), namespaces)
+            assertNotNull(Injekt.get<SecurityPreferences>())
+            assertNotNull(Injekt.get<DesktopPassphraseVerifier>())
+            val appLock = Injekt.get<DesktopAppLock>()
+            assertSame(appLock, Injekt.get<DesktopAppRuntime>().appLock)
+        } finally {
+            context.closeAndJoin()
+        }
+    }
+
     @Test
     fun `desktop DI shares one native share service instance with UI`(@TempDir tempDir: File) = runBlocking {
         val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
