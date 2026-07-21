@@ -142,6 +142,25 @@ class DesktopDiWiringTest {
     }
 
     @Test
+    fun `reinitializing test DI permanently retires the old updater graph`(@TempDir tempDir: File) = runBlocking {
+        val first = initDesktopDIForTest(tempDir.resolve("updater-first"), DesktopPreferenceStore())
+        val oldModel = Injekt.get<DesktopUpdateScreenModel>()
+        val oldController = Injekt.get<DesktopUpdateController>()
+        val oldRuntime = Injekt.get<DesktopAppRuntime>()
+        val second = initDesktopDIForTest(tempDir.resolve("updater-second"), DesktopPreferenceStore())
+        try {
+            assertTrue(oldModel !== Injekt.get<DesktopUpdateScreenModel>())
+            assertTrue(oldController !== Injekt.get<DesktopUpdateController>())
+            assertTrue(oldRuntime !== Injekt.get<DesktopAppRuntime>())
+            assertFalse(oldModel.intent(mihon.desktop.ui.settings.DesktopUpdateIntent.CHECK))
+        } finally {
+            oldModel.dispose()
+            second.closeAndJoin()
+            first.closeAndJoin()
+        }
+    }
+
+    @Test
     fun `desktop DI wires one shared security core into runtime`(@TempDir tempDir: File) = runBlocking {
         val namespaces = mutableListOf<CredentialNamespace>()
         val backend = object : CredentialBackend {

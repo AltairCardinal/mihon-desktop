@@ -228,6 +228,7 @@ internal suspend fun initDesktopDIForTest(
         extensionManager = Injekt.get(),
         extensionScreenModel = Injekt.get(),
         extensionController = Injekt.get(),
+        runtime = Injekt.get(),
     ).also { activeDesktopTestDIContext = it }
 }
 
@@ -241,17 +242,20 @@ internal class DesktopTestDIContext(
     private val extensionManager: DesktopExtensionManager,
     val extensionScreenModel: ExtensionsScreenModel,
     private val extensionController: SourceExtensionTestModeController,
+    private val runtime: mihon.desktop.DesktopAppRuntime,
 ) : AutoCloseable {
     private var closed = false
 
     override fun close() {
         if (closed) return
+        runtime.close()
         scheduler.stop()
     }
 
     suspend fun closeAndJoin() {
         if (closed) return
         closed = true
+        runtime.closeAndJoin()
         scheduler.stopAndJoin()
         SourceExtensionTestModeBridge.clear(extensionController)
         extensionScreenModel.closeAndJoin()
@@ -571,6 +575,7 @@ internal fun initUILayer(
     credentialBackendFactory: (CredentialNamespace) -> mihon.desktop.platform.CredentialBackend =
         { namespace -> OsCredentialBackend(namespace = namespace) },
 ) {
+    val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val passphraseVerifier = DesktopPassphraseVerifier(
         DesktopCredentialStore(credentialBackendFactory(CredentialNamespace.APP_LOCK_V1)),
     )
@@ -598,7 +603,8 @@ internal fun initUILayer(
     Injekt.addSingleton(updateInstaller)
     val updateController = DesktopUpdateController(releaseChecker, updateDownloader, updateInstaller)
     Injekt.addSingleton(updateController)
-    Injekt.addSingleton(DesktopUpdateScreenModel(updateController, CoroutineScope(SupervisorJob() + Dispatchers.Default)))
+    val updateScreenModel = DesktopUpdateScreenModel(updateController, applicationScope)
+    Injekt.addSingleton(updateScreenModel)
     val mangaRepository = Injekt.get<MangaRepository>()
     val chapterRepository = Injekt.get<ChapterRepository>()
     val categoryRepository = Injekt.get<CategoryRepository>()
@@ -735,6 +741,8 @@ internal fun initUILayer(
             trackerSyncScheduler = trackerSyncScheduler,
             batchMigrationController = batchMigrationController,
             appLock = appLock,
+            scope = applicationScope,
+            updateScreenModel = updateScreenModel,
         ),
     )
 }

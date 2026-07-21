@@ -1,8 +1,10 @@
 package mihon.desktop.ui.settings
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -57,16 +59,23 @@ private fun presentation(
 
 class DesktopUpdateScreenModel(
     val controller: DesktopUpdateController,
-    private val scope: CoroutineScope,
+    parentScope: CoroutineScope,
     private val openUrl: (String) -> Boolean = ::openDesktopUpdateUrl,
     private val executionContext: CoroutineContext = Dispatchers.IO,
 ) {
+    private val parentContext = parentScope.coroutineContext
+    private var ownerJob: Job? = null
+    internal val closeCancellation = CancellationException("Desktop updater closed")
     val state = controller.state
     private val mutableFeedback = MutableStateFlow<String?>(null)
     val feedback = mutableFeedback.asStateFlow()
     private var job: Job? = null
+    internal val operationJob: Job? @Synchronized get() = job
+    @Volatile internal var closed = false
+        private set
     @Synchronized
     fun intent(intent: DesktopUpdateIntent): Boolean {
+        if (closed) return false
         if (intent !in state.value.presentation().actions) return false
         if (intent == DesktopUpdateIntent.CANCEL) return job?.takeIf(Job::isActive)?.let { it.cancel(); true } ?: false
         if (intent == DesktopUpdateIntent.MANUAL) {
@@ -76,19 +85,36 @@ class DesktopUpdateScreenModel(
         }
         if (job?.isActive == true) return false
         mutableFeedback.value = null
-        job = scope.launch(executionContext) {
-            when (intent) {
-                DesktopUpdateIntent.CHECK -> controller.check(releaseArguments())
-                DesktopUpdateIntent.DOWNLOAD -> controller.download()
-                DesktopUpdateIntent.RETRY -> controller.retry()
-                DesktopUpdateIntent.CONFIRM -> controller.handoff(true)
-                DesktopUpdateIntent.DECLINE -> controller.handoff(false)
-                DesktopUpdateIntent.CANCEL, DesktopUpdateIntent.MANUAL -> Unit
+        val owner = SupervisorJob(parentContext[Job]).also { ownerJob = it }
+        job = CoroutineScope(parentContext + owner).launch(executionContext) {
+            try {
+                when (intent) {
+                    DesktopUpdateIntent.CHECK -> controller.check(releaseArguments())
+                    DesktopUpdateIntent.DOWNLOAD -> controller.download()
+                    DesktopUpdateIntent.RETRY -> controller.retry()
+                    DesktopUpdateIntent.CONFIRM -> controller.handoff(true)
+                    DesktopUpdateIntent.DECLINE -> controller.handoff(false)
+                    DesktopUpdateIntent.CANCEL, DesktopUpdateIntent.MANUAL -> Unit
+                }
+            } finally {
+                owner.complete()
             }
         }
         return true
     }
+    @Synchronized
     fun dispose() = job?.cancel()
+    @Synchronized
+    fun close() {
+        if (closed) return
+        closed = true
+        job?.cancel(closeCancellation)
+        ownerJob?.cancel(closeCancellation)
+    }
+    suspend fun closeAndJoin() {
+        close()
+        ownerJob?.join()
+    }
     companion object {
         fun releaseArguments(version: String = APP_VERSION) = GetApplicationRelease.Arguments(
             isFoss = false,

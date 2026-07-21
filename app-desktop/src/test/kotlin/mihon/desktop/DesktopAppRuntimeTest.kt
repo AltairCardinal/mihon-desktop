@@ -1,10 +1,14 @@
 package mihon.desktop
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -19,9 +23,17 @@ import mihon.desktop.test.completeTestModeStop
 import mihon.desktop.test.state.TestState
 import mihon.desktop.ui.ExternalActionNavigator
 import mihon.desktop.ui.navigatorFixture
+import mihon.desktop.ui.settings.DesktopUpdateIntent
+import mihon.desktop.ui.settings.DesktopUpdateScreenModel
+import mihon.desktop.update.DesktopUpdateController
+import mihon.desktop.update.DesktopUpdateState
+import mihon.desktop.update.InstallCancelled
+import mihon.desktop.update.InstallManualOnly
+import mihon.desktop.update.ManualOnly
 import mihon.domain.platform.ExternalActionInput
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -78,6 +90,36 @@ class DesktopAppRuntimeTest {
 
         assertFalse(runtime.isRunning)
         assertFalse(stateFile.exists())
+    }
+
+    @Test
+    fun `runtime close permanently owns an active updater job`() = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val cancelled = CompletableDeferred<Unit>()
+        val parentScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val controller = DesktopUpdateController(
+            { entered.complete(Unit); try { awaitCancellation() } catch (error: CancellationException) { cancelled.complete(Unit); throw error } },
+            { release, _ -> ManualOnly(release.releaseLink) },
+            { _, _ -> InstallManualOnly },
+            { _, _ -> InstallCancelled },
+        )
+        val model = DesktopUpdateScreenModel(controller, parentScope)
+        val runtime = DesktopAppRuntime(
+            RecordingRuntimeService(), RecordingRuntimeService(), RecordingRuntimeService(),
+            startupCleanup = {}, scope = parentScope, updateScreenModel = model,
+        )
+        assertTrue(model.intent(DesktopUpdateIntent.CHECK))
+        entered.await()
+        val completion = CompletableDeferred<Throwable?>()
+        model.operationJob!!.invokeOnCompletion { completion.complete(it) }
+
+        runtime.close()
+
+        assertEquals(Unit, withTimeout(1_000) { cancelled.await() })
+        assertSame(model.closeCancellation, completion.await())
+        withTimeout(1_000) { model.state.first { it is DesktopUpdateState.Cancelled } }
+        assertFalse(model.intent(DesktopUpdateIntent.CHECK))
+        runtime.close()
     }
 
     @Test
@@ -171,7 +213,9 @@ class DesktopAppRuntimeTest {
 
     @Test
     fun `headless test mode waits for server termination then closes runtime`() = runBlocking {
-        val runtime = headlessRuntime().also(DesktopAppRuntime::start)
+        val parentScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val updater = idleUpdater(parentScope)
+        val runtime = headlessRuntime(parentScope, updater).also(DesktopAppRuntime::start)
         val waiting = CountDownLatch(1)
         val release = CountDownLatch(1)
         var stopCalls = 0
@@ -193,6 +237,8 @@ class DesktopAppRuntimeTest {
         assertTrue(handled.await())
         assertEquals(1, stopCalls)
         assertFalse(runtime.isRunning)
+        assertTrue(updater.closed)
+        assertFalse(updater.intent(DesktopUpdateIntent.CHECK))
     }
 
     @Test
@@ -271,12 +317,21 @@ class DesktopAppRuntimeTest {
         assertFalse(runtime.isRunning)
     }
 
-    private fun headlessRuntime() = DesktopAppRuntime(
+    private fun headlessRuntime(
+        scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        updater: DesktopUpdateScreenModel? = null,
+    ) = DesktopAppRuntime(
         libraryUpdateScheduler = RecordingRuntimeService(),
         localSourceScanService = RecordingRuntimeService(),
         autoBackupScheduler = RecordingRuntimeService(),
         startupCleanup = {},
-        scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        scope = scope,
+        updateScreenModel = updater,
+    )
+
+    private fun idleUpdater(scope: CoroutineScope) = DesktopUpdateScreenModel(
+        DesktopUpdateController({ error("unused") }, { _, _ -> error("unused") }, { _, _ -> error("unused") }, { _, _ -> error("unused") }),
+        scope,
     )
 }
 

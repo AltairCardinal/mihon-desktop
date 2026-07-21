@@ -12,6 +12,7 @@ import mihon.desktop.domain.ReaderModeMemoryCleaner
 import mihon.desktop.platform.DesktopExternalActionBroker
 import mihon.desktop.source.LocalSourceScanService
 import mihon.desktop.security.DesktopAppLockLifecycle
+import mihon.desktop.ui.settings.DesktopUpdateScreenModel
 
 interface DesktopRuntimeService {
     fun start()
@@ -27,6 +28,7 @@ class DesktopAppRuntime(
     private val startupCleanup: suspend () -> Unit,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     internal val appLock: DesktopAppLockLifecycle = NoopAppLockLifecycle,
+    private val updateScreenModel: DesktopUpdateScreenModel? = null,
 ) {
     private var startupJob: Job? = null
     private var instanceBroker: DesktopExternalActionBroker? = null
@@ -70,7 +72,16 @@ class DesktopAppRuntime(
             instanceBroker = null
             broker?.close()
         }
+        failures.attempt { updateScreenModel?.close() }
         failures.attempt(scope::cancel)
+        failures.throwIfAny()
+    }
+
+    suspend fun closeAndJoin() {
+        val failures = CleanupFailures()
+        failures.attempt(::close)
+        failures.attemptSuspend { updateScreenModel?.closeAndJoin() }
+        failures.attemptSuspend { scope.coroutineContext[Job]?.join() }
         failures.throwIfAny()
     }
 
@@ -88,6 +99,8 @@ class DesktopAppRuntime(
             trackerSyncScheduler: DesktopRuntimeService = NoopRuntimeService,
             batchMigrationController: DesktopRuntimeService = NoopRuntimeService,
             appLock: DesktopAppLockLifecycle = NoopAppLockLifecycle,
+            scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            updateScreenModel: DesktopUpdateScreenModel? = null,
         ): DesktopAppRuntime {
             return DesktopAppRuntime(
                 libraryUpdateScheduler = libraryUpdateScheduler.asRuntimeService(),
@@ -96,7 +109,9 @@ class DesktopAppRuntime(
                 trackerSyncScheduler = trackerSyncScheduler,
                 batchMigrationController = batchMigrationController,
                 startupCleanup = { readerModeMemoryCleaner.clearNonFavoriteManga() },
+                scope = scope,
                 appLock = appLock,
+                updateScreenModel = updateScreenModel,
             )
         }
     }
@@ -154,6 +169,15 @@ private class CleanupFailures {
             } else if (failure !== first) {
                 first.addSuppressed(failure)
             }
+        }
+    }
+
+    suspend fun attemptSuspend(block: suspend () -> Unit) {
+        try {
+            block()
+        } catch (failure: Throwable) {
+            val first = primary
+            if (first == null) primary = failure else if (failure !== first) first.addSuppressed(failure)
         }
     }
 

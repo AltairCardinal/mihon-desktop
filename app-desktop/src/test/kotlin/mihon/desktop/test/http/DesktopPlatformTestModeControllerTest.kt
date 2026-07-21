@@ -7,8 +7,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
@@ -38,19 +40,29 @@ class DesktopPlatformTestModeControllerTest {
             { _, _ -> InstallManualOnly },
             { _, _ -> InstallCancelled },
         )
-        val model = DesktopUpdateScreenModel(controller, CoroutineScope(SupervisorJob() + Dispatchers.Default))
-        withServer(model) { base ->
-            assertEquals(409, post(base, "update_download").statusCode())
-            assertEquals(200, post(base, "update_check").statusCode())
-            entered.await()
-            assertEquals(409, post(base, "update_check").statusCode())
-            assertEquals("checking", get(base).bodyJson().getValue("updateStatus").jsonPrimitive.content)
-            assertEquals(200, post(base, "update_cancel").statusCode())
-            withTimeout(2_000) { model.state.first { it is DesktopUpdateState.Cancelled } }
-            assertTrue(cancelled.await() is CancellationException)
-            assertEquals(400, post(base, "update_unknown").statusCode())
+        val parentScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val model = DesktopUpdateScreenModel(controller, parentScope)
+        try {
+            withServer(model) { base ->
+                assertEquals(409, post(base, "update_download").statusCode())
+                assertEquals(200, post(base, "update_check").statusCode())
+                entered.await()
+                assertEquals(409, post(base, "update_check").statusCode())
+                assertEquals("checking", get(base).bodyJson().getValue("updateStatus").jsonPrimitive.content)
+                assertEquals(200, post(base, "update_cancel").statusCode())
+                withTimeout(2_000) { model.state.first { it is DesktopUpdateState.Cancelled } }
+                assertTrue(cancelled.await() is CancellationException)
+                model.dispose()
+                assertEquals(200, post(base, "update_check").statusCode())
+                model.closeAndJoin()
+                assertTrue(parentScope.coroutineContext[Job]?.isActive == true)
+                assertEquals(409, post(base, "update_check").statusCode())
+                assertEquals(400, post(base, "update_unknown").statusCode())
+            }
+            withServer(null) { base -> assertEquals(503, post(base, "update_check").statusCode()) }
+        } finally {
+            parentScope.cancel()
         }
-        withServer(null) { base -> assertEquals(503, post(base, "update_check").statusCode()) }
     }
     private suspend fun withServer(model: DesktopUpdateScreenModel?, block: suspend (String) -> Unit) {
         val server = embeddedServer(CIO, host = "127.0.0.1", port = 0) { testHttpServer(model) }.start()
