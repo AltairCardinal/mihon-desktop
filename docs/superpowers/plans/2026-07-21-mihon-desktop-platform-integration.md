@@ -687,7 +687,7 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 4 files, 400 lines
+**Estimated scope:** 2 files, 400 lines
 
 **Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.update.DesktopUpdateDownloaderTest"`
 
@@ -712,7 +712,7 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 2 files, 400 lines
+**Estimated scope:** 4 files, 400 lines
 
 **Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.update.DesktopUpdateInstallerTest"`
 
