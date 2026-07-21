@@ -1,12 +1,24 @@
 package mihon.domain.security
 
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class AppSecurityPolicyTest {
+
+    private val fixture by lazy {
+        requireNotNull(
+            javaClass.getResourceAsStream("/parity/task5a/fixed-main-platform-fixtures.json"),
+        ).use { input ->
+            Json.parseToJsonElement(input.bufferedReader().use { it.readText() }).jsonObject
+        }
+    }
 
     @Test
     fun `enabled app first process starts locked`() {
@@ -49,12 +61,24 @@ class AppSecurityPolicyTest {
     }
 
     @Test
-    fun `authentication success unlocks and every non success outcome fails closed`() {
-        val locked = AppLockState(requiresUnlock = true)
+    fun `fixture unlock vectors allow only successful unlock attempts to change state`() {
+        fixture.getValue("security").jsonObject.getValue("unlock").jsonArray.forEach { element ->
+            val vector = element.jsonArray
+            val state = AppLockState(requiresUnlock = vector[0].jsonPrimitive.content == "locked")
+            val result = AuthenticationResult.valueOf(vector[1].jsonPrimitive.content)
+            assertEquals(
+                vector[2].jsonPrimitive.content == "locked",
+                AppLockPolicy.onUnlockAuthentication(state, result).requiresUnlock,
+                vector.toString(),
+            )
+        }
+    }
 
-        assertFalse(AppLockPolicy.onAuthentication(locked, AuthenticationResult.Success).requiresUnlock)
+    @Test
+    fun `authentication failures preserve the whole locked state`() {
+        val locked = AppLockState(requiresUnlock = true, lastClosedAtMillis = 42)
         AuthenticationResult.entries.filterNot { it == AuthenticationResult.Success }.forEach { result ->
-            assertTrue(AppLockPolicy.onAuthentication(locked, result).requiresUnlock)
+            assertEquals(locked, AppLockPolicy.onUnlockAuthentication(locked, result))
         }
     }
 

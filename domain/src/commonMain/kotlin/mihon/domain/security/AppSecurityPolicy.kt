@@ -41,8 +41,9 @@ object AppLockPolicy {
         return AppLockState(requiresUnlock)
     }
 
-    fun onAuthentication(state: AppLockState, result: AuthenticationResult) =
-        state.copy(requiresUnlock = result != AuthenticationResult.Success)
+    /** Only an unlock attempt may clear a lock; settings confirmation consumes its result separately. */
+    fun onUnlockAuthentication(state: AppLockState, result: AuthenticationResult) =
+        if (result == AuthenticationResult.Success) state.copy(requiresUnlock = false) else state
 
     private const val MILLIS_PER_MINUTE = 60_000L
 }

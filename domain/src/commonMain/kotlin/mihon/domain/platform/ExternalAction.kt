@@ -1,5 +1,6 @@
 package mihon.domain.platform
 
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 sealed interface ExternalActionInput {
     data class Search(val primaryQuery: String?, val fallbackText: String? = null) : ExternalActionInput
     data class SendText(val text: String?) : ExternalActionInput
@@ -16,7 +17,7 @@ sealed interface ExternalAction {
 
 enum class RejectionReason { MALFORMED_URI, UNSUPPORTED_URI, INVALID_REPOSITORY_URL, INVALID_BACKUP_URI }
 
-/** Pure fixed-main action parsing. SEARCH and SEND are inputs, never URI schemes. */
+/** Fixed-main action semantics plus documented cross-platform input hardening. */
 object ExternalActionParser {
     fun resolve(input: ExternalActionInput): ExternalAction = when (input) {
         is ExternalActionInput.Search -> search(input.primaryQuery ?: input.fallbackText)
@@ -31,8 +32,8 @@ object ExternalActionParser {
         val uri = value.orEmpty()
         if (uri.isEmpty()) return ExternalAction.NoOp
         return when {
-            uri.startsWith("tachiyomi:") -> addRepository(uri)
             uri.endsWith(".tachibk") -> ExternalAction.RestoreBackup(uri)
+            uri.startsWith("tachiyomi:") -> addRepository(uri)
             hasScheme(uri) -> ExternalAction.Rejected(RejectionReason.UNSUPPORTED_URI)
             else -> ExternalAction.Rejected(RejectionReason.MALFORMED_URI)
         }
@@ -59,16 +60,9 @@ object ExternalActionParser {
         separator > 0 && value.take(separator).all { it.isLetterOrDigit() || it in "+-." }
     }
 
-    private fun isHttpUrl(value: String): Boolean {
-        val prefixLength = if (value.startsWith("https://")) {
-            8
-        } else if (value.startsWith("http://")) {
-            7
-        } else {
-            return false
-        }
-        return value.length > prefixLength && value.substring(prefixLength).substringBefore('/').isNotBlank()
-    }
+    private fun isHttpUrl(value: String): Boolean = value.toHttpUrlOrNull()?.let {
+        it.scheme in setOf("http", "https") && it.username.isEmpty() && it.password.isEmpty()
+    } ?: false
 
     private fun percentDecode(value: String): String? = runCatching {
         buildString {
