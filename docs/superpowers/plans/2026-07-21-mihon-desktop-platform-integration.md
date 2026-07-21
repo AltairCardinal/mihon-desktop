@@ -687,7 +687,7 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 2 files, 400 lines
+**Estimated scope:** 4 files, 400 lines
 
 **Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.update.DesktopUpdateDownloaderTest"`
 
@@ -718,16 +718,20 @@ status-source: this-file
 
 **Files:**
 
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/update/DesktopUpdateDownloader.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/update/DesktopUpdateDownloaderTest.kt`
 - Create: `app-desktop/src/main/kotlin/mihon/desktop/update/DesktopUpdateInstaller.kt`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/update/DesktopUpdateInstallerTest.kt`
 
-**Consumes:** Task 13C `VerifiedDownload`；Task 13A current target；可注入 Authenticode/codesign 与 process launcher。
+**Consumes:** Task 13C 仅在传输期间使用的 `.part` staging 与 `VerifiedDownload`；Task 13A current target/canonical asset；可注入 Authenticode/codesign 与 process launcher。
 
 **Produces:** Windows MSI、macOS DMG 的结构化 signature/publisher verification 与确认/取消/hand-off 结果；Linux 和缺失信任根的平台为 ManualOnly。
 
-1. RED：fake command/process seam 覆盖 target/package mismatch、缺签名、错误 publisher/team-id、无信任根、确认取消、启动失败和成功 handoff；不得只检查“存在任意签名”。
-2. GREEN：Windows 只允许匹配配置可信 publisher 的 Authenticode MSI，macOS 只允许匹配配置 team-id/notarization policy 的 DMG；仓库当前无签名/信任根配置，生产默认必须 ManualOnly，不能伪报自动安装。
-3. handoff 只启动外部安装 side effect，不覆盖或删除当前应用；失败保留 verified artifact 供手动后备。运行 Verification、Windows 可执行的 verifier probe、Spotless 与 `git diff --check`。
+1. RED：fake command/process seam 覆盖 target/package/canonical name mismatch、缺签名、错误 publisher/team-id、无信任根、确认取消、启动失败和成功 handoff；真实 downloader→installer 测试必须从 MockWebServer 产生与 production 相同的 staging/final 路径，不能手工伪造 `.msi/.dmg`。不得只检查“存在任意签名”。
+2. GREEN：Downloader 只在传输期间使用安全根内的 `.part`，SHA-256 成功后在同一目录原子定型为当前 package type 的 `.msi/.dmg`，再构造 `VerifiedDownload`；失败不留下 staging 或 final 文件。Windows 只允许匹配配置可信 publisher 的 Authenticode MSI，macOS 只允许匹配配置 team-id/notarization policy 的 DMG；仓库当前无签名/信任根配置，生产默认必须 ManualOnly，不能伪报自动安装。
+3. handoff 只启动外部安装 side effect，不覆盖或删除当前应用；失败保留 verified artifact 供手动后备。运行 Verification、真实 downloader→installer 形状测试、Windows 可执行 verifier probe、Spotless 与 `git diff --check`。
+
+**Replan evidence:** 首轮实现与唯一修复已完成 target/hash/trust/confirmation、canonical asset 和 PowerShell stdin 安全门禁，但修复复审发现 Task 13C production 固定返回 `.part`，而 Task 13D 测试手工构造 `.msi/.dmg`，使 macOS DMG 签名与 `/usr/bin/open` 交接没有覆盖真实输入形状。该问题跨越 downloader finalization 与 installer verification，不能拆成可独立完成的后置 UI/state Task；因此在不新增编号的前提下把当前 Task 扩为上述 4 文件，并要求真实链测试。此前未提交的 13D 实现保留为重规划后的起点，完成状态仍未勾选。
 
 ### Task 13E：Desktop 更新控制器状态机
 
