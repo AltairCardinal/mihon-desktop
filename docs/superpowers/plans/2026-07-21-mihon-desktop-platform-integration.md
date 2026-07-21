@@ -50,6 +50,7 @@ status-source: this-file
 - [x] Task 15：Widget 豁免、parity 证据与维护文档
 - [x] Task 15A：平台证据的 per-ID 不可变 provenance 合同
 - [x] Task 15B：Android Widget 默认隐私 wiring 证明
+- [ ] Task 16A：Desktop missing-credential profile reset 闭环
 - [ ] Task 16：独立最终审查与三平台 change verify
 
 ## 全局任务门禁
@@ -956,6 +957,35 @@ status-source: this-file
 
 **Task 15 closure：** 初始实现、唯一修复及重新拆分的 15A/15B 已共同关闭所有审查项。最终证据同时覆盖逐 ID fixed-main provenance、shared/当前 Android/Desktop consumer、真实 protection test、Widget 平台豁免和 Android 默认 Widget 隐私 wiring；真实 OS 状态仍按合同保持 CANDIDATE/有限，等待 Task 16。Task 15、15A、15B 已统一关闭，下一项为 Task 16。
 
+### 子 Task 16A：Desktop missing-credential profile reset 闭环
+
+**Risk axis:** desktop-lock-profile-reset
+
+**Platform boundary:** shared+desktop
+
+**Estimated scope:** 7 files, 320 lines
+
+**Verification:** Desktop preference/profile reset 单元测试、真实 DI→lock→protected-root 重启集成测试、原版安全语义取证、Spotless 与 diff check
+
+**Files:**
+
+- Modify: `core/common/src/jvmMain/kotlin/tachiyomi/core/common/preference/DesktopPreferenceStore.kt`
+- Modify: `core/common/src/jvmTest/kotlin/tachiyomi/core/common/preference/DesktopPreferenceStoreTest.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/security/DesktopUnlockSurface.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/settings/SecuritySettingsWiringTest.kt`
+- Modify: `i18n/src/commonMain/moko-resources/base/strings.xml`
+- Modify: `app-desktop/src/test/resources/parity/platform-upstream-inventory.json` only if the fixed-main evidence path is not already recorded
+
+**Consumes:** Task 16 whole-change review repair `0d8b16c07` and its unique repair re-review `Critical/Important/Minor 0/1/0`. macOS share finding is closed; the only remaining product risk is that the recovery UI opens `configDir` while the lock preference remains in Java Preferences `/mihon`, so deleting the advertised directory cannot recover the next start. Fixed-main `SecureActivityDelegateImpl.setAppLock()` disables `useAuthenticator` when the platform authenticator is no longer supported; Desktop may not silently copy that fallback because a missing passphrase credential is a different adapter failure, but an explicit full-profile reset must actually clear the persisted lock state.
+
+**Produces:** a truthful, testable recovery contract: while the profile exists and the credential is missing, Mihon remains fail-closed; after the user opens the advertised configuration folder, closes Mihon, deletes that profile folder, and restarts, startup detects the absent profile before recreating directories, clears the same Desktop preference store used by production DI, and starts a fresh unlocked profile. Copy states the real minimum data loss and does not claim Windows `localRoot` downloads/extensions/cache are deleted.
+
+1. RED：use a real `DesktopPreferenceStore` node and production `initDesktopDIForTest` twice. First start with an existing profile, enabled lock and missing credential must keep `DesktopProtectedRoot` locked and never construct protected content. After closing DI, deleting the advertised profile folder and restarting with the same preference node, the old implementation must remain locked; the new contract must clear `useAuthenticator`, recreate the profile directory and construct protected content. Removing the production reset call or changing the reset to another preference node must fail this test.
+2. GREEN：resolve production paths without pre-creating directories; before any layer recreates them, reset the real Desktop preference node only when the advertised profile folder is absent, then create required directories and initialize DI. `DesktopPreferenceStore` exposes an exception-safe clear/flush operation covered by a real `java.util.prefs.Preferences` test. Existing profiles, backend unavailable/error, and missing credential without profile deletion remain fail-closed; no normal start silently disables the lock.
+3. Update the recovery copy to name the actual sequence and boundary: close the app, delete the opened configuration folder, restart into a fresh library/settings/session profile; platform-local downloads, backups, extensions or caches may remain and are not represented as erased. The recovery button only opens the exact folder used by the startup detector and never changes preferences itself.
+4. Run the preference-store test, `DesktopAppLockTest`, `SecuritySettingsWiringTest`, `DesktopDiWiringTest`, root Spotless, `git diff --check` and the exact 7-file/320-line scope gate. One implementation review and one repair re-review maximum; after approval return to Task 16 whole-change review and three-platform verify.
+
 ### Task 16：独立最终审查与三平台 change verify
 
 **Risk axis:** platform-change-verify
@@ -979,7 +1009,7 @@ status-source: this-file
 
 **Produces:** whole-change 独立审查、三 OS/Android 必要验证、完整版本/产物/失败数和父子计划最终一致性证据。
 
-**Whole-change review status（唯一修复轮）：** 对 `952be2f...HEAD` 的独立审查以 Critical/Important/Minor `0/2/0` 拒绝。更新仓库、APK-only release 和缺失 Desktop trust root 属于计划已记录的 `NoCompatiblePackage`/`ManualOnly` 边界，不列为缺陷。需要在唯一修复轮关闭两个真实产品风险：
+**Whole-change review status（已按门禁重规划）：** 对 `952be2f...HEAD` 的独立审查以 Critical/Important/Minor `0/2/0` 拒绝。提交 `0d8b16c07` 完成唯一修复轮；协调者强制复跑 4 类 50/50、Spotless 与 diff check 通过。唯一修复复审确认 macOS 分享风险已关闭，但以 `0/1/0` 拒绝 missing-credential 恢复：UI 打开的 `configDir` 不包含 Java Preferences `/mihon`，Windows `localRoot` 也与文案不符。按全局门禁停止 Task 16 内继续修补，将该单一产品风险拆为 Task 16A；16A 独立通过后重新执行 whole-change review 与三平台验证。更新仓库、APK-only release 和缺失 Desktop trust root 仍是计划已记录的 `NoCompatiblePackage`/`ManualOnly` 边界，不列为缺陷。
 
 1. Desktop app-lock preference 已启用但 OS credential 被外部删除时，`probe()` 错把 `null` secret 报为 Available，根 UI 随后永久锁死且没有安全恢复路径。RED 必须证明 missing credential 与 backend unavailable/error 分离、应用保持 fail-closed、受保护内容不构造，并在锁屏显示明确的数据影响说明与“打开完整本地 profile 目录”入口；入口不得静默禁用锁，用户只能关闭应用后重置完整 profile。production DI 必须传入本轮真实 `DesktopPlatformPaths.configDir` 与目录 opener。
 2. macOS native picker 为异步 session，但连续 `shareImage()` 复用同一个 `mihon-shared-page.png`，第二次分享会覆盖第一会话的内容。RED 必须同时打开两个 session，断言路径唯一、首个像素在第二次调用后不变、文件在各自 terminal 前存在并仅由对应 terminal 清理；fallback saved/cancelled/failed 也必须清理。GREEN 使用权限收紧的唯一临时快照，不得以全局锁禁止用户并发分享，也不得在 `Opened` 时提前删除。
