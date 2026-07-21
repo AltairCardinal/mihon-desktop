@@ -25,6 +25,7 @@ status-source: this-file
 - [x] Task 3：当前 Android 应用锁与屏幕安全消费 shared
 - [x] Task 4：Desktop 源 URI/备份/仓库动作解析
 - [ ] Task 5：Desktop 外部动作导航、入口与可见反馈
+- [ ] Task 5R：Desktop 外部动作非阻塞反馈收口
 - [ ] Task 6：Desktop 单实例安全转发
 - [ ] Task 7：Windows/macOS/Linux URI scheme 注册
 - [ ] Task 8：Desktop 系统分享与剪贴板/保存后备
@@ -227,6 +228,32 @@ status-source: this-file
 2. GREEN：Main 只提交原始 action；handler/resolver 后由单一 navigator adapter 执行，不能在多个 Screen 重复分类。
 3. NoResults 导航 GlobalSearch；Rejected/Failed 显示本地化错误且不部分导航；成功动作清除 pending state。
 4. 运行 Verification、导航/DI/TestState 回归和 `git diff --check`。
+
+### Task 5R：Desktop 外部动作非阻塞反馈收口
+
+**Risk axis:** desktop-action-feedback
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 4 files, 180 lines
+
+**Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.ExternalActionNavigationTest" --tests "mihon.desktop.ui.ExternalActionFeedbackWiringTest" --rerun-tasks`
+
+**Files:**
+
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/ExternalActionNavigator.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/home/HomeScreen.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/ExternalActionNavigationTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/ExternalActionFeedbackWiringTest.kt`
+
+**Consumes:** Task 5 FIFO drain、终态记录与 Home `SnackbarHostState`。
+
+**Produces:** 终态动作与 Snackbar 生命周期解耦；反馈显示期间后续动作继续消费，已终态动作不因 UI scope 取消而重放。
+
+1. RED：使用会挂起的反馈消费者证明 A Rejected 后 B Success 不等待反馈；取消反馈并重建 consumer 后 A 不重复。真实 Home Compose 场景在错误 Snackbar 仍显示时继续消费后续成功动作。
+2. GREEN：navigator 只发布非挂起反馈事件，并在发布前记录动作终态；Home 在已有 lifecycle scope 中独立显示 Snackbar，队列 drain 不等待 Snackbar 生命周期。
+3. 保持 resolver/destination 取消时当前动作回队首、后续动作保留；终态后的 UI 取消不得重新入队或重复反馈。
+4. 运行 Verification、既有 50 项 Task 5 回归、根 Spotless 和 `git diff --check`。
 
 ### Task 6：Desktop 单实例安全转发
 
