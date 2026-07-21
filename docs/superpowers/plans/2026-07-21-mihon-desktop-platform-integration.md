@@ -942,13 +942,15 @@ status-source: this-file
 
 - Modify: `presentation-widget/src/test/java/tachiyomi/presentation/widget/WidgetPrivacyProductionWiringTest.kt`
 
-**Consumes:** Task 15 已实例化的 `BaseUpdatesGridGlanceWidget` 默认构造器、真实 Injekt `GetUpdates` 与 `SecurityPreferences`。
+**Consumes:** Task 15 已实例化的 `BaseUpdatesGridGlanceWidget` 默认构造器、真实 Injekt `GetUpdates` 与 `SecurityPreferences`；测试用 `PreferenceStore` seam 返回同一个可观察 `InMemoryPreference<Boolean>`，以模拟 Android 持久化 store 的同 key 共享状态。
 
 **Produces:** 同一个默认构造 widget/consumer 在注入 preference 锁定时返回 Locked 且零查询，切换解锁后返回 Content 并恢复真实 `GetUpdates` 查询的 production wiring 证据。
 
 1. RED：让默认构造器消费固定未锁定 Flow、绕过注入 `SecurityPreferences`；现有测试会错误通过，新测试必须失败。
-2. GREEN：在默认构造测试中先设置真实 preference 为锁定，断言 Locked 与 `GetUpdates` 0 次；再切换同一 preference 解锁，断言 Content 与精确查询恢复。不得用另一个手工 `WidgetPrivacyDataSource` 替代默认构造器持有的 consumer。
+2. GREEN：在默认构造测试中先设置真实 `SecurityPreferences.useAuthenticator()` preference 为锁定，断言 Locked 与 `GetUpdates` 0 次；再切换同一 preference 解锁，断言 Content 与精确查询恢复。不得用另一个手工 `WidgetPrivacyDataSource` 替代默认构造器持有的 consumer。不得直接使用会为每次 `getBoolean()` 创建独立对象的 `InMemoryPreferenceStore` 快照实现；应让 test seam 对同 key 返回同一个真实 `InMemoryPreference<Boolean>`，匹配 Android production store 的共享持久状态语义。
 3. 运行 Verification、Spotless、`git diff --check` 和范围检查；Android 模拟器留给 Task 16，当前纯 JVM Android production wiring 测试不另起模拟器。
+
+**Implementation note：** 初始 RED 发现 `InMemoryPreferenceStore` 是快照/预览实现，同一 key 的重复读取不会共享 Flow；直接用它会让 production 恢复后也无法完成锁定→解锁测试。该限制不属于 Widget 产品行为，且修复公共 store 会影响约 32 个既有调用点。Task 15B 因此保持单测试文件边界，通过 `PreferenceStore` seam 复用同一个真实 `InMemoryPreference<Boolean>`，只验证本 Task 所需的默认 Widget→Injekt `SecurityPreferences` production wiring。
 
 ### Task 16：独立最终审查与三平台 change verify
 
