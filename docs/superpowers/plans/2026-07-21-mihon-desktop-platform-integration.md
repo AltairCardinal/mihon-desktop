@@ -659,7 +659,7 @@ status-source: this-file
 
 **Platform boundary:** shared+android
 
-**Estimated scope:** 4 files, 240 lines
+**Estimated scope:** 5 files, 280 lines
 
 **Verification:** `./gradlew :domain:jvmTest --tests "tachiyomi.domain.release.interactor.GetApplicationReleaseParityTest" && ./gradlew :app:testReleaseUnitTest --tests "eu.kanade.tachiyomi.data.updater.AppUpdateCheckerCompatibilityTest"`
 
@@ -668,13 +668,14 @@ status-source: this-file
 - Modify: `domain/src/commonMain/kotlin/tachiyomi/domain/release/interactor/GetApplicationRelease.kt`
 - Modify: `domain/src/jvmTest/kotlin/tachiyomi/domain/release/interactor/GetApplicationReleaseParityTest.kt`
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/data/updater/AppUpdateChecker.kt`
+- Modify: `app/src/main/java/eu/kanade/presentation/more/settings/screen/about/AboutScreen.kt`
 - Create: `app/src/test/java/eu/kanade/tachiyomi/data/updater/AppUpdateCheckerCompatibilityTest.kt`
 
 **Consumes:** Task 13A 中 `ReleaseService.latest() == null` 表示 release 存在但当前 target 无兼容 asset 的 production 事实；fixed-main throttle/force/version 结果。
 
 **Produces:** shared `NoCompatiblePackage` 结果，以及当前 Android adapter 将其映射为既有 `NoNewUpdate` 可见行为的兼容层；Desktop 可在 Task 14 显示准确状态。
 
-1. RED：service null 必须产生 `NoCompatiblePackage`，但 throttle 仍是 `NoNewUpdate` 且 service 0 调用；Android production checker 必须把新结果映射回既有 no-update 行为，不能破坏通知/About exhaustive consumer。
+1. RED：service null 必须产生 `NoCompatiblePackage`，但 throttle 仍是 `NoNewUpdate` 且 service 0 调用；Android production checker 必须把新结果映射回既有 no-update 行为，About exhaustive consumer 显式复用同一无更新反馈。
 2. GREEN：只区分“检查被节流/版本不新”和“release 存在但 target 不兼容”；三日节流、force、preview/release 比较保持 fixed-main，不借机改 SemVer。
 3. Android adapter 测试必须经过 production mapping seam；断开 mapping 时失败。运行 Verification、Android app compile 与 `git diff --check`。
 
