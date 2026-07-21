@@ -151,7 +151,7 @@ data class DesktopUiDependencies(
                 migrateManga = Injekt.get(),
                 networkHelper = Injekt.get(),
                 notificationService = Injekt.get(),
-                shareService = DesktopShareService(),
+                shareService = Injekt.get(),
                 replaceExtensionRepo = Injekt.get(),
                 saveSourceMangaForDetails = saveSourceMangaForDetails,
                 setExcludedScanlators = Injekt.get(),

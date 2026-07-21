@@ -19,18 +19,24 @@ import mihon.domain.platform.SharePayload
 import tachiyomi.i18n.MR
 
 class DesktopShareService(
-    private val nativeSharePort: DesktopNativeSharePort = UnavailableNativeSharePort,
+    private val nativeSharePort: DesktopNativeSharePort = UnavailableDesktopNativeSharePort,
     private val clipboardPort: DesktopClipboardPort = AwtDesktopClipboardPort,
     private val savePort: DesktopSavePort = SwingDesktopSavePort,
     private val isHeadless: () -> Boolean = GraphicsEnvironment::isHeadless,
     private val revealPort: DesktopRevealPort = AwtDesktopRevealPort,
 ) {
-    fun share(payload: SharePayload): DesktopShareResult {
+    fun share(
+        payload: SharePayload,
+        onTerminal: (DesktopShareResult) -> Unit = {},
+    ): DesktopShareResult {
         if (isHeadless()) return DesktopShareResult.Unavailable(DesktopShareUnavailableReason.HEADLESS)
         val content = payload.toDesktopContent()
             ?: return DesktopShareResult.Unavailable(DesktopShareUnavailableReason.UNSUPPORTED_PAYLOAD)
-        return when (runCatching { nativeSharePort.share(content) }.getOrNull()) {
-            DesktopNativeShareOutcome.Shared -> DesktopShareResult.SharedNatively
+        return when (val nativeOutcome = runCatching { nativeSharePort.share(content) }.getOrNull()) {
+            is DesktopNativeShareOutcome.Opened -> runCatching {
+                nativeOutcome.session.onTerminal { terminal -> onTerminal(terminal.toShareResult()) }
+                DesktopShareResult.OpenedNatively
+            }.getOrElse { DesktopShareResult.Failed(DesktopShareFailureReason.NATIVE_SHARE_FAILED) }
             DesktopNativeShareOutcome.Unavailable -> when (content) {
                 is DesktopNativeShareContent.Text -> copyTextUnchecked(content.text)
                 is DesktopNativeShareContent.LocalFile -> saveUnchecked(
@@ -71,11 +77,15 @@ class DesktopShareService(
         }.getOrElse { DesktopShareResult.Failed(DesktopShareFailureReason.SAVE_FAILED) }
     }
 
-    fun shareImage(image: BufferedImage, message: String? = null): DesktopShareResult {
+    fun shareImage(
+        image: BufferedImage,
+        message: String? = null,
+        onTerminal: (DesktopShareResult) -> Unit = {},
+    ): DesktopShareResult {
         if (isHeadless()) return DesktopShareResult.Unavailable(DesktopShareUnavailableReason.HEADLESS)
         val file = runCatching { LastSharedImageCache.replace(image) }
             .getOrElse { return DesktopShareResult.Failed(DesktopShareFailureReason.SAVE_FAILED) }
-        return share(SharePayload.Stream(file.toURI().toString(), "image/png", message))
+        return share(SharePayload.Stream(file.toURI().toString(), "image/png", message), onTerminal)
     }
 
     private fun copyTextUnchecked(text: String) = runCatching { clipboardPort.copyText(text) }
@@ -105,6 +115,7 @@ class DesktopShareService(
 }
 
 sealed interface DesktopShareResult {
+    data object OpenedNatively : DesktopShareResult
     data object SharedNatively : DesktopShareResult
     data object CopiedToClipboard : DesktopShareResult
     data class Saved(val file: File) : DesktopShareResult
@@ -119,6 +130,7 @@ enum class DesktopShareFailureReason { NATIVE_SHARE_FAILED, CLIPBOARD_BUSY, SAVE
 fun DesktopShareResult.toDesktopNotification(): DesktopNotification = DesktopNotification(
     title = MR.strings.action_share.localized(),
     message = when (this) {
+        DesktopShareResult.OpenedNatively -> MR.strings.action_share.localized()
         DesktopShareResult.SharedNatively -> MR.strings.completed.localized()
         DesktopShareResult.CopiedToClipboard -> MR.strings.copied_to_clipboard_plain.localized()
         is DesktopShareResult.Saved -> MR.strings.picture_saved.localized()
@@ -142,7 +154,23 @@ sealed interface DesktopNativeShareContent {
     data class LocalFile(val file: File, val mimeType: String, val message: String?) : DesktopNativeShareContent
 }
 
-enum class DesktopNativeShareOutcome { Shared, Unavailable, Failed }
+sealed interface DesktopNativeShareOutcome {
+    data class Opened(val session: DesktopNativeShareSession) : DesktopNativeShareOutcome
+    data object Unavailable : DesktopNativeShareOutcome
+    data object Failed : DesktopNativeShareOutcome
+}
+
+fun interface DesktopNativeShareSession {
+    fun onTerminal(callback: (DesktopNativeShareTerminal) -> Unit)
+}
+
+enum class DesktopNativeShareTerminal { Shared, Cancelled, Failed }
+
+private fun DesktopNativeShareTerminal.toShareResult(): DesktopShareResult = when (this) {
+    DesktopNativeShareTerminal.Shared -> DesktopShareResult.SharedNatively
+    DesktopNativeShareTerminal.Cancelled -> DesktopShareResult.Cancelled
+    DesktopNativeShareTerminal.Failed -> DesktopShareResult.Failed(DesktopShareFailureReason.NATIVE_SHARE_FAILED)
+}
 
 interface DesktopClipboardPort {
     fun copyText(text: String)
@@ -173,10 +201,6 @@ private fun SharePayload.toDesktopContent(): DesktopNativeShareContent? = when (
         val file = File(java.net.URI(uri)).takeIf(File::isFile) ?: return null
         DesktopNativeShareContent.LocalFile(file, mimeType, message)
     }.getOrNull()
-}
-
-private object UnavailableNativeSharePort : DesktopNativeSharePort {
-    override fun share(content: DesktopNativeShareContent) = DesktopNativeShareOutcome.Unavailable
 }
 
 private object LastSharedImageCache {

@@ -18,6 +18,9 @@ import mihon.desktop.extension.DefaultDesktopArtifactAuthenticator
 import mihon.desktop.source.DesktopSourceManager
 import eu.kanade.tachiyomi.network.NetworkHelper
 import mihon.desktop.platform.DesktopNetworkHelper
+import mihon.desktop.platform.DesktopNativeSharePort
+import mihon.desktop.platform.DesktopShareService
+import mihon.desktop.platform.defaultDesktopNativeSharePort
 import mihon.desktop.task.DesktopTaskScheduler
 import mihon.desktop.task.FileTaskCheckpointStore
 import mihon.desktop.domain.DesktopSystemNotifier
@@ -546,6 +549,9 @@ internal fun initUILayer(
     startDownloadWorker: Boolean = true,
     downloadFileOperations: mihon.desktop.download.DownloadFileOperations = mihon.desktop.download.DefaultDownloadFileOperations,
 ) {
+    val nativeSharePort = defaultDesktopNativeSharePort()
+    Injekt.addSingleton<DesktopNativeSharePort>(nativeSharePort)
+    Injekt.addSingleton(DesktopShareService(nativeSharePort = nativeSharePort))
     val mangaRepository = Injekt.get<MangaRepository>()
     val chapterRepository = Injekt.get<ChapterRepository>()
     val categoryRepository = Injekt.get<CategoryRepository>()

@@ -28,6 +28,8 @@ import mihon.desktop.platform.DesktopClipboardPort
 import mihon.desktop.platform.DesktopNativeShareOutcome
 import mihon.desktop.platform.DesktopNativeSharePort
 import mihon.desktop.platform.DesktopNativeShareContent
+import mihon.desktop.platform.DesktopNativeShareSession
+import mihon.desktop.platform.DesktopNativeShareTerminal
 import mihon.desktop.platform.DesktopRevealPort
 import mihon.desktop.platform.DesktopShareService
 import mihon.desktop.ui.reader.PageContextMenu
@@ -56,10 +58,12 @@ class MangaShareWiringTest {
     fun `rendered manga actions bind copy and share through the desktop share service`() = runBlocking {
         var copied: String? = null
         var nativeCalls = 0
+        val sessions = mutableListOf<ControlledShareSession>()
+        val notifications = DesktopNotificationService()
         val service = DesktopShareService(
             nativeSharePort = DesktopNativeSharePort {
                 nativeCalls++
-                DesktopNativeShareOutcome.Shared
+                DesktopNativeShareOutcome.Opened(ControlledShareSession().also(sessions::add))
             },
             clipboardPort = object : DesktopClipboardPort {
                 override fun copyText(text: String) { copied = text }
@@ -70,7 +74,7 @@ class MangaShareWiringTest {
         )
         val dependencies = mockk<DesktopUiDependencies> {
             every { shareService } returns service
-            every { notificationService } returns DesktopNotificationService()
+            every { notificationService } returns notifications
         }
         val scene = ImageComposeScene(1_200, 300, coroutineContext = coroutineContext) {}
 
@@ -91,13 +95,26 @@ class MangaShareWiringTest {
             }
             scene.render()
             click(scene, "Copy link")
+            val terminalNotification = async(start = CoroutineStart.UNDISPATCHED) {
+                notifications.notifications.first { it.message == MR.strings.completed.localized() }
+            }
             click(scene, "Share link")
+            delay(50)
+            assertTrue(!terminalNotification.isCompleted)
+            sessions.single().complete(DesktopNativeShareTerminal.Shared)
+            assertEquals(MR.strings.completed.localized(), terminalNotification.await().message)
+            val failedNotification = async(start = CoroutineStart.UNDISPATCHED) {
+                notifications.notifications.first { it.message == MR.strings.error_sharing_cover.localized() }
+            }
+            click(scene, "Share link")
+            sessions.last().complete(DesktopNativeShareTerminal.Failed)
+            assertEquals(MR.strings.error_sharing_cover.localized(), failedNotification.await().message)
         } finally {
             scene.close()
         }
 
         assertEquals("https://example.com/manga", copied)
-        assertEquals(1, nativeCalls)
+        assertEquals(2, nativeCalls)
     }
 
     @Test
@@ -105,13 +122,13 @@ class MangaShareWiringTest {
         var copied = false
         var nativeShares = 0
         var nativeContent: DesktopNativeShareContent? = null
+        val session = ControlledShareSession()
         val notifications = DesktopNotificationService()
-        val nextNotification = async(start = CoroutineStart.UNDISPATCHED) { notifications.notifications.first() }
         val service = DesktopShareService(
             nativeSharePort = DesktopNativeSharePort {
                 nativeShares++
                 nativeContent = it
-                DesktopNativeShareOutcome.Shared
+                DesktopNativeShareOutcome.Opened(session)
             },
             clipboardPort = object : DesktopClipboardPort {
                 override fun copyText(text: String) = Unit
@@ -155,6 +172,11 @@ class MangaShareWiringTest {
             withTimeout(5_000) {
                 while (nativeShares != 1 || !copied || !saved.isFile) delay(10)
             }
+            val terminalNotification = async(start = CoroutineStart.UNDISPATCHED) {
+                notifications.notifications.first { it.message == MR.strings.cancelled.localized() }
+            }
+            session.complete(DesktopNativeShareTerminal.Cancelled)
+            assertEquals(MR.strings.cancelled.localized(), terminalNotification.await().message)
         } finally {
             scene.close()
             directory.deleteRecursively()
@@ -166,7 +188,16 @@ class MangaShareWiringTest {
             MR.strings.share_page_info.localized(Locale.getDefault(), "Manga", "Chapter", 1),
             (nativeContent as DesktopNativeShareContent.LocalFile).message,
         )
-        assertTrue(nextNotification.await().message.isNotBlank())
+    }
+
+    private class ControlledShareSession : DesktopNativeShareSession {
+        private var callback: ((DesktopNativeShareTerminal) -> Unit)? = null
+
+        override fun onTerminal(callback: (DesktopNativeShareTerminal) -> Unit) {
+            this.callback = callback
+        }
+
+        fun complete(terminal: DesktopNativeShareTerminal) = requireNotNull(callback)(terminal)
     }
 
     private fun click(scene: ImageComposeScene, label: String) {

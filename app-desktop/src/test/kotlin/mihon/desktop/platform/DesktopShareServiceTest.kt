@@ -8,24 +8,27 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.parallel.ResourceLock
-import org.junit.jupiter.api.parallel.Resources
 import tachiyomi.i18n.MR
 
 class DesktopShareServiceTest {
 
     @Test
-    fun `native success reports shared only after receiving the exact HTTP text`() {
+    fun `native success reports shared only after terminal callback`() {
         var received: DesktopNativeShareContent? = null
+        var complete: ((DesktopNativeShareTerminal) -> Unit)? = null
         val service = service(native = DesktopNativeSharePort {
             received = it
-            DesktopNativeShareOutcome.Shared
+            DesktopNativeShareOutcome.Opened(DesktopNativeShareSession { complete = it })
         })
+        var terminal: DesktopShareResult? = null
 
-        val result = service.share(SharePayload.Text("https://example.com/manga"))
+        val result = service.share(SharePayload.Text("https://example.com/manga")) { terminal = it }
 
         assertEquals(DesktopNativeShareContent.Text("https://example.com/manga"), received)
-        assertEquals(DesktopShareResult.SharedNatively, result)
+        assertEquals(DesktopShareResult.OpenedNatively, result)
+        assertEquals(null, terminal)
+        requireNotNull(complete)(DesktopNativeShareTerminal.Shared)
+        assertEquals(DesktopShareResult.SharedNatively, terminal)
     }
 
     @Test
@@ -58,26 +61,19 @@ class DesktopShareServiceTest {
         assertEquals("fallback", copied)
     }
 
-    @ResourceLock(Resources.SYSTEM_PROPERTIES)
     @Test
-    fun `production default remains honestly unavailable on macOS and falls back to clipboard`() {
-        val previousOsName = System.getProperty("os.name")
+    fun `plain service constructor without a native port falls back to clipboard`() {
         var copied: String? = null
-        try {
-            System.setProperty("os.name", "Mac OS X")
-            val service = DesktopShareService(
-                clipboardPort = object : DesktopClipboardPort {
-                    override fun copyText(text: String) { copied = text }
-                    override fun copyImage(image: BufferedImage) = Unit
-                },
-                isHeadless = { false },
-            )
+        val service = DesktopShareService(
+            clipboardPort = object : DesktopClipboardPort {
+                override fun copyText(text: String) { copied = text }
+                override fun copyImage(image: BufferedImage) = Unit
+            },
+            isHeadless = { false },
+        )
 
-            assertEquals(DesktopShareResult.CopiedToClipboard, service.share(SharePayload.Text("fallback")))
-            assertEquals("fallback", copied)
-        } finally {
-            if (previousOsName == null) System.clearProperty("os.name") else System.setProperty("os.name", previousOsName)
-        }
+        assertEquals(DesktopShareResult.CopiedToClipboard, service.share(SharePayload.Text("fallback")))
+        assertEquals("fallback", copied)
     }
 
     @Test

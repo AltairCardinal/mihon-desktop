@@ -33,6 +33,8 @@ import mihon.desktop.extension.FixtureNewSource
 import mihon.desktop.ui.extension.DesktopExtensionPresentationPort
 import mihon.desktop.ui.extension.ExtensionsScreenModel
 import mihon.desktop.platform.DesktopNetworkHelper
+import mihon.desktop.platform.DesktopNativeSharePort
+import mihon.desktop.platform.DesktopShareService
 import mihon.desktop.library.LibraryScreenModelFactory
 import mihon.desktop.library.MangaDetailScreenModelFactory
 import mihon.desktop.reader.ReaderPreferences
@@ -114,6 +116,19 @@ import okio.Buffer
 
 @Isolated
 class DesktopDiWiringTest {
+    @Test
+    fun `desktop DI shares one native share service instance with UI`(@TempDir tempDir: File) = runBlocking {
+        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+        try {
+            assertNotNull(Injekt.get<DesktopNativeSharePort>())
+            val service = Injekt.get<DesktopShareService>()
+
+            assertSame(service, DesktopUiDependencies.fromInjekt().shareService)
+        } finally {
+            context.closeAndJoin()
+        }
+    }
+
     @Test
     fun `desktop DI binds the started Android compat Application exact type`(@TempDir tempDir: File) = runBlocking {
         val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())

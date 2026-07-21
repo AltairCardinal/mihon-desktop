@@ -153,11 +153,15 @@ internal fun performPageContextMenuImageAction(
         DesktopShareResult.Failed(DesktopShareFailureReason.INVALID_PAYLOAD)
     } else {
         when (action) {
-            PageContextMenuImageAction.SHARE -> shareService.shareImage(image, shareMessage)
+            PageContextMenuImageAction.SHARE -> shareService.shareImage(image, shareMessage) { terminal ->
+                notificationService.post(terminal.toDesktopNotification())
+            }
             PageContextMenuImageAction.COPY -> shareService.copyImage(image)
             PageContextMenuImageAction.SAVE -> shareService.saveImage(image, destination)
         }
     }
-    notificationService.post(result.toDesktopNotification())
+    if (result != DesktopShareResult.OpenedNatively) {
+        notificationService.post(result.toDesktopNotification())
+    }
     return result
 }

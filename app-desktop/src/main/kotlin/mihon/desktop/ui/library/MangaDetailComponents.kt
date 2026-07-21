@@ -3,6 +3,7 @@ package mihon.desktop.ui.library
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.DesktopNotificationService
 import mihon.desktop.platform.DesktopShareService
+import mihon.desktop.platform.DesktopShareResult
 import mihon.desktop.platform.toDesktopNotification
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -566,7 +567,12 @@ internal fun mangaLinkActions(url: String): MangaLinkActions {
         notificationService.post(shareService.copyText(url).toDesktopNotification())
     },
     share = {
-        notificationService.post(shareService.share(SharePayload.Text(url)).toDesktopNotification())
+        val launch = shareService.share(SharePayload.Text(url)) { terminal ->
+            notificationService.post(terminal.toDesktopNotification())
+        }
+        if (launch != DesktopShareResult.OpenedNatively) {
+            notificationService.post(launch.toDesktopNotification())
+        }
     },
 )
 }
