@@ -46,7 +46,7 @@ base-ref: 852221f42863d2f3f6519313b11956e807fdf6d1
 - [x] Task 6C：Desktop 扩展 adapter、ScreenModel 与 DI wiring
 - [x] Task 6D：Desktop Extension UI、详情/设置与 i18n wiring
 - [x] Task 6E：Test Mode、导航与自动化观察
-- [ ] Task 7：compat 去重、parity 证据、全量审查与跨平台运行时验收
+- [x] Task 7：compat 去重、parity 证据、全量审查与跨平台运行时验收
 
 ---
 
@@ -2117,7 +2117,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Evidence: repo-local API 36 `google_apis;x86_64` AVD `mihon-api36` cold boot完成，`:app:assembleDebug` GREEN并安装 `app-universal-debug.apk`（package `app.mihon.dev`）与 tracked `keiyoushi-tcbscans-1.4.12.apk`。Android Mihon先显示 TCB Scans `UNTRUSTED`，经真实 Trust确认后 Sources显示 English/TCB Scans，Popular实际解析出 Jujutsu Kaisen等漫画；不存在查询显示 `No results found` + Retry/WebView/Help，airplane-mode显示 `No Internet connection` + Retry/WebView/Help，恢复网络后 Global search `jujutsu` 在 All过滤下显示 TCB Scans/Jujutsu Kaisen/Jujutsu Kaisen Modulo。Settings→About显示 `Mihon Debug 752875f53`；UI dump与截图保存在本地 `.test-tmp/mihon-android-*`（不纳入Git）。尝试以Android系统HTTP proxy注入403时确认production OkHttp不采用该代理，故未把无限loading冒充403；403仍由Step4已通过的真实production MockWebServer失败矩阵覆盖。清除proxy、关闭app/emulator后 logcat `FATAL EXCEPTION=0`、`OutOfMemoryError=0`、`SIGSEGV=0`、`Fatal signal=0`。
 
-- [ ] **Step 6: Windows 固定 EXE 与 macOS 验收**
+- [x] **Step 6: Windows 固定 EXE 与 macOS 验收**
 
   Windows 只运行 `./scripts/build-desktop.sh`，启动 `D:\Shell\Github\mihon\app-desktop\tmp\mihon-dist\main\app\Mihon Desktop\Mihon Desktop.exe`，核对窗口完整版本、mtime、安装/更新/失败回滚、浏览/搜索、登录后备和文件工具；运行 `./scripts/desktop-smoke-test.sh`。通过 `ssh mbp` 在安全临时 clone 运行相关测试/构建，部署并启动 `/Applications/Mihon Desktop.app`，不覆盖远端用户仓库。
 
@@ -2518,6 +2518,10 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Repair evidence: commit `b7d1400d2`, one test file / 37 touched lines. The injected operations now return a complete in-memory HTTP/1.1 200 OkHttp response and expose distinct execute/read signals; the real production manager, worker, persistent queue, DOWNLOADING transition, cancellation, blocked `NonCancellable` finally, `stopAndJoin`, old database closure, fresh DI identities/persistence and unchanged old queue assertions remain. Windows passed two fresh focused executions and the complete DI class 9/9; an exact `b7d1400d2` macOS clone passed the focused test 1/1 in 1.464 seconds. Spotless, diff check and Comet guard passed. Independent review APPROVED with Critical/Important/Minor `0/0/0`, confirming the valid response is closed by the production `.use` path and no timeout, sleep, production code or manager mock was added. The next fresh Step 6 must use a version whose hash matches the post-evidence HEAD.
 
+  Final post-review Step 6 evidence: exact final HEAD `84e386c4954f067265abb8d7952967ac5adc5986`. Windows official `scripts/build-desktop.sh` allocated BUILD43 and produced the canonical unpackaged EXE `D:\Shell\Github\mihon\app-desktop\tmp\mihon-dist\main\app\Mihon Desktop\Mihon Desktop.exe`, mtime `2026-07-21 02:13:42Z`, with exact title `Mihon Desktop 0.11.14.43.84e386c`. Fresh XML passed DI 9/9, transaction 42/42, global-search navigation 3/3, source-last-used 3/3, extension presentation/details/preferences 7/7 + 1/1 + 4/4, challenge 14/14, data transaction 9/9 and integration-enabled Windows credentials 9/9, all with zero skip/failure/error. Official smoke passed 88/88; the fixed EXE Test Mode reported healthy and completed Browse tab -> Extension list -> `extension_search(wired-query)` with the final screen, query and snapshot present.
+
+  The macOS temporary clone used the same exact HEAD and only the Windows BUILD43 AppVersion overlay. Official `full-tests` passed 1817 tests / one narrowly expected headless Keychain skip / zero failures / zero errors; DI 9/9, transaction 42/42, global-search navigation 3/3, source-last-used 3/3, extension presentation/details/preferences 12/12 and challenge 14/14 were all green, and the separate data transaction matrix passed 9/9. The official default build then allocated and deployed `Mihon Desktop 0.11.14.44.84e386c` to `/Applications/Mihon Desktop.app`; deployed smoke passed 88/88 and Test Mode completed the same Browse -> Extension -> search path. Both Test Mode processes and all run-owned remote clone/bundle/log artifacts were removed. The retained Keychain skip proves only the known SSH interaction prerequisite and remains assigned to the later platform-integration change; it is not used as GUI Keychain acceptance. No product or verification finding remains for this change.
+
 - [x] **Step 7: 独立批次与最终审查**
 
   `review_mode: thorough`：每个高风险边界或最多 3 个 Task 运行合并 spec+quality review，最后对 `852221f42..HEAD` 运行完整审查。Critical/Important 必须修复并重新运行覆盖测试；Minor 记录到持久进度并交最终审查裁定。
@@ -2528,7 +2532,7 @@ Scope correction: Details 改为从 Injekt singleton authoritative state 取值�
 
   Evidence: the full review found three Important issues and no Critical issue. Tasks 7D25/7D26/7D27 closed real SYSTEM downgrade rollback, same-package request/flight confusion and Desktop multi-trust queue loss. The single final repair review APPROVED with Critical 0 / Important 0 / Minor 1. The remaining Minor is evidence formatting only: the tracked Android transcript contains all four test statuses, `OK (4 tests)` and `INSTRUMENTATION_CODE: -1`, but does not separately print the host adb process exit code; final reporting must retain that limitation.
 
-- [ ] **Step 8: 提交 Task 7**
+- [x] **Step 8: 提交 Task 7**
 
   Commit: `chore(extension): verify cross-platform source parity`
 

@@ -400,13 +400,13 @@ Task 4B 的子计划编号，不是父 roadmap 在 Task 6 之后新增的同级�
 - [x] 子计划 Task 4A–4D：共享安装事务及 Android/Desktop 平台事务 adapter
 - [x] 子计划 Task 5A–5C：共享登录会话、Desktop 挑战恢复、设置与 UI wiring
 - [x] 子计划 Task 6A–6E：Browse/Extension 双端 production wiring、i18n、导航与 Test Mode
-- [ ] 子计划 Task 7：compat 去重、parity 证据、最终审查与 Windows/macOS 验收
+- [x] 子计划 Task 7：compat 去重、parity 证据、最终审查与 Windows/macOS 验收
 
-Task 7D35–7D37 已关闭 real-extension、source-list 与 global-search fixture 隔离/收敛问题。BUILD35 通过
-Windows 全套验收后，在 macOS 暴露连续卸载/reload 失败 Snackbar 的 fixture 排队边界；Task 7D38 已在
-`011662ee1` 使用真实 Dismiss semantics 分隔两次动作，同时保留 ScreenModel、localized feedback 与 authority
-routing 断言，并通过 Windows/macOS 矩阵及独立审查。当前下一步从证据 HEAD 分配 BUILD36；双平台验收、
-最终审查、OpenSpec checkoff 与归档全部通过前，子计划 Task 7 和父 Task 4B 保持未完成。
+子计划 Task 7 已完成逐符号 compat 真实扩展证据、无使用 shim/重复规则删除、parity 28–40/87 更新、
+Android 模拟器、Windows/macOS 全量与运行时验收及最终独立审查。最终精确 HEAD 为 `84e386c49`：
+Windows `0.11.14.43.84e386c` 固定 EXE 与 macOS `0.11.14.44.84e386c` 部署应用均通过 smoke 88/88
+及 Browse→Extension→search Test Mode；macOS 1817 项仅保留已限定的 SSH Keychain prerequisite skip，
+零 failure/error。原版权威仍为 fixed main；当前 Android 与 Desktop 仅作为 consumer/adapter 验收证据。
 
 **Files:**
 - Modify: 当前分支 `app/src/main/java/eu/kanade/tachiyomi/extension/`
@@ -434,9 +434,9 @@ routing 断言，并通过 Windows/macOS 矩阵及独立审查。当前下一步
 - [x] **Step 8: 实现 Desktop 浏览器登录/Cookie 回传；FlareSolverr 保留为可选后备**
 - [x] **Step 9: 当前 Android 构建版与 Desktop 的源列表、单源浏览、全局搜索、扩展详情/设置分别接入 shared state/intent；不得用当前 Android UI 行为反向生成原版 fixture**
 - [x] **Step 10: 将所有 Desktop 文案迁入 i18n 资源并测试缺 key**
-- [ ] **Step 11: 运行 shared、当前 Android extension/source、Desktop network/DI/navigation/Test Mode 全链测试，并单独核验原版 provenance**
-- [ ] **Step 12: 删除 Desktop 重复搜索、版本判断、错误字符串和无使用证据的 compat shim；保留有真实扩展证据的平台 API**
-- [ ] **Step 13: 更新追踪项 28–40、87 的原版来源、shared、当前 Android/Desktop 消费、Desktop 增强和 shim 证据**
+- [x] **Step 11: 运行 shared、当前 Android extension/source、Desktop network/DI/navigation/Test Mode 全链测试，并单独核验原版 provenance**
+- [x] **Step 12: 删除 Desktop 重复搜索、版本判断、错误字符串和无使用证据的 compat shim；保留有真实扩展证据的平台 API**
+- [x] **Step 13: 更新追踪项 28–40、87 的原版来源、shared、当前 Android/Desktop 消费、Desktop 增强和 shim 证据**
 
 ## 13. Task 5A：系统集成、隐私与应用更新
 
