@@ -28,7 +28,7 @@ status-source: this-file
 - [x] Task 5R：Desktop 外部动作非阻塞反馈收口
 - [x] Task 6：Desktop 单实例安全转发
 - [x] Task 7：Windows/macOS/Linux URI scheme 注册
-- [ ] Task 8A：Desktop 分享 fallback、Reader/Manga wiring 与真实反馈
+- [x] Task 8A：Desktop 分享 fallback、Reader/Manga wiring 与真实反馈
 - [ ] Task 8B：macOS 原生分享异步生命周期
 - [ ] Task 9：Desktop credential-backed 应用锁核心
 - [ ] Task 10：Desktop Security 设置与 unlock UI
@@ -332,7 +332,7 @@ status-source: this-file
 
 **Platform boundary:** shared+desktop
 
-**Estimated scope:** 8 files, 760 lines
+**Estimated scope:** 8 files, 800 lines
 
 **Split waiver:** clipboard/save fallback、结构化结果、Reader 的 Share/Copy/Save 入口和 Manga production wiring 共同决定同一次用户动作的真实反馈；service 与两个入口反复共享同一 action/result 契约，拆开会形成“有 UI 无 side effect”或“有 adapter 无消费者”的不可验收中间态。macOS native helper 的异步生命周期不再混入本 Task，独立交给 Task 8B。
 
@@ -357,6 +357,8 @@ status-source: this-file
 2. GREEN：UI 不直接调用 Toolkit/Desktop；service 在 native unavailable 时选择 clipboard/save fallback，只有确认 side effect 成功才显示成功。
 3. Reader 保留独立 Share/Copy/Save/可选封面、受控最后分享图片缓存、`share_page_info`、默认保存目录和 best-effort reveal；fallback 文案必须说明实际发生了复制或保存。
 4. 运行 Verification、详情/reader action 回归和 `git diff --check`。
+
+**Evidence:** 实现提交 `cdb0f25ad`。production 与 DI 在所有 OS 均使用明确 unavailable 的 native port，macOS picker/process 生命周期留给 Task 8B；Manga action row 与真实 Reader `ContextMenuRepresentation` 通过 `LocalDesktopUiDependencies` 消费同一 service。Reader 保留独立 Share/Copy/Save/可选封面、`share_page_info`、最后共享图片缓存、默认目录保存和 best-effort reveal，fallback 只报告实际复制/保存/取消/失败。实现代理 focused 18/18、相关回归 24/24、根 Spotless 和 cached diff 通过；协调者单次强制验证 7 类 42/42、Spotless 和 diff 通过。独立审查 APPROVED，Critical/Important/Minor `0/0/0`；最终范围 8 files/792 touched lines。
 
 **Replan evidence:** 原合并 Task 8 首审因 production native adapter 缺失和 wiring 测试过弱被拒绝；唯一修复复审又证明 macOS helper 把 picker `READY` 误报为分享完成，且取消/完成后的窗口与进程生命周期没有证据。已通过的 fallback/wiring 与未闭合的 macOS 异步生命周期属于两个可独立验证的产品风险，因此按门禁拆为 8A/8B，不在原 Task 无限追加修复轮。
 
