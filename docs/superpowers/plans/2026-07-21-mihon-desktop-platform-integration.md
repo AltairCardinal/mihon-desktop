@@ -133,9 +133,9 @@ status-source: this-file
 
 **Platform boundary:** shared+android
 
-**Estimated scope:** 9 files, 400 lines
+**Estimated scope:** 9 files, 500 lines
 
-**Split waiver:** `presentation-widget` 当前没有 JVM 单测依赖；本 Task 的 production Widget 隐私门禁与其真实 production-wiring 测试必须在同一编译单元内交付，因此需同时修改模块构建文件。把测试依赖独立拆成 Task 会产生无法独立验证、也不交付产品风险闭环的机械步骤。
+**Split waiver:** `presentation-widget` 当前没有 JVM 单测依赖；本 Task 的 production Widget 隐私门禁与其真实 production-wiring 测试必须在同一编译单元内交付，因此需同时修改模块构建文件。独立审查还要求 Android lifecycle/window/settings 与 Widget Base/Manager 的 consumer wiring 可被行为测试杀死，使最终范围增至约 500 行。上述 adapter、consumer 与测试反复修改同一组 production 文件且共同闭合单一安全边界，拆分会产生无法独立验证的中间态，或重复加载同一上下文与运行同一测试矩阵。
 
 **Verification:** `./gradlew :app:testReleaseUnitTest --tests "eu.kanade.tachiyomi.ui.security.AndroidSecuritySharedPolicyTest" --tests "eu.kanade.tachiyomi.ui.security.AndroidSecuritySettingsWiringTest" && ./gradlew :presentation-widget:testReleaseUnitTest --tests "tachiyomi.presentation.widget.WidgetPrivacyProductionWiringTest"`
 
