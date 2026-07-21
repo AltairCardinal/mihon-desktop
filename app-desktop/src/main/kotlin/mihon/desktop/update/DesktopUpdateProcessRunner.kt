@@ -1,9 +1,12 @@
 package mihon.desktop.update
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
@@ -18,9 +21,11 @@ fun interface DesktopUpdateCommandRunner {
     suspend fun run(arguments: List<String>, stdin: CharArray?): CommandResult
 }
 
-class DesktopUpdateProcessRunner(
+class DesktopUpdateProcessRunner internal constructor(
     private val gracefulExitMillis: Long = 500,
     private val forcedExitMillis: Long = 1_500,
+    private val timedWait: (Process, Long) -> Boolean = { process, timeout -> process.waitFor(timeout, TimeUnit.MILLISECONDS) },
+    private val processIsAlive: (Process) -> Boolean = Process::isAlive,
 ) : DesktopUpdateCommandRunner {
     private val readers = AtomicInteger()
     private val forcedTerminations = AtomicInteger()
@@ -48,12 +53,28 @@ class DesktopUpdateProcessRunner(
             joinAll(stdout, stderr)
             CommandResult(exitCode, "", "")
         } catch (error: Throwable) {
+            val cancellation = runCatching { currentCoroutineContext().ensureActive() }.exceptionOrNull()
+            val propagated = if (error is CancellationException) cancellation ?: error else error
+            val cleanupFailures = mutableListOf<Throwable>()
             withContext(NonCancellable) {
-                terminate(process)
-                stdout.cancelAndJoin()
-                stderr.cancelAndJoin()
+                try {
+                    terminate(process)
+                } catch (cleanupFailure: Throwable) {
+                    cleanupFailures += cleanupFailure
+                }
+                process.outputStream.closeQuietly()
+                process.inputStream.closeQuietly()
+                process.errorStream.closeQuietly()
+                listOf(stdout, stderr).forEach { reader ->
+                    try {
+                        reader.cancelAndJoin()
+                    } catch (cleanupFailure: Throwable) {
+                        cleanupFailures += cleanupFailure
+                    }
+                }
             }
-            throw error
+            cleanupFailures.filter { it !== propagated }.forEach(propagated::addSuppressed)
+            throw propagated
         } finally {
             stdin?.fill('\u0000')
             process.outputStream.closeQuietly()
@@ -76,10 +97,14 @@ class DesktopUpdateProcessRunner(
     private suspend fun terminate(process: Process) = withContext(Dispatchers.IO) {
         process.outputStream.closeQuietly()
         process.destroy()
-        if (gracefulExitMillis == 0L || !process.waitFor(gracefulExitMillis, TimeUnit.MILLISECONDS)) {
+        val exitedGracefully = gracefulExitMillis > 0L && timedWait(process, gracefulExitMillis)
+        if (!exitedGracefully) {
             forcedTerminations.incrementAndGet()
             process.destroyForcibly()
-            process.waitFor(forcedExitMillis, TimeUnit.MILLISECONDS)
+            val exitedForcibly = timedWait(process, forcedExitMillis)
+            if (!exitedForcibly && processIsAlive(process)) {
+                throw DesktopUpdateProcessTerminationException(process.pid(), forcedExitMillis)
+            }
         }
         process.inputStream.closeQuietly()
         process.errorStream.closeQuietly()
@@ -89,3 +114,6 @@ class DesktopUpdateProcessRunner(
         runCatching { close() }
     }
 }
+
+internal class DesktopUpdateProcessTerminationException(pid: Long, timeoutMillis: Long) :
+    IllegalStateException("Updater verifier process $pid termination timed out after ${timeoutMillis}ms")

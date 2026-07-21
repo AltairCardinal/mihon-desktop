@@ -55,24 +55,56 @@ class DesktopUpdateProcessRunnerTest {
             running.cancel(cancellation)
             runCatching { running.await() }
             assertSame(cancellation, completion.await())
-            withContext(Dispatchers.Default) {
-                withTimeout(2_000) {
-                    while (ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false)) delay(10)
-                }
-            }
+            awaitUpdaterExit(pid)
             assertFalse(ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false))
             assertEquals(0, runner.activeReaderCount)
             if (mode == "resist") assertTrue(runner.forcedTerminationCount > 0)
             Files.deleteIfExists(directory.resolve("pid"))
         }
     }
+
+    @Test
+    fun `forced termination timeout is attached without replacing cancellation`(@TempDir directory: Path) = runTest {
+        var waitCalls = 0
+        var aliveChecks = 0
+        val runner = DesktopUpdateProcessRunner(
+            gracefulExitMillis = 1,
+            forcedExitMillis = 1,
+            timedWait = { _, _ -> waitCalls++; false },
+            processIsAlive = { aliveChecks++; true },
+        )
+        val running = async(Dispatchers.Default) { runner.run(updaterTestCommand("block", directory)) }
+        val pid = awaitUpdaterPid(directory)
+        val cancellation = CancellationException("cleanup-timeout")
+        val completion = CompletableDeferred<Throwable?>()
+        running.invokeOnCompletion { completion.complete(it) }
+        running.cancel(cancellation)
+        runCatching { running.await() }
+        assertSame(cancellation, completion.await())
+        assertEquals(2, waitCalls, "both cleanup waits must run")
+        assertTrue(aliveChecks > 0, "forced timeout must verify process liveness")
+        assertTrue(cancellation.suppressed.any { it.message?.contains("termination timed out") == true })
+        assertEquals(0, runner.activeReaderCount)
+        awaitUpdaterExit(pid)
+        assertFalse(ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false))
+    }
 }
 
 internal suspend fun awaitUpdaterPid(directory: Path): Long = withContext(Dispatchers.IO) {
     withTimeout(2_000) {
         val file = directory.resolve("pid")
-        while (!Files.exists(file)) delay(10)
-        Files.readString(file).trim().toLong()
+        var pid: Long?
+        do {
+            delay(10)
+            pid = runCatching { Files.readString(file).trim().toLongOrNull() }.getOrNull()
+        } while (pid == null)
+        pid
+    }
+}
+
+private suspend fun awaitUpdaterExit(pid: Long) = withContext(Dispatchers.Default) {
+    withTimeout(2_000) {
+        while (ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false)) delay(10)
     }
 }
 
@@ -89,17 +121,13 @@ private val UPDATER_PROCESS_HELPER =
     import java.util.*;
     public class UpdaterProcessTestHelper {
         public static void main(String[] args) throws Exception {
-            Files.writeString(Path.of(args[1], "pid"), Long.toString(ProcessHandle.current().pid()));
-            if (args[0].equals("resist")) Runtime.getRuntime().addShutdownHook(new Thread(() -> { try { Thread.sleep(60_000); } catch (Exception ignored) {} }));
+            Files.writeString(Path.of(args[1], "pid"), Long.toString(ProcessHandle.current().pid())); if (args[0].equals("resist")) Runtime.getRuntime().addShutdownHook(new Thread(() -> { try { Thread.sleep(60_000); } catch (Exception ignored) {} }));
             if (!args[0].equals("io")) Thread.sleep(60_000);
-            String input = new BufferedReader(new InputStreamReader(System.in)).readLine();
-            Thread out = new Thread(() -> write(System.out, 'o'));
-            Thread err = new Thread(() -> write(System.err, 'e'));
+            String input = new BufferedReader(new InputStreamReader(System.in)).readLine(); Thread out = new Thread(() -> write(System.out, 'o')); Thread err = new Thread(() -> write(System.err, 'e'));
             out.start(); err.start(); out.join(); err.join();
             System.exit("secret".equals(input) ? 7 : 9);
         }
-        private static void write(PrintStream stream, char value) {
-            char[] output = new char[8192]; Arrays.fill(output, value);
+        private static void write(PrintStream stream, char value) { char[] output = new char[8192]; Arrays.fill(output, value);
             for (int i = 0; i < 128; i++) stream.print(output); stream.flush();
         }
     }
