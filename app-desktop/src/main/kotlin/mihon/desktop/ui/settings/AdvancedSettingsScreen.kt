@@ -2,14 +2,11 @@ package mihon.desktop.ui.settings
 
 import mihon.desktop.LocalDesktopUiDependencies
 
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
@@ -219,6 +216,7 @@ class AdvancedSettingsScreen : Screen {
         val scope = rememberCoroutineScope()
         val locale = remember { Locale.getDefault() }
         val text: (StringResource) -> String = { it.localized(locale) }
+        val crashLogActionTitle = text(DesktopSettingsAnchorResources.advancedCrashLog)
 
         val snackbar = remember { SnackbarHostState() }
         var showClearCookiesDialog by remember { mutableStateOf(false) }
@@ -259,11 +257,9 @@ class AdvancedSettingsScreen : Screen {
             },
             snackbarHost = { SnackbarHost(snackbar) },
         ) { padding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .verticalScroll(rememberScrollState()),
+            DesktopSettingsAnchorColumn(
+                route = this@AdvancedSettingsScreen,
+                modifier = Modifier.fillMaxSize().padding(padding),
             ) {
                 // Section header
                 Text(
@@ -320,9 +316,9 @@ class AdvancedSettingsScreen : Screen {
                             )
                         }
                     },
-                    modifier = Modifier.padding(horizontal = 16.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp).desktopSettingsAnchor(crashLogActionTitle),
                 ) {
-                    Text(text(MR.strings.desktop_advanced_crash_log_open))
+                    Text(crashLogActionTitle)
                 }
 
                 HorizontalDivider()
