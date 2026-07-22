@@ -1,13 +1,18 @@
 package mihon.desktop.ui.settings
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.SemanticsActions
 import cafe.adriel.voyager.core.screen.Screen
+import cafe.adriel.voyager.navigator.CurrentScreen
+import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.tab.Tab
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
+import io.mockk.every
+import io.mockk.mockk
 import java.util.UUID
 import java.util.prefs.Preferences
 import kotlinx.coroutines.CompletableDeferred
@@ -27,8 +32,10 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import mihon.desktop.DesktopAppRuntime
 import mihon.desktop.DesktopRuntimeService
+import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.DesktopWindowFocusListener
 import mihon.desktop.DesktopWindowFocusRegistration
+import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.bootstrapDesktopRuntime
 import mihon.desktop.runProductionOwnerLifecycle
 import mihon.desktop.platform.CredentialBackend
@@ -40,6 +47,8 @@ import mihon.desktop.platform.PlatformCredentialBackend
 import mihon.desktop.platform.PlatformCredentialUnavailableException
 import mihon.desktop.privacy.DesktopPrivacyCapabilities
 import mihon.desktop.privacy.DesktopCapabilitySupport
+import mihon.desktop.privacy.DesktopWindowPrivacy
+import mihon.desktop.privacy.DesktopWindowPrivacyController
 import mihon.desktop.security.DesktopAppLock
 import mihon.desktop.security.DesktopAppLockLifecycle
 import mihon.desktop.security.DesktopPassphraseVerifier
@@ -65,12 +74,15 @@ import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.parallel.Isolated
 import tachiyomi.core.common.preference.DesktopPreferenceStore
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
 @OptIn(ExperimentalComposeUiApi::class)
+@Isolated
 class SecuritySettingsWiringTest {
     private val preferenceNodes = mutableListOf<Preferences>()
 
@@ -92,6 +104,54 @@ class SecuritySettingsWiringTest {
             assertEquals("open_security_settings", nestedTestScreenAction("SecuritySettingsScreen"))
         } finally {
             fixture.close()
+        }
+    }
+
+    @Test
+    fun `catalog anchor preserves native toggle and unsupported capability boundaries`() = runBlocking {
+        securityAnchorFixture().use { fixture ->
+            val title = MR.strings.desktop_secure_screen_title.localized()
+            val result = DesktopSettingsCatalog.search(title).single {
+                it.route is SecuritySettingsScreen && it.anchorTitle == title
+            }
+            DesktopSettingsAnchorOwner.publish(result.route, result.anchorTitle)
+            fixture.navigator.replace(result.route)
+            val copy = renderAnchor(fixture.scene)
+            val highlighted = anchorNodes(fixture.scene, true).single {
+                it.config.contains(DesktopSettingsAnchorHighlighted) && it.config[DesktopSettingsAnchorHighlighted]
+            }
+            assertTrue(flatten(highlighted).any { title in anchorText(it) })
+            assertTrue(highlighted.boundsInRoot.height > 0f)
+            assertTrue(anchorScroll(fixture.scene).value() > 0f)
+            assertTrue(MR.strings.desktop_privacy_telemetry_unavailable.localized() in copy)
+            assertTrue(MR.strings.desktop_privacy_widget_unavailable_updates_available.localized() in copy)
+            assertFalse(MR.strings.desktop_privacy_native_notifications_unavailable.localized() in copy)
+            assertEquals(2, anchorNodes(fixture.scene, true).count { it.config.contains(SemanticsProperties.ToggleableState) })
+
+            val nativeTitle = MR.strings.hide_notification_content.localized()
+            val nativeToggle = anchorNodes(fixture.scene, true).single {
+                it.config.contains(SemanticsProperties.ToggleableState) &&
+                    it.config.contains(SemanticsProperties.ContentDescription) &&
+                    nativeTitle in it.config[SemanticsProperties.ContentDescription]
+            }
+            assertTrue(requireNotNull(nativeToggle.config[SemanticsActions.OnClick].action).invoke())
+            renderAnchor(fixture.scene)
+            assertTrue(fixture.preferences.hideNotificationContent().get())
+
+            fixture.navigator.replace(EmptyAnchorScreen())
+            renderAnchor(fixture.scene)
+            fixture.navigator.replace(SecuritySettingsScreen())
+            renderAnchor(fixture.scene)
+            assertNoSecurityAnchor(fixture.scene)
+
+            DesktopSettingsAnchorOwner.publish(result.route, result.anchorTitle)
+            fixture.navigator.replace(GeneralSettingsScreen())
+            renderAnchor(fixture.scene)
+            assertNoSecurityAnchor(fixture.scene)
+            DesktopSettingsAnchorOwner.publish(SecuritySettingsScreen(), "missing-title")
+            fixture.navigator.replace(SecuritySettingsScreen())
+            renderAnchor(fixture.scene)
+            assertNoSecurityAnchor(fixture.scene)
         }
     }
 
@@ -858,6 +918,73 @@ class SecuritySettingsWiringTest {
         } finally {
             scene.close()
         }
+    }
+
+    private suspend fun securityAnchorFixture(): SecurityAnchorFixture {
+        val preferences = preferences(enabled = false, delay = 0)
+        val appPreferences = DesktopAppPreferences(InMemoryPreferenceStore())
+        val capabilities = DesktopPrivacyCapabilities.production.copy(
+            nativeSystemNotifications = DesktopPrivacyCapabilities.production.nativeSystemNotifications.copy(
+                support = DesktopCapabilitySupport.Supported,
+            ),
+        )
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+            every { this@mockk.appPreferences } returns appPreferences
+            every { securityPreferences } returns preferences
+            every { passphraseVerifier } returns DesktopPassphraseVerifier(DesktopCredentialStore(MemoryCredentialBackend()))
+            every { privacyCapabilities } returns capabilities
+            every { windowPrivacyController } returns DesktopWindowPrivacyController(
+                preferences,
+                appPreferences,
+                DesktopWindowPrivacy(),
+            )
+        }
+        val scene = ImageComposeScene(900, 170) {}
+        lateinit var navigator: Navigator
+        scene.setContent {
+            CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                Navigator(EmptyAnchorScreen()) { nav -> navigator = nav; CurrentScreen() }
+            }
+        }
+        renderAnchor(scene)
+        return SecurityAnchorFixture(scene, navigator, preferences)
+    }
+
+    private suspend fun renderAnchor(scene: ImageComposeScene): Set<String> {
+        repeat(6) { scene.render(); yield() }
+        return anchorNodes(scene).flatMap(::anchorText).toSet()
+    }
+
+    private fun assertNoSecurityAnchor(scene: ImageComposeScene) {
+        assertFalse(anchorNodes(scene, true).any { it.config.contains(DesktopSettingsAnchorHighlighted) })
+        assertEquals(0f, anchorScroll(scene).value())
+    }
+
+    private fun anchorScroll(scene: ImageComposeScene) = anchorNodes(scene, true)
+        .first { it.config.contains(SemanticsProperties.VerticalScrollAxisRange) }
+        .config[SemanticsProperties.VerticalScrollAxisRange]
+
+    private fun anchorText(node: SemanticsNode) = if (node.config.contains(SemanticsProperties.Text)) {
+        node.config[SemanticsProperties.Text].map { it.text }
+    } else {
+        emptyList()
+    }
+
+    private fun anchorNodes(scene: ImageComposeScene, unmerged: Boolean = false) = scene.semanticsOwners.flatMap {
+        flatten(if (unmerged) it.unmergedRootSemanticsNode else it.rootSemanticsNode)
+    }
+
+    private data class SecurityAnchorFixture(
+        val scene: ImageComposeScene,
+        val navigator: Navigator,
+        val preferences: SecurityPreferences,
+    ) : AutoCloseable {
+        override fun close() = scene.close()
+    }
+
+    private class EmptyAnchorScreen : Screen {
+        @androidx.compose.runtime.Composable
+        override fun Content() = Unit
     }
 
     private fun preferences(enabled: Boolean, delay: Int): SecurityPreferences {

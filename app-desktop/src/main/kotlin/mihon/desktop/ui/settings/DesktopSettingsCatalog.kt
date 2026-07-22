@@ -17,6 +17,7 @@ internal object DesktopSettingsAnchorResources {
     val createBackup = MR.strings.pref_create_backup
     val restoreBackup = MR.strings.pref_restore_backup
     val advancedCrashLog = MR.strings.desktop_advanced_crash_log_open
+    val securitySecureScreen = MR.strings.desktop_secure_screen_title
 }
 
 object DesktopSettingsCatalog {
@@ -28,7 +29,7 @@ object DesktopSettingsCatalog {
         screen(TrackingSettingsScreen(), MR.strings.pref_category_tracking, MR.strings.pref_auto_update_manga_sync, MR.strings.login),
         screen(extensionListDestination(), MR.strings.label_extensions, MR.strings.label_extensions, MR.strings.label_extension_repos),
         screen(BackupSettingsScreen(), MR.strings.label_backup, DesktopSettingsAnchorResources.createBackup, DesktopSettingsAnchorResources.restoreBackup),
-        screen(SecuritySettingsScreen(), MR.strings.pref_category_security, MR.strings.desktop_security_lock_enabled, MR.strings.desktop_secure_screen_title),
+        screen(SecuritySettingsScreen(), MR.strings.pref_category_security, MR.strings.desktop_security_lock_enabled, DesktopSettingsAnchorResources.securitySecureScreen),
         screen(AdvancedSettingsScreen(), MR.strings.pref_category_advanced, MR.strings.pref_clear_cookies, MR.strings.desktop_advanced_clear_network_cache, DesktopSettingsAnchorResources.advancedCrashLog),
         screen(GeneralSettingsScreen(), MR.strings.pref_category_general, MR.strings.pref_incognito_mode, MR.strings.pref_dns_over_https),
         screen(ExtensionRepoScreen(), MR.strings.label_extension_repos, MR.strings.action_add_repo, MR.strings.action_delete_repo),

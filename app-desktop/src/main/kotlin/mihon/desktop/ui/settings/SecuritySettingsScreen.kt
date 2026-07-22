@@ -2,12 +2,11 @@ package mihon.desktop.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
@@ -28,6 +27,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -269,6 +270,7 @@ class SecuritySettingsScreen : Screen {
         }
         val state by controller.state.collectAsState()
         var action by remember { mutableStateOf<SecurityAction?>(null) }
+        val secureScreenTitle = DesktopSettingsAnchorResources.securitySecureScreen.localized()
 
         Scaffold(
             topBar = {
@@ -285,9 +287,9 @@ class SecuritySettingsScreen : Screen {
                 )
             },
         ) { padding ->
-            Column(
-                modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+            SecuritySettingsAnchorContent(
+                route = this@SecuritySettingsScreen,
+                modifier = Modifier.fillMaxSize().padding(padding),
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -331,7 +333,11 @@ class SecuritySettingsScreen : Screen {
                     }
                 }
                 state.feedback?.let { Text(feedbackText(it), modifier = Modifier.padding(horizontal = 16.dp)) }
-                DesktopSecureScreenSettings(windowPrivacyController)
+                DesktopSecureScreenSettings(
+                    controller = windowPrivacyController,
+                    title = secureScreenTitle,
+                    modifier = Modifier.desktopSettingsAnchor(secureScreenTitle),
+                )
                 DesktopPrivacySettings(
                     capabilities = privacyCapabilities,
                     nativeNotificationControl = { DesktopHideNotificationContentSetting(dependencies.securityPreferences) },
@@ -358,13 +364,28 @@ class SecuritySettingsScreen : Screen {
 }
 
 @Composable
-internal fun DesktopSecureScreenSettings(controller: DesktopWindowPrivacyController) {
+private fun SecuritySettingsAnchorContent(
+    route: Screen,
+    modifier: Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    DesktopSettingsAnchorColumn(route, modifier) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+    }
+}
+
+@Composable
+internal fun DesktopSecureScreenSettings(
+    controller: DesktopWindowPrivacyController,
+    title: String = MR.strings.desktop_secure_screen_title.localized(),
+    modifier: Modifier = Modifier,
+) {
     val state by controller.state.collectAsState()
     Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(MR.strings.desktop_secure_screen_title.localized(), style = MaterialTheme.typography.titleSmall)
+        Text(title, style = MaterialTheme.typography.titleSmall)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SecurityPreferences.SecureScreenMode.entries.forEach { mode ->
                 Button(
@@ -440,9 +461,14 @@ internal fun DesktopPrivacySettings(
 private fun DesktopHideNotificationContentSetting(securityPreferences: SecurityPreferences) {
     val preference = remember(securityPreferences) { securityPreferences.hideNotificationContent() }
     val hidden by preference.changes().collectAsState(initial = preference.get())
+    val title = MR.strings.hide_notification_content.localized()
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(MR.strings.hide_notification_content.localized(), modifier = Modifier.weight(1f))
-        Switch(checked = hidden, onCheckedChange = preference::set)
+        Text(title, modifier = Modifier.weight(1f))
+        Switch(
+            checked = hidden,
+            onCheckedChange = preference::set,
+            modifier = Modifier.semantics { contentDescription = title },
+        )
     }
 }
 
