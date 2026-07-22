@@ -51,8 +51,8 @@ status-source: this-file
 - [x] Task 15A：平台证据的 per-ID 不可变 provenance 合同
 - [x] Task 15B：Android Widget 默认隐私 wiring 证明
 - [x] Task 16A：Desktop missing-credential profile reset 闭环
-- [ ] Task 16B：macOS OpenURI production ingress
-- [ ] Task 16C：Desktop owner navigator 单实例 wiring
+- [x] Task 16B：macOS OpenURI production ingress
+- [x] Task 16C：Desktop owner navigator 单实例 wiring
 - [ ] Task 16：独立最终审查与三平台 change verify
 
 ## 全局任务门禁
@@ -1045,6 +1045,8 @@ status-source: this-file
 2. GREEN：owner dependency factory 一次性返回 runtime 与完整 `DesktopUiDependencies`；`runOwnerApplication` 从该对象取得 navigator，并把同一对象传给 production UI continuation。禁止第二次 `DesktopUiDependencies.fromInjekt()`，不把 navigator 注册为新的全局 singleton，也不改变现有 Desktop 独有依赖。
 3. 保持 Task 16B 的 owner-only install、secondary forwarding、unsupported/failed、queued/running/duplicate/order、close retry 与 runtime cleanup；依赖创建或 continuation 抛异常时仍按现有 owner/runtime 责任清理 broker 和 registration。
 4. 运行 `DesktopAppRuntimeTest`、`DesktopDiWiringTest`、`ExternalActionNavigationTest`、ID 81 parity contract、根 Spotless、`git diff --check` 与 3-file/240-line scope gate。一次独立审查和至多一次修复复审通过后同时勾选 16B/16C，再回到 Task 16 whole-change review；真实 macOS bundle 验收仍留在 Task 16。
+
+**Review status:** 实现 `345491d79` 与 identity 证伪补强 `233ed333a` 让 owner factory 一次返回 runtime + 完整 `DesktopUiDependencies`，OpenURI 实际事件可由同一 UI navigator 消费。首轮独立审查以 `0/1/0` 指出测试仍绕过真实 Compose provider；唯一修复 `35eff51f0` 提取并接入 production `OwnerUiDependencies` boundary，`ImageComposeScene` 直接读取同一 `LocalDesktopUiDependencies`。把 boundary 临时改回第二次 `fromInjekt()` 后 DI 15 项中 1 项 RED，恢复后协调者强制复跑 Runtime/DI/navigation/parity/broker/URI 共 83/83，失败/错误/跳过为 0；根 Spotless、diff 与 3 files/126 touched scope 通过。唯一修复复审 APPROVED，Critical/Important/Minor `0/0/0`；Task 16B/16C 同时完成，真实 macOS bundle 验收留在 Task 16。
 
 ### Task 16：独立最终审查与三平台 change verify
 
