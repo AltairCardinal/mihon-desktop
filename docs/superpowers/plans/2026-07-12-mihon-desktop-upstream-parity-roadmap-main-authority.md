@@ -3,8 +3,8 @@ original-roadmap: docs/superpowers/plans/2026-07-12-mihon-desktop-upstream-parit
 correction-list: docs/superpowers/plans/2026-07-12-mihon-desktop-upstream-parity-roadmap-concept-confusions.md
 original-branch: main
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
-active-child-plan: docs/superpowers/plans/2026-07-21-mihon-desktop-platform-integration.md
-resume-order: complete the active child plan through Task 16, then resume the first unchecked task in this corrected parent plan
+completed-child-plan: docs/superpowers/plans/2026-07-21-mihon-desktop-platform-integration.md
+resume-order: continue with Task 5B, the first unchecked task in this corrected parent plan
 ---
 
 # Mihon Desktop 对齐原版 Mihon 实施计划（原版基线修正版）
@@ -469,10 +469,10 @@ Windows `0.11.14.43.84e386c` 固定 EXE 与 macOS `0.11.14.44.84e386c` 部署应
 - [x] **Step 7: 对齐固定原版的下载、校验、安装、失败回滚更新状态机；平台安装 side effect 由各端 adapter 实现**
 - [x] **Step 8: 将 Widget 标记为平台豁免，仅共享更新数据 provider 契约**
 - [x] **Step 9: 补设置 UI、确认对话框、错误反馈和导航/DI 测试**
-- [ ] **Step 10: 运行三 OS 可执行的单元测试矩阵及当前 Windows 集成验收**
+- [x] **Step 10: 运行三 OS 可执行的单元测试矩阵及当前 Windows 集成验收**
 - [x] **Step 11: 更新追踪项 81–86、92 的原版 provenance、shared/adapter 证据和豁免说明**
 
-**Current progress:** 子计划 Task 1–16E5R 已完成，Task 16 whole-change 独立审查已对 `952be2f789..2e94748f7` 给出 Critical/Important/Minor `0/0/0`。固定原版 fixture/shared 外部动作、安全与发布检查契约、当前 Android consumer、Desktop target resolution、冷启动导航、FIFO/取消恢复、有界非阻塞反馈、loopback 单实例安全转发、三平台 canonical URI scheme 注册、Desktop 分享 fallback/Reader-Manga production wiring、macOS native picker/session/terminal/cleanup、隔离 tracker/app-lock 的三平台 credential namespace、安全 CharArray API、消费 shared policy 的 fail-closed Desktop 应用锁核心、More → Security/passphrase/根级 unlock/headless lock 状态、通知隐私/telemetry/Widget/shared Updates 的真实 capability、消费 shared SecureScreenPolicy 的 Windows HWND 窗口隐私与三平台诚实反馈、结构化 release target/asset/checksum 和 Android APK/FOSS 兼容、不虚报已发布能力的 Desktop MSI/DMG discovery 契约、shared 无兼容包结果与当前 Android 兼容映射、cacheless/限额/安全临时路径/SHA-256/失败清理的 Desktop 下载 adapter、`.part` 原子 package finalization、Windows exact Authenticode publisher、macOS exact team/notarization 与确认后外部安装交接，以及具有迟到 progress generation 门禁和四阶段取消/精确重试证据的 Desktop 更新控制器均已通过 TDD、production delegate 变异和独立修复复审。父 Step 1–9、11 已勾选；Step 10 与 Task 16 继续未完成，下一项为集中全量矩阵、版本构建和三平台运行 verify。
+**Completion status:** 父 Task 5A 与 `align-desktop-platform` 子计划 Tasks 1–16 已完成。whole-change 独立审查对 `952be2f789..2e94748f7` 给出 Critical/Important/Minor `0/0/0`；集中验收及唯一修复提交 `d2132c3b9` 的复审同样为 `0/0/0`。固定原版 provenance、shared/current Android/Desktop production wiring、Desktop 独有能力、IDs 81–86/92、全量 JVM/Android 模拟器/Windows/macOS/Linux-WSL 能力矩阵均有证据；最终 Desktop 版本为 `0.11.14.44.6062ebe`，固定 Windows EXE 为 `D:\Shell\Github\mihon\app-desktop\tmp\mihon-dist\main\app\Mihon Desktop\Mihon Desktop.exe`。macOS SSH 与 WSL 无法替代的 GUI/Keychain/Secret Service 人工交互边界已在 `docs/superpowers/reports/2026-07-21-align-desktop-platform-verify.md` 明确保留，不虚报通过。父 Steps 1–11 全部勾选，下一项为父 Task 5B。
 
 ## 14. Task 5B：设置、外观、无障碍与许可
 

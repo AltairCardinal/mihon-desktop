@@ -64,7 +64,7 @@ status-source: this-file
 - [x] Task 16E4：Manga 分享入口非阻塞
 - [x] Task 16E5：parity exact 保护集合补齐
 - [x] Task 16E5R：表达式体行为证据边界
-- [ ] Task 16：独立最终审查与三平台 change verify
+- [x] Task 16：独立最终审查与三平台 change verify
 
 ## 全局任务门禁
 
@@ -1416,3 +1416,5 @@ status-source: this-file
 6. Linux：使用可用本机/CI/容器执行不依赖 GUI 的 broker、desktop entry、secret-tool capability、clipboard/portal probe 和 ManualOnly updater；没有真实 GUI/Secret Service 证据的项保持有限/豁免，不伪造通过。
 7. 报告每条命令、测试数/失败/跳过、OS/版本、完整 Desktop 版本、固定 EXE 绝对路径、剩余有意偏差和豁免。清理本轮进程/临时文件。
 8. 只有 review 清零、所有必需验证通过、parity 状态真实、子计划全部勾选后，才勾选父 roadmap Task 5A Steps 1–11，并把 progress 切到 Task 5B；否则保持对应项未完成并继续修复。
+
+**Final verification status（已完成）：** whole-change 审查对 `952be2f789..2e94748f7` APPROVED `0/0/0`；集中验收提交 `d2132c3b9` 在 Task 16 的 8 files/400 lines 修复额度内完成原子 `0600` POSIX 分享快照、headless DI 真实分支、窗口隐私 Flow 有界等待、MangaDex Netty 动态端口与 Architecture Guard 精确基线。唯一修复复审 APPROVED，Critical/Important/Minor `0/0/0`。Windows 全量矩阵、固定 EXE/TestMode/smoke、Android API 36 真实入口、macOS full-tests/build/deploy/TestMode/smoke 和 Linux/WSL capability seam 均已执行；完整结果、失败/重试和人工交互边界见 `docs/superpowers/reports/2026-07-21-align-desktop-platform-verify.md`。最终 Desktop 版本 `0.11.14.44.6062ebe`，Windows 固定 EXE：`D:\Shell\Github\mihon\app-desktop\tmp\mihon-dist\main\app\Mihon Desktop\Mihon Desktop.exe`。
