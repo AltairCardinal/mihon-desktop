@@ -56,7 +56,7 @@ status-source: this-file
 - [x] Task 4H：Desktop Security 设置 i18n 同源化与 locale 隔离
 - [x] Task 4I：Desktop About 与 updater/诊断 i18n 同源化
 - [x] Task 4J：Desktop Extension repository i18n 同源化
-- [ ] Task 4K：Desktop Tracking typed message 与 formatter identity
+- [x] Task 4K：Desktop Tracking typed message 与 formatter identity
 - [ ] Task 4L：Desktop Tracking UI/dialog i18n 同源化
 - [ ] Task 5：Desktop 设置 catalog、搜索 Screen 与入口
 - [ ] Task 6：Desktop 标题 anchor 核心与基础页面
@@ -393,6 +393,8 @@ status-source: this-file
 1. RED：LoadFailed、Bound/Updated/Removed/LoggedOut、SearchTitleEmpty、MangaRequired、NotBound、UnsupportedStatus/Score、NegativeChapter/ChapterOutOfRange、UnknownService、ServiceUnavailable、LoginRequired 的 variant/参数或失败不写 repository 契约错误时失败；formatter MR 对调时真实 Screen 精确失败。
 2. GREEN：model 只发 typed message 或 `External(text)`；唯一 `trackingMessageText()` 负责 MR，真实 provider/profile/exception 数据原样保留；不改变验证、repository 调用与原子持久化语义。
 3. 运行 ScreenModel/Identity/AutoSync/Tracking integration/navigation/smoke、Spotless/range gate；4L 不得返改 typed contract/formatter。
+
+**Review status（已完成）：** 初始实现 `ebefc7eba` 将 Tracking state/error/feedback 改为 typed message，并由唯一 `trackingMessageText()` 映射 base/zh-rCN MR；首审 `0/2/0` 指出登录取消/登录失败/退出失败/解绑失败仍把 app-owned 英文包装为 `External`，以及 UnsupportedStatus/UnsupportedScore 只由直接 formatter 断言保护。唯一修复 `e214cee15` 新增四种 typed failure 与双语 MR，使无 message 的应用失败走 typed fallback、真实非空 provider/profile/exception 文本才走 `External`；en/zh 均通过真实 repository/registry/model → `TrackingSettingsScreen` → Manage → Update 路径验证 Status/Score，production MR 对调 mutation 同时精确 RED。唯一复审 APPROVED `0/0/0`，focused `18/18`、相关回归 `51/51`、Spotless、diff 与 21-Task guard 通过；累计 `6 files/399 touched`，验证异常类别、调用顺序、失败不写入和远端失败原子语义未回退，用户脏文件零混入。下一项为父 Task 5B / 子 Task 4L。
 
 ### Task 4L：Desktop Tracking UI/dialog i18n 同源化
 
