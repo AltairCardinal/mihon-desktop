@@ -36,9 +36,9 @@ status-source: this-file
 
 按以下顺序一次执行一个子 Task，不并发写共享文件：
 
-`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 5 → 6 → 7 → 8 → 9 → 10A → 10B → 10C → 10D → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20`
+`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 4G → 5 → 6 → 7 → 8 → 9 → 10A → 10B → 10C → 10D → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20`
 
-其中 `DesktopSettingsCatalog.kt` 只在 5–8、11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6→11→16 串行修改；`AboutScreen.kt` 与 Tracking/ExtensionRepo 只在 4F→8→15→18 串行修改。
+其中 `DesktopSettingsCatalog.kt` 只在 5–8、11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6→11→16 串行修改；`AboutScreen.kt` 与 Tracking/ExtensionRepo 只在 4G→8→15→18 串行修改。
 
 ## 执行状态
 
@@ -50,8 +50,9 @@ status-source: this-file
 - [x] Task 4B：Desktop Reader/Library/Download 设置 i18n 同源化
 - [ ] Task 4C：Desktop Backup 设置 i18n 同源化
 - [ ] Task 4D：Desktop Backup 错误与系统反馈 production identity
-- [ ] Task 4E：Desktop 安全/高级设置 i18n 同源化
-- [ ] Task 4F：Desktop About/扩展/Tracking i18n 同源化
+- [ ] Task 4E：Desktop Backup picker 与 production feedback wiring
+- [ ] Task 4F：Desktop 安全/高级设置 i18n 同源化
+- [ ] Task 4G：Desktop About/扩展/Tracking i18n 同源化
 - [ ] Task 5：Desktop 设置 catalog、搜索 Screen 与入口
 - [ ] Task 6：Desktop 标题 anchor 核心与基础页面
 - [ ] Task 7：Desktop 标题 anchor 的安全/数据页面
@@ -230,7 +231,7 @@ status-source: this-file
 2. GREEN：只迁移 presentation copy 与格式化 accessor，保留 `.tachibk` 兼容、最大备份、调度、文件选择、恢复事务和错误分类行为。
 3. 运行 Backup production state/rendered copy、resource completeness、既有 backup wiring、Spotless/range gate。
 
-**Review status（重规划）：** 实现 `9e94d417f` 完成 Backup 主屏、预览、进度、基础终态与全部自动备份 interval 的 MR 接线；production RED 为 `1/1 failed`，精确暴露硬编码 `Backup and Restore`，GREEN 为 focused `1/1`、Backup 必要回归 `53/53`，范围 `4 files/297 touched`。首审 `0/2/0` 发现两个同源 production identity 风险：PartialSuccess 误用整体恢复失败语义且 Failure 继续显示 ScreenModel 固定中文；chooser/snackbar/错误列表资源只有存在性检查，硬编码消费点仍可逃逸。根因涉及计划外 `BackupRestoreScreenModel.kt` 的结构化错误边界，无法在剩余 3 touched 内诚实修复；按范围门禁重规划为子 Task 4D，由 4D 的实现和独立审查作为本 Task 唯一修复复审。Task 4C 与 4D 在 4D 通过后一起关闭。
+**Review status（重规划）：** 实现 `9e94d417f` 完成 Backup 主屏、预览、进度、基础终态与全部自动备份 interval 的 MR 接线；production RED 为 `1/1 failed`，精确暴露硬编码 `Backup and Restore`，GREEN 为 focused `1/1`、Backup 必要回归 `53/53`，范围 `4 files/297 touched`。首审 `0/2/0` 发现两个同源 production identity 风险：PartialSuccess 误用整体恢复失败语义且 Failure 继续显示 ScreenModel 固定中文；chooser/snackbar/错误列表资源只有存在性检查，硬编码消费点仍可逃逸。结构化错误边界已重规划为子 Task 4D；4D 唯一复审仍发现 preview reason 与 production picker/feedback 消费证据未闭环，继续将该单一边界重规划为 4E。Task 4C、4D 与 4E 在 4E 通过后一起关闭。
 
 ### Task 4D：Desktop Backup 错误与系统反馈 production identity
 
@@ -248,7 +249,25 @@ status-source: this-file
 2. GREEN：ScreenModel 保留结构化错误分类至 presentation 边界；production 与测试共同消费不可变纯 formatter/MR，不增加可替换 lambda、反向解析 message、Locale formatter 兼容 accessor 或业务规则副本；现有 ScreenModel 测试直接迁移到 typed reason/AppError，不改变 chooser、备份事务和 retry/cancel 规则。
 3. 复跑 4C 全部 production state、Backup ScreenModel/workflow/creator/restorer/compat/scheduler、Spotless/diff/range/guard；通过后同时关闭 4C/4D。
 
-### Task 4E：Desktop 安全/高级设置 i18n 同源化
+**Review status（重规划）：** 实现 `8273e0482` 以 `BackupRestoreFailureReason`、原始 `AppError`/`PartialFailure` 和纯 production formatter 消除固定中文、整体失败误分类及 formatter 自证；编译 RED 后 focused `3/3`、Backup 回归 `54/54`、Spotless/diff/guard 通过，范围 `6 files/350 touched`。作为 4C 唯一修复复审的独立审查仍以 `0/1/0` 拒绝：六种 preview reason 只执行 UnsupportedVersion；picker/filter/cancel/snackbar 仅直接测 formatter，不能证明真实按钮消费，且 `restoreErrors` 对话框不可达。该单一“preview reason + production feedback wiring”风险已重规划为 4E；不再修改本 Task，4C/4D/4E 在 4E 审查通过后一起关闭。
+
+### Task 4E：Desktop Backup picker 与 production feedback wiring
+
+**Risk axis:** settings-backup-production-feedback
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 6 files, 400 lines
+
+**Verification:** six typed preview reasons in en/zh、Create/Restore button→picker request/result→local snackbar/Preview、Swing chooser config、DI identity、dead restoreErrors removal
+
+**Files:** new `DesktopBackupFilePicker.kt`、`BackupSettingsScreen.kt`、`DesktopUiDependencies.kt`、`DesktopAppModule.kt`、`DesktopDiWiringTest.kt`、new `BackupSettingsProductionWiringTest.kt`。
+
+1. RED：production DI 无法解析 picker；真实 Create/Restore 语义点击不能观察 Directory/BackupFile title/filter、Selected/Cancelled、create success/failure snackbar 或 Preview；六种 preview reason 任一分类/双语 MR 接错时失败；Swing adapter 配置错误时失败。
+2. GREEN：新增 required injected Backup 专用 picker request/result port 与 Swing adapter，复用既有 EDT+suspend 模式；真实 Screen 按钮构造 4D formatter 文案并消费 port，页面内 Snackbar 保持唯一即时反馈。删除无 setter 的 `restoreErrors` 死分支，不新增默认 lambda、测试专用 HTTP action、全局通知重复反馈或泛化 picker 框架。
+3. 运行 4C/4D 全状态、production UI/DI、Backup 回归、Spotless/diff/range/guard；通过后同时关闭 4C/4D/4E。
+
+### Task 4F：Desktop 安全/高级设置 i18n 同源化
 
 **Risk axis:** settings-i18n-security
 
@@ -264,7 +283,7 @@ status-source: this-file
 2. GREEN：只替换 presentation copy，不改 challenge、credential、window privacy production 规则。
 3. 运行 Security/Advanced wiring、rendered copy、Spotless/range gate。
 
-### Task 4F：Desktop About/扩展/Tracking i18n 同源化
+### Task 4G：Desktop About/扩展/Tracking i18n 同源化
 
 **Risk axis:** settings-i18n-extended
 
@@ -549,7 +568,7 @@ status-source: this-file
 **Files:** 五个 Screen、advanced accessibility test、advanced keyboard test。
 
 1. RED：危险动作无法键盘确认/取消、unsupported 被读成成功开关、密码/身份字段缺语义时失败。
-2. GREEN：复用 primitives并保留 credential/window privacy/challenge/updater/extension/tracking真实反馈；labels来自Task4E/4F同一MR。
+2. GREEN：复用 primitives并保留 credential/window privacy/challenge/updater/extension/tracking真实反馈；labels来自Task4F/4G同一MR。
 3. 运行 production wiring/semantics/Spotless/range gate。
 
 ### Task 19：IDs 88/90/91/94 exact parity evidence
