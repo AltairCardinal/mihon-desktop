@@ -834,10 +834,9 @@ class SecuritySettingsWiringTest {
             assertEquals(0, nativeNotificationControls)
             assertEquals(0, telemetryControls)
             assertFalse(nodes.any { it.config.contains(SemanticsProperties.ToggleableState) })
-            assertTrue(visibleText.contains("System notification privacy controls are unavailable"))
-            assertTrue(visibleText.contains("Crash and usage telemetry is not included"))
-            assertTrue(visibleText.contains("System widgets are unavailable"))
-            assertTrue(visibleText.contains("Updates remain available inside Mihon Desktop"))
+            assertTrue(visibleText.contains(MR.strings.desktop_privacy_native_notifications_unavailable.localized()))
+            assertTrue(visibleText.contains(MR.strings.desktop_privacy_telemetry_unavailable.localized()))
+            assertTrue(visibleText.contains(MR.strings.desktop_privacy_widget_unavailable_updates_available.localized()))
 
             scene.setContent {
                 DesktopPrivacySettings(

@@ -6,10 +6,12 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.AnnotatedString
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import dev.icerock.moko.resources.StringResource
+import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -26,6 +28,19 @@ import mihon.desktop.backup.DesktopBackupRestorer
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.download.DownloadItem
+import mihon.desktop.platform.CredentialBackend
+import mihon.desktop.platform.DesktopCredentialStore
+import mihon.desktop.platform.OperatingSystem
+import mihon.desktop.platform.PlatformCredentialUnavailableException
+import mihon.desktop.privacy.DesktopCapabilitySupport
+import mihon.desktop.privacy.DesktopPrivacyCapabilities
+import mihon.desktop.privacy.DesktopWindowPrivacy
+import mihon.desktop.privacy.DesktopWindowPrivacyBridge
+import mihon.desktop.privacy.DesktopWindowPrivacyController
+import mihon.desktop.privacy.NativeAffinityCall
+import mihon.desktop.privacy.NativeAffinityQuery
+import mihon.desktop.privacy.WDA_NONE
+import mihon.desktop.security.DesktopPassphraseVerifier
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.settings.LibraryUpdateInterval
 import mihon.desktop.ui.settings.AppearanceSettingsScreen
@@ -42,6 +57,7 @@ import mihon.desktop.ui.settings.LibrarySettingsScreen
 import mihon.desktop.ui.settings.LocalAdvancedSettingsPlatformActions
 import mihon.desktop.ui.settings.MoreRootScreen
 import mihon.desktop.ui.settings.ReaderSettingsScreen
+import mihon.desktop.ui.settings.SecuritySettingsScreen
 import mihon.desktop.ui.settings.backupPartialFailurePresentation
 import mihon.desktop.ui.settings.backupPresentationText
 import mihon.domain.error.AppError
@@ -360,6 +376,132 @@ class DesktopSettingsResourceIdentityTest {
     }
 
     @Test
+    fun `Security renders localized credential privacy and window states`() = runBlocking {
+        val previousLocale = Locale.getDefault()
+        try {
+            listOf(chinese, english).forEach { locale ->
+                val appPreferences = DesktopAppPreferences(InMemoryPreferenceStore())
+                val securityPreferences = SecurityPreferences(InMemoryPreferenceStore())
+                val dependencies = securityDependencies(
+                    securityPreferences,
+                    appPreferences,
+                    DesktopPassphraseVerifier(DesktopCredentialStore(MemoryCredentialBackend())),
+                    windowController(securityPreferences, appPreferences, supported = false),
+                    DesktopPrivacyCapabilities.production,
+                )
+                val scene = securityScene(dependencies, locale)
+                try {
+                    val main = snapshot(scene)
+                    assertCopy(
+                        main.text,
+                        MR.strings.pref_category_security.localized(locale),
+                        MR.strings.desktop_security_lock_enabled.localized(locale),
+                        MR.strings.desktop_security_authentication_failed.localized(locale),
+                        MR.strings.desktop_secure_screen_unsupported.localized(locale),
+                        MR.strings.desktop_privacy_native_notifications_unavailable.localized(locale),
+                        MR.strings.desktop_privacy_telemetry_unavailable.localized(locale),
+                        MR.strings.desktop_privacy_widget_unavailable_updates_available.localized(locale),
+                    )
+                    assertCopy(main.descriptions, MR.strings.action_bar_up_description.localized(locale))
+                    clickToggle(scene)
+                    assertCopy(
+                        snapshot(scene).text,
+                        MR.strings.desktop_security_enable.localized(locale),
+                        MR.strings.desktop_security_new_passphrase.localized(locale),
+                        MR.strings.desktop_security_confirm_passphrase.localized(locale),
+                        MR.strings.action_save.localized(locale),
+                        MR.strings.action_cancel.localized(locale),
+                    )
+                    setText(scene, MR.strings.desktop_security_new_passphrase.localized(locale), "one")
+                    setText(scene, MR.strings.desktop_security_confirm_passphrase.localized(locale), "two")
+                    click(scene, MR.strings.action_save.localized(locale))
+                    assertCopy(snapshot(scene).text, MR.strings.desktop_security_passphrase_mismatch.localized(locale))
+
+                    clickToggle(scene)
+                    snapshot(scene)
+                    setText(scene, MR.strings.desktop_security_new_passphrase.localized(locale), "secret")
+                    setText(scene, MR.strings.desktop_security_confirm_passphrase.localized(locale), "secret")
+                    click(scene, MR.strings.action_save.localized(locale))
+                    assertCopy(snapshot(scene).text, MR.strings.desktop_security_saved.localized(locale))
+
+                } finally {
+                    scene.close()
+                }
+
+                val enabled = InMemoryPreferenceStore.InMemoryPreference("use_biometric_lock", true, false)
+                val authenticationPreferences = SecurityPreferences(InMemoryPreferenceStore(sequenceOf(enabled)))
+                val authentication = securityScene(
+                    securityDependencies(
+                        authenticationPreferences,
+                        appPreferences,
+                        DesktopPassphraseVerifier(
+                            DesktopCredentialStore(MemoryCredentialBackend("secret".toCharArray())),
+                        ),
+                        windowController(authenticationPreferences, appPreferences, supported = false),
+                        DesktopPrivacyCapabilities.production,
+                    ),
+                    locale,
+                )
+                try {
+                    snapshot(authentication)
+                    clickToggle(authentication)
+                    snapshot(authentication)
+                    setText(authentication, MR.strings.desktop_security_current_passphrase.localized(locale), "wrong")
+                    click(authentication, MR.strings.action_save.localized(locale))
+                    assertCopy(
+                        snapshot(authentication).text,
+                        MR.strings.desktop_security_authentication_failed.localized(locale),
+                    )
+                } finally {
+                    authentication.close()
+                }
+
+                val unavailable = securityScene(
+                    securityDependencies(
+                        SecurityPreferences(InMemoryPreferenceStore()),
+                        appPreferences,
+                        DesktopPassphraseVerifier(DesktopCredentialStore(UnavailableCredentialBackend())),
+                        windowController(securityPreferences, appPreferences, supported = false),
+                        DesktopPrivacyCapabilities.production,
+                    ),
+                    locale,
+                )
+                try {
+                    assertCopy(snapshot(unavailable).text, MR.strings.desktop_security_backend_unavailable.localized(locale))
+                } finally {
+                    unavailable.close()
+                }
+
+                val supported = securityScene(
+                    securityDependencies(
+                        securityPreferences,
+                        appPreferences,
+                        DesktopPassphraseVerifier(DesktopCredentialStore(MemoryCredentialBackend())),
+                        windowController(securityPreferences, appPreferences, supported = true),
+                        DesktopPrivacyCapabilities.production.copy(
+                            nativeSystemNotifications = DesktopPrivacyCapabilities.production.nativeSystemNotifications.copy(
+                                support = DesktopCapabilitySupport.Supported,
+                            ),
+                        ),
+                    ),
+                    locale,
+                )
+                try {
+                    assertCopy(
+                        snapshot(supported).text,
+                        MR.strings.desktop_secure_screen_supported.localized(locale),
+                        MR.strings.hide_notification_content.localized(locale),
+                    )
+                } finally {
+                    supported.close()
+                }
+            }
+        } finally {
+            Locale.setDefault(previousLocale)
+        }
+    }
+
+    @Test
     fun `Backup renders localized main preview and restore states`() = runBlocking {
         val preview = BackupPreview(2, 8, 1, 1, 3, 2, 1)
         val file = File("library.tachibk")
@@ -638,6 +780,51 @@ class DesktopSettingsResourceIdentityTest {
         }
     }
 
+    private suspend fun securityScene(
+        dependencies: DesktopUiDependencies,
+        locale: Locale,
+    ): ImageComposeScene {
+        Locale.setDefault(locale)
+        return ImageComposeScene(900, 2_000, coroutineContext = kotlinx.coroutines.currentCoroutineContext()).also { scene ->
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    Navigator(SecuritySettingsScreen()) { CurrentScreen() }
+                }
+            }
+        }
+    }
+
+    private fun securityDependencies(
+        securityPreferences: SecurityPreferences,
+        appPreferences: DesktopAppPreferences,
+        verifier: DesktopPassphraseVerifier,
+        windowController: DesktopWindowPrivacyController,
+        capabilities: DesktopPrivacyCapabilities,
+    ) = mockk<DesktopUiDependencies>(relaxed = true) {
+        every { this@mockk.securityPreferences } returns securityPreferences
+        every { this@mockk.appPreferences } returns appPreferences
+        every { passphraseVerifier } returns verifier
+        every { windowPrivacyController } returns windowController
+        every { privacyCapabilities } returns capabilities
+    }
+
+    private fun windowController(
+        securityPreferences: SecurityPreferences,
+        appPreferences: DesktopAppPreferences,
+        supported: Boolean,
+    ): DesktopWindowPrivacyController {
+        val controller = DesktopWindowPrivacyController(
+            securityPreferences,
+            appPreferences,
+            DesktopWindowPrivacy(ControlledWindowPrivacyBridge(supported)),
+        )
+        if (supported) {
+            controller.attach(null)
+            controller.applyPolicy(SecurityPreferences.SecureScreenMode.ALWAYS, incognito = false)
+        }
+        return controller
+    }
+
     private suspend fun snapshot(scene: ImageComposeScene): RenderedCopy {
         repeat(3) { scene.render(); yield() }
         return RenderedCopy(textCopy(scene), descriptionCopy(scene), entryCopy(scene), selectedEntryCopy(scene))
@@ -648,6 +835,19 @@ class DesktopSettingsResourceIdentityTest {
             it.config.contains(SemanticsActions.OnClick) && flatten(it).flatMap(::textCopy).contains(label)
         }
         assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
+    }
+
+    private fun clickToggle(scene: ImageComposeScene) {
+        val node = nodes(scene).first {
+            it.config.contains(SemanticsProperties.ToggleableState) && it.config.contains(SemanticsActions.OnClick)
+        }
+        assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
+    }
+
+    private fun setText(scene: ImageComposeScene, label: String, value: String) {
+        val editable = nodes(scene).filter { it.config.contains(SemanticsActions.SetText) }
+        val node = editable.lastOrNull { flatten(it).flatMap(::textCopy).contains(label) } ?: editable.last()
+        assertTrue(requireNotNull(node.config[SemanticsActions.SetText].action).invoke(AnnotatedString(value)))
     }
 
     private fun assertCopy(actual: Set<String>, vararg expected: String) {
@@ -718,6 +918,33 @@ class DesktopSettingsResourceIdentityTest {
         override suspend fun openCrashLogFolder(): Boolean = crashFolderOpened
     }
 
+    private class MemoryCredentialBackend(initial: CharArray? = null) : CredentialBackend {
+        private var secret: CharArray? = initial?.copyOf()
+        override fun save(account: String, secret: CharArray) {
+            this.secret = secret.copyOf()
+        }
+        override fun load(account: String): CharArray? = secret?.copyOf()
+        override fun delete(account: String) {
+            secret = null
+        }
+    }
+
+    private class UnavailableCredentialBackend : CredentialBackend {
+        override fun save(account: String, secret: CharArray) = unavailable()
+        override fun load(account: String): CharArray? = unavailable()
+        override fun delete(account: String) = unavailable()
+        private fun unavailable(): Nothing = throw PlatformCredentialUnavailableException(OperatingSystem.UNSUPPORTED)
+    }
+
+    private class ControlledWindowPrivacyBridge(supported: Boolean) : DesktopWindowPrivacyBridge {
+        override val unsupportedReasonSlug = if (supported) null else "test_platform"
+        private var affinity = WDA_NONE
+        override fun windowHandle(window: java.awt.Window?) = 1L
+        override fun setAffinity(handle: Long, affinity: Int) =
+            NativeAffinityCall.success().also { this.affinity = affinity }
+        override fun queryAffinity(handle: Long) = NativeAffinityQuery.success(affinity)
+    }
+
     private val desktopResources: List<StringResource> = listOf(
         MR.strings.desktop_more_tracking_summary,
         MR.strings.desktop_more_general_summary,
@@ -777,6 +1004,36 @@ class DesktopSettingsResourceIdentityTest {
         MR.strings.desktop_advanced_crash_log_open,
         MR.strings.desktop_advanced_crash_log_opened,
         MR.strings.desktop_advanced_crash_log_open_failed,
+        MR.strings.desktop_security_lock_enabled,
+        MR.strings.desktop_security_lock_enabled_summary,
+        MR.strings.desktop_security_backend_unavailable,
+        MR.strings.desktop_security_backend_error,
+        MR.strings.desktop_security_current_passphrase,
+        MR.strings.desktop_security_new_passphrase,
+        MR.strings.desktop_security_confirm_passphrase,
+        MR.strings.desktop_security_enable,
+        MR.strings.desktop_security_disable,
+        MR.strings.desktop_security_change_passphrase,
+        MR.strings.desktop_security_lock_delay,
+        MR.strings.desktop_security_delay_never,
+        MR.strings.desktop_security_delay_immediately,
+        MR.strings.desktop_security_delay_five_minutes,
+        MR.strings.desktop_security_saved,
+        MR.strings.desktop_security_passphrase_mismatch,
+        MR.strings.desktop_security_authentication_failed,
+        MR.strings.desktop_security_cancelled,
+        MR.strings.desktop_privacy_capabilities_title,
+        MR.strings.desktop_privacy_native_notifications_unavailable,
+        MR.strings.desktop_privacy_telemetry_unavailable,
+        MR.strings.desktop_privacy_widget_unavailable,
+        MR.strings.desktop_privacy_widget_unavailable_updates_available,
+        MR.strings.desktop_secure_screen_title,
+        MR.strings.desktop_secure_screen_supported,
+        MR.strings.desktop_secure_screen_not_protected,
+        MR.strings.desktop_secure_screen_limited,
+        MR.strings.desktop_secure_screen_unsupported,
+        MR.strings.desktop_secure_screen_window_not_ready,
+        MR.strings.desktop_secure_screen_failed,
         MR.strings.desktop_backup_create_summary,
         MR.strings.desktop_backup_restore_summary,
         MR.strings.desktop_backup_saved,

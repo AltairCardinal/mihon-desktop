@@ -273,12 +273,12 @@ class SecuritySettingsScreen : Screen {
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text(MR.strings.desktop_security_title.localized()) },
+                    title = { Text(MR.strings.pref_category_security.localized()) },
                     navigationIcon = {
                         IconButton(onClick = navigator::pop) {
                             Icon(
                                 Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = MR.strings.desktop_security_cancel.localized(),
+                                contentDescription = MR.strings.action_bar_up_description.localized(),
                             )
                         }
                     },
@@ -441,7 +441,7 @@ private fun DesktopHideNotificationContentSetting(securityPreferences: SecurityP
     val preference = remember(securityPreferences) { securityPreferences.hideNotificationContent() }
     val hidden by preference.changes().collectAsState(initial = preference.get())
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(MR.strings.desktop_security_hide_notification_content.localized(), modifier = Modifier.weight(1f))
+        Text(MR.strings.hide_notification_content.localized(), modifier = Modifier.weight(1f))
         Switch(checked = hidden, onCheckedChange = preference::set)
     }
 }
@@ -506,10 +506,10 @@ private fun SecurityPassphraseDialog(
                     replacement = ""
                     confirmation = ""
                 },
-            ) { Text(MR.strings.desktop_security_save.localized()) }
+            ) { Text(MR.strings.action_save.localized()) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(MR.strings.desktop_security_cancel.localized()) }
+            TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
         },
     )
 }
