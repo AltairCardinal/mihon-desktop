@@ -339,28 +339,35 @@ internal suspend fun runProductionOwnerLifecycle(
 }
 
 internal class DesktopRuntimeBootstrapSession(
-    private val runtime: DesktopAppRuntime,
-    private val lockStateBinding: DesktopAppLockTestStateBinding,
+    private val closeRuntime: () -> Unit,
+    private val awaitRuntime: suspend () -> Unit,
+    private val closeBinding: () -> Unit,
 ) : AutoCloseable {
-    private var closed = false
+    constructor(runtime: DesktopAppRuntime, binding: DesktopAppLockTestStateBinding) :
+        this(runtime::close, runtime::awaitClosed, binding::close)
+
+    private var runtimeClosed = false
+    private var runtimeAwaited = false
+    private var bindingClosed = false
 
     @Synchronized
     override fun close() {
-        if (closed) return
+        if (runtimeClosed && bindingClosed) return
         var primaryFailure: Throwable? = null
-        try {
-            runtime.close()
-        } catch (failure: Throwable) {
-            primaryFailure = failure
+        fun attempt(done: Boolean, action: () -> Unit): Boolean {
+            if (done) return true
+            return try {
+                action()
+                true
+            } catch (failure: Throwable) {
+                val primary = primaryFailure
+                if (primary == null) primaryFailure = failure else if (failure !== primary) primary.addSuppressed(failure)
+                false
+            }
         }
-        try {
-            lockStateBinding.close()
-        } catch (failure: Throwable) {
-            val primary = primaryFailure
-            if (primary == null) primaryFailure = failure else if (failure !== primary) primary.addSuppressed(failure)
-        }
+        runtimeClosed = attempt(runtimeClosed, closeRuntime)
+        bindingClosed = attempt(bindingClosed, closeBinding)
         primaryFailure?.let { throw it }
-        closed = true
     }
 
     suspend fun closeAndJoin() {
@@ -370,11 +377,14 @@ internal class DesktopRuntimeBootstrapSession(
         } catch (failure: Throwable) {
             primaryFailure = failure
         }
-        try {
-            runtime.awaitClosed()
-        } catch (failure: Throwable) {
-            val primary = primaryFailure
-            if (primary == null) primaryFailure = failure else if (failure !== primary) primary.addSuppressed(failure)
+        if (!runtimeAwaited) {
+            try {
+                awaitRuntime()
+                runtimeAwaited = true
+            } catch (failure: Throwable) {
+                val primary = primaryFailure
+                if (primary == null) primaryFailure = failure else if (failure !== primary) primary.addSuppressed(failure)
+            }
         }
         primaryFailure?.let { throw it }
     }

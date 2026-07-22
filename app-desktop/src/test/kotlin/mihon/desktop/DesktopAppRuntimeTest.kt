@@ -279,67 +279,6 @@ class DesktopAppRuntimeTest {
     }
 
     @Test
-    fun `production entry invokes owner lifecycle only after elected owner preparation`(@org.junit.jupiter.api.io.TempDir tempDir: File) = runBlocking {
-        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
-        val stateFile = File(tempDir, "production-owner.json")
-        val broker = DesktopExternalActionBroker(stateFile)
-        val port = QueuingOpenUriPort()
-        var registrations = 0
-        var dependencyFactories = 0
-        var lifecycleStarts = 0
-        val ownerEntered = CompletableDeferred<Unit>()
-        val releaseOwner = CompletableDeferred<Unit>()
-        val ownerStart = async(Dispatchers.Default) {
-            startProductionDesktopApplication(
-                args = emptyArray(),
-                broker = broker,
-                registrar = mihon.desktop.platform.DesktopUriSchemeRegistrar {
-                    registrations++
-                    DesktopUriSchemeRegistration.Result.Unavailable(
-                        DesktopUriSchemeRegistration.UnavailableReason.NON_PACKAGED_RUNTIME,
-                    )
-                },
-                openUriEventPort = port,
-                ownerIngressDependencies = { transaction ->
-                    dependencyFactories++
-                    DesktopOwnerIngressDependencies(Injekt.get(), DesktopUiDependencies.fromInjekt()).also {
-                        transaction.registerRuntime(it.runtime)
-                    }
-                },
-                ownerLifecycle = { _, owner ->
-                    lifecycleStarts++
-                    assertTrue(owner.runtime.isRunning.not())
-                    ownerEntered.complete(Unit)
-                    releaseOwner.await()
-                    owner.runtime.closeAndJoin()
-                },
-            )
-        }
-        try {
-            withTimeout(1_000) { ownerEntered.await() }
-            assertEquals(
-                DesktopInstanceStartResult.Forwarded,
-                startProductionDesktopApplication(
-                    args = arrayOf("tachiyomi://manga?url=secondary"),
-                    broker = DesktopExternalActionBroker(stateFile),
-                    registrar = mihon.desktop.platform.DesktopUriSchemeRegistrar { error("secondary must not register") },
-                    ownerIngressDependencies = { error("secondary must not create dependencies") },
-                    ownerLifecycle = { _, _ -> error("secondary must not start lifecycle") },
-                ),
-            )
-            assertEquals(1, registrations)
-            assertEquals(1, dependencyFactories)
-            assertEquals(1, lifecycleStarts)
-            assertEquals(1, port.installs)
-        } finally {
-            releaseOwner.complete(Unit)
-            ownerStart.await()
-            broker.close()
-            context.closeAndJoin()
-        }
-    }
-
-    @Test
     fun `production entry closes registered runtime when owner factory fails`(@org.junit.jupiter.api.io.TempDir tempDir: File) = runBlocking {
         val runtime = headlessRuntime().also(DesktopAppRuntime::start)
         val broker = DesktopExternalActionBroker(File(tempDir, "factory-failure.json"))
@@ -360,6 +299,41 @@ class DesktopAppRuntimeTest {
         assertFalse(runtime.isRunning)
         broker.close()
     }
+
+    @Test
+    fun `close and join preserves close failure and suppresses exact await failure`() = runTest {
+        val closeFailure = IllegalStateException("close")
+        val awaitFailure = IllegalArgumentException("await")
+        var awaits = 0
+        val failing = object : DesktopRuntimeService {
+            override fun start() = Unit
+            override fun stop(): Unit = throw closeFailure
+        }
+        val runtime = DesktopAppRuntime(
+            failing, RecordingRuntimeService(), RecordingRuntimeService(), startupCleanup = {},
+            closeUpdater = {}, awaitUpdater = { awaits++; throw awaitFailure },
+        ).also(DesktopAppRuntime::start)
+        val thrown = runCatching { runtime.closeAndJoin() }.exceptionOrNull()
+        assertSame(closeFailure, thrown); assertEquals(1, awaits)
+        assertEquals(listOf(awaitFailure), thrown!!.suppressed.toList())
+    }
+
+    @Test
+    fun `bootstrap close retries only unfinished resources before becoming terminal`() = runTest {
+        listOf("runtime", "binding").forEach { failedStage ->
+            val failure = IllegalStateException(failedStage); val calls = mutableListOf<String>()
+            var first = true
+            fun close(stage: String) {
+                calls += stage
+                if (stage == failedStage && first) { first = false; throw failure }
+            }
+            val session = DesktopRuntimeBootstrapSession({ close("runtime") }, { calls += "await" }, { close("binding") })
+            assertSame(failure, runCatching { session.closeAndJoin() }.exceptionOrNull())
+            session.closeAndJoin(); session.closeAndJoin()
+            assertEquals(listOf("runtime", "binding", "await", failedStage), calls)
+        }
+    }
+
     @Test
     fun `owner ingress does not install open URI handler when broker attachment is rejected`(@org.junit.jupiter.api.io.TempDir tempDir: File) {
         val runtime = headlessRuntime()

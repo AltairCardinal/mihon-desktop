@@ -29,11 +29,13 @@ class DesktopAppRuntime(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     internal val appLock: DesktopAppLockLifecycle = NoopAppLockLifecycle,
     private val updateScreenModel: DesktopUpdateScreenModel? = null,
+    private val closeUpdater: () -> Unit = { updateScreenModel?.close() },
+    private val awaitUpdater: suspend () -> Unit = { updateScreenModel?.closeAndJoin() },
 ) {
     private var startupJob: Job? = null
     private var instanceBroker: DesktopExternalActionBroker? = null
     private val closeActions = mutableListOf<AutoCloseable>()
-    private val runningServices = linkedSetOf<DesktopRuntimeService>()
+    private val runningServices = mutableListOf<DesktopRuntimeService>()
     var isRunning: Boolean = false
         private set
 
@@ -83,7 +85,7 @@ class DesktopAppRuntime(
             }
             if (closed) closeActions.remove(closeAction)
         }
-        failures.attempt { updateScreenModel?.close() }
+        failures.attempt(closeUpdater)
         failures.attempt(scope::cancel)
         failures.throwIfAny()
     }
@@ -106,7 +108,7 @@ class DesktopAppRuntime(
 
     suspend fun awaitClosed() {
         val failures = CleanupFailures()
-        failures.attemptSuspend { updateScreenModel?.closeAndJoin() }
+        failures.attemptSuspend(awaitUpdater)
         failures.attemptSuspend { scope.coroutineContext[Job]?.join() }
         failures.throwIfAny()
     }
