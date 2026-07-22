@@ -274,6 +274,65 @@ class DesktopAppRuntimeTest {
             context.closeAndJoin()
         }
     }
+
+    @Test
+    fun `production entry invokes owner lifecycle only after elected owner preparation`(@org.junit.jupiter.api.io.TempDir tempDir: File) = runBlocking {
+        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+        val stateFile = File(tempDir, "production-owner.json")
+        val broker = DesktopExternalActionBroker(stateFile)
+        val port = QueuingOpenUriPort()
+        var registrations = 0
+        var dependencyFactories = 0
+        var lifecycleStarts = 0
+        val ownerEntered = CompletableDeferred<Unit>()
+        val releaseOwner = CompletableDeferred<Unit>()
+        val ownerStart = async(Dispatchers.Default) {
+            startProductionDesktopApplication(
+                args = emptyArray(),
+                broker = broker,
+                registrar = mihon.desktop.platform.DesktopUriSchemeRegistrar {
+                    registrations++
+                    DesktopUriSchemeRegistration.Result.Unavailable(
+                        DesktopUriSchemeRegistration.UnavailableReason.NON_PACKAGED_RUNTIME,
+                    )
+                },
+                openUriEventPort = port,
+                ownerIngressDependencies = {
+                    dependencyFactories++
+                    DesktopOwnerIngressDependencies(Injekt.get(), DesktopUiDependencies.fromInjekt())
+                },
+                ownerLifecycle = { _, owner ->
+                    lifecycleStarts++
+                    assertTrue(owner.runtime.isRunning.not())
+                    ownerEntered.complete(Unit)
+                    releaseOwner.await()
+                    owner.runtime.closeAndJoin()
+                },
+            )
+        }
+        try {
+            withTimeout(1_000) { ownerEntered.await() }
+            assertEquals(
+                DesktopInstanceStartResult.Forwarded,
+                startProductionDesktopApplication(
+                    args = arrayOf("tachiyomi://manga?url=secondary"),
+                    broker = DesktopExternalActionBroker(stateFile),
+                    registrar = mihon.desktop.platform.DesktopUriSchemeRegistrar { error("secondary must not register") },
+                    ownerIngressDependencies = { error("secondary must not create dependencies") },
+                    ownerLifecycle = { _, _ -> error("secondary must not start lifecycle") },
+                ),
+            )
+            assertEquals(1, registrations)
+            assertEquals(1, dependencyFactories)
+            assertEquals(1, lifecycleStarts)
+            assertEquals(1, port.installs)
+        } finally {
+            releaseOwner.complete(Unit)
+            ownerStart.await()
+            broker.close()
+            context.closeAndJoin()
+        }
+    }
     @Test
     fun `owner ingress does not install open URI handler when broker attachment is rejected`(@org.junit.jupiter.api.io.TempDir tempDir: File) {
         val runtime = headlessRuntime()

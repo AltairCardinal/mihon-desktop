@@ -61,7 +61,7 @@ suspend fun main(args: Array<String>) {
     startProductionDesktopApplication(args)
 }
 
-private suspend fun startProductionDesktopApplication(
+internal suspend fun startProductionDesktopApplication(
     args: Array<String>,
     broker: DesktopExternalActionBroker = DesktopExternalActionBroker(DesktopPlatformPaths.current().instanceStateFile),
     registrar: DesktopUriSchemeRegistrar = DesktopUriSchemeRegistration(),
@@ -71,23 +71,20 @@ private suspend fun startProductionDesktopApplication(
         initDesktopDI()
         DesktopOwnerIngressDependencies(Injekt.get(), DesktopUiDependencies.fromInjekt())
     },
+    ownerLifecycle: suspend (TestArguments, DesktopOwnerStartup) -> Unit = ::runProductionOwnerApplication,
 ): DesktopInstanceStartResult {
-    var ownerBroker: DesktopExternalActionBroker? = null
-    val result = startDesktopInstance(broker, desktopExternalActionRaw(args)) { electedBroker ->
-        val registrationResult = try {
-            registrar.register()
-        } catch (_: Exception) {
-            DesktopUriSchemeRegistration.Result.Failed(
-                DesktopUriSchemeRegistration.FailureReason.UNEXPECTED_FAILURE,
-            )
+    var owner: DesktopOwnerStartup? = null
+    return try {
+        val result = startDesktopInstance(broker, desktopExternalActionRaw(args)) { electedBroker ->
+            reportDesktopOwnerRegistration(registrar, reportRegistration)
+            owner = prepareDesktopOwner(electedBroker, args, openUriEventPort, ownerIngressDependencies)
         }
-        runCatching { reportRegistration(registrationResult) }
-        ownerBroker = electedBroker
+        owner?.let { ownerLifecycle(TestArguments.parse(args), it) }
+        result
+    } catch (failure: Throwable) {
+        owner?.closeAndJoin(failure)
+        throw failure
     }
-    ownerBroker?.let {
-        runProductionOwnerApplication(args, TestArguments.parse(args), it, openUriEventPort, ownerIngressDependencies)
-    }
-    return result
 }
 
 internal fun startDesktopApplication(
@@ -106,14 +103,7 @@ internal fun startDesktopApplication(
     },
 ): DesktopInstanceStartResult {
     return startDesktopInstance(broker, desktopExternalActionRaw(args)) { ownerBroker ->
-        val registrationResult = try {
-            registrar.register()
-        } catch (_: Exception) {
-            DesktopUriSchemeRegistration.Result.Failed(
-                DesktopUriSchemeRegistration.FailureReason.UNEXPECTED_FAILURE,
-            )
-        }
-        runCatching { reportRegistration(registrationResult) }
+        reportDesktopOwnerRegistration(registrar, reportRegistration)
         startOwnerApplication(ownerBroker)
     }
 }
@@ -136,23 +126,17 @@ private fun runOwnerApplication(
     ownerIngressDependencies: () -> DesktopOwnerIngressDependencies,
     ownerContinuation: ((DesktopOwnerIngressDependencies) -> Unit)?,
 ) {
-    val ownerIngress = ownerIngressDependencies()
-    val runtime = ownerIngress.runtime
-    val uiDependencies = ownerIngress.uiDependencies
-    val navigator = uiDependencies.externalActionNavigator
-    submitDesktopExternalAction(args, navigator)
-    initializeDesktopOwnerExternalActionIngress(broker, navigator, runtime, openUriEventPort)
+    val owner = prepareDesktopOwner(broker, args, openUriEventPort, ownerIngressDependencies)
+    val runtime = owner.runtime
     if (ownerContinuation != null) {
         try {
-            ownerContinuation(ownerIngress)
+            ownerContinuation(owner.ingress)
         } finally {
             runtime.close()
         }
         return
     }
-    val appLock = Injekt.get<DesktopAppLock>()
-    val windowPrivacyController = Injekt.get<DesktopWindowPrivacyController>()
-    bootstrapDesktopRuntime(runtime, appLock, applicationState) {
+    bootstrapDesktopRuntime(runtime, owner.appLock, applicationState) {
         if (testArgs.testMode) TestMode.start(testArgs)
     }.use { bootstrap ->
 
@@ -173,10 +157,10 @@ private fun runOwnerApplication(
                 title = "Mihon Desktop $APP_VERSION",
                 state = rememberWindowState(width = 1024.dp, height = 768.dp),
             ) {
-                BindDesktopWindowLifecycle(window, appLock, windowPrivacyController)
-                OwnerUiDependencies(ownerIngress) {
+                BindDesktopWindowLifecycle(window, owner.appLock, owner.windowPrivacyController)
+                OwnerUiDependencies(owner.ingress) {
                     DesktopTheme {
-                        DesktopProtectedRoot(appLock) {
+                        DesktopProtectedRoot(owner.appLock) {
                             Navigator(HomeScreen()) { navigator ->
                                 SlideTransition(navigator)
                             }
@@ -189,25 +173,14 @@ private fun runOwnerApplication(
 }
 
 private suspend fun runProductionOwnerApplication(
-    args: Array<String>,
     testArgs: TestArguments,
-    broker: DesktopExternalActionBroker,
-    openUriEventPort: DesktopOpenUriEventPort,
-    ownerIngressDependencies: () -> DesktopOwnerIngressDependencies,
+    owner: DesktopOwnerStartup,
 ) {
-    val ownerIngress = ownerIngressDependencies()
-    val runtime = ownerIngress.runtime
-    val uiDependencies = ownerIngress.uiDependencies
-    val navigator = uiDependencies.externalActionNavigator
     try {
-        submitDesktopExternalAction(args, navigator)
-        initializeDesktopOwnerExternalActionIngress(broker, navigator, runtime, openUriEventPort)
-        val appLock = Injekt.get<DesktopAppLock>()
-        val windowPrivacyController = Injekt.get<DesktopWindowPrivacyController>()
         runProductionOwnerLifecycle(
             testArgs = testArgs,
-            runtime = runtime,
-            appLock = appLock,
+            runtime = owner.runtime,
+            appLock = owner.appLock,
             testState = applicationState,
             startTestMode = { if (testArgs.testMode) TestMode.start(testArgs) },
             awaitTestModeTermination = TestMode::awaitTermination,
@@ -228,10 +201,10 @@ private suspend fun runProductionOwnerApplication(
                     title = "Mihon Desktop $APP_VERSION",
                     state = rememberWindowState(width = 1024.dp, height = 768.dp),
                 ) {
-                    BindDesktopWindowLifecycle(window, appLock, windowPrivacyController)
-                    OwnerUiDependencies(ownerIngress) {
+                    BindDesktopWindowLifecycle(window, owner.appLock, owner.windowPrivacyController)
+                    OwnerUiDependencies(owner.ingress) {
                         DesktopTheme {
-                            DesktopProtectedRoot(appLock) {
+                            DesktopProtectedRoot(owner.appLock) {
                                 Navigator(HomeScreen()) { navigator ->
                                     SlideTransition(navigator)
                                 }
@@ -242,13 +215,63 @@ private suspend fun runProductionOwnerApplication(
             }
         }
     } catch (failure: Throwable) {
+        owner.closeAndJoin(failure)
+        throw failure
+    }
+}
+
+internal data class DesktopOwnerStartup(
+    val ingress: DesktopOwnerIngressDependencies,
+    val appLock: DesktopAppLock,
+    val windowPrivacyController: DesktopWindowPrivacyController,
+) {
+    val runtime: DesktopAppRuntime get() = ingress.runtime
+
+    suspend fun closeAndJoin(primary: Throwable) {
         try {
             runtime.closeAndJoin()
+        } catch (cleanupFailure: Throwable) {
+            if (cleanupFailure !== primary) primary.addSuppressed(cleanupFailure)
+        }
+    }
+}
+
+private fun prepareDesktopOwner(
+    broker: DesktopExternalActionBroker,
+    args: Array<String>,
+    openUriEventPort: DesktopOpenUriEventPort,
+    ownerIngressDependencies: () -> DesktopOwnerIngressDependencies,
+): DesktopOwnerStartup {
+    val ingress = ownerIngressDependencies()
+    val startup = DesktopOwnerStartup(
+        ingress = ingress,
+        appLock = Injekt.get(),
+        windowPrivacyController = Injekt.get(),
+    )
+    try {
+        submitDesktopExternalAction(args, ingress.uiDependencies.externalActionNavigator)
+        initializeDesktopOwnerExternalActionIngress(broker, ingress.uiDependencies.externalActionNavigator, startup.runtime, openUriEventPort)
+        return startup
+    } catch (failure: Throwable) {
+        try {
+            startup.runtime.close()
         } catch (cleanupFailure: Throwable) {
             if (cleanupFailure !== failure) failure.addSuppressed(cleanupFailure)
         }
         throw failure
     }
+}
+
+private fun reportDesktopOwnerRegistration(
+    registrar: DesktopUriSchemeRegistrar,
+    reportRegistration: (DesktopUriSchemeRegistration.Result) -> Unit,
+) {
+    val registrationResult = try {
+        registrar.register()
+    } catch (_: Exception) {
+        DesktopUriSchemeRegistration.Result.Failed(DesktopUriSchemeRegistration.FailureReason.UNEXPECTED_FAILURE)
+    }
+    runCatching { reportRegistration(registrationResult) }
 }
 
 @Composable

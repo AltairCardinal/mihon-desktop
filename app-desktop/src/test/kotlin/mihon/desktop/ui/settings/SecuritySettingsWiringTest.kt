@@ -314,6 +314,7 @@ class SecuritySettingsWiringTest {
                 override fun stop() = Unit
             }
             val runtime = DesktopAppRuntime(service, service, service, startupCleanup = {}, scope = parentScope, updateScreenModel = model)
+            assertTrue(model.intent(DesktopUpdateIntent.CHECK))
             val closing = async(Dispatchers.Default) {
                 runProductionOwnerLifecycle(
                     testArgs = TestArguments(testMode = true, headless = headless),
@@ -336,7 +337,6 @@ class SecuritySettingsWiringTest {
                     assertFalse(closing.isCompleted)
                     releaseTermination.complete(Unit)
                 }
-                assertTrue(model.intent(DesktopUpdateIntent.CHECK))
                 withTimeout(1_000) { cleanupStarted.await() }
                 assertFalse(closing.isCompleted)
             } finally {
