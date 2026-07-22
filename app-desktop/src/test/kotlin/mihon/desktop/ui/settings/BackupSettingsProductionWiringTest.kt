@@ -57,14 +57,17 @@ class BackupSettingsProductionWiringTest {
     fun `real Create and Restore buttons route picker outcomes and visible feedback`() = runBlocking {
         val directory = File("build/backup-target")
         val backup = File(directory, "library.tachibk")
+        val previousLocale = Locale.getDefault()
         val cases = listOf(
             ButtonCase(true, DesktopBackupFilePickerResult.Cancelled, MR.strings.desktop_backup_create_cancelled),
             ButtonCase(true, DesktopBackupFilePickerResult.Selected(directory), MR.strings.desktop_backup_saved, backup),
             ButtonCase(true, DesktopBackupFilePickerResult.Selected(directory), MR.strings.desktop_backup_failed, failure = "disk full"),
+            ButtonCase(true, DesktopBackupFilePickerResult.Selected(directory), MR.strings.creating_backup_error, failure = ""),
             ButtonCase(false, DesktopBackupFilePickerResult.Cancelled, MR.strings.desktop_backup_restore_selection_cancelled),
             ButtonCase(false, DesktopBackupFilePickerResult.Selected(backup), null),
-        )
-        cases.forEach { case ->
+        ).flatMap { case -> listOf(Locale.US, Locale.forLanguageTag("zh-CN")).map { it to case } }
+        cases.forEach { (locale, case) ->
+            Locale.setDefault(locale)
             val picker = RecordingPicker(case.pickerResult)
             val model = model(scope = this)
             val factory = mockk<BackupRestoreScreenModelFactory> {
@@ -78,24 +81,24 @@ class BackupSettingsProductionWiringTest {
             val scene = scene(factory, picker)
             try {
                 render(scene)
-                click(scene, if (case.create) MR.strings.pref_create_backup.localized() else MR.strings.file_select_backup.localized())
+                click(scene, if (case.create) MR.strings.pref_create_backup.localized(locale) else MR.strings.file_select_backup.localized(locale))
                 val copy = render(scene)
                 val request = requireNotNull(picker.request)
                 if (case.create) {
                     assertInstanceOf(DesktopBackupFilePickerRequest.Directory::class.java, request)
-                    assertEquals(MR.strings.onboarding_storage_action_select.localized(), request.title)
+                    assertEquals(MR.strings.onboarding_storage_action_select.localized(locale), request.title)
                     if (case.pickerResult is DesktopBackupFilePickerResult.Selected) coVerify { factory.createBackup(directory) }
                 } else {
                     val fileRequest = assertInstanceOf(DesktopBackupFilePickerRequest.BackupFile::class.java, request)
-                    assertEquals(MR.strings.file_select_backup.localized(), fileRequest.title)
+                    assertEquals(MR.strings.file_select_backup.localized(locale), fileRequest.title)
                     assertEquals(setOf("tachibk"), fileRequest.extensions)
-                    assertEquals(MR.strings.desktop_backup_file_filter.localized(), fileRequest.description)
+                    assertEquals(MR.strings.desktop_backup_file_filter.localized(locale), fileRequest.description)
                 }
                 case.feedback?.let { resource ->
                     val expected = when {
-                        case.createdFile != null -> resource.localized(Locale.getDefault(), backup.name)
-                        case.failure != null -> resource.localized(Locale.getDefault(), case.failure)
-                        else -> resource.localized()
+                        case.createdFile != null -> resource.localized(locale, backup.name)
+                        !case.failure.isNullOrBlank() -> resource.localized(locale, case.failure)
+                        else -> resource.localized(locale)
                     }
                     assertTrue(expected in copy, "Missing '$expected': $copy")
                 }
@@ -105,6 +108,7 @@ class BackupSettingsProductionWiringTest {
                 }
             } finally {
                 scene.close()
+                Locale.setDefault(previousLocale)
             }
         }
     }
