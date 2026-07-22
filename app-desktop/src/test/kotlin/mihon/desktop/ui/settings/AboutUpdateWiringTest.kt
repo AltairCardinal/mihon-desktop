@@ -1,29 +1,43 @@
 package mihon.desktop.ui.settings
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
-import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.asCoroutineDispatcher
+import cafe.adriel.voyager.core.screen.Screen
+import cafe.adriel.voyager.navigator.CurrentScreen
+import cafe.adriel.voyager.navigator.Navigator
+import io.mockk.every
+import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withTimeout
 import mihon.desktop.APP_VERSION
+import mihon.desktop.DesktopUiDependencies
+import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.extension.DesktopExtensionManager
+import mihon.desktop.platform.DesktopPlatformPaths
+import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.update.*
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.parallel.Isolated
 import tachiyomi.domain.release.model.ReleaseAsset
 import tachiyomi.domain.release.model.ReleaseChecksum
 import tachiyomi.domain.release.model.ReleaseOs
@@ -31,6 +45,8 @@ import tachiyomi.domain.release.model.ReleasePackageType
 import tachiyomi.domain.release.model.ReleaseTarget
 import tachiyomi.domain.release.model.ReleaseVariant
 import tachiyomi.domain.release.model.Release
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import tachiyomi.i18n.MR
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
@@ -39,7 +55,76 @@ import java.util.concurrent.Executors
 import java.util.concurrent.CountDownLatch
 
 @OptIn(ExperimentalComposeUiApi::class)
+@Isolated
 class AboutUpdateWiringTest {
+    @Test
+    fun `catalog result anchors once and preserves diagnostics action and ordering`(@TempDir tempDir: Path) = runBlocking {
+        val paths = DesktopPlatformPaths.resolve("Linux", tempDir.toString(), emptyMap())
+        paths.networkCacheDir.resolve("response.bin").writeBytes(ByteArray(1_536))
+        val updateModel = mockk<DesktopUpdateScreenModel> {
+            every { state } returns MutableStateFlow(DesktopUpdateState.Idle)
+            every { feedback } returns MutableStateFlow(null)
+        }
+        val extensionManager = DesktopExtensionManager()
+        val appPreferences = DesktopAppPreferences(InMemoryPreferenceStore())
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+            every { this@mockk.extensionManager } returns extensionManager
+            every { this@mockk.appPreferences } returns appPreferences
+            every { updateScreenModel } returns updateModel
+        }
+        val scene = ImageComposeScene(900, 170) {}
+        lateinit var navigator: Navigator
+        try {
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    Navigator(EmptyScreen()) { nav -> navigator = nav; CurrentScreen() }
+                }
+            }
+            render(scene)
+            val screens = DesktopSettingsCatalog.screens()
+            val fixedMain = listOf(
+                "AppearanceSettingsScreen", "LibrarySettingsScreen", "ReaderSettingsScreen",
+                "DownloadSettingsScreen", "TrackingSettingsScreen", "ExtensionListScreen",
+                "BackupSettingsScreen", "SecuritySettingsScreen", "AdvancedSettingsScreen",
+            )
+            assertEquals(fixedMain, screens.take(9).map { it.route::class.simpleName })
+            assertEquals(listOf("GeneralSettingsScreen", "ExtensionRepoScreen", "AboutScreen"), screens.drop(9).map { it.route::class.simpleName })
+
+            val title = MR.strings.desktop_about_app_data_directory.localized()
+            val result = DesktopSettingsCatalog.search(title).single { it.route is AboutScreen && it.anchorTitle == title }
+            DesktopSettingsAnchorOwner.publish(result.route, result.anchorTitle)
+            navigator.replace(AboutScreen(paths))
+            render(scene)
+            val highlighted = nodes(scene, true).single {
+                it.config.contains(DesktopSettingsAnchorHighlighted) && it.config[DesktopSettingsAnchorHighlighted]
+            }
+            assertTrue(texts(highlighted).any { title in it })
+            assertTrue(highlighted.boundsInRoot.height > 0f)
+            assertTrue(scroll(scene).value() > 0f)
+
+            click(scene, MR.strings.desktop_advanced_clear_network_cache.localized())
+            render(scene)
+            assertFalse(paths.networkCacheDir.exists())
+            assertTrue(MR.strings.desktop_about_network_cache_cleared.localized() in texts(scene))
+
+            navigator.replace(EmptyScreen())
+            render(scene)
+            navigator.replace(AboutScreen(paths))
+            render(scene)
+            assertNoAnchor(scene)
+            DesktopSettingsAnchorOwner.publish(result.route, result.anchorTitle)
+            navigator.replace(GeneralSettingsScreen())
+            render(scene)
+            assertNoAnchor(scene)
+            DesktopSettingsAnchorOwner.publish(AboutScreen(paths), "missing-title")
+            navigator.replace(AboutScreen(paths))
+            render(scene)
+            assertNoAnchor(scene)
+        } finally {
+            scene.close()
+        }
+    }
+
     @Test
     fun `about renders full version and routes ready confirmation intents`() = runBlocking {
         val intents = mutableListOf<DesktopUpdateIntent>()
@@ -184,10 +269,31 @@ class AboutUpdateWiringTest {
         val node = nodes(scene).first { it.config.contains(SemanticsActions.OnClick) && label in texts(it) }
         assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
     }
+
+    private suspend fun render(scene: ImageComposeScene) = repeat(6) {
+        scene.render()
+        kotlinx.coroutines.yield()
+    }
+
+    private fun assertNoAnchor(scene: ImageComposeScene) {
+        assertFalse(nodes(scene, true).any { it.config.contains(DesktopSettingsAnchorHighlighted) })
+        assertEquals(0f, scroll(scene).value())
+    }
+
+    private fun scroll(scene: ImageComposeScene) = nodes(scene, true)
+        .first { it.config.contains(SemanticsProperties.VerticalScrollAxisRange) }
+        .config[SemanticsProperties.VerticalScrollAxisRange]
     private fun texts(scene: ImageComposeScene) = nodes(scene).flatMap(::texts)
     private fun texts(node: SemanticsNode) = flatten(node).flatMap {
         if (it.config.contains(SemanticsProperties.Text)) it.config[SemanticsProperties.Text].map { text -> text.text } else emptyList()
     }
-    private fun nodes(scene: ImageComposeScene) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+    private fun nodes(scene: ImageComposeScene, unmerged: Boolean = false) = scene.semanticsOwners.flatMap {
+        flatten(if (unmerged) it.unmergedRootSemanticsNode else it.rootSemanticsNode)
+    }
     private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+
+    private class EmptyScreen : Screen {
+        @androidx.compose.runtime.Composable
+        override fun Content() = Unit
+    }
 }

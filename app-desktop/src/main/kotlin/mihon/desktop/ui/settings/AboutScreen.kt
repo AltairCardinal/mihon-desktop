@@ -8,8 +8,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
@@ -70,6 +68,7 @@ class AboutScreen(internal val platformPaths: DesktopPlatformPaths = DesktopPlat
         val osName = remember { System.getProperty("os.name") ?: MR.strings.desktop_about_unknown.localized() }
         val osVersion = remember { System.getProperty("os.version") ?: "" }
         val appDirPath = remember { appDir.absolutePath }
+        val appDataTitle = DesktopSettingsAnchorResources.aboutAppData.localized()
 
         Scaffold(
             topBar = {
@@ -83,12 +82,9 @@ class AboutScreen(internal val platformPaths: DesktopPlatformPaths = DesktopPlat
                 )
             },
         ) { padding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(24.dp)
-                    .verticalScroll(rememberScrollState()),
+            DesktopSettingsAnchorColumn(
+                route = this@AboutScreen,
+                modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
             ) {
                 Text(
                     text = "Mihon Desktop",
@@ -114,7 +110,11 @@ class AboutScreen(internal val platformPaths: DesktopPlatformPaths = DesktopPlat
 
                 Text(MR.strings.desktop_about_storage.localized(), style = MaterialTheme.typography.titleSmall)
                 Spacer(modifier = Modifier.height(8.dp))
-                InfoRow(label = MR.strings.desktop_about_app_data_directory.localized(), value = appDirPath)
+                InfoRow(
+                    label = appDataTitle,
+                    value = appDirPath,
+                    modifier = Modifier.desktopSettingsAnchor(appDataTitle),
+                )
                 InfoRow(label = MR.strings.desktop_about_database.localized(), value = "$dbPath ($dbSize)")
                 InfoRow(label = MR.strings.desktop_about_network_cache.localized(), value = cacheSizeText)
                 Spacer(modifier = Modifier.height(8.dp))
@@ -200,9 +200,9 @@ private fun DesktopUpdateIntent.label() = when (this) {
 }
 
 @Composable
-private fun InfoRow(label: String, value: String) {
+private fun InfoRow(label: String, value: String, modifier: Modifier = Modifier) {
     androidx.compose.foundation.layout.Row(
-        modifier = androidx.compose.ui.Modifier.padding(vertical = 2.dp),
+        modifier = modifier.padding(vertical = 2.dp),
     ) {
         Text(
             text = MR.strings.desktop_about_info_row.localized(Locale.getDefault(), label, value),
