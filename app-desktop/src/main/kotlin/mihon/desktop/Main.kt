@@ -138,48 +138,11 @@ private fun runOwnerApplication(
         transaction.close(failure)
         throw failure
     }
-    val runtime = owner.runtime
-    if (ownerContinuation != null) {
-        try {
-            ownerContinuation(owner.ingress)
-        } finally {
-            runtime.close()
-        }
-        return
-    }
-    bootstrapDesktopRuntime(runtime, owner.appLock, applicationState) {
-        if (testArgs.testMode) TestMode.start(testArgs)
-    }.use { bootstrap ->
-
-        if (runHeadlessMode(testArgs, runtime, closeRuntime = bootstrap::close)) return
-
-        application {
-            val applicationScope = rememberCoroutineScope()
-            Window(
-                onCloseRequest = {
-                    applicationScope.launch {
-                        try {
-                            bootstrap.closeAndJoin()
-                        } finally {
-                            exitApplication()
-                        }
-                    }
-                },
-                title = "Mihon Desktop $APP_VERSION",
-                state = rememberWindowState(width = 1024.dp, height = 768.dp),
-            ) {
-                BindDesktopWindowLifecycle(window, owner.appLock, owner.windowPrivacyController)
-                OwnerUiDependencies(owner.ingress) {
-                    DesktopTheme {
-                        DesktopProtectedRoot(owner.appLock) {
-                            Navigator(HomeScreen()) { navigator ->
-                                SlideTransition(navigator)
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    checkNotNull(ownerContinuation) { "Synchronous startup is a test continuation seam; production uses suspend main" }
+    try {
+        ownerContinuation(owner.ingress)
+    } finally {
+        owner.runtime.close()
     }
 }
 
