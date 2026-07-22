@@ -60,7 +60,7 @@ status-source: this-file
 - [x] Task 4L：Desktop Tracking UI/dialog i18n 同源化
 - [x] Task 4M：Desktop Tracking 动作副作用与失败 fallback identity
 - [x] Task 5：Desktop 设置 catalog、搜索 Screen 与入口
-- [ ] Task 6A：Desktop 标题 anchor 核心、搜索交接与 General/Appearance
+- [x] Task 6A：Desktop 标题 anchor 核心、搜索交接与 General/Appearance
 - [ ] Task 6B：Desktop 标题 anchor 的 Reader/Library 接线
 - [ ] Task 7：Desktop 标题 anchor 的安全/数据页面
 - [ ] Task 8：Desktop 标题 anchor 的扩展页面
@@ -467,6 +467,8 @@ status-source: this-file
 1. RED：重复消费、错误 title、route 无 anchor、滚动但不高亮均失败；缺 focus 不能冒充原版 anchor failure。
 2. GREEN：搜索结果必须把 `anchorTitle` 交给统一一次性 owner/highlight 后再 replace route；额外 focus 独立标记和测试，不改变首个重复标题边界。
 3. 接入 General/Appearance 并保护 grid 独有项；运行真实 Compose/navigation/range gate。
+
+**Review status（已完成）：** 初始实现 `e7c6d9598` 新增 route-owned one-shot anchor、统一 scroll/highlight host，并让搜索结果先发布 `route::class + exact anchorTitle` 再 replace；General/Appearance 真实接线同时保护 incognito/grid 写入。owner 的错误 route claim 原子清空，host 以 direct-child offset 驱动同一 `ScrollState`，focus 不作为 anchor 成功条件；search publish、route、highlight、one-shot、重复项五类 mutation 精确 RED。首审 `0/1/0` 指出测试未杀死 exact→contains 模糊匹配；唯一修复 `6fec99d28` 在两个 exact duplicate 之前加入独立 `duplicate-prefix`，contains mutation 精确误选 prefix 并 RED。唯一复审 APPROVED `0/0/0`，focused `7/7`、Desktop 相关/provenance `80/80`、shared policy `7/7`、Spotless、diff 与 19-Task guard 通过；累计 `7 files/323 touched`，Reader/Library 与用户脏文件零差异。下一项为父 Task 5B / 子 Task 6B。
 
 ### Task 6B：Desktop 标题 anchor 的 Reader/Library 接线
 
