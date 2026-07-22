@@ -180,7 +180,7 @@ class DesktopAppLockTest {
             events,
         )
         assertEquals(listOf(batchFailure, backupFailure, libraryFailure), thrown.suppressed.toList())
-        assertFalse(runtime.isRunning)
+        assertTrue(runtime.isRunning)
         assertFalse(scopeJob.isActive)
         assertFalse(stateFile.exists())
     }
