@@ -362,7 +362,7 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 4 files, 320 lines
+**Estimated scope:** 4 files, 350 lines
 
 **Verification:** empty/list/pending、create/delete/refresh/conflict/error、website/copy同源MR与base/zh-rCN完整
 
@@ -371,6 +371,8 @@ status-source: this-file
 1. RED：initial URL、required/duplicate、Success/InvalidUrl/Unavailable/InvalidMetadata/AlreadyExists/Error、fingerprint conflict、delete/refresh/website/copy 任一真实状态硬编码或 identity 分叉时失败。
 2. GREEN：优先复用 fixed-main extension-repo identity；Desktop base/index URL、HTTPS/network/metadata 细分错误与 pending 后果使用准确 `desktop_*`，不改 repository 规则。
 3. 运行 ExtensionRepo production wiring/rendered/navigation、Spotless/range gate。
+
+**Replan evidence:** 真实 Screen + repository/interactor 测试覆盖 initial URL、pending、全部 create outcome、fingerprint conflict、delete/refresh/copy 后，首次 GREEN 前自然范围为 `286 additions + 37 deletions = 323 touched`；不得按净行数误报为低于 320，也不删除状态覆盖或压缩格式。所有场景共享同一 ExtensionRepo production Screen/wiring，故将本 Task 上限调整为 350 行，不拆出无独立产品风险的子 Task。
 
 ### Task 4K：Desktop Tracking typed message 与 formatter identity
 
