@@ -58,7 +58,7 @@ status-source: this-file
 - [x] Task 4J：Desktop Extension repository i18n 同源化
 - [x] Task 4K：Desktop Tracking typed message 与 formatter identity
 - [x] Task 4L：Desktop Tracking UI/dialog i18n 同源化
-- [ ] Task 4M：Desktop Tracking 动作副作用与失败 fallback identity
+- [x] Task 4M：Desktop Tracking 动作副作用与失败 fallback identity
 - [ ] Task 5：Desktop 设置 catalog、搜索 Screen 与入口
 - [ ] Task 6：Desktop 标题 anchor 核心与基础页面
 - [ ] Task 7：Desktop 标题 anchor 的安全/数据页面
@@ -430,6 +430,8 @@ status-source: this-file
 1. RED：username/password/API-key 参数、Login/Cancel、Logout/Cancel、Unbind Remove/Cancel、Track/Close、Update 的 action identity/副作用错接时失败。
 2. RED：search/bind/update 分别抛空 message 异常时，真实 Screen 必须在 en/zh 显示对应 fallback；恢复旧英文或交换三种 fallback MR 时精确失败。
 3. GREEN：仅以真实 editable/action 节点和 repository/service side effect 证明 4L production wiring；不得引入 test-only production seam。运行 Identity 与 Tracking 相关回归、Spotless/range gate。
+
+**Review status（已完成）：** test-only 实现 `661666c59` 仅修改 `DesktopSettingsResourceIdentityTest.kt`，挂载真实 `TrackingSettingsScreen` 并通过 editable/action semantics 验证 USERNAME_PASSWORD/API_KEY 参数、Login/Cancel、Logout/Cancel、Unbind Remove/Cancel、Track/Close、Update `TrackEdit` 以及 service/repository 副作用；三个独立场景以无 message 异常验证 search/bind/update 的 en/zh fallback。字段交换、认证参数交换、Track/Close 错接、旧英文 fallback 与三类 fallback 互换五种 production mutation 均精确 RED 并恢复；Cancel/Close 以零副作用断言锁定。独立审查 APPROVED `0/0/0`，相关回归 `71/71`、Spotless、diff、range 与 20-Task guard 通过；范围 `1 file/152 touched`，production/resources/4K contract/formatter 零差异，无 test-only production seam。下一项为父 Task 5B / 子 Task 5。
 
 ### Task 5：Desktop 设置 catalog、搜索 Screen 与入口
 
