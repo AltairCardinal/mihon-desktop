@@ -21,6 +21,7 @@ import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.settings.DesktopAppPreferences
+import mihon.desktop.settings.LibraryUpdateInterval
 import mihon.desktop.ui.settings.AppearanceSettingsScreen
 import mihon.desktop.ui.settings.DownloadSettingsScreen
 import mihon.desktop.ui.settings.GeneralSettingsScreen
@@ -191,6 +192,16 @@ class DesktopSettingsResourceIdentityTest {
                     MR.strings.desktop_library_excluded_categories_summary.localized(locale),
                 )
                 assertCopy(library.descriptions, MR.strings.action_bar_up_description.localized(locale))
+                listOf(
+                    LibraryUpdateInterval.EVERY_6H to MR.strings.update_6hour,
+                    LibraryUpdateInterval.EVERY_12H to MR.strings.update_12hour,
+                    LibraryUpdateInterval.EVERY_24H to MR.strings.update_24hour,
+                    LibraryUpdateInterval.WEEKLY to MR.strings.update_weekly,
+                ).forEach { (interval, resource) ->
+                    prefs.libraryUpdateInterval.set(interval)
+                    val selectedLibrary = render(LibrarySettingsScreen(), dependencies, locale)
+                    assertSelectedEntry(selectedLibrary, resource.localized(locale))
+                }
 
                 val download = render(DownloadSettingsScreen(), dependencies, locale)
                 assertCopy(
@@ -242,7 +253,7 @@ class DesktopSettingsResourceIdentityTest {
                 }
             }
             scene.render()
-            RenderedCopy(textCopy(scene), descriptionCopy(scene), entryCopy(scene))
+            RenderedCopy(textCopy(scene), descriptionCopy(scene), entryCopy(scene), selectedEntryCopy(scene))
         } finally {
             scene.close()
         }
@@ -254,6 +265,10 @@ class DesktopSettingsResourceIdentityTest {
 
     private fun assertEntry(actual: RenderedCopy, title: String, subtitle: String) {
         assertTrue(listOf(title, subtitle) in actual.entries, "Missing entry '$title' -> '$subtitle': ${actual.entries}")
+    }
+
+    private fun assertSelectedEntry(actual: RenderedCopy, title: String) {
+        assertTrue(listOf(title) in actual.selectedEntries, "Missing selected entry '$title': ${actual.selectedEntries}")
     }
 
     private fun textCopy(scene: ImageComposeScene): Set<String> =
@@ -279,6 +294,18 @@ class DesktopSettingsResourceIdentityTest {
         .filter { it.size >= 2 }
         .toSet()
 
+    private fun selectedEntryCopy(scene: ImageComposeScene): Set<List<String>> = nodes(scene)
+        .filter { it.config.contains(SemanticsActions.OnClick) }
+        .map { node -> flatten(node) }
+        .filter { nodes ->
+            nodes.any { node ->
+                node.config.contains(SemanticsProperties.Selected) && node.config[SemanticsProperties.Selected]
+            }
+        }
+        .map { nodes -> nodes.flatMap { textCopy(it) } }
+        .filter { it.isNotEmpty() }
+        .toSet()
+
     private fun textCopy(node: SemanticsNode): List<String> =
         if (node.config.contains(SemanticsProperties.Text)) node.config[SemanticsProperties.Text].map { it.text } else emptyList()
 
@@ -289,6 +316,7 @@ class DesktopSettingsResourceIdentityTest {
         val text: Set<String>,
         val descriptions: Set<String>,
         val entries: Set<List<String>>,
+        val selectedEntries: Set<List<String>>,
     )
 
     private val desktopResources: List<StringResource> = listOf(
