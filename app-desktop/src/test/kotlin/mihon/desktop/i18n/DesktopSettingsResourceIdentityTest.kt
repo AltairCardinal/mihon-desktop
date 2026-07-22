@@ -104,6 +104,7 @@ import tachiyomi.domain.release.interactor.GetApplicationRelease
 import tachiyomi.domain.release.model.Release
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.repository.TrackRepository
+import tachiyomi.domain.track.service.TrackEdit
 import tachiyomi.domain.track.service.TrackerAuthentication
 import tachiyomi.domain.track.service.TrackerProfile
 import tachiyomi.domain.track.service.TrackerService
@@ -349,6 +350,116 @@ class DesktopSettingsResourceIdentityTest {
                     )
                 } finally {
                     searchScene.close()
+                }
+            }
+        } finally {
+            Locale.setDefault(previousLocale)
+        }
+    }
+
+    @Test
+    fun `Tracking dialog actions bind fields side effects and localized fallbacks`() = runBlocking {
+        val previousLocale = Locale.getDefault()
+        val mangaTitle = "Action manga #42"
+        try {
+            listOf(english, chinese).forEach { locale ->
+                val passwordService = trackingService(10, "Password provider", TrackerAuthentication.USERNAME_PASSWORD, false)
+                withTrackingScene(TrackingSettingsScreen(), trackingDependencies(listOf(passwordService)), locale) { scene ->
+                    openTracking(scene, MR.strings.login.localized(locale))
+                    clickTracking(scene, MR.strings.action_cancel.localized(locale))
+                    coVerify(exactly = 0) { passwordService.login(any(), any()) }
+                    openTracking(scene, MR.strings.login.localized(locale))
+                    setText(scene, 0, MR.strings.username.localized(locale), "user-10")
+                    setText(scene, 1, MR.strings.password.localized(locale), "pass-10")
+                    clickTracking(scene, MR.strings.login.localized(locale))
+                    coVerify(exactly = 1) { passwordService.login("user-10", "pass-10") }
+                }
+
+                val apiService = trackingService(11, "API provider", TrackerAuthentication.API_KEY, false)
+                withTrackingScene(TrackingSettingsScreen(), trackingDependencies(listOf(apiService)), locale) { scene ->
+                    openTracking(scene, MR.strings.login.localized(locale))
+                    setText(scene, 0, MR.strings.desktop_tracking_api_key.localized(locale), "api-key-11")
+                    clickTracking(scene, MR.strings.login.localized(locale))
+                    coVerify(exactly = 1) { apiService.loginWithApiKey("api-key-11") }
+                }
+
+                val logoutService = trackingService(12, "Logout provider", TrackerAuthentication.OAUTH, true)
+                withTrackingScene(TrackingSettingsScreen(), trackingDependencies(listOf(logoutService)), locale) { scene ->
+                    openTracking(scene, MR.strings.logout.localized(locale))
+                    clickTracking(scene, MR.strings.action_cancel.localized(locale))
+                    coVerify(exactly = 0) { logoutService.logout() }
+                    openTracking(scene, MR.strings.logout.localized(locale))
+                    clickTracking(scene, MR.strings.logout.localized(locale))
+                    coVerify(exactly = 1) { logoutService.logout() }
+                }
+
+                val track = trackingTrack(13, "Bound title")
+                val boundService = trackingService(13, "Bound provider", TrackerAuthentication.OAUTH, true)
+                coEvery { boundService.update(track, any()) } returns track
+                val boundRepository = trackingRepository(listOf(track))
+                val boundDependencies = trackingDependencies(listOf(boundService), repository = boundRepository)
+                withTrackingScene(TrackingSettingsScreen(42, mangaTitle, 12), boundDependencies, locale) { scene ->
+                    openTracking(scene, MR.strings.desktop_tracking_manage.localized(locale))
+                    clickTracking(scene, MR.strings.desktop_tracking_update.localized(locale))
+                    coVerify(exactly = 1) { boundService.update(track, TrackEdit(1, 8.0, 2.0)) }
+                    coVerify(exactly = 1) { boundRepository.insert(track) }
+                }
+                withTrackingScene(TrackingSettingsScreen(42, mangaTitle, 12), boundDependencies, locale) { scene ->
+                    openTracking(scene, MR.strings.desktop_tracking_manage.localized(locale))
+                    openTracking(scene, MR.strings.action_remove.localized(locale))
+                    clickTracking(scene, MR.strings.action_cancel.localized(locale))
+                    coVerify(exactly = 0) { boundRepository.delete(any(), any()) }
+                    openTracking(scene, MR.strings.action_remove.localized(locale))
+                    clickTracking(scene, MR.strings.action_remove.localized(locale))
+                    coVerify(exactly = 1) { boundRepository.delete(42, 13) }
+                }
+
+                val result = TrackSearchResult(77, "Search result", 20)
+                val resultTrack = trackingTrack(14, result.title)
+                val searchService = trackingService(14, "Search provider", TrackerAuthentication.OAUTH, true, searchResults = listOf(result))
+                coEvery { searchService.bind(42, result) } returns resultTrack
+                val searchRepository = trackingRepository(emptyList())
+                val searchDependencies = trackingDependencies(listOf(searchService), repository = searchRepository)
+                withTrackingScene(TrackingSettingsScreen(42, mangaTitle, 12), searchDependencies, locale) { scene ->
+                    openTracking(scene, MR.strings.desktop_tracking_manage.localized(locale))
+                    searchFor(scene, locale, "query")
+                    clickTracking(scene, MR.strings.action_close.localized(locale))
+                    coVerify(exactly = 0) { searchService.bind(any(), any()) }
+                    openTracking(scene, MR.strings.desktop_tracking_manage.localized(locale))
+                    searchFor(scene, locale, "query")
+                    clickTracking(scene, MR.strings.action_track.localized(locale))
+                    coVerify(exactly = 1) { searchService.bind(42, result) }
+                    coVerify(exactly = 1) { searchRepository.insert(resultTrack) }
+                }
+
+                listOf(
+                    MR.strings.desktop_tracking_search_failed,
+                    MR.strings.desktop_tracking_bind_failed,
+                    MR.strings.desktop_tracking_update_failed,
+                ).forEachIndexed { operation, expected ->
+                    val failedTrack = trackingTrack(20L + operation, "Failure track")
+                    val failedResult = TrackSearchResult(20L + operation, "Failure result", 12)
+                    val failedService = trackingService(
+                        20L + operation, "Failure provider", TrackerAuthentication.OAUTH, true,
+                        searchResults = listOf(failedResult),
+                    )
+                    val failedRepository = trackingRepository(if (operation == 2) listOf(failedTrack) else emptyList())
+                    when (operation) {
+                        0 -> coEvery { failedService.search(any()) } throws IllegalStateException()
+                        1 -> {
+                            coEvery { failedService.bind(any(), any()) } returns failedTrack
+                            coEvery { failedRepository.insert(any()) } throws IllegalStateException()
+                        }
+                        else -> coEvery { failedService.update(any(), any()) } throws IllegalStateException()
+                    }
+                    val dependencies = trackingDependencies(listOf(failedService), repository = failedRepository)
+                    withTrackingScene(TrackingSettingsScreen(42, mangaTitle, 12), dependencies, locale) { scene ->
+                        openTracking(scene, MR.strings.desktop_tracking_manage.localized(locale))
+                        if (operation < 2) searchFor(scene, locale, "failure")
+                        if (operation == 1) clickTracking(scene, MR.strings.action_track.localized(locale))
+                        if (operation == 2) clickTracking(scene, MR.strings.desktop_tracking_update.localized(locale))
+                        assertCopy(snapshot(scene).text, expected.localized(locale))
+                    }
                 }
             }
         } finally {
@@ -1408,6 +1519,35 @@ class DesktopSettingsResourceIdentityTest {
         }
     }
 
+    private suspend fun withTrackingScene(
+        screen: TrackingSettingsScreen,
+        dependencies: DesktopUiDependencies,
+        locale: Locale,
+        block: suspend (ImageComposeScene) -> Unit,
+    ) {
+        val scene = trackingScene(screen, dependencies, locale)
+        try {
+            block(scene)
+        } finally {
+            scene.close()
+        }
+    }
+
+    private suspend fun openTracking(scene: ImageComposeScene, label: String) {
+        snapshot(scene)
+        clickTracking(scene, label)
+    }
+
+    private suspend fun clickTracking(scene: ImageComposeScene, label: String) {
+        click(scene, label)
+        snapshot(scene)
+    }
+
+    private suspend fun searchFor(scene: ImageComposeScene, locale: Locale, query: String) {
+        setText(scene, 0, MR.strings.action_search_hint.localized(locale), query)
+        clickTracking(scene, MR.strings.action_search.localized(locale))
+    }
+
     private fun trackingService(
         id: Long,
         name: String,
@@ -1429,11 +1569,19 @@ class DesktopSettingsResourceIdentityTest {
         every { scores } returns emptyList()
     }
 
-    private fun trackingDependencies(services: List<TrackerService>, tracks: List<Track> = emptyList()) =
+    private fun trackingRepository(tracks: List<Track>) = mockk<TrackRepository>(relaxed = true) {
+        coEvery { getTracksByMangaId(any()) } returns tracks
+    }
+
+    private fun trackingDependencies(
+        services: List<TrackerService>,
+        tracks: List<Track> = emptyList(),
+        repository: TrackRepository = trackingRepository(tracks),
+    ) =
         mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns DesktopAppPreferences(InMemoryPreferenceStore())
             every { trackerServiceRegistry } returns object : TrackerServiceRegistry { override val services = services }
-            every { trackRepository } returns mockk(relaxed = true) { coEvery { getTracksByMangaId(any()) } returns tracks }
+            every { trackRepository } returns repository
         }
 
     private fun trackingTrack(trackerId: Long, title: String) = Track(
