@@ -24,7 +24,7 @@ resume-order: complete the active Task 5B child plan through Task 20, then conti
 
 如果后续需要升级原版基线，必须先更新 `original-ref`，重新核验受影响的原版实现与 fixture，再更新计划和 parity evidence；不得让移动中的 `main` 静默改变任务语义。
 
-当前系统集成、隐私与应用更新施工由 `active-child-plan` 承载。恢复执行时必须先完成该子计划至 Task 16，再回到本修正版父计划的首个未完成 Task；保留的 `original-roadmap` 仅供历史对照，不得重新作为可执行权威入口。
+当前设置、外观、无障碍与许可施工由 `active-child-plan` 承载。恢复执行时必须先完成父 Task 5B 子计划至子 Task 20，再回到本修正版父计划的 Task 6；保留的 `original-roadmap` 仅供历史对照，不得重新作为可执行权威入口。
 
 **Goal:** 以固定原版 Mihon 的成熟行为、流程和工程边界为权威契约，消除 Mihon Desktop 当初为快速完成功能而产生的非平台必要简化与重复实现；将适合共用的规则迁入当前分支 shared core，让当前 Android 构建版和 Desktop JVM 实现共同消费，同时保持全部 Desktop 独有产品能力零回退。
 
@@ -479,7 +479,7 @@ Windows `0.11.14.43.84e386c` 固定 EXE 与 macOS `0.11.14.44.84e386c` 部署应
 
 **Executable child plan:** `docs/superpowers/plans/2026-07-22-mihon-desktop-settings-accessibility.md`
 
-**Current progress:** 固定原版 ID 88/90/91/94 与当前 shared/Android/Desktop 的两份只读盘点已完成。子计划初审 `0/7/1`、唯一修复复审 `0/2/0` 后，按门禁只重规划剩余的 palette 模块迁移顺序/可见性风险：Base 在第一批先迁移，每批提供可独立编译的跨模块 API，最后统一 selector；其余 finding 均已关闭。项目 guard 已识别并通过 26 个内部子 Task 正文；状态只以该子计划 checklist 和本父 roadmap 阶段摘要为准，不恢复 Comet/OpenSpec 或旧 progress 状态。下一项为父 Task 5B / 子 Task 1。
+**Current progress:** 固定原版 ID 88/90/91/94 与当前 shared/Android/Desktop 的两份只读盘点已完成。子计划初审 `0/7/1`、唯一修复复审 `0/2/0` 后，按门禁只重规划剩余的 palette 模块迁移顺序/可见性风险：Base 在第一批先迁移，每批提供可独立编译的跨模块 API，最后统一 selector；其余 finding 均已关闭。项目 guard 已识别并通过 26 个内部子 Task 正文。子 Task 1 由实现 `c10e22a83`、唯一修复 `d0a069bde` 完成 fixed-main provenance 与 exact fixture 契约，复审 APPROVED `0/0/0`，focused `38/38`、严格 JSON、Spotless 与范围门禁通过，manifest 保持 `NOT_STARTED`。状态只以该子计划 checklist 和本父 roadmap 阶段摘要为准，不恢复 Comet/OpenSpec 或旧 progress 状态。下一项为父 Task 5B / 子 Task 2。
 
 **Files:**
 - Modify: 当前分支 `app/src/main/java/eu/kanade/presentation/more/settings/`

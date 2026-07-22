@@ -42,7 +42,7 @@ status-source: this-file
 
 ## 执行状态
 
-- [ ] Task 1：固定原版 provenance 与行为 fixture
+- [x] Task 1：固定原版 provenance 与行为 fixture
 - [ ] Task 2：共享设置搜索与 breadcrumb 契约
 - [ ] Task 3：当前 Android consumer 消费共享搜索契约
 - [ ] Task 4A：Desktop 入口/基础设置 i18n 同源化
@@ -116,6 +116,8 @@ status-source: this-file
 1. RED：交换 fixed-main 与当前 consumer/shim 路径、修改 blob、九页顺序/过滤/default/首许可规则时失败。
 2. GREEN：用固定提交真实 blob/path/symbol 建最小 fixture；ID 88 明确“无专用页面”。
 3. 不提前升级 manifest `NOT_STARTED`；运行 provenance/JSON/Spotless/range gate。
+
+**Review status（已完成）：** 初始实现 `c10e22a83` 固定 ID 88/90/91/94 的 15 条真实 fixed-main authority；首审以 Critical/Important/Minor `0/2/0` 指出 ID91 未绑定未知枚举回退与废弃主题 picker 的实际 authority，以及 fixture schema/mutation 仍可接受自创字段、缺失过滤键、shim 或虚构 AccessibilityScreen。唯一修复 `d0a069bde` 增补 `PreferenceStore.getEnum` blob `2016f3d…` 与 `AppThemePreferenceWidget.filterNot` blob `5e3f76e…`，并对所有嵌套对象执行 exact-key 校验；RED 分别为 schema/mutation `6 tests/5 failed`、authority 缺链 `6 tests/1 failed`，GREEN 为 provenance `6/6`、既有 product contract `32/32`。严格 UTF-8 JSON、Spotless、diff/range gate 通过，累计 `3 files/264 touched`，manifest 与产品代码未改；唯一修复复审 APPROVED，Critical/Important/Minor `0/0/0`。下一项为父 Task 5B / 子 Task 2。
 
 ### Task 2：共享设置搜索与 breadcrumb 契约
 
