@@ -53,7 +53,7 @@ status-source: this-file
 - [x] Task 4E：Desktop Backup picker 与 production feedback wiring
 - [x] Task 4F：Desktop Backup typed preview reason production contract
 - [x] Task 4G：Desktop Advanced 设置 i18n 同源化
-- [ ] Task 4H：Desktop Security 设置 i18n 同源化与 locale 隔离
+- [x] Task 4H：Desktop Security 设置 i18n 同源化与 locale 隔离
 - [ ] Task 4I：Desktop About/扩展/Tracking i18n 同源化
 - [ ] Task 5：Desktop 设置 catalog、搜索 Screen 与入口
 - [ ] Task 6：Desktop 标题 anchor 核心与基础页面
@@ -330,6 +330,8 @@ status-source: this-file
 **Replan evidence:** 补齐 Security 的 `zh-rCN` 后，既有 `SecuritySettingsWiringTest` 不再走英文 fallback，暴露 4 个硬编码英文 capability 断言；若在该未隔离测试中临时切换进程 Locale，会重新制造默认并行竞态。将断言改为当前 Locale 的 MR identity 需要累计约 `4 files/305 touched`，仍低于项目 400 行硬上限，因此把本 Task 估算调整为 310 行，不为 5 行差额拆出无独立产品风险的子 Task，也不删除覆盖或压缩格式。
 
 **Repair replan evidence:** 首审 `0/2/0` 证明 credential 字段 fallback 与 capability 同屏无序包含无法杀死 identity 对调。唯一修复需要按输入节点绑定 current/new/confirm，并以三个真实 Security Screen 配置分别覆盖 native/telemetry supported 与 unsupported、widget provider supported、unsupported+updates supported、两者 unsupported；自然格式预计累计 `4 files/369–389 touched`。这些状态共享同一 production Screen/capability 契约，不形成可独立交付的产品风险，故把本 Task 上限调整为 400 行并在唯一修复复审中一次闭合。
+
+**Review status（已完成）：** 实现 `3ee98f9dd` 将 Security 标题、返回、保存、取消与隐藏通知内容切换到 fixed-main 共享 MR，并补齐 30 个 Desktop credential/privacy/window capability 中文状态；真实 Screen RED 首先精确暴露中文仍显示 `Security`，GREEN 后 Identity `7/7`、默认并行回归 `103/103`。首审 `0/2/0` 指出输入框 fallback 无法杀死 current/new/confirm identity 错接，且 native/telemetry/widget 同屏无序包含无法杀死 capability 分支互换。唯一修复 `bc4aa0f6d` 删除 fallback、按真实 editable 节点绑定三类口令字段，并用逐 capability 的 present/absent 场景锁定三组 widget 状态；field、native/telemetry、widget 三类 mutation 均精确 RED，production 相对实现提交零差异。唯一复审 APPROVED `0/0/0`，Identity `7/7`、默认并行 `103/103`、Spotless、diff、guard 通过；产品/测试/资源累计 `4 files/353 touched`，低于 400，用户脏文件零混入。下一项为父 Task 5B / 子 Task 4I。
 
 ### Task 4I：Desktop About/扩展/Tracking i18n 同源化
 
