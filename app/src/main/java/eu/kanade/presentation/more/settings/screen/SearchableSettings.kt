@@ -10,6 +10,7 @@ import eu.kanade.presentation.more.settings.PreferenceScaffold
 import eu.kanade.presentation.util.LocalBackPress
 import mihon.domain.settings.SearchablePreference
 import mihon.domain.settings.SearchableSettingsScreen
+import mihon.domain.settings.SearchablePreference.Entry as SearchableEntry
 
 interface SearchableSettings : Screen {
 
@@ -47,13 +48,11 @@ interface SearchableSettings : Screen {
 internal fun SearchableSettings.toSearchableSettingsScreen(
     title: String,
     preferences: List<Preference>,
-): SearchableSettingsScreen<Screen> {
-    return SearchableSettingsScreen(
-        route = this,
-        title = title,
-        preferences = preferences.map(Preference::toSearchablePreference),
-    )
-}
+): SearchableSettingsScreen<Screen> = SearchableSettingsScreen(
+    route = this,
+    title = title,
+    preferences = preferences.map(Preference::toSearchablePreference),
+)
 
 private fun Preference.toSearchablePreference(): SearchablePreference = when (this) {
     is Preference.PreferenceGroup -> SearchablePreference.Group(
@@ -64,15 +63,13 @@ private fun Preference.toSearchablePreference(): SearchablePreference = when (th
     is Preference.PreferenceItem<*, *> -> toSearchableEntry()
 }
 
-private fun Preference.PreferenceItem<*, *>.toSearchableEntry(): SearchablePreference.Entry {
-    return SearchablePreference.Entry(
-        title = title,
-        summary = subtitle,
-        enabled = enabled,
-        type = if (this is Preference.PreferenceItem.InfoPreference) {
-            SearchablePreference.EntryType.Info
-        } else {
-            SearchablePreference.EntryType.Standard
-        },
-    )
-}
+private fun Preference.PreferenceItem<*, *>.toSearchableEntry(): SearchableEntry = SearchableEntry(
+    title = title,
+    summary = subtitle,
+    enabled = enabled,
+    type = if (this is Preference.PreferenceItem.InfoPreference) {
+        SearchablePreference.EntryType.Info
+    } else {
+        SearchablePreference.EntryType.Standard
+    },
+)

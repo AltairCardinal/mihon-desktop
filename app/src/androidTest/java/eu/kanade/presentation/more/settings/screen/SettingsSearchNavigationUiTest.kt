@@ -1,10 +1,21 @@
 package eu.kanade.presentation.more.settings.screen
 
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.Navigator
@@ -14,18 +25,16 @@ import eu.kanade.presentation.theme.TachiyomiPreviewTheme
 import eu.kanade.presentation.util.LocalBackPress
 import mihon.domain.settings.SearchablePreference
 import mihon.domain.settings.SearchableSettingsScreen
+import mihon.domain.settings.SettingsLayoutDirection
+import mihon.domain.settings.SettingsSearchPolicy
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertSame
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import tachiyomi.i18n.MR
-import tachiyomi.presentation.core.i18n.stringResource
 
 @RunWith(AndroidJUnit4::class)
 class SettingsSearchNavigationUiTest {
-
     @get:Rule
     val composeRule = createComposeRule()
 
@@ -33,72 +42,94 @@ class SettingsSearchNavigationUiTest {
     fun tearDown() = run { SearchableSettings.highlightKey = null }
 
     @Test
-    fun searchResultCallerUsesSharedResultAndSetsAnchorBeforeReplacingRoute() {
+    fun searchResultDefersIndexAndUsesSharedPolicyInRtl() {
         val destination = SettingsSearchScreen()
-        val screen = SearchableSettingsScreen<Screen>(
-            route = destination,
-            title = "Appearance",
-            preferences = listOf(SearchablePreference.Entry("Duplicate")),
-        )
+        val entry = SearchablePreference.Group("Group", listOf(SearchablePreference.Entry("Match")))
+        val screen = SearchableSettingsScreen<Screen>(destination, "Appearance", listOf(entry))
+        var query by mutableStateOf("")
+        var indexCalls = 0
+        var firstQueryCalls = 0
+        var direction: SettingsLayoutDirection? = null
         var replaced: Screen? = null
 
+        @androidx.compose.runtime.Composable
+        fun index() = listOf(screen).also { indexCalls++ }
         composeRule.setContent {
             TachiyomiPreviewTheme {
-                SearchResult(listOf(screen), searchKey = "duplicate") { route ->
-                    assertEquals("Duplicate", SearchableSettings.highlightKey)
-                    replaced = route
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                    SearchResult(
+                        indexProvider = ::index,
+                        searchKey = query,
+                        searchPolicy = { index, key, layout ->
+                            SettingsSearchPolicy.search(index, key, layout).also { direction = layout }
+                        },
+                        replace = {
+                            assertEquals("Match", SearchableSettings.highlightKey)
+                            replaced = it
+                        },
+                    )
                 }
             }
         }
-        composeRule.onNodeWithText("Duplicate").performClick()
-
-        composeRule.runOnIdle { assertSame(destination, replaced) }
+        composeRule.runOnIdle {
+            assertEquals(0, indexCalls)
+            query = "absent"
+        }
+        composeRule.onNodeWithText("No results found").assertIsDisplayed()
+        composeRule.runOnIdle {
+            assertEquals(SettingsLayoutDirection.Rtl, direction)
+            firstQueryCalls = indexCalls
+            query = "match"
+        }
+        composeRule.onNodeWithText("Group < Appearance").assertIsDisplayed()
+        composeRule.onNodeWithText("Match").performClick()
+        composeRule.runOnIdle {
+            assertEquals(true, indexCalls > firstQueryCalls)
+            assertEquals(destination, replaced)
+        }
     }
 
     @Test
-    fun preferenceScreenCallerConsumesHighlightOnce() {
+    fun preferenceScreenWaitsThenScrollsToFirstDuplicate() {
+        fun item(title: String) = Preference.PreferenceItem.TextPreference(title)
+        val items = buildList {
+            repeat(8) { add(item("Before $it")) }
+            add(item("Duplicate"))
+            add(item("After first"))
+            repeat(12) { add(item("Between $it")) }
+            add(item("Duplicate"))
+            add(item("After second"))
+        }
         SearchableSettings.highlightKey = "Duplicate"
-
-        composeRule.setContent {
-            TachiyomiPreviewTheme {
-                PreferenceScreen(listOf(Preference.PreferenceItem.TextPreference("Duplicate")))
-            }
-        }
-
+        composeRule.mainClock.autoAdvance = false
+        composeRule.setContent { TachiyomiPreviewTheme { PreferenceScreen(items, Modifier.height(180.dp)) } }
+        composeRule.waitForIdle()
+        composeRule.mainClock.advanceTimeBy(499)
+        composeRule.onAllNodesWithText("After first").assertCountEquals(0)
+        composeRule.mainClock.advanceTimeBy(1)
+        composeRule.mainClock.autoAdvance = true
         composeRule.waitUntil(5_000) { SearchableSettings.highlightKey == null }
+        composeRule.onNodeWithText("After first").assertIsDisplayed()
+        composeRule.onAllNodesWithText("After second").assertCountEquals(0)
     }
 
     @Test
-    fun singlePaneSearchEntryPushesSearchScreen() {
-        val navigator = showSettingsMain(twoPane = false)
-
-        clickSearch()
-
-        composeRule.runOnIdle {
-            assertEquals(2, navigator.items.size)
-            assertEquals(SettingsSearchScreen::class, navigator.lastItem::class)
-        }
+    fun preferenceScreenClearsMissingHighlight() {
+        SearchableSettings.highlightKey = "Missing"
+        val item = Preference.PreferenceItem.TextPreference("Present")
+        composeRule.setContent { TachiyomiPreviewTheme { PreferenceScreen(listOf(item)) } }
+        composeRule.waitUntil(1_000) { SearchableSettings.highlightKey == null }
     }
 
     @Test
-    fun twoPaneSearchEntryReplacesStackWithSearchScreen() {
-        val navigator = showSettingsMain(twoPane = true)
+    fun singlePaneSearchEntryPushesSearchScreen() = assertNavigation(false, 2)
 
-        clickSearch()
-
-        composeRule.runOnIdle {
-            assertEquals(1, navigator.items.size)
-            assertEquals(SettingsSearchScreen::class, navigator.lastItem::class)
-        }
-    }
-
-    private lateinit var searchLabel: String
-
-    private fun showSettingsMain(twoPane: Boolean): Navigator {
+    @Test
+    fun twoPaneSearchEntryReplacesStackWithSearchScreen() = assertNavigation(true, 1)
+    private fun assertNavigation(twoPane: Boolean, expectedSize: Int) {
         lateinit var navigator: Navigator
         composeRule.setContent {
             TachiyomiPreviewTheme {
-                searchLabel = stringResource(MR.strings.action_search)
                 CompositionLocalProvider(LocalBackPress provides {}) {
                     Navigator(SettingsAppearanceScreen) {
                         navigator = it
@@ -107,9 +138,10 @@ class SettingsSearchNavigationUiTest {
                 }
             }
         }
-        composeRule.waitForIdle()
-        return navigator
+        composeRule.onNodeWithContentDescription("Search").performClick()
+        composeRule.runOnIdle {
+            assertEquals(expectedSize, navigator.items.size)
+            assertEquals(SettingsSearchScreen::class, navigator.lastItem::class)
+        }
     }
-
-    private fun clickSearch() = composeRule.onNodeWithContentDescription(searchLabel).performClick()
 }

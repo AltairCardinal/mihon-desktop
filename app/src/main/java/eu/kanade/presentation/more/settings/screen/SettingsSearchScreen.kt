@@ -69,7 +69,6 @@ class SettingsSearchScreen : Screen() {
         val focusManager = LocalFocusManager.current
         val focusRequester = remember { FocusRequester() }
         val listState = rememberLazyListState()
-        val index = getIndex()
 
         // Hide keyboard on change screen
         DisposableEffect(Unit) {
@@ -145,7 +144,7 @@ class SettingsSearchScreen : Screen() {
             },
         ) { contentPadding ->
             SearchResult(
-                screens = index,
+                indexProvider = ::getIndex,
                 searchKey = textFieldState.text.toString(),
                 listState = listState,
                 contentPadding = contentPadding,
@@ -157,14 +156,20 @@ class SettingsSearchScreen : Screen() {
 
 @Composable
 internal fun SearchResult(
-    screens: List<SearchableSettingsScreen<VoyagerScreen>>,
+    indexProvider: @Composable () -> List<SearchableSettingsScreen<VoyagerScreen>>,
     searchKey: String,
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
     contentPadding: PaddingValues = PaddingValues(),
+    searchPolicy: (
+        List<SearchableSettingsScreen<VoyagerScreen>>,
+        String,
+        SettingsLayoutDirection,
+    ) -> List<SettingsSearchResult<VoyagerScreen>> = ::searchSettings,
     replace: (VoyagerScreen) -> Unit,
 ) {
     if (searchKey.isEmpty()) return
+    val screens = indexProvider()
 
     val layoutDirection = if (LocalLayoutDirection.current == LayoutDirection.Ltr) {
         SettingsLayoutDirection.Ltr
@@ -173,7 +178,7 @@ internal fun SearchResult(
     }
 
     val result by produceState<List<SettingsSearchResult<VoyagerScreen>>?>(initialValue = null, searchKey) {
-        value = searchSettings(screens, searchKey, layoutDirection)
+        value = searchPolicy(screens, searchKey, layoutDirection)
     }
 
     Crossfade(
