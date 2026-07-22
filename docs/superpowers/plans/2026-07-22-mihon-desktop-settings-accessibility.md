@@ -57,7 +57,7 @@ status-source: this-file
 - [x] Task 4I：Desktop About 与 updater/诊断 i18n 同源化
 - [x] Task 4J：Desktop Extension repository i18n 同源化
 - [x] Task 4K：Desktop Tracking typed message 与 formatter identity
-- [ ] Task 4L：Desktop Tracking UI/dialog i18n 同源化
+- [x] Task 4L：Desktop Tracking UI/dialog i18n 同源化
 - [ ] Task 4M：Desktop Tracking 动作副作用与失败 fallback identity
 - [ ] Task 5：Desktop 设置 catalog、搜索 Screen 与入口
 - [ ] Task 6：Desktop 标题 anchor 核心与基础页面
@@ -412,6 +412,8 @@ status-source: this-file
 1. RED：两种顶层模式、四种 service 状态、username/password/API-key/OAuth、logout/unbind、search empty/results、Status/Score/Chapter editor 的渲染 identity/参数错误时失败；AutoSync 测试不得修改未隔离的进程 Locale。
 2. GREEN：复用 fixed-main tracking/login/logout/search/status/score/track-delete/action identity；Desktop source-managed/OAuth/browser/bind/update copy 使用准确 `desktop_*`；外部 service/status/URL/unavailable reason 原样保留。
 3. 不改 selectedId/confirmation、OAuth、tracker/repository wiring、按钮 enabled 或章节边界；本 Task 只关闭 UI/resource 与状态渲染，动作副作用和失败 fallback 的真实链由 4M 独立验证；运行 Identity/AutoSync/ScreenModel/Tracking integration/navigation/smoke、Spotless/range gate。
+
+**Review status（已完成）：** 实现 `3c88a436` 将 Tracking settings/manga 两模式、service 四态、三种认证表面、logout/unbind、search 与 bound editor UI 接入 fixed-main/shared 或准确 Desktop MR；首审 `0/2/0` 指出 AutoSync 测试污染全局 Locale，以及同屏存在性断言不足以保护真实动作/fallback。完整无损修复会达到 `403 touched`，按范围门禁停止并重规划：本 Task 只关闭渲染 identity/Locale 隔离，动作副作用与三类 fallback 由 4M 关闭。修复 `3aa49af05` 删除未隔离 Locale 切换与资源枚举自证，真实 Screen 的 API-key/OAuth field 和 manga/service 参数互换均精确 RED；复审 APPROVED `0/0/0`，focused `13/13`、指定六组 `70/70`、Spotless、diff 与 21-Task guard 通过，累计 `5 files/375 touched`，4K formatter/contract 与 production/resources 在修复提交中零差异。额外全模块中的两个 `WindowPrivacyWiringTest` 失败可在其隔离单类独立复现，且本 Task 无 privacy/security/Locale 依赖差异，记录为范围外既有失败。下一项为父 Task 5B / 子 Task 4M。
 
 ### Task 4M：Desktop Tracking 动作副作用与失败 fallback identity
 
