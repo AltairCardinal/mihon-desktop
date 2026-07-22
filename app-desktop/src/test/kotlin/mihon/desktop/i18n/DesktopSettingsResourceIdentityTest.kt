@@ -292,6 +292,45 @@ class DesktopSettingsResourceIdentityTest {
                     DesktopUpdateState.Cancelled(null) to MR.strings.desktop_update_cancelled.localized(locale),
                     DesktopUpdateState.ManualOnly(release.releaseLink) to MR.strings.desktop_update_manual.localized(locale),
                 ).forEach { (state, expected) -> assertEquals(expected, state.presentation().message) }
+
+                var openMode = 0
+                val manualController = DesktopUpdateController(
+                    { GetApplicationRelease.Result.NewUpdate(release) },
+                    { _, _ -> mihon.desktop.update.ManualOnly(release.releaseLink) },
+                    { _, _ -> error("unused") },
+                    { _, _ -> error("unused") },
+                )
+                val manualModel = DesktopUpdateScreenModel(
+                    manualController,
+                    this,
+                    openUrl = {
+                        when (openMode) {
+                            0 -> false
+                            1 -> error("browser failed")
+                            else -> true
+                        }
+                    },
+                )
+                try {
+                    assertTrue(manualModel.intent(mihon.desktop.ui.settings.DesktopUpdateIntent.CHECK))
+                    manualModel.operationJob!!.join()
+                    assertInstanceOf(DesktopUpdateState.UpdateAvailable::class.java, manualModel.state.value)
+                    assertTrue(manualModel.intent(mihon.desktop.ui.settings.DesktopUpdateIntent.DOWNLOAD))
+                    manualModel.operationJob!!.join()
+                    assertEquals(DesktopUpdateState.ManualOnly(release.releaseLink), manualModel.state.value)
+
+                    val expected = MR.strings.desktop_update_open_failed.localized(locale, release.releaseLink)
+                    assertTrue(manualModel.intent(mihon.desktop.ui.settings.DesktopUpdateIntent.MANUAL))
+                    assertEquals(expected, manualModel.feedback.value)
+                    openMode = 1
+                    assertTrue(manualModel.intent(mihon.desktop.ui.settings.DesktopUpdateIntent.MANUAL))
+                    assertEquals(expected, manualModel.feedback.value)
+                    openMode = 2
+                    assertTrue(manualModel.intent(mihon.desktop.ui.settings.DesktopUpdateIntent.MANUAL))
+                    assertEquals(null, manualModel.feedback.value)
+                } finally {
+                    manualModel.closeAndJoin()
+                }
             }
         } finally {
             Locale.setDefault(previousLocale)
