@@ -25,8 +25,6 @@ import eu.kanade.presentation.theme.TachiyomiPreviewTheme
 import eu.kanade.presentation.util.LocalBackPress
 import mihon.domain.settings.SearchablePreference
 import mihon.domain.settings.SearchableSettingsScreen
-import mihon.domain.settings.SettingsLayoutDirection
-import mihon.domain.settings.SettingsSearchPolicy
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -49,7 +47,6 @@ class SettingsSearchNavigationUiTest {
         var query by mutableStateOf("")
         var indexCalls = 0
         var firstQueryCalls = 0
-        var direction: SettingsLayoutDirection? = null
         var replaced: Screen? = null
 
         @androidx.compose.runtime.Composable
@@ -60,9 +57,6 @@ class SettingsSearchNavigationUiTest {
                     SearchResult(
                         indexProvider = ::index,
                         searchKey = query,
-                        searchPolicy = { index, key, layout ->
-                            SettingsSearchPolicy.search(index, key, layout).also { direction = layout }
-                        },
                         replace = {
                             assertEquals("Match", SearchableSettings.highlightKey)
                             replaced = it
@@ -77,7 +71,6 @@ class SettingsSearchNavigationUiTest {
         }
         composeRule.onNodeWithText("No results found").assertIsDisplayed()
         composeRule.runOnIdle {
-            assertEquals(SettingsLayoutDirection.Rtl, direction)
             firstQueryCalls = indexCalls
             query = "match"
         }

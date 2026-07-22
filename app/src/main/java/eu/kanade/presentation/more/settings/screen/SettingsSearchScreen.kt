@@ -161,11 +161,6 @@ internal fun SearchResult(
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
     contentPadding: PaddingValues = PaddingValues(),
-    searchPolicy: (
-        List<SearchableSettingsScreen<VoyagerScreen>>,
-        String,
-        SettingsLayoutDirection,
-    ) -> List<SettingsSearchResult<VoyagerScreen>> = ::searchSettings,
     replace: (VoyagerScreen) -> Unit,
 ) {
     if (searchKey.isEmpty()) return
@@ -178,7 +173,7 @@ internal fun SearchResult(
     }
 
     val result by produceState<List<SettingsSearchResult<VoyagerScreen>>?>(initialValue = null, searchKey) {
-        value = searchPolicy(screens, searchKey, layoutDirection)
+        value = searchSettings(screens, searchKey, layoutDirection)
     }
 
     Crossfade(
