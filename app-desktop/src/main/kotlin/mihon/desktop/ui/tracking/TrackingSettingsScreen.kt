@@ -86,10 +86,18 @@ data class TrackingSettingsScreen(
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text(if (mangaId == null) "Tracking services" else "Manga tracking") },
+                    title = {
+                        Text(
+                            if (mangaId == null) {
+                                MR.strings.pref_category_tracking.localized()
+                            } else {
+                                MR.strings.manga_tracking_tab.localized()
+                            },
+                        )
+                    },
                     navigationIcon = {
                         IconButton(onClick = navigator::pop) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, MR.strings.action_bar_up_description.localized())
                         }
                     },
                 )
@@ -104,7 +112,7 @@ data class TrackingSettingsScreen(
                     when {
                         state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                         state.services.isEmpty() && state.error == null -> Text(
-                            "No tracking services are available for this build.",
+                            MR.strings.desktop_tracking_empty.localized(),
                             modifier = Modifier.align(Alignment.Center),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -129,11 +137,16 @@ data class TrackingSettingsScreen(
                                         Text(
                                             profile.unavailableReason
                                                 ?: when {
-                                                    item.track != null -> "Bound to ${item.track.title}"
-                                                    sourceManaged && profile.loggedIn -> "Available through configured source"
+                                                    item.track != null -> MR.strings.desktop_tracking_bound_to.localized(
+                                                        Locale.getDefault(),
+                                                        item.track.title,
+                                                    )
+                                                    sourceManaged && profile.loggedIn -> MR.strings.desktop_tracking_source_available.localized()
                                                     profile.loggedIn ->
-                                                        "Logged in${profile.username?.let { " as $it" }.orEmpty()} · Not bound"
-                                                    else -> "Not logged in"
+                                                        profile.username?.let {
+                                                            MR.strings.desktop_tracking_logged_in_as_not_bound.localized(Locale.getDefault(), it)
+                                                        } ?: MR.strings.desktop_tracking_logged_in_not_bound.localized()
+                                                    else -> MR.strings.desktop_tracking_not_logged_in.localized()
                                                 },
                                         )
                                     },
@@ -150,10 +163,10 @@ data class TrackingSettingsScreen(
                                         ) {
                                             Text(
                                                 when {
-                                                    sourceManaged && mangaId == null -> "Source managed"
-                                                    profile.loggedIn && mangaId == null -> "Logout"
-                                                    profile.loggedIn -> "Manage"
-                                                    else -> "Login"
+                                                    sourceManaged && mangaId == null -> MR.strings.desktop_tracking_source_managed.localized()
+                                                    profile.loggedIn && mangaId == null -> MR.strings.logout.localized()
+                                                    profile.loggedIn -> MR.strings.desktop_tracking_manage.localized()
+                                                    else -> MR.strings.login.localized()
                                                 },
                                             )
                                         }
@@ -225,9 +238,18 @@ data class TrackingSettingsScreen(
                             }.onFailure { model.reportError(it, request.failure) }
                             selectedId = null
                         }
-                    }) { Text("Confirm") }
+                    }) {
+                        Text(
+                            when (request) {
+                                is TrackingConfirmation.Logout -> MR.strings.logout.localized()
+                                is TrackingConfirmation.Unbind -> MR.strings.action_remove.localized()
+                            },
+                        )
+                    }
                 },
-                dismissButton = { TextButton(onClick = { confirmation = null }) { Text("Cancel") } },
+                dismissButton = {
+                    TextButton(onClick = { confirmation = null }) { Text(MR.strings.action_cancel.localized()) }
+                },
             )
         }
     }
@@ -265,8 +287,8 @@ internal fun TrackingAutoSyncPreference(preferences: DesktopAppPreferences) {
         initial = preferences.autoUpdateTrack.get(),
     )
     SwitchSettingsItem(
-        title = "Automatically update tracking",
-        subtitle = "Update tracking services when a chapter is completed",
+        title = MR.strings.pref_auto_update_manga_sync.localized(),
+        subtitle = MR.strings.desktop_tracking_auto_update_summary.localized(),
         checked = autoUpdateTrack,
         onCheckedChange = preferences.autoUpdateTrack::set,
     )
@@ -292,14 +314,14 @@ private sealed interface TrackingConfirmation {
     val failure: TrackingMessage
 
     data class Logout(override val trackerId: Long, val serviceName: String) : TrackingConfirmation {
-        override val title = "Log out of $serviceName?"
-        override val message = "The saved account session will be removed. Existing manga bindings remain local."
+        override val title = MR.strings.logout_title.localized(Locale.getDefault(), serviceName)
+        override val message = MR.strings.desktop_tracking_logout_consequence.localized()
         override val failure = TrackingMessage.LogoutFailed
     }
 
     data class Unbind(override val trackerId: Long, val serviceName: String) : TrackingConfirmation {
-        override val title = "Remove $serviceName tracking?"
-        override val message = "This removes the local binding. It does not delete the remote list entry."
+        override val title = MR.strings.track_delete_title.localized(Locale.getDefault(), serviceName)
+        override val message = MR.strings.track_delete_text.localized()
         override val failure = TrackingMessage.UnbindFailed
     }
 }
@@ -316,18 +338,18 @@ private fun LoginDialog(
     val method = service.profile.value.authentication
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Login to ${service.profile.value.name}") },
+        title = { Text(MR.strings.login_title.localized(Locale.getDefault(), service.profile.value.name)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (authenticating == null) Text("This service is unavailable on this platform.")
+                if (authenticating == null) Text(MR.strings.desktop_tracking_platform_unavailable.localized())
                 if (method == TrackerAuthentication.USERNAME_PASSWORD) {
-                    OutlinedTextField(username, { username = it }, label = { Text("Username") })
-                    OutlinedTextField(password, { password = it }, label = { Text("Password") })
+                    OutlinedTextField(username, { username = it }, label = { Text(MR.strings.username.localized()) })
+                    OutlinedTextField(password, { password = it }, label = { Text(MR.strings.password.localized()) })
                 }
                 if (method == TrackerAuthentication.API_KEY) {
-                    OutlinedTextField(password, { password = it }, label = { Text("API key") })
+                    OutlinedTextField(password, { password = it }, label = { Text(MR.strings.desktop_tracking_api_key.localized()) })
                 }
-                if (method == TrackerAuthentication.OAUTH) Text("Your browser will open for authorization.")
+                if (method == TrackerAuthentication.OAUTH) Text(MR.strings.desktop_tracking_oauth_browser.localized())
             }
         },
         confirmButton = {
@@ -342,9 +364,9 @@ private fun LoginDialog(
                         }
                     }
                 },
-            ) { Text("Login") }
+            ) { Text(MR.strings.login.localized()) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) } },
     )
 }
 
@@ -375,25 +397,36 @@ private fun MangaTrackingDialog(
     var working by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Track ${model.mangaTitle ?: "manga"} with ${item.profile.name}") },
+        title = {
+            Text(
+                MR.strings.desktop_tracking_dialog_title.localized(
+                    Locale.getDefault(),
+                    model.mangaTitle ?: MR.strings.manga.localized(),
+                    item.profile.name,
+                ),
+            )
+        },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 if (bound == null) {
-                    OutlinedTextField(query, { query = it }, label = { Text("Search title") })
+                    OutlinedTextField(query, { query = it }, label = { Text(MR.strings.action_search_hint.localized()) })
                     Button(enabled = !working, onClick = {
                         scope.launch {
                             working = true
                             runCatching { model.search(item.profile.id, query) }
                                 .onSuccess { results = it; error = null }
-                                .onFailure { error = it.message ?: "Search failed" }
+                                .onFailure {
+                                    error = (it as? TrackingMessageException)?.trackingMessage?.let(::trackingMessageText)
+                                        ?: it.message ?: MR.strings.desktop_tracking_search_failed.localized()
+                                }
                             working = false
                         }
-                    }) { Text("Search") }
+                    }) { Text(MR.strings.action_search.localized()) }
                     when {
                         working -> CircularProgressIndicator()
                         results == null -> Unit
-                        results!!.isEmpty() -> Text("No results")
+                        results!!.isEmpty() -> Text(MR.strings.no_results_found.localized())
                         else -> results!!.forEach { result ->
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(result.title, Modifier.weight(1f))
@@ -402,16 +435,21 @@ private fun MangaTrackingDialog(
                                         working = true
                                         runCatching { model.bind(item.profile.id, result) }
                                             .onSuccess { onDismiss() }
-                                            .onFailure { error = it.message ?: "Binding failed" }
+                                            .onFailure {
+                                                error = (it as? TrackingMessageException)?.trackingMessage?.let(::trackingMessageText)
+                                                    ?: it.message ?: MR.strings.desktop_tracking_bind_failed.localized()
+                                            }
                                         working = false
                                     }
-                                }) { Text("Bind") }
+                                }) { Text(MR.strings.action_track.localized()) }
                             }
                         }
                     }
                 } else {
-                    ChoiceField("Status", item.statuses, status) { status = it }
-                    if (item.scores.isNotEmpty()) ChoiceField("Score", item.scores.map { it to it.toString() }, score) { score = it }
+                    ChoiceField(MR.strings.status.localized(), item.statuses, status) { status = it }
+                    if (item.scores.isNotEmpty()) {
+                        ChoiceField(MR.strings.score.localized(), item.scores.map { it to it.toString() }, score) { score = it }
+                    }
                     ChapterStepper(chapter, model.totalChapters?.takeIf { it > 0 } ?: bound.totalChapters.takeIf { it > 0 }) { chapter = it }
                     Button(enabled = !working, onClick = {
                         scope.launch {
@@ -421,16 +459,16 @@ private fun MangaTrackingDialog(
                             }.onSuccess { onDismiss() }
                                 .onFailure {
                                     error = (it as? TrackingMessageException)?.trackingMessage?.let(::trackingMessageText)
-                                        ?: it.message ?: "Update failed"
+                                        ?: it.message ?: MR.strings.desktop_tracking_update_failed.localized()
                                 }
                             working = false
                         }
-                    }) { Text("Update") }
-                    TextButton(onClick = onRequestUnbind) { Text("Remove tracking") }
+                    }) { Text(MR.strings.desktop_tracking_update.localized()) }
+                    TextButton(onClick = onRequestUnbind) { Text(MR.strings.action_remove.localized()) }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(MR.strings.action_close.localized()) } },
     )
 }
 
@@ -439,7 +477,7 @@ private fun <T> ChoiceField(label: String, choices: List<Pair<T, String>>, selec
     var expanded by remember { mutableStateOf(false) }
     Box {
         TextButton(onClick = { expanded = true }) {
-            Text("$label: ${choices.firstOrNull { it.first == selected }?.second ?: "Choose"}")
+            Text("$label: ${choices.firstOrNull { it.first == selected }?.second ?: MR.strings.desktop_tracking_choice.localized()}")
         }
         DropdownMenu(expanded, { expanded = false }) {
             choices.forEach { (value, name) ->
@@ -452,7 +490,7 @@ private fun <T> ChoiceField(label: String, choices: List<Pair<T, String>>, selec
 @Composable
 private fun ChapterStepper(value: Double, maximum: Long?, onChange: (Double) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Chapter")
+        Text(MR.strings.chapters.localized())
         TextButton(onClick = { onChange((value - 1.0).coerceAtLeast(0.0)) }, enabled = value > 0) { Text("−") }
         Text(if (maximum == null) value.toString() else "$value / $maximum")
         TextButton(

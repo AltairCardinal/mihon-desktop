@@ -70,6 +70,7 @@ import mihon.desktop.ui.settings.DesktopUpdateScreenModel
 import mihon.desktop.ui.settings.presentation
 import mihon.desktop.ui.settings.backupPartialFailurePresentation
 import mihon.desktop.ui.settings.backupPresentationText
+import mihon.desktop.tracking.DesktopAuthenticatingTrackerService
 import mihon.desktop.ui.tracking.TrackingMessage
 import mihon.desktop.ui.tracking.TrackingSettingsScreen
 import mihon.desktop.ui.tracking.trackingMessageText
@@ -107,6 +108,7 @@ import tachiyomi.domain.track.service.TrackerAuthentication
 import tachiyomi.domain.track.service.TrackerProfile
 import tachiyomi.domain.track.service.TrackerService
 import tachiyomi.domain.track.service.TrackerServiceRegistry
+import tachiyomi.domain.track.service.TrackSearchResult
 import tachiyomi.i18n.MR
 import java.io.File
 import java.nio.file.Files
@@ -200,12 +202,154 @@ class DesktopSettingsResourceIdentityTest {
                         TrackingSettingsScreen(42L, "Manga", 12L),
                         screenDependencies,
                         locale,
-                        "Manage",
-                        "Update",
+                        MR.strings.desktop_tracking_manage.localized(locale),
+                        MR.strings.desktop_tracking_update.localized(locale),
                     )
                     if (message in rendered.text) null else "Missing '$message': ${rendered.text}"
                 }
                 assertTrue(validationFailures.isEmpty(), validationFailures.joinToString("\n"))
+            }
+        } finally {
+            Locale.setDefault(previousLocale)
+        }
+    }
+
+    @Test
+    fun `Tracking screens preserve shared actions fields parameters and desktop states`() = runBlocking {
+        val previousLocale = Locale.getDefault()
+        val unavailableReason = "Provider maintenance #42 · https://status.example/tracker"
+        val mangaTitle = "Manga parameter #17"
+        val serviceName = "Service parameter #29"
+        try {
+            listOf(english, chinese).forEach { locale ->
+                val unavailable = trackingService(1, "Unavailable provider", TrackerAuthentication.OAUTH, false, unavailableReason = unavailableReason)
+                val sourceManaged = trackingSourceService(2, "Source provider", loggedIn = true)
+                val loggedIn = trackingService(3, serviceName, TrackerAuthentication.OAUTH, true, username = "reader@example.test")
+                val loggedOut = trackingService(4, "Logged-out provider", TrackerAuthentication.OAUTH, false)
+                val settings = render(
+                    TrackingSettingsScreen(),
+                    trackingDependencies(listOf(unavailable, sourceManaged, loggedIn, loggedOut)),
+                    locale,
+                    height = 2_400,
+                )
+                assertCopy(
+                    settings.text,
+                    MR.strings.pref_category_tracking.localized(locale),
+                    MR.strings.pref_auto_update_manga_sync.localized(locale),
+                    MR.strings.desktop_tracking_auto_update_summary.localized(locale),
+                    unavailableReason,
+                    MR.strings.desktop_tracking_source_available.localized(locale),
+                    MR.strings.desktop_tracking_logged_in_as_not_bound.localized(locale, "reader@example.test"),
+                    MR.strings.desktop_tracking_not_logged_in.localized(locale),
+                    MR.strings.desktop_tracking_source_managed.localized(locale),
+                    MR.strings.logout.localized(locale),
+                    MR.strings.login.localized(locale),
+                )
+                assertCopy(settings.descriptions, MR.strings.action_bar_up_description.localized(locale))
+
+                listOf(
+                    TrackerAuthentication.USERNAME_PASSWORD to listOf(MR.strings.username, MR.strings.password),
+                    TrackerAuthentication.API_KEY to listOf(MR.strings.desktop_tracking_api_key),
+                    TrackerAuthentication.OAUTH to listOf(MR.strings.desktop_tracking_oauth_browser),
+                ).forEachIndexed { index, (authentication, fields) ->
+                    val authName = "Auth provider $index"
+                    val dialog = renderAfterClicks(
+                        TrackingSettingsScreen(),
+                        trackingDependencies(listOf(trackingService(10L + index, authName, authentication, false))),
+                        locale,
+                        MR.strings.login.localized(locale),
+                    )
+                    assertCopy(
+                        dialog.text,
+                        MR.strings.login_title.localized(locale, authName),
+                        MR.strings.login.localized(locale),
+                        MR.strings.action_cancel.localized(locale),
+                        *fields.map { it.localized(locale) }.toTypedArray(),
+                    )
+                }
+
+                val platformUnavailable = renderAfterClicks(
+                    TrackingSettingsScreen(42, mangaTitle, 12),
+                    trackingDependencies(listOf(trackingSourceService(5, "Source login", loggedIn = false))),
+                    locale,
+                    MR.strings.login.localized(locale),
+                )
+                assertCopy(platformUnavailable.text, MR.strings.desktop_tracking_platform_unavailable.localized(locale))
+
+                val logout = renderAfterClicks(
+                    TrackingSettingsScreen(),
+                    trackingDependencies(listOf(loggedIn)),
+                    locale,
+                    MR.strings.logout.localized(locale),
+                )
+                assertCopy(
+                    logout.text,
+                    MR.strings.logout_title.localized(locale, serviceName),
+                    MR.strings.desktop_tracking_logout_consequence.localized(locale),
+                    MR.strings.logout.localized(locale),
+                    MR.strings.action_cancel.localized(locale),
+                )
+
+                val boundTrack = trackingTrack(trackerId = 3, title = "Remote title #51")
+                val boundDependencies = trackingDependencies(listOf(loggedIn), listOf(boundTrack))
+                val editor = renderAfterClicks(
+                    TrackingSettingsScreen(42, mangaTitle, 12),
+                    boundDependencies,
+                    locale,
+                    MR.strings.desktop_tracking_manage.localized(locale),
+                )
+                assertCopy(
+                    editor.text,
+                    MR.strings.manga_tracking_tab.localized(locale),
+                    MR.strings.desktop_tracking_dialog_title.localized(locale, mangaTitle, serviceName),
+                    MR.strings.desktop_tracking_bound_to.localized(locale, boundTrack.title),
+                    "${MR.strings.status.localized(locale)}: Reading status #61",
+                    "${MR.strings.score.localized(locale)}: 8.0",
+                    MR.strings.chapters.localized(locale),
+                    "2.0 / 12",
+                    MR.strings.desktop_tracking_update.localized(locale),
+                    MR.strings.action_remove.localized(locale),
+                    MR.strings.action_close.localized(locale),
+                )
+                val unbind = renderAfterClicks(
+                    TrackingSettingsScreen(42, mangaTitle, 12),
+                    boundDependencies,
+                    locale,
+                    MR.strings.desktop_tracking_manage.localized(locale),
+                    MR.strings.action_remove.localized(locale),
+                )
+                assertCopy(
+                    unbind.text,
+                    MR.strings.track_delete_title.localized(locale, serviceName),
+                    MR.strings.track_delete_text.localized(locale),
+                    MR.strings.action_remove.localized(locale),
+                    MR.strings.action_cancel.localized(locale),
+                )
+
+                val result = TrackSearchResult(77, "External result #77", 20, remoteUrl = "https://tracker.example/item/77")
+                val searchService = trackingService(6, "Search provider", TrackerAuthentication.OAUTH, true, searchResults = listOf(result))
+                val searchScene = trackingScene(
+                    TrackingSettingsScreen(42, mangaTitle, 12),
+                    trackingDependencies(listOf(searchService)),
+                    locale,
+                )
+                try {
+                    snapshot(searchScene)
+                    click(searchScene, MR.strings.desktop_tracking_manage.localized(locale))
+                    snapshot(searchScene)
+                    click(searchScene, MR.strings.action_search.localized(locale))
+                    assertCopy(snapshot(searchScene).text, MR.strings.desktop_tracking_search_title_empty.localized(locale))
+                    setText(searchScene, 0, MR.strings.action_search_hint.localized(locale), "needle")
+                    click(searchScene, MR.strings.action_search.localized(locale))
+                    assertCopy(
+                        snapshot(searchScene).text,
+                        result.title,
+                        MR.strings.action_track.localized(locale),
+                        MR.strings.desktop_tracking_dialog_title.localized(locale, mangaTitle, "Search provider"),
+                    )
+                } finally {
+                    searchScene.close()
+                }
             }
         } finally {
             Locale.setDefault(previousLocale)
@@ -1249,6 +1393,66 @@ class DesktopSettingsResourceIdentityTest {
         }
     }
 
+    private suspend fun trackingScene(
+        screen: TrackingSettingsScreen,
+        dependencies: DesktopUiDependencies,
+        locale: Locale,
+    ): ImageComposeScene {
+        Locale.setDefault(locale)
+        return ImageComposeScene(900, 2_400, coroutineContext = kotlinx.coroutines.currentCoroutineContext()).also { scene ->
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    Navigator(screen) { CurrentScreen() }
+                }
+            }
+        }
+    }
+
+    private fun trackingService(
+        id: Long,
+        name: String,
+        authentication: TrackerAuthentication,
+        loggedIn: Boolean,
+        username: String? = null,
+        unavailableReason: String? = null,
+        searchResults: List<TrackSearchResult> = emptyList(),
+    ) = mockk<DesktopAuthenticatingTrackerService>(relaxed = true) {
+        every { profile } returns MutableStateFlow(TrackerProfile(id, name, authentication, loggedIn, username, unavailableReason))
+        every { statuses } returns listOf(1L to "Reading status #61")
+        every { scores } returns listOf(8.0)
+        coEvery { search(any()) } returns searchResults
+    }
+
+    private fun trackingSourceService(id: Long, name: String, loggedIn: Boolean) = mockk<TrackerService>(relaxed = true) {
+        every { profile } returns MutableStateFlow(TrackerProfile(id, name, TrackerAuthentication.API_KEY, loggedIn))
+        every { statuses } returns emptyList()
+        every { scores } returns emptyList()
+    }
+
+    private fun trackingDependencies(services: List<TrackerService>, tracks: List<Track> = emptyList()) =
+        mockk<DesktopUiDependencies>(relaxed = true) {
+            every { appPreferences } returns DesktopAppPreferences(InMemoryPreferenceStore())
+            every { trackerServiceRegistry } returns object : TrackerServiceRegistry { override val services = services }
+            every { trackRepository } returns mockk(relaxed = true) { coEvery { getTracksByMangaId(any()) } returns tracks }
+        }
+
+    private fun trackingTrack(trackerId: Long, title: String) = Track(
+        id = 1,
+        mangaId = 42,
+        trackerId = trackerId,
+        remoteId = 51,
+        libraryId = null,
+        title = title,
+        lastChapterRead = 2.0,
+        totalChapters = 12,
+        status = 1,
+        score = 8.0,
+        remoteUrl = "https://tracker.example/item/51",
+        startDate = 0,
+        finishDate = 0,
+        private = false,
+    )
+
     private suspend fun advancedScene(
         dependencies: DesktopUiDependencies,
         locale: Locale,
@@ -1467,6 +1671,25 @@ class DesktopSettingsResourceIdentityTest {
     }
 
     private val desktopResources: List<StringResource> = listOf(
+        MR.strings.desktop_tracking_empty,
+        MR.strings.desktop_tracking_auto_update_summary,
+        MR.strings.desktop_tracking_bound_to,
+        MR.strings.desktop_tracking_source_available,
+        MR.strings.desktop_tracking_logged_in_as_not_bound,
+        MR.strings.desktop_tracking_logged_in_not_bound,
+        MR.strings.desktop_tracking_not_logged_in,
+        MR.strings.desktop_tracking_source_managed,
+        MR.strings.desktop_tracking_manage,
+        MR.strings.desktop_tracking_logout_consequence,
+        MR.strings.desktop_tracking_platform_unavailable,
+        MR.strings.desktop_tracking_api_key,
+        MR.strings.desktop_tracking_oauth_browser,
+        MR.strings.desktop_tracking_dialog_title,
+        MR.strings.desktop_tracking_choice,
+        MR.strings.desktop_tracking_update,
+        MR.strings.desktop_tracking_search_failed,
+        MR.strings.desktop_tracking_bind_failed,
+        MR.strings.desktop_tracking_update_failed,
         MR.strings.desktop_extension_repo_empty_hint,
         MR.strings.desktop_extension_repo_add_message,
         MR.strings.desktop_extension_repo_pending,
