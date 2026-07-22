@@ -238,14 +238,14 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 5 files, 360 lines
+**Estimated scope:** 6 files, 380 lines
 
 **Verification:** structured AppError→localized Failure/Partial copy、chooser title/filter/cancel、create snackbar success/failure、restore error count production formatter identity
 
-**Files:** `BackupRestoreScreenModel.kt`、`BackupSettingsScreen.kt`、base/`zh-rCN` strings、既有 resource identity test。
+**Files:** `BackupRestoreScreenModel.kt`、`BackupSettingsScreen.kt`、`BackupRestoreScreenModelTest.kt`、base/`zh-rCN` strings、既有 resource identity test。
 
 1. RED：真实 Storage/Permission/Malformed/PartialFailure 在 en/zh 任一详情错语、Partial 裸数字或整体失败误分类、chooser/snackbar/filter/error-count 任一 production formatter 硬编码或接错 MR 时失败。
-2. GREEN：ScreenModel 保留结构化错误分类至 presentation 边界；production 与测试共同消费不可变纯 formatter/MR，不增加可替换 lambda、反向解析 message 或业务规则副本，不改变 chooser、备份事务和 retry/cancel 规则。
+2. GREEN：ScreenModel 保留结构化错误分类至 presentation 边界；production 与测试共同消费不可变纯 formatter/MR，不增加可替换 lambda、反向解析 message、Locale formatter 兼容 accessor 或业务规则副本；现有 ScreenModel 测试直接迁移到 typed reason/AppError，不改变 chooser、备份事务和 retry/cancel 规则。
 3. 复跑 4C 全部 production state、Backup ScreenModel/workflow/creator/restorer/compat/scheduler、Spotless/diff/range/guard；通过后同时关闭 4C/4D。
 
 ### Task 4E：Desktop 安全/高级设置 i18n 同源化
