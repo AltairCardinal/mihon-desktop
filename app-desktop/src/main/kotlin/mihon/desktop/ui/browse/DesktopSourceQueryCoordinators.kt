@@ -432,6 +432,7 @@ class DesktopGlobalSearchCoordinator(
         state: SourceQueryState,
     ): DesktopGlobalSearchState? = synchronized(lock) {
         if (authoritativeState.generation != generation || activeSession?.coordinators?.get(sourceId) !== coordinator) return@synchronized null
+        if (coordinator.state != state) return@synchronized null
         if (authoritativeState.queryStates[sourceId] == state) return@synchronized null
         commitLocked(authoritativeState.copy(queryStates = authoritativeState.queryStates + (sourceId to state)))
     }

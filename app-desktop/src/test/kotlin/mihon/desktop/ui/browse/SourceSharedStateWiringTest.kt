@@ -1136,6 +1136,43 @@ class SourceSharedStateWiringTest {
     }
 
     @Test
+    fun `global aggregation rejects a stale child state after that child reaches failure`() = runBlocking {
+        val releaseFailure = CompletableDeferred<Unit>()
+        val source = object : NamedSource(25, "Stale child") {
+            override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
+                releaseFailure.await()
+                throw HttpException(500)
+            }
+        }
+        val callbacks = Collections.synchronizedList(mutableListOf<DesktopGlobalSearchState>())
+        val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+        val search = async { coordinator.search(listOf(source), "stale", callbacks::add) }
+        val staleLoading = withTimeout(2_000) {
+            coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Loading }
+                .queryStates
+                .getValue(source.id)
+        }
+
+        releaseFailure.complete(Unit)
+        search.await()
+        val failure = withTimeout(2_000) {
+            coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Failure }
+        }
+        val callbackCount = callbacks.size
+        val candidate = coordinator.aggregateCandidate(
+            failure.generation,
+            source.id,
+            requireNotNull(coordinator.coordinatorFor(source.id)),
+            staleLoading,
+        )
+        candidate?.let { coordinator.publishCandidate(it, callbacks::add) }
+
+        assertEquals(null, candidate)
+        assertEquals(failure, coordinator.states.value)
+        assertEquals(callbackCount, callbacks.size)
+    }
+
+    @Test
     fun `compat callback runs outside the coordinator lock and can replace its search`() = runBlocking {
         val source = NamedSource(24, "Reentrant")
         val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
