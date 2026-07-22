@@ -36,7 +36,7 @@ status-source: this-file
 
 按以下顺序一次执行一个子 Task，不并发写共享文件：
 
-`1 → 2 → 3 → 4A → 4B → 4C → 4D → 5 → 6 → 7 → 8 → 9 → 10A → 10B → 10C → 10D → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20`
+`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 5 → 6 → 7 → 8 → 9 → 10A → 10B → 10C → 10D → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20`
 
 其中 `DesktopSettingsCatalog.kt` 只在 5–8、11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6→11→16 串行修改；`AboutScreen.kt` 与 Tracking/ExtensionRepo 只在 4D→8→15→18 串行修改。
 
@@ -45,6 +45,7 @@ status-source: this-file
 - [x] Task 1：固定原版 provenance 与行为 fixture
 - [x] Task 2：共享设置搜索与 breadcrumb 契约
 - [ ] Task 3：当前 Android consumer 消费共享搜索契约
+- [ ] Task 3R：Android 设置搜索 production 默认 shared wiring 证据
 - [ ] Task 4A：Desktop 入口/基础设置 i18n 同源化
 - [ ] Task 4B：Desktop 内容设置 i18n 同源化
 - [ ] Task 4C：Desktop 安全/高级设置 i18n 同源化
@@ -152,6 +153,24 @@ status-source: this-file
 1. RED：断开 shared policy、route replace 或 highlight consume 任一 production wiring 时失败。
 2. GREEN：Android Preference tree 只做平台投影与 Compose route/highlight，不反向冒充原版证据。
 3. 运行 Android focused、navigation/Screen smoke、Spotless/range gate。
+
+**Review status（重规划）：** 初始实现 `14a3f5bf7`，唯一修复 `8f01dcb91`；累计 `5 files/380 touched`。首次审查 `0/2/0` 指出的空查询 eager index 与真实 caller/滚动/RTL/no-result 证据已关闭：API 36 设备测试 `5/5`，JVM consumer `2/2`，Task 2 shared `7/7`，Task 1 provenance、Spotless、diff/guard 均通过；空查询、caller、0.4s、未命中清理、点击顺序与 shared helper 断开 mutation 均取得精确 RED。唯一复审仍以 `0/1/0` 拒绝：设备测试显式注入 shared lambda，production 默认 `= ::searchSettings` 若改成本地过滤仍可能全绿。该风险与已验证的投影、导航、anchor、滚动行为可独立验证，按门禁重规划为子 Task 3R；Task 3 与 3R 在 3R 通过后一起关闭。
+
+### Task 3R：Android 设置搜索 production 默认 shared wiring 证据
+
+**Risk axis:** android-settings-search-default-wiring
+
+**Platform boundary:** android
+
+**Estimated scope:** 4 files, 160 lines
+
+**Verification:** production-default SearchResult→searchSettings→SettingsSearchPolicy identity、local-copy mutation rejection、既有 Android 搜索回归
+
+**Files:** `SettingsSearchScreen.kt`、`SettingsSearchNavigationUiTest.kt`、`app/build.gradle.kts`、`gradle/libs.versions.toml`。
+
+1. RED：设备测试不显式传 `searchPolicy`，通过 Android MockK 观察 production 默认路径；未声明 test-only Android artifact 时先编译失败，将默认 helper 改成本地过滤时 verify 必须失败。
+2. GREEN：增加与现有 MockK 版本一致的 `mockk-android` test-only 依赖，移除 `SearchResult` 的 policy 注入参数；production 固定调用 `searchSettings`，测试 `callOriginal` 并验证真实 shared object 被调用。
+3. 复跑子 Task 3 的 JVM/设备/原版 provenance、Spotless/diff/range/guard；不得新增 production DI、可变测试 hook 或业务规则副本。
 
 ### Task 4A：Desktop 入口/基础设置 i18n 同源化
 
