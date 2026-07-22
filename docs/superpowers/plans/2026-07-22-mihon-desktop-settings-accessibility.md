@@ -47,7 +47,7 @@ status-source: this-file
 - [x] Task 3：当前 Android consumer 消费共享搜索契约
 - [x] Task 3R：Android 设置搜索 production 默认 shared wiring 证据
 - [x] Task 4A：Desktop 入口/基础设置 i18n 同源化
-- [ ] Task 4B：Desktop Reader/Library/Download 设置 i18n 同源化
+- [x] Task 4B：Desktop Reader/Library/Download 设置 i18n 同源化
 - [ ] Task 4C：Desktop Backup 设置 i18n 同源化
 - [ ] Task 4D：Desktop 安全/高级设置 i18n 同源化
 - [ ] Task 4E：Desktop About/扩展/Tracking i18n 同源化
@@ -210,6 +210,8 @@ status-source: this-file
 3. 运行三页 rendered copy、resource completeness、Spotless/range gate。
 
 **Split evidence:** 原 Task 4B 在四页 production GREEN 后实际达到 `7 files/416 touched`，超过 400 行上限；不得通过把资源清单并列压缩掩盖范围，因此按不共享 production Screen 的风险边界拆为修订后的 4B 与新增 4C，原 4C/4D 顺延为 4D/4E。已取得的共同 RED 为真实 Reader 页面硬编码 `Default Reading Mode` 与 fixed-main `pref_viewer_type` identity 分叉；未提交的 Backup 修改不计为 4B 证据，必须在 4B 审查关闭后由 4C 独立重做和验证。
+
+**Review status（已完成）：** 实现 `1de3bee43` 仅迁移 Reader、Library、Download 三页及其 base/zh-rCN 资源，真实 production RED 为 `1/1 failed`，精确暴露 Reader 硬编码 `Default Reading Mode` 与 fixed-main `pref_viewer_type` identity 分叉；GREEN 后资源/渲染 `3/3`、必要回归 `73/73`，累计范围初始 `6 files/199 touched`，Backup production/资源/断言均零 diff。首审 `0/1/0` 指出 Library 仅覆盖 OFF、未执行 6H/12H/24H/WEEKLY 四个已迁移状态；唯一修复 `ddb910099` 对每个 locale/interval 写入真实 preference、创建独立 ImageComposeScene，并从 `Selected=true` 的同一 radio entry 断言 MR identity。24H 临时硬编码 `Daily` 在中文轮精确 RED，恢复后 GREEN；复审限定命令独立重跑 `31/31`，Spotless、diff、range 与 guard 通过，累计 `6 files/229 touched`。唯一修复复审 APPROVED，Critical/Important/Minor `0/0/0`。下一项为父 Task 5B / 子 Task 4C。
 
 ### Task 4C：Desktop Backup 设置 i18n 同源化
 
