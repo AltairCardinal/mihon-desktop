@@ -202,6 +202,7 @@ internal suspend fun initDesktopDIForTest(
     credentialBackendFactory: (CredentialNamespace) -> mihon.desktop.platform.CredentialBackend =
         { namespace -> OsCredentialBackend(namespace = namespace) },
     profileDirectoryOpener: (File) -> Boolean = mihon.desktop.ui.settings.DesktopDirectoryOpener::open,
+    nativeSharePort: DesktopNativeSharePort = defaultDesktopNativeSharePort(),
 ): DesktopTestDIContext {
     activeDesktopTestDIContext?.closeAndJoin()
     patchInjekt()
@@ -224,6 +225,7 @@ internal suspend fun initDesktopDIForTest(
         downloadFileOperations,
         credentialBackendFactory,
         profileDirectoryOpener,
+        nativeSharePort,
     )
     return DesktopTestDIContext(
         handler = handler as JvmDatabaseHandler,
@@ -598,6 +600,7 @@ internal fun initUILayer(
     credentialBackendFactory: (CredentialNamespace) -> mihon.desktop.platform.CredentialBackend =
         { namespace -> OsCredentialBackend(namespace = namespace) },
     profileDirectoryOpener: (File) -> Boolean = mihon.desktop.ui.settings.DesktopDirectoryOpener::open,
+    nativeSharePort: DesktopNativeSharePort = defaultDesktopNativeSharePort(),
 ) {
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val passphraseVerifier = DesktopPassphraseVerifier(
@@ -614,7 +617,6 @@ internal fun initUILayer(
     val windowPrivacy = DesktopWindowPrivacy()
     Injekt.addSingleton(windowPrivacy)
     Injekt.addSingleton(DesktopWindowPrivacyController(Injekt.get(), Injekt.get(), windowPrivacy))
-    val nativeSharePort = defaultDesktopNativeSharePort()
     Injekt.addSingleton<DesktopNativeSharePort>(nativeSharePort)
     Injekt.addSingleton(DesktopShareService(nativeSharePort = nativeSharePort))
     val releaseService = ReleaseServiceImpl(networkHelper.client, Injekt.get<Json>(), Injekt.get<PlatformInfo>())
@@ -761,19 +763,19 @@ internal fun initUILayer(
         categoryRepository,
         historyRepository,
     )
-    Injekt.addSingleton(
-        mihon.desktop.DesktopAppRuntime.create(
-            libraryUpdateScheduler = Injekt.get<LibraryUpdateScheduler>(),
-            localSourceScanService = Injekt.get<LocalSourceScanService>(),
-            autoBackupScheduler = autoBackupScheduler,
-            readerModeMemoryCleaner = Injekt.get<ReaderModeMemoryCleaner>(),
-            trackerSyncScheduler = trackerSyncScheduler,
-            batchMigrationController = batchMigrationController,
-            appLock = appLock,
-            scope = applicationScope,
-            updateScreenModel = updateScreenModel,
-        ),
+    val runtime = mihon.desktop.DesktopAppRuntime.create(
+        libraryUpdateScheduler = Injekt.get<LibraryUpdateScheduler>(),
+        localSourceScanService = Injekt.get<LocalSourceScanService>(),
+        autoBackupScheduler = autoBackupScheduler,
+        readerModeMemoryCleaner = Injekt.get<ReaderModeMemoryCleaner>(),
+        trackerSyncScheduler = trackerSyncScheduler,
+        batchMigrationController = batchMigrationController,
+        appLock = appLock,
+        scope = applicationScope,
+        updateScreenModel = updateScreenModel,
     )
+    runtime.attachCloseable(nativeSharePort)
+    Injekt.addSingleton(runtime)
 }
 
 private fun registerDesktopLibrary(

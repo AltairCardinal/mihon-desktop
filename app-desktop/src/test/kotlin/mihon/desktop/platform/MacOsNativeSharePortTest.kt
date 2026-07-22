@@ -8,10 +8,12 @@ import java.io.PipedInputStream
 import java.io.PipedOutputStream
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledOnOs
@@ -78,6 +80,95 @@ class MacOsNativeSharePortTest {
         await { terminals.isNotEmpty() }
         assertEquals(listOf(DesktopNativeShareTerminal.Shared), terminals)
         await { process.destroyed }
+    }
+
+    @Test
+    fun `close fails an opened exchange once destroys its process and rejects new shares`() {
+        val process = ControlledProcess().also { it.emit("MIHON_SHARE:READY") }
+        val port = MacOsNativeSharePort({ process }, launchTimeoutMillis = 1_000, terminalTimeoutMillis = 60_000)
+        val opened = port.share(DesktopNativeShareContent.Text("hello")) as DesktopNativeShareOutcome.Opened
+        val terminals = CopyOnWriteArrayList<DesktopNativeShareTerminal>()
+        opened.session.onTerminal(terminals::add)
+
+        assertEquals(1, port.activeExchangeCount)
+        port.close()
+        port.close()
+
+        await { process.destroyed }
+        assertEquals(0, port.activeExchangeCount)
+        assertEquals(listOf(DesktopNativeShareTerminal.Failed), terminals)
+        assertEquals(
+            DesktopNativeShareOutcome.Failed,
+            port.share(DesktopNativeShareContent.Text("after close")),
+        )
+    }
+
+    @Test
+    fun `multi session terminal and concurrent close clean only their own exchanges`() {
+        val first = ControlledProcess().also { it.emit("MIHON_SHARE:READY") }
+        val second = ControlledProcess().also { it.emit("MIHON_SHARE:READY") }
+        val processes = ArrayDeque(listOf(first, second))
+        val port = MacOsNativeSharePort({ processes.removeFirst() }, launchTimeoutMillis = 1_000, terminalTimeoutMillis = 60_000)
+        val firstTerminals = CopyOnWriteArrayList<DesktopNativeShareTerminal>()
+        val secondTerminals = CopyOnWriteArrayList<DesktopNativeShareTerminal>()
+        (port.share(DesktopNativeShareContent.Text("first")) as DesktopNativeShareOutcome.Opened)
+            .session.onTerminal(firstTerminals::add)
+        (port.share(DesktopNativeShareContent.Text("second")) as DesktopNativeShareOutcome.Opened)
+            .session.onTerminal(secondTerminals::add)
+
+        first.emit("MIHON_SHARE:SHARED")
+        await { firstTerminals.isNotEmpty() && port.activeExchangeCount == 1 }
+        assertFalse(second.destroyed)
+
+        val executor = Executors.newFixedThreadPool(3)
+        try {
+            val closes = List(3) { executor.submit<Throwable?> { runCatching(port::close).exceptionOrNull() } }
+            assertTrue(closes.map { it.get(2, TimeUnit.SECONDS) }.all { it == null })
+        } finally {
+            executor.shutdownNow()
+        }
+        await { secondTerminals.isNotEmpty() }
+        assertEquals(listOf(DesktopNativeShareTerminal.Shared), firstTerminals)
+        assertEquals(listOf(DesktopNativeShareTerminal.Failed), secondTerminals)
+        assertEquals(0, port.activeExchangeCount)
+        assertTrue(first.destroyed)
+        assertTrue(second.destroyed)
+    }
+
+    @Test
+    fun `terminal timeout and close race emits one terminal and cleanup failure remains retryable`() {
+        repeat(3) {
+            val process = ControlledProcess().also { it.emit("MIHON_SHARE:READY") }
+            val port = MacOsNativeSharePort({ process }, launchTimeoutMillis = 1_000, terminalTimeoutMillis = 10)
+            val terminals = CopyOnWriteArrayList<DesktopNativeShareTerminal>()
+            (port.share(DesktopNativeShareContent.Text("race")) as DesktopNativeShareOutcome.Opened)
+                .session.onTerminal(terminals::add)
+            val executor = Executors.newFixedThreadPool(2)
+            try {
+                val terminal = executor.submit { process.emit("MIHON_SHARE:CANCELLED") }
+                val close = executor.submit { port.close() }
+                terminal.get(2, TimeUnit.SECONDS)
+                close.get(2, TimeUnit.SECONDS)
+            } finally {
+                executor.shutdownNow()
+            }
+            await { terminals.isNotEmpty() }
+            assertEquals(1, terminals.size)
+            assertEquals(0, port.activeExchangeCount)
+        }
+
+        val retrying = ControlledProcess(destroyFailuresRemaining = 1).also { it.emit("MIHON_SHARE:READY") }
+        val retryingPort = MacOsNativeSharePort({ retrying }, launchTimeoutMillis = 1_000, terminalTimeoutMillis = 60_000)
+        val terminals = CopyOnWriteArrayList<DesktopNativeShareTerminal>()
+        (retryingPort.share(DesktopNativeShareContent.Text("retry")) as DesktopNativeShareOutcome.Opened)
+            .session.onTerminal(terminals::add)
+
+        assertThrows(IllegalStateException::class.java, retryingPort::close)
+        assertEquals(1, retryingPort.activeExchangeCount)
+        retryingPort.close()
+
+        assertEquals(0, retryingPort.activeExchangeCount)
+        assertEquals(listOf(DesktopNativeShareTerminal.Failed), terminals)
     }
 
     @Test
@@ -211,6 +302,7 @@ class MacOsNativeSharePortTest {
     private class ControlledProcess(
         private val suppliedInput: InputStream? = null,
         private val ignoreDestroy: Boolean = false,
+        private var destroyFailuresRemaining: Int = 0,
     ) : Process() {
         private val output = PipedOutputStream()
         private val input = suppliedInput ?: PipedInputStream(output)
@@ -233,6 +325,10 @@ class MacOsNativeSharePortTest {
         override fun waitFor(timeout: Long, unit: TimeUnit): Boolean = !alive
         override fun exitValue(): Int = if (alive) error("alive") else 0
         override fun destroy() {
+            if (destroyFailuresRemaining > 0) {
+                destroyFailuresRemaining--
+                throw IllegalStateException("destroy failed")
+            }
             destroyed = true
             if (!ignoreDestroy) stop()
         }

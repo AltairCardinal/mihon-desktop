@@ -234,15 +234,30 @@ class DesktopDiWiringTest {
     }
 
     @Test
-    fun `desktop DI shares one native share service instance with UI`(@TempDir tempDir: File) = runBlocking {
-        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+    fun `desktop DI runtime owns the same native share port used by the UI service`(@TempDir tempDir: File) = runBlocking {
+        val port = CloseTrackingNativeSharePort()
+        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore(), nativeSharePort = port)
         try {
-            assertNotNull(Injekt.get<DesktopNativeSharePort>())
+            assertSame(port, Injekt.get<DesktopNativeSharePort>())
             val service = Injekt.get<DesktopShareService>()
 
             assertSame(service, DesktopUiDependencies.fromInjekt().shareService)
+            Injekt.get<DesktopAppRuntime>().close()
+            Injekt.get<DesktopAppRuntime>().close()
+            assertEquals(1, port.closeCalls)
         } finally {
             context.closeAndJoin()
+        }
+    }
+
+    private class CloseTrackingNativeSharePort : DesktopNativeSharePort {
+        var closeCalls = 0
+
+        override fun share(content: mihon.desktop.platform.DesktopNativeShareContent) =
+            mihon.desktop.platform.DesktopNativeShareOutcome.Unavailable
+
+        override fun close() {
+            closeCalls++
         }
     }
 

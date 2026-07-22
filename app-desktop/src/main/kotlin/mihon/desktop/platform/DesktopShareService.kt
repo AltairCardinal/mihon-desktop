@@ -151,8 +151,10 @@ fun DesktopShareResult.toDesktopNotification(): DesktopNotification = DesktopNot
     },
 )
 
-fun interface DesktopNativeSharePort {
+fun interface DesktopNativeSharePort : AutoCloseable {
     fun share(content: DesktopNativeShareContent): DesktopNativeShareOutcome
+
+    override fun close() = Unit
 }
 
 sealed interface DesktopNativeShareContent {
