@@ -87,8 +87,19 @@ class DesktopAppRuntime(
     }
 
     suspend fun closeAndJoin() {
-        close()
-        awaitClosed()
+        var primaryFailure: Throwable? = null
+        try {
+            close()
+        } catch (failure: Throwable) {
+            primaryFailure = failure
+        }
+        try {
+            awaitClosed()
+        } catch (failure: Throwable) {
+            val primary = primaryFailure
+            if (primary == null) primaryFailure = failure else if (failure !== primary) primary.addSuppressed(failure)
+        }
+        primaryFailure?.let { throw it }
     }
 
     suspend fun awaitClosed() {

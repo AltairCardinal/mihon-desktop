@@ -353,7 +353,6 @@ internal class DesktopRuntimeBootstrapSession(
     @Synchronized
     override fun close() {
         if (closed) return
-        closed = true
         var primaryFailure: Throwable? = null
         try {
             runtime.close()
@@ -367,6 +366,7 @@ internal class DesktopRuntimeBootstrapSession(
             if (primary == null) primaryFailure = failure else if (failure !== primary) primary.addSuppressed(failure)
         }
         primaryFailure?.let { throw it }
+        closed = true
     }
 
     suspend fun closeAndJoin() {
