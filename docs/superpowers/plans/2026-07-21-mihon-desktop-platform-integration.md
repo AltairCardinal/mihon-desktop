@@ -53,11 +53,12 @@ status-source: this-file
 - [x] Task 16A：Desktop missing-credential profile reset 闭环
 - [x] Task 16B：macOS OpenURI production ingress
 - [x] Task 16C：Desktop owner navigator 单实例 wiring
+- [ ] Task 16D：Desktop production owner 生命周期所有权
 - [ ] Task 16：独立最终审查与三平台 change verify
 
 ## 全局任务门禁
 
-以下规则适用于 Task 1–16C，不为每项重复创建“准备/审查/收尾”子任务：
+以下规则适用于 Task 1–16D，不为每项重复创建“准备/审查/收尾”子任务：
 
 1. 协调者先从本计划复制当前 Task 的最小上下文给一个实现代理；实现代理先执行指定 RED，并证明失败来自缺失/错误 production 行为。
 2. 实现代理完成最小 GREEN 和重构，运行定向测试、`git diff --check` 与范围检查；协调者独立复跑关键命令。
@@ -1047,6 +1048,36 @@ status-source: this-file
 4. 运行 `DesktopAppRuntimeTest`、`DesktopDiWiringTest`、`ExternalActionNavigationTest`、ID 81 parity contract、根 Spotless、`git diff --check` 与 3-file/240-line scope gate。一次独立审查和至多一次修复复审通过后同时勾选 16B/16C，再回到 Task 16 whole-change review；真实 macOS bundle 验收仍留在 Task 16。
 
 **Review status:** 实现 `345491d79` 与 identity 证伪补强 `233ed333a` 让 owner factory 一次返回 runtime + 完整 `DesktopUiDependencies`，OpenURI 实际事件可由同一 UI navigator 消费。首轮独立审查以 `0/1/0` 指出测试仍绕过真实 Compose provider；唯一修复 `35eff51f0` 提取并接入 production `OwnerUiDependencies` boundary，`ImageComposeScene` 直接读取同一 `LocalDesktopUiDependencies`。把 boundary 临时改回第二次 `fromInjekt()` 后 DI 15 项中 1 项 RED，恢复后协调者强制复跑 Runtime/DI/navigation/parity/broker/URI 共 83/83，失败/错误/跳过为 0；根 Spotless、diff 与 3 files/126 touched scope 通过。唯一修复复审 APPROVED，Critical/Important/Minor `0/0/0`；Task 16B/16C 同时完成，真实 macOS bundle 验收留在 Task 16。
+
+### 子 Task 16D：Desktop production owner 生命周期所有权
+
+**Risk axis:** desktop-owner-lifecycle-ownership
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 5 files, 360 lines
+
+**Verification:** real `main` owner/secondary startup、DI/ingress/runtime 原子接管与回滚、GUI/headless/异常关闭终态、异常聚合和重复实现防漂移
+
+**Files:**
+
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/Main.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/DesktopAppRuntime.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/DesktopAppRuntimeTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/settings/SecuritySettingsWiringTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/release/WindowsReleaseConfigurationTest.kt`（只保留已恢复的文档语义回归）
+
+**Consumes:** Task 16C 的单一 owner dependencies/navigator、Task 16B 的 broker/OpenURI registration、Task 14B 的 updater terminal；Task 16 全量测试修复 `d51adddef` 与唯一修复 `69f3b0980` 已消除 production `runBlocking` 并恢复文档门禁，但唯一复审以 `0/3/0` 证明新的 suspend production 路径仍拆散 owner 所有权、错误聚合且未被真实入口测试保护。
+
+**Produces:** 一个由真实 `main` 与测试共同调用的唯一 owner startup/lifecycle boundary。owner 选举成功后，broker、URI registration、完整 `DesktopOwnerIngressDependencies`、runtime/bootstrap 和 UI 依次原子接管；任一步失败都逆序清理。GUI、headless、application 返回和异常均等待 updater/verifier/runtime terminal；业务异常保持 primary，cleanup 失败作为 suppressed。旧同步测试 seam 只能委托该边界，不得保留第二套启动/关闭规则。
+
+1. RED：通过可注入但不复制业务的真实 production entry seam 覆盖 owner 与 secondary。依次让 owner dependency factory、ingress install、runtime start、test-mode start、application 和 close/join 失败，断言 broker/registration/runtime/lock binding 的精确接管与逆序清理；删除 `main → production entry`、owner 回调内实际启动、任一 await/finally 或异常聚合均必须失败。
+2. RED：用 `NonCancellable` updater/verifier cleanup 证明 headless、GUI close callback、application 正常返回与异常返回在 terminal 放行前均不完成；cleanup 同时失败时保留原异常并附加 suppressed，首次 close 失败不得因幂等标记而静默吞掉未完成资源。
+3. GREEN：把 owner 选举与完整 owner startup 放回同一受保护事务；统一 sync test seam 与 suspend production entry 的注册、依赖、ingress、bootstrap 和清理规则，只在最外层选择如何等待，不复制 parser、navigator、DI 或资源所有权逻辑。secondary 不初始化 owner 依赖、不注册 URI、不启动 runtime。
+4. 保持 `suspend main` 生成可执行 JVM main、Task 16C navigator identity、Task 16B queued/running OpenURI、首异常/suppressed、重复关闭、headless Test Mode 和 Windows TEST_GUIDE 七项语义。不得用 `runBlocking`、latch、`Future.get` 或放宽架构/文档门禁来通过。
+5. 运行 production entry/runtime/security/URI/DI/navigation/release/architecture focused tests、`:app-desktop:jvmTest`、根 Spotless、`git diff --check` 与 5-file/360-line scope gate。一次独立审查和至多一次修复复审通过后勾选 16D，再重新执行 Task 16 whole-change review 与三平台验证。
+
+**Replan status:** Task 16 全量测试首次暴露 5 个失败；实现 `d51adddef` 通过 1981 项测试，但独立审查以 `0/2/0` 拒绝 headless/异常未等待及 Windows 文档门禁降级。唯一修复 `69f3b0980` 恢复 TEST_GUIDE 七项 mutation 并让 lifecycle helper 等待终态；1981 项再次全绿。唯一复审仍以 `0/3/0` 拒绝：真实 owner 选举在实际启动前结束保护，依赖失败泄漏 broker；cleanup 可覆盖 primary；测试只调用 helper，删除 `main` wiring 仍绿且旧同步路径继续漂移。按全局门禁停止 Task 16 内第三次局部修补，将这一单一 production owner ownership 风险拆为 16D；Task 16 保持未完成。
 
 ### Task 16：独立最终审查与三平台 change verify
 
