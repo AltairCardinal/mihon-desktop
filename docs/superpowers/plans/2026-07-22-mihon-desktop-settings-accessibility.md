@@ -36,9 +36,9 @@ status-source: this-file
 
 按以下顺序一次执行一个子 Task，不并发写共享文件：
 
-`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 4G → 4H → 4I → 4J → 4K → 4L → 4M → 5 → 6 → 7 → 8 → 9 → 10A → 10B → 10C → 10D → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20`
+`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 4G → 4H → 4I → 4J → 4K → 4L → 4M → 5 → 6A → 6B → 7 → 8 → 9 → 10A → 10B → 10C → 10D → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20`
 
-其中 `DesktopSettingsCatalog.kt` 只在 5–8、11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6→11→16 串行修改；`AboutScreen.kt` 只在 4I→8→15→18、`ExtensionRepoScreen.kt` 只在 4J→8→18、`TrackingSettingsScreen.kt` 只在 4K→4L→8→18 串行修改；4M 只补 4L 的真实动作/失败路径测试，不返改 production。
+其中 `DesktopSettingsCatalog.kt` 只在 5–8、11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6A→11→16 串行修改；`AboutScreen.kt` 只在 4I→8→15→18、`ExtensionRepoScreen.kt` 只在 4J→8→18、`TrackingSettingsScreen.kt` 只在 4K→4L→8→18 串行修改；4M 只补 4L 的真实动作/失败路径测试，不返改 production。
 
 ## 执行状态
 
@@ -60,7 +60,8 @@ status-source: this-file
 - [x] Task 4L：Desktop Tracking UI/dialog i18n 同源化
 - [x] Task 4M：Desktop Tracking 动作副作用与失败 fallback identity
 - [x] Task 5：Desktop 设置 catalog、搜索 Screen 与入口
-- [ ] Task 6：Desktop 标题 anchor 核心与基础页面
+- [ ] Task 6A：Desktop 标题 anchor 核心、搜索交接与 General/Appearance
+- [ ] Task 6B：Desktop 标题 anchor 的 Reader/Library 接线
 - [ ] Task 7：Desktop 标题 anchor 的安全/数据页面
 - [ ] Task 8：Desktop 标题 anchor 的扩展页面
 - [ ] Task 9：共享主题模块、identity/default/codec 与 Android consumer
@@ -451,21 +452,37 @@ status-source: this-file
 
 **Review status（已完成）：** 初始实现 `19c962bac` 新增 Desktop catalog、真实搜索 Screen 与 More 入口；前九页严格保持 fixed-main Appearance/Library/Reader/Download/Tracking/Browse/Data/Security/Advanced，Browse/Data 映射 `ExtensionListScreen`/`BackupSettingsScreen`，Desktop-only 页面只确定性追加，production 直接调用 shared `SettingsSearchPolicy`。公开 `CanvasLayersComposeScene` 覆盖真实初始焦点、Enter/NumPadEnter/IME 清焦点、双语空态/无结果与结果 `replace`；11 类 shared/order/route/focus/feedback/入口 mutation 精确 RED。首审 `0/1/0` 只发现 catalog 测试未恢复全局 Locale；唯一修复 `58497587c` 以 `withRestoredLocale` 的 `try/finally` 覆盖正常及主动异常路径，消除顺序污染。唯一复审 APPROVED `0/0/0`，搜索/导航/实例化 `53/53`、资源/More `14/14`、shared policy `7/7`、provenance `6/6`、Spotless、diff 与 19-Task guard 通过；累计 `8 files/400 touched`，用户脏文件零混入。下一项为父 Task 5B / 子 Task 6。
 
-### Task 6：Desktop 标题 anchor 核心与基础页面
+### Task 6A：Desktop 标题 anchor 核心、搜索交接与 General/Appearance
 
 **Risk axis:** desktop-settings-anchor-core
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 8 files, 400 lines
+**Estimated scope:** 7 files, 340 lines
 
-**Verification:** result→Screen→exact title→scroll/highlight→one-shot；duplicate first match；optional focus enhancement separate
+**Verification:** result→search handoff→Screen→exact title→scroll/highlight→one-shot；duplicate first match；optional focus enhancement separate
 
-**Files:** `DesktopSettingsAnchor.kt`、`SettingsComposables.kt`、General/Appearance/Reader/Library screens、两份 anchor tests。
+**Files:** `DesktopSettingsAnchor.kt`、`SettingsComposables.kt`、`SettingsSearchScreen.kt`、General/Appearance screens、两份 anchor tests。
 
 1. RED：重复消费、错误 title、route 无 anchor、滚动但不高亮均失败；缺 focus 不能冒充原版 anchor failure。
-2. GREEN：统一一次性 owner/highlight；额外 focus 独立标记和测试，不改变首个重复标题边界。
-3. 保护 grid/reader/library 独有项；运行真实 Compose/navigation/range gate。
+2. GREEN：搜索结果必须把 `anchorTitle` 交给统一一次性 owner/highlight 后再 replace route；额外 focus 独立标记和测试，不改变首个重复标题边界。
+3. 接入 General/Appearance 并保护 grid 独有项；运行真实 Compose/navigation/range gate。
+
+### Task 6B：Desktop 标题 anchor 的 Reader/Library 接线
+
+**Risk axis:** desktop-settings-anchor-reader-library
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 3 files, 180 lines
+
+**Verification:** Reader/Library exact-title scroll/highlight/one-shot、duplicate first match、独有 preference preservation
+
+**Files:** Reader/Library screens、复用 6A 的 anchor wiring test。
+
+1. RED：Reader/Library route 未消费 exact title、滚动/高亮错误、重复消费或重复标题非首个命中时失败。
+2. GREEN：仅把两页接入 6A 统一 owner/host，不复制 anchor 状态机或搜索策略。
+3. 保护 reader mode、grid/update interval 等独有 preference 与写入行为；运行真实 Compose/navigation/range gate。
 
 ### Task 7：Desktop 标题 anchor 的安全/数据页面
 
