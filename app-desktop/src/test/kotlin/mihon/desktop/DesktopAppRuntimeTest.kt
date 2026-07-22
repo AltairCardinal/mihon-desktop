@@ -446,6 +446,10 @@ class DesktopAppRuntimeTest {
         runtime.stop()
 
         assertFalse(runtime.isRunning)
+        runtime.start()
+        assertTrue(runtime.isRunning)
+        runtime.stop()
+        assertFalse(runtime.isRunning)
     }
 
     @Test
@@ -519,6 +523,42 @@ class DesktopAppRuntimeTest {
             assertEquals(1, successfulStops.get()); assertEquals(2, failedStops.get())
         } finally {
             release.countDown(); executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `close start rejects concurrent restart and late resource attachment`(@org.junit.jupiter.api.io.TempDir tempDir: File) {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val starts = AtomicInteger()
+        val stops = AtomicInteger()
+        val blocking = object : DesktopRuntimeService {
+            override fun start() { starts.incrementAndGet() }
+            override fun stop() { stops.incrementAndGet(); entered.countDown(); release.await() }
+        }
+        val runtime = DesktopAppRuntime(blocking, RecordingRuntimeService(), RecordingRuntimeService(), startupCleanup = {})
+        runtime.start()
+        val stateFile = File(tempDir, "late-broker.json")
+        val broker = DesktopExternalActionBroker(stateFile)
+        assertTrue(broker.startOrForward(null) is DesktopExternalActionBroker.StartResult.Owner)
+        val closeableCalls = AtomicInteger()
+        val executor = Executors.newFixedThreadPool(4)
+        try {
+            val closing = executor.submit<Throwable?> { runCatching(runtime::close).exceptionOrNull() }
+            assertTrue(entered.await(1, TimeUnit.SECONDS))
+            val lateCalls = listOf(
+                executor.submit<Throwable?> { runCatching(runtime::start).exceptionOrNull() },
+                executor.submit<Throwable?> { runCatching { runtime.attachInstanceBroker(broker) }.exceptionOrNull() },
+                executor.submit<Throwable?> { runCatching { runtime.attachCloseable { closeableCalls.incrementAndGet() } }.exceptionOrNull() },
+            )
+            release.countDown()
+            assertEquals(null, closing.get(2, TimeUnit.SECONDS))
+            assertTrue(lateCalls.map { it.get(2, TimeUnit.SECONDS) }.all { it is IllegalStateException })
+            runtime.close()
+            assertEquals(1, starts.get()); assertEquals(1, stops.get())
+            assertFalse(runtime.isRunning); assertTrue(stateFile.exists()); assertEquals(0, closeableCalls.get())
+        } finally {
+            release.countDown(); executor.shutdownNow(); broker.close()
         }
     }
 

@@ -309,17 +309,24 @@ class DesktopExternalActionBrokerTest {
             if (closeCalls == 1) throw failure
             retryEntered.countDown(); releaseRetry.await(); server.close()
         })
-        val endpoint = (owner.startOrForward(null) as DesktopExternalActionBroker.StartResult.Owner).endpoint
+        assertTrue(owner.startOrForward(null) is DesktopExternalActionBroker.StartResult.Owner)
 
         assertSame(failure, runCatching(owner::close).exceptionOrNull())
         assertTrue(stateFile.exists())
-        assertEquals(DesktopExternalActionBroker.StartResult.Owner(endpoint), owner.startOrForward(null))
+        assertEquals(DesktopExternalActionBroker.StartResult.Failed(DesktopExternalActionBroker.Failure.InvalidState), owner.startOrForward(null))
+        DesktopExternalActionBroker(stateFile).use { secondary ->
+            assertEquals(
+                DesktopExternalActionBroker.StartResult.Failed(DesktopExternalActionBroker.Failure.ProtocolRejected),
+                secondary.startOrForward("closing"),
+            )
+        }
         val retries = List(2) { async(Dispatchers.IO) { runCatching(owner::close).exceptionOrNull() } }
         retryEntered.await(1, TimeUnit.SECONDS); releaseRetry.countDown()
         assertTrue(retries.awaitAll().all { it == null })
         assertFalse(stateFile.exists())
         owner.close()
         assertEquals(2, closeCalls)
+        assertEquals(DesktopExternalActionBroker.StartResult.Failed(DesktopExternalActionBroker.Failure.InvalidState), owner.startOrForward(null))
 
         val successor = DesktopExternalActionBroker(stateFile)
         assertTrue(successor.startOrForward(null) is DesktopExternalActionBroker.StartResult.Owner)
@@ -330,13 +337,13 @@ class DesktopExternalActionBrokerTest {
     fun `malformed owner state blocks terminal cleanup until exact retry`(@TempDir tempDir: File) {
         val stateFile = File(tempDir, "malformed-close.json")
         val owner = DesktopExternalActionBroker(stateFile)
-        val endpoint = (owner.startOrForward(null) as DesktopExternalActionBroker.StartResult.Owner).endpoint
+        assertTrue(owner.startOrForward(null) is DesktopExternalActionBroker.StartResult.Owner)
         val validState = stateFile.readText()
         stateFile.writeText("{bad")
 
         assertTrue(runCatching(owner::close).exceptionOrNull() is IllegalStateException)
         assertTrue(stateFile.exists())
-        assertEquals(DesktopExternalActionBroker.StartResult.Owner(endpoint), owner.startOrForward(null))
+        assertEquals(DesktopExternalActionBroker.StartResult.Failed(DesktopExternalActionBroker.Failure.InvalidState), owner.startOrForward(null))
         stateFile.writeText(validState)
         owner.close()
         assertFalse(stateFile.exists())

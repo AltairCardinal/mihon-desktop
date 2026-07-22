@@ -40,6 +40,9 @@ class DesktopExternalActionBroker(
     private var ownerLock: FileLock? = null
     private var server: ServerSocket? = null
     private var endpoint: Endpoint? = null
+    private var cleanupOwnerId: String? = null
+    @Volatile private var closeStarted = false
+    private var terminal = false
 
     @Synchronized
     fun startOrForward(raw: String?): StartResult = try {
@@ -50,6 +53,7 @@ class DesktopExternalActionBroker(
     }
 
     private fun startOrForwardLocked(raw: String?): StartResult {
+        if (closeStarted) return StartResult.Failed(Failure.InvalidState)
         if (raw != null && raw.length > MAX_PAYLOAD_CHARS) return StartResult.Failed(Failure.MessageTooLarge)
         endpoint?.let {
             raw?.let(::deliver)
@@ -115,19 +119,23 @@ class DesktopExternalActionBroker(
 
     @Synchronized
     override fun close() {
+        if (terminal) return
+        closeStarted = true
+        endpoint = null
         server?.let { ownerServer ->
             closeServer(ownerServer)
             server = null
         }
-        endpoint?.let { ownedEndpoint ->
-            if (readStateForClose()?.ownerId == ownedEndpoint.ownerId) Files.delete(stateFile.toPath())
-            endpoint = null
+        cleanupOwnerId?.let { ownerId ->
+            if (readStateForClose()?.ownerId == ownerId) Files.delete(stateFile.toPath())
+            cleanupOwnerId = null
         }
         ownerLock?.release()
         ownerLock = null
         lockFile?.close()
         lockFile = null
         brokerJob.cancel()
+        terminal = true
     }
 
     private fun acquireOwnerLock(): FileLock? {
@@ -166,6 +174,7 @@ class DesktopExternalActionBroker(
             )
             server = ownerServer
             endpoint = ownerEndpoint
+            cleanupOwnerId = ownerEndpoint.ownerId
             writeState(ownerEndpoint)
             scope.launch(Dispatchers.IO) { acceptLoop(ownerServer, ownerEndpoint) }
             StartResult.Owner(ownerEndpoint)
@@ -192,13 +201,16 @@ class DesktopExternalActionBroker(
         } catch (_: Exception) {
             return
         }
-        val status = when {
-            request.version != PROTOCOL_VERSION -> AckStatus.Rejected
-            request.token != owner.token -> AckStatus.InvalidToken
-            request.payload != null && request.payload.length > MAX_PAYLOAD_CHARS -> AckStatus.Rejected
-            else -> {
-                request.payload?.let(::deliver)
-                AckStatus.Accepted
+        val status = synchronized(this) {
+            when {
+                closeStarted -> AckStatus.Rejected
+                request.version != PROTOCOL_VERSION -> AckStatus.Rejected
+                request.token != owner.token -> AckStatus.InvalidToken
+                request.payload != null && request.payload.length > MAX_PAYLOAD_CHARS -> AckStatus.Rejected
+                else -> {
+                    request.payload?.let(::deliver)
+                    AckStatus.Accepted
+                }
             }
         }
         runCatching {

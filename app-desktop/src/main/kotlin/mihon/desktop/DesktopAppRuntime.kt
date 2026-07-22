@@ -37,12 +37,14 @@ class DesktopAppRuntime(
     private val closeActions = mutableListOf<AutoCloseable>()
     private val services = listOf(libraryUpdateScheduler, localSourceScanService, autoBackupScheduler, trackerSyncScheduler, batchMigrationController)
     private val runningServices = BooleanArray(services.size)
+    private var closeStarted = false
     @get:Synchronized
     var isRunning: Boolean = false
         private set
 
     @Synchronized
     fun start() {
+        check(!closeStarted) { "Desktop runtime is closing" }
         if (isRunning) return
         appLock.onApplicationStarted()
         isRunning = true
@@ -75,6 +77,7 @@ class DesktopAppRuntime(
 
     @Synchronized
     fun close() {
+        closeStarted = true
         val failures = CleanupFailures()
         failures.attempt(::stop)
         failures.attempt {
@@ -120,12 +123,14 @@ class DesktopAppRuntime(
 
     @Synchronized
     fun attachInstanceBroker(broker: DesktopExternalActionBroker) {
+        check(!closeStarted) { "Desktop runtime is closing" }
         check(instanceBroker == null || instanceBroker === broker) { "A different instance broker is already attached" }
         instanceBroker = broker
     }
 
     @Synchronized
     fun attachCloseable(closeable: AutoCloseable) {
+        check(!closeStarted) { "Desktop runtime is closing" }
         closeActions += closeable
     }
 
