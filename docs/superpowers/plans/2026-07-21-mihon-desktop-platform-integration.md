@@ -62,8 +62,8 @@ status-source: this-file
 - [x] Task 16E2：真实 owner entry 证明与异常优先级
 - [x] Task 16E3：macOS 分享 helper 的 runtime ownership
 - [x] Task 16E4：Manga 分享入口非阻塞
-- [ ] Task 16E5：parity exact 保护集合补齐
-- [ ] Task 16E5R：表达式体行为证据边界
+- [x] Task 16E5：parity exact 保护集合补齐
+- [x] Task 16E5R：表达式体行为证据边界
 - [ ] Task 16：独立最终审查与三平台 change verify
 
 ## 全局任务门禁
@@ -1357,6 +1357,8 @@ status-source: this-file
 1. RED：合成 `@Test fun target() = Unit` 后跟含 production marker 的 decoy 块；当前 helper 必须错误接受并使新增测试失败。
 2. GREEN：扫描目标签名时，在找到当前成员块体前遇到顶层 `=`、下一个直接成员或类结束边界即拒绝，不跨方法寻找 `{`；保留 E5 已通过的注释、字符串、nested/local、duplicate 和附加注解测试。
 3. 运行 parity contract、behavior smoke、Spotless、JSON/diff 与 1-file/120-line gate；由未参与实现的 reviewer 独立审查，通过后同时勾选 E5/E5R 并重新执行 Task 16 whole-change review。
+
+**Review status（已完成）：** 实现 `255d44d7a` 用 `= Unit` + 后续 decoy RED 关闭原复审风险；首轮审查以 `0/1/0` 发现无 lambda 的 `runBlocking/runTest` 仍可借用后续 `init` 或 secondary `constructor` 块。唯一修复 `4478d7d2a` 为两类成员各加 RED，并把 `init`、`constructor` 纳入直接成员边界，同时保留真实 `= runTest {}` / `= runBlocking {}`。唯一复审 APPROVED，Critical/Important/Minor `0/0/0`；contract 32/32、behavior smoke 38/38、Spotless、UTF-8 JSON、diff 与累计 1 file/77 touched 门禁通过。E5/E5R 一并完成，下一项为 Task 16 whole-change review。
 
 ### Task 16：独立最终审查与三平台 change verify
 
