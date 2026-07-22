@@ -1391,6 +1391,8 @@ status-source: this-file
 
 **Whole-change review after 16D2R/16V1（已按门禁重规划）：** 对 `952be2f789..a9e349ba3` 的最终只读审查以 Critical/Important/Minor `0/6/1` 拒绝：credential disable/change-passphrase 存在持久化 fail-open 窗口；URI registration 测试未经过真实 production entry；macOS share helper 未归 runtime 所有；Manga share 同步阻塞 UI；owner factory 主异常可被 broker cleanup 覆盖；parity exact 集合遗漏 security/Widget/updater 的真实 production/protection 链。Windows 临时 secret buffer 未清零为同一 credential lifecycle 的 Minor。六项 Important 分属多个互不依赖的产品风险，合计超过本 Task 8 files/400 lines 唯一修复上限，因此停止 Task 16 内直接修补，按上下文和文件重合度拆为子 Task 16E1–16E5；全部独立通过后才重新执行一次 whole-change review 与全量矩阵。
 
+**Whole-change review after 16E1–16E5R（已通过）：** 独立 reviewer 对 `952be2f789..2e94748f7` 逐项核对固定原版 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`、IDs 81–86/92、shared/current Android/Desktop production wiring、生命周期/安全边界、Desktop 独有能力保留和测试失效敏感性，结论 APPROVED，Critical/Important/Minor `0/0/0`。定向证据为 Desktop 117/117、shared 13/13、当前 Android consumer 12/12、Widget 3/3、Spotless 与 committed-range diff；全量矩阵、版本构建和三平台运行验收仍必须在本 Task 后续集中完成。
+
 1. Desktop app-lock preference 已启用但 OS credential 被外部删除时，`probe()` 错把 `null` secret 报为 Available，根 UI 随后永久锁死且没有安全恢复路径。RED 必须证明 missing credential 与 backend unavailable/error 分离、应用保持 fail-closed、受保护内容不构造，并在锁屏显示明确的数据影响说明与“打开完整本地 profile 目录”入口；入口不得静默禁用锁，用户只能关闭应用后重置完整 profile。production DI 必须传入本轮真实 `DesktopPlatformPaths.configDir` 与目录 opener。
 2. macOS native picker 为异步 session，但连续 `shareImage()` 复用同一个 `mihon-shared-page.png`，第二次分享会覆盖第一会话的内容。RED 必须同时打开两个 session，断言路径唯一、首个像素在第二次调用后不变、文件在各自 terminal 前存在并仅由对应 terminal 清理；fallback saved/cancelled/failed 也必须清理。GREEN 使用权限收紧的唯一临时快照，不得以全局锁禁止用户并发分享，也不得在 `Opened` 时提前删除。
 
