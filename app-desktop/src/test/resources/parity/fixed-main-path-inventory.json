@@ -84,6 +84,20 @@
     { "path": "presentation-widget/src/main/java/tachiyomi/presentation/widget/BaseUpdatesGridGlanceWidget.kt", "blobId": "17b8d41fc85bd891fae6fd09db9c44fd05211957" },
     { "path": "app/src/main/java/eu/kanade/tachiyomi/data/updater/AppUpdateChecker.kt", "blobId": "c6781277e453d4c5a6e15e7d62d3e0f721c97bd6" },
     { "path": "app/src/main/java/eu/kanade/presentation/more/NewUpdateScreen.kt", "blobId": "f6b5f4b0b52a5af959866cc63c80ca2bd5af6399" },
-    { "path": "domain/src/main/java/tachiyomi/domain/release/interactor/GetApplicationRelease.kt", "blobId": "b95173688eded70cc10803c33d553c5af018cc3f" }
+    { "path": "domain/src/main/java/tachiyomi/domain/release/interactor/GetApplicationRelease.kt", "blobId": "b95173688eded70cc10803c33d553c5af018cc3f" },
+    { "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSearchScreen.kt", "blobId": "b5a9ac937af81a5eb1feb13ca7963bec64cc72bc" },
+    { "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SearchableSettings.kt", "blobId": "5652ace76c752bce59d4ee82f436c63f8d436d58" },
+    { "path": "app/src/main/java/eu/kanade/presentation/more/settings/PreferenceScreen.kt", "blobId": "e0938738fb6191234a283c7ffb82d52ffccad26d" },
+    { "path": "app/src/main/java/eu/kanade/domain/ui/UiPreferences.kt", "blobId": "84e405dee827b4d9fd47f2ca6cba7938c31b5cb4" },
+    { "path": "app/src/main/java/eu/kanade/domain/ui/model/AppTheme.kt", "blobId": "2394c5a429031312d4192989dc5bc3920133acc7" },
+    { "path": "app/src/main/java/eu/kanade/presentation/theme/TachiyomiTheme.kt", "blobId": "71ee3d988c388d35676de91607dd43225e4aeffe" },
+    { "path": "app/src/main/java/eu/kanade/presentation/theme/colorscheme/BaseColorScheme.kt", "blobId": "4ad2bfb807563c6d10c46b51bc02fa72d2fe4005" },
+    { "path": "app/build.gradle.kts", "blobId": "cdaa6f9604cd9bdada2c1e0359aba2e60ac156a1" },
+    { "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/about/AboutScreen.kt", "blobId": "01e35c1ecccc8b86d41d24137fd6ec0b94dfb063" },
+    { "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/about/OpenSourceLicensesScreen.kt", "blobId": "3385f7430b005c021f9c8469964755557a7da7a4" },
+    { "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/about/OpenSourceLibraryLicenseScreen.kt", "blobId": "725ed640788b217d6d71a731d798d7b5f1c25f01" },
+    { "path": "presentation-core/src/main/java/tachiyomi/presentation/core/util/Modifier.kt", "blobId": "857674a5c94065a2065f2140418fe9463f8d7a12" },
+    { "path": "presentation-core/src/main/java/tachiyomi/presentation/core/components/LabeledCheckbox.kt", "blobId": "a66bf0d184acbac6f80bfc4fcce0a33a60f62aac" },
+    { "path": "presentation-core/src/main/java/tachiyomi/presentation/core/components/material/Surface.kt", "blobId": "0e857ef75c4c420f69af3c9b21ea0c61bcb56aa1" }
   ]
 }

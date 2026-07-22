@@ -1,0 +1,65 @@
+{
+  "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+  "capabilities": [
+    {
+      "id": 90,
+      "authorities": [
+        { "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSearchScreen.kt", "blobId": "b5a9ac937af81a5eb1feb13ca7963bec64cc72bc", "symbols": ["private val settingScreens = listOf(", ".take(10)", "SearchableSettings.highlightKey = result.highlightKey", "navigator.replace(result.route)"] },
+        { "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SearchableSettings.kt", "blobId": "5652ace76c752bce59d4ee82f436c63f8d436d58", "symbols": ["interface SearchableSettings", "var highlightKey: String? = null"] },
+        { "path": "app/src/main/java/eu/kanade/presentation/more/settings/PreferenceScreen.kt", "blobId": "e0938738fb6191234a283c7ffb82d52ffccad26d", "symbols": ["findHighlightedIndex", "delay(0.5.seconds)", "state.animateScrollToItem(i)"] }
+      ],
+      "behavior": {
+        "screenOrder": ["appearance", "library", "reader", "download", "tracking", "browse", "data", "security", "advanced"],
+        "matchFields": ["title", "subtitle"],
+        "ignoreCase": true,
+        "excluded": { "disabled": true, "blankTitle": true, "infoPreference": true, "disabledGroup": true },
+        "limit": 10,
+        "breadcrumbs": { "ltr": "screen > group", "rtl": "group < screen" },
+        "anchor": { "identity": "localized-title", "routeAction": "replace", "consumeOnce": true }
+      }
+    },
+    {
+      "id": 91,
+      "authorities": [
+        { "path": "app/src/main/java/eu/kanade/domain/ui/UiPreferences.kt", "blobId": "84e405dee827b4d9fd47f2ca6cba7938c31b5cb4", "symbols": ["pref_theme_mode_key", "pref_app_theme", "pref_theme_dark_amoled_key"] },
+        { "path": "app/src/main/java/eu/kanade/domain/ui/model/AppTheme.kt", "blobId": "2394c5a429031312d4192989dc5bc3920133acc7", "symbols": ["enum class AppTheme", "DARK_BLUE(null)", "HOT_PINK(null)", "BLUE(null)"] },
+        { "path": "app/src/main/java/eu/kanade/presentation/theme/TachiyomiTheme.kt", "blobId": "71ee3d988c388d35676de91607dd43225e4aeffe", "symbols": ["getThemeColorScheme", "colorSchemes.getOrDefault"] },
+        { "path": "app/src/main/java/eu/kanade/presentation/theme/colorscheme/BaseColorScheme.kt", "blobId": "4ad2bfb807563c6d10c46b51bc02fa72d2fe4005", "symbols": ["if (!isDark) return lightScheme", "background = Color.Black"] },
+        { "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/appearance/AppLanguageScreen.kt", "blobId": "b59b26acaccce2612ce34904c704a4930ec99dc3", "symbols": ["LocaleListCompat.getEmptyLocaleList()", "AppCompatDelegate.setApplicationLocales(locale)"] }
+      ],
+      "behavior": {
+        "preferences": { "pref_theme_mode_key": "SYSTEM", "pref_app_theme": { "dynamicAvailable": "MONET", "dynamicUnavailable": "DEFAULT" }, "pref_theme_dark_amoled_key": false },
+        "unknownTheme": "capability-default",
+        "deprecatedTheme": { "pickerVisible": false, "renderedPalette": "DEFAULT" },
+        "amoled": { "lightApplies": false, "darkBackground": "BLACK", "darkSurface": "BLACK" },
+        "languageDefault": "system"
+      }
+    },
+    {
+      "id": 94,
+      "authorities": [
+        { "path": "app/build.gradle.kts", "blobId": "cdaa6f9604cd9bdada2c1e0359aba2e60ac156a1", "symbols": ["alias(libs.plugins.aboutLibraries)", "implementation(libs.aboutLibraries.compose)"] },
+        { "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/about/AboutScreen.kt", "blobId": "01e35c1ecccc8b86d41d24137fd6ec0b94dfb063", "symbols": ["navigator.push(OpenSourceLicensesScreen())", "fun getVersionName(withBuildDate: Boolean)"] },
+        { "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/about/OpenSourceLicensesScreen.kt", "blobId": "3385f7430b005c021f9c8469964755557a7da7a4", "symbols": ["produceLibraries(R.raw.aboutlibraries)", "it.licenses.firstOrNull()"] },
+        { "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/about/OpenSourceLibraryLicenseScreen.kt", "blobId": "725ed640788b217d6d71a731d798d7b5f1c25f01", "symbols": ["if (!website.isNullOrEmpty())", "HtmlCompat.FROM_HTML_MODE_COMPACT"] }
+      ],
+      "behavior": {
+        "metadata": "generated-R.raw.aboutlibraries",
+        "firstLicenseOnly": true,
+        "emptyWebsiteHasAction": false,
+        "emptyLicense": "",
+        "versionRules": { "debug": "Debug <sha> (<date>)", "preview": "Beta r<count> (<sha>, <date>)", "stable": "Stable <version> (<date>)" }
+      }
+    },
+    {
+      "id": 88,
+      "dedicatedScreenPresent": false,
+      "authorities": [
+        { "path": "presentation-core/src/main/java/tachiyomi/presentation/core/util/Modifier.kt", "blobId": "857674a5c94065a2065f2140418fe9463f8d7a12", "symbols": ["fun Modifier.runOnEnterKeyPressed", "Key.Enter, Key.NumPadEnter", "KeyEventType.KeyDown"] },
+        { "path": "presentation-core/src/main/java/tachiyomi/presentation/core/components/LabeledCheckbox.kt", "blobId": "a66bf0d184acbac6f80bfc4fcce0a33a60f62aac", "symbols": ["role = Role.Checkbox", ".heightIn(min = 48.dp)"] },
+        { "path": "presentation-core/src/main/java/tachiyomi/presentation/core/components/material/Surface.kt", "blobId": "0e857ef75c4c420f69af3c9b21ea0c61bcb56aa1", "symbols": [".minimumInteractiveComponentSize()", "role = Role.Button"] }
+      ],
+      "behavior": { "enterKeys": ["Enter", "NumPadEnter"], "triggerEvent": "KeyDown", "invocationsPerPress": 1, "roles": ["Checkbox", "Button"], "minimumTouchDp": 48 }
+    }
+  ]
+}
