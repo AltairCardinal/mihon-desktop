@@ -63,7 +63,7 @@ status-source: this-file
 - [x] Task 6A：Desktop 标题 anchor 核心、搜索交接与 General/Appearance
 - [x] Task 6B：Desktop 标题 anchor 的 Reader/Library 接线
 - [x] Task 7A：Desktop 标题 anchor 的 Download/Backup 数据页面
-- [ ] Task 7B：Desktop 标题 anchor 的 Advanced 页面
+- [x] Task 7B：Desktop 标题 anchor 的 Advanced 页面
 - [ ] Task 7C：Desktop 标题 anchor 的 Security 页面
 - [ ] Task 8：Desktop 标题 anchor 的扩展页面
 - [ ] Task 9：共享主题模块、identity/default/codec 与 Android consumer
@@ -523,6 +523,8 @@ status-source: this-file
 1. RED：页面只路由不落点、exact route/title/one-shot/scroll/highlight 或 Catalog identity 分叉时失败。
 2. GREEN：只接 6A host，不复制 owner/search；保留 Advanced platform action/状态反馈。
 3. 运行 Advanced focused/navigation/Spotless/range gate。
+
+**Review status（已完成）：** 实现 `b5c892c3c` 仅修改 Advanced、Catalog 和独立 wiring test；`advancedCrashLog` 让 Catalog 与页面按钮共同消费 `desktop_advanced_crash_log_open`。真实 Catalog→publish→replace→Advanced 场景验证 exact title、scroll、visible、唯一 highlight、one-shot、wrong route/unknown title，并通过真实点击覆盖 `openCrashLogFolder()` true/false 与对应 Snackbar。Catalog identity/route 分叉、host/anchor 断开、平台调用或反馈分支破坏三类 mutation 精确 RED。独立审查 APPROVED `0/0/0`，Desktop focused/Advanced/search/navigation/smoke/provenance `85/85`、shared `7/7`、Spotless、diff 与 18-Task guard 通过；范围 `3 files/178 touched`，Security、6A、7A 和用户脏文件零差异。下一项为父 Task 5B / 子 Task 7C。
 
 ### Task 7C：Desktop 标题 anchor 的 Security 页面
 
