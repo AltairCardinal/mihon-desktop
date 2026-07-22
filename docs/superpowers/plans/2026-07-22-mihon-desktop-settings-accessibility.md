@@ -65,7 +65,7 @@ status-source: this-file
 - [x] Task 7A：Desktop 标题 anchor 的 Download/Backup 数据页面
 - [x] Task 7B：Desktop 标题 anchor 的 Advanced 页面
 - [x] Task 7C：Desktop 标题 anchor 的 Security 页面
-- [ ] Task 8A：Desktop 标题 anchor 的 About 页面
+- [x] Task 8A：Desktop 标题 anchor 的 About 页面
 - [ ] Task 8B：Desktop LazyList anchor 核心与 ExtensionRepo 页面
 - [ ] Task 8C：Desktop 标题 anchor 的 Tracking 页面
 - [ ] Task 9：共享主题模块、identity/default/codec 与 Android consumer
@@ -561,6 +561,8 @@ status-source: this-file
 1. RED：About 独有项遗漏、前插九页、route/anchor identity 断开或 updater/diagnostic action 丢失时失败。
 2. GREEN：只接 ScrollState anchor host，不删除 updater/诊断能力；Catalog/Page 消费同一 MR。
 3. 运行 About/catalog/navigation/Screen smoke/Spotless/range gate。
+
+**Review status（已完成）：** 实现 `6b82a2307` 让 About 与 Catalog 共同消费集中 `aboutAppData` MR，并接入 6A ScrollState host。真实 Catalog→publish→replace→About 验证 exact title、scroll、visible、唯一 highlight、one-shot、wrong route/unknown title；fixed-main 九页前缀不变，Desktop 尾部严格为 `[General, ExtensionRepo, About]`，broad query top10 不被抢占。真实临时缓存目录及 `response.bin` 通过生产按钮删除并显示成功反馈，既有 updater/版本/路径/Java/OS 诊断回归保持。Catalog/顺序、host/identity、清缓存反馈三类 mutation 精确 RED。独立审查 APPROVED `0/0/0`，About/updater/identity/navigation/smoke/search/anchor/provenance `113/113`、shared `7/7`、Spotless、diff 与 18-Task guard 通过；范围 `3 files/137 touched`，Lazy 页与用户脏文件零差异。下一项为父 Task 5B / 子 Task 8B。
 
 ### Task 8B：Desktop LazyList anchor 核心与 ExtensionRepo 页面
 
