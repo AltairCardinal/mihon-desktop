@@ -44,8 +44,6 @@ import mihon.desktop.security.DesktopPassphraseVerifier
 import mihon.desktop.ui.security.DesktopPasswordField
 import mihon.domain.security.AuthenticationResult
 import tachiyomi.i18n.MR
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 enum class SecurityBackendCapability { Available, Unavailable, Error }
 
@@ -279,10 +277,11 @@ class SecuritySettingsScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val privacyCapabilities = LocalDesktopUiDependencies.current.privacyCapabilities
-        val windowPrivacyController = remember { Injekt.get<DesktopWindowPrivacyController>() }
-        val controller = remember {
-            SecuritySettingsController(Injekt.get<SecurityPreferences>(), Injekt.get<DesktopPassphraseVerifier>())
+        val dependencies = LocalDesktopUiDependencies.current
+        val privacyCapabilities = dependencies.privacyCapabilities
+        val windowPrivacyController = dependencies.windowPrivacyController
+        val controller = remember(dependencies.securityPreferences, dependencies.passphraseVerifier) {
+            SecuritySettingsController(dependencies.securityPreferences, dependencies.passphraseVerifier)
         }
         val state by controller.state.collectAsState()
         var action by remember { mutableStateOf<SecurityAction?>(null) }
@@ -351,7 +350,7 @@ class SecuritySettingsScreen : Screen {
                 DesktopSecureScreenSettings(windowPrivacyController)
                 DesktopPrivacySettings(
                     capabilities = privacyCapabilities,
-                    nativeNotificationControl = { DesktopHideNotificationContentSetting() },
+                    nativeNotificationControl = { DesktopHideNotificationContentSetting(dependencies.securityPreferences) },
                     telemetryControls = null,
                 )
             }
@@ -454,8 +453,8 @@ internal fun DesktopPrivacySettings(
 }
 
 @Composable
-private fun DesktopHideNotificationContentSetting() {
-    val preference = remember { Injekt.get<SecurityPreferences>().hideNotificationContent() }
+private fun DesktopHideNotificationContentSetting(securityPreferences: SecurityPreferences) {
+    val preference = remember(securityPreferences) { securityPreferences.hideNotificationContent() }
     val hidden by preference.changes().collectAsState(initial = preference.get())
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(MR.strings.desktop_security_hide_notification_content.localized(), modifier = Modifier.weight(1f))

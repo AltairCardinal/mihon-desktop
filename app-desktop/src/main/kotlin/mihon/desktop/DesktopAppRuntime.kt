@@ -87,8 +87,12 @@ class DesktopAppRuntime(
     }
 
     suspend fun closeAndJoin() {
+        close()
+        awaitClosed()
+    }
+
+    suspend fun awaitClosed() {
         val failures = CleanupFailures()
-        failures.attempt(::close)
         failures.attemptSuspend { updateScreenModel?.closeAndJoin() }
         failures.attemptSuspend { scope.coroutineContext[Job]?.join() }
         failures.throwIfAny()

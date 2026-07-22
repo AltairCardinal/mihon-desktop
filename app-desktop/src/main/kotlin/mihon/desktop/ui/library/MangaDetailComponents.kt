@@ -283,11 +283,7 @@ internal fun MangaCategoryDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    checkedIds = if (category.id in checkedIds) {
-                                        checkedIds - category.id
-                                    } else {
-                                        checkedIds + category.id
-                                    }
+                                    checkedIds = if (category.id in checkedIds) checkedIds - category.id else checkedIds + category.id
                                 }
                                 .padding(vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,

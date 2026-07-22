@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
@@ -19,7 +20,6 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import mihon.desktop.di.initDesktopDI
 import mihon.desktop.platform.DesktopExternalActionBroker
 import mihon.desktop.platform.DesktopOpenUriEventPort
@@ -130,10 +130,16 @@ private fun runOwnerApplication(
         if (runHeadlessMode(testArgs, runtime, closeRuntime = bootstrap::close)) return
 
         application {
+            val applicationScope = rememberCoroutineScope()
             Window(
                 onCloseRequest = {
-                    bootstrap.close()
-                    exitApplication()
+                    applicationScope.launch {
+                        try {
+                            bootstrap.closeAndJoin()
+                        } finally {
+                            exitApplication()
+                        }
+                    }
                 },
                 title = "Mihon Desktop $APP_VERSION",
                 state = rememberWindowState(width = 1024.dp, height = 768.dp),
@@ -194,12 +200,28 @@ internal class DesktopRuntimeBootstrapSession(
         closed = true
         var primaryFailure: Throwable? = null
         try {
-            runBlocking { runtime.closeAndJoin() }
+            runtime.close()
         } catch (failure: Throwable) {
             primaryFailure = failure
         }
         try {
             lockStateBinding.close()
+        } catch (failure: Throwable) {
+            val primary = primaryFailure
+            if (primary == null) primaryFailure = failure else if (failure !== primary) primary.addSuppressed(failure)
+        }
+        primaryFailure?.let { throw it }
+    }
+
+    suspend fun closeAndJoin() {
+        var primaryFailure: Throwable? = null
+        try {
+            close()
+        } catch (failure: Throwable) {
+            primaryFailure = failure
+        }
+        try {
+            runtime.awaitClosed()
         } catch (failure: Throwable) {
             val primary = primaryFailure
             if (primary == null) primaryFailure = failure else if (failure !== primary) primary.addSuppressed(failure)

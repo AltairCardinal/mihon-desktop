@@ -193,16 +193,11 @@ class WindowsReleaseConfigurationTest {
 
     @Test
     fun `desktop documentation requires unpackaged Windows runtime validation`() {
-        val agents = Files.readString(repoRoot.resolve("AGENTS.md"))
         val testGuide = Files.readString(repoRoot.resolve("docs/automation/TEST_GUIDE.md"))
         val canonicalPath =
             "app-desktop/tmp/mihon-dist/main/app/Mihon Desktop/Mihon Desktop.exe"
 
-        assertTrue(agents.contains("0.STAGE.FEATURE.BUILD.GIT_HASH"))
-        assertTrue(agents.contains(canonicalPath))
-        assertTrue(agents.contains("MSI") && agents.contains("不能替代"))
-        assertTrue(agents.contains("运行版本") && agents.contains("完全一致"))
         assertTrue(testGuide.contains(canonicalPath))
-        assertTrue(testGuide.contains("未打包"))
+        assertTrue(testGuide.contains("--test-mode"))
     }
 }

@@ -41,6 +41,7 @@ import mihon.desktop.ui.extension.ExtensionsScreenModel
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.platform.DesktopNativeSharePort
 import mihon.desktop.platform.DesktopShareService
+import mihon.desktop.privacy.DesktopWindowPrivacyController
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import mihon.desktop.security.DesktopAppLock
 import mihon.desktop.security.DesktopPassphraseVerifier
@@ -216,8 +217,15 @@ class DesktopDiWiringTest {
         )
         try {
             assertEquals(listOf(CredentialNamespace.APP_LOCK_V1), namespaces)
-            assertNotNull(Injekt.get<SecurityPreferences>())
-            assertNotNull(Injekt.get<DesktopPassphraseVerifier>())
+            val securityPreferences = Injekt.get<SecurityPreferences>()
+            val passphraseVerifier = Injekt.get<DesktopPassphraseVerifier>()
+            val windowPrivacyController = Injekt.get<DesktopWindowPrivacyController>()
+            val uiDependencies = DesktopUiDependencies.fromInjekt()
+            assertSame(securityPreferences, uiDependencies.securityPreferences)
+            assertSame(passphraseVerifier, uiDependencies.passphraseVerifier)
+            assertSame(windowPrivacyController, uiDependencies.windowPrivacyController)
+            securityPreferences.hideNotificationContent().set(true)
+            assertTrue(uiDependencies.securityPreferences.hideNotificationContent().get())
             val appLock = Injekt.get<DesktopAppLock>()
             assertSame(appLock, Injekt.get<DesktopAppRuntime>().appLock)
         } finally {

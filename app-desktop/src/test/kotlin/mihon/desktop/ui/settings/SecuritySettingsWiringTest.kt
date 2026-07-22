@@ -20,6 +20,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonObject
@@ -29,7 +30,6 @@ import mihon.desktop.DesktopRuntimeService
 import mihon.desktop.DesktopWindowFocusListener
 import mihon.desktop.DesktopWindowFocusRegistration
 import mihon.desktop.bootstrapDesktopRuntime
-import mihon.desktop.runHeadlessMode
 import mihon.desktop.platform.CredentialBackend
 import mihon.desktop.platform.DesktopCredentialStore
 import mihon.desktop.platform.OperatingSystem
@@ -45,7 +45,6 @@ import mihon.desktop.settings.ThemeMode
 import mihon.desktop.test.http.currentTestStateJson
 import mihon.desktop.test.http.nestedTestScreenAction
 import mihon.desktop.test.state.applicationState
-import mihon.desktop.test.TestArguments
 import mihon.desktop.update.DesktopUpdateController
 import mihon.desktop.update.InstallCancelled
 import mihon.desktop.update.InstallManualOnly
@@ -313,14 +312,7 @@ class SecuritySettingsWiringTest {
             val runtime = DesktopAppRuntime(service, service, service, startupCleanup = {}, scope = parentScope, updateScreenModel = model)
             val session = bootstrapDesktopRuntime(runtime, appLock, applicationState) {}
             assertTrue(model.intent(DesktopUpdateIntent.CHECK))
-            val closing = async(Dispatchers.Default) {
-                if (headless) {
-                    runHeadlessMode(TestArguments(testMode = true, headless = true), runtime, {}, {}, session::close)
-                } else {
-                    session.close()
-                    true
-                }
-            }
+            val closing = async(Dispatchers.Default) { session.closeAndJoin(); true }
             try {
                 withTimeout(1_000) { cleanupStarted.await() }
                 assertFalse(closing.isCompleted)
@@ -449,7 +441,12 @@ class SecuritySettingsWiringTest {
             assertEquals(0, protectedConstructions)
 
             assertEquals(AuthenticationResult.Success, appLock.authenticate("secret".toCharArray()))
-            scene.render()
+            withTimeout(1_000) {
+                while (protectedConstructions == 0) {
+                    scene.render()
+                    yield()
+                }
+            }
             assertTrue(protectedConstructions > 0)
         } finally {
             scene.close()

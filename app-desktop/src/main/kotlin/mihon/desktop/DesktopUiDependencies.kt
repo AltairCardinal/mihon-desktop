@@ -1,6 +1,7 @@
 package mihon.desktop
 
 import androidx.compose.runtime.compositionLocalOf
+import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import kotlinx.coroutines.flow.Flow
 import mihon.desktop.backup.BackupRestoreScreenModelFactory
 import mihon.desktop.domain.DesktopCoverUpdater
@@ -23,6 +24,8 @@ import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.platform.DesktopDeepLinkHandler
 import mihon.desktop.platform.DesktopShareService
 import mihon.desktop.privacy.DesktopPrivacyCapabilities
+import mihon.desktop.privacy.DesktopWindowPrivacyController
+import mihon.desktop.security.DesktopPassphraseVerifier
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.tracking.DesktopTrackerServiceRegistry
 import mihon.desktop.source.LocalSourceScanService
@@ -90,6 +93,9 @@ data class DesktopUiDependencies(
     val networkHelper: DesktopNetworkHelper,
     val notificationService: DesktopNotificationService,
     val privacyCapabilities: DesktopPrivacyCapabilities,
+    val windowPrivacyController: DesktopWindowPrivacyController,
+    val securityPreferences: SecurityPreferences,
+    val passphraseVerifier: DesktopPassphraseVerifier,
     val shareService: DesktopShareService,
     val replaceExtensionRepo: ReplaceExtensionRepo,
     val saveSourceMangaForDetails: SaveSourceMangaForDetails,
@@ -158,6 +164,9 @@ data class DesktopUiDependencies(
                 networkHelper = Injekt.get(),
                 notificationService = Injekt.get(),
                 privacyCapabilities = Injekt.get(),
+                windowPrivacyController = Injekt.get(),
+                securityPreferences = Injekt.get(),
+                passphraseVerifier = Injekt.get(),
                 shareService = Injekt.get(),
                 replaceExtensionRepo = Injekt.get(),
                 saveSourceMangaForDetails = saveSourceMangaForDetails,
