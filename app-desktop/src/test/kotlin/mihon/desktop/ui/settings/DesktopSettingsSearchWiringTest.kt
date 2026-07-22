@@ -152,6 +152,72 @@ class DesktopSettingsSearchWiringTest {
         }
     }
     @Test
+    fun `reader search anchor scrolls highlights once and preserves mode writes`() = runBlocking {
+        withRestoredLocale {
+            Locale.setDefault(Locale.US)
+            val anchorTitle = MR.strings.desktop_reader_pager_mode.localized(Locale.US)
+            withSearchScene(height = 180) { scene ->
+                lateinit var navigator: Navigator
+                scene.setContent { dependencies { Navigator(SettingsSearchScreen()) { nav -> navigator = nav; CurrentScreen() } } }
+                render(scene)
+                currentPreferences.defaultReaderMode.set(mihon.desktop.settings.ReaderDefaultMode.WEBTOON)
+                setText(scene, anchorTitle)
+                render(scene)
+                click(scene, anchorTitle)
+                render(scene)
+                assertTrue(navigator.lastItem is ReaderSettingsScreen)
+                val highlighted = nodes(scene, true).single { it.config.contains(DesktopSettingsAnchorHighlighted) && it.config[DesktopSettingsAnchorHighlighted] }
+                assertTrue(flatten(highlighted).any { anchorTitle in text(it) })
+                assertTrue(highlighted.boundsInRoot.height > 0f)
+                val scroll = nodes(scene, true).first { it.config.contains(SemanticsProperties.VerticalScrollAxisRange) }
+                    .config[SemanticsProperties.VerticalScrollAxisRange]
+                assertTrue(scroll.value() > 0f)
+                click(scene, anchorTitle)
+                assertEquals(mihon.desktop.settings.ReaderDefaultMode.PAGER, currentPreferences.defaultReaderMode.get())
+            }
+            withSearchScene(ReaderSettingsScreen(), height = 180) { scene ->
+                render(scene)
+                assertFalse(nodes(scene, true).any { it.config.contains(DesktopSettingsAnchorHighlighted) })
+                val scroll = nodes(scene, true).first { it.config.contains(SemanticsProperties.VerticalScrollAxisRange) }
+                    .config[SemanticsProperties.VerticalScrollAxisRange]
+                assertEquals(0f, scroll.value())
+            }
+        }
+    }
+    @Test
+    fun `library search anchor scrolls highlights once and preserves update writes`() = runBlocking {
+        withRestoredLocale {
+            Locale.setDefault(Locale.US)
+            val anchorTitle = MR.strings.pref_category_display.localized(Locale.US)
+            withSearchScene(height = 260) { scene ->
+                lateinit var navigator: Navigator
+                scene.setContent { dependencies { Navigator(SettingsSearchScreen()) { nav -> navigator = nav; CurrentScreen() } } }
+                render(scene)
+                currentPreferences.libraryUpdateInterval.set(mihon.desktop.settings.LibraryUpdateInterval.OFF)
+                setText(scene, anchorTitle)
+                render(scene)
+                click(scene, anchorTitle)
+                render(scene)
+                assertTrue(navigator.lastItem is LibrarySettingsScreen)
+                val highlighted = nodes(scene, true).single { it.config.contains(DesktopSettingsAnchorHighlighted) && it.config[DesktopSettingsAnchorHighlighted] }
+                assertTrue(anchorTitle in text(highlighted))
+                assertTrue(highlighted.boundsInRoot.height > 0f)
+                val scroll = nodes(scene, true).first { it.config.contains(SemanticsProperties.VerticalScrollAxisRange) }
+                    .config[SemanticsProperties.VerticalScrollAxisRange]
+                assertTrue(scroll.value() > 0f)
+                click(scene, MR.strings.update_6hour.localized(Locale.US))
+                assertEquals(mihon.desktop.settings.LibraryUpdateInterval.EVERY_6H, currentPreferences.libraryUpdateInterval.get())
+            }
+            withSearchScene(LibrarySettingsScreen(), height = 260) { scene ->
+                render(scene)
+                assertFalse(nodes(scene, true).any { it.config.contains(DesktopSettingsAnchorHighlighted) })
+                val scroll = nodes(scene, true).first { it.config.contains(SemanticsProperties.VerticalScrollAxisRange) }
+                    .config[SemanticsProperties.VerticalScrollAxisRange]
+                assertEquals(0f, scroll.value())
+            }
+        }
+    }
+    @Test
     fun `More search entry opens the production search screen`() = runBlocking {
         withSearchScene(MoreRootScreen()) { scene ->
             lateinit var navigator: Navigator

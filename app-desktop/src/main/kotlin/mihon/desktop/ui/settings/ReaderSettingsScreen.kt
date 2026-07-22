@@ -2,11 +2,8 @@ package mihon.desktop.ui.settings
 
 import mihon.desktop.LocalDesktopUiDependencies
 
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -41,6 +38,7 @@ class ReaderSettingsScreen : Screen {
         val prefs = LocalDesktopUiDependencies.current.appPreferences
         var readerMode by remember { mutableStateOf(prefs.defaultReaderMode.get()) }
         var isRtl by remember { mutableStateOf(prefs.defaultRtl.get()) }
+        val viewerTypeTitle = MR.strings.pref_viewer_type.localized()
 
         Scaffold(
             topBar = {
@@ -57,29 +55,29 @@ class ReaderSettingsScreen : Screen {
                 )
             },
         ) { padding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .verticalScroll(rememberScrollState()),
+            DesktopSettingsAnchorColumn(
+                route = this@ReaderSettingsScreen,
+                modifier = Modifier.fillMaxSize().padding(padding),
             ) {
                 Text(
-                    text = MR.strings.pref_viewer_type.localized(),
+                    text = viewerTypeTitle,
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier.desktopSettingsAnchor(viewerTypeTitle).padding(horizontal = 16.dp, vertical = 8.dp),
                 )
                 ReaderDefaultMode.entries.forEach { mode ->
+                    val modeTitle = when (mode) {
+                        ReaderDefaultMode.PAGER -> MR.strings.desktop_reader_pager_mode.localized()
+                        ReaderDefaultMode.WEBTOON -> MR.strings.desktop_reader_webtoon_mode.localized()
+                    }
                     RadioSettingsItem(
-                        title = when (mode) {
-                            ReaderDefaultMode.PAGER -> MR.strings.desktop_reader_pager_mode.localized()
-                            ReaderDefaultMode.WEBTOON -> MR.strings.desktop_reader_webtoon_mode.localized()
-                        },
+                        title = modeTitle,
                         selected = readerMode == mode,
                         onClick = {
                             readerMode = mode
                             prefs.defaultReaderMode.set(mode)
                         },
+                        modifier = Modifier.desktopSettingsAnchor(modeTitle),
                     )
                 }
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))

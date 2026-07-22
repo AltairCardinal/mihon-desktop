@@ -3,13 +3,10 @@ package mihon.desktop.ui.settings
 import mihon.desktop.LocalDesktopUiDependencies
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Checkbox
@@ -60,6 +57,8 @@ class LibrarySettingsScreen : Screen {
                     .split(",").mapNotNull { it.trim().toLongOrNull() }.toSet(),
             )
         }
+        val updateTitle = MR.strings.pref_category_library_update.localized()
+        val displayTitle = MR.strings.pref_category_display.localized()
 
         LaunchedEffect(Unit) {
             categories = getCategories.await()
@@ -80,17 +79,15 @@ class LibrarySettingsScreen : Screen {
                 )
             },
         ) { padding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .verticalScroll(rememberScrollState()),
+            DesktopSettingsAnchorColumn(
+                route = this@LibrarySettingsScreen,
+                modifier = Modifier.fillMaxSize().padding(padding),
             ) {
                 Text(
-                    text = MR.strings.pref_category_library_update.localized(),
+                    text = updateTitle,
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier.desktopSettingsAnchor(updateTitle).padding(horizontal = 16.dp, vertical = 8.dp),
                 )
 
                 val intervalLabels = mapOf(
@@ -125,10 +122,10 @@ class LibrarySettingsScreen : Screen {
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                 Text(
-                    text = MR.strings.pref_category_display.localized(),
+                    text = displayTitle,
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier.desktopSettingsAnchor(displayTitle).padding(horizontal = 16.dp, vertical = 8.dp),
                 )
                 val missingChapterIndicatorItem = missingChapterIndicatorSettingsItem(
                     prefs = prefs,
