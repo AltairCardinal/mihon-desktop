@@ -61,7 +61,7 @@ status-source: this-file
 - [x] Task 4M：Desktop Tracking 动作副作用与失败 fallback identity
 - [x] Task 5：Desktop 设置 catalog、搜索 Screen 与入口
 - [x] Task 6A：Desktop 标题 anchor 核心、搜索交接与 General/Appearance
-- [ ] Task 6B：Desktop 标题 anchor 的 Reader/Library 接线
+- [x] Task 6B：Desktop 标题 anchor 的 Reader/Library 接线
 - [ ] Task 7：Desktop 标题 anchor 的安全/数据页面
 - [ ] Task 8：Desktop 标题 anchor 的扩展页面
 - [ ] Task 9：共享主题模块、identity/default/codec 与 Android consumer
@@ -485,6 +485,8 @@ status-source: this-file
 1. RED：Reader/Library route 未消费 exact title、滚动/高亮错误、重复消费或重复标题非首个命中时失败。
 2. GREEN：仅把两页接入 6A 统一 owner/host，不复制 anchor 状态机或搜索策略。
 3. 保护 reader mode、grid/update interval 等独有 preference 与写入行为；运行真实 Compose/navigation/range gate。
+
+**Review status（已完成）：** 实现 `78533b61d` 仅让 Reader/Library 接入 6A 统一 `DesktopSettingsAnchorColumn`/`desktopSettingsAnchor`，未修改核心、搜索或 catalog。两页真实 search→replace→Screen 场景均验证 exact title、`ScrollState > 0`、目标与可视区域相交、唯一 highlight，以及直接重开后无 highlight/scroll 的 one-shot；Reader `PAGER`、Library `EVERY_6H` 与既有 Appearance grid 写入回归通过。断开 Reader host、断开 Library host、Library anchor 错绑 update title 三类 mutation 精确 RED 并恢复。独立审查 APPROVED `0/0/0`，focused `9/9`、Desktop 设置/navigation/smoke/provenance `106/106`、shared policy `7/7`、Spotless、diff、range 与 18-Task guard 通过；范围 `3 files/113 touched`，无状态机复制或用户脏文件。下一项为父 Task 5B / 子 Task 7。
 
 ### Task 7：Desktop 标题 anchor 的安全/数据页面
 
