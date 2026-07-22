@@ -38,14 +38,14 @@ class DesktopSettingsAnchorHostTest {
         val scene = scene(RouteA(), "duplicate")
         try {
             render(scene)
-            val duplicates = nodes(scene, true).filter { "duplicate" in text(it) }
-            val highlighted = duplicates.single {
+            val anchors = nodes(scene, true).filter { it.config.contains(SemanticsProperties.TestTag) }
+            val highlighted = anchors.single {
                 it.config.contains(DesktopSettingsAnchorHighlighted) && it.config[DesktopSettingsAnchorHighlighted]
             }
             assertEquals("duplicate-first", highlighted.config[SemanticsProperties.TestTag])
             val scroll = nodes(scene, true).first { it.config.contains(SemanticsProperties.VerticalScrollAxisRange) }
                 .config[SemanticsProperties.VerticalScrollAxisRange]
-            assertTrue(scroll.value() > 0f, "scroll=${scroll.value()}/${scroll.maxValue()} bounds=${duplicates.map { it.boundsInRoot }}")
+            assertTrue(scroll.value() > 0f, "scroll=${scroll.value()}/${scroll.maxValue()} bounds=${anchors.map { it.boundsInRoot }}")
             assertFalse(highlighted.config.contains(SemanticsProperties.Focused) && highlighted.config[SemanticsProperties.Focused])
         } finally {
             scene.close()
@@ -77,6 +77,10 @@ class DesktopSettingsAnchorHostTest {
         return ImageComposeScene(300, 100) {
             DesktopSettingsAnchorColumn(route, Modifier.fillMaxWidth().height(100.dp)) {
                 Text("before", Modifier.fillMaxWidth().height(120.dp))
+                Text(
+                    "duplicate extra",
+                    Modifier.desktopSettingsAnchor("duplicate extra").testTag("duplicate-prefix").fillMaxWidth().height(120.dp),
+                )
                 Text(
                     "duplicate",
                     Modifier.desktopSettingsAnchor("duplicate").testTag("duplicate-first").fillMaxWidth().height(120.dp),
