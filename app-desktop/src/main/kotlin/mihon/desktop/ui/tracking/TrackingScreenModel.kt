@@ -21,11 +21,42 @@ data class TrackingServiceState(
     val track: Track?,
 )
 
+sealed interface TrackingMessage {
+    data object LoadFailed : TrackingMessage
+    data object Bound : TrackingMessage
+    data object Updated : TrackingMessage
+    data object Removed : TrackingMessage
+    data object LoggedOut : TrackingMessage
+    data object SearchTitleEmpty : TrackingMessage
+    data object MangaRequired : TrackingMessage
+    data object NotBound : TrackingMessage
+    data class UnsupportedStatus(val service: String) : TrackingMessage
+    data class UnsupportedScore(val service: String) : TrackingMessage
+    data object NegativeChapter : TrackingMessage
+    data class ChapterOutOfRange(val maximum: Long) : TrackingMessage
+    data object UnknownService : TrackingMessage
+    data object ServiceUnavailable : TrackingMessage
+    data object LoginRequired : TrackingMessage
+    data class External(val text: String) : TrackingMessage
+}
+
+internal interface TrackingMessageException {
+    val trackingMessage: TrackingMessage
+}
+
+private class TrackingArgumentException(
+    override val trackingMessage: TrackingMessage,
+) : IllegalArgumentException(), TrackingMessageException
+
+private class TrackingStateException(
+    override val trackingMessage: TrackingMessage,
+) : IllegalStateException(), TrackingMessageException
+
 data class TrackingState(
     val loading: Boolean = true,
     val services: List<TrackingServiceState> = emptyList(),
-    val error: String? = null,
-    val feedback: String? = null,
+    val error: TrackingMessage? = null,
+    val feedback: TrackingMessage? = null,
 )
 
 class TrackingScreenModel(
@@ -48,48 +79,48 @@ class TrackingScreenModel(
         }.onSuccess { services ->
             mutableState.value = mutableState.value.copy(loading = false, services = services)
         }.onFailure { error ->
-            mutableState.value = mutableState.value.copy(loading = false, error = error.message ?: "Unable to load tracking")
+            mutableState.value = mutableState.value.copy(loading = false, error = error.toTrackingMessage(TrackingMessage.LoadFailed))
         }
     }
 
     suspend fun search(trackerId: Long, query: String): List<TrackSearchResult> {
-        require(query.isNotBlank()) { "Search title cannot be empty" }
+        if (query.isBlank()) failArgument(TrackingMessage.SearchTitleEmpty)
         return service(trackerId).requireAvailableAndLoggedIn().search(query.trim())
     }
 
     suspend fun bind(trackerId: Long, result: TrackSearchResult): Track = operationMutex.withLock {
-        val mangaId = requireNotNull(mangaId) { "Manga tracking requires a manga" }
+        val mangaId = mangaId ?: failArgument(TrackingMessage.MangaRequired)
         val service = service(trackerId).requireAvailableAndLoggedIn()
         val persisted = service.bind(mangaId, result)
         repository.insert(persisted)
-        replaceTrack(trackerId, persisted, "Tracking bound")
+        replaceTrack(trackerId, persisted, TrackingMessage.Bound)
         persisted
     }
 
     suspend fun update(trackerId: Long, edit: TrackEdit): Track = operationMutex.withLock {
         val item = item(trackerId)
-        val track = requireNotNull(item.track) { "This service is not bound" }
+        val track = item.track ?: failArgument(TrackingMessage.NotBound)
         validateEdit(item, track, edit)
         val updated = service(trackerId).requireAvailableAndLoggedIn().update(track, edit)
         repository.insert(updated)
-        replaceTrack(trackerId, updated, "Tracking updated")
+        replaceTrack(trackerId, updated, TrackingMessage.Updated)
         updated
     }
 
     suspend fun unbind(trackerId: Long) = operationMutex.withLock {
-        val mangaId = requireNotNull(mangaId) { "Manga tracking requires a manga" }
+        val mangaId = mangaId ?: failArgument(TrackingMessage.MangaRequired)
         repository.delete(mangaId, trackerId)
-        replaceTrack(trackerId, null, "Tracking removed")
+        replaceTrack(trackerId, null, TrackingMessage.Removed)
     }
 
     suspend fun logout(trackerId: Long) = operationMutex.withLock {
         val service = service(trackerId)
         service.logout()
-        replaceProfile(trackerId, service.profile.value, "Logged out")
+        replaceProfile(trackerId, service.profile.value, TrackingMessage.LoggedOut)
     }
 
-    fun reportError(error: Throwable, fallback: String) {
-        mutableState.value = mutableState.value.copy(error = error.message ?: fallback)
+    fun reportError(error: Throwable, fallback: TrackingMessage) {
+        mutableState.value = mutableState.value.copy(error = error.toTrackingMessage(fallback))
     }
 
     fun clearMessage() {
@@ -98,19 +129,21 @@ class TrackingScreenModel(
 
     private fun validateEdit(item: TrackingServiceState, track: Track, edit: TrackEdit) {
         edit.status?.let { status ->
-            require(item.statuses.any { it.first == status }) { "Status is not supported by ${item.profile.name}" }
+            if (item.statuses.none { it.first == status }) failArgument(TrackingMessage.UnsupportedStatus(item.profile.name))
         }
         edit.score?.let { score ->
-            require(item.scores.any { it == score }) { "Score is not supported by ${item.profile.name}" }
+            if (item.scores.none { it == score }) failArgument(TrackingMessage.UnsupportedScore(item.profile.name))
         }
         edit.lastChapterRead?.let { chapter ->
-            require(chapter >= 0.0) { "Chapter cannot be negative" }
+            if (chapter < 0.0) failArgument(TrackingMessage.NegativeChapter)
             val maximum = totalChapters?.takeIf { it > 0 } ?: track.totalChapters.takeIf { it > 0 }
-            require(maximum == null || chapter <= maximum.toDouble()) { "Chapter must be between 0 and $maximum" }
+            if (maximum != null && chapter > maximum.toDouble()) {
+                failArgument(TrackingMessage.ChapterOutOfRange(maximum))
+            }
         }
     }
 
-    private fun replaceTrack(trackerId: Long, track: Track?, feedback: String) {
+    private fun replaceTrack(trackerId: Long, track: Track?, feedback: TrackingMessage) {
         mutableState.value = mutableState.value.copy(
             services = mutableState.value.services.map { if (it.profile.id == trackerId) it.copy(track = track) else it },
             error = null,
@@ -118,7 +151,7 @@ class TrackingScreenModel(
         )
     }
 
-    private fun replaceProfile(trackerId: Long, profile: TrackerProfile, feedback: String) {
+    private fun replaceProfile(trackerId: Long, profile: TrackerProfile, feedback: TrackingMessage) {
         mutableState.value = mutableState.value.copy(
             services = mutableState.value.services.map { if (it.profile.id == trackerId) it.copy(profile = profile) else it },
             error = null,
@@ -127,16 +160,26 @@ class TrackingScreenModel(
     }
 
     private fun item(trackerId: Long) = state.value.services.firstOrNull { it.profile.id == trackerId }
-        ?: error("Unknown tracking service $trackerId")
+        ?: failState(TrackingMessage.UnknownService)
 
     private fun service(trackerId: Long) = registry.services.firstOrNull { it.profile.value.id == trackerId }
-        ?: error("Unknown tracking service $trackerId")
+        ?: failState(TrackingMessage.UnknownService)
 
     private fun TrackerService.requireAvailableAndLoggedIn(): TrackerService {
-        check(profile.value.unavailableReason == null) { profile.value.unavailableReason ?: "Service is unavailable" }
-        check(profile.value.loggedIn) { "Log in to ${profile.value.name} first" }
+        profile.value.unavailableReason?.let { reason ->
+            failState(if (reason.isBlank()) TrackingMessage.ServiceUnavailable else TrackingMessage.External(reason))
+        }
+        if (!profile.value.loggedIn) failState(TrackingMessage.LoginRequired)
         return this
     }
 
     private fun TrackerService.toState(track: Track?) = TrackingServiceState(profile.value, statuses, scores, track)
+
+    private fun Throwable.toTrackingMessage(fallback: TrackingMessage) = when (this) {
+        is TrackingMessageException -> trackingMessage
+        else -> message?.takeIf(String::isNotBlank)?.let(TrackingMessage::External) ?: fallback
+    }
+
+    private fun failArgument(message: TrackingMessage): Nothing = throw TrackingArgumentException(message)
+    private fun failState(message: TrackingMessage): Nothing = throw TrackingStateException(message)
 }

@@ -56,9 +56,11 @@ import tachiyomi.domain.track.service.TrackEdit
 import tachiyomi.domain.track.service.TrackSearchResult
 import tachiyomi.domain.track.service.TrackerAuthentication
 import tachiyomi.domain.track.service.TrackerService
+import tachiyomi.i18n.MR
 import java.awt.Desktop
 import java.net.URI
 import java.time.Duration
+import java.util.Locale
 import java.util.UUID
 
 /** Tracker settings when [mangaId] is null; manga binding and editing when it is present. */
@@ -108,9 +110,15 @@ data class TrackingSettingsScreen(
                         )
                         else -> LazyColumn(Modifier.fillMaxSize()) {
                             state.error?.let { message ->
-                                item { Text(message, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error) }
+                                item {
+                                    Text(
+                                        trackingMessageText(message),
+                                        Modifier.padding(16.dp),
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                }
                             }
-                            state.feedback?.let { message -> item { Text(message, Modifier.padding(16.dp)) } }
+                            state.feedback?.let { message -> item { Text(trackingMessageText(message), Modifier.padding(16.dp)) } }
                             items(state.services, key = { it.profile.id }) { item ->
                                 val profile = item.profile
                                 val sourceManaged =
@@ -182,9 +190,12 @@ data class TrackingSettingsScreen(
                                 operation()
                                 model.load()
                             } catch (_: CancellationException) {
-                                model.reportError(IllegalStateException("Login cancelled"), "Login cancelled")
+                                model.reportError(
+                                    IllegalStateException("Login cancelled"),
+                                    TrackingMessage.External("Login cancelled"),
+                                )
                             } catch (error: Throwable) {
-                                model.reportError(error, "Login failed")
+                                model.reportError(error, TrackingMessage.External("Login failed"))
                             }
                             selectedId = null
                         }
@@ -214,7 +225,7 @@ data class TrackingSettingsScreen(
                                     is TrackingConfirmation.Logout -> model.logout(request.trackerId)
                                     is TrackingConfirmation.Unbind -> model.unbind(request.trackerId)
                                 }
-                            }.onFailure { model.reportError(it, request.failureMessage) }
+                            }.onFailure { model.reportError(it, TrackingMessage.External(request.failureMessage)) }
                             selectedId = null
                         }
                     }) { Text("Confirm") }
@@ -223,6 +234,28 @@ data class TrackingSettingsScreen(
             )
         }
     }
+}
+
+internal fun trackingMessageText(message: TrackingMessage, locale: Locale = Locale.getDefault()): String = when (message) {
+    TrackingMessage.LoadFailed -> MR.strings.desktop_tracking_load_failed.localized(locale)
+    TrackingMessage.Bound -> MR.strings.desktop_tracking_bound.localized(locale)
+    TrackingMessage.Updated -> MR.strings.desktop_tracking_updated.localized(locale)
+    TrackingMessage.Removed -> MR.strings.desktop_tracking_removed.localized(locale)
+    TrackingMessage.LoggedOut -> MR.strings.logout_success.localized(locale)
+    TrackingMessage.SearchTitleEmpty -> MR.strings.desktop_tracking_search_title_empty.localized(locale)
+    TrackingMessage.MangaRequired -> MR.strings.desktop_tracking_manga_required.localized(locale)
+    TrackingMessage.NotBound -> MR.strings.desktop_tracking_not_bound.localized(locale)
+    is TrackingMessage.UnsupportedStatus ->
+        MR.strings.desktop_tracking_unsupported_status.localized(locale, message.service)
+    is TrackingMessage.UnsupportedScore ->
+        MR.strings.desktop_tracking_unsupported_score.localized(locale, message.service)
+    TrackingMessage.NegativeChapter -> MR.strings.desktop_tracking_negative_chapter.localized(locale)
+    is TrackingMessage.ChapterOutOfRange ->
+        MR.strings.desktop_tracking_chapter_out_of_range.localized(locale, message.maximum)
+    TrackingMessage.UnknownService -> MR.strings.desktop_tracking_unknown_service.localized(locale)
+    TrackingMessage.ServiceUnavailable -> MR.strings.desktop_tracking_service_unavailable.localized(locale)
+    TrackingMessage.LoginRequired -> MR.strings.desktop_tracking_login_required.localized(locale)
+    is TrackingMessage.External -> message.text
 }
 
 @Composable

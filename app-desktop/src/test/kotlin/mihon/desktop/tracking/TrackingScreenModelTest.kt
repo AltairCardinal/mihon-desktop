@@ -4,9 +4,12 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
+import mihon.desktop.ui.tracking.TrackingMessage
+import mihon.desktop.ui.tracking.TrackingMessageException
 import mihon.desktop.ui.tracking.TrackingScreenModel
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -50,6 +53,7 @@ class TrackingScreenModelTest {
         assertEquals(listOf("Real title"), service.searches)
         assertNotNull(repository.rows.singleOrNull())
         assertEquals(repository.rows.single(), model.state.value.services.single().track)
+        assertEquals(TrackingMessage.Bound, model.state.value.feedback)
     }
 
     @Test
@@ -68,6 +72,7 @@ class TrackingScreenModelTest {
         assertEquals(2, repository.rows.single().status)
         assertEquals(10.0, repository.rows.single().score)
         assertEquals(12.0, repository.rows.single().lastChapterRead)
+        assertEquals(TrackingMessage.Updated, model.state.value.feedback)
     }
 
     @Test
@@ -93,15 +98,81 @@ class TrackingScreenModelTest {
         model.load()
 
         model.unbind(1)
+        assertEquals(TrackingMessage.Removed, model.state.value.feedback)
         model.logout(1)
 
         assertEquals(listOf(2L), repository.rows.map { it.trackerId })
         assertTrue(service.loggedOut)
         assertFalse(service.profile.value.loggedIn)
+        assertEquals(TrackingMessage.LoggedOut, model.state.value.feedback)
+    }
+
+    @Test
+    fun `validation failures stay typed and never call services or write repository`() = runTest {
+        val repository = FakeTrackRepository(mutableListOf(track(1)))
+        val service = FakeTrackerService(1, loggedIn = true)
+        val model = TrackingScreenModel(42, "Manga", 12, repository, registry(service)).also { it.load() }
+
+        assertTypedFailure(TrackingMessage.SearchTitleEmpty) { model.search(1, " ") }
+        assertTypedFailure(TrackingMessage.UnsupportedStatus("Service 1")) { model.update(1, TrackEdit(status = 99)) }
+        assertTypedFailure(TrackingMessage.UnsupportedScore("Service 1")) { model.update(1, TrackEdit(score = 7.5)) }
+        assertTypedFailure(TrackingMessage.NegativeChapter) { model.update(1, TrackEdit(lastChapterRead = -1.0)) }
+        assertTypedFailure(TrackingMessage.ChapterOutOfRange(12)) { model.update(1, TrackEdit(lastChapterRead = 13.0)) }
+        assertTypedFailure(TrackingMessage.UnknownService) { model.search(404, "Manga") }
+
+        val emptyRepository = FakeTrackRepository()
+        val emptyService = FakeTrackerService(2, loggedIn = true)
+        val emptyModel = TrackingScreenModel(42, "Manga", 12, emptyRepository, registry(emptyService)).also { it.load() }
+        assertTypedFailure(TrackingMessage.NotBound) { emptyModel.update(2, TrackEdit(status = 1)) }
+        val noMangaModel = TrackingScreenModel(null, "Manga", 12, emptyRepository, registry(emptyService)).also { it.load() }
+        assertTypedFailure(TrackingMessage.MangaRequired) { noMangaModel.bind(2, TrackSearchResult(10, "Manga", 12)) }
+
+        val unavailable = FakeTrackerService(3, loggedIn = false, unavailableReason = "")
+        val unavailableModel = TrackingScreenModel(42, "Manga", 12, emptyRepository, registry(unavailable)).also { it.load() }
+        assertTypedFailure(TrackingMessage.ServiceUnavailable) { unavailableModel.search(3, "Manga") }
+        val providerReason = FakeTrackerService(4, loggedIn = false, unavailableReason = "Provider needs setup")
+        val providerModel = TrackingScreenModel(42, "Manga", 12, emptyRepository, registry(providerReason)).also { it.load() }
+        assertTypedFailure(TrackingMessage.External("Provider needs setup")) { providerModel.search(4, "Manga") }
+        val loggedOut = FakeTrackerService(5, loggedIn = false)
+        val loggedOutModel = TrackingScreenModel(42, "Manga", 12, emptyRepository, registry(loggedOut)).also { it.load() }
+        assertTypedFailure(TrackingMessage.LoginRequired) { loggedOutModel.search(5, "Manga") }
+
+        assertEquals(0, repository.insertCalls + repository.deleteCalls + emptyRepository.insertCalls + emptyRepository.deleteCalls)
+        assertEquals(0, service.bindCalls + service.updateCalls + emptyService.bindCalls + emptyService.updateCalls)
+        assertTrue(listOf(unavailable, providerReason, loggedOut).all { it.searches.isEmpty() })
+    }
+
+    @Test
+    fun `load and report error keep typed fallback and external exception detail`() = runTest {
+        val repository = FakeTrackRepository()
+        val fallbackModel = TrackingScreenModel(42, "Manga", 12, repository, failingRegistry(IllegalStateException()))
+        fallbackModel.load()
+        assertEquals(TrackingMessage.LoadFailed, fallbackModel.state.value.error)
+
+        val externalModel = TrackingScreenModel(42, "Manga", 12, repository, failingRegistry(IllegalStateException("Registry detail")))
+        externalModel.load()
+        assertEquals(TrackingMessage.External("Registry detail"), externalModel.state.value.error)
+        val typedFailure = runCatching { externalModel.search(1, "Manga") }.exceptionOrNull()!!
+        externalModel.reportError(typedFailure, TrackingMessage.LoadFailed)
+        assertEquals(TrackingMessage.UnknownService, externalModel.state.value.error)
+        externalModel.reportError(IllegalStateException("Provider detail"), TrackingMessage.LoadFailed)
+        assertEquals(TrackingMessage.External("Provider detail"), externalModel.state.value.error)
+        externalModel.reportError(IllegalStateException(), TrackingMessage.LoadFailed)
+        assertEquals(TrackingMessage.LoadFailed, externalModel.state.value.error)
     }
 
     private fun registry(vararg services: TrackerService) = object : TrackerServiceRegistry {
         override val services = services.toList()
+    }
+
+    private fun failingRegistry(failure: Throwable) = object : TrackerServiceRegistry {
+        override val services = emptyList<TrackerService>()
+        override fun refresh() = throw failure
+    }
+
+    private suspend fun assertTypedFailure(expected: TrackingMessage, block: suspend () -> Any?) {
+        val failure = assertInstanceOf(TrackingMessageException::class.java, runCatching { block() }.exceptionOrNull())
+        assertEquals(expected, failure.trackingMessage)
     }
 
     private fun track(trackerId: Long) = Track(
@@ -122,12 +193,14 @@ class TrackingScreenModelTest {
     )
 
     private class FakeTrackRepository(val rows: MutableList<Track> = mutableListOf()) : TrackRepository {
+        var insertCalls = 0
+        var deleteCalls = 0
         override suspend fun getTrackById(id: Long) = rows.firstOrNull { it.id == id }
         override suspend fun getTracksByMangaId(mangaId: Long) = rows.filter { it.mangaId == mangaId }
         override fun getTracksAsFlow(): Flow<List<Track>> = flowOf(rows)
         override fun getTracksByMangaIdAsFlow(mangaId: Long): Flow<List<Track>> = flowOf(rows.filter { it.mangaId == mangaId })
-        override suspend fun delete(mangaId: Long, trackerId: Long) { rows.removeAll { it.mangaId == mangaId && it.trackerId == trackerId } }
-        override suspend fun insert(track: Track) { rows.removeAll { it.mangaId == track.mangaId && it.trackerId == track.trackerId }; rows += track }
+        override suspend fun delete(mangaId: Long, trackerId: Long) { deleteCalls++; rows.removeAll { it.mangaId == mangaId && it.trackerId == trackerId } }
+        override suspend fun insert(track: Track) { insertCalls++; rows.removeAll { it.mangaId == track.mangaId && it.trackerId == track.trackerId }; rows += track }
         override suspend fun insertAll(tracks: List<Track>) { tracks.forEach { insert(it) } }
     }
 
@@ -142,29 +215,35 @@ class TrackingScreenModelTest {
         val searches = mutableListOf<String>()
         var updateFailure: Throwable? = null
         var loggedOut = false
+        var bindCalls = 0
+        var updateCalls = 0
 
         override suspend fun search(query: String): List<TrackSearchResult> {
             searches += query
             return listOf(TrackSearchResult(10, query, 12))
         }
 
-        override suspend fun bind(mangaId: Long, result: TrackSearchResult) = Track(
-            id = profile.value.id,
-            mangaId = mangaId,
-            trackerId = profile.value.id,
-            remoteId = result.remoteId,
-            libraryId = null,
-            title = result.title,
-            lastChapterRead = 0.0,
-            totalChapters = result.totalChapters,
-            status = 1,
-            score = 0.0,
-            remoteUrl = result.remoteUrl,
-            startDate = 0,
-            finishDate = 0,
-            private = false,
-        )
+        override suspend fun bind(mangaId: Long, result: TrackSearchResult): Track {
+            bindCalls++
+            return Track(
+                id = profile.value.id,
+                mangaId = mangaId,
+                trackerId = profile.value.id,
+                remoteId = result.remoteId,
+                libraryId = null,
+                title = result.title,
+                lastChapterRead = 0.0,
+                totalChapters = result.totalChapters,
+                status = 1,
+                score = 0.0,
+                remoteUrl = result.remoteUrl,
+                startDate = 0,
+                finishDate = 0,
+                private = false,
+            )
+        }
         override suspend fun update(track: Track, edit: TrackEdit): Track {
+            updateCalls++
             updateFailure?.let { throw it }
             return track.copy(
                 status = edit.status ?: track.status,

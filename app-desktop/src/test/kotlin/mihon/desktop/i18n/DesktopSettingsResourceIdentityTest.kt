@@ -70,6 +70,9 @@ import mihon.desktop.ui.settings.DesktopUpdateScreenModel
 import mihon.desktop.ui.settings.presentation
 import mihon.desktop.ui.settings.backupPartialFailurePresentation
 import mihon.desktop.ui.settings.backupPresentationText
+import mihon.desktop.ui.tracking.TrackingMessage
+import mihon.desktop.ui.tracking.TrackingSettingsScreen
+import mihon.desktop.ui.tracking.trackingMessageText
 import mihon.desktop.update.CheckFailure
 import mihon.desktop.update.DesktopUpdateController
 import mihon.desktop.update.DesktopUpdateState
@@ -98,6 +101,8 @@ import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.release.interactor.GetApplicationRelease
 import tachiyomi.domain.release.model.Release
+import tachiyomi.domain.track.service.TrackerService
+import tachiyomi.domain.track.service.TrackerServiceRegistry
 import tachiyomi.i18n.MR
 import java.io.File
 import java.nio.file.Files
@@ -117,6 +122,52 @@ class DesktopSettingsResourceIdentityTest {
                 resource.localized(chinese),
                 "Missing zh-CN copy for $resource",
             )
+        }
+    }
+
+    @Test
+    fun `Tracking messages preserve typed identity and render load failure through production screen`() = runBlocking {
+        val previousLocale = Locale.getDefault()
+        try {
+            listOf(english, chinese).forEach { locale ->
+                val expected = listOf(
+                    TrackingMessage.LoadFailed to MR.strings.desktop_tracking_load_failed.localized(locale),
+                    TrackingMessage.Bound to MR.strings.desktop_tracking_bound.localized(locale),
+                    TrackingMessage.Updated to MR.strings.desktop_tracking_updated.localized(locale),
+                    TrackingMessage.Removed to MR.strings.desktop_tracking_removed.localized(locale),
+                    TrackingMessage.LoggedOut to MR.strings.logout_success.localized(locale),
+                    TrackingMessage.SearchTitleEmpty to MR.strings.desktop_tracking_search_title_empty.localized(locale),
+                    TrackingMessage.MangaRequired to MR.strings.desktop_tracking_manga_required.localized(locale),
+                    TrackingMessage.NotBound to MR.strings.desktop_tracking_not_bound.localized(locale),
+                    TrackingMessage.UnsupportedStatus("AniList") to
+                        MR.strings.desktop_tracking_unsupported_status.localized(locale, "AniList"),
+                    TrackingMessage.UnsupportedScore("MyAnimeList") to
+                        MR.strings.desktop_tracking_unsupported_score.localized(locale, "MyAnimeList"),
+                    TrackingMessage.NegativeChapter to MR.strings.desktop_tracking_negative_chapter.localized(locale),
+                    TrackingMessage.ChapterOutOfRange(12) to
+                        MR.strings.desktop_tracking_chapter_out_of_range.localized(locale, 12L),
+                    TrackingMessage.UnknownService to MR.strings.desktop_tracking_unknown_service.localized(locale),
+                    TrackingMessage.ServiceUnavailable to MR.strings.desktop_tracking_service_unavailable.localized(locale),
+                    TrackingMessage.LoginRequired to MR.strings.desktop_tracking_login_required.localized(locale),
+                )
+                expected.forEach { (message, copy) -> assertEquals(copy, trackingMessageText(message, locale)) }
+                assertEquals("Provider 原始资料 #42", trackingMessageText(TrackingMessage.External("Provider 原始资料 #42"), locale))
+
+                val registry = object : TrackerServiceRegistry {
+                    override val services = emptyList<TrackerService>()
+                    override fun refresh() = throw IllegalStateException()
+                }
+                val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+                    every { appPreferences } returns DesktopAppPreferences(InMemoryPreferenceStore())
+                    every { trackerServiceRegistry } returns registry
+                }
+                assertCopy(
+                    renderAfterClicks(TrackingSettingsScreen(), dependencies, locale).text,
+                    MR.strings.desktop_tracking_load_failed.localized(locale),
+                )
+            }
+        } finally {
+            Locale.setDefault(previousLocale)
         }
     }
 
@@ -1536,5 +1587,19 @@ class DesktopSettingsResourceIdentityTest {
         MR.strings.desktop_backup_missing_data,
         MR.strings.desktop_backup_restore_not_started,
         MR.strings.desktop_backup_restore_unknown_error,
+        MR.strings.desktop_tracking_load_failed,
+        MR.strings.desktop_tracking_bound,
+        MR.strings.desktop_tracking_updated,
+        MR.strings.desktop_tracking_removed,
+        MR.strings.desktop_tracking_search_title_empty,
+        MR.strings.desktop_tracking_manga_required,
+        MR.strings.desktop_tracking_not_bound,
+        MR.strings.desktop_tracking_unsupported_status,
+        MR.strings.desktop_tracking_unsupported_score,
+        MR.strings.desktop_tracking_negative_chapter,
+        MR.strings.desktop_tracking_chapter_out_of_range,
+        MR.strings.desktop_tracking_unknown_service,
+        MR.strings.desktop_tracking_service_unavailable,
+        MR.strings.desktop_tracking_login_required,
     )
 }
