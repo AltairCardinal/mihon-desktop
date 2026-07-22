@@ -36,9 +36,9 @@ status-source: this-file
 
 按以下顺序一次执行一个子 Task，不并发写共享文件：
 
-`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 4G → 4H → 4I → 4J → 4K → 4L → 4M → 5 → 6A → 6B → 7 → 8 → 9 → 10A → 10B → 10C → 10D → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20`
+`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 4G → 4H → 4I → 4J → 4K → 4L → 4M → 5 → 6A → 6B → 7A → 7B → 8 → 9 → 10A → 10B → 10C → 10D → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20`
 
-其中 `DesktopSettingsCatalog.kt` 只在 5–8、11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6A→11→16 串行修改；`AboutScreen.kt` 只在 4I→8→15→18、`ExtensionRepoScreen.kt` 只在 4J→8→18、`TrackingSettingsScreen.kt` 只在 4K→4L→8→18 串行修改；4M 只补 4L 的真实动作/失败路径测试，不返改 production。
+其中 `DesktopSettingsCatalog.kt` 只在 5→7A→7B→8→11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6A→11→16 串行修改；`AboutScreen.kt` 只在 4I→8→15→18、`ExtensionRepoScreen.kt` 只在 4J→8→18、`TrackingSettingsScreen.kt` 只在 4K→4L→8→18 串行修改；4M 只补 4L 的真实动作/失败路径测试，不返改 production。
 
 ## 执行状态
 
@@ -62,7 +62,8 @@ status-source: this-file
 - [x] Task 5：Desktop 设置 catalog、搜索 Screen 与入口
 - [x] Task 6A：Desktop 标题 anchor 核心、搜索交接与 General/Appearance
 - [x] Task 6B：Desktop 标题 anchor 的 Reader/Library 接线
-- [ ] Task 7：Desktop 标题 anchor 的安全/数据页面
+- [ ] Task 7A：Desktop 标题 anchor 的 Download/Backup 数据页面
+- [ ] Task 7B：Desktop 标题 anchor 的 Advanced/Security 安全页面
 - [ ] Task 8：Desktop 标题 anchor 的扩展页面
 - [ ] Task 9：共享主题模块、identity/default/codec 与 Android consumer
 - [ ] Task 10A：共享静态调色板第一批
@@ -488,21 +489,37 @@ status-source: this-file
 
 **Review status（已完成）：** 实现 `78533b61d` 仅让 Reader/Library 接入 6A 统一 `DesktopSettingsAnchorColumn`/`desktopSettingsAnchor`，未修改核心、搜索或 catalog。两页真实 search→replace→Screen 场景均验证 exact title、`ScrollState > 0`、目标与可视区域相交、唯一 highlight，以及直接重开后无 highlight/scroll 的 one-shot；Reader `PAGER`、Library `EVERY_6H` 与既有 Appearance grid 写入回归通过。断开 Reader host、断开 Library host、Library anchor 错绑 update title 三类 mutation 精确 RED 并恢复。独立审查 APPROVED `0/0/0`，focused `9/9`、Desktop 设置/navigation/smoke/provenance `106/106`、shared policy `7/7`、Spotless、diff、range 与 18-Task guard 通过；范围 `3 files/113 touched`，无状态机复制或用户脏文件。下一项为父 Task 5B / 子 Task 7。
 
-### Task 7：Desktop 标题 anchor 的安全/数据页面
+### Task 7A：Desktop 标题 anchor 的 Download/Backup 数据页面
+
+**Risk axis:** desktop-settings-anchor-data
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 4 files, 240 lines
+
+**Verification:** Download/Backup real catalog-route-anchor、preference/picker/feedback preservation
+
+**Files:** Download/Backup Settings Screen、`DesktopSettingsCatalog.kt`、数据 anchor wiring test。
+
+1. RED：两页只路由不落点、exact route/title/one-shot/scroll/highlight 或 Catalog identity 分叉时失败。
+2. GREEN：只接 6A host，不复制 owner/search；保留 Download preference 与 Backup picker/feedback。
+3. 运行两页 focused/Backup wiring/navigation/Spotless/range gate。
+
+### Task 7B：Desktop 标题 anchor 的 Advanced/Security 安全页面
 
 **Risk axis:** desktop-settings-anchor-security
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 6 files, 380 lines
+**Estimated scope:** 4 files, 260 lines
 
-**Verification:** Download/Backup/Advanced/Security real route-anchor、capability feedback preservation
+**Verification:** Advanced/Security real catalog-route-anchor、platform action/capability feedback preservation
 
-**Files:** 四个 Settings Screen、`DesktopSettingsCatalog.kt`、安全/数据 anchor wiring test。
+**Files:** Advanced/Security Settings Screen、`DesktopSettingsCatalog.kt`、安全 anchor wiring test。
 
-1. RED：只路由不落点、anchor 绕过 capability/credential feedback 或 catalog identity 分叉时失败。
-2. GREEN：接统一 anchor，不重写业务。
-3. 运行四页 focused/Security wiring/Spotless/range gate。
+1. RED：两页只路由不落点、exact route/title/one-shot/scroll/highlight 或 Catalog identity 分叉时失败。
+2. GREEN：只接 6A host，不复制 owner/search；保留 Advanced platform action/状态反馈与 Security supported/unsupported capability 反馈。
+3. 运行两页 focused/Security wiring/navigation/Spotless/range gate。
 
 ### Task 8：Desktop 标题 anchor 的扩展页面
 
