@@ -55,8 +55,8 @@ status-source: this-file
 - [x] Task 16C：Desktop owner navigator 单实例 wiring
 - [x] Task 16D1：Desktop owner setup 与关闭事务
 - [x] Task 16D1R：并发安全的 runtime/broker 关闭所有权
-- [ ] Task 16D2：唯一 production lifecycle 与真实入口证据
-- [ ] Task 16D2R：重复 Compose close 共享 terminal completion
+- [x] Task 16D2：唯一 production lifecycle 与真实入口证据
+- [x] Task 16D2R：重复 Compose close 共享 terminal completion
 - [ ] Task 16V1：全局搜索状态单调性验收阻塞修复
 - [ ] Task 16：独立最终审查与三平台 change verify
 
@@ -1170,6 +1170,8 @@ status-source: this-file
 1. RED：首个 close 进入后阻塞 terminal，再并发发出第二个 close；第二请求在释放 terminal 前不得返回，`closeAndJoin` 调用数始终为 1。释放后两个请求都完成，outer helper 抛出与首个失败相同的对象；旧“CAS 失败立即返回”实现必须失败。
 2. GREEN：首请求 CAS 成功后完成 `CompletableDeferred<Result<Unit>>`；无论 CAS 是否成功，每个请求都 await 同一 deferred，但 request callback 自身不重复抛出结果。event loop 返回后由唯一外层 `getOrThrow()` 传播 terminal failure。
 3. 保持真实 JVM main、default owner lifecycle、TestMode rollback、NonCancellable cleanup 和无 blocking bridge。运行 Runtime/Security focused、Spotless、diff 与 2-file/160-line gate；独立审查通过后同时勾选 D2/D2R，再进入 V1。
+
+**Review status（已完成）：** 实现提交 `1d409de82` 先以并发测试确定性证明旧实现会让 CAS loser 在首个 terminal 前返回，再使所有 close callback 共享等待同一 `CompletableDeferred<Result<Unit>>`；`closeAndJoin` 精确一次，callback 不重复抛异常，event loop 外层传播首次 failure 同一对象。独立审查 APPROVED，Critical/Important/Minor `0/0/0`；Runtime 26/26、Security 22/22、根 Spotless、diff 与 2 files/30 touched 门禁通过。因此 D2 与其 closure 子 Task D2R 同时完成，下一项为 V1。
 
 ### 子 Task 16V1：全局搜索状态单调性验收阻塞修复
 
