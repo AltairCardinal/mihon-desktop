@@ -113,6 +113,7 @@
     <string name="desktop_extension_remove_metadata_confirmation">移除 %s 及其元数据？</string>
     <string name="desktop_more_extensions_summary">管理已安装的图源插件</string>
     <string name="desktop_more_extension_repos_summary">添加或移除插件仓库</string>
+    <string name="desktop_more_tracking_summary">登录并管理进度记录服务</string>
     <string name="desktop_more_general_summary">无痕模式、翻页动画</string>
     <string name="desktop_more_download_settings_summary">CBZ 格式、自动下载、读后删除</string>
     <string name="desktop_more_backup_summary">创建或还原 .tachibk 备份</string>

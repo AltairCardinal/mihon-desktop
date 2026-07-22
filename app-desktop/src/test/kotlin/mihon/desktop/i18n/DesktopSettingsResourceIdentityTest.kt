@@ -3,6 +3,7 @@ package mihon.desktop.i18n
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import cafe.adriel.voyager.core.screen.Screen
@@ -50,9 +51,14 @@ class DesktopSettingsResourceIdentityTest {
         val downloads = mockk<DesktopDownloadManager> {
             every { queue } returns MutableStateFlow(listOf(mockk<DownloadItem>(), mockk<DownloadItem>()))
         }
+        val emptyDownloads = mockk<DesktopDownloadManager> { every { queue } returns MutableStateFlow(emptyList()) }
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns prefs
             every { downloadManager } returns downloads
+        }
+        val emptyDependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+            every { appPreferences } returns prefs
+            every { downloadManager } returns emptyDownloads
         }
         val previousLocale = Locale.getDefault()
         try {
@@ -62,7 +68,7 @@ class DesktopSettingsResourceIdentityTest {
                     more.text,
                     MR.strings.label_more.localized(locale),
                     MR.strings.pref_category_tracking.localized(locale),
-                    MR.strings.pref_tracking_summary.localized(locale),
+                    MR.strings.desktop_more_tracking_summary.localized(locale),
                     MR.strings.pref_category_general.localized(locale),
                     MR.strings.desktop_more_general_summary.localized(locale),
                     MR.strings.pref_category_downloads.localized(locale),
@@ -86,6 +92,16 @@ class DesktopSettingsResourceIdentityTest {
                     MR.strings.pref_category_about.localized(locale),
                     MR.strings.desktop_more_about_summary.localized(locale),
                 )
+                assertEntry(
+                    more,
+                    MR.strings.label_download_queue.localized(locale),
+                    MR.strings.desktop_more_download_queue_count.localized(locale, 2),
+                )
+                if (locale == chinese) {
+                    val emptyMore = render(MoreRootScreen(), emptyDependencies, locale, height = 2_000)
+                    val queue = MR.strings.label_download_queue.localized(locale)
+                    assertEntry(emptyMore, queue, queue)
+                }
 
                 val general = render(GeneralSettingsScreen(), dependencies, locale)
                 assertCopy(
@@ -137,7 +153,7 @@ class DesktopSettingsResourceIdentityTest {
                 }
             }
             scene.render()
-            RenderedCopy(textCopy(scene), descriptionCopy(scene))
+            RenderedCopy(textCopy(scene), descriptionCopy(scene), entryCopy(scene))
         } finally {
             scene.close()
         }
@@ -145,6 +161,10 @@ class DesktopSettingsResourceIdentityTest {
 
     private fun assertCopy(actual: Set<String>, vararg expected: String) {
         expected.forEach { assertTrue(it in actual, "Missing '$it': $actual") }
+    }
+
+    private fun assertEntry(actual: RenderedCopy, title: String, subtitle: String) {
+        assertTrue(listOf(title, subtitle) in actual.entries, "Missing entry '$title' -> '$subtitle': ${actual.entries}")
     }
 
     private fun textCopy(scene: ImageComposeScene): Set<String> =
@@ -164,12 +184,26 @@ class DesktopSettingsResourceIdentityTest {
         }
     }.toSet()
 
+    private fun entryCopy(scene: ImageComposeScene): Set<List<String>> = nodes(scene)
+        .filter { it.config.contains(SemanticsActions.OnClick) }
+        .map { node -> flatten(node).flatMap { textCopy(it) } }
+        .filter { it.size >= 2 }
+        .toSet()
+
+    private fun textCopy(node: SemanticsNode): List<String> =
+        if (node.config.contains(SemanticsProperties.Text)) node.config[SemanticsProperties.Text].map { it.text } else emptyList()
+
     private fun nodes(scene: ImageComposeScene) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
     private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
 
-    private data class RenderedCopy(val text: Set<String>, val descriptions: Set<String>)
+    private data class RenderedCopy(
+        val text: Set<String>,
+        val descriptions: Set<String>,
+        val entries: Set<List<String>>,
+    )
 
     private val desktopResources: List<StringResource> = listOf(
+        MR.strings.desktop_more_tracking_summary,
         MR.strings.desktop_more_general_summary,
         MR.strings.desktop_more_download_settings_summary,
         MR.strings.desktop_more_backup_summary,

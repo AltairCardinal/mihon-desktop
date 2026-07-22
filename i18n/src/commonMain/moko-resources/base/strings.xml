@@ -356,6 +356,7 @@
     <string name="desktop_extension_remove_metadata_confirmation">Remove %s and its metadata?</string>
     <string name="desktop_more_extensions_summary">Manage installed source extensions</string>
     <string name="desktop_more_extension_repos_summary">Add or remove extension repositories</string>
+    <string name="desktop_more_tracking_summary">Login and manage tracking services</string>
     <string name="desktop_more_general_summary">Incognito mode, page turn animation</string>
     <string name="desktop_more_download_settings_summary">CBZ format, auto-download, delete after read</string>
     <string name="desktop_more_backup_summary">Create or restore .tachibk backups</string>

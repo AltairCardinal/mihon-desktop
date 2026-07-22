@@ -106,7 +106,7 @@ class MoreRootScreen : Screen {
                     SettingsEntry(
                         icon = Icons.Default.Sync,
                         title = MR.strings.pref_category_tracking.localized(),
-                        subtitle = MR.strings.pref_tracking_summary.localized(),
+                        subtitle = MR.strings.desktop_more_tracking_summary.localized(),
                         onClick = { onTracking(navigator) },
                     )
                     HorizontalDivider()
