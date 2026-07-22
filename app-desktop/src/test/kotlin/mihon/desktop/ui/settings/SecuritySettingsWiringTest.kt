@@ -414,6 +414,7 @@ class SecuritySettingsWiringTest {
         listOf("runtime", "test-start", "test-await", "application").forEach { stage ->
             val primary = IllegalStateException(stage)
             val cleanup = IllegalArgumentException("cleanup-$stage")
+            var stopCalls = 0
             val service = object : DesktopRuntimeService {
                 override fun start() { if (stage == "runtime") throw primary }
                 override fun stop() = Unit
@@ -435,12 +436,13 @@ class SecuritySettingsWiringTest {
                     applicationState,
                     startTestMode = { if (stage == "test-start") throw primary },
                     awaitTestModeTermination = { if (stage == "test-await") throw primary },
-                    stopTestMode = {},
+                    stopTestMode = { stopCalls++ },
                     runApplication = { if (stage == "application") throw primary },
                 )
             }.exceptionOrNull()
             assertSame(primary, thrown, stage)
             assertEquals(listOf(cleanup), thrown!!.suppressed.toList(), stage)
+            assertEquals(if (testMode) 1 else 0, stopCalls, stage)
         }
 
         listOf("normal", "test-stop", "gui-close", "close", "join").forEach { stage ->

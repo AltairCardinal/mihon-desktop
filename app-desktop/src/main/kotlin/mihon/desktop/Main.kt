@@ -11,6 +11,7 @@ import androidx.compose.ui.window.rememberWindowState
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.transitions.SlideTransition
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -49,6 +50,7 @@ import uy.kohesive.injekt.api.get
 import java.awt.Window as AwtWindow
 import java.awt.event.WindowEvent
 import java.awt.event.WindowFocusListener
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Main entry point for Mihon Desktop application.
@@ -60,10 +62,8 @@ suspend fun main(args: Array<String>) {
     // Install crash handler FIRST
     CrashHandler.install()
 
-    desktopMainApplication(args)
+    startProductionDesktopApplication(args)
 }
-
-internal var desktopMainApplication: suspend (Array<String>) -> Unit = { startProductionDesktopApplication(it) }
 
 internal suspend fun startProductionDesktopApplication(
     args: Array<String>,
@@ -80,7 +80,7 @@ internal suspend fun startProductionDesktopApplication(
     startTestMode: (TestArguments) -> Unit = { testArgs -> if (testArgs.testMode) TestMode.start(testArgs) },
     awaitTestModeTermination: () -> Unit = TestMode::awaitTermination,
     stopTestMode: () -> Unit = TestMode::stop,
-    runApplication: suspend (DesktopOwnerStartup, suspend () -> Unit) -> Unit = ::runDesktopWindowApplication,
+    runWindowEventLoop: suspend (DesktopOwnerStartup, suspend () -> Unit) -> Unit = ::runDesktopComposeWindowEventLoop,
 ): DesktopInstanceStartResult {
     val transaction = DesktopOwnerTransaction()
     var owner: DesktopOwnerStartup? = null
@@ -101,7 +101,9 @@ internal suspend fun startProductionDesktopApplication(
                 startTestMode = { startTestMode(testArgs) },
                 awaitTestModeTermination = awaitTestModeTermination,
                 stopTestMode = stopTestMode,
-                runApplication = { closeAndJoin -> runApplication(startup, closeAndJoin) },
+                runApplication = { closeAndJoin ->
+                    runDesktopWindowApplication(closeAndJoin) { requestClose -> runWindowEventLoop(startup, requestClose) }
+                },
             )
         }
         result
@@ -134,18 +136,32 @@ private fun reportUriSchemeRegistration(result: DesktopUriSchemeRegistration.Res
     System.err.println("Desktop URI scheme capability: ${result::class.simpleName}")
 }
 
-private suspend fun runDesktopWindowApplication(
-    owner: DesktopOwnerStartup,
+internal suspend fun runDesktopWindowApplication(
     closeAndJoin: suspend () -> Unit,
+    runWindowEventLoop: suspend (requestClose: suspend () -> Unit) -> Unit,
 ) {
-    var closeResult: Result<Unit>? = null
+    val closeRequested = AtomicBoolean()
+    val closeResult = CompletableDeferred<Result<Unit>>()
+    runWindowEventLoop {
+        if (closeRequested.compareAndSet(false, true)) closeResult.complete(runCatching { closeAndJoin() })
+    }
+    if (closeRequested.get()) closeResult.await().getOrThrow()
+}
+
+private suspend fun runDesktopComposeWindowEventLoop(
+    owner: DesktopOwnerStartup,
+    requestClose: suspend () -> Unit,
+) {
     application {
         val applicationScope = rememberCoroutineScope()
         Window(
             onCloseRequest = {
                 applicationScope.launch {
-                    closeResult = runCatching { closeAndJoin() }
-                    exitApplication()
+                    try {
+                        requestClose()
+                    } finally {
+                        exitApplication()
+                    }
                 }
             },
             title = "Mihon Desktop $APP_VERSION",
@@ -163,7 +179,6 @@ private suspend fun runDesktopWindowApplication(
             }
         }
     }
-    closeResult?.getOrThrow()
 }
 
 internal data class DesktopOwnerStartup(

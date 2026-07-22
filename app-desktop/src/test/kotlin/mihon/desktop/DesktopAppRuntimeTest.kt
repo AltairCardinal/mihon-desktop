@@ -23,6 +23,7 @@ import mihon.desktop.platform.DesktopOpenUriRegistration
 import mihon.desktop.platform.DesktopUriSchemeRegistration
 import mihon.desktop.platform.DesktopOpenUriEnvironment
 import mihon.desktop.platform.DesktopOpenUriPlatform
+import mihon.desktop.platform.DesktopPlatformPaths
 import mihon.desktop.platform.OperatingSystem
 import mihon.desktop.platform.AwtDesktopOpenUriEventPort
 import mihon.desktop.di.initDesktopDIForTest
@@ -59,16 +60,26 @@ import uy.kohesive.injekt.api.get
 class DesktopAppRuntimeTest {
 
     @Test
-    fun `packaged JVM main delegates arguments to production entry`() {
-        val original = desktopMainApplication
-        var received: Array<String>? = null
-        desktopMainApplication = { received = it }
+    fun `packaged JVM main uses default production entry to forward secondary action`(@org.junit.jupiter.api.io.TempDir tempDir: File) {
+        val originalHome = System.getProperty("user.home")
+        val originalOs = System.getProperty("os.name")
+        val originalCrashHandler = Thread.getDefaultUncaughtExceptionHandler()
+        var owner: DesktopExternalActionBroker? = null
+        val received = java.util.concurrent.atomic.AtomicReference<String>()
         try {
+            System.setProperty("user.home", tempDir.path)
+            System.setProperty("os.name", "Linux")
+            val broker = DesktopExternalActionBroker(DesktopPlatformPaths.current().instanceStateFile).also { owner = it }
+            assertTrue(broker.startOrForward(null) is DesktopExternalActionBroker.StartResult.Owner)
+            broker.setActionConsumer(received::set)
             val entry = Class.forName("mihon.desktop.MainKt").getMethod("main", Array<String>::class.java)
-            entry.invoke(null, arrayOf("--headless", "tachiyomi://manga") as Any)
-            assertEquals(listOf("--headless", "tachiyomi://manga"), received?.toList())
+            entry.invoke(null, arrayOf("tachiyomi://manga?url=default-entry") as Any)
+            assertEquals("tachiyomi://manga?url=default-entry", received.get())
         } finally {
-            desktopMainApplication = original
+            owner?.close()
+            Thread.setDefaultUncaughtExceptionHandler(originalCrashHandler)
+            System.setProperty("user.home", originalHome)
+            System.setProperty("os.name", originalOs)
         }
     }
 
@@ -261,19 +272,19 @@ class DesktopAppRuntimeTest {
                     transaction.registerRuntime(runtime)
                     DesktopOwnerIngressDependencies(runtime, uiDependencies).also { ownerFactoryCalls++ }
                 },
-                runApplication = { startup, closeAndJoin ->
+                runWindowEventLoop = { startup, requestClose ->
                     assertSame(uiDependencies, startup.ingress.uiDependencies)
                     assertSame(uiDependencies.externalActionNavigator, startup.ingress.uiDependencies.externalActionNavigator)
                     assertTrue(runtime.isRunning)
                     ownerEntered.complete(Unit)
                     releaseOwner.await()
-                    closeAndJoin()
+                    requestClose()
                 },
             )
         }
         var secondary: DesktopExternalActionBroker? = null
         try {
-            ownerEntered.await()
+            kotlinx.coroutines.withContext(Dispatchers.Default) { withTimeout(1_000) { ownerEntered.await() } }
             port.emit("tachiyomi://manga?url=owner-identity")
             assertTrue(uiDependencies.externalActionNavigator.hasPendingAction)
             val fixture = navigatorFixture()
@@ -289,7 +300,7 @@ class DesktopAppRuntimeTest {
                     registrar = mihon.desktop.platform.DesktopUriSchemeRegistrar { error("secondary must not register") },
                     openUriEventPort = port,
                     ownerIngressDependencies = { error("secondary must not initialize owner dependencies") },
-                    runApplication = { _, _ -> error("secondary must not continue owner startup") },
+                    runWindowEventLoop = { _, _ -> error("secondary must not continue owner startup") },
                 ),
             )
             assertEquals(1, port.installs)
@@ -343,6 +354,20 @@ class DesktopAppRuntimeTest {
         val thrown = runCatching { runtime.closeAndJoin() }.exceptionOrNull()
         assertSame(closeFailure, thrown); assertEquals(1, awaits)
         assertEquals(listOf(awaitFailure), thrown!!.suppressed.toList())
+    }
+
+    @Test
+    fun `window application keeps first close result and ignores duplicate requests`() = runTest {
+        val failure = IllegalStateException("first close")
+        var closeCalls = 0
+        val thrown = runCatching {
+            runDesktopWindowApplication(
+                closeAndJoin = { if (++closeCalls == 1) throw failure },
+                runWindowEventLoop = { requestClose -> requestClose(); requestClose() },
+            )
+        }.exceptionOrNull()
+        assertSame(failure, thrown)
+        assertEquals(1, closeCalls)
     }
 
     @Test
