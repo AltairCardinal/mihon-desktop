@@ -4,7 +4,8 @@ correction-list: docs/superpowers/plans/2026-07-12-mihon-desktop-upstream-parity
 original-branch: main
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 completed-child-plan: docs/superpowers/plans/2026-07-21-mihon-desktop-platform-integration.md
-resume-order: continue with Task 5B, the first unchecked task in this corrected parent plan
+active-child-plan: docs/superpowers/plans/2026-07-22-mihon-desktop-settings-accessibility.md
+resume-order: complete the active Task 5B child plan through Task 20, then continue with parent Task 6
 ---
 
 # Mihon Desktop 对齐原版 Mihon 实施计划（原版基线修正版）
@@ -475,6 +476,10 @@ Windows `0.11.14.43.84e386c` 固定 EXE 与 macOS `0.11.14.44.84e386c` 部署应
 **Completion status:** 父 Task 5A 与 `align-desktop-platform` 子计划 Tasks 1–16 已完成。whole-change 独立审查对 `952be2f789..2e94748f7` 给出 Critical/Important/Minor `0/0/0`；集中验收及唯一修复提交 `d2132c3b9` 的复审同样为 `0/0/0`。固定原版 provenance、shared/current Android/Desktop production wiring、Desktop 独有能力、IDs 81–86/92、全量 JVM/Android 模拟器/Windows/macOS/Linux-WSL 能力矩阵均有证据；最终 Desktop 版本为 `0.11.14.44.6062ebe`，固定 Windows EXE 为 `D:\Shell\Github\mihon\app-desktop\tmp\mihon-dist\main\app\Mihon Desktop\Mihon Desktop.exe`。macOS SSH 与 WSL 无法替代的 GUI/Keychain/Secret Service 人工交互边界已在 `docs/superpowers/reports/2026-07-21-align-desktop-platform-verify.md` 明确保留，不虚报通过。父 Steps 1–11 全部勾选，下一项为父 Task 5B。
 
 ## 14. Task 5B：设置、外观、无障碍与许可
+
+**Executable child plan:** `docs/superpowers/plans/2026-07-22-mihon-desktop-settings-accessibility.md`
+
+**Current progress:** 固定原版 ID 88/90/91/94 与当前 shared/Android/Desktop 的两份只读盘点已完成。子计划初审 `0/7/1`、唯一修复复审 `0/2/0` 后，按门禁只重规划剩余的 palette 模块迁移顺序/可见性风险：Base 在第一批先迁移，每批提供可独立编译的跨模块 API，最后统一 selector；其余 finding 均已关闭。项目 guard 已识别并通过 26 个内部子 Task 正文；状态只以该子计划 checklist 和本父 roadmap 阶段摘要为准，不恢复 Comet/OpenSpec 或旧 progress 状态。下一项为父 Task 5B / 子 Task 1。
 
 **Files:**
 - Modify: 当前分支 `app/src/main/java/eu/kanade/presentation/more/settings/`
