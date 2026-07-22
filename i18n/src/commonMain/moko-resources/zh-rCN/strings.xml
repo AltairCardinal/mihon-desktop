@@ -286,7 +286,7 @@
     <string name="transition_pages_error">图片加载失败：%1$s</string>
     <string name="migration_dialog_what_to_include">选择需要迁移的数据</string>
     <string name="migrate">迁移</string>
-    <string name="copy">共存</string>
+    <string name="copy">复制</string>
     <string name="download_queue_error">下载章节失败，可以在下载页面中重试</string>
     <string name="notification_new_chapters">发现新章节</string>
     <string name="notification_cover_update_failed">封面更新失败</string>
@@ -1113,4 +1113,12 @@
     <string name="desktop_update_cancelled">更新操作已取消</string>
     <string name="desktop_update_manual">打开版本发布页面手动更新</string>
     <string name="desktop_update_open_failed">无法打开更新页面，请复制此地址：%1$s</string>
+    <string name="desktop_extension_repo_empty_hint">使用“添加仓库”来添加仓库。</string>
+    <string name="desktop_extension_repo_add_message">请输入仓库的基础地址或 index.min.json 地址。</string>
+    <string name="desktop_extension_repo_pending">正在检查仓库...</string>
+    <string name="desktop_extension_repo_https_required">仓库地址必须使用 HTTPS。</string>
+    <string name="desktop_extension_repo_unavailable">无法连接仓库，请检查地址或网络连接。</string>
+    <string name="desktop_extension_repo_invalid_metadata">仓库元数据缺失或无效。</string>
+    <string name="desktop_extension_repo_add_failed">添加仓库失败。</string>
+    <string name="desktop_extension_repo_delete_consequence">此仓库中的插件将不再可用。</string>
 </resources>

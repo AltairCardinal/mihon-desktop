@@ -62,8 +62,10 @@ import mihon.domain.extensionrepo.interactor.GetExtensionRepo
 import mihon.domain.extensionrepo.interactor.ReplaceExtensionRepo
 import mihon.domain.extensionrepo.interactor.UpdateExtensionRepo
 import mihon.domain.extensionrepo.model.ExtensionRepo
+import tachiyomi.i18n.MR
 import java.awt.Desktop
 import java.net.URI
+import java.util.Locale
 import kotlin.time.Duration.Companion.milliseconds
 
 internal sealed interface RepoDialog {
@@ -113,10 +115,10 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
                             when (val result = createExtensionRepo.await(url)) {
                                 CreateExtensionRepo.Result.Success -> Unit
                                 CreateExtensionRepo.Result.RepoAlreadyExists ->
-                                    extensionRepoCreateMessage(result)?.let(::showSnackbar)
+                                    extensionRepoCreateMessage(result, Locale.getDefault())?.let(::showSnackbar)
                                 is CreateExtensionRepo.Result.DuplicateFingerprint ->
                                     dialog = RepoDialog.Conflict(result.oldRepo, result.newRepo)
-                                else -> extensionRepoCreateMessage(result)?.let(::showSnackbar)
+                                else -> extensionRepoCreateMessage(result, Locale.getDefault())?.let(::showSnackbar)
                             }
                             pendingRepoUrl = null
                         }
@@ -150,24 +152,24 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("Extension Repositories") },
+                    title = { Text(MR.strings.label_extension_repos.localized()) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = MR.strings.action_bar_up_description.localized())
                         }
                     },
                     actions = {
                         IconButton(onClick = {
                             scope.launch { updateExtensionRepo.awaitAll() }
                         }) {
-                            Icon(Icons.Outlined.Refresh, contentDescription = "Refresh all repos")
+                            Icon(Icons.Outlined.Refresh, contentDescription = MR.strings.action_webview_refresh.localized())
                         }
                     },
                 )
             },
             floatingActionButton = {
                 FloatingActionButton(onClick = { dialog = freshCreatePrompt() }) {
-                    Icon(Icons.Outlined.Add, contentDescription = "Add repository")
+                    Icon(Icons.Outlined.Add, contentDescription = MR.strings.action_add_repo.localized())
                 }
             },
             snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -178,11 +180,18 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
                     modifier = Modifier.fillMaxSize().padding(padding),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        text = "No extension repositories added.\nTap + to add a repository.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = MR.strings.information_empty_repos.localized(),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = MR.strings.desktop_extension_repo_empty_hint.localized(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             } else {
                 LazyColumn(
@@ -215,15 +224,16 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
     }
 }
 
-internal fun extensionRepoPendingTitle(url: String): String = "Checking repository..."
+internal fun extensionRepoPendingTitle(@Suppress("UNUSED_PARAMETER") url: String, locale: Locale = Locale.US): String =
+    MR.strings.desktop_extension_repo_pending.localized(locale)
 
-internal fun extensionRepoCreateMessage(result: CreateExtensionRepo.Result): String? {
+internal fun extensionRepoCreateMessage(result: CreateExtensionRepo.Result, locale: Locale = Locale.US): String? {
     return when (result) {
-        CreateExtensionRepo.Result.InvalidUrl -> "Repository URL must be HTTPS."
-        CreateExtensionRepo.Result.RepositoryUnavailable -> "Could not reach repository. Check the URL or network connection."
-        CreateExtensionRepo.Result.InvalidRepository -> "Repository metadata is missing or invalid."
-        CreateExtensionRepo.Result.RepoAlreadyExists -> "Repository already exists."
-        CreateExtensionRepo.Result.Error -> "Failed to add repository."
+        CreateExtensionRepo.Result.InvalidUrl -> MR.strings.desktop_extension_repo_https_required.localized(locale)
+        CreateExtensionRepo.Result.RepositoryUnavailable -> MR.strings.desktop_extension_repo_unavailable.localized(locale)
+        CreateExtensionRepo.Result.InvalidRepository -> MR.strings.desktop_extension_repo_invalid_metadata.localized(locale)
+        CreateExtensionRepo.Result.RepoAlreadyExists -> MR.strings.error_repo_exists.localized(locale)
+        CreateExtensionRepo.Result.Error -> MR.strings.desktop_extension_repo_add_failed.localized(locale)
         CreateExtensionRepo.Result.Success,
         is CreateExtensionRepo.Result.DuplicateFingerprint,
         -> null
@@ -244,7 +254,7 @@ private fun PendingRepoCard(
         ) {
             CircularProgressIndicator()
             Column(modifier = Modifier.padding(start = 12.dp)) {
-                Text(text = extensionRepoPendingTitle(url), style = MaterialTheme.typography.titleSmall)
+                Text(text = extensionRepoPendingTitle(url, Locale.getDefault()), style = MaterialTheme.typography.titleSmall)
                 Text(
                     text = url,
                     style = MaterialTheme.typography.labelSmall,
@@ -292,13 +302,13 @@ private fun RepoCard(
             horizontalArrangement = Arrangement.End,
         ) {
             IconButton(onClick = onOpenWebsite) {
-                Icon(Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = "Open website")
+                Icon(Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = MR.strings.action_open_in_browser.localized())
             }
             IconButton(onClick = onCopyUrl) {
-                Icon(Icons.Outlined.ContentCopy, contentDescription = "Copy URL")
+                Icon(Icons.Outlined.ContentCopy, contentDescription = MR.strings.copy.localized())
             }
             IconButton(onClick = onDelete) {
-                Icon(Icons.Outlined.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                Icon(Icons.Outlined.Delete, contentDescription = MR.strings.action_delete_repo.localized(), tint = MaterialTheme.colorScheme.error)
             }
         }
     }
@@ -317,11 +327,11 @@ private fun CreateRepoDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add Extension Repository") },
+        title = { Text(MR.strings.action_add_repo.localized()) },
         text = {
             Column {
                 Text(
-                    text = "Enter the repository base URL or index.min.json URL.",
+                    text = MR.strings.desktop_extension_repo_add_message.localized(),
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 OutlinedTextField(
@@ -331,11 +341,11 @@ private fun CreateRepoDialog(
                         .focusRequester(focusRequester),
                     value = url,
                     onValueChange = { url = it },
-                    label = { Text("Repository URL") },
+                    label = { Text(MR.strings.label_add_repo_input.localized()) },
                     placeholder = { Text("https://example.com/repo") },
                     supportingText = {
-                        if (alreadyExists) Text("Repository already exists")
-                        else Text("Required")
+                        if (alreadyExists) Text(MR.strings.error_repo_exists.localized())
+                        else Text(MR.strings.information_required_plain.localized())
                     },
                     isError = alreadyExists,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
@@ -347,10 +357,10 @@ private fun CreateRepoDialog(
             TextButton(
                 enabled = url.isNotEmpty() && !alreadyExists,
                 onClick = { onCreate(url) },
-            ) { Text("Add") }
+            ) { Text(MR.strings.action_add.localized()) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
         },
     )
 
@@ -368,15 +378,20 @@ private fun DeleteRepoDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Remove Repository") },
-        text = { Text("Remove \"$baseUrl\"? Extensions from this repository will no longer be available.") },
+        title = { Text(MR.strings.action_delete_repo.localized()) },
+        text = {
+            Column {
+                Text(MR.strings.delete_repo_confirmation.localized(Locale.getDefault(), baseUrl))
+                Text(MR.strings.desktop_extension_repo_delete_consequence.localized())
+            }
+        },
         confirmButton = {
             TextButton(onClick = onDelete) {
-                Text("Remove", color = MaterialTheme.colorScheme.error)
+                Text(MR.strings.action_remove.localized(), color = MaterialTheme.colorScheme.error)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
         },
     )
 }
@@ -390,18 +405,15 @@ private fun ConflictRepoDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Repository Conflict") },
+        title = { Text(MR.strings.action_replace_repo_title.localized()) },
         text = {
-            Text(
-                "\"${newRepo.name}\" has the same signing key as \"${oldRepo.name}\". " +
-                    "Replace the existing repository?",
-            )
+            Text(MR.strings.action_replace_repo_message.localized(Locale.getDefault(), newRepo.name, oldRepo.name))
         },
         confirmButton = {
-            TextButton(onClick = onReplace) { Text("Replace") }
+            TextButton(onClick = onReplace) { Text(MR.strings.action_replace_repo.localized()) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
         },
     )
 }

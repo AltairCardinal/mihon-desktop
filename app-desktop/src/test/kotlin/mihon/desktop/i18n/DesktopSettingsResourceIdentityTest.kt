@@ -13,6 +13,7 @@ import cafe.adriel.voyager.navigator.Navigator
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
@@ -29,6 +30,7 @@ import mihon.desktop.backup.DesktopBackupRestorer
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.download.DownloadItem
+import mihon.desktop.domain.fakes.FakeExtensionRepoRepository
 import mihon.desktop.platform.CredentialBackend
 import mihon.desktop.platform.DesktopCredentialStore
 import mihon.desktop.platform.DesktopPlatformPaths
@@ -55,6 +57,7 @@ import mihon.desktop.ui.settings.BackupRestoreScreenModel
 import mihon.desktop.ui.settings.BackupRestoreUiState
 import mihon.desktop.ui.settings.BackupSettingsScreen
 import mihon.desktop.ui.settings.DownloadSettingsScreen
+import mihon.desktop.ui.settings.ExtensionRepoScreen
 import mihon.desktop.ui.settings.GeneralSettingsScreen
 import mihon.desktop.ui.settings.LibrarySettingsScreen
 import mihon.desktop.ui.settings.LocalAdvancedSettingsPlatformActions
@@ -75,6 +78,12 @@ import mihon.desktop.update.ReadyToInstall
 import mihon.desktop.update.UpdateOperation
 import mihon.desktop.update.VerifiedDownload
 import mihon.domain.error.AppError
+import mihon.domain.extensionrepo.interactor.CreateExtensionRepo
+import mihon.domain.extensionrepo.interactor.DeleteExtensionRepo
+import mihon.domain.extensionrepo.interactor.GetExtensionRepo
+import mihon.domain.extensionrepo.interactor.ReplaceExtensionRepo
+import mihon.domain.extensionrepo.interactor.UpdateExtensionRepo
+import mihon.domain.extensionrepo.model.ExtensionRepo
 import mihon.domain.task.TaskState
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -337,6 +346,183 @@ class DesktopSettingsResourceIdentityTest {
             model.close()
             extensionManager.close()
             home.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `Extension repositories render shared identities through production repository`() = runBlocking {
+        val previousLocale = Locale.getDefault()
+        try {
+            listOf(english, chinese).forEach { locale ->
+                val repository = FakeExtensionRepoRepository()
+                val refresh = mockk<UpdateExtensionRepo>(relaxed = true)
+                val dependencies = extensionRepoDependencies(repository, update = refresh)
+                val copy = render(ExtensionRepoScreen(), dependencies, locale)
+                assertCopy(
+                    copy.text,
+                    MR.strings.label_extension_repos.localized(locale),
+                    MR.strings.information_empty_repos.localized(locale),
+                    MR.strings.desktop_extension_repo_empty_hint.localized(locale),
+                )
+                assertCopy(
+                    copy.descriptions,
+                    MR.strings.action_bar_up_description.localized(locale),
+                    MR.strings.action_add_repo.localized(locale),
+                    MR.strings.action_webview_refresh.localized(locale),
+                )
+
+                val required = render(ExtensionRepoScreen(""), dependencies, locale)
+                assertCopy(
+                    required.text,
+                    MR.strings.action_add_repo.localized(locale),
+                    MR.strings.desktop_extension_repo_add_message.localized(locale),
+                    MR.strings.label_add_repo_input.localized(locale),
+                    MR.strings.information_required_plain.localized(locale),
+                    MR.strings.action_add.localized(locale),
+                    MR.strings.action_cancel.localized(locale),
+                )
+
+                val repo = ExtensionRepo("https://repo.example", "Example Repo", "Example", "https://website.example", "fingerprint")
+                repository.insertRepo(repo.baseUrl, repo.name, repo.shortName, repo.website, repo.signingKeyFingerprint)
+                val duplicateScene = extensionRepoScene(ExtensionRepoScreen(repo.baseUrl), dependencies, locale)
+                try {
+                    assertCopy(snapshot(duplicateScene).text, MR.strings.error_repo_exists.localized(locale))
+                    val field = nodes(duplicateScene).single { it.config.contains(SemanticsActions.SetText) }
+                    assertEquals(AnnotatedString(repo.baseUrl), field.config[SemanticsProperties.EditableText])
+                } finally {
+                    duplicateScene.close()
+                }
+
+                val scene = extensionRepoScene(ExtensionRepoScreen(), dependencies, locale)
+                try {
+                    val listed = snapshot(scene)
+                    assertCopy(listed.text, repo.name, requireNotNull(repo.shortName), repo.baseUrl)
+                    assertCopy(
+                        listed.descriptions,
+                        MR.strings.action_open_in_browser.localized(locale),
+                        MR.strings.copy.localized(locale),
+                        MR.strings.action_delete_repo.localized(locale),
+                    )
+                    click(scene, MR.strings.copy.localized(locale))
+                    click(scene, MR.strings.action_webview_refresh.localized(locale))
+                    snapshot(scene)
+                    coVerify(exactly = 1) { refresh.awaitAll() }
+                    click(scene, MR.strings.action_delete_repo.localized(locale))
+                    val delete = snapshot(scene)
+                    assertCopy(
+                        delete.text,
+                        MR.strings.delete_repo_confirmation.localized(locale, repo.baseUrl),
+                        MR.strings.desktop_extension_repo_delete_consequence.localized(locale),
+                        MR.strings.action_remove.localized(locale),
+                        MR.strings.action_cancel.localized(locale),
+                    )
+                    click(scene, MR.strings.action_remove.localized(locale))
+                    assertCopy(snapshot(scene).text, MR.strings.information_empty_repos.localized(locale))
+                } finally {
+                    scene.close()
+                }
+            }
+        } finally {
+            Locale.setDefault(previousLocale)
+        }
+    }
+
+    @Test
+    fun `Extension repository create outcomes use production screen wiring`() = runBlocking {
+        val previousLocale = Locale.getDefault()
+        try {
+            listOf(english, chinese).forEach { locale ->
+                val outcomes = listOf(
+                    CreateExtensionRepo.Result.InvalidUrl to MR.strings.desktop_extension_repo_https_required.localized(locale),
+                    CreateExtensionRepo.Result.RepositoryUnavailable to MR.strings.desktop_extension_repo_unavailable.localized(locale),
+                    CreateExtensionRepo.Result.InvalidRepository to MR.strings.desktop_extension_repo_invalid_metadata.localized(locale),
+                    CreateExtensionRepo.Result.RepoAlreadyExists to MR.strings.error_repo_exists.localized(locale),
+                    CreateExtensionRepo.Result.Error to MR.strings.desktop_extension_repo_add_failed.localized(locale),
+                )
+                outcomes.forEachIndexed { index, (result, expected) ->
+                    val create = mockk<CreateExtensionRepo> { coEvery { await(any()) } returns result }
+                    val scene = extensionRepoScene(
+                        ExtensionRepoScreen("https://repo$index.example"),
+                        extensionRepoDependencies(FakeExtensionRepoRepository(), create),
+                        locale,
+                    )
+                    try {
+                        snapshot(scene)
+                        click(scene, MR.strings.action_add.localized(locale))
+                        assertCopy(snapshot(scene).text, expected)
+                    } finally {
+                        scene.close()
+                    }
+                }
+
+                val successRepository = FakeExtensionRepoRepository()
+                val success = mockk<CreateExtensionRepo> {
+                    coEvery { await(any()) } coAnswers {
+                        successRepository.insertRepo("https://created.example", "Created", "Short", "https://website.example", "created-fp")
+                        CreateExtensionRepo.Result.Success
+                    }
+                }
+                val successScene = extensionRepoScene(
+                    ExtensionRepoScreen("https://created.example/index.min.json"),
+                    extensionRepoDependencies(successRepository, success),
+                    locale,
+                )
+                try {
+                    snapshot(successScene)
+                    click(successScene, MR.strings.action_add.localized(locale))
+                    assertCopy(snapshot(successScene).text, "Created", "Short", "https://created.example")
+                } finally {
+                    successScene.close()
+                }
+
+                val pending = CompletableDeferred<CreateExtensionRepo.Result>()
+                val pendingCreate = mockk<CreateExtensionRepo> { coEvery { await(any()) } coAnswers { pending.await() } }
+                val pendingUrl = "https://pending.example"
+                val pendingScene = extensionRepoScene(
+                    ExtensionRepoScreen(pendingUrl),
+                    extensionRepoDependencies(FakeExtensionRepoRepository(), pendingCreate),
+                    locale,
+                )
+                try {
+                    snapshot(pendingScene)
+                    click(pendingScene, MR.strings.action_add.localized(locale))
+                    assertCopy(snapshot(pendingScene).text, MR.strings.desktop_extension_repo_pending.localized(locale), pendingUrl)
+                    pending.complete(CreateExtensionRepo.Result.Error)
+                    snapshot(pendingScene)
+                } finally {
+                    pendingScene.close()
+                }
+
+                val conflictRepository = FakeExtensionRepoRepository()
+                val oldRepo = ExtensionRepo("https://old.example", "Old", null, "https://old.example", "shared-fp")
+                val newRepo = ExtensionRepo("https://new.example", "New", null, "https://new.example", "shared-fp")
+                conflictRepository.insertRepo(oldRepo.baseUrl, oldRepo.name, oldRepo.shortName, oldRepo.website, oldRepo.signingKeyFingerprint)
+                val conflictCreate = mockk<CreateExtensionRepo> {
+                    coEvery { await(newRepo.baseUrl) } returns CreateExtensionRepo.Result.DuplicateFingerprint(oldRepo, newRepo)
+                }
+                val conflictScene = extensionRepoScene(
+                    ExtensionRepoScreen(newRepo.baseUrl),
+                    extensionRepoDependencies(conflictRepository, conflictCreate),
+                    locale,
+                )
+                try {
+                    snapshot(conflictScene)
+                    click(conflictScene, MR.strings.action_add.localized(locale))
+                    assertCopy(
+                        snapshot(conflictScene).text,
+                        MR.strings.action_replace_repo_title.localized(locale),
+                        MR.strings.action_replace_repo_message.localized(locale, newRepo.name, oldRepo.name),
+                        MR.strings.action_replace_repo.localized(locale),
+                    )
+                    click(conflictScene, MR.strings.action_replace_repo.localized(locale))
+                    assertCopy(snapshot(conflictScene).text, newRepo.name, newRepo.baseUrl)
+                    assertEquals(listOf(newRepo), conflictRepository.getAll())
+                } finally {
+                    conflictScene.close()
+                }
+            }
+        } finally {
+            Locale.setDefault(previousLocale)
         }
     }
 
@@ -993,6 +1179,33 @@ class DesktopSettingsResourceIdentityTest {
         }
     }
 
+    private suspend fun extensionRepoScene(
+        screen: ExtensionRepoScreen,
+        dependencies: DesktopUiDependencies,
+        locale: Locale,
+    ): ImageComposeScene {
+        Locale.setDefault(locale)
+        return ImageComposeScene(900, 1_200, coroutineContext = kotlinx.coroutines.currentCoroutineContext()).also { scene ->
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    Navigator(screen) { CurrentScreen() }
+                }
+            }
+        }
+    }
+
+    private fun extensionRepoDependencies(
+        repository: FakeExtensionRepoRepository,
+        create: CreateExtensionRepo = mockk(relaxed = true),
+        update: UpdateExtensionRepo = mockk(relaxed = true),
+    ) = mockk<DesktopUiDependencies>(relaxed = true) {
+        every { getExtensionRepo } returns GetExtensionRepo(repository)
+        every { createExtensionRepo } returns create
+        every { deleteExtensionRepo } returns DeleteExtensionRepo(repository)
+        every { replaceExtensionRepo } returns ReplaceExtensionRepo(repository)
+        every { updateExtensionRepo } returns update
+    }
+
     private fun securityDependencies(
         securityPreferences: SecurityPreferences,
         appPreferences: DesktopAppPreferences,
@@ -1031,7 +1244,8 @@ class DesktopSettingsResourceIdentityTest {
 
     private fun click(scene: ImageComposeScene, label: String) {
         val node = nodes(scene).last {
-            it.config.contains(SemanticsActions.OnClick) && flatten(it).flatMap(::textCopy).contains(label)
+            it.config.contains(SemanticsActions.OnClick) &&
+                flatten(it).any { node -> label in textCopy(node) || label in descriptionCopy(node) }
         }
         assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
     }
@@ -1075,13 +1289,10 @@ class DesktopSettingsResourceIdentityTest {
             }
         }.toSet()
 
-    private fun descriptionCopy(scene: ImageComposeScene): Set<String> = nodes(scene).flatMap { node ->
-        if (node.config.contains(SemanticsProperties.ContentDescription)) {
-            node.config[SemanticsProperties.ContentDescription]
-        } else {
-            emptyList()
-        }
-    }.toSet()
+    private fun descriptionCopy(scene: ImageComposeScene): Set<String> = nodes(scene).flatMap(::descriptionCopy).toSet()
+
+    private fun descriptionCopy(node: SemanticsNode): List<String> =
+        if (node.config.contains(SemanticsProperties.ContentDescription)) node.config[SemanticsProperties.ContentDescription] else emptyList()
 
     private fun entryCopy(scene: ImageComposeScene): Set<List<String>> = nodes(scene)
         .filter { it.config.contains(SemanticsActions.OnClick) }
@@ -1150,6 +1361,14 @@ class DesktopSettingsResourceIdentityTest {
     }
 
     private val desktopResources: List<StringResource> = listOf(
+        MR.strings.desktop_extension_repo_empty_hint,
+        MR.strings.desktop_extension_repo_add_message,
+        MR.strings.desktop_extension_repo_pending,
+        MR.strings.desktop_extension_repo_https_required,
+        MR.strings.desktop_extension_repo_unavailable,
+        MR.strings.desktop_extension_repo_invalid_metadata,
+        MR.strings.desktop_extension_repo_add_failed,
+        MR.strings.desktop_extension_repo_delete_consequence,
         MR.strings.desktop_about_description,
         MR.strings.desktop_about_based_on,
         MR.strings.desktop_about_storage,

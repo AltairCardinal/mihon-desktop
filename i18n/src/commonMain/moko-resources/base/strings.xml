@@ -1297,4 +1297,12 @@
     <string name="desktop_update_cancelled">Update operation cancelled</string>
     <string name="desktop_update_manual">Open the release page to update manually</string>
     <string name="desktop_update_open_failed">Could not open the update page. Copy this URL: %1$s</string>
+    <string name="desktop_extension_repo_empty_hint">Use Add repo to add a repository.</string>
+    <string name="desktop_extension_repo_add_message">Enter the repository base URL or index.min.json URL.</string>
+    <string name="desktop_extension_repo_pending">Checking repository...</string>
+    <string name="desktop_extension_repo_https_required">Repository URL must be HTTPS.</string>
+    <string name="desktop_extension_repo_unavailable">Could not reach repository. Check the URL or network connection.</string>
+    <string name="desktop_extension_repo_invalid_metadata">Repository metadata is missing or invalid.</string>
+    <string name="desktop_extension_repo_add_failed">Failed to add repository.</string>
+    <string name="desktop_extension_repo_delete_consequence">Extensions from this repository will no longer be available.</string>
 </resources>
