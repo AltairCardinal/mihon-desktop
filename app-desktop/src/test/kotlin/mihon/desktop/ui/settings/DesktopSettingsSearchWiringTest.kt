@@ -42,6 +42,7 @@ import mihon.domain.settings.SettingsSearchPolicy
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
@@ -54,18 +55,23 @@ import kotlin.coroutines.CoroutineContext
 class DesktopSettingsSearchWiringTest {
     @Test
     fun `catalog preserves fixed-main prefix routes and shared top ten`() {
-        Locale.setDefault(Locale.US)
-        val screens = DesktopSettingsCatalog.screens()
-        val fixedMain = "AppearanceSettingsScreen,LibrarySettingsScreen,ReaderSettingsScreen,DownloadSettingsScreen,TrackingSettingsScreen,ExtensionListScreen,BackupSettingsScreen,SecuritySettingsScreen,AdvancedSettingsScreen"
-        assertEquals(fixedMain, screens.take(9).joinToString(",") { it.route::class.simpleName.orEmpty() })
-        assertEquals(listOf("GeneralSettingsScreen", "ExtensionRepoScreen", "AboutScreen"), screens.drop(9).map { it.route::class.simpleName })
-        assertTrue(screens.none { it.route is Tab })
-        val originalRoutes = screens.take(9).map { it.route::class }.toSet()
-        val results = DesktopSettingsCatalog.search("e")
-        assertEquals(10, results.size)
-        assertTrue(results.all { it.route::class in originalRoutes })
+        val previous = Locale.getDefault()
+        assertThrows(IllegalStateException::class.java) { withRestoredLocale { Locale.setDefault(Locale.JAPAN); error("expected") } }
+        assertEquals(previous, Locale.getDefault())
+        withRestoredLocale {
+            Locale.setDefault(Locale.US)
+            val screens = DesktopSettingsCatalog.screens()
+            val fixedMain = "AppearanceSettingsScreen,LibrarySettingsScreen,ReaderSettingsScreen,DownloadSettingsScreen,TrackingSettingsScreen,ExtensionListScreen,BackupSettingsScreen,SecuritySettingsScreen,AdvancedSettingsScreen"
+            assertEquals(fixedMain, screens.take(9).joinToString(",") { it.route::class.simpleName.orEmpty() })
+            assertEquals(listOf("GeneralSettingsScreen", "ExtensionRepoScreen", "AboutScreen"), screens.drop(9).map { it.route::class.simpleName })
+            assertTrue(screens.none { it.route is Tab })
+            val originalRoutes = screens.take(9).map { it.route::class }.toSet()
+            val results = DesktopSettingsCatalog.search("e")
+            assertEquals(10, results.size)
+            assertTrue(results.all { it.route::class in originalRoutes })
+        }
+        assertEquals(previous, Locale.getDefault())
     }
-
     @Test
     fun `catalog delegates search to shared policy`() {
         mockkObject(SettingsSearchPolicy)
@@ -82,11 +88,9 @@ class DesktopSettingsSearchWiringTest {
             unmockkObject(SettingsSearchPolicy)
         }
     }
-
     @Test
     fun `search has feedback focus submission keys and result navigation`() = runBlocking {
-        val previous = Locale.getDefault()
-        try {
+        withRestoredLocale {
             listOf(Locale.US, Locale.forLanguageTag("zh-CN")).forEach { locale ->
                 Locale.setDefault(locale)
                 withSearchScene { scene ->
@@ -120,11 +124,8 @@ class DesktopSettingsSearchWiringTest {
                 assertTrue(navigator.lastItem is AppearanceSettingsScreen)
                 assertEquals(1, navigator.items.size)
             }
-        } finally {
-            Locale.setDefault(previous)
         }
     }
-
     @Test
     fun `More search entry opens the production search screen`() = runBlocking {
         withSearchScene(MoreRootScreen()) { scene ->
@@ -135,7 +136,6 @@ class DesktopSettingsSearchWiringTest {
             assertTrue(navigator.lastItem is SettingsSearchScreen)
         }
     }
-
     private suspend fun withSearchScene(
         screen: Screen = SettingsSearchScreen(),
         block: suspend (SearchScene) -> Unit,
@@ -160,7 +160,6 @@ class DesktopSettingsSearchWiringTest {
             scene.close()
         }
     }
-
     @androidx.compose.runtime.Composable
     private fun dependencies(content: @androidx.compose.runtime.Composable () -> Unit) {
         val downloads = mockk<DesktopDownloadManager> { every { queue } returns MutableStateFlow(emptyList()) }
@@ -170,7 +169,6 @@ class DesktopSettingsSearchWiringTest {
         }
         CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies, content = content)
     }
-
     private suspend fun render(scene: SearchScene) = repeat(5) {
         scene.render()
         kotlinx.coroutines.yield()
@@ -193,6 +191,10 @@ class DesktopSettingsSearchWiringTest {
     private fun text(node: SemanticsNode) = if (node.config.contains(SemanticsProperties.Text)) node.config[SemanticsProperties.Text].map { it.text } else emptyList()
     private fun nodes(scene: SearchScene, unmerged: Boolean = false) = scene.semanticsOwners.flatMap { flatten(if (unmerged) it.unmergedRootSemanticsNode else it.rootSemanticsNode) }
     private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+    private inline fun <T> withRestoredLocale(block: () -> T): T {
+        val previous = Locale.getDefault()
+        return try { block() } finally { Locale.setDefault(previous) }
+    }
 
     private class SearchScene(context: CoroutineContext) : AutoCloseable {
         val semanticsOwners = linkedSetOf<SemanticsOwner>()
