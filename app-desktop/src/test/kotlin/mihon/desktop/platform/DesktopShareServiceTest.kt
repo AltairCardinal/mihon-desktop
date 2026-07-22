@@ -3,15 +3,43 @@ package mihon.desktop.platform
 import java.awt.image.BufferedImage
 import java.io.File
 import java.nio.file.Files
+import java.nio.file.Path
 import java.nio.file.attribute.PosixFileAttributeView
 import mihon.domain.platform.SharePayload
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import tachiyomi.i18n.MR
 
 class DesktopShareServiceTest {
+
+    @Test
+    fun `image snapshot is private before image bytes become visible`(@TempDir tempDir: Path) {
+        val image = BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB)
+        var sizeAtCreation: Long? = null
+        var permissionsAtCreation: Set<java.nio.file.attribute.PosixFilePermission>? = null
+
+        val file = createSharedImageSnapshot(image, tempDir.toFile()) { path ->
+            sizeAtCreation = Files.size(path)
+            if (Files.getFileAttributeView(path, PosixFileAttributeView::class.java) != null) {
+                permissionsAtCreation = Files.getPosixFilePermissions(path)
+            }
+        }
+
+        assertEquals(0L, sizeAtCreation)
+        permissionsAtCreation?.let {
+            assertEquals(
+                setOf(
+                    java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                    java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
+                ),
+                it,
+            )
+        }
+        assertTrue(file.length() > 0)
+    }
 
     @Test
     fun `native success reports shared only after terminal callback`() {

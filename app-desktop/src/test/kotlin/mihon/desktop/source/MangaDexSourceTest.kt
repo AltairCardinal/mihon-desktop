@@ -27,7 +27,6 @@ import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
-import java.net.ServerSocket
 import java.util.Collections
 
 class MangaDexSourceTest {
@@ -37,9 +36,8 @@ class MangaDexSourceTest {
 
     @Test
     fun `getChapterList does not filter MangaDex all source to English only`() = runTest {
-        val port = freePort()
         var requestedLimit: String? = null
-        val server = embeddedServer(Netty, port = port) {
+        val server = embeddedServer(Netty, port = 0) {
             routing {
                 get("/manga/manga-id/feed") {
                     requestedLimit = call.request.queryParameters["limit"]
@@ -60,6 +58,7 @@ class MangaDexSourceTest {
                 }
             }
         }.start(wait = false)
+        val port = server.resolvedConnectors().single().port
 
         try {
             val source = source("http://localhost:$port")
@@ -77,8 +76,7 @@ class MangaDexSourceTest {
 
     @Test
     fun `getChapterList keeps external chapters for desktop browser routing`() = runTest {
-        val port = freePort()
-        val server = embeddedServer(Netty, port = port) {
+        val server = embeddedServer(Netty, port = 0) {
             routing {
                 get("/manga/manga-id/feed") {
                     call.respondText(
@@ -97,6 +95,7 @@ class MangaDexSourceTest {
                 }
             }
         }.start(wait = false)
+        val port = server.resolvedConnectors().single().port
 
         try {
             val source = source("http://localhost:$port")
@@ -112,11 +111,10 @@ class MangaDexSourceTest {
 
     @Test
     fun `getChapterList falls back to browser fetch when MangaDex rejects OkHttp as unsupported browser`() = runTest {
-        val port = freePort()
         val expectedFeed = chapterFeedJson(
             listOf(ChapterFixture(id = "chapter-browser", translatedLanguage = "en", number = "1")),
         )
-        val server = embeddedServer(Netty, port = port) {
+        val server = embeddedServer(Netty, port = 0) {
             routing {
                 get("/manga/manga-id/feed") {
                     call.respondText(
@@ -130,6 +128,7 @@ class MangaDexSourceTest {
                 }
             }
         }.start(wait = false)
+        val port = server.resolvedConnectors().single().port
 
         try {
             val source = MangaDexSource(
@@ -152,8 +151,7 @@ class MangaDexSourceTest {
 
     @Test
     fun `SourcePageFetcher sends MangaDex source headers when downloading page images`() = runTest {
-        val port = freePort()
-        val server = embeddedServer(Netty, port = port) {
+        val server = embeddedServer(Netty, port = 0) {
             routing {
                 get("/page.jpg") {
                     val referer = call.request.header("Referer")
@@ -165,6 +163,7 @@ class MangaDexSourceTest {
                 }
             }
         }.start(wait = false)
+        val port = server.resolvedConnectors().single().port
 
         try {
             val fetcher = SourcePageFetcher(
@@ -229,8 +228,7 @@ class MangaDexSourceTest {
             ChapterFixture(id = "chapter-$index", translatedLanguage = "en", number = index.toString())
         }
         val requestedOffsets = Collections.synchronizedList(mutableListOf<Int>())
-        val port = freePort()
-        val server = embeddedServer(Netty, port = port) {
+        val server = embeddedServer(Netty, port = 0) {
             routing {
                 get("/manga/manga-id/feed") {
                     val offset = call.request.queryParameters["offset"]?.toIntOrNull() ?: 0
@@ -242,6 +240,7 @@ class MangaDexSourceTest {
                 }
             }
         }.start(wait = false)
+        val port = server.resolvedConnectors().single().port
         val source = source("http://localhost:$port")
         val listedManga = SManga.create().apply {
             url = "/manga/manga-id"
@@ -264,8 +263,6 @@ class MangaDexSourceTest {
         json = Json { ignoreUnknownKeys = true },
         baseUrl = baseUrl,
     )
-
-    private fun freePort(): Int = ServerSocket(0).use { it.localPort }
 
     private fun jpegBytes() = byteArrayOf(
         0xFF.toByte(),

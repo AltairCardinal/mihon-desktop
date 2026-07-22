@@ -10,8 +10,11 @@ import java.awt.datatransfer.UnsupportedFlavorException
 import java.awt.image.BufferedImage
 import java.io.File
 import java.nio.file.Files
+import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.PosixFileAttributeView
 import java.nio.file.attribute.PosixFilePermission
+import java.nio.file.attribute.PosixFilePermissions
 import javax.imageio.ImageIO
 import javax.swing.JFileChooser
 import javax.swing.SwingUtilities
@@ -212,24 +215,42 @@ private fun SharePayload.toDesktopContent(): DesktopNativeShareContent? = when (
 }
 
 private object LastSharedImageCache {
-    fun create(image: BufferedImage): File {
-        val directory = File(System.getProperty("java.io.tmpdir"), "mihon").apply(File::mkdirs)
-        val file = Files.createTempFile(directory.toPath(), "mihon-shared-page-", ".png").toFile()
-        runCatching {
-            Files.setPosixFilePermissions(
-                file.toPath(),
-                setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE),
-            )
+    fun create(image: BufferedImage): File = createSharedImageSnapshot(image)
+}
+
+internal fun createSharedImageSnapshot(
+    image: BufferedImage,
+    directory: File = File(System.getProperty("java.io.tmpdir"), "mihon"),
+    onCreated: (Path) -> Unit = {},
+): File {
+    directory.mkdirs()
+    val path = createPrivateShareTempFile(directory.toPath())
+    return try {
+        onCreated(path)
+        check(ImageIO.write(image, "png", path.toFile()))
+        if (Files.getFileAttributeView(path, PosixFileAttributeView::class.java) != null) {
+            Files.setPosixFilePermissions(path, PRIVATE_SHARE_PERMISSIONS)
         }
-        return try {
-            check(ImageIO.write(image, "png", file))
-            file
-        } catch (failure: Throwable) {
-            runCatching { Files.deleteIfExists(file.toPath()) }
-            throw failure
-        }
+        path.toFile()
+    } catch (failure: Throwable) {
+        runCatching { Files.deleteIfExists(path) }
+        throw failure
     }
 }
+
+private val PRIVATE_SHARE_PERMISSIONS = setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)
+
+private fun createPrivateShareTempFile(directory: Path): Path =
+    if (Files.getFileStore(directory).supportsFileAttributeView(PosixFileAttributeView::class.java)) {
+        Files.createTempFile(
+            directory,
+            "mihon-shared-page-",
+            ".png",
+            PosixFilePermissions.asFileAttribute(PRIVATE_SHARE_PERMISSIONS),
+        )
+    } else {
+        Files.createTempFile(directory, "mihon-shared-page-", ".png")
+    }
 
 private object AwtDesktopClipboardPort : DesktopClipboardPort {
     override fun copyText(text: String) {

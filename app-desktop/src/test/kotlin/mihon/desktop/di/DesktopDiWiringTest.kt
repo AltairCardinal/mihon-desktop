@@ -3,6 +3,7 @@ package mihon.desktop.di
 import android.app.Application
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import java.awt.GraphicsEnvironment
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -43,6 +44,7 @@ import mihon.desktop.platform.DesktopNativeSharePort
 import mihon.desktop.platform.DesktopShareFailureReason
 import mihon.desktop.platform.DesktopShareResult
 import mihon.desktop.platform.DesktopShareService
+import mihon.desktop.platform.DesktopShareUnavailableReason
 import mihon.desktop.platform.MacOsNativeSharePort
 import mihon.desktop.privacy.DesktopWindowPrivacyController
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
@@ -254,28 +256,42 @@ class DesktopDiWiringTest {
             assertSame(port, Injekt.get<DesktopNativeSharePort>())
             val service = Injekt.get<DesktopShareService>()
             val terminals = mutableListOf<DesktopShareResult>()
+            val headless = GraphicsEnvironment.isHeadless()
 
             assertSame(service, DesktopUiDependencies.fromInjekt().shareService)
-            assertEquals(
-                DesktopShareResult.OpenedNatively,
-                service.share(SharePayload.Text("https://example.com/manga"), terminals::add),
-            )
-            assertEquals(1, port.activeExchangeCount)
+            val launch = service.share(SharePayload.Text("https://example.com/manga"), terminals::add)
+            if (headless) {
+                assertEquals(
+                    DesktopShareResult.Unavailable(DesktopShareUnavailableReason.HEADLESS),
+                    launch,
+                )
+                assertEquals(0, port.activeExchangeCount)
+            } else {
+                assertEquals(DesktopShareResult.OpenedNatively, launch)
+                assertEquals(1, port.activeExchangeCount)
+            }
 
             val runtime = Injekt.get<DesktopAppRuntime>()
             runtime.close()
             runtime.close()
 
-            assertEquals(
-                listOf(DesktopShareResult.Failed(DesktopShareFailureReason.NATIVE_SHARE_FAILED)),
-                terminals,
-            )
-            assertTrue(process.destroyed)
-            assertFalse(process.isAlive)
+            if (headless) {
+                assertTrue(terminals.isEmpty())
+                assertFalse(process.destroyed)
+                assertTrue(process.isAlive)
+            } else {
+                assertEquals(
+                    listOf(DesktopShareResult.Failed(DesktopShareFailureReason.NATIVE_SHARE_FAILED)),
+                    terminals,
+                )
+                assertTrue(process.destroyed)
+                assertFalse(process.isAlive)
+            }
             assertEquals(0, port.activeExchangeCount)
             port.close()
             port.close()
-            assertEquals(1, terminals.size)
+            if (headless) process.destroy()
+            assertEquals(if (headless) 0 else 1, terminals.size)
         } finally {
             runCatching { port.close() }
             context.closeAndJoin()

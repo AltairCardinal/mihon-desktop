@@ -12,6 +12,8 @@ import java.io.File
 import java.util.UUID
 import java.util.prefs.Preferences
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import mihon.desktop.BindDesktopWindowLifecycle
 import mihon.desktop.di.initDesktopDIForTest
 import mihon.desktop.security.DesktopAppLockLifecycle
@@ -57,12 +59,14 @@ class WindowPrivacyWiringTest {
             assertFalse(controller.state.value.shouldProtect)
             assertEquals(false, controller.state.value.appliedProtected)
             app.incognitoMode.set(true)
+            awaitSetCalls(bridge, 2)
             assertEquals(listOf(WDA_NONE, WDA_EXCLUDEFROMCAPTURE), bridge.setCalls)
             assertTrue(controller.state.value.shouldProtect)
             assertEquals(true, controller.state.value.appliedProtected)
             security.secureScreen().set(SecurityPreferences.SecureScreenMode.ALWAYS)
             assertEquals(2, bridge.setCalls.size)
             security.secureScreen().set(SecurityPreferences.SecureScreenMode.NEVER)
+            awaitSetCalls(bridge, 3)
             assertEquals(listOf(WDA_NONE, WDA_EXCLUDEFROMCAPTURE, WDA_NONE), bridge.setCalls)
             assertFalse(controller.state.value.shouldProtect)
             assertEquals(false, controller.state.value.appliedProtected)
@@ -70,12 +74,17 @@ class WindowPrivacyWiringTest {
             scene.close()
         }
 
+        awaitSetCalls(bridge, 4)
         assertEquals(listOf(WDA_NONE, WDA_EXCLUDEFROMCAPTURE, WDA_NONE, WDA_NONE), bridge.setCalls)
         assertEquals("clear", bridge.events[bridge.events.lastIndex - 1])
         assertEquals("detach", bridge.events.last())
         val callsAfterDetach = bridge.setCalls.size
         privacy.apply(protected = true)
         assertEquals(callsAfterDetach, bridge.setCalls.size)
+    }
+
+    private suspend fun awaitSetCalls(bridge: RecordingBridge, expected: Int) = withTimeout(5_000) {
+        while (bridge.setCalls.size < expected) yield()
     }
 
     @Test
