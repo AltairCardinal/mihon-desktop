@@ -7,8 +7,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
@@ -69,6 +67,8 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
 
         val backupFactory = LocalDesktopUiDependencies.current.backupRestoreScreenModelFactory
         val backupFilePicker = LocalDesktopUiDependencies.current.backupFilePicker
+        val createTitle = DesktopSettingsAnchorResources.createBackup.localized()
+        val restoreTitle = DesktopSettingsAnchorResources.restoreBackup.localized()
 
         val restoreModel = if (initialBackup == null) {
             rememberScreenModel { backupFactory.create() }
@@ -111,14 +111,11 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
             },
             snackbarHost = { SnackbarHost(snackbar) },
         ) { padding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(24.dp)
-                    .verticalScroll(rememberScrollState()),
+            DesktopSettingsAnchorColumn(
+                route = this@BackupSettingsScreen,
+                modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
             ) {
-                Text(MR.strings.pref_create_backup.localized(), style = MaterialTheme.typography.titleMedium)
+                Text(createTitle, style = MaterialTheme.typography.titleMedium, modifier = Modifier.desktopSettingsAnchor(createTitle))
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = MR.strings.desktop_backup_create_summary.localized(),
@@ -162,7 +159,7 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
                 }
 
                 Spacer(Modifier.height(32.dp))
-                Text(MR.strings.pref_restore_backup.localized(), style = MaterialTheme.typography.titleMedium)
+                Text(restoreTitle, style = MaterialTheme.typography.titleMedium, modifier = Modifier.desktopSettingsAnchor(restoreTitle))
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = MR.strings.desktop_backup_restore_summary.localized(),

@@ -2,11 +2,8 @@ package mihon.desktop.ui.settings
 
 import mihon.desktop.LocalDesktopUiDependencies
 
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -41,6 +38,8 @@ class DownloadSettingsScreen : Screen {
         val autoDownload by prefs.autoDownloadNewChapters.changes().collectAsState(initial = prefs.autoDownloadNewChapters.get())
         val deleteAfterRead by prefs.deleteAfterRead.changes().collectAsState(initial = prefs.deleteAfterRead.get())
         val parallelLimit by prefs.parallelDownloadLimit.changes().collectAsState(initial = prefs.parallelDownloadLimit.get())
+        val cbzTitle = DesktopSettingsAnchorResources.downloadAsCbz.localized()
+        val downloadNewTitle = DesktopSettingsAnchorResources.downloadNew.localized()
 
         Scaffold(
             topBar = {
@@ -57,23 +56,23 @@ class DownloadSettingsScreen : Screen {
                 )
             },
         ) { padding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .verticalScroll(rememberScrollState()),
+            DesktopSettingsAnchorColumn(
+                route = this@DownloadSettingsScreen,
+                modifier = Modifier.fillMaxSize().padding(padding),
             ) {
                 SwitchSettingsItem(
-                    title = MR.strings.save_chapter_as_cbz.localized(),
+                    title = cbzTitle,
                     subtitle = MR.strings.desktop_download_cbz_summary.localized(),
                     checked = downloadAsCbz,
                     onCheckedChange = { prefs.downloadAsCbz.set(it) },
+                    modifier = Modifier.desktopSettingsAnchor(cbzTitle),
                 )
                 SwitchSettingsItem(
-                    title = MR.strings.pref_download_new.localized(),
+                    title = downloadNewTitle,
                     subtitle = MR.strings.desktop_download_new_chapters_summary.localized(),
                     checked = autoDownload,
                     onCheckedChange = { prefs.autoDownloadNewChapters.set(it) },
+                    modifier = Modifier.desktopSettingsAnchor(downloadNewTitle),
                 )
                 SwitchSettingsItem(
                     title = MR.strings.pref_remove_after_read.localized(),

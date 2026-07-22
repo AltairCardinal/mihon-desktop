@@ -6,6 +6,7 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
+import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import dev.icerock.moko.resources.StringResource
@@ -19,6 +20,7 @@ import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.backup.BackupPreview
 import mihon.desktop.backup.BackupRestoreScreenModelFactory
+import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.platform.DesktopBackupFilePicker
 import mihon.desktop.platform.DesktopBackupFilePickerRequest
 import mihon.desktop.platform.DesktopBackupFilePickerResult
@@ -36,8 +38,10 @@ import java.io.File
 import java.util.Locale
 import javax.swing.JFileChooser
 import javax.swing.filechooser.FileNameExtensionFilter
+import kotlin.reflect.KClass
 
 @OptIn(ExperimentalComposeUiApi::class)
+@org.junit.jupiter.api.parallel.Isolated
 class BackupSettingsProductionWiringTest {
     @Test
     fun `Swing adapter consumes directory and backup file request configuration`() {
@@ -111,6 +115,48 @@ class BackupSettingsProductionWiringTest {
                 scene.close()
                 Locale.setDefault(previousLocale)
             }
+        }
+    }
+
+    @Test
+    fun `download catalog result anchors once and preserves preference writes`() = runBlocking {
+        anchorFixture(this, 150).use { fixture ->
+            val title = MR.strings.pref_download_new.localized()
+            open(fixture, title, DownloadSettingsScreen::class)
+            assertAnchor(fixture.scene, title)
+            click(fixture.scene, title)
+            render(fixture.scene)
+            assertTrue(fixture.downloadPreferences.autoDownloadNewChapters.get())
+            assertOneShot(fixture, DownloadSettingsScreen())
+        }
+    }
+
+    @Test
+    fun `backup catalog result anchors once and preserves picker feedback`() = runBlocking {
+        anchorFixture(this, 240).use { fixture ->
+            val title = MR.strings.pref_restore_backup.localized()
+            open(fixture, title, BackupSettingsScreen::class)
+            assertAnchor(fixture.scene, title)
+            click(fixture.scene, MR.strings.pref_create_backup.localized())
+            val copy = render(fixture.scene)
+            assertInstanceOf(DesktopBackupFilePickerRequest.Directory::class.java, fixture.picker.request)
+            assertTrue(MR.strings.desktop_backup_create_cancelled.localized() in copy)
+            assertOneShot(fixture, BackupSettingsScreen())
+        }
+    }
+
+    @Test
+    fun `wrong route and unknown title never highlight`() = runBlocking {
+        anchorFixture(this, 180).use { fixture ->
+            val result = result(MR.strings.pref_download_new.localized(), DownloadSettingsScreen::class)
+            DesktopSettingsAnchorOwner.publish(result.route, result.anchorTitle)
+            fixture.navigator.replace(BackupSettingsScreen())
+            render(fixture.scene)
+            assertNoAnchor(fixture.scene)
+            DesktopSettingsAnchorOwner.publish(DownloadSettingsScreen(), "missing-title")
+            fixture.navigator.replace(DownloadSettingsScreen())
+            render(fixture.scene)
+            assertNoAnchor(fixture.scene)
         }
     }
 
@@ -191,6 +237,66 @@ class BackupSettingsProductionWiringTest {
             }
         }
 
+    private suspend fun anchorFixture(scope: kotlinx.coroutines.CoroutineScope, height: Int): AnchorFixture {
+        val store = InMemoryPreferenceStore()
+        val downloadPreferences = DesktopDownloadPreferences(store)
+        val picker = RecordingPicker(DesktopBackupFilePickerResult.Cancelled)
+        val factory = mockk<BackupRestoreScreenModelFactory> { every { create() } returns model(scope) }
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+            every { appPreferences } returns DesktopAppPreferences(store)
+            every { this@mockk.downloadPreferences } returns downloadPreferences
+            every { backupRestoreScreenModelFactory } returns factory
+            every { backupFilePicker } returns picker
+        }
+        val scene = ImageComposeScene(900, height) {}
+        lateinit var navigator: Navigator
+        scene.setContent {
+            CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                Navigator(EmptyScreen()) { nav -> navigator = nav; CurrentScreen() }
+            }
+        }
+        render(scene)
+        return AnchorFixture(scene, navigator, downloadPreferences, picker)
+    }
+
+    private suspend fun open(fixture: AnchorFixture, title: String, route: KClass<out Screen>) {
+        val result = result(title, route)
+        assertEquals(title, result.anchorTitle)
+        DesktopSettingsAnchorOwner.publish(result.route, result.anchorTitle)
+        fixture.navigator.replace(result.route)
+        render(fixture.scene)
+        assertTrue(route.isInstance(fixture.navigator.lastItem))
+    }
+
+    private fun result(title: String, route: KClass<out Screen>) =
+        DesktopSettingsCatalog.search(title).single { route.isInstance(it.route) && it.anchorTitle == title }
+
+    private fun assertAnchor(scene: ImageComposeScene, title: String) {
+        val highlighted = nodes(scene, true).single {
+            it.config.contains(DesktopSettingsAnchorHighlighted) && it.config[DesktopSettingsAnchorHighlighted]
+        }
+        assertTrue(flatten(highlighted).any { title in text(it) })
+        assertTrue(highlighted.boundsInRoot.height > 0f)
+        assertTrue(scroll(scene).value() > 0f)
+    }
+
+    private suspend fun assertOneShot(fixture: AnchorFixture, screen: Screen) {
+        fixture.navigator.replace(EmptyScreen())
+        render(fixture.scene)
+        fixture.navigator.replace(screen)
+        render(fixture.scene)
+        assertNoAnchor(fixture.scene)
+    }
+
+    private fun assertNoAnchor(scene: ImageComposeScene) {
+        assertFalse(nodes(scene, true).any { it.config.contains(DesktopSettingsAnchorHighlighted) })
+        assertEquals(0f, scroll(scene).value())
+    }
+
+    private fun scroll(scene: ImageComposeScene) = nodes(scene, true)
+        .first { it.config.contains(SemanticsProperties.VerticalScrollAxisRange) }
+        .config[SemanticsProperties.VerticalScrollAxisRange]
+
     private suspend fun render(scene: ImageComposeScene): Set<String> {
         repeat(5) { scene.render(); yield() }
         return nodes(scene).flatMap { node ->
@@ -203,8 +309,29 @@ class BackupSettingsProductionWiringTest {
         assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
     }
 
-    private fun nodes(scene: ImageComposeScene) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+    private fun text(node: SemanticsNode) = if (node.config.contains(SemanticsProperties.Text)) {
+        node.config[SemanticsProperties.Text].map { it.text }
+    } else {
+        emptyList()
+    }
+    private fun nodes(scene: ImageComposeScene, unmerged: Boolean = false) = scene.semanticsOwners.flatMap {
+        flatten(if (unmerged) it.unmergedRootSemanticsNode else it.rootSemanticsNode)
+    }
     private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+
+    private data class AnchorFixture(
+        val scene: ImageComposeScene,
+        val navigator: Navigator,
+        val downloadPreferences: DesktopDownloadPreferences,
+        val picker: RecordingPicker,
+    ) : AutoCloseable {
+        override fun close() = scene.close()
+    }
+
+    private class EmptyScreen : Screen {
+        @androidx.compose.runtime.Composable
+        override fun Content() = Unit
+    }
 
     private class RecordingPicker(private val result: DesktopBackupFilePickerResult) : DesktopBackupFilePicker {
         var request: DesktopBackupFilePickerRequest? = null
