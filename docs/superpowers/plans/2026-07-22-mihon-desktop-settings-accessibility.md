@@ -36,9 +36,9 @@ status-source: this-file
 
 按以下顺序一次执行一个子 Task，不并发写共享文件：
 
-`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 4G → 4H → 4I → 4J → 4K → 4L → 4M → 5 → 6A → 6B → 7A → 7B → 7C → 8 → 9 → 10A → 10B → 10C → 10D → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20`
+`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 4G → 4H → 4I → 4J → 4K → 4L → 4M → 5 → 6A → 6B → 7A → 7B → 7C → 8A → 8B → 8C → 9 → 10A → 10B → 10C → 10D → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20`
 
-其中 `DesktopSettingsCatalog.kt` 只在 5→7A→7B→7C→8→11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6A→11→16 串行修改；`AboutScreen.kt` 只在 4I→8→15→18、`ExtensionRepoScreen.kt` 只在 4J→8→18、`TrackingSettingsScreen.kt` 只在 4K→4L→8→18 串行修改；4M 只补 4L 的真实动作/失败路径测试，不返改 production。
+其中 `DesktopSettingsCatalog.kt` 只在 5→7A→7B→7C→8A→8B→8C→11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6A→11→16 串行修改；`AboutScreen.kt` 只在 4I→8A→15→18、`ExtensionRepoScreen.kt` 只在 4J→8B→18、`TrackingSettingsScreen.kt` 只在 4K→4L→8C→18 串行修改；4M 只补 4L 的真实动作/失败路径测试，不返改 production。
 
 ## 执行状态
 
@@ -65,7 +65,9 @@ status-source: this-file
 - [x] Task 7A：Desktop 标题 anchor 的 Download/Backup 数据页面
 - [x] Task 7B：Desktop 标题 anchor 的 Advanced 页面
 - [x] Task 7C：Desktop 标题 anchor 的 Security 页面
-- [ ] Task 8：Desktop 标题 anchor 的扩展页面
+- [ ] Task 8A：Desktop 标题 anchor 的 About 页面
+- [ ] Task 8B：Desktop LazyList anchor 核心与 ExtensionRepo 页面
+- [ ] Task 8C：Desktop 标题 anchor 的 Tracking 页面
 - [ ] Task 9：共享主题模块、identity/default/codec 与 Android consumer
 - [ ] Task 10A：共享静态调色板第一批
 - [ ] Task 10B：共享静态调色板第二批
@@ -544,21 +546,53 @@ status-source: this-file
 
 **Review status（已完成）：** 实现 `b9c1f51a5` 仅修改 Security、Catalog 和独立 wiring test；`securitySecureScreen` 让 Catalog 与页面共同消费 `desktop_secure_screen_title`。真实 Catalog→publish→replace→Security 场景验证 exact title、scroll、visible、唯一 highlight、one-shot、wrong route/unknown title。supported fixture 只启用原生通知能力，具名真实 Switch 写入 `DesktopPreferenceStore` 支撑的 `SecurityPreferences`；telemetry/widget 保持 production Unsupported，只显示准确 copy，页面 toggle 总数严格为 2。Catalog/Page identity 分叉、host/marker 断开、supported/unsupported 分支破坏三类 mutation 精确 RED。独立审查 APPROVED `0/0/0`，Security wiring/identity/navigation/smoke/search/anchor/provenance `106/106`、shared `7/7`、Spotless、diff 与 17-Task guard 通过；范围 `3 files/178 touched`，Advanced、6A、7A 与用户脏文件零差异。下一项为父 Task 5B / 子 Task 8。
 
-### Task 8：Desktop 标题 anchor 的扩展页面
+### Task 8A：Desktop 标题 anchor 的 About 页面
 
-**Risk axis:** desktop-settings-anchor-extended
+**Risk axis:** desktop-settings-anchor-about
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 7 files, 380 lines
+**Estimated scope:** 3 files, 220 lines
 
-**Verification:** About/ExtensionRepo/TrackingSettings route-anchor、catalog completeness、Desktop-only append order
+**Verification:** About real catalog-route-anchor、updater/diagnostic action preservation、Desktop-only append order
 
-**Files:** 三个生产 Screen、`DesktopSettingsCatalog.kt`、extended anchor test、Tracking/Extension navigation tests。
+**Files:** About Screen、`DesktopSettingsCatalog.kt`、About anchor wiring test。
 
-1. RED：Desktop 独有项遗漏、前插九页、route/anchor identity 断开时失败。
-2. GREEN：扩展 catalog/anchor adapter，不删除 updater/诊断/扩展/tracking 能力。
-3. 运行 catalog/navigation/Screen smoke/Spotless/range gate。
+1. RED：About 独有项遗漏、前插九页、route/anchor identity 断开或 updater/diagnostic action 丢失时失败。
+2. GREEN：只接 ScrollState anchor host，不删除 updater/诊断能力；Catalog/Page 消费同一 MR。
+3. 运行 About/catalog/navigation/Screen smoke/Spotless/range gate。
+
+### Task 8B：Desktop LazyList anchor 核心与 ExtensionRepo 页面
+
+**Risk axis:** desktop-settings-anchor-lazy-extension
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 5 files, 320 lines
+
+**Verification:** shared LazyList exact-title/first/one-shot、ExtensionRepo empty/list route-anchor、repository action preservation
+
+**Files:** `DesktopSettingsAnchor.kt` 的 LazyList adapter、ExtensionRepo Screen、`DesktopSettingsCatalog.kt`、Lazy anchor/ExtensionRepo wiring test、Extension navigation test。
+
+1. RED：Lazy exact/first/one-shot/visible 失败、empty/list 分支遗漏、Catalog route/anchor 分叉或 repository action 丢失时失败。
+2. GREEN：扩展统一 owner 为可复用 LazyList host，不复制状态机；保留 add/replace/open/copy/delete 能力。
+3. 运行 ExtensionRepo/catalog/navigation/Screen smoke/Spotless/range gate。
+
+### Task 8C：Desktop 标题 anchor 的 Tracking 页面
+
+**Risk axis:** desktop-settings-anchor-tracking
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 4 files, 260 lines
+
+**Verification:** Tracking real catalog-route-lazy-anchor、service/auth/auto-sync preservation、Desktop-only append order
+
+**Files:** TrackingSettings Screen、`DesktopSettingsCatalog.kt`、Tracking anchor wiring test、Tracking navigation test。
+
+1. RED：Tracking route/anchor identity、Lazy visible/highlight/one-shot 或 service/auth/auto-sync 行为断开时失败。
+2. GREEN：复用 8B LazyList host，不复制 owner/search；Catalog/Page 消费同一 MR。
+3. 运行 Tracking/catalog/navigation/Screen smoke/Spotless/range gate。
 
 ### Task 9：共享主题模块、identity/default/codec 与 Android consumer
 
