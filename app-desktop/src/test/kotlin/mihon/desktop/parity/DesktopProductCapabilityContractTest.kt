@@ -1666,6 +1666,53 @@ class DesktopProductCapabilityContractTest {
         }
     }
 
+    @Test
+    fun `behavior parser rejects declarations that exist only in comments or strings`() {
+        listOf(
+            """class Evidence { // fun `target behavior`() { assertTrue(productionMarker) }
+            }""",
+            """class Evidence { val decoy = "fun `target behavior`() { assertTrue(productionMarker) }" }""",
+        ).forEach { source ->
+            assertThrows(AssertionError::class.java) {
+                kotlinTestMethod(source, "target behavior", "synthetic evidence")
+            }
+        }
+    }
+
+    @Test
+    fun `behavior parser requires one direct test class member`() {
+        val invalidSources = listOf(
+            """class Evidence { class Nested { @Test fun `target behavior`() { assertTrue(true) } } }""",
+            """class Evidence { @Test fun wrapper() { @Test fun `target behavior`() { assertTrue(true) } } }""",
+            """class First { @Test fun `target behavior`() { assertTrue(true) } }
+                class Second { @Test fun `target behavior`() { assertTrue(true) } }""",
+        )
+        invalidSources.forEach { source ->
+            assertThrows(AssertionError::class.java) {
+                kotlinTestMethod(source, "target behavior", "synthetic evidence")
+            }
+        }
+    }
+
+    @Test
+    fun `behavior parser removes comment-only assertions and markers`() {
+        val source = """
+            class Evidence {
+                @Test
+                fun `target behavior`() {
+                    // assertTrue(productionMarker)
+                    /* assertEquals(productionMarker, actual) */
+                }
+            }
+        """.trimIndent()
+
+        assertThrows(AssertionError::class.java) {
+            val method = kotlinTestMethod(source, "target behavior", "synthetic evidence")
+            assertTrue("assert" in method)
+            assertTrue("productionMarker" in method)
+        }
+    }
+
     private fun validateItem(item: JsonObject, repositoryRoot: Path) {
         val id = validatedId(item)
         val status = item["status"]?.jsonPrimitive?.content
@@ -1705,11 +1752,88 @@ class DesktopProductCapabilityContractTest {
         methodName: String,
         context: String,
     ): String {
-        val marker = "fun `$methodName`"
-        val start = source.indexOf(marker)
-        assertTrue(start >= 0, "$context must contain behavior test `$methodName`")
-        val nextTest = source.indexOf("\n    @Test", start + marker.length).takeIf { it >= 0 } ?: source.length
-        return source.substring(start, nextTest)
+        val (structural, commentFree) = kotlinSourceViews(source)
+        val methods = Regex("@(?:Test|ParameterizedTest)\\b").findAll(structural).mapNotNull { annotation ->
+            var cursor = annotation.range.first
+            while (cursor < structural.length && structural[cursor] == '@') {
+                cursor++
+                while (cursor < structural.length && (structural[cursor].isLetterOrDigit() || structural[cursor] in "._:")) cursor++
+                while (cursor < structural.length && structural[cursor].isWhitespace()) cursor++
+                if (cursor < structural.length && structural[cursor] == '(') {
+                    var depth = 1
+                    cursor++
+                    while (cursor < structural.length && depth > 0) {
+                        if (structural[cursor] == '(') depth++ else if (structural[cursor] == ')') depth--
+                        cursor++
+                    }
+                }
+                while (cursor < structural.length && structural[cursor].isWhitespace()) cursor++
+            }
+            val modifier = Regex("(?:public|private|protected|internal|suspend|inline|operator|tailrec|open|final|override)\\b\\s*")
+            while (true) {
+                val match = modifier.find(structural, cursor)?.takeIf { it.range.first == cursor } ?: break
+                cursor = match.range.last + 1
+            }
+            if (!structural.startsWith("fun", cursor) || structural.getOrNull(cursor + 3)?.isLetterOrDigit() == true) return@mapNotNull null
+            val funStart = cursor
+            cursor += 3
+            while (cursor < structural.length && structural[cursor].isWhitespace()) cursor++
+            if (structural.getOrNull(cursor) != '`') return@mapNotNull null
+            val nameEnd = structural.indexOf('`', cursor + 1)
+            if (nameEnd < 0 || structural.substring(cursor + 1, nameEnd) != methodName) return@mapNotNull null
+            val memberDepth = structural.take(funStart).fold(0) { depth, char -> depth + if (char == '{') 1 else if (char == '}') -1 else 0 }
+            if (memberDepth != 1) return@mapNotNull null
+            var parentheses = 0
+            val bodyStart = (nameEnd + 1 until structural.length).firstOrNull { index ->
+                when (structural[index]) {
+                    '(' -> parentheses++
+                    ')' -> parentheses--
+                }
+                structural[index] == '{' && parentheses == 0
+            } ?: return@mapNotNull null
+            var bodyDepth = 1
+            var bodyEnd = bodyStart + 1
+            while (bodyEnd < structural.length && bodyDepth > 0) {
+                if (structural[bodyEnd] == '{') bodyDepth++ else if (structural[bodyEnd] == '}') bodyDepth--
+                bodyEnd++
+            }
+            if (bodyDepth == 0) commentFree.substring(funStart, bodyEnd) else null
+        }.toList()
+        assertEquals(1, methods.size, "$context must contain one direct class-member behavior test `$methodName`")
+        return methods.single()
+    }
+
+    private fun kotlinSourceViews(source: String): Pair<String, String> {
+        val structural = source.toCharArray()
+        val commentFree = source.toCharArray()
+        var index = 0
+        var state = 0
+        var blockDepth = 0
+        fun blank(target: CharArray, start: Int, count: Int) = repeat(count) { offset ->
+            if (target[start + offset] !in "\r\n") target[start + offset] = ' '
+        }
+        while (index < source.length) {
+            val previousState = state
+            val width = when {
+                state == 0 && source.startsWith("//", index) -> 2.also { state = 1 }
+                state == 0 && source.startsWith("/*", index) -> 2.also { state = 2; blockDepth = 1 }
+                state == 0 && source.startsWith("\"\"\"", index) -> 3.also { state = 3 }
+                state == 0 && source[index] == '"' -> 1.also { state = 4 }
+                state == 0 && source[index] == '\'' -> 1.also { state = 5 }
+                state == 1 && source[index] in "\r\n" -> 1.also { state = 0 }
+                state == 2 && source.startsWith("/*", index) -> 2.also { blockDepth++ }
+                state == 2 && source.startsWith("*/", index) -> 2.also { if (--blockDepth == 0) state = 0 }
+                state == 3 && source.startsWith("\"\"\"", index) -> 3.also { state = 0 }
+                state in 4..5 && source[index] == '\\' && index + 1 < source.length -> 2
+                state == 4 && source[index] == '"' -> 1.also { state = 0 }
+                state == 5 && source[index] == '\'' -> 1.also { state = 0 }
+                else -> 1
+            }
+            if (previousState != 0 || state != 0 || width > 1) blank(structural, index, width)
+            if (previousState in 1..2 || state in 1..2) blank(commentFree, index, width)
+            index += width
+        }
+        return structural.concatToString() to commentFree.concatToString()
     }
 
     private fun assertBehaviorEvidence(id: Int, repositoryRoot: Path) {
