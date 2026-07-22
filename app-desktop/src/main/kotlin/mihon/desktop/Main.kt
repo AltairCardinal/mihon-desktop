@@ -139,7 +139,7 @@ private fun runOwnerApplication(
                 state = rememberWindowState(width = 1024.dp, height = 768.dp),
             ) {
                 BindDesktopWindowLifecycle(window, appLock, windowPrivacyController)
-                CompositionLocalProvider(LocalDesktopUiDependencies provides uiDependencies) {
+                OwnerUiDependencies(ownerIngress) {
                     DesktopTheme {
                         DesktopProtectedRoot(appLock) {
                             Navigator(HomeScreen()) { navigator ->
@@ -151,6 +151,14 @@ private fun runOwnerApplication(
             }
         }
     }
+}
+
+@Composable
+internal fun OwnerUiDependencies(
+    owner: DesktopOwnerIngressDependencies,
+    content: @Composable () -> Unit,
+) {
+    CompositionLocalProvider(LocalDesktopUiDependencies provides owner.uiDependencies, content = content)
 }
 
 internal fun bootstrapDesktopRuntime(

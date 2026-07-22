@@ -1,6 +1,8 @@
 package mihon.desktop.di
 
 import android.app.Application
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.ImageComposeScene
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -14,6 +16,8 @@ import kotlinx.coroutines.withTimeout
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.DesktopAppRuntime
 import mihon.desktop.DesktopOwnerIngressDependencies
+import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.OwnerUiDependencies
 import mihon.desktop.compat.AndroidCompat
 import mihon.desktop.backup.AutoBackupScheduler
 import mihon.desktop.backup.BackupRestoreScreenModelFactory
@@ -127,6 +131,24 @@ import okio.Buffer
 
 @Isolated
 class DesktopDiWiringTest {
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
+    fun `owner UI boundary provides the owner graph dependencies`(@TempDir tempDir: File) = runBlocking {
+        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+        val owner = DesktopOwnerIngressDependencies(Injekt.get(), DesktopUiDependencies.fromInjekt())
+        val scene = ImageComposeScene(100, 100, coroutineContext = coroutineContext) {}
+        var rendered: DesktopUiDependencies? = null
+        try {
+            scene.setContent { OwnerUiDependencies(owner) { rendered = LocalDesktopUiDependencies.current } }
+            scene.render()
+            assertSame(owner.uiDependencies, rendered)
+            assertSame(owner.uiDependencies.externalActionNavigator, rendered?.externalActionNavigator)
+        } finally {
+            scene.close()
+            context.closeAndJoin()
+        }
+    }
+
     @Test
     fun `owner graph retains the UI navigator instance selected from DI`(@TempDir tempDir: File) = runBlocking {
         val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
