@@ -451,6 +451,27 @@ class DesktopAppRuntimeTest {
     }
 
     @Test
+    fun `failed service stop remains owned for retry`() {
+        var stops = 0
+        val retrying = object : DesktopRuntimeService {
+            override fun start() = Unit
+            override fun stop() {
+                stops++
+                if (stops == 1) throw IllegalStateException("first stop")
+            }
+        }
+        val runtime = DesktopAppRuntime(retrying, RecordingRuntimeService(), RecordingRuntimeService(), startupCleanup = {})
+        runtime.start()
+
+        assertThrows(IllegalStateException::class.java) { runtime.close() }
+        assertTrue(runtime.isRunning)
+        runtime.close()
+
+        assertEquals(2, stops)
+        assertFalse(runtime.isRunning)
+    }
+
+    @Test
     fun `headless test mode waits for server termination then closes runtime`() = runBlocking {
         val parentScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val updater = idleUpdater(parentScope)
