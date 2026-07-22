@@ -255,7 +255,7 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 4 files, 300 lines
+**Estimated scope:** 4 files, 400 lines
 
 **Verification:** `./gradlew :app-desktop:jvmTest --tests "mihon.desktop.ui.ExternalActionNavigationTest" --tests "mihon.desktop.ui.ExternalActionFeedbackWiringTest" --rerun-tasks`
 
@@ -1074,11 +1074,13 @@ status-source: this-file
 1. RED：factory 在 transaction 登记 runtime 后抛出、app-lock/privacy 解析失败或 ingress attach/install 失败时，断言 runtime/broker/registration 均逆序清理；secondary 不创建任何 owner 资源。
 2. RED：runtime close 与 updater await 同时失败时保留 close 为 primary、await 为 suppressed；首次部分关闭失败后第二次重试未完成资源并到达 terminal。
 3. GREEN：以小型 owner transaction 分阶段登记已创建资源；不复制 URI parser、navigator 或 DI。删除旧同步入口中的 GUI/headless/bootstrap 产品规则，只保留随后由 16D2 收敛的最小测试 continuation seam。
-4. 运行 owner setup/runtime/URI/DI/architecture focused tests、根 Spotless、`git diff --check` 与 4-file/300-line scope gate；独立审查通过后勾选 16D1，再进入 16D2。
+4. 运行 owner setup/runtime/URI/DI/architecture focused tests、根 Spotless、`git diff --check` 与 4-file/400-line scope gate；独立审查通过后勾选 16D1，再进入 16D2。
 
 **Replan status:** Task 16 全量测试首次暴露 5 个失败；实现 `d51adddef` 通过 1981 项测试，但独立审查以 `0/2/0` 拒绝 headless/异常未等待及 Windows 文档门禁降级。唯一修复 `69f3b0980` 恢复 TEST_GUIDE 七项 mutation 并让 lifecycle helper 等待终态；1981 项再次全绿。唯一复审仍以 `0/3/0` 拒绝：真实 owner 选举在实际启动前结束保护，依赖失败泄漏 broker；cleanup 可覆盖 primary；测试只调用 helper，删除 `main` wiring 仍绿且旧同步路径继续漂移。按全局门禁停止 Task 16 内第三次局部修补，将这一单一 production owner ownership 风险拆为 16D；Task 16 保持未完成。
 
 **Implementation status:** 初始实现 `554f8b7f5` 经独立审查以 `0/5/0` 拒绝。唯一修复的中间提交 `d4f52ed1c`、`13f3d7205`、`3cc783bc0` 已让 close 失败后继续 await、bootstrap close 可重试、factory 在取得 runtime 后立即登记，并删除同步入口中的独立 GUI/headless/bootstrap 规则；累计 4 files/292 touched。实现代理连续运行仍无法在同一范围补齐真实默认入口故障矩阵，因此按门禁把已完成的 setup/close 事务固定为 16D1 独立审查，将剩余且不同的 lifecycle/default-entry 风险交给 16D2；两者都通过前不进入 Task 16。
+
+**Review status:** 16D1 初审以 `0/3/0` 拒绝：service stop 或 broker close 首次失败时 runtime 提前清除 running/owner 状态，第二次无法重试；owner setup 各阶段与 close+await/suppressed/session retry 均缺少行为 mutation。唯一修复只处理这三个 setup/close 风险，不进入 16D2；为替换弱成功路径测试并增加失败所有权状态，范围从低估的 4/300 修正到硬门禁内的 4/400。
 
 ### 子 Task 16D2：唯一 production lifecycle 与真实入口证据
 
