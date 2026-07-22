@@ -1055,7 +1055,7 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 5 files, 360 lines
+**Estimated scope:** 5 files, 400 lines
 
 **Verification:** real `main` owner/secondary startup、DI/ingress/runtime 原子接管与回滚、GUI/headless/异常关闭终态、异常聚合和重复实现防漂移
 
@@ -1075,9 +1075,11 @@ status-source: this-file
 2. RED：用 `NonCancellable` updater/verifier cleanup 证明 headless、GUI close callback、application 正常返回与异常返回在 terminal 放行前均不完成；cleanup 同时失败时保留原异常并附加 suppressed，首次 close 失败不得因幂等标记而静默吞掉未完成资源。
 3. GREEN：把 owner 选举与完整 owner startup 放回同一受保护事务；统一 sync test seam 与 suspend production entry 的注册、依赖、ingress、bootstrap 和清理规则，只在最外层选择如何等待，不复制 parser、navigator、DI 或资源所有权逻辑。secondary 不初始化 owner 依赖、不注册 URI、不启动 runtime。
 4. 保持 `suspend main` 生成可执行 JVM main、Task 16C navigator identity、Task 16B queued/running OpenURI、首异常/suppressed、重复关闭、headless Test Mode 和 Windows TEST_GUIDE 七项语义。不得用 `runBlocking`、latch、`Future.get` 或放宽架构/文档门禁来通过。
-5. 运行 production entry/runtime/security/URI/DI/navigation/release/architecture focused tests、`:app-desktop:jvmTest`、根 Spotless、`git diff --check` 与 5-file/360-line scope gate。一次独立审查和至多一次修复复审通过后勾选 16D，再重新执行 Task 16 whole-change review 与三平台验证。
+5. 运行 production entry/runtime/security/URI/DI/navigation/release/architecture focused tests、`:app-desktop:jvmTest`、根 Spotless、`git diff --check` 与 5-file/400-line scope gate。一次独立审查和至多一次修复复审通过后勾选 16D，再重新执行 Task 16 whole-change review 与三平台验证。
 
 **Replan status:** Task 16 全量测试首次暴露 5 个失败；实现 `d51adddef` 通过 1981 项测试，但独立审查以 `0/2/0` 拒绝 headless/异常未等待及 Windows 文档门禁降级。唯一修复 `69f3b0980` 恢复 TEST_GUIDE 七项 mutation 并让 lifecycle helper 等待终态；1981 项再次全绿。唯一复审仍以 `0/3/0` 拒绝：真实 owner 选举在实际启动前结束保护，依赖失败泄漏 broker；cleanup 可覆盖 primary；测试只调用 helper，删除 `main` wiring 仍绿且旧同步路径继续漂移。按全局门禁停止 Task 16 内第三次局部修补，将这一单一 production owner ownership 风险拆为 16D；Task 16 保持未完成。
+
+**Scope correction:** 16D 初始实现及唯一修复的原子接管、异常聚合、可重试关闭和删除重复生命周期累计触及 292 行；剩余的默认 production wiring 故障矩阵无法在原 360 行估算内真实覆盖。范围修正为同一硬门禁允许的 5 files/400 lines，通过替换弱 callback 测试而非新增平行测试控制增量；产品风险、文件边界和 Task 数量不变。
 
 ### Task 16：独立最终审查与三平台 change verify
 
