@@ -59,7 +59,7 @@ status-source: this-file
 - [x] Task 16D2R：重复 Compose close 共享 terminal completion
 - [x] Task 16V1：全局搜索状态单调性验收阻塞修复
 - [x] Task 16E1：credential 事务 fail-closed 与敏感缓冲区
-- [ ] Task 16E2：真实 owner entry 证明与异常优先级
+- [x] Task 16E2：真实 owner entry 证明与异常优先级
 - [ ] Task 16E3：macOS 分享 helper 的 runtime ownership
 - [ ] Task 16E4：Manga 分享入口非阻塞
 - [ ] Task 16E5：parity exact 保护集合补齐
@@ -1254,6 +1254,8 @@ status-source: this-file
 1. RED：删除/绕过 production registrar call 必须使真实 entry 测试失败；让 owner dependency factory 抛 primary 且 broker close 抛 cleanup，旧实现因覆盖 primary 而失败。
 2. GREEN：迁移旧 facade 测试到 suspend production entry seam；用统一异常聚合规则关闭 broker，不复制 owner election/registration 流程。无 production caller 的 facade 若保留必须明确仅是 election helper且不能作为 wiring 证据。
 3. 运行 Runtime/URI/broker/entry focused、Spotless、diff 与 3-file/300-line gate；独立审查通过后进入 E3。
+
+**Review status（已完成）：** 实现提交 `d3a3ac490` 将 owner、secondary、registration-error 三条测试迁到真实 suspend production entry；临时绕过 `Main.kt` registrar 后 3 项中 2 项稳定 RED，恢复后 owner 精确注册一次、secondary 零次、注册异常结构化且 runtime/window 继续。双异常 RED 证明旧 owner factory cleanup 覆盖 primary，GREEN 保持同一 primary 并 identity 去重 suppressed cleanup。独立审查 APPROVED，Critical/Important/Minor `0/0/0`；Runtime/URI/Broker 45/45、唯一超时重试后的根 Spotless、diff 与 3 files/261 touched 门禁通过，下一项为 E3。
 
 ### 子 Task 16E3：macOS 分享 helper 的 runtime ownership
 
