@@ -21,6 +21,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.backup.AutoBackupInterval
 import mihon.desktop.backup.BackupPreview
 import mihon.desktop.backup.BackupRestoreScreenModelFactory
@@ -30,6 +31,7 @@ import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.platform.CredentialBackend
 import mihon.desktop.platform.DesktopCredentialStore
+import mihon.desktop.platform.DesktopPlatformPaths
 import mihon.desktop.platform.OperatingSystem
 import mihon.desktop.platform.PlatformCredentialUnavailableException
 import mihon.desktop.privacy.DesktopCapabilitySupport
@@ -44,6 +46,7 @@ import mihon.desktop.security.DesktopPassphraseVerifier
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.settings.LibraryUpdateInterval
 import mihon.desktop.ui.settings.AppearanceSettingsScreen
+import mihon.desktop.ui.settings.AboutScreen
 import mihon.desktop.ui.settings.AdvancedSettingsScreen
 import mihon.desktop.ui.settings.AdvancedSettingsPlatformActions
 import mihon.desktop.ui.settings.BackupPresentationText
@@ -58,8 +61,19 @@ import mihon.desktop.ui.settings.LocalAdvancedSettingsPlatformActions
 import mihon.desktop.ui.settings.MoreRootScreen
 import mihon.desktop.ui.settings.ReaderSettingsScreen
 import mihon.desktop.ui.settings.SecuritySettingsScreen
+import mihon.desktop.ui.settings.DesktopUpdateScreenModel
+import mihon.desktop.ui.settings.presentation
 import mihon.desktop.ui.settings.backupPartialFailurePresentation
 import mihon.desktop.ui.settings.backupPresentationText
+import mihon.desktop.update.CheckFailure
+import mihon.desktop.update.DesktopUpdateController
+import mihon.desktop.update.DesktopUpdateState
+import mihon.desktop.update.DownloadProgress
+import mihon.desktop.update.InstallCancelled
+import mihon.desktop.update.InstallStage
+import mihon.desktop.update.ReadyToInstall
+import mihon.desktop.update.UpdateOperation
+import mihon.desktop.update.VerifiedDownload
 import mihon.domain.error.AppError
 import mihon.domain.task.TaskState
 import org.junit.jupiter.api.Assertions.assertNotEquals
@@ -71,8 +85,11 @@ import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.model.Category
+import tachiyomi.domain.release.interactor.GetApplicationRelease
+import tachiyomi.domain.release.model.Release
 import tachiyomi.i18n.MR
 import java.io.File
+import java.nio.file.Files
 import java.util.Locale
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -182,6 +199,105 @@ class DesktopSettingsResourceIdentityTest {
             }
         } finally {
             Locale.setDefault(previousLocale)
+        }
+    }
+
+    @Test
+    fun `About renders shared identities through production dependencies`() = runBlocking {
+        val home = Files.createTempDirectory("mihon-about-red").toFile()
+        val paths = DesktopPlatformPaths.resolve("Linux", home.absolutePath, emptyMap())
+        val release = Release("v9.8.7", "", "https://example/release", "https://example/download")
+        val verified = mockk<VerifiedDownload>()
+        val ready = mockk<ReadyToInstall>()
+        val controller = DesktopUpdateController(
+            { GetApplicationRelease.Result.NewUpdate(release) },
+            { _, _ -> verified },
+            { _, _ -> ready },
+            { _, _ -> InstallCancelled },
+        )
+        val model = DesktopUpdateScreenModel(controller, this)
+        val extensionManager = DesktopExtensionManager()
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+            every { this@mockk.extensionManager } returns extensionManager
+            every { updateScreenModel } returns model
+        }
+        val previousLocale = Locale.getDefault()
+        try {
+            paths.databaseFile.parentFile.mkdirs()
+            paths.databaseFile.writeBytes(ByteArray(2_048))
+            listOf(english, chinese).forEach { locale ->
+                paths.networkCacheDir.mkdirs()
+                paths.networkCacheDir.resolve("response.bin").writeBytes(ByteArray(1_536))
+                val copy = render(AboutScreen(paths), dependencies, locale, height = 2_400)
+                assertCopy(
+                    copy.text,
+                    MR.strings.pref_category_about.localized(locale),
+                    MR.strings.desktop_about_version_value.localized(locale, MR.strings.version.localized(locale), mihon.desktop.APP_VERSION),
+                    MR.strings.check_for_updates.localized(locale),
+                    MR.strings.label_extensions.localized(locale),
+                    MR.strings.desktop_about_info_row.localized(locale, MR.strings.desktop_about_app_data_directory.localized(locale), paths.configDir.absolutePath),
+                    MR.strings.desktop_about_info_row.localized(locale, MR.strings.desktop_about_database.localized(locale), "${paths.databaseFile.absolutePath} (2.0 KB)"),
+                    MR.strings.desktop_about_info_row.localized(locale, MR.strings.desktop_about_network_cache.localized(locale), "1.5 KB"),
+                    MR.strings.desktop_about_info_row.localized(locale, MR.strings.desktop_about_installed_extensions.localized(locale), "0"),
+                    MR.strings.desktop_about_info_row.localized(locale, MR.strings.desktop_about_extensions_directory.localized(locale), paths.extensionsDir.absolutePath),
+                    MR.strings.desktop_about_info_row.localized(locale, MR.strings.desktop_about_java_version.localized(locale), "${System.getProperty("java.version")} (${System.getProperty("java.vendor")})"),
+                    MR.strings.desktop_about_info_row.localized(locale, MR.strings.desktop_about_operating_system.localized(locale), "${System.getProperty("os.name")} ${System.getProperty("os.version")}"),
+                )
+                assertCopy(copy.descriptions, MR.strings.action_bar_up_description.localized(locale))
+                val cleared = renderAfterClicks(
+                    AboutScreen(paths), dependencies, locale,
+                    MR.strings.desktop_advanced_clear_network_cache.localized(locale),
+                )
+                assertCopy(
+                    cleared.text,
+                    MR.strings.desktop_about_network_cache_cleared.localized(locale),
+                    MR.strings.desktop_about_info_row.localized(locale, MR.strings.desktop_about_network_cache.localized(locale), "0 B"),
+                )
+            }
+
+            assertTrue(controller.check(DesktopUpdateScreenModel.releaseArguments()))
+            listOf(english, chinese).forEach { locale ->
+                assertCopy(render(AboutScreen(paths), dependencies, locale, height = 2_400).text, MR.strings.desktop_update_available.localized(locale, release.version))
+            }
+            assertTrue(controller.download())
+            listOf(english, chinese).forEach { locale ->
+                assertCopy(
+                    render(AboutScreen(paths), dependencies, locale, height = 2_400).text,
+                    MR.strings.desktop_update_ready.localized(locale),
+                    MR.strings.desktop_update_install_prompt.localized(locale),
+                    MR.strings.action_install.localized(locale),
+                    MR.strings.action_not_now.localized(locale),
+                    MR.strings.update_check_open.localized(locale),
+                )
+            }
+
+            listOf(english, chinese).forEach { locale ->
+                Locale.setDefault(locale)
+                listOf(
+                    DesktopUpdateState.Idle to MR.strings.desktop_update_idle.localized(locale),
+                    DesktopUpdateState.Checking to MR.strings.desktop_update_checking.localized(locale),
+                    DesktopUpdateState.UpToDate to MR.strings.update_check_no_new_updates.localized(locale),
+                    DesktopUpdateState.UpdateAvailable(release) to MR.strings.desktop_update_available.localized(locale, release.version),
+                    DesktopUpdateState.NoCompatiblePackage to MR.strings.desktop_update_no_compatible_package.localized(locale),
+                    DesktopUpdateState.CheckFailed(CheckFailure.REQUEST_FAILED, true) to MR.strings.desktop_update_check_failed.localized(locale, MR.strings.desktop_update_failure_request_failed.localized(locale)),
+                    DesktopUpdateState.CheckFailed(CheckFailure.OS_TOO_OLD, false) to MR.strings.desktop_update_check_failed.localized(locale, MR.strings.desktop_update_failure_os_too_old.localized(locale)),
+                    DesktopUpdateState.Downloading(release, DownloadProgress(1, 2)) to MR.strings.desktop_update_downloading.localized(locale, release.version),
+                    DesktopUpdateState.Verifying(release, verified) to MR.strings.desktop_update_verifying.localized(locale, release.version),
+                    DesktopUpdateState.ReadyToInstall(release.releaseLink, ready) to MR.strings.desktop_update_ready.localized(locale),
+                    DesktopUpdateState.HandingOff(release.releaseLink) to MR.strings.desktop_update_handing_off.localized(locale),
+                    DesktopUpdateState.HandedOff(release.releaseLink) to MR.strings.desktop_update_handed_off.localized(locale),
+                    DesktopUpdateState.InstallFailed(InstallStage.VERIFY, release.releaseLink) to MR.strings.desktop_update_install_failed_verify.localized(locale),
+                    DesktopUpdateState.InstallFailed(InstallStage.HANDOFF, release.releaseLink) to MR.strings.desktop_update_install_failed_handoff.localized(locale),
+                    DesktopUpdateState.RetryableFailure(UpdateOperation.DOWNLOAD, release.releaseLink) to MR.strings.desktop_update_download_retryable.localized(locale),
+                    DesktopUpdateState.Cancelled(null) to MR.strings.desktop_update_cancelled.localized(locale),
+                    DesktopUpdateState.ManualOnly(release.releaseLink) to MR.strings.desktop_update_manual.localized(locale),
+                ).forEach { (state, expected) -> assertEquals(expected, state.presentation().message) }
+            }
+        } finally {
+            Locale.setDefault(previousLocale)
+            model.close()
+            extensionManager.close()
+            home.deleteRecursively()
         }
     }
 
@@ -995,6 +1111,40 @@ class DesktopSettingsResourceIdentityTest {
     }
 
     private val desktopResources: List<StringResource> = listOf(
+        MR.strings.desktop_about_description,
+        MR.strings.desktop_about_based_on,
+        MR.strings.desktop_about_storage,
+        MR.strings.desktop_about_app_data_directory,
+        MR.strings.desktop_about_database,
+        MR.strings.desktop_about_network_cache,
+        MR.strings.desktop_about_network_cache_cleared,
+        MR.strings.desktop_about_installed_extensions,
+        MR.strings.desktop_about_extensions_directory,
+        MR.strings.desktop_about_environment,
+        MR.strings.desktop_about_java_version,
+        MR.strings.desktop_about_operating_system,
+        MR.strings.desktop_about_unknown,
+        MR.strings.desktop_about_info_row,
+        MR.strings.desktop_about_version_value,
+        MR.strings.desktop_update_idle,
+        MR.strings.desktop_update_checking,
+        MR.strings.desktop_update_available,
+        MR.strings.desktop_update_no_compatible_package,
+        MR.strings.desktop_update_check_failed,
+        MR.strings.desktop_update_failure_request_failed,
+        MR.strings.desktop_update_failure_os_too_old,
+        MR.strings.desktop_update_downloading,
+        MR.strings.desktop_update_verifying,
+        MR.strings.desktop_update_ready,
+        MR.strings.desktop_update_install_prompt,
+        MR.strings.desktop_update_handing_off,
+        MR.strings.desktop_update_handed_off,
+        MR.strings.desktop_update_install_failed_verify,
+        MR.strings.desktop_update_install_failed_handoff,
+        MR.strings.desktop_update_download_retryable,
+        MR.strings.desktop_update_cancelled,
+        MR.strings.desktop_update_manual,
+        MR.strings.desktop_update_open_failed,
         MR.strings.desktop_more_tracking_summary,
         MR.strings.desktop_more_general_summary,
         MR.strings.desktop_more_download_settings_summary,

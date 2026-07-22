@@ -12,8 +12,10 @@ import mihon.desktop.APP_VERSION
 import mihon.desktop.update.DesktopUpdateController
 import mihon.desktop.update.DesktopUpdateState
 import tachiyomi.domain.release.interactor.GetApplicationRelease
+import tachiyomi.i18n.MR
 import java.awt.Desktop
 import java.net.URI
+import java.util.Locale
 import kotlin.coroutines.CoroutineContext
 
 enum class DesktopUpdateIntent { CHECK, DOWNLOAD, CANCEL, RETRY, CONFIRM, DECLINE, MANUAL }
@@ -25,29 +27,39 @@ data class DesktopUpdatePresentation(
     val releasePage: String? = null,
 )
 fun DesktopUpdateState.presentation(): DesktopUpdatePresentation = when (this) {
-    DesktopUpdateState.Idle -> presentation("idle", "Check whether a newer Mihon Desktop release is available", DesktopUpdateIntent.CHECK)
-    DesktopUpdateState.Checking -> presentation("checking", "Checking for updates…", DesktopUpdateIntent.CANCEL)
-    DesktopUpdateState.UpToDate -> presentation("up_to_date", "Mihon Desktop is up to date", DesktopUpdateIntent.CHECK)
-    is DesktopUpdateState.UpdateAvailable -> presentation("update_available", "${release.version} is available", DesktopUpdateIntent.DOWNLOAD, DesktopUpdateIntent.MANUAL, page = release.releaseLink)
-    DesktopUpdateState.NoCompatiblePackage -> presentation("no_compatible_package", "No compatible package is available", DesktopUpdateIntent.CHECK)
-    is DesktopUpdateState.CheckFailed -> presentation("check_failed", "Update check failed: ${reason.name.lowercase()}", if (retryable) DesktopUpdateIntent.RETRY else DesktopUpdateIntent.CHECK)
+    DesktopUpdateState.Idle -> presentation("idle", MR.strings.desktop_update_idle.localized(), DesktopUpdateIntent.CHECK)
+    DesktopUpdateState.Checking -> presentation("checking", MR.strings.desktop_update_checking.localized(), DesktopUpdateIntent.CANCEL)
+    DesktopUpdateState.UpToDate -> presentation("up_to_date", MR.strings.update_check_no_new_updates.localized(), DesktopUpdateIntent.CHECK)
+    is DesktopUpdateState.UpdateAvailable -> presentation("update_available", MR.strings.desktop_update_available.localized(Locale.getDefault(), release.version), DesktopUpdateIntent.DOWNLOAD, DesktopUpdateIntent.MANUAL, page = release.releaseLink)
+    DesktopUpdateState.NoCompatiblePackage -> presentation("no_compatible_package", MR.strings.desktop_update_no_compatible_package.localized(), DesktopUpdateIntent.CHECK)
+    is DesktopUpdateState.CheckFailed -> presentation("check_failed", MR.strings.desktop_update_check_failed.localized(Locale.getDefault(), reason.localized()), if (retryable) DesktopUpdateIntent.RETRY else DesktopUpdateIntent.CHECK)
     is DesktopUpdateState.Downloading -> presentation(
-        "downloading", "Downloading ${release.version}…", DesktopUpdateIntent.CANCEL,
+        "downloading", MR.strings.desktop_update_downloading.localized(Locale.getDefault(), release.version), DesktopUpdateIntent.CANCEL,
         progress = progress?.let { value -> value.totalBytes?.takeIf { it > 0 }?.let { (value.downloadedBytes * 100 / it).toInt().coerceIn(0, 100) } },
         page = release.releaseLink,
     )
-    is DesktopUpdateState.Verifying -> presentation("verifying", "Verifying ${release.version}…", DesktopUpdateIntent.CANCEL, page = release.releaseLink)
-    is DesktopUpdateState.ReadyToInstall -> presentation("ready", "Ready to install", DesktopUpdateIntent.CONFIRM, DesktopUpdateIntent.DECLINE, DesktopUpdateIntent.MANUAL, page = releasePage)
-    is DesktopUpdateState.HandingOff -> presentation("handing_off", "Starting the installer…", DesktopUpdateIntent.CANCEL, page = releasePage)
-    is DesktopUpdateState.HandedOff -> presentation("handed_off", "Installer started", DesktopUpdateIntent.MANUAL, page = releasePage)
-    is DesktopUpdateState.InstallFailed -> presentation("install_failed", "Install failed during ${stage.name.lowercase()}", DesktopUpdateIntent.RETRY, DesktopUpdateIntent.MANUAL, page = releasePage)
-    is DesktopUpdateState.RetryableFailure -> presentation("retryable_failure", "Download failed and can be retried", DesktopUpdateIntent.RETRY, DesktopUpdateIntent.MANUAL, page = releasePage)
+    is DesktopUpdateState.Verifying -> presentation("verifying", MR.strings.desktop_update_verifying.localized(Locale.getDefault(), release.version), DesktopUpdateIntent.CANCEL, page = release.releaseLink)
+    is DesktopUpdateState.ReadyToInstall -> presentation("ready", MR.strings.desktop_update_ready.localized(), DesktopUpdateIntent.CONFIRM, DesktopUpdateIntent.DECLINE, DesktopUpdateIntent.MANUAL, page = releasePage)
+    is DesktopUpdateState.HandingOff -> presentation("handing_off", MR.strings.desktop_update_handing_off.localized(), DesktopUpdateIntent.CANCEL, page = releasePage)
+    is DesktopUpdateState.HandedOff -> presentation("handed_off", MR.strings.desktop_update_handed_off.localized(), DesktopUpdateIntent.MANUAL, page = releasePage)
+    is DesktopUpdateState.InstallFailed -> presentation("install_failed", stage.localizedFailure(), DesktopUpdateIntent.RETRY, DesktopUpdateIntent.MANUAL, page = releasePage)
+    is DesktopUpdateState.RetryableFailure -> presentation("retryable_failure", MR.strings.desktop_update_download_retryable.localized(), DesktopUpdateIntent.RETRY, DesktopUpdateIntent.MANUAL, page = releasePage)
     is DesktopUpdateState.Cancelled -> if (releasePage == null) {
-        presentation("cancelled", "Update operation cancelled", DesktopUpdateIntent.CHECK)
+        presentation("cancelled", MR.strings.desktop_update_cancelled.localized(), DesktopUpdateIntent.CHECK)
     } else {
-        presentation("cancelled", "Update operation cancelled", DesktopUpdateIntent.CHECK, DesktopUpdateIntent.MANUAL, page = releasePage)
+        presentation("cancelled", MR.strings.desktop_update_cancelled.localized(), DesktopUpdateIntent.CHECK, DesktopUpdateIntent.MANUAL, page = releasePage)
     }
-    is DesktopUpdateState.ManualOnly -> presentation("manual_only", "Open the release page to update manually", DesktopUpdateIntent.MANUAL, DesktopUpdateIntent.CHECK, page = releasePage)
+    is DesktopUpdateState.ManualOnly -> presentation("manual_only", MR.strings.desktop_update_manual.localized(), DesktopUpdateIntent.MANUAL, DesktopUpdateIntent.CHECK, page = releasePage)
+}
+
+private fun mihon.desktop.update.CheckFailure.localized() = when (this) {
+    mihon.desktop.update.CheckFailure.REQUEST_FAILED -> MR.strings.desktop_update_failure_request_failed.localized()
+    mihon.desktop.update.CheckFailure.OS_TOO_OLD -> MR.strings.desktop_update_failure_os_too_old.localized()
+}
+
+private fun mihon.desktop.update.InstallStage.localizedFailure() = when (this) {
+    mihon.desktop.update.InstallStage.VERIFY -> MR.strings.desktop_update_install_failed_verify.localized()
+    mihon.desktop.update.InstallStage.HANDOFF -> MR.strings.desktop_update_install_failed_handoff.localized()
 }
 private fun presentation(
     status: String,
@@ -80,7 +92,7 @@ class DesktopUpdateScreenModel(
         if (intent == DesktopUpdateIntent.CANCEL) return job?.takeIf(Job::isActive)?.let { it.cancel(); true } ?: false
         if (intent == DesktopUpdateIntent.MANUAL) {
             val page = state.value.presentation().releasePage ?: return false
-            mutableFeedback.value = if (runCatching { openUrl(page) }.getOrDefault(false)) null else "Could not open update page. Copy this URL: $page"
+            mutableFeedback.value = if (runCatching { openUrl(page) }.getOrDefault(false)) null else MR.strings.desktop_update_open_failed.localized(Locale.getDefault(), page)
             return true
         }
         if (job?.isActive == true) return false

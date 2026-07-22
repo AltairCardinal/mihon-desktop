@@ -38,14 +38,15 @@ import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.platform.DesktopPlatformPaths
 import mihon.desktop.APP_VERSION
 import tachiyomi.i18n.MR
+import java.util.Locale
 
-class AboutScreen : Screen {
+class AboutScreen(internal val platformPaths: DesktopPlatformPaths = DesktopPlatformPaths.current()) : Screen {
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val paths = remember { DesktopPlatformPaths.current() }
+        val paths = platformPaths
         val appDir = remember(paths) { paths.configDir }
         val cacheDir = remember(paths) { paths.networkCacheDir }
         val dbFile = remember(paths) { paths.databaseFile }
@@ -58,24 +59,25 @@ class AboutScreen : Screen {
         var cacheSizeText by remember {
             mutableStateOf(formatBytes(cacheDir.walkBottomUp().filter { it.isFile }.sumOf { it.length() }))
         }
+        var cacheCleared by remember { mutableStateOf(false) }
 
         // Gather debug info once
         val dbSize = remember { formatBytes(dbFile.length()) }
         val dbPath = remember { dbFile.absolutePath }
-        val extensionCount = remember { extensionManager?.getInstalledExtensions()?.size ?: 0 }
-        val javaVersion = remember { System.getProperty("java.version") ?: "unknown" }
+        val extensionCount = remember { extensionManager.getInstalledExtensions().size }
+        val javaVersion = remember { System.getProperty("java.version") ?: MR.strings.desktop_about_unknown.localized() }
         val javaVendor = remember { System.getProperty("java.vendor") ?: "" }
-        val osName = remember { System.getProperty("os.name") ?: "unknown" }
+        val osName = remember { System.getProperty("os.name") ?: MR.strings.desktop_about_unknown.localized() }
         val osVersion = remember { System.getProperty("os.version") ?: "" }
         val appDirPath = remember { appDir.absolutePath }
 
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("About") },
+                    title = { Text(MR.strings.pref_category_about.localized()) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = MR.strings.action_bar_up_description.localized())
                         }
                     },
                 )
@@ -95,55 +97,53 @@ class AboutScreen : Screen {
                 AboutUpdateSection(APP_VERSION, updateState.presentation(), updateFeedback, updateModel::intent)
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "A KMP + Compose Multiplatform port of the Mihon Android manga reader.",
+                    text = MR.strings.desktop_about_description.localized(),
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Spacer(modifier = Modifier.height(24.dp))
                 Text(
-                    text = "Based on Mihon",
+                    text = MR.strings.desktop_about_based_on.localized(),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                 )
-                Text(
-                    text = "https://github.com/mihonapp/mihon",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                InfoRow(label = MR.strings.website.localized(), value = "https://github.com/mihonapp/mihon")
 
                 Spacer(modifier = Modifier.height(24.dp))
                 HorizontalDivider()
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Text("Storage", style = MaterialTheme.typography.titleSmall)
+                Text(MR.strings.desktop_about_storage.localized(), style = MaterialTheme.typography.titleSmall)
                 Spacer(modifier = Modifier.height(8.dp))
-                InfoRow(label = "App data directory", value = appDirPath)
-                InfoRow(label = "Database", value = "$dbPath ($dbSize)")
-                InfoRow(label = "Network cache", value = cacheSizeText)
+                InfoRow(label = MR.strings.desktop_about_app_data_directory.localized(), value = appDirPath)
+                InfoRow(label = MR.strings.desktop_about_database.localized(), value = "$dbPath ($dbSize)")
+                InfoRow(label = MR.strings.desktop_about_network_cache.localized(), value = cacheSizeText)
                 Spacer(modifier = Modifier.height(8.dp))
                 Button(onClick = {
                     cacheDir.deleteRecursively()
                     cacheSizeText = "0 B"
+                    cacheCleared = true
                 }) {
-                    Text("Clear network cache")
+                    Text(MR.strings.desktop_advanced_clear_network_cache.localized())
                 }
+                if (cacheCleared) Text(MR.strings.desktop_about_network_cache_cleared.localized())
 
                 Spacer(modifier = Modifier.height(24.dp))
                 HorizontalDivider()
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Text("Extensions", style = MaterialTheme.typography.titleSmall)
+                Text(MR.strings.label_extensions.localized(), style = MaterialTheme.typography.titleSmall)
                 Spacer(modifier = Modifier.height(8.dp))
-                InfoRow(label = "Installed extensions", value = extensionCount.toString())
-                InfoRow(label = "Extensions directory", value = extensionsDir.absolutePath)
+                InfoRow(label = MR.strings.desktop_about_installed_extensions.localized(), value = extensionCount.toString())
+                InfoRow(label = MR.strings.desktop_about_extensions_directory.localized(), value = extensionsDir.absolutePath)
 
                 Spacer(modifier = Modifier.height(24.dp))
                 HorizontalDivider()
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Text("Environment", style = MaterialTheme.typography.titleSmall)
+                Text(MR.strings.desktop_about_environment.localized(), style = MaterialTheme.typography.titleSmall)
                 Spacer(modifier = Modifier.height(8.dp))
-                InfoRow(label = "Java version", value = "$javaVersion ($javaVendor)".trimEnd('(', ' ').trim())
-                InfoRow(label = "OS", value = "$osName $osVersion".trim())
+                InfoRow(label = MR.strings.desktop_about_java_version.localized(), value = "$javaVersion ($javaVendor)".trimEnd('(', ' ').trim())
+                InfoRow(label = MR.strings.desktop_about_operating_system.localized(), value = "$osName $osVersion".trim())
             }
         }
     }
@@ -163,7 +163,7 @@ internal fun AboutUpdateSection(
     onIntent: (DesktopUpdateIntent) -> Unit,
 ) {
     Spacer(modifier = Modifier.height(8.dp))
-    Text("Version $version", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(MR.strings.desktop_about_version_value.localized(Locale.getDefault(), MR.strings.version.localized(), version), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Spacer(modifier = Modifier.height(8.dp))
     Text(presentation.message, style = MaterialTheme.typography.bodyMedium)
     feedback?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -171,15 +171,15 @@ internal fun AboutUpdateSection(
     if (presentation.status == "ready") {
         AlertDialog(
             onDismissRequest = { onIntent(DesktopUpdateIntent.DECLINE) },
-            title = { Text("Ready to install") },
+            title = { Text(presentation.message) },
             text = {
                 Column {
-                    Text("Install the downloaded update now?")
+                    Text(MR.strings.desktop_update_install_prompt.localized())
                     Button(onClick = { onIntent(DesktopUpdateIntent.MANUAL) }) { Text(MR.strings.update_check_open.localized()) }
                 }
             },
-            confirmButton = { Button(onClick = { onIntent(DesktopUpdateIntent.CONFIRM) }) { Text("Install") } },
-            dismissButton = { Button(onClick = { onIntent(DesktopUpdateIntent.DECLINE) }) { Text("Not now") } },
+            confirmButton = { Button(onClick = { onIntent(DesktopUpdateIntent.CONFIRM) }) { Text(MR.strings.action_install.localized()) } },
+            dismissButton = { Button(onClick = { onIntent(DesktopUpdateIntent.DECLINE) }) { Text(MR.strings.action_not_now.localized()) } },
         )
     } else {
         Row {
@@ -196,7 +196,7 @@ private fun DesktopUpdateIntent.label() = when (this) {
     DesktopUpdateIntent.CANCEL, DesktopUpdateIntent.DECLINE -> MR.strings.action_cancel.localized()
     DesktopUpdateIntent.RETRY -> MR.strings.action_retry.localized()
     DesktopUpdateIntent.MANUAL -> MR.strings.update_check_open.localized()
-    DesktopUpdateIntent.CONFIRM -> "Install"
+    DesktopUpdateIntent.CONFIRM -> MR.strings.action_install.localized()
 }
 
 @Composable
@@ -205,13 +205,9 @@ private fun InfoRow(label: String, value: String) {
         modifier = androidx.compose.ui.Modifier.padding(vertical = 2.dp),
     ) {
         Text(
-            text = "$label: ",
+            text = MR.strings.desktop_about_info_row.localized(Locale.getDefault(), label, value),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodySmall,
         )
     }
 }
