@@ -4,6 +4,8 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -28,6 +30,12 @@ import cafe.adriel.voyager.core.screen.Screen
 import kotlin.reflect.KClass
 
 internal val DesktopSettingsAnchorHighlighted = SemanticsPropertyKey<Boolean>("DesktopSettingsAnchorHighlighted")
+
+internal data class DesktopSettingsLazyAnchor(
+    val title: String,
+    val key: Any,
+    val index: Int? = null,
+)
 
 internal object DesktopSettingsAnchorOwner {
     private data class Request(val route: KClass<out Screen>, val title: String)
@@ -60,6 +68,13 @@ private class AnchorController(
 }
 
 private val LocalDesktopSettingsAnchor = compositionLocalOf<AnchorController?> { null }
+
+internal class DesktopSettingsLazyAnchorHost internal constructor(
+    val listState: LazyListState,
+    internal val target: DesktopSettingsLazyAnchor?,
+) {
+    var highlighted by mutableStateOf(false)
+}
 
 @Composable
 internal fun DesktopSettingsAnchorColumn(
@@ -94,13 +109,43 @@ internal fun DesktopSettingsAnchorColumn(
 }
 
 @Composable
-internal fun Modifier.desktopSettingsAnchor(title: String): Modifier {
+internal fun rememberDesktopSettingsAnchorLazyListHost(
+    route: Screen,
+    anchors: List<DesktopSettingsLazyAnchor>,
+): DesktopSettingsLazyAnchorHost {
+    val requestedTitle = remember(route) { DesktopSettingsAnchorOwner.claim(route) }
+    val target = remember(requestedTitle, anchors) {
+        requestedTitle?.let { title -> anchors.firstOrNull { it.title == title } }
+    }
+    val state = rememberLazyListState()
+    val host = remember(state, target) { DesktopSettingsLazyAnchorHost(state, target) }
+
+    LaunchedEffect(host) {
+        if (host.target != null) {
+            host.target.index?.let { state.scrollToItem(it) }
+            withFrameNanos { }
+            host.highlighted = true
+        }
+    }
+    return host
+}
+
+@Composable
+internal fun Modifier.desktopSettingsAnchor(
+    title: String,
+    lazyKey: Any? = null,
+    lazyHost: DesktopSettingsLazyAnchorHost? = null,
+): Modifier {
     val controller = LocalDesktopSettingsAnchor.current
     val identity = remember { Any() }
     DisposableEffect(controller, identity) {
         onDispose { controller?.targets?.remove(identity) }
     }
-    val highlighted = controller?.highlighted === identity
+    val lazyHighlighted = lazyKey != null &&
+        lazyHost?.highlighted == true &&
+        lazyHost.target?.title == title &&
+        lazyHost.target.key == lazyKey
+    val highlighted = controller?.highlighted === identity || lazyHighlighted
     val color = if (highlighted) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent
     return this
         .onGloballyPositioned { coordinates ->

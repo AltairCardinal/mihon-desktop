@@ -19,6 +19,8 @@ internal object DesktopSettingsAnchorResources {
     val advancedCrashLog = MR.strings.desktop_advanced_crash_log_open
     val securitySecureScreen = MR.strings.desktop_secure_screen_title
     val aboutAppData = MR.strings.desktop_about_app_data_directory
+    val extensionRepoAdd = MR.strings.action_add_repo
+    val extensionRepoDelete = MR.strings.action_delete_repo
 }
 
 object DesktopSettingsCatalog {
@@ -33,7 +35,7 @@ object DesktopSettingsCatalog {
         screen(SecuritySettingsScreen(), MR.strings.pref_category_security, MR.strings.desktop_security_lock_enabled, DesktopSettingsAnchorResources.securitySecureScreen),
         screen(AdvancedSettingsScreen(), MR.strings.pref_category_advanced, MR.strings.pref_clear_cookies, MR.strings.desktop_advanced_clear_network_cache, DesktopSettingsAnchorResources.advancedCrashLog),
         screen(GeneralSettingsScreen(), MR.strings.pref_category_general, MR.strings.pref_incognito_mode, MR.strings.pref_dns_over_https),
-        screen(ExtensionRepoScreen(), MR.strings.label_extension_repos, MR.strings.action_add_repo, MR.strings.action_delete_repo),
+        screen(ExtensionRepoScreen(), MR.strings.label_extension_repos, DesktopSettingsAnchorResources.extensionRepoAdd, DesktopSettingsAnchorResources.extensionRepoDelete),
         screen(AboutScreen(), MR.strings.pref_category_about, MR.strings.check_for_updates, DesktopSettingsAnchorResources.aboutAppData),
     )
 

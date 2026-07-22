@@ -1,11 +1,14 @@
 package mihon.desktop.ui.extension
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
+import cafe.adriel.voyager.core.screen.Screen
+import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
@@ -22,6 +25,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.domain.fakes.FakeExtensionRepoRepository
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopExtensionManager
@@ -29,8 +33,18 @@ import mihon.desktop.extension.InstalledExtension
 import mihon.domain.extension.model.ExtensionCatalogResult
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
 import mihon.desktop.ui.browse.SourceBrowseScreen
+import mihon.desktop.ui.settings.DesktopSettingsAnchorHighlighted
+import mihon.desktop.ui.settings.DesktopSettingsAnchorOwner
+import mihon.desktop.ui.settings.DesktopSettingsCatalog
+import mihon.desktop.ui.settings.ExtensionRepoScreen
 import mihon.desktop.ui.settings.MoreRootScreen
 import mihon.desktop.ui.settings.TestScreenNavigator
+import mihon.domain.extensionrepo.interactor.CreateExtensionRepo
+import mihon.domain.extensionrepo.interactor.DeleteExtensionRepo
+import mihon.domain.extensionrepo.interactor.GetExtensionRepo
+import mihon.domain.extensionrepo.interactor.ReplaceExtensionRepo
+import mihon.domain.extensionrepo.interactor.UpdateExtensionRepo
+import mihon.domain.extensionrepo.model.ExtensionRepo
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import tachiyomi.i18n.MR
@@ -41,6 +55,71 @@ import java.util.Locale
 
 @OptIn(ExperimentalComposeUiApi::class)
 class SourceExtensionNavigationContractTest {
+    @Test
+    fun `Extension repository catalog anchors empty and list branches then deletes exact repo`() = runBlocking {
+        val repository = FakeExtensionRepoRepository()
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+            every { getExtensionRepo } returns GetExtensionRepo(repository)
+            every { createExtensionRepo } returns mockk<CreateExtensionRepo>(relaxed = true)
+            every { deleteExtensionRepo } returns DeleteExtensionRepo(repository)
+            every { replaceExtensionRepo } returns ReplaceExtensionRepo(repository)
+            every { updateExtensionRepo } returns mockk<UpdateExtensionRepo>(relaxed = true)
+        }
+        lateinit var navigator: Navigator
+        val scene = ImageComposeScene(900, 500, coroutineContext = coroutineContext) {}
+        try {
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    Navigator(EmptyScreen()) { nav -> navigator = nav; CurrentScreen() }
+                }
+            }
+            render(scene)
+
+            val addTitle = MR.strings.action_add_repo.localized()
+            val addResult = DesktopSettingsCatalog.search(addTitle).single {
+                it.route is ExtensionRepoScreen && it.anchorTitle == addTitle
+            }
+            DesktopSettingsAnchorOwner.publish(addResult.route, addResult.anchorTitle)
+            navigator.replace(addResult.route)
+            render(scene)
+            val emptyHighlight = highlighted(scene)
+            Assertions.assertTrue(descriptionCopy(emptyHighlight).contains(addTitle))
+            Assertions.assertTrue(emptyHighlight.boundsInRoot.height > 0f)
+
+            navigator.replace(EmptyScreen())
+            render(scene)
+            repository.insertRepo("https://first.example", "First Repo", "First", "https://first.example", "first-fp")
+            repository.insertRepo("https://second.example", "Second Repo", "Second", "https://second.example", "second-fp")
+            val deleteTitle = MR.strings.action_delete_repo.localized()
+            val deleteResult = DesktopSettingsCatalog.search(deleteTitle).single {
+                it.route is ExtensionRepoScreen && it.anchorTitle == deleteTitle
+            }
+            DesktopSettingsAnchorOwner.publish(deleteResult.route, deleteResult.anchorTitle)
+            navigator.replace(deleteResult.route)
+            render(scene)
+            val listHighlight = highlighted(scene)
+            Assertions.assertTrue(textCopy(listHighlight).contains("First Repo"))
+            Assertions.assertTrue(listHighlight.boundsInRoot.height > 0f)
+            val delete = flatten(listHighlight).single {
+                it.config.contains(SemanticsActions.OnClick) && deleteTitle in descriptionCopy(it)
+            }
+            Assertions.assertTrue(requireNotNull(delete.config[SemanticsActions.OnClick].action).invoke())
+            render(scene)
+            click(scene, MR.strings.action_remove.localized())
+            withTimeout(1_000) {
+                repository.subscribeAll().first { repos -> repos.none { it.baseUrl == "https://first.example" } }
+            }
+            Assertions.assertEquals(listOf("https://second.example"), repository.getAll().map(ExtensionRepo::baseUrl))
+            Assertions.assertEquals(
+                listOf("GeneralSettingsScreen", "ExtensionRepoScreen", "AboutScreen"),
+                DesktopSettingsCatalog.screens().drop(9).map { it.route::class.simpleName },
+            )
+        } finally {
+            DesktopSettingsAnchorOwner.clear()
+            scene.close()
+        }
+    }
+
     @Test
     fun `source and extension destinations are regular Screens with preserved parameters`() {
         val details = extensionDetailsDestination("C:/extensions/example.jar")
@@ -183,6 +262,30 @@ class SourceExtensionNavigationContractTest {
         Assertions.assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
     }
 
-    private fun nodes(scene: ImageComposeScene) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+    private suspend fun render(scene: ImageComposeScene) = repeat(12) {
+        scene.render()
+        kotlinx.coroutines.delay(16)
+    }
+
+    private fun highlighted(scene: ImageComposeScene) = nodes(scene, true).single {
+        it.config.contains(DesktopSettingsAnchorHighlighted) && it.config[DesktopSettingsAnchorHighlighted]
+    }
+
+    private fun textCopy(node: SemanticsNode) = flatten(node).flatMap {
+        if (it.config.contains(SemanticsProperties.Text)) it.config[SemanticsProperties.Text].map { text -> text.text } else emptyList()
+    }
+
+    private fun descriptionCopy(node: SemanticsNode) = flatten(node).flatMap {
+        if (it.config.contains(SemanticsProperties.ContentDescription)) it.config[SemanticsProperties.ContentDescription] else emptyList()
+    }
+
+    private fun nodes(scene: ImageComposeScene, unmerged: Boolean = false) = scene.semanticsOwners.flatMap {
+        flatten(if (unmerged) it.unmergedRootSemanticsNode else it.rootSemanticsNode)
+    }
     private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+
+    private class EmptyScreen : Screen {
+        @Composable
+        override fun Content() = Unit
+    }
 }

@@ -2,6 +2,8 @@ package mihon.desktop.ui.settings
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -72,6 +74,53 @@ class DesktopSettingsAnchorHostTest {
         }
     }
 
+    @Test
+    fun `lazy host uses descriptors to scroll and highlight first exact duplicate`() = runBlocking {
+        val scene = lazyScene(RouteA(), RouteA(), "duplicate")
+        try {
+            render(scene)
+            val highlighted = nodes(scene, true).single {
+                it.config.contains(DesktopSettingsAnchorHighlighted) && it.config[DesktopSettingsAnchorHighlighted]
+            }
+            assertEquals("item-40", highlighted.config[SemanticsProperties.TestTag])
+            assertTrue(highlighted.boundsInRoot.height > 0f)
+            assertFalse(
+                nodes(scene, true).any {
+                    it.config.contains(SemanticsProperties.TestTag) && it.config[SemanticsProperties.TestTag] == "item-0"
+                },
+            )
+            val scroll = nodes(scene, true).first { it.config.contains(SemanticsProperties.VerticalScrollAxisRange) }
+                .config[SemanticsProperties.VerticalScrollAxisRange]
+            assertTrue(scroll.value() > 0f)
+        } finally {
+            scene.close()
+            DesktopSettingsAnchorOwner.clear()
+        }
+    }
+
+    @Test
+    fun `lazy host rejects prefix wrong route and consumes request once`() = runBlocking {
+        suspend fun assertNoAnchor(scene: ImageComposeScene) {
+            try {
+                render(scene)
+                assertFalse(nodes(scene, true).any { it.config.contains(DesktopSettingsAnchorHighlighted) })
+                val scroll = nodes(scene, true).first { it.config.contains(SemanticsProperties.VerticalScrollAxisRange) }
+                    .config[SemanticsProperties.VerticalScrollAxisRange]
+                assertEquals(0f, scroll.value())
+            } finally {
+                scene.close()
+            }
+        }
+
+        assertNoAnchor(lazyScene(RouteA(), RouteA(), "duplic"))
+        assertNoAnchor(lazyScene(RouteB(), RouteA(), "duplicate"))
+        val consumed = lazyScene(RouteA(), RouteA(), "duplicate")
+        render(consumed)
+        consumed.close()
+        assertNoAnchor(lazyScene(RouteA(), null, null))
+        DesktopSettingsAnchorOwner.clear()
+    }
+
     private fun scene(route: Screen, title: String): ImageComposeScene {
         DesktopSettingsAnchorOwner.publish(route, title)
         return ImageComposeScene(300, 100) {
@@ -89,6 +138,31 @@ class DesktopSettingsAnchorHostTest {
                     "duplicate",
                     Modifier.desktopSettingsAnchor("duplicate").testTag("duplicate-second").fillMaxWidth().height(120.dp),
                 )
+            }
+        }
+    }
+
+    private fun lazyScene(hostRoute: Screen, publishRoute: Screen?, title: String?): ImageComposeScene {
+        if (publishRoute != null && title != null) DesktopSettingsAnchorOwner.publish(publishRoute, title)
+        val anchors = listOf(
+            DesktopSettingsLazyAnchor("duplicate extra", "prefix", 20),
+            DesktopSettingsLazyAnchor("duplicate", "first", 40),
+            DesktopSettingsLazyAnchor("duplicate", "second", 60),
+        )
+        return ImageComposeScene(300, 100) {
+            val host = rememberDesktopSettingsAnchorLazyListHost(hostRoute, anchors)
+            LazyColumn(state = host.listState, modifier = Modifier.fillMaxWidth().height(100.dp)) {
+                items((0 until 80).toList(), key = { "item-$it" }) { index ->
+                    val anchor = anchors.firstOrNull { it.index == index }
+                    Text(
+                        "item-$index",
+                        Modifier
+                            .desktopSettingsAnchor(anchor?.title ?: "", anchor?.key, host)
+                            .testTag("item-$index")
+                            .fillMaxWidth()
+                            .height(40.dp),
+                    )
+                }
             }
         }
     }

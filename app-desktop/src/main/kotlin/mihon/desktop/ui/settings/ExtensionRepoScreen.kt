@@ -96,6 +96,21 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
         val repos by getExtensionRepo.subscribeAll().collectAsState(initial = emptyList())
         var dialog by remember { mutableStateOf<RepoDialog?>(initialCreatePrompt()) }
         var pendingRepoUrl by remember { mutableStateOf<String?>(null) }
+        val addRepoTitle = DesktopSettingsAnchorResources.extensionRepoAdd.localized()
+        val deleteRepoTitle = DesktopSettingsAnchorResources.extensionRepoDelete.localized()
+        val anchors = buildList {
+            add(DesktopSettingsLazyAnchor(addRepoTitle, "add-repo"))
+            repos.forEachIndexed { index, repo ->
+                add(
+                    DesktopSettingsLazyAnchor(
+                        deleteRepoTitle,
+                        "delete-${repo.baseUrl}",
+                        index + if (pendingRepoUrl == null) 0 else 1,
+                    ),
+                )
+            }
+        }
+        val anchorHost = rememberDesktopSettingsAnchorLazyListHost(this, anchors)
 
         fun showSnackbar(message: String) {
             scope.launch { snackbarHostState.showSnackbar(message) }
@@ -168,7 +183,10 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
                 )
             },
             floatingActionButton = {
-                FloatingActionButton(onClick = { dialog = freshCreatePrompt() }) {
+                FloatingActionButton(
+                    onClick = { dialog = freshCreatePrompt() },
+                    modifier = Modifier.desktopSettingsAnchor(addRepoTitle, "add-repo", anchorHost),
+                ) {
                     Icon(Icons.Outlined.Add, contentDescription = MR.strings.action_add_repo.localized())
                 }
             },
@@ -195,6 +213,7 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
                 }
             } else {
                 LazyColumn(
+                    state = anchorHost.listState,
                     modifier = Modifier.fillMaxSize().padding(padding),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -207,6 +226,11 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
                     items(repos, key = { it.baseUrl }) { repo ->
                         RepoCard(
                             repo = repo,
+                            modifier = Modifier.desktopSettingsAnchor(
+                                deleteRepoTitle,
+                                "delete-${repo.baseUrl}",
+                                anchorHost,
+                            ),
                             onOpenWebsite = {
                                 runCatching {
                                     Desktop.getDesktop().browse(URI(repo.website))
