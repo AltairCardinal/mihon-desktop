@@ -30,6 +30,7 @@ import mihon.desktop.DesktopRuntimeService
 import mihon.desktop.DesktopWindowFocusListener
 import mihon.desktop.DesktopWindowFocusRegistration
 import mihon.desktop.bootstrapDesktopRuntime
+import mihon.desktop.runProductionOwnerLifecycle
 import mihon.desktop.platform.CredentialBackend
 import mihon.desktop.platform.DesktopCredentialStore
 import mihon.desktop.platform.OperatingSystem
@@ -45,6 +46,7 @@ import mihon.desktop.settings.ThemeMode
 import mihon.desktop.test.http.currentTestStateJson
 import mihon.desktop.test.http.nestedTestScreenAction
 import mihon.desktop.test.state.applicationState
+import mihon.desktop.test.TestArguments
 import mihon.desktop.update.DesktopUpdateController
 import mihon.desktop.update.InstallCancelled
 import mihon.desktop.update.InstallManualOnly
@@ -277,10 +279,12 @@ class SecuritySettingsWiringTest {
     }
 
     @Test
-    fun `GUI and headless bootstrap close wait for updater cleanup`() = runBlocking {
+    fun `production GUI and headless owner lifecycle wait for updater cleanup`() = runBlocking {
         listOf(false, true).forEach { headless ->
             val cleanupStarted = CompletableDeferred<Unit>()
             val releaseCleanup = CompletableDeferred<Unit>()
+            val terminationReached = CompletableDeferred<Unit>()
+            val releaseTermination = CompletableDeferred<Unit>()
             val parentScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             val model = DesktopUpdateScreenModel(
                 DesktopUpdateController(
@@ -310,17 +314,94 @@ class SecuritySettingsWiringTest {
                 override fun stop() = Unit
             }
             val runtime = DesktopAppRuntime(service, service, service, startupCleanup = {}, scope = parentScope, updateScreenModel = model)
-            val session = bootstrapDesktopRuntime(runtime, appLock, applicationState) {}
-            assertTrue(model.intent(DesktopUpdateIntent.CHECK))
-            val closing = async(Dispatchers.Default) { session.closeAndJoin(); true }
+            val closing = async(Dispatchers.Default) {
+                runProductionOwnerLifecycle(
+                    testArgs = TestArguments(testMode = true, headless = headless),
+                    runtime = runtime,
+                    appLock = appLock,
+                    testState = applicationState,
+                    startTestMode = {},
+                    awaitTestModeTermination = {
+                        terminationReached.complete(Unit)
+                        runBlocking { releaseTermination.await() }
+                    },
+                    stopTestMode = {},
+                    runApplication = { closeAndJoin -> closeAndJoin() },
+                )
+                true
+            }
             try {
+                if (headless) {
+                    withTimeout(1_000) { terminationReached.await() }
+                    assertFalse(closing.isCompleted)
+                    releaseTermination.complete(Unit)
+                }
+                assertTrue(model.intent(DesktopUpdateIntent.CHECK))
                 withTimeout(1_000) { cleanupStarted.await() }
                 assertFalse(closing.isCompleted)
             } finally {
+                releaseTermination.complete(Unit)
                 releaseCleanup.complete(Unit)
             }
             assertTrue(withTimeout(1_000) { closing.await() })
         }
+    }
+
+    @Test
+    fun `production owner lifecycle waits for cleanup before propagating application failure`() = runBlocking {
+        val cleanupStarted = CompletableDeferred<Unit>()
+        val releaseCleanup = CompletableDeferred<Unit>()
+        val parentScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val model = DesktopUpdateScreenModel(
+            DesktopUpdateController(
+                {
+                    try {
+                        awaitCancellation()
+                    } finally {
+                        withContext(NonCancellable) {
+                            cleanupStarted.complete(Unit)
+                            releaseCleanup.await()
+                        }
+                    }
+                },
+                { release, _ -> ManualOnly(release.releaseLink) },
+                { _, _ -> InstallManualOnly },
+                { _, _ -> InstallCancelled },
+            ),
+            parentScope,
+        )
+        val appLock = DesktopAppLock(
+            preferences(enabled = false, delay = 0),
+            DesktopPassphraseVerifier(DesktopCredentialStore(MemoryCredentialBackend("secret".toCharArray()))),
+        )
+        val service = object : DesktopRuntimeService {
+            override fun start() = Unit
+            override fun stop() = Unit
+        }
+        val failure = IllegalStateException("application failed")
+        val closing = async(Dispatchers.Default) {
+            org.junit.jupiter.api.assertThrows<IllegalStateException> {
+                runBlocking {
+                    runProductionOwnerLifecycle(
+                        testArgs = TestArguments(testMode = false, headless = false),
+                        runtime = DesktopAppRuntime(service, service, service, startupCleanup = {}, scope = parentScope, updateScreenModel = model),
+                        appLock = appLock,
+                        testState = applicationState,
+                        startTestMode = {},
+                        awaitTestModeTermination = {},
+                        stopTestMode = {},
+                        runApplication = { throw failure },
+                    )
+                }
+            }
+        }
+        try {
+            withTimeout(1_000) { cleanupStarted.await() }
+            assertFalse(closing.isCompleted)
+        } finally {
+            releaseCleanup.complete(Unit)
+        }
+        closing.await()
     }
 
     @Test

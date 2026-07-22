@@ -194,10 +194,28 @@ class WindowsReleaseConfigurationTest {
     @Test
     fun `desktop documentation requires unpackaged Windows runtime validation`() {
         val testGuide = Files.readString(repoRoot.resolve("docs/automation/TEST_GUIDE.md"))
-        val canonicalPath =
-            "app-desktop/tmp/mihon-dist/main/app/Mihon Desktop/Mihon Desktop.exe"
 
-        assertTrue(testGuide.contains(canonicalPath))
-        assertTrue(testGuide.contains("--test-mode"))
+        assertTrue(hasWindowsRuntimeValidationDocumentation(testGuide))
+        requiredWindowsRuntimeDocumentationTerms.forEach { term ->
+            assertFalse(
+                hasWindowsRuntimeValidationDocumentation(testGuide.replace(term, "")),
+                "Removing '$term' must invalidate the Windows runtime validation documentation",
+            )
+        }
+    }
+
+    private fun hasWindowsRuntimeValidationDocumentation(text: String): Boolean =
+        requiredWindowsRuntimeDocumentationTerms.all(text::contains)
+
+    private companion object {
+        val requiredWindowsRuntimeDocumentationTerms = listOf(
+            "0.STAGE.FEATURE.BUILD.GIT_HASH",
+            "app-desktop/tmp/mihon-dist/main/app/Mihon Desktop/Mihon Desktop.exe",
+            "MSI",
+            "不能替代",
+            "运行版本",
+            "完全一致",
+            "未打包",
+        )
     }
 }

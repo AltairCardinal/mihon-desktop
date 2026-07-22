@@ -54,11 +54,40 @@ import java.awt.event.WindowFocusListener
  * - --test-mode: Enable test mode
  * - --headless: Run without UI (for automated testing)
  */
-fun main(args: Array<String>) {
+suspend fun main(args: Array<String>) {
     // Install crash handler FIRST
     CrashHandler.install()
 
-    startDesktopApplication(args)
+    startProductionDesktopApplication(args)
+}
+
+private suspend fun startProductionDesktopApplication(
+    args: Array<String>,
+    broker: DesktopExternalActionBroker = DesktopExternalActionBroker(DesktopPlatformPaths.current().instanceStateFile),
+    registrar: DesktopUriSchemeRegistrar = DesktopUriSchemeRegistration(),
+    reportRegistration: (DesktopUriSchemeRegistration.Result) -> Unit = ::reportUriSchemeRegistration,
+    openUriEventPort: DesktopOpenUriEventPort = AwtDesktopOpenUriEventPort(),
+    ownerIngressDependencies: () -> DesktopOwnerIngressDependencies = {
+        initDesktopDI()
+        DesktopOwnerIngressDependencies(Injekt.get(), DesktopUiDependencies.fromInjekt())
+    },
+): DesktopInstanceStartResult {
+    var ownerBroker: DesktopExternalActionBroker? = null
+    val result = startDesktopInstance(broker, desktopExternalActionRaw(args)) { electedBroker ->
+        val registrationResult = try {
+            registrar.register()
+        } catch (_: Exception) {
+            DesktopUriSchemeRegistration.Result.Failed(
+                DesktopUriSchemeRegistration.FailureReason.UNEXPECTED_FAILURE,
+            )
+        }
+        runCatching { reportRegistration(registrationResult) }
+        ownerBroker = electedBroker
+    }
+    ownerBroker?.let {
+        runProductionOwnerApplication(args, TestArguments.parse(args), it, openUriEventPort, ownerIngressDependencies)
+    }
+    return result
 }
 
 internal fun startDesktopApplication(
@@ -159,6 +188,69 @@ private fun runOwnerApplication(
     }
 }
 
+private suspend fun runProductionOwnerApplication(
+    args: Array<String>,
+    testArgs: TestArguments,
+    broker: DesktopExternalActionBroker,
+    openUriEventPort: DesktopOpenUriEventPort,
+    ownerIngressDependencies: () -> DesktopOwnerIngressDependencies,
+) {
+    val ownerIngress = ownerIngressDependencies()
+    val runtime = ownerIngress.runtime
+    val uiDependencies = ownerIngress.uiDependencies
+    val navigator = uiDependencies.externalActionNavigator
+    try {
+        submitDesktopExternalAction(args, navigator)
+        initializeDesktopOwnerExternalActionIngress(broker, navigator, runtime, openUriEventPort)
+        val appLock = Injekt.get<DesktopAppLock>()
+        val windowPrivacyController = Injekt.get<DesktopWindowPrivacyController>()
+        runProductionOwnerLifecycle(
+            testArgs = testArgs,
+            runtime = runtime,
+            appLock = appLock,
+            testState = applicationState,
+            startTestMode = { if (testArgs.testMode) TestMode.start(testArgs) },
+            awaitTestModeTermination = TestMode::awaitTermination,
+            stopTestMode = TestMode::stop,
+        ) { closeAndJoin ->
+            application {
+                val applicationScope = rememberCoroutineScope()
+                Window(
+                    onCloseRequest = {
+                        applicationScope.launch {
+                            try {
+                                closeAndJoin()
+                            } finally {
+                                exitApplication()
+                            }
+                        }
+                    },
+                    title = "Mihon Desktop $APP_VERSION",
+                    state = rememberWindowState(width = 1024.dp, height = 768.dp),
+                ) {
+                    BindDesktopWindowLifecycle(window, appLock, windowPrivacyController)
+                    OwnerUiDependencies(ownerIngress) {
+                        DesktopTheme {
+                            DesktopProtectedRoot(appLock) {
+                                Navigator(HomeScreen()) { navigator ->
+                                    SlideTransition(navigator)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } catch (failure: Throwable) {
+        try {
+            runtime.closeAndJoin()
+        } catch (cleanupFailure: Throwable) {
+            if (cleanupFailure !== failure) failure.addSuppressed(cleanupFailure)
+        }
+        throw failure
+    }
+}
+
 @Composable
 internal fun OwnerUiDependencies(
     owner: DesktopOwnerIngressDependencies,
@@ -185,6 +277,47 @@ internal fun bootstrapDesktopRuntime(
             if (cleanupFailure !== failure) failure.addSuppressed(cleanupFailure)
         }
         throw failure
+    }
+}
+
+internal suspend fun runProductionOwnerLifecycle(
+    testArgs: TestArguments,
+    runtime: DesktopAppRuntime,
+    appLock: DesktopAppLock,
+    testState: TestState,
+    startTestMode: () -> Unit,
+    awaitTestModeTermination: () -> Unit,
+    stopTestMode: () -> Unit,
+    runApplication: suspend (closeAndJoin: suspend () -> Unit) -> Unit,
+) {
+    val session = DesktopRuntimeBootstrapSession(runtime, DesktopAppLockTestStateBinding(appLock, testState))
+    try {
+        runtime.start()
+        startTestMode()
+    } catch (failure: Throwable) {
+        try {
+            session.closeAndJoin()
+        } catch (cleanupFailure: Throwable) {
+            if (cleanupFailure !== failure) failure.addSuppressed(cleanupFailure)
+        }
+        throw failure
+    }
+    try {
+        if (testArgs.headless) {
+            try {
+                if (testArgs.testMode) awaitTestModeTermination()
+            } finally {
+                try {
+                    if (testArgs.testMode) stopTestMode()
+                } finally {
+                    session.closeAndJoin()
+                }
+            }
+        } else {
+            runApplication(session::closeAndJoin)
+        }
+    } finally {
+        session.closeAndJoin()
     }
 }
 
