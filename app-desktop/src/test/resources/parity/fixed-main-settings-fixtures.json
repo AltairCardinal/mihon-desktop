@@ -21,8 +21,10 @@
     {
       "id": 91,
       "authorities": [
+        { "path": "core/common/src/main/kotlin/tachiyomi/core/common/preference/PreferenceStore.kt", "blobId": "2016f3d442c73947e75463c7149c97373f9364fd", "symbols": ["inline fun <reified T : Enum<T>> PreferenceStore.getEnum("] },
         { "path": "app/src/main/java/eu/kanade/domain/ui/UiPreferences.kt", "blobId": "84e405dee827b4d9fd47f2ca6cba7938c31b5cb4", "symbols": ["pref_theme_mode_key", "pref_app_theme", "pref_theme_dark_amoled_key"] },
         { "path": "app/src/main/java/eu/kanade/domain/ui/model/AppTheme.kt", "blobId": "2394c5a429031312d4192989dc5bc3920133acc7", "symbols": ["enum class AppTheme", "DARK_BLUE(null)", "HOT_PINK(null)", "BLUE(null)"] },
+        { "path": "app/src/main/java/eu/kanade/presentation/more/settings/widget/AppThemePreferenceWidget.kt", "blobId": "5e3f76efe6e106e108eb7bf1598d78a52a41c07b", "symbols": [".filterNot { it.titleRes == null || (it == AppTheme.MONET && !DeviceUtil.isDynamicColorAvailable) }"] },
         { "path": "app/src/main/java/eu/kanade/presentation/theme/TachiyomiTheme.kt", "blobId": "71ee3d988c388d35676de91607dd43225e4aeffe", "symbols": ["getThemeColorScheme", "colorSchemes.getOrDefault"] },
         { "path": "app/src/main/java/eu/kanade/presentation/theme/colorscheme/BaseColorScheme.kt", "blobId": "4ad2bfb807563c6d10c46b51bc02fa72d2fe4005", "symbols": ["if (!isDark) return lightScheme", "background = Color.Black"] },
         { "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/appearance/AppLanguageScreen.kt", "blobId": "b59b26acaccce2612ce34904c704a4930ec99dc3", "symbols": ["LocaleListCompat.getEmptyLocaleList()", "AppCompatDelegate.setApplicationLocales(locale)"] }
