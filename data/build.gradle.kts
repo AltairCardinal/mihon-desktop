@@ -40,6 +40,11 @@ kotlin {
                 api(libs.sqldelight.android.paging)
             }
         }
+        val androidUnitTest by getting {
+            dependencies {
+                runtimeOnly(libs.junit.platform.launcher)
+            }
+        }
         jvmMain {
             dependencies {
                 api(libs.sqldelight.jvm.driver)
@@ -69,6 +74,8 @@ android {
     defaultConfig {
         consumerProguardFiles("consumer-rules.pro")
     }
+
+    sourceSets["test"].resources.srcDir("src/commonTest/resources")
 }
 
 sqldelight {
