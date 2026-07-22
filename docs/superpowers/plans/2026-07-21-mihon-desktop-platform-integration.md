@@ -60,7 +60,7 @@ status-source: this-file
 - [x] Task 16V1：全局搜索状态单调性验收阻塞修复
 - [x] Task 16E1：credential 事务 fail-closed 与敏感缓冲区
 - [x] Task 16E2：真实 owner entry 证明与异常优先级
-- [ ] Task 16E3：macOS 分享 helper 的 runtime ownership
+- [x] Task 16E3：macOS 分享 helper 的 runtime ownership
 - [ ] Task 16E4：Manga 分享入口非阻塞
 - [ ] Task 16E5：parity exact 保护集合补齐
 - [ ] Task 16：独立最终审查与三平台 change verify
@@ -1282,6 +1282,8 @@ status-source: this-file
 1. RED：controlled process 输出 READY 后保持存活；关闭 production-wired runtime 必须在有界时间内杀死 PID、terminal 精确一次、active 集合归零，旧实现失败。重复/并发 close 和 terminal race 不得重复通知或删除别的会话。
 2. GREEN：让 native port 具备 retry-safe close ownership，exchange terminal/timeout/close 竞争只由一个路径提交；关闭 executor 前先清理 active exchanges。Windows/Linux unavailable port 继续无副作用。
 3. 运行 native share/service/DI/runtime focused、macOS 可执行 probe、Spotless、diff 与 5-file/400-line gate；独立审查通过后进入 E4。
+
+**Review status（已完成）：** 初始实现 `2831b89c2` 增加 active exchange、retry-safe close、终态/timeout/close 竞态门禁、shutdown hook 顺序和 production runtime attachment；首审以 `0/1/0` 指出测试分别验证 service 与 runtime port，无法杀死 service 构造脱线。唯一修复 `dc1f52468` 通过 Injekt service 用受控 Mac port 完成 READY→Opened，再只关闭同一 Injekt runtime；service 使用默认 port 或删除 runtime attachment 两种 mutation 均 1/1 RED。唯一复审 APPROVED，Critical/Important/Minor `0/0/0`；focused 64 项为 63 pass/1 Windows 上 macOS-only skip，根 Spotless、diff 与累计 5 files/355 touched 门禁通过，真实 macOS probe 留 Task 16，下一项为 E4。
 
 ### 子 Task 16E4：Manga 分享入口非阻塞
 
