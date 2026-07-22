@@ -110,40 +110,122 @@ class DesktopProductCapabilityContractTest {
     )
     private val exactPlatformCapabilityShared = mapOf(
         81 to setOf("domain/src/commonMain/kotlin/mihon/domain/platform/ExternalAction.kt"), 82 to setOf("domain/src/commonMain/kotlin/mihon/domain/platform/ExternalShare.kt"),
-        83 to setOf("core/common/src/commonMain/kotlin/eu/kanade/tachiyomi/core/security/SecurityPreferences.kt"), 84 to setOf("core/common/src/commonMain/kotlin/eu/kanade/tachiyomi/core/security/SecurityPreferences.kt"),
-        86 to setOf("domain/src/commonMain/kotlin/tachiyomi/domain/release/interactor/GetApplicationRelease.kt"), 92 to setOf("core/common/src/commonMain/kotlin/eu/kanade/tachiyomi/core/security/SecurityPreferences.kt"),
+        83 to setOf("core/common/src/commonMain/kotlin/eu/kanade/tachiyomi/core/security/SecurityPreferences.kt", "domain/src/commonMain/kotlin/mihon/domain/security/AppSecurityPolicy.kt"),
+        84 to setOf("core/common/src/commonMain/kotlin/eu/kanade/tachiyomi/core/security/SecurityPreferences.kt", "domain/src/commonMain/kotlin/mihon/domain/security/AppSecurityPolicy.kt"),
+        85 to setOf("domain/src/commonMain/kotlin/tachiyomi/domain/updates/interactor/GetUpdates.kt"),
+        86 to setOf("domain/src/commonMain/kotlin/tachiyomi/domain/release/interactor/GetApplicationRelease.kt"),
+        92 to setOf("core/common/src/commonMain/kotlin/eu/kanade/tachiyomi/core/security/SecurityPreferences.kt", "domain/src/commonMain/kotlin/mihon/domain/security/AppSecurityPolicy.kt"),
     )
     private val exactPlatformCapabilityAndroid = mapOf(
         81 to setOf("app/src/main/java/eu/kanade/tachiyomi/ui/main/MainActivity.kt"), 82 to setOf("app/src/main/java/eu/kanade/tachiyomi/util/system/IntentExtensions.kt"),
-        83 to setOf("app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSecurityScreen.kt"), 84 to setOf("app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSecurityScreen.kt"),
-        86 to setOf("app/src/main/java/eu/kanade/tachiyomi/data/updater/AppUpdateChecker.kt"), 92 to setOf("app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSecurityScreen.kt"),
+        83 to setOf("app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSecurityScreen.kt", "app/src/main/java/eu/kanade/tachiyomi/ui/base/delegate/SecureActivityDelegate.kt"),
+        84 to setOf("app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSecurityScreen.kt", "app/src/main/java/eu/kanade/tachiyomi/ui/base/delegate/SecureActivityDelegate.kt"),
+        85 to setOf("presentation-widget/src/main/java/tachiyomi/presentation/widget/BaseUpdatesGridGlanceWidget.kt", "presentation-widget/src/main/java/tachiyomi/presentation/widget/WidgetPrivacyDataSource.kt", "presentation-widget/src/main/java/tachiyomi/presentation/widget/WidgetManager.kt"),
+        86 to setOf("app/src/main/java/eu/kanade/tachiyomi/data/updater/AppUpdateChecker.kt"),
+        92 to setOf("app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSecurityScreen.kt", "app/src/main/java/eu/kanade/tachiyomi/ui/base/delegate/SecureActivityDelegate.kt"),
     )
     private val exactPlatformCapabilityConsumers = mapOf(
         81 to setOf("app-desktop/src/main/kotlin/mihon/desktop/Main.kt", "app-desktop/src/main/kotlin/mihon/desktop/DesktopAppRuntime.kt", "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopOpenUriEventPort.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/ExternalActionNavigator.kt"),
         82 to setOf("app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopShareService.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/PageContextMenu.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt"),
         83 to setOf("app-desktop/src/main/kotlin/mihon/desktop/Main.kt", "app-desktop/src/main/kotlin/mihon/desktop/security/DesktopAppLock.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/security/DesktopUnlockSurface.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SecuritySettingsScreen.kt"),
         84 to setOf("app-desktop/src/main/kotlin/mihon/desktop/privacy/DesktopWindowPrivacy.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SecuritySettingsScreen.kt"),
-        86 to setOf("app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AboutScreen.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/DesktopUpdateScreenModel.kt", "app-desktop/src/main/kotlin/mihon/desktop/update/DesktopUpdateController.kt", "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt"),
+        85 to setOf("app-desktop/src/main/kotlin/mihon/desktop/updates/UpdatesScreenModel.kt", "app-desktop/src/main/kotlin/mihon/desktop/privacy/DesktopPrivacyCapabilities.kt"),
+        86 to setOf("app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AboutScreen.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/DesktopUpdateScreenModel.kt", "app-desktop/src/main/kotlin/mihon/desktop/update/DesktopUpdateController.kt", "app-desktop/src/main/kotlin/mihon/desktop/update/DesktopUpdateDownloader.kt", "app-desktop/src/main/kotlin/mihon/desktop/update/DesktopUpdateInstaller.kt", "app-desktop/src/main/kotlin/mihon/desktop/update/DesktopUpdateProcessRunner.kt", "app-desktop/src/main/kotlin/mihon/desktop/DesktopAppRuntime.kt", "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt"),
         92 to setOf("app-desktop/src/main/kotlin/mihon/desktop/security/DesktopAppLock.kt", "app-desktop/src/main/kotlin/mihon/desktop/privacy/DesktopWindowPrivacy.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SecuritySettingsScreen.kt"),
     )
-    private val exactPlatformCapabilityProtection = mapOf(
-        81 to ("app-desktop/src/test/kotlin/mihon/desktop/DesktopAppRuntimeTest.kt" to "macOS open URI bridge drains queued events once and uses the shared ViewUri ingress"),
-        82 to ("app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaShareWiringTest.kt" to "rendered manga actions bind copy and share through the desktop share service"),
-        83 to ("app-desktop/src/test/kotlin/mihon/desktop/ui/settings/SecuritySettingsWiringTest.kt" to "production bootstrap finalizes real lock state before test mode opens"),
-        84 to ("app-desktop/src/test/kotlin/mihon/desktop/privacy/WindowPrivacyWiringTest.kt" to "security UI exposes modes and structured window feedback"),
-        86 to ("app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AboutUpdateWiringTest.kt" to "about renders full version and routes ready confirmation intents"),
-        92 to ("app-desktop/src/test/kotlin/mihon/desktop/ui/settings/SecuritySettingsWiringTest.kt" to "unsupported desktop privacy integrations show info without rendering controls"),
+    private val exactPlatformCapabilityProtection: Map<Int, Map<String, Map<String, Set<String>>>> = mapOf(
+        81 to mapOf(
+            "app-desktop/src/test/kotlin/mihon/desktop/DesktopAppRuntimeTest.kt" to mapOf(
+                "macOS open URI bridge drains queued events once and uses the shared ViewUri ingress" to setOf("wireDesktopOpenUriEvents", "ExternalActionInput.ViewUri"),
+            ),
+        ),
+        82 to mapOf(
+            "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaShareWiringTest.kt" to mapOf(
+                "rendered manga actions bind copy and share through the desktop share service" to setOf("MangaDetailActionRow", "DesktopShareService"),
+            ),
+        ),
+        83 to mapOf(
+            "domain/src/commonTest/kotlin/mihon/domain/security/AppSecurityPolicyTest.kt" to mapOf(
+                "enabled app first process starts locked" to setOf("AppLockPolicy.initial"),
+            ),
+            "app/src/test/java/eu/kanade/tachiyomi/ui/security/AndroidSecuritySharedPolicyTest.kt" to mapOf(
+                "first process activity requires unlock when app lock is enabled" to setOf("AndroidAppLockLifecycleConsumer"),
+            ),
+            "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/SecuritySettingsWiringTest.kt" to mapOf(
+                "locked root never constructs protected content and only successful unlock restores it" to setOf("DesktopAppLock", "DesktopProtectedRoot"),
+            ),
+        ),
+        84 to mapOf(
+            "domain/src/commonTest/kotlin/mihon/domain/security/AppSecurityPolicyTest.kt" to mapOf(
+                "secure screen matrix only protects always and incognito modes" to setOf("SecureScreenPolicy.isProtected"),
+            ),
+            "app/src/test/java/eu/kanade/tachiyomi/ui/security/AndroidSecuritySharedPolicyTest.kt" to mapOf(
+                "secure screen adapter covers always incognito and never" to setOf("AndroidSecureScreenConsumer"),
+            ),
+            "app-desktop/src/test/kotlin/mihon/desktop/privacy/WindowPrivacyWiringTest.kt" to mapOf(
+                "main production composable seam follows policy and clears before detach" to setOf("BindDesktopWindowLifecycle", "DesktopWindowPrivacyController"),
+                "security UI exposes modes and structured window feedback" to setOf("DesktopSecureScreenSettings", "not available on this platform"),
+            ),
+        ),
+        85 to mapOf(
+            "presentation-widget/src/test/java/tachiyomi/presentation/widget/WidgetPrivacyProductionWiringTest.kt" to mapOf(
+                "base widget default constructor observes injected security preferences" to setOf("BaseUpdatesGridGlanceWidget", "WidgetPrivacyConsumer"),
+                "locked production data source never queries updates" to setOf("WidgetPrivacyDataSource", "verify(exactly = 0)"),
+                "base and manager consumers replace content when lock state changes" to setOf("WidgetPrivacyConsumer", "WidgetManager"),
+            ),
+            "app-desktop/src/test/kotlin/mihon/desktop/updates/UpdatesScreenModelTest.kt" to mapOf(
+                "loadUpdates applies downloaded filter without losing raw items" to setOf("model.loadUpdates", "model.state.value.items"),
+            ),
+            "app-desktop/src/test/kotlin/mihon/desktop/parity/WidgetPrivacyBoundaryTest.kt" to mapOf(
+                "desktop exposes shared updates but no system widget provider" to setOf("DesktopPrivacyCapabilities.production", "systemWidgetProvider", "sharedUpdatesData"),
+            ),
+        ),
+        86 to mapOf(
+            "app-desktop/src/test/kotlin/mihon/desktop/update/DesktopUpdateDownloaderTest.kt" to mapOf(
+                "missing or invalid checksum is manual only without a request or verified file" to setOf("ReleaseChecksum", "ManualOnly"),
+                "known and streaming size limits fail and clean partial files" to setOf("DownloadFailure.TOO_LARGE", "assertEmpty"),
+                "redirect limit and scheme changes are rejected and cleaned" to setOf("DownloadFailure.REDIRECT_LIMIT", "DownloadFailure.CROSS_SCHEME_REDIRECT"),
+            ),
+            "app-desktop/src/test/kotlin/mihon/desktop/update/DesktopUpdateInstallerTest.kt" to mapOf(
+                "Windows requires valid signature and exact configured publisher" to setOf("InstallFailure.SIGNATURE_INVALID", "InstallFailure.PUBLISHER_MISMATCH"),
+                "macOS requires exact team requirement and notarization policy" to setOf("InstallFailure.SIGNATURE_INVALID", "InstallFailure.NOTARIZATION_FAILED"),
+            ),
+            "app-desktop/src/test/kotlin/mihon/desktop/update/DesktopUpdateProcessRunnerTest.kt" to mapOf(
+                "cancellation preserves cause and bounds process plus reader lifetime" to setOf("DesktopUpdateProcessRunner", "forcedTerminationCount"),
+            ),
+            "app-desktop/src/test/kotlin/mihon/desktop/update/DesktopUpdateControllerTest.kt" to mapOf(
+                "successful flow publishes progress and invokes every delegate in order" to setOf("DesktopUpdateController", "DesktopUpdateState.HandedOff"),
+            ),
+            "app-desktop/src/test/kotlin/mihon/desktop/DesktopAppRuntimeTest.kt" to mapOf(
+                "runtime close permanently owns an active updater job" to setOf("DesktopAppRuntime", "DesktopUpdateController", "runtime.close"),
+            ),
+            "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt" to mapOf(
+                "desktop DI shares the production updater controller with UI" to setOf("DesktopUpdateController", "DesktopUpdateScreenModel", "DesktopUiDependencies.fromInjekt"),
+            ),
+            "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AboutUpdateWiringTest.kt" to mapOf(
+                "about renders full version and routes ready confirmation intents" to setOf("AboutUpdateSection", "DesktopUpdateIntent.CONFIRM"),
+            ),
+        ),
+        92 to mapOf(
+            "domain/src/commonTest/kotlin/mihon/domain/security/AppSecurityPolicyTest.kt" to mapOf(
+                "enabled app first process starts locked" to setOf("AppLockPolicy.initial"),
+                "secure screen matrix only protects always and incognito modes" to setOf("SecureScreenPolicy.isProtected"),
+            ),
+            "app/src/test/java/eu/kanade/tachiyomi/ui/security/AndroidSecuritySharedPolicyTest.kt" to mapOf(
+                "first process activity requires unlock when app lock is enabled" to setOf("AndroidAppLockLifecycleConsumer"),
+                "secure screen adapter covers always incognito and never" to setOf("AndroidSecureScreenConsumer"),
+            ),
+            "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/SecuritySettingsWiringTest.kt" to mapOf(
+                "locked root never constructs protected content and only successful unlock restores it" to setOf("DesktopAppLock", "DesktopProtectedRoot"),
+                "unsupported desktop privacy integrations show info without rendering controls" to setOf("DesktopPrivacyCapabilities.production", "nativeNotificationControls", "telemetryControls"),
+            ),
+            "app-desktop/src/test/kotlin/mihon/desktop/privacy/WindowPrivacyWiringTest.kt" to mapOf(
+                "main production composable seam follows policy and clears before detach" to setOf("BindDesktopWindowLifecycle", "DesktopWindowPrivacyController"),
+            ),
+        ),
     )
     private val exactPlatformCapabilityProtectionPaths =
-        exactPlatformCapabilityProtection.mapValues { setOf(it.value.first) }
-    private val exactPlatformCapabilityMarkers = mapOf(
-        81 to setOf("wireDesktopOpenUriEvents", "ExternalActionInput.ViewUri"),
-        82 to setOf("MangaDetailActionRow", "DesktopShareService"),
-        83 to setOf("assertBootstrapSnapshot", "expectedLocked"),
-        84 to setOf("DesktopSecureScreenSettings", "not available on this platform"),
-        86 to setOf("AboutUpdateSection", "DesktopUpdateIntent.CONFIRM"),
-        92 to setOf("DesktopPrivacyCapabilities.production", "nativeNotificationControls", "telemetryControls"),
-    )
+        exactPlatformCapabilityProtection.mapValues { it.value.keys }
     private val forkOnlyReaderPairingPaths =
         setOf(
             "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagePairingAlgorithm.kt",
@@ -1528,27 +1610,22 @@ class DesktopProductCapabilityContractTest {
                 item.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content }.toSet(),
                 "ID $id must retain exact production protection tests",
             )
-            val (testPath, methodName) = exactPlatformCapabilityProtection.getValue(id)
-            assertTrue(testPath in item.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content })
-            val method = kotlinTestMethod(Files.readString(repositoryRoot.resolve(testPath)), methodName, "ID $id protection")
-            assertTrue(method.contains("assert"), "ID $id protection method must execute assertions")
-            exactPlatformCapabilityMarkers.getValue(id).forEach { marker ->
-                assertTrue(method.contains(marker), "ID $id protection method must execute production marker `$marker`")
-            }
+            assertBehaviorEvidence(id, repositoryRoot)
             val deviations = item.getValue("deviations").jsonArray
             assertTrue(deviations.isNotEmpty(), "ID $id requires an honest deviation")
             assertTrue(requiredText(item, "verificationScope", id).contains("CANDIDATE"), "ID $id must remain limited until OS acceptance")
         }
         val widget = items.getValue(85).jsonObject
         assertEquals("EXEMPT", requiredText(widget, "status", 85))
+        assertExactPaths(widget, "sharedImplementationPaths", 85, exactPlatformCapabilityShared.getValue(85))
+        assertExactPaths(widget, "currentAndroidConsumerPaths", 85, exactPlatformCapabilityAndroid.getValue(85))
+        assertExactPaths(widget, "desktopConsumerAdapterPaths", 85, exactPlatformCapabilityConsumers.getValue(85))
+        assertExactPaths(widget, "protectionTests", 85, exactPlatformCapabilityProtectionPaths.getValue(85))
         assertEquals(
-            setOf(
-                "presentation-widget/src/test/java/tachiyomi/presentation/widget/WidgetPrivacyProductionWiringTest.kt",
-                "app-desktop/src/test/kotlin/mihon/desktop/updates/UpdatesScreenModelTest.kt",
-                "app-desktop/src/test/kotlin/mihon/desktop/parity/WidgetPrivacyBoundaryTest.kt",
-            ),
-            widget.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content }.toSet(),
+            "app-desktop/src/test/kotlin/mihon/desktop/parity/WidgetPrivacyBoundaryTest.kt",
+            requiredText(widget, "platformExemptionEvidence", 85),
         )
+        assertBehaviorEvidence(85, repositoryRoot)
         val update = items.getValue(86).jsonObject
         assertTrue(requiredText(update, "fixedMainSemantics", 86).contains("throttle"))
         assertTrue(requiredText(update, "fixedMainSemantics", 86).contains("version"))
@@ -1633,6 +1710,19 @@ class DesktopProductCapabilityContractTest {
         assertTrue(start >= 0, "$context must contain behavior test `$methodName`")
         val nextTest = source.indexOf("\n    @Test", start + marker.length).takeIf { it >= 0 } ?: source.length
         return source.substring(start, nextTest)
+    }
+
+    private fun assertBehaviorEvidence(id: Int, repositoryRoot: Path) {
+        exactPlatformCapabilityProtection.getValue(id).forEach { (testPath, methods) ->
+            val source = Files.readString(repositoryRoot.resolve(testPath))
+            methods.forEach { (methodName, markers) ->
+                val method = kotlinTestMethod(source, methodName, "ID $id protection in $testPath")
+                assertTrue(method.contains("assert"), "ID $id protection method must execute assertions: $methodName")
+                markers.forEach { marker ->
+                    assertTrue(method.contains(marker), "ID $id protection method `$methodName` must execute production marker `$marker`")
+                }
+            }
+        }
     }
 
     private fun validateSourceExtensionProvenance(
