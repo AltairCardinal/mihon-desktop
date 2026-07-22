@@ -41,18 +41,15 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import mihon.desktop.backup.BackupPreview
+import mihon.desktop.platform.DesktopBackupFilePickerRequest
+import mihon.desktop.platform.DesktopBackupFilePickerResult
 import mihon.desktop.platform.DesktopExternalActionTarget
 import mihon.domain.error.AppError
 import tachiyomi.i18n.MR
 import java.io.File
 import java.util.Locale
-import javax.swing.JFileChooser
-import javax.swing.SwingUtilities
-import javax.swing.filechooser.FileNameExtensionFilter
 
 data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
 
@@ -65,13 +62,13 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
 
         val appPrefs = LocalDesktopUiDependencies.current.appPreferences
         var isBusy by remember { mutableStateOf(false) }
-        var restoreErrors by remember { mutableStateOf<List<String>?>(null) }
         val autoBackupInterval by appPrefs.autoBackupInterval.changes()
             .collectAsState(initial = appPrefs.autoBackupInterval.get())
         val autoBackupMaxFiles by appPrefs.autoBackupMaxFiles.changes()
             .collectAsState(initial = appPrefs.autoBackupMaxFiles.get())
 
         val backupFactory = LocalDesktopUiDependencies.current.backupRestoreScreenModelFactory
+        val backupFilePicker = LocalDesktopUiDependencies.current.backupFilePicker
 
         val restoreModel = if (initialBackup == null) {
             rememberScreenModel { backupFactory.create() }
@@ -79,35 +76,6 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
             rememberScreenModel { backupFactory.create(DesktopExternalActionTarget.Backup(initialBackup)) }
         }
         val restoreState by restoreModel.state.collectAsState()
-
-        // ── Restore error dialog ──────────────────────────────────────────────
-        restoreErrors?.let { errors ->
-            AlertDialog(
-                onDismissRequest = { restoreErrors = null },
-                title = { Text(MR.strings.restoring_backup_error.localized()) },
-                text = {
-                    Column {
-                        Text(backupPresentationText(BackupPresentationText.RestoreErrorCount(errors.size)))
-                        Spacer(Modifier.height(8.dp))
-                        errors.take(10).forEach { err ->
-                            Text(
-                                backupPresentationText(BackupPresentationText.RestoreErrorItem(err)),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                        if (errors.size > 10) {
-                            Text(
-                                backupPresentationText(BackupPresentationText.MoreErrors(errors.size - 10)),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { restoreErrors = null }) { Text(MR.strings.action_ok.localized()) }
-                },
-            )
-        }
 
         (restoreState as? BackupRestoreUiState.Preview)?.let { preview ->
             AlertDialog(
@@ -161,10 +129,15 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
                 Button(
                     onClick = {
                         scope.launch {
-                            val dir = chooseDirectory()
-                            if (dir == null) {
-                                snackbar.showSnackbar(backupPresentationText(BackupPresentationText.CreateCancelled))
-                                return@launch
+                            val request = DesktopBackupFilePickerRequest.Directory(
+                                backupPresentationText(BackupPresentationText.DirectoryChooserTitle),
+                            )
+                            val dir = when (val result = backupFilePicker.choose(request)) {
+                                DesktopBackupFilePickerResult.Cancelled -> {
+                                    snackbar.showSnackbar(backupPresentationText(BackupPresentationText.CreateCancelled))
+                                    return@launch
+                                }
+                                is DesktopBackupFilePickerResult.Selected -> result.file
                             }
                             isBusy = true
                             try {
@@ -200,10 +173,17 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
                 OutlinedButton(
                     onClick = {
                         scope.launch {
-                            val file = chooseBackupFile()
-                            if (file == null) {
-                                snackbar.showSnackbar(backupPresentationText(BackupPresentationText.RestoreSelectionCancelled))
-                                return@launch
+                            val request = DesktopBackupFilePickerRequest.BackupFile(
+                                title = backupPresentationText(BackupPresentationText.FileChooserTitle),
+                                description = backupPresentationText(BackupPresentationText.FileFilter),
+                                extensions = setOf("tachibk"),
+                            )
+                            val file = when (val result = backupFilePicker.choose(request)) {
+                                DesktopBackupFilePickerResult.Cancelled -> {
+                                    snackbar.showSnackbar(backupPresentationText(BackupPresentationText.RestoreSelectionCancelled))
+                                    return@launch
+                                }
+                                is DesktopBackupFilePickerResult.Selected -> result.file
                             }
                             restoreModel.select(file)
                         }
@@ -269,51 +249,6 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
         }
     }
 
-    /**
-     * Opens a Swing JFileChooser on the EDT and returns the selected directory,
-     * or null if the user cancels.
-     */
-    private suspend fun chooseDirectory(): File? =
-        withContext(Dispatchers.IO) {
-            var result: File? = null
-            val latch = java.util.concurrent.CountDownLatch(1)
-            SwingUtilities.invokeLater {
-                val chooser = JFileChooser().apply {
-                    dialogTitle = backupPresentationText(BackupPresentationText.DirectoryChooserTitle)
-                    fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-                    currentDirectory = File(System.getProperty("user.home"))
-                }
-                if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-                    result = chooser.selectedFile
-                }
-                latch.countDown()
-            }
-            latch.await()
-            result
-        }
-
-    /**
-     * Opens a Swing JFileChooser filtered for `.tachibk` files.
-     * Returns the selected file, or null if cancelled.
-     */
-    private suspend fun chooseBackupFile(): File? =
-        withContext(Dispatchers.IO) {
-            var result: File? = null
-            val latch = java.util.concurrent.CountDownLatch(1)
-            SwingUtilities.invokeLater {
-                val chooser = JFileChooser().apply {
-                    dialogTitle = backupPresentationText(BackupPresentationText.FileChooserTitle)
-                    fileFilter = FileNameExtensionFilter(backupPresentationText(BackupPresentationText.FileFilter), "tachibk")
-                    currentDirectory = File(System.getProperty("user.home"))
-                }
-                if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-                    result = chooser.selectedFile
-                }
-                latch.countDown()
-            }
-            latch.await()
-            result
-        }
 }
 
 internal sealed interface BackupPresentationText {

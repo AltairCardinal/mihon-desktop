@@ -40,6 +40,8 @@ import mihon.desktop.extension.FixtureNewSource
 import mihon.desktop.ui.extension.DesktopExtensionPresentationPort
 import mihon.desktop.ui.extension.ExtensionsScreenModel
 import mihon.desktop.platform.DesktopNetworkHelper
+import mihon.desktop.platform.DesktopBackupFilePicker
+import mihon.desktop.platform.SwingDesktopBackupFilePicker
 import mihon.desktop.platform.DesktopNativeSharePort
 import mihon.desktop.platform.DesktopShareFailureReason
 import mihon.desktop.platform.DesktopShareResult
@@ -820,6 +822,9 @@ class DesktopDiWiringTest {
         assertNotNull(Injekt.get<DesktopTrackerSyncScheduler>())
         assertEquals(emptySet<Long>(), Injekt.get<TrackerSessionProvider>().loggedInTrackerIds().first())
         assertNotNull(Injekt.get<BackupRestoreScreenModelFactory>())
+        val backupFilePicker = Injekt.get<DesktopBackupFilePicker>()
+        assertTrue(backupFilePicker is SwingDesktopBackupFilePicker)
+        assertSame(backupFilePicker, DesktopUiDependencies.fromInjekt().backupFilePicker)
         assertNotNull(Injekt.get<CreateCategoryWithName>())
         assertNotNull(Injekt.get<GetCategories>())
         assertNotNull(Injekt.get<RenameCategory>())

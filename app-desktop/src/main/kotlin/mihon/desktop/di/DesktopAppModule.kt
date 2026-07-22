@@ -20,6 +20,8 @@ import eu.kanade.tachiyomi.network.NetworkHelper
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.platform.DesktopNativeSharePort
 import mihon.desktop.platform.DesktopShareService
+import mihon.desktop.platform.DesktopBackupFilePicker
+import mihon.desktop.platform.SwingDesktopBackupFilePicker
 import mihon.desktop.platform.defaultDesktopNativeSharePort
 import mihon.desktop.task.DesktopTaskScheduler
 import mihon.desktop.task.FileTaskCheckpointStore
@@ -641,6 +643,7 @@ internal fun initUILayer(
     val categoryRepository = Injekt.get<CategoryRepository>()
     val historyRepository = Injekt.get<HistoryRepository>()
     val appPreferences = Injekt.get<DesktopAppPreferences>()
+    Injekt.addSingleton<DesktopBackupFilePicker>(SwingDesktopBackupFilePicker())
     Injekt.addSingleton(
         BackupRestoreScreenModelFactory(
             mangaRepository = mangaRepository,

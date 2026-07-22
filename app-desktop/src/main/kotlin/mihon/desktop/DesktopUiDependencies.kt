@@ -22,6 +22,7 @@ import mihon.desktop.network.DesktopSourceLoginSessionFactory
 import mihon.desktop.migration.DesktopBatchMigrationController
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.platform.DesktopDeepLinkHandler
+import mihon.desktop.platform.DesktopBackupFilePicker
 import mihon.desktop.platform.DesktopShareService
 import mihon.desktop.privacy.DesktopPrivacyCapabilities
 import mihon.desktop.privacy.DesktopWindowPrivacyController
@@ -62,6 +63,7 @@ import uy.kohesive.injekt.api.get
 data class DesktopUiDependencies(
     val appPreferences: DesktopAppPreferences,
     val backupRestoreScreenModelFactory: BackupRestoreScreenModelFactory,
+    val backupFilePicker: DesktopBackupFilePicker,
     val getCategories: GetCategories,
     val categoryRepository: CategoryRepository,
     val chapterRepository: ChapterRepository,
@@ -131,6 +133,7 @@ data class DesktopUiDependencies(
             return DesktopUiDependencies(
                 appPreferences = Injekt.get(),
                 backupRestoreScreenModelFactory = Injekt.get(),
+                backupFilePicker = Injekt.get(),
                 getCategories = Injekt.get(),
                 categoryRepository = Injekt.get(),
                 chapterRepository = Injekt.get(),
