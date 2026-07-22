@@ -56,6 +56,8 @@ status-source: this-file
 - [x] Task 16D1：Desktop owner setup 与关闭事务
 - [x] Task 16D1R：并发安全的 runtime/broker 关闭所有权
 - [ ] Task 16D2：唯一 production lifecycle 与真实入口证据
+- [ ] Task 16D2R：重复 Compose close 共享 terminal completion
+- [ ] Task 16V1：全局搜索状态单调性验收阻塞修复
 - [ ] Task 16：独立最终审查与三平台 change verify
 
 ## 全局任务门禁
@@ -1144,13 +1146,63 @@ status-source: this-file
 3. GREEN：删除 `startDesktopApplication`/`runOwnerApplication` 的重复生命周期，让 production 与测试只调用一个 suspend transaction；Compose close callback 将结果传回外层再退出，首次失败不能被第二次幂等 close 吞掉。禁止 production `runBlocking`、latch 或 `Future.get`。
 4. 保持 JVM `public static main(String[])`、navigator identity、OpenURI owner-only/close retry、Windows TEST_GUIDE 七项和架构 baseline。运行 entry/runtime/security/URI/DI/navigation/release/architecture focused tests、`:app-desktop:jvmTest`、Spotless、diff 与 4-file/400-line gate；独立审查通过后同时关闭 16D1/16D2，再回到 Task 16。
 
+**Repair re-review status:** 唯一修复 `101e399717` 关闭了不可变 main bridge、默认 window 聚合器和 TestMode start-failure stop 三项初审问题，focused 9 类、Spotless 与 4 files/334 touched gate 通过。唯一复审仍以 `0/1/0` 拒绝并发重复 close：第二请求虽不能覆盖首次结果，却会提前从 `requestClose` 返回并执行 `exitApplication()`，从而可能取消仍在 `rememberCoroutineScope` 中等待 terminal 的首次 cleanup。按门禁停止 D2 内第三轮修改，将这个单一并发 completion 风险拆为 D2R；D2/D2R 均保持未勾选。
+
+### 子 Task 16D2R：重复 Compose close 共享 terminal completion
+
+**Risk axis:** desktop-window-close-terminal
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 2 files, 160 lines
+
+**Verification:** concurrent duplicate close shared completion、first failure identity、single cleanup invocation、D2 lifecycle regression
+
+**Files:**
+
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/Main.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/DesktopAppRuntimeTest.kt`
+
+**Consumes:** D2 的唯一 suspend lifecycle、真实 main/default window event-loop seam，以及唯一修复复审的 `0/1/0` finding。
+
+**Produces:** 所有 Compose close 请求共享同一个 terminal completion；只有首请求执行 `closeAndJoin`，后续请求必须等待相同结果完成后才可返回并触发窗口退出，首次失败只由外层 entry 传播一次。
+
+1. RED：首个 close 进入后阻塞 terminal，再并发发出第二个 close；第二请求在释放 terminal 前不得返回，`closeAndJoin` 调用数始终为 1。释放后两个请求都完成，outer helper 抛出与首个失败相同的对象；旧“CAS 失败立即返回”实现必须失败。
+2. GREEN：首请求 CAS 成功后完成 `CompletableDeferred<Result<Unit>>`；无论 CAS 是否成功，每个请求都 await 同一 deferred，但 request callback 自身不重复抛出结果。event loop 返回后由唯一外层 `getOrThrow()` 传播 terminal failure。
+3. 保持真实 JVM main、default owner lifecycle、TestMode rollback、NonCancellable cleanup 和无 blocking bridge。运行 Runtime/Security focused、Spotless、diff 与 2-file/160-line gate；独立审查通过后同时勾选 D2/D2R，再进入 V1。
+
+### 子 Task 16V1：全局搜索状态单调性验收阻塞修复
+
+**Risk axis:** desktop-global-search-publication-order
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 2 files, 240 lines
+
+**Verification:** deterministic stale child-state rejection、single Loading→Failure callback、exact recovery regression、SourceSharedStateWiringTest stress
+
+**Files:**
+
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceQueryCoordinators.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceSharedStateWiringTest.kt`
+
+**Consumes:** D2 全量验证两轮 1991 项中同一 Source 测试类的 timeout 与重复 `Loading → Failure → Loading → Failure`；该问题与 D2 lifecycle 无调用依赖，但阻塞 Task 16 全量验收。
+
+**Produces:** Desktop 全局搜索只接受 child 当前权威状态；同步 `onStarted`/completed 聚合与异步 collector 乱序时，已被更新状态取代的旧 candidate 不得让 UI/callback 回退或重复副作用。
+
+1. RED：在 child 已从 Loading 推进到 Failure 后，确定性地把旧 Loading candidate 交给 production `aggregateCandidate`；旧实现会错误接受并产生回退，新测试必须失败。保留真实搜索只发布一次 `Loading → Failure` 与 exact recovery callback 脱绑定用例。
+2. GREEN：在 generation、child identity 检查之外，仅当 candidate 仍等于该 child 的当前权威 state 时才聚合；不删除 recovery 所需 collector，不复制 source query reducer，也不改变原版/shared 查询语义。
+3. 运行 SourceSharedStateWiringTest 定向与重复压力、Spotless、diff 和 2-file/240-line gate；独立审查通过后进入 Task 16，并由 Task 16 重新执行唯一最终全量矩阵，不在本 Task 重复全量构建。
+
 ### Task 16：独立最终审查与三平台 change verify
 
 **Risk axis:** platform-change-verify
 
 **Platform boundary:** verification
 
-**Estimated scope:** verification artifacts 6 files, 220 lines；whole-change review repair 8 files, 400 lines
+**Estimated scope:** 8 files, 400 lines
+
+**Scope note:** 纯验证产物预计为 6 files/220 lines；8 files/400 lines 是 whole-change review 唯一修复轮允许的总上限，超过时必须另建有界 Task，不能在本 Task 静默扩张。
 
 **Verification:** shared/Android/Desktop 全量测试、Windows 固定 EXE、macOS 应用包和可用 Linux matrix 均基于同一最终提交
 
