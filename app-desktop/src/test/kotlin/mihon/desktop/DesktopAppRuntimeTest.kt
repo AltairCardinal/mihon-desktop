@@ -338,6 +338,28 @@ class DesktopAppRuntimeTest {
             context.closeAndJoin()
         }
     }
+
+    @Test
+    fun `production entry closes registered runtime when owner factory fails`(@org.junit.jupiter.api.io.TempDir tempDir: File) = runBlocking {
+        val runtime = headlessRuntime().also(DesktopAppRuntime::start)
+        val broker = DesktopExternalActionBroker(File(tempDir, "factory-failure.json"))
+        val failure = assertThrows(IllegalStateException::class.java) {
+            runBlocking {
+                startProductionDesktopApplication(
+                    args = emptyArray(),
+                    broker = broker,
+                    ownerIngressDependencies = { transaction ->
+                        transaction.registerRuntime(runtime)
+                        throw IllegalStateException("factory failed")
+                    },
+                )
+            }
+        }
+
+        assertEquals("factory failed", failure.message)
+        assertFalse(runtime.isRunning)
+        broker.close()
+    }
     @Test
     fun `owner ingress does not install open URI handler when broker attachment is rejected`(@org.junit.jupiter.api.io.TempDir tempDir: File) {
         val runtime = headlessRuntime()
