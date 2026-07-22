@@ -33,6 +33,7 @@ class DesktopAppRuntime(
     private var startupJob: Job? = null
     private var instanceBroker: DesktopExternalActionBroker? = null
     private val closeActions = mutableListOf<AutoCloseable>()
+    private val runningServices = linkedSetOf<DesktopRuntimeService>()
     var isRunning: Boolean = false
         private set
 
@@ -43,11 +44,10 @@ class DesktopAppRuntime(
         startupJob = scope.launch {
             runCatching { startupCleanup() }
         }
-        libraryUpdateScheduler.start()
-        localSourceScanService.start()
-        autoBackupScheduler.start()
-        trackerSyncScheduler.start()
-        batchMigrationController.start()
+        listOf(libraryUpdateScheduler, localSourceScanService, autoBackupScheduler, trackerSyncScheduler, batchMigrationController).forEach {
+            it.start()
+            runningServices += it
+        }
     }
 
     fun stop() {
@@ -56,12 +56,14 @@ class DesktopAppRuntime(
         failures.attempt(appLock::onApplicationStopped)
         failures.attempt { startupJob?.cancel() }
         startupJob = null
-        failures.attempt(batchMigrationController::stop)
-        failures.attempt(trackerSyncScheduler::stop)
-        failures.attempt(autoBackupScheduler::stop)
-        failures.attempt(localSourceScanService::stop)
-        failures.attempt(libraryUpdateScheduler::stop)
-        isRunning = false
+        listOf(batchMigrationController, trackerSyncScheduler, autoBackupScheduler, localSourceScanService, libraryUpdateScheduler).forEach { service ->
+            if (service in runningServices) {
+                var stopped = false
+                failures.attempt { service.stop(); stopped = true }
+                if (stopped) runningServices -= service
+            }
+        }
+        isRunning = runningServices.isNotEmpty()
         failures.throwIfAny()
     }
 
@@ -70,8 +72,8 @@ class DesktopAppRuntime(
         failures.attempt(::stop)
         failures.attempt {
             val broker = instanceBroker
-            instanceBroker = null
             broker?.close()
+            instanceBroker = null
         }
         closeActions.toList().forEach { closeAction ->
             var closed = false
