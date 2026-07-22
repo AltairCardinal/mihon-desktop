@@ -36,9 +36,9 @@ status-source: this-file
 
 按以下顺序一次执行一个子 Task，不并发写共享文件：
 
-`1 → 2 → 3 → 3R → 4A → 4B1 → 4B2 → 4C → 4D → 5 → 6 → 7 → 8 → 9 → 10A → 10B → 10C → 10D → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20`
+`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 5 → 6 → 7 → 8 → 9 → 10A → 10B → 10C → 10D → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20`
 
-其中 `DesktopSettingsCatalog.kt` 只在 5–8、11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6→11→16 串行修改；`AboutScreen.kt` 与 Tracking/ExtensionRepo 只在 4D→8→15→18 串行修改。
+其中 `DesktopSettingsCatalog.kt` 只在 5–8、11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6→11→16 串行修改；`AboutScreen.kt` 与 Tracking/ExtensionRepo 只在 4E→8→15→18 串行修改。
 
 ## 执行状态
 
@@ -47,10 +47,10 @@ status-source: this-file
 - [x] Task 3：当前 Android consumer 消费共享搜索契约
 - [x] Task 3R：Android 设置搜索 production 默认 shared wiring 证据
 - [x] Task 4A：Desktop 入口/基础设置 i18n 同源化
-- [ ] Task 4B1：Desktop Reader/Library/Download 设置 i18n 同源化
-- [ ] Task 4B2：Desktop Backup 设置 i18n 同源化
-- [ ] Task 4C：Desktop 安全/高级设置 i18n 同源化
-- [ ] Task 4D：Desktop About/扩展/Tracking i18n 同源化
+- [ ] Task 4B：Desktop Reader/Library/Download 设置 i18n 同源化
+- [ ] Task 4C：Desktop Backup 设置 i18n 同源化
+- [ ] Task 4D：Desktop 安全/高级设置 i18n 同源化
+- [ ] Task 4E：Desktop About/扩展/Tracking i18n 同源化
 - [ ] Task 5：Desktop 设置 catalog、搜索 Screen 与入口
 - [ ] Task 6：Desktop 标题 anchor 核心与基础页面
 - [ ] Task 7：Desktop 标题 anchor 的安全/数据页面
@@ -191,9 +191,9 @@ status-source: this-file
 2. GREEN：迁移用户可见 title/summary/content description/state 文案；不改变设置行为。
 3. 运行 i18n completeness、真实 Compose rendered copy、Spotless/range gate。
 
-**Review status（已完成）：** 实现 `4975cca27` 将 More、General、Appearance 的用户可见文案接入 MR，标准语义复用 fixed-main identity，Desktop 独有组合语义使用 base/zh-rCN 成对资源；真实 Compose RED 为 `2 tests/1 failed`，精确发现硬编码 Tracking summary 与资源 identity 分叉，GREEN 后 focused `3/3`。首审 `0/2/0` 指出 fixed-main `pref_tracking_summary` 会错误宣称 Desktop 不具备的增强同步，以及零下载 subtitle 可被同名 title 掩盖；唯一修复 `914b49336` 改用准确的 Desktop Tracking summary，并从 clickable `SettingsEntry` 验证 title→subtitle 关系。两项变异各取得 `2 tests/1 failed` 精确 RED，最终必要回归 `57/57`、Spotless、i18n XML、diff、range 与 guard 通过；累计 `6 files/371 touched`，保留全部导航、设置写入、队列状态和 Desktop 独有入口。唯一修复复审 APPROVED，Critical/Important/Minor `0/0/0`。下一项为父 Task 5B / 子 Task 4B1。
+**Review status（已完成）：** 实现 `4975cca27` 将 More、General、Appearance 的用户可见文案接入 MR，标准语义复用 fixed-main identity，Desktop 独有组合语义使用 base/zh-rCN 成对资源；真实 Compose RED 为 `2 tests/1 failed`，精确发现硬编码 Tracking summary 与资源 identity 分叉，GREEN 后 focused `3/3`。首审 `0/2/0` 指出 fixed-main `pref_tracking_summary` 会错误宣称 Desktop 不具备的增强同步，以及零下载 subtitle 可被同名 title 掩盖；唯一修复 `914b49336` 改用准确的 Desktop Tracking summary，并从 clickable `SettingsEntry` 验证 title→subtitle 关系。两项变异各取得 `2 tests/1 failed` 精确 RED，最终必要回归 `57/57`、Spotless、i18n XML、diff、range 与 guard 通过；累计 `6 files/371 touched`，保留全部导航、设置写入、队列状态和 Desktop 独有入口。唯一修复复审 APPROVED，Critical/Important/Minor `0/0/0`。下一项为父 Task 5B / 子 Task 4B。
 
-### Task 4B1：Desktop Reader/Library/Download 设置 i18n 同源化
+### Task 4B：Desktop Reader/Library/Download 设置 i18n 同源化
 
 **Risk axis:** settings-i18n-content
 
@@ -209,9 +209,9 @@ status-source: this-file
 2. GREEN：只迁移文案 accessor，保留 reader/library/download 全部 Desktop 行为。
 3. 运行三页 rendered copy、resource completeness、Spotless/range gate。
 
-**Split evidence:** 原 Task 4B 在四页 production GREEN 后实际达到 `7 files/416 touched`，超过 400 行上限；不得通过把资源清单并列压缩掩盖范围，因此按不共享 production Screen 的风险边界拆为 4B1 与 4B2。已取得的共同 RED 为真实 Reader 页面硬编码 `Default Reading Mode` 与 fixed-main `pref_viewer_type` identity 分叉；未提交的 Backup 修改不计为 4B1 证据，必须在 4B1 审查关闭后由 4B2 独立重做和验证。
+**Split evidence:** 原 Task 4B 在四页 production GREEN 后实际达到 `7 files/416 touched`，超过 400 行上限；不得通过把资源清单并列压缩掩盖范围，因此按不共享 production Screen 的风险边界拆为修订后的 4B 与新增 4C，原 4C/4D 顺延为 4D/4E。已取得的共同 RED 为真实 Reader 页面硬编码 `Default Reading Mode` 与 fixed-main `pref_viewer_type` identity 分叉；未提交的 Backup 修改不计为 4B 证据，必须在 4B 审查关闭后由 4C 独立重做和验证。
 
-### Task 4B2：Desktop Backup 设置 i18n 同源化
+### Task 4C：Desktop Backup 设置 i18n 同源化
 
 **Risk axis:** settings-i18n-backup
 
@@ -227,7 +227,7 @@ status-source: this-file
 2. GREEN：只迁移 presentation copy 与格式化 accessor，保留 `.tachibk` 兼容、最大备份、调度、文件选择、恢复事务和错误分类行为。
 3. 运行 Backup production state/rendered copy、resource completeness、既有 backup wiring、Spotless/range gate。
 
-### Task 4C：Desktop 安全/高级设置 i18n 同源化
+### Task 4D：Desktop 安全/高级设置 i18n 同源化
 
 **Risk axis:** settings-i18n-security
 
@@ -243,7 +243,7 @@ status-source: this-file
 2. GREEN：只替换 presentation copy，不改 challenge、credential、window privacy production 规则。
 3. 运行 Security/Advanced wiring、rendered copy、Spotless/range gate。
 
-### Task 4D：Desktop About/扩展/Tracking i18n 同源化
+### Task 4E：Desktop About/扩展/Tracking i18n 同源化
 
 **Risk axis:** settings-i18n-extended
 
