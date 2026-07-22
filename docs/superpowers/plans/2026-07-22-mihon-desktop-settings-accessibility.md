@@ -362,7 +362,7 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 4 files, 350 lines
+**Estimated scope:** 4 files, 380 lines
 
 **Verification:** empty/list/pending、create/delete/refresh/conflict/error、website/copy同源MR与base/zh-rCN完整
 
@@ -373,6 +373,8 @@ status-source: this-file
 3. 运行 ExtensionRepo production wiring/rendered/navigation、Spotless/range gate。
 
 **Replan evidence:** 真实 Screen + repository/interactor 测试覆盖 initial URL、pending、全部 create outcome、fingerprint conflict、delete/refresh/copy 后，首次 GREEN 前自然范围为 `286 additions + 37 deletions = 323 touched`；不得按净行数误报为低于 320，也不删除状态覆盖或压缩格式。所有场景共享同一 ExtensionRepo production Screen/wiring，故将本 Task 上限调整为 350 行，不拆出无独立产品风险的子 Task。
+
+**Repair replan evidence:** 首审 `0/2/0` 发现剪贴板按钮误用 fixed-main 明确禁止用于 clipboard 的名词 `copy`，且 open/copy description 无序集合无法杀死按钮 identity 对调。唯一修复改用 `action_copy_link`、恢复原 `copy` 翻译，并通过 Compose `LocalClipboardManager` 按 repo card 按钮节点绑定 open→copy→delete、验证 `${baseUrl}/index.min.json`；自然范围预计低于 380，故不拆出独立 Task。
 
 ### Task 4K：Desktop Tracking typed message 与 formatter identity
 
