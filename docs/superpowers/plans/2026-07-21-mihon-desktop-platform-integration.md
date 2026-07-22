@@ -61,7 +61,7 @@ status-source: this-file
 - [x] Task 16E1：credential 事务 fail-closed 与敏感缓冲区
 - [x] Task 16E2：真实 owner entry 证明与异常优先级
 - [x] Task 16E3：macOS 分享 helper 的 runtime ownership
-- [ ] Task 16E4：Manga 分享入口非阻塞
+- [x] Task 16E4：Manga 分享入口非阻塞
 - [ ] Task 16E5：parity exact 保护集合补齐
 - [ ] Task 16：独立最终审查与三平台 change verify
 
@@ -1307,6 +1307,8 @@ status-source: this-file
 1. RED：delayed-READY fake 在点击后阻塞；旧同步回调必须使“点击立即返回且 scene 可再次 render”失败，释放后才允许 Opened/terminal。
 2. GREEN：只把可能阻塞的 share launch 放入结构化 coroutine/IO 边界，不创建第二套分享服务，不改变 clipboard fallback 或 Reader 行为；composition dispose 后不发布失效 UI。
 3. 运行 Manga/Reader/share focused、Spotless、diff 与 2-file/180-line gate；独立审查通过后进入 E5。
+
+**Review status（已完成）：** 实现提交 `16d8a489e` 先用 delayed READY 的真实 DesktopShareService/ImageComposeScene 证明旧同步点击阻塞约 2017ms，GREEN 复用 Reader 模式把 launch 放入 composition scope 的 IO dispatcher；同步 mutation 再次以约 2010ms RED。阻塞期间 scene 可重绘并执行 Copy link，释放后 Shared/Cancelled/Failed 各产生一次准确全局通知，不写 Compose state或复制 service/reducer。独立审查 APPROVED，Critical/Important/Minor `0/0/0`；focused 21/21、根 Spotless、diff 与 2 files/116 touched 门禁通过，下一项为 E5。
 
 ### 子 Task 16E5：parity exact 保护集合补齐
 
