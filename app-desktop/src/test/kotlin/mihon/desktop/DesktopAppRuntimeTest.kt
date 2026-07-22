@@ -243,26 +243,36 @@ class DesktopAppRuntimeTest {
                 },
             )
         }
-        assertTrue(ownerEntered.await(1, TimeUnit.SECONDS))
-        val secondary = DesktopExternalActionBroker(stateFile)
-        assertEquals(
-            DesktopInstanceStartResult.Forwarded,
-            startDesktopApplication(
-                args = arrayOf("tachiyomi://manga?url=secondary"),
-                broker = secondary,
-                registrar = mihon.desktop.platform.DesktopUriSchemeRegistrar { error("secondary must not register") },
-                openUriEventPort = port,
-                ownerIngressDependencies = { error("secondary must not initialize owner dependencies") },
-                ownerContinuation = { error("secondary must not continue owner startup") },
-            ),
-        )
-        assertEquals(1, port.installs)
-        assertEquals(1, ownerFactoryCalls)
-        releaseOwner.countDown()
-        assertEquals(DesktopInstanceStartResult.Owner, ownerStart.await())
-        assertEquals(1, port.closes)
-        secondary.close()
-        context.closeAndJoin()
+        var secondary: DesktopExternalActionBroker? = null
+        try {
+            assertTrue(ownerEntered.await(1, TimeUnit.SECONDS))
+            port.emit("tachiyomi://manga?url=owner-identity")
+            assertTrue(uiDependencies.externalActionNavigator.hasPendingAction)
+            val fixture = navigatorFixture()
+            uiDependencies.externalActionNavigator.consumePending(fixture.navigator) {}
+            assertFalse(uiDependencies.externalActionNavigator.hasPendingAction)
+            fixture.close()
+            secondary = DesktopExternalActionBroker(stateFile)
+            assertEquals(
+                DesktopInstanceStartResult.Forwarded,
+                startDesktopApplication(
+                    args = arrayOf("tachiyomi://manga?url=secondary"),
+                    broker = secondary,
+                    registrar = mihon.desktop.platform.DesktopUriSchemeRegistrar { error("secondary must not register") },
+                    openUriEventPort = port,
+                    ownerIngressDependencies = { error("secondary must not initialize owner dependencies") },
+                    ownerContinuation = { error("secondary must not continue owner startup") },
+                ),
+            )
+            assertEquals(1, port.installs)
+            assertEquals(1, ownerFactoryCalls)
+        } finally {
+            releaseOwner.countDown()
+            runCatching { ownerStart.await() }
+            assertEquals(1, port.closes)
+            secondary?.close()
+            context.closeAndJoin()
+        }
     }
     @Test
     fun `owner ingress does not install open URI handler when broker attachment is rejected`(@org.junit.jupiter.api.io.TempDir tempDir: File) {
