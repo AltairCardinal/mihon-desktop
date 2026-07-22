@@ -34,6 +34,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.icerock.moko.resources.StringResource
@@ -187,6 +188,23 @@ internal fun FlareSolverrSettingsSectionContent(
 internal fun cloudflareCookieImportedFeedback(url: okhttp3.HttpUrl, locale: Locale): String =
     MR.strings.desktop_settings_cloudflare_cookie_imported.localized(locale, url.host)
 
+internal interface AdvancedSettingsPlatformActions {
+    suspend fun loadNetworkCacheSize(): String
+    suspend fun openCrashLogFolder(): Boolean
+}
+
+private object ProductionAdvancedSettingsPlatformActions : AdvancedSettingsPlatformActions {
+    override suspend fun loadNetworkCacheSize(): String {
+        val cacheDir = DesktopPlatformPaths.current().networkCacheDir
+        return if (cacheDir.exists()) formatBytes(cacheDir.walkTopDown().sumOf { it.length() }) else "0 B"
+    }
+
+    override suspend fun openCrashLogFolder(): Boolean = DesktopDirectoryOpener.open(CrashHandler.defaultCrashLogDir())
+}
+
+internal val LocalAdvancedSettingsPlatformActions =
+    staticCompositionLocalOf<AdvancedSettingsPlatformActions> { ProductionAdvancedSettingsPlatformActions }
+
 class AdvancedSettingsScreen : Screen {
 
     @OptIn(ExperimentalMaterial3Api::class)
@@ -196,6 +214,7 @@ class AdvancedSettingsScreen : Screen {
         val dependencies = LocalDesktopUiDependencies.current
         val networkHelper = dependencies.networkHelper
         val preferences = dependencies.appPreferences
+        val platformActions = LocalAdvancedSettingsPlatformActions.current
         val paths = remember { DesktopPlatformPaths.current() }
         val scope = rememberCoroutineScope()
         val locale = remember { Locale.getDefault() }
@@ -221,11 +240,7 @@ class AdvancedSettingsScreen : Screen {
 
         // Compute network cache size once (and refresh after clearing)
         val cacheSize by produceState(initialValue = "", cacheCleared) {
-            value = withContext(Dispatchers.IO) {
-                val cacheDir = paths.networkCacheDir
-                if (cacheDir.exists()) formatBytes(cacheDir.walkTopDown().sumOf { it.length() })
-                else "0 B"
-            }
+            value = withContext(Dispatchers.IO) { platformActions.loadNetworkCacheSize() }
         }
 
         Scaffold(
@@ -295,9 +310,7 @@ class AdvancedSettingsScreen : Screen {
                 TextButton(
                     onClick = {
                         scope.launch {
-                            val opened = withContext(Dispatchers.IO) {
-                                DesktopDirectoryOpener.open(CrashHandler.defaultCrashLogDir())
-                            }
+                            val opened = withContext(Dispatchers.IO) { platformActions.openCrashLogFolder() }
                             snackbar.showSnackbar(
                                 if (opened) {
                                     text(MR.strings.desktop_advanced_crash_log_opened)

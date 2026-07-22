@@ -30,6 +30,7 @@ import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.settings.LibraryUpdateInterval
 import mihon.desktop.ui.settings.AppearanceSettingsScreen
 import mihon.desktop.ui.settings.AdvancedSettingsScreen
+import mihon.desktop.ui.settings.AdvancedSettingsPlatformActions
 import mihon.desktop.ui.settings.BackupPresentationText
 import mihon.desktop.ui.settings.BackupRestoreFailureReason
 import mihon.desktop.ui.settings.BackupRestoreScreenModel
@@ -38,6 +39,7 @@ import mihon.desktop.ui.settings.BackupSettingsScreen
 import mihon.desktop.ui.settings.DownloadSettingsScreen
 import mihon.desktop.ui.settings.GeneralSettingsScreen
 import mihon.desktop.ui.settings.LibrarySettingsScreen
+import mihon.desktop.ui.settings.LocalAdvancedSettingsPlatformActions
 import mihon.desktop.ui.settings.MoreRootScreen
 import mihon.desktop.ui.settings.ReaderSettingsScreen
 import mihon.desktop.ui.settings.backupPartialFailurePresentation
@@ -270,6 +272,33 @@ class DesktopSettingsResourceIdentityTest {
             listOf(chinese, english).forEach { locale ->
                 appPreferences.flareSolverrEnabled.set(true)
                 appPreferences.flareSolverrUrl.set("")
+                val cacheSize = CompletableDeferred<String>()
+                val successScene = advancedScene(
+                    dependencies,
+                    locale,
+                    ControlledAdvancedSettingsPlatformActions(cacheSize, crashFolderOpened = true),
+                )
+                try {
+                    assertCopy(snapshot(successScene).text, MR.strings.desktop_advanced_calculating.localized(locale))
+                    cacheSize.complete("42 KB")
+                    assertCopy(snapshot(successScene).text, "42 KB")
+                    click(successScene, MR.strings.desktop_advanced_crash_log_open.localized(locale))
+                    assertCopy(snapshot(successScene).text, MR.strings.desktop_advanced_crash_log_opened.localized(locale))
+                } finally {
+                    successScene.close()
+                }
+                val failureScene = advancedScene(
+                    dependencies,
+                    locale,
+                    ControlledAdvancedSettingsPlatformActions(CompletableDeferred("42 KB"), crashFolderOpened = false),
+                )
+                try {
+                    snapshot(failureScene)
+                    click(failureScene, MR.strings.desktop_advanced_crash_log_open.localized(locale))
+                    assertCopy(snapshot(failureScene).text, MR.strings.desktop_advanced_crash_log_open_failed.localized(locale))
+                } finally {
+                    failureScene.close()
+                }
                 val advanced = render(AdvancedSettingsScreen(), dependencies, locale, height = 2_400)
                 assertCopy(
                     advanced.text,
@@ -591,6 +620,36 @@ class DesktopSettingsResourceIdentityTest {
         }
     }
 
+    private suspend fun advancedScene(
+        dependencies: DesktopUiDependencies,
+        locale: Locale,
+        actions: AdvancedSettingsPlatformActions,
+    ): ImageComposeScene {
+        Locale.setDefault(locale)
+        return ImageComposeScene(900, 2_400, coroutineContext = kotlinx.coroutines.currentCoroutineContext()).also { scene ->
+            scene.setContent {
+                CompositionLocalProvider(
+                    LocalDesktopUiDependencies provides dependencies,
+                    LocalAdvancedSettingsPlatformActions provides actions,
+                ) {
+                    Navigator(AdvancedSettingsScreen()) { CurrentScreen() }
+                }
+            }
+        }
+    }
+
+    private suspend fun snapshot(scene: ImageComposeScene): RenderedCopy {
+        repeat(3) { scene.render(); yield() }
+        return RenderedCopy(textCopy(scene), descriptionCopy(scene), entryCopy(scene), selectedEntryCopy(scene))
+    }
+
+    private fun click(scene: ImageComposeScene, label: String) {
+        val node = nodes(scene).last {
+            it.config.contains(SemanticsActions.OnClick) && flatten(it).flatMap(::textCopy).contains(label)
+        }
+        assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
+    }
+
     private fun assertCopy(actual: Set<String>, vararg expected: String) {
         expected.forEach { assertTrue(it in actual, "Missing '$it': $actual") }
     }
@@ -650,6 +709,14 @@ class DesktopSettingsResourceIdentityTest {
         val entries: Set<List<String>>,
         val selectedEntries: Set<List<String>>,
     )
+
+    private class ControlledAdvancedSettingsPlatformActions(
+        private val cacheSize: CompletableDeferred<String>,
+        private val crashFolderOpened: Boolean,
+    ) : AdvancedSettingsPlatformActions {
+        override suspend fun loadNetworkCacheSize(): String = cacheSize.await()
+        override suspend fun openCrashLogFolder(): Boolean = crashFolderOpened
+    }
 
     private val desktopResources: List<StringResource> = listOf(
         MR.strings.desktop_more_tracking_summary,
