@@ -32,12 +32,7 @@ fun PreferenceScreen(
     val highlightKey = SearchableSettings.highlightKey
     if (highlightKey != null) {
         LaunchedEffect(Unit) {
-            val i = items.findHighlightedIndex(highlightKey)
-            if (i >= 0) {
-                delay(0.5.seconds)
-                state.animateScrollToItem(i)
-            }
-            SearchableSettings.highlightKey = null
+            consumeSettingsHighlight(items, state::animateScrollToItem)
         }
     }
 
@@ -80,6 +75,19 @@ fun PreferenceScreen(
             }
         }
     }
+}
+
+internal suspend fun consumeSettingsHighlight(
+    items: List<Preference>,
+    scrollToItem: suspend (Int) -> Unit,
+) {
+    val highlightKey = SearchableSettings.highlightKey ?: return
+    val index = items.findHighlightedIndex(highlightKey)
+    if (index >= 0) {
+        delay(0.5.seconds)
+        scrollToItem(index)
+    }
+    SearchableSettings.highlightKey = null
 }
 
 private fun List<Preference>.findHighlightedIndex(highlightKey: String): Int {

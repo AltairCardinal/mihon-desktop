@@ -48,8 +48,11 @@ import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.components.UpIcon
-import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.presentation.util.Screen
+import mihon.domain.settings.SearchableSettingsScreen
+import mihon.domain.settings.SettingsLayoutDirection
+import mihon.domain.settings.SettingsSearchPolicy
+import mihon.domain.settings.SettingsSearchResult
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
@@ -66,6 +69,7 @@ class SettingsSearchScreen : Screen() {
         val focusManager = LocalFocusManager.current
         val focusRequester = remember { FocusRequester() }
         val listState = rememberLazyListState()
+        val index = getIndex()
 
         // Hide keyboard on change screen
         DisposableEffect(Unit) {
@@ -141,75 +145,35 @@ class SettingsSearchScreen : Screen() {
             },
         ) { contentPadding ->
             SearchResult(
+                screens = index,
                 searchKey = textFieldState.text.toString(),
                 listState = listState,
                 contentPadding = contentPadding,
-            ) { result ->
-                SearchableSettings.highlightKey = result.highlightKey
-                navigator.replace(result.route)
-            }
+                replace = navigator::replace,
+            )
         }
     }
 }
 
 @Composable
-private fun SearchResult(
+internal fun SearchResult(
+    screens: List<SearchableSettingsScreen<VoyagerScreen>>,
     searchKey: String,
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
     contentPadding: PaddingValues = PaddingValues(),
-    onItemClick: (SearchResultItem) -> Unit,
+    replace: (VoyagerScreen) -> Unit,
 ) {
     if (searchKey.isEmpty()) return
 
-    val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
+    val layoutDirection = if (LocalLayoutDirection.current == LayoutDirection.Ltr) {
+        SettingsLayoutDirection.Ltr
+    } else {
+        SettingsLayoutDirection.Rtl
+    }
 
-    val index = getIndex()
-    val result by produceState<List<SearchResultItem>?>(initialValue = null, searchKey) {
-        value = index.asSequence()
-            .flatMap { settingsData ->
-                settingsData.contents.asSequence()
-                    // Only search from enabled prefs and one with valid title
-                    .filter { it.enabled && it.title.isNotBlank() }
-                    // Flatten items contained inside *enabled* PreferenceGroup
-                    .flatMap { p ->
-                        when (p) {
-                            is Preference.PreferenceGroup -> {
-                                if (p.enabled) {
-                                    p.preferenceItems.asSequence()
-                                        .filter { it.enabled && it.title.isNotBlank() }
-                                        .map { p.title to it }
-                                } else {
-                                    emptySequence()
-                                }
-                            }
-                            is Preference.PreferenceItem<*, *> -> sequenceOf(null to p)
-                        }
-                    }
-                    // Don't show info preference
-                    .filterNot { it.second is Preference.PreferenceItem.InfoPreference }
-                    // Filter by search query
-                    .filter { (_, p) ->
-                        val inTitle = p.title.contains(searchKey, true)
-                        val inSummary = p.subtitle?.contains(searchKey, true) ?: false
-                        inTitle || inSummary
-                    }
-                    // Map result data
-                    .map { (categoryTitle, p) ->
-                        SearchResultItem(
-                            route = settingsData.route,
-                            title = p.title,
-                            breadcrumbs = getLocalizedBreadcrumb(
-                                path = settingsData.title,
-                                node = categoryTitle,
-                                isLtr = isLtr,
-                            ),
-                            highlightKey = p.title,
-                        )
-                    }
-            }
-            .take(10) // Just take top 10 result for quicker result
-            .toList()
+    val result by produceState<List<SettingsSearchResult<VoyagerScreen>>?>(initialValue = null, searchKey) {
+        value = searchSettings(screens, searchKey, layoutDirection)
     }
 
     Crossfade(
@@ -235,7 +199,7 @@ private fun SearchResult(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { onItemClick(item) }
+                                .clickable { openSettingsSearchResult(item, replace) }
                                 .padding(horizontal = 24.dp, vertical = 14.dp),
                         ) {
                             Text(
@@ -246,7 +210,7 @@ private fun SearchResult(
                                 style = MaterialTheme.typography.titleMedium,
                             )
                             Text(
-                                text = item.breadcrumbs,
+                                text = item.breadcrumb,
                                 modifier = Modifier.paddingFromBaseline(top = 16.dp),
                                 maxLines = 1,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -262,27 +226,26 @@ private fun SearchResult(
 
 @Composable
 @NonRestartableComposable
-private fun getIndex() = settingScreens
+private fun getIndex(): List<SearchableSettingsScreen<VoyagerScreen>> = settingScreens
     .map { screen ->
-        SettingsData(
+        screen.toSearchableSettingsScreen(
             title = stringResource(screen.getTitleRes()),
-            route = screen,
-            contents = screen.getPreferences(),
+            preferences = screen.getPreferences(),
         )
     }
 
-private fun getLocalizedBreadcrumb(path: String, node: String?, isLtr: Boolean): String {
-    return if (node == null) {
-        path
-    } else {
-        if (isLtr) {
-            // This locale reads left to right.
-            "$path > $node"
-        } else {
-            // This locale reads right to left.
-            "$node < $path"
-        }
-    }
+internal fun searchSettings(
+    screens: List<SearchableSettingsScreen<VoyagerScreen>>,
+    query: String,
+    layoutDirection: SettingsLayoutDirection,
+): List<SettingsSearchResult<VoyagerScreen>> = SettingsSearchPolicy.search(screens, query, layoutDirection)
+
+internal fun openSettingsSearchResult(
+    result: SettingsSearchResult<VoyagerScreen>,
+    replace: (VoyagerScreen) -> Unit,
+) {
+    SearchableSettings.highlightKey = result.anchorTitle
+    replace(result.route)
 }
 
 private val settingScreens = listOf(
@@ -295,17 +258,4 @@ private val settingScreens = listOf(
     SettingsDataScreen,
     SettingsSecurityScreen,
     SettingsAdvancedScreen,
-)
-
-private data class SettingsData(
-    val title: String,
-    val route: VoyagerScreen,
-    val contents: List<Preference>,
-)
-
-private data class SearchResultItem(
-    val route: VoyagerScreen,
-    val title: String,
-    val breadcrumbs: String,
-    val highlightKey: String,
 )

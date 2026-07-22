@@ -8,6 +8,8 @@ import dev.icerock.moko.resources.StringResource
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.presentation.more.settings.PreferenceScaffold
 import eu.kanade.presentation.util.LocalBackPress
+import mihon.domain.settings.SearchablePreference
+import mihon.domain.settings.SearchableSettingsScreen
 
 interface SearchableSettings : Screen {
 
@@ -40,4 +42,37 @@ interface SearchableSettings : Screen {
         // See BasePreferenceWidget.highlightBackground
         var highlightKey: String? = null
     }
+}
+
+internal fun SearchableSettings.toSearchableSettingsScreen(
+    title: String,
+    preferences: List<Preference>,
+): SearchableSettingsScreen<Screen> {
+    return SearchableSettingsScreen(
+        route = this,
+        title = title,
+        preferences = preferences.map(Preference::toSearchablePreference),
+    )
+}
+
+private fun Preference.toSearchablePreference(): SearchablePreference = when (this) {
+    is Preference.PreferenceGroup -> SearchablePreference.Group(
+        title = title,
+        entries = preferenceItems.map(Preference.PreferenceItem<*, *>::toSearchableEntry),
+        enabled = enabled,
+    )
+    is Preference.PreferenceItem<*, *> -> toSearchableEntry()
+}
+
+private fun Preference.PreferenceItem<*, *>.toSearchableEntry(): SearchablePreference.Entry {
+    return SearchablePreference.Entry(
+        title = title,
+        summary = subtitle,
+        enabled = enabled,
+        type = if (this is Preference.PreferenceItem.InfoPreference) {
+            SearchablePreference.EntryType.Info
+        } else {
+            SearchablePreference.EntryType.Standard
+        },
+    )
 }
