@@ -1239,6 +1239,19 @@
     <string name="desktop_backup_reading_file">Reading %1$s…</string>
     <string name="desktop_backup_progress">%1$d / %2$d (%3$d%%)</string>
     <string name="desktop_backup_completed_count">Restore completed: %1$d item(s) restored</string>
-    <string name="desktop_backup_partial">Restore completed, but the following items failed:</string>
+    <string name="desktop_backup_partial">Restore completed, but %1$d item(s) failed:</string>
     <string name="desktop_backup_more_errors">…and %1$d more</string>
+    <string name="desktop_backup_create_cancelled">Backup creation canceled</string>
+    <string name="desktop_backup_restore_selection_cancelled">No backup file selected</string>
+    <string name="desktop_backup_restore_error_count">%1$d restore error(s)</string>
+    <string name="desktop_backup_error_item">• %1$s</string>
+    <string name="desktop_backup_restore_storage_error">Restored data couldn\'t be written. Check available storage and try again.</string>
+    <string name="desktop_backup_restore_permission_error">Mihon doesn\'t have permission to write the restored data. Check access and try again.</string>
+    <string name="desktop_backup_restore_malformed_error">The backup data is damaged or incomplete.</string>
+    <string name="desktop_backup_failed_unit">%1$s: %2$s</string>
+    <string name="desktop_backup_unsupported_version">The backup version is unknown or unsupported.</string>
+    <string name="desktop_backup_empty_file">The backup file is empty.</string>
+    <string name="desktop_backup_missing_data">The backup is missing required data.</string>
+    <string name="desktop_backup_restore_not_started">The restore task didn\'t start. Try again.</string>
+    <string name="desktop_backup_restore_unknown_error">The backup couldn\'t be restored. Try again.</string>
 </resources>

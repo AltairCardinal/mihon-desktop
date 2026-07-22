@@ -46,6 +46,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import mihon.desktop.backup.BackupPreview
 import mihon.desktop.platform.DesktopExternalActionTarget
+import mihon.domain.error.AppError
 import tachiyomi.i18n.MR
 import java.io.File
 import java.util.Locale
@@ -86,14 +87,17 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
                 title = { Text(MR.strings.restoring_backup_error.localized()) },
                 text = {
                     Column {
-                        Text(errors.size.toString())
+                        Text(backupPresentationText(BackupPresentationText.RestoreErrorCount(errors.size)))
                         Spacer(Modifier.height(8.dp))
                         errors.take(10).forEach { err ->
-                            Text("• $err", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                backupPresentationText(BackupPresentationText.RestoreErrorItem(err)),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
                         }
                         if (errors.size > 10) {
                             Text(
-                                MR.strings.desktop_backup_more_errors.localized(Locale.getDefault(), errors.size - 10),
+                                backupPresentationText(BackupPresentationText.MoreErrors(errors.size - 10)),
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
@@ -157,14 +161,18 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
                 Button(
                     onClick = {
                         scope.launch {
-                            val dir = chooseDirectory(MR.strings.pref_create_backup.localized()) ?: return@launch
+                            val dir = chooseDirectory()
+                            if (dir == null) {
+                                snackbar.showSnackbar(backupPresentationText(BackupPresentationText.CreateCancelled))
+                                return@launch
+                            }
                             isBusy = true
                             try {
                                 val file = backupFactory.createBackup(dir)
-                                snackbar.showSnackbar(MR.strings.desktop_backup_saved.localized(Locale.getDefault(), file.name))
+                                snackbar.showSnackbar(backupPresentationText(BackupPresentationText.Created(file.name)))
                             } catch (e: Exception) {
                                 snackbar.showSnackbar(
-                                    MR.strings.desktop_backup_failed.localized(Locale.getDefault(), e.message.orEmpty()),
+                                    backupPresentationText(BackupPresentationText.CreationFailed(e.message.orEmpty())),
                                 )
                             } finally {
                                 isBusy = false
@@ -192,7 +200,11 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
                 OutlinedButton(
                     onClick = {
                         scope.launch {
-                            val file = chooseBackupFile() ?: return@launch
+                            val file = chooseBackupFile()
+                            if (file == null) {
+                                snackbar.showSnackbar(backupPresentationText(BackupPresentationText.RestoreSelectionCancelled))
+                                return@launch
+                            }
                             restoreModel.select(file)
                         }
                     },
@@ -261,13 +273,13 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
      * Opens a Swing JFileChooser on the EDT and returns the selected directory,
      * or null if the user cancels.
      */
-    private suspend fun chooseDirectory(title: String): File? =
+    private suspend fun chooseDirectory(): File? =
         withContext(Dispatchers.IO) {
             var result: File? = null
             val latch = java.util.concurrent.CountDownLatch(1)
             SwingUtilities.invokeLater {
                 val chooser = JFileChooser().apply {
-                    dialogTitle = title
+                    dialogTitle = backupPresentationText(BackupPresentationText.DirectoryChooserTitle)
                     fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
                     currentDirectory = File(System.getProperty("user.home"))
                 }
@@ -290,8 +302,8 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
             val latch = java.util.concurrent.CountDownLatch(1)
             SwingUtilities.invokeLater {
                 val chooser = JFileChooser().apply {
-                    dialogTitle = MR.strings.file_select_backup.localized()
-                    fileFilter = FileNameExtensionFilter(MR.strings.desktop_backup_file_filter.localized(), "tachibk")
+                    dialogTitle = backupPresentationText(BackupPresentationText.FileChooserTitle)
+                    fileFilter = FileNameExtensionFilter(backupPresentationText(BackupPresentationText.FileFilter), "tachibk")
                     currentDirectory = File(System.getProperty("user.home"))
                 }
                 if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
@@ -302,6 +314,85 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
             latch.await()
             result
         }
+}
+
+internal sealed interface BackupPresentationText {
+    data object DirectoryChooserTitle : BackupPresentationText
+    data object FileChooserTitle : BackupPresentationText
+    data object FileFilter : BackupPresentationText
+    data object CreateCancelled : BackupPresentationText
+    data object RestoreSelectionCancelled : BackupPresentationText
+    data class Created(val fileName: String) : BackupPresentationText
+    data class CreationFailed(val detail: String) : BackupPresentationText
+    data class RestoreErrorCount(val count: Int) : BackupPresentationText
+    data class RestoreErrorItem(val detail: String) : BackupPresentationText
+    data class MoreErrors(val count: Int) : BackupPresentationText
+    data class RestoreFailure(val reason: BackupRestoreFailureReason) : BackupPresentationText
+}
+
+internal fun backupPresentationText(
+    text: BackupPresentationText,
+    locale: Locale = Locale.getDefault(),
+): String = when (text) {
+    BackupPresentationText.DirectoryChooserTitle -> MR.strings.onboarding_storage_action_select.localized(locale)
+    BackupPresentationText.FileChooserTitle -> MR.strings.file_select_backup.localized(locale)
+    BackupPresentationText.FileFilter -> MR.strings.desktop_backup_file_filter.localized(locale)
+    BackupPresentationText.CreateCancelled -> MR.strings.desktop_backup_create_cancelled.localized(locale)
+    BackupPresentationText.RestoreSelectionCancelled -> MR.strings.desktop_backup_restore_selection_cancelled.localized(locale)
+    is BackupPresentationText.Created -> MR.strings.desktop_backup_saved.localized(locale, text.fileName)
+    is BackupPresentationText.CreationFailed -> if (text.detail.isBlank()) {
+        MR.strings.creating_backup_error.localized(locale)
+    } else {
+        MR.strings.desktop_backup_failed.localized(locale, text.detail)
+    }
+    is BackupPresentationText.RestoreErrorCount -> MR.strings.desktop_backup_restore_error_count.localized(locale, text.count)
+    is BackupPresentationText.RestoreErrorItem -> MR.strings.desktop_backup_error_item.localized(locale, text.detail)
+    is BackupPresentationText.MoreErrors -> MR.strings.desktop_backup_more_errors.localized(locale, text.count)
+    is BackupPresentationText.RestoreFailure -> backupRestoreFailureText(text.reason, locale)
+}
+
+internal data class BackupPartialFailurePresentation(
+    val summary: String,
+    val details: List<String>,
+)
+
+internal fun backupPartialFailurePresentation(
+    error: AppError.PartialFailure,
+    locale: Locale = Locale.getDefault(),
+): BackupPartialFailurePresentation {
+    val details = if (error.failedUnits.isNotEmpty()) {
+        error.failedUnits.map { unit ->
+            MR.strings.desktop_backup_failed_unit.localized(locale, unit.unitId, backupAppErrorText(unit.error, locale))
+        }
+    } else {
+        error.failures.map { backupAppErrorText(it, locale) }
+    }
+    return BackupPartialFailurePresentation(
+        summary = MR.strings.desktop_backup_partial.localized(locale, details.size),
+        details = details,
+    )
+}
+
+private fun backupRestoreFailureText(reason: BackupRestoreFailureReason, locale: Locale): String = when (reason) {
+    BackupRestoreFailureReason.EmptyBackup -> MR.strings.invalid_backup_file_missing_manga.localized(locale)
+    BackupRestoreFailureReason.UnsupportedVersion -> MR.strings.desktop_backup_unsupported_version.localized(locale)
+    BackupRestoreFailureReason.EmptyFile -> MR.strings.desktop_backup_empty_file.localized(locale)
+    BackupRestoreFailureReason.MissingData -> MR.strings.desktop_backup_missing_data.localized(locale)
+    BackupRestoreFailureReason.Corrupted -> MR.strings.invalid_backup_file_unknown.localized(locale)
+    BackupRestoreFailureReason.RestoreNotStarted -> MR.strings.desktop_backup_restore_not_started.localized(locale)
+    is BackupRestoreFailureReason.Restore -> backupAppErrorText(reason.error, locale)
+}
+
+private fun backupAppErrorText(error: AppError, locale: Locale): String = when (error) {
+    is AppError.Storage -> MR.strings.desktop_backup_restore_storage_error.localized(locale)
+    is AppError.Permission -> MR.strings.desktop_backup_restore_permission_error.localized(locale)
+    is AppError.MalformedData -> MR.strings.desktop_backup_restore_malformed_error.localized(locale)
+    AppError.Cancelled -> MR.strings.restoring_backup_canceled.localized(locale)
+    is AppError.PartialFailure -> MR.strings.desktop_backup_partial.localized(
+        locale,
+        if (error.failedUnits.isNotEmpty()) error.failedUnits.size else error.failures.size,
+    )
+    else -> MR.strings.desktop_backup_restore_unknown_error.localized(locale)
 }
 
 @Composable
@@ -343,12 +434,22 @@ private fun RestoreStatus(
             MR.strings.desktop_backup_completed_count.localized(Locale.getDefault(), state.restoredItems),
         )
         is BackupRestoreUiState.PartialSuccess -> {
-            Text(MR.strings.desktop_backup_partial.localized())
-            state.failedUnits.take(10).forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
+            val presentation = backupPartialFailurePresentation(state.error)
+            Text(presentation.summary)
+            presentation.details.take(10).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+            if (presentation.details.size > 10) {
+                Text(
+                    backupPresentationText(BackupPresentationText.MoreErrors(presentation.details.size - 10)),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
         }
         is BackupRestoreUiState.Failure -> {
             Text(MR.strings.restoring_backup_error.localized(), color = MaterialTheme.colorScheme.error)
-            Text(state.message, color = MaterialTheme.colorScheme.error)
+            Text(
+                backupPresentationText(BackupPresentationText.RestoreFailure(state.reason)),
+                color = MaterialTheme.colorScheme.error,
+            )
             if (state.recoverable) TextButton(onClick = onRetry) { Text(MR.strings.action_retry.localized()) }
         }
         BackupRestoreUiState.Cancelled -> Text(MR.strings.restoring_backup_canceled.localized())

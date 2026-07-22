@@ -29,16 +29,24 @@ import mihon.desktop.download.DownloadItem
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.settings.LibraryUpdateInterval
 import mihon.desktop.ui.settings.AppearanceSettingsScreen
+import mihon.desktop.ui.settings.BackupPresentationText
+import mihon.desktop.ui.settings.BackupRestoreFailureReason
 import mihon.desktop.ui.settings.BackupRestoreScreenModel
+import mihon.desktop.ui.settings.BackupRestoreUiState
 import mihon.desktop.ui.settings.BackupSettingsScreen
 import mihon.desktop.ui.settings.DownloadSettingsScreen
 import mihon.desktop.ui.settings.GeneralSettingsScreen
 import mihon.desktop.ui.settings.LibrarySettingsScreen
 import mihon.desktop.ui.settings.MoreRootScreen
 import mihon.desktop.ui.settings.ReaderSettingsScreen
+import mihon.desktop.ui.settings.backupPartialFailurePresentation
+import mihon.desktop.ui.settings.backupPresentationText
 import mihon.domain.error.AppError
 import mihon.domain.task.TaskState
 import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
@@ -350,7 +358,7 @@ class DesktopSettingsResourceIdentityTest {
                             ),
                         ),
                     )
-                    assertCopy(snapshot().text, MR.strings.desktop_backup_partial.localized(locale))
+                    assertCopy(snapshot().text, MR.strings.desktop_backup_partial.localized(locale, 1))
 
                     restoreGate = CompletableDeferred()
                     model.retryRestore()
@@ -358,6 +366,7 @@ class DesktopSettingsResourceIdentityTest {
                     assertCopy(
                         snapshot().text,
                         MR.strings.restoring_backup_error.localized(locale),
+                        MR.strings.desktop_backup_restore_storage_error.localized(locale),
                         MR.strings.action_retry.localized(locale),
                     )
                     model.cancel()
@@ -369,6 +378,95 @@ class DesktopSettingsResourceIdentityTest {
         } finally {
             Locale.setDefault(previousLocale)
         }
+    }
+
+    @Test
+    fun `Backup system feedback formatter preserves typed errors and MR identity`() = runBlocking {
+        val file = File("library.tachibk")
+        val partial = AppError.PartialFailure(
+            failures = listOf(AppError.MalformedData(), AppError.Permission()),
+            failedUnits = listOf(
+                AppError.FailedUnit("manga:/broken", AppError.MalformedData()),
+                AppError.FailedUnit("category:/locked", AppError.Permission()),
+            ),
+        )
+        listOf(english, chinese).forEach { locale ->
+            assertEquals(
+                MR.strings.onboarding_storage_action_select.localized(locale),
+                backupPresentationText(BackupPresentationText.DirectoryChooserTitle, locale),
+            )
+            assertEquals(
+                MR.strings.file_select_backup.localized(locale),
+                backupPresentationText(BackupPresentationText.FileChooserTitle, locale),
+            )
+            assertEquals(
+                MR.strings.desktop_backup_file_filter.localized(locale),
+                backupPresentationText(BackupPresentationText.FileFilter, locale),
+            )
+            assertEquals(
+                MR.strings.desktop_backup_create_cancelled.localized(locale),
+                backupPresentationText(BackupPresentationText.CreateCancelled, locale),
+            )
+            assertEquals(
+                MR.strings.desktop_backup_restore_selection_cancelled.localized(locale),
+                backupPresentationText(BackupPresentationText.RestoreSelectionCancelled, locale),
+            )
+            assertEquals(
+                MR.strings.desktop_backup_saved.localized(locale, file.name),
+                backupPresentationText(BackupPresentationText.Created(file.name), locale),
+            )
+            assertEquals(
+                MR.strings.desktop_backup_failed.localized(locale, "disk full"),
+                backupPresentationText(BackupPresentationText.CreationFailed("disk full"), locale),
+            )
+            assertEquals(
+                MR.strings.desktop_backup_restore_error_count.localized(locale, 12),
+                backupPresentationText(BackupPresentationText.RestoreErrorCount(12), locale),
+            )
+            assertEquals(
+                MR.strings.desktop_backup_error_item.localized(locale, "manga:/broken"),
+                backupPresentationText(BackupPresentationText.RestoreErrorItem("manga:/broken"), locale),
+            )
+            assertEquals(
+                MR.strings.desktop_backup_more_errors.localized(locale, 2),
+                backupPresentationText(BackupPresentationText.MoreErrors(2), locale),
+            )
+
+            listOf(
+                AppError.Storage() to MR.strings.desktop_backup_restore_storage_error.localized(locale),
+                AppError.Permission() to MR.strings.desktop_backup_restore_permission_error.localized(locale),
+                AppError.MalformedData() to MR.strings.desktop_backup_restore_malformed_error.localized(locale),
+            ).forEach { (error, expected) ->
+                val reason = BackupRestoreFailureReason.Restore(error)
+                assertEquals(expected, backupPresentationText(BackupPresentationText.RestoreFailure(reason), locale))
+            }
+
+            val presentedPartial = backupPartialFailurePresentation(partial, locale)
+            assertEquals(MR.strings.desktop_backup_partial.localized(locale, 2), presentedPartial.summary)
+            assertEquals(2, presentedPartial.details.size)
+            assertEquals(
+                MR.strings.desktop_backup_failed_unit.localized(
+                    locale,
+                    "manga:/broken",
+                    MR.strings.desktop_backup_restore_malformed_error.localized(locale),
+                ),
+                presentedPartial.details.first(),
+            )
+        }
+
+        val storageGate = CompletableDeferred<TaskState<DesktopBackupRestorer.RestoreResult>>()
+        val model = BackupRestoreScreenModel({ BackupPreview(1, 0, 0, 0, 0, 0, 0) }, { _, _ -> storageGate.await() }, this)
+        model.select(file)
+        yield()
+        model.confirmRestore()
+        storageGate.complete(TaskState.Failure(AppError.Storage()))
+        yield()
+        val storage = model.state.value as BackupRestoreUiState.Failure
+        val typedError = (storage.reason as BackupRestoreFailureReason.Restore).error
+        assertInstanceOf(AppError.Storage::class.java, typedError)
+        assertFalse(
+            backupPresentationText(BackupPresentationText.RestoreFailure(storage.reason), english).contains("磁盘"),
+        )
     }
 
     private suspend fun render(
@@ -503,5 +601,18 @@ class DesktopSettingsResourceIdentityTest {
         MR.strings.desktop_backup_completed_count,
         MR.strings.desktop_backup_partial,
         MR.strings.desktop_backup_more_errors,
+        MR.strings.desktop_backup_create_cancelled,
+        MR.strings.desktop_backup_restore_selection_cancelled,
+        MR.strings.desktop_backup_restore_error_count,
+        MR.strings.desktop_backup_error_item,
+        MR.strings.desktop_backup_restore_storage_error,
+        MR.strings.desktop_backup_restore_permission_error,
+        MR.strings.desktop_backup_restore_malformed_error,
+        MR.strings.desktop_backup_failed_unit,
+        MR.strings.desktop_backup_unsupported_version,
+        MR.strings.desktop_backup_empty_file,
+        MR.strings.desktop_backup_missing_data,
+        MR.strings.desktop_backup_restore_not_started,
+        MR.strings.desktop_backup_restore_unknown_error,
     )
 }

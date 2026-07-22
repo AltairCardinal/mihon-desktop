@@ -1008,6 +1008,19 @@
     <string name="desktop_backup_reading_file">正在读取 %1$s…</string>
     <string name="desktop_backup_progress">%1$d / %2$d（%3$d%%）</string>
     <string name="desktop_backup_completed_count">还原完成：已还原 %1$d 项</string>
-    <string name="desktop_backup_partial">还原完成，但以下项目失败：</string>
+    <string name="desktop_backup_partial">还原完成，但有 %1$d 个项目失败：</string>
     <string name="desktop_backup_more_errors">……以及另外 %1$d 个项目</string>
+    <string name="desktop_backup_create_cancelled">已取消创建备份</string>
+    <string name="desktop_backup_restore_selection_cancelled">未选择备份文件</string>
+    <string name="desktop_backup_restore_error_count">%1$d 个还原错误</string>
+    <string name="desktop_backup_error_item">• 错误：%1$s</string>
+    <string name="desktop_backup_restore_storage_error">无法写入还原的数据。请检查可用存储空间后重试。</string>
+    <string name="desktop_backup_restore_permission_error">Mihon 没有写入还原数据的权限。请检查访问权限后重试。</string>
+    <string name="desktop_backup_restore_malformed_error">备份数据已损坏或不完整。</string>
+    <string name="desktop_backup_failed_unit">%1$s：%2$s</string>
+    <string name="desktop_backup_unsupported_version">备份版本未知或不受支持。</string>
+    <string name="desktop_backup_empty_file">备份文件为空。</string>
+    <string name="desktop_backup_missing_data">备份缺少必要数据。</string>
+    <string name="desktop_backup_restore_not_started">还原任务未启动，请重试。</string>
+    <string name="desktop_backup_restore_unknown_error">无法还原备份，请重试。</string>
 </resources>

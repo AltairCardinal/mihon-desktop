@@ -23,9 +23,19 @@ sealed interface BackupRestoreUiState {
         val progress: Float get() = if (total == 0) 1f else completed.toFloat() / total
     }
     data class Completed(val restoredItems: Int) : BackupRestoreUiState
-    data class PartialSuccess(val failedUnits: List<String>) : BackupRestoreUiState
-    data class Failure(val message: String, val recoverable: Boolean) : BackupRestoreUiState
+    data class PartialSuccess(val error: AppError.PartialFailure) : BackupRestoreUiState
+    data class Failure(val reason: BackupRestoreFailureReason, val recoverable: Boolean) : BackupRestoreUiState
     data object Cancelled : BackupRestoreUiState
+}
+
+sealed interface BackupRestoreFailureReason {
+    data object EmptyBackup : BackupRestoreFailureReason
+    data object UnsupportedVersion : BackupRestoreFailureReason
+    data object EmptyFile : BackupRestoreFailureReason
+    data object MissingData : BackupRestoreFailureReason
+    data object Corrupted : BackupRestoreFailureReason
+    data object RestoreNotStarted : BackupRestoreFailureReason
+    data class Restore(val error: AppError) : BackupRestoreFailureReason
 }
 
 class BackupRestoreScreenModel(
@@ -62,13 +72,13 @@ class BackupRestoreScreenModel(
             mutableState.value = try {
                 val preview = loadPreview(file)
                 if (preview.isEmpty()) {
-                    BackupRestoreUiState.Failure("备份中没有可恢复的数据", recoverable = false)
+                    BackupRestoreUiState.Failure(BackupRestoreFailureReason.EmptyBackup, recoverable = false)
                 } else {
                     selectedPreview = preview
                     BackupRestoreUiState.Preview(file, preview)
                 }
             } catch (error: Exception) {
-                error.toUiFailure()
+                BackupRestoreUiState.Failure(error.toFailureReason(), recoverable = false)
             }
         }
     }
@@ -94,7 +104,7 @@ class BackupRestoreScreenModel(
                 is TaskState.Success -> BackupRestoreUiState.Completed(result.value.successCount)
                 is TaskState.Failure -> result.error.toUiState()
                 TaskState.Cancelled -> BackupRestoreUiState.Cancelled
-                TaskState.Idle -> BackupRestoreUiState.Failure("恢复任务未启动", recoverable = true)
+                TaskState.Idle -> BackupRestoreUiState.Failure(BackupRestoreFailureReason.RestoreNotStarted, recoverable = true)
                 is TaskState.Running -> BackupRestoreUiState.Restoring(file.name, 0, total)
             }
         }
@@ -114,30 +124,18 @@ class BackupRestoreScreenModel(
 private fun BackupPreview.isEmpty(): Boolean =
     mangaCount + chapterCount + categoryCount + trackingCount + preferenceCount + sourceCount + extensionRepoCount == 0
 
-private fun Throwable.toUiFailure(): BackupRestoreUiState.Failure {
+private fun Throwable.toFailureReason(): BackupRestoreFailureReason {
     val detail = message.orEmpty().lowercase()
-    val message = when {
-        "version" in detail || "unsupported" in detail -> "未知版本或不受支持的备份"
-        "empty" in detail -> "备份文件为空"
-        "missing" in detail || "no manga payload" in detail -> "备份缺少必要数据"
-        else -> "备份文件已损坏或无法读取"
+    return when {
+        "version" in detail || "unsupported" in detail -> BackupRestoreFailureReason.UnsupportedVersion
+        "empty" in detail -> BackupRestoreFailureReason.EmptyFile
+        "missing" in detail || "no manga payload" in detail -> BackupRestoreFailureReason.MissingData
+        else -> BackupRestoreFailureReason.Corrupted
     }
-    return BackupRestoreUiState.Failure(message, recoverable = false)
 }
 
 private fun AppError.toUiState(): BackupRestoreUiState = when (this) {
-    is AppError.PartialFailure -> BackupRestoreUiState.PartialSuccess(
-        failedUnits.map { "${it.unitId}：${it.error.label()}" }.ifEmpty { listOf("部分数据恢复失败") },
-    )
-    is AppError.Storage -> BackupRestoreUiState.Failure("磁盘空间不足或无法写入，请释放空间后重试", true)
-    is AppError.Permission -> BackupRestoreUiState.Failure("没有写入数据的权限，请检查权限后重试", true)
+    is AppError.PartialFailure -> BackupRestoreUiState.PartialSuccess(this)
     AppError.Cancelled -> BackupRestoreUiState.Cancelled
-    else -> BackupRestoreUiState.Failure(label(), true)
-}
-
-private fun AppError.label(): String = when (this) {
-    is AppError.MalformedData -> "数据损坏或缺失"
-    is AppError.Storage -> "存储失败"
-    is AppError.Permission -> "权限不足"
-    else -> "恢复失败"
+    else -> BackupRestoreUiState.Failure(BackupRestoreFailureReason.Restore(this), recoverable = true)
 }

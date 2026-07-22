@@ -137,18 +137,29 @@ class BackupRestoreScreenModelTest {
         scope.advanceUntilIdle()
         val storage = model.state.value as BackupRestoreUiState.Failure
         assertTrue(storage.recoverable)
-        assertTrue(storage.message.contains("磁盘"))
+        assertInstanceOf(AppError.Storage::class.java, (storage.reason as BackupRestoreFailureReason.Restore).error)
 
-        outcome = TaskState.Failure(
-            AppError.PartialFailure(
-                failures = listOf(AppError.MalformedData()),
-                failedUnits = listOf(AppError.FailedUnit("manga:/broken", AppError.MalformedData())),
-            ),
+        outcome = TaskState.Failure(AppError.Permission())
+        model.retryRestore()
+        scope.advanceUntilIdle()
+        val permission = model.state.value as BackupRestoreUiState.Failure
+        assertInstanceOf(AppError.Permission::class.java, (permission.reason as BackupRestoreFailureReason.Restore).error)
+
+        outcome = TaskState.Failure(AppError.MalformedData())
+        model.retryRestore()
+        scope.advanceUntilIdle()
+        val malformed = model.state.value as BackupRestoreUiState.Failure
+        assertInstanceOf(AppError.MalformedData::class.java, (malformed.reason as BackupRestoreFailureReason.Restore).error)
+
+        val partialFailure = AppError.PartialFailure(
+            failures = listOf(AppError.MalformedData()),
+            failedUnits = listOf(AppError.FailedUnit("manga:/broken", AppError.MalformedData())),
         )
+        outcome = TaskState.Failure(partialFailure)
         model.retryRestore()
         scope.advanceUntilIdle()
         val partial = model.state.value as BackupRestoreUiState.PartialSuccess
-        assertTrue(partial.failedUnits.single().contains("manga:/broken"))
+        assertEquals(partialFailure, partial.error)
     }
 
     @Test
@@ -162,7 +173,10 @@ class BackupRestoreScreenModelTest {
         )
         model.select(File("unknown.tachibk"))
         scope.advanceUntilIdle()
-        assertTrue((model.state.value as BackupRestoreUiState.Failure).message.contains("未知版本"))
+        assertEquals(
+            BackupRestoreFailureReason.UnsupportedVersion,
+            (model.state.value as BackupRestoreUiState.Failure).reason,
+        )
 
         var lateProgress: (suspend (RestoreProgress) -> Unit)? = null
         val cancellable = BackupRestoreScreenModel(scope, { preview }) { _, onProgress ->
