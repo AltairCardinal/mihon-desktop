@@ -24,6 +24,7 @@ import mihon.desktop.platform.DesktopBackupFilePickerRequest
 import mihon.desktop.platform.DesktopBackupFilePickerResult
 import mihon.desktop.platform.createDesktopBackupFileChooser
 import mihon.desktop.settings.DesktopAppPreferences
+import mihon.domain.task.TaskState
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
@@ -113,10 +114,68 @@ class BackupSettingsProductionWiringTest {
         }
     }
 
+    @Test
+    fun `six typed backup failures execute through the real screen in English and Chinese`() = runBlocking {
+        val previousLocale = Locale.getDefault()
+        val backup = File("library.tachibk")
+        val cases = listOf(
+            FailureCase(BackupRestoreFailureReason.EmptyBackup, MR.strings.invalid_backup_file_missing_manga),
+            FailureCase(BackupRestoreFailureReason.UnsupportedVersion, MR.strings.desktop_backup_unsupported_version),
+            FailureCase(BackupRestoreFailureReason.EmptyFile, MR.strings.desktop_backup_empty_file),
+            FailureCase(BackupRestoreFailureReason.MissingData, MR.strings.desktop_backup_missing_data),
+            FailureCase(BackupRestoreFailureReason.Corrupted, MR.strings.invalid_backup_file_unknown),
+            FailureCase(BackupRestoreFailureReason.RestoreNotStarted, MR.strings.desktop_backup_restore_not_started),
+        )
+        try {
+            listOf(Locale.US, Locale.forLanguageTag("zh-CN")).forEach { locale ->
+                Locale.setDefault(locale)
+                cases.forEach { case ->
+                    val model = failureModel(case.reason, this)
+                    model.select(backup)
+                    repeat(3) { yield() }
+                    if (case.reason == BackupRestoreFailureReason.RestoreNotStarted) {
+                        model.confirmRestore()
+                        repeat(3) { yield() }
+                    }
+                    val failure = assertInstanceOf(BackupRestoreUiState.Failure::class.java, model.state.value)
+                    assertEquals(case.reason, failure.reason)
+                    val factory = mockk<BackupRestoreScreenModelFactory> { every { create() } returns model }
+                    val scene = scene(factory, RecordingPicker(DesktopBackupFilePickerResult.Cancelled))
+                    try {
+                        val expected = case.resource.localized(locale)
+                        val copy = render(scene)
+                        assertTrue(expected in copy, "Missing '$expected': $copy")
+                    } finally {
+                        scene.close()
+                    }
+                }
+            }
+        } finally {
+            Locale.setDefault(previousLocale)
+        }
+    }
+
     private fun model(scope: kotlinx.coroutines.CoroutineScope) =
         BackupRestoreScreenModel(
             loadPreview = { BackupPreview(1, 0, 0, 0, 0, 0, 0) },
             restore = { _, _ -> error("restore must require confirmation") },
+            scope = scope,
+        )
+
+    private fun failureModel(reason: BackupRestoreFailureReason, scope: kotlinx.coroutines.CoroutineScope) =
+        BackupRestoreScreenModel(
+            loadPreview = {
+                when (reason) {
+                    BackupRestoreFailureReason.EmptyBackup -> BackupPreview(0, 0, 0, 0, 0, 0, 0)
+                    BackupRestoreFailureReason.UnsupportedVersion -> error("unsupported backup version")
+                    BackupRestoreFailureReason.EmptyFile -> error("empty backup")
+                    BackupRestoreFailureReason.MissingData -> error("missing manga payload")
+                    BackupRestoreFailureReason.Corrupted -> error("corrupted backup")
+                    BackupRestoreFailureReason.RestoreNotStarted -> BackupPreview(1, 0, 0, 0, 0, 0, 0)
+                    is BackupRestoreFailureReason.Restore -> error("restore failures are not part of this test")
+                }
+            },
+            restore = { _, _ -> TaskState.Idle },
             scope = scope,
         )
 
@@ -162,5 +221,10 @@ class BackupSettingsProductionWiringTest {
         val feedback: StringResource?,
         val createdFile: File? = null,
         val failure: String? = null,
+    )
+
+    private data class FailureCase(
+        val reason: BackupRestoreFailureReason,
+        val resource: StringResource,
     )
 }
