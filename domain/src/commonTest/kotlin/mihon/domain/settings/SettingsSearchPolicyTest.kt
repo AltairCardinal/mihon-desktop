@@ -26,7 +26,7 @@ class SettingsSearchPolicyTest {
                 preferences = listOf(
                     entry(
                         title = if (index % 2 == 0) "MATCH $route" else route,
-                        summary = if (index % 2 == 0) null else "localized match summary",
+                        summary = if (index % 2 == 0) null else "LOCALIZED MATCH SUMMARY",
                     ),
                 ),
             )
@@ -67,8 +67,8 @@ class SettingsSearchPolicyTest {
     @Test
     fun `fixed main caps results at ten after preserving screen and preference order`() {
         val screens = listOf(
-            screen("first", "First", (1..7).map { entry("match $it") }),
-            screen("second", "Second", (8..14).map { entry("match $it") }),
+            screen("first", "First", (1..7).flatMap { listOf(entry("ignored $it"), entry("match $it")) }),
+            screen("second", "Second", (8..14).flatMap { listOf(entry("ignored $it"), entry("match $it")) }),
         )
 
         val results = SettingsSearchPolicy.search(screens, query = "match")
@@ -82,15 +82,15 @@ class SettingsSearchPolicyTest {
             screen(
                 route = "reader",
                 title = "Reader",
-                preferences = listOf(entry("match direct"), group("Navigation", entry("match grouped"))),
+                preferences = listOf(group("Navigation", entry("match grouped")), entry("match direct")),
             ),
         )
 
         val ltr = SettingsSearchPolicy.search(screens, "match", SettingsLayoutDirection.Ltr)
         val rtl = SettingsSearchPolicy.search(screens, "match", SettingsLayoutDirection.Rtl)
 
-        assertEquals(listOf("Reader", "Reader > Navigation"), ltr.map { it.breadcrumb })
-        assertEquals(listOf("Reader", "Navigation < Reader"), rtl.map { it.breadcrumb })
+        assertEquals(listOf("Reader > Navigation", "Reader"), ltr.map { it.breadcrumb })
+        assertEquals(listOf("Navigation < Reader", "Reader"), rtl.map { it.breadcrumb })
     }
 
     @Test
