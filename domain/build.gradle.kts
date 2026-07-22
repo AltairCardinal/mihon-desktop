@@ -64,4 +64,6 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
     }
+
+    sourceSets["test"].resources.srcDir("src/commonTest/resources")
 }
