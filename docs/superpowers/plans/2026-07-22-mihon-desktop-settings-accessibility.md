@@ -62,7 +62,7 @@ status-source: this-file
 - [x] Task 5：Desktop 设置 catalog、搜索 Screen 与入口
 - [x] Task 6A：Desktop 标题 anchor 核心、搜索交接与 General/Appearance
 - [x] Task 6B：Desktop 标题 anchor 的 Reader/Library 接线
-- [ ] Task 7A：Desktop 标题 anchor 的 Download/Backup 数据页面
+- [x] Task 7A：Desktop 标题 anchor 的 Download/Backup 数据页面
 - [ ] Task 7B：Desktop 标题 anchor 的 Advanced/Security 安全页面
 - [ ] Task 8：Desktop 标题 anchor 的扩展页面
 - [ ] Task 9：共享主题模块、identity/default/codec 与 Android consumer
@@ -504,6 +504,8 @@ status-source: this-file
 1. RED：两页只路由不落点、exact route/title/one-shot/scroll/highlight 或 Catalog identity 分叉时失败。
 2. GREEN：只接 6A host，不复制 owner/search；保留 Download preference 与 Backup picker/feedback。
 3. 运行两页 focused/Backup wiring/navigation/Spotless/range gate。
+
+**Review status（已完成）：** 实现 `fd43e132d` 新增集中 `DesktopSettingsAnchorResources`，Download/Backup 的 Catalog 与页面共同消费四个 MR identity，并只接入 6A 统一 owner/host。真实 Catalog→publish/replace→Screen 场景验证 exact title、滚动、可见、唯一 highlight、one-shot、wrong route 与 unknown title；同时执行 Download preference 写入和 Backup Directory picker cancel/snackbar，既有 restore→Preview 与 typed failure 语义保持。断开 Download host、断开 Backup host、Catalog route/title 错接三类 mutation 精确 RED。独立审查 APPROVED `0/0/0`，Desktop focused/相关回归 `137/137`、shared `7/7`、Spotless、diff 与 18-Task guard 通过；范围 `4 files/176 touched`，6A core/Search/shared/DownloadQueue 与用户脏文件零差异。下一项为父 Task 5B / 子 Task 7B。
 
 ### Task 7B：Desktop 标题 anchor 的 Advanced/Security 安全页面
 
