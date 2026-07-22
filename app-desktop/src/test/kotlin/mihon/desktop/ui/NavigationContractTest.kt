@@ -22,6 +22,9 @@ import mihon.desktop.ui.library.MangaDetailScreen
 import mihon.desktop.ui.library.ProvideLibraryNavigationHost
 import mihon.desktop.ui.library.VoyagerLibraryNavigationHost
 import mihon.desktop.ui.library.authorDetailScreenOrNull
+import mihon.desktop.ui.settings.DesktopSettingsCatalog
+import mihon.desktop.ui.settings.MoreRootScreen
+import mihon.desktop.ui.settings.SettingsSearchScreen
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -42,6 +45,15 @@ import org.junit.jupiter.api.Assertions.assertTrue
  * These tests catch ClassCastException bugs at compile-time-equivalent level.
  */
 class NavigationContractTest {
+
+    @Test
+    fun `More settings search and every catalog route target the nested Screen navigator`() {
+        val search = MoreRootScreen.searchDestination()
+        assertTrue(search is SettingsSearchScreen)
+        assertTrue(search is Screen)
+        assertFalse(search is Tab)
+        assertTrue(DesktopSettingsCatalog.screens().all { it.route is Screen && it.route !is Tab })
+    }
 
     @Test
     fun `author entry creates a regular Screen target for the nested navigator`() {

@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.SaveAlt
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Sync
@@ -63,6 +64,7 @@ class MoreRootScreen : Screen {
 
     companion object {
         fun backupSettingsDestination(): Screen = BackupSettingsScreen()
+        fun searchDestination(): Screen = SettingsSearchScreen()
     }
 
     @OptIn(ExperimentalMaterial3Api::class)
@@ -102,6 +104,15 @@ class MoreRootScreen : Screen {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
             ) {
+                item {
+                    SettingsEntry(
+                        icon = Icons.Default.Search,
+                        title = MR.strings.action_search_settings.localized(),
+                        subtitle = MR.strings.desktop_settings_search_entry_summary.localized(),
+                        onClick = { navigator.push(searchDestination()) },
+                    )
+                    HorizontalDivider()
+                }
                 item {
                     SettingsEntry(
                         icon = Icons.Default.Sync,
