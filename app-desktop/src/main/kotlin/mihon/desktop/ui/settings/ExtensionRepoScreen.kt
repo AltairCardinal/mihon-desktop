@@ -305,7 +305,7 @@ private fun RepoCard(
                 Icon(Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = MR.strings.action_open_in_browser.localized())
             }
             IconButton(onClick = onCopyUrl) {
-                Icon(Icons.Outlined.ContentCopy, contentDescription = MR.strings.copy.localized())
+                Icon(Icons.Outlined.ContentCopy, contentDescription = MR.strings.action_copy_link.localized())
             }
             IconButton(onClick = onDelete) {
                 Icon(Icons.Outlined.Delete, contentDescription = MR.strings.action_delete_repo.localized(), tint = MaterialTheme.colorScheme.error)

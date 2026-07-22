@@ -3,6 +3,8 @@ package mihon.desktop.i18n
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.platform.ClipboardManager
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -393,17 +395,25 @@ class DesktopSettingsResourceIdentityTest {
                     duplicateScene.close()
                 }
 
-                val scene = extensionRepoScene(ExtensionRepoScreen(), dependencies, locale)
+                val copied = mutableListOf<AnnotatedString>()
+                val clipboardManager = mockk<ClipboardManager>(relaxed = true)
+                every { clipboardManager.setText(any()) } answers { copied += arg<AnnotatedString>(0) }
+                val scene = extensionRepoScene(ExtensionRepoScreen(), dependencies, locale, clipboardManager)
                 try {
                     val listed = snapshot(scene)
                     assertCopy(listed.text, repo.name, requireNotNull(repo.shortName), repo.baseUrl)
-                    assertCopy(
-                        listed.descriptions,
+                    val expectedActions = listOf(
                         MR.strings.action_open_in_browser.localized(locale),
-                        MR.strings.copy.localized(locale),
+                        MR.strings.action_copy_link.localized(locale),
                         MR.strings.action_delete_repo.localized(locale),
                     )
-                    click(scene, MR.strings.copy.localized(locale))
+                    val repoActions = nodes(scene).filter { node ->
+                        node.config.contains(SemanticsActions.OnClick) &&
+                            flatten(node).flatMap(::descriptionCopy).any { it in expectedActions }
+                    }
+                    assertEquals(expectedActions, repoActions.map { flatten(it).flatMap(::descriptionCopy).single() })
+                    assertTrue(requireNotNull(repoActions[1].config[SemanticsActions.OnClick].action).invoke())
+                    assertEquals(listOf(AnnotatedString("${repo.baseUrl}/index.min.json")), copied)
                     click(scene, MR.strings.action_webview_refresh.localized(locale))
                     snapshot(scene)
                     coVerify(exactly = 1) { refresh.awaitAll() }
@@ -1183,11 +1193,15 @@ class DesktopSettingsResourceIdentityTest {
         screen: ExtensionRepoScreen,
         dependencies: DesktopUiDependencies,
         locale: Locale,
+        clipboardManager: ClipboardManager = mockk(relaxed = true),
     ): ImageComposeScene {
         Locale.setDefault(locale)
         return ImageComposeScene(900, 1_200, coroutineContext = kotlinx.coroutines.currentCoroutineContext()).also { scene ->
             scene.setContent {
-                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                CompositionLocalProvider(
+                    LocalDesktopUiDependencies provides dependencies,
+                    LocalClipboardManager provides clipboardManager,
+                ) {
                     Navigator(screen) { CurrentScreen() }
                 }
             }
