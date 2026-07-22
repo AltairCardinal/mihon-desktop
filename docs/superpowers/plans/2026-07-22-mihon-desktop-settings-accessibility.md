@@ -54,7 +54,7 @@ status-source: this-file
 - [x] Task 4F：Desktop Backup typed preview reason production contract
 - [x] Task 4G：Desktop Advanced 设置 i18n 同源化
 - [x] Task 4H：Desktop Security 设置 i18n 同源化与 locale 隔离
-- [ ] Task 4I：Desktop About 与 updater/诊断 i18n 同源化
+- [x] Task 4I：Desktop About 与 updater/诊断 i18n 同源化
 - [ ] Task 4J：Desktop Extension repository i18n 同源化
 - [ ] Task 4K：Desktop Tracking typed message 与 formatter identity
 - [ ] Task 4L：Desktop Tracking UI/dialog i18n 同源化
@@ -353,6 +353,8 @@ status-source: this-file
 3. 运行 About/updater production wiring/rendered copy、Spotless/range gate。
 
 **Split evidence:** 原合并 4I 对 About、ExtensionRepo、Tracking 的只读盘点自然范围约 `920–1,130 touched`，且三者不共享 production Screen。按独立 Screen 拆为 4I/4J；Tracking 合并范围约 `380–470`，再按 typed model message/formatter 与其余 UI copy 的稳定接口串行拆为 4K/4L，避免超过 400 或用 waiver 掩盖范围。
+
+**Review status（已完成）：** 实现 `fa8a89468` 将 About 标题/返回、版本、更新操作与诊断文案接入 fixed-main/shared 或准确 Desktop MR，并把全部 `DesktopUpdateState.presentation()`、手动打开失败反馈切换到 base/zh identity；真实 About Screen 覆盖 Idle→Available→Ready、临时 DB/cache/path/extensions/Java/OS、清缓存与安装对话框，诊断 label/value 对调 mutation 精确 RED。首审 `0/1/0` 指出 manual open fallback 只有资源枚举，旧英文硬编码仍可逃逸；唯一修复 `85c1cd430` 通过真实 controller/model 的 CHECK→DOWNLOAD→ManualOnly 链，在 en/zh 下验证 `openUrl=false`、抛异常与成功清空反馈，中文 hardcode mutation 精确 RED，production 零差异。唯一复审 APPROVED `0/0/0`，focused `11/11`、相关回归 `120/120`、Spotless、diff、guard 通过；累计 `5 files/371 touched`，低于 380，用户脏文件零混入。下一项为父 Task 5B / 子 Task 4J。
 
 ### Task 4J：Desktop Extension repository i18n 同源化
 
