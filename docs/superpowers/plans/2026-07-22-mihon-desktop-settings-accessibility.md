@@ -36,9 +36,9 @@ status-source: this-file
 
 按以下顺序一次执行一个子 Task，不并发写共享文件：
 
-`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 4G → 4H → 4I → 4J → 4K → 4L → 5 → 6 → 7 → 8 → 9 → 10A → 10B → 10C → 10D → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20`
+`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 4G → 4H → 4I → 4J → 4K → 4L → 4M → 5 → 6 → 7 → 8 → 9 → 10A → 10B → 10C → 10D → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20`
 
-其中 `DesktopSettingsCatalog.kt` 只在 5–8、11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6→11→16 串行修改；`AboutScreen.kt` 只在 4I→8→15→18、`ExtensionRepoScreen.kt` 只在 4J→8→18、`TrackingSettingsScreen.kt` 只在 4K→4L→8→18 串行修改。
+其中 `DesktopSettingsCatalog.kt` 只在 5–8、11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6→11→16 串行修改；`AboutScreen.kt` 只在 4I→8→15→18、`ExtensionRepoScreen.kt` 只在 4J→8→18、`TrackingSettingsScreen.kt` 只在 4K→4L→8→18 串行修改；4M 只补 4L 的真实动作/失败路径测试，不返改 production。
 
 ## 执行状态
 
@@ -58,6 +58,7 @@ status-source: this-file
 - [x] Task 4J：Desktop Extension repository i18n 同源化
 - [x] Task 4K：Desktop Tracking typed message 与 formatter identity
 - [ ] Task 4L：Desktop Tracking UI/dialog i18n 同源化
+- [ ] Task 4M：Desktop Tracking 动作副作用与失败 fallback identity
 - [ ] Task 5：Desktop 设置 catalog、搜索 Screen 与入口
 - [ ] Task 6：Desktop 标题 anchor 核心与基础页面
 - [ ] Task 7：Desktop 标题 anchor 的安全/数据页面
@@ -404,13 +405,29 @@ status-source: this-file
 
 **Estimated scope:** 5 files, 400 lines
 
-**Verification:** settings/manga模式、service/auth/logout/unbind/search/bound editor同源MR与base/zh-rCN完整
+**Verification:** settings/manga 模式、service/auth/logout/unbind/search/bound editor 的渲染 identity 与 base/zh-rCN 完整
 
 **Files:** `TrackingSettingsScreen.kt`（不改 4K formatter）、base/`zh-rCN` strings、resource identity test、`TrackingAutoSyncPreferenceWiringTest.kt`。
 
-1. RED：两种顶层模式、四种 service 状态、username/password/API-key/OAuth、logout/unbind、search empty/results、Status/Score/Chapter editor 的 action/field/参数 identity 错误时失败。
+1. RED：两种顶层模式、四种 service 状态、username/password/API-key/OAuth、logout/unbind、search empty/results、Status/Score/Chapter editor 的渲染 identity/参数错误时失败；AutoSync 测试不得修改未隔离的进程 Locale。
 2. GREEN：复用 fixed-main tracking/login/logout/search/status/score/track-delete/action identity；Desktop source-managed/OAuth/browser/bind/update copy 使用准确 `desktop_*`；外部 service/status/URL/unavailable reason 原样保留。
-3. 不改 selectedId/confirmation、OAuth、tracker/repository wiring、按钮 enabled 或章节边界；运行 Identity/AutoSync/ScreenModel/Tracking integration/navigation/smoke、Spotless/range gate。
+3. 不改 selectedId/confirmation、OAuth、tracker/repository wiring、按钮 enabled 或章节边界；本 Task 只关闭 UI/resource 与状态渲染，动作副作用和失败 fallback 的真实链由 4M 独立验证；运行 Identity/AutoSync/ScreenModel/Tracking integration/navigation/smoke、Spotless/range gate。
+
+### Task 4M：Desktop Tracking 动作副作用与失败 fallback identity
+
+**Risk axis:** settings-i18n-tracking-action-wiring
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 1 files, 170 lines
+
+**Verification:** credentials/action side effects、search/bind/update empty-error fallback、en/zh production mutation
+
+**Files:** `DesktopSettingsResourceIdentityTest.kt`；只复用 4L production，不修改 `TrackingSettingsScreen.kt`、4K typed contract/formatter 或资源。
+
+1. RED：username/password/API-key 参数、Login/Cancel、Logout/Cancel、Unbind Remove/Cancel、Track/Close、Update 的 action identity/副作用错接时失败。
+2. RED：search/bind/update 分别抛空 message 异常时，真实 Screen 必须在 en/zh 显示对应 fallback；恢复旧英文或交换三种 fallback MR 时精确失败。
+3. GREEN：仅以真实 editable/action 节点和 repository/service side effect 证明 4L production wiring；不得引入 test-only production seam。运行 Identity 与 Tracking 相关回归、Spotless/range gate。
 
 ### Task 5：Desktop 设置 catalog、搜索 Screen 与入口
 
