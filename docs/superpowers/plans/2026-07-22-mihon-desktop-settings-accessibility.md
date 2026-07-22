@@ -317,7 +317,7 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 4 files, 300 lines
+**Estimated scope:** 4 files, 310 lines
 
 **Verification:** Security title/back/save/cancel/hide-notification shared MR、credential/backend/privacy capability/window privacy states in en/zh、parallel-safe Locale isolation
 
@@ -326,6 +326,8 @@ status-source: this-file
 1. RED：credential success/mismatch/auth-failure、backend unavailable、privacy supported/unsupported、window privacy supported/unsupported 任一 production 状态未本地化或 identity 分叉时失败；默认并行回归不得跨测试泄漏 Locale。
 2. GREEN：复用 fixed-main title/back/save/cancel/hide-notification MR，Desktop credential/backend/capability 文案补齐 base/zh；locale 场景使用 JUnit `@Isolated` 或等效全套隔离，不靠命令行关闭并行，不改 credential/window privacy 业务规则。
 3. 运行 Security wiring/rendered/DI/并行回归、Spotless/diff/range/guard。
+
+**Replan evidence:** 补齐 Security 的 `zh-rCN` 后，既有 `SecuritySettingsWiringTest` 不再走英文 fallback，暴露 4 个硬编码英文 capability 断言；若在该未隔离测试中临时切换进程 Locale，会重新制造默认并行竞态。将断言改为当前 Locale 的 MR identity 需要累计约 `4 files/305 touched`，仍低于项目 400 行硬上限，因此把本 Task 估算调整为 310 行，不为 5 行差额拆出无独立产品风险的子 Task，也不删除覆盖或压缩格式。
 
 ### Task 4I：Desktop About/扩展/Tracking i18n 同源化
 
