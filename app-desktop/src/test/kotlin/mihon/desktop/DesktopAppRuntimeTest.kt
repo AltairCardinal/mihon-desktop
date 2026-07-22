@@ -234,7 +234,10 @@ class DesktopAppRuntimeTest {
                 broker = owner,
                 registrar = mihon.desktop.platform.DesktopUriSchemeRegistrar { DesktopUriSchemeRegistration.Result.Unavailable(DesktopUriSchemeRegistration.UnavailableReason.NON_PACKAGED_RUNTIME) },
                 openUriEventPort = port,
-                ownerIngressDependencies = { DesktopOwnerIngressDependencies(runtime, uiDependencies).also { ownerFactoryCalls++ } },
+                ownerIngressDependencies = { transaction ->
+                    transaction.registerRuntime(runtime)
+                    DesktopOwnerIngressDependencies(runtime, uiDependencies).also { ownerFactoryCalls++ }
+                },
                 ownerContinuation = { dependencies ->
                     assertSame(uiDependencies, dependencies.uiDependencies)
                     assertSame(uiDependencies.externalActionNavigator, dependencies.uiDependencies.externalActionNavigator)
@@ -297,9 +300,11 @@ class DesktopAppRuntimeTest {
                     )
                 },
                 openUriEventPort = port,
-                ownerIngressDependencies = {
+                ownerIngressDependencies = { transaction ->
                     dependencyFactories++
-                    DesktopOwnerIngressDependencies(Injekt.get(), DesktopUiDependencies.fromInjekt())
+                    DesktopOwnerIngressDependencies(Injekt.get(), DesktopUiDependencies.fromInjekt()).also {
+                        transaction.registerRuntime(it.runtime)
+                    }
                 },
                 ownerLifecycle = { _, owner ->
                     lifecycleStarts++

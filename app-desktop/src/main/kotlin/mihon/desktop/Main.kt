@@ -67,22 +67,25 @@ internal suspend fun startProductionDesktopApplication(
     registrar: DesktopUriSchemeRegistrar = DesktopUriSchemeRegistration(),
     reportRegistration: (DesktopUriSchemeRegistration.Result) -> Unit = ::reportUriSchemeRegistration,
     openUriEventPort: DesktopOpenUriEventPort = AwtDesktopOpenUriEventPort(),
-    ownerIngressDependencies: () -> DesktopOwnerIngressDependencies = {
+    ownerIngressDependencies: (DesktopOwnerTransaction) -> DesktopOwnerIngressDependencies = { transaction ->
         initDesktopDI()
-        DesktopOwnerIngressDependencies(Injekt.get(), DesktopUiDependencies.fromInjekt())
+        val runtime = Injekt.get<DesktopAppRuntime>()
+        transaction.registerRuntime(runtime)
+        DesktopOwnerIngressDependencies(runtime, DesktopUiDependencies.fromInjekt())
     },
     ownerLifecycle: suspend (TestArguments, DesktopOwnerStartup) -> Unit = ::runProductionOwnerApplication,
 ): DesktopInstanceStartResult {
+    val transaction = DesktopOwnerTransaction()
     var owner: DesktopOwnerStartup? = null
     return try {
         val result = startDesktopInstance(broker, desktopExternalActionRaw(args)) { electedBroker ->
             reportDesktopOwnerRegistration(registrar, reportRegistration)
-            owner = prepareDesktopOwner(electedBroker, args, openUriEventPort, ownerIngressDependencies)
+            owner = prepareDesktopOwner(transaction, electedBroker, args, openUriEventPort, ownerIngressDependencies)
         }
         owner?.let { ownerLifecycle(TestArguments.parse(args), it) }
         result
     } catch (failure: Throwable) {
-        owner?.closeAndJoin(failure)
+        owner?.closeAndJoin(failure) ?: transaction.closeAndJoin(failure)
         throw failure
     }
 }
@@ -93,9 +96,11 @@ internal fun startDesktopApplication(
     registrar: DesktopUriSchemeRegistrar = DesktopUriSchemeRegistration(),
     reportRegistration: (DesktopUriSchemeRegistration.Result) -> Unit = ::reportUriSchemeRegistration,
     openUriEventPort: DesktopOpenUriEventPort = AwtDesktopOpenUriEventPort(),
-    ownerIngressDependencies: () -> DesktopOwnerIngressDependencies = {
+    ownerIngressDependencies: (DesktopOwnerTransaction) -> DesktopOwnerIngressDependencies = { transaction ->
         initDesktopDI()
-        DesktopOwnerIngressDependencies(Injekt.get(), DesktopUiDependencies.fromInjekt())
+        val runtime = Injekt.get<DesktopAppRuntime>()
+        transaction.registerRuntime(runtime)
+        DesktopOwnerIngressDependencies(runtime, DesktopUiDependencies.fromInjekt())
     },
     ownerContinuation: ((DesktopOwnerIngressDependencies) -> Unit)? = null,
     startOwnerApplication: (DesktopExternalActionBroker) -> Unit = { ownerBroker ->
@@ -123,10 +128,16 @@ private fun runOwnerApplication(
     testArgs: TestArguments,
     broker: DesktopExternalActionBroker,
     openUriEventPort: DesktopOpenUriEventPort,
-    ownerIngressDependencies: () -> DesktopOwnerIngressDependencies,
+    ownerIngressDependencies: (DesktopOwnerTransaction) -> DesktopOwnerIngressDependencies,
     ownerContinuation: ((DesktopOwnerIngressDependencies) -> Unit)?,
 ) {
-    val owner = prepareDesktopOwner(broker, args, openUriEventPort, ownerIngressDependencies)
+    val transaction = DesktopOwnerTransaction()
+    val owner = try {
+        prepareDesktopOwner(transaction, broker, args, openUriEventPort, ownerIngressDependencies)
+    } catch (failure: Throwable) {
+        transaction.close(failure)
+        throw failure
+    }
     val runtime = owner.runtime
     if (ownerContinuation != null) {
         try {
@@ -237,12 +248,14 @@ internal data class DesktopOwnerStartup(
 }
 
 private fun prepareDesktopOwner(
+    transaction: DesktopOwnerTransaction,
     broker: DesktopExternalActionBroker,
     args: Array<String>,
     openUriEventPort: DesktopOpenUriEventPort,
-    ownerIngressDependencies: () -> DesktopOwnerIngressDependencies,
+    ownerIngressDependencies: (DesktopOwnerTransaction) -> DesktopOwnerIngressDependencies,
 ): DesktopOwnerStartup {
-    val ingress = ownerIngressDependencies()
+    val ingress = ownerIngressDependencies(transaction)
+    transaction.registerRuntime(ingress.runtime)
     val startup = DesktopOwnerStartup(
         ingress = ingress,
         appLock = Injekt.get(),
@@ -252,13 +265,31 @@ private fun prepareDesktopOwner(
         submitDesktopExternalAction(args, ingress.uiDependencies.externalActionNavigator)
         initializeDesktopOwnerExternalActionIngress(broker, ingress.uiDependencies.externalActionNavigator, startup.runtime, openUriEventPort)
         return startup
-    } catch (failure: Throwable) {
+    } catch (failure: Throwable) { throw failure }
+}
+
+internal class DesktopOwnerTransaction {
+    private var runtime: DesktopAppRuntime? = null
+
+    fun registerRuntime(value: DesktopAppRuntime) {
+        check(runtime == null || runtime === value) { "A different owner runtime is already registered" }
+        runtime = value
+    }
+
+    fun close(primary: Throwable) {
         try {
-            startup.runtime.close()
+            runtime?.close()
         } catch (cleanupFailure: Throwable) {
-            if (cleanupFailure !== failure) failure.addSuppressed(cleanupFailure)
+            if (cleanupFailure !== primary) primary.addSuppressed(cleanupFailure)
         }
-        throw failure
+    }
+
+    suspend fun closeAndJoin(primary: Throwable) {
+        try {
+            runtime?.closeAndJoin()
+        } catch (cleanupFailure: Throwable) {
+            if (cleanupFailure !== primary) primary.addSuppressed(cleanupFailure)
+        }
     }
 }
 
