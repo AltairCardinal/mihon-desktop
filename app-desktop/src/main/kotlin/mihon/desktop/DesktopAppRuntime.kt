@@ -35,10 +35,13 @@ class DesktopAppRuntime(
     private var startupJob: Job? = null
     private var instanceBroker: DesktopExternalActionBroker? = null
     private val closeActions = mutableListOf<AutoCloseable>()
-    private val runningServices = mutableListOf<DesktopRuntimeService>()
+    private val services = listOf(libraryUpdateScheduler, localSourceScanService, autoBackupScheduler, trackerSyncScheduler, batchMigrationController)
+    private val runningServices = BooleanArray(services.size)
+    @get:Synchronized
     var isRunning: Boolean = false
         private set
 
+    @Synchronized
     fun start() {
         if (isRunning) return
         appLock.onApplicationStarted()
@@ -46,29 +49,31 @@ class DesktopAppRuntime(
         startupJob = scope.launch {
             runCatching { startupCleanup() }
         }
-        listOf(libraryUpdateScheduler, localSourceScanService, autoBackupScheduler, trackerSyncScheduler, batchMigrationController).forEach {
-            it.start()
-            runningServices += it
+        services.forEachIndexed { index, service ->
+            service.start()
+            runningServices[index] = true
         }
     }
 
+    @Synchronized
     fun stop() {
         if (!isRunning) return
         val failures = CleanupFailures()
         failures.attempt(appLock::onApplicationStopped)
         failures.attempt { startupJob?.cancel() }
         startupJob = null
-        listOf(batchMigrationController, trackerSyncScheduler, autoBackupScheduler, localSourceScanService, libraryUpdateScheduler).forEach { service ->
-            if (service in runningServices) {
+        services.indices.reversed().forEach { index ->
+            if (runningServices[index]) {
                 var stopped = false
-                failures.attempt { service.stop(); stopped = true }
-                if (stopped) runningServices -= service
+                failures.attempt { services[index].stop(); stopped = true }
+                if (stopped) runningServices[index] = false
             }
         }
-        isRunning = runningServices.isNotEmpty()
+        isRunning = runningServices.any { it }
         failures.throwIfAny()
     }
 
+    @Synchronized
     fun close() {
         val failures = CleanupFailures()
         failures.attempt(::stop)
@@ -113,11 +118,13 @@ class DesktopAppRuntime(
         failures.throwIfAny()
     }
 
+    @Synchronized
     fun attachInstanceBroker(broker: DesktopExternalActionBroker) {
         check(instanceBroker == null || instanceBroker === broker) { "A different instance broker is already attached" }
         instanceBroker = broker
     }
 
+    @Synchronized
     fun attachCloseable(closeable: AutoCloseable) {
         closeActions += closeable
     }

@@ -9,6 +9,7 @@ import kotlinx.coroutines.yield
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -22,6 +23,8 @@ import java.net.Socket
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermission
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 class DesktopExternalActionBrokerTest {
@@ -292,6 +295,51 @@ class DesktopExternalActionBrokerTest {
             owner.close()
             assertFalse(stateFile.exists())
         }
+    }
+
+    @Test
+    fun `server close failure retains owner state until concurrent retry commits once`(@TempDir tempDir: File) = runTest {
+        val stateFile = File(tempDir, "retry.json")
+        val failure = IllegalStateException("server close")
+        val retryEntered = CountDownLatch(2)
+        val releaseRetry = CountDownLatch(1)
+        var closeCalls = 0
+        val owner = DesktopExternalActionBroker(stateFile, closeServer = { server ->
+            closeCalls++
+            if (closeCalls == 1) throw failure
+            retryEntered.countDown(); releaseRetry.await(); server.close()
+        })
+        val endpoint = (owner.startOrForward(null) as DesktopExternalActionBroker.StartResult.Owner).endpoint
+
+        assertSame(failure, runCatching(owner::close).exceptionOrNull())
+        assertTrue(stateFile.exists())
+        assertEquals(DesktopExternalActionBroker.StartResult.Owner(endpoint), owner.startOrForward(null))
+        val retries = List(2) { async(Dispatchers.IO) { runCatching(owner::close).exceptionOrNull() } }
+        retryEntered.await(1, TimeUnit.SECONDS); releaseRetry.countDown()
+        assertTrue(retries.awaitAll().all { it == null })
+        assertFalse(stateFile.exists())
+        owner.close()
+        assertEquals(2, closeCalls)
+
+        val successor = DesktopExternalActionBroker(stateFile)
+        assertTrue(successor.startOrForward(null) is DesktopExternalActionBroker.StartResult.Owner)
+        successor.close()
+    }
+
+    @Test
+    fun `malformed owner state blocks terminal cleanup until exact retry`(@TempDir tempDir: File) {
+        val stateFile = File(tempDir, "malformed-close.json")
+        val owner = DesktopExternalActionBroker(stateFile)
+        val endpoint = (owner.startOrForward(null) as DesktopExternalActionBroker.StartResult.Owner).endpoint
+        val validState = stateFile.readText()
+        stateFile.writeText("{bad")
+
+        assertTrue(runCatching(owner::close).exceptionOrNull() is IllegalStateException)
+        assertTrue(stateFile.exists())
+        assertEquals(DesktopExternalActionBroker.StartResult.Owner(endpoint), owner.startOrForward(null))
+        stateFile.writeText(validState)
+        owner.close()
+        assertFalse(stateFile.exists())
     }
 
     private fun sendRawFrame(port: Int, length: Int, bytes: ByteArray) {

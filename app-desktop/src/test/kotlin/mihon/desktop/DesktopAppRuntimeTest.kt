@@ -48,7 +48,9 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.io.File
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -465,6 +467,59 @@ class DesktopAppRuntimeTest {
 
         assertEquals(2, stops)
         assertFalse(runtime.isRunning)
+    }
+
+    @Test
+    fun `concurrent close serializes successful roles and retries only failed role`() {
+        val entered = CountDownLatch(2)
+        val release = CountDownLatch(1)
+        val successfulStops = AtomicInteger()
+        val successful = object : DesktopRuntimeService {
+            override fun start() = Unit
+            override fun stop() {
+                successfulStops.incrementAndGet()
+                entered.countDown()
+                release.await()
+            }
+        }
+        val failure = IllegalStateException("first stop")
+        val failedStops = AtomicInteger()
+        val ordinaryStops = AtomicInteger()
+        val ordinary = object : DesktopRuntimeService {
+            override fun start() = Unit
+            override fun stop() { ordinaryStops.incrementAndGet() }
+        }
+        val retrying = object : DesktopRuntimeService {
+            override fun start() = Unit
+            override fun stop() {
+                if (failedStops.incrementAndGet() == 1) throw failure
+            }
+        }
+        val runtime = DesktopAppRuntime(
+            ordinary, ordinary, ordinary,
+            trackerSyncScheduler = retrying, batchMigrationController = successful, startupCleanup = {},
+        ).also(DesktopAppRuntime::start)
+        val ready = CountDownLatch(2)
+        val start = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val closes = List(2) {
+                executor.submit<Throwable?> { ready.countDown(); start.await(); runCatching(runtime::close).exceptionOrNull() }
+            }
+            assertTrue(ready.await(1, TimeUnit.SECONDS)); start.countDown()
+            entered.await(1, TimeUnit.SECONDS); release.countDown()
+            val failures = closes.map { it.get(2, TimeUnit.SECONDS) }
+            assertEquals(1, failures.count { it === failure })
+            assertEquals(1, failures.count { it == null }, failures.toString())
+            assertEquals(1, successfulStops.get())
+            assertEquals(2, failedStops.get())
+            assertEquals(3, ordinaryStops.get())
+            assertFalse(runtime.isRunning)
+            runtime.close()
+            assertEquals(1, successfulStops.get()); assertEquals(2, failedStops.get())
+        } finally {
+            release.countDown(); executor.shutdownNow()
+        }
     }
 
     @Test

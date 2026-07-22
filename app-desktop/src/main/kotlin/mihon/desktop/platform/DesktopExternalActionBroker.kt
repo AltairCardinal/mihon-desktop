@@ -29,6 +29,7 @@ import java.util.concurrent.locks.LockSupport
 class DesktopExternalActionBroker(
     private val stateFile: File,
     parentScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    private val closeServer: (ServerSocket) -> Unit = ServerSocket::close,
 ) : AutoCloseable {
     private val brokerJob = SupervisorJob(parentScope.coroutineContext[Job])
     private val scope = CoroutineScope(parentScope.coroutineContext + brokerJob)
@@ -112,20 +113,21 @@ class DesktopExternalActionBroker(
         }
     }
 
+    @Synchronized
     override fun close() {
-        val ownedEndpoint = synchronized(this) {
-            val current = endpoint
-            endpoint = null
-            current
+        server?.let { ownerServer ->
+            closeServer(ownerServer)
+            server = null
         }
-        server?.close()
-        server = null
-        brokerJob.cancel()
-        if (ownedEndpoint != null && readState()?.ownerId == ownedEndpoint.ownerId) stateFile.delete()
-        runCatching { ownerLock?.release() }
+        endpoint?.let { ownedEndpoint ->
+            if (readStateForClose()?.ownerId == ownedEndpoint.ownerId) Files.delete(stateFile.toPath())
+            endpoint = null
+        }
+        ownerLock?.release()
         ownerLock = null
-        runCatching { lockFile?.close() }
+        lockFile?.close()
         lockFile = null
+        brokerJob.cancel()
     }
 
     private fun acquireOwnerLock(): FileLock? {
@@ -237,6 +239,15 @@ class DesktopExternalActionBroker(
     private fun readState(): Endpoint? = runCatching {
         Json.decodeFromString<Endpoint>(stateFile.readText()).takeIf { it.version == PROTOCOL_VERSION }
     }.getOrNull()
+
+    private fun readStateForClose(): Endpoint? {
+        if (!stateFile.exists()) return null
+        return try {
+            Json.decodeFromString<Endpoint>(stateFile.readText()).takeIf { it.version == PROTOCOL_VERSION }
+        } catch (failure: Exception) {
+            throw StateAccessException(failure)
+        }
+    }
 
     sealed interface StartResult {
         data class Owner(val endpoint: Endpoint) : StartResult
