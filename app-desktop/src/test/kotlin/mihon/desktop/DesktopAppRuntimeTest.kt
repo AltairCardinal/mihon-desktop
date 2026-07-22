@@ -59,6 +59,20 @@ import uy.kohesive.injekt.api.get
 class DesktopAppRuntimeTest {
 
     @Test
+    fun `packaged JVM main delegates arguments to production entry`() {
+        val original = desktopMainApplication
+        var received: Array<String>? = null
+        desktopMainApplication = { received = it }
+        try {
+            val entry = Class.forName("mihon.desktop.MainKt").getMethod("main", Array<String>::class.java)
+            entry.invoke(null, arrayOf("--headless", "tachiyomi://manga") as Any)
+            assertEquals(listOf("--headless", "tachiyomi://manga"), received?.toList())
+        } finally {
+            desktopMainApplication = original
+        }
+    }
+
+    @Test
     fun `secondary acknowledgement exits without starting runtime services`(@org.junit.jupiter.api.io.TempDir tempDir: File) {
         val stateFile = File(tempDir, "instance.json")
         val owner = DesktopExternalActionBroker(stateFile)
@@ -225,13 +239,20 @@ class DesktopAppRuntimeTest {
         val owner = DesktopExternalActionBroker(stateFile)
         val port = QueuingOpenUriPort()
         val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
-        val runtime = Injekt.get<DesktopAppRuntime>()
         val uiDependencies = DesktopUiDependencies.fromInjekt()
         var ownerFactoryCalls = 0
-        val ownerEntered = CountDownLatch(1)
-        val releaseOwner = CountDownLatch(1)
+        val ownerEntered = CompletableDeferred<Unit>()
+        val releaseOwner = CompletableDeferred<Unit>()
+        var terminalAwaits = 0
+        val runtime = DesktopAppRuntime(
+            RecordingRuntimeService(),
+            RecordingRuntimeService(),
+            RecordingRuntimeService(),
+            startupCleanup = {},
+            awaitUpdater = { terminalAwaits++ },
+        )
         val ownerStart = async(Dispatchers.Default) {
-            startDesktopApplication(
+            startProductionDesktopApplication(
                 args = emptyArray(),
                 broker = owner,
                 registrar = mihon.desktop.platform.DesktopUriSchemeRegistrar { DesktopUriSchemeRegistration.Result.Unavailable(DesktopUriSchemeRegistration.UnavailableReason.NON_PACKAGED_RUNTIME) },
@@ -240,17 +261,19 @@ class DesktopAppRuntimeTest {
                     transaction.registerRuntime(runtime)
                     DesktopOwnerIngressDependencies(runtime, uiDependencies).also { ownerFactoryCalls++ }
                 },
-                ownerContinuation = { dependencies ->
-                    assertSame(uiDependencies, dependencies.uiDependencies)
-                    assertSame(uiDependencies.externalActionNavigator, dependencies.uiDependencies.externalActionNavigator)
-                    ownerEntered.countDown()
+                runApplication = { startup, closeAndJoin ->
+                    assertSame(uiDependencies, startup.ingress.uiDependencies)
+                    assertSame(uiDependencies.externalActionNavigator, startup.ingress.uiDependencies.externalActionNavigator)
+                    assertTrue(runtime.isRunning)
+                    ownerEntered.complete(Unit)
                     releaseOwner.await()
+                    closeAndJoin()
                 },
             )
         }
         var secondary: DesktopExternalActionBroker? = null
         try {
-            assertTrue(ownerEntered.await(1, TimeUnit.SECONDS))
+            ownerEntered.await()
             port.emit("tachiyomi://manga?url=owner-identity")
             assertTrue(uiDependencies.externalActionNavigator.hasPendingAction)
             val fixture = navigatorFixture()
@@ -260,20 +283,22 @@ class DesktopAppRuntimeTest {
             secondary = DesktopExternalActionBroker(stateFile)
             assertEquals(
                 DesktopInstanceStartResult.Forwarded,
-                startDesktopApplication(
+                startProductionDesktopApplication(
                     args = arrayOf("tachiyomi://manga?url=secondary"),
                     broker = secondary,
                     registrar = mihon.desktop.platform.DesktopUriSchemeRegistrar { error("secondary must not register") },
                     openUriEventPort = port,
                     ownerIngressDependencies = { error("secondary must not initialize owner dependencies") },
-                    ownerContinuation = { error("secondary must not continue owner startup") },
+                    runApplication = { _, _ -> error("secondary must not continue owner startup") },
                 ),
             )
             assertEquals(1, port.installs)
             assertEquals(1, ownerFactoryCalls)
         } finally {
-            releaseOwner.countDown()
+            releaseOwner.complete(Unit)
             runCatching { ownerStart.await() }
+            assertEquals(1, terminalAwaits)
+            assertFalse(runtime.isRunning)
             assertEquals(1, port.closes)
             secondary?.close()
             context.closeAndJoin()

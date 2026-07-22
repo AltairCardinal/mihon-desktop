@@ -14,12 +14,14 @@ import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import mihon.desktop.di.initDesktopDI
 import mihon.desktop.platform.DesktopExternalActionBroker
 import mihon.desktop.platform.DesktopOpenUriEventPort
@@ -58,8 +60,10 @@ suspend fun main(args: Array<String>) {
     // Install crash handler FIRST
     CrashHandler.install()
 
-    startProductionDesktopApplication(args)
+    desktopMainApplication(args)
 }
+
+internal var desktopMainApplication: suspend (Array<String>) -> Unit = { startProductionDesktopApplication(it) }
 
 internal suspend fun startProductionDesktopApplication(
     args: Array<String>,
@@ -73,19 +77,36 @@ internal suspend fun startProductionDesktopApplication(
         transaction.registerRuntime(runtime)
         DesktopOwnerIngressDependencies(runtime, DesktopUiDependencies.fromInjekt())
     },
-    ownerLifecycle: suspend (TestArguments, DesktopOwnerStartup) -> Unit = ::runProductionOwnerApplication,
+    startTestMode: (TestArguments) -> Unit = { testArgs -> if (testArgs.testMode) TestMode.start(testArgs) },
+    awaitTestModeTermination: () -> Unit = TestMode::awaitTermination,
+    stopTestMode: () -> Unit = TestMode::stop,
+    runApplication: suspend (DesktopOwnerStartup, suspend () -> Unit) -> Unit = ::runDesktopWindowApplication,
 ): DesktopInstanceStartResult {
     val transaction = DesktopOwnerTransaction()
     var owner: DesktopOwnerStartup? = null
+    var lifecycleStarted = false
+    val testArgs = TestArguments.parse(args)
     return try {
         val result = startDesktopInstance(broker, desktopExternalActionRaw(args)) { electedBroker ->
             reportDesktopOwnerRegistration(registrar, reportRegistration)
             owner = prepareDesktopOwner(transaction, electedBroker, args, openUriEventPort, ownerIngressDependencies)
         }
-        owner?.let { ownerLifecycle(TestArguments.parse(args), it) }
+        owner?.let { startup ->
+            lifecycleStarted = true
+            runProductionOwnerLifecycle(
+                testArgs = testArgs,
+                runtime = startup.runtime,
+                appLock = startup.appLock,
+                testState = applicationState,
+                startTestMode = { startTestMode(testArgs) },
+                awaitTestModeTermination = awaitTestModeTermination,
+                stopTestMode = stopTestMode,
+                runApplication = { closeAndJoin -> runApplication(startup, closeAndJoin) },
+            )
+        }
         result
     } catch (failure: Throwable) {
-        owner?.closeAndJoin(failure) ?: transaction.closeAndJoin(failure)
+        if (!lifecycleStarted) transaction.closeAndJoin(failure)
         throw failure
     }
 }
@@ -95,17 +116,7 @@ internal fun startDesktopApplication(
     broker: DesktopExternalActionBroker = DesktopExternalActionBroker(DesktopPlatformPaths.current().instanceStateFile),
     registrar: DesktopUriSchemeRegistrar = DesktopUriSchemeRegistration(),
     reportRegistration: (DesktopUriSchemeRegistration.Result) -> Unit = ::reportUriSchemeRegistration,
-    openUriEventPort: DesktopOpenUriEventPort = AwtDesktopOpenUriEventPort(),
-    ownerIngressDependencies: (DesktopOwnerTransaction) -> DesktopOwnerIngressDependencies = { transaction ->
-        initDesktopDI()
-        val runtime = Injekt.get<DesktopAppRuntime>()
-        transaction.registerRuntime(runtime)
-        DesktopOwnerIngressDependencies(runtime, DesktopUiDependencies.fromInjekt())
-    },
-    ownerContinuation: ((DesktopOwnerIngressDependencies) -> Unit)? = null,
-    startOwnerApplication: (DesktopExternalActionBroker) -> Unit = { ownerBroker ->
-        runOwnerApplication(args, TestArguments.parse(args), ownerBroker, openUriEventPort, ownerIngressDependencies, ownerContinuation)
-    },
+    startOwnerApplication: (DesktopExternalActionBroker) -> Unit,
 ): DesktopInstanceStartResult {
     return startDesktopInstance(broker, desktopExternalActionRaw(args)) { ownerBroker ->
         reportDesktopOwnerRegistration(registrar, reportRegistration)
@@ -123,75 +134,36 @@ private fun reportUriSchemeRegistration(result: DesktopUriSchemeRegistration.Res
     System.err.println("Desktop URI scheme capability: ${result::class.simpleName}")
 }
 
-private fun runOwnerApplication(
-    args: Array<String>,
-    testArgs: TestArguments,
-    broker: DesktopExternalActionBroker,
-    openUriEventPort: DesktopOpenUriEventPort,
-    ownerIngressDependencies: (DesktopOwnerTransaction) -> DesktopOwnerIngressDependencies,
-    ownerContinuation: ((DesktopOwnerIngressDependencies) -> Unit)?,
-) {
-    val transaction = DesktopOwnerTransaction()
-    val owner = try {
-        prepareDesktopOwner(transaction, broker, args, openUriEventPort, ownerIngressDependencies)
-    } catch (failure: Throwable) {
-        transaction.close(failure)
-        throw failure
-    }
-    checkNotNull(ownerContinuation) { "Synchronous startup is a test continuation seam; production uses suspend main" }
-    try {
-        ownerContinuation(owner.ingress)
-    } finally {
-        owner.runtime.close()
-    }
-}
-
-private suspend fun runProductionOwnerApplication(
-    testArgs: TestArguments,
+private suspend fun runDesktopWindowApplication(
     owner: DesktopOwnerStartup,
+    closeAndJoin: suspend () -> Unit,
 ) {
-    try {
-        runProductionOwnerLifecycle(
-            testArgs = testArgs,
-            runtime = owner.runtime,
-            appLock = owner.appLock,
-            testState = applicationState,
-            startTestMode = { if (testArgs.testMode) TestMode.start(testArgs) },
-            awaitTestModeTermination = TestMode::awaitTermination,
-            stopTestMode = TestMode::stop,
-        ) { closeAndJoin ->
-            application {
-                val applicationScope = rememberCoroutineScope()
-                Window(
-                    onCloseRequest = {
-                        applicationScope.launch {
-                            try {
-                                closeAndJoin()
-                            } finally {
-                                exitApplication()
-                            }
-                        }
-                    },
-                    title = "Mihon Desktop $APP_VERSION",
-                    state = rememberWindowState(width = 1024.dp, height = 768.dp),
-                ) {
-                    BindDesktopWindowLifecycle(window, owner.appLock, owner.windowPrivacyController)
-                    OwnerUiDependencies(owner.ingress) {
-                        DesktopTheme {
-                            DesktopProtectedRoot(owner.appLock) {
-                                Navigator(HomeScreen()) { navigator ->
-                                    SlideTransition(navigator)
-                                }
-                            }
+    var closeResult: Result<Unit>? = null
+    application {
+        val applicationScope = rememberCoroutineScope()
+        Window(
+            onCloseRequest = {
+                applicationScope.launch {
+                    closeResult = runCatching { closeAndJoin() }
+                    exitApplication()
+                }
+            },
+            title = "Mihon Desktop $APP_VERSION",
+            state = rememberWindowState(width = 1024.dp, height = 768.dp),
+        ) {
+            BindDesktopWindowLifecycle(window, owner.appLock, owner.windowPrivacyController)
+            OwnerUiDependencies(owner.ingress) {
+                DesktopTheme {
+                    DesktopProtectedRoot(owner.appLock) {
+                        Navigator(HomeScreen()) { navigator ->
+                            SlideTransition(navigator)
                         }
                     }
                 }
             }
         }
-    } catch (failure: Throwable) {
-        owner.closeAndJoin(failure)
-        throw failure
     }
+    closeResult?.getOrThrow()
 }
 
 internal data class DesktopOwnerStartup(
@@ -308,34 +280,43 @@ internal suspend fun runProductionOwnerLifecycle(
     runApplication: suspend (closeAndJoin: suspend () -> Unit) -> Unit,
 ) {
     val session = DesktopRuntimeBootstrapSession(runtime, DesktopAppLockTestStateBinding(appLock, testState))
+    var failure: Throwable? = null
+    var testModeStarted = false
     try {
         runtime.start()
-        startTestMode()
-    } catch (failure: Throwable) {
-        try {
-            session.closeAndJoin()
-        } catch (cleanupFailure: Throwable) {
-            if (cleanupFailure !== failure) failure.addSuppressed(cleanupFailure)
+        if (testArgs.testMode) {
+            testModeStarted = true
+            startTestMode()
         }
-        throw failure
-    }
-    try {
         if (testArgs.headless) {
-            try {
-                if (testArgs.testMode) awaitTestModeTermination()
-            } finally {
-                try {
-                    if (testArgs.testMode) stopTestMode()
-                } finally {
-                    session.closeAndJoin()
-                }
-            }
+            if (testArgs.testMode) awaitTestModeTermination()
         } else {
             runApplication(session::closeAndJoin)
         }
-    } finally {
-        session.closeAndJoin()
+    } catch (lifecycleFailure: Throwable) {
+        failure = lifecycleFailure
     }
+    withContext(NonCancellable) {
+        if (testModeStarted) {
+            try {
+                stopTestMode()
+            } catch (cleanupFailure: Throwable) {
+                failure = preserveLifecycleFailure(failure, cleanupFailure)
+            }
+        }
+        try {
+            session.closeAndJoin()
+        } catch (cleanupFailure: Throwable) {
+            failure = preserveLifecycleFailure(failure, cleanupFailure)
+        }
+    }
+    failure?.let { throw it }
+}
+
+private fun preserveLifecycleFailure(primary: Throwable?, failure: Throwable): Throwable {
+    if (primary == null) return failure
+    if (failure !== primary) primary.addSuppressed(failure)
+    return primary
 }
 
 internal class DesktopRuntimeBootstrapSession(

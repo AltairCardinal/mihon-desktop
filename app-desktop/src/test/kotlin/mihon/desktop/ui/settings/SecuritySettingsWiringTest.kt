@@ -279,8 +279,9 @@ class SecuritySettingsWiringTest {
     }
 
     @Test
-    fun `production GUI and headless owner lifecycle wait for updater cleanup`() = runBlocking {
-        listOf(false, true).forEach { headless ->
+    fun `production GUI close application return and headless lifecycle wait for updater cleanup`() = runBlocking {
+        listOf("gui-close", "application-return", "headless").forEach { path ->
+            val headless = path == "headless"
             val cleanupStarted = CompletableDeferred<Unit>()
             val releaseCleanup = CompletableDeferred<Unit>()
             val terminationReached = CompletableDeferred<Unit>()
@@ -317,7 +318,7 @@ class SecuritySettingsWiringTest {
             assertTrue(model.intent(DesktopUpdateIntent.CHECK))
             val closing = async(Dispatchers.Default) {
                 runProductionOwnerLifecycle(
-                    testArgs = TestArguments(testMode = true, headless = headless),
+                    testArgs = TestArguments(testMode = headless, headless = headless),
                     runtime = runtime,
                     appLock = appLock,
                     testState = applicationState,
@@ -327,7 +328,7 @@ class SecuritySettingsWiringTest {
                         runBlocking { releaseTermination.await() }
                     },
                     stopTestMode = {},
-                    runApplication = { closeAndJoin -> closeAndJoin() },
+                    runApplication = { closeAndJoin -> if (path == "gui-close") closeAndJoin() },
                 )
                 true
             }
@@ -402,6 +403,75 @@ class SecuritySettingsWiringTest {
             releaseCleanup.complete(Unit)
         }
         closing.await()
+    }
+
+    @Test
+    fun `production lifecycle preserves stage failures and cleanup suppression`() = runBlocking {
+        val appLock = DesktopAppLock(
+            preferences(enabled = false, delay = 0),
+            DesktopPassphraseVerifier(DesktopCredentialStore(MemoryCredentialBackend("secret".toCharArray()))),
+        )
+        listOf("runtime", "test-start", "test-await", "application").forEach { stage ->
+            val primary = IllegalStateException(stage)
+            val cleanup = IllegalArgumentException("cleanup-$stage")
+            val service = object : DesktopRuntimeService {
+                override fun start() { if (stage == "runtime") throw primary }
+                override fun stop() = Unit
+            }
+            val runtime = DesktopAppRuntime(
+                service,
+                service,
+                service,
+                startupCleanup = {},
+                closeUpdater = { throw cleanup },
+                awaitUpdater = {},
+            )
+            val testMode = stage.startsWith("test-")
+            val thrown = runCatching {
+                runProductionOwnerLifecycle(
+                    TestArguments(testMode = testMode, headless = stage == "test-await"),
+                    runtime,
+                    appLock,
+                    applicationState,
+                    startTestMode = { if (stage == "test-start") throw primary },
+                    awaitTestModeTermination = { if (stage == "test-await") throw primary },
+                    stopTestMode = {},
+                    runApplication = { if (stage == "application") throw primary },
+                )
+            }.exceptionOrNull()
+            assertSame(primary, thrown, stage)
+            assertEquals(listOf(cleanup), thrown!!.suppressed.toList(), stage)
+        }
+
+        listOf("normal", "test-stop", "gui-close", "close", "join").forEach { stage ->
+            val stageFailure = IllegalStateException(stage)
+            var closeCalls = 0
+            val service = object : DesktopRuntimeService {
+                override fun start() = Unit
+                override fun stop() = Unit
+            }
+            val runtime = DesktopAppRuntime(
+                service,
+                service,
+                service,
+                startupCleanup = {},
+                closeUpdater = { if (stage in setOf("gui-close", "close") && ++closeCalls == 1) throw stageFailure },
+                awaitUpdater = { if (stage == "join") throw stageFailure },
+            )
+            val thrown = runCatching {
+                runProductionOwnerLifecycle(
+                    TestArguments(testMode = stage == "test-stop", headless = stage == "test-stop"),
+                    runtime,
+                    appLock,
+                    applicationState,
+                    startTestMode = {},
+                    awaitTestModeTermination = {},
+                    stopTestMode = { if (stage == "test-stop") throw stageFailure },
+                    runApplication = { closeAndJoin -> if (stage == "gui-close") closeAndJoin() },
+                )
+            }.exceptionOrNull()
+            if (stage == "normal") assertEquals(null, thrown) else assertSame(stageFailure, thrown, stage)
+        }
     }
 
     @Test
