@@ -231,10 +231,13 @@ class AdvancedSettingsScreen : Screen {
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("Advanced") },
+                    title = { Text(text(MR.strings.pref_category_advanced)) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = text(MR.strings.action_bar_up_description),
+                            )
                         }
                     },
                 )
@@ -249,7 +252,7 @@ class AdvancedSettingsScreen : Screen {
             ) {
                 // Section header
                 Text(
-                    text = "Network",
+                    text = text(MR.strings.label_network),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -271,20 +274,22 @@ class AdvancedSettingsScreen : Screen {
                 HorizontalDivider()
 
                 ListItem(
-                    headlineContent = { Text("Network cache size") },
-                    supportingContent = { Text(if (cacheSize.isNotEmpty()) cacheSize else "Calculating…") },
+                    headlineContent = { Text(text(MR.strings.desktop_advanced_network_cache_size)) },
+                    supportingContent = {
+                        Text(if (cacheSize.isNotEmpty()) cacheSize else text(MR.strings.desktop_advanced_calculating))
+                    },
                 )
                 TextButton(
                     onClick = { showClearCacheDialog = true },
                     modifier = Modifier.padding(horizontal = 16.dp),
                 ) {
-                    Text("Clear network cache")
+                    Text(text(MR.strings.desktop_advanced_clear_network_cache))
                 }
 
                 HorizontalDivider()
 
                 ListItem(
-                    headlineContent = { Text("Crash log folder") },
+                    headlineContent = { Text(text(MR.strings.desktop_advanced_crash_log_folder)) },
                     supportingContent = { Text(CrashHandler.defaultCrashLogDir().path) },
                 )
                 TextButton(
@@ -295,16 +300,16 @@ class AdvancedSettingsScreen : Screen {
                             }
                             snackbar.showSnackbar(
                                 if (opened) {
-                                    "Crash log folder opened"
+                                    text(MR.strings.desktop_advanced_crash_log_opened)
                                 } else {
-                                    "Could not open crash log folder"
+                                    text(MR.strings.desktop_advanced_crash_log_open_failed)
                                 },
                             )
                         }
                     },
                     modifier = Modifier.padding(horizontal = 16.dp),
                 ) {
-                    Text("Open crash log folder")
+                    Text(text(MR.strings.desktop_advanced_crash_log_open))
                 }
 
                 HorizontalDivider()
@@ -416,8 +421,8 @@ class AdvancedSettingsScreen : Screen {
         if (showClearCacheDialog) {
             AlertDialog(
                 onDismissRequest = { showClearCacheDialog = false },
-                title = { Text("Clear network cache") },
-                text = { Text("This will delete all cached HTTP responses. Pages may load more slowly until the cache is rebuilt.") },
+                title = { Text(text(MR.strings.desktop_advanced_clear_network_cache)) },
+                text = { Text(text(MR.strings.desktop_advanced_clear_network_cache_warning)) },
                 confirmButton = {
                     TextButton(
                         onClick = {
@@ -429,10 +434,10 @@ class AdvancedSettingsScreen : Screen {
                                 }
                             }
                         },
-                    ) { Text("Clear") }
+                    ) { Text(text(MR.strings.desktop_advanced_clear_confirm)) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showClearCacheDialog = false }) { Text("Cancel") }
+                    TextButton(onClick = { showClearCacheDialog = false }) { Text(text(MR.strings.action_cancel)) }
                 },
             )
         }

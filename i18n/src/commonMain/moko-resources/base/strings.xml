@@ -1084,6 +1084,15 @@
     <string name="desktop_settings_clear_cookies_summary">Remove all stored cookies</string>
     <string name="desktop_settings_clear_cookies_warning">This removes all stored cookies. You may need to complete source verification again.</string>
     <string name="desktop_settings_clear_cookies_confirm">Clear</string>
+    <string name="desktop_advanced_network_cache_size">Network cache size</string>
+    <string name="desktop_advanced_calculating">Calculating…</string>
+    <string name="desktop_advanced_clear_network_cache">Clear network cache</string>
+    <string name="desktop_advanced_clear_network_cache_warning">This will delete all cached HTTP responses. Pages may load more slowly until the cache is rebuilt.</string>
+    <string name="desktop_advanced_clear_confirm">Clear</string>
+    <string name="desktop_advanced_crash_log_folder">Crash log folder</string>
+    <string name="desktop_advanced_crash_log_open">Open crash log folder</string>
+    <string name="desktop_advanced_crash_log_opened">Crash log folder opened</string>
+    <string name="desktop_advanced_crash_log_open_failed">Could not open crash log folder</string>
     <string name="information_required_plain">*required</string>
     <!-- Do not translate "WebView" -->
     <string name="information_webview_required">WebView is required for the app to function</string>

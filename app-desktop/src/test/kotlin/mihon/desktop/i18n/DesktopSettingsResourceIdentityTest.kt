@@ -29,6 +29,7 @@ import mihon.desktop.download.DownloadItem
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.settings.LibraryUpdateInterval
 import mihon.desktop.ui.settings.AppearanceSettingsScreen
+import mihon.desktop.ui.settings.AdvancedSettingsScreen
 import mihon.desktop.ui.settings.BackupPresentationText
 import mihon.desktop.ui.settings.BackupRestoreFailureReason
 import mihon.desktop.ui.settings.BackupRestoreScreenModel
@@ -57,6 +58,7 @@ import java.io.File
 import java.util.Locale
 
 @OptIn(ExperimentalComposeUiApi::class)
+@org.junit.jupiter.api.parallel.Isolated
 class DesktopSettingsResourceIdentityTest {
     private val english = Locale.US
     private val chinese = Locale.forLanguageTag("zh-CN")
@@ -251,6 +253,77 @@ class DesktopSettingsResourceIdentityTest {
                     MR.strings.desktop_download_delete_after_read_summary.localized(locale),
                 )
                 assertCopy(download.descriptions, MR.strings.action_bar_up_description.localized(locale))
+            }
+        } finally {
+            Locale.setDefault(previousLocale)
+        }
+    }
+
+    @Test
+    fun `Advanced renders localized production states and shared identities`() = runBlocking {
+        val appPreferences = DesktopAppPreferences(InMemoryPreferenceStore())
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+            every { this@mockk.appPreferences } returns appPreferences
+        }
+        val previousLocale = Locale.getDefault()
+        try {
+            listOf(chinese, english).forEach { locale ->
+                appPreferences.flareSolverrEnabled.set(true)
+                appPreferences.flareSolverrUrl.set("")
+                val advanced = render(AdvancedSettingsScreen(), dependencies, locale, height = 2_400)
+                assertCopy(
+                    advanced.text,
+                    MR.strings.pref_category_advanced.localized(locale),
+                    MR.strings.label_network.localized(locale),
+                    MR.strings.pref_clear_cookies.localized(locale),
+                    MR.strings.desktop_settings_cloudflare_title.localized(locale),
+                    MR.strings.desktop_settings_cloudflare_solver_title.localized(locale),
+                    MR.strings.desktop_settings_cloudflare_solver_url.localized(locale),
+                    MR.strings.desktop_settings_cloudflare_domain.localized(locale),
+                    MR.strings.desktop_challenge_manual_cookie.localized(locale),
+                    MR.strings.desktop_challenge_manual_submit.localized(locale),
+                    MR.strings.desktop_settings_cloudflare_solver_url_required.localized(locale),
+                    MR.strings.desktop_advanced_network_cache_size.localized(locale),
+                    MR.strings.desktop_advanced_clear_network_cache.localized(locale),
+                    MR.strings.desktop_advanced_crash_log_folder.localized(locale),
+                    MR.strings.desktop_advanced_crash_log_open.localized(locale),
+                )
+                assertCopy(advanced.descriptions, MR.strings.action_bar_up_description.localized(locale))
+                appPreferences.flareSolverrUrl.set("not-a-url")
+                assertCopy(
+                    render(AdvancedSettingsScreen(), dependencies, locale, height = 2_400).text,
+                    MR.strings.desktop_settings_cloudflare_solver_url_invalid.localized(locale),
+                )
+                assertCopy(
+                    renderAfterClicks(
+                        AdvancedSettingsScreen(),
+                        dependencies,
+                        locale,
+                        MR.strings.desktop_challenge_manual_submit.localized(locale),
+                    ).text,
+                    MR.strings.desktop_settings_cloudflare_cookie_required.localized(locale),
+                )
+                assertCopy(
+                    renderAfterClicks(
+                        AdvancedSettingsScreen(),
+                        dependencies,
+                        locale,
+                        MR.strings.desktop_advanced_clear_network_cache.localized(locale),
+                    ).text,
+                    MR.strings.desktop_advanced_clear_network_cache_warning.localized(locale),
+                    MR.strings.desktop_advanced_clear_confirm.localized(locale),
+                    MR.strings.action_cancel.localized(locale),
+                )
+                assertCopy(
+                    renderAfterClicks(
+                        AdvancedSettingsScreen(),
+                        dependencies,
+                        locale,
+                        MR.strings.pref_clear_cookies.localized(locale),
+                        MR.strings.desktop_settings_clear_cookies_confirm.localized(locale),
+                    ).text,
+                    MR.strings.cookies_cleared.localized(locale),
+                )
             }
         } finally {
             Locale.setDefault(previousLocale)
@@ -490,6 +563,34 @@ class DesktopSettingsResourceIdentityTest {
         }
     }
 
+    private suspend fun renderAfterClicks(
+        screen: Screen,
+        dependencies: DesktopUiDependencies,
+        locale: Locale,
+        vararg labels: String,
+    ): RenderedCopy {
+        Locale.setDefault(locale)
+        val scene = ImageComposeScene(900, 2_400, coroutineContext = kotlinx.coroutines.currentCoroutineContext()) {}
+        return try {
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    Navigator(screen) { CurrentScreen() }
+                }
+            }
+            repeat(3) { scene.render(); yield() }
+            labels.forEach { label ->
+                val node = nodes(scene).last {
+                    it.config.contains(SemanticsActions.OnClick) && flatten(it).flatMap(::textCopy).contains(label)
+                }
+                assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
+                repeat(3) { scene.render(); yield() }
+            }
+            RenderedCopy(textCopy(scene), descriptionCopy(scene), entryCopy(scene), selectedEntryCopy(scene))
+        } finally {
+            scene.close()
+        }
+    }
+
     private fun assertCopy(actual: Set<String>, vararg expected: String) {
         expected.forEach { assertTrue(it in actual, "Missing '$it': $actual") }
     }
@@ -583,6 +684,32 @@ class DesktopSettingsResourceIdentityTest {
         MR.strings.desktop_library_excluded_categories,
         MR.strings.desktop_library_manual_refresh_summary,
         MR.strings.desktop_library_excluded_categories_summary,
+        MR.strings.desktop_challenge_manual_cookie,
+        MR.strings.desktop_challenge_manual_submit,
+        MR.strings.desktop_settings_cloudflare_title,
+        MR.strings.desktop_settings_cloudflare_description,
+        MR.strings.desktop_settings_cloudflare_solver_title,
+        MR.strings.desktop_settings_cloudflare_solver_url,
+        MR.strings.desktop_settings_cloudflare_solver_explicit_only,
+        MR.strings.desktop_settings_cloudflare_solver_url_required,
+        MR.strings.desktop_settings_cloudflare_solver_url_invalid,
+        MR.strings.desktop_settings_cloudflare_domain,
+        MR.strings.desktop_settings_cloudflare_invalid_domain,
+        MR.strings.desktop_settings_cloudflare_cookie_required,
+        MR.strings.desktop_settings_cloudflare_domain_parse_failed,
+        MR.strings.desktop_settings_cloudflare_cookie_imported,
+        MR.strings.desktop_settings_clear_cookies_summary,
+        MR.strings.desktop_settings_clear_cookies_warning,
+        MR.strings.desktop_settings_clear_cookies_confirm,
+        MR.strings.desktop_advanced_network_cache_size,
+        MR.strings.desktop_advanced_calculating,
+        MR.strings.desktop_advanced_clear_network_cache,
+        MR.strings.desktop_advanced_clear_network_cache_warning,
+        MR.strings.desktop_advanced_clear_confirm,
+        MR.strings.desktop_advanced_crash_log_folder,
+        MR.strings.desktop_advanced_crash_log_open,
+        MR.strings.desktop_advanced_crash_log_opened,
+        MR.strings.desktop_advanced_crash_log_open_failed,
         MR.strings.desktop_backup_create_summary,
         MR.strings.desktop_backup_restore_summary,
         MR.strings.desktop_backup_saved,
