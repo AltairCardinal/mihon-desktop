@@ -13,6 +13,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.DesktopAppRuntime
+import mihon.desktop.DesktopOwnerIngressDependencies
 import mihon.desktop.compat.AndroidCompat
 import mihon.desktop.backup.AutoBackupScheduler
 import mihon.desktop.backup.BackupRestoreScreenModelFactory
@@ -126,6 +127,21 @@ import okio.Buffer
 
 @Isolated
 class DesktopDiWiringTest {
+    @Test
+    fun `owner graph retains the UI navigator instance selected from DI`(@TempDir tempDir: File) = runBlocking {
+        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+        try {
+            val uiDependencies = DesktopUiDependencies.fromInjekt()
+            val ownerDependencies = DesktopOwnerIngressDependencies(Injekt.get(), uiDependencies)
+
+            assertSame(uiDependencies, ownerDependencies.uiDependencies)
+            assertSame(uiDependencies.externalActionNavigator, ownerDependencies.uiDependencies.externalActionNavigator)
+            assertTrue(uiDependencies.externalActionNavigator !== DesktopUiDependencies.fromInjekt().externalActionNavigator)
+        } finally {
+            context.closeAndJoin()
+        }
+    }
+
     @Test
     fun `desktop DI shares the production updater controller with UI`(@TempDir tempDir: File) = runBlocking {
         val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())

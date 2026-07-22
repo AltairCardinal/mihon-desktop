@@ -69,9 +69,9 @@ internal fun startDesktopApplication(
     openUriEventPort: DesktopOpenUriEventPort = AwtDesktopOpenUriEventPort(),
     ownerIngressDependencies: () -> DesktopOwnerIngressDependencies = {
         initDesktopDI()
-        DesktopOwnerIngressDependencies(Injekt.get(), DesktopUiDependencies.fromInjekt().externalActionNavigator)
+        DesktopOwnerIngressDependencies(Injekt.get(), DesktopUiDependencies.fromInjekt())
     },
-    ownerContinuation: ((DesktopAppRuntime) -> Unit)? = null,
+    ownerContinuation: ((DesktopOwnerIngressDependencies) -> Unit)? = null,
     startOwnerApplication: (DesktopExternalActionBroker) -> Unit = { ownerBroker ->
         runOwnerApplication(args, TestArguments.parse(args), ownerBroker, openUriEventPort, ownerIngressDependencies, ownerContinuation)
     },
@@ -91,7 +91,7 @@ internal fun startDesktopApplication(
 
 internal data class DesktopOwnerIngressDependencies(
     val runtime: DesktopAppRuntime,
-    val navigator: ExternalActionNavigator,
+    val uiDependencies: DesktopUiDependencies,
 )
 
 private fun reportUriSchemeRegistration(result: DesktopUriSchemeRegistration.Result) {
@@ -105,16 +105,17 @@ private fun runOwnerApplication(
     broker: DesktopExternalActionBroker,
     openUriEventPort: DesktopOpenUriEventPort,
     ownerIngressDependencies: () -> DesktopOwnerIngressDependencies,
-    ownerContinuation: ((DesktopAppRuntime) -> Unit)?,
+    ownerContinuation: ((DesktopOwnerIngressDependencies) -> Unit)?,
 ) {
     val ownerIngress = ownerIngressDependencies()
     val runtime = ownerIngress.runtime
-    val navigator = ownerIngress.navigator
+    val uiDependencies = ownerIngress.uiDependencies
+    val navigator = uiDependencies.externalActionNavigator
     submitDesktopExternalAction(args, navigator)
     initializeDesktopOwnerExternalActionIngress(broker, navigator, runtime, openUriEventPort)
     if (ownerContinuation != null) {
         try {
-            ownerContinuation(runtime)
+            ownerContinuation(ownerIngress)
         } finally {
             runtime.close()
         }
@@ -122,7 +123,6 @@ private fun runOwnerApplication(
     }
     val appLock = Injekt.get<DesktopAppLock>()
     val windowPrivacyController = Injekt.get<DesktopWindowPrivacyController>()
-    val uiDependencies = DesktopUiDependencies.fromInjekt()
     bootstrapDesktopRuntime(runtime, appLock, applicationState) {
         if (testArgs.testMode) TestMode.start(testArgs)
     }.use { bootstrap ->

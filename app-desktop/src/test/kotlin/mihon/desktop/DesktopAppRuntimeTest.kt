@@ -25,6 +25,7 @@ import mihon.desktop.platform.DesktopOpenUriEnvironment
 import mihon.desktop.platform.DesktopOpenUriPlatform
 import mihon.desktop.platform.OperatingSystem
 import mihon.desktop.platform.AwtDesktopOpenUriEventPort
+import mihon.desktop.di.initDesktopDIForTest
 import mihon.desktop.test.TestArguments
 import mihon.desktop.test.TestModeRun
 import mihon.desktop.test.completeTestModeStop
@@ -48,6 +49,9 @@ import org.junit.jupiter.api.Test
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import tachiyomi.core.common.preference.DesktopPreferenceStore
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DesktopAppRuntimeTest {
@@ -218,8 +222,10 @@ class DesktopAppRuntimeTest {
         val stateFile = File(tempDir, "instance.json")
         val owner = DesktopExternalActionBroker(stateFile)
         val port = QueuingOpenUriPort()
-        val navigator = externalActionNavigator()
-        val runtime = headlessRuntime()
+        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+        val runtime = Injekt.get<DesktopAppRuntime>()
+        val uiDependencies = DesktopUiDependencies.fromInjekt()
+        var ownerFactoryCalls = 0
         val ownerEntered = CountDownLatch(1)
         val releaseOwner = CountDownLatch(1)
         val ownerStart = async(Dispatchers.Default) {
@@ -228,8 +234,10 @@ class DesktopAppRuntimeTest {
                 broker = owner,
                 registrar = mihon.desktop.platform.DesktopUriSchemeRegistrar { DesktopUriSchemeRegistration.Result.Unavailable(DesktopUriSchemeRegistration.UnavailableReason.NON_PACKAGED_RUNTIME) },
                 openUriEventPort = port,
-                ownerIngressDependencies = { DesktopOwnerIngressDependencies(runtime, navigator) },
-                ownerContinuation = {
+                ownerIngressDependencies = { DesktopOwnerIngressDependencies(runtime, uiDependencies).also { ownerFactoryCalls++ } },
+                ownerContinuation = { dependencies ->
+                    assertSame(uiDependencies, dependencies.uiDependencies)
+                    assertSame(uiDependencies.externalActionNavigator, dependencies.uiDependencies.externalActionNavigator)
                     ownerEntered.countDown()
                     releaseOwner.await()
                 },
@@ -249,10 +257,12 @@ class DesktopAppRuntimeTest {
             ),
         )
         assertEquals(1, port.installs)
+        assertEquals(1, ownerFactoryCalls)
         releaseOwner.countDown()
         assertEquals(DesktopInstanceStartResult.Owner, ownerStart.await())
         assertEquals(1, port.closes)
         secondary.close()
+        context.closeAndJoin()
     }
     @Test
     fun `owner ingress does not install open URI handler when broker attachment is rejected`(@org.junit.jupiter.api.io.TempDir tempDir: File) {
