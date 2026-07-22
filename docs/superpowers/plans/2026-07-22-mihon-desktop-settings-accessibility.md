@@ -44,8 +44,8 @@ status-source: this-file
 
 - [x] Task 1：固定原版 provenance 与行为 fixture
 - [x] Task 2：共享设置搜索与 breadcrumb 契约
-- [ ] Task 3：当前 Android consumer 消费共享搜索契约
-- [ ] Task 3R：Android 设置搜索 production 默认 shared wiring 证据
+- [x] Task 3：当前 Android consumer 消费共享搜索契约
+- [x] Task 3R：Android 设置搜索 production 默认 shared wiring 证据
 - [ ] Task 4A：Desktop 入口/基础设置 i18n 同源化
 - [ ] Task 4B：Desktop 内容设置 i18n 同源化
 - [ ] Task 4C：Desktop 安全/高级设置 i18n 同源化
@@ -154,7 +154,7 @@ status-source: this-file
 2. GREEN：Android Preference tree 只做平台投影与 Compose route/highlight，不反向冒充原版证据。
 3. 运行 Android focused、navigation/Screen smoke、Spotless/range gate。
 
-**Review status（重规划）：** 初始实现 `14a3f5bf7`，唯一修复 `8f01dcb91`；累计 `5 files/380 touched`。首次审查 `0/2/0` 指出的空查询 eager index 与真实 caller/滚动/RTL/no-result 证据已关闭：API 36 设备测试 `5/5`，JVM consumer `2/2`，Task 2 shared `7/7`，Task 1 provenance、Spotless、diff/guard 均通过；空查询、caller、0.4s、未命中清理、点击顺序与 shared helper 断开 mutation 均取得精确 RED。唯一复审仍以 `0/1/0` 拒绝：设备测试显式注入 shared lambda，production 默认 `= ::searchSettings` 若改成本地过滤仍可能全绿。该风险与已验证的投影、导航、anchor、滚动行为可独立验证，按门禁重规划为子 Task 3R；Task 3 与 3R 在 3R 通过后一起关闭。
+**Review status（已完成）：** 初始实现 `14a3f5bf7`，唯一修复 `8f01dcb91`；累计 `5 files/380 touched`。首次审查 `0/2/0` 指出的空查询 eager index 与真实 caller/滚动/RTL/no-result 证据已关闭：API 36 设备测试 `5/5`，JVM consumer `2/2`，Task 2 shared `7/7`，Task 1 provenance、Spotless、diff/guard 均通过；空查询、caller、0.4s、未命中清理、点击顺序与 shared helper 断开 mutation 均取得精确 RED。唯一复审仍以 `0/1/0` 拒绝 production 默认 shared identity 可被显式测试 seam 绕过，因而将该单一风险重规划为子 Task 3R；3R 通过独立审查后，本 Task 与 3R 一并关闭。下一项为父 Task 5B / 子 Task 4A。
 
 ### Task 3R：Android 设置搜索 production 默认 shared wiring 证据
 
@@ -166,11 +166,13 @@ status-source: this-file
 
 **Verification:** production-default SearchResult→searchSettings→SettingsSearchPolicy identity、local-copy mutation rejection、既有 Android 搜索回归
 
-**Files:** `SettingsSearchScreen.kt`、`SettingsSearchNavigationUiTest.kt`、`app/build.gradle.kts`、`gradle/libs.versions.toml`。
+**Files:** `SettingsSearchScreen.kt`、`SettingsSearchNavigationUiTest.kt`。
 
-1. RED：设备测试不显式传 `searchPolicy`，通过 Android MockK 观察 production 默认路径；未声明 test-only Android artifact 时先编译失败，将默认 helper 改成本地过滤时 verify 必须失败。
-2. GREEN：增加与现有 MockK 版本一致的 `mockk-android` test-only 依赖，移除 `SearchResult` 的 policy 注入参数；production 固定调用 `searchSettings`，测试 `callOriginal` 并验证真实 shared object 被调用。
+1. RED：设备测试不显式传 `searchPolicy`；将真实 caller 临时改为 `emptyList()` 时必须因缺少 production 结果节点失败。将 helper 临时改为行为等价的本地副本时，行为断言可通过但 JVM 对 shared object 的调用验证必须失败。
+2. GREEN：移除 `SearchResult` 的 policy 注入参数，production 固定调用 `searchSettings`；由设备测试锁定 caller→helper，由既有 JVM MockK 调用验证锁定 helper→`SettingsSearchPolicy`，不新增 Android test 依赖或 production hook。
 3. 复跑子 Task 3 的 JVM/设备/原版 provenance、Spotless/diff/range/guard；不得新增 production DI、可变测试 hook 或业务规则副本。
+
+**Review status（已完成）：** 实现提交 `ea02ddfa2`，范围为 `2 files, 1+/13-`。真实设备测试不再显式注入 shared lambda，`SearchResult → searchSettings → SettingsSearchPolicy.search` 成为不可替换的 production 链；caller→`emptyList()` 变异由设备端 RTL breadcrumb/result 节点精确杀死，helper→等价本地副本变异在行为结果不变时由 JVM `verify(exactly = 1)` 精确杀死。API 36 / ADB 5038 XML 为 `5/5`、Android consumer `2/2`、shared policy `7/7`、provenance `6/6`，Spotless、diff、range 与项目 guard 均通过；无新增依赖、production hook、业务副本或用户脏文件。独立审查 APPROVED，Critical/Important/Minor `0/0/0`。下一项为父 Task 5B / 子 Task 4A。
 
 ### Task 4A：Desktop 入口/基础设置 i18n 同源化
 
