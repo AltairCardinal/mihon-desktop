@@ -144,6 +144,7 @@ internal suspend fun runDesktopWindowApplication(
     val closeResult = CompletableDeferred<Result<Unit>>()
     runWindowEventLoop {
         if (closeRequested.compareAndSet(false, true)) closeResult.complete(runCatching { closeAndJoin() })
+        closeResult.await()
     }
     if (closeRequested.get()) closeResult.await().getOrThrow()
 }

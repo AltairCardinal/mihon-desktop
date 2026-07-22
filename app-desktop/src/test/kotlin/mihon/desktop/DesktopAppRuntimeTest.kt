@@ -357,17 +357,40 @@ class DesktopAppRuntimeTest {
     }
 
     @Test
-    fun `window application keeps first close result and ignores duplicate requests`() = runTest {
+    fun `duplicate close requests wait for the first terminal result`() = runTest {
         val failure = IllegalStateException("first close")
+        val closeEntered = CompletableDeferred<Unit>()
+        val releaseClose = CompletableDeferred<Unit>()
         var closeCalls = 0
+        var callbacksCompleted = 0
         val thrown = runCatching {
             runDesktopWindowApplication(
-                closeAndJoin = { if (++closeCalls == 1) throw failure },
-                runWindowEventLoop = { requestClose -> requestClose(); requestClose() },
+                closeAndJoin = {
+                    closeCalls++
+                    closeEntered.complete(Unit)
+                    releaseClose.await()
+                    throw failure
+                },
+                runWindowEventLoop = { requestClose ->
+                    kotlinx.coroutines.coroutineScope {
+                        val first = async { requestClose(); callbacksCompleted++ }
+                        closeEntered.await()
+                        val second = async { requestClose(); callbacksCompleted++ }
+                        kotlinx.coroutines.yield()
+                        try {
+                            assertFalse(second.isCompleted)
+                        } finally {
+                            releaseClose.complete(Unit)
+                        }
+                        first.await()
+                        second.await()
+                    }
+                },
             )
         }.exceptionOrNull()
         assertSame(failure, thrown)
         assertEquals(1, closeCalls)
+        assertEquals(2, callbacksCompleted)
     }
 
     @Test
