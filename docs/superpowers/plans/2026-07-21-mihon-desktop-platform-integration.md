@@ -58,7 +58,7 @@ status-source: this-file
 - [x] Task 16D2：唯一 production lifecycle 与真实入口证据
 - [x] Task 16D2R：重复 Compose close 共享 terminal completion
 - [x] Task 16V1：全局搜索状态单调性验收阻塞修复
-- [ ] Task 16E1：credential 事务 fail-closed 与敏感缓冲区
+- [x] Task 16E1：credential 事务 fail-closed 与敏感缓冲区
 - [ ] Task 16E2：真实 owner entry 证明与异常优先级
 - [ ] Task 16E3：macOS 分享 helper 的 runtime ownership
 - [ ] Task 16E4：Manga 分享入口非阻塞
@@ -1228,6 +1228,8 @@ status-source: this-file
 1. RED：记录 preference/credential 调用顺序并在每个步骤模拟进程中断；旧 disable/change-passphrase 因先持久化 `useAuthenticator=false` 而失败。保留 runner 输入引用，证明旧 Windows save 在成功与异常路径后仍含 secret。
 2. GREEN：disable 先完成 credential 删除再提交 disabled，提交失败恢复原 credential；改密期间始终保持 enabled，并复用 verifier 的安全替换/rollback。Windows UTF-8/Base64 转换只使用可清零 byte/char buffers，不创建 secret String。
 3. 保持认证失败、backend unavailable/error、missing credential recovery、CharArray ownership 与现有用户反馈。运行 Security settings/AppLock/credential focused、Spotless、diff 与 5-file/400-line gate；独立审查通过后进入 E2。
+
+**Review status（已完成）：** 初始实现 `d4f31e629` 先证明旧 disable/change-passphrase 会持久化 fail-open，且 Windows runner-held stdin 未清零；首审以 `0/1/0` 指出便捷 CharsetEncoder 在 malformed surrogate 时丢失内部明文字节缓冲并让 checked exception 逸出。唯一修复 `f47059bf1` 改为 caller-owned 增量 UTF-8/Base64 buffers，统一 finally 清零并把 coding/Preferences flush 失败映射为不泄密的平台错误；malformed controller 保持 enabled、恢复旧 credential、返回 BackendError 并清零全部输入。唯一复审 APPROVED，Critical/Important/Minor `0/0/0`；focused 41/41、根 Spotless、diff 与累计 5 files/271 touched 门禁通过，下一项为 E2。
 
 ### 子 Task 16E2：真实 owner entry 证明与异常优先级
 
