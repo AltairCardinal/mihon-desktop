@@ -54,6 +54,7 @@ status-source: this-file
 - [x] Task 16B：macOS OpenURI production ingress
 - [x] Task 16C：Desktop owner navigator 单实例 wiring
 - [ ] Task 16D1：Desktop owner setup 与关闭事务
+- [ ] Task 16D1R：并发安全的 runtime/broker 关闭所有权
 - [ ] Task 16D2：唯一 production lifecycle 与真实入口证据
 - [ ] Task 16：独立最终审查与三平台 change verify
 
@@ -1081,6 +1082,34 @@ status-source: this-file
 **Implementation status:** 初始实现 `554f8b7f5` 经独立审查以 `0/5/0` 拒绝。唯一修复的中间提交 `d4f52ed1c`、`13f3d7205`、`3cc783bc0` 已让 close 失败后继续 await、bootstrap close 可重试、factory 在取得 runtime 后立即登记，并删除同步入口中的独立 GUI/headless/bootstrap 规则；累计 4 files/292 touched。实现代理连续运行仍无法在同一范围补齐真实默认入口故障矩阵，因此按门禁把已完成的 setup/close 事务固定为 16D1 独立审查，将剩余且不同的 lifecycle/default-entry 风险交给 16D2；两者都通过前不进入 Task 16。
 
 **Review status:** 16D1 初审以 `0/3/0` 拒绝：service stop 或 broker close 首次失败时 runtime 提前清除 running/owner 状态，第二次无法重试；owner setup 各阶段与 close+await/suppressed/session retry 均缺少行为 mutation。唯一修复只处理这三个 setup/close 风险，不进入 16D2；为替换弱成功路径测试并增加失败所有权状态，范围从低估的 4/300 修正到硬门禁内的 4/400。
+
+**Repair re-review status:** 唯一修复提交 `c5ef7677d`、`e80e8c4d7`、`755688456`、`3d7f3efb7` 后，focused 86/86、Spotless、diff 与 4 files/389 touched 通过；close/await exact suppressed、bootstrap 分资源重试、factory 登记后失败回收及同一 service 多角色计数均有行为证据。唯一复审仍以 `0/2/0` 拒绝：`runningServices` 的并发 close 未序列化；真实 broker 在 `server.close()` 前清空 endpoint，首次失败会丢失 state-file owner token。按门禁停止 D1 第三轮修补，将这个更底层且可独立验证的关闭所有权状态机拆为 D1R；D1/D1R 均保持未勾选。
+
+### 子 Task 16D1R：并发安全的 runtime/broker 关闭所有权
+
+**Risk axis:** desktop-close-ownership-state
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 4 files, 320 lines
+
+**Verification:** concurrent runtime close serialization、per-resource retry token、broker server/endpoint/state-file 原子提交
+
+**Files:**
+
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/DesktopAppRuntime.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopExternalActionBroker.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/DesktopAppRuntimeTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopExternalActionBrokerTest.kt`
+
+**Consumes:** 16D1 的 staged runtime/service/broker ownership 与唯一复审 `0/2/0`；不触及 16D2 的 main/UI lifecycle。
+
+**Produces:** runtime start/stop/close 的资源状态转换串行化；每个 service role、broker、closeable 只在实际成功关闭后提交已释放状态，失败保留精确 token 供下一次重试。broker 只有在 server close、state-file owner 校验/删除和锁资源释放达到定义的 terminal 后才丢弃 endpoint/ownerId。
+
+1. RED：两个线程/协程交错 close，同一成功 service role 只能 stop 一次，失败 role 只在下一次 close 精确重试；不得并发修改集合。重复 service 实例的三个 role 保持三次 start/stop 所有权。
+2. RED：为 broker server-close 提供最小测试 seam。第一次 close 抛出时 endpoint/owner token/state file 必须仍可用于第二次重试；第二次成功后 server、state、lock 全部 terminal，第三次幂等。提前清空 endpoint 或跳过 state owner 校验的 mutation 必须失败。
+3. GREEN：使用单一锁或等价线性化边界保护 runtime start/stop/close/attach 状态；broker 采用分阶段成功提交，不以吞异常伪造完成。锁内不得等待 suspend terminal；`awaitClosed` 仍在同步 close 后执行并聚合异常。
+4. 运行 runtime/broker/owner setup/OpenURI focused tests、Spotless、diff 与 4-file/320-line gate。独立审查通过后同时勾选 D1/D1R，再进入 D2。
 
 ### 子 Task 16D2：唯一 production lifecycle 与真实入口证据
 
