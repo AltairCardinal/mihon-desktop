@@ -479,7 +479,7 @@ Windows `0.11.14.43.84e386c` 固定 EXE 与 macOS `0.11.14.44.84e386c` 部署应
 
 **Executable child plan:** `docs/superpowers/plans/2026-07-22-mihon-desktop-settings-accessibility.md`
 
-**Current progress:** 固定原版 ID 88/90/91/94 与当前 shared/Android/Desktop 的两份只读盘点已完成。子计划初审 `0/7/1`、唯一修复复审 `0/2/0` 后，按门禁只重规划剩余的 palette 模块迁移顺序/可见性风险：Base 在第一批先迁移，每批提供可独立编译的跨模块 API，最后统一 selector；其余 finding 均已关闭。项目 guard 已识别并通过 26 个内部子 Task 正文。子 Task 1 由实现 `c10e22a83`、唯一修复 `d0a069bde` 完成 fixed-main provenance 与 exact fixture 契约，复审 APPROVED `0/0/0`，focused `38/38`、严格 JSON、Spotless 与范围门禁通过，manifest 保持 `NOT_STARTED`。状态只以该子计划 checklist 和本父 roadmap 阶段摘要为准，不恢复 Comet/OpenSpec 或旧 progress 状态。下一项为父 Task 5B / 子 Task 2。
+**Current progress:** 固定原版 ID 88/90/91/94 与当前 shared/Android/Desktop 的两份只读盘点已完成。子计划初审 `0/7/1`、唯一修复复审 `0/2/0` 后，按门禁只重规划剩余的 palette 模块迁移顺序/可见性风险：Base 在第一批先迁移，每批提供可独立编译的跨模块 API，最后统一 selector；其余 finding 均已关闭。项目 guard 已识别并通过内部子 Task 正文。子 Task 1 由实现 `c10e22a83`、唯一修复 `d0a069bde` 完成 fixed-main provenance 与 exact fixture 契约，复审 APPROVED `0/0/0`，focused `38/38`、严格 JSON、Spotless 与范围门禁通过，manifest 保持 `NOT_STARTED`。子 Task 2 由实现 `7d0a368f7`、唯一测试修复 `325f9568e` 建立 fixed-main shared 搜索纯策略；三项 mutation 均取得精确 RED，复审 APPROVED `0/0/0`，focused `7/7`、Task 1 provenance、Spotless 与范围门禁通过。状态只以该子计划 checklist 和本父 roadmap 阶段摘要为准，不恢复 Comet/OpenSpec 或旧 progress 状态。下一项为父 Task 5B / 子 Task 3。
 
 **Files:**
 - Modify: 当前分支 `app/src/main/java/eu/kanade/presentation/more/settings/`

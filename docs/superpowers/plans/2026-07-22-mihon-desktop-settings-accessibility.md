@@ -43,7 +43,7 @@ status-source: this-file
 ## 执行状态
 
 - [x] Task 1：固定原版 provenance 与行为 fixture
-- [ ] Task 2：共享设置搜索与 breadcrumb 契约
+- [x] Task 2：共享设置搜索与 breadcrumb 契约
 - [ ] Task 3：当前 Android consumer 消费共享搜索契约
 - [ ] Task 4A：Desktop 入口/基础设置 i18n 同源化
 - [ ] Task 4B：Desktop 内容设置 i18n 同源化
@@ -134,6 +134,8 @@ status-source: this-file
 1. RED：fixture 覆盖固定原版过滤、顺序、上限和 breadcrumb；keywords/ranking mutation 必须失败。
 2. GREEN：不依赖 Compose/Voyager 的 entry/group/screen route token 与纯 policy；anchor 保留 title identity。
 3. 运行 common/JVM、fixture、Spotless/range gate。
+
+**Review status（已完成）：** 实现 `7d0a368f7` 先因缺少 production 类型取得编译 RED，再新增无 Compose/Voyager 依赖的 shared entry/group、泛型 route token、结果模型和纯搜索策略；空查询补充 RED 为 `7 tests/1 failed`，GREEN 后 focused `7/7`。首审以 Critical/Important/Minor `0/1/0` 指出测试未杀死 direct-before-group、匹配过滤前 `take(10)` 与 summary 大小写敏感三种变异。唯一修复 `325f9568e` 仅调整测试输入，三种 mutation 各自精确得到 `7 tests/1 failed`；production 未变，复审 APPROVED `0/0/0`。Task 1 provenance `6/6`、Spotless、diff/range 与项目 guard 通过，累计 `3 files/265 touched`，未修改 Gradle、manifest、计划外 consumer 或用户脏文件。下一项为父 Task 5B / 子 Task 3。
 
 ### Task 3：当前 Android consumer 消费共享搜索契约
 
