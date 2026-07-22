@@ -36,9 +36,9 @@ status-source: this-file
 
 按以下顺序一次执行一个子 Task，不并发写共享文件：
 
-`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 4G → 4H → 5 → 6 → 7 → 8 → 9 → 10A → 10B → 10C → 10D → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20`
+`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 4G → 4H → 4I → 5 → 6 → 7 → 8 → 9 → 10A → 10B → 10C → 10D → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20`
 
-其中 `DesktopSettingsCatalog.kt` 只在 5–8、11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6→11→16 串行修改；`AboutScreen.kt` 与 Tracking/ExtensionRepo 只在 4H→8→15→18 串行修改。
+其中 `DesktopSettingsCatalog.kt` 只在 5–8、11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6→11→16 串行修改；`AboutScreen.kt` 与 Tracking/ExtensionRepo 只在 4I→8→15→18 串行修改。
 
 ## 执行状态
 
@@ -52,8 +52,9 @@ status-source: this-file
 - [x] Task 4D：Desktop Backup 错误与系统反馈 production identity
 - [x] Task 4E：Desktop Backup picker 与 production feedback wiring
 - [x] Task 4F：Desktop Backup typed preview reason production contract
-- [ ] Task 4G：Desktop 安全/高级设置 i18n 同源化
-- [ ] Task 4H：Desktop About/扩展/Tracking i18n 同源化
+- [ ] Task 4G：Desktop Advanced 设置 i18n 同源化
+- [ ] Task 4H：Desktop Security 设置 i18n 同源化与 locale 隔离
+- [ ] Task 4I：Desktop About/扩展/Tracking i18n 同源化
 - [ ] Task 5：Desktop 设置 catalog、搜索 Screen 与入口
 - [ ] Task 6：Desktop 标题 anchor 核心与基础页面
 - [ ] Task 7：Desktop 标题 anchor 的安全/数据页面
@@ -290,23 +291,41 @@ status-source: this-file
 
 **Review status（已完成）：** 实现 `abc347e1b` 仅在既有 production wiring test 新增 64 行；EmptyBackup、UnsupportedVersion、EmptyFile、MissingData、Corrupted、RestoreNotStarted 均由真实 preview provider/restore TaskState 驱动 `BackupRestoreScreenModel` 产生 typed Failure，再挂载 required UiDependencies/picker 的 production `BackupSettingsScreen`，在 Locale.US/zh-CN 共 12 个组合断言准确 MR。分类互换 mutation 精确 RED，恢复后目标 `3/3`、组合回归 `58/58`、Spotless/diff/guard 通过，production 零 diff。独立审查 APPROVED，Critical/Important/Minor `0/0/0`，并确认 4C/4D 全部遗留拒绝点已由 4D–4F 共同闭合。下一项为父 Task 5B / 子 Task 4G。
 
-### Task 4G：Desktop 安全/高级设置 i18n 同源化
+### Task 4G：Desktop Advanced 设置 i18n 同源化
 
 **Risk axis:** settings-i18n-security
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 5 files, 380 lines
+**Estimated scope:** 4 files, 300 lines
 
-**Verification:** Advanced/Security title、danger/capability/credential feedback同源MR与base/zh-rCN完整
+**Verification:** Advanced title、cache/cookie/Cloudflare/FlareSolverr/crash-folder feedback同源MR与base/zh-rCN完整
 
-**Files:** `AdvancedSettingsScreen.kt`、`SecuritySettingsScreen.kt`、base/`zh-rCN` strings、resource identity test。
+**Files:** `AdvancedSettingsScreen.kt`、base/`zh-rCN` strings、resource identity test。
 
-1. RED：danger/unsupported/auth feedback 未本地化或搜索 title 与页面不一致时失败。
-2. GREEN：只替换 presentation copy，不改 challenge、credential、window privacy production 规则。
-3. 运行 Security/Advanced wiring、rendered copy、Spotless/range gate。
+1. RED：cache/cookie/FlareSolverr/crash-folder danger、validation、success/failure feedback 未本地化或搜索 title 与页面不一致时失败。
+2. GREEN：只替换 presentation copy，不改 challenge、network/cache/cookie production 规则。
+3. 运行 Advanced/challenge wiring、rendered copy、Spotless/range gate。
 
-### Task 4H：Desktop About/扩展/Tracking i18n 同源化
+**Split evidence:** Security+Advanced 的真实动态状态 GREEN 工作树为 `5 files/380 touched`；同一回归启用 JUnit 并行时，切换进程 Locale 的新场景会使既有 Security 测试偶发读取中文。正确隔离需要 `@Isolated`，范围将超过 380；不得用命令行关闭并行掩盖 CI 风险，因此按不共享 production Screen 的边界拆为 4G/4H。4G 提交前移除未提交的 Security production/资源/测试部分；4G 审查通过后由 4H 独立重做 Security 与 locale 隔离。
+
+### Task 4H：Desktop Security 设置 i18n 同源化与 locale 隔离
+
+**Risk axis:** settings-i18n-security
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 4 files, 300 lines
+
+**Verification:** Security title/back/save/cancel/hide-notification shared MR、credential/backend/privacy capability/window privacy states in en/zh、parallel-safe Locale isolation
+
+**Files:** `SecuritySettingsScreen.kt`、base/`zh-rCN` strings、resource identity test；必要时既有 `SecuritySettingsWiringTest.kt` 仅用于共享 locale isolation contract。
+
+1. RED：credential success/mismatch/auth-failure、backend unavailable、privacy supported/unsupported、window privacy supported/unsupported 任一 production 状态未本地化或 identity 分叉时失败；默认并行回归不得跨测试泄漏 Locale。
+2. GREEN：复用 fixed-main title/back/save/cancel/hide-notification MR，Desktop credential/backend/capability 文案补齐 base/zh；locale 场景使用 JUnit `@Isolated` 或等效全套隔离，不靠命令行关闭并行，不改 credential/window privacy 业务规则。
+3. 运行 Security wiring/rendered/DI/并行回归、Spotless/diff/range/guard。
+
+### Task 4I：Desktop About/扩展/Tracking i18n 同源化
 
 **Risk axis:** settings-i18n-extended
 
@@ -591,7 +610,7 @@ status-source: this-file
 **Files:** 五个 Screen、advanced accessibility test、advanced keyboard test。
 
 1. RED：危险动作无法键盘确认/取消、unsupported 被读成成功开关、密码/身份字段缺语义时失败。
-2. GREEN：复用 primitives并保留 credential/window privacy/challenge/updater/extension/tracking真实反馈；labels来自Task4G/4H同一MR。
+2. GREEN：复用 primitives并保留 credential/window privacy/challenge/updater/extension/tracking真实反馈；labels来自Task4H/4I同一MR。
 3. 运行 production wiring/semantics/Spotless/range gate。
 
 ### Task 19：IDs 88/90/91/94 exact parity evidence
