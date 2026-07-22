@@ -50,7 +50,7 @@ status-source: this-file
 - [x] Task 4B：Desktop Reader/Library/Download 设置 i18n 同源化
 - [ ] Task 4C：Desktop Backup 设置 i18n 同源化
 - [ ] Task 4D：Desktop Backup 错误与系统反馈 production identity
-- [ ] Task 4E：Desktop Backup picker 与 production feedback wiring
+- [x] Task 4E：Desktop Backup picker 与 production feedback wiring
 - [ ] Task 4F：Desktop Backup typed preview reason production contract
 - [ ] Task 4G：Desktop 安全/高级设置 i18n 同源化
 - [ ] Task 4H：Desktop About/扩展/Tracking i18n 同源化
@@ -269,6 +269,8 @@ status-source: this-file
 3. 运行 production UI/DI、Backup 回归、Spotless/diff/range/guard；通过后继续 4F，不提前关闭 4C/4D。
 
 **Split evidence:** 合并 picker/按钮 wiring 与六种 preview reason 的 GREEN 工作树实际达到 `6 files/402 touched`，超过 400 行上限；不得用机械压行规避门禁。两者不共享 production 修改：picker/按钮风险修改 port、DI、Screen，preview reason 风险只扩展既有 production ScreenModel/Screen 场景测试，因此按 4E/4F 串行拆分。4E 提交前移除未提交的六 reason 场景；4E 审查通过后由 4F 独立重新加入。
+
+**Review status（已完成）：** 实现 `714afd1ae` 新增 required `DesktopBackupFilePicker`、Swing adapter、production DI/UiDependencies、真实 Create/Restore 按钮接线与死 `restoreErrors` 删除；编译 RED 后 focused `3/3`、Backup/DI 回归 `52/52`，初始范围 `6 files/352 touched`。首审 `0/1/0` 指出按钮反馈只跑默认 locale 且未覆盖空错误详情；唯一修复 `3f2db5843` 让 Locale.US/zh-CN 每个 case 使用新 ImageComposeScene，覆盖 request、cancel、saved、非空/空 detail failure，并在 finally 恢复 Locale。完整 en-US 硬编码取消文案在英文轮通过、中文轮精确 RED，丢失 failure detail 同样精确 RED；复审 focused `2/2`、Backup/DI `52/52`、Spotless/diff/guard 通过，累计基线 diff 为 `6 files/356 touched`，production 零修复 diff、4F reason 零混入。唯一修复复审 APPROVED，Critical/Important/Minor `0/0/0`。下一项为父 Task 5B / 子 Task 4F。
 
 ### Task 4F：Desktop Backup typed preview reason production contract
 
