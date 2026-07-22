@@ -55,7 +55,7 @@ status-source: this-file
 - [x] Task 4G：Desktop Advanced 设置 i18n 同源化
 - [x] Task 4H：Desktop Security 设置 i18n 同源化与 locale 隔离
 - [x] Task 4I：Desktop About 与 updater/诊断 i18n 同源化
-- [ ] Task 4J：Desktop Extension repository i18n 同源化
+- [x] Task 4J：Desktop Extension repository i18n 同源化
 - [ ] Task 4K：Desktop Tracking typed message 与 formatter identity
 - [ ] Task 4L：Desktop Tracking UI/dialog i18n 同源化
 - [ ] Task 5：Desktop 设置 catalog、搜索 Screen 与入口
@@ -375,6 +375,8 @@ status-source: this-file
 **Replan evidence:** 真实 Screen + repository/interactor 测试覆盖 initial URL、pending、全部 create outcome、fingerprint conflict、delete/refresh/copy 后，首次 GREEN 前自然范围为 `286 additions + 37 deletions = 323 touched`；不得按净行数误报为低于 320，也不删除状态覆盖或压缩格式。所有场景共享同一 ExtensionRepo production Screen/wiring，故将本 Task 上限调整为 350 行，不拆出无独立产品风险的子 Task。
 
 **Repair replan evidence:** 首审 `0/2/0` 发现剪贴板按钮误用 fixed-main 明确禁止用于 clipboard 的名词 `copy`，且 open/copy description 无序集合无法杀死按钮 identity 对调。唯一修复改用 `action_copy_link`、恢复原 `copy` 翻译，并通过 Compose `LocalClipboardManager` 按 repo card 按钮节点绑定 open→copy→delete、验证 `${baseUrl}/index.min.json`；自然范围预计低于 380，故不拆出独立 Task。
+
+**Review status（已完成）：** 实现 `3649d64f9` 将 ExtensionRepo 空态、添加/等待、全部 create outcome、删除、刷新与指纹冲突接入 fixed-main 或准确 Desktop MR；真实 Screen + Get/Create/Delete/Replace/Update/repository 覆盖 initial URL、pending、success/error、new/old replace 参数与列表行为，初始硬编码页面和 replace 参数互换均精确 RED。首审 `0/2/0` 指出剪贴板按钮误用名词 `copy`，且 open/copy 无序 description 集合无法杀死按钮错接；唯一修复 `7254180b4` 改用 `action_copy_link`、恢复 `zh-rCN copy` 原义，并通过真实 RepoCard 动作顺序与受控 `LocalClipboardManager` 精确验证 `${baseUrl}/index.min.json`，open/copy swap mutation 精确 RED。唯一复审 APPROVED `0/0/0`，focused `12/12`、相关回归 `88/88`、Spotless、diff、guard 通过；累计产品/测试/资源 `4 files/357 touched`，低于 380，用户脏文件零混入。下一项为父 Task 5B / 子 Task 4K。
 
 ### Task 4K：Desktop Tracking typed message 与 formatter identity
 
