@@ -36,9 +36,9 @@ status-source: this-file
 
 按以下顺序一次执行一个子 Task，不并发写共享文件：
 
-`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 4G → 4H → 4I → 5 → 6 → 7 → 8 → 9 → 10A → 10B → 10C → 10D → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20`
+`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 4G → 4H → 4I → 4J → 4K → 4L → 5 → 6 → 7 → 8 → 9 → 10A → 10B → 10C → 10D → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20`
 
-其中 `DesktopSettingsCatalog.kt` 只在 5–8、11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6→11→16 串行修改；`AboutScreen.kt` 与 Tracking/ExtensionRepo 只在 4I→8→15→18 串行修改。
+其中 `DesktopSettingsCatalog.kt` 只在 5–8、11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6→11→16 串行修改；`AboutScreen.kt` 只在 4I→8→15→18、`ExtensionRepoScreen.kt` 只在 4J→8→18、`TrackingSettingsScreen.kt` 只在 4K→4L→8→18 串行修改。
 
 ## 执行状态
 
@@ -54,7 +54,10 @@ status-source: this-file
 - [x] Task 4F：Desktop Backup typed preview reason production contract
 - [x] Task 4G：Desktop Advanced 设置 i18n 同源化
 - [x] Task 4H：Desktop Security 设置 i18n 同源化与 locale 隔离
-- [ ] Task 4I：Desktop About/扩展/Tracking i18n 同源化
+- [ ] Task 4I：Desktop About 与 updater/诊断 i18n 同源化
+- [ ] Task 4J：Desktop Extension repository i18n 同源化
+- [ ] Task 4K：Desktop Tracking typed message 与 formatter identity
+- [ ] Task 4L：Desktop Tracking UI/dialog i18n 同源化
 - [ ] Task 5：Desktop 设置 catalog、搜索 Screen 与入口
 - [ ] Task 6：Desktop 标题 anchor 核心与基础页面
 - [ ] Task 7：Desktop 标题 anchor 的安全/数据页面
@@ -333,21 +336,71 @@ status-source: this-file
 
 **Review status（已完成）：** 实现 `3ee98f9dd` 将 Security 标题、返回、保存、取消与隐藏通知内容切换到 fixed-main 共享 MR，并补齐 30 个 Desktop credential/privacy/window capability 中文状态；真实 Screen RED 首先精确暴露中文仍显示 `Security`，GREEN 后 Identity `7/7`、默认并行回归 `103/103`。首审 `0/2/0` 指出输入框 fallback 无法杀死 current/new/confirm identity 错接，且 native/telemetry/widget 同屏无序包含无法杀死 capability 分支互换。唯一修复 `bc4aa0f6d` 删除 fallback、按真实 editable 节点绑定三类口令字段，并用逐 capability 的 present/absent 场景锁定三组 widget 状态；field、native/telemetry、widget 三类 mutation 均精确 RED，production 相对实现提交零差异。唯一复审 APPROVED `0/0/0`，Identity `7/7`、默认并行 `103/103`、Spotless、diff、guard 通过；产品/测试/资源累计 `4 files/353 touched`，低于 400，用户脏文件零混入。下一项为父 Task 5B / 子 Task 4I。
 
-### Task 4I：Desktop About/扩展/Tracking i18n 同源化
+### Task 4I：Desktop About 与 updater/诊断 i18n 同源化
 
-**Risk axis:** settings-i18n-extended
+**Risk axis:** settings-i18n-about
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 5 files, 380 lines
+
+**Verification:** About/updater/诊断/path/cache同源MR、base/zh-rCN completeness、Desktop-only copy preservation
+
+**Files:** `AboutScreen.kt`、`DesktopUpdateScreenModel.kt`、base/`zh-rCN` strings、resource identity test。
+
+1. RED：Idle/Checking/UpToDate/UpdateAvailable/NoCompatiblePackage/CheckFailed、Downloading/Verifying/Ready/HandingOff/HandedOff/InstallFailed/RetryableFailure/Cancelled/ManualOnly、版本/路径/DB/cache/扩展数/Java/OS/清缓存任一真实状态硬编码、zh 缺键或 identity 分叉时失败。
+2. GREEN：复用 fixed-main About/update/action identity；Desktop KMP port、updater 状态与诊断/path/cache 保留准确 `desktop_*`，不删除 updater 或诊断能力。
+3. 运行 About/updater production wiring/rendered copy、Spotless/range gate。
+
+**Split evidence:** 原合并 4I 对 About、ExtensionRepo、Tracking 的只读盘点自然范围约 `920–1,130 touched`，且三者不共享 production Screen。按独立 Screen 拆为 4I/4J；Tracking 合并范围约 `380–470`，再按 typed model message/formatter 与其余 UI copy 的稳定接口串行拆为 4K/4L，避免超过 400 或用 waiver 掩盖范围。
+
+### Task 4J：Desktop Extension repository i18n 同源化
+
+**Risk axis:** settings-i18n-extension-repo
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 4 files, 320 lines
+
+**Verification:** empty/list/pending、create/delete/refresh/conflict/error、website/copy同源MR与base/zh-rCN完整
+
+**Files:** `ExtensionRepoScreen.kt`、base/`zh-rCN` strings、resource identity test。
+
+1. RED：initial URL、required/duplicate、Success/InvalidUrl/Unavailable/InvalidMetadata/AlreadyExists/Error、fingerprint conflict、delete/refresh/website/copy 任一真实状态硬编码或 identity 分叉时失败。
+2. GREEN：优先复用 fixed-main extension-repo identity；Desktop base/index URL、HTTPS/network/metadata 细分错误与 pending 后果使用准确 `desktop_*`，不改 repository 规则。
+3. 运行 ExtensionRepo production wiring/rendered/navigation、Spotless/range gate。
+
+### Task 4K：Desktop Tracking typed message 与 formatter identity
+
+**Risk axis:** settings-i18n-tracking-message
 
 **Platform boundary:** desktop
 
 **Estimated scope:** 6 files, 400 lines
 
-**Verification:** About/ExtensionRepo/TrackingSettings同源MR、base/zh-rCN completeness、Desktop-only copy preservation
+**Verification:** model validation/error/feedback typed contract、external data preservation、Screen formatter en/zh production wiring
 
-**Files:** `AboutScreen.kt`、`ExtensionRepoScreen.kt`、`ui/tracking/TrackingSettingsScreen.kt`、base/`zh-rCN` strings、resource identity test。
+**Files:** `TrackingScreenModel.kt`、`TrackingSettingsScreen.kt` 的 state message formatter 区、base/`zh-rCN` strings、`TrackingScreenModelTest.kt`、resource identity test。
 
-1. RED：updater/诊断/扩展/tracking 用户反馈硬编码、zh 缺键或 identity 分叉时失败。
-2. GREEN：迁移文案并保留全部 Desktop 独有能力。
-3. 运行三页 production wiring/rendered copy、Spotless/range gate。
+1. RED：LoadFailed、Bound/Updated/Removed/LoggedOut、SearchTitleEmpty、MangaRequired、NotBound、UnsupportedStatus/Score、NegativeChapter/ChapterOutOfRange、UnknownService、ServiceUnavailable、LoginRequired 的 variant/参数或失败不写 repository 契约错误时失败；formatter MR 对调时真实 Screen 精确失败。
+2. GREEN：model 只发 typed message 或 `External(text)`；唯一 `trackingMessageText()` 负责 MR，真实 provider/profile/exception 数据原样保留；不改变验证、repository 调用与原子持久化语义。
+3. 运行 ScreenModel/Identity/AutoSync/Tracking integration/navigation/smoke、Spotless/range gate；4L 不得返改 typed contract/formatter。
+
+### Task 4L：Desktop Tracking UI/dialog i18n 同源化
+
+**Risk axis:** settings-i18n-tracking-ui
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 5 files, 400 lines
+
+**Verification:** settings/manga模式、service/auth/logout/unbind/search/bound editor同源MR与base/zh-rCN完整
+
+**Files:** `TrackingSettingsScreen.kt`（不改 4K formatter）、base/`zh-rCN` strings、resource identity test、`TrackingAutoSyncPreferenceWiringTest.kt`。
+
+1. RED：两种顶层模式、四种 service 状态、username/password/API-key/OAuth、logout/unbind、search empty/results、Status/Score/Chapter editor 的 action/field/参数 identity 错误时失败。
+2. GREEN：复用 fixed-main tracking/login/logout/search/status/score/track-delete/action identity；Desktop source-managed/OAuth/browser/bind/update copy 使用准确 `desktop_*`；外部 service/status/URL/unavailable reason 原样保留。
+3. 不改 selectedId/confirmation、OAuth、tracker/repository wiring、按钮 enabled 或章节边界；运行 Identity/AutoSync/ScreenModel/Tracking integration/navigation/smoke、Spotless/range gate。
 
 ### Task 5：Desktop 设置 catalog、搜索 Screen 与入口
 
