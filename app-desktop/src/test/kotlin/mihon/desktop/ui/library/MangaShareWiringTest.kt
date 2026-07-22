@@ -14,9 +14,16 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import java.awt.image.BufferedImage
 import java.io.File
 import java.util.Locale
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
@@ -57,14 +64,10 @@ class MangaShareWiringTest {
     @Test
     fun `rendered manga actions bind copy and share through the desktop share service`() = runBlocking {
         var copied: String? = null
-        var nativeCalls = 0
-        val sessions = mutableListOf<ControlledShareSession>()
+        val nativePort = DelayedNativeSharePort()
         val notifications = DesktopNotificationService()
         val service = DesktopShareService(
-            nativeSharePort = DesktopNativeSharePort {
-                nativeCalls++
-                DesktopNativeShareOutcome.Opened(ControlledShareSession().also(sessions::add))
-            },
+            nativeSharePort = nativePort,
             clipboardPort = object : DesktopClipboardPort {
                 override fun copyText(text: String) { copied = text }
                 override fun copyImage(image: BufferedImage) = Unit
@@ -77,6 +80,7 @@ class MangaShareWiringTest {
             every { notificationService } returns notifications
         }
         val scene = ImageComposeScene(1_200, 300, coroutineContext = coroutineContext) {}
+        val safetyRelease = Executors.newSingleThreadScheduledExecutor()
 
         try {
             scene.setContent {
@@ -94,27 +98,51 @@ class MangaShareWiringTest {
                 }
             }
             scene.render()
+            val fallback = safetyRelease.schedule(nativePort::releaseReady, 2, TimeUnit.SECONDS)
+            val startedAt = System.nanoTime()
+            click(scene, "Share link")
+            val clickMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt)
+            assertTrue(clickMillis < 500, "share click blocked the scene for ${clickMillis}ms")
+            assertTrue(nativePort.awaitShareCall())
+            assertTrue(nativePort.sessions.isEmpty())
+
+            scene.render()
             click(scene, "Copy link")
-            val terminalNotification = async(start = CoroutineStart.UNDISPATCHED) {
-                notifications.notifications.first { it.message == MR.strings.completed.localized() }
+            assertEquals("https://example.com/manga", copied)
+
+            val feedback = async(start = CoroutineStart.UNDISPATCHED) {
+                notifications.notifications.take(3).map { it.message }.toList()
             }
-            click(scene, "Share link")
-            delay(50)
-            assertTrue(!terminalNotification.isCompleted)
-            sessions.single().complete(DesktopNativeShareTerminal.Shared)
-            assertEquals(MR.strings.completed.localized(), terminalNotification.await().message)
-            val failedNotification = async(start = CoroutineStart.UNDISPATCHED) {
-                notifications.notifications.first { it.message == MR.strings.error_sharing_cover.localized() }
+            nativePort.releaseReady()
+            fallback.cancel(false)
+            val terminals = listOf(
+                DesktopNativeShareTerminal.Shared,
+                DesktopNativeShareTerminal.Cancelled,
+                DesktopNativeShareTerminal.Failed,
+            )
+            terminals.forEachIndexed { index, terminal ->
+                if (index > 0) click(scene, "Share link")
+                withTimeout(5_000) {
+                    while (nativePort.sessions.size <= index) delay(10)
+                }
+                nativePort.sessions[index].complete(terminal)
             }
-            click(scene, "Share link")
-            sessions.last().complete(DesktopNativeShareTerminal.Failed)
-            assertEquals(MR.strings.error_sharing_cover.localized(), failedNotification.await().message)
+            assertEquals(
+                listOf(
+                    MR.strings.completed.localized(),
+                    MR.strings.cancelled.localized(),
+                    MR.strings.error_sharing_cover.localized(),
+                ),
+                feedback.await(),
+            )
         } finally {
+            nativePort.releaseReady()
+            safetyRelease.shutdownNow()
             scene.close()
         }
 
         assertEquals("https://example.com/manga", copied)
-        assertEquals(2, nativeCalls)
+        assertEquals(3, nativePort.sessions.size)
     }
 
     @Test
@@ -192,12 +220,32 @@ class MangaShareWiringTest {
 
     private class ControlledShareSession : DesktopNativeShareSession {
         private var callback: ((DesktopNativeShareTerminal) -> Unit)? = null
+        private val callbackRegistered = CountDownLatch(1)
 
         override fun onTerminal(callback: (DesktopNativeShareTerminal) -> Unit) {
             this.callback = callback
+            callbackRegistered.countDown()
         }
 
-        fun complete(terminal: DesktopNativeShareTerminal) = requireNotNull(callback)(terminal)
+        fun complete(terminal: DesktopNativeShareTerminal) {
+            assertTrue(callbackRegistered.await(2, TimeUnit.SECONDS))
+            requireNotNull(callback)(terminal)
+        }
+    }
+
+    private class DelayedNativeSharePort : DesktopNativeSharePort {
+        private val shareCalled = CountDownLatch(1)
+        private val ready = CountDownLatch(1)
+        val sessions = CopyOnWriteArrayList<ControlledShareSession>()
+
+        override fun share(content: DesktopNativeShareContent): DesktopNativeShareOutcome {
+            shareCalled.countDown()
+            check(ready.await(5, TimeUnit.SECONDS))
+            return DesktopNativeShareOutcome.Opened(ControlledShareSession().also(sessions::add))
+        }
+
+        fun awaitShareCall(): Boolean = shareCalled.await(1, TimeUnit.SECONDS)
+        fun releaseReady() = ready.countDown()
     }
 
     private fun click(scene: ImageComposeScene, label: String) {

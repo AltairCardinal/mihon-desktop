@@ -91,6 +91,7 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
 import eu.kanade.tachiyomi.source.model.SManga
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import mihon.domain.task.TaskState
 import mihon.domain.platform.SharePayload
@@ -558,19 +559,22 @@ internal fun mangaLinkActions(url: String): MangaLinkActions {
     val dependencies = LocalDesktopUiDependencies.current
     val shareService: DesktopShareService = dependencies.shareService
     val notificationService: DesktopNotificationService = dependencies.notificationService
+    val scope = rememberCoroutineScope()
     return MangaLinkActions(
-    copyLink = {
-        notificationService.post(shareService.copyText(url).toDesktopNotification())
-    },
-    share = {
-        val launch = shareService.share(SharePayload.Text(url)) { terminal ->
-            notificationService.post(terminal.toDesktopNotification())
-        }
-        if (launch != DesktopShareResult.OpenedNatively) {
-            notificationService.post(launch.toDesktopNotification())
-        }
-    },
-)
+        copyLink = {
+            notificationService.post(shareService.copyText(url).toDesktopNotification())
+        },
+        share = {
+            scope.launch(Dispatchers.IO) {
+                val launch = shareService.share(SharePayload.Text(url)) { terminal ->
+                    notificationService.post(terminal.toDesktopNotification())
+                }
+                if (launch != DesktopShareResult.OpenedNatively) {
+                    notificationService.post(launch.toDesktopNotification())
+                }
+            }
+        },
+    )
 }
 
 internal fun openExternalLink(url: String) {
