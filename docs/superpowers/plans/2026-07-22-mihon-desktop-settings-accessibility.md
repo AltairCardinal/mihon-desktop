@@ -317,7 +317,7 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 4 files, 310 lines
+**Estimated scope:** 4 files, 400 lines
 
 **Verification:** Security title/back/save/cancel/hide-notification shared MR、credential/backend/privacy capability/window privacy states in en/zh、parallel-safe Locale isolation
 
@@ -328,6 +328,8 @@ status-source: this-file
 3. 运行 Security wiring/rendered/DI/并行回归、Spotless/diff/range/guard。
 
 **Replan evidence:** 补齐 Security 的 `zh-rCN` 后，既有 `SecuritySettingsWiringTest` 不再走英文 fallback，暴露 4 个硬编码英文 capability 断言；若在该未隔离测试中临时切换进程 Locale，会重新制造默认并行竞态。将断言改为当前 Locale 的 MR identity 需要累计约 `4 files/305 touched`，仍低于项目 400 行硬上限，因此把本 Task 估算调整为 310 行，不为 5 行差额拆出无独立产品风险的子 Task，也不删除覆盖或压缩格式。
+
+**Repair replan evidence:** 首审 `0/2/0` 证明 credential 字段 fallback 与 capability 同屏无序包含无法杀死 identity 对调。唯一修复需要按输入节点绑定 current/new/confirm，并以三个真实 Security Screen 配置分别覆盖 native/telemetry supported 与 unsupported、widget provider supported、unsupported+updates supported、两者 unsupported；自然格式预计累计 `4 files/369–389 touched`。这些状态共享同一 production Screen/capability 契约，不形成可独立交付的产品风险，故把本 Task 上限调整为 400 行并在唯一修复复审中一次闭合。
 
 ### Task 4I：Desktop About/扩展/Tracking i18n 同源化
 
