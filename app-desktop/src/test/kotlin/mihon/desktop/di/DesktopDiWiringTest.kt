@@ -40,7 +40,10 @@ import mihon.desktop.ui.extension.DesktopExtensionPresentationPort
 import mihon.desktop.ui.extension.ExtensionsScreenModel
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.platform.DesktopNativeSharePort
+import mihon.desktop.platform.DesktopShareFailureReason
+import mihon.desktop.platform.DesktopShareResult
 import mihon.desktop.platform.DesktopShareService
+import mihon.desktop.platform.MacOsNativeSharePort
 import mihon.desktop.privacy.DesktopWindowPrivacyController
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import mihon.desktop.security.DesktopAppLock
@@ -68,6 +71,7 @@ import mihon.domain.download.DownloadRepository
 import mihon.domain.download.EnqueueDownload
 import mihon.domain.download.IsChapterDownloaded
 import mihon.domain.download.DownloadQueueStatus
+import mihon.domain.platform.SharePayload
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -112,7 +116,11 @@ import tachiyomi.data.DatabaseHandler
 import tachiyomi.data.JvmDatabaseHandler
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.InputStream
+import java.io.PipedInputStream
+import java.io.PipedOutputStream
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Response
@@ -235,30 +243,73 @@ class DesktopDiWiringTest {
 
     @Test
     fun `desktop DI runtime owns the same native share port used by the UI service`(@TempDir tempDir: File) = runBlocking {
-        val port = CloseTrackingNativeSharePort()
+        val process = ControlledNativeShareProcess().also { it.emitReady() }
+        val port = MacOsNativeSharePort(
+            processLauncher = { process },
+            launchTimeoutMillis = 1_000,
+            terminalTimeoutMillis = 60_000,
+        )
         val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore(), nativeSharePort = port)
         try {
             assertSame(port, Injekt.get<DesktopNativeSharePort>())
             val service = Injekt.get<DesktopShareService>()
+            val terminals = mutableListOf<DesktopShareResult>()
 
             assertSame(service, DesktopUiDependencies.fromInjekt().shareService)
-            Injekt.get<DesktopAppRuntime>().close()
-            Injekt.get<DesktopAppRuntime>().close()
-            assertEquals(1, port.closeCalls)
+            assertEquals(
+                DesktopShareResult.OpenedNatively,
+                service.share(SharePayload.Text("https://example.com/manga"), terminals::add),
+            )
+            assertEquals(1, port.activeExchangeCount)
+
+            val runtime = Injekt.get<DesktopAppRuntime>()
+            runtime.close()
+            runtime.close()
+
+            assertEquals(
+                listOf(DesktopShareResult.Failed(DesktopShareFailureReason.NATIVE_SHARE_FAILED)),
+                terminals,
+            )
+            assertTrue(process.destroyed)
+            assertFalse(process.isAlive)
+            assertEquals(0, port.activeExchangeCount)
+            port.close()
+            port.close()
+            assertEquals(1, terminals.size)
         } finally {
+            runCatching { port.close() }
             context.closeAndJoin()
         }
     }
 
-    private class CloseTrackingNativeSharePort : DesktopNativeSharePort {
-        var closeCalls = 0
+    private class ControlledNativeShareProcess : Process() {
+        private val output = PipedOutputStream()
+        private val input = PipedInputStream(output)
+        @Volatile private var alive = true
+        @Volatile var destroyed = false
+            private set
 
-        override fun share(content: mihon.desktop.platform.DesktopNativeShareContent) =
-            mihon.desktop.platform.DesktopNativeShareOutcome.Unavailable
-
-        override fun close() {
-            closeCalls++
+        fun emitReady() {
+            output.write("MIHON_SHARE:READY\n".toByteArray())
+            output.flush()
         }
+
+        override fun getInputStream(): InputStream = input
+        override fun getErrorStream(): InputStream = ByteArrayInputStream(byteArrayOf())
+        override fun getOutputStream() = ByteArrayOutputStream()
+        override fun waitFor(): Int {
+            while (alive) Thread.onSpinWait()
+            return 0
+        }
+        override fun waitFor(timeout: Long, unit: TimeUnit): Boolean = !alive
+        override fun exitValue(): Int = if (alive) error("alive") else 0
+        override fun destroy() {
+            destroyed = true
+            alive = false
+            output.close()
+        }
+        override fun destroyForcibly(): Process = apply { destroy() }
+        override fun isAlive(): Boolean = alive
     }
 
     @Test
