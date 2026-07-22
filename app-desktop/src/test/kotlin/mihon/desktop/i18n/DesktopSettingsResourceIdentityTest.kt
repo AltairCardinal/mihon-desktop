@@ -13,21 +13,31 @@ import dev.icerock.moko.resources.StringResource
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.backup.AutoBackupInterval
+import mihon.desktop.backup.BackupPreview
+import mihon.desktop.backup.BackupRestoreScreenModelFactory
+import mihon.desktop.backup.DesktopBackupRestorer
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.settings.LibraryUpdateInterval
 import mihon.desktop.ui.settings.AppearanceSettingsScreen
+import mihon.desktop.ui.settings.BackupRestoreScreenModel
+import mihon.desktop.ui.settings.BackupSettingsScreen
 import mihon.desktop.ui.settings.DownloadSettingsScreen
 import mihon.desktop.ui.settings.GeneralSettingsScreen
 import mihon.desktop.ui.settings.LibrarySettingsScreen
 import mihon.desktop.ui.settings.MoreRootScreen
 import mihon.desktop.ui.settings.ReaderSettingsScreen
+import mihon.domain.error.AppError
+import mihon.domain.task.TaskState
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -35,6 +45,7 @@ import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.model.Category
 import tachiyomi.i18n.MR
+import java.io.File
 import java.util.Locale
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -238,6 +249,128 @@ class DesktopSettingsResourceIdentityTest {
         }
     }
 
+    @Test
+    fun `Backup renders localized main preview and restore states`() = runBlocking {
+        val preview = BackupPreview(2, 8, 1, 1, 3, 2, 1)
+        val file = File("library.tachibk")
+        val previousLocale = Locale.getDefault()
+        try {
+            listOf(english, chinese).forEach { locale ->
+                Locale.setDefault(locale)
+                val previewGate = CompletableDeferred<BackupPreview>()
+                var restoreGate = CompletableDeferred<TaskState<DesktopBackupRestorer.RestoreResult>>()
+                val model = BackupRestoreScreenModel(
+                    loadPreview = { previewGate.await() },
+                    restore = { _, _ -> restoreGate.await() },
+                    scope = this,
+                )
+                val factory = mockk<BackupRestoreScreenModelFactory> { every { create() } returns model }
+                val appPrefs = DesktopAppPreferences(InMemoryPreferenceStore())
+                val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+                    every { appPreferences } returns appPrefs
+                    every { backupRestoreScreenModelFactory } returns factory
+                }
+                val scene = ImageComposeScene(900, 2_000, coroutineContext = kotlinx.coroutines.currentCoroutineContext()) {}
+                try {
+                    scene.setContent {
+                        CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                            Navigator(BackupSettingsScreen()) { CurrentScreen() }
+                        }
+                    }
+                    suspend fun snapshot(): RenderedCopy {
+                        repeat(3) {
+                            scene.render()
+                            yield()
+                        }
+                        return RenderedCopy(textCopy(scene), descriptionCopy(scene), entryCopy(scene), selectedEntryCopy(scene))
+                    }
+
+                    val main = snapshot()
+                    assertCopy(
+                        main.text,
+                        MR.strings.label_backup.localized(locale),
+                        MR.strings.pref_create_backup.localized(locale),
+                        MR.strings.desktop_backup_create_summary.localized(locale),
+                        MR.strings.pref_restore_backup.localized(locale),
+                        MR.strings.desktop_backup_restore_summary.localized(locale),
+                        MR.strings.file_select_backup.localized(locale),
+                        MR.strings.desktop_backup_automatic.localized(locale),
+                        MR.strings.desktop_backup_automatic_summary.localized(locale),
+                        MR.strings.pref_backup_interval.localized(locale),
+                        MR.strings.desktop_backup_max_files.localized(locale),
+                    )
+                    assertCopy(main.descriptions, MR.strings.action_bar_up_description.localized(locale))
+                    assertSelectedEntry(main, MR.strings.off.localized(locale))
+                    listOf(
+                        AutoBackupInterval.EVERY_6H to MR.strings.update_6hour,
+                        AutoBackupInterval.EVERY_12H to MR.strings.update_12hour,
+                        AutoBackupInterval.EVERY_24H to MR.strings.update_24hour,
+                        AutoBackupInterval.EVERY_48H to MR.strings.update_48hour,
+                        AutoBackupInterval.WEEKLY to MR.strings.update_weekly,
+                    ).forEach { (interval, resource) ->
+                        appPrefs.autoBackupInterval.set(interval.name)
+                        assertSelectedEntry(snapshot(), resource.localized(locale))
+                    }
+
+                    model.select(file)
+                    assertCopy(snapshot().text, MR.strings.desktop_backup_reading_file.localized(locale, file.name))
+                    previewGate.complete(preview)
+                    val confirmation = snapshot()
+                    assertCopy(
+                        confirmation.text,
+                        MR.strings.desktop_backup_restore_confirm_title.localized(locale),
+                        MR.strings.desktop_backup_restore_confirm_summary.localized(locale),
+                        MR.strings.action_restore.localized(locale),
+                        MR.strings.action_cancel.localized(locale),
+                        MR.strings.desktop_backup_preview_library.localized(locale, 2, 8, 1),
+                        MR.strings.desktop_backup_preview_services.localized(locale, 1, 3, 2),
+                        MR.strings.desktop_backup_preview_repositories.localized(locale, 1),
+                    )
+
+                    model.confirmRestore()
+                    assertCopy(
+                        snapshot().text,
+                        MR.strings.restoring_backup.localized(locale),
+                        file.name,
+                        MR.strings.desktop_backup_progress.localized(locale, 0, 3, 0),
+                        MR.strings.action_cancel.localized(locale),
+                    )
+                    restoreGate.complete(
+                        TaskState.Success(DesktopBackupRestorer.RestoreResult().apply { repeat(7) { incrementSuccess() } }),
+                    )
+                    assertCopy(snapshot().text, MR.strings.desktop_backup_completed_count.localized(locale, 7))
+
+                    restoreGate = CompletableDeferred()
+                    model.retryRestore()
+                    restoreGate.complete(
+                        TaskState.Failure(
+                            AppError.PartialFailure(
+                                failures = listOf(AppError.MalformedData()),
+                                failedUnits = listOf(AppError.FailedUnit("manga:/broken", AppError.MalformedData())),
+                            ),
+                        ),
+                    )
+                    assertCopy(snapshot().text, MR.strings.desktop_backup_partial.localized(locale))
+
+                    restoreGate = CompletableDeferred()
+                    model.retryRestore()
+                    restoreGate.complete(TaskState.Failure(AppError.Storage()))
+                    assertCopy(
+                        snapshot().text,
+                        MR.strings.restoring_backup_error.localized(locale),
+                        MR.strings.action_retry.localized(locale),
+                    )
+                    model.cancel()
+                    assertCopy(snapshot().text, MR.strings.restoring_backup_canceled.localized(locale))
+                } finally {
+                    scene.close()
+                }
+            }
+        } finally {
+            Locale.setDefault(previousLocale)
+        }
+    }
+
     private suspend fun render(
         screen: Screen,
         dependencies: DesktopUiDependencies,
@@ -352,5 +485,23 @@ class DesktopSettingsResourceIdentityTest {
         MR.strings.desktop_library_excluded_categories,
         MR.strings.desktop_library_manual_refresh_summary,
         MR.strings.desktop_library_excluded_categories_summary,
+        MR.strings.desktop_backup_create_summary,
+        MR.strings.desktop_backup_restore_summary,
+        MR.strings.desktop_backup_saved,
+        MR.strings.desktop_backup_failed,
+        MR.strings.desktop_backup_automatic,
+        MR.strings.desktop_backup_automatic_summary,
+        MR.strings.desktop_backup_max_files,
+        MR.strings.desktop_backup_file_filter,
+        MR.strings.desktop_backup_restore_confirm_title,
+        MR.strings.desktop_backup_restore_confirm_summary,
+        MR.strings.desktop_backup_preview_library,
+        MR.strings.desktop_backup_preview_services,
+        MR.strings.desktop_backup_preview_repositories,
+        MR.strings.desktop_backup_reading_file,
+        MR.strings.desktop_backup_progress,
+        MR.strings.desktop_backup_completed_count,
+        MR.strings.desktop_backup_partial,
+        MR.strings.desktop_backup_more_errors,
     )
 }

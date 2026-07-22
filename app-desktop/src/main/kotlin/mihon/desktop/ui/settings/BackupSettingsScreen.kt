@@ -46,7 +46,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import mihon.desktop.backup.BackupPreview
 import mihon.desktop.platform.DesktopExternalActionTarget
+import tachiyomi.i18n.MR
 import java.io.File
+import java.util.Locale
 import javax.swing.JFileChooser
 import javax.swing.SwingUtilities
 import javax.swing.filechooser.FileNameExtensionFilter
@@ -81,21 +83,24 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
         restoreErrors?.let { errors ->
             AlertDialog(
                 onDismissRequest = { restoreErrors = null },
-                title = { Text("Restore completed with errors") },
+                title = { Text(MR.strings.restoring_backup_error.localized()) },
                 text = {
                     Column {
-                        Text("${errors.size} item(s) failed to restore:")
+                        Text(errors.size.toString())
                         Spacer(Modifier.height(8.dp))
                         errors.take(10).forEach { err ->
                             Text("• $err", style = MaterialTheme.typography.bodySmall)
                         }
                         if (errors.size > 10) {
-                            Text("…and ${errors.size - 10} more", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                MR.strings.desktop_backup_more_errors.localized(Locale.getDefault(), errors.size - 10),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
                         }
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = { restoreErrors = null }) { Text("OK") }
+                    TextButton(onClick = { restoreErrors = null }) { Text(MR.strings.action_ok.localized()) }
                 },
             )
         }
@@ -103,28 +108,31 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
         (restoreState as? BackupRestoreUiState.Preview)?.let { preview ->
             AlertDialog(
                 onDismissRequest = restoreModel::cancel,
-                title = { Text("确认恢复备份？") },
+                title = { Text(MR.strings.desktop_backup_restore_confirm_title.localized()) },
                 text = {
                     Column {
-                        Text("将把缺失数据合并到当前资料库；现有条目会保留。")
+                        Text(MR.strings.desktop_backup_restore_confirm_summary.localized())
                         Spacer(Modifier.height(8.dp))
                         BackupPreviewText(preview.summary)
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = restoreModel::confirmRestore) { Text("确认恢复") }
+                    TextButton(onClick = restoreModel::confirmRestore) { Text(MR.strings.action_restore.localized()) }
                 },
-                dismissButton = { TextButton(onClick = restoreModel::cancel) { Text("取消") } },
+                dismissButton = { TextButton(onClick = restoreModel::cancel) { Text(MR.strings.action_cancel.localized()) } },
             )
         }
 
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("Backup and Restore") },
+                    title = { Text(MR.strings.label_backup.localized()) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = MR.strings.action_bar_up_description.localized(),
+                            )
                         }
                     },
                 )
@@ -138,11 +146,10 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
                     .padding(24.dp)
                     .verticalScroll(rememberScrollState()),
             ) {
-                Text("Create Backup", style = MaterialTheme.typography.titleMedium)
+                Text(MR.strings.pref_create_backup.localized(), style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "Export your library, chapters, and history to a .tachibk file " +
-                        "compatible with Mihon Android.",
+                    text = MR.strings.desktop_backup_create_summary.localized(),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -150,13 +157,15 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
                 Button(
                     onClick = {
                         scope.launch {
-                            val dir = chooseDirectory("Choose backup folder") ?: return@launch
+                            val dir = chooseDirectory(MR.strings.pref_create_backup.localized()) ?: return@launch
                             isBusy = true
                             try {
                                 val file = backupFactory.createBackup(dir)
-                                snackbar.showSnackbar("Backup saved: ${file.name}")
+                                snackbar.showSnackbar(MR.strings.desktop_backup_saved.localized(Locale.getDefault(), file.name))
                             } catch (e: Exception) {
-                                snackbar.showSnackbar("Backup failed: ${e.message}")
+                                snackbar.showSnackbar(
+                                    MR.strings.desktop_backup_failed.localized(Locale.getDefault(), e.message.orEmpty()),
+                                )
                             } finally {
                                 isBusy = false
                             }
@@ -167,16 +176,15 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
                     if (isBusy) {
                         CircularProgressIndicator()
                     } else {
-                        Text("Create Backup")
+                        Text(MR.strings.pref_create_backup.localized())
                     }
                 }
 
                 Spacer(Modifier.height(32.dp))
-                Text("Restore Backup", style = MaterialTheme.typography.titleMedium)
+                Text(MR.strings.pref_restore_backup.localized(), style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "Import a .tachibk backup file. Existing entries will be preserved; " +
-                        "only missing data will be added.",
+                    text = MR.strings.desktop_backup_restore_summary.localized(),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -191,7 +199,7 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
                     enabled = !isBusy && restoreState !is BackupRestoreUiState.Loading &&
                         restoreState !is BackupRestoreUiState.Restoring,
                 ) {
-                    Text("选择备份文件")
+                    Text(MR.strings.file_select_backup.localized())
                 }
                 Spacer(Modifier.height(12.dp))
                 RestoreStatus(restoreState, restoreModel::retryRestore, restoreModel::cancel)
@@ -200,28 +208,28 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
                 HorizontalDivider()
                 Spacer(Modifier.height(16.dp))
 
-                Text("Automatic Backup", style = MaterialTheme.typography.titleMedium)
+                Text(MR.strings.desktop_backup_automatic.localized(), style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "Automatically create backups at a regular interval.",
+                    text = MR.strings.desktop_backup_automatic_summary.localized(),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(12.dp))
 
                 Text(
-                    text = "Backup Frequency",
+                    text = MR.strings.pref_backup_interval.localized(),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(vertical = 4.dp),
                 )
                 val intervalLabels = mapOf(
-                    AutoBackupInterval.OFF to "Off",
-                    AutoBackupInterval.EVERY_6H to "Every 6 hours",
-                    AutoBackupInterval.EVERY_12H to "Every 12 hours",
-                    AutoBackupInterval.EVERY_24H to "Every 24 hours",
-                    AutoBackupInterval.EVERY_48H to "Every 48 hours",
-                    AutoBackupInterval.WEEKLY to "Weekly",
+                    AutoBackupInterval.OFF to MR.strings.off.localized(),
+                    AutoBackupInterval.EVERY_6H to MR.strings.update_6hour.localized(),
+                    AutoBackupInterval.EVERY_12H to MR.strings.update_12hour.localized(),
+                    AutoBackupInterval.EVERY_24H to MR.strings.update_24hour.localized(),
+                    AutoBackupInterval.EVERY_48H to MR.strings.update_48hour.localized(),
+                    AutoBackupInterval.WEEKLY to MR.strings.update_weekly.localized(),
                 )
                 AutoBackupInterval.entries.forEach { interval ->
                     RadioSettingsItem(
@@ -233,7 +241,7 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
 
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = "Maximum Backups",
+                    text = MR.strings.desktop_backup_max_files.localized(),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(vertical = 4.dp),
@@ -282,8 +290,8 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
             val latch = java.util.concurrent.CountDownLatch(1)
             SwingUtilities.invokeLater {
                 val chooser = JFileChooser().apply {
-                    dialogTitle = "Select backup file"
-                    fileFilter = FileNameExtensionFilter("Mihon backup (*.tachibk)", "tachibk")
+                    dialogTitle = MR.strings.file_select_backup.localized()
+                    fileFilter = FileNameExtensionFilter(MR.strings.desktop_backup_file_filter.localized(), "tachibk")
                     currentDirectory = File(System.getProperty("user.home"))
                 }
                 if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
@@ -298,9 +306,10 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
 
 @Composable
 private fun BackupPreviewText(preview: BackupPreview) {
-    Text("漫画 ${preview.mangaCount} · 章节 ${preview.chapterCount} · 分类 ${preview.categoryCount}")
-    Text("追踪 ${preview.trackingCount} · 偏好 ${preview.preferenceCount} · 来源 ${preview.sourceCount}")
-    Text("扩展仓库 ${preview.extensionRepoCount}")
+    val locale = Locale.getDefault()
+    Text(MR.strings.desktop_backup_preview_library.localized(locale, preview.mangaCount, preview.chapterCount, preview.categoryCount))
+    Text(MR.strings.desktop_backup_preview_services.localized(locale, preview.trackingCount, preview.preferenceCount, preview.sourceCount))
+    Text(MR.strings.desktop_backup_preview_repositories.localized(locale, preview.extensionRepoCount))
 }
 
 @Composable
@@ -310,27 +319,38 @@ private fun RestoreStatus(
     onCancel: () -> Unit,
 ) {
     when (state) {
-        BackupRestoreUiState.Empty -> Text("尚未选择备份文件", style = MaterialTheme.typography.bodySmall)
+        BackupRestoreUiState.Empty -> Text(MR.strings.file_select_backup.localized(), style = MaterialTheme.typography.bodySmall)
         is BackupRestoreUiState.Loading -> {
             CircularProgressIndicator()
-            Text("正在读取 ${state.fileName}…")
+            Text(MR.strings.desktop_backup_reading_file.localized(Locale.getDefault(), state.fileName))
         }
         is BackupRestoreUiState.Preview -> BackupPreviewText(state.summary)
         is BackupRestoreUiState.Restoring -> {
             CircularProgressIndicator(progress = { state.progress })
-            Text("正在恢复 ${state.fileName}…")
-            Text("${state.completed} / ${state.total}（${(state.progress * 100).toInt()}%）")
-            TextButton(onClick = onCancel) { Text("取消恢复") }
+            Text(MR.strings.restoring_backup.localized())
+            Text(state.fileName)
+            Text(
+                MR.strings.desktop_backup_progress.localized(
+                    Locale.getDefault(),
+                    state.completed,
+                    state.total,
+                    (state.progress * 100).toInt(),
+                ),
+            )
+            TextButton(onClick = onCancel) { Text(MR.strings.action_cancel.localized()) }
         }
-        is BackupRestoreUiState.Completed -> Text("恢复完成：成功 ${state.restoredItems} 项")
+        is BackupRestoreUiState.Completed -> Text(
+            MR.strings.desktop_backup_completed_count.localized(Locale.getDefault(), state.restoredItems),
+        )
         is BackupRestoreUiState.PartialSuccess -> {
-            Text("恢复完成，但以下项目失败：")
+            Text(MR.strings.desktop_backup_partial.localized())
             state.failedUnits.take(10).forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
         }
         is BackupRestoreUiState.Failure -> {
+            Text(MR.strings.restoring_backup_error.localized(), color = MaterialTheme.colorScheme.error)
             Text(state.message, color = MaterialTheme.colorScheme.error)
-            if (state.recoverable) TextButton(onClick = onRetry) { Text("重试") }
+            if (state.recoverable) TextButton(onClick = onRetry) { Text(MR.strings.action_retry.localized()) }
         }
-        BackupRestoreUiState.Cancelled -> Text("恢复已取消，可重新选择备份文件")
+        BackupRestoreUiState.Cancelled -> Text(MR.strings.restoring_backup_canceled.localized())
     }
 }

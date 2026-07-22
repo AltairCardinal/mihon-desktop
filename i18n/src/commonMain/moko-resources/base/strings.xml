@@ -1223,4 +1223,22 @@
     <string name="desktop_library_manual_refresh_summary">You can also use the Refresh button in the Library tab to check for new chapters manually.</string>
     <string name="desktop_library_excluded_categories">Exclude from updates</string>
     <string name="desktop_library_excluded_categories_summary">Manga in checked categories will be skipped during automatic updates.</string>
+    <string name="desktop_backup_create_summary">Export your library, chapters, and history to a .tachibk file compatible with Mihon Android.</string>
+    <string name="desktop_backup_restore_summary">Import a .tachibk backup file. Existing entries will be preserved; only missing data will be added.</string>
+    <string name="desktop_backup_saved">Backup saved: %1$s</string>
+    <string name="desktop_backup_failed">Backup failed: %1$s</string>
+    <string name="desktop_backup_automatic">Automatic backup</string>
+    <string name="desktop_backup_automatic_summary">Automatically create backups at a regular interval.</string>
+    <string name="desktop_backup_max_files">Maximum backups</string>
+    <string name="desktop_backup_file_filter">Mihon backup (*.tachibk)</string>
+    <string name="desktop_backup_restore_confirm_title">Restore this backup?</string>
+    <string name="desktop_backup_restore_confirm_summary">Missing data will be merged into the current library; existing entries will be preserved.</string>
+    <string name="desktop_backup_preview_library">Manga %1$d · Chapters %2$d · Categories %3$d</string>
+    <string name="desktop_backup_preview_services">Tracking %1$d · Preferences %2$d · Sources %3$d</string>
+    <string name="desktop_backup_preview_repositories">Extension repositories %1$d</string>
+    <string name="desktop_backup_reading_file">Reading %1$s…</string>
+    <string name="desktop_backup_progress">%1$d / %2$d (%3$d%%)</string>
+    <string name="desktop_backup_completed_count">Restore completed: %1$d item(s) restored</string>
+    <string name="desktop_backup_partial">Restore completed, but the following items failed:</string>
+    <string name="desktop_backup_more_errors">…and %1$d more</string>
 </resources>

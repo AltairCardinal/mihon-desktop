@@ -992,4 +992,22 @@
     <string name="desktop_library_manual_refresh_summary">也可以在书架页点击刷新按钮，手动检查新章节。</string>
     <string name="desktop_library_excluded_categories">不参与更新的分类</string>
     <string name="desktop_library_excluded_categories_summary">自动更新时会跳过所选分类中的漫画。</string>
+    <string name="desktop_backup_create_summary">将书架、章节和历史记录导出为与 Mihon Android 兼容的 .tachibk 文件。</string>
+    <string name="desktop_backup_restore_summary">导入 .tachibk 备份文件。现有条目会保留，只添加缺失数据。</string>
+    <string name="desktop_backup_saved">备份已保存：%1$s</string>
+    <string name="desktop_backup_failed">备份失败：%1$s</string>
+    <string name="desktop_backup_automatic">自动备份</string>
+    <string name="desktop_backup_automatic_summary">按固定间隔自动创建备份。</string>
+    <string name="desktop_backup_max_files">备份保留数量</string>
+    <string name="desktop_backup_file_filter">Mihon 备份 (*.tachibk)</string>
+    <string name="desktop_backup_restore_confirm_title">还原此备份？</string>
+    <string name="desktop_backup_restore_confirm_summary">缺失数据会合并到当前资料库中，现有条目会保留。</string>
+    <string name="desktop_backup_preview_library">漫画 %1$d · 章节 %2$d · 分类 %3$d</string>
+    <string name="desktop_backup_preview_services">追踪 %1$d · 偏好设置 %2$d · 图源 %3$d</string>
+    <string name="desktop_backup_preview_repositories">扩展仓库 %1$d</string>
+    <string name="desktop_backup_reading_file">正在读取 %1$s…</string>
+    <string name="desktop_backup_progress">%1$d / %2$d（%3$d%%）</string>
+    <string name="desktop_backup_completed_count">还原完成：已还原 %1$d 项</string>
+    <string name="desktop_backup_partial">还原完成，但以下项目失败：</string>
+    <string name="desktop_backup_more_errors">……以及另外 %1$d 个项目</string>
 </resources>
