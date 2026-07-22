@@ -52,7 +52,7 @@ status-source: this-file
 - [x] Task 4D：Desktop Backup 错误与系统反馈 production identity
 - [x] Task 4E：Desktop Backup picker 与 production feedback wiring
 - [x] Task 4F：Desktop Backup typed preview reason production contract
-- [ ] Task 4G：Desktop Advanced 设置 i18n 同源化
+- [x] Task 4G：Desktop Advanced 设置 i18n 同源化
 - [ ] Task 4H：Desktop Security 设置 i18n 同源化与 locale 隔离
 - [ ] Task 4I：Desktop About/扩展/Tracking i18n 同源化
 - [ ] Task 5：Desktop 设置 catalog、搜索 Screen 与入口
@@ -308,6 +308,8 @@ status-source: this-file
 3. 运行 Advanced/challenge wiring、rendered copy、Spotless/range gate。
 
 **Split evidence:** Security+Advanced 的真实动态状态 GREEN 工作树为 `5 files/380 touched`；同一回归启用 JUnit 并行时，切换进程 Locale 的新场景会使既有 Security 测试偶发读取中文。正确隔离需要 `@Isolated`，范围将超过 380；不得用命令行关闭并行掩盖 CI 风险，因此按不共享 production Screen 的边界拆为 4G/4H。4G 提交前移除未提交的 Security production/资源/测试部分；4G 审查通过后由 4H 独立重做 Security 与 locale 隔离。
+
+**Review status（已完成）：** 初始实现 `99ee9dea9` 将 Advanced 标题、返回说明、网络缓存、Cookie/Cloudflare/FlareSolverr 与崩溃日志文案接入同一 MR identity；真实 Compose focused `6/6`、默认 JUnit 并行相关回归 `102/102`，`@Isolated` 消除了进程 Locale 竞态。首审 `0/1/0` 指出崩溃日志打开成功/失败与缓存计算瞬态仅有资源枚举，交换 MR 或恢复硬编码仍会通过。唯一修复 `81888828d` 增加 production 默认 platform actions，并由真实 Advanced Screen 在 en/zh 下观察挂起态 `Calculating…`、完成值及目录打开成功/失败反馈；两类 mutation 均会精确 RED。复审 APPROVED `0/0/0`，Spotless、diff、guard 通过，累计 `4 files/291 touched`，Security 与用户脏文件零混入。下一项为父 Task 5B / 子 Task 4H。
 
 ### Task 4H：Desktop Security 设置 i18n 同源化与 locale 隔离
 
