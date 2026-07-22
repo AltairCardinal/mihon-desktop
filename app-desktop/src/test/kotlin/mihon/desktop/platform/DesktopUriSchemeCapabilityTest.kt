@@ -1,7 +1,13 @@
 package mihon.desktop.platform
 
+import kotlinx.coroutines.runBlocking
+import mihon.desktop.DesktopAppRuntime
 import mihon.desktop.DesktopInstanceStartResult
-import mihon.desktop.startDesktopApplication
+import mihon.desktop.DesktopOwnerIngressDependencies
+import mihon.desktop.DesktopRuntimeService
+import mihon.desktop.DesktopUiDependencies
+import mihon.desktop.di.initDesktopDIForTest
+import mihon.desktop.startProductionDesktopApplication
 import mihon.domain.platform.ExternalAction
 import mihon.domain.platform.ExternalActionInput
 import mihon.domain.platform.ExternalActionParser
@@ -13,6 +19,7 @@ import org.junit.jupiter.api.io.TempDir
 import org.w3c.dom.Element
 import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
+import tachiyomi.core.common.preference.DesktopPreferenceStore
 
 class DesktopUriSchemeCapabilityTest {
     @Test
@@ -54,64 +61,118 @@ class DesktopUriSchemeCapabilityTest {
     }
 
     @Test
-    fun `Main production startup registers only for elected owner`(@TempDir tempDir: File) {
-        val stateFile = File(tempDir, "instance.json")
-        val ownerBroker = DesktopExternalActionBroker(stateFile)
+    fun `production owner registers URI scheme once and starts runtime window`(@TempDir tempDir: File) = runBlocking {
+        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+        val broker = DesktopExternalActionBroker(File(tempDir, "owner-instance.json"))
         val ownerRegistrar = RecordingRegistrar()
-        var ownerStarts = 0
-
-        assertEquals(
-            DesktopInstanceStartResult.Owner,
-            startDesktopApplication(
-                args = emptyArray(),
-                broker = ownerBroker,
-                registrar = ownerRegistrar,
-                startOwnerApplication = { ownerStarts++ },
-            ),
-        )
-        assertEquals(1, ownerRegistrar.calls)
-        assertEquals(1, ownerStarts)
-
-        val secondaryRegistrar = RecordingRegistrar()
-        val secondary = DesktopExternalActionBroker(stateFile)
-        var secondaryStarts = 0
-        assertEquals(
-            DesktopInstanceStartResult.Forwarded,
-            startDesktopApplication(
-                args = arrayOf("tachiyomi://add-repo?url=https%3A%2F%2Frepo.example"),
-                broker = secondary,
-                registrar = secondaryRegistrar,
-                startOwnerApplication = { secondaryStarts++ },
-            ),
-        )
-        assertEquals(0, secondaryRegistrar.calls)
-        assertEquals(0, secondaryStarts)
-        ownerBroker.close()
+        val runtimeService = RecordingRuntimeService()
+        val runtime = runtime(runtimeService)
+        var ownerFactories = 0
+        var windows = 0
+        var runtimeWasRunning = false
+        try {
+            assertEquals(
+                DesktopInstanceStartResult.Owner,
+                startProductionDesktopApplication(
+                    args = emptyArray(),
+                    broker = broker,
+                    registrar = ownerRegistrar,
+                    openUriEventPort = unsupportedOpenUriPort,
+                    ownerIngressDependencies = {
+                        ownerFactories++
+                        DesktopOwnerIngressDependencies(runtime, DesktopUiDependencies.fromInjekt())
+                    },
+                    runWindowEventLoop = { _, requestClose ->
+                        windows++
+                        runtimeWasRunning = runtime.isRunning
+                        requestClose()
+                    },
+                ),
+            )
+            assertEquals(1, ownerRegistrar.calls)
+            assertEquals(1, ownerFactories)
+            assertEquals(1, windows)
+            assertTrue(runtimeWasRunning)
+            assertEquals(1, runtimeService.starts)
+            assertEquals(1, runtimeService.stops)
+        } finally {
+            context.closeAndJoin()
+        }
     }
 
     @Test
-    fun `registration exception is reported without blocking owner application`(@TempDir tempDir: File) {
-        val broker = DesktopExternalActionBroker(File(tempDir, "instance.json"))
+    fun `production secondary forwards without registering or starting owner`(@TempDir tempDir: File) = runBlocking {
+        val stateFile = File(tempDir, "secondary-instance.json")
+        val owner = DesktopExternalActionBroker(stateFile)
+        assertTrue(owner.startOrForward(null) is DesktopExternalActionBroker.StartResult.Owner)
+        val registrar = RecordingRegistrar()
+        var ownerFactories = 0
+        var windows = 0
+        try {
+            assertEquals(
+                DesktopInstanceStartResult.Forwarded,
+                startProductionDesktopApplication(
+                    args = arrayOf("tachiyomi://add-repo?url=https%3A%2F%2Frepo.example"),
+                    broker = DesktopExternalActionBroker(stateFile),
+                    registrar = registrar,
+                    openUriEventPort = unsupportedOpenUriPort,
+                    ownerIngressDependencies = {
+                        ownerFactories++
+                        error("secondary must not initialize owner dependencies")
+                    },
+                    runWindowEventLoop = { _, _ -> windows++ },
+                ),
+            )
+            assertEquals(0, registrar.calls)
+            assertEquals(0, ownerFactories)
+            assertEquals(0, windows)
+        } finally {
+            owner.close()
+        }
+    }
+
+    @Test
+    fun `production registration exception is structured while owner runtime window still start`(@TempDir tempDir: File) = runBlocking {
+        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+        val broker = DesktopExternalActionBroker(File(tempDir, "registration-instance.json"))
+        val runtimeService = RecordingRuntimeService()
+        val runtime = runtime(runtimeService)
+        var registrarCalls = 0
         var reported: DesktopUriSchemeRegistration.Result? = null
-        var ownerStarts = 0
+        var windows = 0
+        try {
+            val result = startProductionDesktopApplication(
+                args = emptyArray(),
+                broker = broker,
+                registrar = DesktopUriSchemeRegistrar {
+                    registrarCalls++
+                    error("registration failure")
+                },
+                reportRegistration = { reported = it },
+                openUriEventPort = unsupportedOpenUriPort,
+                ownerIngressDependencies = {
+                    DesktopOwnerIngressDependencies(runtime, DesktopUiDependencies.fromInjekt())
+                },
+                runWindowEventLoop = { _, requestClose ->
+                    windows++
+                    requestClose()
+                },
+            )
 
-        val result = startDesktopApplication(
-            args = emptyArray(),
-            broker = broker,
-            registrar = DesktopUriSchemeRegistrar { error("registration failure") },
-            reportRegistration = { reported = it },
-            startOwnerApplication = { ownerStarts++ },
-        )
-
-        assertEquals(DesktopInstanceStartResult.Owner, result)
-        assertEquals(
-            DesktopUriSchemeRegistration.Result.Failed(
-                DesktopUriSchemeRegistration.FailureReason.UNEXPECTED_FAILURE,
-            ),
-            reported,
-        )
-        assertEquals(1, ownerStarts)
-        broker.close()
+            assertEquals(DesktopInstanceStartResult.Owner, result)
+            assertEquals(1, registrarCalls)
+            assertEquals(
+                DesktopUriSchemeRegistration.Result.Failed(
+                    DesktopUriSchemeRegistration.FailureReason.UNEXPECTED_FAILURE,
+                ),
+                reported,
+            )
+            assertEquals(1, windows)
+            assertEquals(1, runtimeService.starts)
+            assertEquals(1, runtimeService.stops)
+        } finally {
+            context.closeAndJoin()
+        }
     }
 
     private fun resource(path: String): String = checkNotNull(javaClass.classLoader.getResourceAsStream(path)) {
@@ -127,5 +188,29 @@ class DesktopUriSchemeCapabilityTest {
                 DesktopUriSchemeRegistration.Mechanism.WINDOWS_CURRENT_USER_REGISTRY,
             )
         }
+    }
+
+    private fun runtime(service: RecordingRuntimeService) = DesktopAppRuntime(
+        libraryUpdateScheduler = service,
+        localSourceScanService = RecordingRuntimeService(),
+        autoBackupScheduler = RecordingRuntimeService(),
+        startupCleanup = {},
+    )
+
+    private class RecordingRuntimeService : DesktopRuntimeService {
+        var starts = 0
+        var stops = 0
+
+        override fun start() {
+            starts++
+        }
+
+        override fun stop() {
+            stops++
+        }
+    }
+
+    private companion object {
+        val unsupportedOpenUriPort = DesktopOpenUriEventPort { DesktopOpenUriInstallResult.Unsupported }
     }
 }

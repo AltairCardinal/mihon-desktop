@@ -339,6 +339,41 @@ class DesktopAppRuntimeTest {
     }
 
     @Test
+    fun `production owner factory failure remains primary when broker cleanup also fails`(@org.junit.jupiter.api.io.TempDir tempDir: File) = runBlocking {
+        val primary = IllegalStateException("owner dependency factory failed")
+        val cleanup = IllegalArgumentException("broker cleanup failed")
+        var closeCalls = 0
+        val broker = DesktopExternalActionBroker(
+            File(tempDir, "factory-cleanup-failure.json"),
+            closeServer = { server ->
+                closeCalls++
+                if (closeCalls == 1) throw cleanup
+                server.close()
+            },
+        )
+
+        try {
+            val thrown = runCatching {
+                startProductionDesktopApplication(
+                    args = emptyArray(),
+                    broker = broker,
+                    registrar = mihon.desktop.platform.DesktopUriSchemeRegistrar {
+                        DesktopUriSchemeRegistration.Result.Configured(
+                            DesktopUriSchemeRegistration.Mechanism.WINDOWS_CURRENT_USER_REGISTRY,
+                        )
+                    },
+                    ownerIngressDependencies = { throw primary },
+                )
+            }.exceptionOrNull()
+
+            assertSame(primary, thrown)
+            assertEquals(listOf(cleanup), primary.suppressed.toList())
+        } finally {
+            broker.close()
+        }
+    }
+
+    @Test
     fun `close and join preserves close failure and suppresses exact await failure`() = runTest {
         val closeFailure = IllegalStateException("close")
         val awaitFailure = IllegalArgumentException("await")

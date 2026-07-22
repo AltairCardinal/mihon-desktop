@@ -179,20 +179,41 @@ internal fun startDesktopInstance(
         try {
             startOwner(broker)
             DesktopInstanceStartResult.Owner
-        } catch (failure: Throwable) {
-            broker.close()
-            throw failure
+        } catch (primary: Throwable) {
+            throw closeInstanceBroker(broker, primary)!!
         }
     }
     DesktopExternalActionBroker.StartResult.Forwarded -> {
-        broker.close()
+        closeInstanceBroker(broker)?.let { throw it }
         DesktopInstanceStartResult.Forwarded
     }
     is DesktopExternalActionBroker.StartResult.Failed -> {
-        broker.close()
+        closeInstanceBroker(broker)?.let { throw it }
         reportFailure(result.failure)
         DesktopInstanceStartResult.Failed(result.failure)
     }
+}
+
+private fun closeInstanceBroker(
+    broker: DesktopExternalActionBroker,
+    primary: Throwable? = null,
+): Throwable? {
+    var failure = primary
+    try {
+        broker.close()
+    } catch (cleanup: Throwable) {
+        val first = failure
+        if (first == null) {
+            failure = cleanup
+        } else {
+            first.addSuppressedOnce(cleanup)
+        }
+    }
+    return failure
+}
+
+private fun Throwable.addSuppressedOnce(cleanup: Throwable) {
+    if (cleanup !== this && suppressed.none { it === cleanup }) addSuppressed(cleanup)
 }
 
 private object NoopRuntimeService : DesktopRuntimeService {
@@ -210,8 +231,8 @@ private class CleanupFailures {
             val first = primary
             if (first == null) {
                 primary = failure
-            } else if (failure !== first) {
-                first.addSuppressed(failure)
+            } else {
+                first.addSuppressedOnce(failure)
             }
         }
     }
@@ -221,7 +242,7 @@ private class CleanupFailures {
             block()
         } catch (failure: Throwable) {
             val first = primary
-            if (first == null) primary = failure else if (failure !== first) first.addSuppressed(failure)
+            if (first == null) primary = failure else first.addSuppressedOnce(failure)
         }
     }
 
