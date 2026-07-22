@@ -63,6 +63,7 @@ status-source: this-file
 - [x] Task 16E3：macOS 分享 helper 的 runtime ownership
 - [x] Task 16E4：Manga 分享入口非阻塞
 - [ ] Task 16E5：parity exact 保护集合补齐
+- [ ] Task 16E5R：表达式体行为证据边界
 - [ ] Task 16：独立最终审查与三平台 change verify
 
 ## 全局任务门禁
@@ -1332,6 +1333,30 @@ status-source: this-file
 1. RED：分别删除/交换 security、Widget、updater 的 shared/current/adapter/protection 条目或真实行为方法，旧 exact expected 仍可通过而新增 mutation 必须失败。
 2. GREEN：更新 manifest 与合同 exact sets；合同解析真实测试方法及 production marker，不以源码字符串存在、单一代表 UI test 或复制实现逻辑代替行为证据。
 3. 运行 parity contract、被绑定的 security/Widget/updater focused、Spotless、JSON/diff 与 2-file/320-line gate；独立审查通过后重新执行 Task 16 whole-change review，只有 review 清零才进入全量矩阵。
+
+**Review status（已重规划）：** 初始实现 `f207ce89e` 建立 ID 83/84/85/86/92 的 exact manifest 与 path→method→marker 行为绑定；唯一修复 `fd9653bb4` 增加等长 structural/comment-free 视图、唯一直接类成员与注释/字符串/nested 排除，合同 30/30、behavior smoke 38/38、Spotless、JSON、diff 和累计 2 files/316 touched 均通过。唯一修复复审仍以 Critical/Important/Minor `0/1/0` 拒绝：目标 `@Test fun target() = Unit` 会跨过表达式体边界借用后续 decoy 测试的代码块，使空跑测试冒充真实 production 行为证据。原范围仅余 4 行，无法诚实容纳 parser 修复与 mutation，因此 E5 保持未勾选，将单一验证风险交给 E5R。
+
+### 子 Task 16E5R：表达式体行为证据边界
+
+**Risk axis:** parity-behavior-method-boundary
+
+**Platform boundary:** verification
+
+**Estimated scope:** 1 files, 120 lines
+
+**Verification:** expression-body decoy rejection、direct member boundary、existing parser regressions
+
+**Files:**
+
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt`
+
+**Consumes:** E5 exact evidence map，以及唯一修复复审确认的表达式体跨方法 Important。
+
+**Produces:** 行为证据只能绑定到真实块体的唯一直接 `@Test`/`@ParameterizedTest` 成员；表达式体目标不得借用后续方法的断言或 production marker。
+
+1. RED：合成 `@Test fun target() = Unit` 后跟含 production marker 的 decoy 块；当前 helper 必须错误接受并使新增测试失败。
+2. GREEN：扫描目标签名时，在找到当前成员块体前遇到顶层 `=`、下一个直接成员或类结束边界即拒绝，不跨方法寻找 `{`；保留 E5 已通过的注释、字符串、nested/local、duplicate 和附加注解测试。
+3. 运行 parity contract、behavior smoke、Spotless、JSON/diff 与 1-file/120-line gate；由未参与实现的 reviewer 独立审查，通过后同时勾选 E5/E5R 并重新执行 Task 16 whole-change review。
 
 ### Task 16：独立最终审查与三平台 change verify
 
