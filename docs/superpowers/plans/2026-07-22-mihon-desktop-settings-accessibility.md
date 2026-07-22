@@ -64,7 +64,7 @@ status-source: this-file
 - [x] Task 6B：Desktop 标题 anchor 的 Reader/Library 接线
 - [x] Task 7A：Desktop 标题 anchor 的 Download/Backup 数据页面
 - [x] Task 7B：Desktop 标题 anchor 的 Advanced 页面
-- [ ] Task 7C：Desktop 标题 anchor 的 Security 页面
+- [x] Task 7C：Desktop 标题 anchor 的 Security 页面
 - [ ] Task 8：Desktop 标题 anchor 的扩展页面
 - [ ] Task 9：共享主题模块、identity/default/codec 与 Android consumer
 - [ ] Task 10A：共享静态调色板第一批
@@ -541,6 +541,8 @@ status-source: this-file
 1. RED：页面只路由不落点、exact route/title/one-shot/scroll/highlight 或 Catalog identity 分叉时失败。
 2. GREEN：只接 6A host，不复制 owner/search；保留 supported native toggle 与 unsupported telemetry/widget 的诚实反馈。
 3. 运行 Security focused/wiring/navigation/Spotless/range gate。
+
+**Review status（已完成）：** 实现 `b9c1f51a5` 仅修改 Security、Catalog 和独立 wiring test；`securitySecureScreen` 让 Catalog 与页面共同消费 `desktop_secure_screen_title`。真实 Catalog→publish→replace→Security 场景验证 exact title、scroll、visible、唯一 highlight、one-shot、wrong route/unknown title。supported fixture 只启用原生通知能力，具名真实 Switch 写入 `DesktopPreferenceStore` 支撑的 `SecurityPreferences`；telemetry/widget 保持 production Unsupported，只显示准确 copy，页面 toggle 总数严格为 2。Catalog/Page identity 分叉、host/marker 断开、supported/unsupported 分支破坏三类 mutation 精确 RED。独立审查 APPROVED `0/0/0`，Security wiring/identity/navigation/smoke/search/anchor/provenance `106/106`、shared `7/7`、Spotless、diff 与 17-Task guard 通过；范围 `3 files/178 touched`，Advanced、6A、7A 与用户脏文件零差异。下一项为父 Task 5B / 子 Task 8。
 
 ### Task 8：Desktop 标题 anchor 的扩展页面
 
