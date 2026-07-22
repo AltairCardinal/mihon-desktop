@@ -1713,6 +1713,27 @@ class DesktopProductCapabilityContractTest {
         }
     }
 
+    @Test
+    fun `behavior parser does not borrow a later member block for an expression body`() {
+        val source = """
+            class Evidence {
+                @Test fun `target behavior`() = Unit
+
+                @Test fun decoy() {
+                    assertTrue(productionMarker())
+                }
+
+                private fun productionMarker() = true
+            }
+        """.trimIndent()
+
+        assertThrows(AssertionError::class.java) {
+            val method = kotlinTestMethod(source, "target behavior", "synthetic evidence")
+            assertTrue("assert" in method)
+            assertTrue("productionMarker" in method)
+        }
+    }
+
     private fun validateItem(item: JsonObject, repositoryRoot: Path) {
         val id = validatedId(item)
         val status = item["status"]?.jsonPrimitive?.content
@@ -1784,13 +1805,29 @@ class DesktopProductCapabilityContractTest {
             val memberDepth = structural.take(funStart).fold(0) { depth, char -> depth + if (char == '{') 1 else if (char == '}') -1 else 0 }
             if (memberDepth != 1) return@mapNotNull null
             var parentheses = 0
-            val bodyStart = (nameEnd + 1 until structural.length).firstOrNull { index ->
-                when (structural[index]) {
+            var bodyStart: Int? = null
+            var scan = nameEnd + 1
+            val memberKeywords = listOf("fun", "val", "var", "class", "object", "interface")
+            while (scan < structural.length && bodyStart == null) {
+                when (structural[scan]) {
                     '(' -> parentheses++
                     ')' -> parentheses--
                 }
-                structural[index] == '{' && parentheses == 0
-            } ?: return@mapNotNull null
+                val nextMember = memberKeywords.any { keyword ->
+                    structural.startsWith(keyword, scan) && structural.getOrNull(scan - 1)?.let { !it.isLetterOrDigit() && it != '_' } != false &&
+                        structural.getOrNull(scan + keyword.length)?.let { !it.isLetterOrDigit() && it != '_' } != false
+                }
+                val coroutineBody = if (parentheses == 0 && structural[scan] == '=') {
+                    val expression = structural.substring(scan + 1).trimStart()
+                    listOf("runTest", "runBlocking").any { expression.startsWith(it) && expression.getOrNull(it.length)?.let { next -> !next.isLetterOrDigit() && next != '_' } != false }
+                } else {
+                    false
+                }
+                if (parentheses == 0 && ((structural[scan] == '=' && !coroutineBody) || structural[scan] == '}' || structural[scan] == '@' || nextMember)) break
+                if (parentheses == 0 && structural[scan] == '{') bodyStart = scan
+                scan++
+            }
+            bodyStart ?: return@mapNotNull null
             var bodyDepth = 1
             var bodyEnd = bodyStart + 1
             while (bodyEnd < structural.length && bodyDepth > 0) {
