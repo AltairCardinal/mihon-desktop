@@ -58,6 +58,11 @@ status-source: this-file
 - [x] Task 16D2：唯一 production lifecycle 与真实入口证据
 - [x] Task 16D2R：重复 Compose close 共享 terminal completion
 - [x] Task 16V1：全局搜索状态单调性验收阻塞修复
+- [ ] Task 16E1：credential 事务 fail-closed 与敏感缓冲区
+- [ ] Task 16E2：真实 owner entry 证明与异常优先级
+- [ ] Task 16E3：macOS 分享 helper 的 runtime ownership
+- [ ] Task 16E4：Manga 分享入口非阻塞
+- [ ] Task 16E5：parity exact 保护集合补齐
 - [ ] Task 16：独立最终审查与三平台 change verify
 
 ## 全局任务门禁
@@ -1198,6 +1203,128 @@ status-source: this-file
 
 **Review status（已完成）：** 实现提交 `55fcbe57a` 以真实 child 的 Loading→Failure 转换确定性回灌旧 Loading，证明旧 production 聚合器会回退全局状态并重复 callback；GREEN 在 generation 与 child identity 门禁后要求 candidate 仍等于 child 当前权威状态。独立审查确认结构相等/ABA 只表达当前合法可见状态，既有 global ordinal 与同值去重会阻止反序或重复副作用，exact recovery collector 保持有效；APPROVED，Critical/Important/Minor `0/0/0`。Source wiring 50/50、实现阶段实际三轮通过、根 Spotless、diff 与 2 files/38 touched 门禁通过，下一项为 Task 16 集中验证。
 
+### 子 Task 16E1：credential 事务 fail-closed 与敏感缓冲区
+
+**Risk axis:** desktop-credential-transaction-security
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 5 files, 400 lines
+
+**Verification:** disable/change-passphrase crash-order contract、credential rollback、Windows transient secret zeroization
+
+**Files:**
+
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/security/DesktopPassphraseVerifier.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SecuritySettingsScreen.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopCredentialStore.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/settings/SecuritySettingsWiringTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/platform/PlatformCredentialBackendTest.kt`
+
+**Consumes:** Task 16 final review 的 credential lifecycle Important 与同一 Windows secret path 的 Minor；固定原版 fail-closed security semantics、现有 missing-credential profile reset 和 CharArray API。
+
+**Produces:** disable/change-passphrase 的每个可中断持久化点只能留下 enabled+credential 或 enabled+missing-credential recovery，绝不留下 disabled 中间态；Windows 保存路径不制造额外不可清零明文 String，并在成功/失败后清零所有可控 transient buffers。
+
+1. RED：记录 preference/credential 调用顺序并在每个步骤模拟进程中断；旧 disable/change-passphrase 因先持久化 `useAuthenticator=false` 而失败。保留 runner 输入引用，证明旧 Windows save 在成功与异常路径后仍含 secret。
+2. GREEN：disable 先完成 credential 删除再提交 disabled，提交失败恢复原 credential；改密期间始终保持 enabled，并复用 verifier 的安全替换/rollback。Windows UTF-8/Base64 转换只使用可清零 byte/char buffers，不创建 secret String。
+3. 保持认证失败、backend unavailable/error、missing credential recovery、CharArray ownership 与现有用户反馈。运行 Security settings/AppLock/credential focused、Spotless、diff 与 5-file/400-line gate；独立审查通过后进入 E2。
+
+### 子 Task 16E2：真实 owner entry 证明与异常优先级
+
+**Risk axis:** desktop-owner-entry-transaction
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 3 files, 300 lines
+
+**Verification:** production-entry URI registration mutation、owner factory primary/suppressed cleanup identity、secondary no-registration
+
+**Files:**
+
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/DesktopAppRuntime.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/DesktopAppRuntimeTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopUriSchemeCapabilityTest.kt`
+
+**Consumes:** Task 16 final review 的真实 URI production wiring 与 owner factory cleanup 两项 Important；D1/D2 已通过的 single owner lifecycle 与 primary/suppressed contract。
+
+**Produces:** URI 注册测试只能通过真实 `startProductionDesktopApplication` 入口，owner 精确注册一次、secondary 零次、注册失败只结构化报告；owner factory 主异常始终保持 identity，broker cleanup failure 只作为 exact suppressed。
+
+1. RED：删除/绕过 production registrar call 必须使真实 entry 测试失败；让 owner dependency factory 抛 primary 且 broker close 抛 cleanup，旧实现因覆盖 primary 而失败。
+2. GREEN：迁移旧 facade 测试到 suspend production entry seam；用统一异常聚合规则关闭 broker，不复制 owner election/registration 流程。无 production caller 的 facade 若保留必须明确仅是 election helper且不能作为 wiring 证据。
+3. 运行 Runtime/URI/broker/entry focused、Spotless、diff 与 3-file/300-line gate；独立审查通过后进入 E3。
+
+### 子 Task 16E3：macOS 分享 helper 的 runtime ownership
+
+**Risk axis:** macos-native-share-runtime-ownership
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 5 files, 400 lines
+
+**Verification:** READY→Opened→runtime close process death、terminal exactly once、DI runtime attachment、idempotent retry-safe close
+
+**Files:**
+
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopShareService.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/platform/MacOsNativeSharePort.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/platform/MacOsNativeSharePortTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt`
+
+**Consumes:** Task 8B/8C 的 native session/protocol/cleanup 与 Task 16 final review 的 orphan helper Important；D1R runtime close ownership。
+
+**Produces:** port 原子持有并在 terminal 后移除所有 active exchanges，幂等关闭会终止每个 helper、完成唯一终态并清理快照；production DI 把同一个 native port 附加到唯一 `DesktopAppRuntime`，应用退出不遗留 picker/osascript。
+
+1. RED：controlled process 输出 READY 后保持存活；关闭 production-wired runtime 必须在有界时间内杀死 PID、terminal 精确一次、active 集合归零，旧实现失败。重复/并发 close 和 terminal race 不得重复通知或删除别的会话。
+2. GREEN：让 native port 具备 retry-safe close ownership，exchange terminal/timeout/close 竞争只由一个路径提交；关闭 executor 前先清理 active exchanges。Windows/Linux unavailable port 继续无副作用。
+3. 运行 native share/service/DI/runtime focused、macOS 可执行 probe、Spotless、diff 与 5-file/400-line gate；独立审查通过后进入 E4。
+
+### 子 Task 16E4：Manga 分享入口非阻塞
+
+**Risk axis:** manga-share-ui-responsiveness
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 2 files, 180 lines
+
+**Verification:** delayed native READY does not block Compose click/render、terminal feedback retained、Reader parity regression
+
+**Files:**
+
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaShareWiringTest.kt`
+
+**Consumes:** Task 8A Manga share production wiring、Reader 已有 IO isolation 与 Task 16 final review 的 UI-blocking Important。
+
+**Produces:** Manga 点击立即返回并继续渲染；native READY 等待发生在记忆化 coroutine scope 的 IO dispatcher，Opened/Shared/Cancelled/Failed 仍通过现有 notification 链准确反馈。
+
+1. RED：delayed-READY fake 在点击后阻塞；旧同步回调必须使“点击立即返回且 scene 可再次 render”失败，释放后才允许 Opened/terminal。
+2. GREEN：只把可能阻塞的 share launch 放入结构化 coroutine/IO 边界，不创建第二套分享服务，不改变 clipboard fallback 或 Reader 行为；composition dispose 后不发布失效 UI。
+3. 运行 Manga/Reader/share focused、Spotless、diff 与 2-file/180-line gate；独立审查通过后进入 E5。
+
+### 子 Task 16E5：parity exact 保护集合补齐
+
+**Risk axis:** platform-parity-evidence-completeness
+
+**Platform boundary:** verification
+
+**Estimated scope:** 2 files, 320 lines
+
+**Verification:** per-ID exact shared/current/adapter/protection sets、real behavior method binding、cross-ID mutation rejection
+
+**Files:**
+
+- Modify: `app-desktop/src/test/resources/parity/parity-manifest.json`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt`
+
+**Consumes:** Task 15A immutable provenance contract 与 Task 16 final review 的 incomplete exact-set Important。
+
+**Produces:** ID 83/84/92 精确绑定 shared `AppSecurityPolicy` 与当前 Android `SecureActivityDelegate` consumer；ID 85 绑定 Widget privacy data source/manager；ID 86 绑定 downloader/installer/process/runtime production chain及其真实行为测试，删除或跨 ID 交换任一关键证据都会 RED。
+
+1. RED：分别删除/交换 security、Widget、updater 的 shared/current/adapter/protection 条目或真实行为方法，旧 exact expected 仍可通过而新增 mutation 必须失败。
+2. GREEN：更新 manifest 与合同 exact sets；合同解析真实测试方法及 production marker，不以源码字符串存在、单一代表 UI test 或复制实现逻辑代替行为证据。
+3. 运行 parity contract、被绑定的 security/Widget/updater focused、Spotless、JSON/diff 与 2-file/320-line gate；独立审查通过后重新执行 Task 16 whole-change review，只有 review 清零才进入全量矩阵。
+
 ### Task 16：独立最终审查与三平台 change verify
 
 **Risk axis:** platform-change-verify
@@ -1226,6 +1353,8 @@ status-source: this-file
 **Whole-change review status（已按门禁重规划）：** 对 `952be2f...HEAD` 的独立审查以 Critical/Important/Minor `0/2/0` 拒绝。提交 `0d8b16c07` 完成唯一修复轮；协调者强制复跑 4 类 50/50、Spotless 与 diff check 通过。唯一修复复审确认 macOS 分享风险已关闭，但以 `0/1/0` 拒绝 missing-credential 恢复：UI 打开的 `configDir` 不包含 Java Preferences `/mihon`，Windows `localRoot` 也与文案不符。按全局门禁停止 Task 16 内继续修补，将该单一产品风险拆为 Task 16A；16A 独立通过后重新执行 whole-change review 与三平台验证。更新仓库、APK-only release 和缺失 Desktop trust root 仍是计划已记录的 `NoCompatiblePackage`/`ManualOnly` 边界，不列为缺陷。
 
 **Whole-change re-review after 16A:** `050dca5c1` 的重新审查确认 fixed-main inventory 84/84、逐 ID 证据、Android consumers、分享、profile reset、安全/隐私、更新和 Widget 边界均无阻塞，但以 `0/1/0` 发现 macOS bundle 只有 CFBundleURLTypes 和 argv ingress，没有 JDK `OpenURIHandler` production consumer；运行中 URL 事件以及冷启动排队事件无法进入 navigator。该单一平台 production-wiring 风险按门禁拆为 Task 16B，Task 16 保持未完成且不提前执行全量/版本构建。
+
+**Whole-change review after 16D2R/16V1（已按门禁重规划）：** 对 `952be2f789..a9e349ba3` 的最终只读审查以 Critical/Important/Minor `0/6/1` 拒绝：credential disable/change-passphrase 存在持久化 fail-open 窗口；URI registration 测试未经过真实 production entry；macOS share helper 未归 runtime 所有；Manga share 同步阻塞 UI；owner factory 主异常可被 broker cleanup 覆盖；parity exact 集合遗漏 security/Widget/updater 的真实 production/protection 链。Windows 临时 secret buffer 未清零为同一 credential lifecycle 的 Minor。六项 Important 分属多个互不依赖的产品风险，合计超过本 Task 8 files/400 lines 唯一修复上限，因此停止 Task 16 内直接修补，按上下文和文件重合度拆为子 Task 16E1–16E5；全部独立通过后才重新执行一次 whole-change review 与全量矩阵。
 
 1. Desktop app-lock preference 已启用但 OS credential 被外部删除时，`probe()` 错把 `null` secret 报为 Available，根 UI 随后永久锁死且没有安全恢复路径。RED 必须证明 missing credential 与 backend unavailable/error 分离、应用保持 fail-closed、受保护内容不构造，并在锁屏显示明确的数据影响说明与“打开完整本地 profile 目录”入口；入口不得静默禁用锁，用户只能关闭应用后重置完整 profile。production DI 必须传入本轮真实 `DesktopPlatformPaths.configDir` 与目录 opener。
 2. macOS native picker 为异步 session，但连续 `shareImage()` 复用同一个 `mihon-shared-page.png`，第二次分享会覆盖第一会话的内容。RED 必须同时打开两个 session，断言路径唯一、首个像素在第二次调用后不变、文件在各自 terminal 前存在并仅由对应 terminal 清理；fallback saved/cancelled/failed 也必须清理。GREEN 使用权限收紧的唯一临时快照，不得以全局锁禁止用户并发分享，也不得在 `Opened` 时提前删除。
