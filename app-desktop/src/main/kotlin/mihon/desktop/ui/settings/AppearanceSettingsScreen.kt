@@ -30,6 +30,8 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.settings.ThemeMode
+import tachiyomi.i18n.MR
+import java.util.Locale
 
 class AppearanceSettingsScreen : Screen {
 
@@ -44,10 +46,13 @@ class AppearanceSettingsScreen : Screen {
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("Appearance") },
+                    title = { Text(MR.strings.pref_category_appearance.localized()) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = MR.strings.action_bar_up_description.localized(),
+                            )
                         }
                     },
                 )
@@ -61,14 +66,18 @@ class AppearanceSettingsScreen : Screen {
             ) {
                 // Theme section
                 Text(
-                    text = "Theme",
+                    text = MR.strings.pref_category_theme.localized(),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
                 ThemeMode.entries.forEach { mode ->
                     RadioSettingsItem(
-                        title = mode.name.lowercase().replaceFirstChar { it.uppercase() },
+                        title = when (mode) {
+                            ThemeMode.SYSTEM -> MR.strings.theme_system.localized()
+                            ThemeMode.LIGHT -> MR.strings.theme_light.localized()
+                            ThemeMode.DARK -> MR.strings.theme_dark.localized()
+                        },
                         selected = themeMode == mode,
                         onClick = {
                             themeMode = mode
@@ -80,13 +89,13 @@ class AppearanceSettingsScreen : Screen {
 
                 // Grid columns section
                 Text(
-                    text = "Library Grid",
+                    text = MR.strings.desktop_appearance_library_grid.localized(),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
                 Text(
-                    text = "Columns: ${gridColumns.toInt()}",
+                    text = MR.strings.desktop_appearance_grid_columns.localized(Locale.getDefault(), gridColumns.toInt()),
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )

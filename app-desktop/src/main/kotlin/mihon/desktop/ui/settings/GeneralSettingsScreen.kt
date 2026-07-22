@@ -28,6 +28,7 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.settings.DohProvider
+import tachiyomi.i18n.MR
 
 class GeneralSettingsScreen : Screen {
 
@@ -44,10 +45,13 @@ class GeneralSettingsScreen : Screen {
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("General") },
+                    title = { Text(MR.strings.pref_category_general.localized()) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = MR.strings.action_bar_up_description.localized(),
+                            )
                         }
                     },
                 )
@@ -60,14 +64,14 @@ class GeneralSettingsScreen : Screen {
                     .verticalScroll(rememberScrollState()),
             ) {
                 SwitchSettingsItem(
-                    title = "Incognito mode",
-                    subtitle = "Pause reading history while enabled",
+                    title = MR.strings.pref_incognito_mode.localized(),
+                    subtitle = MR.strings.pref_incognito_mode_summary.localized(),
                     checked = incognito,
                     onCheckedChange = { prefs.incognitoMode.set(it) },
                 )
                 SwitchSettingsItem(
-                    title = "Page turn animation",
-                    subtitle = "Show page-flip animation when navigating",
+                    title = MR.strings.pref_page_transitions.localized(),
+                    subtitle = MR.strings.desktop_general_page_transition_summary.localized(),
                     checked = pageTurnAnim,
                     onCheckedChange = { prefs.pageTurnAnimation.set(it) },
                 )
@@ -75,12 +79,12 @@ class GeneralSettingsScreen : Screen {
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                 Text(
-                    text = "DNS over HTTPS",
+                    text = MR.strings.pref_dns_over_https.localized(),
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 )
                 Text(
-                    text = "Takes effect on next launch",
+                    text = MR.strings.desktop_general_doh_restart_summary.localized(),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
@@ -89,10 +93,10 @@ class GeneralSettingsScreen : Screen {
                 DohProvider.entries.forEach { provider ->
                     RadioSettingsItem(
                         title = when (provider) {
-                            DohProvider.OFF -> "System DNS (off)"
-                            DohProvider.GOOGLE -> "Google (dns.google)"
-                            DohProvider.CLOUDFLARE -> "Cloudflare (1.1.1.1)"
-                            DohProvider.ADGUARD -> "AdGuard DNS"
+                            DohProvider.OFF -> MR.strings.desktop_general_system_dns.localized()
+                            DohProvider.GOOGLE -> MR.strings.desktop_general_google_dns.localized()
+                            DohProvider.CLOUDFLARE -> MR.strings.desktop_general_cloudflare_dns.localized()
+                            DohProvider.ADGUARD -> MR.strings.desktop_general_adguard_dns.localized()
                         },
                         selected = doh == provider,
                         onClick = { prefs.dohProvider.set(provider) },

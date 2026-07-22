@@ -45,6 +45,7 @@ import mihon.desktop.test.state.applicationState
 import mihon.desktop.ui.extension.extensionListDestination
 import mihon.desktop.ui.migration.MigrationSearchScreen
 import tachiyomi.i18n.MR
+import java.util.Locale
 
 class MoreRootScreen : Screen {
 
@@ -96,7 +97,7 @@ class MoreRootScreen : Screen {
         }
 
         Scaffold(
-            topBar = { TopAppBar(title = { Text("More") }) },
+            topBar = { TopAppBar(title = { Text(MR.strings.label_more.localized()) }) },
         ) { padding ->
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
@@ -104,8 +105,8 @@ class MoreRootScreen : Screen {
                 item {
                     SettingsEntry(
                         icon = Icons.Default.Sync,
-                        title = "Tracking",
-                        subtitle = "Login and manage tracking services",
+                        title = MR.strings.pref_category_tracking.localized(),
+                        subtitle = MR.strings.pref_tracking_summary.localized(),
                         onClick = { onTracking(navigator) },
                     )
                     HorizontalDivider()
@@ -113,8 +114,8 @@ class MoreRootScreen : Screen {
                 item {
                     SettingsEntry(
                         icon = Icons.Default.Settings,
-                        title = "General",
-                        subtitle = "Incognito mode, page turn animation",
+                        title = MR.strings.pref_category_general.localized(),
+                        subtitle = MR.strings.desktop_more_general_summary.localized(),
                         onClick = { navigator.push(GeneralSettingsScreen()) },
                     )
                     HorizontalDivider()
@@ -131,8 +132,8 @@ class MoreRootScreen : Screen {
                 item {
                     SettingsEntry(
                         icon = Icons.Default.Tune,
-                        title = "Download settings",
-                        subtitle = "CBZ format, auto-download, delete after read",
+                        title = MR.strings.pref_category_downloads.localized(),
+                        subtitle = MR.strings.desktop_more_download_settings_summary.localized(),
                         onClick = { navigator.push(DownloadSettingsScreen()) },
                     )
                     HorizontalDivider()
@@ -140,8 +141,8 @@ class MoreRootScreen : Screen {
                 item {
                     SettingsEntry(
                         icon = Icons.Default.SaveAlt,
-                        title = "Backup and Restore",
-                        subtitle = "Create or restore .tachibk backups",
+                        title = MR.strings.label_backup.localized(),
+                        subtitle = MR.strings.desktop_more_backup_summary.localized(),
                         onClick = { navigator.push(backupSettingsDestination()) },
                     )
                     HorizontalDivider()
@@ -149,8 +150,12 @@ class MoreRootScreen : Screen {
                 item {
                     SettingsEntry(
                         icon = Icons.Default.CloudDownload,
-                        title = "Downloads",
-                        subtitle = if (activeDownloads > 0) "$activeDownloads in queue" else "Download queue",
+                        title = MR.strings.label_download_queue.localized(),
+                        subtitle = if (activeDownloads > 0) {
+                            MR.strings.desktop_more_download_queue_count.localized(Locale.getDefault(), activeDownloads)
+                        } else {
+                            MR.strings.label_download_queue.localized()
+                        },
                         onClick = { navigator.push(mihon.desktop.ui.download.DownloadQueueScreen()) },
                     )
                     HorizontalDivider()
@@ -158,8 +163,8 @@ class MoreRootScreen : Screen {
                 item {
                     SettingsEntry(
                         icon = Icons.Default.Palette,
-                        title = "Appearance",
-                        subtitle = "Theme, colors, grid layout",
+                        title = MR.strings.pref_category_appearance.localized(),
+                        subtitle = MR.strings.desktop_more_appearance_summary.localized(),
                         onClick = { navigator.push(AppearanceSettingsScreen()) },
                     )
                     HorizontalDivider()
@@ -167,8 +172,8 @@ class MoreRootScreen : Screen {
                 item {
                     SettingsEntry(
                         icon = Icons.Default.MenuBook,
-                        title = "Reader",
-                        subtitle = "Default reading mode, RTL, zoom",
+                        title = MR.strings.pref_category_reader.localized(),
+                        subtitle = MR.strings.desktop_more_reader_summary.localized(),
                         onClick = { navigator.push(ReaderSettingsScreen()) },
                     )
                     HorizontalDivider()
@@ -176,8 +181,8 @@ class MoreRootScreen : Screen {
                 item {
                     SettingsEntry(
                         icon = Icons.Default.Book,
-                        title = "Library",
-                        subtitle = "Grid columns, update settings",
+                        title = MR.strings.pref_category_library.localized(),
+                        subtitle = MR.strings.desktop_more_library_summary.localized(),
                         onClick = { navigator.push(LibrarySettingsScreen()) },
                     )
                     HorizontalDivider()
@@ -203,8 +208,8 @@ class MoreRootScreen : Screen {
                 item {
                     SettingsEntry(
                         icon = Icons.Default.SwapHoriz,
-                        title = "Migrate Manga",
-                        subtitle = "Move manga to a different source",
+                        title = MR.strings.label_migration.localized(),
+                        subtitle = MR.strings.desktop_more_migration_summary.localized(),
                         onClick = { navigator.push(mihon.desktop.ui.migration.MigrationSourceScreen()) },
                     )
                     HorizontalDivider()
@@ -212,8 +217,8 @@ class MoreRootScreen : Screen {
                 item {
                     SettingsEntry(
                         icon = Icons.Default.BarChart,
-                        title = "Statistics",
-                        subtitle = "Reading stats: titles, chapters",
+                        title = MR.strings.label_stats.localized(),
+                        subtitle = MR.strings.desktop_more_stats_summary.localized(),
                         onClick = { navigator.push(mihon.desktop.ui.more.StatsScreen()) },
                     )
                     HorizontalDivider()
@@ -221,8 +226,8 @@ class MoreRootScreen : Screen {
                 item {
                     SettingsEntry(
                         icon = Icons.Default.Build,
-                        title = "Advanced",
-                        subtitle = "Clear cookies, network cache",
+                        title = MR.strings.pref_category_advanced.localized(),
+                        subtitle = MR.strings.desktop_more_advanced_summary.localized(),
                         onClick = { navigator.push(AdvancedSettingsScreen()) },
                     )
                     HorizontalDivider()
@@ -230,8 +235,8 @@ class MoreRootScreen : Screen {
                 item {
                     SettingsEntry(
                         icon = Icons.Default.Info,
-                        title = "About",
-                        subtitle = "Version, build info",
+                        title = MR.strings.pref_category_about.localized(),
+                        subtitle = MR.strings.desktop_more_about_summary.localized(),
                         onClick = { navigator.push(AboutScreen()) },
                     )
                 }

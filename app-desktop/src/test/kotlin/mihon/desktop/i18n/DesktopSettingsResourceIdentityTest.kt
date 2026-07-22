@@ -1,0 +1,193 @@
+package mihon.desktop.i18n
+
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
+import cafe.adriel.voyager.core.screen.Screen
+import cafe.adriel.voyager.navigator.CurrentScreen
+import cafe.adriel.voyager.navigator.Navigator
+import dev.icerock.moko.resources.StringResource
+import io.mockk.every
+import io.mockk.mockk
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.runBlocking
+import mihon.desktop.DesktopUiDependencies
+import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.download.DesktopDownloadManager
+import mihon.desktop.download.DownloadItem
+import mihon.desktop.settings.DesktopAppPreferences
+import mihon.desktop.ui.settings.AppearanceSettingsScreen
+import mihon.desktop.ui.settings.GeneralSettingsScreen
+import mihon.desktop.ui.settings.MoreRootScreen
+import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import tachiyomi.i18n.MR
+import java.util.Locale
+
+@OptIn(ExperimentalComposeUiApi::class)
+class DesktopSettingsResourceIdentityTest {
+    private val english = Locale.US
+    private val chinese = Locale.forLanguageTag("zh-CN")
+
+    @Test
+    fun `desktop settings resources provide base and simplified Chinese copy`() {
+        desktopResources.forEach { resource ->
+            assertNotEquals(
+                resource.localized(english),
+                resource.localized(chinese),
+                "Missing zh-CN copy for $resource",
+            )
+        }
+    }
+
+    @Test
+    fun `More General and Appearance render their shared MR identities`() = runBlocking {
+        val prefs = DesktopAppPreferences(InMemoryPreferenceStore())
+        val downloads = mockk<DesktopDownloadManager> {
+            every { queue } returns MutableStateFlow(listOf(mockk<DownloadItem>(), mockk<DownloadItem>()))
+        }
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+            every { appPreferences } returns prefs
+            every { downloadManager } returns downloads
+        }
+        val previousLocale = Locale.getDefault()
+        try {
+            listOf(english, chinese).forEach { locale ->
+                val more = render(MoreRootScreen(), dependencies, locale, height = 2_000)
+                assertCopy(
+                    more.text,
+                    MR.strings.label_more.localized(locale),
+                    MR.strings.pref_category_tracking.localized(locale),
+                    MR.strings.pref_tracking_summary.localized(locale),
+                    MR.strings.pref_category_general.localized(locale),
+                    MR.strings.desktop_more_general_summary.localized(locale),
+                    MR.strings.pref_category_downloads.localized(locale),
+                    MR.strings.desktop_more_download_settings_summary.localized(locale),
+                    MR.strings.label_backup.localized(locale),
+                    MR.strings.desktop_more_backup_summary.localized(locale),
+                    MR.strings.label_download_queue.localized(locale),
+                    MR.strings.desktop_more_download_queue_count.localized(locale, 2),
+                    MR.strings.pref_category_appearance.localized(locale),
+                    MR.strings.desktop_more_appearance_summary.localized(locale),
+                    MR.strings.pref_category_reader.localized(locale),
+                    MR.strings.desktop_more_reader_summary.localized(locale),
+                    MR.strings.pref_category_library.localized(locale),
+                    MR.strings.desktop_more_library_summary.localized(locale),
+                    MR.strings.label_migration.localized(locale),
+                    MR.strings.desktop_more_migration_summary.localized(locale),
+                    MR.strings.label_stats.localized(locale),
+                    MR.strings.desktop_more_stats_summary.localized(locale),
+                    MR.strings.pref_category_advanced.localized(locale),
+                    MR.strings.desktop_more_advanced_summary.localized(locale),
+                    MR.strings.pref_category_about.localized(locale),
+                    MR.strings.desktop_more_about_summary.localized(locale),
+                )
+
+                val general = render(GeneralSettingsScreen(), dependencies, locale)
+                assertCopy(
+                    general.text,
+                    MR.strings.pref_category_general.localized(locale),
+                    MR.strings.pref_incognito_mode.localized(locale),
+                    MR.strings.pref_incognito_mode_summary.localized(locale),
+                    MR.strings.pref_page_transitions.localized(locale),
+                    MR.strings.desktop_general_page_transition_summary.localized(locale),
+                    MR.strings.pref_dns_over_https.localized(locale),
+                    MR.strings.desktop_general_doh_restart_summary.localized(locale),
+                    MR.strings.desktop_general_system_dns.localized(locale),
+                    MR.strings.desktop_general_google_dns.localized(locale),
+                    MR.strings.desktop_general_cloudflare_dns.localized(locale),
+                    MR.strings.desktop_general_adguard_dns.localized(locale),
+                )
+                assertCopy(general.descriptions, MR.strings.action_bar_up_description.localized(locale))
+
+                val appearance = render(AppearanceSettingsScreen(), dependencies, locale)
+                assertCopy(
+                    appearance.text,
+                    MR.strings.pref_category_appearance.localized(locale),
+                    MR.strings.pref_category_theme.localized(locale),
+                    MR.strings.theme_system.localized(locale),
+                    MR.strings.theme_light.localized(locale),
+                    MR.strings.theme_dark.localized(locale),
+                    MR.strings.desktop_appearance_library_grid.localized(locale),
+                    MR.strings.desktop_appearance_grid_columns.localized(locale, 3),
+                )
+                assertCopy(appearance.descriptions, MR.strings.action_bar_up_description.localized(locale))
+            }
+        } finally {
+            Locale.setDefault(previousLocale)
+        }
+    }
+
+    private suspend fun render(
+        screen: Screen,
+        dependencies: DesktopUiDependencies,
+        locale: Locale,
+        height: Int = 900,
+    ): RenderedCopy {
+        Locale.setDefault(locale)
+        val scene = ImageComposeScene(900, height, coroutineContext = kotlinx.coroutines.currentCoroutineContext()) {}
+        return try {
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    Navigator(screen) { CurrentScreen() }
+                }
+            }
+            scene.render()
+            RenderedCopy(textCopy(scene), descriptionCopy(scene))
+        } finally {
+            scene.close()
+        }
+    }
+
+    private fun assertCopy(actual: Set<String>, vararg expected: String) {
+        expected.forEach { assertTrue(it in actual, "Missing '$it': $actual") }
+    }
+
+    private fun textCopy(scene: ImageComposeScene): Set<String> =
+        nodes(scene).flatMap { node ->
+            if (node.config.contains(SemanticsProperties.Text)) {
+                node.config[SemanticsProperties.Text].map { it.text }
+            } else {
+                emptyList()
+            }
+        }.toSet()
+
+    private fun descriptionCopy(scene: ImageComposeScene): Set<String> = nodes(scene).flatMap { node ->
+        if (node.config.contains(SemanticsProperties.ContentDescription)) {
+            node.config[SemanticsProperties.ContentDescription]
+        } else {
+            emptyList()
+        }
+    }.toSet()
+
+    private fun nodes(scene: ImageComposeScene) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+    private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+
+    private data class RenderedCopy(val text: Set<String>, val descriptions: Set<String>)
+
+    private val desktopResources: List<StringResource> = listOf(
+        MR.strings.desktop_more_general_summary,
+        MR.strings.desktop_more_download_settings_summary,
+        MR.strings.desktop_more_backup_summary,
+        MR.strings.desktop_more_download_queue_count,
+        MR.strings.desktop_more_appearance_summary,
+        MR.strings.desktop_more_reader_summary,
+        MR.strings.desktop_more_library_summary,
+        MR.strings.desktop_more_migration_summary,
+        MR.strings.desktop_more_stats_summary,
+        MR.strings.desktop_more_advanced_summary,
+        MR.strings.desktop_more_about_summary,
+        MR.strings.desktop_general_page_transition_summary,
+        MR.strings.desktop_general_doh_restart_summary,
+        MR.strings.desktop_general_system_dns,
+        MR.strings.desktop_general_google_dns,
+        MR.strings.desktop_general_cloudflare_dns,
+        MR.strings.desktop_general_adguard_dns,
+        MR.strings.desktop_appearance_library_grid,
+        MR.strings.desktop_appearance_grid_columns,
+    )
+}
