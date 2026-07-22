@@ -59,7 +59,7 @@ status-source: this-file
 - [x] Task 4K：Desktop Tracking typed message 与 formatter identity
 - [x] Task 4L：Desktop Tracking UI/dialog i18n 同源化
 - [x] Task 4M：Desktop Tracking 动作副作用与失败 fallback identity
-- [ ] Task 5：Desktop 设置 catalog、搜索 Screen 与入口
+- [x] Task 5：Desktop 设置 catalog、搜索 Screen 与入口
 - [ ] Task 6：Desktop 标题 anchor 核心与基础页面
 - [ ] Task 7：Desktop 标题 anchor 的安全/数据页面
 - [ ] Task 8：Desktop 标题 anchor 的扩展页面
@@ -448,6 +448,8 @@ status-source: this-file
 1. RED：交换九页、Desktop-only 前插、Desktop 项抢占原版 top10、catalog 未调用 shared policy或 route 类型错误时失败。
 2. GREEN：前九页严格映射原版 screen IDs 到 Desktop routes；General/About 等只确定性追加。Browse/Data 分别映射 Desktop 真实扩展/备份入口。
 3. 搜索初始聚焦、Enter/NumPadEnter/IME 清焦点；空/无结果有反馈。运行 UI/navigation/i18n/range gate。
+
+**Review status（已完成）：** 初始实现 `19c962bac` 新增 Desktop catalog、真实搜索 Screen 与 More 入口；前九页严格保持 fixed-main Appearance/Library/Reader/Download/Tracking/Browse/Data/Security/Advanced，Browse/Data 映射 `ExtensionListScreen`/`BackupSettingsScreen`，Desktop-only 页面只确定性追加，production 直接调用 shared `SettingsSearchPolicy`。公开 `CanvasLayersComposeScene` 覆盖真实初始焦点、Enter/NumPadEnter/IME 清焦点、双语空态/无结果与结果 `replace`；11 类 shared/order/route/focus/feedback/入口 mutation 精确 RED。首审 `0/1/0` 只发现 catalog 测试未恢复全局 Locale；唯一修复 `58497587c` 以 `withRestoredLocale` 的 `try/finally` 覆盖正常及主动异常路径，消除顺序污染。唯一复审 APPROVED `0/0/0`，搜索/导航/实例化 `53/53`、资源/More `14/14`、shared policy `7/7`、provenance `6/6`、Spotless、diff 与 19-Task guard 通过；累计 `8 files/400 touched`，用户脏文件零混入。下一项为父 Task 5B / 子 Task 6。
 
 ### Task 6：Desktop 标题 anchor 核心与基础页面
 
