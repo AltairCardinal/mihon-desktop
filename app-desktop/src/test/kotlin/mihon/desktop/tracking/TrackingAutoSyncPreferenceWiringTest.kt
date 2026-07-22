@@ -26,15 +26,12 @@ import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.domain.track.service.TrackerService
 import tachiyomi.domain.track.service.TrackerServiceRegistry
 import tachiyomi.i18n.MR
-import java.util.Locale
 
 class TrackingAutoSyncPreferenceWiringTest {
 
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
     fun `tracking settings toggles the real automatic tracker update preference`() = runBlocking {
-        val previousLocale = Locale.getDefault()
-        Locale.setDefault(Locale.forLanguageTag("zh-CN"))
         val preferences = DesktopAppPreferences(InMemoryPreferenceStore())
         val autoUpdateTrack = preferences.autoUpdateTrack
         val registry = object : TrackerServiceRegistry {
@@ -58,7 +55,7 @@ class TrackingAutoSyncPreferenceWiringTest {
             assertTrue(autoUpdateTrack.get())
             assertTrue(
                 nodes(scene).any {
-                    it.config.toString().contains(MR.strings.pref_auto_update_manga_sync.localized(Locale.getDefault()))
+                    it.config.toString().contains(MR.strings.pref_auto_update_manga_sync.localized())
                 },
             )
             val enabledToggle = toggleNode(scene)
@@ -75,7 +72,6 @@ class TrackingAutoSyncPreferenceWiringTest {
             assertEquals(ToggleableState.Off, toggleNode(scene).config[SemanticsProperties.ToggleableState])
         } finally {
             scene.close()
-            Locale.setDefault(previousLocale)
         }
     }
 
