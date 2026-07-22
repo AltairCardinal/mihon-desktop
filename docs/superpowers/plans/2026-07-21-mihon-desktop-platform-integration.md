@@ -52,11 +52,12 @@ status-source: this-file
 - [x] Task 15B：Android Widget 默认隐私 wiring 证明
 - [x] Task 16A：Desktop missing-credential profile reset 闭环
 - [ ] Task 16B：macOS OpenURI production ingress
+- [ ] Task 16C：Desktop owner navigator 单实例 wiring
 - [ ] Task 16：独立最终审查与三平台 change verify
 
 ## 全局任务门禁
 
-以下规则适用于 Task 1–15，不为每项重复创建“准备/审查/收尾”子任务：
+以下规则适用于 Task 1–16C，不为每项重复创建“准备/审查/收尾”子任务：
 
 1. 协调者先从本计划复制当前 Task 的最小上下文给一个实现代理；实现代理先执行指定 RED，并证明失败来自缺失/错误 production 行为。
 2. 实现代理完成最小 GREEN 和重构，运行定向测试、`git diff --check` 与范围检查；协调者独立复跑关键命令。
@@ -1017,6 +1018,33 @@ status-source: this-file
 3. registration 在 owner 已有 production navigator 后、首个 UI 之前安装，并随 owner runtime/bootstrap 确定关闭；不得由 secondary 安装或让 handler 脱离应用生命周期。测试覆盖 queued cold-start、running event、乱序/重复回调的逐事件语义、安装异常、close 幂等与 unsupported 平台。
 4. 更新 ID 81 的 Desktop consumer/protection 精确集合，使移除新的 OpenURI production path 或测试会使 per-ID contract 失败；不把它写成 fixed-main Android provenance，而标为 macOS 平台 adapter。
 5. 运行 bridge/runtime/navigation/parity focused tests、根 Spotless、`git diff --check` 与 6-file/320-line scope gate。独立审查通过后回到 Task 16；同一最终提交的真实冷启动/运行中 `open tachiyomi://...` bundle 验收仍集中在 Task 16，不在普通实现 Task 递增版本。
+
+**Review status（按门禁重规划）：** 初始实现 `ac033bc50` 与 coordinator 补强 `651eee52d` 后，独立审查以 `0/1/1` 拒绝仅在测试 callback 手工安装 handler 的伪 production-wiring 证据及不可重试的 clear。唯一修复 `af3a69145` 与 scope 收敛 `15dd8f957` 让测试真实经过 `startDesktopApplication` 默认 owner callback，覆盖 secondary、attach-before-install、clear retry、重复/乱序和 runtime close；协调者复跑 68/68、根 Spotless、diff 与 6 files/388 touched scope 通过。唯一修复复审确认这些问题均关闭，但以 `0/1/0` 发现默认 owner 依赖与随后 UI 分别调用 `DesktopUiDependencies.fromInjekt()`，生成 navigator A/B；真实 URI 进入 A，而 Home 只消费 B。按修复门禁停止在 16B 内继续补丁，将该独立 production identity 风险拆为 Task 16C；16B 与 16C 需在 16C 审查通过后一起勾选。
+
+### 子 Task 16C：Desktop owner navigator 单实例 wiring
+
+**Risk axis:** desktop-owner-navigator-identity
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 3 files, 240 lines
+
+**Verification:** default owner dependency identity、argv/broker/OpenURI→UI navigator integration、Task 16B lifecycle regression
+
+**Files:**
+
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/Main.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/DesktopAppRuntimeTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt`
+
+**Consumes:** Task 16B 的 AWT OpenURI port、owner 生命周期与唯一修复复审的 `0/1/0` finding；`DesktopUiDependencies.fromInjekt()` 每次构造新 `ExternalActionNavigator`，因此不能作为可重复调用的 singleton getter。
+
+**Produces:** owner 启动只创建一次完整 `DesktopUiDependencies`；argv、secondary broker 与 macOS OpenURI 均提交给随后由 `CompositionLocalProvider`/Home 消费的同一 navigator 实例。测试 seam 只替换依赖创建和 UI continuation，不复制或绕开 production wiring。
+
+1. RED：让默认 owner-path 测试使用真实 test DI 创建完整 owner dependencies，向 OpenURI port 发事件，并在 UI continuation 边界断言收到的 `DesktopUiDependencies` 与 ingress 使用的 navigator 是同一实例；当前双 `fromInjekt()` 实现必须失败。再做一次“UI 重新调用工厂”变异，证明 identity 测试会 RED。
+2. GREEN：owner dependency factory 一次性返回 runtime 与完整 `DesktopUiDependencies`；`runOwnerApplication` 从该对象取得 navigator，并把同一对象传给 production UI continuation。禁止第二次 `DesktopUiDependencies.fromInjekt()`，不把 navigator 注册为新的全局 singleton，也不改变现有 Desktop 独有依赖。
+3. 保持 Task 16B 的 owner-only install、secondary forwarding、unsupported/failed、queued/running/duplicate/order、close retry 与 runtime cleanup；依赖创建或 continuation 抛异常时仍按现有 owner/runtime 责任清理 broker 和 registration。
+4. 运行 `DesktopAppRuntimeTest`、`DesktopDiWiringTest`、`ExternalActionNavigationTest`、ID 81 parity contract、根 Spotless、`git diff --check` 与 3-file/240-line scope gate。一次独立审查和至多一次修复复审通过后同时勾选 16B/16C，再回到 Task 16 whole-change review；真实 macOS bundle 验收仍留在 Task 16。
 
 ### Task 16：独立最终审查与三平台 change verify
 
