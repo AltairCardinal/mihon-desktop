@@ -53,8 +53,8 @@ status-source: this-file
 - [x] Task 16A：Desktop missing-credential profile reset 闭环
 - [x] Task 16B：macOS OpenURI production ingress
 - [x] Task 16C：Desktop owner navigator 单实例 wiring
-- [ ] Task 16D1：Desktop owner setup 与关闭事务
-- [ ] Task 16D1R：并发安全的 runtime/broker 关闭所有权
+- [x] Task 16D1：Desktop owner setup 与关闭事务
+- [x] Task 16D1R：并发安全的 runtime/broker 关闭所有权
 - [ ] Task 16D2：唯一 production lifecycle 与真实入口证据
 - [ ] Task 16：独立最终审查与三平台 change verify
 
@@ -1110,6 +1110,8 @@ status-source: this-file
 2. RED：为 broker server-close 提供最小测试 seam。第一次 close 抛出时 endpoint/owner token/state file 必须仍可用于第二次重试；第二次成功后 server、state、lock 全部 terminal，第三次幂等。提前清空 endpoint 或跳过 state owner 校验的 mutation 必须失败。
 3. GREEN：使用单一锁或等价线性化边界保护 runtime start/stop/close/attach 状态；broker 采用分阶段成功提交，不以吞异常伪造完成。锁内不得等待 suspend terminal；`awaitClosed` 仍在同步 close 后执行并聚合异常。
 4. 运行 runtime/broker/owner setup/OpenURI focused tests、Spotless、diff 与 4-file/320-line gate。独立审查通过后同时勾选 D1/D1R，再进入 D2。
+
+**Review status:** D1R 实现提交 `34d72d03f`，唯一审查修复 `42317f8ae`。旧实现的并发 close 会重复停止成功 role，broker 在 server-close 失败后会丢失可重试 owner 状态；初审进一步发现 close 后 runtime 可被 `start/attach` 复活，以及 broker 把清理 token 继续冒充活跃 endpoint。修复后 runtime 以不可逆 close 门禁线性化 start/stop/close/attach，保留 stop→start 与同一 service 多 role 语义；broker 分离 active endpoint 与 `cleanupOwnerId`，closing/terminal 拒绝新 owner/action，server、state、owner lock、lock file 仅在成功后提交释放。RED 先后证明并发重复 stop、owner token 丢失及 terminal 复活；最终 focused 89/89、根 Spotless、diff 与 4 files/237 touched gate 通过。唯一修复复审 APPROVED，Critical/Important/Minor `0/0/0`；D1/D1R 同时关闭，下一项为 D2。
 
 ### 子 Task 16D2：唯一 production lifecycle 与真实入口证据
 
