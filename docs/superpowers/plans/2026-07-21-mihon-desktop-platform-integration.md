@@ -1057,7 +1057,7 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 4 files, 320 lines
+**Estimated scope:** 4 files, 400 lines
 
 **Verification:** owner dependency/runtime 原子登记、ingress 回滚、close 失败后仍 await、部分关闭重试
 
@@ -1135,12 +1135,14 @@ status-source: this-file
 
 **Scope correction:** 首次 `:app-desktop:jvmTest` 的 1991 项中，Source 时序失败单类复跑通过；`DesktopAppLockTest` 稳定暴露旧断言仍要求永久 stop 失败的 role 被标记为已停止，与 D1R 已审查的“失败 token 保留并精确重试”契约冲突。该项是 whole-suite 验收阻塞且只需校正一个既有断言，因此不新增 Task；将实际边界校正为 4 files/320 lines，并要求修复后单类与全量复跑。
 
+**Review status:** 初始实现 `6b48a7c83` 与 suite 契约校正 `a38511e896` 后，focused 与 Spotless 通过，AppLock 旧断言已关闭；独立审查仍以 `0/3/0` 拒绝可变 main seam/显式 application 替换无法证明默认 bridge、重复 Compose close 可用后续成功覆盖首次失败，以及 TestMode start 部分失败缺少 stop 回滚 mutation。唯一修复只处理这三项同一 lifecycle 风险；为加入不可绕过的真实 main secondary 行为、经过 production close-result 聚合器的 window event-loop seam 和 start-failure stop 计数，将边界原位校正为 4 files/400 lines，不新增 Task。
+
 **Produces:** `main`、owner/secondary 测试与 packaged JVM entry 共同调用的唯一 suspend owner lifecycle。测试只注入 dependency stages、application body 与 TestMode side effects，不替换整个 lifecycle；旧同步 continuation 不拥有任何 product close 规则。
 
 1. RED：默认 production entry 覆盖 owner/secondary；删除 `main → entry`、默认 lifecycle、owner callback 实际启动或 terminal await 任一连接均失败。使用可执行入口/行为证据，不以源码字符串存在代替。
 2. RED：表驱动让 runtime start、TestMode start/await/stop、application 正常/异常、close/join 逐点失败；所有主异常保持 identity，cleanup 失败作为 exact suppressed。`NonCancellable` updater 在 headless、GUI close、application 返回/异常四条路径放行前入口均不完成。
 3. GREEN：删除 `startDesktopApplication`/`runOwnerApplication` 的重复生命周期，让 production 与测试只调用一个 suspend transaction；Compose close callback 将结果传回外层再退出，首次失败不能被第二次幂等 close 吞掉。禁止 production `runBlocking`、latch 或 `Future.get`。
-4. 保持 JVM `public static main(String[])`、navigator identity、OpenURI owner-only/close retry、Windows TEST_GUIDE 七项和架构 baseline。运行 entry/runtime/security/URI/DI/navigation/release/architecture focused tests、`:app-desktop:jvmTest`、Spotless、diff 与 4-file/320-line gate；独立审查通过后同时关闭 16D1/16D2，再回到 Task 16。
+4. 保持 JVM `public static main(String[])`、navigator identity、OpenURI owner-only/close retry、Windows TEST_GUIDE 七项和架构 baseline。运行 entry/runtime/security/URI/DI/navigation/release/architecture focused tests、`:app-desktop:jvmTest`、Spotless、diff 与 4-file/400-line gate；独立审查通过后同时关闭 16D1/16D2，再回到 Task 16。
 
 ### Task 16：独立最终审查与三平台 change verify
 
