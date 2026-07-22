@@ -1211,4 +1211,16 @@
     <string name="desktop_secure_screen_unsupported">Screen capture protection is not available on this platform.</string>
     <string name="desktop_secure_screen_window_not_ready">The app window is not ready. The previous setting was kept.</string>
     <string name="desktop_secure_screen_failed">Screen capture protection could not be verified. The previous setting was kept.</string>
+    <string name="desktop_reader_pager_mode">Pager (horizontal flip)</string>
+    <string name="desktop_reader_webtoon_mode">Webtoon (vertical scroll)</string>
+    <string name="desktop_reader_rtl">Right-to-left by default</string>
+    <string name="desktop_reader_rtl_summary">Flip pages from right to left (Japanese manga order)</string>
+    <string name="desktop_download_cbz_summary">Package downloaded chapters as .cbz archives (comic book zip)</string>
+    <string name="desktop_download_new_chapters_summary">Automatically download chapters when updates are found</string>
+    <string name="desktop_download_delete_after_read_summary">Remove downloaded files after a chapter is fully read</string>
+    <string name="desktop_download_parallel">Parallel downloads</string>
+    <string name="desktop_download_sequential">1 (sequential)</string>
+    <string name="desktop_library_manual_refresh_summary">You can also use the Refresh button in the Library tab to check for new chapters manually.</string>
+    <string name="desktop_library_excluded_categories">Exclude from updates</string>
+    <string name="desktop_library_excluded_categories_summary">Manga in checked categories will be skipped during automatic updates.</string>
 </resources>

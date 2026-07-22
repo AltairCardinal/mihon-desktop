@@ -10,6 +10,7 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import dev.icerock.moko.resources.StringResource
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,15 +18,21 @@ import kotlinx.coroutines.runBlocking
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.download.DesktopDownloadManager
+import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.ui.settings.AppearanceSettingsScreen
+import mihon.desktop.ui.settings.DownloadSettingsScreen
 import mihon.desktop.ui.settings.GeneralSettingsScreen
+import mihon.desktop.ui.settings.LibrarySettingsScreen
 import mihon.desktop.ui.settings.MoreRootScreen
+import mihon.desktop.ui.settings.ReaderSettingsScreen
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import tachiyomi.domain.category.interactor.GetCategories
+import tachiyomi.domain.category.model.Category
 import tachiyomi.i18n.MR
 import java.util.Locale
 
@@ -138,6 +145,88 @@ class DesktopSettingsResourceIdentityTest {
         }
     }
 
+    @Test
+    fun `Reader Library and Download render their shared MR identities`() = runBlocking {
+        val prefs = DesktopAppPreferences(InMemoryPreferenceStore())
+        val downloadPrefs = DesktopDownloadPreferences(InMemoryPreferenceStore())
+        val categoryLoader = mockk<GetCategories> {
+            coEvery { await() } returns listOf(Category(1, "Favorites", 0, 0))
+        }
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+            every { appPreferences } returns prefs
+            every { downloadPreferences } returns downloadPrefs
+            every { getCategories } returns categoryLoader
+        }
+        val previousLocale = Locale.getDefault()
+        try {
+            listOf(english, chinese).forEach { locale ->
+                val reader = render(ReaderSettingsScreen(), dependencies, locale)
+                assertCopy(
+                    reader.text,
+                    MR.strings.pref_category_reader.localized(locale),
+                    MR.strings.pref_viewer_type.localized(locale),
+                    MR.strings.desktop_reader_pager_mode.localized(locale),
+                    MR.strings.desktop_reader_webtoon_mode.localized(locale),
+                    MR.strings.desktop_reader_rtl.localized(locale),
+                    MR.strings.desktop_reader_rtl_summary.localized(locale),
+                )
+                assertEntry(
+                    reader,
+                    MR.strings.desktop_reader_rtl.localized(locale),
+                    MR.strings.desktop_reader_rtl_summary.localized(locale),
+                )
+                assertCopy(reader.descriptions, MR.strings.action_bar_up_description.localized(locale))
+
+                val library = render(LibrarySettingsScreen(), dependencies, locale)
+                assertCopy(
+                    library.text,
+                    MR.strings.pref_category_library.localized(locale),
+                    MR.strings.pref_category_library_update.localized(locale),
+                    MR.strings.update_never.localized(locale),
+                    MR.strings.pref_behavior.localized(locale),
+                    MR.strings.desktop_library_manual_refresh_summary.localized(locale),
+                    MR.strings.pref_category_display.localized(locale),
+                    MR.strings.pref_hide_missing_chapter_indicators.localized(locale),
+                    MR.strings.desktop_library_excluded_categories.localized(locale),
+                    MR.strings.desktop_library_excluded_categories_summary.localized(locale),
+                )
+                assertCopy(library.descriptions, MR.strings.action_bar_up_description.localized(locale))
+
+                val download = render(DownloadSettingsScreen(), dependencies, locale)
+                assertCopy(
+                    download.text,
+                    MR.strings.pref_category_downloads.localized(locale),
+                    MR.strings.save_chapter_as_cbz.localized(locale),
+                    MR.strings.desktop_download_cbz_summary.localized(locale),
+                    MR.strings.pref_download_new.localized(locale),
+                    MR.strings.desktop_download_new_chapters_summary.localized(locale),
+                    MR.strings.pref_remove_after_read.localized(locale),
+                    MR.strings.desktop_download_delete_after_read_summary.localized(locale),
+                    MR.strings.desktop_download_parallel.localized(locale),
+                    MR.strings.desktop_download_sequential.localized(locale),
+                )
+                assertEntry(
+                    download,
+                    MR.strings.save_chapter_as_cbz.localized(locale),
+                    MR.strings.desktop_download_cbz_summary.localized(locale),
+                )
+                assertEntry(
+                    download,
+                    MR.strings.pref_download_new.localized(locale),
+                    MR.strings.desktop_download_new_chapters_summary.localized(locale),
+                )
+                assertEntry(
+                    download,
+                    MR.strings.pref_remove_after_read.localized(locale),
+                    MR.strings.desktop_download_delete_after_read_summary.localized(locale),
+                )
+                assertCopy(download.descriptions, MR.strings.action_bar_up_description.localized(locale))
+            }
+        } finally {
+            Locale.setDefault(previousLocale)
+        }
+    }
+
     private suspend fun render(
         screen: Screen,
         dependencies: DesktopUiDependencies,
@@ -223,5 +312,17 @@ class DesktopSettingsResourceIdentityTest {
         MR.strings.desktop_general_adguard_dns,
         MR.strings.desktop_appearance_library_grid,
         MR.strings.desktop_appearance_grid_columns,
+        MR.strings.desktop_reader_pager_mode,
+        MR.strings.desktop_reader_webtoon_mode,
+        MR.strings.desktop_reader_rtl,
+        MR.strings.desktop_reader_rtl_summary,
+        MR.strings.desktop_download_cbz_summary,
+        MR.strings.desktop_download_parallel,
+        MR.strings.desktop_download_new_chapters_summary,
+        MR.strings.desktop_download_delete_after_read_summary,
+        MR.strings.desktop_download_sequential,
+        MR.strings.desktop_library_excluded_categories,
+        MR.strings.desktop_library_manual_refresh_summary,
+        MR.strings.desktop_library_excluded_categories_summary,
     )
 }

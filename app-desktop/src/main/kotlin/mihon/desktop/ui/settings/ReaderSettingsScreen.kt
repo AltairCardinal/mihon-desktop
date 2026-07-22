@@ -30,6 +30,7 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.settings.ReaderDefaultMode
+import tachiyomi.i18n.MR
 
 class ReaderSettingsScreen : Screen {
 
@@ -44,10 +45,13 @@ class ReaderSettingsScreen : Screen {
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("Reader") },
+                    title = { Text(MR.strings.pref_category_reader.localized()) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = MR.strings.action_bar_up_description.localized(),
+                            )
                         }
                     },
                 )
@@ -60,7 +64,7 @@ class ReaderSettingsScreen : Screen {
                     .verticalScroll(rememberScrollState()),
             ) {
                 Text(
-                    text = "Default Reading Mode",
+                    text = MR.strings.pref_viewer_type.localized(),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -68,8 +72,8 @@ class ReaderSettingsScreen : Screen {
                 ReaderDefaultMode.entries.forEach { mode ->
                     RadioSettingsItem(
                         title = when (mode) {
-                            ReaderDefaultMode.PAGER -> "Pager (horizontal flip)"
-                            ReaderDefaultMode.WEBTOON -> "Webtoon (vertical scroll)"
+                            ReaderDefaultMode.PAGER -> MR.strings.desktop_reader_pager_mode.localized()
+                            ReaderDefaultMode.WEBTOON -> MR.strings.desktop_reader_webtoon_mode.localized()
                         },
                         selected = readerMode == mode,
                         onClick = {
@@ -81,8 +85,8 @@ class ReaderSettingsScreen : Screen {
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                 SwitchSettingsItem(
-                    title = "Right-to-Left by default",
-                    subtitle = "Flip pages from right to left (Japanese manga order)",
+                    title = MR.strings.desktop_reader_rtl.localized(),
+                    subtitle = MR.strings.desktop_reader_rtl_summary.localized(),
                     checked = isRtl,
                     onCheckedChange = {
                         isRtl = it

@@ -27,6 +27,7 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import mihon.desktop.download.DesktopDownloadPreferences
+import tachiyomi.i18n.MR
 
 class DownloadSettingsScreen : Screen {
 
@@ -44,10 +45,13 @@ class DownloadSettingsScreen : Screen {
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("Downloads") },
+                    title = { Text(MR.strings.pref_category_downloads.localized()) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = MR.strings.action_bar_up_description.localized(),
+                            )
                         }
                     },
                 )
@@ -60,20 +64,20 @@ class DownloadSettingsScreen : Screen {
                     .verticalScroll(rememberScrollState()),
             ) {
                 SwitchSettingsItem(
-                    title = "Save as CBZ",
-                    subtitle = "Package downloaded chapters as .cbz archives (comic book zip)",
+                    title = MR.strings.save_chapter_as_cbz.localized(),
+                    subtitle = MR.strings.desktop_download_cbz_summary.localized(),
                     checked = downloadAsCbz,
                     onCheckedChange = { prefs.downloadAsCbz.set(it) },
                 )
                 SwitchSettingsItem(
-                    title = "Auto-download new chapters",
-                    subtitle = "Automatically download chapters when updates are found",
+                    title = MR.strings.pref_download_new.localized(),
+                    subtitle = MR.strings.desktop_download_new_chapters_summary.localized(),
                     checked = autoDownload,
                     onCheckedChange = { prefs.autoDownloadNewChapters.set(it) },
                 )
                 SwitchSettingsItem(
-                    title = "Delete after read",
-                    subtitle = "Remove downloaded files after a chapter is fully read",
+                    title = MR.strings.pref_remove_after_read.localized(),
+                    subtitle = MR.strings.desktop_download_delete_after_read_summary.localized(),
                     checked = deleteAfterRead,
                     onCheckedChange = { prefs.deleteAfterRead.set(it) },
                 )
@@ -81,14 +85,14 @@ class DownloadSettingsScreen : Screen {
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                 Text(
-                    text = "Parallel Downloads",
+                    text = MR.strings.desktop_download_parallel.localized(),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
                 (1..5).forEach { limit ->
                     RadioSettingsItem(
-                        title = if (limit == 1) "1 (sequential)" else "$limit",
+                        title = if (limit == 1) MR.strings.desktop_download_sequential.localized() else "$limit",
                         selected = parallelLimit == limit,
                         onClick = { prefs.parallelDownloadLimit.set(limit) },
                     )

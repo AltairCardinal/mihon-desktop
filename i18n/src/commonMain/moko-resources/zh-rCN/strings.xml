@@ -980,4 +980,16 @@
     <string name="action_filter_excluded_scanlators">筛选排除翻译组</string>
     <string name="calculating">计算中…</string>
     <string name="download_bookmarked">已添加书签</string>
+    <string name="desktop_reader_pager_mode">分页（水平翻页）</string>
+    <string name="desktop_reader_webtoon_mode">条漫（垂直滚动）</string>
+    <string name="desktop_reader_rtl">默认从右向左</string>
+    <string name="desktop_reader_rtl_summary">从右向左翻页（日漫顺序）</string>
+    <string name="desktop_download_cbz_summary">将下载的章节打包为 .cbz 漫画压缩文件</string>
+    <string name="desktop_download_new_chapters_summary">发现更新时自动下载新章节</string>
+    <string name="desktop_download_delete_after_read_summary">章节读完后删除已下载文件</string>
+    <string name="desktop_download_parallel">并行下载数</string>
+    <string name="desktop_download_sequential">1（顺序下载）</string>
+    <string name="desktop_library_manual_refresh_summary">也可以在书架页点击刷新按钮，手动检查新章节。</string>
+    <string name="desktop_library_excluded_categories">不参与更新的分类</string>
+    <string name="desktop_library_excluded_categories_summary">自动更新时会跳过所选分类中的漫画。</string>
 </resources>

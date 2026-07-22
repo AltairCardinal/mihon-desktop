@@ -37,6 +37,7 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.settings.LibraryUpdateInterval
 import tachiyomi.domain.category.model.Category
+import tachiyomi.i18n.MR
 
 class LibrarySettingsScreen : Screen {
 
@@ -67,10 +68,13 @@ class LibrarySettingsScreen : Screen {
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("Library") },
+                    title = { Text(MR.strings.pref_category_library.localized()) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = MR.strings.action_bar_up_description.localized(),
+                            )
                         }
                     },
                 )
@@ -83,18 +87,18 @@ class LibrarySettingsScreen : Screen {
                     .verticalScroll(rememberScrollState()),
             ) {
                 Text(
-                    text = "Auto-Update Library",
+                    text = MR.strings.pref_category_library_update.localized(),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
 
                 val intervalLabels = mapOf(
-                    LibraryUpdateInterval.OFF to "Off",
-                    LibraryUpdateInterval.EVERY_6H to "Every 6 hours",
-                    LibraryUpdateInterval.EVERY_12H to "Every 12 hours",
-                    LibraryUpdateInterval.EVERY_24H to "Every 24 hours",
-                    LibraryUpdateInterval.WEEKLY to "Weekly",
+                    LibraryUpdateInterval.OFF to MR.strings.update_never.localized(),
+                    LibraryUpdateInterval.EVERY_6H to MR.strings.update_6hour.localized(),
+                    LibraryUpdateInterval.EVERY_12H to MR.strings.update_12hour.localized(),
+                    LibraryUpdateInterval.EVERY_24H to MR.strings.update_24hour.localized(),
+                    LibraryUpdateInterval.WEEKLY to MR.strings.update_weekly.localized(),
                 )
                 LibraryUpdateInterval.entries.forEach { interval ->
                     RadioSettingsItem(
@@ -107,13 +111,13 @@ class LibrarySettingsScreen : Screen {
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                 Text(
-                    text = "Update Behavior",
+                    text = MR.strings.pref_behavior.localized(),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
                 Text(
-                    text = "You can also use the Refresh button in the Library tab to check for new chapters manually.",
+                    text = MR.strings.desktop_library_manual_refresh_summary.localized(),
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
@@ -121,7 +125,7 @@ class LibrarySettingsScreen : Screen {
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                 Text(
-                    text = "显示",
+                    text = MR.strings.pref_category_display.localized(),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -129,7 +133,7 @@ class LibrarySettingsScreen : Screen {
                 val missingChapterIndicatorItem = missingChapterIndicatorSettingsItem(
                     prefs = prefs,
                     checked = hideMissingChapterIndicators,
-                )
+                ).copy(title = MR.strings.pref_hide_missing_chapter_indicators.localized())
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -148,13 +152,13 @@ class LibrarySettingsScreen : Screen {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                     Text(
-                        text = "Exclude from Updates",
+                        text = MR.strings.desktop_library_excluded_categories.localized(),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     )
                     Text(
-                        text = "Manga in checked categories will be skipped during auto-updates.",
+                        text = MR.strings.desktop_library_excluded_categories_summary.localized(),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
