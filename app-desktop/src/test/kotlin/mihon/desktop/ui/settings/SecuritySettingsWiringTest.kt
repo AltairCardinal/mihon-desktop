@@ -32,8 +32,11 @@ import mihon.desktop.DesktopWindowFocusRegistration
 import mihon.desktop.bootstrapDesktopRuntime
 import mihon.desktop.runProductionOwnerLifecycle
 import mihon.desktop.platform.CredentialBackend
+import mihon.desktop.platform.CommandResult
+import mihon.desktop.platform.CommandRunner
 import mihon.desktop.platform.DesktopCredentialStore
 import mihon.desktop.platform.OperatingSystem
+import mihon.desktop.platform.PlatformCredentialBackend
 import mihon.desktop.platform.PlatformCredentialUnavailableException
 import mihon.desktop.privacy.DesktopPrivacyCapabilities
 import mihon.desktop.privacy.DesktopCapabilitySupport
@@ -575,6 +578,50 @@ class SecuritySettingsWiringTest {
         assertTrue(persistence.enabled)
         assertEquals("new secret", backend.secret?.concatToString())
         assertEquals(SecuritySettingsFeedback.Saved, controller.state.value.feedback)
+        assertTrue(current.all { it == '\u0000' })
+        assertTrue(replacement.all { it == '\u0000' })
+        assertTrue(confirmation.all { it == '\u0000' })
+    }
+
+    @Test
+    fun `malformed replacement keeps lock enabled and clears controller inputs`() {
+        val persistence = FailingSecuritySettingsPersistence(enabled = true, delayMinutes = 0)
+        val root = Preferences.userRoot().node("/mihon-test/security/${UUID.randomUUID()}")
+        preferenceNodes += root
+        val platformBackend = PlatformCredentialBackend(
+            OperatingSystem.WINDOWS,
+            object : CommandRunner {
+                override fun run(arguments: List<String>, stdin: CharArray?) = CommandResult(0, "encrypted", "")
+            },
+            preferencesRoot = root,
+        )
+        var stored = "old secret".toCharArray()
+        val backend = object : CredentialBackend {
+            override fun save(account: String, secret: CharArray) {
+                platformBackend.save(account, secret)
+                stored.fill('\u0000')
+                stored = secret.copyOf()
+            }
+
+            override fun load(account: String) = stored.copyOf()
+
+            override fun delete(account: String) {
+                stored.fill('\u0000')
+            }
+        }
+        val controller = controller(persistence, backend)
+        val current = "old secret".toCharArray()
+        val replacement = charArrayOf('n', 'e', 'w', '\uD800')
+        val confirmation = replacement.copyOf()
+
+        assertEquals(
+            AuthenticationResult.Error,
+            controller.changePassphrase(current, replacement, confirmation),
+        )
+
+        assertTrue(persistence.enabled)
+        assertEquals("old secret", stored.concatToString())
+        assertEquals(SecuritySettingsFeedback.BackendError, controller.state.value.feedback)
         assertTrue(current.all { it == '\u0000' })
         assertTrue(replacement.all { it == '\u0000' })
         assertTrue(confirmation.all { it == '\u0000' })

@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.Base64
 import java.util.Locale
+import java.util.prefs.BackingStoreException
 import java.util.prefs.Preferences
 
 interface CredentialBackend {
@@ -169,36 +170,64 @@ class PlatformCredentialBackend(
     }
 
     private fun saveWindows(account: String, secret: CharArray) {
-        val encoded = encodeWindowsSecret(secret)
+        var utf8Bytes: ByteArray? = null
+        var plainBytes: ByteArray? = null
+        var encodedBytes: ByteArray? = null
+        var stdin: CharArray? = null
         try {
+            val encoder = StandardCharsets.UTF_8.newEncoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+            val utf8 = ByteArray(checkedUtf8Capacity(secret.size, encoder.maxBytesPerChar()))
+            utf8Bytes = utf8
+            val utf8Buffer = ByteBuffer.wrap(utf8)
+            val encodeResult = encoder.encode(CharBuffer.wrap(secret), utf8Buffer, true)
+            if (encodeResult.isError) encodeResult.throwException()
+            if (encodeResult.isOverflow) operationFailed("protect")
+            val flushResult = encoder.flush(utf8Buffer)
+            if (flushResult.isError) flushResult.throwException()
+            if (flushResult.isOverflow) operationFailed("protect")
+
+            val plainLength = utf8Buffer.position()
+            val plain = ByteArray(plainLength)
+            plainBytes = plain
+            utf8.copyInto(plain, endIndex = plainLength)
+            val encoded = ByteArray(checkedBase64Capacity(plainLength))
+            encodedBytes = encoded
+            val encodedLength = Base64.getEncoder().encode(plain, encoded)
+            val encodedStdin = CharArray(encodedLength) { encoded[it].toInt().and(0xff).toChar() }
+            stdin = encodedStdin
+
             val encrypted = runCommand(
                 listOf("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", PROTECT_SCRIPT),
-                encoded,
+                encodedStdin,
                 "protect",
             ).stdout.trim()
             if (encrypted.isEmpty()) operationFailed("protect")
             preferences.put(preferenceKey(account), encrypted)
             preferences.flush()
+        } catch (_: CharacterCodingException) {
+            operationFailed("protect")
+        } catch (_: BackingStoreException) {
+            operationFailed("protect")
         } finally {
-            encoded.fill('\u0000')
+            utf8Bytes?.fill(0)
+            plainBytes?.fill(0)
+            encodedBytes?.fill(0)
+            stdin?.fill('\u0000')
         }
     }
 
-    private fun encodeWindowsSecret(secret: CharArray): CharArray {
-        val utf8 = StandardCharsets.UTF_8.newEncoder()
-            .onMalformedInput(CodingErrorAction.REPORT)
-            .onUnmappableCharacter(CodingErrorAction.REPORT)
-            .encode(CharBuffer.wrap(secret))
-        try {
-            val encoded = Base64.getEncoder().encode(utf8)
-            return try {
-                CharArray(encoded.remaining()) { encoded.get().toInt().and(0xff).toChar() }
-            } finally {
-                if (encoded.hasArray()) encoded.array().fill(0)
-            }
-        } finally {
-            if (utf8.hasArray()) utf8.array().fill(0)
-        }
+    private fun checkedUtf8Capacity(charCount: Int, maxBytesPerChar: Float): Int {
+        val capacity = kotlin.math.ceil(charCount.toDouble() * maxBytesPerChar.toDouble())
+        if (!capacity.isFinite() || capacity > Int.MAX_VALUE) operationFailed("protect")
+        return capacity.toInt()
+    }
+
+    private fun checkedBase64Capacity(byteCount: Int): Int {
+        val capacity = ((byteCount.toLong() + 2L) / 3L) * 4L
+        if (capacity > Int.MAX_VALUE) operationFailed("protect")
+        return capacity.toInt()
     }
 
     private fun loadWindows(account: String): CharArray? {

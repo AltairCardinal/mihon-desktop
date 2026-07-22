@@ -5,6 +5,8 @@ import java.security.MessageDigest
 import java.util.Base64
 import java.util.Locale
 import java.util.UUID
+import java.util.prefs.AbstractPreferences
+import java.util.prefs.BackingStoreException
 import java.util.prefs.Preferences
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -217,7 +219,7 @@ class PlatformCredentialBackendTest {
     }
 
     @Test
-    fun `Windows clears transient stdin after protect success and failure`() {
+    fun `Windows clears transient stdin across every protect exit path`() {
         val root = Preferences.userRoot().node("/mihon-test/credentials/${UUID.randomUUID()}")
         try {
             val success = RecordingCommandRunner(CommandResult(0, "encrypted", ""))
@@ -231,6 +233,33 @@ class PlatformCredentialBackendTest {
                     .save("failure", "failure-secret".toCharArray())
             }
             assertTrue(failing.lastStdin!!.all { it == '\u0000' })
+
+            val empty = RecordingCommandRunner(CommandResult(0, "", ""))
+            assertThrows(PlatformCredentialException::class.java) {
+                PlatformCredentialBackend(OperatingSystem.WINDOWS, empty, preferencesRoot = root)
+                    .save("empty", "empty-secret".toCharArray())
+            }
+            assertTrue(empty.lastStdin!!.all { it == '\u0000' })
+
+            val flushFailure = RecordingCommandRunner(CommandResult(0, "encrypted", ""))
+            val flushError = assertThrows(PlatformCredentialException::class.java) {
+                PlatformCredentialBackend(
+                    OperatingSystem.WINDOWS,
+                    flushFailure,
+                    preferencesRoot = FailingFlushPreferences(),
+                ).save("flush", "flush-secret".toCharArray())
+            }
+            assertTrue(flushFailure.lastStdin!!.all { it == '\u0000' })
+            assertFalse(flushError.message.orEmpty().contains("flush-secret"))
+
+            val malformed = RecordingCommandRunner(CommandResult(0, "encrypted", ""))
+            val malformedSecret = charArrayOf('v', 'a', 'l', 'i', 'd', '-', '\uD800')
+            val malformedError = assertThrows(PlatformCredentialException::class.java) {
+                PlatformCredentialBackend(OperatingSystem.WINDOWS, malformed, preferencesRoot = root)
+                    .save("malformed", malformedSecret)
+            }
+            assertNull(malformed.lastStdin)
+            assertFalse(malformedError.message.orEmpty().contains("valid"))
         } finally {
             root.removeNode()
         }
@@ -348,6 +377,35 @@ class PlatformCredentialBackendTest {
         override fun load(account: String) = secretToLoad
 
         override fun delete(account: String) = Unit
+    }
+
+    private class FailingFlushPreferences(
+        parent: AbstractPreferences? = null,
+        name: String = "",
+    ) : AbstractPreferences(parent, name) {
+        private val values = mutableMapOf<String, String>()
+
+        override fun putSpi(key: String, value: String) {
+            values[key] = value
+        }
+
+        override fun getSpi(key: String) = values[key]
+
+        override fun removeSpi(key: String) {
+            values.remove(key)
+        }
+
+        override fun removeNodeSpi() = Unit
+
+        override fun keysSpi() = values.keys.toTypedArray()
+
+        override fun childrenNamesSpi() = emptyArray<String>()
+
+        override fun childSpi(name: String) = FailingFlushPreferences(this, name)
+
+        override fun syncSpi() = Unit
+
+        override fun flushSpi(): Unit = throw BackingStoreException("flush failed")
     }
 
     private data class CommandInvocation(val arguments: List<String>, val stdin: String?) {
