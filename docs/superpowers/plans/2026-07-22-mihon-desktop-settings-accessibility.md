@@ -46,7 +46,7 @@ status-source: this-file
 - [x] Task 2：共享设置搜索与 breadcrumb 契约
 - [x] Task 3：当前 Android consumer 消费共享搜索契约
 - [x] Task 3R：Android 设置搜索 production 默认 shared wiring 证据
-- [ ] Task 4A：Desktop 入口/基础设置 i18n 同源化
+- [x] Task 4A：Desktop 入口/基础设置 i18n 同源化
 - [ ] Task 4B：Desktop 内容设置 i18n 同源化
 - [ ] Task 4C：Desktop 安全/高级设置 i18n 同源化
 - [ ] Task 4D：Desktop About/扩展/Tracking i18n 同源化
@@ -189,6 +189,8 @@ status-source: this-file
 1. RED：页面标题与预定 catalog resource identity 不同、zh 缺键或用等价英文硬编码时失败。
 2. GREEN：迁移用户可见 title/summary/content description/state 文案；不改变设置行为。
 3. 运行 i18n completeness、真实 Compose rendered copy、Spotless/range gate。
+
+**Review status（已完成）：** 实现 `4975cca27` 将 More、General、Appearance 的用户可见文案接入 MR，标准语义复用 fixed-main identity，Desktop 独有组合语义使用 base/zh-rCN 成对资源；真实 Compose RED 为 `2 tests/1 failed`，精确发现硬编码 Tracking summary 与资源 identity 分叉，GREEN 后 focused `3/3`。首审 `0/2/0` 指出 fixed-main `pref_tracking_summary` 会错误宣称 Desktop 不具备的增强同步，以及零下载 subtitle 可被同名 title 掩盖；唯一修复 `914b49336` 改用准确的 Desktop Tracking summary，并从 clickable `SettingsEntry` 验证 title→subtitle 关系。两项变异各取得 `2 tests/1 failed` 精确 RED，最终必要回归 `57/57`、Spotless、i18n XML、diff、range 与 guard 通过；累计 `6 files/371 touched`，保留全部导航、设置写入、队列状态和 Desktop 独有入口。唯一修复复审 APPROVED，Critical/Important/Minor `0/0/0`。下一项为父 Task 5B / 子 Task 4B。
 
 ### Task 4B：Desktop 内容设置 i18n 同源化
 
