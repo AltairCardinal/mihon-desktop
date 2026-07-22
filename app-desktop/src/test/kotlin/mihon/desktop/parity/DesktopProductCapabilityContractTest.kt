@@ -1734,6 +1734,38 @@ class DesktopProductCapabilityContractTest {
         }
     }
 
+    @Test
+    fun `behavior parser does not borrow init or constructor blocks from coroutine expressions`() {
+        val sources = listOf(
+            """
+                annotation class Test
+                fun assertTrue(value: Boolean) = check(value)
+                fun runBlocking(block: () -> Unit) = block()
+                class Evidence {
+                    private val noOp: () -> Unit = {}
+                    @Test fun `target behavior`() = runBlocking(block = noOp)
+                    init { assertTrue(productionMarker()) }
+                    private fun productionMarker() = true
+                }
+            """.trimIndent(),
+            """
+                annotation class Test
+                fun assertTrue(value: Boolean) = check(value)
+                fun runTest(value: Unit) = value
+                class Evidence {
+                    @Test fun `target behavior`() = runTest(Unit)
+                    constructor(ignored: Boolean) { assertTrue(productionMarker()) }
+                    private fun productionMarker() = true
+                }
+            """.trimIndent(),
+        )
+
+        val borrowed = sources.mapNotNull { source ->
+            runCatching { kotlinTestMethod(source, "target behavior", "synthetic evidence") }.getOrNull()
+        }
+        assertTrue(borrowed.none { "assert" in it && "productionMarker" in it })
+    }
+
     private fun validateItem(item: JsonObject, repositoryRoot: Path) {
         val id = validatedId(item)
         val status = item["status"]?.jsonPrimitive?.content
@@ -1807,7 +1839,7 @@ class DesktopProductCapabilityContractTest {
             var parentheses = 0
             var bodyStart: Int? = null
             var scan = nameEnd + 1
-            val memberKeywords = listOf("fun", "val", "var", "class", "object", "interface")
+            val memberKeywords = listOf("fun", "val", "var", "class", "object", "interface", "init", "constructor")
             while (scan < structural.length && bodyStart == null) {
                 when (structural[scan]) {
                     '(' -> parentheses++
