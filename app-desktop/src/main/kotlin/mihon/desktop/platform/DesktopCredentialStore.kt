@@ -2,6 +2,7 @@ package mihon.desktop.platform
 
 import java.io.IOException
 import java.nio.ByteBuffer
+import java.nio.CharBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
@@ -168,15 +169,36 @@ class PlatformCredentialBackend(
     }
 
     private fun saveWindows(account: String, secret: CharArray) {
-        val encoded = Base64.getEncoder().encodeToString(secret.concatToString().toByteArray(StandardCharsets.UTF_8))
-        val encrypted = runCommand(
-            listOf("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", PROTECT_SCRIPT),
-            encoded.toCharArray(),
-            "protect",
-        ).stdout.trim()
-        if (encrypted.isEmpty()) operationFailed("protect")
-        preferences.put(preferenceKey(account), encrypted)
-        preferences.flush()
+        val encoded = encodeWindowsSecret(secret)
+        try {
+            val encrypted = runCommand(
+                listOf("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", PROTECT_SCRIPT),
+                encoded,
+                "protect",
+            ).stdout.trim()
+            if (encrypted.isEmpty()) operationFailed("protect")
+            preferences.put(preferenceKey(account), encrypted)
+            preferences.flush()
+        } finally {
+            encoded.fill('\u0000')
+        }
+    }
+
+    private fun encodeWindowsSecret(secret: CharArray): CharArray {
+        val utf8 = StandardCharsets.UTF_8.newEncoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .encode(CharBuffer.wrap(secret))
+        try {
+            val encoded = Base64.getEncoder().encode(utf8)
+            return try {
+                CharArray(encoded.remaining()) { encoded.get().toInt().and(0xff).toChar() }
+            } finally {
+                if (encoded.hasArray()) encoded.array().fill(0)
+            }
+        } finally {
+            if (utf8.hasArray()) utf8.array().fill(0)
+        }
     }
 
     private fun loadWindows(account: String): CharArray? {

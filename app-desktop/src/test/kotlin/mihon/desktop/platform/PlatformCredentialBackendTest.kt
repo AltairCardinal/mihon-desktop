@@ -217,6 +217,26 @@ class PlatformCredentialBackendTest {
     }
 
     @Test
+    fun `Windows clears transient stdin after protect success and failure`() {
+        val root = Preferences.userRoot().node("/mihon-test/credentials/${UUID.randomUUID()}")
+        try {
+            val success = RecordingCommandRunner(CommandResult(0, "encrypted", ""))
+            PlatformCredentialBackend(OperatingSystem.WINDOWS, success, preferencesRoot = root)
+                .save("success", "success-secret".toCharArray())
+            assertTrue(success.lastStdin!!.all { it == '\u0000' })
+
+            val failing = RecordingCommandRunner(failure = IllegalStateException("runner failed"))
+            assertThrows(PlatformCredentialException::class.java) {
+                PlatformCredentialBackend(OperatingSystem.WINDOWS, failing, preferencesRoot = root)
+                    .save("failure", "failure-secret".toCharArray())
+            }
+            assertTrue(failing.lastStdin!!.all { it == '\u0000' })
+        } finally {
+            root.removeNode()
+        }
+    }
+
+    @Test
     fun `macOS absent and permission failures have distinct semantics without leaking output`() {
         val absent = PlatformCredentialBackend(
             OperatingSystem.MACOS,
@@ -305,8 +325,10 @@ class PlatformCredentialBackendTest {
     ) : CommandRunner {
         private val results = ArrayDeque(results.toList())
         val invocations = mutableListOf<CommandInvocation>()
+        var lastStdin: CharArray? = null
 
         override fun run(arguments: List<String>, stdin: CharArray?): CommandResult {
+            lastStdin = stdin
             invocations += CommandInvocation(arguments.toList(), stdin?.concatToString())
             failure?.let { throw it }
             return results.removeFirst()

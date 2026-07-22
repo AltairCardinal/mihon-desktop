@@ -168,6 +168,32 @@ class SecuritySettingsWiringTest {
     }
 
     @Test
+    fun `disable deletes credential before disabled commit and passphrase change never disables`() {
+        val disableEvents = mutableListOf<String>()
+        val disablePersistence = FailingSecuritySettingsPersistence(true, 0, disableEvents)
+        val disableBackend = MemoryCredentialBackend("current".toCharArray(), disableEvents)
+        assertEquals(
+            AuthenticationResult.Success,
+            controller(disablePersistence, disableBackend).disable("current".toCharArray()),
+        )
+        assertEquals(listOf("credential:delete", "preference:false"), disableEvents)
+
+        val changeEvents = mutableListOf<String>()
+        val changePersistence = FailingSecuritySettingsPersistence(true, 0, changeEvents)
+        val changeBackend = MemoryCredentialBackend("old".toCharArray(), changeEvents)
+        assertEquals(
+            AuthenticationResult.Success,
+            controller(changePersistence, changeBackend).changePassphrase(
+                "old".toCharArray(),
+                "new".toCharArray(),
+                "new".toCharArray(),
+            ),
+        )
+        assertTrue(changePersistence.enabled)
+        assertEquals(listOf("credential:save"), changeEvents)
+    }
+
+    @Test
     fun `passphrase change rejects mismatch and rolls back failed replacement`() {
         val preferences = preferences(enabled = true, delay = 0)
         val backend = MemoryCredentialBackend("old secret".toCharArray())
@@ -213,7 +239,7 @@ class SecuritySettingsWiringTest {
     }
 
     @Test
-    fun `failed passphrase rollback disables lock instead of leaving enabled without a verifier`() {
+    fun `failed passphrase rollback keeps lock enabled with restored verifier`() {
         val preferences = preferences(enabled = true, delay = 0)
         val backend = MemoryCredentialBackend("old secret".toCharArray()).apply { saveFailuresRemaining = 2 }
         val controller = controller(preferences, backend)
@@ -227,7 +253,8 @@ class SecuritySettingsWiringTest {
             ),
         )
 
-        assertFalse(preferences.useAuthenticator().get())
+        assertTrue(preferences.useAuthenticator().get())
+        assertEquals("old secret", backend.secret?.concatToString())
         assertEquals(SecuritySettingsFeedback.BackendError, controller.state.value.feedback)
     }
 
@@ -530,7 +557,7 @@ class SecuritySettingsWiringTest {
     }
 
     @Test
-    fun `passphrase change restores old credential when re-enabling preference throws`() {
+    fun `passphrase change does not rewrite enabled preference`() {
         val persistence = FailingSecuritySettingsPersistence(enabled = true, delayMinutes = 0).apply {
             failEnabledValue = true
         }
@@ -541,13 +568,13 @@ class SecuritySettingsWiringTest {
         val confirmation = "new secret".toCharArray()
 
         assertEquals(
-            AuthenticationResult.Error,
+            AuthenticationResult.Success,
             controller.changePassphrase(current, replacement, confirmation),
         )
 
         assertTrue(persistence.enabled)
-        assertEquals("old secret", backend.secret?.concatToString())
-        assertEquals(SecuritySettingsFeedback.BackendError, controller.state.value.feedback)
+        assertEquals("new secret", backend.secret?.concatToString())
+        assertEquals(SecuritySettingsFeedback.Saved, controller.state.value.feedback)
         assertTrue(current.all { it == '\u0000' })
         assertTrue(replacement.all { it == '\u0000' })
         assertTrue(confirmation.all { it == '\u0000' })
@@ -839,6 +866,7 @@ class SecuritySettingsWiringTest {
     private class FailingSecuritySettingsPersistence(
         var enabled: Boolean,
         var delayMinutes: Int,
+        private val events: MutableList<String>? = null,
     ) : SecuritySettingsPersistence {
         var failEnabledValue: Boolean? = null
         var enabledFailuresRemaining = 0
@@ -847,6 +875,7 @@ class SecuritySettingsWiringTest {
         override fun readEnabled() = enabled
 
         override fun writeEnabled(enabled: Boolean) {
+            events?.add("preference:$enabled")
             this.enabled = enabled
             if (failEnabledValue == enabled) {
                 failEnabledValue = null
@@ -869,7 +898,10 @@ class SecuritySettingsWiringTest {
         }
     }
 
-    private class MemoryCredentialBackend(initial: CharArray? = null) : CredentialBackend {
+    private class MemoryCredentialBackend(
+        initial: CharArray? = null,
+        private val events: MutableList<String>? = null,
+    ) : CredentialBackend {
         var secret = initial?.copyOf()
         var failure: RuntimeException? = null
         var saveFailuresRemaining = 0
@@ -879,6 +911,7 @@ class SecuritySettingsWiringTest {
         var deleteCalls = 0
 
         override fun save(account: String, secret: CharArray) {
+            events?.add("credential:save")
             failure?.let { throw it }
             saveCalls++
             this.secret?.fill('\u0000')
@@ -895,6 +928,7 @@ class SecuritySettingsWiringTest {
         }
 
         override fun delete(account: String) {
+            events?.add("credential:delete")
             failure?.let { throw it }
             deleteCalls++
             if (failNextDelete) {

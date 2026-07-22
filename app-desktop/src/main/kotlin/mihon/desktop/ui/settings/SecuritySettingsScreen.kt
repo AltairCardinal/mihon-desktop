@@ -125,14 +125,11 @@ class SecuritySettingsController internal constructor(
         if (!state.value.canConfigure) return publish(capabilityResult())
         val verified = verifier.verify(currentPassphrase)
         if (verified != AuthenticationResult.Success) return publish(verified)
-        if (!writeEnabledWithRollback(enabled = false, rollback = true)) return publish(AuthenticationResult.Error)
-        val outcome = verifier.deleteWithOutcome()
+        val outcome = verifier.deleteWithOutcome {
+            check(writeEnabledWithRollback(enabled = false, rollback = true))
+        }
         if (outcome.result != AuthenticationResult.Success) {
-            if (outcome.credentialPreserved) {
-                if (!bestEffortWriteEnabled(true)) return publish(AuthenticationResult.Error)
-            } else {
-                bestEffortWriteEnabled(false)
-            }
+            if (!bestEffortWriteEnabled(true)) return publish(AuthenticationResult.Error)
         }
         publish(outcome.result)
     } catch (_: RuntimeException) {
@@ -167,23 +164,10 @@ class SecuritySettingsController internal constructor(
         if (!replacement.contentEquals(confirmation)) {
             return publish(AuthenticationResult.Failed, SecuritySettingsFeedback.PassphraseMismatch)
         }
-        val wasEnabled = knownEnabled
-        if (wasEnabled && !writeEnabledWithRollback(enabled = false, rollback = true)) {
-            return publish(AuthenticationResult.Error)
-        }
-        val outcome = verifier.replaceAndCommit(currentPassphrase, replacement) {
-            if (wasEnabled) check(writeEnabledWithRollback(enabled = true, rollback = false))
-        }
-        if (outcome.result != AuthenticationResult.Success) {
-            if (outcome.credentialPreserved && wasEnabled) {
-                if (!bestEffortWriteEnabled(true)) return publish(AuthenticationResult.Error)
-            } else {
-                bestEffortWriteEnabled(false)
-            }
-        }
+        val outcome = verifier.replaceAndCommit(currentPassphrase, replacement) {}
         publish(outcome.result)
     } catch (_: RuntimeException) {
-        bestEffortWriteEnabled(false)
+        if (knownEnabled) bestEffortWriteEnabled(true)
         publish(AuthenticationResult.Error)
     } finally {
         currentPassphrase?.fill('\u0000')

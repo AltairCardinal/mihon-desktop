@@ -67,12 +67,13 @@ class DesktopPassphraseVerifier(
     }
 
     @Synchronized
-    internal fun deleteWithOutcome(): PassphraseResetOutcome = try {
+    internal fun deleteWithOutcome(commit: () -> Unit = {}): PassphraseResetOutcome = try {
         credentialStore.withSecret(ACCOUNT) { expected ->
             val backup = expected?.copyOf()
             try {
                 try {
                     credentialStore.delete(ACCOUNT)
+                    commit()
                     PassphraseResetOutcome(AuthenticationResult.Success, credentialPreserved = false)
                 } catch (failure: RuntimeException) {
                     val restored = restoreCredential(backup, failure)
