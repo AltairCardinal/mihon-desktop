@@ -83,7 +83,10 @@ class SettingsSearchScreen : Screen {
                         ListItem(
                             headlineContent = { Text(result.title) },
                             supportingContent = { Text(result.breadcrumb) },
-                            modifier = Modifier.clickable { navigator.replace(result.route) },
+                            modifier = Modifier.clickable {
+                                DesktopSettingsAnchorOwner.publish(result.route, result.anchorTitle)
+                                navigator.replace(result.route)
+                            },
                         )
                     }
                 }

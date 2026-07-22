@@ -2,11 +2,8 @@ package mihon.desktop.ui.settings
 
 import mihon.desktop.LocalDesktopUiDependencies
 
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -20,7 +17,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
@@ -41,6 +37,8 @@ class GeneralSettingsScreen : Screen {
         val incognito by prefs.incognitoMode.changes().collectAsState(initial = prefs.incognitoMode.get())
         val pageTurnAnim by prefs.pageTurnAnimation.changes().collectAsState(initial = prefs.pageTurnAnimation.get())
         val doh by prefs.dohProvider.changes().collectAsState(initial = prefs.dohProvider.get())
+        val incognitoTitle = MR.strings.pref_incognito_mode.localized()
+        val dnsTitle = MR.strings.pref_dns_over_https.localized()
 
         Scaffold(
             topBar = {
@@ -57,17 +55,16 @@ class GeneralSettingsScreen : Screen {
                 )
             },
         ) { padding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .verticalScroll(rememberScrollState()),
+            DesktopSettingsAnchorColumn(
+                route = this@GeneralSettingsScreen,
+                modifier = Modifier.fillMaxSize().padding(padding),
             ) {
                 SwitchSettingsItem(
-                    title = MR.strings.pref_incognito_mode.localized(),
+                    title = incognitoTitle,
                     subtitle = MR.strings.pref_incognito_mode_summary.localized(),
                     checked = incognito,
                     onCheckedChange = { prefs.incognitoMode.set(it) },
+                    modifier = Modifier.desktopSettingsAnchor(incognitoTitle),
                 )
                 SwitchSettingsItem(
                     title = MR.strings.pref_page_transitions.localized(),
@@ -79,9 +76,9 @@ class GeneralSettingsScreen : Screen {
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                 Text(
-                    text = MR.strings.pref_dns_over_https.localized(),
+                    text = dnsTitle,
                     style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    modifier = Modifier.desktopSettingsAnchor(dnsTitle).padding(horizontal = 16.dp, vertical = 4.dp),
                 )
                 Text(
                     text = MR.strings.desktop_general_doh_restart_summary.localized(),

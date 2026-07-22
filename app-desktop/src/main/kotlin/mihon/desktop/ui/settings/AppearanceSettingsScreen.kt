@@ -2,11 +2,8 @@ package mihon.desktop.ui.settings
 
 import mihon.desktop.LocalDesktopUiDependencies
 
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -42,6 +39,8 @@ class AppearanceSettingsScreen : Screen {
         val prefs = LocalDesktopUiDependencies.current.appPreferences
         var themeMode by remember { mutableStateOf(prefs.themeMode.get()) }
         var gridColumns by remember { mutableStateOf(prefs.libraryGridColumns.get().toFloat()) }
+        val themeTitle = MR.strings.pref_category_theme.localized()
+        val gridTitle = MR.strings.desktop_appearance_library_grid.localized()
 
         Scaffold(
             topBar = {
@@ -58,18 +57,16 @@ class AppearanceSettingsScreen : Screen {
                 )
             },
         ) { padding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .verticalScroll(rememberScrollState()),
+            DesktopSettingsAnchorColumn(
+                route = this@AppearanceSettingsScreen,
+                modifier = Modifier.fillMaxSize().padding(padding),
             ) {
                 // Theme section
                 Text(
-                    text = MR.strings.pref_category_theme.localized(),
+                    text = themeTitle,
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier.desktopSettingsAnchor(themeTitle).padding(horizontal = 16.dp, vertical = 8.dp),
                 )
                 ThemeMode.entries.forEach { mode ->
                     RadioSettingsItem(
@@ -89,10 +86,10 @@ class AppearanceSettingsScreen : Screen {
 
                 // Grid columns section
                 Text(
-                    text = MR.strings.desktop_appearance_library_grid.localized(),
+                    text = gridTitle,
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier.desktopSettingsAnchor(gridTitle).padding(horizontal = 16.dp, vertical = 8.dp),
                 )
                 Text(
                     text = MR.strings.desktop_appearance_grid_columns.localized(Locale.getDefault(), gridColumns.toInt()),

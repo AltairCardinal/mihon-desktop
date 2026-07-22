@@ -18,13 +18,14 @@ internal fun RadioSettingsItem(
     title: String,
     selected: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     ListItem(
         headlineContent = { Text(title) },
         leadingContent = {
             RadioButton(selected = selected, onClick = onClick)
         },
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = modifier.clickable(onClick = onClick),
     )
 }
 
@@ -34,6 +35,7 @@ internal fun SwitchSettingsItem(
     subtitle: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     ListItem(
         headlineContent = { Text(title) },
@@ -41,6 +43,6 @@ internal fun SwitchSettingsItem(
         trailingContent = {
             Switch(checked = checked, onCheckedChange = onCheckedChange)
         },
-        modifier = Modifier.clickable { onCheckedChange(!checked) },
+        modifier = modifier.clickable { onCheckedChange(!checked) },
     )
 }

@@ -114,15 +114,40 @@ class DesktopSettingsSearchWiringTest {
                     assertFalse(field(scene).config[SemanticsProperties.Focused])
                 }
             }
+            withSearchScene(height = 260) { scene ->
+                lateinit var navigator: Navigator
+                scene.setContent { dependencies { Navigator(SettingsSearchScreen()) { nav -> navigator = nav; CurrentScreen() } } }
+                render(scene)
+                val anchorTitle = MR.strings.desktop_appearance_library_grid.localized(Locale.US)
+                setText(scene, anchorTitle)
+                render(scene)
+                click(scene, anchorTitle)
+                render(scene)
+                assertTrue(navigator.lastItem is AppearanceSettingsScreen)
+                assertEquals(1, navigator.items.size)
+                val highlighted = nodes(scene, true).single { it.config.contains(DesktopSettingsAnchorHighlighted) && it.config[DesktopSettingsAnchorHighlighted] }
+                assertTrue(anchorTitle in text(highlighted))
+                val scroll = nodes(scene, true).first { it.config.contains(SemanticsProperties.VerticalScrollAxisRange) }
+                    .config[SemanticsProperties.VerticalScrollAxisRange]
+                assertTrue(scroll.value() > 0f, "scroll=${scroll.value()} highlighted=${highlighted.boundsInRoot}")
+                requireNotNull(nodes(scene, true).single { it.config.contains(SemanticsActions.SetProgress) }
+                    .config[SemanticsActions.SetProgress].action).invoke(6f)
+                assertEquals(6, currentPreferences.libraryGridColumns.get())
+            }
             withSearchScene { scene ->
                 lateinit var navigator: Navigator
                 scene.setContent { dependencies { Navigator(SettingsSearchScreen()) { nav -> navigator = nav; CurrentScreen() } } }
                 render(scene)
-                setText(scene, MR.strings.pref_category_theme.localized(Locale.US))
+                val anchorTitle = MR.strings.pref_incognito_mode.localized(Locale.US)
+                setText(scene, anchorTitle)
                 render(scene)
-                click(scene, MR.strings.pref_category_theme.localized(Locale.US))
-                assertTrue(navigator.lastItem is AppearanceSettingsScreen)
-                assertEquals(1, navigator.items.size)
+                click(scene, anchorTitle)
+                render(scene)
+                assertTrue(navigator.lastItem is GeneralSettingsScreen)
+                assertTrue(nodes(scene, true).any { it.config.contains(DesktopSettingsAnchorHighlighted) && it.config[DesktopSettingsAnchorHighlighted] && flatten(it).any { child -> anchorTitle in text(child) } })
+                currentPreferences.incognitoMode.set(false)
+                click(scene, anchorTitle)
+                assertTrue(currentPreferences.incognitoMode.get())
             }
         }
     }
@@ -138,9 +163,10 @@ class DesktopSettingsSearchWiringTest {
     }
     private suspend fun withSearchScene(
         screen: Screen = SettingsSearchScreen(),
+        height: Int = 900,
         block: suspend (SearchScene) -> Unit,
     ) {
-        val scene = SearchScene(kotlinx.coroutines.currentCoroutineContext())
+        val scene = SearchScene(kotlinx.coroutines.currentCoroutineContext(), height)
         if (screen is SettingsSearchScreen) {
             val showScreen = mutableStateOf(false)
             scene.setContent {
@@ -163,8 +189,9 @@ class DesktopSettingsSearchWiringTest {
     @androidx.compose.runtime.Composable
     private fun dependencies(content: @androidx.compose.runtime.Composable () -> Unit) {
         val downloads = mockk<DesktopDownloadManager> { every { queue } returns MutableStateFlow(emptyList()) }
+        currentPreferences = androidx.compose.runtime.remember { mihon.desktop.settings.DesktopAppPreferences(InMemoryPreferenceStore()) }
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
-            every { appPreferences } returns mihon.desktop.settings.DesktopAppPreferences(InMemoryPreferenceStore())
+            every { appPreferences } returns currentPreferences
             every { downloadManager } returns downloads
         }
         CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies, content = content)
@@ -195,12 +222,13 @@ class DesktopSettingsSearchWiringTest {
         val previous = Locale.getDefault()
         return try { block() } finally { Locale.setDefault(previous) }
     }
+    private lateinit var currentPreferences: mihon.desktop.settings.DesktopAppPreferences
 
-    private class SearchScene(context: CoroutineContext) : AutoCloseable {
+    private class SearchScene(context: CoroutineContext, height: Int) : AutoCloseable {
         val semanticsOwners = linkedSetOf<SemanticsOwner>()
-        private val canvas = Canvas(ImageBitmap(900, 900))
+        private val canvas = Canvas(ImageBitmap(900, height))
         private val scene: ComposeScene = CanvasLayersComposeScene(
-            size = IntSize(900, 900),
+            size = IntSize(900, height),
             coroutineContext = context,
             platformContext = object : PlatformContext {
                 override val windowInfo = object : WindowInfo { override val isWindowFocused = true }
