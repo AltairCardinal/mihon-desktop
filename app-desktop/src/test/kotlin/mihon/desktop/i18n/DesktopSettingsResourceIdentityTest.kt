@@ -387,7 +387,11 @@ class DesktopSettingsResourceIdentityTest {
                     appPreferences,
                     DesktopPassphraseVerifier(DesktopCredentialStore(MemoryCredentialBackend())),
                     windowController(securityPreferences, appPreferences, supported = false),
-                    DesktopPrivacyCapabilities.production,
+                    DesktopPrivacyCapabilities.production.copy(
+                        sharedUpdatesData = DesktopPrivacyCapabilities.production.sharedUpdatesData.copy(
+                            support = DesktopCapabilitySupport.Unsupported,
+                        ),
+                    ),
                 )
                 val scene = securityScene(dependencies, locale)
                 try {
@@ -400,8 +404,9 @@ class DesktopSettingsResourceIdentityTest {
                         MR.strings.desktop_secure_screen_unsupported.localized(locale),
                         MR.strings.desktop_privacy_native_notifications_unavailable.localized(locale),
                         MR.strings.desktop_privacy_telemetry_unavailable.localized(locale),
-                        MR.strings.desktop_privacy_widget_unavailable_updates_available.localized(locale),
+                        MR.strings.desktop_privacy_widget_unavailable.localized(locale),
                     )
+                    assertNoCopy(main.text, MR.strings.desktop_privacy_widget_unavailable_updates_available.localized(locale))
                     assertCopy(main.descriptions, MR.strings.action_bar_up_description.localized(locale))
                     clickToggle(scene)
                     assertCopy(
@@ -412,15 +417,15 @@ class DesktopSettingsResourceIdentityTest {
                         MR.strings.action_save.localized(locale),
                         MR.strings.action_cancel.localized(locale),
                     )
-                    setText(scene, MR.strings.desktop_security_new_passphrase.localized(locale), "one")
-                    setText(scene, MR.strings.desktop_security_confirm_passphrase.localized(locale), "two")
+                    setText(scene, 0, MR.strings.desktop_security_new_passphrase.localized(locale), "one")
+                    setText(scene, 1, MR.strings.desktop_security_confirm_passphrase.localized(locale), "two")
                     click(scene, MR.strings.action_save.localized(locale))
                     assertCopy(snapshot(scene).text, MR.strings.desktop_security_passphrase_mismatch.localized(locale))
 
                     clickToggle(scene)
                     snapshot(scene)
-                    setText(scene, MR.strings.desktop_security_new_passphrase.localized(locale), "secret")
-                    setText(scene, MR.strings.desktop_security_confirm_passphrase.localized(locale), "secret")
+                    setText(scene, 0, MR.strings.desktop_security_new_passphrase.localized(locale), "secret")
+                    setText(scene, 1, MR.strings.desktop_security_confirm_passphrase.localized(locale), "secret")
                     click(scene, MR.strings.action_save.localized(locale))
                     assertCopy(snapshot(scene).text, MR.strings.desktop_security_saved.localized(locale))
 
@@ -446,7 +451,7 @@ class DesktopSettingsResourceIdentityTest {
                     snapshot(authentication)
                     clickToggle(authentication)
                     snapshot(authentication)
-                    setText(authentication, MR.strings.desktop_security_current_passphrase.localized(locale), "wrong")
+                    setText(authentication, 0, MR.strings.desktop_security_current_passphrase.localized(locale), "wrong")
                     click(authentication, MR.strings.action_save.localized(locale))
                     assertCopy(
                         snapshot(authentication).text,
@@ -472,6 +477,37 @@ class DesktopSettingsResourceIdentityTest {
                     unavailable.close()
                 }
 
+                val telemetrySupported = securityScene(
+                    securityDependencies(
+                        securityPreferences,
+                        appPreferences,
+                        DesktopPassphraseVerifier(DesktopCredentialStore(MemoryCredentialBackend())),
+                        windowController(securityPreferences, appPreferences, supported = false),
+                        DesktopPrivacyCapabilities.production.copy(
+                            telemetryRuntime = DesktopPrivacyCapabilities.production.telemetryRuntime.copy(
+                                support = DesktopCapabilitySupport.Supported,
+                            ),
+                            systemWidgetProvider = DesktopPrivacyCapabilities.production.systemWidgetProvider.copy(
+                                support = DesktopCapabilitySupport.Supported,
+                            ),
+                        ),
+                    ),
+                    locale,
+                )
+                try {
+                    val copy = snapshot(telemetrySupported).text
+                    assertCopy(copy, MR.strings.desktop_privacy_native_notifications_unavailable.localized(locale))
+                    assertNoCopy(
+                        copy,
+                        MR.strings.desktop_privacy_telemetry_unavailable.localized(locale),
+                        MR.strings.hide_notification_content.localized(locale),
+                        MR.strings.desktop_privacy_widget_unavailable.localized(locale),
+                        MR.strings.desktop_privacy_widget_unavailable_updates_available.localized(locale),
+                    )
+                } finally {
+                    telemetrySupported.close()
+                }
+
                 val supported = securityScene(
                     securityDependencies(
                         securityPreferences,
@@ -487,10 +523,18 @@ class DesktopSettingsResourceIdentityTest {
                     locale,
                 )
                 try {
+                    val copy = snapshot(supported).text
                     assertCopy(
-                        snapshot(supported).text,
+                        copy,
                         MR.strings.desktop_secure_screen_supported.localized(locale),
                         MR.strings.hide_notification_content.localized(locale),
+                        MR.strings.desktop_privacy_telemetry_unavailable.localized(locale),
+                        MR.strings.desktop_privacy_widget_unavailable_updates_available.localized(locale),
+                    )
+                    assertNoCopy(
+                        copy,
+                        MR.strings.desktop_privacy_native_notifications_unavailable.localized(locale),
+                        MR.strings.desktop_privacy_widget_unavailable.localized(locale),
                     )
                 } finally {
                     supported.close()
@@ -844,14 +888,19 @@ class DesktopSettingsResourceIdentityTest {
         assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
     }
 
-    private fun setText(scene: ImageComposeScene, label: String, value: String) {
+    private fun setText(scene: ImageComposeScene, fieldIndex: Int, label: String, value: String) {
         val editable = nodes(scene).filter { it.config.contains(SemanticsActions.SetText) }
-        val node = editable.lastOrNull { flatten(it).flatMap(::textCopy).contains(label) } ?: editable.last()
+        val node = editable[fieldIndex]
+        assertEquals(listOf(label), textCopy(node))
         assertTrue(requireNotNull(node.config[SemanticsActions.SetText].action).invoke(AnnotatedString(value)))
     }
 
     private fun assertCopy(actual: Set<String>, vararg expected: String) {
         expected.forEach { assertTrue(it in actual, "Missing '$it': $actual") }
+    }
+
+    private fun assertNoCopy(actual: Set<String>, vararg unexpected: String) {
+        unexpected.forEach { assertFalse(it in actual, "Unexpected '$it': $actual") }
     }
 
     private fun assertEntry(actual: RenderedCopy, title: String, subtitle: String) {
