@@ -157,8 +157,16 @@ class TrackingScreenModelTest {
         assertEquals(TrackingMessage.UnknownService, externalModel.state.value.error)
         externalModel.reportError(IllegalStateException("Provider detail"), TrackingMessage.LoadFailed)
         assertEquals(TrackingMessage.External("Provider detail"), externalModel.state.value.error)
-        externalModel.reportError(IllegalStateException(), TrackingMessage.LoadFailed)
-        assertEquals(TrackingMessage.LoadFailed, externalModel.state.value.error)
+        listOf(
+            TrackingMessage.LoadFailed,
+            TrackingMessage.LoginCancelled,
+            TrackingMessage.LoginFailed,
+            TrackingMessage.LogoutFailed,
+            TrackingMessage.UnbindFailed,
+        ).forEach { fallback ->
+            externalModel.reportError(IllegalStateException(), fallback)
+            assertEquals(fallback, externalModel.state.value.error)
+        }
     }
 
     private fun registry(vararg services: TrackerService) = object : TrackerServiceRegistry {

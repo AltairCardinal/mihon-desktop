@@ -101,6 +101,10 @@ import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.release.interactor.GetApplicationRelease
 import tachiyomi.domain.release.model.Release
+import tachiyomi.domain.track.model.Track
+import tachiyomi.domain.track.repository.TrackRepository
+import tachiyomi.domain.track.service.TrackerAuthentication
+import tachiyomi.domain.track.service.TrackerProfile
 import tachiyomi.domain.track.service.TrackerService
 import tachiyomi.domain.track.service.TrackerServiceRegistry
 import tachiyomi.i18n.MR
@@ -129,6 +133,27 @@ class DesktopSettingsResourceIdentityTest {
     fun `Tracking messages preserve typed identity and render load failure through production screen`() = runBlocking {
         val previousLocale = Locale.getDefault()
         try {
+            fun validationDependencies(status: Long, score: Double): DesktopUiDependencies {
+                val track = mockk<Track>(relaxed = true) {
+                    every { trackerId } returns 7L
+                    every { this@mockk.status } returns status
+                    every { this@mockk.score } returns score
+                }
+                val repository = mockk<TrackRepository>(relaxed = true) {
+                    coEvery { getTracksByMangaId(42L) } returns listOf(track)
+                }
+                val service = mockk<TrackerService>(relaxed = true) {
+                    every { profile } returns MutableStateFlow(TrackerProfile(7L, "Test Service", TrackerAuthentication.OAUTH, true))
+                    every { statuses } returns listOf(1L to "Reading")
+                    every { scores } returns listOf(10.0)
+                }
+                return mockk(relaxed = true) {
+                    every { trackRepository } returns repository
+                    every { trackerServiceRegistry } returns
+                        object : TrackerServiceRegistry { override val services = listOf(service) }
+                }
+            }
+
             listOf(english, chinese).forEach { locale ->
                 val expected = listOf(
                     TrackingMessage.LoadFailed to MR.strings.desktop_tracking_load_failed.localized(locale),
@@ -139,16 +164,16 @@ class DesktopSettingsResourceIdentityTest {
                     TrackingMessage.SearchTitleEmpty to MR.strings.desktop_tracking_search_title_empty.localized(locale),
                     TrackingMessage.MangaRequired to MR.strings.desktop_tracking_manga_required.localized(locale),
                     TrackingMessage.NotBound to MR.strings.desktop_tracking_not_bound.localized(locale),
-                    TrackingMessage.UnsupportedStatus("AniList") to
-                        MR.strings.desktop_tracking_unsupported_status.localized(locale, "AniList"),
-                    TrackingMessage.UnsupportedScore("MyAnimeList") to
-                        MR.strings.desktop_tracking_unsupported_score.localized(locale, "MyAnimeList"),
                     TrackingMessage.NegativeChapter to MR.strings.desktop_tracking_negative_chapter.localized(locale),
                     TrackingMessage.ChapterOutOfRange(12) to
                         MR.strings.desktop_tracking_chapter_out_of_range.localized(locale, 12L),
                     TrackingMessage.UnknownService to MR.strings.desktop_tracking_unknown_service.localized(locale),
                     TrackingMessage.ServiceUnavailable to MR.strings.desktop_tracking_service_unavailable.localized(locale),
                     TrackingMessage.LoginRequired to MR.strings.desktop_tracking_login_required.localized(locale),
+                    TrackingMessage.LoginCancelled to MR.strings.desktop_tracking_login_cancelled.localized(locale),
+                    TrackingMessage.LoginFailed to MR.strings.desktop_tracking_login_failed.localized(locale),
+                    TrackingMessage.LogoutFailed to MR.strings.desktop_tracking_logout_failed.localized(locale),
+                    TrackingMessage.UnbindFailed to MR.strings.desktop_tracking_unbind_failed.localized(locale),
                 )
                 expected.forEach { (message, copy) -> assertEquals(copy, trackingMessageText(message, locale)) }
                 assertEquals("Provider 原始资料 #42", trackingMessageText(TrackingMessage.External("Provider 原始资料 #42"), locale))
@@ -165,6 +190,22 @@ class DesktopSettingsResourceIdentityTest {
                     renderAfterClicks(TrackingSettingsScreen(), dependencies, locale).text,
                     MR.strings.desktop_tracking_load_failed.localized(locale),
                 )
+                val validationFailures = listOf(
+                    validationDependencies(99L, 10.0) to
+                        MR.strings.desktop_tracking_unsupported_status.localized(locale, "Test Service"),
+                    validationDependencies(1L, 7.5) to
+                        MR.strings.desktop_tracking_unsupported_score.localized(locale, "Test Service"),
+                ).mapNotNull { (screenDependencies, message) ->
+                    val rendered = renderAfterClicks(
+                        TrackingSettingsScreen(42L, "Manga", 12L),
+                        screenDependencies,
+                        locale,
+                        "Manage",
+                        "Update",
+                    )
+                    if (message in rendered.text) null else "Missing '$message': ${rendered.text}"
+                }
+                assertTrue(validationFailures.isEmpty(), validationFailures.joinToString("\n"))
             }
         } finally {
             Locale.setDefault(previousLocale)
@@ -1587,19 +1628,5 @@ class DesktopSettingsResourceIdentityTest {
         MR.strings.desktop_backup_missing_data,
         MR.strings.desktop_backup_restore_not_started,
         MR.strings.desktop_backup_restore_unknown_error,
-        MR.strings.desktop_tracking_load_failed,
-        MR.strings.desktop_tracking_bound,
-        MR.strings.desktop_tracking_updated,
-        MR.strings.desktop_tracking_removed,
-        MR.strings.desktop_tracking_search_title_empty,
-        MR.strings.desktop_tracking_manga_required,
-        MR.strings.desktop_tracking_not_bound,
-        MR.strings.desktop_tracking_unsupported_status,
-        MR.strings.desktop_tracking_unsupported_score,
-        MR.strings.desktop_tracking_negative_chapter,
-        MR.strings.desktop_tracking_chapter_out_of_range,
-        MR.strings.desktop_tracking_unknown_service,
-        MR.strings.desktop_tracking_service_unavailable,
-        MR.strings.desktop_tracking_login_required,
     )
 }

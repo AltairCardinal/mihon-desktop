@@ -37,6 +37,10 @@ sealed interface TrackingMessage {
     data object UnknownService : TrackingMessage
     data object ServiceUnavailable : TrackingMessage
     data object LoginRequired : TrackingMessage
+    data object LoginCancelled : TrackingMessage
+    data object LoginFailed : TrackingMessage
+    data object LogoutFailed : TrackingMessage
+    data object UnbindFailed : TrackingMessage
     data class External(val text: String) : TrackingMessage
 }
 

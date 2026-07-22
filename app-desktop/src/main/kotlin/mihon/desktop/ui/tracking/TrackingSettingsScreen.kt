@@ -190,12 +190,9 @@ data class TrackingSettingsScreen(
                                 operation()
                                 model.load()
                             } catch (_: CancellationException) {
-                                model.reportError(
-                                    IllegalStateException("Login cancelled"),
-                                    TrackingMessage.External("Login cancelled"),
-                                )
+                                model.reportError(CancellationException(), TrackingMessage.LoginCancelled)
                             } catch (error: Throwable) {
-                                model.reportError(error, TrackingMessage.External("Login failed"))
+                                model.reportError(error, TrackingMessage.LoginFailed)
                             }
                             selectedId = null
                         }
@@ -225,7 +222,7 @@ data class TrackingSettingsScreen(
                                     is TrackingConfirmation.Logout -> model.logout(request.trackerId)
                                     is TrackingConfirmation.Unbind -> model.unbind(request.trackerId)
                                 }
-                            }.onFailure { model.reportError(it, TrackingMessage.External(request.failureMessage)) }
+                            }.onFailure { model.reportError(it, request.failure) }
                             selectedId = null
                         }
                     }) { Text("Confirm") }
@@ -255,6 +252,10 @@ internal fun trackingMessageText(message: TrackingMessage, locale: Locale = Loca
     TrackingMessage.UnknownService -> MR.strings.desktop_tracking_unknown_service.localized(locale)
     TrackingMessage.ServiceUnavailable -> MR.strings.desktop_tracking_service_unavailable.localized(locale)
     TrackingMessage.LoginRequired -> MR.strings.desktop_tracking_login_required.localized(locale)
+    TrackingMessage.LoginCancelled -> MR.strings.desktop_tracking_login_cancelled.localized(locale)
+    TrackingMessage.LoginFailed -> MR.strings.desktop_tracking_login_failed.localized(locale)
+    TrackingMessage.LogoutFailed -> MR.strings.desktop_tracking_logout_failed.localized(locale)
+    TrackingMessage.UnbindFailed -> MR.strings.desktop_tracking_unbind_failed.localized(locale)
     is TrackingMessage.External -> message.text
 }
 
@@ -288,18 +289,18 @@ private sealed interface TrackingConfirmation {
     val trackerId: Long
     val title: String
     val message: String
-    val failureMessage: String
+    val failure: TrackingMessage
 
     data class Logout(override val trackerId: Long, val serviceName: String) : TrackingConfirmation {
         override val title = "Log out of $serviceName?"
         override val message = "The saved account session will be removed. Existing manga bindings remain local."
-        override val failureMessage = "Logout failed"
+        override val failure = TrackingMessage.LogoutFailed
     }
 
     data class Unbind(override val trackerId: Long, val serviceName: String) : TrackingConfirmation {
         override val title = "Remove $serviceName tracking?"
         override val message = "This removes the local binding. It does not delete the remote list entry."
-        override val failureMessage = "Unable to remove tracking"
+        override val failure = TrackingMessage.UnbindFailed
     }
 }
 
@@ -418,7 +419,10 @@ private fun MangaTrackingDialog(
                             runCatching {
                                 model.update(item.profile.id, TrackEdit(status, score, chapter))
                             }.onSuccess { onDismiss() }
-                                .onFailure { error = it.message ?: "Update failed" }
+                                .onFailure {
+                                    error = (it as? TrackingMessageException)?.trackingMessage?.let(::trackingMessageText)
+                                        ?: it.message ?: "Update failed"
+                                }
                             working = false
                         }
                     }) { Text("Update") }

@@ -1132,6 +1132,10 @@
     <string name="desktop_tracking_unknown_service">未知进度记录服务。</string>
     <string name="desktop_tracking_service_unavailable">进度记录服务不可用。</string>
     <string name="desktop_tracking_login_required">请先登录进度记录服务。</string>
+    <string name="desktop_tracking_login_cancelled">已取消登录。</string>
+    <string name="desktop_tracking_login_failed">登录失败。</string>
+    <string name="desktop_tracking_logout_failed">退出登录失败。</string>
+    <string name="desktop_tracking_unbind_failed">无法移除进度记录。</string>
     <string name="desktop_extension_repo_invalid_metadata">仓库元数据缺失或无效。</string>
     <string name="desktop_extension_repo_add_failed">添加仓库失败。</string>
     <string name="desktop_extension_repo_delete_consequence">此仓库中的插件将不再可用。</string>

@@ -1316,6 +1316,10 @@
     <string name="desktop_tracking_unknown_service">Unknown tracking service.</string>
     <string name="desktop_tracking_service_unavailable">Tracking service is unavailable.</string>
     <string name="desktop_tracking_login_required">Log in to the tracking service first.</string>
+    <string name="desktop_tracking_login_cancelled">Login cancelled.</string>
+    <string name="desktop_tracking_login_failed">Login failed.</string>
+    <string name="desktop_tracking_logout_failed">Logout failed.</string>
+    <string name="desktop_tracking_unbind_failed">Unable to remove tracking.</string>
     <string name="desktop_extension_repo_invalid_metadata">Repository metadata is missing or invalid.</string>
     <string name="desktop_extension_repo_add_failed">Failed to add repository.</string>
     <string name="desktop_extension_repo_delete_consequence">Extensions from this repository will no longer be available.</string>
