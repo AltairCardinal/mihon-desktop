@@ -57,7 +57,7 @@ status-source: this-file
 - [x] Task 16D1R：并发安全的 runtime/broker 关闭所有权
 - [x] Task 16D2：唯一 production lifecycle 与真实入口证据
 - [x] Task 16D2R：重复 Compose close 共享 terminal completion
-- [ ] Task 16V1：全局搜索状态单调性验收阻塞修复
+- [x] Task 16V1：全局搜索状态单调性验收阻塞修复
 - [ ] Task 16：独立最终审查与三平台 change verify
 
 ## 全局任务门禁
@@ -1195,6 +1195,8 @@ status-source: this-file
 1. RED：在 child 已从 Loading 推进到 Failure 后，确定性地把旧 Loading candidate 交给 production `aggregateCandidate`；旧实现会错误接受并产生回退，新测试必须失败。保留真实搜索只发布一次 `Loading → Failure` 与 exact recovery callback 脱绑定用例。
 2. GREEN：在 generation、child identity 检查之外，仅当 candidate 仍等于该 child 的当前权威 state 时才聚合；不删除 recovery 所需 collector，不复制 source query reducer，也不改变原版/shared 查询语义。
 3. 运行 SourceSharedStateWiringTest 定向与重复压力、Spotless、diff 和 2-file/240-line gate；独立审查通过后进入 Task 16，并由 Task 16 重新执行唯一最终全量矩阵，不在本 Task 重复全量构建。
+
+**Review status（已完成）：** 实现提交 `55fcbe57a` 以真实 child 的 Loading→Failure 转换确定性回灌旧 Loading，证明旧 production 聚合器会回退全局状态并重复 callback；GREEN 在 generation 与 child identity 门禁后要求 candidate 仍等于 child 当前权威状态。独立审查确认结构相等/ABA 只表达当前合法可见状态，既有 global ordinal 与同值去重会阻止反序或重复副作用，exact recovery collector 保持有效；APPROVED，Critical/Important/Minor `0/0/0`。Source wiring 50/50、实现阶段实际三轮通过、根 Spotless、diff 与 2 files/38 touched 门禁通过，下一项为 Task 16 集中验证。
 
 ### Task 16：独立最终审查与三平台 change verify
 

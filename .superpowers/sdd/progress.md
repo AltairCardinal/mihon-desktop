@@ -3,11 +3,11 @@
 Baseline: 470cb44db2f4c2b090713a0cc6e3e7231346a064
 Plan: docs/superpowers/plans/2026-07-12-mihon-desktop-upstream-parity-roadmap-main-authority.md
 Active change: align-desktop-platform (corrected parent Task 5A)
-Active child plan: docs/superpowers/plans/2026-07-21-mihon-desktop-platform-integration.md (Tasks 1–16D2R complete; Task 16V1 pending before Task 16 verify)
+Active child plan: docs/superpowers/plans/2026-07-21-mihon-desktop-platform-integration.md (Tasks 1–16V1 complete; Task 16 whole-change review and three-platform verify pending)
 Technical design: docs/superpowers/specs/2026-07-21-mihon-desktop-platform-integration-design.md
 Task base: 952be2f7897f9221b2e07bf7e52891a8fdaa8696
 Original authority: main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8
-Resume order: execute parent Task 5A child Task 16V1, then Task 16 whole-change review/three-platform verify; never resume the preserved original roadmap as executable authority and do not create a duplicate change.
+Resume order: execute parent Task 5A child Task 16 whole-change review and three-platform verify; never resume the preserved original roadmap as executable authority and do not create a duplicate change.
 
 Task 0: complete (commits 470cb44..0eeeccb, review clean)
 Task 1A: complete (commits 0eeeccb..3609dc3, review clean)
@@ -95,3 +95,4 @@ Task 5A / align-desktop-platform Tasks 16D1+16D1R: complete (D1R implementation 
 Task 5A / align-desktop-platform Task 16D2R replan: D2 implementation `6b48a7c83`, suite assertion correction `a38511e896` and unique repair `101e399717` unified main/default owner into one suspend lifecycle, preserved primary/suppressed failures, waited four updater terminal paths and closed the initial `0/3/0` findings. Unique repair re-review still rejected `0/1/0`: a concurrent second Compose close returns on CAS failure and exits the application before the first terminal cleanup completes. Per gate this single shared-completion risk is D2R; D2/D2R remain unchecked.
 Task 5A / align-desktop-platform Task 16V1 planned: two D2 full-suite runs exposed a Source global-search production race outside the lifecycle call graph. One run timed out in exact recovery; the next produced duplicate `Loading → Failure → Loading → Failure`. Read-only audit found synchronous onStarted/completed aggregation racing an asynchronous child-state collector, allowing a stale child candidate to regress the global state. This 2-file deterministic monotonicity repair is required before Task16 can claim a green full suite.
 Task 5A / align-desktop-platform Tasks 16D2+16D2R: complete (D2 implementation `6b48a7c83`, assertion correction `a38511e896`, unique repair `101e399717`; D2R implementation `1d409de82`. D2R RED deterministically proved a concurrent CAS-loser close callback returned before the first terminal; GREEN makes every callback await one shared Result while only the outer entry rethrows the original failure. Independent review APPROVED with Critical/Important/Minor `0/0/0`; Runtime 26/26, Security 22/22, root Spotless, diff and 2 files/30 touched gate passed. Task16V1 is next.)
+Task 5A / align-desktop-platform Task 16V1: complete (implementation `55fcbe57a`. RED used a real child Loading→Failure transition then replayed stale Loading through production aggregateCandidate; GREEN accepts only a candidate still equal to the child authoritative state. Independent review found no equality/ABA or exact-recovery regression and APPROVED with Critical/Important/Minor `0/0/0`; SourceSharedStateWiringTest 50/50, implementation stress three passes, root Spotless, diff and 2 files/38 touched gate passed. Task16 whole-change review/verify is next.)
