@@ -22,7 +22,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -33,6 +32,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import dev.icerock.moko.resources.StringResource
 import mihon.desktop.network.CF_CLEARANCE_COOKIE_NAME
@@ -275,7 +275,7 @@ class AdvancedSettingsScreen : Screen {
                         Text(if (cookiesCleared) cloudflare.copy.clearedFeedback else cloudflare.copy.clearSummary)
                     },
                 )
-                TextButton(
+                DesktopSettingsTextButton(
                     onClick = { showClearCookiesDialog = true },
                     modifier = Modifier.padding(horizontal = 16.dp),
                 ) {
@@ -290,7 +290,7 @@ class AdvancedSettingsScreen : Screen {
                         Text(if (cacheSize.isNotEmpty()) cacheSize else text(MR.strings.desktop_advanced_calculating))
                     },
                 )
-                TextButton(
+                DesktopSettingsTextButton(
                     onClick = { showClearCacheDialog = true },
                     modifier = Modifier.padding(horizontal = 16.dp),
                 ) {
@@ -303,7 +303,7 @@ class AdvancedSettingsScreen : Screen {
                     headlineContent = { Text(text(MR.strings.desktop_advanced_crash_log_folder)) },
                     supportingContent = { Text(CrashHandler.defaultCrashLogDir().path) },
                 )
-                TextButton(
+                DesktopSettingsTextButton(
                     onClick = {
                         scope.launch {
                             val opened = withContext(Dispatchers.IO) { platformActions.openCrashLogFolder() }
@@ -377,6 +377,7 @@ class AdvancedSettingsScreen : Screen {
                     label = { Text(cloudflare.copy.cookieLabel) },
                     isError = cfValueError != null,
                     supportingText = if (cfValueError != null) {{ Text(cfValueError!!) }} else null,
+                    visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 )
@@ -413,7 +414,7 @@ class AdvancedSettingsScreen : Screen {
                 title = { Text(cloudflare.copy.clearTitle) },
                 text = { Text(cloudflare.copy.clearWarning) },
                 confirmButton = {
-                    TextButton(
+                    DesktopSettingsTextButton(
                         onClick = {
                             showClearCookiesDialog = false
                             networkHelper.cookieJar.clear()
@@ -422,7 +423,7 @@ class AdvancedSettingsScreen : Screen {
                     ) { Text(cloudflare.copy.clearConfirm) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showClearCookiesDialog = false }) { Text(cloudflare.copy.cancel) }
+                    DesktopSettingsTextButton(onClick = { showClearCookiesDialog = false }) { Text(cloudflare.copy.cancel) }
                 },
             )
         }
@@ -433,7 +434,7 @@ class AdvancedSettingsScreen : Screen {
                 title = { Text(text(MR.strings.desktop_advanced_clear_network_cache)) },
                 text = { Text(text(MR.strings.desktop_advanced_clear_network_cache_warning)) },
                 confirmButton = {
-                    TextButton(
+                    DesktopSettingsTextButton(
                         onClick = {
                             showClearCacheDialog = false
                             scope.launch(Dispatchers.IO) {
@@ -446,7 +447,7 @@ class AdvancedSettingsScreen : Screen {
                     ) { Text(text(MR.strings.desktop_advanced_clear_confirm)) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showClearCacheDialog = false }) { Text(text(MR.strings.action_cancel)) }
+                    DesktopSettingsTextButton(onClick = { showClearCacheDialog = false }) { Text(text(MR.strings.action_cancel)) }
                 },
             )
         }

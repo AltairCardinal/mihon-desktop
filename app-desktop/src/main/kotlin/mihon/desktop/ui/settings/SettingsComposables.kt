@@ -3,10 +3,12 @@ package mihon.desktop.ui.settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
@@ -36,6 +38,21 @@ internal fun Modifier.desktopSettingsAction(
     onClick: () -> Unit,
 ): Modifier = desktopSettingsActivationKeys(role = role, onClick = onClick)
     .clickable(role = role, onClick = onClick)
+
+@Composable
+internal fun DesktopSettingsTextButton(
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
+    content: @Composable RowScope.() -> Unit,
+) {
+    TextButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.desktopSettingsActivationKeys(Role.Button, enabled, onClick),
+        content = content,
+    )
+}
 
 internal fun Modifier.desktopSettingsActivationKeys(
     role: Role,

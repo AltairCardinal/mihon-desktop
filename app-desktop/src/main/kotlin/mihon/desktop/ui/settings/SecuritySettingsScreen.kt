@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
@@ -18,7 +19,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -27,8 +27,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -291,8 +295,17 @@ class SecuritySettingsScreen : Screen {
                 route = this@SecuritySettingsScreen,
                 modifier = Modifier.fillMaxSize().padding(padding),
             ) {
+                val lockDescription = if (state.enabled) MR.strings.on.localized() else MR.strings.off.localized()
+                val onLockChanged: (Boolean) -> Unit = { enabled ->
+                    action = if (enabled) SecurityAction.Enable else SecurityAction.Disable
+                }
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics(mergeDescendants = true) { stateDescription = lockDescription }
+                        .desktopSettingsActivationKeys(Role.Switch, state.canConfigure) { onLockChanged(!state.enabled) }
+                        .toggleable(value = state.enabled, enabled = state.canConfigure, role = Role.Switch, onValueChange = onLockChanged)
+                        .padding(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
@@ -302,12 +315,11 @@ class SecuritySettingsScreen : Screen {
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
-                    Switch(
+                    androidx.compose.material3.Switch(
                         checked = state.enabled,
                         enabled = state.canConfigure,
-                        onCheckedChange = { enabled ->
-                            action = if (enabled) SecurityAction.Enable else SecurityAction.Disable
-                        },
+                        onCheckedChange = null,
+                        modifier = Modifier.clearAndSetSemantics {},
                     )
                 }
                 if (state.enabled) {
@@ -324,10 +336,13 @@ class SecuritySettingsScreen : Screen {
                         DelayButton(MR.strings.desktop_security_delay_immediately.localized(), 0, state, { action = it })
                         DelayButton(MR.strings.desktop_security_delay_five_minutes.localized(), 5, state, { action = it })
                     }
+                    val onChangePassphrase = { action = SecurityAction.ChangePassphrase }
                     Button(
-                        onClick = { action = SecurityAction.ChangePassphrase },
+                        onClick = onChangePassphrase,
                         enabled = state.canConfigure,
-                        modifier = Modifier.padding(horizontal = 16.dp),
+                        modifier = Modifier
+                            .padding(horizontal = 16.dp)
+                            .desktopSettingsActivationKeys(Role.Button, state.canConfigure, onChangePassphrase),
                     ) {
                         Text(MR.strings.desktop_security_change_passphrase.localized())
                     }
@@ -388,9 +403,18 @@ internal fun DesktopSecureScreenSettings(
         Text(title, style = MaterialTheme.typography.titleSmall)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SecurityPreferences.SecureScreenMode.entries.forEach { mode ->
+                val selected = state.mode == mode
+                val enabled = !selected
+                val onClick: () -> Unit = { controller.changeMode(mode) }
                 Button(
-                    onClick = { controller.changeMode(mode) },
-                    enabled = state.mode != mode,
+                    onClick = onClick,
+                    enabled = enabled,
+                    modifier = Modifier
+                        .semantics {
+                            this.selected = selected
+                            stateDescription = if (selected) MR.strings.selected.localized() else MR.strings.not_selected.localized()
+                        }
+                        .desktopSettingsActivationKeys(Role.Button, enabled, onClick),
                 ) {
                     Text(
                         when (mode) {
@@ -486,7 +510,19 @@ private fun DelayButton(
     state: SecuritySettingsState,
     onAction: (SecurityAction) -> Unit,
 ) {
-    Button(onClick = { onAction(SecurityAction.Delay(minutes)) }, enabled = state.canConfigure && state.delayMinutes != minutes) {
+    val selected = state.delayMinutes == minutes
+    val enabled = state.canConfigure && !selected
+    val action = { onAction(SecurityAction.Delay(minutes)) }
+    Button(
+        onClick = action,
+        enabled = enabled,
+        modifier = Modifier
+            .semantics {
+                this.selected = selected
+                stateDescription = if (selected) MR.strings.selected.localized() else MR.strings.not_selected.localized()
+            }
+            .desktopSettingsActivationKeys(Role.Button, enabled, action),
+    ) {
         Text(text)
     }
 }
@@ -521,7 +557,7 @@ private fun SecurityPassphraseDialog(
             }
         },
         confirmButton = {
-            TextButton(
+            DesktopSettingsTextButton(
                 onClick = {
                     onConfirm(
                         current.takeIf { needsCurrent }?.toCharArray(),
@@ -535,7 +571,7 @@ private fun SecurityPassphraseDialog(
             ) { Text(MR.strings.action_save.localized()) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
+            DesktopSettingsTextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
         },
     )
 }
