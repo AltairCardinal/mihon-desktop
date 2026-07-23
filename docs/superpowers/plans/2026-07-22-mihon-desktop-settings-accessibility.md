@@ -36,9 +36,9 @@ status-source: this-file
 
 按以下顺序一次执行一个子 Task，不并发写共享文件：
 
-`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 4G → 4H → 4I → 4J → 4K → 4L → 4M → 5 → 6A → 6B → 7A → 7B → 7C → 8A → 8B → 8C → 9 → 10A → 10B → 10C → 10D → 10E → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20`
+`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 4G → 4H → 4I → 4J → 4K → 4L → 4M → 5 → 6A → 6B → 7A → 7B → 7C → 8A → 8B → 8C → 9 → 10A → 10B → 10C → 10D → 10E → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18A → 18B → 18C → 19 → 20`
 
-其中 `DesktopSettingsCatalog.kt` 只在 5→7A→7B→7C→8A→8B→8C→11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6A→11→16 串行修改；`AboutScreen.kt` 只在 4I→8A→15→18、`ExtensionRepoScreen.kt` 只在 4J→8B→18、`TrackingSettingsScreen.kt` 只在 4K→4L→8C→18 串行修改；4M 只补 4L 的真实动作/失败路径测试，不返改 production。
+其中 `DesktopSettingsCatalog.kt` 只在 5→7A→7B→7C→8A→8B→8C→11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6A→11→16 串行修改；`AboutScreen.kt` 只在 4I→8A→15→18B、`ExtensionRepoScreen.kt` 只在 4J→8B→18B、`TrackingSettingsScreen.kt` 只在 4K→4L→8C→18C 串行修改；4M 只补 4L 的真实动作/失败路径测试，不返改 production。
 
 ## 执行状态
 
@@ -81,7 +81,9 @@ status-source: this-file
 - [x] Task 15：Desktop 许可证列表/详情与 About wiring
 - [x] Task 16：Desktop 设置 accessibility primitives 与入口页面
 - [x] Task 17：Desktop 设置 accessibility 内容页面第一批
-- [ ] Task 18：Desktop 设置 accessibility 内容页面第二批
+- [ ] Task 18A：Desktop Security/Advanced accessibility
+- [ ] Task 18B：Desktop About/ExtensionRepo accessibility
+- [ ] Task 18C：Desktop Tracking accessibility
 - [ ] Task 19：IDs 88/90/91/94 exact parity evidence
 - [ ] Task 20：whole-change 审查与三平台 verify
 
@@ -835,23 +837,55 @@ status-source: this-file
 2. GREEN：复用 Task16 primitives，不重写业务；所有 labels 来自 Task4B同一 MR。
 3. 运行四页 UI/anchor/semantics/Spotless/range gate。
 
-**Review status（已完成）：** 实现 `3fd0707e12` 与收尾修复 `c4d34a5ae` 完成 Reader/Library/Download/Backup accessibility 内容页第一批。Library 隐藏缺章与分类排除复选项改为整行唯一 Role.Checkbox action，子控件清除重复语义且原 preference 写入保持；Backup 创建/恢复按钮复用 `DesktopSettingsButton`，preview KeyDown 消费 Enter/NumPadEnter/Space 以避免 Material 默认双触发，KeyUp 与 disabled 均不执行。四页真实 rendered semantics、RequestFocus 与 anchor exact/首重复项/scroll/highlight/one-shot 均受保护，picker/snackbar/restore/autobackup、Download 与 Reader 独有行为未改。Library/Backup 断 helper mutation 均精确 RED 后恢复。独立审查 APPROVED `0/0/0`，focused `106/106`、Desktop compile、Spotless、diff 与 4-Task guard 通过；累计严格为 `4 files/360 touched`，Task 18+/计划/OpenSpec/用户脏文件零差异。下一项为父 Task 5B / 子 Task 18。
+**Review status（已完成）：** 实现 `3fd0707e12` 与收尾修复 `c4d34a5ae` 完成 Reader/Library/Download/Backup accessibility 内容页第一批。Library 隐藏缺章与分类排除复选项改为整行唯一 Role.Checkbox action，子控件清除重复语义且原 preference 写入保持；Backup 创建/恢复按钮复用 `DesktopSettingsButton`，preview KeyDown 消费 Enter/NumPadEnter/Space 以避免 Material 默认双触发，KeyUp 与 disabled 均不执行。四页真实 rendered semantics、RequestFocus 与 anchor exact/首重复项/scroll/highlight/one-shot 均受保护，picker/snackbar/restore/autobackup、Download 与 Reader 独有行为未改。Library/Backup 断 helper mutation 均精确 RED 后恢复。独立审查 APPROVED `0/0/0`，focused `106/106`、Desktop compile、Spotless、diff 与 4-Task guard 通过；累计严格为 `4 files/360 touched`，Task 18+/计划/OpenSpec/用户脏文件零差异。下一项为父 Task 5B / 子 Task 18A。
 
-### Task 18：Desktop 设置 accessibility 内容页面第二批
+### Task 18A：Desktop Security/Advanced accessibility
 
-**Risk axis:** settings-accessibility-content-b
+**Risk axis:** settings-accessibility-security-advanced
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 7 files, 400 lines
+**Estimated scope:** 5 files, 390 lines
 
-**Verification:** Security/Advanced/About/TrackingSettings/ExtensionRepo keyboard/semantics、danger confirmation与capability feedback
+**Verification:** Security/Advanced keyboard/semantics、credential/privacy/challenge identity、危险清理确认/取消与 capability feedback
 
-**Files:** 五个 Screen、advanced accessibility test、advanced keyboard test。
+**Files:** `SecuritySettingsScreen.kt`、`AdvancedSettingsScreen.kt`、security/advanced accessibility 与 keyboard tests、必要的 shared settings test helper。
 
-1. RED：危险动作无法键盘确认/取消、unsupported 被读成成功开关、密码/身份字段缺语义时失败。
-2. GREEN：复用 primitives并保留 credential/window privacy/challenge/updater/extension/tracking真实反馈；labels来自Task4H/4I同一MR。
-3. 运行 production wiring/semantics/Spotless/range gate。
+1. RED：锁定/延迟/secure mode 无唯一 role/state、unsupported 被读成成功开关、密码/Cookie 身份字段暴露错误，或危险清理确认/取消无实体键路径时失败。
+2. GREEN：复用 Task16 primitives 与 Button helper；保留 credential/window privacy/challenge、缓存/Cookie 清理的真实平台反馈，labels 来自 Task4G/4H 同一 MR。
+3. 运行 Security/Advanced production wiring、anchor、semantics、keyboard、Spotless 与 range gate。
+
+### Task 18B：Desktop About/ExtensionRepo accessibility
+
+**Risk axis:** settings-accessibility-about-extension
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 4 files, 350 lines
+
+**Verification:** About/ExtensionRepo keyboard/semantics、缓存与仓库危险操作确认/取消、updater/repository feedback、LazyList anchor
+
+**Files:** `AboutScreen.kt`、`ExtensionRepoScreen.kt`、about/extension accessibility test、about/extension keyboard test。
+
+1. RED：更新/许可/缓存及仓库 add/replace/delete 无唯一键盘路径，危险操作不能确认/取消，或反馈/按钮 identity 退化时失败。
+2. GREEN：复用 Task16 primitives/Button helper，保留 updater、诊断、许可证、repository/interactor 与平台反馈；labels 来自 Task4I/4J 同一 MR。
+3. 运行 About/ExtensionRepo production wiring、LazyList anchor、semantics、keyboard、Spotless 与 range gate。
+
+### Task 18C：Desktop Tracking accessibility
+
+**Risk axis:** settings-accessibility-tracking
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 3 files, 370 lines
+
+**Verification:** Tracking keyboard/semantics、source-managed/unsupported feedback、credential 字段、logout/unbind 确认与 LazyList anchor
+
+**Files:** `TrackingSettingsScreen.kt`、tracking accessibility test、tracking keyboard/dialog test。
+
+1. RED：服务行/trailing action 双触发、source-managed 出现无效 action、password/API key 缺身份语义，或 logout/unbind 无实体键确认/取消时失败。
+2. GREEN：复用 primitives 并保留 registry/auth/model、typed-message、同步与服务独有行为；labels 来自 Task4K/4L 同一 MR。
+3. 运行 Tracking production wiring、LazyList anchor、semantics、keyboard、Spotless 与 range gate。
 
 ### Task 19：IDs 88/90/91/94 exact parity evidence
 
