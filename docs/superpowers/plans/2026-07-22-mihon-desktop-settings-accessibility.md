@@ -94,7 +94,7 @@ status-source: this-file
 - [x] Task 20B：Android 许可证 shared consumer 与 parity evidence
 - [x] Task 20C：Windows updater 测试 helper 启动边界
 - [x] Task 20D：Desktop 测试进程外部目录动作隔离
-- [ ] Task 20E：Desktop share reveal 测试隔离
+- [x] Task 20E：Desktop share reveal 测试隔离
 - [ ] Task 20：whole-change 审查与三平台 verify
 
 ## 全局门禁
@@ -1103,6 +1103,8 @@ status-source: this-file
 2. GREEN：在 AWT reveal adapter 的 Gradle test worker 边界拒绝真实 `Desktop.open`，并让通用测试 service 工厂显式注入无副作用 reveal；正常产品 runtime、显式 reveal port 与保存成功不受影响。
 3. 运行 DesktopShareService focused、Desktop compile、Spotless、diff/range/guard；独立审查通过前不恢复 Desktop full-tests。
 
+**Review status（已完成）：** 精确定位 `DesktopShareServiceTest.service()` 未注入 reveal，导致 `Saved(tempFile)` 走默认 `AwtDesktopRevealPort` 并打开 `app-desktop/build/test-tmp`；全量 `2101/2101` 仍会通过，因为 reveal 是 best-effort。实现 `f52bed531` 在 AWT reveal adapter 进入 Desktop API 前拒绝 Gradle test worker，并让通用测试 factory 显式注入 no-op reveal。安全 RED 以 MockK 拦截全部 AWT Desktop 入口，旧实现按预期失败但未打开 Explorer；GREEN focused `13/13`。独立审查 APPROVED `0/0/0`，compile、Spotless、diff/range/guard 通过，正常 runtime、显式 reveal、保存成功与 reveal 失败合同不变，外部副作用为 0。
+
 ### Task 20：whole-change 审查与三平台 verify
 
 **Risk axis:** settings-change-verify
@@ -1120,4 +1122,4 @@ status-source: this-file
 3. 仅用 `scripts/build-desktop.sh` 生成新 BUILD；Windows fixed EXE验证搜索→anchor、主题、grid、licenses、键盘/semantics/TestMode；macOS `ssh mbp` 验证同版本 app与可用 accessibility tree，SSH不能替代的screen-reader交互明确限界。
 4. Linux/WSL只验证可用theme/resource/keyboard/capability adapter。报告完整版本、命令/计数/失败、EXE、OS、IDs状态和剩余有意偏差；全部通过后勾选父Task5B并继续父Task6。
 
-**Review status（审查已清零，验证进行中）：** 对 `base-ref..f20861616` 的 whole-change 独立首审为 REJECTED `0/1/0`：ID94 的首许可证选择同时存在于 Android Screen、Desktop provider 与 shared policy，Desktop 在进入 shared 前已裁成单项，导致 shared selector mutation 无法破坏 production consumer。其余 fixed-main、搜索、anchor、主题、Desktop 独有能力、许可 UI、无障碍和测试有效性未发现阻塞项；focused contract `40/40` 通过。唯一 repair 已按平台边界拆为 20A（shared+desktop，`26e52ff47a`）与 20B（android，`ba47a9a4c`）串行完成；合并唯一修复复审 APPROVED `0/0/0`，focused `50/50`，确认 shared 策略真实控制 Android/Desktop production consumers、ID94 evidence 完整、ID88/fixed-main 无漂移且外部副作用为 0。全量验证已完成 Spotless 与 domain/data；Android 两次 full 分别出现不同的单项时序失败，三个失败类 focused 共 `30/30` 通过并停止随机重跑。Desktop full-tests `2100` 项中三个 updater helper PID 等待在 2 秒失败，focused 仍可复现相同启动边界；Task 20C 已以有界 10 秒等待关闭 helper 启动阻塞并通过独立审查。全量测试暴露的真实资源管理器副作用由 Task 20D 在 Gradle worker 默认 launcher 入口统一隔离，安全 RED、focused 与独立审查均通过；现可在不再打开 `test-tmp` 的前提下恢复 Desktop 全量与平台验收。
+**Review status（审查已清零，验证进行中）：** 对 `base-ref..f20861616` 的 whole-change 独立首审为 REJECTED `0/1/0`：ID94 的首许可证选择同时存在于 Android Screen、Desktop provider 与 shared policy，Desktop 在进入 shared 前已裁成单项，导致 shared selector mutation 无法破坏 production consumer。其余 fixed-main、搜索、anchor、主题、Desktop 独有能力、许可 UI、无障碍和测试有效性未发现阻塞项；focused contract `40/40` 通过。唯一 repair 已按平台边界拆为 20A（shared+desktop，`26e52ff47a`）与 20B（android，`ba47a9a4c`）串行完成；合并唯一修复复审 APPROVED `0/0/0`，focused `50/50`，确认 shared 策略真实控制 Android/Desktop production consumers、ID94 evidence 完整、ID88/fixed-main 无漂移且外部副作用为 0。全量验证已完成 Spotless 与 domain/data；Android 两次 full 分别出现不同的单项时序失败，三个失败类 focused 共 `30/30` 通过并停止随机重跑。Desktop full-tests `2100` 项中三个 updater helper PID 等待在 2 秒失败，focused 仍可复现相同启动边界；Task 20C 已以有界 10 秒等待关闭 helper 启动阻塞并通过独立审查。第一次恢复全量为 `2101/2101`、skipped 3，但确认测试 factory 的默认 share reveal 打开 `test-tmp`；Task 20D 仅覆盖 settings opener，Task 20E 已精确隔离 AWT share reveal 并通过安全 RED、focused 与独立审查。下一步为带窗口计数的最终 Desktop full-tests 与平台验收。
