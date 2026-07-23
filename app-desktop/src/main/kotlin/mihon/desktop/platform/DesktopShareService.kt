@@ -264,6 +264,9 @@ private object AwtDesktopClipboardPort : DesktopClipboardPort {
 
 private object AwtDesktopRevealPort : DesktopRevealPort {
     override fun reveal(file: File) {
+        check(System.getProperty("org.gradle.test.worker") == null) {
+            "Desktop reveal is disabled in Gradle test workers"
+        }
         check(Desktop.isDesktopSupported())
         Desktop.getDesktop().open(file.parentFile ?: file)
     }

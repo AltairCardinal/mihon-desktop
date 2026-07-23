@@ -1,5 +1,11 @@
 package mihon.desktop.platform
 
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.unmockkStatic
+import io.mockk.verify
+import java.awt.Desktop
 import java.awt.image.BufferedImage
 import java.io.File
 import java.nio.file.Files
@@ -8,12 +14,35 @@ import java.nio.file.attribute.PosixFileAttributeView
 import mihon.domain.platform.SharePayload
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.i18n.MR
 
 class DesktopShareServiceTest {
+
+    @Test
+    fun `default reveal is blocked inside a Gradle test worker`(@TempDir tempDir: Path) {
+        assertNotNull(System.getProperty("org.gradle.test.worker"))
+        val desktop = mockk<Desktop>(relaxed = true)
+        val destination = tempDir.resolve("page.png").toFile()
+        val image = BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB)
+        mockkStatic(Desktop::class)
+        try {
+            every { Desktop.isDesktopSupported() } returns true
+            every { Desktop.getDesktop() } returns desktop
+
+            val result = DesktopShareService(isHeadless = { false }).saveImage(image, destination)
+
+            assertEquals(DesktopShareResult.Saved(destination), result)
+            verify(exactly = 0) { Desktop.isDesktopSupported() }
+            verify(exactly = 0) { Desktop.getDesktop() }
+            verify(exactly = 0) { desktop.open(any()) }
+        } finally {
+            unmockkStatic(Desktop::class)
+        }
+    }
 
     @Test
     fun `image snapshot is private before image bytes become visible`(@TempDir tempDir: Path) {
@@ -258,6 +287,7 @@ class DesktopShareServiceTest {
         clipboardPort = clipboard,
         savePort = save,
         isHeadless = { headless },
+        revealPort = DesktopRevealPort {},
     )
 
     private object NoopClipboard : DesktopClipboardPort {
