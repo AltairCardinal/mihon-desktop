@@ -82,7 +82,7 @@ status-source: this-file
 - [x] Task 16：Desktop 设置 accessibility primitives 与入口页面
 - [x] Task 17：Desktop 设置 accessibility 内容页面第一批
 - [x] Task 18A：Desktop Security/Advanced accessibility
-- [ ] Task 18B：Desktop About/ExtensionRepo accessibility
+- [x] Task 18B：Desktop About/ExtensionRepo accessibility
 - [ ] Task 18C：Desktop ExtensionRepo physical-key coverage
 - [ ] Task 18D：Desktop Tracking accessibility
 - [ ] Task 19：IDs 88/90/91/94 exact parity evidence
@@ -875,6 +875,8 @@ status-source: this-file
 1. RED：更新/许可/缓存及仓库 add/replace/delete 无唯一键盘路径，危险操作不能确认/取消，或反馈/按钮 identity 退化时失败。
 2. GREEN：复用 Task16 primitives/Button helper，保留 updater、诊断、许可证、repository/interactor 与平台反馈；labels 来自 Task4I/4J 同一 MR。
 3. 运行 About/ExtensionRepo production wiring、URL opener 隔离、LazyList anchor、semantics、keyboard、Spotless 与 range gate；refresh/FAB add/add cancel/conflict cancel 的具体物理键矩阵由 18C 独立关闭。
+
+**Review status（已完成）：** 实现 `b0b223153` 完成 About/ExtensionRepo 基础 accessibility：About updater/license/cache 与仓库 add/replace/delete 等 Material 控件复用 Desktop 键盘 helper，缓存仍立即执行并反馈，原 updater/诊断/许可证/repository/interactor/LazyList anchor 保持。首审 `0/2/0` 发现真实测试通过 `Desktop.browse` 打开 `repo.example`，且 refresh/FAB add/add cancel/conflict cancel 缺具体物理键证据；合并修复草案 `439 touched` 在 GREEN 前停止并重规划，后者拆为 18C。唯一修复 `a65abec2a` 新增正式 `ExtensionRepoUrlOpener` CompositionLocal：production 默认仍打开浏览器，测试注入 recording opener 并使用 `.invalid`，open 的初始 KeyUp=0、KeyDown=1、最终 KeyUp 仍=1，双调用 mutation 精确 RED。唯一复审 APPROVED `0/0/0`，安全相关 `35/35`、ArchitectureGuard `4/4`、Desktop compile、Spotless、diff 与 5-Task guard 通过，复审期间系统浏览器副作用为 0；累计严格为 `3 files/390 touched`。下一项为父 Task 5B / 子 Task 18C。
 
 ### Task 18C：Desktop ExtensionRepo physical-key coverage
 
