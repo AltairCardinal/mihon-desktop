@@ -78,7 +78,7 @@ status-source: this-file
 - [x] Task 12：共享许可证 notice 与详情选择契约
 - [x] Task 13：Desktop 许可证元数据构建生成
 - [x] Task 14：Desktop 许可证 provider 与 DI identity
-- [ ] Task 15：Desktop 许可证列表/详情与 About wiring
+- [x] Task 15：Desktop 许可证列表/详情与 About wiring
 - [ ] Task 16：Desktop 设置 accessibility primitives 与入口页面
 - [ ] Task 17：Desktop 设置 accessibility 内容页面第一批
 - [ ] Task 18：Desktop 设置 accessibility 内容页面第二批
@@ -798,6 +798,8 @@ status-source: this-file
 1. RED：About 不消费 injected provider、详情选错 license、空 website 可点或 resource 错误无反馈时失败。
 2. GREEN：Voyager Screen + Desktop URI adapter；保留 updater/路径/cache/extension/环境诊断。
 3. 运行 generated resource→DI→UI、navigation/i18n/Spotless/range gate。
+
+**Review status（已完成）：** 实现 `b6a649de9` 新增 Voyager `LicenseListScreen`/`LicenseDetailScreen`，About 通过真实注入 provider 进入列表和详情。production UI 链读取 Task 13/14 的 192 项稳定结果，点击真实 coroutines 展示 Task 12 首个 Apache 正文；nonblank website 原值交给 `LocalUriHandler`，blank website 无 action，null/blank license 与 provider Failure 均有 base/zh-rCN 明确反馈。列表使用 LazyColumn、详情可滚动；About 仅增加入口，原 updater 下载/安装/manual fallback、版本、网站、路径/cache/extension、Java/OS 与清缓存保持。五类 UI/wiring mutation 精确 RED 后恢复。独立审查 APPROVED `0/0/0`，focused `92/92`、Desktop compile、Spotless、diff 与 6-Task guard 通过；范围严格为 `8 files/298 touched`，Task 16+/计划/OpenSpec/用户脏文件零差异。下一项为父 Task 5B / 子 Task 16。
 
 ### Task 16：Desktop 设置 accessibility primitives 与入口页面
 
