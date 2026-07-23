@@ -76,7 +76,7 @@ status-source: this-file
 - [x] Task 10E：共享调色板 selector/AMOLED 与 Monet adapter 收口
 - [x] Task 11：Desktop 主题 adapter、外观 UI 与迁移
 - [x] Task 12：共享许可证 notice 与详情选择契约
-- [ ] Task 13：Desktop 许可证元数据构建生成
+- [x] Task 13：Desktop 许可证元数据构建生成
 - [ ] Task 14：Desktop 许可证 provider 与 DI identity
 - [ ] Task 15：Desktop 许可证列表/详情与 About wiring
 - [ ] Task 16：Desktop 设置 accessibility primitives 与入口页面
@@ -762,6 +762,8 @@ status-source: this-file
 1. RED：手写 JSON 能过但真实 resolved dependency 未进入输出、顺序不稳定或 packaged resource 缺失时失败。
 2. GREEN：复用仓库已解析依赖/POM/AboutLibraries metadata，生成确定性 Desktop resource；不复制 Android raw。
 3. 运行 buildSrc functional/generated resource/Spotless/range gate。
+
+**Review status（已完成）：** 实现 `56b986d75` 复用 AboutLibraries 13.2.1 与真实 Desktop resolved JVM configuration/POM 生成 `META-INF/mihon/dependencies.json`；production buildSrc 不携带插件实现，TestKit 以隔离 classpath 验证。生成目录接入 `jvmMain` resources，`jvmProcessResources` 依赖 export task，classpath integration 从打包路径读取。实际 generated/processed 资源均为 165,885 bytes、SHA-256 相同，含 192 项并按 uniqueId 排序，真实 coroutines/okio 存在；反序依赖声明逐字节一致，malformed POM 有具体诊断。删除真实输入、断 export/source-set/processResources/classpath wiring 均精确 RED 后恢复。独立审查 APPROVED `0/0/0`，buildSrc functional `2/2`、Desktop integration `1/1`、offline export/resource/compile、Spotless、diff 与 8-Task guard 通过；范围严格为 `5 files/222 touched`，无手写 JSON/Android raw/Task 14+ 差异。下一项为父 Task 5B / 子 Task 14。
 
 ### Task 14：Desktop 许可证 provider 与 DI identity
 
