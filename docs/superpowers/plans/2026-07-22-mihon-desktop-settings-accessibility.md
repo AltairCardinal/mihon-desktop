@@ -71,7 +71,7 @@ status-source: this-file
 - [x] Task 9：共享主题模块、identity/default/codec 与 Android consumer
 - [x] Task 10A：共享静态调色板基础与第一批
 - [x] Task 10B：共享静态调色板第一批收口
-- [ ] Task 10C：共享静态调色板第二批
+- [x] Task 10C：共享静态调色板第二批
 - [ ] Task 10D：共享静态调色板第三批
 - [ ] Task 10E：共享调色板 selector/AMOLED 与 Monet adapter 收口
 - [ ] Task 11：Desktop 主题 adapter、外观 UI 与迁移
@@ -672,6 +672,8 @@ status-source: this-file
 1. 按 10A/10B 的 RED/rename/consumer mutation 模式执行。
 2. 不合并或近似颜色；保留 light/dark 语义，并在 rename 内把本批 palette 调整为最小跨模块可见，使当前 Android 在本提交可编译消费。
 3. 检查 touched≤400；超限实施前按 2+2 拆分。
+
+**Review status（已完成）：** 实现 `9720357f0` 将 Catppuccin/MidnightDusk/Monochrome/Nord 四套 palette 以 R98 高相似度 move 到共享模块，normalized fixed-main 精确且唯一 production 变化为 `internal object`→`object`；旧 Android 定义全部消失。shared exact 对每套 light/dark 执行完整 36-role 快照，Android production map 以 singleton identity 与 runtime CodeSource 验证真实共享来源；缺失 type、旧 local origin 与四套 token mutation 各自精确 RED 后恢复。独立审查 APPROVED `0/0/0`，shared `16/16`、Android wiring `2/2`、provenance `6/6`、JVM/Android/consumer compile、Spotless、diff 与 13-Task guard 通过；范围严格为 `6 files/100 touched`。下一项为父 Task 5B / 子 Task 10D。
 
 ### Task 10D：共享静态调色板第三批
 
