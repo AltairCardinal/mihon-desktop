@@ -22,8 +22,10 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
@@ -205,10 +207,20 @@ class DesktopSettingsAboutExtensionAccessibilityTest {
         val repository = FakeExtensionRepoRepository()
         val oldRepo = ExtensionRepo("https://old.invalid", "Old", null, "https://old.invalid", "same")
         val newRepo = ExtensionRepo("https://new.invalid", "New", null, "https://new.invalid", "same")
+        var createCalls = 0
         val create = mockk<CreateExtensionRepo> {
-            coEvery { await(newRepo.baseUrl) } returns CreateExtensionRepo.Result.DuplicateFingerprint(oldRepo, newRepo)
+            coEvery { await(newRepo.baseUrl) } coAnswers {
+                createCalls++
+                CreateExtensionRepo.Result.DuplicateFingerprint(oldRepo, newRepo)
+            }
         }
-        val replace = mockk<ReplaceExtensionRepo> { coEvery { await(any()) } returns Unit }
+        var replaceCalls = 0
+        val replace = mockk<ReplaceExtensionRepo> {
+            coEvery { await(any()) } coAnswers {
+                replaceCalls++
+                Unit
+            }
+        }
         val scene = extensionScene(repository, ExtensionRepoScreen(newRepo.baseUrl), create, replace = replace)
         try {
             setText(scene, "")
@@ -221,8 +233,14 @@ class DesktopSettingsAboutExtensionAccessibilityTest {
             setText(scene, newRepo.baseUrl)
             render(scene)
             activate(scene, MR.strings.action_add.localized(), Key.Enter)
+            awaitSceneCondition(
+                scene = scene,
+                description = "first create call to expose the repository conflict dialog",
+                diagnostics = { "createCalls=$createCalls, labels=${sceneLabels(scene).distinct()}" },
+            ) {
+                createCalls >= 1 && hasAction(scene, MR.strings.action_replace_repo.localized())
+            }
             coVerify(exactly = 1) { create.await(newRepo.baseUrl) }
-            render(scene)
             activate(
                 scene,
                 MR.strings.action_cancel.localized(),
@@ -238,9 +256,22 @@ class DesktopSettingsAboutExtensionAccessibilityTest {
             setText(scene, newRepo.baseUrl)
             render(scene)
             activate(scene, MR.strings.action_add.localized(), Key.Enter)
+            awaitSceneCondition(
+                scene = scene,
+                description = "second create call to expose the repository conflict dialog",
+                diagnostics = { "createCalls=$createCalls, labels=${sceneLabels(scene).distinct()}" },
+            ) {
+                createCalls >= 2 && hasAction(scene, MR.strings.action_replace_repo.localized())
+            }
             coVerify(exactly = 2) { create.await(newRepo.baseUrl) }
-            render(scene)
             activate(scene, MR.strings.action_replace_repo.localized(), Key.Spacebar)
+            awaitSceneCondition(
+                scene = scene,
+                description = "repository replacement interactor call",
+                diagnostics = { "replaceCalls=$replaceCalls, labels=${sceneLabels(scene).distinct()}" },
+            ) {
+                replaceCalls >= 1
+            }
             coVerify(exactly = 1) { replace.await(newRepo) }
         } finally {
             scene.close()
@@ -385,7 +416,25 @@ class DesktopSettingsAboutExtensionAccessibilityTest {
         }
     }
 
-    private suspend fun render(scene: ImageComposeScene) = repeat(8) {
+    private suspend fun awaitSceneCondition(
+        scene: ImageComposeScene,
+        description: String,
+        diagnostics: () -> String,
+        condition: () -> Boolean,
+    ) {
+        try {
+            withTimeout(5_000) {
+                while (!condition()) {
+                    scene.render()
+                    yield()
+                }
+            }
+        } catch (timeout: TimeoutCancellationException) {
+            throw AssertionError("Timed out waiting for $description; ${diagnostics()}", timeout)
+        }
+    }
+
+    private suspend fun render(scene: ImageComposeScene) {
         scene.render()
         yield()
     }
