@@ -129,20 +129,20 @@ class TrackingSettingsKeyboardDialogTest {
 
     @Test
     fun `full settings logout confirms the selected tracker only and cancel has no side effect`() = runBlocking {
-        val target = LoginHarness.authenticatingService(71, "Logout target", TrackerAuthentication.API_KEY, loggedIn = true)
-        val other = LoginHarness.authenticatingService(72, "Logout other", TrackerAuthentication.API_KEY, loggedIn = true)
+        val logoutIds = mutableListOf<Long>()
+        val target = LoginHarness.authenticatingService(71, "Logout target", TrackerAuthentication.API_KEY, loggedIn = true) { logoutIds += 71L }
+        val other = LoginHarness.authenticatingService(72, "Logout other", TrackerAuthentication.API_KEY, loggedIn = true) { logoutIds += 72L }
         LoginHarness.scene(listOf(target.service, other.service)).useScene { scene ->
             LoginHarness.click(scene, target.service.profile.value.name)
             LoginHarness.activateExactlyOnce(scene, MR.strings.action_cancel.localized(), Key.Enter) {
                 if (MR.strings.desktop_tracking_logout_consequence.localized() in LoginHarness.text(scene)) 0 else 1
             }
-            assertTrue(target.logoutIds.isEmpty() && other.logoutIds.isEmpty())
+            assertTrue(logoutIds.isEmpty())
 
             LoginHarness.click(scene, target.service.profile.value.name)
-            LoginHarness.activateExactlyOnce(scene, MR.strings.logout.localized(), Key.NumPadEnter, last = true, calls = target.logoutIds::size)
+            LoginHarness.activateExactlyOnce(scene, MR.strings.logout.localized(), Key.NumPadEnter, dialogAnchor = MR.strings.desktop_tracking_logout_consequence.localized(), calls = logoutIds::size)
             LoginHarness.await(scene) { MR.strings.logout_success.localized() in LoginHarness.text(scene) }
-            assertEquals(listOf(71L), target.logoutIds)
-            assertTrue(other.logoutIds.isEmpty())
+            assertEquals(listOf(71L), logoutIds)
         }
     }
 
@@ -165,7 +165,7 @@ class TrackingSettingsKeyboardDialogTest {
             assertTrue(deletions.isEmpty())
 
             LoginHarness.click(scene, MR.strings.action_remove.localized())
-            LoginHarness.activateExactlyOnce(scene, MR.strings.action_remove.localized(), Key.Spacebar, last = true, calls = deletions::size)
+            LoginHarness.activateExactlyOnce(scene, MR.strings.action_remove.localized(), Key.Spacebar, dialogAnchor = MR.strings.track_delete_text.localized(), calls = deletions::size)
             LoginHarness.await(scene) { MR.strings.desktop_tracking_removed.localized() in LoginHarness.text(scene) }
             assertEquals(listOf(42L to trackerId), deletions)
         }
@@ -179,7 +179,6 @@ private object LoginHarness {
     data class Fixture(
         val service: DesktopAuthenticatingTrackerService,
         val invocations: MutableList<LoginInvocation>,
-        val logoutIds: MutableList<Long>,
     )
 
     fun authenticatingService(
@@ -187,10 +186,10 @@ private object LoginHarness {
         name: String,
         authentication: TrackerAuthentication,
         loggedIn: Boolean = false,
+        onLogout: () -> Unit = {},
     ): Fixture {
         val profile = MutableStateFlow(TrackerProfile(id, name, authentication, loggedIn))
         val invocations = mutableListOf<LoginInvocation>()
-        val logoutIds = mutableListOf<Long>()
         val service = mockk<DesktopAuthenticatingTrackerService>(relaxed = true) {
             every { this@mockk.profile } returns profile
             coEvery { login(any(), any()) } coAnswers {
@@ -199,12 +198,9 @@ private object LoginHarness {
             coEvery { loginWithApiKey(any()) } coAnswers {
                 invocations += LoginInvocation(TrackerAuthentication.API_KEY, null, firstArg())
             }
-            coEvery { logout() } coAnswers {
-                logoutIds += id
-                profile.value = profile.value.copy(loggedIn = false)
-            }
+            coEvery { logout() } coAnswers { onLogout() }
         }
-        return Fixture(service, invocations, logoutIds)
+        return Fixture(service, invocations)
     }
 
     fun repository(tracks: List<Track> = emptyList(), onDelete: (Long, Long) -> Unit = { _, _ -> }) =
@@ -284,9 +280,14 @@ private object LoginHarness {
         label: String,
         key: Key,
         last: Boolean = false,
+        dialogAnchor: String? = null,
         calls: () -> Int,
     ) {
-        val node = action(scene, label, last)
+        val node = dialogAnchor?.let { anchor ->
+            val root = nodes(scene, true).filter { anchor in subtreeText(it) && label in subtreeText(it) }
+                .minBy { flatten(it).size }
+            flatten(root).filter { it.config.contains(SemanticsActions.OnClick) && label in subtreeText(it) }.single()
+        } ?: action(scene, label, last)
         assertTrue(requireNotNull(node.config[SemanticsActions.RequestFocus].action).invoke())
         send(scene, key, KeyEventType.KeyUp)
         assertEquals(0, calls(), "$key initial KeyUp")
