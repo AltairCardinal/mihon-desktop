@@ -2,7 +2,10 @@ package mihon.desktop.ui.settings
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -14,6 +17,7 @@ import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.input.InputModeManager
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.platform.PlatformContext
 import androidx.compose.ui.platform.WindowInfo
 import androidx.compose.ui.scene.CanvasLayersComposeScene
@@ -22,6 +26,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsOwner
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.IntSize
 import cafe.adriel.voyager.core.screen.Screen
@@ -117,10 +122,21 @@ class DesktopSettingsSearchWiringTest {
             listOf(Key.Enter, Key.NumPadEnter).forEach { key ->
                 withSearchScene { scene ->
                     render(scene)
-                    scene.sendKeyEvent(composeKeyEvent(key))
+                    scene.sendKeyEvent(composeKeyEvent(key, KeyEventType.KeyUp))
+                    render(scene)
+                    assertTrue(field(scene).config[SemanticsProperties.Focused])
+                    scene.sendKeyEvent(composeKeyEvent(key, KeyEventType.KeyDown))
                     render(scene)
                     assertFalse(field(scene).config[SemanticsProperties.Focused])
+                    scene.sendKeyEvent(composeKeyEvent(key, KeyEventType.KeyUp))
                 }
+            }
+            withSearchScene { scene ->
+                render(scene)
+                scene.sendKeyEvent(composeKeyEvent(Key.Spacebar, KeyEventType.KeyDown))
+                render(scene)
+                assertTrue(field(scene).config[SemanticsProperties.Focused])
+                assertEquals(AnnotatedString(""), field(scene).config[SemanticsProperties.EditableText])
             }
             withSearchScene(height = 260) { scene ->
                 lateinit var navigator: Navigator
@@ -129,6 +145,9 @@ class DesktopSettingsSearchWiringTest {
                 val anchorTitle = MR.strings.desktop_appearance_library_grid.localized(Locale.US)
                 setText(scene, anchorTitle)
                 render(scene)
+                val result = action(scene, anchorTitle)
+                assertEquals(Role.Button, result.config[SemanticsProperties.Role])
+                assertEquals(1, flatten(result).count { it.config.contains(SemanticsActions.OnClick) })
                 click(scene, anchorTitle)
                 render(scene)
                 assertTrue(navigator.lastItem is AppearanceSettingsScreen)
@@ -157,6 +176,78 @@ class DesktopSettingsSearchWiringTest {
                 click(scene, anchorTitle)
                 assertTrue(currentPreferences.incognitoMode.get())
             }
+        }
+    }
+
+    @Test
+    fun `settings roles activate once on key down and never on key up`() = runBlocking {
+        listOf("button", "radio", "switch").forEach { fixture ->
+            listOf(Key.Enter, Key.NumPadEnter, Key.Spacebar).forEach { key ->
+                val scene = SearchScene(kotlinx.coroutines.currentCoroutineContext(), 300)
+                var calls = 0
+                try {
+                    scene.setContent {
+                        MaterialTheme {
+                            Column {
+                                when (fixture) {
+                                    "button" -> SettingsEntry(
+                                        Icons.Default.Settings,
+                                        "Button",
+                                        "Summary",
+                                    ) { calls++ }
+                                    "radio" -> RadioSettingsItem("Radio", false, { calls++ })
+                                    else -> SwitchSettingsItem("Switch", "Summary", false, { calls++ })
+                                }
+                            }
+                        }
+                    }
+                    render(scene)
+                    scene.takeFocus()
+                    val target = nodes(scene, true).single { it.config.contains(SemanticsActions.OnClick) }
+                    assertTrue(requireNotNull(target.config[SemanticsActions.RequestFocus].action).invoke())
+                    render(scene)
+                    scene.sendKeyEvent(composeKeyEvent(key, KeyEventType.KeyUp))
+                    render(scene)
+                    assertEquals(0, calls, "$fixture $key KeyUp")
+                    scene.sendKeyEvent(composeKeyEvent(key, KeyEventType.KeyDown))
+                    render(scene)
+                    assertEquals(1, calls, "$fixture $key KeyDown")
+                    scene.sendKeyEvent(composeKeyEvent(key, KeyEventType.KeyUp))
+                    render(scene)
+                    assertEquals(1, calls, "$fixture $key second KeyUp")
+                } finally {
+                    scene.close()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `settings action focus order follows the rendered rows`() = runBlocking {
+        val scene = SearchScene(kotlinx.coroutines.currentCoroutineContext(), 400)
+        try {
+            scene.setContent {
+                MaterialTheme {
+                    Column {
+                        SettingsEntry(Icons.Default.Settings, "Button", "Summary") {}
+                        RadioSettingsItem("Radio", false, {})
+                        SwitchSettingsItem("Switch", "Summary", false, {})
+                    }
+                }
+            }
+            render(scene)
+            fun actions() = nodes(scene, true).filter { it.config.contains(SemanticsActions.OnClick) }
+            assertTrue(requireNotNull(actions()[0].config[SemanticsActions.RequestFocus].action).invoke())
+            render(scene)
+            assertTrue(actions()[0].config[SemanticsProperties.Focused])
+            scene.sendKeyEvent(composeKeyEvent(Key.Tab, KeyEventType.KeyDown))
+            render(scene)
+            assertTrue(actions()[1].config[SemanticsProperties.Focused])
+            scene.sendKeyEvent(composeKeyEvent(Key.Tab, KeyEventType.KeyDown))
+            render(scene)
+            assertTrue(actions()[2].config[SemanticsProperties.Focused])
+        } finally {
+            scene.close()
         }
     }
     @Test
@@ -371,14 +462,17 @@ class DesktopSettingsSearchWiringTest {
         scene.render()
         kotlinx.coroutines.yield()
     }
-    private fun composeKeyEvent(key: Key): ComposeKeyEvent {
+    private fun composeKeyEvent(key: Key, type: KeyEventType): ComposeKeyEvent {
         val events = Class.forName("androidx.compose.ui.input.key.KeyEvent_desktopKt")
-        val keyDown = Class.forName("androidx.compose.ui.input.key.KeyEventType")
-            .getMethod("access\$getKeyDown\$cp").invoke(null)
+        val eventType = Class.forName("androidx.compose.ui.input.key.KeyEventType")
+            .getMethod(if (type == KeyEventType.KeyDown) "access\$getKeyDown\$cp" else "access\$getKeyUp\$cp")
+            .invoke(null)
         val factory = events.declaredMethods.single { it.name.startsWith("KeyEvent-") && !it.name.endsWith("\$default") }
-        val native = factory.invoke(null, key.keyCode, keyDown, 0, false, false, false, false, null)
+        val native = factory.invoke(null, key.keyCode, eventType, 0, false, false, false, false, null)
         return ComposeKeyEvent(native)
     }
+    private fun action(scene: SearchScene, label: String) =
+        nodes(scene).single { it.config.contains(SemanticsActions.OnClick) && label in flatten(it).flatMap(::text) }
     private fun field(scene: SearchScene) = nodes(scene, true).single { it.config.contains(SemanticsActions.SetText) }
     private fun setText(scene: SearchScene, value: String) = requireNotNull(field(scene).config[SemanticsActions.SetText].action).invoke(AnnotatedString(value))
     private fun click(scene: SearchScene, label: String) = requireNotNull(
