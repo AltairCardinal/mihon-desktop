@@ -6,12 +6,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import com.mikepenz.aboutlibraries.entity.License
 import com.mikepenz.aboutlibraries.ui.compose.android.produceLibraries
 import com.mikepenz.aboutlibraries.ui.compose.m3.LibrariesContainer
 import com.mikepenz.aboutlibraries.ui.compose.util.htmlReadyLicenseContent
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.R
+import mihon.domain.license.service.LicenseNoticePolicy
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
@@ -41,7 +43,7 @@ class OpenSourceLicensesScreen : Screen() {
                         OpenSourceLibraryLicenseScreen(
                             name = it.name,
                             website = it.website,
-                            license = it.licenses.firstOrNull()?.htmlReadyLicenseContent.orEmpty(),
+                            license = selectAndroidLicenseContent(it.licenses).orEmpty(),
                         ),
                     )
                 },
@@ -49,3 +51,8 @@ class OpenSourceLicensesScreen : Screen() {
         }
     }
 }
+
+internal fun selectAndroidLicenseContent(candidates: Iterable<License>): String? =
+    LicenseNoticePolicy.selectLicense(
+        candidates.map { it.htmlReadyLicenseContent ?: "" },
+    )

@@ -291,6 +291,7 @@ class DesktopProductCapabilityContractTest {
         ),
         94 to mapOf(
             "domain/src/commonTest/kotlin/mihon/domain/license/service/LicenseNoticePolicyTest.kt" to setOf("first license is selected without later entries overwriting it"),
+            "app/src/test/java/eu/kanade/presentation/more/settings/screen/about/OpenSourceLicensesConsumerBehaviorTest.kt" to setOf("real Android license candidates are delegated to shared policy in order", "blank first Android license does not fall through to later content"),
             "app-desktop/src/test/kotlin/mihon/desktop/license/DesktopDependencyNoticeProviderTest.kt" to setOf("provider maps metadata through the notice policy and caches the result"),
             "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AboutUpdateWiringTest.kt" to setOf("about routes real injected dependency notices to their first license content", "about renders full version and routes ready confirmation intents"),
         ),
@@ -1758,6 +1759,43 @@ class DesktopProductCapabilityContractTest {
         }
         val deletedAuthority = JsonObject(search.toMutableMap().apply { put("upstreamSymbols", buildJsonArray {}) })
         assertThrows(AssertionError::class.java) { assertSettingsCapability(90, deletedAuthority, repositoryRoot) }
+        val licenses = items.getValue(94).jsonObject
+        val androidBehaviorPath = "app/src/test/java/eu/kanade/presentation/more/settings/screen/about/OpenSourceLicensesConsumerBehaviorTest.kt"
+        listOf("behaviorMethods", "protectionTests").forEach { field ->
+            val deleted = JsonObject(
+                licenses.toMutableMap().apply {
+                    put(
+                        field,
+                        if (field == "behaviorMethods") {
+                            JsonObject(getValue(field).jsonObject.toMutableMap().apply { remove(androidBehaviorPath) })
+                        } else {
+                            buildJsonArray {
+                                getValue(field).jsonArray.forEach {
+                                    if (it.jsonPrimitive.content != androidBehaviorPath) add(it)
+                                }
+                            }
+                        },
+                    )
+                },
+            )
+            assertThrows(AssertionError::class.java) { assertSettingsCapability(94, deleted, repositoryRoot) }
+        }
+        val exchangedMethods = JsonObject(
+            licenses.toMutableMap().apply {
+                put(
+                    "behaviorMethods",
+                    JsonObject(getValue("behaviorMethods").jsonObject.toMutableMap().apply {
+                        put(
+                            androidBehaviorPath,
+                            search.getValue("behaviorMethods").jsonObject.getValue(
+                                "domain/src/commonTest/kotlin/mihon/domain/settings/SettingsSearchPolicyTest.kt",
+                            ),
+                        )
+                    }),
+                )
+            },
+        )
+        assertThrows(AssertionError::class.java) { assertSettingsCapability(94, exchangedMethods, repositoryRoot) }
         val inventory = Files.readString(repositoryRoot.resolve(fixedMainPathInventoryResource))
             .replaceFirst("\"capabilityIds\": [88]", "\"capabilityIds\": [90]")
         assertThrows(AssertionError::class.java) {
