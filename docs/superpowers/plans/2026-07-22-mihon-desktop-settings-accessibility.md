@@ -296,7 +296,7 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 1 files, 180 lines
+**Estimated scope:** 2 files, 180 lines
 
 **Verification:** EmptyBackup/UnsupportedVersion/EmptyFile/MissingData/Corrupted/RestoreNotStarted each execute real ScreenModel and production Screen in en/zh with exact MR identity
 
@@ -984,7 +984,7 @@ status-source: this-file
 
 **Verification:** Tracking logout/unbind confirm/cancel 的 production physical-key exact-once 与真实副作用边界
 
-**Files:** tracking keyboard/dialog test。
+**Files:** `TrackingSettingsScreen.kt`、tracking keyboard/dialog test。
 
 1. RED：logout/unbind 的 confirm/cancel 任一真实控件在 Enter/NumPadEnter/Space 的 KeyDown 未恰好触发一次、KeyUp 重复触发，或 cancel 产生认证/仓库副作用时失败。
 2. GREEN：复用 18G 的 production helper 与测试 harness，只扩展真实 `TrackingSettingsScreen` 状态；保留 registry/auth/model、typed-message、service-specific 参数与失败反馈。
