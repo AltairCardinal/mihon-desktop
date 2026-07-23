@@ -15,7 +15,7 @@ import androidx.compose.ui.graphics.Color
  * Tertiary #D33131
  * Neutral #5D5F5B
  */
-internal object GreenAppleColorScheme : BaseColorScheme() {
+object GreenAppleColorScheme : BaseColorScheme() {
 
     override val darkScheme = darkColorScheme(
         primary = Color(0xFF7ADB8F),

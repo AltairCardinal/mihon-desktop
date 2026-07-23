@@ -14,7 +14,7 @@ import androidx.compose.ui.graphics.Color
  * Tertiary #47A84A
  * Neutral #919094
  */
-internal object TachiyomiColorScheme : BaseColorScheme() {
+object TachiyomiColorScheme : BaseColorScheme() {
 
     override val darkScheme = darkColorScheme(
         primary = Color(0xFFB0C6FF),
