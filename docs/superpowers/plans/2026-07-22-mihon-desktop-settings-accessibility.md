@@ -77,7 +77,7 @@ status-source: this-file
 - [x] Task 11：Desktop 主题 adapter、外观 UI 与迁移
 - [x] Task 12：共享许可证 notice 与详情选择契约
 - [x] Task 13：Desktop 许可证元数据构建生成
-- [ ] Task 14：Desktop 许可证 provider 与 DI identity
+- [x] Task 14：Desktop 许可证 provider 与 DI identity
 - [ ] Task 15：Desktop 许可证列表/详情与 About wiring
 - [ ] Task 16：Desktop 设置 accessibility primitives 与入口页面
 - [ ] Task 17：Desktop 设置 accessibility 内容页面第一批
@@ -780,6 +780,8 @@ status-source: this-file
 1. RED：provider 读 fixture 而非 Task13 output、DI 重建第二实例或 malformed 静默空列表时失败。
 2. GREEN：真实 generated resource 只解析一次并以同一 provider进入 UI dependencies；错误结构化反馈。
 3. 运行 provider/DI identity/integration、Spotless/range gate。
+
+**Review status（已完成）：** 实现 `255fce295` 新增固定 classpath/lazy `DependencyNoticeProvider`，严格解析 Task 13 的 libraries/root licenses 引用，将首项解析为真实 content 后交给 Task 12 policy；缺资源、malformed/schema/blank name 显式 Failure，首引用无 content 不回退第二项。`DesktopAppModule` 注册单例，`DesktopUiDependencies.fromInjekt()` 暴露同一实例。真实 integration 验证 192 项、确定性排序、coroutines Apache 正文。首审 `0/1/0` 指出测试只断言非空可能漏失多数条目；唯一修复 `2f537aaea` 锁定精确 192，截断到仅 coroutines 的 mutation 精确 RED，production 零差异。唯一复审 APPROVED `0/0/0`，provider/resource/DI `22/22`、offline Desktop compile、Spotless、diff 与 7-Task guard 通过；累计严格为 `6 files/248 touched`。下一项为父 Task 5B / 子 Task 15。
 
 ### Task 15：Desktop 许可证列表/详情与 About wiring
 
