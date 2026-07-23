@@ -75,7 +75,7 @@ status-source: this-file
 - [x] Task 10D：共享静态调色板第三批
 - [x] Task 10E：共享调色板 selector/AMOLED 与 Monet adapter 收口
 - [x] Task 11：Desktop 主题 adapter、外观 UI 与迁移
-- [ ] Task 12：共享许可证 notice 与详情选择契约
+- [x] Task 12：共享许可证 notice 与详情选择契约
 - [ ] Task 13：Desktop 许可证元数据构建生成
 - [ ] Task 14：Desktop 许可证 provider 与 DI identity
 - [ ] Task 15：Desktop 许可证列表/详情与 About wiring
@@ -744,6 +744,8 @@ status-source: this-file
 1. RED：无 license 被伪造、第二项覆盖第一、空 website 仍有 action、排序不稳定时失败。
 2. GREEN：纯不可变 model/selection policy，不引入 Android raw/HTML 或 Desktop file/URI。
 3. 运行 shared/Spotless/range gate。
+
+**Review status（已完成）：** 实现 `40e68eb89` 在 shared domain 建立不可变 dependency notice metadata/model、显式 Success/Failure 与纯 `LicenseNoticePolicy`。行为与 fixed-main `licenses.firstOrNull()` 对齐：首项原值保留（含空字符串）、无 license 为 null；blank website 不产生 action，非 blank 原值保留；empty metadata 成功为空，malformed/blank name 显式失败。排序使用 locale-invariant lowercase 加原名 tie-break，反转输入与大小写同名仍确定。五类 production mutation 精确 RED 后恢复。独立审查 APPROVED `0/0/0`，common test `9/9`、domain JVM/Android compile、Spotless、diff 与 9-Task guard 通过；范围严格为 `3 files/205 touched`，Task 13+/平台 IO/UI 零差异。下一项为父 Task 5B / 子 Task 13。
 
 ### Task 13：Desktop 许可证元数据构建生成
 
