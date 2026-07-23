@@ -92,7 +92,8 @@ status-source: this-file
 - [x] Task 19：IDs 88/90/91/94 exact parity evidence
 - [x] Task 20A：共享许可证首项规则与 Desktop production wiring
 - [x] Task 20B：Android 许可证 shared consumer 与 parity evidence
-- [ ] Task 20C：Windows updater 测试 helper 启动边界
+- [x] Task 20C：Windows updater 测试 helper 启动边界
+- [x] Task 20D：Desktop 测试进程外部目录动作隔离
 - [ ] Task 20：whole-change 审查与三平台 verify
 
 ## 全局门禁
@@ -1065,6 +1066,8 @@ status-source: this-file
 2. GREEN：只调整测试 helper 的有界启动等待，不改变 updater production timeout、取消、强制终止或 reader 清理合同；不得改生产代码或以无限等待掩盖启动失败。
 3. 运行两个直接消费 helper 的 focused 测试类、Spotless、diff/range/guard；独立审查通过后再恢复 Task 20 full-tests。
 
+**Review status（已完成）：** test-only 实现 `a206f74a5` 只将 `java SourceFile.java` helper 的 PID 启动等待从 2 秒调整为命名的有界 10 秒；production runner 与 graceful/forced timeout、取消 cause、强制终止、reader cleanup 以及 `awaitUpdaterExit` 的 2 秒边界均未改变。独立审查 APPROVED `0/0/0`，直接消费 helper 的 runner/About 两类 `10/10`、Desktop compile、Spotless、diff/range/guard 通过；未运行 full-tests 或其他 UI 测试，外部副作用为 0。
+
 ### Task 20D：Desktop 测试进程外部目录动作隔离
 
 **Risk axis:** desktop-test-directory-isolation
@@ -1080,6 +1083,8 @@ status-source: this-file
 1. RED：新增测试锁定 Gradle test worker 中默认目录 opener 不得调用真实系统 launcher，同时保留显式注入 fake launcher 的目录创建、成功与失败合同。
 2. GREEN：只在 Gradle test worker 边界阻止默认 `Desktop.open`；正常 Desktop 运行时与显式注入 launcher 的测试行为不变，不按路径名猜测或仅屏蔽 `test-tmp`。
 3. 运行 opener focused、Desktop compile、Spotless、diff/range/guard；独立审查通过前不恢复 Desktop full-tests。
+
+**Review status（已完成）：** 实现 `0c9462269` 在默认系统 launcher 进入 `Desktop.isDesktopSupported/Desktop.open` 前拒绝 Gradle test worker；公共 `open` 的目录创建、显式 fake launcher 与正常产品 runtime 行为不变。安全 RED 先用 MockK 拦截全部 Desktop 静态入口，旧实现按预期失败但未打开真实资源管理器；GREEN focused `3/3`。独立审查 APPROVED `0/0/0`，compile、Spotless、diff/range/guard 通过，复跑期间指向 `app-desktop/build/test-tmp` 的资源管理器窗口为 0，外部副作用为 0。
 
 ### Task 20：whole-change 审查与三平台 verify
 
@@ -1098,4 +1103,4 @@ status-source: this-file
 3. 仅用 `scripts/build-desktop.sh` 生成新 BUILD；Windows fixed EXE验证搜索→anchor、主题、grid、licenses、键盘/semantics/TestMode；macOS `ssh mbp` 验证同版本 app与可用 accessibility tree，SSH不能替代的screen-reader交互明确限界。
 4. Linux/WSL只验证可用theme/resource/keyboard/capability adapter。报告完整版本、命令/计数/失败、EXE、OS、IDs状态和剩余有意偏差；全部通过后勾选父Task5B并继续父Task6。
 
-**Review status（审查已清零，验证进行中）：** 对 `base-ref..f20861616` 的 whole-change 独立首审为 REJECTED `0/1/0`：ID94 的首许可证选择同时存在于 Android Screen、Desktop provider 与 shared policy，Desktop 在进入 shared 前已裁成单项，导致 shared selector mutation 无法破坏 production consumer。其余 fixed-main、搜索、anchor、主题、Desktop 独有能力、许可 UI、无障碍和测试有效性未发现阻塞项；focused contract `40/40` 通过。唯一 repair 已按平台边界拆为 20A（shared+desktop，`26e52ff47a`）与 20B（android，`ba47a9a4c`）串行完成；合并唯一修复复审 APPROVED `0/0/0`，focused `50/50`，确认 shared 策略真实控制 Android/Desktop production consumers、ID94 evidence 完整、ID88/fixed-main 无漂移且外部副作用为 0。全量验证已完成 Spotless 与 domain/data；Android 两次 full 分别出现不同的单项时序失败，三个失败类 focused 共 `30/30` 通过并停止随机重跑。Desktop full-tests `2100` 项中三个 updater helper PID 等待在 2 秒失败，focused 仍可复现相同启动边界；已新增最小 test-only Task 20C，在不改 production 合同的前提下关闭该验收阻塞，再恢复 Desktop 全量与平台验收。
+**Review status（审查已清零，验证进行中）：** 对 `base-ref..f20861616` 的 whole-change 独立首审为 REJECTED `0/1/0`：ID94 的首许可证选择同时存在于 Android Screen、Desktop provider 与 shared policy，Desktop 在进入 shared 前已裁成单项，导致 shared selector mutation 无法破坏 production consumer。其余 fixed-main、搜索、anchor、主题、Desktop 独有能力、许可 UI、无障碍和测试有效性未发现阻塞项；focused contract `40/40` 通过。唯一 repair 已按平台边界拆为 20A（shared+desktop，`26e52ff47a`）与 20B（android，`ba47a9a4c`）串行完成；合并唯一修复复审 APPROVED `0/0/0`，focused `50/50`，确认 shared 策略真实控制 Android/Desktop production consumers、ID94 evidence 完整、ID88/fixed-main 无漂移且外部副作用为 0。全量验证已完成 Spotless 与 domain/data；Android 两次 full 分别出现不同的单项时序失败，三个失败类 focused 共 `30/30` 通过并停止随机重跑。Desktop full-tests `2100` 项中三个 updater helper PID 等待在 2 秒失败，focused 仍可复现相同启动边界；Task 20C 已以有界 10 秒等待关闭 helper 启动阻塞并通过独立审查。全量测试暴露的真实资源管理器副作用由 Task 20D 在 Gradle worker 默认 launcher 入口统一隔离，安全 RED、focused 与独立审查均通过；现可在不再打开 `test-tmp` 的前提下恢复 Desktop 全量与平台验收。
