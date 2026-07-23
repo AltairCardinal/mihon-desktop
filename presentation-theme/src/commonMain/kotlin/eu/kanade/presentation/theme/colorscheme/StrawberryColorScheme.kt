@@ -15,7 +15,7 @@ import androidx.compose.ui.graphics.Color
  * Tertiary #775930
  * Neutral #655C5C
  */
-internal object StrawberryColorScheme : BaseColorScheme() {
+object StrawberryColorScheme : BaseColorScheme() {
 
     override val darkScheme = darkColorScheme(
         primary = Color(0xFFFFB2B8),

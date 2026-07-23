@@ -7,7 +7,7 @@ import androidx.compose.ui.graphics.Color
 /**
  * Colors for Teal Turqoise theme
  */
-internal object TealTurqoiseColorScheme : BaseColorScheme() {
+object TealTurqoiseColorScheme : BaseColorScheme() {
 
     override val darkScheme = darkColorScheme(
         primary = Color(0xFF40E0D0),

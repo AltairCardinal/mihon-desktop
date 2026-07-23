@@ -8,7 +8,11 @@ import eu.kanade.presentation.theme.colorscheme.LavenderColorScheme
 import eu.kanade.presentation.theme.colorscheme.MidnightDuskColorScheme
 import eu.kanade.presentation.theme.colorscheme.MonochromeColorScheme
 import eu.kanade.presentation.theme.colorscheme.NordColorScheme
+import eu.kanade.presentation.theme.colorscheme.StrawberryColorScheme
 import eu.kanade.presentation.theme.colorscheme.TachiyomiColorScheme
+import eu.kanade.presentation.theme.colorscheme.TakoColorScheme
+import eu.kanade.presentation.theme.colorscheme.TealTurqoiseColorScheme
+import eu.kanade.presentation.theme.colorscheme.TidalWaveColorScheme
 import eu.kanade.presentation.theme.colorscheme.YotsubaColorScheme
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -32,6 +36,10 @@ class AndroidSharedPaletteWiringTest {
         assertSame(MidnightDuskColorScheme, palettes[AppTheme.MIDNIGHT_DUSK])
         assertSame(MonochromeColorScheme, palettes[AppTheme.MONOCHROME])
         assertSame(NordColorScheme, palettes[AppTheme.NORD])
+        assertSame(StrawberryColorScheme, palettes[AppTheme.STRAWBERRY_DAIQUIRI])
+        assertSame(TakoColorScheme, palettes[AppTheme.TAKO])
+        assertSame(TealTurqoiseColorScheme, palettes[AppTheme.TEALTURQUOISE])
+        assertSame(TidalWaveColorScheme, palettes[AppTheme.TIDAL_WAVE])
         assertSame(YotsubaColorScheme, palettes[AppTheme.YOTSUBA])
     }
 
@@ -45,6 +53,10 @@ class AndroidSharedPaletteWiringTest {
         assertSharedModuleOrigin(MidnightDuskColorScheme::class.java)
         assertSharedModuleOrigin(MonochromeColorScheme::class.java)
         assertSharedModuleOrigin(NordColorScheme::class.java)
+        assertSharedModuleOrigin(StrawberryColorScheme::class.java)
+        assertSharedModuleOrigin(TakoColorScheme::class.java)
+        assertSharedModuleOrigin(TealTurqoiseColorScheme::class.java)
+        assertSharedModuleOrigin(TidalWaveColorScheme::class.java)
         assertSharedModuleOrigin(YotsubaColorScheme::class.java)
     }
 

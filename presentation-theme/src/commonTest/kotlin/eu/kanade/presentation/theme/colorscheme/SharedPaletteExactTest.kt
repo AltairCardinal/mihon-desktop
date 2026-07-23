@@ -130,6 +130,86 @@ class SharedPaletteExactTest {
     }
 
     @Test
+    fun `strawberry palette matches fixed main tokens`() {
+        assertEquals(
+            "ffffb2b8,ff67001d,ffd53855,ffffffff,ffb61f40,ffed4a65,ff201a1a,ff91002a," +
+                "ffffffff,ffe8c08e,ff201a1a,ff775930,fffff7f1,ff201a1a,fff7dcdd,ff201a1a," +
+                "fff7dcdd,ff322727,ffe1bec0,ffffb2b8,fff7dcdd,ff3d2c2d,ffffb4ab,ff690005," +
+                "ff93000a,ffffdad6,ffa9898b,ff594042,ff000000,ff1d1011,ff463536,ff2c2222," +
+                "ff302525,ff322727,ff3c2f2f,ff463737",
+            StrawberryColorScheme.darkScheme.exactTokenSnapshot(),
+        )
+        assertEquals(
+            "ffa10833,ffffffff,ffd53855,ffffffff,ffffb2b8,ffa10833,ffffffff,ffd53855," +
+                "fff6eaed,ff5f441d,ffffffff,ff87683d,ffffffff,fffafafa,ff261819,fffafafa," +
+                "ff261819,fff6eaed,ff594042,ffa10833,ff3d2c2d,ffffeced,ffba1a1a,ffffffff," +
+                "ffffdad6,ff410002,ff8d7071,ffe1bec0,ff000000,ffeed4d5,fffff8f7,fff7dcdd," +
+                "fffde2e3,fff6eaed,fffff0f0,ffffffff",
+            StrawberryColorScheme.lightScheme.exactTokenSnapshot(),
+        )
+    }
+
+    @Test
+    fun `tako palette matches fixed main tokens`() {
+        assertEquals(
+            "fff3b375,ff38294e,fff3b375,ff38294e,ff84531e,fff3b375,ff38294e,ff5c4d4b," +
+                "fff3b375,ff66577e,fff3b375,ff4e4065,ffeddcff,ff21212e,ffe3e0f2,ff21212e," +
+                "ffe3e0f2,ff2a2a3c,ffcbc4ce,ff66577e,ffe5e1e6,ff1b1b1e,fff2b8b5,ff601410," +
+                "ff8c1d18,fff9dedc,ff958f99,ff49454f,ff000000,ff141218,ff3b383e,ff20202e," +
+                "ff262636,ff2a2a3c,ff303044,ff36364d",
+            TakoColorScheme.darkScheme.exactTokenSnapshot(),
+        )
+        assertEquals(
+            "ff66577e,fff3b375,ff66577e,fff3b375,ffd6baff,ff66577e,fff3b375,ffc8bed0," +
+                "ff66577e,fff3b375,ff574360,fffdd6b0,ff221437,fff7f5ff,ff1b1b22,fff7f5ff," +
+                "ff1b1b22,ffe8e0eb,ff49454e,ff66577e,ff313033,fff3eff4,ffb3261e,ffffffff," +
+                "fff9dedc,ff410e0b,ff7a757e,ffcac4d0,ff000000,ffded8e1,fffef7ff,ffd7d0da," +
+                "ffdfd8e2,ffe8e0eb,ffeee6f1,fff7eefa",
+            TakoColorScheme.lightScheme.exactTokenSnapshot(),
+        )
+    }
+
+    @Test
+    fun `teal turqoise palette matches fixed main tokens`() {
+        assertEquals(
+            "ff40e0d0,ff000000,ff40e0d0,ff000000,ff008080,ff40e0d0,ff000000,ff18544e," +
+                "ff40e0d0,ffbf1f2f,ffffffff,ff200508,ffbf1f2f,ff202125,ffdfdeda,ff202125," +
+                "ffdfdeda,ff233133,ffdfdeda,ff40e0d0,ffdfdeda,ff202125,fff2b8b5,ff601410," +
+                "ff8c1d18,fff9dedc,ff899391,ff49454f,ff000000,ff141218,ff3b383e,ff202c2e," +
+                "ff222f31,ff233133,ff28383a,ff2f4244",
+            TealTurqoiseColorScheme.darkScheme.exactTokenSnapshot(),
+        )
+        assertEquals(
+            "ff008080,ffffffff,ff008080,ffffffff,ff40e0d0,ff008080,ffffffff,ffcfe5e4," +
+                "ff008080,ffff7f7f,ff000000,ff2a1616,ffff7f7f,fffafafa,ff050505,fffafafa," +
+                "ff050505,ffebf3f1,ff050505,ffbfdfdf,ff050505,fffafafa,ffb3261e,ffffffff," +
+                "fff9dedc,ff410e0b,ff6f7977,ffcac4d0,ff000000,ffded8e1,fffef7ff,ffe1e9e7," +
+                "ffe6eeec,ffebf3f1,fff0f8f6,fff7fffd",
+            TealTurqoiseColorScheme.lightScheme.exactTokenSnapshot(),
+        )
+    }
+
+    @Test
+    fun `tidal wave palette matches fixed main tokens`() {
+        assertEquals(
+            "ff5ed4fc,ff003544,ff004d61,ffb8eaff,ffa12b03,ff5ed4fc,ff003544,ff004d61," +
+                "ffb8eaff,ff92f7bc,ff001c3b,ffc3fada,ff78ffd6,ff001c3b,ffd5e3ff,ff001c3b," +
+                "ffd5e3ff,ff082b4b,ffbfc8cc,ff5ed4fc,ffffe3c4,ff001c3b,fff2b8b5,ff601410," +
+                "ff8c1d18,fff9dedc,ff8a9296,ff49454f,ff000000,ff141218,ff3b383e,ff072642," +
+                "ff072947,ff082b4b,ff093257,ff0a3861",
+            TidalWaveColorScheme.darkScheme.exactTokenSnapshot(),
+        )
+        assertEquals(
+            "ff006780,ffffffff,ffb4d4df,ff001f28,ffff987f,ff006780,ffffffff,ff9ae1ff," +
+                "ff001f28,ff92f7bc,ff001c3b,ffc3fada,ff78ffd6,fffdfbff,ff001c3b,fffdfbff," +
+                "ff001c3b,ffe8eff5,ff40484c,ff006780,ff020400,ffffe3c4,ffb3261e,ffffffff," +
+                "fff9dedc,ff410e0b,ff70787c,ffcac4d0,ff000000,ffded8e1,fffef7ff,ffe2e8ec," +
+                "ffe5ecf1,ffe8eff5,ffedf4fa,fff5faff",
+            TidalWaveColorScheme.lightScheme.exactTokenSnapshot(),
+        )
+    }
+
+    @Test
     fun `lavender palette matches fixed main tokens`() {
         assertEquals(
             "ffa177ff,ff3d0090,ffa177ff,ffffffff,ff6d41c8,ffa177ff,ffffffff,ff423271," +

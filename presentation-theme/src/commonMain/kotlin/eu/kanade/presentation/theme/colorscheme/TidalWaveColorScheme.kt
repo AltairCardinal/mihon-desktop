@@ -14,7 +14,7 @@ import androidx.compose.ui.graphics.Color
  * Tertiary #92f7bc
  * Neutral #16151D
  */
-internal object TidalWaveColorScheme : BaseColorScheme() {
+object TidalWaveColorScheme : BaseColorScheme() {
 
     override val darkScheme = darkColorScheme(
         primary = Color(0xFF5ed4fc),
