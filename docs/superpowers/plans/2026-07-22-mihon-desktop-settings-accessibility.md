@@ -36,7 +36,7 @@ status-source: this-file
 
 按以下顺序一次执行一个子 Task，不并发写共享文件：
 
-`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 4G → 4H → 4I → 4J → 4K → 4L → 4M → 5 → 6A → 6B → 7A → 7B → 7C → 8A → 8B → 8C → 9 → 10A → 10B → 10C → 10D → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20`
+`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 4G → 4H → 4I → 4J → 4K → 4L → 4M → 5 → 6A → 6B → 7A → 7B → 7C → 8A → 8B → 8C → 9 → 10A1 → 10A2 → 10B → 10C → 10D → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20`
 
 其中 `DesktopSettingsCatalog.kt` 只在 5→7A→7B→7C→8A→8B→8C→11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6A→11→16 串行修改；`AboutScreen.kt` 只在 4I→8A→15→18、`ExtensionRepoScreen.kt` 只在 4J→8B→18、`TrackingSettingsScreen.kt` 只在 4K→4L→8C→18 串行修改；4M 只补 4L 的真实动作/失败路径测试，不返改 production。
 
@@ -69,7 +69,8 @@ status-source: this-file
 - [x] Task 8B：Desktop LazyList anchor 核心与 ExtensionRepo 页面
 - [x] Task 8C：Desktop 标题 anchor 的 Tracking 页面
 - [x] Task 9：共享主题模块、identity/default/codec 与 Android consumer
-- [ ] Task 10A：共享静态调色板第一批
+- [ ] Task 10A1：共享静态调色板基础与第一批
+- [ ] Task 10A2：共享静态调色板第一批收口
 - [ ] Task 10B：共享静态调色板第二批
 - [ ] Task 10C：共享静态调色板第三批
 - [ ] Task 10D：共享调色板 selector/AMOLED 与 Monet adapter 收口
@@ -618,21 +619,39 @@ status-source: this-file
 
 **Review status（已完成）：** 实现 `781b0f87a` 新增 Compose MPP `presentation-theme` Android/JVM module，将 fixed-main `AppTheme.kt` 以 R100 精确移动并共享 `ThemeMode`、canonical keys、SYSTEM/default、capability-aware MONET/DEFAULT、codec unknown fallback 与 deprecated/MONET picker 可见性。Android `UiPreferences` 真实消费共享合同，AppCompat/DynamicColors/Wallpaper adapter 留在 Android；移除 app module dependency 会令真实 Android compile RED，Desktop UI/直接依赖按 Task 11 边界未提前迁移。六类 production mutation 精确 RED 后恢复。独立审查 APPROVED `0/0/0`，shared test `7/7`、fixed-main provenance `6/6`、Android/JVM 强制编译、Spotless、diff 与 15-Task guard 通过；范围严格为 `8 files/167 touched`，用户脏文件零差异。下一项为父 Task 5B / 子 Task 10A。
 
-### Task 10A：共享静态调色板第一批
+### Task 10A1：共享静态调色板基础与第一批
 
-**Risk axis:** theme-palette-foundation
+**Risk axis:** theme-palette-foundation-first
 
 **Platform boundary:** shared+android
 
-**Estimated scope:** 7 files, 400 lines
+**Estimated scope:** 6 files, 320 lines
 
-**Verification:** Base + Tachiyomi/GreenApple/Lavender/Yotsuba high-similarity moves、cross-module visibility、fixed-main exact tokens、Android shared-module wiring
+**Verification:** Base + Tachiyomi/GreenApple high-similarity moves、shared Material3/UI classpath、cross-module visibility、fixed-main exact tokens、Android shared-module wiring
 
-**Files:** `BaseColorScheme.kt` 与四个 color-scheme 文件从 Android source high-similarity move 到 `presentation-theme/commonMain`；shared exact test、Android wiring test。
+**Files:** `BaseColorScheme.kt`、Tachiyomi/GreenApple color-scheme 从 Android source high-similarity move 到 `presentation-theme/commonMain`；module build、shared exact test、Android wiring test。
 
 1. RED：token 交换或 Android 仍加载旧本地复制路径时失败。
-2. GREEN：先移动 Base；保留 package/实现，采用 rename 而非重新抄写 ARGB。Base 与本批 palette 把原 `internal` 调整为最小跨模块可见 API，使 Android 在本提交即可继续直接消费；无平台 adapter 重复数据。
-3. 检查 rename similarity 与真实 touched≤400；超限时实施前按 2+2 拆分。
+2. GREEN：先补齐共享 Material3/UI classpath 并移动 Base；保留 package/实现，采用 rename 而非重新抄写 ARGB。Base 与本批 palette 把原 `internal` 调整为最小跨模块可见 API，使 Android 在本提交即可继续直接消费；无平台 adapter 重复数据。
+3. 检查 rename similarity、共享/Android 编译与真实 touched≤320。
+
+**Replan status：** 原 Task 10A 的只读盘点确认五个 palette blob 均与 fixed-main 完全一致，但 `presentation-theme` 尚缺 Material3/UI classpath；完整最小范围必须为 5 moves + module build + shared exact test + Android wiring test，共 8 文件，超过原 7 文件上限。代码零差异时按可独立编译边界拆为 10A1/10A2，不以省略依赖或测试规避门禁。
+
+### Task 10A2：共享静态调色板第一批收口
+
+**Risk axis:** theme-palette-foundation-rest
+
+**Platform boundary:** shared+android
+
+**Estimated scope:** 4 files, 260 lines
+
+**Verification:** Lavender/Yotsuba high-similarity moves、fixed-main exact tokens、Android shared-module wiring extension
+
+**Files:** Lavender/Yotsuba 两个 color-scheme high-similarity move；扩展 10A1 shared exact test 与 Android wiring test。
+
+1. 按 10A1 的 RED/rename/consumer mutation 模式执行；交换任一 token 或恢复旧 Android 本地路径时失败。
+2. 保留 light/dark 语义与最小跨模块可见性，不重新抄写或近似 ARGB。
+3. 运行 shared exact、Android production wiring/compile、Spotless、rename/range gate。
 
 ### Task 10B：共享静态调色板第二批
 
@@ -646,7 +665,7 @@ status-source: this-file
 
 **Files:** 四个 palette verbatim move、同一 shared exact/Android wiring tests。
 
-1. 按 10A 的 RED/rename/consumer mutation 模式执行。
+1. 按 10A1/10A2 的 RED/rename/consumer mutation 模式执行。
 2. 不合并或近似颜色；保留 light/dark 语义，并在 rename 内把本批 palette 调整为最小跨模块可见，使当前 Android 在本提交可编译消费。
 3. 检查 touched≤400；超限实施前按 2+2 拆分。
 
@@ -662,7 +681,7 @@ status-source: this-file
 
 **Files:** 四个 palette verbatim move、同一 shared exact/Android wiring tests。
 
-1. 按 10A 的 RED/rename/consumer mutation 模式执行。
+1. 按 10A1/10A2 的 RED/rename/consumer mutation 模式执行。
 2. 原版拼写/序列化 identity 保持兼容，并在 rename 内把本批 palette 调整为最小跨模块可见，使当前 Android 在本提交可编译消费。
 3. 检查 touched≤400；超限实施前按 2+2 拆分。
 
