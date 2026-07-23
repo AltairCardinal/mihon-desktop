@@ -259,37 +259,54 @@ data class TrackingSettingsScreen(
         }
 
         confirmation?.let { request ->
-            AlertDialog(
-                onDismissRequest = { confirmation = null },
-                title = { Text(request.title) },
-                text = { Text(request.message) },
-                confirmButton = {
-                    TextButton(onClick = {
-                        confirmation = null
-                        scope.launch {
-                            runCatching {
-                                when (request) {
-                                    is TrackingConfirmation.Logout -> model.logout(request.trackerId)
-                                    is TrackingConfirmation.Unbind -> model.unbind(request.trackerId)
-                                }
-                            }.onFailure { model.reportError(it, request.failure) }
-                            selectedId = null
-                        }
-                    }) {
-                        Text(
+            TrackingConfirmationDialog(
+                request.title,
+                request.message,
+                when (request) {
+                    is TrackingConfirmation.Logout -> MR.strings.logout.localized()
+                    is TrackingConfirmation.Unbind -> MR.strings.action_remove.localized()
+                },
+                onConfirm = {
+                    confirmation = null
+                    scope.launch {
+                        runCatching {
                             when (request) {
-                                is TrackingConfirmation.Logout -> MR.strings.logout.localized()
-                                is TrackingConfirmation.Unbind -> MR.strings.action_remove.localized()
-                            },
-                        )
+                                is TrackingConfirmation.Logout -> model.logout(request.trackerId)
+                                is TrackingConfirmation.Unbind -> model.unbind(request.trackerId)
+                            }
+                        }.onFailure { model.reportError(it, request.failure) }
+                        selectedId = null
                     }
                 },
-                dismissButton = {
-                    TextButton(onClick = { confirmation = null }) { Text(MR.strings.action_cancel.localized()) }
-                },
+                onDismiss = { confirmation = null },
             )
         }
     }
+}
+
+@Composable
+internal fun TrackingConfirmationDialog(
+    title: String,
+    message: String,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(message) },
+        confirmButton = {
+            DesktopSettingsTextButton(onClick = onConfirm) {
+                Text(confirmLabel)
+            }
+        },
+        dismissButton = {
+            DesktopSettingsTextButton(onClick = onDismiss) {
+                Text(MR.strings.action_cancel.localized())
+            }
+        },
+    )
 }
 
 internal fun trackingMessageText(message: TrackingMessage, locale: Locale = Locale.getDefault()): String = when (message) {

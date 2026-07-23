@@ -29,6 +29,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.parallel.Isolated
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.TrackerAuthentication
 import tachiyomi.domain.track.service.TrackerProfile
@@ -107,6 +108,68 @@ class TrackingSettingsKeyboardDialogTest {
             }
         }
     }
+
+    @Test
+    fun `confirmation buttons dispatch once on key down`() = runBlocking {
+        listOf(MR.strings.logout.localized(), MR.strings.action_remove.localized()).forEach { confirmLabel ->
+            keys.forEach { key ->
+                var confirms = 0
+                var dismisses = 0
+                LoginHarness.confirmationScene(confirmLabel, { confirms++ }, { dismisses++ }).useScene { scene ->
+                    LoginHarness.activateExactlyOnce(scene, confirmLabel, key, calls = { confirms })
+                    assertEquals(0, dismisses)
+                }
+                LoginHarness.confirmationScene(confirmLabel, { confirms++ }, { dismisses++ }).useScene { scene ->
+                    LoginHarness.activateExactlyOnce(scene, MR.strings.action_cancel.localized(), key, calls = { dismisses })
+                    assertEquals(1, confirms)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `full settings logout confirms the selected tracker only and cancel has no side effect`() = runBlocking {
+        val target = LoginHarness.authenticatingService(71, "Logout target", TrackerAuthentication.API_KEY, loggedIn = true)
+        val other = LoginHarness.authenticatingService(72, "Logout other", TrackerAuthentication.API_KEY, loggedIn = true)
+        LoginHarness.scene(listOf(target.service, other.service)).useScene { scene ->
+            LoginHarness.click(scene, target.service.profile.value.name)
+            LoginHarness.activateExactlyOnce(scene, MR.strings.action_cancel.localized(), Key.Enter) {
+                if (MR.strings.desktop_tracking_logout_consequence.localized() in LoginHarness.text(scene)) 0 else 1
+            }
+            assertTrue(target.logoutIds.isEmpty() && other.logoutIds.isEmpty())
+
+            LoginHarness.click(scene, target.service.profile.value.name)
+            LoginHarness.activateExactlyOnce(scene, MR.strings.logout.localized(), Key.NumPadEnter, last = true, calls = target.logoutIds::size)
+            LoginHarness.await(scene) { MR.strings.logout_success.localized() in LoginHarness.text(scene) }
+            assertEquals(listOf(71L), target.logoutIds)
+            assertTrue(other.logoutIds.isEmpty())
+        }
+    }
+
+    @Test
+    fun `full manga tracking unbinds the selected tracker only and cancel has no side effect`() = runBlocking {
+        val trackerId = 81L
+        val service = LoginHarness.authenticatingService(trackerId, "Unbind target", TrackerAuthentication.API_KEY, loggedIn = true)
+        val deletions = mutableListOf<Pair<Long, Long>>()
+        val repository = LoginHarness.repository(
+            listOf(
+                Track(1, 42, trackerId, 2, null, "Bound manga", 3.0, 10, 1, 0.0, "", 0, 0, false),
+            ),
+        ) { mangaId, deletedTrackerId -> deletions += mangaId to deletedTrackerId }
+        LoginHarness.scene(listOf(service.service), repository, TrackingSettingsScreen(42, "Manga", 10)).useScene { scene ->
+            LoginHarness.click(scene, service.service.profile.value.name)
+            LoginHarness.click(scene, MR.strings.action_remove.localized())
+            LoginHarness.activateExactlyOnce(scene, MR.strings.action_cancel.localized(), Key.Spacebar) {
+                if (MR.strings.track_delete_text.localized() in LoginHarness.text(scene)) 0 else 1
+            }
+            assertTrue(deletions.isEmpty())
+
+            LoginHarness.click(scene, MR.strings.action_remove.localized())
+            LoginHarness.activateExactlyOnce(scene, MR.strings.action_remove.localized(), Key.Spacebar, last = true, calls = deletions::size)
+            LoginHarness.await(scene) { MR.strings.desktop_tracking_removed.localized() in LoginHarness.text(scene) }
+            assertEquals(listOf(42L to trackerId), deletions)
+        }
+    }
 }
 
 private typealias LoginInvocation = Triple<TrackerAuthentication, String?, String>
@@ -116,11 +179,18 @@ private object LoginHarness {
     data class Fixture(
         val service: DesktopAuthenticatingTrackerService,
         val invocations: MutableList<LoginInvocation>,
+        val logoutIds: MutableList<Long>,
     )
 
-    fun authenticatingService(id: Long, name: String, authentication: TrackerAuthentication): Fixture {
-        val profile = MutableStateFlow(TrackerProfile(id, name, authentication, loggedIn = false))
+    fun authenticatingService(
+        id: Long,
+        name: String,
+        authentication: TrackerAuthentication,
+        loggedIn: Boolean = false,
+    ): Fixture {
+        val profile = MutableStateFlow(TrackerProfile(id, name, authentication, loggedIn))
         val invocations = mutableListOf<LoginInvocation>()
+        val logoutIds = mutableListOf<Long>()
         val service = mockk<DesktopAuthenticatingTrackerService>(relaxed = true) {
             every { this@mockk.profile } returns profile
             coEvery { login(any(), any()) } coAnswers {
@@ -129,14 +199,26 @@ private object LoginHarness {
             coEvery { loginWithApiKey(any()) } coAnswers {
                 invocations += LoginInvocation(TrackerAuthentication.API_KEY, null, firstArg())
             }
+            coEvery { logout() } coAnswers {
+                logoutIds += id
+                profile.value = profile.value.copy(loggedIn = false)
+            }
         }
-        return Fixture(service, invocations)
+        return Fixture(service, invocations, logoutIds)
     }
 
-    suspend fun scene(services: List<TrackerService>): ImageComposeScene {
-        val repository = mockk<TrackRepository>(relaxed = true) {
-            every { getTracksAsFlow() } returns flowOf(emptyList())
+    fun repository(tracks: List<Track> = emptyList(), onDelete: (Long, Long) -> Unit = { _, _ -> }) =
+        mockk<TrackRepository>(relaxed = true) {
+            every { getTracksAsFlow() } returns flowOf(tracks)
+            coEvery { getTracksByMangaId(any()) } returns tracks
+            coEvery { delete(any(), any()) } coAnswers { onDelete(firstArg(), secondArg()) }
         }
+
+    suspend fun scene(
+        services: List<TrackerService>,
+        repository: TrackRepository = repository(),
+        screen: TrackingSettingsScreen = TrackingSettingsScreen(),
+    ): ImageComposeScene {
         val registry = object : TrackerServiceRegistry { override val services = services }
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns DesktopAppPreferences(InMemoryPreferenceStore())
@@ -146,7 +228,7 @@ private object LoginHarness {
         return ImageComposeScene(900, 1_200, coroutineContext = kotlinx.coroutines.currentCoroutineContext()).also { scene ->
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
-                    Navigator(TrackingSettingsScreen()) { CurrentScreen() }
+                    Navigator(screen) { CurrentScreen() }
                 }
             }
             await(scene) { services.last().profile.value.name in text(scene) }
@@ -163,6 +245,16 @@ private object LoginHarness {
         ImageComposeScene(900, 1_200, coroutineContext = kotlinx.coroutines.currentCoroutineContext()).also { scene ->
             scene.setContent { LoginDialog(service, onDismiss) { error("Cancel must not run authentication") } }
             await(scene) { MR.strings.action_cancel.localized() in text(scene) }
+        }
+
+    suspend fun confirmationScene(
+        confirmLabel: String,
+        onConfirm: () -> Unit,
+        onDismiss: () -> Unit,
+    ): ImageComposeScene =
+        ImageComposeScene(900, 1_200, coroutineContext = kotlinx.coroutines.currentCoroutineContext()).also { scene ->
+            scene.setContent { TrackingConfirmationDialog("Title", "Message", confirmLabel, onConfirm, onDismiss) }
+            await(scene) { confirmLabel in text(scene) }
         }
 
     suspend fun setCredentials(
@@ -219,6 +311,11 @@ private object LoginHarness {
     private fun serviceAction(scene: ImageComposeScene, name: String) = nodes(scene, true)
         .filter { it.config.contains(SemanticsActions.OnClick) }
         .single { name in subtreeText(it) }
+
+    suspend fun click(scene: ImageComposeScene, label: String) {
+        assertTrue(requireNotNull(action(scene, label, false).config[SemanticsActions.OnClick].action).invoke())
+        render(scene)
+    }
 
     private fun action(scene: ImageComposeScene, label: String, last: Boolean): SemanticsNode {
         val matches = nodes(scene, true).filter { it.config.contains(SemanticsActions.OnClick) && label in subtreeText(it) }
