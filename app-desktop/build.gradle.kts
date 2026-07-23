@@ -4,6 +4,8 @@ import java.io.ByteArrayOutputStream
 plugins {
     kotlin("multiplatform")
     alias(libs.plugins.compose.multiplatform)
+    id("com.mikepenz.aboutlibraries.plugin")
+    id("mihon.desktop.licenses")
 }
 
 pluginManager.apply("org.jetbrains.kotlin.plugin.compose")
