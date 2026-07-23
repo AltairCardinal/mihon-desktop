@@ -94,6 +94,7 @@ status-source: this-file
 - [x] Task 20B：Android 许可证 shared consumer 与 parity evidence
 - [x] Task 20C：Windows updater 测试 helper 启动边界
 - [x] Task 20D：Desktop 测试进程外部目录动作隔离
+- [ ] Task 20E：Desktop share reveal 测试隔离
 - [ ] Task 20：whole-change 审查与三平台 verify
 
 ## 全局门禁
@@ -1085,6 +1086,22 @@ status-source: this-file
 3. 运行 opener focused、Desktop compile、Spotless、diff/range/guard；独立审查通过前不恢复 Desktop full-tests。
 
 **Review status（已完成）：** 实现 `0c9462269` 在默认系统 launcher 进入 `Desktop.isDesktopSupported/Desktop.open` 前拒绝 Gradle test worker；公共 `open` 的目录创建、显式 fake launcher 与正常产品 runtime 行为不变。安全 RED 先用 MockK 拦截全部 Desktop 静态入口，旧实现按预期失败但未打开真实资源管理器；GREEN focused `3/3`。独立审查 APPROVED `0/0/0`，compile、Spotless、diff/range/guard 通过，复跑期间指向 `app-desktop/build/test-tmp` 的资源管理器窗口为 0，外部副作用为 0。
+
+### Task 20E：Desktop share reveal 测试隔离
+
+**Risk axis:** desktop-test-share-reveal-isolation
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 2 files, 80 lines
+
+**Verification:** DesktopShareService focused、Desktop compile、Spotless、diff/range/guard
+
+**Files:** `app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopShareService.kt`、`app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopShareServiceTest.kt`
+
+1. RED：安全 mock AWT Desktop 静态入口，证明默认 `AwtDesktopRevealPort` 在 Gradle test worker 内不得打开已保存文件的父目录；不得用真实 Explorer 作为 RED。
+2. GREEN：在 AWT reveal adapter 的 Gradle test worker 边界拒绝真实 `Desktop.open`，并让通用测试 service 工厂显式注入无副作用 reveal；正常产品 runtime、显式 reveal port 与保存成功不受影响。
+3. 运行 DesktopShareService focused、Desktop compile、Spotless、diff/range/guard；独立审查通过前不恢复 Desktop full-tests。
 
 ### Task 20：whole-change 审查与三平台 verify
 
