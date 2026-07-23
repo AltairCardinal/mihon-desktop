@@ -95,6 +95,7 @@ status-source: this-file
 - [x] Task 20C：Windows updater 测试 helper 启动边界
 - [x] Task 20D：Desktop 测试进程外部目录动作隔离
 - [x] Task 20E：Desktop share reveal 测试隔离
+- [ ] Task 20F：Android ThemeMode facade runtime wiring
 - [ ] Task 20：whole-change 审查与三平台 verify
 
 ## 全局门禁
@@ -1104,6 +1105,22 @@ status-source: this-file
 3. 运行 DesktopShareService focused、Desktop compile、Spotless、diff/range/guard；独立审查通过前不恢复 Desktop full-tests。
 
 **Review status（已完成）：** 精确定位 `DesktopShareServiceTest.service()` 未注入 reveal，导致 `Saved(tempFile)` 走默认 `AwtDesktopRevealPort` 并打开 `app-desktop/build/test-tmp`；全量 `2101/2101` 仍会通过，因为 reveal 是 best-effort。实现 `f52bed531` 在 AWT reveal adapter 进入 Desktop API 前拒绝 Gradle test worker，并让通用测试 factory 显式注入 no-op reveal。安全 RED 以 MockK 拦截全部 AWT Desktop 入口，旧实现按预期失败但未打开 Explorer；GREEN focused `13/13`。独立审查 APPROVED `0/0/0`，compile、Spotless、diff/range/guard 通过，正常 runtime、显式 reveal、保存成功与 reveal 失败合同不变，外部副作用为 0。
+
+### Task 20F：Android ThemeMode facade runtime wiring
+
+**Risk axis:** android-theme-facade-runtime
+
+**Platform boundary:** android
+
+**Estimated scope:** 2 files, 80 lines
+
+**Verification:** Android facade focused、assembleDebug/AndroidTest、API36 instrumentation/production launch、Spotless、diff/range/guard
+
+**Files:** `app/src/main/java/eu/kanade/domain/ui/model/ThemeMode.kt`、`app/src/test/java/eu/kanade/domain/ui/model/AndroidThemeModeFacadeTest.kt`
+
+1. RED：当前 API36 production launch 与 `SettingsSearchNavigationUiTest` 均在 `App.onCreate:156` 以 `NoSuchMethodError ThemeModeKt.setAppCompatDelegateThemeMode` 崩溃；apkanalyzer 证明 app 与 presentation-theme 在 APK 中生成两份同名 `ThemeModeKt` facade。新增安全 JVM 合同要求 shared 与 Android adapter facade 名称各自唯一，且 Android facade 能反射解析目标方法。
+2. GREEN：只为 Android adapter 指定独立 JVM facade 名，消除 dex 类定义冲突；不得复制 shared `ThemeMode`、改变 theme/default/AMOLED 语义或回退共享模块。
+3. 运行 focused、Spotless、diff/range/guard；重建并安装 app/test APK，在同一 API36 AVD 上确认 production 启动不再崩溃且 settings search instrumentation 真正执行，再恢复其余 Android runtime 验收。
 
 ### Task 20：whole-change 审查与三平台 verify
 
