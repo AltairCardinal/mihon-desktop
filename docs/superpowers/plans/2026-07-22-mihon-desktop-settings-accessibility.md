@@ -68,7 +68,7 @@ status-source: this-file
 - [x] Task 8A：Desktop 标题 anchor 的 About 页面
 - [x] Task 8B：Desktop LazyList anchor 核心与 ExtensionRepo 页面
 - [x] Task 8C：Desktop 标题 anchor 的 Tracking 页面
-- [ ] Task 9：共享主题模块、identity/default/codec 与 Android consumer
+- [x] Task 9：共享主题模块、identity/default/codec 与 Android consumer
 - [ ] Task 10A：共享静态调色板第一批
 - [ ] Task 10B：共享静态调色板第二批
 - [ ] Task 10C：共享静态调色板第三批
@@ -615,6 +615,8 @@ status-source: this-file
 1. RED：动态色 capability、未知字符串、废弃 picker 可见性、canonical key/default 漂移或 Desktop 无法依赖模块时失败。
 2. GREEN：共享 module 持有 UI identity/default/codec；Android 保留 AppCompat/DynamicColors/Wallpaper adapter。
 3. 不伪造显式 migration；运行 shared/Android compile与behavior、Spotless/range gate。
+
+**Review status（已完成）：** 实现 `781b0f87a` 新增 Compose MPP `presentation-theme` Android/JVM module，将 fixed-main `AppTheme.kt` 以 R100 精确移动并共享 `ThemeMode`、canonical keys、SYSTEM/default、capability-aware MONET/DEFAULT、codec unknown fallback 与 deprecated/MONET picker 可见性。Android `UiPreferences` 真实消费共享合同，AppCompat/DynamicColors/Wallpaper adapter 留在 Android；移除 app module dependency 会令真实 Android compile RED，Desktop UI/直接依赖按 Task 11 边界未提前迁移。六类 production mutation 精确 RED 后恢复。独立审查 APPROVED `0/0/0`，shared test `7/7`、fixed-main provenance `6/6`、Android/JVM 强制编译、Spotless、diff 与 15-Task guard 通过；范围严格为 `8 files/167 touched`，用户脏文件零差异。下一项为父 Task 5B / 子 Task 10A。
 
 ### Task 10A：共享静态调色板第一批
 
