@@ -88,7 +88,7 @@ status-source: this-file
 - [x] Task 18E：Desktop Tracking accessibility
 - [x] Task 18F：Desktop Tracking service-action state matrix
 - [x] Task 18G：Desktop Tracking login dialog keyboard accessibility
-- [ ] Task 18H：Desktop Tracking logout/unbind dialog keyboard accessibility
+- [x] Task 18H：Desktop Tracking logout/unbind dialog keyboard accessibility
 - [ ] Task 19：IDs 88/90/91/94 exact parity evidence
 - [ ] Task 20：whole-change 审查与三平台 verify
 
@@ -989,6 +989,8 @@ status-source: this-file
 1. RED：logout/unbind 的 confirm/cancel 任一真实控件在 Enter/NumPadEnter/Space 的 KeyDown 未恰好触发一次、KeyUp 重复触发，或 cancel 产生认证/仓库副作用时失败。
 2. GREEN：复用 18G 的 production helper 与测试 harness，只扩展真实 `TrackingSettingsScreen` 状态；保留 registry/auth/model、typed-message、service-specific 参数与失败反馈。
 3. 运行 focused confirmation keyboard、Tracking auth/action production wiring、compile、Spotless 与 range gate。
+
+**Review status（已完成）：** 实现 `4ce8e2029a` 抽取正式 `TrackingConfirmationDialog` 并由 full Screen 调用，confirm/cancel 统一复用 Desktop TextButton helper；直接 production 组件覆盖 Logout/Unbind 两标签、三键非幂等 `0→1→1`，full Screen 验证 logout 仅命中 tracker `71`、unbind 精确删除 `(mangaId=42, trackerId=81)`、cancel 无副作用及 typed success/removed feedback。首审 `0/1/0` 指出 full-Screen confirm 用 `matches.last()` 依赖语义树顺序；唯一修复 `4d8ffd92b6` 以真实 logout consequence / delete text 加目标 label 锚定结构最小 dialog 子树，并在子树内 `.single()` 定位 action，wrong-anchor mutation 精确 RED。唯一复审 APPROVED `0/0/0`，focused/安全/Architecture Guard 共 `25/25`、compile/Spotless 通过，累计 `2 files/179 touched`，外部副作用为 0。下一项为父 Task 5B / 子 Task 19。
 
 ### Task 19：IDs 88/90/91/94 exact parity evidence
 
