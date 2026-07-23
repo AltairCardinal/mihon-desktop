@@ -46,10 +46,7 @@ class TrackingSettingsAccessibilityTest {
         val scene = scene(listOf(password, apiKey, sourceManaged, unavailable))
         try {
             listOf("Password service", "API service").forEach { name ->
-                val action = serviceAction(scene, name)
-                assertEquals(Role.Button, action.config[SemanticsProperties.Role], "$name action role")
-                assertEquals(1, flatten(action).count { it.config.contains(SemanticsActions.OnClick) }, name)
-                assertEquals(true, listOf(name, MR.strings.login.localized()).all(subtreeText(action)::contains), name)
+                assertServiceAction(scene, name, MR.strings.login.localized())
             }
             listOf("Source managed", "Unavailable service").forEach { name ->
                 val disabled = nodes(scene, true).single {
@@ -78,7 +75,33 @@ class TrackingSettingsAccessibilityTest {
         }
     }
 
-    private suspend fun scene(services: List<TrackerService>): ImageComposeScene {
+    @Test
+    fun `login logout and manage labels stay inside their unique service actions`() = runBlocking {
+        val cases = listOf(
+            ServiceActionCase("Logged out service", loggedIn = false, mangaId = null, actionLabel = MR.strings.login.localized()),
+            ServiceActionCase("Logged in service", loggedIn = true, mangaId = null, actionLabel = MR.strings.logout.localized()),
+            ServiceActionCase(
+                "Manga service",
+                loggedIn = true,
+                mangaId = 42L,
+                actionLabel = MR.strings.desktop_tracking_manage.localized(),
+            ),
+        )
+        cases.forEachIndexed { index, case ->
+            val service = authenticatingService(index.toLong() + 10, case.name, loggedIn = case.loggedIn)
+            val scene = scene(listOf(service), TrackingSettingsScreen(mangaId = case.mangaId))
+            try {
+                assertServiceAction(scene, case.name, case.actionLabel)
+            } finally {
+                scene.close()
+            }
+        }
+    }
+
+    private suspend fun scene(
+        services: List<TrackerService>,
+        screen: TrackingSettingsScreen = TrackingSettingsScreen(),
+    ): ImageComposeScene {
         val repository = mockk<TrackRepository>(relaxed = true) {
             coEvery { getTracksByMangaId(any()) } returns emptyList()
             every { getTracksAsFlow() } returns flowOf(emptyList())
@@ -93,10 +116,10 @@ class TrackingSettingsAccessibilityTest {
         return ImageComposeScene(900, 1_200, coroutineContext = kotlinx.coroutines.currentCoroutineContext()).also { scene ->
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
-                    Navigator(TrackingSettingsScreen()) { CurrentScreen() }
+                    Navigator(screen) { CurrentScreen() }
                 }
             }
-            await(scene, "all tracking services") { "Unavailable service" in text(scene) }
+            await(scene, "all tracking services") { services.last().profile.value.name in text(scene) }
         }
     }
 
@@ -104,9 +127,10 @@ class TrackingSettingsAccessibilityTest {
         id: Long,
         name: String,
         authentication: TrackerAuthentication = TrackerAuthentication.USERNAME_PASSWORD,
+        loggedIn: Boolean = false,
         unavailableReason: String? = null,
     ): DesktopAuthenticatingTrackerService {
-        val profile = MutableStateFlow(TrackerProfile(id, name, authentication, false, unavailableReason = unavailableReason))
+        val profile = MutableStateFlow(TrackerProfile(id, name, authentication, loggedIn, unavailableReason = unavailableReason))
         return mockk(relaxed = true) {
             every { this@mockk.profile } returns profile
             every { statuses } returns listOf(1L to "Reading")
@@ -117,6 +141,13 @@ class TrackingSettingsAccessibilityTest {
     private fun sourceService(id: Long, name: String): TrackerService {
         val profile = MutableStateFlow(TrackerProfile(id, name, TrackerAuthentication.API_KEY, true))
         return mockk(relaxed = true) { every { this@mockk.profile } returns profile }
+    }
+
+    private fun assertServiceAction(scene: ImageComposeScene, name: String, actionLabel: String) {
+        val action = serviceAction(scene, name)
+        assertEquals(Role.Button, action.config[SemanticsProperties.Role], "$name action role")
+        assertEquals(1, flatten(action).count { it.config.contains(SemanticsActions.OnClick) }, name)
+        assertEquals(true, listOf(name, actionLabel).all(subtreeText(action)::contains), "$name action content")
     }
 
     private fun assertPasswordField(label: String, scene: ImageComposeScene, expected: Boolean) {
@@ -164,4 +195,6 @@ class TrackingSettingsAccessibilityTest {
         flatten(if (unmerged) it.unmergedRootSemanticsNode else it.rootSemanticsNode)
     }
     private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+
+    private data class ServiceActionCase(val name: String, val loggedIn: Boolean, val mangaId: Long?, val actionLabel: String)
 }
