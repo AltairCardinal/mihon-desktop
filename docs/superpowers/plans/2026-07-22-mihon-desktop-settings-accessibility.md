@@ -70,7 +70,7 @@ status-source: this-file
 - [x] Task 8C：Desktop 标题 anchor 的 Tracking 页面
 - [x] Task 9：共享主题模块、identity/default/codec 与 Android consumer
 - [x] Task 10A：共享静态调色板基础与第一批
-- [ ] Task 10B：共享静态调色板第一批收口
+- [x] Task 10B：共享静态调色板第一批收口
 - [ ] Task 10C：共享静态调色板第二批
 - [ ] Task 10D：共享静态调色板第三批
 - [ ] Task 10E：共享调色板 selector/AMOLED 与 Monet adapter 收口
@@ -654,6 +654,8 @@ status-source: this-file
 1. 按 10A 的 RED/rename/consumer mutation 模式执行；交换任一 token 或恢复旧 Android 本地路径时失败。
 2. 保留 light/dark 语义与最小跨模块可见性，不重新抄写或近似 ARGB。
 3. 运行 shared exact、Android production wiring/compile、Spotless、rename/range gate。
+
+**Review status（已完成）：** 实现 `b22f80a87` 将 Lavender/Yotsuba 以 R98/R98 高相似度 move 到共享模块，唯一 production 变化为 `internal object`→`object`；旧 Android 路径消失，production 各仅保留一个共享定义。shared exact 扩展为两套 light/dark 完整 36-role 快照，Android production map 以 singleton identity 与 runtime CodeSource 证明真实共享来源；缺失 shared type、旧 local origin 及两套 token mutation 均精确 RED 后恢复。独立审查 APPROVED `0/0/0`，shared `12/12`、Android wiring `2/2`、provenance `6/6`、JVM/Android/consumer compile、Spotless、diff 与 14-Task guard 通过；范围严格为 `4 files/50 touched`。下一项为父 Task 5B / 子 Task 10C。
 
 ### Task 10C：共享静态调色板第二批
 
