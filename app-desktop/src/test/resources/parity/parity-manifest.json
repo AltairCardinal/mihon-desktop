@@ -345,7 +345,7 @@
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/util/CrashLogUtil.kt", "symbol": "class CrashLogUtil", "line": 20}],
       "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app/src/main/java/eu/kanade/tachiyomi/util/CrashLogUtil.kt", "symbol": "class CrashLogUtil", "line": 20}],
       "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/CrashHandler.kt", "symbol": "object CrashHandler", "line": 14}],
-      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/CrashHandlerTest.kt#appendCrashReport creates parent directory and writes report", "productionMarkers": ["CrashHandler.appendCrashReport"]}]
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/CrashHandlerTest.kt#uncaught handler reports original exception when crash log write fails", "productionMarkers": ["CrashHandler.uncaughtException"]}]
     },
     "group": "平台基础",
     "tags": [
@@ -354,18 +354,20 @@
     "status": "NOT_STARTED",
     "statusDecision": {
       "task": "Task 6",
-      "decision": "CHILD_PLAN_REQUIRED",
-      "followUp": "docs/superpowers/plans/2026-07-24-task-6a-desktop-crash-log-failure-boundary.md",
-      "gap": "Desktop uncaught-exception persistence performs filesystem writes without a failure boundary; a write failure can escape the handler and lose the diagnostic path that fixed-main contains and reports.",
+      "decision": "RETURNED_FOR_PARENT_REVIEW",
+      "followUp": "Task 6",
+      "gap": "Task 6A now contains Desktop persistence failure and preserves stderr diagnostics; parent Task 6 must re-evaluate fixed/current/shared/Desktop semantic closure before changing the non-terminal status.",
       "behaviorMethods": {
         "app-desktop/src/test/kotlin/mihon/desktop/CrashHandlerTest.kt": [
           "appendCrashReport creates parent directory and writes report",
-          "appendCrashReport rotates existing oversized log before writing"
+          "appendCrashReport rotates existing oversized log before writing",
+          "install registers the production default handler",
+          "uncaught handler reports original exception when crash log write fails"
         ]
       }
     },
     "authoritativeImplementation": "Fixed-main original Mihon capability #12: CrashLogUtil dumps Android logs and diagnostics.",
-    "desktopImplementation": "Desktop CrashHandler writes and rotates uncaught-exception reports; no shared crash runtime is claimed.",
+    "desktopImplementation": "Desktop CrashHandler writes and rotates uncaught-exception reports; persistence failures are contained and reported with the original exception on stderr. No shared crash runtime is claimed.",
     "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/CrashHandlerTest.kt"],
     "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/CrashHandlerTest.kt": ["appendCrashReport creates parent directory and writes report"]},
     "behaviorVerificationTask": ":app-desktop:task2ParityVerification",

@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 6A child plan
+active-task: Task 6
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -208,7 +208,7 @@ active-task: Task 6A child plan
 
 **Scope correction:** 独立审查要求加入 `behaviorMethods ⊆ protectionTests` mutation guard，并准确解析父子计划 YAML frontmatter 与产品文件范围；文件数仍为 4，触达上限修正为 400 行。
 
-**Audit evidence（等待 child plan 回收）：** 基线 `0cec5ed06a96dde60e63a9c882a42c9cbbaf1ba4`。逐项 production 行为核验后，仅 ID 9 同时具备固定原版、当前 Android、shared decoder、Desktop Skia consumer、真实成功/失败 fixture 与 protection tests，状态可从 `WIRED` 提升为 `VERIFIED`。ID 3/4 的未分类架构债务交给 Task 14；ID 8 的 network/manager wiring gap 已由 Task 16C 接收；ID 10 的 Android/Desktop 重复任务规则交给 Task 16B；ID 11 保留 native delivery success 与 Android shared-event consumption gap，交给 Task 17。ID 7 缺当前 Android PreferenceStore adapter 的真实行为契约，保持 `WIRED`。ID 12 发现真实产品缺口：Desktop crash handler 的文件写入失败可再次逃逸 uncaught-exception handler；已创建 [Task 6A child plan](2026-07-24-task-6a-desktop-crash-log-failure-boundary.md)，本 Task 保持未勾选且 `active-task` 指向该计划，待修复回收后再做最终裁决。
+**Audit evidence（Task 6A 已回收，等待父状态裁决）：** 基线 `0cec5ed06a96dde60e63a9c882a42c9cbbaf1ba4`。逐项 production 行为核验后，仅 ID 9 同时具备固定原版、当前 Android、shared decoder、Desktop Skia consumer、真实成功/失败 fixture 与 protection tests，状态可从 `WIRED` 提升为 `VERIFIED`。ID 3/4 的未分类架构债务交给 Task 14；ID 8 的 network/manager wiring gap 已由 Task 16C 接收；ID 10 的 Android/Desktop 重复任务规则交给 Task 16B；ID 11 保留 native delivery success 与 Android shared-event consumption gap，交给 Task 17。ID 7 缺当前 Android PreferenceStore adapter 的真实行为契约，保持 `WIRED`。ID 12 的 [Task 6A child plan](2026-07-24-task-6a-desktop-crash-log-failure-boundary.md) 已用真实不可写路径修复并保护 crash persistence failure boundary，控制权恢复到 `active-task: Task 6`；本 Task 仍保持未勾选，由父审计重新裁决 ID 12 的最终状态。
 
 **Verification evidence：** 状态契约先精确 RED 于 `ID 9 expected VERIFIED but was WIRED`，补证后 focused 与普通 parity contract GREEN；真实行为矩阵为 domain `7/7`、Desktop preference `22/22`、当前 Android decoder `8/8`、Desktop 八类 production tests `222/222`。显式 final gate 按设计 RED，并将非终态从 60 项准确缩减为 59 项（ID 9 已移出）。
 

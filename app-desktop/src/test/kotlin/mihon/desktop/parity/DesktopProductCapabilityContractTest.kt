@@ -241,7 +241,7 @@ class DesktopProductCapabilityContractTest {
             9 to "NONE",
             10 to "Task 16B",
             11 to "Task 17",
-            12 to "docs/superpowers/plans/2026-07-24-task-6a-desktop-crash-log-failure-boundary.md",
+            12 to "Task 6",
         )
     private val task6BehaviorMethods =
         mapOf(
@@ -326,6 +326,8 @@ class DesktopProductCapabilityContractTest {
                         setOf(
                             "appendCrashReport creates parent directory and writes report",
                             "appendCrashReport rotates existing oversized log before writing",
+                            "install registers the production default handler",
+                            "uncaught handler reports original exception when crash log write fails",
                         ),
                 ),
         )
@@ -1580,7 +1582,7 @@ class DesktopProductCapabilityContractTest {
             val expectedDecision =
                 when (id) {
                     9 -> "PROMOTE_VERIFIED"
-                    12 -> "CHILD_PLAN_REQUIRED"
+                    12 -> "RETURNED_FOR_PARENT_REVIEW"
                     else -> "KEEP_GAP"
                 }
             assertEquals("Task 6", requiredText(decision, "task", id, "statusDecision"))
@@ -1615,19 +1617,20 @@ class DesktopProductCapabilityContractTest {
 
         val parentPlanPath = "docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"
         val plan = Files.readString(repositoryRoot.resolve(parentPlanPath))
-        assertEquals("Task 6A child plan", markdownFrontmatter(plan)["active-task"], "Task 6 must pause on its exact child plan")
-        val childPlanPath = repositoryRoot.resolve(task6FollowUps.getValue(12))
+        assertEquals("Task 6", markdownFrontmatter(plan)["active-task"], "Completed Task 6A must return control to its parent")
+        val childPlanPath = repositoryRoot.resolve("docs/superpowers/plans/2026-07-24-task-6a-desktop-crash-log-failure-boundary.md")
         assertTrue(Files.isRegularFile(childPlanPath), "Task 6A crash-log child plan must exist")
         val childPlan = Files.readString(childPlanPath)
         val childMetadata = markdownFrontmatter(childPlan)
         assertEquals(parentPlanPath, childMetadata["parent-plan"], "Task 6A parent-plan")
         assertEquals("Task 6", childMetadata["parent-task"], "Task 6A parent-task")
         assertEquals("12", childMetadata["capability-id"], "Task 6A capability-id")
+        assertEquals("completed", childMetadata["status"], "Task 6A status")
         setOf("app-desktop/src/test/kotlin/mihon/desktop/CrashHandlerTest.kt", "app-desktop/src/main/kotlin/mihon/desktop/CrashHandler.kt")
             .forEach { assertTrue(childPlan.contains("Modify: `$it`"), "Task 6A missing product scope: $it") }
         assertTrue(
             Regex("""(?m)^- \[ \] Task 6[：:]""").containsMatchIn(plan),
-            "Task 6 must remain pending until its child plan returns",
+            "Task 6 must remain pending until the parent completes its final status decision",
         )
     }
 

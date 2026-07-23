@@ -2,7 +2,7 @@
 parent-plan: docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md
 parent-task: Task 6
 capability-id: 12
-status: planned
+status: completed
 task-base: 0cec5ed06a96dde60e63a9c882a42c9cbbaf1ba4
 ---
 
@@ -37,8 +37,10 @@ task-base: 0cec5ed06a96dde60e63a9c882a42c9cbbaf1ba4
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/CrashHandler.kt`
 - Modify: `app-desktop/src/test/resources/parity/parity-manifest.json`（修复完成后仅更新 ID 12 的真实证据；是否升终态由父 Task 6 决定）
 - Modify: `docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md`（回收 active-task 与父任务状态）
+- Modify: `docs/superpowers/plans/2026-07-24-task-6a-desktop-crash-log-failure-boundary.md`（持久化本计划完成状态与执行证据）
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt`（把 Task 6A completed/returned 与父 active-task 状态纳入结构化契约）
 
-预计产品实现为 2 个文件、220 行以内；回收证据后总范围不超过 4 个文件、300 行。
+预计产品实现仍为 2 个文件、220 行以内；回收证据后总范围不超过 6 个文件、300 行。原计划先漏列 child plan 自身，随后又遗漏父回收时必须同步的状态契约；两次修正都只持久化计划状态，不扩大产品实现范围或其他 ID 的状态裁决。
 
 ## TDD 固定步骤
 
@@ -58,3 +60,7 @@ task-base: 0cec5ed06a96dde60e63a9c882a42c9cbbaf1ba4
 ```
 
 还需运行父 Task 6 的真实行为矩阵和显式 final gate；final gate 仅用于确认剩余 ID 准确，在 Task 18 前预期保持 RED。若实现需要改变高级设置入口或反馈，则该变化超出本计划，必须先暂停并修正规模与 UI 测试范围。
+
+## 执行证据
+
+不可写父路径通过真实 `CrashHandler.uncaughtException()` 首次精确 RED 于 `FileNotFoundException` 逃逸；最小 failure boundary 后，原始异常、明确持久化失败与截断标记均保留在 stderr，handler 不再抛出。`install()` 仅作为既有 production wiring characterization，成功写入与轮转语义继续由原测试保护。控制权已返回父 Task 6，ID 12 保持非终态，等待父审计裁决。

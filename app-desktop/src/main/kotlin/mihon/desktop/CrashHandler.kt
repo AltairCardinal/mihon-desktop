@@ -20,14 +20,24 @@ object CrashHandler : Thread.UncaughtExceptionHandler {
 
     override fun uncaughtException(thread: Thread, exception: Throwable) {
         val crashReport = buildCrashReport(thread, exception)
+        val logFile = crashLogFile()
 
-        appendCrashReport(crashLogFile(), crashReport)
+        try {
+            appendCrashReport(logFile, crashReport)
+        } catch (writeFailure: Exception) {
+            System.err.println(
+                "Failed to persist crash report to ${logFile.path}: " +
+                    "${writeFailure::class.java.name}: ${writeFailure.message ?: "(no message)"}",
+            )
+            writeFailure.printStackTrace(System.err)
+        }
 
         // Also print to stderr for visibility
         System.err.println(crashReport)
 
         // Print stack trace to stderr
-        exception.printStackTrace()
+        exception.printStackTrace(System.err)
+        System.err.flush()
 
         // Sleep briefly to ensure log is flushed before JVM exits
         try {
