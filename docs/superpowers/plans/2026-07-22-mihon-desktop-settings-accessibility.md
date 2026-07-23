@@ -79,7 +79,7 @@ status-source: this-file
 - [x] Task 13：Desktop 许可证元数据构建生成
 - [x] Task 14：Desktop 许可证 provider 与 DI identity
 - [x] Task 15：Desktop 许可证列表/详情与 About wiring
-- [ ] Task 16：Desktop 设置 accessibility primitives 与入口页面
+- [x] Task 16：Desktop 设置 accessibility primitives 与入口页面
 - [ ] Task 17：Desktop 设置 accessibility 内容页面第一批
 - [ ] Task 18：Desktop 设置 accessibility 内容页面第二批
 - [ ] Task 19：IDs 88/90/91/94 exact parity evidence
@@ -816,6 +816,8 @@ status-source: this-file
 1. RED：漏 NumPadEnter、KeyUp 再触发、整行/子控件双触发、无 role/state/disabled、搜索不获焦时失败。
 2. GREEN：Enter/NumPadEnter 严格标为 fixed-main；Space 仅对支持的 Desktop Button/Checkbox role 增强。装饰图标不制造重复语义。
 3. 用真实 Compose semantics/key/focus 行为测试，不扫描源码；回归 anchor 行为不要求 focus。
+
+**Review status（已完成）：** 实现 `38ffa700ce` 完成 Desktop 设置 accessibility primitives 与 More/Search/Appearance/General 入口接线：Radio/Switch 整行仅保留一个 semantics action，子控件清除重复语义；Button/RadioButton/Switch role、Selected/ToggleableState/stateDescription/Disabled、装饰图标与搜索自动聚焦/Tab 顺序均由真实 Compose 场景保护。Enter/NumPadEnter 仅 KeyDown exact once，KeyUp 不触发；Space 只增强支持 action 的 role，且不污染搜索 TextField。六类 mutation 均精确 RED 后恢复，anchor identity/one-shot/scroll/highlight 保持且不依赖 focus。独立审查 APPROVED `0/0/0`，focused `31/31`、Desktop compile、Spotless、diff 与 5-Task guard 通过；范围严格为 `7 files/395 touched`，Task 17+/计划/OpenSpec/用户脏文件零差异。下一项为父 Task 5B / 子 Task 17。
 
 ### Task 17：Desktop 设置 accessibility 内容页面第一批
 
