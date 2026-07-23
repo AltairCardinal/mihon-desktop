@@ -57,6 +57,13 @@ class LibrarySelectionState {
         selectedIds = _selectedIds.toSet()
     }
 
+    fun invertVisible(visibleIds: List<Long>) {
+        visibleIds.forEach { id ->
+            if (!_selectedIds.remove(id)) _selectedIds += id
+        }
+        selectedIds = _selectedIds.toSet()
+    }
+
     fun clear() {
         _selectedIds.clear()
         anchorId = null

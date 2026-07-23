@@ -16,6 +16,7 @@ import mihon.desktop.domain.fakes.FakeCategoryRepository
 import mihon.desktop.domain.fakes.FakeMangaRepository
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.download.DesktopDownloadProvider
+import mihon.desktop.download.DownloadStatus
 import mihon.desktop.reader.ReaderNavigator
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -26,6 +27,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.core.common.preference.TriState
@@ -37,6 +39,8 @@ import tachiyomi.domain.track.service.TrackerSessionProvider
 import mihon.domain.task.TaskStatus
 import java.nio.file.Files
 import java.nio.file.Path
+import java.awt.image.BufferedImage
+import javax.imageio.ImageIO
 
 /**
  * Stage 25.2 — LibraryScreenModel tests.
@@ -454,6 +458,76 @@ class LibraryScreenModelTest {
             ),
             enqueued.single(),
         )
+    }
+
+    @Test
+    fun `batch download preserves all six fixed-main chapter selections`() = runTest {
+        val repository = FakeChapterRepository().apply {
+            addAll((1L..30L).map { id ->
+                Chapter.create().copy(
+                    id = id,
+                    mangaId = 10L,
+                    name = "Chapter $id",
+                    url = "/$id",
+                    sourceOrder = id,
+                    bookmark = id <= 2L,
+                    read = id == 1L,
+                )
+            })
+        }
+        val item = sampleLibraryManga(sampleManga(id = 10L, source = 7L, title = "Manga"))
+        val expected = listOf(1, 5, 10, 25, 29, 2)
+
+        MangaDetailDownloadAction.entries.zip(expected).forEach { (action, count) ->
+            val enqueued = mutableListOf<DownloadItem>()
+            val result = LibraryScreenModel(chapterRepository = repository, enqueueDownload = { enqueued += it })
+                .enqueueDownloads(listOf(item), action)
+
+            assertEquals(count, result.queued)
+            assertEquals(count, enqueued.size)
+        }
+    }
+
+    @Test
+    fun `batch download skips queued downloading and downloaded chapters then continues after failure`() = runTest {
+        val backing = FakeChapterRepository().apply {
+            addAll((1L..5L).map { id ->
+                Chapter.create().copy(id = id, mangaId = 10L, name = "Chapter $id", url = "/$id", sourceOrder = id)
+            })
+            addAll(listOf(Chapter.create().copy(id = 6L, mangaId = 12L, name = "Chapter 6", url = "/6", sourceOrder = 6L)))
+        }
+        val repository = object : ChapterRepository by backing {
+            override suspend fun getChapterByMangaId(mangaId: Long, applyScanlatorFilter: Boolean) =
+                if (mangaId == 11L) error("database unavailable") else backing.getChapterByMangaId(mangaId)
+        }
+        val downloaded = tempDir.resolve("7/Manga/Chapter 3")
+        Files.createDirectories(downloaded)
+        ImageIO.write(BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB), "png", downloaded.resolve("page.png").toFile())
+        val enqueued = mutableListOf<Long>()
+        val model = LibraryScreenModel(
+            chapterRepository = repository,
+            enqueueDownload = {
+                if (it.chapterId == 4L) error("source offline")
+                enqueued += it.chapterId
+            },
+            downloadProvider = DesktopDownloadProvider(tempDir.toFile()),
+        )
+        val queue = listOf(
+            DownloadItem(7L, "Manga", "Chapter 1", 1L, status = DownloadStatus.QUEUED),
+            DownloadItem(7L, "Manga", "Chapter 2", 2L, status = DownloadStatus.DOWNLOADING),
+        )
+
+        val result = model.enqueueDownloads(
+            listOf(10L, 11L, 12L).map { sampleLibraryManga(sampleManga(id = it, source = 7L, title = "Manga")) },
+            MangaDetailDownloadAction.UNREAD_CHAPTERS,
+            queue,
+        )
+
+        assertEquals(LibraryBatchDownloadResult(queued = 2, skipped = 3, failures = 2), result)
+        assertEquals(listOf(5L, 6L), enqueued)
+        assertEquals("2 queued, 3 skipped, 2 failed", model.state.value.batchCategoryResultMessage)
+        assertEquals(LibraryBatchDownloadResult(), model.enqueueDownloads(emptyList(), MangaDetailDownloadAction.UNREAD_CHAPTERS))
+        assertEquals("No manga selected", model.state.value.batchCategoryResultMessage)
     }
 
     @Test

@@ -265,11 +265,15 @@ internal fun SelectionActionBar(
     selectedCount: Int,
     onClose: () -> Unit,
     onSelectAll: () -> Unit,
+    onInvertSelection: () -> Unit,
+    actions: LibrarySelectionActions,
+    canMigrate: Boolean = true,
     onSetCategories: () -> Unit,
     onMarkRead: () -> Unit,
     onMarkUnread: () -> Unit,
     onRemoveFromLibrary: () -> Unit,
 ) {
+    var downloadExpanded by remember { mutableStateOf(false) }
     BottomAppBar(
         containerColor = MaterialTheme.colorScheme.secondaryContainer,
     ) {
@@ -284,6 +288,31 @@ internal fun SelectionActionBar(
         IconButton(onClick = onSelectAll) {
             Icon(Icons.Default.SelectAll, contentDescription = "Select all")
         }
+        IconButton(onClick = onInvertSelection) {
+            Icon(Icons.Default.SelectAll, contentDescription = "Invert selection")
+        }
+        Box {
+            TextButton(onClick = { downloadExpanded = true }) { Text("Download") }
+            DropdownMenu(expanded = downloadExpanded, onDismissRequest = { downloadExpanded = false }) {
+                listOf(
+                    MangaDetailDownloadAction.NEXT_1_CHAPTER to "Next 1 chapter",
+                    MangaDetailDownloadAction.NEXT_5_CHAPTERS to "Next 5 chapters",
+                    MangaDetailDownloadAction.NEXT_10_CHAPTERS to "Next 10 chapters",
+                    MangaDetailDownloadAction.NEXT_25_CHAPTERS to "Next 25 chapters",
+                    MangaDetailDownloadAction.UNREAD_CHAPTERS to "All unread chapters",
+                    MangaDetailDownloadAction.BOOKMARKED_CHAPTERS to "Bookmarked chapters",
+                ).forEach { (action, label) ->
+                    DropdownMenuItem(
+                        text = { Text(label) },
+                        onClick = {
+                            downloadExpanded = false
+                            actions.download(action)
+                        },
+                    )
+                }
+            }
+        }
+        TextButton(onClick = actions.migrate, enabled = canMigrate) { Text("Migrate") }
         TextButton(onClick = onSetCategories) { Text("Categories") }
         TextButton(onClick = onMarkRead) { Text("Mark read") }
         TextButton(onClick = onMarkUnread) { Text("Mark unread") }

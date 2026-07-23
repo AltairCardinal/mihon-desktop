@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import mihon.desktop.domain.LibraryUpdateChecker
 import mihon.desktop.download.DownloadItem
+import mihon.desktop.download.DownloadStatus
 import mihon.desktop.domain.SortMode
 import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.download.DesktopDownloadProvider
@@ -59,6 +60,12 @@ data class LibraryReaderRequest(
     val chapters: List<ReaderChapterRef>,
     val currentChapterIndex: Int,
     val initialPage: Int,
+)
+
+data class LibraryBatchDownloadResult(
+    val queued: Int = 0,
+    val skipped: Int = 0,
+    val failures: Int = 0,
 )
 
 class LibraryScreenModel(
@@ -417,6 +424,56 @@ class LibraryScreenModel(
             ),
         )
         return true
+    }
+
+    internal suspend fun enqueueDownloads(
+        items: List<LibraryManga>,
+        action: MangaDetailDownloadAction,
+        queue: List<DownloadItem> = emptyList(),
+    ): LibraryBatchDownloadResult {
+        if (items.isEmpty()) {
+            _state.update { it.copy(batchCategoryResultMessage = "No manga selected") }
+            return LibraryBatchDownloadResult()
+        }
+        val repository = requireNotNull(chapterRepository) { "ChapterRepository is required" }
+        val enqueue = requireNotNull(enqueueDownload) { "Download enqueue callback is required" }
+        val activeIds = queue
+            .filter { it.status == DownloadStatus.QUEUED || it.status == DownloadStatus.DOWNLOADING }
+            .mapTo(mutableSetOf()) { it.chapterId }
+        var result = LibraryBatchDownloadResult()
+        items.forEach { item ->
+            val chapters = runCatching {
+                val all = repository.getChapterByMangaId(item.id)
+                if (action == MangaDetailDownloadAction.BOOKMARKED_CHAPTERS) all.filter { it.bookmark } else chaptersForDownloadAction(all, action)
+            }.getOrElse {
+                result = result.copy(failures = result.failures + 1)
+                return@forEach
+            }
+            chapters.forEach { chapter ->
+                val unavailable = chapter.id in activeIds ||
+                    downloadProvider?.isChapterDownloaded(item.manga.source, item.manga.title, chapter.name) == true
+                result = when {
+                    unavailable -> result.copy(skipped = result.skipped + 1)
+                    runCatching {
+                        enqueue(
+                            DownloadItem(
+                                sourceId = item.manga.source,
+                                mangaTitle = item.manga.title,
+                                chapterName = chapter.name,
+                                chapterId = chapter.id,
+                                mangaId = item.id,
+                                chapterUrl = chapter.url,
+                            ),
+                        )
+                    }.isSuccess -> result.copy(queued = result.queued + 1)
+                    else -> result.copy(failures = result.failures + 1)
+                }
+            }
+        }
+        _state.update {
+            it.copy(batchCategoryResultMessage = "${result.queued} queued, ${result.skipped} skipped, ${result.failures} failed")
+        }
+        return result
     }
 
     suspend fun continueReadingRequest(item: LibraryManga): LibraryReaderRequest? {

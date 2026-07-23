@@ -22,6 +22,8 @@ import mihon.desktop.ui.library.MangaDetailScreen
 import mihon.desktop.ui.library.ProvideLibraryNavigationHost
 import mihon.desktop.ui.library.VoyagerLibraryNavigationHost
 import mihon.desktop.ui.library.authorDetailScreenOrNull
+import mihon.desktop.ui.migration.MigrationBatchQueueScreen
+import mihon.desktop.ui.migration.MigrationSearchScreen
 import mihon.desktop.ui.settings.DesktopSettingsCatalog
 import mihon.desktop.ui.settings.MoreRootScreen
 import mihon.desktop.ui.settings.SettingsSearchScreen
@@ -84,6 +86,16 @@ class NavigationContractTest {
             first.key != second.key,
             "MangaDetailScreen key must include mangaId so Voyager does not reuse the previous manga detail model",
         )
+    }
+
+    @Test
+    fun `library migration queue and item search use the nested Screen navigator`() {
+        val destination = MigrationBatchQueueScreen("queue-7")
+        assertTrue(destination is Screen)
+        assertFalse(destination is Tab)
+        val itemSearch = MigrationSearchScreen(1L, "Remote", destination.queueId)
+        assertTrue(itemSearch is Screen)
+        assertFalse(itemSearch is Tab)
     }
 
     @Test

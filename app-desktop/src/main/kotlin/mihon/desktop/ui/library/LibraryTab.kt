@@ -91,13 +91,50 @@ import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
+import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.migration.BatchMigrationRequest
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.library.interactor.LibraryFilter
 import mihon.desktop.ui.library.pickRandomMangaId
 import mihon.desktop.domain.SortMode
 import mihon.desktop.ui.reader.DesktopReaderScreen
+import mihon.desktop.ui.migration.MigrationBatchQueueScreen
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.library.model.LibraryManga
+import tachiyomi.domain.manga.model.Manga
+
+internal fun libraryBatchMigrationDestination(
+    selectedManga: List<Manga>,
+    submit: (List<BatchMigrationRequest>) -> String,
+): MigrationBatchQueueScreen? {
+    val requests = selectedManga
+        .filter { it.source != 0L }
+        .map { BatchMigrationRequest(it.id, it.title) }
+    return requests.takeIf { it.isNotEmpty() }?.let { MigrationBatchQueueScreen(submit(it)) }
+}
+
+internal data class LibrarySelectionActions(
+    val download: (MangaDetailDownloadAction) -> Unit,
+    val migrate: () -> Unit,
+)
+
+internal fun librarySelectionActions(
+    selected: () -> List<LibraryManga>,
+    queue: () -> List<mihon.desktop.download.DownloadItem>,
+    launch: (suspend () -> Unit) -> Unit,
+    enqueue: suspend (List<LibraryManga>, MangaDetailDownloadAction, List<mihon.desktop.download.DownloadItem>) -> Unit,
+    submit: (List<BatchMigrationRequest>) -> String,
+    navigate: (Screen) -> Unit,
+    clear: () -> Unit,
+) = LibrarySelectionActions(
+    download = { action -> launch { enqueue(selected(), action, queue()); clear() } },
+    migrate = {
+        libraryBatchMigrationDestination(selected().map { it.manga }, submit)?.let {
+            clear()
+            navigate(it)
+        }
+    },
+)
 
 object LibraryTab : Tab {
 
@@ -127,6 +164,7 @@ class LibraryRootScreen : Screen {
     override fun Content() {
         val scope = rememberCoroutineScope()
         val navigator = LocalNavigator.currentOrThrow
+        val desktopDependencies = LocalDesktopUiDependencies.current
 
         val screenModelFactory = LocalLibraryScreenModelFactory.current
         val model = rememberScreenModel { screenModelFactory() }
@@ -185,6 +223,15 @@ class LibraryRootScreen : Screen {
                 navigator.push(MangaDetailScreen(it))
             }
         }
+        val selectionActions = librarySelectionActions(
+            selected = { allItems.filter { it.id in selectionState.selectedIds } },
+            queue = { desktopDependencies.downloadManager.queue.value },
+            launch = { task -> scope.launch { task() } },
+            enqueue = { items, action, queue -> model.enqueueDownloads(items, action, queue) },
+            submit = desktopDependencies.batchMigrationController::submit,
+            navigate = navigator::push,
+            clear = selectionState::clear,
+        )
 
         if (showCategoryDialog) {
             CategoryManagementDialog(
@@ -255,6 +302,9 @@ class LibraryRootScreen : Screen {
                         selectedCount = selectionState.selectedIds.size,
                         onClose = { selectionState.clear() },
                         onSelectAll = { selectionState.selectAll(displayedItems.map { it.manga.id }) },
+                        onInvertSelection = { selectionState.invertVisible(displayedItems.map { it.manga.id }) },
+                        actions = selectionActions,
+                        canMigrate = allItems.any { it.id in selectionState.selectedIds && it.manga.source != 0L },
                         onSetCategories = { model.setShowBatchCategoryDialog(true) },
                         onMarkRead = {
                             scope.launch {
