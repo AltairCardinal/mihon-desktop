@@ -43,6 +43,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -74,6 +75,14 @@ internal sealed interface RepoDialog {
     data class Conflict(val oldRepo: ExtensionRepo, val newRepo: ExtensionRepo) : RepoDialog
 }
 
+internal fun interface ExtensionRepoUrlOpener {
+    fun open(url: String)
+}
+
+internal val LocalExtensionRepoUrlOpener = staticCompositionLocalOf<ExtensionRepoUrlOpener> {
+    ExtensionRepoUrlOpener { url -> Desktop.getDesktop().browse(URI(url)) }
+}
+
 /** 扩展仓库管理页面：添加/删除/刷新仓库。 */
 data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
     internal fun initialCreatePrompt(): RepoDialog.Create? = initialUrl?.let(RepoDialog::Create)
@@ -86,6 +95,7 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
         val scope = rememberCoroutineScope()
         val snackbarHostState = remember { SnackbarHostState() }
         val clipboardManager = LocalClipboardManager.current
+        val urlOpener = LocalExtensionRepoUrlOpener.current
 
         val getExtensionRepo = LocalDesktopUiDependencies.current.getExtensionRepo
         val createExtensionRepo = LocalDesktopUiDependencies.current.createExtensionRepo
@@ -237,9 +247,7 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
                                 anchorHost,
                             ),
                             onOpenWebsite = {
-                                runCatching {
-                                    Desktop.getDesktop().browse(URI(repo.website))
-                                }
+                                runCatching { urlOpener.open(repo.website) }
                             },
                             onCopyUrl = {
                                 clipboardManager.setText(AnnotatedString("${repo.baseUrl}/index.min.json"))

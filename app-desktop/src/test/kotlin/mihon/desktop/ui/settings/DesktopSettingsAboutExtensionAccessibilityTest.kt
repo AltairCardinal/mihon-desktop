@@ -133,13 +133,26 @@ class DesktopSettingsAboutExtensionAccessibilityTest {
     @Test
     fun `Extension repository card and delete dialog expose exact keyboard actions`() = runBlocking {
         val repository = FakeExtensionRepoRepository()
-        val repo = ExtensionRepo("https://repo.example", "Repo", "R", "https://repo.example", "fingerprint")
+        val repo = ExtensionRepo("https://repo.invalid", "Repo", "R", "https://website.invalid", "fingerprint")
         repository.insertRepo(repo.baseUrl, repo.name, repo.shortName, repo.website, repo.signingKeyFingerprint)
         val delete = mockk<DeleteExtensionRepo> { coEvery { await(any()) } returns Unit }
         val clipboard = mockk<ClipboardManager>(relaxed = true)
-        val scene = extensionScene(repository, delete = delete, clipboard = clipboard)
+        val opened = mutableListOf<String>()
+        val scene = extensionScene(
+            repository,
+            delete = delete,
+            clipboard = clipboard,
+            urlOpener = ExtensionRepoUrlOpener(opened::add),
+        )
         try {
-            activate(scene, MR.strings.action_open_in_browser.localized(), Key.Enter)
+            activate(
+                scene,
+                MR.strings.action_open_in_browser.localized(),
+                Key.Enter,
+                afterInitialKeyUp = { assertTrue(opened.isEmpty()) },
+                afterKeyDown = { assertEquals(listOf(repo.website), opened) },
+                afterFinalKeyUp = { assertEquals(listOf(repo.website), opened) },
+            )
             activate(scene, MR.strings.action_copy_link.localized(), Key.Spacebar)
             verify(exactly = 1) { clipboard.setText(AnnotatedString("${repo.baseUrl}/index.min.json")) }
 
@@ -160,8 +173,8 @@ class DesktopSettingsAboutExtensionAccessibilityTest {
     @Test
     fun `Extension add is disabled safely then conflict replace runs exactly once`() = runBlocking {
         val repository = FakeExtensionRepoRepository()
-        val oldRepo = ExtensionRepo("https://old.example", "Old", null, "https://old.example", "same")
-        val newRepo = ExtensionRepo("https://new.example", "New", null, "https://new.example", "same")
+        val oldRepo = ExtensionRepo("https://old.invalid", "Old", null, "https://old.invalid", "same")
+        val newRepo = ExtensionRepo("https://new.invalid", "New", null, "https://new.invalid", "same")
         val create = mockk<CreateExtensionRepo> {
             coEvery { await(newRepo.baseUrl) } returns CreateExtensionRepo.Result.DuplicateFingerprint(oldRepo, newRepo)
         }
@@ -194,6 +207,7 @@ class DesktopSettingsAboutExtensionAccessibilityTest {
         delete: DeleteExtensionRepo = mockk(relaxed = true),
         replace: ReplaceExtensionRepo = mockk(relaxed = true),
         clipboard: ClipboardManager = mockk(relaxed = true),
+        urlOpener: ExtensionRepoUrlOpener = ExtensionRepoUrlOpener {},
     ): ImageComposeScene {
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { getExtensionRepo } returns GetExtensionRepo(repository)
@@ -207,6 +221,7 @@ class DesktopSettingsAboutExtensionAccessibilityTest {
                 CompositionLocalProvider(
                     LocalDesktopUiDependencies provides dependencies,
                     LocalClipboardManager provides clipboard,
+                    LocalExtensionRepoUrlOpener provides urlOpener,
                 ) {
                     Navigator(screen) { CurrentScreen() }
                 }
