@@ -36,9 +36,9 @@ status-source: this-file
 
 按以下顺序一次执行一个子 Task，不并发写共享文件：
 
-`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 4G → 4H → 4I → 4J → 4K → 4L → 4M → 5 → 6A → 6B → 7A → 7B → 7C → 8A → 8B → 8C → 9 → 10A → 10B → 10C → 10D → 10E → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18A → 18B → 18C → 18D → 19 → 20`
+`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 4G → 4H → 4I → 4J → 4K → 4L → 4M → 5 → 6A → 6B → 7A → 7B → 7C → 8A → 8B → 8C → 9 → 10A → 10B → 10C → 10D → 10E → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18A → 18B → 18C → 18D → 18E → 19 → 20`
 
-其中 `DesktopSettingsCatalog.kt` 只在 5→7A→7B→7C→8A→8B→8C→11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6A→11→16 串行修改；`AboutScreen.kt` 只在 4I→8A→15→18B、`ExtensionRepoScreen.kt` 只在 4J→8B→18B→18C、`TrackingSettingsScreen.kt` 只在 4K→4L→8C→18D 串行修改；4M 只补 4L 的真实动作/失败路径测试，不返改 production。
+其中 `DesktopSettingsCatalog.kt` 只在 5→7A→7B→7C→8A→8B→8C→11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6A→11→16 串行修改；`AboutScreen.kt` 只在 4I→8A→15→18B、`ExtensionRepoScreen.kt` 只在 4J→8B→18B→18C→18D、`TrackingSettingsScreen.kt` 只在 4K→4L→8C→18E 串行修改；4M 只补 4L 的真实动作/失败路径测试，不返改 production。
 
 ## 执行状态
 
@@ -84,7 +84,8 @@ status-source: this-file
 - [x] Task 18A：Desktop Security/Advanced accessibility
 - [x] Task 18B：Desktop About/ExtensionRepo accessibility
 - [ ] Task 18C：Desktop ExtensionRepo physical-key coverage
-- [ ] Task 18D：Desktop Tracking accessibility
+- [ ] Task 18D：Desktop ExtensionRepo async test stabilization
+- [ ] Task 18E：Desktop Tracking accessibility
 - [ ] Task 19：IDs 88/90/91/94 exact parity evidence
 - [ ] Task 20：whole-change 审查与三平台 verify
 
@@ -894,7 +895,25 @@ status-source: this-file
 2. GREEN：复用 18B 的正式 URL opener 与 Task16/17 Button helper，不新增业务状态机；保留 create/replace/delete/open/copy 与 repository feedback。
 3. 运行 ExtensionRepo production wiring、resource identity、LazyList anchor、semantics、keyboard、Spotless 与 range gate。
 
-### Task 18D：Desktop Tracking accessibility
+**Review status（实现完成、验收待 18D）：** test-only 实现 `6dd0174ce` 补齐 refresh/FAB add/create cancel/conflict cancel 的真实 full-Screen 路径，唯一修复 `186f7c355` 抽取 Screen 真实消费的 production FAB/Create/Conflict composable，并以非幂等 counter 锁定 Enter/Space/NumPadEnter 的 `0→1→1`；mutation 双调用精确 RED，浏览器副作用为 0。首审 `0/1/0` 发现幂等 dialog 状态不能证明 exact-once；唯一复审再次 `0/1/0`，确认 direct-control 合同有效，但组合回归 `44` 项中 full-Screen conflict 用例因 `scope.launch` 尚未调度而 `coVerify` 观察到 0 次，隔离类 `5/5`。按门禁不做第二修复，18C 保持未勾选，新增 18D 关闭该验收竞态后统一审查并同时关闭 18C/18D。
+
+### Task 18D：Desktop ExtensionRepo async test stabilization
+
+**Risk axis:** settings-extension-async-test-stability
+
+**Platform boundary:** verification
+
+**Estimated scope:** 1 files, 120 lines
+
+**Verification:** ExtensionRepo production coroutine/interactor/dialog 的可观察等待、组合回归稳定性、无固定 render/yield 次数依赖
+
+**Files:** about/extension accessibility test。
+
+1. RED：在正常组合负载下，create/replace/update 尚未进入 interactor 时立即断言会稳定失败，并保留 18C 已复现的 `44` 项中 `1` 项失败证据。
+2. GREEN：等待可观察的 interactor 调用或 dialog 状态达到预期后再断言 exact count；不使用 sleep、不增加 production seam、不改变业务状态机。
+3. 连续运行 full-Screen 类与组合回归，验证无竞态；通过独立审查后同时勾选 18C/18D。
+
+### Task 18E：Desktop Tracking accessibility
 
 **Risk axis:** settings-accessibility-tracking
 
