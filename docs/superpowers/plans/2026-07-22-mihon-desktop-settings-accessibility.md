@@ -96,7 +96,7 @@ status-source: this-file
 - [x] Task 20D：Desktop 测试进程外部目录动作隔离
 - [x] Task 20E：Desktop share reveal 测试隔离
 - [x] Task 20F：Android ThemeMode facade runtime wiring
-- [ ] Task 20：whole-change 审查与三平台 verify
+- [x] Task 20：whole-change 审查与三平台 verify
 
 ## 全局门禁
 
@@ -1122,7 +1122,7 @@ status-source: this-file
 2. GREEN：只为 Android adapter 指定独立 JVM facade 名，消除 dex 类定义冲突；不得复制 shared `ThemeMode`、改变 theme/default/AMOLED 语义或回退共享模块。
 3. 运行 focused、Spotless、diff/range/guard；重建并安装 app/test APK，在同一 API36 AVD 上确认 production 启动不再崩溃且 settings search instrumentation 真正执行，再恢复其余 Android runtime 验收。
 
-**Review status（已完成，平台复验待执行）：** API36 全新解锁 AVD 上 app/test APK 安装成功，但 production launch 与 `SettingsSearchNavigationUiTest` 均在 `App.onCreate:156` 以 `NoSuchMethodError` 崩溃、instrumentation 0 项执行；apkanalyzer 确认 APK 内 app/presentation-theme 各生成一份同名 `ThemeModeKt`，运行时解析到只含 shared `selectableAppThemes` 的 facade。实现 `9ea94301b` 仅为 Android adapter 增加 `@file:JvmName("AndroidThemeModeKt")`，并新增枚举真实 classloader resources、反射 shared/Android production 方法的合同；RED 精确看到 shared facade 资源 2 份，GREEN focused 与 shared palette `4/4`。独立审查 APPROVED `0/0/0`，app main/unit compile、Spotless、diff/range/guard 通过；shared ThemeMode/default/dynamic selection/AMOLED 语义未改变。下一步只重建并复验 Android APK/runtime，不重复 Desktop/macOS。
+**Review status（已完成）：** API36 全新解锁 AVD 上 app/test APK 安装成功，但 production launch 与 `SettingsSearchNavigationUiTest` 均在 `App.onCreate:156` 以 `NoSuchMethodError` 崩溃、instrumentation 0 项执行；apkanalyzer 确认 APK 内 app/presentation-theme 各生成一份同名 `ThemeModeKt`，运行时解析到只含 shared `selectableAppThemes` 的 facade。实现 `9ea94301b` 仅为 Android adapter 增加 `@file:JvmName("AndroidThemeModeKt")`，并新增枚举真实 classloader resources、反射 shared/Android production 方法的合同；RED 精确看到 shared facade 资源 2 份，GREEN focused 与 shared palette `4/4`。独立审查 APPROVED `0/0/0`，app main/unit compile、Spotless、diff/range/guard 通过；shared ThemeMode/default/dynamic selection/AMOLED 语义未改变。修复后增量 assemble 341 tasks 成功、app/test APK 安装成功，apkanalyzer 确认 shared/Android facade 及目标方法各 1 份；API36 production 冷启动无 FATAL/NoSuchMethodError，`SettingsSearchNavigationUiTest` 实际执行 `5/5`，Android consumer focused `8/8`。运行态确认 More→Settings/Search、System/Light/Dark、Default、AMOLED、App language、About→真实 licenses→首项详情可达；TalkBack 朗读与完整语言切换重启巡检保留为人工边界。
 
 ### Task 20：whole-change 审查与三平台 verify
 
@@ -1142,3 +1142,5 @@ status-source: this-file
 4. Linux/WSL只验证可用theme/resource/keyboard/capability adapter。报告完整版本、命令/计数/失败、EXE、OS、IDs状态和剩余有意偏差；全部通过后勾选父Task5B并继续父Task6。
 
 **Review status（审查已清零，验证进行中）：** 对 `base-ref..f20861616` 的 whole-change 独立首审为 REJECTED `0/1/0`：ID94 的首许可证选择同时存在于 Android Screen、Desktop provider 与 shared policy，Desktop 在进入 shared 前已裁成单项，导致 shared selector mutation 无法破坏 production consumer。其余 fixed-main、搜索、anchor、主题、Desktop 独有能力、许可 UI、无障碍和测试有效性未发现阻塞项；focused contract `40/40` 通过。唯一 repair 已按平台边界拆为 20A（shared+desktop，`26e52ff47a`）与 20B（android，`ba47a9a4c`）串行完成；合并唯一修复复审 APPROVED `0/0/0`，focused `50/50`，确认 shared 策略真实控制 Android/Desktop production consumers、ID94 evidence 完整、ID88/fixed-main 无漂移且外部副作用为 0。全量验证已完成 Spotless 与 domain/data；Android 两次 full 分别出现不同的单项时序失败，三个失败类 focused 共 `30/30` 通过并停止随机重跑。Desktop full-tests `2100` 项中三个 updater helper PID 等待在 2 秒失败，focused 仍可复现相同启动边界；Task 20C 已以有界 10 秒等待关闭 helper 启动阻塞并通过独立审查。第一次恢复全量为 `2101/2101`、skipped 3，但确认测试 factory 的默认 share reveal 打开 `test-tmp`；Task 20D 仅覆盖 settings opener，Task 20E 已精确隔离 AWT share reveal并通过安全 RED、focused 与独立审查。最终 `scripts/build-desktop.sh full-tests` 在 2m02s 内 `2102/2102`、skipped 3、失败/错误 0，测试全程及结束后 `test-tmp` Explorer 窗口均为 0。Windows `scripts/build-desktop.sh` 在 10m25s 内完成测试、`createDistributable`、固定路径 EXE 新鲜度与真实窗口标题校验：`Mihon Desktop 0.11.14.45.5a02aed`，EXE `D:\Shell\Github\mihon\app-desktop\tmp\mihon-dist\main\app\Mihon Desktop\Mihon Desktop.exe`，BUILD 45 已提交为 `fa8174618`。macOS 14.8.4 从精确 `5a02aedea` 单次构建同版本并部署 `/Applications/Mihon Desktop.app`：JVM `2098` 项 0 失败、设置相关 12 类 `200/200`，TestMode health/state/screens/screenshot/More/General 共 8 个端点成功；锁屏且无辅助访问授权限制 AX tree/VoiceOver/真实键盘取证，未伪造通过。WSL Ubuntu 24.04 存在但无 Java且无无交互 sudo；便携 JDK 下载因 4 分钟仅 22 MB 而停止并清理，未反复消耗；Linux paths/URI/theme/search/accessibility 合同由全量 JVM 绿测覆盖，原生 WSL 运行标记环境边界。Android API36 首轮构建安装成功但在 App.onCreate 暴露双 `ThemeModeKt` facade 的确定性启动崩溃；Task 20F 已以唯一 Android facade 修复并通过独立审查，下一步为 Android 定向重建与运行态复验。
+
+**Completion status（已完成）：** Task 20F 修复后的 API36 增量 assemble、APK 唯一 facade 门禁、production 冷启动、instrumentation `5/5`、focused `8/8` 与设置运行态全部通过；Android 入口、主题/default/AMOLED、语言列表、About→licenses 均有截图/UI dump/logcat 证据。whole-change 审查及唯一修复复审为 `0/0/0`，Desktop 最终 full `2102/2102`，Windows/macOS 同版本 `0.11.14.45.5a02aed` 已构建并运行；Desktop IDs 90/91/94 为 VERIFIED，ID88 按真实证据保持 CHARACTERIZED。人工边界仅为 Android TalkBack、macOS VoiceOver/AX/真实键盘与无 Java 的原生 WSL 运行，不影响已有 production wiring、跨平台合同与自动化结果。父 Task 5B 可勾选并继续父 Task 6。

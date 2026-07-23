@@ -4,8 +4,9 @@ correction-list: docs/superpowers/plans/2026-07-12-mihon-desktop-upstream-parity
 original-branch: main
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 completed-child-plan: docs/superpowers/plans/2026-07-21-mihon-desktop-platform-integration.md
-active-child-plan: docs/superpowers/plans/2026-07-22-mihon-desktop-settings-accessibility.md
-resume-order: complete the active Task 5B child plan through Task 20, then continue with parent Task 6
+completed-settings-child-plan: docs/superpowers/plans/2026-07-22-mihon-desktop-settings-accessibility.md
+active-child-plan: none
+resume-order: continue with parent Task 6
 ---
 
 # Mihon Desktop 对齐原版 Mihon 实施计划（原版基线修正版）
@@ -24,7 +25,7 @@ resume-order: complete the active Task 5B child plan through Task 20, then conti
 
 如果后续需要升级原版基线，必须先更新 `original-ref`，重新核验受影响的原版实现与 fixture，再更新计划和 parity evidence；不得让移动中的 `main` 静默改变任务语义。
 
-当前设置、外观、无障碍与许可施工由 `active-child-plan` 承载。恢复执行时必须先完成父 Task 5B 子计划至子 Task 20，再回到本修正版父计划的 Task 6；保留的 `original-roadmap` 仅供历史对照，不得重新作为可执行权威入口。
+设置、外观、无障碍与许可施工已由 `completed-settings-child-plan` 完成。恢复执行时从本修正版父计划的 Task 6 开始；保留的 `original-roadmap` 仅供历史对照，不得重新作为可执行权威入口。
 
 **Goal:** 以固定原版 Mihon 的成熟行为、流程和工程边界为权威契约，消除 Mihon Desktop 当初为快速完成功能而产生的非平台必要简化与重复实现；将适合共用的规则迁入当前分支 shared core，让当前 Android 构建版和 Desktop JVM 实现共同消费，同时保持全部 Desktop 独有产品能力零回退。
 
@@ -86,6 +87,21 @@ resume-order: complete the active Task 5B child plan through Task 20, then conti
 | 6 | 删除兼容债务与最终审计 | 全部 | 64 | 重复业务实现归零，64 项全部对齐或获准豁免，原版/shared/两端证据可追溯 |
 
 总数校验：`7 + 4 + 4 + 6 + 7 + 4 + 8 + 13 + 7 + 4 = 64`。
+
+## Task 总览
+
+- [x] Task 0：建立原版取证、对齐追踪与 Desktop 保护网
+- [x] Task 1A：共享架构、状态、偏好与模块边界
+- [x] Task 1B：网络、后台任务与通知
+- [x] Task 2A：备份格式与跨端兼容
+- [x] Task 2B：下载、更新、历史与阅读进度
+- [x] Task 3A：书库与漫画详情
+- [x] Task 3B：迁移与追踪
+- [x] Task 4A：阅读器共享核心
+- [x] Task 4B：源、扩展与挑战处理
+- [x] Task 5A：系统集成、隐私与应用更新
+- [x] Task 5B：设置、外观、无障碍与许可
+- [ ] Task 6：删除重复实现与最终审计
 
 ## 3. 统一任务模板
 
@@ -495,19 +511,31 @@ Windows `0.11.14.43.84e386c` 固定 EXE 与 macOS `0.11.14.44.84e386c` 部署应
 - Produces: 与固定原版产品语义一致的共享可搜索 preference model、主题语义、许可数据；Desktop 搜索/主题/许可 UI。
 - Consumes: 固定原版快照中的 SearchableSettings、主题 key/default 和迁移行为；当前分支 PreferenceStore、i18n、Voyager navigator、构建生成的许可 metadata。
 
-- [ ] **Step 1: 从固定原版快照为设置索引、关键词、隐藏项和结果路由建立期望，写 RED 测试**
-- [ ] **Step 2: 从固定原版快照为主题 key/default/migration 建立期望，并为许可 metadata 写 RED 测试**
-- [ ] **Step 3: 将固定原版 SearchableSettings/主题语义迁为共享模型；先区分当前 Android settings 已有的 fork 改动**
-- [ ] **Step 4: Desktop 新增设置搜索并映射到现有 Screen/锚点**
-- [ ] **Step 5: 将 Desktop 专属外观项叠加到共享主题模型，不复制固定原版 key，也不把当前 Android 构建版新增 key 冒充原版 key**
-- [ ] **Step 6: 构建阶段生成 Desktop 依赖许可数据并提供详情页**
-- [ ] **Step 7: 为所有交互控件补语义标签、焦点顺序和纯键盘操作**
-- [ ] **Step 8: 用屏幕阅读器可观察语义树/Compose 测试验证关键页面**
-- [ ] **Step 9: 补 Screen 实例化、导航、DI 和资源完整性测试**
-- [ ] **Step 10: 运行 settings/theme/i18n/accessibility shared、当前 Android consumer 和 Desktop 测试**
-- [ ] **Step 11: 更新追踪项 88、90、91、94 的原版 provenance、shared 和两端消费证据**
+- [x] **Step 1: 从固定原版快照为设置索引、关键词、隐藏项和结果路由建立期望，写 RED 测试**
+- [x] **Step 2: 从固定原版快照为主题 key/default/migration 建立期望，并为许可 metadata 写 RED 测试**
+- [x] **Step 3: 将固定原版 SearchableSettings/主题语义迁为共享模型；先区分当前 Android settings 已有的 fork 改动**
+- [x] **Step 4: Desktop 新增设置搜索并映射到现有 Screen/锚点**
+- [x] **Step 5: 将 Desktop 专属外观项叠加到共享主题模型，不复制固定原版 key，也不把当前 Android 构建版新增 key 冒充原版 key**
+- [x] **Step 6: 构建阶段生成 Desktop 依赖许可数据并提供详情页**
+- [x] **Step 7: 为所有交互控件补语义标签、焦点顺序和纯键盘操作**
+- [x] **Step 8: 用屏幕阅读器可观察语义树/Compose 测试验证关键页面**
+- [x] **Step 9: 补 Screen 实例化、导航、DI 和资源完整性测试**
+- [x] **Step 10: 运行 settings/theme/i18n/accessibility shared、当前 Android consumer 和 Desktop 测试**
+- [x] **Step 11: 更新追踪项 88、90、91、94 的原版 provenance、shared 和两端消费证据**
 
-## 15. Task 6：删除重复实现与最终审计
+**Completion status:** 父 Task 5B 与子计划 Tasks 1–20/20A–20F 已完成。whole-change 唯一修复复审 APPROVED `0/0/0`；Desktop full `2102/2102`，Windows 与 macOS 同版本 `0.11.14.45.5a02aed` 已构建并运行。Android API36 首轮运行暴露由两个跨模块同名 `ThemeModeKt` facade 引起的 `NoSuchMethodError`；Task 20F 以独立 Android facade 修复，复审 `0/0/0`，修复后 production 冷启动、instrumentation `5/5`、focused `8/8` 及设置/主题/语言/许可运行态全部通过。ID90/91/94 为 VERIFIED；ID88 仅按真实证据保持 CHARACTERIZED，不把未抽取的跨端 accessibility core 虚报为完成。macOS VoiceOver/AX/真实键盘、Android TalkBack 与缺少 Java 的原生 WSL 运行保留为明确人工/环境边界。下一项为父 Task 6。
+
+**Verification report:** `docs/superpowers/reports/2026-07-23-mihon-desktop-settings-accessibility-verify.md`
+
+### Task 6：删除重复实现与最终审计
+
+**Risk axis:** final-duplicate-implementation-audit
+
+**Platform boundary:** verification
+
+**Estimated scope:** 6 files, 400 lines
+
+**Verification:** 运行最终 parity 契约、架构守卫、共享/Android/Desktop 测试、TestMode 验收及 Windows/macOS/Linux 边界矩阵；若审计发现超出本 Task 范围的产品代码修改，先拆分为满足门禁的子 Task。
 
 **Files:**
 - Modify: `docs/desktop-parity/PARITY_TRACKER.md`
