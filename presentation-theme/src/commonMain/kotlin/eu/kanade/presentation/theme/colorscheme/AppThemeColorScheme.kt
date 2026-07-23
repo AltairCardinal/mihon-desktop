@@ -11,15 +11,12 @@ object AppThemeColorScheme {
         isAmoled: Boolean,
         monetColorScheme: BaseColorScheme? = null,
     ): ColorScheme {
-        val selected = if (appTheme == AppTheme.MONET) {
-            monetColorScheme ?: TachiyomiColorScheme
-        } else {
-            staticColorSchemes.getOrDefault(appTheme, TachiyomiColorScheme)
-        }
+        val selectedMonetColorScheme = if (appTheme == AppTheme.MONET) monetColorScheme else null
+        val selected = selectedMonetColorScheme ?: staticColorSchemes.getOrDefault(appTheme, TachiyomiColorScheme)
         return selected.getColorScheme(
             isDark = isDark,
             isAmoled = isAmoled,
-            overrideDarkSurfaceContainers = appTheme != AppTheme.MONET,
+            overrideDarkSurfaceContainers = selectedMonetColorScheme == null,
         )
     }
 }

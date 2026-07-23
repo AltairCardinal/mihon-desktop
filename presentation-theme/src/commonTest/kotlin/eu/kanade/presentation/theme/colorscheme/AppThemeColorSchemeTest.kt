@@ -123,4 +123,25 @@ class AppThemeColorSchemeTest {
         assertEquals(Color.White, amoled.onSurface)
         assertEquals(dynamic.darkScheme.surfaceContainer, amoled.surfaceContainer)
     }
+
+    @Test
+    fun `monet without adapter applies static fallback amoled containers`() {
+        val amoled = AppThemeColorScheme.colorScheme(
+            AppTheme.MONET,
+            isDark = true,
+            isAmoled = true,
+            monetColorScheme = null,
+        )
+
+        assertEquals(Color.Black, amoled.background)
+        assertEquals(Color.White, amoled.onBackground)
+        assertEquals(Color.Black, amoled.surface)
+        assertEquals(Color.White, amoled.onSurface)
+        assertEquals(Color(0xFF0C0C0C), amoled.surfaceVariant)
+        assertEquals(Color(0xFF0C0C0C), amoled.surfaceContainerLowest)
+        assertEquals(Color(0xFF0C0C0C), amoled.surfaceContainerLow)
+        assertEquals(Color(0xFF0C0C0C), amoled.surfaceContainer)
+        assertEquals(Color(0xFF131313), amoled.surfaceContainerHigh)
+        assertEquals(Color(0xFF1B1B1B), amoled.surfaceContainerHighest)
+    }
 }
