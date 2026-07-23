@@ -1028,6 +1028,8 @@ status-source: this-file
 2. GREEN：shared 是唯一首项选择与 blank→`null` 归一化位置；Desktop adapter 只按原 metadata 顺序映射完整候选，缺失/空内容保留为空占位，不预裁剪、不回退后项。
 3. 运行 shared 与 Desktop provider focused、compile、Spotless、diff/range/guard；不修改 manifest，待 Android consumer 完成后统一更新 evidence。
 
+**Review status（实现完成，待合并复审）：** 实现 `26e52ff47a` 将首项选择与 blank→`null` 唯一集中到 shared `selectLicense`，Desktop provider 只按 metadata 顺序映射完整候选并以空字符串保留缺 ID/缺 content/blank 首项位置。初始 blank-first RED `1/1`、临时 `lastOrNull` mutation 使 Desktop 两项 production-chain 测试 `2/2` 精确失败；恢复后强制实际执行 shared `9/9`、Desktop provider `5/5`，main/test compile、root Spotless、diff/range/guard 均通过，范围 `3 files/19 touched`。按 Task 20 唯一修复预算，本 Task 与 20B 完成后由 whole-change reviewer 合并复审，复审通过前不勾选。
+
 ### Task 20B：Android 许可证 shared consumer 与 parity evidence
 
 **Risk axis:** android-license-shared-consumer
