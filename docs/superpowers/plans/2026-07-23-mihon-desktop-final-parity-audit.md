@@ -32,10 +32,11 @@ active-task: Task 1
 1. 每一批开始时记录该批 `task-base`，先运行 `git diff 6fbf6dfca203d99d6dd32137f2df97ced40c81b8..<task-base> -- <相关路径>`，再用 `git show 6fbf...:<path>` 读取固定原版。
 2. provenance 必须区分 `FIXED_ORIGINAL`、`CURRENT_ANDROID`、`SHARED_OR_ADAPTER`、`DESKTOP_CONSUMER` 与 `FIXTURE`；固定原版符号记录准确行号，当前 consumer 记录文件与生产符号。当前 Android 测试和当前 shared 输出不能冒充固定原版证据。
 3. 每批最多处理 8 个 parity ID。状态只能在 production wiring、行为测试和角色证据同时成立后升级。
-4. `EXEMPT` 必须包含不可替代的 OS/平台能力证据、用户可见边界、失败反馈和保护测试；“尚未完成”或“环境暂不可用”不是豁免。
+4. `EXEMPT` 必须包含不可替代的 OS/平台能力证据、用户可见边界、失败反馈、保护测试和可追溯的用户批准记录（批准来源、日期、批准的具体能力边界）；没有真实批准记录不得标记 `EXEMPT`，不得由代理代替用户决定或虚构批准。“尚未完成”或“环境暂不可用”不是豁免。
 5. 删除前必须先有 Desktop 独有行为回归；历史格式不得在没有兼容 fixture 时删除 reader/writer；跨平台 bugfix 和 Desktop 增强必须记录为 deviation，不能伪装成固定原版行为。
 6. 只读 inventory 若发现需要产品修改，不得在 inventory 提交中顺手修复。它必须按上下文簇创建有限 child plan，写明实际文件、TDD、用户入口/反馈、边界和验证，然后把本计划 `active-task` 指向该 child plan。没有真实产品缺口时不得创建空 child plan。
 7. 每个 Task 单独检查 `git status`、精确暂存、提交，并更新本计划 overview。不得纳入用户已有脏文件或构建产物。
+8. 每个实现 Task 只分配一个实现代理，并在实现完成后由一个未参与实现的独立审查代理审查；审查拒绝时最多进行一次修复复审。超过一次仍未通过时必须停止并重规划，不得继续叠加修复。
 
 ## Task 总览
 
@@ -54,7 +55,10 @@ active-task: Task 1
 - [ ] Task 13：核验状态批次 H（88、90、91、92、93、94、95、96）
 - [ ] Task 14：逐项裁决 8 项 `UNCLASSIFIED_DEBT`
 - [ ] Task 15：完成候选平台能力与 `EXEMPT` 审查
-- [ ] Task 16：审计 `TEMP-COMPAT`、重复规则与架构边界
+- [ ] Task 16A：审计 compat 与历史格式删除证据（35、74、96）
+- [ ] Task 16B：审计重复业务规则
+- [ ] Task 16C：建立 UI→data/network/manager 架构守卫
+- [ ] Task 16D：盘点并约束最终 Test Mode 全场景入口
 - [ ] Task 17：执行并回收真实产品缺口 child plan
 - [ ] Task 18：让 64 项最终 closure 与架构 gate 变绿
 - [ ] Task 19：运行全量测试、Windows/macOS 构建与运行验收
@@ -99,7 +103,7 @@ active-task: Task 1
 **Steps:**
 1. 对 8 项分别从固定 ref 取证，不得从当前 `app/` 反推原版。
 2. 记录固定原版符号/行号、当前 Android consumer、shared/adapter、Desktop consumer 和 fixture/test。
-3. 本 Task 只补 provenance；发现产品链缺失时记录到 Task 14/16 的 inventory 输入，不预判终态。
+3. 本 Task 只补 provenance；发现产品链缺失时记录到 Task 14/16A–16D 的 inventory 输入，不预判终态。
 
 ### Task 3：补齐 provenance 批次 P2（24、26、44、45、47、49、51、53）
 
@@ -196,7 +200,7 @@ active-task: Task 1
 
 **Verification:** source/extension shared、Android、Desktop 与真实 compat fixture tests GREEN；8 项状态和 evidence 一致。
 
-**Steps:** 复用既有逐符号 compat evidence；ID35 在 Task 16 前不得删除仍被真实扩展 fixture 触达的 shim。
+**Steps:** 复用既有逐符号 compat evidence；ID35 在 Task 16A 前不得删除仍被真实扩展 fixture 触达的 shim。
 
 ### Task 9：核验状态批次 D（39、40、43、44、45、47、49、51）
 
@@ -289,28 +293,91 @@ active-task: Task 1
 
 **Estimated scope:** 5 files, 400 lines
 
-**Verification:** 81、82、83、84、85、86、92 全部获得可重复 OS/产物证据后成为 `VERIFIED` 或严格 `EXEMPT`；显式 platform-evidence contract GREEN。
+**Verification:** 81、82、83、84、85、86、92 全部获得可重复 OS/产物证据后成为 `VERIFIED` 或严格 `EXEMPT`；每个 `EXEMPT` 均有真实、可追溯的用户批准记录，显式 platform-evidence contract GREEN。
 
 **Steps:**
 1. 复用既有 Windows/macOS/Linux 能力报告，但对当前构建重新验证真实 production adapter、用户反馈与失败状态。
-2. `CANDIDATE` 不能直接改名；无法提供真实 OS 能力时，只能在能力本质不可用且 UI 诚实反馈时 `EXEMPT`。
+2. `CANDIDATE` 不能直接改名；无法提供真实 OS 能力时，只有能力本质不可用、UI 诚实反馈且用户明确批准该具体边界时才能 `EXEMPT`。没有批准记录必须保持非终态并请求用户决定，代理不得补写或推断批准。
 3. 需要产品修复时输出有限 platform child plan；环境暂缺只记录验证阻塞，不伪造豁免。
 
-### Task 16：审计 `TEMP-COMPAT`、重复规则与架构边界
+### Task 16A：审计 compat 与历史格式删除证据（35、74、96）
 
-**Risk axis:** duplicate-compat-architecture
+**Risk axis:** compat-history-removal
+
+**Platform boundary:** verification
+
+**Estimated scope:** 5 files, 360 lines
+
+**Verification:** 35、74、96 有逐符号调用、真实 fixture、removal condition 和历史读写兼容证据；需要删除的 compat 有有限 child plan，仍需保留的 adapter 有非空理由和回归测试。
+
+**Steps:**
+1. 对 source/extension compat 复用真实 fixture evidence，删除条件按符号判断，不能按目录一刀切。
+2. 对 backup reader/writer 先跑固定原版、当前 Android、Desktop 历史 fixture；没有 backward compatibility 前不得切 writer 或删 reader。
+3. 本 Task 只决定 compat/历史格式的删除或保留证据；需要产品修改时输出有限 child plan，不混入重复规则或架构守卫。
+
+### Task 16B：审计重复业务规则
+
+**Risk axis:** duplicate-business-rules
+
+**Platform boundary:** verification
+
+**Estimated scope:** 5 files, 380 lines
+
+**Verification:** shared、当前 Android 和 Desktop 的领域规则/状态机按 symbol 与 production caller 对照；每个重复项都有保留、抽取或删除唯一结论，并有能在 wiring 断开时失败的行为测试入口。
+
+**Steps:**
+1. 只审计业务规则、状态机和 writer ownership，不把合法平台 side effect adapter 判为重复实现。
+2. 固定原版语义、cross-platform bugfix 与 Desktop product deviation 分栏记录。
+3. 需要产品修改时按共享上下文簇输出有限 child plan；不得用源码字符串相同/不同作为完成证据。
+
+### Task 16C：建立 UI→data/network/manager 架构守卫
+
+**Risk axis:** ui-dependency-architecture
+
+**Platform boundary:** tooling
+
+**Estimated scope:** 6 files, 400 lines
+
+**Verification:** 架构测试执行真实 production 依赖并拒绝 UI 直接依赖 data query、HTTP client、download/extension manager 或 ClassLoader；允许列表仅含有理由的平台 adapter，断开合法 use case/port 后测试精确 RED。
+
+**Steps:**
+1. 盘点现有 Architecture Guard 能力，行数基线与源码文本扫描不能作为唯一守卫。
+2. 为 `UI → shared use case/port → repository/platform adapter` 建立可执行依赖约束。
+3. 发现违规时输出有限产品 child plan；本 Task 不顺手重构 consumer。
+
+### Task 16D：盘点并约束最终 Test Mode 全场景入口
+
+**Risk axis:** testmode-scenario-coverage
 
 **Platform boundary:** verification
 
 **Estimated scope:** 6 files, 400 lines
 
-**Verification:** 35、74、96 有逐符号调用/evidence/removal-condition；UI→data/network/manager 架构守卫执行真实 production 依赖；无证据 shim、旧 writer 和重复规则均有明确删除 child plan。
+**Verification:** coverage inventory 将 64 项全部映射到恰好 13 个场景族中的至少一个，或记录真实、可测试的非 UI 边界；另有 5/5 Desktop 永久保护映射，未映射计数为 0。缺少 runner/production wiring 时输出有限 child plan。
+
+**场景族（最终必须恰好 13/13）：**
+
+1. `library`
+2. `manga-detail`
+3. `browse/global-search+source-login`
+4. `extensions`
+5. `reader`
+6. `downloads`
+7. `updates/upcoming`
+8. `history`
+9. `migration`
+10. `backup/restore`
+11. `settings/platform`
+12. `tracking`
+13. `about`
+
+**Desktop 永久保护（最终必须恰好 5/5）：**作者入口、Upcoming、双页、自动滚动、APK→JAR。
 
 **Steps:**
-1. 对 source/extension compat 复用真实 fixture evidence，删除条件按符号判断，不能按目录一刀切。
-2. 对 backup reader/writer 先跑固定原版、当前 Android、Desktop 历史 fixture；没有 backward compatibility 前不得切 writer 或删 reader。
-3. 审计重复状态机/规则与 UI 直连；源码文本和行数基线不能替代依赖/行为守卫。
-4. 只读 inventory 输出按上下文簇拆分的有限 child plan；保护 Desktop 独有能力和已记录 cross-platform bugfix。
+1. 建立 manifest ID → 场景族/非 UI 边界 → production trigger → observable feedback → test action/assertion 映射；非 UI 边界必须有真实行为测试，不能成为逃避场景覆盖的标签。
+2. 最终唯一 runtime 入口固定为 `./scripts/desktop-final-parity-test.sh`：它必须启动本轮构建脚本产出的固定未打包 EXE，并报告 `13/13`、`5/5`、64 项零未映射。
+3. 现有 `./scripts/desktop-smoke-test.sh` 只能作为补充回归，不能替代上述入口或其精确计数。
+4. 若入口、Test Mode action/state 或场景断言缺失，只输出有限产品 child plan，由 Task 17 实施。
 
 ### Task 17：执行并回收真实产品缺口 child plan
 
@@ -320,9 +387,9 @@ active-task: Task 1
 
 **Estimated scope:** 2 files, 160 lines
 
-**Verification:** Tasks 14–16 生成的每个 child plan 均完成其 focused tests、唯一审查、范围门禁和提交；未生成 child plan 的项目有明确“现有 production evidence 足够”结论。
+**Verification:** Tasks 14、15、16A、16B、16C、16D 生成的每个 child plan 均完成其 focused tests、一个独立审查和最多一次修复复审、范围门禁和提交；未生成 child plan 的项目有明确“现有 production evidence 足够”结论。
 
-**Steps:** 按 child plan 顺序执行；每次完成后回到本计划更新 status 与 evidence。任何 child plan 未完成时不得进入 Task 18。
+**Steps:** 按 child plan 顺序执行；每次完成后回到本计划更新 status 与 evidence。14、15、16A–16D 任一 inventory 未完成或任一 child plan 未完成时，不得进入 Task 18。
 
 ### Task 18：让 64 项最终 closure 与架构 gate 变绿
 
@@ -332,11 +399,11 @@ active-task: Task 1
 
 **Estimated scope:** 5 files, 360 lines
 
-**Verification:** 显式 final-audit Gradle 入口 GREEN，精确断言 64/64 为 `VERIFIED | EXEMPT`、角色证据完整、无 `UNCLASSIFIED_DEBT`/`TEMP-COMPAT`、架构守卫 GREEN。
+**Verification:** Tasks 14、15、16A、16B、16C、16D、17 全部完成后，显式 final-audit Gradle 入口 GREEN，精确断言 64/64 为 `VERIFIED | EXEMPT`、角色证据完整、每个 `EXEMPT` 有真实用户批准记录、无 `UNCLASSIFIED_DEBT`/`TEMP-COMPAT`、架构守卫 GREEN。
 
 **Steps:**
 1. 逐项确认终态，不得批量替换状态字符串。
-2. 收紧 contract：终态、固定 ref、准确行号、当前 Android/Desktop/shared-or-adapter、fixture/protection test、EXEMPT evidence 均为强制。
+2. 收紧 contract：终态、固定 ref、准确行号、当前 Android/Desktop/shared-or-adapter、fixture/protection test、EXEMPT evidence 与可追溯用户批准记录均为强制；批准缺失必须失败，不得用默认值生成。
 3. 将 final parity gate 接入明确的 Gradle lifecycle 入口，不用普通 compile 成功替代。
 
 ### Task 19：运行全量测试、Windows/macOS 构建与运行验收
@@ -347,7 +414,7 @@ active-task: Task 1
 
 **Estimated scope:** 3 files, 300 lines
 
-**Verification:** Spotless、相关 shared/Android、`:app-desktop:jvmTest`、`:test-desktop:test`、Desktop smoke、final parity gate 全绿；Windows/macOS 使用构建脚本产出同一版本并运行验收，Linux 边界诚实记录。
+**Verification:** Spotless、相关 shared/Android、`:app-desktop:jvmTest`、`:test-desktop:test`、补充 smoke、final parity gate 全绿；唯一 runtime 入口启动固定 EXE 并精确报告 13/13 场景族、5/5 永久保护、64 项零未映射；Windows/macOS 使用构建脚本产出同一版本并运行验收，Linux 边界诚实记录。
 
 **Files:**
 - Create: `docs/superpowers/reports/2026-07-23-mihon-desktop-final-parity-verify.md`
@@ -356,10 +423,10 @@ active-task: Task 1
 
 **Steps:**
 1. 串行运行 `./gradlew spotlessCheck`、相关 shared/Android 契约、`:app-desktop:jvmTest`、`:test-desktop:test` 与 final parity gate。
-2. 运行 `./scripts/desktop-smoke-test.sh`。
-3. Desktop 迭代只能用 `./scripts/build-desktop.sh` 构建；启动固定未打包 Windows EXE，核对版本和核心用户路径。
+2. Desktop 迭代只能用 `./scripts/build-desktop.sh` 构建；随后运行唯一入口 `./scripts/desktop-final-parity-test.sh`，由它启动该轮固定未打包 Windows EXE。最终结果必须为 13 个场景族全部通过、5 项永久保护全部通过、64 项映射零遗漏。
+3. 另行运行 `./scripts/desktop-smoke-test.sh` 作为补充；其通过不能替代第 2 步。
 4. 在 macOS 使用同一提交和构建脚本验收 app bundle；Linux/WSL 无真实环境时只记录边界，不外推。
-5. 报告真实命令、测试数、失败/跳过、版本、绝对产物路径、EXEMPT、deviation 和环境限制。
+5. 报告必须记录固定 `original-ref`、用过的 `git show <original-ref>:<path>`/blob 校验方式及结果、真实命令、测试数、失败/跳过、13/13、5/5、零未映射、版本、绝对产物路径、每个 EXEMPT 的用户批准引用、deviation 和环境限制。
 
 ### Task 20：收口维护文档与父子 checkbox
 
@@ -383,7 +450,7 @@ active-task: Task 1
 1. tracker 保持治理说明和由 manifest 导出的终态摘要，不复制第二份 64 项权威表。
 2. 比较报告只写 fixed-original、intentional cross-platform bugfix、Desktop product deviation 或有证据 EXEMPT。
 3. 更新根目录 coverage report 与 automation tracker，删除已关闭 gap，保留真实剩余边界。
-4. 对齐父 overview、Task 0 正文细项、Task 6 正文与 child overview；全部完成后才勾父 Task 6，并将 `active-child-plan` 设为 `none`。
+4. 对齐父 overview 与所有已完成父 Task 0、1A、1B、2A、2B、3A、3B、4A、4B、5A、5B 的正文 checkbox；每一勾选都必须能引用对应 child plan、验证报告、提交和测试证据，不能只因 overview 已勾而回填。随后对齐 Task 6 正文与 child overview；全部完成后才勾父 Task 6，并将 `active-child-plan` 设为 `none`。
 5. 运行：
    - `bash scripts/comet-project-guard.sh plan docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md`
    - `bash scripts/comet-project-guard.sh plan docs/superpowers/plans/2026-07-12-mihon-desktop-upstream-parity-roadmap-main-authority.md`
@@ -402,5 +469,5 @@ active-task: Task 1
 过程产物仅限：
 
 - 本 child plan；
-- 必要时由 Tasks 14–16 产生的有限、按上下文簇拆分的产品 child plan；
+- 必要时由 Tasks 14–16D 产生的有限、按上下文簇拆分的产品 child plan；
 - 一份最终验证报告。不得创建逐项快照、第二份 manifest 或巨型 diff 包。

@@ -529,7 +529,7 @@ Windows `0.11.14.43.84e386c` 固定 EXE 与 macOS `0.11.14.44.84e386c` 部署应
 
 ### Task 6：删除重复实现与最终审计
 
-**Current mapping:** 本 Task 已拆分到 `docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md`。唯一恢复入口为该 child plan 的当前 `active-task`；本父 Task 在 child plan 的 64 项终态 gate、重复/compat 审计、全量构建验收和文档一致性全部通过前保持未勾选。child plan 使用仓库根目录 `TEST_COVERAGE_REPORT.md`，不创建本 Task 历史文件清单中并不存在的 `docs/automation/TEST_COVERAGE_REPORT.md`。
+**Current mapping:** 本 Task 已拆分到 `docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md`。唯一恢复入口为该 child plan 的当前 `active-task`；本父 Task 在 child plan 的 64 项终态 gate、EXEMPT 用户批准链、compat/重复规则/架构/Test Mode 四项独立审计、固定 EXE 的 13/13 场景族与 5/5 Desktop 永久保护、全量构建验收和父 Task 0–5B 正文 checkbox 证据一致性全部通过前保持未勾选。child plan 使用仓库根目录 `TEST_COVERAGE_REPORT.md`，不创建本 Task 历史文件清单中并不存在的 `docs/automation/TEST_COVERAGE_REPORT.md`。
 
 **Risk axis:** final-duplicate-implementation-audit
 
