@@ -83,8 +83,8 @@ status-source: this-file
 - [x] Task 17：Desktop 设置 accessibility 内容页面第一批
 - [x] Task 18A：Desktop Security/Advanced accessibility
 - [x] Task 18B：Desktop About/ExtensionRepo accessibility
-- [ ] Task 18C：Desktop ExtensionRepo physical-key coverage
-- [ ] Task 18D：Desktop ExtensionRepo async test stabilization
+- [x] Task 18C：Desktop ExtensionRepo physical-key coverage
+- [x] Task 18D：Desktop ExtensionRepo async test stabilization
 - [ ] Task 18E：Desktop Tracking accessibility
 - [ ] Task 19：IDs 88/90/91/94 exact parity evidence
 - [ ] Task 20：whole-change 审查与三平台 verify
@@ -895,7 +895,7 @@ status-source: this-file
 2. GREEN：复用 18B 的正式 URL opener 与 Task16/17 Button helper，不新增业务状态机；保留 create/replace/delete/open/copy 与 repository feedback。
 3. 运行 ExtensionRepo production wiring、resource identity、LazyList anchor、semantics、keyboard、Spotless 与 range gate。
 
-**Review status（实现完成、验收待 18D）：** test-only 实现 `6dd0174ce` 补齐 refresh/FAB add/create cancel/conflict cancel 的真实 full-Screen 路径，唯一修复 `186f7c355` 抽取 Screen 真实消费的 production FAB/Create/Conflict composable，并以非幂等 counter 锁定 Enter/Space/NumPadEnter 的 `0→1→1`；mutation 双调用精确 RED，浏览器副作用为 0。首审 `0/1/0` 发现幂等 dialog 状态不能证明 exact-once；唯一复审再次 `0/1/0`，确认 direct-control 合同有效，但组合回归 `44` 项中 full-Screen conflict 用例因 `scope.launch` 尚未调度而 `coVerify` 观察到 0 次，隔离类 `5/5`。按门禁不做第二修复，18C 保持未勾选，新增 18D 关闭该验收竞态后统一审查并同时关闭 18C/18D。
+**Review status（已完成）：** test-only 实现 `6dd0174ce` 补齐 refresh/FAB add/create cancel/conflict cancel 的真实 full-Screen 路径，唯一修复 `186f7c355` 抽取 Screen 真实消费的 production FAB/Create/Conflict composable，并以非幂等 counter 锁定 Enter/Space/NumPadEnter 的 `0→1→1`；mutation 双调用精确 RED，浏览器副作用为 0。首审 `0/1/0` 发现幂等 dialog 状态不能证明 exact-once；唯一复审再次 `0/1/0`，确认 direct-control 合同有效，但组合回归 `44` 项中 full-Screen conflict 用例因 `scope.launch` 尚未调度而 `coVerify` 观察到 0 次，隔离类 `5/5`。按门禁未做第二修复，新增 18D 关闭该验收竞态；18D 独立审查 APPROVED `0/0/0` 后确认阻塞解除，18C/18D 同时关闭。
 
 ### Task 18D：Desktop ExtensionRepo async test stabilization
 
@@ -912,6 +912,8 @@ status-source: this-file
 1. RED：在正常组合负载下，create/replace/update 尚未进入 interactor 时立即断言会稳定失败，并保留 18C 已复现的 `44` 项中 `1` 项失败证据。
 2. GREEN：等待可观察的 interactor 调用或 dialog 状态达到预期后再断言 exact count；不使用 sleep、不增加 production seam、不改变业务状态机。
 3. 连续运行 full-Screen 类与组合回归，验证无竞态；通过独立审查后同时勾选 18C/18D。
+
+**Review status（已完成）：** test-only 实现 `cd28ffab7` 以 `withTimeout(5s)` 有界等待真实 create/replace counter 与 conflict dialog action 后再 exact verify；只捕获 `TimeoutCancellationException`，超时 `AssertionError` 保留 cause 并输出 description/calls/labels，无 sleep、固定 render 次数、无限等待或 production seam。移除 counter mutation 在 5 秒内以 `createCalls=0` 精确 RED 后恢复。独立审查 APPROVED `0/0/0`：full-Screen 无缓存两轮均 `5/5`，精确 8 类组合无缓存两轮均 `44/44`，四轮均使用 `--rerun-tasks --no-build-cache`；范围 `1 file/59 touched`，系统浏览器副作用为 0。18C 的唯一剩余竞态阻塞已关闭，18C/18D 同时勾选。下一项为父 Task 5B / 子 Task 18E。
 
 ### Task 18E：Desktop Tracking accessibility
 
