@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 7
+active-task: Task 8
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -46,7 +46,7 @@ active-task: Task 7
 - [x] Task 4：补齐 provenance 批次 P3（54、56、57、59、61、62、64、66）
 - [x] Task 5：补齐 provenance 批次 P4（71、72、73、74、93、95、96）
 - [x] Task 6：核验状态批次 A（3、4、7、8、9、10、11、12）
-- [ ] Task 7：核验状态批次 B（16、17、19、22、24、26、28、29）
+- [x] Task 7：核验状态批次 B（16、17、19、22、24、26、28、29）
 - [ ] Task 8：核验状态批次 C（30、32、33、34、35、36、37、38）
 - [ ] Task 9：核验状态批次 D（39、40、43、44、45、47、49、51）
 - [ ] Task 10：核验状态批次 E（53、54、56、57、59、61、62、64）
@@ -224,9 +224,11 @@ active-task: Task 7
 
 **Steps:** 核验分类、筛选、批处理、收藏/分类、章节、封面、source membership 与单源浏览的真实 consumer。
 
-**Audit evidence（child plan 已回收）：** R1 `6fb82074adeceda25be2f3a12621ce510fd0423c` 稳定结构化审计，R2 `af9c522ec9f5c7032ebe3503bab6f9a6a1659e6f` 补齐产品链。ID 17 的 fixed authority、shared `EvaluateLibrary`、current Android `applyFilters`/`applySort` consumer、Desktop consumer 与真实 mutation fixture 全部闭合，从 `SHARED` 提升为 `VERIFIED`。ID 19 的 fixed/current Android 批量菜单、shared 分类能力、Desktop 分类/已读/未读/移除以及六档下载、迁移、可见项反选、partial feedback/navigation fixtures 全部闭合，从 `WIRED` 提升为 `VERIFIED`。ID 29 保持 `VERIFIED`；ID 16/22/24/26/28 保留各自真实 gap。Task 7 仍未勾选，父 `active-task` 已恢复为 `Task 7`，不提前启动 Task 8。
+**Audit evidence（child plan 已回收）：** R1 `6fb82074adeceda25be2f3a12621ce510fd0423c` 稳定结构化审计，R2 `af9c522ec9f5c7032ebe3503bab6f9a6a1659e6f` 补齐产品链。ID 17 的 fixed authority、shared `EvaluateLibrary`、current Android `applyFilters`/`applySort` consumer、Desktop consumer 与真实 mutation fixture 全部闭合，从 `SHARED` 提升为 `VERIFIED`。ID 19 的 fixed/current Android 批量菜单、shared 分类能力、Desktop 分类/已读/未读/移除以及六档下载、迁移、可见项反选、partial feedback/navigation fixtures 全部闭合，从 `WIRED` 提升为 `VERIFIED`。ID 29 保持 `VERIFIED`；ID 16/22/24/26/28 保留各自真实 gap。
 
 **Verification evidence：** R3 状态契约先精确 RED 于 `ID 17 expected VERIFIED but was SHARED`，补证后 focused `1/1`、普通 parity contract `40/40` GREEN；R2 回归为 Desktop library/navigation `44/44`、Android consumer `2/2`，domain `EvaluateLibrary` `6/6`、data membership transaction `2/2`。终态契约已验证 fixed/current/shared-or-adapter/Desktop/fixture 五角色，显式 final gate 按设计 RED 并精确报告 55 个非终态 ID。
+
+**Closeout execution evidence（已完成）：** R1 `6fb82074adeceda25be2f3a12621ce510fd0423c`、R2 `af9c522ec9f5c7032ebe3503bab6f9a6a1659e6f`、R3 `f9cbea69a5185f2c2ee663b4a8c023a0dbc82fce` 均已提交；八项 `statusDecision` 与保留 gap 已由父 closeout 契约核验，Task 7 已勾选，控制权推进到 `active-task: Task 8`。本 closeout 提交自身 hash 仅在交付报告记录，不写回本计划。
 
 ### Task 8：核验状态批次 C（30、32、33、34、35、36、37、38）
 

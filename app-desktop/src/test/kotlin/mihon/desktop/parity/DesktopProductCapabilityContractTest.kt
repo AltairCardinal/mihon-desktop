@@ -1678,8 +1678,8 @@ class DesktopProductCapabilityContractTest {
         val parentPlanPath = "docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"
         val plan = Files.readString(repositoryRoot.resolve(parentPlanPath))
         assertTrue(
-            markdownFrontmatter(plan)["active-task"] in setOf("Task 7", "Task 7A child plan", "Task 7R2 replan"),
-            "Completed Task 6 must advance to Task 7 or its active child plan",
+            markdownFrontmatter(plan)["active-task"] in setOf("Task 7", "Task 7A child plan", "Task 7R2 replan", "Task 8"),
+            "Completed Task 6 must advance to Task 7, its active child plan, or the next completed-batch task",
         )
         val childPlanPath = repositoryRoot.resolve("docs/superpowers/plans/2026-07-24-task-6a-desktop-crash-log-failure-boundary.md")
         assertTrue(Files.isRegularFile(childPlanPath), "Task 6A crash-log child plan must exist")
@@ -1757,8 +1757,11 @@ class DesktopProductCapabilityContractTest {
         }
 
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
-        assertEquals("Task 7", markdownFrontmatter(plan)["active-task"], "Task 7 closeout must restore the parent task")
-        assertTrue(Regex("""(?m)^- \[ \] Task 7[：:]""").containsMatchIn(plan), "Task 7 must remain pending after this status batch")
+        assertEquals("Task 8", markdownFrontmatter(plan)["active-task"], "Completed Task 7 must advance to Task 8")
+        assertTrue(Regex("""(?m)^- \[x] Task 7[：:]""").containsMatchIn(plan), "Completed Task 7 must be checked")
+        assertTrue("6fb82074adeceda25be2f3a12621ce510fd0423c" in plan, "Task 7 closeout must retain R1 evidence")
+        assertTrue("af9c522ec9f5c7032ebe3503bab6f9a6a1659e6f" in plan, "Task 7 closeout must retain R2 evidence")
+        assertTrue("f9cbea69a5185f2c2ee663b4a8c023a0dbc82fce" in plan, "Task 7 closeout must record R3 evidence")
         val childPlan = Files.readString(repositoryRoot.resolve(task7ChildPlan))
         val childMetadata = markdownFrontmatter(childPlan)
         assertEquals("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md", childMetadata["parent-plan"])
