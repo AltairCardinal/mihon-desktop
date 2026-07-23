@@ -331,6 +331,38 @@ tasks.register<Test>("task4ParityVerification") {
     }
 }
 
+tasks.register<Test>("task5ParityVerification") {
+    group = "verification"
+    description = "Runs Task 5 provenance, historical backup fixtures, maintenance, architecture, and compatibility tests."
+    dependsOn(tasks.named("jvmTestClasses"), ":data:jvmTestClasses")
+    testClassesDirs = files(
+        jvmTestTask.get().testClassesDirs,
+        dataJvmTestTask.get().testClassesDirs,
+    )
+    classpath = files(
+        jvmTestTask.get().classpath,
+        dataJvmTestTask.get().classpath,
+    )
+    filter {
+        listOf(
+            "mihon.desktop.architecture.DesktopArchitectureGuardTest",
+            "mihon.desktop.backup.AutoBackupSchedulerTest",
+            "mihon.desktop.backup.BackupWorkflowIntegrationTest",
+            "mihon.desktop.backup.DesktopBackupCompatibilityTest",
+            "mihon.desktop.backup.DesktopBackupCreatorTest",
+            "mihon.desktop.backup.DesktopBackupRestorerTest",
+            "mihon.desktop.compat.AndroidCompatTest",
+            "mihon.desktop.extension.ExtensionCompatibilityTest",
+            "mihon.desktop.parity.DesktopProductCapabilityContractTest",
+            "mihon.desktop.ui.settings.DesktopSettingsSecurityAdvancedAccessibilityTest",
+            "tachiyomi.data.backup.BackupCodecContractTest",
+        ).forEach(::includeTestsMatching)
+    }
+    useJUnitPlatform {
+        excludeTags("final-parity-audit", "integration", "live-network", "network-survey")
+    }
+}
+
 compose.desktop {
     application {
         mainClass = "mihon.desktop.MainKt"

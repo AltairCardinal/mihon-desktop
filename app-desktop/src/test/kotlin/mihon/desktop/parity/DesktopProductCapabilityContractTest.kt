@@ -169,6 +169,58 @@ class DesktopProductCapabilityContractTest {
                         setOf("state moves from loading to shared aggregation and exposes errors"),
                 ),
         )
+    private val task5ProvenanceStatuses =
+        mapOf(71 to "NOT_STARTED", 72 to "NOT_STARTED", 73 to "NOT_STARTED", 74 to "NOT_STARTED", 93 to "NOT_STARTED", 95 to "NOT_STARTED", 96 to "NOT_STARTED")
+    private val task5BehaviorMethods =
+        mapOf(
+            71 to
+                mapOf(
+                    "data/src/commonTest/kotlin/tachiyomi/data/backup/BackupCodecContractTest.kt" to
+                        setOf("Android fixture generator consumes fixed original Mihon ref"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCreatorTest.kt" to
+                        setOf("createFromDatabase collects tracking app preferences source preferences and extension repositories"),
+                ),
+            72 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupRestorerTest.kt" to
+                        setOf("first Desktop protobuf fixture follows the current restore chain"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/backup/BackupWorkflowIntegrationTest.kt" to
+                        setOf("partial restore is reported as recoverable partial failure"),
+                ),
+            73 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/backup/AutoBackupSchedulerTest.kt" to
+                        setOf("pruneOldBackups keeps only maxBackups files"),
+                ),
+            74 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCompatibilityTest.kt" to
+                        setOf(
+                            "canonical writer preserves every Android backup section",
+                            "first Desktop protobuf writer fixture restores every historical field",
+                        ),
+                ),
+            93 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSecurityAdvancedAccessibilityTest.kt" to
+                        setOf("Advanced fields and dangerous confirmation expose honest keyboard semantics"),
+                ),
+            95 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt" to
+                        setOf(
+                            "desktop ui DI and repository debt does not grow beyond baseline",
+                            "android main source must not depend on desktop runtime or awt swing",
+                        ),
+                ),
+            96 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/extension/ExtensionCompatibilityTest.kt" to
+                        setOf("loader loads minimal source from ServiceLoader JAR"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/compat/AndroidCompatTest.kt" to
+                        setOf("Application and ContextWrapper preserve Android Context inheritance"),
+                ),
+        )
     private val validTags =
         setOf(
             "SHARE-DIRECT",
@@ -1354,6 +1406,54 @@ class DesktopProductCapabilityContractTest {
                     "ID $id: fixed role path/symbol must match upstreamSymbols",
                 )
             }
+        }
+    }
+
+    @Test
+    fun `task 5 provenance batch resolves fixed current and historical role evidence`() {
+        val repositoryRoot = repositoryRoot()
+        val inventory = fixedMainPathInventory(repositoryRoot)
+        val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
+        task5ProvenanceStatuses.forEach { (id, expectedStatus) ->
+            val item = items.getValue(id).jsonObject
+            assertEquals(expectedStatus, requiredText(item, "status", id), "Task 5 must not change capability status")
+            assertEquals(fixedOriginalMihonRef, requiredText(item, "upstreamRef", id))
+            assertEquals(":app-desktop:task5ParityVerification", requiredText(item, "behaviorVerificationTask", id))
+            val behaviorMethods =
+                item.getValue("behaviorMethods").jsonObject.mapValues { (_, methods) ->
+                    methods.jsonArray.map { it.jsonPrimitive.content }.toSet()
+                }
+            assertEquals(task5BehaviorMethods.getValue(id), behaviorMethods, "ID $id behavior methods")
+            behaviorMethods.forEach { (path, methods) ->
+                val source = Files.readString(repositoryRoot.resolve(path))
+                methods.forEach { method ->
+                    val methodSource = kotlinTestMethod(source, method, "ID $id behavior method $path#$method")
+                    assertTrue(
+                        listOf("assert", " shouldBe ", ".shouldContain").any(methodSource::contains),
+                        "ID $id behavior method must execute assertions: $path#$method",
+                    )
+                }
+            }
+            validateRoleEvidence(item, repositoryRoot, inventory)
+            val upstream = item.getValue("upstreamSymbols").jsonArray.map { it.jsonObject }
+            val fixedEntries = item.getValue("roleEvidence").jsonObject.getValue("FIXED_ORIGINAL").jsonArray.map { it.jsonObject }
+            fixedEntries.forEach { fixed ->
+                assertTrue(
+                    upstream.any {
+                        it.getValue("path").jsonPrimitive.content == fixed.getValue("path").jsonPrimitive.content &&
+                            it.getValue("symbol").jsonPrimitive.content == fixed.getValue("symbol").jsonPrimitive.content
+                    },
+                    "ID $id: fixed role path/symbol must match upstreamSymbols",
+                )
+            }
+        }
+
+        val tracker = Files.readString(repositoryRoot.resolve("docs/desktop-parity/PARITY_TRACKER.md"))
+        setOf(71, 72, 73, 74).forEach { id ->
+            assertTrue(
+                Regex("""(?m)^\|\s*$id\b[^|]*\|\s*NOT_STARTED\s*\|""").containsMatchIn(tracker),
+                "ID $id: tracker status must match the unchanged manifest status",
+            )
         }
     }
 

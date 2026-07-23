@@ -1834,9 +1834,27 @@
       "SHARE-EXTRACT"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Legacy capability summary #71: 手动备份; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 手动备份",
-    "protectionTests": [],
+    "authoritativeImplementation": "Fixed-main original Mihon capability #71: BackupCreator assembles the manual backup sections and writes the original protobuf artifact.",
+    "desktopImplementation": "DesktopBackupCreator consumes the current shared wire schema and collects manga, chapter, category, history, tracking, preference, source, and extension-repository data.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreator.kt", "symbol": "class BackupCreator"}],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreator.kt"],
+    "sharedImplementationPaths": ["data/src/commonMain/kotlin/tachiyomi/data/backup/BackupCodec.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupCreator.kt"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreator.kt", "symbol": "class BackupCreator", "line": 40}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreator.kt", "symbol": "BackupCodec.encode", "line": 160}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "data/src/commonMain/kotlin/tachiyomi/data/backup/BackupCodec.kt", "symbol": "object BackupCodec", "line": 13}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupCreator.kt", "symbol": "suspend fun createFromDatabase", "line": 103}],
+      "FIXTURE": [{"artifact": "data/src/commonTest/kotlin/tachiyomi/data/backup/BackupCodecContractTest.kt#Android fixture generator consumes fixed original Mihon ref", "productionMarkers": ["generator.contains("]}]
+    },
+    "behaviorVerificationTask": ":app-desktop:task5ParityVerification",
+    "behaviorMethods": {
+      "data/src/commonTest/kotlin/tachiyomi/data/backup/BackupCodecContractTest.kt": ["Android fixture generator consumes fixed original Mihon ref"],
+      "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCreatorTest.kt": ["createFromDatabase collects tracking app preferences source preferences and extension repositories"]
+    },
+    "protectionTests": ["data/src/commonTest/kotlin/tachiyomi/data/backup/BackupCodecContractTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCreatorTest.kt"],
+    "deviations": [{"classification": "MIGRATION_OUTPUT", "description": "The fixed-main creator owns app-local model serialization; current Android and Desktop consume the fork-extracted common schema and BackupCodec without treating that migration output as fixed-main source."}],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -1847,9 +1865,27 @@
       "SHARE-EXTRACT"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Legacy capability summary #72: 备份恢复; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 备份恢复",
-    "protectionTests": [],
+    "authoritativeImplementation": "Fixed-main original Mihon capability #72: BackupRestorer validates the original artifact and restores categories, preferences, manga, sources, and repositories with progress.",
+    "desktopImplementation": "DesktopBackupRestorer executes the current restore chain and BackupWorkflow preserves partial-failure and cancellation feedback.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorer.kt", "symbol": "class BackupRestorer"}],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorer.kt"],
+    "sharedImplementationPaths": ["data/src/commonMain/kotlin/tachiyomi/data/backup/BackupCodec.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupRestorer.kt"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorer.kt", "symbol": "class BackupRestorer", "line": 28}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorer.kt", "symbol": "suspend fun restore", "line": 48}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "data/src/commonMain/kotlin/tachiyomi/data/backup/BackupCodec.kt", "symbol": "fun <T> decode", "line": 25}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupRestorer.kt", "symbol": "suspend fun restore", "line": 54}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupRestorerTest.kt#first Desktop protobuf fixture follows the current restore chain", "productionMarkers": ["DesktopBackupRestorer("]}]
+    },
+    "behaviorVerificationTask": ":app-desktop:task5ParityVerification",
+    "behaviorMethods": {
+      "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupRestorerTest.kt": ["first Desktop protobuf fixture follows the current restore chain"],
+      "app-desktop/src/test/kotlin/mihon/desktop/backup/BackupWorkflowIntegrationTest.kt": ["partial restore is reported as recoverable partial failure"]
+    },
+    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupRestorerTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/backup/BackupWorkflowIntegrationTest.kt"],
+    "deviations": [{"classification": "PLATFORM_ADAPTER", "description": "Fixed-main restoration is an Android background job with notifications; Desktop uses a lifecycle-bound workflow and UI progress while retaining field-level restore behavior."}],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -1860,9 +1896,24 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Legacy capability summary #73: 自动备份; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 自动备份",
-    "protectionTests": [],
+    "authoritativeImplementation": "Fixed-main original Mihon capability #73: BackupCreateJob schedules recurring WorkManager creation from BackupPreferences.",
+    "desktopImplementation": "AutoBackupScheduler wakes only while Desktop is running, invokes the canonical writer, and prunes older .tachibk files.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreateJob.kt", "symbol": "fun setupTask"}],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreateJob.kt"],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/tachiyomi/domain/backup/service/BackupPreferences.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/backup/AutoBackupScheduler.kt"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreateJob.kt", "symbol": "fun setupTask", "line": 90}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreateJob.kt", "symbol": "fun setupTask", "line": 90}],
+      "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreateJob.kt", "symbol": "class BackupCreateJob", "line": 34}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/backup/AutoBackupScheduler.kt", "symbol": "pruneOldBackups(backupDir, maxBackups)", "line": 91}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/backup/AutoBackupSchedulerTest.kt#pruneOldBackups keeps only maxBackups files", "productionMarkers": ["pruneOldBackups(dir, maxBackups = 2)"]}]
+    },
+    "behaviorVerificationTask": ":app-desktop:task5ParityVerification",
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/backup/AutoBackupSchedulerTest.kt": ["pruneOldBackups keeps only maxBackups files"]},
+    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/backup/AutoBackupSchedulerTest.kt"],
+    "deviations": [{"classification": "PLATFORM_ADAPTER", "description": "Android WorkManager can wake after app exit; the current Desktop scheduler is process-bound and is not claimed equivalent before platform scheduling is verified."}],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -1874,9 +1925,26 @@
       "TEMP-COMPAT"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Legacy capability summary #74: 跨端备份兼容; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 跨端备份兼容",
-    "protectionTests": [],
+    "authoritativeImplementation": "Fixed-main original Mihon capability #74: the app-local Backup protobuf model defines the canonical gzip+protobuf artifact.",
+    "desktopImplementation": "Current Android and Desktop use BackupCodec; separate fixtures preserve fixed-main Android output and the first Desktop writer output.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/models/Backup.kt", "symbol": "data class Backup"}],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/data/backup/BackupDecoder.kt"],
+    "sharedImplementationPaths": ["data/src/commonMain/kotlin/tachiyomi/data/backup/BackupCodec.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupCreator.kt"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/models/Backup.kt", "symbol": "data class Backup", "line": 7}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/BackupDecoder.kt", "symbol": "BackupCodec.decode", "line": 27}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "data/src/commonMain/kotlin/tachiyomi/data/backup/BackupCodec.kt", "symbol": "object BackupCodec", "line": 13}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupCreator.kt", "symbol": "fun decodeFromBytes", "line": 57}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCompatibilityTest.kt#first Desktop protobuf writer fixture restores every historical field", "productionMarkers": ["DesktopBackupCreator.decodeFromBytes(bytes)"]}]
+    },
+    "behaviorVerificationTask": ":app-desktop:task5ParityVerification",
+    "behaviorMethods": {
+      "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCompatibilityTest.kt": ["canonical writer preserves every Android backup section", "first Desktop protobuf writer fixture restores every historical field"]
+    },
+    "protectionTests": ["data/src/commonTest/kotlin/tachiyomi/data/backup/BackupCodecContractTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCompatibilityTest.kt"],
+    "deviations": [{"classification": "MIGRATION_OUTPUT", "description": "The current common schema is migration output. android-full.tachibk is generated from fixed main, while desktop-first-writer.tachibk is generated independently from Desktop commit 8c6d18c20; neither current fixture is relabeled as fixed source."}],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -2183,9 +2251,24 @@
       "SHARE-EXTRACT"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Legacy capability summary #93: 高级维护; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 高级维护",
-    "protectionTests": [],
+    "authoritativeImplementation": "Fixed-main original Mihon capability #93: SettingsAdvancedScreen exposes crash logs, cache/database maintenance, cookie clearing, and WebView cleanup.",
+    "desktopImplementation": "AdvancedSettingsScreen exposes Desktop-safe cache, cookie, and crash-log actions with confirmations and visible feedback.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt", "symbol": "object SettingsAdvancedScreen"}],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt"],
+    "sharedImplementationPaths": ["core/common/src/commonMain/kotlin/eu/kanade/tachiyomi/network/NetworkPreferences.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreen.kt"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt", "symbol": "object SettingsAdvancedScreen", "line": 75}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt", "symbol": "object SettingsAdvancedScreen", "line": 75}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "core/common/src/commonMain/kotlin/eu/kanade/tachiyomi/network/NetworkPreferences.kt", "symbol": "class NetworkPreferences", "line": 6}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreen.kt", "symbol": "class AdvancedSettingsScreen", "line": 205}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSecurityAdvancedAccessibilityTest.kt#Advanced fields and dangerous confirmation expose honest keyboard semantics", "productionMarkers": ["AdvancedSettingsScreen()", "fixture.cookieJar.clear()"]}]
+    },
+    "behaviorVerificationTask": ":app-desktop:task5ParityVerification",
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSecurityAdvancedAccessibilityTest.kt": ["Advanced fields and dangerous confirmation expose honest keyboard semantics"]},
+    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSecurityAdvancedAccessibilityTest.kt"],
+    "deviations": [{"classification": "DESKTOP_PRODUCT_ENHANCEMENT", "description": "Desktop opens its crash-log directory and clears JVM network storage; Android-only WebView and download-cache maintenance remain outside the Desktop adapter. NetworkPreferences is only a shared configuration dependency, not proof of an extracted maintenance workflow."}],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -2225,9 +2308,23 @@
       "SHARE-EXTRACT"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Legacy capability summary #95: 代码模块边界; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 代码模块边界",
-    "protectionTests": [],
+    "authoritativeImplementation": "Fixed-main original Mihon capability #95: the Android app module consumes the domain module through an explicit Gradle dependency.",
+    "desktopImplementation": "The Desktop app consumes the same domain boundary; architecture guards reject new UI repository/DI debt and Android-to-Desktop dependencies.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/build.gradle.kts", "symbol": "implementation(projects.domain)"}],
+    "currentAndroidConsumerPaths": ["app/build.gradle.kts"],
+    "sharedImplementationPaths": ["domain/build.gradle.kts"],
+    "desktopConsumerAdapterPaths": ["app-desktop/build.gradle.kts"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/build.gradle.kts", "symbol": "implementation(projects.domain)", "line": 178}],
+      "CURRENT_ANDROID": [{"path": "app/build.gradle.kts", "symbol": "implementation(projects.domain)", "line": 182}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/build.gradle.kts", "symbol": "commonMain {", "line": 16}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/build.gradle.kts", "symbol": "implementation(projects.domain)", "line": 79}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt#desktop ui DI and repository debt does not grow beyond baseline", "productionMarkers": ["File(repoRoot, \"app-desktop/src/main/kotlin/mihon/desktop/ui\")"]}]
+    },
+    "behaviorVerificationTask": ":app-desktop:task5ParityVerification",
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt": ["desktop ui DI and repository debt does not grow beyond baseline", "android main source must not depend on desktop runtime or awt swing"]},
+    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt"],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -2239,9 +2336,27 @@
       "TEMP-COMPAT"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Legacy capability summary #96: 平台兼容层成本; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 平台兼容层成本",
-    "protectionTests": [],
+    "authoritativeImplementation": "Fixed-main original Mihon capability #96: ExtensionLoader consumes Android Context, PackageInfo, ApplicationInfo, and Source contracts when loading APK extensions.",
+    "desktopImplementation": "DesktopExtensionLoader consumes Source through ServiceLoader while AndroidCompat supplies only the Android ABI surface required by extension consumers.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt", "symbol": "fun loadExtensions"}],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt"],
+    "sharedImplementationPaths": ["source-api/src/commonMain/kotlin/eu/kanade/tachiyomi/source/Source.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt", "app-desktop/src/main/kotlin/mihon/desktop/compat/AndroidCompat.kt"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt", "symbol": "fun loadExtensions", "line": 117}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt", "symbol": "suspend fun loadExtensions", "line": 118}],
+      "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/compat/AndroidCompat.kt", "symbol": "object AndroidCompat", "line": 15}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt", "symbol": "ServiceLoader.load(Source::class.java", "line": 75}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/extension/ExtensionCompatibilityTest.kt#loader loads minimal source from ServiceLoader JAR", "productionMarkers": ["DesktopExtensionLoader(tempDir)"]}]
+    },
+    "behaviorVerificationTask": ":app-desktop:task5ParityVerification",
+    "behaviorMethods": {
+      "app-desktop/src/test/kotlin/mihon/desktop/extension/ExtensionCompatibilityTest.kt": ["loader loads minimal source from ServiceLoader JAR"],
+      "app-desktop/src/test/kotlin/mihon/desktop/compat/AndroidCompatTest.kt": ["Application and ContextWrapper preserve Android Context inheritance"]
+    },
+    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/extension/ExtensionCompatibilityTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/compat/AndroidCompatTest.kt"],
+    "deviations": [{"classification": "PLATFORM_ADAPTER", "description": "Android PackageManager loading remains the fixed/current Android responsibility; Desktop ServiceLoader and ABI shims are compatibility adapters whose retained surface must stay consumer-driven."}],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   }

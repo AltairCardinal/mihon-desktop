@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 5
+active-task: Task 6
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -44,7 +44,7 @@ active-task: Task 5
 - [x] Task 2：补齐 provenance 批次 P1（9、10、11、12、16、17、19、22）
 - [x] Task 3：补齐 provenance 批次 P2（24、26、44、45、47、49、51、53）
 - [x] Task 4：补齐 provenance 批次 P3（54、56、57、59、61、62、64、66）
-- [ ] Task 5：补齐 provenance 批次 P4（71、72、73、74、93、95、96）
+- [x] Task 5：补齐 provenance 批次 P4（71、72、73、74、93、95、96）
 - [ ] Task 6：核验状态批次 A（3、4、7、8、9、10、11、12）
 - [ ] Task 7：核验状态批次 B（16、17、19、22、24、26、28、29）
 - [ ] Task 8：核验状态批次 C（30、32、33、34、35、36、37、38）
@@ -179,14 +179,20 @@ active-task: Task 5
 
 **Files:**
 - Modify: `app-desktop/src/test/resources/parity/parity-manifest.json`
+- Modify: `app-desktop/src/test/resources/parity/fixed-main-path-inventory.json`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt`
+- Modify: `app-desktop/build.gradle.kts`
 - Modify: `docs/desktop-parity/PARITY_TRACKER.md`
 - Modify: `docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md`
+
+**Scope correction:** Task 1 要求每个 fixed-original path 由 fixed-main inventory 绑定 blob，Task 5 又要求通过单一 Gradle 入口执行真实 data backup fixture contract 与 Desktop architecture guard；这两项不能由 manifest marker scan 代替。因此加入 `fixed-main-path-inventory.json` 与 `app-desktop/build.gradle.kts`，范围由 4 文件修正为 6 文件，仍保持 `≤400 touched`。
 
 **Steps:**
 1. 分开记录固定原版 backup 产物、当前 Android 历史产物和 Desktop 历史产物；当前分支生成的 fixture 不得冒充固定原版。
 2. 为高级维护、模块边界和兼容成本记录可验证的固定原版/当前职责，而不是抽象口号。
 3. 立即消除 tracker 对 71–74 与 manifest 的状态矛盾，但不提前升级终态。
+
+**Execution evidence（已完成）：** 基线 `6577070f4a9b4a4aafe32dd883b462a9c54073c8`。新增 batch contract 首次 RED 精确命中 `ID 71: upstreamRef must not be blank`；7 项均从 `6fbf6df...` 取得 path/symbol/line/blob，manifest 状态保持 7 项 `NOT_STARTED`，tracker 的 71–74 已同步为 `NOT_STARTED` 而未提前升级。固定原版 Backup creator/restorer/job/model、当前 Android consumer 与 fork shared codec/adapter 分角色记录；`android-full.tachibk` 仍由 fixed main 生成，`desktop-first-writer.tachibk` 独立来自 Desktop `8c6d18c20`，当前分支 fixture 没有冒充 fixed source。聚合 `:app-desktop:task5ParityVerification` 以全局 headless 模式执行 11 个 Desktop/data 真实行为类、114 tests、0 failure/0 skipped；真实 backup fixture contract `4/4`、architecture guard `4/4`、focused batch 与普通 contract GREEN；显式 final gate 仍报告同一 60 个非终态 ID 并按设计 RED；根 `spotlessCheck`、plan guard、JSON、diff/range 通过。范围 `6 files/316 touched`，提交 hash 见交付报告；下一项为 Task 6。
 
 ### Task 6：核验状态批次 A（3、4、7、8、9、10、11、12）
 
