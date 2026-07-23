@@ -36,7 +36,7 @@ status-source: this-file
 
 按以下顺序一次执行一个子 Task，不并发写共享文件：
 
-`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 4G → 4H → 4I → 4J → 4K → 4L → 4M → 5 → 6A → 6B → 7A → 7B → 7C → 8A → 8B → 8C → 9 → 10A → 10B → 10C → 10D → 10E → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18A → 18B → 18C → 18D → 18E → 18F → 19 → 20`
+`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 4G → 4H → 4I → 4J → 4K → 4L → 4M → 5 → 6A → 6B → 7A → 7B → 7C → 8A → 8B → 8C → 9 → 10A → 10B → 10C → 10D → 10E → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18A → 18B → 18C → 18D → 18E → 18F → 19 → 20A → 20B → 20`
 
 其中 `DesktopSettingsCatalog.kt` 只在 5→7A→7B→7C→8A→8B→8C→11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6A→11→16 串行修改；`AboutScreen.kt` 只在 4I→8A→15→18B、`ExtensionRepoScreen.kt` 只在 4J→8B→18B→18C→18D、`TrackingSettingsScreen.kt` 只在 4K→4L→8C→18E→18F 串行修改；4M 只补 4L 的真实动作/失败路径测试，不返改 production。
 
@@ -90,6 +90,8 @@ status-source: this-file
 - [x] Task 18G：Desktop Tracking login dialog keyboard accessibility
 - [x] Task 18H：Desktop Tracking logout/unbind dialog keyboard accessibility
 - [x] Task 19：IDs 88/90/91/94 exact parity evidence
+- [ ] Task 20A：共享许可证首项规则与 Desktop production wiring
+- [ ] Task 20B：Android 许可证 shared consumer 与 parity evidence
 - [ ] Task 20：whole-change 审查与三平台 verify
 
 ## 全局门禁
@@ -1008,7 +1010,39 @@ status-source: this-file
 2. GREEN：真实 capability完成后才更新状态；ID88不虚构页面，ID94不以generator自测冒充UI。
 3. 运行 exact contract、绑定 behavior smoke、JSON/Spotless/range gate。
 
-**Review status（已完成）：** 实现 `91e584903e` 将 17 条 fixed-main path/symbol/blob 按 capability ownership 绑定到 IDs 88/90/91/94，并锁定 exact shared/current Android/Desktop adapter/protection 方法集合；跨 ID symbol/authority/method/protection、inventory path/ownership/blob mutation 均精确失败。ID88 仅为 `CHARACTERIZED` 并机器可见记录无 commonMain primitive/跨端 shared consumer 的剩余债务；90/91/94 为 `VERIFIED`，91 保留 Desktop grid，94 使用真实 production DI 执行 About→LicenseList→LicenseDetail 而非 generator 自测，updater/诊断未降级。独立审查 APPROVED `0/0/0`：17/17 blob、严格 JSON、exact/full contract、四 ID behavior smoke `54/54`、Android consumer `5/5`、compile/Spotless 均通过；范围 `3 files/269 touched`，外部副作用为 0。下一项为父 Task 5B / 子 Task 20。
+**Review status（已完成）：** 实现 `91e584903e` 将 17 条 fixed-main path/symbol/blob 按 capability ownership 绑定到 IDs 88/90/91/94，并锁定 exact shared/current Android/Desktop adapter/protection 方法集合；跨 ID symbol/authority/method/protection、inventory path/ownership/blob mutation 均精确失败。ID88 仅为 `CHARACTERIZED` 并机器可见记录无 commonMain primitive/跨端 shared consumer 的剩余债务；90/91/94 为 `VERIFIED`，91 保留 Desktop grid，94 使用真实 production DI 执行 About→LicenseList→LicenseDetail 而非 generator 自测，updater/诊断未降级。独立审查 APPROVED `0/0/0`：17/17 blob、严格 JSON、exact/full contract、四 ID behavior smoke `54/54`、Android consumer `5/5`、compile/Spotless 均通过；范围 `3 files/269 touched`，外部副作用为 0。下一项为父 Task 5B / 子 Task 20A。
+
+### Task 20A：共享许可证首项规则与 Desktop production wiring
+
+**Risk axis:** license-shared-desktop-wiring
+
+**Platform boundary:** shared+desktop
+
+**Estimated scope:** 3 files, 100 lines
+
+**Verification:** shared sole first-item/blank normalization、Desktop full ordered candidate mapping、two-license production-chain mutation
+
+**Files:** `LicenseNoticePolicy.kt`、`LicenseNoticePolicyTest.kt`、`DesktopDependencyNoticeProvider.kt`；复用既有 `DesktopDependencyNoticeProviderTest.kt` 两许可证场景，不为凑文件数复制测试。
+
+1. RED：共享首项 blank 归一化测试先失败；Desktop provider 在 shared selector 临时改为 `lastOrNull` 或 first-nonblank 时，既有 First/Second 与 blank-first 场景必须精确失败。
+2. GREEN：shared 是唯一首项选择与 blank→`null` 归一化位置；Desktop adapter 只按原 metadata 顺序映射完整候选，缺失/空内容保留为空占位，不预裁剪、不回退后项。
+3. 运行 shared 与 Desktop provider focused、compile、Spotless、diff/range/guard；不修改 manifest，待 Android consumer 完成后统一更新 evidence。
+
+### Task 20B：Android 许可证 shared consumer 与 parity evidence
+
+**Risk axis:** android-license-shared-consumer
+
+**Platform boundary:** android
+
+**Estimated scope:** 4 files, 140 lines
+
+**Verification:** real AboutLibraries candidate order→shared selector→Android detail content、blank-first no fall-through、ID94 exact protection
+
+**Files:** `OpenSourceLicensesScreen.kt`、新建同包 Android behavior test、`parity-manifest.json`、`DesktopProductCapabilityContractTest.kt`。
+
+1. RED：使用真实 AboutLibraries `License` 候选执行 production adapter；交换 shared selector 为末项或 first-nonblank 时首项与 blank-first 场景必须失败。
+2. GREEN：Android 只按原迭代顺序映射完整 HTML 候选并调用 shared selector，最终 UI 边界才 `.orEmpty()`；不得保留本地 `firstOrNull` 业务规则。
+3. 将 Android production behavior 方法纳入 ID94 exact protection，运行 Android focused、ID94 behavior/exact contract、compile、Spotless、diff/range/guard；20A/20B 完成后由 whole-change reviewer 合并执行一次唯一修复复审。
 
 ### Task 20：whole-change 审查与三平台 verify
 
@@ -1026,3 +1060,5 @@ status-source: this-file
 2. 审查清零后串行运行 Spotless、domain/data、当前 Android、Desktop/test-desktop全量；Android API36验证搜索、theme/default/AMOLED/语言边界与可访问入口。
 3. 仅用 `scripts/build-desktop.sh` 生成新 BUILD；Windows fixed EXE验证搜索→anchor、主题、grid、licenses、键盘/semantics/TestMode；macOS `ssh mbp` 验证同版本 app与可用 accessibility tree，SSH不能替代的screen-reader交互明确限界。
 4. Linux/WSL只验证可用theme/resource/keyboard/capability adapter。报告完整版本、命令/计数/失败、EXE、OS、IDs状态和剩余有意偏差；全部通过后勾选父Task5B并继续父Task6。
+
+**Review status（进行中）：** 对 `base-ref..f20861616` 的 whole-change 独立审查为 REJECTED `0/1/0`：ID94 的首许可证选择同时存在于 Android Screen、Desktop provider 与 shared policy，Desktop 在进入 shared 前已裁成单项，导致 shared selector mutation 无法破坏 production consumer。其余 fixed-main、搜索、anchor、主题、Desktop 独有能力、许可 UI、无障碍和测试有效性未发现阻塞项；focused contract `40/40` 通过，尚未运行全量矩阵或平台构建。按三平台 boundary 门禁将唯一 repair 分为 20A（shared+desktop）与 20B（android），两项串行实现后合并做一次修复复审。
