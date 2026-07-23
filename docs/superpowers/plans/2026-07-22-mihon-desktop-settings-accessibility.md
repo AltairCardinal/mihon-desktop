@@ -36,9 +36,9 @@ status-source: this-file
 
 按以下顺序一次执行一个子 Task，不并发写共享文件：
 
-`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 4G → 4H → 4I → 4J → 4K → 4L → 4M → 5 → 6A → 6B → 7A → 7B → 7C → 8A → 8B → 8C → 9 → 10A → 10B → 10C → 10D → 10E → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18A → 18B → 18C → 19 → 20`
+`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 4G → 4H → 4I → 4J → 4K → 4L → 4M → 5 → 6A → 6B → 7A → 7B → 7C → 8A → 8B → 8C → 9 → 10A → 10B → 10C → 10D → 10E → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18A → 18B → 18C → 18D → 19 → 20`
 
-其中 `DesktopSettingsCatalog.kt` 只在 5→7A→7B→7C→8A→8B→8C→11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6A→11→16 串行修改；`AboutScreen.kt` 只在 4I→8A→15→18B、`ExtensionRepoScreen.kt` 只在 4J→8B→18B、`TrackingSettingsScreen.kt` 只在 4K→4L→8C→18C 串行修改；4M 只补 4L 的真实动作/失败路径测试，不返改 production。
+其中 `DesktopSettingsCatalog.kt` 只在 5→7A→7B→7C→8A→8B→8C→11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6A→11→16 串行修改；`AboutScreen.kt` 只在 4I→8A→15→18B、`ExtensionRepoScreen.kt` 只在 4J→8B→18B→18C、`TrackingSettingsScreen.kt` 只在 4K→4L→8C→18D 串行修改；4M 只补 4L 的真实动作/失败路径测试，不返改 production。
 
 ## 执行状态
 
@@ -83,7 +83,8 @@ status-source: this-file
 - [x] Task 17：Desktop 设置 accessibility 内容页面第一批
 - [x] Task 18A：Desktop Security/Advanced accessibility
 - [ ] Task 18B：Desktop About/ExtensionRepo accessibility
-- [ ] Task 18C：Desktop Tracking accessibility
+- [ ] Task 18C：Desktop ExtensionRepo physical-key coverage
+- [ ] Task 18D：Desktop Tracking accessibility
 - [ ] Task 19：IDs 88/90/91/94 exact parity evidence
 - [ ] Task 20：whole-change 审查与三平台 verify
 
@@ -869,13 +870,29 @@ status-source: this-file
 
 **Files:** `AboutScreen.kt`、`ExtensionRepoScreen.kt`、about/extension accessibility test、about/extension keyboard test。
 
-**Range adjustment（实现前 RED 后）：** 真实 Compose fixture 与两页最小 production 接线合计 `3 files/361 touched`；页面边界、风险轴与行为未扩张。为避免用格式压缩掩盖范围，也避免把共享 Button/dialog 上下文重复拆载，预算先校正为 `3 files/380 touched`。首审进一步发现测试真实调用 `Desktop.browse`，且 refresh/FAB add/add cancel/conflict cancel 缺具体物理键证据；唯一修复需要正式 URL opener adapter 与对应 production 路径测试，保守累计 `396–400 touched`，因此最终上限校正为项目硬门禁 `3 files/400 touched`。实际超过 400 时必须停止并重新规划，不得压缩证据。
+**Range adjustment（实现前 RED 后）：** 真实 Compose fixture 与两页最小 production 接线合计 `3 files/361 touched`；页面边界、风险轴与行为未扩张。为避免用格式压缩掩盖范围，也避免把共享 Button/dialog 上下文重复拆载，预算先校正为 `3 files/380 touched`。首审发现测试真实调用 `Desktop.browse`，且 refresh/FAB add/add cancel/conflict cancel 缺具体物理键证据；合并修复草案实测 `3 files/439 touched`，在 GREEN 前按硬门禁停止。18B 只关闭正式 URL opener adapter、open exact-once 与原 361 行合同；其余具体物理键路径拆为 18C，禁止压缩证据。
 
 1. RED：更新/许可/缓存及仓库 add/replace/delete 无唯一键盘路径，危险操作不能确认/取消，或反馈/按钮 identity 退化时失败。
 2. GREEN：复用 Task16 primitives/Button helper，保留 updater、诊断、许可证、repository/interactor 与平台反馈；labels 来自 Task4I/4J 同一 MR。
-3. 运行 About/ExtensionRepo production wiring、LazyList anchor、semantics、keyboard、Spotless 与 range gate。
+3. 运行 About/ExtensionRepo production wiring、URL opener 隔离、LazyList anchor、semantics、keyboard、Spotless 与 range gate；refresh/FAB add/add cancel/conflict cancel 的具体物理键矩阵由 18C 独立关闭。
 
-### Task 18C：Desktop Tracking accessibility
+### Task 18C：Desktop ExtensionRepo physical-key coverage
+
+**Risk axis:** settings-accessibility-extension-keys
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 2 files, 200 lines
+
+**Verification:** ExtensionRepo refresh/FAB add/add cancel/conflict cancel 的 production physical-key exact-once、disabled safety、repository feedback 与 LazyList anchor
+
+**Files:** `ExtensionRepoScreen.kt`、about/extension accessibility test。
+
+1. RED：refresh、FAB add、add cancel 或 conflict cancel 任一真实控件在 Enter/NumPadEnter/Space 的 KeyDown 未恰好触发一次、KeyUp 重复触发或 disabled 产生副作用时失败。
+2. GREEN：复用 18B 的正式 URL opener 与 Task16/17 Button helper，不新增业务状态机；保留 create/replace/delete/open/copy 与 repository feedback。
+3. 运行 ExtensionRepo production wiring、resource identity、LazyList anchor、semantics、keyboard、Spotless 与 range gate。
+
+### Task 18D：Desktop Tracking accessibility
 
 **Risk axis:** settings-accessibility-tracking
 
