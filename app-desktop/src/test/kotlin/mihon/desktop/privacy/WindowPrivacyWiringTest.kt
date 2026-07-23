@@ -35,9 +35,11 @@ import uy.kohesive.injekt.api.get
 @OptIn(ExperimentalComposeUiApi::class)
 class WindowPrivacyWiringTest {
     private val preferenceNodes = mutableListOf<Preferences>()
+    private val originalLocale = java.util.Locale.getDefault().also { java.util.Locale.setDefault(java.util.Locale.US) }
 
     @AfterEach
     fun cleanUpPreferences() {
+        java.util.Locale.setDefault(originalLocale)
         preferenceNodes.forEach { runCatching { it.removeNode() } }
         preferenceNodes.clear()
     }
