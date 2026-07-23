@@ -99,6 +99,14 @@
     { "path": "presentation-core/src/main/java/tachiyomi/presentation/core/util/Modifier.kt", "blobId": "857674a5c94065a2065f2140418fe9463f8d7a12", "capabilityIds": [88] },
     { "path": "presentation-core/src/main/java/tachiyomi/presentation/core/components/LabeledCheckbox.kt", "blobId": "a66bf0d184acbac6f80bfc4fcce0a33a60f62aac", "capabilityIds": [88] },
     { "path": "presentation-core/src/main/java/tachiyomi/presentation/core/components/material/Surface.kt", "blobId": "0e857ef75c4c420f69af3c9b21ea0c61bcb56aa1", "capabilityIds": [88] },
-    { "path": "app/src/main/java/eu/kanade/presentation/more/settings/widget/AppThemePreferenceWidget.kt", "blobId": "5e3f76efe6e106e108eb7bf1598d78a52a41c07b", "capabilityIds": [91] }
+    { "path": "app/src/main/java/eu/kanade/presentation/more/settings/widget/AppThemePreferenceWidget.kt", "blobId": "5e3f76efe6e106e108eb7bf1598d78a52a41c07b", "capabilityIds": [91] },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/data/coil/TachiyomiImageDecoder.kt", "blobId": "84e3f0496044f14ade66401760fadcc0020310c5", "capabilityIds": [9] },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt", "blobId": "d9e47fe60cd198534c67a448afefa275d408527e", "capabilityIds": [10] },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/data/notification/Notifications.kt", "blobId": "cdc540eec1456c28a46b0871c473c2135e3ff1bc", "capabilityIds": [11] },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/util/CrashLogUtil.kt", "blobId": "4902671f3611b9f44b2d28692cd03f07d766cd20", "capabilityIds": [12] },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/category/CategoryScreenModel.kt", "blobId": "b98b77e4e2f3d544740522fe40318b04776450a5", "capabilityIds": [16] },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt", "blobId": "09d02f338038deed7650e0586e556702f709845b", "capabilityIds": [17] },
+    { "path": "app/src/main/java/eu/kanade/presentation/library/components/LibraryToolbar.kt", "blobId": "9845ca8166884e7a4ed441c0d54e958d3976472b", "capabilityIds": [19] },
+    { "path": "domain/src/main/java/tachiyomi/domain/category/interactor/SetMangaCategories.kt", "blobId": "604e3f0d1e04ed39c5beb887f12b82abb6bedce2", "capabilityIds": [22] }
   ]
 }

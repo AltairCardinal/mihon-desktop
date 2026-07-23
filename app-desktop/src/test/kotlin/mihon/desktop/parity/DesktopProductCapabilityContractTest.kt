@@ -37,6 +37,8 @@ class DesktopProductCapabilityContractTest {
     private val terminalStatuses = setOf("VERIFIED", "EXEMPT")
     private val requiredTerminalEvidenceRoles =
         setOf("FIXED_ORIGINAL", "CURRENT_ANDROID", "SHARED_OR_ADAPTER", "DESKTOP_CONSUMER", "FIXTURE")
+    private val task2ProvenanceStatuses =
+        mapOf(9 to "WIRED", 10 to "WIRED", 11 to "WIRED", 12 to "NOT_STARTED", 16 to "SHARED", 17 to "SHARED", 19 to "WIRED", 22 to "SHARED")
     private val validTags =
         setOf(
             "SHARE-DIRECT",
@@ -1013,7 +1015,7 @@ class DesktopProductCapabilityContractTest {
             validateItem(item, repositoryRoot)
             val id = validatedId(item)
             if (item.getValue("status").jsonPrimitive.content in terminalStatuses) {
-                validateTerminalRoleEvidence(item, repositoryRoot, fixedMainPathInventory)
+                validateRoleEvidence(item, repositoryRoot, fixedMainPathInventory)
             }
             requiredTextFields.forEach { field ->
                 assertTrue(item.getValue(field).jsonPrimitive.content.isNotBlank(), "ID ${item["id"]}: $field must not be blank")
@@ -1037,7 +1039,7 @@ class DesktopProductCapabilityContractTest {
             if ("DESKTOP-PRODUCT" in tags) {
                 assertTrue(protectionTests.isNotEmpty(), "ID $id: DESKTOP-PRODUCT protectionTests must not be empty")
                 assertEquals(expectedCapabilityEvidence.getValue(id), protectionTests.toSet(), "ID $id: unexpected evidence")
-            } else if (item.getValue("status").jsonPrimitive.content == "NOT_STARTED") {
+            } else if (item.getValue("status").jsonPrimitive.content == "NOT_STARTED" && item["roleEvidence"] == null) {
                 assertTrue(protectionTests.isEmpty(), "ID $id: unstarted capabilities cannot claim evidence")
             }
             protectionTests.forEach { testEvidence ->
@@ -1086,7 +1088,7 @@ class DesktopProductCapabilityContractTest {
         items.filter { it.getValue("status").jsonPrimitive.content in terminalStatuses }.forEach { item ->
             val id = validatedId(item)
             validateItem(item, repositoryRoot)
-            validateTerminalRoleEvidence(item, repositoryRoot, fixedMainPathInventory)
+            validateRoleEvidence(item, repositoryRoot, fixedMainPathInventory)
             val protectionTests = item.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content }
             assertTrue(protectionTests.isNotEmpty(), "ID $id: terminal capability requires protection tests")
             protectionTests.forEach { path ->
@@ -1105,6 +1107,30 @@ class DesktopProductCapabilityContractTest {
             nonTerminalIds.isEmpty(),
             "Final parity audit has ${nonTerminalIds.size} non-terminal IDs: ${nonTerminalIds.joinToString(",")}",
         )
+    }
+
+    @Test
+    fun `task 2 provenance batch resolves fixed and current role evidence`() {
+        val repositoryRoot = repositoryRoot()
+        val inventory = fixedMainPathInventory(repositoryRoot)
+        val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
+        task2ProvenanceStatuses.forEach { (id, expectedStatus) ->
+            val item = items.getValue(id).jsonObject
+            assertEquals(expectedStatus, requiredText(item, "status", id), "Task 2 must not change capability status")
+            assertEquals(fixedOriginalMihonRef, requiredText(item, "upstreamRef", id))
+            validateRoleEvidence(item, repositoryRoot, inventory)
+            val upstream = item.getValue("upstreamSymbols").jsonArray.map { it.jsonObject }
+            val fixedEntries = item.getValue("roleEvidence").jsonObject.getValue("FIXED_ORIGINAL").jsonArray.map { it.jsonObject }
+            fixedEntries.forEach { fixed ->
+                assertTrue(
+                    upstream.any {
+                        it.getValue("path").jsonPrimitive.content == fixed.getValue("path").jsonPrimitive.content &&
+                            it.getValue("symbol").jsonPrimitive.content == fixed.getValue("symbol").jsonPrimitive.content
+                    },
+                    "ID $id: fixed role path/symbol must match upstreamSymbols",
+                )
+            }
+        }
     }
 
     @Test
@@ -1610,7 +1636,7 @@ class DesktopProductCapabilityContractTest {
         expectedStatuses.forEach { (id, expectedStatus) ->
             val item = items.getValue(id).jsonObject
             assertEquals(expectedStatus, item.getValue("status").jsonPrimitive.content, "ID $id status")
-            if (id in structuredProvenanceIds) {
+            if (id in structuredProvenanceIds || item["roleEvidence"] != null) {
                 assertTrue(
                     item.getValue("sharedImplementationPaths").jsonArray.any {
                         it.jsonPrimitive.content.startsWith("domain/src/commonMain/")
@@ -2010,7 +2036,7 @@ class DesktopProductCapabilityContractTest {
         }
     }
 
-    private fun validateTerminalRoleEvidence(
+    private fun validateRoleEvidence(
         item: JsonObject,
         repositoryRoot: Path,
         fixedMainPathInventory: Map<String, String>,
@@ -2059,6 +2085,11 @@ class DesktopProductCapabilityContractTest {
                         assertEquals(fixedOriginalMihonRef, requiredText(entry, "ref", id, "roleEvidence.$role[$index]"))
                         assertTrue(path in upstreamPaths, "ID $id: fixed-original evidence must use a declared upstream path")
                         assertTrue(path in fixedMainPathInventory, "ID $id: fixed-original evidence must use the fixed-main inventory")
+                        assertEquals(
+                            fixedMainBlobId(repositoryRoot, path),
+                            fixedMainPathInventory.getValue(path),
+                            "ID $id: fixed-main inventory blob must match the fixed ref path",
+                        )
                         val lines = fixedMainBlobLines(repositoryRoot, fixedMainPathInventory.getValue(path))
                         assertTrue(line!! <= lines.size, "ID $id: FIXED_ORIGINAL evidence line $line is outside fixed blob $path")
                         assertTrue(lines[line - 1].contains(symbol), "ID $id: FIXED_ORIGINAL symbol is not present in fixed blob $path:$line")
@@ -2123,6 +2154,18 @@ class DesktopProductCapabilityContractTest {
         val lines = process.inputStream.bufferedReader().readLines()
         assertEquals(0, process.waitFor(), "Unable to read fixed-main blob $blobId: ${lines.joinToString("\n")}")
         return lines
+    }
+
+    private fun fixedMainBlobId(repositoryRoot: Path, path: String): String {
+        val revision = "${fixedOriginalMihonRef.substringAfter('@')}:$path"
+        val process =
+            ProcessBuilder("git", "rev-parse", revision)
+                .directory(repositoryRoot.toFile())
+                .redirectErrorStream(true)
+                .start()
+        val output = process.inputStream.bufferedReader().readText().trim()
+        assertEquals(0, process.waitFor(), "Unable to resolve fixed-main path $revision: $output")
+        return output
     }
 
     private fun kotlinTestMethod(

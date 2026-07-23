@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 2
+active-task: Task 3
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -41,7 +41,7 @@ active-task: Task 2
 ## Task 总览
 
 - [x] Task 1：建立可独立触发的最终 closure RED gate
-- [ ] Task 2：补齐 provenance 批次 P1（9、10、11、12、16、17、19、22）
+- [x] Task 2：补齐 provenance 批次 P1（9、10、11、12、16、17、19、22）
 - [ ] Task 3：补齐 provenance 批次 P2（24、26、44、45、47、49、51、53）
 - [ ] Task 4：补齐 provenance 批次 P3（54、56、57、59、61、62、64、66）
 - [ ] Task 5：补齐 provenance 批次 P4（71、72、73、74、93、95、96）
@@ -93,19 +93,24 @@ active-task: Task 2
 
 **Platform boundary:** verification
 
-**Estimated scope:** 3 files, 360 lines
+**Estimated scope:** 4 files, 360 lines
 
 **Verification:** parity contract 与该批 protection tests GREEN；固定原版路径、符号、准确行号和当前三类 consumer 均可解析。
 
 **Files:**
 - Modify: `app-desktop/src/test/resources/parity/parity-manifest.json`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt`
+- Modify: `app-desktop/src/test/resources/parity/fixed-main-path-inventory.json`
 - Modify: `docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md`
+
+**Scope correction:** Task 1 的 fixed-blob/line 校验要求每个 fixed-original path 都存在于 inventory；现有 inventory 不覆盖本批 8 项的大多数固定原版路径。因此 inventory 与 manifest provenance 不可拆分，范围由 3 文件修正为 4 文件，仍保持 `≤360 touched`。
 
 **Steps:**
 1. 对 8 项分别从固定 ref 取证，不得从当前 `app/` 反推原版。
 2. 记录固定原版符号/行号、当前 Android consumer、shared/adapter、Desktop consumer 和 fixture/test。
 3. 本 Task 只补 provenance；发现产品链缺失时记录到 Task 14/16A–16D 的 inventory 输入，不预判终态。
+
+**Execution evidence（已完成）：** 基线 `ffcbb2240dd803b948d40970ce99c97da6b6b865`。新增 batch contract 首次 RED 精确命中 `ID 9: upstreamRef must not be blank`；8 项均从 `6fbf6df...` 取得 path/symbol/line/blob，并绑定当前 Android、shared/adapter、Desktop consumer 与真实 fixture marker，状态保持 `WIRED/WIRED/WIRED/NOT_STARTED/SHARED/SHARED/WIRED/SHARED`。ID12 明确为 Android/Desktop platform adapter 现状，不宣称 shared crash runtime。错误 blob mutation 将 ID9 inventory 指向 LibraryUpdateJob blob 后精确命中 fixed-blob symbol/line RED，随后恢复。focused batch 与普通 contract GREEN；显式 final gate 仍报告同一 60 个非终态 ID 并按设计 RED；根 `spotlessCheck`、plan guard、diff/range 通过。范围 `4 files/202 touched`，提交 hash 见交付报告；下一项为 Task 3。
 
 ### Task 3：补齐 provenance 批次 P2（24、26、44、45、47、49、51、53）
 

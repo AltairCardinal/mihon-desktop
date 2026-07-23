@@ -140,13 +140,25 @@
   },
   {
     "id": 9,
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/coil/TachiyomiImageDecoder.kt", "symbol": "TachiyomiImageDecoder"}],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/data/coil/TachiyomiImageDecoder.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopPageDecoders.kt"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/data/coil/TachiyomiImageDecoder.kt", "symbol": "TachiyomiImageDecoder", "line": 20}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/coil/TachiyomiImageDecoder.kt", "symbol": "class TachiyomiImageDecoder", "line": 24}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt", "symbol": "interface PageDecoder", "line": 97}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopPageDecoders.kt", "symbol": "class SkiaPageDecoder", "line": 16}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt#Skia region adapter decodes only the requested tile", "productionMarkers": ["SkiaRegionPageDecoder().decodeRegion"]}]
+    },
     "group": "平台基础",
     "tags": [
       "SHARE-EXTRACT",
       "PLATFORM-ADAPTER"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt 定义 PageDecoder、RegionDecoder、PageCache、采样结果与缓存策略；app/src/main/java/eu/kanade/tachiyomi/data/coil/AndroidReaderPageDecoder.kt 与 app/src/main/java/eu/kanade/tachiyomi/data/coil/TachiyomiImageDecoder.kt 在 Android 生产解码链实际委托共享请求/结果，app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ReaderPageImageView.kt 映射共享缓存策略",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #9: TachiyomiImageDecoder owns Android image decoding.",
     "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopPageDecoders.kt、app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopPageCache.kt 与 app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt 以 Skia ImageBitmap 消费共享解码/缓存契约",
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
@@ -159,13 +171,25 @@
   },
   {
     "id": 10,
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt", "symbol": "LibraryUpdateJob"}],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/task/BackgroundTask.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/task/DesktopTaskScheduler.kt"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt", "symbol": "LibraryUpdateJob", "line": 80}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt", "symbol": "class LibraryUpdateJob", "line": 81}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/task/BackgroundTask.kt", "symbol": "data class BackgroundTask", "line": 6}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/task/DesktopTaskScheduler.kt", "symbol": "class DesktopTaskScheduler", "line": 129}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/task/DesktopTaskSchedulerIntegrationTest.kt#checkpoint and cancellation obey legal terminal transitions", "productionMarkers": ["scheduler.register"]}]
+    },
     "group": "平台基础",
     "tags": [
       "PLATFORM-ADAPTER"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Legacy capability summary #10: 后台任务; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 后台任务",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #10: LibraryUpdateJob schedules constrained Android WorkManager library updates.",
+    "desktopImplementation": "DesktopTaskScheduler persists the current shared BackgroundTask contract; scheduling remains a platform adapter.",
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/task/BackgroundTaskContractTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/task/DesktopTaskSchedulerIntegrationTest.kt",
@@ -177,13 +201,25 @@
   },
   {
     "id": 11,
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/notification/Notifications.kt", "symbol": "Notifications"}],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/task/BackgroundTask.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/data/notification/Notifications.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/domain/DesktopSystemNotifier.kt"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/data/notification/Notifications.kt", "symbol": "Notifications", "line": 16}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/notification/Notifications.kt", "symbol": "object Notifications", "line": 16}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/task/BackgroundTask.kt", "symbol": "sealed interface NotificationEvent", "line": 41}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/domain/DesktopSystemNotifier.kt", "symbol": "class DesktopSystemNotifier", "line": 5}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopSystemNotifierTest.kt#falls back to in-app notification when system delivery is unavailable", "productionMarkers": ["DesktopSystemNotifier("]}]
+    },
     "group": "平台基础",
     "tags": [
       "PLATFORM-ADAPTER"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Legacy capability summary #11: 通知; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 通知",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #11: Notifications defines Android notification channels and ownership.",
+    "desktopImplementation": "DesktopSystemNotifier maps shared NotificationEvent values to native delivery with an in-app fallback.",
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/task/BackgroundTaskContractTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopSystemNotifierTest.kt",
@@ -194,27 +230,51 @@
   },
   {
     "id": 12,
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/util/CrashLogUtil.kt", "symbol": "CrashLogUtil"}],
+    "sharedImplementationPaths": [],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/util/CrashLogUtil.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/CrashHandler.kt"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/util/CrashLogUtil.kt", "symbol": "CrashLogUtil", "line": 20}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/util/CrashLogUtil.kt", "symbol": "class CrashLogUtil", "line": 20}],
+      "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app/src/main/java/eu/kanade/tachiyomi/util/CrashLogUtil.kt", "symbol": "class CrashLogUtil", "line": 20}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/CrashHandler.kt", "symbol": "object CrashHandler", "line": 14}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/CrashHandlerTest.kt#appendCrashReport creates parent directory and writes report", "productionMarkers": ["CrashHandler.appendCrashReport"]}]
+    },
     "group": "平台基础",
     "tags": [
       "PLATFORM-ADAPTER"
     ],
     "status": "NOT_STARTED",
-    "authoritativeImplementation": "Legacy capability summary #12: 崩溃与诊断; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 崩溃与诊断",
-    "protectionTests": [],
+    "authoritativeImplementation": "Fixed-main original Mihon capability #12: CrashLogUtil dumps Android logs and diagnostics.",
+    "desktopImplementation": "Desktop CrashHandler writes and rotates uncaught-exception reports; no shared crash runtime is claimed.",
+    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/CrashHandlerTest.kt"],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 16,
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/category/CategoryScreenModel.kt", "symbol": "CategoryScreenModel"}],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/tachiyomi/domain/category/interactor/CreateCategoryWithName.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/category/CategoryScreenModel.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/category/CategoryScreenModel.kt", "symbol": "CategoryScreenModel", "line": 24}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/category/CategoryScreenModel.kt", "symbol": "private val createCategoryWithName", "line": 26}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/category/interactor/CreateCategoryWithName.kt", "symbol": "class CreateCategoryWithName", "line": 10}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "private val createCategory", "line": 67}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryCategoryBehaviorTest.kt#category dialog intents perform create rename reorder and delete through production DI", "productionMarkers": ["LibraryScreenModelFactory.create"]}]
+    },
     "group": "书库与详情",
     "tags": [
       "SHARE-DIRECT",
       "SHARE-EXTRACT"
     ],
     "status": "SHARED",
-    "authoritativeImplementation": "Legacy capability summary #16: 分类; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 分类",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #16: CategoryScreenModel owns category CRUD and ordering.",
+    "desktopImplementation": "Android and Desktop screen models consume the current shared category interactors.",
     "protectionTests": [
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryCategoryBehaviorTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
@@ -224,13 +284,25 @@
   },
   {
     "id": 17,
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt", "symbol": "LibraryScreenModel"}],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/tachiyomi/domain/library/interactor/EvaluateLibrary.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/domain/LibrarySearchFilter.kt"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt", "symbol": "LibraryScreenModel", "line": 71}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt", "symbol": "private val evaluateLibrary = EvaluateLibrary()", "line": 86}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/library/interactor/EvaluateLibrary.kt", "symbol": "class EvaluateLibrary", "line": 31}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/domain/LibrarySearchFilter.kt", "symbol": "private val evaluator = EvaluateLibrary()", "line": 12}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt#filter intent cycles include exclude any and immediately changes visible items", "productionMarkers": ["model.toggleFilter"]}]
+    },
     "group": "书库与详情",
     "tags": [
       "SHARE-EXTRACT"
     ],
     "status": "SHARED",
-    "authoritativeImplementation": "Legacy capability summary #17: 书库筛选; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 书库筛选",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #17: LibraryScreenModel evaluates library filters and sorting.",
+    "desktopImplementation": "Current Android and Desktop library consumers delegate filtering to shared EvaluateLibrary.",
     "protectionTests": [
       "app/src/test/java/eu/kanade/tachiyomi/ui/library/LibrarySharedEvaluationWiringTest.kt",
       "domain/src/commonTest/kotlin/tachiyomi/domain/library/interactor/EvaluateLibraryTest.kt",
@@ -243,13 +315,25 @@
   },
   {
     "id": 19,
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/presentation/library/components/LibraryToolbar.kt", "symbol": "LibrarySelectionToolbar"}],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/tachiyomi/domain/category/interactor/SetMangaCategories.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/presentation/library/components/LibraryToolbar.kt", "symbol": "LibrarySelectionToolbar", "line": 126}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt", "symbol": "private val setMangaCategories", "line": 77}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/category/interactor/SetMangaCategories.kt", "symbol": "class SetMangaCategories", "line": 7}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "suspend fun setCategoriesForManga", "line": 454}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt#batch category assignment reports partial failure and continues", "productionMarkers": ["SetMangaCategories(repository).awaitBatch"]}]
+    },
     "group": "书库与详情",
     "tags": [
       "SHARE-EXTRACT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Legacy capability summary #19: 书库多选批处理; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 书库多选批处理",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #19: LibrarySelectionToolbar exposes multi-select library actions.",
+    "desktopImplementation": "Desktop batch category actions consume shared SetMangaCategories and report partial failures.",
     "protectionTests": [
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt"
     ],
@@ -258,13 +342,25 @@
   },
   {
     "id": 22,
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "domain/src/main/java/tachiyomi/domain/category/interactor/SetMangaCategories.kt", "symbol": "SetMangaCategories"}],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/tachiyomi/domain/category/interactor/SetMangaCategories.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "domain/src/main/java/tachiyomi/domain/category/interactor/SetMangaCategories.kt", "symbol": "SetMangaCategories", "line": 7}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt", "symbol": "private val setMangaCategories", "line": 77}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/category/interactor/SetMangaCategories.kt", "symbol": "class SetMangaCategories", "line": 7}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "private val setMangaCategories", "line": 75}],
+      "FIXTURE": [{"artifact": "data/src/jvmTest/kotlin/tachiyomi/data/manga/MangaRepositoryMembershipIntegrationTest.kt#membership update commits favorite date and categories together", "productionMarkers": ["fixture.repository.updateMembershipsAtomically"]}]
+    },
     "group": "书库与详情",
     "tags": [
       "SHARE-DIRECT"
     ],
     "status": "SHARED",
-    "authoritativeImplementation": "Legacy capability summary #22: 收藏与分类联动; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 收藏与分类联动",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #22: SetMangaCategories persists favorite/category membership linkage.",
+    "desktopImplementation": "The shared interactor is injected into current Android and Desktop library screen models.",
     "protectionTests": [
       "data/src/jvmTest/kotlin/tachiyomi/data/manga/MangaRepositoryMembershipIntegrationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseIntegrationTest.kt"
