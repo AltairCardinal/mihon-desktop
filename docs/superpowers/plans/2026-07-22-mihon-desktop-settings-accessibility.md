@@ -863,13 +863,13 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 3 files, 380 lines
+**Estimated scope:** 3 files, 400 lines
 
 **Verification:** About/ExtensionRepo keyboard/semantics、缓存与仓库危险操作确认/取消、updater/repository feedback、LazyList anchor
 
 **Files:** `AboutScreen.kt`、`ExtensionRepoScreen.kt`、about/extension accessibility test、about/extension keyboard test。
 
-**Range adjustment（实现前 RED 后）：** 真实 Compose fixture 与两页最小 production 接线合计 `3 files/361 touched`；页面边界、风险轴与行为未扩张。为避免用格式压缩掩盖范围，也避免把共享 Button/dialog 上下文重复拆载，预算校正为 `3 files/380 touched`，仍低于项目 400 行硬门禁。
+**Range adjustment（实现前 RED 后）：** 真实 Compose fixture 与两页最小 production 接线合计 `3 files/361 touched`；页面边界、风险轴与行为未扩张。为避免用格式压缩掩盖范围，也避免把共享 Button/dialog 上下文重复拆载，预算先校正为 `3 files/380 touched`。首审进一步发现测试真实调用 `Desktop.browse`，且 refresh/FAB add/add cancel/conflict cancel 缺具体物理键证据；唯一修复需要正式 URL opener adapter 与对应 production 路径测试，保守累计 `396–400 touched`，因此最终上限校正为项目硬门禁 `3 files/400 touched`。实际超过 400 时必须停止并重新规划，不得压缩证据。
 
 1. RED：更新/许可/缓存及仓库 add/replace/delete 无唯一键盘路径，危险操作不能确认/取消，或反馈/按钮 identity 退化时失败。
 2. GREEN：复用 Task16 primitives/Button helper，保留 updater、诊断、许可证、repository/interactor 与平台反馈；labels 来自 Task4I/4J 同一 MR。
