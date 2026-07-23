@@ -1,3 +1,5 @@
+@file:JvmName("AndroidThemeModeKt")
+
 package eu.kanade.domain.ui.model
 
 import androidx.appcompat.app.AppCompatDelegate
