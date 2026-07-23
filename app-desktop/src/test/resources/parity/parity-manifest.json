@@ -436,12 +436,26 @@
       "SHARE-EXTRACT"
     ],
     "status": "SHARED",
-    "authoritativeImplementation": "Legacy capability summary #24: 章节批量操作; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 章节批量操作",
+    "authoritativeImplementation": "Fixed-main MangaScreenModel owns mark-read and bookmark batch actions; the shared BatchUpdateChapters helper preserves ordinary-failure continuation for Desktop.",
+    "desktopImplementation": "Desktop MangaDetailScreenModel consumes BatchUpdateChapters for selected read and bookmark actions and exposes partial-failure feedback.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt", "symbol": "fun markChaptersRead"}],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/tachiyomi/domain/chapter/interactor/BatchUpdateChapters.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt", "symbol": "fun markChaptersRead", "line": 748}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt", "symbol": "fun markChaptersRead", "line": 748}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/interactor/BatchUpdateChapters.kt", "symbol": "class BatchUpdateChapters", "line": 5}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt", "symbol": "suspend fun markSelectedRead", "line": 225}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt#selected read action exposes partial failure in state", "productionMarkers": ["model.runChapterBatch"]}]
+    },
     "protectionTests": [
       "domain/src/commonTest/kotlin/tachiyomi/domain/chapter/interactor/BatchUpdateChaptersTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt"
     ],
+    "behaviorMethods": {"domain/src/commonTest/kotlin/tachiyomi/domain/chapter/interactor/BatchUpdateChaptersTest.kt": ["continues after failure and reports each item"], "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt": ["selected read action exposes partial failure in state"]},
+    "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -453,14 +467,29 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Legacy capability summary #26: 封面管理; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 封面管理",
+    "authoritativeImplementation": "Fixed-main MangaCoverScreenModel owns custom-cover edit and delete behavior.",
+    "desktopImplementation": "Desktop MangaCoverAdapter maps the platform file picker into the fork shared UpdateCustomCover workflow and MangaDetail feedback.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaCoverScreenModel.kt", "symbol": "fun editCover"}],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/UpdateCustomCover.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaCoverScreenModel.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaCoverAdapter.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt"],
+    "deviations": [{"classification": "MIGRATION_OUTPUT", "description": "UpdateCustomCover is fork-added shared workflow consumed by Desktop; current Android retains its direct MangaCoverScreenModel path and is not claimed as a shared consumer."}, {"classification": "PLATFORM_ADAPTER", "description": "Desktop file picking and cover-byte loading replace Android Uri and Context handling."}],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaCoverScreenModel.kt", "symbol": "fun editCover", "line": 120}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaCoverScreenModel.kt", "symbol": "fun editCover", "line": 120}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/UpdateCustomCover.kt", "symbol": "class UpdateCustomCover", "line": 11}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaCoverAdapter.kt", "symbol": "suspend fun chooseAndUpdate", "line": 21}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt#cover permission failure is visible and does not refresh cache", "productionMarkers": ["model.chooseCustomCover"]}]
+    },
     "protectionTests": [
       "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/UpdateCustomCoverTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaCoverAdapterTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
     ],
+    "behaviorMethods": {"domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/UpdateCustomCoverTest.kt": ["successful write invalidates cover cache timestamp"], "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt": ["cover permission failure is visible and does not refresh cache"]},
+    "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -959,12 +988,27 @@
     "status": "WIRED",
     "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt 定义区域解码请求、结果尺寸和缓存字节预算；app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ReaderPageImageView.kt 将 Android tile reader 映射为共享无重复完整解码缓存策略",
     "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopPageDecoders.kt 通过 SkiaRegionPageDecoder 物化有界输出，app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt 禁止超大完整 bitmap 长驻普通缓存",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ReaderPageImageView.kt", "symbol": "setMaxTileSize"}],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ReaderPageImageView.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopPageDecoders.kt", "app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt"],
+    "deviations": [{"classification": "PLATFORM_ADAPTER", "description": "Android subsampling and Desktop Skia region decoding use platform image engines while sharing bounded decode contracts."}],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ReaderPageImageView.kt", "symbol": "setMaxTileSize", "line": 243}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ReaderPageImageView.kt", "symbol": "setMaxTileSize", "line": 251}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt", "symbol": "interface PageDecoder", "line": 97}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopPageDecoders.kt", "symbol": "class SkiaRegionPageDecoder", "line": 39}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt#Skia region adapter decodes only the requested tile", "productionMarkers": ["SkiaRegionPageDecoder().decodeRegion"]}]
+    },
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
       "app/src/test/java/eu/kanade/tachiyomi/data/coil/AndroidReaderPageDecoderContractTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt"
     ],
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt": ["Skia region adapter decodes only the requested tile"]},
+    "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -977,12 +1021,26 @@
     "status": "WIRED",
     "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt 的 ReaderPreloadPlanner 统一窗口、优先级、generation、取消与淘汰；app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt 消费同一规划器并保留 Android 前向 4 页权威配置",
     "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt 消费共享规划器并取消旧协程、拒绝过期回填、淘汰旧窗口",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt", "symbol": "private val preloadSize = 4"}],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt", "symbol": "private val preloadSize = 4", "line": 44}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt", "symbol": "private val preloadPlanner", "line": 50}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt", "symbol": "class ReaderPreloadPlanner", "line": 272}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt", "symbol": "private val planner", "line": 45}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt#page change cancels every active or queued old generation request", "productionMarkers": ["preloader.preload"]}]
+    },
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoaderIntegrationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt"
     ],
+    "behaviorMethods": {"domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt": ["fixed original Mihon preload window keeps forward-only behavior"], "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt": ["page change cancels every active or queued old generation request"]},
+    "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -995,6 +1053,18 @@
     "status": "WIRED",
     "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt 统一 Wait/Loading/Loaded/Error、相邻章节、缺章数、边界与重试命令；app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt 发布共享状态，app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt 与 app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonTransitionHolder.kt 均消费 sharedStateFlow 并处理 Loading/Error/Loaded",
     "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt 与 app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt 消费共享状态，app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt 提供可操作 Retry、Continue/Dismiss 过渡和章节边界反馈",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt", "symbol": "sealed interface State"}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt", "symbol": "private fun observeStatus"}],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt", "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt", "symbol": "sealed interface State", "line": 45}, {"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt", "symbol": "private fun observeStatus", "line": 82}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt", "symbol": "val sharedStateFlow", "line": 16}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt", "symbol": "sealed interface ReaderChapterState", "line": 26}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt", "symbol": "fun setChapterTransitionState", "line": 246}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt#production adjacent chain publishes loading error retry loaded and navigates with loaded pages", "productionMarkers": ["screen.requestAdjacentChapterTransition"]}]
+    },
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
@@ -1003,6 +1073,8 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt"
     ],
+    "behaviorMethods": {"domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt": ["chapter transition exposes wait loading loaded error missing count and retry command"], "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt": ["production adjacent chain publishes loading error retry loaded and navigates with loaded pages"]},
+    "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -1016,12 +1088,27 @@
     "status": "WIRED",
     "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderNavigation.kt 固化 Android RightAndLeft、L、Kindle、Edge、Disabled 区域及横向/纵向反转语义；app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ViewerNavigation.kt 从共享区域构建 Android RectF",
     "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/TapZone.kt 与 app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderKeyboardAction.kt 把鼠标/键盘映射到共享命令",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ViewerNavigation.kt", "symbol": "fun getAction"}],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/reader/ReaderNavigation.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ViewerNavigation.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/ui/reader/TapZone.kt", "app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderKeyboardAction.kt"],
+    "deviations": [{"classification": "DESKTOP_PRODUCT_ENHANCEMENT", "description": "Desktop additionally maps keyboard and pointer-button inputs to the shared navigation commands."}],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ViewerNavigation.kt", "symbol": "fun getAction", "line": 44}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ViewerNavigation.kt", "symbol": "ReaderNavigation.regions", "line": 40}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderNavigation.kt", "symbol": "object ReaderNavigation", "line": 55}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/TapZone.kt", "symbol": "ReaderNavigation.commandAt", "line": 57}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/TapZoneTest.kt#tap regions delegate to the shared navigation presets", "productionMarkers": ["tapNavRegion("]}]
+    },
     "protectionTests": [
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/TapZoneTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderKeyboardNavigationPositionTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt"
     ],
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/reader/TapZoneTest.kt": ["tap regions delegate to the shared navigation presets"]},
+    "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -1035,6 +1122,19 @@
     "status": "WIRED",
     "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt 的 ReaderColorFilterParams 统一亮度、色调、灰度、反色、归一化与 effective 语义；app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderColorFilter.kt 映射参数，app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt 以共享 effective/normalized 驱动 Android 硬件图层",
     "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderSettingsPanel.kt、app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt 与 app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt 提供持久化开关；app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt 的 readerColorTransform 委托 readerColorMatrix 构建 Compose ColorMatrix 并实际渲染灰度/反色",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt", "symbol": "private fun getCombinedPaint"}],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderColorFilter.kt", "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderColorFilter.kt"],
+    "deviations": [{"classification": "PLATFORM_ADAPTER", "description": "Android Paint/ColorMatrix and Desktop Compose ColorMatrix are platform render adapters over the shared normalized filter parameters."}],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt", "symbol": "private fun getCombinedPaint", "line": 812}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderColorFilter.kt", "symbol": "internal fun buildAndroidReaderColorFilterParams", "line": 5}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt", "symbol": "data class ReaderColorFilterParams", "line": 241}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun readerColorMatrix", "line": 59}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt#disabled grayscale invert and combined color matrices transform pixels", "productionMarkers": ["readerColorMatrix("]}]
+    },
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
@@ -1042,6 +1142,8 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt"
     ],
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt": ["grayscale and invert are effective shared filter modes"], "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt": ["reader color matrix production chain delegates through the tested helper"]},
+    "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -1052,9 +1154,24 @@
       "SHARE-DIRECT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Legacy capability summary #53: 章节进度; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Desktop reader submits ReadingProgressEvent to the shared SQLDelight transaction repository",
-    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerIntegrationTest.kt"],
+    "authoritativeImplementation": "Fixed-main ReaderViewModel persists last-page and read completion through UpdateChapter.",
+    "desktopImplementation": "Desktop ReaderProgressTracker submits ReadingProgressEvent through the fork shared RecordReadingProgress transaction workflow.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "symbol": "private suspend fun updateChapterProgress"}],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/tachiyomi/domain/reader/interactor/RecordReadingProgress.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/domain/ReaderProgressTracker.kt"],
+    "deviations": [{"classification": "MIGRATION_OUTPUT", "description": "RecordReadingProgress and its transactional event model are fork-added shared reliability behavior consumed by Desktop; current Android retains direct UpdateChapter progress persistence."}, {"classification": "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT", "description": "Desktop event keys atomically deduplicate chapter, history, duration, and tracker-event commits across retries."}],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "symbol": "private suspend fun updateChapterProgress", "line": 534}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "symbol": "private suspend fun updateChapterProgress", "line": 542}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/reader/interactor/RecordReadingProgress.kt", "symbol": "class RecordReadingProgress", "line": 6}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/domain/ReaderProgressTracker.kt", "symbol": "recordReadingProgress.await", "line": 51}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt#reading to last page marks shared event as read", "productionMarkers": ["ReaderProgressTracker("]}]
+    },
+    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerIntegrationTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt"],
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt": ["reading to last page marks shared event as read"]},
+    "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },

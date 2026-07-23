@@ -58,6 +58,61 @@ class DesktopProductCapabilityContractTest {
                         setOf("toggleLibrary clears favorite date and categories when removing"),
                 ),
         )
+    private val task3ProvenanceStatuses =
+        mapOf(24 to "SHARED", 26 to "WIRED", 44 to "WIRED", 45 to "WIRED", 47 to "WIRED", 49 to "WIRED", 51 to "WIRED", 53 to "WIRED")
+    private val task3BehaviorMethods =
+        mapOf(
+            24 to
+                mapOf(
+                    "domain/src/commonTest/kotlin/tachiyomi/domain/chapter/interactor/BatchUpdateChaptersTest.kt" to
+                        setOf("continues after failure and reports each item"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt" to
+                        setOf("selected read action exposes partial failure in state"),
+                ),
+            26 to
+                mapOf(
+                    "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/UpdateCustomCoverTest.kt" to
+                        setOf("successful write invalidates cover cache timestamp"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt" to
+                        setOf("cover permission failure is visible and does not refresh cache"),
+                ),
+            44 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt" to
+                        setOf("Skia region adapter decodes only the requested tile"),
+                ),
+            45 to
+                mapOf(
+                    "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt" to
+                        setOf("fixed original Mihon preload window keeps forward-only behavior"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt" to
+                        setOf("page change cancels every active or queued old generation request"),
+                ),
+            47 to
+                mapOf(
+                    "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt" to
+                        setOf("chapter transition exposes wait loading loaded error missing count and retry command"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to
+                        setOf("production adjacent chain publishes loading error retry loaded and navigates with loaded pages"),
+                ),
+            49 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/TapZoneTest.kt" to
+                        setOf("tap regions delegate to the shared navigation presets"),
+                ),
+            51 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt" to
+                        setOf("grayscale and invert are effective shared filter modes"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt" to
+                        setOf("reader color matrix production chain delegates through the tested helper"),
+                ),
+            53 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt" to
+                        setOf("reading to last page marks shared event as read"),
+                ),
+        )
     private val validTags =
         setOf(
             "SHARE-DIRECT",
@@ -1143,6 +1198,45 @@ class DesktopProductCapabilityContractTest {
                     methods.jsonArray.map { it.jsonPrimitive.content }.toSet()
                 }
             assertEquals(task2BehaviorMethods.getValue(id), behaviorMethods, "ID $id behavior methods")
+            behaviorMethods.forEach { (path, methods) ->
+                val source = Files.readString(repositoryRoot.resolve(path))
+                methods.forEach { method ->
+                    assertTrue(
+                        kotlinTestMethod(source, method, "ID $id behavior method $path#$method").contains("assert"),
+                        "ID $id behavior method must execute assertions: $path#$method",
+                    )
+                }
+            }
+            validateRoleEvidence(item, repositoryRoot, inventory)
+            val upstream = item.getValue("upstreamSymbols").jsonArray.map { it.jsonObject }
+            val fixedEntries = item.getValue("roleEvidence").jsonObject.getValue("FIXED_ORIGINAL").jsonArray.map { it.jsonObject }
+            fixedEntries.forEach { fixed ->
+                assertTrue(
+                    upstream.any {
+                        it.getValue("path").jsonPrimitive.content == fixed.getValue("path").jsonPrimitive.content &&
+                            it.getValue("symbol").jsonPrimitive.content == fixed.getValue("symbol").jsonPrimitive.content
+                    },
+                    "ID $id: fixed role path/symbol must match upstreamSymbols",
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `task 3 provenance batch resolves fixed and current role evidence`() {
+        val repositoryRoot = repositoryRoot()
+        val inventory = fixedMainPathInventory(repositoryRoot)
+        val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
+        task3ProvenanceStatuses.forEach { (id, expectedStatus) ->
+            val item = items.getValue(id).jsonObject
+            assertEquals(expectedStatus, requiredText(item, "status", id), "Task 3 must not change capability status")
+            assertEquals(fixedOriginalMihonRef, requiredText(item, "upstreamRef", id))
+            assertEquals(":app-desktop:task3ParityVerification", requiredText(item, "behaviorVerificationTask", id))
+            val behaviorMethods =
+                item.getValue("behaviorMethods").jsonObject.mapValues { (_, methods) ->
+                    methods.jsonArray.map { it.jsonPrimitive.content }.toSet()
+                }
+            assertEquals(task3BehaviorMethods.getValue(id), behaviorMethods, "ID $id behavior methods")
             behaviorMethods.forEach { (path, methods) ->
                 val source = Files.readString(repositoryRoot.resolve(path))
                 methods.forEach { method ->

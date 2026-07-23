@@ -258,6 +258,44 @@ tasks.register<Test>("task2ParityVerification") {
     }
 }
 
+tasks.register<Test>("task3ParityVerification") {
+    group = "verification"
+    description = "Runs Task 3 provenance plus its selected Desktop and domain production behavior tests."
+    dependsOn(tasks.named("jvmTestClasses"), ":domain:jvmTestClasses")
+    testClassesDirs = files(
+        jvmTestTask.get().testClassesDirs,
+        domainJvmTestTask.get().testClassesDirs,
+    )
+    classpath = files(
+        jvmTestTask.get().classpath,
+        domainJvmTestTask.get().classpath,
+    )
+    filter {
+        listOf(
+            "mihon.desktop.domain.ReaderProgressTrackerIntegrationTest",
+            "mihon.desktop.domain.ReaderProgressTrackerTest",
+            "mihon.desktop.parity.DesktopProductCapabilityContractTest",
+            "mihon.desktop.reader.PagePreloaderTest",
+            "mihon.desktop.reader.ReaderSettingsModelsTest",
+            "mihon.desktop.reader.SkiaImageDecoderTest",
+            "mihon.desktop.ui.library.MangaCoverAdapterTest",
+            "mihon.desktop.ui.library.MangaDetailScreenModelTest",
+            "mihon.desktop.ui.reader.DesktopReaderChapterTransitionIntegrationTest",
+            "mihon.desktop.ui.reader.DesktopReaderProductRegressionTest",
+            "mihon.desktop.ui.reader.ReaderColorMatrixTest",
+            "mihon.desktop.ui.reader.ReaderKeyboardNavigationPositionTest",
+            "mihon.desktop.ui.reader.ReaderScreenModelTest",
+            "mihon.desktop.ui.reader.TapZoneTest",
+            "mihon.domain.reader.ReaderParityContractTest",
+            "tachiyomi.domain.chapter.interactor.BatchUpdateChaptersTest",
+            "tachiyomi.domain.manga.interactor.UpdateCustomCoverTest",
+        ).forEach(::includeTestsMatching)
+    }
+    useJUnitPlatform {
+        excludeTags("final-parity-audit", "integration", "live-network", "network-survey")
+    }
+}
+
 compose.desktop {
     application {
         mainClass = "mihon.desktop.MainKt"

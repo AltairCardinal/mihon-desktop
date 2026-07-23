@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 3
+active-task: Task 4
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -42,7 +42,7 @@ active-task: Task 3
 
 - [x] Task 1：建立可独立触发的最终 closure RED gate
 - [x] Task 2：补齐 provenance 批次 P1（9、10、11、12、16、17、19、22）
-- [ ] Task 3：补齐 provenance 批次 P2（24、26、44、45、47、49、51、53）
+- [x] Task 3：补齐 provenance 批次 P2（24、26、44、45、47、49、51、53）
 - [ ] Task 4：补齐 provenance 批次 P3（54、56、57、59、61、62、64、66）
 - [ ] Task 5：补齐 provenance 批次 P4（71、72、73、74、93、95、96）
 - [ ] Task 6：核验状态批次 A（3、4、7、8、9、10、11、12）
@@ -121,19 +121,25 @@ active-task: Task 3
 
 **Platform boundary:** verification
 
-**Estimated scope:** 3 files, 360 lines
+**Estimated scope:** 5 files, 400 lines
 
 **Verification:** parity contract 与相关 chapter/cover/reader protection tests GREEN；8 项角色证据均来自正确 authority。
 
 **Files:**
 - Modify: `app-desktop/src/test/resources/parity/parity-manifest.json`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt`
+- Modify: `app-desktop/src/test/resources/parity/fixed-main-path-inventory.json`
+- Modify: `app-desktop/build.gradle.kts`
 - Modify: `docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md`
+
+**Scope correction:** Task 1 的 fixed-blob/line 契约要求本批 fixed-original path 进入 inventory；Task 2 的独立审查又要求 provenance 不得由源码 marker 自证，而要有执行真实 production behavior tests 的单一 Gradle 入口。因此 inventory 与 `task3ParityVerification` 不可从本批拆分，范围由 3 文件修正为 5 文件、上限 400 touched。
 
 **Steps:**
 1. 逐项取固定 ref 的章节、封面和 reader 符号及准确行号。
 2. 分开记录当前 Android reader consumer、shared contract 和 Desktop decoder/viewer/progress consumer。
 3. 相邻 portrait 配对等 fork 增强只记 deviation，不得写入 fixed-original role。
+
+**Execution evidence（已完成）：** 基线 `49a072aeac3e0265c458ad06d93462bdf16a9fb0`。新增 batch contract 首次 RED 精确命中 `ID 24: upstreamRef must not be blank`；8 项均从 `6fbf6df...` 取得 path/symbol/line/blob，状态保持 `SHARED/WIRED/WIRED/WIRED/WIRED/WIRED/WIRED/WIRED`。ID26 的 shared cover workflow 与 ID53 的 transactional progress workflow 明确归为 fork `MIGRATION_OUTPUT`，没有冒充当前 Android shared consumer；相邻 portrait 配对仍仅保留为 ID43 的 fork product enhancement，未写入本批 fixed-original 角色。聚合 `:app-desktop:task3ParityVerification` 执行 17 个 Desktop/domain 生产行为类、254 tests、0 failure/0 skipped；focused batch 与普通 contract GREEN；显式 final gate 仍报告同一 60 个非终态 ID 并按设计 RED；根 `spotlessCheck`、plan guard、diff/range 通过。范围 `5 files/286 touched`，提交 hash 见交付报告；下一项为 Task 4。
 
 ### Task 4：补齐 provenance 批次 P3（54、56、57、59、61、62、64、66）
 
