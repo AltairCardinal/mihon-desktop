@@ -331,6 +331,64 @@ class DesktopProductCapabilityContractTest {
                         ),
                 ),
         )
+    private val task7ChildPlan = "docs/superpowers/plans/2026-07-24-task-7a-library-batch-action-parity.md"
+    private val task7Statuses =
+        mapOf(17 to "SHARED", 29 to "VERIFIED", 16 to "SHARED", 19 to "WIRED", 22 to "SHARED", 24 to "SHARED", 26 to "WIRED", 28 to "WIRED")
+    private val task7FollowUps =
+        mapOf(
+            16 to "Task 7 evidence gap: category failure behavior and current Android contract",
+            17 to "Task 7 evidence gap: current Android production filter and sort consumer behavior",
+            19 to task7ChildPlan,
+            22 to "Task 14",
+            24 to "Task 7 evidence gap: current Android shared chapter batch consumption",
+            26 to "Task 7 evidence gap: current Android shared cover workflow consumption",
+            28 to "Task 7 evidence gap: shared source membership projection",
+            29 to "NONE",
+        )
+    private val task7BehaviorMethods =
+        mapOf(
+            16 to mapOf("app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryCategoryBehaviorTest.kt" to setOf("category dialog intents perform create rename reorder and delete through production DI")),
+            17 to
+                mapOf(
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/library/LibrarySharedEvaluationWiringTest.kt" to setOf("Android library production model owns the shared evaluator"),
+                    "domain/src/commonTest/kotlin/tachiyomi/domain/library/interactor/EvaluateLibraryTest.kt" to setOf("all tri-state filters preserve Android IS NOT and disabled semantics", "every sort type supports both directions and final title collator tie-break"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt" to setOf("complete filter flags flow from state to visible list including local and tracking boundaries"),
+                ),
+            19 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt" to setOf("shift mouse click selects visible range and does not open manga", "library model exposes batch category partial failure to UI"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt" to setOf("markMangaRead updates every chapter for the manga", "removeFromLibrary clears favorite flag for each manga", "enqueueNextUnreadDownload enqueues first unread chapter by source order"),
+                ),
+            22 to
+                mapOf(
+                    "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/UpdateLibraryMembershipTest.kt" to setOf("adding favorite synchronizes selected categories", "removing favorite clears category links"),
+                    "data/src/jvmTest/kotlin/tachiyomi/data/manga/MangaRepositoryMembershipIntegrationTest.kt" to setOf("membership update commits favorite date and categories together", "invalid category rolls back every manga membership update"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt" to setOf("toggleLibrary clears favorite date and categories when removing"),
+                ),
+            24 to
+                mapOf(
+                    "domain/src/commonTest/kotlin/tachiyomi/domain/chapter/interactor/BatchUpdateChaptersTest.kt" to setOf("continues after failure and reports each item"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt" to setOf("selected read action exposes partial failure in state"),
+                ),
+            26 to
+                mapOf(
+                    "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/UpdateCustomCoverTest.kt" to setOf("successful write invalidates cover cache timestamp", "write failure is structured and does not invalidate cache", "successful delete invalidates cover cache timestamp"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaCoverAdapterTest.kt" to setOf("selected bytes use shared workflow and preserve structured failure"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt" to setOf("cover update success exposes feedback and refreshed model", "cover permission failure is visible and does not refresh cache", "cover delete success refreshes model and reports feedback"),
+                ),
+            28 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/DesktopSourceListProjectorTest.kt" to setOf("last used is a first-group copy while pinned and language originals keep fixed-main order"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceMembershipReactiveWiringTest.kt" to setOf("mounted browse list reacts to installed reloaded and uninstalled extension sources"),
+                ),
+            29 to
+                mapOf(
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModelBehaviorTest.kt" to setOf("late old Pager generation cannot replace or pollute the current listing Pager", "production Pager publishes shared service content without calling source directly"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceLastUsedWiringTest.kt" to setOf("real navigation records last used outside incognito and the same mounted list reorders reactively", "real navigation records last used except for matching global or extension incognito"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceBrowseCanonicalResultWiringTest.kt" to setOf("closing materializer rejects a non cancellable stale publication", "empty source renders fixed main localized no results copy", "browse persists and observes canonical rows without opening a card"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceSharedStateWiringTest.kt" to setOf("source projector preserves content while a later page loads and fails"),
+                ),
+        )
     private val validTags =
         setOf(
             "SHARE-DIRECT",
@@ -354,7 +412,7 @@ class DesktopProductCapabilityContractTest {
     private val sourceExtensionParityStatuses =
         mapOf(
             28 to "WIRED",
-            29 to "WIRED",
+            29 to "VERIFIED",
             30 to "WIRED",
             32 to "NOT_STARTED",
             33 to "WIRED",
@@ -1616,7 +1674,10 @@ class DesktopProductCapabilityContractTest {
 
         val parentPlanPath = "docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"
         val plan = Files.readString(repositoryRoot.resolve(parentPlanPath))
-        assertEquals("Task 7", markdownFrontmatter(plan)["active-task"], "Completed Task 6 must advance to Task 7")
+        assertTrue(
+            markdownFrontmatter(plan)["active-task"] in setOf("Task 7", "Task 7A child plan", "Task 7R2 replan"),
+            "Completed Task 6 must advance to Task 7 or its active child plan",
+        )
         val childPlanPath = repositoryRoot.resolve("docs/superpowers/plans/2026-07-24-task-6a-desktop-crash-log-failure-boundary.md")
         assertTrue(Files.isRegularFile(childPlanPath), "Task 6A crash-log child plan must exist")
         val childPlan = Files.readString(childPlanPath)
@@ -1631,6 +1692,91 @@ class DesktopProductCapabilityContractTest {
             Regex("""(?m)^- \[x] Task 6[：:]""").containsMatchIn(plan),
             "Task 6 must be checked after the parent completes its final status decision",
         )
+    }
+
+    @Test
+    fun `task 7 status batch promotes only complete library detail and source evidence`() {
+        val repositoryRoot = repositoryRoot()
+        val inventory = fixedMainPathInventory(repositoryRoot)
+        val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
+        val rawManifest = Files.readString(repositoryRoot.resolve("app-desktop/src/test/resources/parity/parity-manifest.json"))
+        assertEquals(emptyList<String>(), duplicateJsonPropertyNames(rawManifest), "Manifest JSON properties must be unique within each object")
+        assertEquals(
+            listOf("statusDecision"),
+            duplicateJsonPropertyNames("""[{"statusDecision":{},"statusDecision":{}}]"""),
+            "Copying a manifest property must be detected before last-wins parsing",
+        )
+        assertEquals(
+            task7Statuses.keys,
+            items.filterValues { it.jsonObject["statusDecision"]?.jsonObject?.get("task")?.jsonPrimitive?.content == "Task 7" }.keys,
+            "Task 7 status decisions must belong only to its eight target IDs",
+        )
+
+        task7Statuses.forEach { (id, expectedStatus) ->
+            val item = items.getValue(id).jsonObject
+            assertEquals(expectedStatus, requiredText(item, "status", id), "ID $id: Task 7 status decision")
+            assertEquals(fixedOriginalMihonRef, requiredText(item, "upstreamRef", id))
+
+            val decision = item.getValue("statusDecision").jsonObject
+            val expectedDecision =
+                when (id) {
+                    29 -> "PROMOTE_VERIFIED"
+                    19 -> "CHILD_PLAN_REQUIRED"
+                    else -> "KEEP_GAP"
+                }
+            assertEquals("Task 7", requiredText(decision, "task", id, "statusDecision"))
+            assertEquals(expectedDecision, requiredText(decision, "decision", id, "statusDecision"))
+            assertEquals(task7FollowUps.getValue(id), requiredText(decision, "followUp", id, "statusDecision"))
+            val gap = requiredText(decision, "gap", id, "statusDecision")
+            if (id == 29) {
+                assertEquals("NONE", gap, "ID $id: verified capability has no remaining evidence gap")
+                validateRoleEvidence(item, repositoryRoot, inventory)
+            } else {
+                assertTrue(gap != "NONE", "ID $id: non-terminal decision must name the remaining gap")
+            }
+
+            val behaviorMethods =
+                decision.getValue("behaviorMethods").jsonObject.mapValues { (_, methods) ->
+                    methods.jsonArray.map { it.jsonPrimitive.content }.toSet()
+                }
+            assertEquals(task7BehaviorMethods.getValue(id), behaviorMethods, "ID $id Task 7 behavior methods")
+            val protectionTests = item.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content }.toSet()
+            assertTrue(behaviorMethods.keys.all(protectionTests::contains), "ID $id Task 7 behavior methods must be declared protection tests")
+            behaviorMethods.forEach { (path, methods) ->
+                val source = Files.readString(repositoryRoot.resolve(path))
+                methods.forEach { method ->
+                    val methodSource = kotlinTestMethod(source, method, "ID $id Task 7 behavior method $path#$method")
+                    assertTrue(
+                        "assert" in methodSource || Regex("""\bshould[A-Z]""").containsMatchIn(methodSource),
+                        "ID $id Task 7 behavior method must execute assertions: $path#$method",
+                    )
+                }
+            }
+        }
+
+        val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
+        assertEquals("Task 7R2 replan", markdownFrontmatter(plan)["active-task"], "Task 7 must pause on its exact active replan")
+        assertTrue(Regex("""(?m)^- \[ \] Task 7[：:]""").containsMatchIn(plan), "Task 7 must remain pending while its child plan is incomplete")
+        val childPlan = Files.readString(repositoryRoot.resolve(task7ChildPlan))
+        val childMetadata = markdownFrontmatter(childPlan)
+        assertEquals("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md", childMetadata["parent-plan"])
+        assertEquals("Task 7", childMetadata["parent-task"])
+        assertEquals("19", childMetadata["capability-id"])
+        assertEquals("17,19", childMetadata["related-capability-ids"])
+        assertEquals("planned", childMetadata["status"])
+        assertTrue(listOf("1/5/10/25", "全部未读", "书签").all(childPlan::contains), "Task 7A must preserve every fixed-main download option")
+        assertTrue("跳过已排队/下载中/已下载" in childPlan, "Task 7A must preserve active-download deduplication")
+        assertFalse("NavigationTypeSafetyTest" in childPlan, "Task 7A must not reference the removed navigation test name")
+        assertTrue(
+            listOf("DesktopBatchMigrationController.submit()", "MigrationBatchQueueScreen", "MigrationSearchScreen", "NavigationContractTest.kt").all(childPlan::contains),
+            "Task 7A must reuse the existing batch migration chain and protect its navigation",
+        )
+        assertTrue(
+            Files.isRegularFile(repositoryRoot.resolve("app-desktop/src/test/kotlin/mihon/desktop/ui/NavigationContractTest.kt")),
+            "Task 7A navigation protection must resolve to a real test file",
+        )
+        assertTrue("仅输出 R2 hash/status 交给 R3" in childPlan, "Task 7A must leave audit closeout to R3")
+        assertTrue("删除调用时失败" in childPlan, "Task 7A must add an Android production consumer mutation test for ID 17")
     }
 
     @Test
@@ -3075,6 +3221,34 @@ class DesktopProductCapabilityContractTest {
                 },
             )
         }
+
+    private fun duplicateJsonPropertyNames(source: String): List<String> {
+        val scopes = mutableListOf<MutableSet<String>?>()
+        val duplicates = mutableListOf<String>()
+        var index = 0
+        while (index < source.length) {
+            when (source[index]) {
+                '{' -> scopes.add(mutableSetOf())
+                '[' -> scopes.add(null)
+                '}', ']' -> if (scopes.isNotEmpty()) scopes.removeAt(scopes.lastIndex)
+                '"' -> {
+                    val start = ++index
+                    while (index < source.length && source[index] != '"') {
+                        index += if (source[index] == '\\') 2 else 1
+                    }
+                    var next = index + 1
+                    while (next < source.length && source[next].isWhitespace()) next++
+                    val scope = scopes.lastOrNull()
+                    if (next < source.length && source[next] == ':' && scope != null) {
+                        val name = source.substring(start, index)
+                        if (!scope.add(name)) duplicates += name
+                    }
+                }
+            }
+            index++
+        }
+        return duplicates
+    }
 
     private fun repositoryRoot() =
         generateSequence(Path.of("").toAbsolutePath()) { it.parent }

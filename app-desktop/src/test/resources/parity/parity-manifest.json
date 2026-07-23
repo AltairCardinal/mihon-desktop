@@ -399,6 +399,15 @@
       "SHARE-EXTRACT"
     ],
     "status": "SHARED",
+    "statusDecision": {
+      "task": "Task 7",
+      "decision": "KEEP_GAP",
+      "followUp": "Task 7 evidence gap: category failure behavior and current Android contract",
+      "gap": "Desktop production DI proves category CRUD success, but current Android behavior equivalence and explicit failure-boundary coverage remain unproved.",
+      "behaviorMethods": {
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryCategoryBehaviorTest.kt": ["category dialog intents perform create rename reorder and delete through production DI"]
+      }
+    },
     "authoritativeImplementation": "Fixed-main original Mihon capability #16: CategoryScreenModel owns category CRUD and ordering.",
     "desktopImplementation": "Android and Desktop screen models consume the current shared category interactors.",
     "protectionTests": [
@@ -429,6 +438,17 @@
       "SHARE-EXTRACT"
     ],
     "status": "SHARED",
+    "statusDecision": {
+      "task": "Task 7",
+      "decision": "KEEP_GAP",
+      "followUp": "Task 7 evidence gap: current Android production filter and sort consumer behavior",
+      "gap": "Shared EvaluateLibrary behavior and Desktop consumption are covered, but the current Android test only reflects the field; deleting production filter or sort calls would not fail it.",
+      "behaviorMethods": {
+        "app/src/test/java/eu/kanade/tachiyomi/ui/library/LibrarySharedEvaluationWiringTest.kt": ["Android library production model owns the shared evaluator"],
+        "domain/src/commonTest/kotlin/tachiyomi/domain/library/interactor/EvaluateLibraryTest.kt": ["all tri-state filters preserve Android IS NOT and disabled semantics", "every sort type supports both directions and final title collator tie-break"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": ["complete filter flags flow from state to visible list including local and tracking boundaries"]
+      }
+    },
     "authoritativeImplementation": "Fixed-main original Mihon capability #17: LibraryScreenModel evaluates library filters and sorting.",
     "desktopImplementation": "Current Android and Desktop library consumers delegate filtering to shared EvaluateLibrary.",
     "protectionTests": [
@@ -476,10 +496,21 @@
       "SHARE-EXTRACT"
     ],
     "status": "WIRED",
+    "statusDecision": {
+      "task": "Task 7",
+      "decision": "CHILD_PLAN_REQUIRED",
+      "followUp": "docs/superpowers/plans/2026-07-24-task-7a-library-batch-action-parity.md",
+      "gap": "Desktop batch selection exposes category, read, unread, and remove actions, but lacks fixed-main bulk download, migration, and invert-selection entry points with production feedback.",
+      "behaviorMethods": {
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt": ["shift mouse click selects visible range and does not open manga", "library model exposes batch category partial failure to UI"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": ["markMangaRead updates every chapter for the manga", "removeFromLibrary clears favorite flag for each manga", "enqueueNextUnreadDownload enqueues first unread chapter by source order"]
+      }
+    },
     "authoritativeImplementation": "Fixed-main original Mihon capability #19: LibraryBottomActionMenu routes the batch category action through LibraryTab to LibraryScreenModel.setMangaCategories; the same menu also exposes read, unread, download, delete, and migrate actions.",
     "desktopImplementation": "Task 2 proves only the Desktop batch-category slice from LibraryTab to shared SetMangaCategories, including partial-failure feedback. Download, read, unread, delete, migrate, cancel, select-all, and invert-selection parity remain for Task 7.",
     "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt"
     ],
     "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt": ["batch category assignment reports partial failure and continues", "library model exposes batch category partial failure to UI"]},
     "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
@@ -525,6 +556,17 @@
       "SHARE-DIRECT"
     ],
     "status": "SHARED",
+    "statusDecision": {
+      "task": "Task 7",
+      "decision": "KEEP_GAP",
+      "followUp": "Task 14",
+      "gap": "Current Android still uses the fixed-derived sequential favorite/category flow and does not consume the fork-added atomic UpdateLibraryMembership workflow; Desktop add-with-category UI sequencing equivalence remains unproved.",
+      "behaviorMethods": {
+        "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/UpdateLibraryMembershipTest.kt": ["adding favorite synchronizes selected categories", "removing favorite clears category links"],
+        "data/src/jvmTest/kotlin/tachiyomi/data/manga/MangaRepositoryMembershipIntegrationTest.kt": ["membership update commits favorite date and categories together", "invalid category rolls back every manga membership update"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt": ["toggleLibrary clears favorite date and categories when removing"]
+      }
+    },
     "authoritativeImplementation": "Fixed-main original Mihon capability #22: MangaScreenModel enters the library by updating favorite and assigning the selected/default categories in a sequential flow; LibraryScreenModel removal clears favorite, while SetMangaCategories replaces category links independently.",
     "desktopImplementation": "Desktop detail toggle and category consumers use the fork-added UpdateLibraryMembership and SetMangaCategories paths. Their atomic favorite/date/category update and removal cleanup are protected reliability behavior, not proof that the fixed sequential Android entry flow is equivalent.",
     "deviations": [
@@ -554,6 +596,16 @@
       "SHARE-EXTRACT"
     ],
     "status": "SHARED",
+    "statusDecision": {
+      "task": "Task 7",
+      "decision": "KEEP_GAP",
+      "followUp": "Task 7 evidence gap: current Android shared chapter batch consumption",
+      "gap": "Desktop consumes the fork-added BatchUpdateChapters continuation contract, but current Android retains its direct chapter mutation flow and has no shared failure contract.",
+      "behaviorMethods": {
+        "domain/src/commonTest/kotlin/tachiyomi/domain/chapter/interactor/BatchUpdateChaptersTest.kt": ["continues after failure and reports each item"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt": ["selected read action exposes partial failure in state"]
+      }
+    },
     "authoritativeImplementation": "Fixed-main MangaScreenModel owns mark-read and bookmark batch actions; the shared BatchUpdateChapters helper preserves ordinary-failure continuation for Desktop.",
     "desktopImplementation": "Desktop MangaDetailScreenModel consumes BatchUpdateChapters for selected read and bookmark actions and exposes partial-failure feedback.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -585,6 +637,17 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "WIRED",
+    "statusDecision": {
+      "task": "Task 7",
+      "decision": "KEEP_GAP",
+      "followUp": "Task 7 evidence gap: current Android shared cover workflow consumption",
+      "gap": "Desktop picker and feedback consume the fork-added shared UpdateCustomCover workflow, but current Android retains its direct Uri/Context path and does not consume the shared success/failure contract.",
+      "behaviorMethods": {
+        "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/UpdateCustomCoverTest.kt": ["successful write invalidates cover cache timestamp", "write failure is structured and does not invalidate cache", "successful delete invalidates cover cache timestamp"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaCoverAdapterTest.kt": ["selected bytes use shared workflow and preserve structured failure"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt": ["cover update success exposes feedback and refreshed model", "cover permission failure is visible and does not refresh cache", "cover delete success refreshes model and reports feedback"]
+      }
+    },
     "authoritativeImplementation": "Fixed-main MangaCoverScreenModel owns custom-cover edit and delete behavior.",
     "desktopImplementation": "Desktop MangaCoverAdapter maps the platform file picker into the fork shared UpdateCustomCover workflow and MangaDetail feedback.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -618,6 +681,16 @@
       "SHARE-EXTRACT"
     ],
     "status": "WIRED",
+    "statusDecision": {
+      "task": "Task 7",
+      "decision": "KEEP_GAP",
+      "followUp": "Task 7 evidence gap: shared source membership projection",
+      "gap": "Desktop proves reactive extension membership and fixed-main-derived grouping, but Android and Desktop still project membership independently with no shared production implementation or current Android behavior contract.",
+      "behaviorMethods": {
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/DesktopSourceListProjectorTest.kt": ["last used is a first-group copy while pinned and language originals keep fixed-main order"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceMembershipReactiveWiringTest.kt": ["mounted browse list reacts to installed reloaded and uninstalled extension sources"]
+      }
+    },
     "authoritativeImplementation": "Fixed-main original Mihon capability #28: reactive source membership and last-used/pinned/language projection",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
@@ -654,15 +727,14 @@
       "SHARE-DIRECT",
       "SHARE-EXTRACT"
     ],
-    "status": "WIRED",
     "authoritativeImplementation": "Fixed-main original Mihon capability #29: 单源浏览及非 incognito 的 last-used 记录",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
-      { "path": "app/src/main/java/eu/kanade/domain/source/interactor/GetIncognitoState.kt", "symbol": "GetIncognitoState → global and extension-package incognito" },
-      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModel.kt", "symbol": "BrowseSourceScreenModel → CatalogueSource pagination, canonical observation and non-incognito last-used write" },
-      { "path": "data/src/main/java/tachiyomi/data/source/SourcePagingSource.kt", "symbol": "SourcePagingSource → URL de-duplication, canonical persistence and empty-page errors" },
-      { "path": "domain/src/main/java/mihon/domain/manga/model/SManga.kt", "symbol": "SManga.toDomainManga → complete canonical field mapping" },
-      { "path": "domain/src/main/java/tachiyomi/domain/manga/interactor/NetworkToLocalManga.kt", "symbol": "NetworkToLocalManga → canonical manga insert/update" }
+      { "path": "app/src/main/java/eu/kanade/domain/source/interactor/GetIncognitoState.kt", "symbol": "class GetIncognitoState(" },
+      { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModel.kt", "symbol": "class BrowseSourceScreenModel(" },
+      { "path": "data/src/main/java/tachiyomi/data/source/SourcePagingSource.kt", "symbol": "abstract class BaseSourcePagingSource(" },
+      { "path": "domain/src/main/java/mihon/domain/manga/model/SManga.kt", "symbol": "fun SManga.toDomainManga" },
+      { "path": "domain/src/main/java/tachiyomi/domain/manga/interactor/NetworkToLocalManga.kt", "symbol": "class NetworkToLocalManga(" }
     ],
     "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/manga/model/SManga.kt", "domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/NetworkToLocalManga.kt", "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaSearchService.kt", "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceQueryState.kt"],
     "currentAndroidConsumerPaths": [
@@ -680,6 +752,41 @@
       { "classification": "MIGRATION_OUTPUT", "description": "Shared paging, recovery and query state replay fixed-main behavior but remain migration output." },
       { "classification": "PLATFORM_ADAPTER", "description": "Desktop keyboard and layout behavior is platform-specific." }
     ],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [
+        {"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/domain/source/interactor/GetIncognitoState.kt", "symbol": "class GetIncognitoState(", "line": 10},
+        {"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModel.kt", "symbol": "class BrowseSourceScreenModel(", "line": 56},
+        {"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "data/src/main/java/tachiyomi/data/source/SourcePagingSource.kt", "symbol": "abstract class BaseSourcePagingSource(", "line": 37}
+      ],
+      "CURRENT_ANDROID": [
+        {"path": "app/src/main/java/eu/kanade/domain/source/interactor/GetIncognitoState.kt", "symbol": "class GetIncognitoState(", "line": 10},
+        {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModel.kt", "symbol": "class BrowseSourceScreenModel(", "line": 69},
+        {"path": "data/src/androidMain/kotlin/tachiyomi/data/source/SourcePagingSource.kt", "symbol": "abstract class BaseSourcePagingSource(", "line": 37}
+      ],
+      "SHARED_OR_ADAPTER": [
+        {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaSearchService.kt", "symbol": "class SourceMangaSearchService", "line": 13},
+        {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/manga/model/SManga.kt", "symbol": "fun SManga.toDomainManga", "line": 6},
+        {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/NetworkToLocalManga.kt", "symbol": "class NetworkToLocalManga(", "line": 6}
+      ],
+      "DESKTOP_CONSUMER": [
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt", "symbol": "internal class DesktopSourceLastUsedRecorder(", "line": 158},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceQueryCoordinators.kt", "symbol": "class SourceBrowseQueryCoordinator(", "line": 80}
+      ],
+      "FIXTURE": [{"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModelBehaviorTest.kt#production Pager publishes shared service content without calling source directly", "productionMarkers": ["model.mangaPagerFlowFlow"]}]
+    },
+    "status": "VERIFIED",
+    "statusDecision": {
+      "task": "Task 7",
+      "decision": "PROMOTE_VERIFIED",
+      "followUp": "NONE",
+      "gap": "NONE",
+      "behaviorMethods": {
+        "app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModelBehaviorTest.kt": ["late old Pager generation cannot replace or pollute the current listing Pager", "production Pager publishes shared service content without calling source directly"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceLastUsedWiringTest.kt": ["real navigation records last used outside incognito and the same mounted list reorders reactively", "real navigation records last used except for matching global or extension incognito"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceBrowseCanonicalResultWiringTest.kt": ["closing materializer rejects a non cancellable stale publication", "empty source renders fixed main localized no results copy", "browse persists and observes canonical rows without opening a card"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceSharedStateWiringTest.kt": ["source projector preserves content while a later page loads and fails"]
+      }
+    },
     "desktopImplementation": "Desktop production consumer uses shared query state and fixed-main-derived source projection; platform preferences persist last-used only outside global or extension-package incognito.",
     "protectionTests": [
       "app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModelBehaviorTest.kt",
@@ -687,6 +794,7 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceBrowseCanonicalResultWiringTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceSharedStateWiringTest.kt"
     ],
+    "verificationScope": "VERIFIED: fixed-main browse/incognito/paging authority, current Android shared-service consumption, shared canonical mapping, Desktop coordinator/last-used consumers, stale-generation rejection, empty and page-failure feedback, and canonical persistence are bound.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
