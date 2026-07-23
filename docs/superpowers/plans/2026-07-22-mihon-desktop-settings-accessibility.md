@@ -36,9 +36,9 @@ status-source: this-file
 
 按以下顺序一次执行一个子 Task，不并发写共享文件：
 
-`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 4G → 4H → 4I → 4J → 4K → 4L → 4M → 5 → 6A → 6B → 7A → 7B → 7C → 8A → 8B → 8C → 9 → 10A → 10B → 10C → 10D → 10E → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18A → 18B → 18C → 18D → 18E → 19 → 20`
+`1 → 2 → 3 → 3R → 4A → 4B → 4C → 4D → 4E → 4F → 4G → 4H → 4I → 4J → 4K → 4L → 4M → 5 → 6A → 6B → 7A → 7B → 7C → 8A → 8B → 8C → 9 → 10A → 10B → 10C → 10D → 10E → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18A → 18B → 18C → 18D → 18E → 18F → 19 → 20`
 
-其中 `DesktopSettingsCatalog.kt` 只在 5→7A→7B→7C→8A→8B→8C→11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6A→11→16 串行修改；`AboutScreen.kt` 只在 4I→8A→15→18B、`ExtensionRepoScreen.kt` 只在 4J→8B→18B→18C→18D、`TrackingSettingsScreen.kt` 只在 4K→4L→8C→18E 串行修改；4M 只补 4L 的真实动作/失败路径测试，不返改 production。
+其中 `DesktopSettingsCatalog.kt` 只在 5→7A→7B→7C→8A→8B→8C→11 串行修改；`AppearanceSettingsScreen.kt` 只在 4A→6A→11→16 串行修改；`AboutScreen.kt` 只在 4I→8A→15→18B、`ExtensionRepoScreen.kt` 只在 4J→8B→18B→18C→18D、`TrackingSettingsScreen.kt` 只在 4K→4L→8C→18E→18F 串行修改；4M 只补 4L 的真实动作/失败路径测试，不返改 production。
 
 ## 执行状态
 
@@ -86,6 +86,7 @@ status-source: this-file
 - [x] Task 18C：Desktop ExtensionRepo physical-key coverage
 - [x] Task 18D：Desktop ExtensionRepo async test stabilization
 - [ ] Task 18E：Desktop Tracking accessibility
+- [ ] Task 18F：Desktop Tracking dialog keyboard accessibility
 - [ ] Task 19：IDs 88/90/91/94 exact parity evidence
 - [ ] Task 20：whole-change 审查与三平台 verify
 
@@ -921,15 +922,31 @@ status-source: this-file
 
 **Platform boundary:** desktop
 
-**Estimated scope:** 3 files, 370 lines
+**Estimated scope:** 2 files, 220 lines
 
-**Verification:** Tracking keyboard/semantics、source-managed/unsupported feedback、credential 字段、logout/unbind 确认与 LazyList anchor
+**Verification:** Tracking service single-action semantics、source-managed/unsupported feedback、credential 字段 identity 与 LazyList anchor
 
-**Files:** `TrackingSettingsScreen.kt`、tracking accessibility test、tracking keyboard/dialog test。
+**Files:** `TrackingSettingsScreen.kt`、tracking accessibility test。
 
-1. RED：服务行/trailing action 双触发、source-managed 出现无效 action、password/API key 缺身份语义，或 logout/unbind 无实体键确认/取消时失败。
-2. GREEN：复用 primitives 并保留 registry/auth/model、typed-message、同步与服务独有行为；labels 来自 Task4K/4L 同一 MR。
-3. 运行 Tracking production wiring、LazyList anchor、semantics、keyboard、Spotless 与 range gate。
+1. RED：服务行/trailing action 双触发、source-managed/unsupported 出现无效成功 action，或 username/password/API key 身份语义错误时失败。
+2. GREEN：整行不再复制 trailing action，source-managed/unsupported 诚实禁用；password/API key 复用正式敏感字段，保留 registry/auth/model、typed-message、同步与服务独有行为。
+3. 运行 Tracking production wiring、LazyList anchor、semantics、identity、Spotless 与 range gate。
+
+### Task 18F：Desktop Tracking dialog keyboard accessibility
+
+**Risk axis:** settings-accessibility-tracking-dialogs
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 2 files, 280 lines
+
+**Verification:** Tracking login/logout/unbind confirm/cancel 的 production physical-key exact-once、disabled safety 与认证副作用
+
+**Files:** `TrackingSettingsScreen.kt`、tracking keyboard/dialog test。
+
+1. RED：login/logout/unbind 的 confirm/cancel 任一真实控件在 Enter/NumPadEnter/Space 的 KeyDown 未恰好触发一次、KeyUp 重复触发，或 disabled 产生认证副作用时失败。
+2. GREEN：复用 Task16/17 Button helper，不复制认证状态机；保留 registry/auth/model、typed-message、service-specific 参数与失败反馈。
+3. 运行 Tracking auth/action production wiring、dialog semantics、keyboard、i18n、Spotless 与 range gate。
 
 ### Task 19：IDs 88/90/91/94 exact parity evidence
 
