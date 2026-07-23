@@ -66,7 +66,7 @@ status-source: this-file
 - [x] Task 7B：Desktop 标题 anchor 的 Advanced 页面
 - [x] Task 7C：Desktop 标题 anchor 的 Security 页面
 - [x] Task 8A：Desktop 标题 anchor 的 About 页面
-- [ ] Task 8B：Desktop LazyList anchor 核心与 ExtensionRepo 页面
+- [x] Task 8B：Desktop LazyList anchor 核心与 ExtensionRepo 页面
 - [ ] Task 8C：Desktop 标题 anchor 的 Tracking 页面
 - [ ] Task 9：共享主题模块、identity/default/codec 与 Android consumer
 - [ ] Task 10A：共享静态调色板第一批
@@ -579,6 +579,8 @@ status-source: this-file
 1. RED：Lazy exact/first/one-shot/visible 失败、empty/list 分支遗漏、Catalog route/anchor 分叉或 repository action 丢失时失败。
 2. GREEN：扩展统一 owner 为可复用 LazyList host，不复制状态机；保留 add/replace/open/copy/delete 能力。
 3. 运行 ExtensionRepo/catalog/navigation/Screen smoke/Spotless/range gate。
+
+**Review status（已完成）：** 实现 `13d31e55a` 复用 route-owned `DesktopSettingsAnchorOwner` 建立 LazyList adapter，并让 ExtensionRepo 与 Catalog 消费同一 Add/Delete MR identity。真实 Catalog→publish→replace→Screen 覆盖空列表 Add、列表首个 Delete、未预组合 index 40 的滚动/可见/唯一高亮，以及 exact/首重复项/wrong route/one-shot；真实 `DeleteExtensionRepo` 精确删除 first URL 后仅保留 second，既有 add/replace/open/copy/delete 全部保留。7 个 production mutation 均精确 RED 后恢复。独立审查 APPROVED `0/0/0`，Desktop focused `96/96`、shared `7/7`、Spotless、diff 与 17-Task guard 通过；范围严格为 `5 files/258 touched`，用户脏文件零差异。下一项为父 Task 5B / 子 Task 8C。
 
 ### Task 8C：Desktop 标题 anchor 的 Tracking 页面
 
