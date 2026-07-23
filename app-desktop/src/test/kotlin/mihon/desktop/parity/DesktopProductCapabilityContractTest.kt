@@ -38,7 +38,7 @@ class DesktopProductCapabilityContractTest {
     private val requiredTerminalEvidenceRoles =
         setOf("FIXED_ORIGINAL", "CURRENT_ANDROID", "SHARED_OR_ADAPTER", "DESKTOP_CONSUMER", "FIXTURE")
     private val task2ProvenanceStatuses =
-        mapOf(9 to "WIRED", 10 to "WIRED", 11 to "WIRED", 12 to "NOT_STARTED", 16 to "SHARED", 17 to "SHARED", 19 to "WIRED", 22 to "SHARED")
+        mapOf(9 to "VERIFIED", 10 to "WIRED", 11 to "WIRED", 12 to "NOT_STARTED", 16 to "SHARED", 17 to "SHARED", 19 to "WIRED", 22 to "SHARED")
     private val task2BehaviorMethods =
         mapOf(
             9 to mapOf("app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt" to setOf("decode JPEG returns correct dimensions")),
@@ -219,6 +219,114 @@ class DesktopProductCapabilityContractTest {
                         setOf("loader loads minimal source from ServiceLoader JAR"),
                     "app-desktop/src/test/kotlin/mihon/desktop/compat/AndroidCompatTest.kt" to
                         setOf("Application and ContextWrapper preserve Android Context inheritance"),
+                ),
+        )
+    private val task6Statuses =
+        linkedMapOf(
+            9 to "VERIFIED",
+            3 to "CHARACTERIZED",
+            4 to "WIRED",
+            7 to "WIRED",
+            8 to "SHARED",
+            10 to "WIRED",
+            11 to "WIRED",
+            12 to "NOT_STARTED",
+        )
+    private val task6FollowUps =
+        mapOf(
+            3 to "Task 14",
+            4 to "Task 14",
+            7 to "Task 6 evidence gap: current Android PreferenceStore adapter behavior contract",
+            8 to "Task 16C",
+            9 to "NONE",
+            10 to "Task 16B",
+            11 to "Task 17",
+            12 to "docs/superpowers/plans/2026-07-24-task-6a-desktop-crash-log-failure-boundary.md",
+        )
+    private val task6BehaviorMethods =
+        mapOf(
+            3 to
+                mapOf(
+                    "domain/src/commonTest/kotlin/mihon/domain/error/AppErrorTest.kt" to
+                        setOf("partial failure identifies each failed unit"),
+                    "domain/src/commonTest/kotlin/mihon/domain/task/TaskStateTest.kt" to
+                        setOf("任务状态表达进度结果失败与取消"),
+                ),
+            4 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt" to
+                        setOf(
+                            "测试配置入口使用隔离内存存储并解析实际依赖",
+                            "reinitializing while scheduler runs joins old work and closes old database",
+                        ),
+                ),
+            7 to
+                mapOf(
+                    "core/common/src/jvmTest/kotlin/tachiyomi/core/common/preference/DesktopPreferenceStoreTest.kt" to
+                        setOf(
+                            "getString persists and reads value",
+                            "changes emits current value on subscribe",
+                            "delete removes value and reverts to default",
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/settings/DesktopPreferenceMigrationTest.kt" to
+                        setOf(
+                            "legacy explicit dual-page enhancement remains enabled when current value is absent",
+                            "legacy explicit LTR reader direction remains enabled when current value is absent",
+                        ),
+                ),
+            8 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/network/NetworkErrorContractTest.kt" to
+                        setOf(
+                            "real source parses successful response",
+                            "429 preserves retry after",
+                        ),
+                ),
+            9 to
+                mapOf(
+                    "app/src/test/java/eu/kanade/tachiyomi/data/coil/AndroidReaderPageDecoderContractTest.kt" to
+                        setOf(
+                            "production Tachiyomi decoder forwards reader request identity through decode",
+                            "production Tachiyomi decoder rejects a stale shared result before image submission",
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt" to
+                        setOf(
+                            "decode JPEG returns correct dimensions",
+                            "peekSize returns null for invalid bytes",
+                        ),
+                ),
+            10 to
+                mapOf(
+                    "domain/src/commonTest/kotlin/mihon/domain/task/BackgroundTaskContractTest.kt" to
+                        setOf("notification events cover every terminal task state"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/task/DesktopTaskSchedulerIntegrationTest.kt" to
+                        setOf(
+                            "checkpoint and cancellation obey legal terminal transitions",
+                            "corrupt store is quarantined and startup remains available",
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt" to
+                        setOf(
+                            "real update emits progress and one terminal success event",
+                            "outer failure records failed state instead of being swallowed",
+                        ),
+                ),
+            11 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopSystemNotifierTest.kt" to
+                        setOf(
+                            "falls back to in-app notification when system delivery is unavailable",
+                            "falls back when system adapter throws",
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt" to
+                        setOf("real update emits progress and one terminal success event"),
+                ),
+            12 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/CrashHandlerTest.kt" to
+                        setOf(
+                            "appendCrashReport creates parent directory and writes report",
+                            "appendCrashReport rotates existing oversized log before writing",
+                        ),
                 ),
         )
     private val validTags =
@@ -1458,6 +1566,72 @@ class DesktopProductCapabilityContractTest {
     }
 
     @Test
+    fun `task 6 status batch keeps gaps and promotes only complete production evidence`() {
+        val repositoryRoot = repositoryRoot()
+        val inventory = fixedMainPathInventory(repositoryRoot)
+        val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
+
+        task6Statuses.forEach { (id, expectedStatus) ->
+            val item = items.getValue(id).jsonObject
+            assertEquals(expectedStatus, requiredText(item, "status", id), "ID $id: Task 6 status decision")
+            assertEquals(fixedOriginalMihonRef, requiredText(item, "upstreamRef", id))
+
+            val decision = item.getValue("statusDecision").jsonObject
+            val expectedDecision =
+                when (id) {
+                    9 -> "PROMOTE_VERIFIED"
+                    12 -> "CHILD_PLAN_REQUIRED"
+                    else -> "KEEP_GAP"
+                }
+            assertEquals("Task 6", requiredText(decision, "task", id, "statusDecision"))
+            assertEquals(expectedDecision, requiredText(decision, "decision", id, "statusDecision"))
+            assertEquals(task6FollowUps.getValue(id), requiredText(decision, "followUp", id, "statusDecision"))
+            val gap = requiredText(decision, "gap", id, "statusDecision")
+            if (id == 9) {
+                assertEquals("NONE", gap, "ID 9: verified capability has no remaining evidence gap")
+                validateRoleEvidence(item, repositoryRoot, inventory)
+            } else {
+                assertTrue(gap != "NONE", "ID $id: non-terminal decision must name the remaining gap")
+            }
+
+            val behaviorMethods =
+                decision.getValue("behaviorMethods").jsonObject.mapValues { (_, methods) ->
+                    methods.jsonArray.map { it.jsonPrimitive.content }.toSet()
+                }
+            assertEquals(task6BehaviorMethods.getValue(id), behaviorMethods, "ID $id Task 6 behavior methods")
+            val protectionTests = item.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content }.toSet()
+            assertTrue(behaviorMethods.keys.all(protectionTests::contains), "ID $id Task 6 behavior methods must be declared protection tests")
+            behaviorMethods.forEach { (path, methods) ->
+                val source = Files.readString(repositoryRoot.resolve(path))
+                methods.forEach { method ->
+                    val methodSource = kotlinTestMethod(source, method, "ID $id Task 6 behavior method $path#$method")
+                    assertTrue(
+                        listOf("assert", " shouldBe ", ".shouldContain").any(methodSource::contains),
+                        "ID $id Task 6 behavior method must execute assertions: $path#$method",
+                    )
+                }
+            }
+        }
+
+        val parentPlanPath = "docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"
+        val plan = Files.readString(repositoryRoot.resolve(parentPlanPath))
+        assertEquals("Task 6A child plan", markdownFrontmatter(plan)["active-task"], "Task 6 must pause on its exact child plan")
+        val childPlanPath = repositoryRoot.resolve(task6FollowUps.getValue(12))
+        assertTrue(Files.isRegularFile(childPlanPath), "Task 6A crash-log child plan must exist")
+        val childPlan = Files.readString(childPlanPath)
+        val childMetadata = markdownFrontmatter(childPlan)
+        assertEquals(parentPlanPath, childMetadata["parent-plan"], "Task 6A parent-plan")
+        assertEquals("Task 6", childMetadata["parent-task"], "Task 6A parent-task")
+        assertEquals("12", childMetadata["capability-id"], "Task 6A capability-id")
+        setOf("app-desktop/src/test/kotlin/mihon/desktop/CrashHandlerTest.kt", "app-desktop/src/main/kotlin/mihon/desktop/CrashHandler.kt")
+            .forEach { assertTrue(childPlan.contains("Modify: `$it`"), "Task 6A missing product scope: $it") }
+        assertTrue(
+            Regex("""(?m)^- \[ \] Task 6[：:]""").containsMatchIn(plan),
+            "Task 6 must remain pending until its child plan returns",
+        )
+    }
+
+    @Test
     fun `extension install and Cloudflare product protection tests are real files`() {
         val repositoryRoot = repositoryRoot()
         val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
@@ -1944,10 +2118,10 @@ class DesktopProductCapabilityContractTest {
     }
 
     @Test
-    fun `reader parity entries report only evidenced shared and wired states`() {
+    fun `reader parity entries report only evidenced states`() {
         val items = manifestItems(repositoryRoot()).associateBy { validatedId(it.jsonObject) }
         val expectedStatuses = mapOf(
-            9 to "WIRED",
+            9 to "VERIFIED",
             43 to "WIRED",
             44 to "WIRED",
             45 to "WIRED",
@@ -2562,6 +2736,18 @@ class DesktopProductCapabilityContractTest {
         }.toList()
         assertEquals(1, methods.size, "$context must contain one direct class-member behavior test `$methodName`")
         return methods.single()
+    }
+
+    private fun markdownFrontmatter(source: String): Map<String, String> {
+        val lines = source.lineSequence().toList()
+        require(lines.firstOrNull() == "---") { "Markdown frontmatter must start at the first line" }
+        val fields = lines.drop(1).takeWhile { it != "---" }
+        require(lines.getOrNull(fields.size + 1) == "---") { "Markdown frontmatter must have a closing delimiter" }
+        return fields.associate { line ->
+            val separator = line.indexOf(':')
+            require(separator > 0) { "Invalid frontmatter field: $line" }
+            line.take(separator).trim() to line.drop(separator + 1).trim()
+        }
     }
 
     private fun kotlinSourceViews(source: String): Pair<String, String> {
