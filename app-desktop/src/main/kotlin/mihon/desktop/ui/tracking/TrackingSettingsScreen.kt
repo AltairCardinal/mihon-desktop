@@ -50,7 +50,11 @@ import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.platform.DesktopOAuthCallbackServer
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.tracking.DesktopAuthenticatingTrackerService
+import mihon.desktop.ui.settings.DesktopSettingsAnchorResources
+import mihon.desktop.ui.settings.DesktopSettingsLazyAnchor
 import mihon.desktop.ui.settings.SwitchSettingsItem
+import mihon.desktop.ui.settings.desktopSettingsAnchor
+import mihon.desktop.ui.settings.rememberDesktopSettingsAnchorLazyListHost
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.service.TrackEdit
 import tachiyomi.domain.track.service.TrackSearchResult
@@ -82,6 +86,26 @@ data class TrackingSettingsScreen(
         var confirmation by remember { mutableStateOf<TrackingConfirmation?>(null) }
         val scope = rememberCoroutineScope()
         LaunchedEffect(model) { model.load() }
+        val autoSyncTitle = DesktopSettingsAnchorResources.trackingAutoSync.localized()
+        val loginTitle = DesktopSettingsAnchorResources.trackingLogin.localized()
+        val serviceStartIndex = listOf(state.error, state.feedback).count { it != null }
+        val anchors = buildList {
+            if (mangaId == null) add(DesktopSettingsLazyAnchor(autoSyncTitle, "tracking-auto-sync"))
+            state.services.forEachIndexed { index, item ->
+                val sourceManaged =
+                    dependencies.trackerServiceRegistry.get(item.profile.id) !is DesktopAuthenticatingTrackerService
+                if (!item.profile.loggedIn && (!sourceManaged || mangaId != null)) {
+                    add(
+                        DesktopSettingsLazyAnchor(
+                            loginTitle,
+                            "tracking-login-${item.profile.id}",
+                            serviceStartIndex + index,
+                        ),
+                    )
+                }
+            }
+        }
+        val anchorHost = rememberDesktopSettingsAnchorLazyListHost(this, anchors)
 
         Scaffold(
             topBar = {
@@ -105,7 +129,11 @@ data class TrackingSettingsScreen(
         ) { padding ->
             Column(Modifier.fillMaxSize().padding(padding)) {
                 if (mangaId == null) {
-                    TrackingAutoSyncPreference(dependencies.appPreferences)
+                    TrackingAutoSyncPreference(
+                        dependencies.appPreferences,
+                        autoSyncTitle,
+                        Modifier.desktopSettingsAnchor(autoSyncTitle, "tracking-auto-sync", anchorHost),
+                    )
                     HorizontalDivider()
                 }
                 Box(Modifier.fillMaxWidth().weight(1f)) {
@@ -116,7 +144,7 @@ data class TrackingSettingsScreen(
                             modifier = Modifier.align(Alignment.Center),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        else -> LazyColumn(Modifier.fillMaxSize()) {
+                        else -> LazyColumn(Modifier.fillMaxSize(), state = anchorHost.listState) {
                             state.error?.let { message ->
                                 item {
                                     Text(
@@ -166,18 +194,26 @@ data class TrackingSettingsScreen(
                                                     sourceManaged && mangaId == null -> MR.strings.desktop_tracking_source_managed.localized()
                                                     profile.loggedIn && mangaId == null -> MR.strings.logout.localized()
                                                     profile.loggedIn -> MR.strings.desktop_tracking_manage.localized()
-                                                    else -> MR.strings.login.localized()
+                                                    else -> loginTitle
                                                 },
                                             )
                                         }
                                     },
-                                    modifier = if (profile.unavailableReason == null) {
+                                    modifier = (if (!profile.loggedIn && (!sourceManaged || mangaId != null)) {
+                                        Modifier.desktopSettingsAnchor(
+                                            loginTitle,
+                                            "tracking-login-${profile.id}",
+                                            anchorHost,
+                                        )
+                                    } else {
+                                        Modifier
+                                    }).then(if (profile.unavailableReason == null) {
                                         Modifier.clickable {
                                             if (!sourceManaged || mangaId != null) selectedId = profile.id
                                         }
                                     } else {
                                         Modifier
-                                    },
+                                    }),
                                 )
                                 HorizontalDivider()
                             }
@@ -282,15 +318,20 @@ internal fun trackingMessageText(message: TrackingMessage, locale: Locale = Loca
 }
 
 @Composable
-internal fun TrackingAutoSyncPreference(preferences: DesktopAppPreferences) {
+internal fun TrackingAutoSyncPreference(
+    preferences: DesktopAppPreferences,
+    title: String = MR.strings.pref_auto_update_manga_sync.localized(),
+    modifier: Modifier = Modifier,
+) {
     val autoUpdateTrack by preferences.autoUpdateTrack.changes().collectAsState(
         initial = preferences.autoUpdateTrack.get(),
     )
     SwitchSettingsItem(
-        title = MR.strings.pref_auto_update_manga_sync.localized(),
+        title = title,
         subtitle = MR.strings.desktop_tracking_auto_update_summary.localized(),
         checked = autoUpdateTrack,
         onCheckedChange = preferences.autoUpdateTrack::set,
+        modifier = modifier,
     )
 }
 

@@ -18,15 +18,35 @@ import kotlinx.coroutines.test.runTest
 import mihon.desktop.ui.tracking.mangaTrackingDestination
 import mihon.desktop.ui.tracking.pushMangaTracking
 import mihon.desktop.ui.tracking.pushTrackingSettings
+import mihon.desktop.ui.tracking.TrackingSettingsScreen
 import mihon.desktop.ui.tracking.trackingSettingsDestination
 import mihon.desktop.ui.library.MangaDetailScreen
 import mihon.desktop.ui.settings.MoreRootScreen
+import mihon.desktop.ui.settings.DesktopSettingsCatalog
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class TrackingNavigationContractTest {
+    @Test
+    fun `tracking catalog route preserves fixed main and desktop tail ordering`() {
+        val screens = DesktopSettingsCatalog.screens()
+        assertEquals(
+            listOf(
+                "AppearanceSettingsScreen", "LibrarySettingsScreen", "ReaderSettingsScreen",
+                "DownloadSettingsScreen", "TrackingSettingsScreen", "ExtensionListScreen",
+                "BackupSettingsScreen", "SecuritySettingsScreen", "AdvancedSettingsScreen",
+            ),
+            screens.take(9).map { it.route::class.simpleName },
+        )
+        assertTrue(screens[4].route is TrackingSettingsScreen)
+        assertEquals(
+            listOf("GeneralSettingsScreen", "ExtensionRepoScreen", "AboutScreen"),
+            screens.drop(9).map { it.route::class.simpleName },
+        )
+    }
+
     @Test
     fun `settings and manga tracking destinations are regular Screens`() {
         val settings = trackingSettingsDestination()

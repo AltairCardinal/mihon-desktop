@@ -21,6 +21,8 @@ internal object DesktopSettingsAnchorResources {
     val aboutAppData = MR.strings.desktop_about_app_data_directory
     val extensionRepoAdd = MR.strings.action_add_repo
     val extensionRepoDelete = MR.strings.action_delete_repo
+    val trackingAutoSync = MR.strings.pref_auto_update_manga_sync
+    val trackingLogin = MR.strings.login
 }
 
 object DesktopSettingsCatalog {
@@ -29,7 +31,7 @@ object DesktopSettingsCatalog {
         screen(LibrarySettingsScreen(), MR.strings.pref_category_library, MR.strings.pref_category_display, MR.strings.pref_category_library_update),
         screen(ReaderSettingsScreen(), MR.strings.pref_category_reader, MR.strings.pref_viewer_type, MR.strings.desktop_reader_pager_mode),
         screen(DownloadSettingsScreen(), MR.strings.pref_category_downloads, DesktopSettingsAnchorResources.downloadNew, DesktopSettingsAnchorResources.downloadAsCbz),
-        screen(TrackingSettingsScreen(), MR.strings.pref_category_tracking, MR.strings.pref_auto_update_manga_sync, MR.strings.login),
+        screen(TrackingSettingsScreen(), MR.strings.pref_category_tracking, DesktopSettingsAnchorResources.trackingAutoSync, DesktopSettingsAnchorResources.trackingLogin),
         screen(extensionListDestination(), MR.strings.label_extensions, MR.strings.label_extensions, MR.strings.label_extension_repos),
         screen(BackupSettingsScreen(), MR.strings.label_backup, DesktopSettingsAnchorResources.createBackup, DesktopSettingsAnchorResources.restoreBackup),
         screen(SecuritySettingsScreen(), MR.strings.pref_category_security, MR.strings.desktop_security_lock_enabled, DesktopSettingsAnchorResources.securitySecureScreen),
