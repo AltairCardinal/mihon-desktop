@@ -69,7 +69,7 @@ status-source: this-file
 - [x] Task 8B：Desktop LazyList anchor 核心与 ExtensionRepo 页面
 - [x] Task 8C：Desktop 标题 anchor 的 Tracking 页面
 - [x] Task 9：共享主题模块、identity/default/codec 与 Android consumer
-- [ ] Task 10A：共享静态调色板基础与第一批
+- [x] Task 10A：共享静态调色板基础与第一批
 - [ ] Task 10B：共享静态调色板第一批收口
 - [ ] Task 10C：共享静态调色板第二批
 - [ ] Task 10D：共享静态调色板第三批
@@ -636,6 +636,8 @@ status-source: this-file
 3. 检查 rename similarity、共享/Android 编译与真实 touched≤320。
 
 **Replan status：** 原 Task 10A 的只读盘点确认五个 palette blob 均与 fixed-main 完全一致，但 `presentation-theme` 尚缺 Material3/UI classpath；完整最小范围必须为 5 moves + module build + shared exact test + Android wiring test，共 8 文件，超过原 7 文件上限。代码零差异时按可独立编译边界拆为新 10A/10B，原 10B–10D 顺延为 10C–10E；编号符合项目 guard 的“数字+至多一个字母”结构，不以省略依赖或测试规避门禁。
+
+**Review status（已完成）：** 实现 `1ccf94908` 将 Base/Tachiyomi/GreenApple 以 R97/R98/R98 高相似度 move 到共享模块，只把 `internal` 调整为最小 public，并补齐 Material3/UI classpath；Android production map 真实消费共享对象，旧 app-local 路径消失。首审 `0/1/0` 指出 exact snapshot 漏掉部分显式 role 与两个 AMOLED container；唯一测试修复 `9a7a91d4a` 补齐 36-role 快照及 `surfaceContainerLowest/Low`，三类遗漏 mutation 各自精确 RED，production 零差异。唯一复审 APPROVED `0/0/0`，shared `10/10`、Android wiring `2/2`、provenance `6/6`、JVM/Android/consumer compile、Spotless、diff 与 15-Task guard 通过；累计严格为 `6 files/189 touched`。下一项为父 Task 5B / 子 Task 10B。
 
 ### Task 10B：共享静态调色板第一批收口
 
