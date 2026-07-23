@@ -9,7 +9,7 @@ import androidx.compose.ui.graphics.Color
  * https://www.nordtheme.com/docs/colors-and-palettes
  * for the light theme, the primary color is switched with the tertiary for better contrast in some case
  */
-internal object NordColorScheme : BaseColorScheme() {
+object NordColorScheme : BaseColorScheme() {
 
     override val darkScheme = darkColorScheme(
         primary = Color(0xFF88C0D0),

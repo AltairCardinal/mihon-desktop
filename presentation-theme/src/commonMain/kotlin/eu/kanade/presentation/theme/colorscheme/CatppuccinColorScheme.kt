@@ -23,7 +23,7 @@ import androidx.compose.ui.graphics.Color
  * Tertiary #8839EF
  * Neutral #E6E9EF
  */
-internal object CatppuccinColorScheme : BaseColorScheme() {
+object CatppuccinColorScheme : BaseColorScheme() {
 
     override val darkScheme = darkColorScheme(
         primary = Color(0xFFCBA6F7),

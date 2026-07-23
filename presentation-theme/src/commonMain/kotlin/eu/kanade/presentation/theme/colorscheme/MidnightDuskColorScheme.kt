@@ -15,7 +15,7 @@ import androidx.compose.ui.graphics.Color
  * Tertiary #7A5733
  * Neutral #16151D
  */
-internal object MidnightDuskColorScheme : BaseColorScheme() {
+object MidnightDuskColorScheme : BaseColorScheme() {
 
     override val darkScheme = darkColorScheme(
         primary = Color(0xFFF02475),

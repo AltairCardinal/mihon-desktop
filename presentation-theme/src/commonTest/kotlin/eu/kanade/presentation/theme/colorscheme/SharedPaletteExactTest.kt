@@ -50,6 +50,86 @@ class SharedPaletteExactTest {
     }
 
     @Test
+    fun `catppuccin palette matches fixed main tokens`() {
+        assertEquals(
+            "ffcba6f7,ff11111b,ffcba6f7,ff11111b,ff8839ef,ffcba6f7,ff11111b,ff313244," +
+                "ffcba6f7,ffcba6f7,ff11111b,ff1e1e2e,ffcdd6f4,ff181825,ffcdd6f4,ff181825," +
+                "ffcdd6f4,ff1e1e2e,ffcdd6f4,ffcba6f7,ffeff1f5,ff4c4f69,fff38ba8,ff11111b," +
+                "ffff0558,ffef9fb4,ffcba6f7,ff585b70,ff11111b,ff181825,ff313244,ff181825," +
+                "ff1e1e2e,ff1e1e2e,ff1e1e2e,ff313244",
+            CatppuccinColorScheme.darkScheme.exactTokenSnapshot(),
+        )
+        assertEquals(
+            "ff8839ef,ffdce0e8,ff8839ef,ffdce0e8,ffcba6f7,ff8839ef,ffdce0e8,ffcdd0da," +
+                "ff8839ef,ff8839ef,ffdce0e8,ffeff1f5,ff4c4f69,ffe6e9ef,ff4c4f69,ffe6e9ef," +
+                "ff4c4f69,ffeff1f5,ff4c4f69,ff8839ef,ff1e1e2e,ffcdd6f4,ffd20f39,ffdce0e8," +
+                "ff68001c,ffd61c41,ff8839ef,ffacb0be,ffdce0e8,ffe6e9ef,ffcdd0da,ffe6e9ef," +
+                "ffeff1f5,ffeff1f5,ffeff1f5,ffcdd0da",
+            CatppuccinColorScheme.lightScheme.exactTokenSnapshot(),
+        )
+    }
+
+    @Test
+    fun `midnight dusk palette matches fixed main tokens`() {
+        assertEquals(
+            "fff02475,ffffffff,ffbd1c5c,ffffffff,fff02475,fff02475,ff16151d,ff66183c," +
+                "fff02475,ff55971c,ff16151d,ff386412,ffe5e1e5,ff16151d,ffe5e1e5,ff16151d," +
+                "ffe5e1e5,ff281624,ffd6c1c4,fff02475,ff333043,ffffffff,fff2b8b5,ff601410," +
+                "ff8c1d18,fff9dedc,ff9f8c8f,ff49454f,ff000000,ff141218,ff3b383e,ff221320," +
+                "ff251522,ff281624,ff2d1c2a,ff2f1f2c",
+            MidnightDuskColorScheme.darkScheme.exactTokenSnapshot(),
+        )
+        assertEquals(
+            "ffbb0054,ffffffff,ffffd9e1,ff3f0017,ffffb1c4,ffbb0054,ffffffff,ffefbad4," +
+                "ffd1377c,ff006638,ffffffff,ff00894b,ff2d1600,fffffbff,ff1c1b1f,fffffbff," +
+                "ff1c1b1f,fff9e6f1,ff524346,ffbb0054,ff313033,fff4f0f4,ffb3261e,ffffffff," +
+                "fff9dedc,ff410e0b,ff847376,ffcac4d0,ff000000,ffded8e1,fffef7ff,ffdac0cd," +
+                "ffe8d1dd,fff9e6f1,fffcf3f8,fffef9fc",
+            MidnightDuskColorScheme.lightScheme.exactTokenSnapshot(),
+        )
+    }
+
+    @Test
+    fun `monochrome palette matches fixed main tokens`() {
+        assertEquals(
+            "ffffffff,ff000000,ffffffff,ff000000,ff000000,ffffffff,ff000000,ff777777," +
+                "ff000000,ff777777,ffffffff,ffffffff,ff000000,ff000000,ffffffff,ff000000," +
+                "ffffffff,ff000000,ffffffff,ffffffff,ffffffff,ff000000,ffffffff,ff000000," +
+                "ffffffff,ff000000,ffffffff,ffffffff,ff000000,ff000000,ffffffff,ff000000," +
+                "ff000000,ff000000,ff000000,ff000000",
+            MonochromeColorScheme.darkScheme.exactTokenSnapshot(),
+        )
+        assertEquals(
+            "ff000000,ffffffff,ff000000,ffffffff,ffffffff,ff000000,ffffffff,ff888888," +
+                "ffffffff,ff888888,ffffffff,ff000000,ffffffff,ffffffff,ff000000,ffffffff," +
+                "ff000000,ffffffff,ff000000,ff000000,ff000000,ffffffff,ff000000,ffffffff," +
+                "ff000000,ffffffff,ff000000,ff000000,ff000000,ffffffff,ffffffff,ffffffff," +
+                "ffffffff,ffffffff,ffffffff,ffffffff",
+            MonochromeColorScheme.lightScheme.exactTokenSnapshot(),
+        )
+    }
+
+    @Test
+    fun `nord palette matches fixed main tokens`() {
+        assertEquals(
+            "ff88c0d0,ff2e3440,ff88c0d0,ff2e3440,ff397e91,ff81a1c1,ff2e3440,ff506275," +
+                "ff88c0d0,ff5e81ac,ff000000,ff5e81ac,ff000000,ff2e3440,ffeceff4,ff2e3440," +
+                "ffeceff4,ff414c5c,ffeceff4,ff88c0d0,ffd8dee9,ff2e3440,fff2b8b5,ff2e3440," +
+                "ffbf616a,ff000000,ff6d717b,ff90939a,ff000000,ff141218,ff3b383e,ff373f4d," +
+                "ff3e4756,ff414c5c,ff4e5766,ff505968",
+            NordColorScheme.darkScheme.exactTokenSnapshot(),
+        )
+        assertEquals(
+            "ff5e81ac,ff000000,ff5e81ac,ff000000,ff8ca8cd,ff81a1c1,ff2e3440,ff91b4d7," +
+                "ff2e3440,ff88c0d0,ff2e3440,ff88c0d0,ff2e3440,ffeceff4,ff2e3440,ffe5e9f0," +
+                "ff2e3440,ffdae0ea,ff2e3440,ff5e81ac,ff3b4252,ffeceff4,ffb3261e,ffeceff4," +
+                "ffbf616a,ff000000,ff2e3440,ffcac4d0,ff000000,ffded8e1,fffef7ff,ffd1d7e0," +
+                "ffd6dce6,ffdae0ea,ffe9edf3,fff2f4f8",
+            NordColorScheme.lightScheme.exactTokenSnapshot(),
+        )
+    }
+
+    @Test
     fun `lavender palette matches fixed main tokens`() {
         assertEquals(
             "ffa177ff,ff3d0090,ffa177ff,ffffffff,ff6d41c8,ffa177ff,ffffffff,ff423271," +
