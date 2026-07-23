@@ -1,6 +1,5 @@
 package mihon.desktop.ui.tracking
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +37,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.core.model.rememberScreenModel
@@ -50,9 +52,11 @@ import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.platform.DesktopOAuthCallbackServer
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.tracking.DesktopAuthenticatingTrackerService
+import mihon.desktop.ui.security.DesktopPasswordField
 import mihon.desktop.ui.settings.DesktopSettingsAnchorResources
 import mihon.desktop.ui.settings.DesktopSettingsLazyAnchor
 import mihon.desktop.ui.settings.SwitchSettingsItem
+import mihon.desktop.ui.settings.desktopSettingsAction
 import mihon.desktop.ui.settings.desktopSettingsAnchor
 import mihon.desktop.ui.settings.rememberDesktopSettingsAnchorLazyListHost
 import tachiyomi.domain.track.model.Track
@@ -159,6 +163,21 @@ data class TrackingSettingsScreen(
                                 val profile = item.profile
                                 val sourceManaged =
                                     dependencies.trackerServiceRegistry.get(profile.id) !is DesktopAuthenticatingTrackerService
+                                val actionEnabled =
+                                    profile.unavailableReason == null && (!sourceManaged || mangaId != null)
+                                val serviceAction = {
+                                    if (profile.loggedIn && mangaId == null) {
+                                        confirmation = TrackingConfirmation.Logout(profile.id, profile.name)
+                                    } else {
+                                        selectedId = profile.id
+                                    }
+                                }
+                                val actionLabel = when {
+                                    sourceManaged && mangaId == null -> MR.strings.desktop_tracking_source_managed.localized()
+                                    profile.loggedIn && mangaId == null -> MR.strings.logout.localized()
+                                    profile.loggedIn -> MR.strings.desktop_tracking_manage.localized()
+                                    else -> loginTitle
+                                }
                                 ListItem(
                                     headlineContent = { Text(profile.name) },
                                     supportingContent = {
@@ -179,25 +198,7 @@ data class TrackingSettingsScreen(
                                         )
                                     },
                                     trailingContent = {
-                                        TextButton(
-                                            enabled = profile.unavailableReason == null && (!sourceManaged || mangaId != null),
-                                            onClick = {
-                                                if (profile.loggedIn && mangaId == null) {
-                                                    confirmation = TrackingConfirmation.Logout(profile.id, profile.name)
-                                                } else {
-                                                    selectedId = profile.id
-                                                }
-                                            },
-                                        ) {
-                                            Text(
-                                                when {
-                                                    sourceManaged && mangaId == null -> MR.strings.desktop_tracking_source_managed.localized()
-                                                    profile.loggedIn && mangaId == null -> MR.strings.logout.localized()
-                                                    profile.loggedIn -> MR.strings.desktop_tracking_manage.localized()
-                                                    else -> loginTitle
-                                                },
-                                            )
-                                        }
+                                        Text(actionLabel)
                                     },
                                     modifier = (if (!profile.loggedIn && (!sourceManaged || mangaId != null)) {
                                         Modifier.desktopSettingsAnchor(
@@ -207,12 +208,10 @@ data class TrackingSettingsScreen(
                                         )
                                     } else {
                                         Modifier
-                                    }).then(if (profile.unavailableReason == null) {
-                                        Modifier.clickable {
-                                            if (!sourceManaged || mangaId != null) selectedId = profile.id
-                                        }
+                                    }).then(if (actionEnabled) {
+                                        Modifier.desktopSettingsAction(Role.Button, serviceAction)
                                     } else {
-                                        Modifier
+                                        Modifier.semantics { disabled() }
                                     }),
                                 )
                                 HorizontalDivider()
@@ -385,10 +384,10 @@ private fun LoginDialog(
                 if (authenticating == null) Text(MR.strings.desktop_tracking_platform_unavailable.localized())
                 if (method == TrackerAuthentication.USERNAME_PASSWORD) {
                     OutlinedTextField(username, { username = it }, label = { Text(MR.strings.username.localized()) })
-                    OutlinedTextField(password, { password = it }, label = { Text(MR.strings.password.localized()) })
+                    DesktopPasswordField(password, { password = it }, MR.strings.password.localized())
                 }
                 if (method == TrackerAuthentication.API_KEY) {
-                    OutlinedTextField(password, { password = it }, label = { Text(MR.strings.desktop_tracking_api_key.localized()) })
+                    DesktopPasswordField(password, { password = it }, MR.strings.desktop_tracking_api_key.localized())
                 }
                 if (method == TrackerAuthentication.OAUTH) Text(MR.strings.desktop_tracking_oauth_browser.localized())
             }
