@@ -34,7 +34,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -49,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -115,6 +115,8 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
         fun showSnackbar(message: String) {
             scope.launch { snackbarHostState.showSnackbar(message) }
         }
+        val refreshRepos: () -> Unit = { scope.launch { updateExtensionRepo.awaitAll() } }
+        val showCreate: () -> Unit = { dialog = freshCreatePrompt() }
 
         // Dialogs
         when (val d = dialog) {
@@ -174,9 +176,10 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
                         }
                     },
                     actions = {
-                        IconButton(onClick = {
-                            scope.launch { updateExtensionRepo.awaitAll() }
-                        }) {
+                        IconButton(
+                            onClick = refreshRepos,
+                            modifier = Modifier.desktopSettingsActivationKeys(Role.Button, onClick = refreshRepos),
+                        ) {
                             Icon(Icons.Outlined.Refresh, contentDescription = MR.strings.action_webview_refresh.localized())
                         }
                     },
@@ -184,8 +187,10 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
             },
             floatingActionButton = {
                 FloatingActionButton(
-                    onClick = { dialog = freshCreatePrompt() },
-                    modifier = Modifier.desktopSettingsAnchor(addRepoTitle, "add-repo", anchorHost),
+                    onClick = showCreate,
+                    modifier = Modifier
+                        .desktopSettingsAnchor(addRepoTitle, "add-repo", anchorHost)
+                        .desktopSettingsActivationKeys(Role.Button, onClick = showCreate),
                 ) {
                     Icon(Icons.Outlined.Add, contentDescription = MR.strings.action_add_repo.localized())
                 }
@@ -325,13 +330,13 @@ private fun RepoCard(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End,
         ) {
-            IconButton(onClick = onOpenWebsite) {
+            IconButton(onClick = onOpenWebsite, modifier = Modifier.desktopSettingsActivationKeys(Role.Button, onClick = onOpenWebsite)) {
                 Icon(Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = MR.strings.action_open_in_browser.localized())
             }
-            IconButton(onClick = onCopyUrl) {
+            IconButton(onClick = onCopyUrl, modifier = Modifier.desktopSettingsActivationKeys(Role.Button, onClick = onCopyUrl)) {
                 Icon(Icons.Outlined.ContentCopy, contentDescription = MR.strings.action_copy_link.localized())
             }
-            IconButton(onClick = onDelete) {
+            IconButton(onClick = onDelete, modifier = Modifier.desktopSettingsActivationKeys(Role.Button, onClick = onDelete)) {
                 Icon(Icons.Outlined.Delete, contentDescription = MR.strings.action_delete_repo.localized(), tint = MaterialTheme.colorScheme.error)
             }
         }
@@ -378,13 +383,13 @@ private fun CreateRepoDialog(
             }
         },
         confirmButton = {
-            TextButton(
+            DesktopSettingsTextButton(
                 enabled = url.isNotEmpty() && !alreadyExists,
                 onClick = { onCreate(url) },
             ) { Text(MR.strings.action_add.localized()) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
+            DesktopSettingsTextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
         },
     )
 
@@ -410,12 +415,12 @@ private fun DeleteRepoDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDelete) {
+            DesktopSettingsTextButton(onClick = onDelete) {
                 Text(MR.strings.action_remove.localized(), color = MaterialTheme.colorScheme.error)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
+            DesktopSettingsTextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
         },
     )
 }
@@ -434,10 +439,10 @@ private fun ConflictRepoDialog(
             Text(MR.strings.action_replace_repo_message.localized(Locale.getDefault(), newRepo.name, oldRepo.name))
         },
         confirmButton = {
-            TextButton(onClick = onReplace) { Text(MR.strings.action_replace_repo.localized()) }
+            DesktopSettingsTextButton(onClick = onReplace) { Text(MR.strings.action_replace_repo.localized()) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
+            DesktopSettingsTextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
         },
     )
 }

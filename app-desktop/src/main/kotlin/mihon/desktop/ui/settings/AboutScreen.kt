@@ -28,6 +28,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -107,7 +108,11 @@ class AboutScreen(internal val platformPaths: DesktopPlatformPaths = DesktopPlat
                     color = MaterialTheme.colorScheme.primary,
                 )
                 InfoRow(label = MR.strings.website.localized(), value = "https://github.com/mihonapp/mihon")
-                Button(onClick = { onLicenses(navigator) }) {
+                val openLicenses = { onLicenses(navigator) }
+                Button(
+                    onClick = openLicenses,
+                    modifier = Modifier.desktopSettingsActivationKeys(Role.Button, onClick = openLicenses),
+                ) {
                     Text(MR.strings.licenses.localized())
                 }
 
@@ -125,11 +130,15 @@ class AboutScreen(internal val platformPaths: DesktopPlatformPaths = DesktopPlat
                 InfoRow(label = MR.strings.desktop_about_database.localized(), value = "$dbPath ($dbSize)")
                 InfoRow(label = MR.strings.desktop_about_network_cache.localized(), value = cacheSizeText)
                 Spacer(modifier = Modifier.height(8.dp))
-                Button(onClick = {
+                val clearCache = {
                     cacheDir.deleteRecursively()
                     cacheSizeText = "0 B"
                     cacheCleared = true
-                }) {
+                }
+                Button(
+                    onClick = clearCache,
+                    modifier = Modifier.desktopSettingsActivationKeys(Role.Button, onClick = clearCache),
+                ) {
                     Text(MR.strings.desktop_advanced_clear_network_cache.localized())
                 }
                 if (cacheCleared) Text(MR.strings.desktop_about_network_cache_cleared.localized())
@@ -176,22 +185,40 @@ internal fun AboutUpdateSection(
     feedback?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     presentation.progress?.let { LinearProgressIndicator(progress = { it / 100f }) }
     if (presentation.status == "ready") {
+        val openManually = { onIntent(DesktopUpdateIntent.MANUAL) }
+        val confirm = { onIntent(DesktopUpdateIntent.CONFIRM) }
+        val decline = { onIntent(DesktopUpdateIntent.DECLINE) }
         AlertDialog(
-            onDismissRequest = { onIntent(DesktopUpdateIntent.DECLINE) },
+            onDismissRequest = decline,
             title = { Text(presentation.message) },
             text = {
                 Column {
                     Text(MR.strings.desktop_update_install_prompt.localized())
-                    Button(onClick = { onIntent(DesktopUpdateIntent.MANUAL) }) { Text(MR.strings.update_check_open.localized()) }
+                    Button(
+                        onClick = openManually,
+                        modifier = Modifier.desktopSettingsActivationKeys(Role.Button, onClick = openManually),
+                    ) { Text(MR.strings.update_check_open.localized()) }
                 }
             },
-            confirmButton = { Button(onClick = { onIntent(DesktopUpdateIntent.CONFIRM) }) { Text(MR.strings.action_install.localized()) } },
-            dismissButton = { Button(onClick = { onIntent(DesktopUpdateIntent.DECLINE) }) { Text(MR.strings.action_not_now.localized()) } },
+            confirmButton = {
+                Button(onClick = confirm, modifier = Modifier.desktopSettingsActivationKeys(Role.Button, onClick = confirm)) {
+                    Text(MR.strings.action_install.localized())
+                }
+            },
+            dismissButton = {
+                Button(onClick = decline, modifier = Modifier.desktopSettingsActivationKeys(Role.Button, onClick = decline)) {
+                    Text(MR.strings.action_not_now.localized())
+                }
+            },
         )
     } else {
         Row {
             presentation.actions.forEach { intent ->
-                Button(onClick = { onIntent(intent) }) { Text(intent.label()) }
+                val action = { onIntent(intent) }
+                Button(
+                    onClick = action,
+                    modifier = Modifier.desktopSettingsActivationKeys(Role.Button, onClick = action),
+                ) { Text(intent.label()) }
             }
         }
     }
