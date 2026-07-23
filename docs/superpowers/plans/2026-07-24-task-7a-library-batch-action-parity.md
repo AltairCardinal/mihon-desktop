@@ -3,7 +3,7 @@ parent-plan: docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.
 parent-task: Task 7
 capability-id: 19
 related-capability-ids: 17,19
-status: planned
+status: completed
 task-base: 68cfae3aa118c242af1e8d427175efe5d4df99da
 ---
 
@@ -58,3 +58,7 @@ task-base: 68cfae3aa118c242af1e8d427175efe5d4df99da
 ./gradlew :app-desktop:jvmTest --tests "mihon.desktop.parity.DesktopProductCapabilityContractTest.task 7*" --no-daemon
 ./gradlew spotlessCheck --no-daemon
 ```
+
+## 执行证据
+
+R2 提交 `af9c522ec9f5c7032ebe3503bab6f9a6a1659e6f` 已完成 8 文件/400 行产品与测试交付。Desktop library/navigation `44/44`、Android consumer `2/2`、Spotless 与 diff-check 全绿；已读书签、单本读取失败继续、三种下载去重及 partial feedback 均有行为测试。临时删除 Android filter/sort consumer，以及 Desktop enqueue/submit/navigate wiring 时对应测试均精确 RED，逐次恢复后独立修复复审 `APPROVED 0/0/0/0`。

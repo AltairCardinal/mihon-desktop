@@ -1,7 +1,7 @@
 ---
 parent-plan: docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md
 parent-task: Task 7
-status: active
+status: completed
 attempt: 2
 task-base: 68cfae3aa118c242af1e8d427175efe5d4df99da
 ---
@@ -31,3 +31,9 @@ task-base: 68cfae3aa118c242af1e8d427175efe5d4df99da
 - 文件内仅记录 R1/R2 hash 与 R3 验证 evidence，把本计划 `status` 改为 `completed`；R3 自身 hash 仅在提交后的交付报告记录，禁止 self-hash/amend 循环。随后重新裁决 ID17/19，恢复父 `active-task: Task 7`。
 - 重跑 focused、ordinary、相关矩阵、final、Spotless 与 guards，独立审查通过后单独提交。
 - 任何阶段若范围、复用入口或测试前置不成立，先停止并更新本计划；不得把后续阶段文件静默并入当前提交。
+
+## Closeout evidence
+
+- R1 audit stabilization：`6fb82074adeceda25be2f3a12621ce510fd0423c`。
+- R2 Task7A product/TDD：`af9c522ec9f5c7032ebe3503bab6f9a6a1659e6f`。
+- R3 状态契约先精确 RED：`ID 17 expected VERIFIED but was SHARED`；ID17/19 五角色证据闭合后均裁决为 `VERIFIED`。Focused `1/1`、普通契约 `40/40`、R2 Desktop `44/44`、Android `2/2`、domain `6/6`、data `2/2` GREEN；显式 final gate 按设计 RED 并精确报告 55 个非终态 ID。本文件不记录 R3 自身 hash。

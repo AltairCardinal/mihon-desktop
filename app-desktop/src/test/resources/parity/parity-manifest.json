@@ -390,7 +390,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/category/CategoryScreenModel.kt", "symbol": "CategoryScreenModel", "line": 24}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/category/CategoryScreenModel.kt", "symbol": "private val createCategoryWithName", "line": 26}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/category/interactor/CreateCategoryWithName.kt", "symbol": "class CreateCategoryWithName", "line": 10}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "private val createCategory", "line": 67}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "private val createCategory", "line": 74}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryCategoryBehaviorTest.kt#category dialog intents perform create rename reorder and delete through production DI", "productionMarkers": ["LibraryScreenModelFactory.create"]}]
     },
     "group": "书库与详情",
@@ -428,23 +428,26 @@
     "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/domain/LibrarySearchFilter.kt"],
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt", "symbol": "LibraryScreenModel", "line": 71}],
-      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt", "symbol": "private val evaluateLibrary = EvaluateLibrary()", "line": 86}],
+      "CURRENT_ANDROID": [
+        {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt", "symbol": "return evaluateLibrary.filter(", "line": 196},
+        {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt", "symbol": "evaluateLibrary.sortForAndroid(", "line": 246}
+      ],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/library/interactor/EvaluateLibrary.kt", "symbol": "class EvaluateLibrary", "line": 31}],
       "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/domain/LibrarySearchFilter.kt", "symbol": "private val evaluator = EvaluateLibrary()", "line": 12}],
-      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt#filter intent cycles include exclude any and immediately changes visible items", "productionMarkers": ["model.toggleFilter"]}]
+      "FIXTURE": [{"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/library/LibrarySharedEvaluationWiringTest.kt#Android production filter and sort consumers execute shared evaluation behavior", "productionMarkers": ["applyFilters", "applySort"]}]
     },
     "group": "书库与详情",
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "SHARED",
+    "status": "VERIFIED",
     "statusDecision": {
       "task": "Task 7",
-      "decision": "KEEP_GAP",
-      "followUp": "Task 7 evidence gap: current Android production filter and sort consumer behavior",
-      "gap": "Shared EvaluateLibrary behavior and Desktop consumption are covered, but the current Android test only reflects the field; deleting production filter or sort calls would not fail it.",
+      "decision": "PROMOTE_VERIFIED",
+      "followUp": "NONE",
+      "gap": "NONE",
       "behaviorMethods": {
-        "app/src/test/java/eu/kanade/tachiyomi/ui/library/LibrarySharedEvaluationWiringTest.kt": ["Android library production model owns the shared evaluator"],
+        "app/src/test/java/eu/kanade/tachiyomi/ui/library/LibrarySharedEvaluationWiringTest.kt": ["Android production filter and sort consumers execute shared evaluation behavior"],
         "domain/src/commonTest/kotlin/tachiyomi/domain/library/interactor/EvaluateLibraryTest.kt": ["all tri-state filters preserve Android IS NOT and disabled semantics", "every sort type supports both directions and final title collator tie-break"],
         "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": ["complete filter flags flow from state to visible list including local and tracking boundaries"]
       }
@@ -458,7 +461,11 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryPageCompositionTest.kt"
     ],
-    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": ["complete filter flags flow from state to visible list including local and tracking boundaries"]},
+    "behaviorMethods": {
+      "app/src/test/java/eu/kanade/tachiyomi/ui/library/LibrarySharedEvaluationWiringTest.kt": ["Android production filter and sort consumers execute shared evaluation behavior"],
+      "domain/src/commonTest/kotlin/tachiyomi/domain/library/interactor/EvaluateLibraryTest.kt": ["all tri-state filters preserve Android IS NOT and disabled semantics", "every sort type supports both directions and final title collator tie-break"],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": ["complete filter flags flow from state to visible list including local and tracking boundaries"]
+    },
     "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -486,33 +493,44 @@
       ],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/category/interactor/SetMangaCategories.kt", "symbol": "class SetMangaCategories", "line": 7}],
       "DESKTOP_CONSUMER": [
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryTab.kt", "symbol": "model.setCategoriesForManga", "line": 241},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "suspend fun setCategoriesForManga", "line": 454}
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryTab.kt", "symbol": "internal fun librarySelectionActions(", "line": 121},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "internal suspend fun enqueueDownloads(", "line": 429},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "suspend fun setCategoriesForManga", "line": 511}
       ],
-      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt#library model exposes batch category partial failure to UI", "productionMarkers": ["model.setCategoriesForManga"]}]
+      "FIXTURE": [
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt#selection action bar exposes invert download and migrate entries", "productionMarkers": ["librarySelectionActions", "SelectionActionBar"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt#batch download skips queued downloading and downloaded chapters then continues after failure", "productionMarkers": ["model.enqueueDownloads"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/NavigationContractTest.kt#library migration queue and item search use the nested Screen navigator", "productionMarkers": ["MigrationBatchQueueScreen", "MigrationSearchScreen"]}
+      ]
     },
     "group": "书库与详情",
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "WIRED",
+    "status": "VERIFIED",
     "statusDecision": {
       "task": "Task 7",
-      "decision": "CHILD_PLAN_REQUIRED",
-      "followUp": "docs/superpowers/plans/2026-07-24-task-7a-library-batch-action-parity.md",
-      "gap": "Desktop batch selection exposes category, read, unread, and remove actions, but lacks fixed-main bulk download, migration, and invert-selection entry points with production feedback.",
+      "decision": "PROMOTE_VERIFIED",
+      "followUp": "NONE",
+      "gap": "NONE",
       "behaviorMethods": {
-        "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt": ["shift mouse click selects visible range and does not open manga", "library model exposes batch category partial failure to UI"],
-        "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": ["markMangaRead updates every chapter for the manga", "removeFromLibrary clears favorite flag for each manga", "enqueueNextUnreadDownload enqueues first unread chapter by source order"]
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt": ["invert selection toggles only visible manga", "selection action bar exposes invert download and migrate entries", "library model exposes batch category partial failure to UI"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": ["markMangaRead updates every chapter for the manga", "removeFromLibrary clears favorite flag for each manga", "batch download preserves all six fixed-main chapter selections", "batch download skips queued downloading and downloaded chapters then continues after failure"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/NavigationContractTest.kt": ["library migration queue and item search use the nested Screen navigator"]
       }
     },
     "authoritativeImplementation": "Fixed-main original Mihon capability #19: LibraryBottomActionMenu routes the batch category action through LibraryTab to LibraryScreenModel.setMangaCategories; the same menu also exposes read, unread, download, delete, and migrate actions.",
-    "desktopImplementation": "Task 2 proves only the Desktop batch-category slice from LibraryTab to shared SetMangaCategories, including partial-failure feedback. Download, read, unread, delete, migrate, cancel, select-all, and invert-selection parity remain for Task 7.",
+    "desktopImplementation": "Desktop Library selection preserves category/read/unread/remove actions and now exposes visible-item inversion, all six fixed-main download choices with active/downloaded deduplication and partial-failure feedback, plus the existing batch migration controller → queue → item-search navigation chain.",
     "protectionTests": [
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/NavigationContractTest.kt"
     ],
-    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt": ["batch category assignment reports partial failure and continues", "library model exposes batch category partial failure to UI"]},
+    "behaviorMethods": {
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt": ["invert selection toggles only visible manga", "selection action bar exposes invert download and migrate entries", "library model exposes batch category partial failure to UI"],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": ["markMangaRead updates every chapter for the manga", "removeFromLibrary clears favorite flag for each manga", "batch download preserves all six fixed-main chapter selections", "batch download skips queued downloading and downloaded chapters then continues after failure"],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/NavigationContractTest.kt": ["library migration queue and item search use the nested Screen navigator"]
+    },
     "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -547,7 +565,7 @@
       ],
       "DESKTOP_CONSUMER": [
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt", "symbol": "suspend fun toggleLibrary", "line": 262},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "suspend fun setCategoriesForManga", "line": 454}
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "suspend fun setCategoriesForManga", "line": 511}
       ],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt#toggleLibrary clears favorite date and categories when removing", "productionMarkers": ["model.toggleLibrary", "getMangaCategoryIds"]}]
     },

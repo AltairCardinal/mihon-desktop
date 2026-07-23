@@ -333,12 +333,12 @@ class DesktopProductCapabilityContractTest {
         )
     private val task7ChildPlan = "docs/superpowers/plans/2026-07-24-task-7a-library-batch-action-parity.md"
     private val task7Statuses =
-        mapOf(17 to "SHARED", 29 to "VERIFIED", 16 to "SHARED", 19 to "WIRED", 22 to "SHARED", 24 to "SHARED", 26 to "WIRED", 28 to "WIRED")
+        mapOf(17 to "VERIFIED", 29 to "VERIFIED", 16 to "SHARED", 19 to "VERIFIED", 22 to "SHARED", 24 to "SHARED", 26 to "WIRED", 28 to "WIRED")
     private val task7FollowUps =
         mapOf(
             16 to "Task 7 evidence gap: category failure behavior and current Android contract",
-            17 to "Task 7 evidence gap: current Android production filter and sort consumer behavior",
-            19 to task7ChildPlan,
+            17 to "NONE",
+            19 to "NONE",
             22 to "Task 14",
             24 to "Task 7 evidence gap: current Android shared chapter batch consumption",
             26 to "Task 7 evidence gap: current Android shared cover workflow consumption",
@@ -350,14 +350,15 @@ class DesktopProductCapabilityContractTest {
             16 to mapOf("app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryCategoryBehaviorTest.kt" to setOf("category dialog intents perform create rename reorder and delete through production DI")),
             17 to
                 mapOf(
-                    "app/src/test/java/eu/kanade/tachiyomi/ui/library/LibrarySharedEvaluationWiringTest.kt" to setOf("Android library production model owns the shared evaluator"),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/library/LibrarySharedEvaluationWiringTest.kt" to setOf("Android production filter and sort consumers execute shared evaluation behavior"),
                     "domain/src/commonTest/kotlin/tachiyomi/domain/library/interactor/EvaluateLibraryTest.kt" to setOf("all tri-state filters preserve Android IS NOT and disabled semantics", "every sort type supports both directions and final title collator tie-break"),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt" to setOf("complete filter flags flow from state to visible list including local and tracking boundaries"),
                 ),
             19 to
                 mapOf(
-                    "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt" to setOf("shift mouse click selects visible range and does not open manga", "library model exposes batch category partial failure to UI"),
-                    "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt" to setOf("markMangaRead updates every chapter for the manga", "removeFromLibrary clears favorite flag for each manga", "enqueueNextUnreadDownload enqueues first unread chapter by source order"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt" to setOf("invert selection toggles only visible manga", "selection action bar exposes invert download and migrate entries", "library model exposes batch category partial failure to UI"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt" to setOf("markMangaRead updates every chapter for the manga", "removeFromLibrary clears favorite flag for each manga", "batch download preserves all six fixed-main chapter selections", "batch download skips queued downloading and downloaded chapters then continues after failure"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/NavigationContractTest.kt" to setOf("library migration queue and item search use the nested Screen navigator"),
                 ),
             22 to
                 mapOf(
@@ -1466,15 +1467,17 @@ class DesktopProductCapabilityContractTest {
         val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
         task2ProvenanceStatuses.forEach { (id, expectedStatus) ->
             val item = items.getValue(id).jsonObject
-            assertEquals(expectedStatus, requiredText(item, "status", id), "Task 2 must not change capability status")
+            val expectedCurrentStatus = task7Statuses[id] ?: expectedStatus
+            assertEquals(expectedCurrentStatus, requiredText(item, "status", id), "Later audited status must supersede Task 2")
             assertEquals(fixedOriginalMihonRef, requiredText(item, "upstreamRef", id))
             assertEquals(":app-desktop:task2ParityVerification", requiredText(item, "behaviorVerificationTask", id))
             val behaviorMethods =
                 item.getValue("behaviorMethods").jsonObject.mapValues { (_, methods) ->
                     methods.jsonArray.map { it.jsonPrimitive.content }.toSet()
                 }
-            assertEquals(task2BehaviorMethods.getValue(id), behaviorMethods, "ID $id behavior methods")
-            behaviorMethods.forEach { (path, methods) ->
+            val expectedBehaviorMethods = task7BehaviorMethods[id] ?: task2BehaviorMethods.getValue(id)
+            assertEquals(expectedBehaviorMethods, behaviorMethods, "ID $id behavior methods")
+            task2BehaviorMethods.getValue(id).forEach { (path, methods) ->
                 val source = Files.readString(repositoryRoot.resolve(path))
                 methods.forEach { method ->
                     assertTrue(
@@ -1720,15 +1723,14 @@ class DesktopProductCapabilityContractTest {
             val decision = item.getValue("statusDecision").jsonObject
             val expectedDecision =
                 when (id) {
-                    29 -> "PROMOTE_VERIFIED"
-                    19 -> "CHILD_PLAN_REQUIRED"
+                    17, 19, 29 -> "PROMOTE_VERIFIED"
                     else -> "KEEP_GAP"
                 }
             assertEquals("Task 7", requiredText(decision, "task", id, "statusDecision"))
             assertEquals(expectedDecision, requiredText(decision, "decision", id, "statusDecision"))
             assertEquals(task7FollowUps.getValue(id), requiredText(decision, "followUp", id, "statusDecision"))
             val gap = requiredText(decision, "gap", id, "statusDecision")
-            if (id == 29) {
+            if (id in setOf(17, 19, 29)) {
                 assertEquals("NONE", gap, "ID $id: verified capability has no remaining evidence gap")
                 validateRoleEvidence(item, repositoryRoot, inventory)
             } else {
@@ -1755,15 +1757,15 @@ class DesktopProductCapabilityContractTest {
         }
 
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
-        assertEquals("Task 7R2 replan", markdownFrontmatter(plan)["active-task"], "Task 7 must pause on its exact active replan")
-        assertTrue(Regex("""(?m)^- \[ \] Task 7[：:]""").containsMatchIn(plan), "Task 7 must remain pending while its child plan is incomplete")
+        assertEquals("Task 7", markdownFrontmatter(plan)["active-task"], "Task 7 closeout must restore the parent task")
+        assertTrue(Regex("""(?m)^- \[ \] Task 7[：:]""").containsMatchIn(plan), "Task 7 must remain pending after this status batch")
         val childPlan = Files.readString(repositoryRoot.resolve(task7ChildPlan))
         val childMetadata = markdownFrontmatter(childPlan)
         assertEquals("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md", childMetadata["parent-plan"])
         assertEquals("Task 7", childMetadata["parent-task"])
         assertEquals("19", childMetadata["capability-id"])
         assertEquals("17,19", childMetadata["related-capability-ids"])
-        assertEquals("planned", childMetadata["status"])
+        assertEquals("completed", childMetadata["status"])
         assertTrue(listOf("1/5/10/25", "全部未读", "书签").all(childPlan::contains), "Task 7A must preserve every fixed-main download option")
         assertTrue("跳过已排队/下载中/已下载" in childPlan, "Task 7A must preserve active-download deduplication")
         assertFalse("NavigationTypeSafetyTest" in childPlan, "Task 7A must not reference the removed navigation test name")
@@ -1777,6 +1779,10 @@ class DesktopProductCapabilityContractTest {
         )
         assertTrue("仅输出 R2 hash/status 交给 R3" in childPlan, "Task 7A must leave audit closeout to R3")
         assertTrue("删除调用时失败" in childPlan, "Task 7A must add an Android production consumer mutation test for ID 17")
+        val replan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-24-task-7-status-b-replan.md"))
+        assertEquals("completed", markdownFrontmatter(replan)["status"])
+        assertTrue("6fb82074adeceda25be2f3a12621ce510fd0423c" in replan, "Task 7R2 must record R1")
+        assertTrue("af9c522ec9f5c7032ebe3503bab6f9a6a1659e6f" in replan, "Task 7R2 must record R2")
     }
 
     @Test

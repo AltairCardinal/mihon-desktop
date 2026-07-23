@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 7R2 replan
+active-task: Task 7
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -224,9 +224,9 @@ active-task: Task 7R2 replan
 
 **Steps:** 核验分类、筛选、批处理、收藏/分类、章节、封面、source membership 与单源浏览的真实 consumer。
 
-**Audit evidence（等待 child plan 回收）：** 基线 `68cfae3aa118c242af1e8d427175efe5d4df99da`。ID 29 的 fixed-main browse/incognito/paging authority、current Android shared-service consumer、shared canonical mapping、Desktop query/last-used consumers及 stale/empty/page-failure/canonical tests 闭合，状态从 `WIRED` 提升为 `VERIFIED`。ID 17 的 shared `EvaluateLibrary` 与 Desktop consumption 已覆盖，但 current Android 测试只反射字段存在，删除 production `filter()`/`sortForAndroid()` 调用仍不会失败，故保持 `SHARED` 并交由 Task 7A 补真实行为测试。ID 16 缺 current Android 与 category failure 行为契约；ID 22 不得以 fork atomic membership `MIGRATION_OUTPUT` 替代 current Android consumption；ID 24/26 的 fork shared workflow 仍仅由 Desktop 消费；ID 28 仍是两端独立 source membership projection，均保持原非终态。ID 19 已证明分类、已读/未读、移出收藏和选择范围，但 Desktop 缺 bulk download、migration、invert-selection production 入口，已创建 [Task 7A child plan](2026-07-24-task-7a-library-batch-action-parity.md)；Task 7 保持未勾选，`active-task` 指向 [Task 7R2 replan](2026-07-24-task-7-status-b-replan.md)。
+**Audit evidence（child plan 已回收）：** R1 `6fb82074adeceda25be2f3a12621ce510fd0423c` 稳定结构化审计，R2 `af9c522ec9f5c7032ebe3503bab6f9a6a1659e6f` 补齐产品链。ID 17 的 fixed authority、shared `EvaluateLibrary`、current Android `applyFilters`/`applySort` consumer、Desktop consumer 与真实 mutation fixture 全部闭合，从 `SHARED` 提升为 `VERIFIED`。ID 19 的 fixed/current Android 批量菜单、shared 分类能力、Desktop 分类/已读/未读/移除以及六档下载、迁移、可见项反选、partial feedback/navigation fixtures 全部闭合，从 `WIRED` 提升为 `VERIFIED`。ID 29 保持 `VERIFIED`；ID 16/22/24/26/28 保留各自真实 gap。Task 7 仍未勾选，父 `active-task` 已恢复为 `Task 7`，不提前启动 Task 8。
 
-**Verification evidence：** 新增 Task 7 状态契约首次以 ID 17 为终态候选精确 RED；独立审查证明其 Android 测试仅为字段反射后撤销候选，最终仅 ID 29 晋级。补齐逐项裁决与五角色证据后 focused、普通契约及矩阵全绿：Android characterization/behavior `3/3`（ID17 字段反射仅为 characterization，不是 terminal production evidence；ID29 两项 Pager behavior）、domain `14/14`、data `2/2`、Desktop 十类 `141/141`；显式 final gate 按设计 RED 并准确报告 57 个非终态 ID。Task 7A 完成前不推进 Task 8。
+**Verification evidence：** R3 状态契约先精确 RED 于 `ID 17 expected VERIFIED but was SHARED`，补证后 focused `1/1`、普通 parity contract `40/40` GREEN；R2 回归为 Desktop library/navigation `44/44`、Android consumer `2/2`，domain `EvaluateLibrary` `6/6`、data membership transaction `2/2`。终态契约已验证 fixed/current/shared-or-adapter/Desktop/fixture 五角色，显式 final gate 按设计 RED 并精确报告 55 个非终态 ID。
 
 ### Task 8：核验状态批次 C（30、32、33、34、35、36、37、38）
 
