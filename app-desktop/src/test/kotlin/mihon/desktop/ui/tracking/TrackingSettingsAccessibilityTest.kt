@@ -3,6 +3,7 @@ package mihon.desktop.ui.tracking
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -42,12 +43,13 @@ class TrackingSettingsAccessibilityTest {
         val apiKey = authenticatingService(2, "API service", TrackerAuthentication.API_KEY)
         val sourceManaged = sourceService(3, "Source managed")
         val unavailable = authenticatingService(4, "Unavailable service", unavailableReason = "Provider setup required")
-        val services = listOf(password, apiKey, sourceManaged, unavailable)
-        val scene = scene(services)
+        val scene = scene(listOf(password, apiKey, sourceManaged, unavailable))
         try {
             listOf("Password service", "API service").forEach { name ->
-                val branch = serviceAction(scene, name)
-                assertEquals(1, flatten(branch).count { it.config.contains(SemanticsActions.OnClick) }, name)
+                val action = serviceAction(scene, name)
+                assertEquals(Role.Button, action.config[SemanticsProperties.Role], "$name action role")
+                assertEquals(1, flatten(action).count { it.config.contains(SemanticsActions.OnClick) }, name)
+                assertEquals(true, listOf(name, MR.strings.login.localized()).all(subtreeText(action)::contains), name)
             }
             listOf("Source managed", "Unavailable service").forEach { name ->
                 val disabled = nodes(scene, true).single {
@@ -124,9 +126,8 @@ class TrackingSettingsAccessibilityTest {
         assertEquals(expected, field.config.contains(SemanticsProperties.Password), label)
     }
 
-    private fun clickService(scene: ImageComposeScene, name: String) {
+    private fun clickService(scene: ImageComposeScene, name: String) =
         assertEquals(true, requireNotNull(serviceAction(scene, name).config[SemanticsActions.OnClick].action).invoke())
-    }
 
     private fun click(scene: ImageComposeScene, label: String) {
         val action = nodes(scene, true).single {
