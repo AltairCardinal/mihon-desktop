@@ -14,7 +14,7 @@ import androidx.compose.ui.graphics.Color
  * Tertiary #5E25E1
  * Neutral #111129
  */
-internal object LavenderColorScheme : BaseColorScheme() {
+object LavenderColorScheme : BaseColorScheme() {
 
     override val darkScheme = darkColorScheme(
         primary = Color(0xFFA177FF),

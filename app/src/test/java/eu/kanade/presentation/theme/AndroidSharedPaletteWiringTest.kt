@@ -3,7 +3,9 @@ package eu.kanade.presentation.theme
 import eu.kanade.domain.ui.model.AppTheme
 import eu.kanade.presentation.theme.colorscheme.BaseColorScheme
 import eu.kanade.presentation.theme.colorscheme.GreenAppleColorScheme
+import eu.kanade.presentation.theme.colorscheme.LavenderColorScheme
 import eu.kanade.presentation.theme.colorscheme.TachiyomiColorScheme
+import eu.kanade.presentation.theme.colorscheme.YotsubaColorScheme
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -21,6 +23,8 @@ class AndroidSharedPaletteWiringTest {
 
         assertSame(TachiyomiColorScheme, palettes[AppTheme.DEFAULT])
         assertSame(GreenAppleColorScheme, palettes[AppTheme.GREEN_APPLE])
+        assertSame(LavenderColorScheme, palettes[AppTheme.LAVENDER])
+        assertSame(YotsubaColorScheme, palettes[AppTheme.YOTSUBA])
     }
 
     @Test
@@ -28,6 +32,8 @@ class AndroidSharedPaletteWiringTest {
         assertSharedModuleOrigin(BaseColorScheme::class.java)
         assertSharedModuleOrigin(TachiyomiColorScheme::class.java)
         assertSharedModuleOrigin(GreenAppleColorScheme::class.java)
+        assertSharedModuleOrigin(LavenderColorScheme::class.java)
+        assertSharedModuleOrigin(YotsubaColorScheme::class.java)
     }
 
     private fun assertSharedModuleOrigin(type: Class<*>) {

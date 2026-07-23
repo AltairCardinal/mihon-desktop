@@ -50,6 +50,46 @@ class SharedPaletteExactTest {
     }
 
     @Test
+    fun `lavender palette matches fixed main tokens`() {
+        assertEquals(
+            "ffa177ff,ff3d0090,ffa177ff,ffffffff,ff6d41c8,ffa177ff,ffffffff,ff423271," +
+                "ffa177ff,ffcdbdff,ff360096,ff5512d8,ffefe6ff,ff111129,ffe7e0ec,ff111129," +
+                "ffe7e0ec,ff3d2f6b,ffcbc3d6,ffa177ff,ffe7e0ec,ff322f38,ffffb4ab,ff690005," +
+                "ff93000a,ffffdad6,ff958e9f,ff4a4453,ff000000,ff111129,ff3b3841,ff15132d," +
+                "ff171531,ff1d193b,ff241f41,ff282446",
+            LavenderColorScheme.darkScheme.exactTokenSnapshot(),
+        )
+        assertEquals(
+            "ff6d41c8,ffffffff,ff7b46af,ff130038,ffa177ff,ff7b46af,ffede2ff,ffc9b0e6," +
+                "ff7b46af,ffede2ff,ff7b46af,ff6d3bf0,ffffffff,ffede2ff,ff1d1a22,ffede2ff," +
+                "ff1d1a22,ffe4d5f8,ff4a4453,ff6d41c8,ff322f38,fff5eefa,ffba1a1a,ffffffff," +
+                "ffffdad6,ff410002,ff7b7485,ffcbc3d6,ff000000,ffded7e3,ffede2ff,ffdaccec," +
+                "ffded0f1,ffe4d5f8,ffeadcfd,ffeee2ff",
+            LavenderColorScheme.lightScheme.exactTokenSnapshot(),
+        )
+    }
+
+    @Test
+    fun `yotsuba palette matches fixed main tokens`() {
+        assertEquals(
+            "ffffb59d,ff5f1600,ff862200,ffffdbcf,ffae3200,ffffb59d,ff5f1600,ff862200," +
+                "ffffdbcf,ffd7c68d,ff3a2f05,ff524619,fff5e2a7,ff211a18,ffede0dd,ff211a18," +
+                "ffede0dd,ff332723,ffd8c2bc,ffffb59d,ffede0dd,ff211a18,fff2b8b5,ff601410," +
+                "ff8c1d18,fff9dedc,ffa08c87,ff49454f,ff000000,ff141218,ff3b383e,ff2e221f," +
+                "ff312521,ff332723,ff413531,ff4c403d",
+            YotsubaColorScheme.darkScheme.exactTokenSnapshot(),
+        )
+        assertEquals(
+            "ffae3200,ffffffff,ffffdbcf,ff3b0a00,ffffb59d,ffae3200,ffffffff,ffebcdc2," +
+                "ff3b0a00,ff6b5e2f,ffffffff,fff5e2a7,ff231b00,fffcfcfc,ff211a18,fffcfcfc," +
+                "ff211a18,fff6ebe7,ff53433f,ffae3200,ff362f2d,fffbeeeb,ffb3261e,ffffffff," +
+                "fff9dedc,ff410e0b,ff85736e,ffcac4d0,ff000000,ffded8e1,fffef7ff,ffece3e0," +
+                "fff1e7e4,fff6ebe7,fffaf4f2,fffbf6f4",
+            YotsubaColorScheme.lightScheme.exactTokenSnapshot(),
+        )
+    }
+
+    @Test
     fun `base color scheme preserves light dark and amoled behavior`() {
         assertSame(
             TachiyomiColorScheme.lightScheme,

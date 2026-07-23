@@ -15,7 +15,7 @@ import androidx.compose.ui.graphics.Color
  * Tertiary 0xFF6B5E2F
  * Neutral 0xFF655C5A
  */
-internal object YotsubaColorScheme : BaseColorScheme() {
+object YotsubaColorScheme : BaseColorScheme() {
 
     override val darkScheme = darkColorScheme(
         primary = Color(0xFFFFB59D),
