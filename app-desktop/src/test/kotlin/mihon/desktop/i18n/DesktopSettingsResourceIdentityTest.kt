@@ -14,6 +14,7 @@ import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
+import eu.kanade.domain.ui.model.selectableAppThemes
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -543,6 +544,8 @@ class DesktopSettingsResourceIdentityTest {
                 assertCopy(general.descriptions, MR.strings.action_bar_up_description.localized(locale))
 
                 val appearance = render(AppearanceSettingsScreen(), dependencies, locale)
+                val themeCopy = selectableAppThemes(dynamicColorAvailable = false)
+                    .map { requireNotNull(it.titleRes).localized(locale) }
                 assertCopy(
                     appearance.text,
                     MR.strings.pref_category_appearance.localized(locale),
@@ -550,8 +553,11 @@ class DesktopSettingsResourceIdentityTest {
                     MR.strings.theme_system.localized(locale),
                     MR.strings.theme_light.localized(locale),
                     MR.strings.theme_dark.localized(locale),
+                    MR.strings.pref_app_theme.localized(locale),
+                    MR.strings.pref_dark_theme_pure_black.localized(locale),
                     MR.strings.desktop_appearance_library_grid.localized(locale),
                     MR.strings.desktop_appearance_grid_columns.localized(locale, 3),
+                    *themeCopy.toTypedArray(),
                 )
                 assertCopy(appearance.descriptions, MR.strings.action_bar_up_description.localized(locale))
             }

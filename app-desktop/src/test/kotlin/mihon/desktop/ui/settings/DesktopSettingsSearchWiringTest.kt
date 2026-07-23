@@ -3,6 +3,8 @@ package mihon.desktop.ui.settings
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.InternalComposeUiApi
 import androidx.compose.ui.focus.FocusDirection
@@ -26,6 +28,10 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.tab.Tab
+import eu.kanade.domain.ui.model.AppTheme
+import eu.kanade.domain.ui.model.ThemeMode
+import eu.kanade.domain.ui.model.selectableAppThemes
+import eu.kanade.presentation.theme.colorscheme.AppThemeColorScheme
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
@@ -36,6 +42,8 @@ import kotlinx.coroutines.runBlocking
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.download.DesktopDownloadManager
+import mihon.desktop.ui.theme.DesktopTheme
+import mihon.desktop.ui.theme.desktopColorScheme
 import mihon.domain.settings.SearchableSettingsScreen
 import mihon.domain.settings.SettingsLayoutDirection
 import mihon.domain.settings.SettingsSearchPolicy
@@ -225,6 +233,103 @@ class DesktopSettingsSearchWiringTest {
             render(scene)
             click(scene, MR.strings.action_search_settings.localized(Locale.getDefault()))
             assertTrue(navigator.lastItem is SettingsSearchScreen)
+        }
+    }
+
+    @Test
+    fun `desktop theme consumes shared static theme and amoled preferences`() = runBlocking {
+        assertSame(
+            AppThemeColorScheme.colorScheme(AppTheme.YINYANG, isDark = false, isAmoled = false),
+            desktopColorScheme(AppTheme.YINYANG, ThemeMode.SYSTEM, systemIsDark = false, isAmoled = false),
+        )
+        assertSame(
+            AppThemeColorScheme.colorScheme(AppTheme.YINYANG, isDark = true, isAmoled = false),
+            desktopColorScheme(AppTheme.YINYANG, ThemeMode.SYSTEM, systemIsDark = true, isAmoled = false),
+        )
+
+        withSearchScene { scene ->
+            lateinit var observed: ColorScheme
+            scene.setContent {
+                dependencies {
+                    DesktopTheme { observed = MaterialTheme.colorScheme }
+                }
+            }
+            render(scene)
+            currentPreferences.themeMode.set(ThemeMode.DARK)
+            currentPreferences.appTheme.set(AppTheme.YINYANG)
+            currentPreferences.themeDarkAmoled.set(false)
+            render(scene)
+            assertEquals(
+                AppThemeColorScheme.colorScheme(AppTheme.YINYANG, isDark = true, isAmoled = false),
+                observed,
+            )
+
+            currentPreferences.themeDarkAmoled.set(true)
+            render(scene)
+            assertEquals(
+                AppThemeColorScheme.colorScheme(AppTheme.YINYANG, isDark = true, isAmoled = true).toString(),
+                observed.toString(),
+            )
+
+            currentPreferences.themeMode.set(ThemeMode.LIGHT)
+            render(scene)
+            assertSame(
+                AppThemeColorScheme.colorScheme(AppTheme.YINYANG, isDark = false, isAmoled = true),
+                observed,
+            )
+        }
+    }
+
+    @Test
+    fun `appearance selects static theme and amoled while preserving grid`() = runBlocking {
+        withRestoredLocale {
+            Locale.setDefault(Locale.US)
+            withSearchScene(AppearanceSettingsScreen(), height = 2_000) { scene ->
+                render(scene)
+                val rendered = text(scene)
+                selectableAppThemes(dynamicColorAvailable = false).forEach { theme ->
+                    assertTrue(requireNotNull(theme.titleRes).localized(Locale.US) in rendered)
+                }
+                assertFalse(MR.strings.theme_monet.localized(Locale.US) in rendered)
+                listOf(AppTheme.DARK_BLUE, AppTheme.HOT_PINK, AppTheme.BLUE).forEach { deprecated ->
+                    assertFalse(deprecated.name in rendered)
+                }
+
+                click(scene, MR.strings.theme_yinyang.localized(Locale.US))
+                assertEquals(AppTheme.YINYANG, currentPreferences.appTheme.get())
+                click(scene, MR.strings.pref_dark_theme_pure_black.localized(Locale.US))
+                assertTrue(currentPreferences.themeDarkAmoled.get())
+                requireNotNull(nodes(scene, true).single { it.config.contains(SemanticsActions.SetProgress) }
+                    .config[SemanticsActions.SetProgress].action).invoke(6f)
+                assertEquals(6, currentPreferences.libraryGridColumns.get())
+            }
+        }
+    }
+
+    @Test
+    fun `appearance theme search entries scroll to production anchors`() = runBlocking {
+        withRestoredLocale {
+            Locale.setDefault(Locale.US)
+            listOf(MR.strings.pref_app_theme, MR.strings.pref_dark_theme_pure_black).forEach { resource ->
+                withSearchScene(height = 260) { scene ->
+                    lateinit var navigator: Navigator
+                    scene.setContent { dependencies { Navigator(SettingsSearchScreen()) { nav -> navigator = nav; CurrentScreen() } } }
+                    render(scene)
+                    val title = resource.localized(Locale.US)
+                    setText(scene, title)
+                    render(scene)
+                    click(scene, title)
+                    render(scene)
+                    assertTrue(navigator.lastItem is AppearanceSettingsScreen)
+                    val highlighted = nodes(scene, true).single {
+                        it.config.contains(DesktopSettingsAnchorHighlighted) && it.config[DesktopSettingsAnchorHighlighted]
+                    }
+                    assertTrue(flatten(highlighted).any { title in text(it) })
+                    val scroll = nodes(scene, true).first { it.config.contains(SemanticsProperties.VerticalScrollAxisRange) }
+                        .config[SemanticsProperties.VerticalScrollAxisRange]
+                    assertTrue(scroll.value() > 0f)
+                }
+            }
         }
     }
     private suspend fun withSearchScene(

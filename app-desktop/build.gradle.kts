@@ -78,6 +78,7 @@ kotlin {
                 implementation(projects.data)
                 implementation(projects.coreMetadata)
                 implementation(projects.i18n)
+                implementation(projects.presentationTheme)
 
                 // Network
                 implementation(libs.okhttp.core)

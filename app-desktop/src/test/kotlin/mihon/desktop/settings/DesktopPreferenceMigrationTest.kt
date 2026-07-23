@@ -1,5 +1,7 @@
 package mihon.desktop.settings
 
+import eu.kanade.domain.ui.model.AppTheme
+import eu.kanade.domain.ui.model.ThemeDefaults
 import mihon.desktop.reader.ReaderBackgroundTheme
 import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.reader.ReadingMode
@@ -9,6 +11,8 @@ import mihon.desktop.ui.reader.NavigationMode
 import mihon.desktop.ui.reader.WebtoonAutoScrollSpeed
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestFactory
@@ -55,7 +59,7 @@ class DesktopPreferenceMigrationTest {
     )
 
     private val appCases = listOf(
-        MigrationCase("theme_mode", "theme_mode", "DARK", "LIGHT", ThemeMode.SYSTEM) { s, l -> DesktopAppPreferences(s, l).themeMode.get() },
+        MigrationCase("theme_mode", ThemeDefaults.THEME_MODE_KEY, "DARK", "LIGHT", ThemeDefaults.themeMode) { s, l -> DesktopAppPreferences(s, l).themeMode.get() },
         MigrationCase("default_reader_mode", "default_reader_mode", "WEBTOON", "PAGER", ReaderDefaultMode.PAGER) { s, l -> DesktopAppPreferences(s, l).defaultReaderMode.get() },
         MigrationCase("library_grid_columns", "library_grid_columns", "5", "6", 3) { s, l -> DesktopAppPreferences(s, l).libraryGridColumns.get() },
         MigrationCase("default_rtl", "default_rtl", "true", "false", false) { s, l -> DesktopAppPreferences(s, l).defaultRtl.get() },
@@ -106,7 +110,10 @@ class DesktopPreferenceMigrationTest {
         val expectedRaw = if (scenario == "new") case.newValue else case.oldValue
         val expected = if (scenario == "default") case.defaultValue else parseLike(actual, expectedRaw)
         assertEquals(expected, actual, case.newKey)
-        if (scenario == "legacy") assertEquals(case.oldValue, current.get(case.newKey, null), case.newKey)
+        if (scenario == "legacy") {
+            assertEquals(case.oldValue, current.get(case.newKey, null), case.newKey)
+            assertEquals(case.oldValue, legacy.get(case.oldKey, null), "legacy ${case.oldKey} must be retained")
+        }
     }
 
     private fun parseLike(sample: Any, raw: String): Any = when (sample) {
@@ -201,5 +208,43 @@ class DesktopPreferenceMigrationTest {
         store.getStringSet("hidden_catalogues", emptySet()).set(emptySet())
 
         assertEquals(emptySet<String>(), DesktopAppPreferences(store).disabledSources.get())
+    }
+
+    @Test
+    fun `desktop theme preferences use shared identities canonical keys defaults and codecs`() {
+        val defaults = DesktopAppPreferences(DesktopPreferenceStore(root.node("theme-defaults")))
+        assertEquals(ThemeDefaults.themeMode, defaults.themeMode.get())
+        assertEquals(ThemeDefaults.appTheme(dynamicColorAvailable = false), defaults.appTheme.get())
+
+        val current = root.node("theme-contract")
+        current.put(ThemeDefaults.THEME_MODE_KEY, "FUTURE_MODE")
+        current.put(ThemeDefaults.APP_THEME_KEY, "FUTURE_THEME")
+        val preferences = DesktopAppPreferences(DesktopPreferenceStore(current))
+
+        assertEquals(ThemeDefaults.THEME_MODE_KEY, preferences.themeMode.key())
+        assertEquals(ThemeDefaults.themeMode, preferences.themeMode.get())
+        assertEquals(ThemeDefaults.APP_THEME_KEY, preferences.appTheme.key())
+        assertEquals(ThemeDefaults.appTheme(dynamicColorAvailable = false), preferences.appTheme.get())
+        assertEquals("pref_theme_dark_amoled_key", preferences.themeDarkAmoled.key())
+        assertFalse(preferences.themeDarkAmoled.get())
+        assertEquals("FUTURE_MODE", current.get(ThemeDefaults.THEME_MODE_KEY, null))
+        assertEquals("FUTURE_THEME", current.get(ThemeDefaults.APP_THEME_KEY, null))
+
+        val themeLocation = ThemeMode::class.java.protectionDomain.codeSource.location.toString().replace('\\', '/')
+        assertTrue(themeLocation.contains("/presentation-theme/"), "ThemeMode is not shared: $themeLocation")
+    }
+
+    @Test
+    fun `desktop static theme and amoled preferences round trip without changing library grid`() {
+        val preferences = DesktopAppPreferences(DesktopPreferenceStore(root.node("theme-roundtrip")))
+
+        preferences.appTheme.set(AppTheme.YINYANG)
+        preferences.themeDarkAmoled.set(true)
+        preferences.libraryGridColumns.set(6)
+
+        assertEquals(AppTheme.YINYANG, preferences.appTheme.get())
+        assertTrue(preferences.themeDarkAmoled.get())
+        assertEquals(6, preferences.libraryGridColumns.get())
+        assertEquals("library_grid_columns", preferences.libraryGridColumns.key())
     }
 }

@@ -1,5 +1,8 @@
 package mihon.desktop.settings
 
+import eu.kanade.domain.ui.model.AppTheme
+import eu.kanade.domain.ui.model.ThemeDefaults
+import eu.kanade.domain.ui.model.ThemePreferenceCodec
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import tachiyomi.core.common.preference.Preference
@@ -8,7 +11,8 @@ import java.net.URI
 import java.util.Locale
 import java.util.prefs.Preferences
 
-enum class ThemeMode { LIGHT, DARK, SYSTEM }
+typealias ThemeMode = eu.kanade.domain.ui.model.ThemeMode
+
 enum class ReaderDefaultMode { PAGER, WEBTOON }
 
 /** DNS over HTTPS provider. [OFF] uses system DNS. */
@@ -48,11 +52,24 @@ class DesktopAppPreferences(
 
     val themeMode: Preference<ThemeMode> by lazy {
         store.getObjectFromString(
-            key = "theme_mode",
-            defaultValue = ThemeMode.SYSTEM,
-            serializer = { it.name },
-            deserializer = { ThemeMode.valueOf(it) },
-        ).migrate("theme_mode") { runCatching { ThemeMode.valueOf(it) }.getOrNull() }
+            key = ThemeDefaults.THEME_MODE_KEY,
+            defaultValue = ThemeDefaults.themeMode,
+            serializer = ThemePreferenceCodec::encode,
+            deserializer = ThemePreferenceCodec::decodeThemeMode,
+        ).migrate("theme_mode") { value -> ThemeMode.entries.firstOrNull { it.name == value } }
+    }
+
+    val appTheme: Preference<AppTheme> by lazy {
+        store.getObjectFromString(
+            key = ThemeDefaults.APP_THEME_KEY,
+            defaultValue = ThemeDefaults.appTheme(dynamicColorAvailable = false),
+            serializer = ThemePreferenceCodec::encode,
+            deserializer = { ThemePreferenceCodec.decodeAppTheme(it, dynamicColorAvailable = false) },
+        )
+    }
+
+    val themeDarkAmoled: Preference<Boolean> by lazy {
+        store.getBoolean(key = "pref_theme_dark_amoled_key", defaultValue = false)
     }
 
     val defaultReaderMode: Preference<ReaderDefaultMode> by lazy {

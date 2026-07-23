@@ -27,7 +27,14 @@ internal object DesktopSettingsAnchorResources {
 
 object DesktopSettingsCatalog {
     fun screens(): List<SearchableSettingsScreen<Screen>> = listOf(
-        screen(AppearanceSettingsScreen(), MR.strings.pref_category_appearance, MR.strings.pref_category_theme, MR.strings.desktop_appearance_library_grid),
+        screen(
+            AppearanceSettingsScreen(),
+            MR.strings.pref_category_appearance,
+            MR.strings.pref_category_theme,
+            MR.strings.pref_app_theme,
+            MR.strings.pref_dark_theme_pure_black,
+            MR.strings.desktop_appearance_library_grid,
+        ),
         screen(LibrarySettingsScreen(), MR.strings.pref_category_library, MR.strings.pref_category_display, MR.strings.pref_category_library_update),
         screen(ReaderSettingsScreen(), MR.strings.pref_category_reader, MR.strings.pref_viewer_type, MR.strings.desktop_reader_pager_mode),
         screen(DownloadSettingsScreen(), MR.strings.pref_category_downloads, DesktopSettingsAnchorResources.downloadNew, DesktopSettingsAnchorResources.downloadAsCbz),

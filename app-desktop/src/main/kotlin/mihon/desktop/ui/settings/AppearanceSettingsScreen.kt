@@ -4,6 +4,7 @@ import mihon.desktop.LocalDesktopUiDependencies
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -11,9 +12,11 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -25,8 +28,8 @@ import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import mihon.desktop.settings.DesktopAppPreferences
-import mihon.desktop.settings.ThemeMode
+import eu.kanade.domain.ui.model.ThemeMode
+import eu.kanade.domain.ui.model.selectableAppThemes
 import tachiyomi.i18n.MR
 import java.util.Locale
 
@@ -38,8 +41,12 @@ class AppearanceSettingsScreen : Screen {
         val navigator = LocalNavigator.currentOrThrow
         val prefs = LocalDesktopUiDependencies.current.appPreferences
         var themeMode by remember { mutableStateOf(prefs.themeMode.get()) }
+        var appTheme by remember { mutableStateOf(prefs.appTheme.get()) }
+        var isAmoled by remember { mutableStateOf(prefs.themeDarkAmoled.get()) }
         var gridColumns by remember { mutableStateOf(prefs.libraryGridColumns.get().toFloat()) }
         val themeTitle = MR.strings.pref_category_theme.localized()
+        val appThemeTitle = MR.strings.pref_app_theme.localized()
+        val amoledTitle = MR.strings.pref_dark_theme_pure_black.localized()
         val gridTitle = MR.strings.desktop_appearance_library_grid.localized()
 
         Scaffold(
@@ -82,6 +89,42 @@ class AppearanceSettingsScreen : Screen {
                         },
                     )
                 }
+                Text(
+                    text = appThemeTitle,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.desktopSettingsAnchor(appThemeTitle).padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+                selectableAppThemes(dynamicColorAvailable = false).forEach { theme ->
+                    RadioSettingsItem(
+                        title = requireNotNull(theme.titleRes).localized(),
+                        selected = appTheme == theme,
+                        onClick = {
+                            appTheme = theme
+                            prefs.appTheme.set(theme)
+                        },
+                    )
+                }
+                val amoledEnabled = themeMode != ThemeMode.LIGHT
+                ListItem(
+                    headlineContent = { Text(amoledTitle) },
+                    trailingContent = {
+                        Switch(
+                            checked = isAmoled,
+                            enabled = amoledEnabled,
+                            onCheckedChange = {
+                                isAmoled = it
+                                prefs.themeDarkAmoled.set(it)
+                            },
+                        )
+                    },
+                    modifier = Modifier
+                        .desktopSettingsAnchor(amoledTitle)
+                        .clickable(enabled = amoledEnabled) {
+                            isAmoled = !isAmoled
+                            prefs.themeDarkAmoled.set(isAmoled)
+                        },
+                )
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                 // Grid columns section
