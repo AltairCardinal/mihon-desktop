@@ -1,8 +1,8 @@
 package eu.kanade.domain.ui
 
-import eu.kanade.domain.ui.model.AppTheme
 import eu.kanade.domain.ui.model.TabletUiMode
-import eu.kanade.domain.ui.model.ThemeMode
+import eu.kanade.domain.ui.model.ThemeDefaults
+import eu.kanade.domain.ui.model.ThemePreferenceCodec
 import eu.kanade.tachiyomi.util.system.DeviceUtil
 import eu.kanade.tachiyomi.util.system.isDynamicColorAvailable
 import tachiyomi.core.common.preference.PreferenceStore
@@ -15,15 +15,18 @@ class UiPreferences(
     private val preferenceStore: PreferenceStore,
 ) {
 
-    fun themeMode() = preferenceStore.getEnum("pref_theme_mode_key", ThemeMode.SYSTEM)
+    fun themeMode() = preferenceStore.getObjectFromString(
+        ThemeDefaults.THEME_MODE_KEY,
+        ThemeDefaults.themeMode,
+        ThemePreferenceCodec::encode,
+        ThemePreferenceCodec::decodeThemeMode,
+    )
 
-    fun appTheme() = preferenceStore.getEnum(
-        "pref_app_theme",
-        if (DeviceUtil.isDynamicColorAvailable) {
-            AppTheme.MONET
-        } else {
-            AppTheme.DEFAULT
-        },
+    fun appTheme() = preferenceStore.getObjectFromString(
+        ThemeDefaults.APP_THEME_KEY,
+        ThemeDefaults.appTheme(DeviceUtil.isDynamicColorAvailable),
+        ThemePreferenceCodec::encode,
+        { ThemePreferenceCodec.decodeAppTheme(it, DeviceUtil.isDynamicColorAvailable) },
     )
 
     fun themeDarkAmoled() = preferenceStore.getBoolean("pref_theme_dark_amoled_key", false)

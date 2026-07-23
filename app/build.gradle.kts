@@ -181,6 +181,7 @@ dependencies {
     implementation(projects.data)
     implementation(projects.domain)
     implementation(projects.presentationCore)
+    implementation(projects.presentationTheme)
     implementation(projects.presentationWidget)
     implementation(projects.telemetry)
 
