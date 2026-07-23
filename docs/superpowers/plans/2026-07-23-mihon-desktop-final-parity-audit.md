@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 1
+active-task: Task 2
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -40,7 +40,7 @@ active-task: Task 1
 
 ## Task 总览
 
-- [ ] Task 1：建立可独立触发的最终 closure RED gate
+- [x] Task 1：建立可独立触发的最终 closure RED gate
 - [ ] Task 2：补齐 provenance 批次 P1（9、10、11、12、16、17、19、22）
 - [ ] Task 3：补齐 provenance 批次 P2（24、26、44、45、47、49、51、53）
 - [ ] Task 4：补齐 provenance 批次 P3（54、56、57、59、61、62、64、66）
@@ -84,6 +84,8 @@ active-task: Task 1
 1. 为 manifest evidence 增加可表达固定原版符号与行号、当前 Android、shared/adapter、Desktop consumer、fixture/artifact 的结构；先让 4 个现有终态缺证据时精确失败，再补齐它们。
 2. 增加仅由显式 final-audit 入口启用的断言：恰有 64 个唯一 ID、每项终态只能是 `VERIFIED | EXEMPT`、终态 role evidence 完整、protection test 指向真实 production 链。
 3. 保持普通开发测试可运行；显式 final gate 在 Task 18 前预期 RED，不得用 `@Disabled`、吞异常或硬编码当前计数伪造通过。
+
+**Execution evidence（已完成）：** 基线 `c03c08c331c463009183e3ef4842c1923ba6b16a`。普通契约 RED 精确命中 `ID 85: terminal status requires roleEvidence`；补齐 85/90/91/94 五类角色证据后，`DesktopProductCapabilityContractTest` 为 `34/34` GREEN。显式 `:app-desktop:finalParityAudit` 从实际 manifest 计算并报告 60 个非终态 ID 后按预期 RED。mutation 将 ID3 临时提升为 `VERIFIED` 时精确命中 `ID 3: terminal status requires roleEvidence`；固定原版 symbol mutation 也精确命中 fixed blob/line 校验；恢复后再次输出同一 60-ID RED，manifest 无残留 mutation。命令：focused `:app-desktop:jvmTest --tests 'mihon.desktop.parity.DesktopProductCapabilityContractTest'`、显式 gate `:app-desktop:finalParityAudit`、根 `spotlessCheck`；唯一复审 `APPROVED 0/0/0`。提交证据为本 Task 的四文件原子提交（hash 见交付报告）。范围 `4 files/231 touched`，下一项为 Task 2。
 
 ### Task 2：补齐 provenance 批次 P1（9、10、11、12、16、17、19、22）
 

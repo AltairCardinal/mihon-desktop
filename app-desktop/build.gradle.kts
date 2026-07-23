@@ -191,6 +191,27 @@ tasks.withType<Test> {
     }
 }
 
+val jvmTestTask = tasks.named<Test>("jvmTest")
+jvmTestTask {
+    useJUnitPlatform {
+        excludeTags("final-parity-audit")
+    }
+}
+tasks.register<Test>("finalParityAudit") {
+    group = "verification"
+    description = "Runs the explicit 64-capability final parity closure gate."
+    dependsOn(tasks.named("jvmTestClasses"))
+    testClassesDirs = jvmTestTask.get().testClassesDirs
+    classpath = jvmTestTask.get().classpath
+    useJUnitPlatform {
+        includeTags("final-parity-audit")
+    }
+    testLogging {
+        events("failed", "standardOut")
+        showStandardStreams = true
+    }
+}
+
 compose.desktop {
     application {
         mainClass = "mihon.desktop.MainKt"

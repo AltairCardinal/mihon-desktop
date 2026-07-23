@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
@@ -33,6 +34,9 @@ class DesktopProductCapabilityContractTest {
             74, 81, 82, 83, 84, 85, 86, 87, 88, 90, 91, 92, 93, 94, 95, 96,
         )
     private val validStatuses = setOf("NOT_STARTED", "CHARACTERIZED", "SHARED", "WIRED", "VERIFIED", "CANDIDATE", "EXEMPT")
+    private val terminalStatuses = setOf("VERIFIED", "EXEMPT")
+    private val requiredTerminalEvidenceRoles =
+        setOf("FIXED_ORIGINAL", "CURRENT_ANDROID", "SHARED_OR_ADAPTER", "DESKTOP_CONSUMER", "FIXTURE")
     private val validTags =
         setOf(
             "SHARE-DIRECT",
@@ -1008,6 +1012,9 @@ class DesktopProductCapabilityContractTest {
             val item = element.jsonObject
             validateItem(item, repositoryRoot)
             val id = validatedId(item)
+            if (item.getValue("status").jsonPrimitive.content in terminalStatuses) {
+                validateTerminalRoleEvidence(item, repositoryRoot, fixedMainPathInventory)
+            }
             requiredTextFields.forEach { field ->
                 assertTrue(item.getValue(field).jsonPrimitive.content.isNotBlank(), "ID ${item["id"]}: $field must not be blank")
             }
@@ -1063,6 +1070,41 @@ class DesktopProductCapabilityContractTest {
                 }
             }
         }
+    }
+
+    @Tag("final-parity-audit")
+    @Test
+    fun `final parity audit requires every roadmap capability to be terminal`() {
+        val repositoryRoot = repositoryRoot()
+        val items = manifestItems(repositoryRoot).map { it.jsonObject }
+        val fixedMainPathInventory = fixedMainPathInventory(repositoryRoot)
+        assertEquals(64, items.size, "Final parity audit requires exactly 64 capabilities")
+        val ids = items.map(::validatedId)
+        assertEquals(ids.size, ids.toSet().size, "Final parity audit capability IDs must be unique")
+        assertEquals(expectedIds, ids.toSet(), "Final parity audit capability IDs must match the roadmap")
+
+        items.filter { it.getValue("status").jsonPrimitive.content in terminalStatuses }.forEach { item ->
+            val id = validatedId(item)
+            validateItem(item, repositoryRoot)
+            validateTerminalRoleEvidence(item, repositoryRoot, fixedMainPathInventory)
+            val protectionTests = item.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content }
+            assertTrue(protectionTests.isNotEmpty(), "ID $id: terminal capability requires protection tests")
+            protectionTests.forEach { path ->
+                assertFalse(path.endsWith("DesktopProductCapabilityContractTest.kt"), "ID $id: final audit cannot protect itself")
+                assertTrue(Files.isRegularFile(repositoryRoot.resolve(path)), "ID $id: missing terminal protection test $path")
+            }
+        }
+
+        val nonTerminalIds =
+            items
+                .filter { it.getValue("status").jsonPrimitive.content !in terminalStatuses }
+                .map(::validatedId)
+                .sorted()
+        println("FINAL_PARITY_AUDIT_NON_TERMINAL_IDS=${nonTerminalIds.joinToString(",")}")
+        assertTrue(
+            nonTerminalIds.isEmpty(),
+            "Final parity audit has ${nonTerminalIds.size} non-terminal IDs: ${nonTerminalIds.joinToString(",")}",
+        )
     }
 
     @Test
@@ -1651,7 +1693,16 @@ class DesktopProductCapabilityContractTest {
     @Test
     fun `EXEMPT item accepts real evidence and rejects NONE or missing files`() {
         val evidence = Files.createFile(tempDir.resolve("evidence.md"))
-        validateItem(syntheticItem(84, "EXEMPT", evidence.toString()), tempDir)
+        Files.writeString(evidence, "| 84 | `PLATFORM-EXEMPT` | approved boundary |")
+        val approval =
+            buildJsonObject {
+                put("approvalSource", "${evidence.fileName}:1")
+                put("approvalDate", "2026-07-24")
+                put("capabilityBoundary", "Synthetic platform boundary")
+                put("userVisibleBoundary", "Synthetic unavailable state")
+                put("failureFeedback", "synthetic_unavailable")
+            }
+        validateItem(syntheticItem(84, "EXEMPT", evidence.toString(), approval), tempDir)
 
         val noneFailure = assertThrows(AssertionError::class.java) {
             validateItem(syntheticItem(84, "EXEMPT", "NONE"), tempDir)
@@ -1934,8 +1985,105 @@ class DesktopProductCapabilityContractTest {
         if (status == "EXEMPT") {
             assertTrue(exemptionEvidence != null && exemptionEvidence != "NONE", "ID $id: EXEMPT requires real platform evidence")
             assertTrue(Files.isRegularFile(repositoryRoot.resolve(exemptionEvidence!!)), "ID $id: missing exemption evidence $exemptionEvidence")
+            val approval =
+                item["exemptionApproval"]?.jsonObject
+                    ?: throw AssertionError("ID $id: EXEMPT requires traceable approval")
+            val approvalSource = requiredText(approval, "approvalSource", id, "exemptionApproval")
+            val sourcePath = approvalSource.substringBeforeLast(':', "")
+            val sourceLine = approvalSource.substringAfterLast(':', "").toIntOrNull()
+            assertTrue(sourcePath.isNotBlank() && sourceLine != null && sourceLine > 0, "ID $id: approvalSource must be path:line")
+            val approvalLines = Files.readAllLines(repositoryRoot.resolve(sourcePath))
+            assertTrue(sourceLine!! <= approvalLines.size, "ID $id: approvalSource line is outside $sourcePath")
+            assertTrue(
+                approvalLines[sourceLine - 1].contains("| $id |") &&
+                    approvalLines[sourceLine - 1].contains("PLATFORM-EXEMPT"),
+                "ID $id: approvalSource must identify the approved platform exemption",
+            )
+            assertTrue(
+                requiredText(approval, "approvalDate", id, "exemptionApproval").matches(Regex("\\d{4}-\\d{2}-\\d{2}")),
+                "ID $id: approvalDate must be YYYY-MM-DD",
+            )
+            listOf("capabilityBoundary", "userVisibleBoundary", "failureFeedback")
+                .forEach { requiredText(approval, it, id, "exemptionApproval") }
         } else {
             assertEquals("NONE", exemptionEvidence, "ID $id: non-EXEMPT evidence must be NONE")
+        }
+    }
+
+    private fun validateTerminalRoleEvidence(
+        item: JsonObject,
+        repositoryRoot: Path,
+        fixedMainPathInventory: Map<String, String>,
+    ) {
+        val id = validatedId(item)
+        val evidenceByRole =
+            item["roleEvidence"]?.jsonObject
+                ?: throw AssertionError("ID $id: terminal status requires roleEvidence")
+        assertTrue(
+            evidenceByRole.keys.containsAll(requiredTerminalEvidenceRoles),
+            "ID $id: terminal roleEvidence must include $requiredTerminalEvidenceRoles",
+        )
+        val upstreamPaths = item.getValue("upstreamSymbols").jsonArray.map { it.jsonObject.getValue("path").jsonPrimitive.content }.toSet()
+        val currentPaths =
+            mapOf(
+                "CURRENT_ANDROID" to item.getValue("currentAndroidConsumerPaths").jsonArray.map { it.jsonPrimitive.content }.toSet(),
+                "SHARED_OR_ADAPTER" to item.getValue("sharedImplementationPaths").jsonArray.map { it.jsonPrimitive.content }.toSet(),
+                "DESKTOP_CONSUMER" to item.getValue("desktopConsumerAdapterPaths").jsonArray.map { it.jsonPrimitive.content }.toSet(),
+            )
+        val protectionTests = item.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content }.toSet()
+
+        requiredTerminalEvidenceRoles.forEach { role ->
+            val entries = evidenceByRole.getValue(role).jsonArray
+            assertTrue(entries.isNotEmpty(), "ID $id: terminal role $role must have evidence")
+            entries.forEachIndexed { index, element ->
+                val entry = element.jsonObject
+                if (role == "FIXTURE") {
+                    val artifact = requiredText(entry, "artifact", id, "roleEvidence.$role[$index]")
+                    val (path, method) = artifact.split('#', limit = 2).takeIf { it.size == 2 }
+                        ?: throw AssertionError("ID $id: FIXTURE artifact must be path#test-method")
+                    assertTrue(path in protectionTests, "ID $id: FIXTURE artifact is not declared protection evidence: $path")
+                    val methodSource =
+                        kotlinTestMethod(Files.readString(repositoryRoot.resolve(path)), method, "ID $id FIXTURE artifact $artifact")
+                    assertTrue("assert" in methodSource, "ID $id: FIXTURE artifact must execute assertions")
+                    val productionMarkers = entry["productionMarkers"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
+                    assertTrue(productionMarkers.isNotEmpty(), "ID $id: FIXTURE artifact requires productionMarkers")
+                    productionMarkers.forEach { marker ->
+                        assertTrue(marker in methodSource, "ID $id: FIXTURE artifact must execute production marker $marker")
+                    }
+                } else {
+                    val path = requiredText(entry, "path", id, "roleEvidence.$role[$index]")
+                    val symbol = requiredText(entry, "symbol", id, "roleEvidence.$role[$index]")
+                    val line = requiredText(entry, "line", id, "roleEvidence.$role[$index]").toIntOrNull()
+                    assertTrue(line != null && line > 0, "ID $id: $role evidence line must be a positive integer")
+                    if (role == "FIXED_ORIGINAL") {
+                        assertEquals(fixedOriginalMihonRef, requiredText(entry, "ref", id, "roleEvidence.$role[$index]"))
+                        assertTrue(path in upstreamPaths, "ID $id: fixed-original evidence must use a declared upstream path")
+                        assertTrue(path in fixedMainPathInventory, "ID $id: fixed-original evidence must use the fixed-main inventory")
+                        val lines = fixedMainBlobLines(repositoryRoot, fixedMainPathInventory.getValue(path))
+                        assertTrue(line!! <= lines.size, "ID $id: FIXED_ORIGINAL evidence line $line is outside fixed blob $path")
+                        assertTrue(lines[line - 1].contains(symbol), "ID $id: FIXED_ORIGINAL symbol is not present in fixed blob $path:$line")
+                    } else {
+                        val allowedPaths =
+                            if (role == "SHARED_OR_ADAPTER") {
+                                when (requiredText(entry, "kind", id, "roleEvidence.$role[$index]")) {
+                                    "SHARED" -> currentPaths.getValue(role)
+                                    "PLATFORM_ADAPTER" -> {
+                                        val tags = item.getValue("tags").jsonArray.map { it.jsonPrimitive.content }
+                                        assertTrue("PLATFORM-ADAPTER" in tags, "ID $id: adapter evidence requires PLATFORM-ADAPTER")
+                                        currentPaths.getValue("CURRENT_ANDROID") + currentPaths.getValue("DESKTOP_CONSUMER")
+                                    }
+                                    else -> throw AssertionError("ID $id: SHARED_OR_ADAPTER kind must be SHARED or PLATFORM_ADAPTER")
+                                }
+                            } else {
+                                currentPaths.getValue(role)
+                            }
+                        assertTrue(path in allowedPaths, "ID $id: $role evidence must use its declared current path")
+                        val lines = Files.readAllLines(repositoryRoot.resolve(path))
+                        assertTrue(line!! <= lines.size, "ID $id: $role evidence line $line is outside $path")
+                        assertTrue(lines[line - 1].contains(symbol), "ID $id: $role evidence symbol is not present at $path:$line")
+                    }
+                }
+            }
         }
     }
 
@@ -1953,12 +2101,29 @@ class DesktopProductCapabilityContractTest {
         return text.toIntOrNull() ?: throw AssertionError("ID <$text>: id must be a non-empty integer; item=$item")
     }
 
-    private fun syntheticItem(id: Int, status: String = "NOT_STARTED", evidence: String = "NONE") =
+    private fun syntheticItem(
+        id: Int,
+        status: String = "NOT_STARTED",
+        evidence: String = "NONE",
+        exemptionApproval: JsonObject? = null,
+    ) =
         buildJsonObject {
             put("id", id)
             put("status", status)
             put("platformExemptionEvidence", evidence)
+            exemptionApproval?.let { put("exemptionApproval", it) }
         }
+
+    private fun fixedMainBlobLines(repositoryRoot: Path, blobId: String): List<String> {
+        val process =
+            ProcessBuilder("git", "cat-file", "blob", blobId)
+                .directory(repositoryRoot.toFile())
+                .redirectErrorStream(true)
+                .start()
+        val lines = process.inputStream.bufferedReader().readLines()
+        assertEquals(0, process.waitFor(), "Unable to read fixed-main blob $blobId: ${lines.joinToString("\n")}")
+        return lines
+    }
 
     private fun kotlinTestMethod(
         source: String,

@@ -1587,6 +1587,20 @@
     "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/updates/UpdatesScreenModel.kt", "app-desktop/src/main/kotlin/mihon/desktop/privacy/DesktopPrivacyCapabilities.kt"],
     "deviations": [{ "classification": "PLATFORM_ADAPTER", "description": "Desktop intentionally has no fake widget abstraction or provider; it exposes the Unsupported capability boundary." }],
     "protectionTests": ["presentation-widget/src/test/java/tachiyomi/presentation/widget/WidgetPrivacyProductionWiringTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/updates/UpdatesScreenModelTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/parity/WidgetPrivacyBoundaryTest.kt"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "presentation-widget/src/main/java/tachiyomi/presentation/widget/BaseUpdatesGridGlanceWidget.kt", "symbol": "BaseUpdatesGridGlanceWidget", "line": 54}],
+      "CURRENT_ANDROID": [{"path": "presentation-widget/src/main/java/tachiyomi/presentation/widget/BaseUpdatesGridGlanceWidget.kt", "symbol": "abstract class BaseUpdatesGridGlanceWidget", "line": 54}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/updates/interactor/GetUpdates.kt", "symbol": "class GetUpdates", "line": 8}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/updates/UpdatesScreenModel.kt", "symbol": "private val getUpdates: GetUpdates", "line": 51}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/parity/WidgetPrivacyBoundaryTest.kt#desktop exposes shared updates but no system widget provider", "productionMarkers": ["DesktopPrivacyCapabilities.production"]}]
+    },
+    "exemptionApproval": {
+      "approvalSource": "docs/superpowers/specs/2026-07-12-mihon-desktop-upstream-parity-design.md:217",
+      "approvalDate": "2026-07-12",
+      "capabilityBoundary": "Desktop retains shared Updates data but does not promise a cross-desktop system widget provider.",
+      "userVisibleBoundary": "The Desktop privacy capability reports the system widget provider as Unsupported.",
+      "failureFeedback": "system_widget_provider_unavailable"
+    },
     "platformExemptionEvidence": "app-desktop/src/test/kotlin/mihon/desktop/parity/WidgetPrivacyBoundaryTest.kt",
     "verificationScope": "EXEMPT: Android Glance proof remains Android-only; Desktop is limited to shared Updates data and an Unsupported widget capability.",
     "targetVersion": "TBD"
@@ -1704,6 +1718,13 @@
     "deviations": [{"classification": "CROSS_PLATFORM_PRODUCT_ENHANCEMENT", "description": "Desktop appends its General, Repository, and About preferences after the fixed-main search prefix without changing shared filtering or destination semantics."}],
     "protectionTests": ["domain/src/commonTest/kotlin/mihon/domain/settings/SettingsSearchPolicyTest.kt", "app/src/test/java/eu/kanade/presentation/more/settings/screen/SettingsSearchConsumerBehaviorTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSearchWiringTest.kt"],
     "behaviorMethods": {"domain/src/commonTest/kotlin/mihon/domain/settings/SettingsSearchPolicyTest.kt": ["fixed main excludes disabled blank info and disabled or blank groups"], "app/src/test/java/eu/kanade/presentation/more/settings/screen/SettingsSearchConsumerBehaviorTest.kt": ["real Android preference projection is searched by shared policy"], "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSearchWiringTest.kt": ["catalog delegates search to shared policy", "search has feedback focus submission keys and result navigation", "More search entry opens the production search screen"]},
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSearchScreen.kt", "symbol": "SettingsSearchScreen", "line": 60}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSearchScreen.kt", "symbol": "SettingsSearchPolicy.search", "line": 241}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/settings/SettingsSearchPolicy.kt", "symbol": "fun <RouteToken> search", "line": 6}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SettingsSearchScreen.kt", "symbol": "DesktopSettingsCatalog.search", "line": 47}],
+      "FIXTURE": [{"artifact": "domain/src/commonTest/kotlin/mihon/domain/settings/SettingsSearchPolicyTest.kt#fixed main excludes disabled blank info and disabled or blank groups", "productionMarkers": ["SettingsSearchPolicy.search"]}]
+    },
     "verificationScope": "VERIFIED: exact fixed-main search ownership, shared policy, Android projection, Desktop production entry/feedback/navigation, and behavior methods are bound.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -1726,6 +1747,13 @@
     "deviations": [{"classification": "PLATFORM_ADAPTER", "description": "Android dynamic Monet and application locales remain platform adapters; Desktop consumes static palettes and host system-dark state."}, {"classification": "DESKTOP_PRODUCT_ENHANCEMENT", "description": "Desktop library-grid sizing remains available in Appearance and is neither replaced nor degraded by shared theme wiring."}],
     "protectionTests": ["presentation-theme/src/commonTest/kotlin/eu/kanade/presentation/theme/colorscheme/AppThemeColorSchemeTest.kt", "app/src/test/java/eu/kanade/presentation/theme/AndroidSharedPaletteWiringTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSearchWiringTest.kt"],
     "behaviorMethods": {"presentation-theme/src/commonTest/kotlin/eu/kanade/presentation/theme/colorscheme/AppThemeColorSchemeTest.kt": ["every static app theme selects its fixed main palette", "amoled only changes dark static colors and preserves fixed containers"], "app/src/test/java/eu/kanade/presentation/theme/AndroidSharedPaletteWiringTest.kt": ["android theme consumer delegates static selection to shared selector"], "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSearchWiringTest.kt": ["desktop theme consumes shared static theme and amoled preferences", "appearance selects static theme and amoled while preserving grid"]},
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/presentation/theme/TachiyomiTheme.kt", "symbol": "TachiyomiTheme", "line": 31}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/presentation/theme/TachiyomiTheme.kt", "symbol": "AppThemeColorScheme.colorScheme", "line": 65}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "presentation-theme/src/commonMain/kotlin/eu/kanade/presentation/theme/colorscheme/AppThemeColorScheme.kt", "symbol": "fun colorScheme", "line": 8}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/theme/DesktopTheme.kt", "symbol": "AppThemeColorScheme.colorScheme", "line": 43}],
+      "FIXTURE": [{"artifact": "app/src/test/java/eu/kanade/presentation/theme/AndroidSharedPaletteWiringTest.kt#android theme consumer delegates static selection to shared selector", "productionMarkers": ["getThemeColorScheme"]}]
+    },
     "verificationScope": "VERIFIED: exact fixed-main theme ownership, shared palette behavior, both production consumers, AMOLED handling, and preserved Desktop grid controls are bound.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -1789,6 +1817,13 @@
     "deviations": [{"classification": "PLATFORM_ADAPTER", "description": "Android AboutLibraries raw metadata and HTML rendering differ from Desktop packaged classpath metadata, plain license text, and URI adapter."}, {"classification": "DESKTOP_PRODUCT_ENHANCEMENT", "description": "Desktop updater, storage/cache/extensions paths, and environment diagnostics remain on About."}],
     "protectionTests": ["domain/src/commonTest/kotlin/mihon/domain/license/service/LicenseNoticePolicyTest.kt", "app/src/test/java/eu/kanade/presentation/more/settings/screen/about/OpenSourceLicensesConsumerBehaviorTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/license/DesktopDependencyNoticeProviderTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AboutUpdateWiringTest.kt"],
     "behaviorMethods": {"domain/src/commonTest/kotlin/mihon/domain/license/service/LicenseNoticePolicyTest.kt": ["first license is selected without later entries overwriting it"], "app/src/test/java/eu/kanade/presentation/more/settings/screen/about/OpenSourceLicensesConsumerBehaviorTest.kt": ["real Android license candidates are delegated to shared policy in order", "blank first Android license does not fall through to later content"], "app-desktop/src/test/kotlin/mihon/desktop/license/DesktopDependencyNoticeProviderTest.kt": ["provider maps metadata through the notice policy and caches the result"], "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AboutUpdateWiringTest.kt": ["about routes real injected dependency notices to their first license content", "about renders full version and routes ready confirmation intents"]},
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/about/OpenSourceLicensesScreen.kt", "symbol": "OpenSourceLicensesScreen", "line": 19}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/about/OpenSourceLicensesScreen.kt", "symbol": "LicenseNoticePolicy.selectLicense", "line": 56}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/license/service/LicenseNoticePolicy.kt", "symbol": "fun selectLicense", "line": 20}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/license/DesktopDependencyNoticeProvider.kt", "symbol": "LicenseNoticePolicy.create", "line": 23}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AboutUpdateWiringTest.kt#about routes real injected dependency notices to their first license content", "productionMarkers": ["DesktopUiDependencies.fromInjekt"]}]
+    },
     "verificationScope": "VERIFIED: exact fixed-main build/license ownership, shared first-license behavior, Android full-candidate adapter, Desktop provider DI, and real About-to-list-to-detail UI are bound; generator self-tests are not completion evidence.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
