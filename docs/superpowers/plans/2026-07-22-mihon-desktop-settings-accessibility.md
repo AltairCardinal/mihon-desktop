@@ -90,8 +90,8 @@ status-source: this-file
 - [x] Task 18G：Desktop Tracking login dialog keyboard accessibility
 - [x] Task 18H：Desktop Tracking logout/unbind dialog keyboard accessibility
 - [x] Task 19：IDs 88/90/91/94 exact parity evidence
-- [ ] Task 20A：共享许可证首项规则与 Desktop production wiring
-- [ ] Task 20B：Android 许可证 shared consumer 与 parity evidence
+- [x] Task 20A：共享许可证首项规则与 Desktop production wiring
+- [x] Task 20B：Android 许可证 shared consumer 与 parity evidence
 - [ ] Task 20：whole-change 审查与三平台 verify
 
 ## 全局门禁
@@ -1028,7 +1028,7 @@ status-source: this-file
 2. GREEN：shared 是唯一首项选择与 blank→`null` 归一化位置；Desktop adapter 只按原 metadata 顺序映射完整候选，缺失/空内容保留为空占位，不预裁剪、不回退后项。
 3. 运行 shared 与 Desktop provider focused、compile、Spotless、diff/range/guard；不修改 manifest，待 Android consumer 完成后统一更新 evidence。
 
-**Review status（实现完成，待合并复审）：** 实现 `26e52ff47a` 将首项选择与 blank→`null` 唯一集中到 shared `selectLicense`，Desktop provider 只按 metadata 顺序映射完整候选并以空字符串保留缺 ID/缺 content/blank 首项位置。初始 blank-first RED `1/1`、临时 `lastOrNull` mutation 使 Desktop 两项 production-chain 测试 `2/2` 精确失败；恢复后强制实际执行 shared `9/9`、Desktop provider `5/5`，main/test compile、root Spotless、diff/range/guard 均通过，范围 `3 files/19 touched`。按 Task 20 唯一修复预算，本 Task 与 20B 完成后由 whole-change reviewer 合并复审，复审通过前不勾选。
+**Review status（已完成）：** 实现 `26e52ff47a` 将首项选择与 blank→`null` 唯一集中到 shared `selectLicense`，Desktop provider 只按 metadata 顺序映射完整候选并以空字符串保留缺 ID/缺 content/blank 首项位置。初始 blank-first RED `1/1`、临时 `lastOrNull` mutation 使 Desktop 两项 production-chain 测试 `2/2` 精确失败；恢复后强制实际执行 shared `9/9`、Desktop provider `5/5`，main/test compile、root Spotless、diff/range/guard 均通过，范围 `3 files/19 touched`。与 20B 合并执行的唯一修复复审 APPROVED `0/0/0`，确认 shared 是唯一首项/blank 规则且 Desktop production consumer 未预裁剪或回退。
 
 ### Task 20B：Android 许可证 shared consumer 与 parity evidence
 
@@ -1045,6 +1045,8 @@ status-source: this-file
 1. RED：使用真实 AboutLibraries `License` 候选执行 production adapter；交换 shared selector 为末项或 first-nonblank 时首项与 blank-first 场景必须失败。
 2. GREEN：Android 只按原迭代顺序映射完整 HTML 候选并调用 shared selector，最终 UI 边界才 `.orEmpty()`；不得保留本地 `firstOrNull` 业务规则。
 3. 将 Android production behavior 方法纳入 ID94 exact protection，运行 Android focused、ID94 behavior/exact contract、compile、Spotless、diff/range/guard；20A/20B 完成后由 whole-change reviewer 合并执行一次唯一修复复审。
+
+**Review status（已完成）：** 实现 `ba47a9a4c` 让 Android `OpenSourceLicensesScreen` 将真实 AboutLibraries `License` 的全部 HTML 候选按原顺序交给 shared selector，只有详情 UI 参数在调用边界 `.orEmpty()`；新增 Android production adapter 行为测试，并把两项方法精确绑定到 ID94 protection/evidence。新增测试在 adapter 缺失时编译阶段 RED，临时 `lastOrNull` mutation 使 Android `2/2` 精确失败；恢复后 Android `2/2`、ID94 shared/Desktop 与 exact contract、compile、Spotless、diff/range/guard 全绿，范围 `4 files/105 touched`。20A/20B 唯一合并修复复审 APPROVED `0/0/0`，复审重跑 shared `9/9`、Android `2/2`、Desktop provider/contract `39/39`，合计 `50/50`；确认初审 I1 完全关闭，ID88 与 fixed-main authority 未漂移，外部副作用为 0。
 
 ### Task 20：whole-change 审查与三平台 verify
 
@@ -1063,4 +1065,4 @@ status-source: this-file
 3. 仅用 `scripts/build-desktop.sh` 生成新 BUILD；Windows fixed EXE验证搜索→anchor、主题、grid、licenses、键盘/semantics/TestMode；macOS `ssh mbp` 验证同版本 app与可用 accessibility tree，SSH不能替代的screen-reader交互明确限界。
 4. Linux/WSL只验证可用theme/resource/keyboard/capability adapter。报告完整版本、命令/计数/失败、EXE、OS、IDs状态和剩余有意偏差；全部通过后勾选父Task5B并继续父Task6。
 
-**Review status（进行中）：** 对 `base-ref..f20861616` 的 whole-change 独立审查为 REJECTED `0/1/0`：ID94 的首许可证选择同时存在于 Android Screen、Desktop provider 与 shared policy，Desktop 在进入 shared 前已裁成单项，导致 shared selector mutation 无法破坏 production consumer。其余 fixed-main、搜索、anchor、主题、Desktop 独有能力、许可 UI、无障碍和测试有效性未发现阻塞项；focused contract `40/40` 通过，尚未运行全量矩阵或平台构建。按三平台 boundary 门禁将唯一 repair 分为 20A（shared+desktop）与 20B（android），两项串行实现后合并做一次修复复审。
+**Review status（审查已清零，待全量验证）：** 对 `base-ref..f20861616` 的 whole-change 独立首审为 REJECTED `0/1/0`：ID94 的首许可证选择同时存在于 Android Screen、Desktop provider 与 shared policy，Desktop 在进入 shared 前已裁成单项，导致 shared selector mutation 无法破坏 production consumer。其余 fixed-main、搜索、anchor、主题、Desktop 独有能力、许可 UI、无障碍和测试有效性未发现阻塞项；focused contract `40/40` 通过。唯一 repair 已按平台边界拆为 20A（shared+desktop，`26e52ff47a`）与 20B（android，`ba47a9a4c`）串行完成；合并唯一修复复审 APPROVED `0/0/0`，focused `50/50`，确认 shared 策略真实控制 Android/Desktop production consumers、ID94 evidence 完整、ID88/fixed-main 无漂移且外部副作用为 0。下一步仅执行本 Task 的全量矩阵与平台验收。
