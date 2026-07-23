@@ -80,7 +80,7 @@ status-source: this-file
 - [x] Task 14：Desktop 许可证 provider 与 DI identity
 - [x] Task 15：Desktop 许可证列表/详情与 About wiring
 - [x] Task 16：Desktop 设置 accessibility primitives 与入口页面
-- [ ] Task 17：Desktop 设置 accessibility 内容页面第一批
+- [x] Task 17：Desktop 设置 accessibility 内容页面第一批
 - [ ] Task 18：Desktop 设置 accessibility 内容页面第二批
 - [ ] Task 19：IDs 88/90/91/94 exact parity evidence
 - [ ] Task 20：whole-change 审查与三平台 verify
@@ -834,6 +834,8 @@ status-source: this-file
 1. RED：任一 control 无唯一语义 action/状态/键盘路径或 focus enhancement 改变原版 anchor identity时失败。
 2. GREEN：复用 Task16 primitives，不重写业务；所有 labels 来自 Task4B同一 MR。
 3. 运行四页 UI/anchor/semantics/Spotless/range gate。
+
+**Review status（已完成）：** 实现 `3fd0707e12` 与收尾修复 `c4d34a5ae` 完成 Reader/Library/Download/Backup accessibility 内容页第一批。Library 隐藏缺章与分类排除复选项改为整行唯一 Role.Checkbox action，子控件清除重复语义且原 preference 写入保持；Backup 创建/恢复按钮复用 `DesktopSettingsButton`，preview KeyDown 消费 Enter/NumPadEnter/Space 以避免 Material 默认双触发，KeyUp 与 disabled 均不执行。四页真实 rendered semantics、RequestFocus 与 anchor exact/首重复项/scroll/highlight/one-shot 均受保护，picker/snackbar/restore/autobackup、Download 与 Reader 独有行为未改。Library/Backup 断 helper mutation 均精确 RED 后恢复。独立审查 APPROVED `0/0/0`，focused `106/106`、Desktop compile、Spotless、diff 与 4-Task guard 通过；累计严格为 `4 files/360 touched`，Task 18+/计划/OpenSpec/用户脏文件零差异。下一项为父 Task 5B / 子 Task 18。
 
 ### Task 18：Desktop 设置 accessibility 内容页面第二批
 
