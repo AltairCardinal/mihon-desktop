@@ -1,37 +1,32 @@
 package mihon.desktop.license
 
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
+import mihon.domain.license.model.LicenseNoticeResult
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class GeneratedDependencyNoticesResourceTest {
 
     @Test
-    fun `packaged metadata contains real resolved dependencies in stable order`() {
-        val stream = javaClass.classLoader.getResourceAsStream(RESOURCE_PATH)
-        assertNotNull(stream, "missing packaged resource: $RESOURCE_PATH")
-        val root = requireNotNull(stream).bufferedReader().use { reader ->
-            Json.parseToJsonElement(reader.readText()).jsonObject
-        }
-        val libraries = requireNotNull(root["libraries"]).jsonArray
-        val uniqueIds = libraries.map { library ->
-            requireNotNull(library.jsonObject["uniqueId"]).jsonPrimitive.content
-        }
+    fun `packaged metadata flows through the runtime provider and notice policy`() {
+        val result = ClasspathDependencyNoticeProvider().getNotices()
+        val notices = assertInstanceOf(LicenseNoticeResult.Success::class.java, result).notices
+        val names = notices.map { it.name }
 
-        assertTrue(uniqueIds.isNotEmpty())
-        assertEquals(uniqueIds.sorted(), uniqueIds)
-        assertTrue(
-            uniqueIds.any { "kotlinx-coroutines-core" in it },
-            "real Desktop dependency missing: $uniqueIds",
+        assertTrue(notices.isNotEmpty())
+        assertEquals(
+            names.sortedWith(compareBy<String> { it.lowercase() }.thenBy { it }),
+            names,
         )
-    }
-
-    private companion object {
-        const val RESOURCE_PATH = "META-INF/mihon/dependencies.json"
+        assertTrue(
+            names.any { "kotlinx-coroutines-core" in it },
+            "real Desktop dependency missing: $names",
+        )
+        val coroutines = notices.first { "kotlinx-coroutines-core" in it.name }
+        assertTrue(
+            coroutines.license?.contains("TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION") == true,
+            "coroutines notice must expose the packaged Apache license content, not its ID or name",
+        )
     }
 }

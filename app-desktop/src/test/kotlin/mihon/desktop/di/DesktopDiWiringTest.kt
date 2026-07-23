@@ -37,6 +37,7 @@ import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopAvailableExtension
 import mihon.desktop.extension.DesktopAvailableSource
 import mihon.desktop.extension.FixtureNewSource
+import mihon.desktop.license.DependencyNoticeProvider
 import mihon.desktop.ui.extension.DesktopExtensionPresentationPort
 import mihon.desktop.ui.extension.ExtensionsScreenModel
 import mihon.desktop.platform.DesktopNetworkHelper
@@ -144,6 +145,22 @@ import okio.Buffer
 
 @Isolated
 class DesktopDiWiringTest {
+    @Test
+    fun `desktop DI exposes one dependency notice provider instance to UI`(@TempDir tempDir: File) = runBlocking {
+        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+        try {
+            val provider = Injekt.get<DependencyNoticeProvider>()
+
+            assertSame(provider, DesktopUiDependencies.fromInjekt().dependencyNoticeProvider)
+            assertSame(
+                DesktopUiDependencies.fromInjekt().dependencyNoticeProvider,
+                DesktopUiDependencies.fromInjekt().dependencyNoticeProvider,
+            )
+        } finally {
+            context.closeAndJoin()
+        }
+    }
+
     @OptIn(ExperimentalComposeUiApi::class)
     @Test
     fun `owner UI boundary provides the owner graph dependencies`(@TempDir tempDir: File) = runBlocking {

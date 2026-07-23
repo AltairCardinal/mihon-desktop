@@ -53,6 +53,8 @@ import mihon.desktop.domain.DesktopCustomCoverStore
 import mihon.desktop.domain.DesktopNotificationService
 import mihon.desktop.domain.DesktopMigrateMangaUseCase
 import mihon.desktop.js.DesktopJsEngine
+import mihon.desktop.license.ClasspathDependencyNoticeProvider
+import mihon.desktop.license.DependencyNoticeProvider
 import mihon.desktop.domain.GetAvailableScanlators
 import mihon.desktop.domain.GetExcludedScanlators
 import mihon.desktop.domain.SetExcludedScanlators
@@ -621,6 +623,7 @@ internal fun initUILayer(
     Injekt.addSingleton(DesktopWindowPrivacyController(Injekt.get(), Injekt.get(), windowPrivacy))
     Injekt.addSingleton<DesktopNativeSharePort>(nativeSharePort)
     Injekt.addSingleton(DesktopShareService(nativeSharePort = nativeSharePort))
+    Injekt.addSingleton<DependencyNoticeProvider>(ClasspathDependencyNoticeProvider())
     val releaseService = ReleaseServiceImpl(networkHelper.client, Injekt.get<Json>(), Injekt.get<PlatformInfo>())
     Injekt.addSingleton<ReleaseService>(releaseService)
     val releaseChecker = GetApplicationRelease(releaseService, preferenceStore)

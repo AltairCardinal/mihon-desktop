@@ -16,6 +16,7 @@ import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.download.DownloadQueueScreenModel
 import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopExtensionManager
+import mihon.desktop.license.DependencyNoticeProvider
 import mihon.desktop.network.CloudflareChallengeManager
 import mihon.desktop.network.DesktopChallengeBrowserLoginBridge
 import mihon.desktop.network.DesktopSourceLoginSessionFactory
@@ -76,6 +77,7 @@ data class DesktopUiDependencies(
     val deleteExtensionRepo: DeleteExtensionRepo,
     val downloadManager: DesktopDownloadManager,
     val downloadPreferences: DesktopDownloadPreferences,
+    val dependencyNoticeProvider: DependencyNoticeProvider,
     val extensionApi: DesktopExtensionApi,
     val extensionManager: DesktopExtensionManager,
     val externalActionNavigator: ExternalActionNavigator,
@@ -146,6 +148,7 @@ data class DesktopUiDependencies(
                 deleteExtensionRepo = Injekt.get(),
                 downloadManager = Injekt.get(),
                 downloadPreferences = Injekt.get(),
+                dependencyNoticeProvider = Injekt.get(),
                 extensionApi = Injekt.get(),
                 extensionManager = Injekt.get(),
                 externalActionNavigator = ExternalActionNavigator(
