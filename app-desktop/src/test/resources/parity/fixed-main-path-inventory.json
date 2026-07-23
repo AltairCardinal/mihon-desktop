@@ -105,8 +105,11 @@
     { "path": "app/src/main/java/eu/kanade/tachiyomi/data/notification/Notifications.kt", "blobId": "cdc540eec1456c28a46b0871c473c2135e3ff1bc", "capabilityIds": [11] },
     { "path": "app/src/main/java/eu/kanade/tachiyomi/util/CrashLogUtil.kt", "blobId": "4902671f3611b9f44b2d28692cd03f07d766cd20", "capabilityIds": [12] },
     { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/category/CategoryScreenModel.kt", "blobId": "b98b77e4e2f3d544740522fe40318b04776450a5", "capabilityIds": [16] },
-    { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt", "blobId": "09d02f338038deed7650e0586e556702f709845b", "capabilityIds": [17] },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt", "blobId": "09d02f338038deed7650e0586e556702f709845b", "capabilityIds": [17, 19, 22] },
     { "path": "app/src/main/java/eu/kanade/presentation/library/components/LibraryToolbar.kt", "blobId": "9845ca8166884e7a4ed441c0d54e958d3976472b", "capabilityIds": [19] },
-    { "path": "domain/src/main/java/tachiyomi/domain/category/interactor/SetMangaCategories.kt", "blobId": "604e3f0d1e04ed39c5beb887f12b82abb6bedce2", "capabilityIds": [22] }
+    { "path": "app/src/main/java/eu/kanade/presentation/manga/components/MangaBottomActionMenu.kt", "blobId": "292ed8aafca2c037b46542069009da4575fb66e3", "capabilityIds": [19] },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryTab.kt", "blobId": "fc0199d38ce3c1fc5c704d58a8a4f6aaa3686015", "capabilityIds": [19] },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt", "blobId": "78c80c85ffaf3ea984b8d9028828c0f0f0ed82ec", "capabilityIds": [22] },
+    { "path": "domain/src/main/java/tachiyomi/domain/category/interactor/SetMangaCategories.kt", "blobId": "604e3f0d1e04ed39c5beb887f12b82abb6bedce2", "capabilityIds": [19, 22] }
   ]
 }

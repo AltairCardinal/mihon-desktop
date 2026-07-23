@@ -93,7 +93,7 @@ active-task: Task 3
 
 **Platform boundary:** verification
 
-**Estimated scope:** 4 files, 360 lines
+**Estimated scope:** 5 files, 360 lines
 
 **Verification:** parity contract 与该批 protection tests GREEN；固定原版路径、符号、准确行号和当前三类 consumer 均可解析。
 
@@ -101,16 +101,19 @@ active-task: Task 3
 - Modify: `app-desktop/src/test/resources/parity/parity-manifest.json`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt`
 - Modify: `app-desktop/src/test/resources/parity/fixed-main-path-inventory.json`
+- Modify: `app-desktop/build.gradle.kts`
 - Modify: `docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md`
 
 **Scope correction:** Task 1 的 fixed-blob/line 校验要求每个 fixed-original path 都存在于 inventory；现有 inventory 不覆盖本批 8 项的大多数固定原版路径。因此 inventory 与 manifest provenance 不可拆分，范围由 3 文件修正为 4 文件，仍保持 `≤360 touched`。
+
+**Review-required scope correction:** 独立审查要求 provenance contract 不得把源码 marker 当作行为完成证据；可重复聚合执行 Desktop、domain 与 data production tests 的 Gradle 入口不可拆分，因此加入 `app-desktop/build.gradle.kts`，范围由 4 文件修正为 5 文件，仍保持 `≤360 touched`。
 
 **Steps:**
 1. 对 8 项分别从固定 ref 取证，不得从当前 `app/` 反推原版。
 2. 记录固定原版符号/行号、当前 Android consumer、shared/adapter、Desktop consumer 和 fixture/test。
 3. 本 Task 只补 provenance；发现产品链缺失时记录到 Task 14/16A–16D 的 inventory 输入，不预判终态。
 
-**Execution evidence（已完成）：** 基线 `ffcbb2240dd803b948d40970ce99c97da6b6b865`。新增 batch contract 首次 RED 精确命中 `ID 9: upstreamRef must not be blank`；8 项均从 `6fbf6df...` 取得 path/symbol/line/blob，并绑定当前 Android、shared/adapter、Desktop consumer 与真实 fixture marker，状态保持 `WIRED/WIRED/WIRED/NOT_STARTED/SHARED/SHARED/WIRED/SHARED`。ID12 明确为 Android/Desktop platform adapter 现状，不宣称 shared crash runtime。错误 blob mutation 将 ID9 inventory 指向 LibraryUpdateJob blob 后精确命中 fixed-blob symbol/line RED，随后恢复。focused batch 与普通 contract GREEN；显式 final gate 仍报告同一 60 个非终态 ID 并按设计 RED；根 `spotlessCheck`、plan guard、diff/range 通过。范围 `4 files/202 touched`，提交 hash 见交付报告；下一项为 Task 3。
+**Execution evidence（已完成）：** 基线 `ffcbb2240dd803b948d40970ce99c97da6b6b865`。新增 batch contract 首次 RED 精确命中 `ID 9: upstreamRef must not be blank`；8 项均从 `6fbf6df...` 取得 path/symbol/line/blob，状态保持 `WIRED/WIRED/WIRED/NOT_STARTED/SHARED/SHARED/WIRED/SHARED`。独立审查修复轮先由缺失 `behaviorVerificationTask` 精确 RED；ID19 改为真实 `LibraryBottomActionMenu → LibraryTab → LibraryScreenModel.setMangaCategories` 固定链并将本批边界收窄到分类动作，其余批处理动作留给 Task 7；ID22 改为 fixed favorite/category/remove 顺序链，将 fork atomic membership 明确归为 `MIGRATION_OUTPUT` 与 `CROSS_PLATFORM_RELIABILITY_ENHANCEMENT`，保留 `SHARED` 和未证明等价 gap。聚合 `:app-desktop:task2ParityVerification` 执行 18 个 Desktop/domain/data 生产行为类、258 tests、0 failure/0 skipped；错误 ID19 Desktop 行号 mutation 精确 RED 后恢复。focused batch 与普通 contract GREEN；显式 final gate 仍报告同一 60 个非终态 ID 并按设计 RED；根 `spotlessCheck`、plan guard、diff/range 通过。累计范围 `5 files/348 touched`，提交 hash 见交付报告；下一项为 Task 3。
 
 ### Task 3：补齐 provenance 批次 P2（24、26、44、45、47、49、51、53）
 

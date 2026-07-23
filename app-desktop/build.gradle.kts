@@ -212,6 +212,51 @@ tasks.register<Test>("finalParityAudit") {
     }
 }
 
+evaluationDependsOn(":domain")
+evaluationDependsOn(":data")
+val domainJvmTestTask = project(":domain").tasks.named<Test>("jvmTest")
+val dataJvmTestTask = project(":data").tasks.named<Test>("jvmTest")
+tasks.register<Test>("task2ParityVerification") {
+    group = "verification"
+    description = "Runs Task 2 provenance plus its selected Desktop, domain, and data production behavior tests."
+    dependsOn(tasks.named("jvmTestClasses"), ":domain:jvmTestClasses", ":data:jvmTestClasses")
+    testClassesDirs = files(
+        jvmTestTask.get().testClassesDirs,
+        domainJvmTestTask.get().testClassesDirs,
+        dataJvmTestTask.get().testClassesDirs,
+    )
+    classpath = files(
+        jvmTestTask.get().classpath,
+        domainJvmTestTask.get().classpath,
+        dataJvmTestTask.get().classpath,
+    )
+    filter {
+        listOf(
+            "mihon.desktop.CrashHandlerTest",
+            "mihon.desktop.di.DesktopDiWiringTest",
+            "mihon.desktop.domain.DesktopSystemNotifierTest",
+            "mihon.desktop.domain.LibraryUpdateRecoveryIntegrationTest",
+            "mihon.desktop.parity.DesktopProductCapabilityContractTest",
+            "mihon.desktop.reader.PagePreloaderTest",
+            "mihon.desktop.reader.SkiaImageDecoderTest",
+            "mihon.desktop.task.DesktopTaskSchedulerIntegrationTest",
+            "mihon.desktop.ui.library.LibraryCategoryBehaviorTest",
+            "mihon.desktop.ui.library.LibraryPageCompositionTest",
+            "mihon.desktop.ui.library.LibraryParityIntegrationTest",
+            "mihon.desktop.ui.library.LibraryScreenModelTest",
+            "mihon.desktop.ui.library.MangaDetailScreenModelTest",
+            "mihon.domain.reader.ReaderParityContractTest",
+            "mihon.domain.task.BackgroundTaskContractTest",
+            "tachiyomi.data.manga.MangaRepositoryMembershipIntegrationTest",
+            "tachiyomi.domain.library.interactor.EvaluateLibraryTest",
+            "tachiyomi.domain.manga.interactor.UpdateLibraryMembershipTest",
+        ).forEach(::includeTestsMatching)
+    }
+    useJUnitPlatform {
+        excludeTags("final-parity-audit", "integration", "live-network", "network-survey")
+    }
+}
+
 compose.desktop {
     application {
         mainClass = "mihon.desktop.MainKt"

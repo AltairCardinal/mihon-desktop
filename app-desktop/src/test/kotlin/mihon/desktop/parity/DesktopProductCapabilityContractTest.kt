@@ -39,6 +39,25 @@ class DesktopProductCapabilityContractTest {
         setOf("FIXED_ORIGINAL", "CURRENT_ANDROID", "SHARED_OR_ADAPTER", "DESKTOP_CONSUMER", "FIXTURE")
     private val task2ProvenanceStatuses =
         mapOf(9 to "WIRED", 10 to "WIRED", 11 to "WIRED", 12 to "NOT_STARTED", 16 to "SHARED", 17 to "SHARED", 19 to "WIRED", 22 to "SHARED")
+    private val task2BehaviorMethods =
+        mapOf(
+            9 to mapOf("app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt" to setOf("decode JPEG returns correct dimensions")),
+            10 to mapOf("app-desktop/src/test/kotlin/mihon/desktop/task/DesktopTaskSchedulerIntegrationTest.kt" to setOf("checkpoint and cancellation obey legal terminal transitions")),
+            11 to mapOf("app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopSystemNotifierTest.kt" to setOf("falls back to in-app notification when system delivery is unavailable")),
+            12 to mapOf("app-desktop/src/test/kotlin/mihon/desktop/CrashHandlerTest.kt" to setOf("appendCrashReport creates parent directory and writes report")),
+            16 to mapOf("app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryCategoryBehaviorTest.kt" to setOf("category dialog intents perform create rename reorder and delete through production DI")),
+            17 to mapOf("app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt" to setOf("complete filter flags flow from state to visible list including local and tracking boundaries")),
+            19 to mapOf("app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt" to setOf("batch category assignment reports partial failure and continues", "library model exposes batch category partial failure to UI")),
+            22 to
+                mapOf(
+                    "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/UpdateLibraryMembershipTest.kt" to
+                        setOf("adding favorite synchronizes selected categories", "removing favorite clears category links"),
+                    "data/src/jvmTest/kotlin/tachiyomi/data/manga/MangaRepositoryMembershipIntegrationTest.kt" to
+                        setOf("membership update commits favorite date and categories together", "invalid category rolls back every manga membership update"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt" to
+                        setOf("toggleLibrary clears favorite date and categories when removing"),
+                ),
+        )
     private val validTags =
         setOf(
             "SHARE-DIRECT",
@@ -1118,6 +1137,21 @@ class DesktopProductCapabilityContractTest {
             val item = items.getValue(id).jsonObject
             assertEquals(expectedStatus, requiredText(item, "status", id), "Task 2 must not change capability status")
             assertEquals(fixedOriginalMihonRef, requiredText(item, "upstreamRef", id))
+            assertEquals(":app-desktop:task2ParityVerification", requiredText(item, "behaviorVerificationTask", id))
+            val behaviorMethods =
+                item.getValue("behaviorMethods").jsonObject.mapValues { (_, methods) ->
+                    methods.jsonArray.map { it.jsonPrimitive.content }.toSet()
+                }
+            assertEquals(task2BehaviorMethods.getValue(id), behaviorMethods, "ID $id behavior methods")
+            behaviorMethods.forEach { (path, methods) ->
+                val source = Files.readString(repositoryRoot.resolve(path))
+                methods.forEach { method ->
+                    assertTrue(
+                        kotlinTestMethod(source, method, "ID $id behavior method $path#$method").contains("assert"),
+                        "ID $id behavior method must execute assertions: $path#$method",
+                    )
+                }
+            }
             validateRoleEvidence(item, repositoryRoot, inventory)
             val upstream = item.getValue("upstreamSymbols").jsonArray.map { it.jsonObject }
             val fixedEntries = item.getValue("roleEvidence").jsonObject.getValue("FIXED_ORIGINAL").jsonArray.map { it.jsonObject }

@@ -166,6 +166,8 @@
       "app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt"
     ],
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt": ["decode JPEG returns correct dimensions"]},
+    "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -196,6 +198,8 @@
       "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
     ],
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/task/DesktopTaskSchedulerIntegrationTest.kt": ["checkpoint and cancellation obey legal terminal transitions"]},
+    "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -225,6 +229,8 @@
       "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopSystemNotifierTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt"
     ],
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopSystemNotifierTest.kt": ["falls back to in-app notification when system delivery is unavailable"]},
+    "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -250,6 +256,8 @@
     "authoritativeImplementation": "Fixed-main original Mihon capability #12: CrashLogUtil dumps Android logs and diagnostics.",
     "desktopImplementation": "Desktop CrashHandler writes and rotates uncaught-exception reports; no shared crash runtime is claimed.",
     "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/CrashHandlerTest.kt"],
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/CrashHandlerTest.kt": ["appendCrashReport creates parent directory and writes report"]},
+    "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -279,6 +287,8 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryCategoryBehaviorTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
     ],
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryCategoryBehaviorTest.kt": ["category dialog intents perform create rename reorder and delete through production DI"]},
+    "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -310,61 +320,112 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryPageCompositionTest.kt"
     ],
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": ["complete filter flags flow from state to visible list including local and tracking boundaries"]},
+    "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 19,
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
-    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/presentation/library/components/LibraryToolbar.kt", "symbol": "LibrarySelectionToolbar"}],
+    "upstreamSymbols": [
+      {"path": "app/src/main/java/eu/kanade/presentation/manga/components/MangaBottomActionMenu.kt", "symbol": "fun LibraryBottomActionMenu("},
+      {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryTab.kt", "symbol": "LibraryBottomActionMenu("},
+      {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt", "symbol": "fun setMangaCategories"}
+    ],
     "sharedImplementationPaths": ["domain/src/commonMain/kotlin/tachiyomi/domain/category/interactor/SetMangaCategories.kt"],
-    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt"],
-    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryTab.kt", "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryTab.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt"],
     "roleEvidence": {
-      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/presentation/library/components/LibraryToolbar.kt", "symbol": "LibrarySelectionToolbar", "line": 126}],
-      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt", "symbol": "private val setMangaCategories", "line": 77}],
+      "FIXED_ORIGINAL": [
+        {"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/presentation/manga/components/MangaBottomActionMenu.kt", "symbol": "fun LibraryBottomActionMenu(", "line": 232},
+        {"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryTab.kt", "symbol": "LibraryBottomActionMenu(", "line": 145},
+        {"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt", "symbol": "fun setMangaCategories", "line": 577}
+      ],
+      "CURRENT_ANDROID": [
+        {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryTab.kt", "symbol": "LibraryBottomActionMenu(", "line": 145},
+        {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt", "symbol": "fun setMangaCategories", "line": 481}
+      ],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/category/interactor/SetMangaCategories.kt", "symbol": "class SetMangaCategories", "line": 7}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "suspend fun setCategoriesForManga", "line": 454}],
-      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt#batch category assignment reports partial failure and continues", "productionMarkers": ["SetMangaCategories(repository).awaitBatch"]}]
+      "DESKTOP_CONSUMER": [
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryTab.kt", "symbol": "model.setCategoriesForManga", "line": 241},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "suspend fun setCategoriesForManga", "line": 454}
+      ],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt#library model exposes batch category partial failure to UI", "productionMarkers": ["model.setCategoriesForManga"]}]
     },
     "group": "书库与详情",
     "tags": [
       "SHARE-EXTRACT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Fixed-main original Mihon capability #19: LibrarySelectionToolbar exposes multi-select library actions.",
-    "desktopImplementation": "Desktop batch category actions consume shared SetMangaCategories and report partial failures.",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #19: LibraryBottomActionMenu routes the batch category action through LibraryTab to LibraryScreenModel.setMangaCategories; the same menu also exposes read, unread, download, delete, and migrate actions.",
+    "desktopImplementation": "Task 2 proves only the Desktop batch-category slice from LibraryTab to shared SetMangaCategories, including partial-failure feedback. Download, read, unread, delete, migrate, cancel, select-all, and invert-selection parity remain for Task 7.",
     "protectionTests": [
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt"
     ],
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt": ["batch category assignment reports partial failure and continues", "library model exposes batch category partial failure to UI"]},
+    "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
   {
     "id": 22,
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
-    "upstreamSymbols": [{"path": "domain/src/main/java/tachiyomi/domain/category/interactor/SetMangaCategories.kt", "symbol": "SetMangaCategories"}],
-    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/tachiyomi/domain/category/interactor/SetMangaCategories.kt"],
-    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt"],
-    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt"],
+    "upstreamSymbols": [
+      {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt", "symbol": "fun toggleFavorite("},
+      {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt", "symbol": "fun moveMangaToCategoriesAndAddToLibrary"},
+      {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt", "symbol": "fun removeMangas"},
+      {"path": "domain/src/main/java/tachiyomi/domain/category/interactor/SetMangaCategories.kt", "symbol": "class SetMangaCategories"}
+    ],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/UpdateLibraryMembership.kt", "domain/src/commonMain/kotlin/tachiyomi/domain/category/interactor/SetMangaCategories.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt", "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt"],
     "roleEvidence": {
-      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "domain/src/main/java/tachiyomi/domain/category/interactor/SetMangaCategories.kt", "symbol": "SetMangaCategories", "line": 7}],
-      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt", "symbol": "private val setMangaCategories", "line": 77}],
-      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/category/interactor/SetMangaCategories.kt", "symbol": "class SetMangaCategories", "line": 7}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "private val setMangaCategories", "line": 75}],
-      "FIXTURE": [{"artifact": "data/src/jvmTest/kotlin/tachiyomi/data/manga/MangaRepositoryMembershipIntegrationTest.kt#membership update commits favorite date and categories together", "productionMarkers": ["fixture.repository.updateMembershipsAtomically"]}]
+      "FIXED_ORIGINAL": [
+        {"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt", "symbol": "fun toggleFavorite(", "line": 310},
+        {"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt", "symbol": "fun moveMangaToCategoriesAndAddToLibrary", "line": 441},
+        {"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt", "symbol": "fun removeMangas", "line": 546},
+        {"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "domain/src/main/java/tachiyomi/domain/category/interactor/SetMangaCategories.kt", "symbol": "class SetMangaCategories", "line": 7}
+      ],
+      "CURRENT_ANDROID": [
+        {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt", "symbol": "fun toggleFavorite(", "line": 310},
+        {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt", "symbol": "fun moveMangaToCategoriesAndAddToLibrary", "line": 441},
+        {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt", "symbol": "fun removeMangas", "line": 450}
+      ],
+      "SHARED_OR_ADAPTER": [
+        {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/UpdateLibraryMembership.kt", "symbol": "class UpdateLibraryMembership", "line": 7},
+        {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/category/interactor/SetMangaCategories.kt", "symbol": "class SetMangaCategories", "line": 7}
+      ],
+      "DESKTOP_CONSUMER": [
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt", "symbol": "suspend fun toggleLibrary", "line": 262},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "suspend fun setCategoriesForManga", "line": 454}
+      ],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt#toggleLibrary clears favorite date and categories when removing", "productionMarkers": ["model.toggleLibrary", "getMangaCategoryIds"]}]
     },
     "group": "书库与详情",
     "tags": [
       "SHARE-DIRECT"
     ],
     "status": "SHARED",
-    "authoritativeImplementation": "Fixed-main original Mihon capability #22: SetMangaCategories persists favorite/category membership linkage.",
-    "desktopImplementation": "The shared interactor is injected into current Android and Desktop library screen models.",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #22: MangaScreenModel enters the library by updating favorite and assigning the selected/default categories in a sequential flow; LibraryScreenModel removal clears favorite, while SetMangaCategories replaces category links independently.",
+    "desktopImplementation": "Desktop detail toggle and category consumers use the fork-added UpdateLibraryMembership and SetMangaCategories paths. Their atomic favorite/date/category update and removal cleanup are protected reliability behavior, not proof that the fixed sequential Android entry flow is equivalent.",
+    "deviations": [
+      {"classification": "MIGRATION_OUTPUT", "description": "UpdateLibraryMembership and MangaRepository.updateMembershipsAtomically are fork-added shared migration output; they are not fixed-main authority."},
+      {"classification": "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT", "description": "The fork commits favorite, date, and category links atomically and clears category links on removal, which is stronger than the fixed-main sequential flow."},
+      {"classification": "UNCLASSIFIED_DEBT", "description": "Current Android still follows the fixed-derived sequential entry path and does not consume UpdateLibraryMembership; Desktop add-with-category UI sequencing equivalence remains unproved for Task 7, so status stays SHARED."}
+    ],
     "protectionTests": [
+      "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/UpdateLibraryMembershipTest.kt",
       "data/src/jvmTest/kotlin/tachiyomi/data/manga/MangaRepositoryMembershipIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseIntegrationTest.kt"
     ],
+    "behaviorMethods": {
+      "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/UpdateLibraryMembershipTest.kt": ["adding favorite synchronizes selected categories", "removing favorite clears category links"],
+      "data/src/jvmTest/kotlin/tachiyomi/data/manga/MangaRepositoryMembershipIntegrationTest.kt": ["membership update commits favorite date and categories together", "invalid category rolls back every manga membership update"],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt": ["toggleLibrary clears favorite date and categories when removing"]
+    },
+    "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
