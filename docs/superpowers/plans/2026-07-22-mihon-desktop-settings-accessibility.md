@@ -87,7 +87,8 @@ status-source: this-file
 - [x] Task 18D：Desktop ExtensionRepo async test stabilization
 - [x] Task 18E：Desktop Tracking accessibility
 - [x] Task 18F：Desktop Tracking service-action state matrix
-- [ ] Task 18G：Desktop Tracking dialog keyboard accessibility
+- [ ] Task 18G：Desktop Tracking login dialog keyboard accessibility
+- [ ] Task 18H：Desktop Tracking logout/unbind dialog keyboard accessibility
 - [ ] Task 19：IDs 88/90/91/94 exact parity evidence
 - [ ] Task 20：whole-change 审查与三平台 verify
 
@@ -953,21 +954,39 @@ status-source: this-file
 
 **Review status（已完成）：** test-only 实现 `d893a906f7` 在真实 `TrackingSettingsScreen` 覆盖未登录设置页 `Login`、已登录设置页 `Logout`、已登录漫画页 `Manage`；每态均从全语义树锁定唯一含服务名的 `OnClick`，验证 `Role.Button`、子树单一 OnClick 及服务名/trailing 文案同属 clickable 子树。Manage→Logout mutation 精确 RED，恢复后独立安全矩阵 `15/15`、compile/Spotless、diff/range 通过，严格范围 `1 file/49 touched`，production 与外部副作用均为 0。独立审查 APPROVED `0/0/0`；18E/18F 同时关闭。下一项为父 Task 5B / 子 Task 18G。
 
-### Task 18G：Desktop Tracking dialog keyboard accessibility
+### Task 18G：Desktop Tracking login dialog keyboard accessibility
 
-**Risk axis:** settings-accessibility-tracking-dialogs
+**Risk axis:** settings-accessibility-tracking-login
 
 **Platform boundary:** desktop
 
 **Estimated scope:** 2 files, 280 lines
 
-**Verification:** Tracking login/logout/unbind confirm/cancel 的 production physical-key exact-once、disabled safety 与认证副作用
+**Verification:** Tracking login confirm/cancel 的 production physical-key exact-once、disabled safety 与认证副作用
 
 **Files:** `TrackingSettingsScreen.kt`、tracking keyboard/dialog test。
 
-1. RED：login/logout/unbind 的 confirm/cancel 任一真实控件在 Enter/NumPadEnter/Space 的 KeyDown 未恰好触发一次、KeyUp 重复触发，或 disabled 产生认证副作用时失败。
+1. RED：login 的 confirm/cancel 任一真实控件在 Enter/NumPadEnter/Space 的 KeyDown 未恰好触发一次、KeyUp 重复触发，或 disabled 产生认证副作用时失败。
 2. GREEN：复用 Task16/17 Button helper，不复制认证状态机；保留 registry/auth/model、typed-message、service-specific 参数与失败反馈。
 3. 运行 Tracking auth/action production wiring、dialog semantics、keyboard、i18n、Spotless 与 range gate。
+
+**Scope status（实现前已重规划）：** 原合并 18G 的未跟踪测试草稿已为 301 行，且仅覆盖 logout/unbind，尚缺 login 与 disabled safety；production 正式 Button/TextButton helper 接线还会继续增加 touched，完整实现预计再需 80–120 行。代码零修改、零 Gradle 时确认无法满足原 `2 files/280 touched`，拒绝压缩 harness 或省略真实路径；本 Task 仅关闭正式 helper、login confirm/cancel 与 disabled safety，新增 18H 关闭 logout/unbind。
+
+### Task 18H：Desktop Tracking logout/unbind dialog keyboard accessibility
+
+**Risk axis:** settings-accessibility-tracking-confirmations
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 1 files, 180 lines
+
+**Verification:** Tracking logout/unbind confirm/cancel 的 production physical-key exact-once 与真实副作用边界
+
+**Files:** tracking keyboard/dialog test。
+
+1. RED：logout/unbind 的 confirm/cancel 任一真实控件在 Enter/NumPadEnter/Space 的 KeyDown 未恰好触发一次、KeyUp 重复触发，或 cancel 产生认证/仓库副作用时失败。
+2. GREEN：复用 18G 的 production helper 与测试 harness，只扩展真实 `TrackingSettingsScreen` 状态；保留 registry/auth/model、typed-message、service-specific 参数与失败反馈。
+3. 运行 focused confirmation keyboard、Tracking auth/action production wiring、compile、Spotless 与 range gate。
 
 ### Task 19：IDs 88/90/91/94 exact parity evidence
 
