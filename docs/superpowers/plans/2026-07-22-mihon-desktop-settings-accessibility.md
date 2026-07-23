@@ -73,7 +73,7 @@ status-source: this-file
 - [x] Task 10B：共享静态调色板第一批收口
 - [x] Task 10C：共享静态调色板第二批
 - [x] Task 10D：共享静态调色板第三批
-- [ ] Task 10E：共享调色板 selector/AMOLED 与 Monet adapter 收口
+- [x] Task 10E：共享调色板 selector/AMOLED 与 Monet adapter 收口
 - [ ] Task 11：Desktop 主题 adapter、外观 UI 与迁移
 - [ ] Task 12：共享许可证 notice 与详情选择契约
 - [ ] Task 13：Desktop 许可证元数据构建生成
@@ -708,6 +708,8 @@ status-source: this-file
 1. RED：selector 错配、light AMOLED 生效、dark AMOLED 未置黑、Monet 被搬进 common 或 deprecated 未回退时失败。
 2. GREEN：YinYang 调整为最小跨模块可见；在已可独立消费的 public palettes/Base 上建立最终 public selector，Android/Desktop 后续只消费 selector。Monet 只留 Android adapter，Desktop capability=false 不展示。
 3. 运行全部 palette/Android adapter、Spotless/touched gate。
+
+**Review status（已完成）：** 实现 `edab97e54` 将 YinYang 以 R98 move 到共享模块，建立覆盖全部 static theme、deprecated/unknown fallback、AMOLED 与可选 Monet adapter 的 public selector；Android `TachiyomiTheme` 删除本地 map，真实调用共享 selector，仅在 MONET 分支构造 Android adapter，Wallpaper/material-kolor 仍留平台侧。首审 `0/1/0` 发现 MONET 无 adapter 回退静态 Tachiyomi 时错误保留动态 containers；唯一修复 `3f9bdefdb` 改为依据实际选中的非空 Monet adapter，补充 dark AMOLED fallback 的 `0C/13/1B` production RED。唯一复审 APPROVED `0/0/0`，shared `26/26`、Android wiring `3/3`、provenance `6/6`、双端/consumer compile、Spotless、diff 与 11-Task guard 通过；累计严格为 `6 files/347 touched`，Task 11/Desktop 零 repair 差异。下一项为父 Task 5B / 子 Task 11。
 
 ### Task 11：Desktop 主题 adapter、外观 UI 与迁移
 
