@@ -67,7 +67,7 @@ status-source: this-file
 - [x] Task 7C：Desktop 标题 anchor 的 Security 页面
 - [x] Task 8A：Desktop 标题 anchor 的 About 页面
 - [x] Task 8B：Desktop LazyList anchor 核心与 ExtensionRepo 页面
-- [ ] Task 8C：Desktop 标题 anchor 的 Tracking 页面
+- [x] Task 8C：Desktop 标题 anchor 的 Tracking 页面
 - [ ] Task 9：共享主题模块、identity/default/codec 与 Android consumer
 - [ ] Task 10A：共享静态调色板第一批
 - [ ] Task 10B：共享静态调色板第二批
@@ -597,6 +597,8 @@ status-source: this-file
 1. RED：Tracking route/anchor identity、Lazy visible/highlight/one-shot 或 service/auth/auto-sync 行为断开时失败。
 2. GREEN：复用 8B LazyList host，不复制 owner/search；Catalog/Page 消费同一 MR。
 3. 运行 Tracking/catalog/navigation/Screen smoke/Spotless/range gate。
+
+**Review status（已完成）：** 实现 `9e90cc5c9` 让 Tracking 复用 8B 的 route-owned LazyList host，Catalog/Page 共享 auto-sync 与 Login MR identity。真实 Catalog→publish→replace→Tracking 跨 18 个未预组合服务滚动至首个 Login，验证 exact、首重复项、visible、唯一 highlight、wrong title/route 与 one-shot；真实点击 auto-sync Switch 将 production preference 由 `true` 写为 `false`，registry/OAuth/login/logout、bind/update/unbind、typed message/fallback 均保持。四项 mutation 精确 RED 后恢复。独立审查 APPROVED `0/0/0`，Tracking/设置回归 `115/115`、shared `7/7`、Spotless、diff 与 16-Task guard 通过；范围严格为 `4 files/212 touched`，8B 核心、计划外代码和用户脏文件零差异。下一项为父 Task 5B / 子 Task 9。
 
 ### Task 9：共享主题模块、identity/default/codec 与 Android consumer
 
