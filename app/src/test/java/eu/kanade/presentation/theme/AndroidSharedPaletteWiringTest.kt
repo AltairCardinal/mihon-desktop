@@ -1,19 +1,14 @@
 package eu.kanade.presentation.theme
 
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.ui.graphics.Color
 import eu.kanade.domain.ui.model.AppTheme
+import eu.kanade.presentation.theme.colorscheme.AppThemeColorScheme
 import eu.kanade.presentation.theme.colorscheme.BaseColorScheme
-import eu.kanade.presentation.theme.colorscheme.CatppuccinColorScheme
-import eu.kanade.presentation.theme.colorscheme.GreenAppleColorScheme
-import eu.kanade.presentation.theme.colorscheme.LavenderColorScheme
-import eu.kanade.presentation.theme.colorscheme.MidnightDuskColorScheme
-import eu.kanade.presentation.theme.colorscheme.MonochromeColorScheme
-import eu.kanade.presentation.theme.colorscheme.NordColorScheme
-import eu.kanade.presentation.theme.colorscheme.StrawberryColorScheme
-import eu.kanade.presentation.theme.colorscheme.TachiyomiColorScheme
-import eu.kanade.presentation.theme.colorscheme.TakoColorScheme
-import eu.kanade.presentation.theme.colorscheme.TealTurqoiseColorScheme
-import eu.kanade.presentation.theme.colorscheme.TidalWaveColorScheme
-import eu.kanade.presentation.theme.colorscheme.YotsubaColorScheme
+import eu.kanade.presentation.theme.colorscheme.MonetColorScheme
+import eu.kanade.presentation.theme.colorscheme.YinYangColorScheme
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -21,43 +16,46 @@ import org.junit.jupiter.api.Test
 class AndroidSharedPaletteWiringTest {
 
     @Test
-    fun `android theme map uses shared palette objects`() {
-        val field = Class.forName("eu.kanade.presentation.theme.TachiyomiThemeKt")
-            .getDeclaredField("colorSchemes")
-            .apply { isAccessible = true }
+    fun `android theme consumer delegates static selection to shared selector`() {
+        val selected = getThemeColorScheme(
+            appTheme = AppTheme.YINYANG,
+            isDark = false,
+            isAmoled = true,
+            monetColorScheme = { error("Static themes must not create the Android Monet adapter") },
+        )
 
-        @Suppress("UNCHECKED_CAST")
-        val palettes = field.get(null) as Map<AppTheme, BaseColorScheme>
+        assertSame(YinYangColorScheme.lightScheme, selected)
+    }
 
-        assertSame(TachiyomiColorScheme, palettes[AppTheme.DEFAULT])
-        assertSame(CatppuccinColorScheme, palettes[AppTheme.CATPPUCCIN])
-        assertSame(GreenAppleColorScheme, palettes[AppTheme.GREEN_APPLE])
-        assertSame(LavenderColorScheme, palettes[AppTheme.LAVENDER])
-        assertSame(MidnightDuskColorScheme, palettes[AppTheme.MIDNIGHT_DUSK])
-        assertSame(MonochromeColorScheme, palettes[AppTheme.MONOCHROME])
-        assertSame(NordColorScheme, palettes[AppTheme.NORD])
-        assertSame(StrawberryColorScheme, palettes[AppTheme.STRAWBERRY_DAIQUIRI])
-        assertSame(TakoColorScheme, palettes[AppTheme.TAKO])
-        assertSame(TealTurqoiseColorScheme, palettes[AppTheme.TEALTURQUOISE])
-        assertSame(TidalWaveColorScheme, palettes[AppTheme.TIDAL_WAVE])
-        assertSame(YotsubaColorScheme, palettes[AppTheme.YOTSUBA])
+    @Test
+    fun `android theme consumer injects Monet adapter result into shared selector`() {
+        val dynamic = object : BaseColorScheme() {
+            override val lightScheme = lightColorScheme(primary = Color.Red)
+            override val darkScheme = darkColorScheme(surfaceContainer = Color.Blue)
+        }
+        var creations = 0
+
+        val selected = getThemeColorScheme(
+            appTheme = AppTheme.MONET,
+            isDark = true,
+            isAmoled = true,
+            monetColorScheme = {
+                creations++
+                dynamic
+            },
+        )
+
+        assertEquals(1, creations)
+        assertEquals(Color.Black, selected.background)
+        assertEquals(dynamic.darkScheme.surfaceContainer, selected.surfaceContainer)
     }
 
     @Test
     fun `android palettes are loaded from shared module`() {
         assertSharedModuleOrigin(BaseColorScheme::class.java)
-        assertSharedModuleOrigin(CatppuccinColorScheme::class.java)
-        assertSharedModuleOrigin(TachiyomiColorScheme::class.java)
-        assertSharedModuleOrigin(GreenAppleColorScheme::class.java)
-        assertSharedModuleOrigin(LavenderColorScheme::class.java)
-        assertSharedModuleOrigin(MidnightDuskColorScheme::class.java)
-        assertSharedModuleOrigin(MonochromeColorScheme::class.java)
-        assertSharedModuleOrigin(NordColorScheme::class.java)
-        assertSharedModuleOrigin(StrawberryColorScheme::class.java)
-        assertSharedModuleOrigin(TakoColorScheme::class.java)
-        assertSharedModuleOrigin(TealTurqoiseColorScheme::class.java)
-        assertSharedModuleOrigin(TidalWaveColorScheme::class.java)
-        assertSharedModuleOrigin(YotsubaColorScheme::class.java)
+        assertSharedModuleOrigin(AppThemeColorScheme::class.java)
+        assertSharedModuleOrigin(YinYangColorScheme::class.java)
+        assertAndroidModuleOrigin(MonetColorScheme::class.java)
     }
 
     private fun assertSharedModuleOrigin(type: Class<*>) {
@@ -68,6 +66,17 @@ class AndroidSharedPaletteWiringTest {
         assertTrue(
             location.contains("/presentation-theme/"),
             "${type.name} was loaded from Android app output: $location",
+        )
+    }
+
+    private fun assertAndroidModuleOrigin(type: Class<*>) {
+        val codeSource = requireNotNull(type.protectionDomain?.codeSource) {
+            "${type.name} has no runtime code source"
+        }
+        val location = codeSource.location.toString().replace('\\', '/')
+        assertTrue(
+            location.contains("/app/"),
+            "${type.name} was not loaded from Android app output: $location",
         )
     }
 }

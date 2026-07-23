@@ -250,6 +250,26 @@ class SharedPaletteExactTest {
     }
 
     @Test
+    fun `yin yang palette matches fixed main tokens`() {
+        assertEquals(
+            "ffffffff,ff5a5a5a,ffffffff,ff000000,ffcecece,ffffffff,ff5a5a5a,ff717171," +
+                "ffe4e4e4,ff000000,ffffffff,ff00419e,ffd8e2ff,ff1e1e1e,ffe6e6e6,ff1e1e1e," +
+                "ffe6e6e6,ff313131,ffd1d1d1,ffffffff,ffe6e6e6,ff1e1e1e,fff2b8b5,ff601410," +
+                "ff8c1d18,fff9dedc,ff999999,ff49454f,ff000000,ff141218,ff3b383e,ff2a2a2a," +
+                "ff2d2d2d,ff313131,ff383838,ff3f3f3f",
+            YinYangColorScheme.darkScheme.exactTokenSnapshot(),
+        )
+        assertEquals(
+            "ff000000,ffffffff,ff000000,ffffffff,ffa6a6a6,ff000000,ffffffff,ffdddddd," +
+                "ff0c0c0c,ffffffff,ff000000,ffd8e2ff,ff001947,fffdfdfd,ff222222,fffdfdfd," +
+                "ff222222,ffe8e8e8,ff515151,ff000000,ff333333,fff4f4f4,ffb3261e,ffffffff," +
+                "fff9dedc,ff410e0b,ff838383,ffcac4d0,ff000000,ffded8e1,fffef7ff,ffcfcfcf," +
+                "ffdadada,ffe8e8e8,ffececec,ffefefef",
+            YinYangColorScheme.lightScheme.exactTokenSnapshot(),
+        )
+    }
+
+    @Test
     fun `base color scheme preserves light dark and amoled behavior`() {
         assertSame(
             TachiyomiColorScheme.lightScheme,
