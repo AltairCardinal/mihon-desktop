@@ -1,0 +1,406 @@
+---
+parent-roadmap: docs/superpowers/plans/2026-07-12-mihon-desktop-upstream-parity-roadmap-main-authority.md
+parent-task: 6
+task-base: 12a7445580123e719638830af587a8dfa41d4e0f
+original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
+status-source: this-file
+active-task: Task 1
+---
+
+# Mihon Desktop 最终 parity 审计实施计划
+
+> 本计划是父路线图 Task 6 的唯一活动执行入口。父 Task 6 在本计划全部完成前保持未勾选。
+
+## 目标与固定事实
+
+目标不是把现有阶段状态批量改名，而是让 64 项能力中的每一项最终都有可复核的固定原版 provenance、当前 Android consumer、Desktop consumer、shared 实现或合法平台 adapter、production protection test，以及唯一终态 `VERIFIED` 或有完整证据的 `EXEMPT`。
+
+本计划固定以下事实，后续执行不得以移动中的当前 `main` 覆盖：
+
+- 固定原版：`main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`。
+- 本计划基线：`12a7445580123e719638830af587a8dfa41d4e0f`。
+- manifest 恰有 64 项；当前只有 4 项终态：`VERIFIED` 为 90、91、94，`EXEMPT` 为 85。
+- 当前 31 项缺少固定原版 `upstreamRef` 或 `upstreamSymbols`：9、10、11、12、16、17、19、22、24、26、44、45、47、49、51、53、54、56、57、59、61、62、64、66、71、72、73、74、93、95、96。
+- `UNCLASSIFIED_DEBT` 为 3、4、32、39、69、70、87、88；`TEMP-COMPAT` 为 35、74、96。
+- 现有 parity contract 通过只证明阶段状态自洽，尚未提供“64 项只能是 `VERIFIED | EXEMPT`”的最终 closure gate。
+- `TEST_COVERAGE_REPORT.md` 位于仓库根目录；父计划写出的 `docs/automation/TEST_COVERAGE_REPORT.md` 不存在，不得创建同名影子权威。
+- 父 Task 0 等正文细项仍有未勾选项而总览已勾选；最终文档收口必须恢复 overview、正文和证据的一致性。
+- source/extension compat 已有真实 fixture 的逐符号 evidence；最终审计必须复用它，不能另造无 provenance 清单。
+
+## 执行规则
+
+1. 每一批开始时记录该批 `task-base`，先运行 `git diff 6fbf6dfca203d99d6dd32137f2df97ced40c81b8..<task-base> -- <相关路径>`，再用 `git show 6fbf...:<path>` 读取固定原版。
+2. provenance 必须区分 `FIXED_ORIGINAL`、`CURRENT_ANDROID`、`SHARED_OR_ADAPTER`、`DESKTOP_CONSUMER` 与 `FIXTURE`；固定原版符号记录准确行号，当前 consumer 记录文件与生产符号。当前 Android 测试和当前 shared 输出不能冒充固定原版证据。
+3. 每批最多处理 8 个 parity ID。状态只能在 production wiring、行为测试和角色证据同时成立后升级。
+4. `EXEMPT` 必须包含不可替代的 OS/平台能力证据、用户可见边界、失败反馈和保护测试；“尚未完成”或“环境暂不可用”不是豁免。
+5. 删除前必须先有 Desktop 独有行为回归；历史格式不得在没有兼容 fixture 时删除 reader/writer；跨平台 bugfix 和 Desktop 增强必须记录为 deviation，不能伪装成固定原版行为。
+6. 只读 inventory 若发现需要产品修改，不得在 inventory 提交中顺手修复。它必须按上下文簇创建有限 child plan，写明实际文件、TDD、用户入口/反馈、边界和验证，然后把本计划 `active-task` 指向该 child plan。没有真实产品缺口时不得创建空 child plan。
+7. 每个 Task 单独检查 `git status`、精确暂存、提交，并更新本计划 overview。不得纳入用户已有脏文件或构建产物。
+
+## Task 总览
+
+- [ ] Task 1：建立可独立触发的最终 closure RED gate
+- [ ] Task 2：补齐 provenance 批次 P1（9、10、11、12、16、17、19、22）
+- [ ] Task 3：补齐 provenance 批次 P2（24、26、44、45、47、49、51、53）
+- [ ] Task 4：补齐 provenance 批次 P3（54、56、57、59、61、62、64、66）
+- [ ] Task 5：补齐 provenance 批次 P4（71、72、73、74、93、95、96）
+- [ ] Task 6：核验状态批次 A（3、4、7、8、9、10、11、12）
+- [ ] Task 7：核验状态批次 B（16、17、19、22、24、26、28、29）
+- [ ] Task 8：核验状态批次 C（30、32、33、34、35、36、37、38）
+- [ ] Task 9：核验状态批次 D（39、40、43、44、45、47、49、51）
+- [ ] Task 10：核验状态批次 E（53、54、56、57、59、61、62、64）
+- [ ] Task 11：核验状态批次 F（66、67、68、69、70、71、72、73）
+- [ ] Task 12：核验状态批次 G（74、81、82、83、84、85、86、87）
+- [ ] Task 13：核验状态批次 H（88、90、91、92、93、94、95、96）
+- [ ] Task 14：逐项裁决 8 项 `UNCLASSIFIED_DEBT`
+- [ ] Task 15：完成候选平台能力与 `EXEMPT` 审查
+- [ ] Task 16：审计 `TEMP-COMPAT`、重复规则与架构边界
+- [ ] Task 17：执行并回收真实产品缺口 child plan
+- [ ] Task 18：让 64 项最终 closure 与架构 gate 变绿
+- [ ] Task 19：运行全量测试、Windows/macOS 构建与运行验收
+- [ ] Task 20：收口维护文档与父子 checkbox
+
+### Task 1：建立可独立触发的最终 closure RED gate
+
+**Risk axis:** final-closure-gate
+
+**Platform boundary:** verification
+
+**Estimated scope:** 4 files, 300 lines
+
+**Verification:** 默认 parity contract 保持 GREEN；显式 final-audit Gradle 入口因 60 项非终态而按正确原因 RED，并报告全部非终态 ID。
+
+**Files:**
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt`
+- Modify: `app-desktop/src/test/resources/parity/parity-manifest.json`
+- Modify: `app-desktop/build.gradle.kts`
+- Modify: `docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md`
+
+**Steps:**
+1. 为 manifest evidence 增加可表达固定原版符号与行号、当前 Android、shared/adapter、Desktop consumer、fixture/artifact 的结构；先让 4 个现有终态缺证据时精确失败，再补齐它们。
+2. 增加仅由显式 final-audit 入口启用的断言：恰有 64 个唯一 ID、每项终态只能是 `VERIFIED | EXEMPT`、终态 role evidence 完整、protection test 指向真实 production 链。
+3. 保持普通开发测试可运行；显式 final gate 在 Task 18 前预期 RED，不得用 `@Disabled`、吞异常或硬编码当前计数伪造通过。
+
+### Task 2：补齐 provenance 批次 P1（9、10、11、12、16、17、19、22）
+
+**Risk axis:** provenance-p1
+
+**Platform boundary:** verification
+
+**Estimated scope:** 3 files, 360 lines
+
+**Verification:** parity contract 与该批 protection tests GREEN；固定原版路径、符号、准确行号和当前三类 consumer 均可解析。
+
+**Files:**
+- Modify: `app-desktop/src/test/resources/parity/parity-manifest.json`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt`
+- Modify: `docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md`
+
+**Steps:**
+1. 对 8 项分别从固定 ref 取证，不得从当前 `app/` 反推原版。
+2. 记录固定原版符号/行号、当前 Android consumer、shared/adapter、Desktop consumer 和 fixture/test。
+3. 本 Task 只补 provenance；发现产品链缺失时记录到 Task 14/16 的 inventory 输入，不预判终态。
+
+### Task 3：补齐 provenance 批次 P2（24、26、44、45、47、49、51、53）
+
+**Risk axis:** provenance-p2
+
+**Platform boundary:** verification
+
+**Estimated scope:** 3 files, 360 lines
+
+**Verification:** parity contract 与相关 chapter/cover/reader protection tests GREEN；8 项角色证据均来自正确 authority。
+
+**Files:**
+- Modify: `app-desktop/src/test/resources/parity/parity-manifest.json`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt`
+- Modify: `docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md`
+
+**Steps:**
+1. 逐项取固定 ref 的章节、封面和 reader 符号及准确行号。
+2. 分开记录当前 Android reader consumer、shared contract 和 Desktop decoder/viewer/progress consumer。
+3. 相邻 portrait 配对等 fork 增强只记 deviation，不得写入 fixed-original role。
+
+### Task 4：补齐 provenance 批次 P3（54、56、57、59、61、62、64、66）
+
+**Risk axis:** provenance-p3
+
+**Platform boundary:** verification
+
+**Estimated scope:** 3 files, 360 lines
+
+**Verification:** parity contract 与下载、更新、历史、统计 protection tests GREEN；8 项固定原版和当前 consumer 角色完整。
+
+**Files:**
+- Modify: `app-desktop/src/test/resources/parity/parity-manifest.json`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt`
+- Modify: `docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md`
+
+**Steps:**
+1. 从固定 ref 取 reader navigation、download queue、自动下载、library update、updates/history/stats 证据。
+2. 对 ID56 明确比较固定原版 source 分组与当前 Desktop 分组；差异在状态核验前不得被文案掩盖。
+3. 当前 SQLDelight/shared 测试只证明 current wiring，另行绑定固定 fixture。
+
+### Task 5：补齐 provenance 批次 P4（71、72、73、74、93、95、96）
+
+**Risk axis:** provenance-p4
+
+**Platform boundary:** verification
+
+**Estimated scope:** 4 files, 380 lines
+
+**Verification:** parity contract、backup fixture contract 与 architecture guard GREEN；7 项不再使用 “fixed-main provenance pending”。
+
+**Files:**
+- Modify: `app-desktop/src/test/resources/parity/parity-manifest.json`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt`
+- Modify: `docs/desktop-parity/PARITY_TRACKER.md`
+- Modify: `docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md`
+
+**Steps:**
+1. 分开记录固定原版 backup 产物、当前 Android 历史产物和 Desktop 历史产物；当前分支生成的 fixture 不得冒充固定原版。
+2. 为高级维护、模块边界和兼容成本记录可验证的固定原版/当前职责，而不是抽象口号。
+3. 立即消除 tracker 对 71–74 与 manifest 的状态矛盾，但不提前升级终态。
+
+### Task 6：核验状态批次 A（3、4、7、8、9、10、11、12）
+
+**Risk axis:** status-a
+
+**Platform boundary:** verification
+
+**Estimated scope:** 4 files, 360 lines
+
+**Verification:** 8 项 production wiring/protection tests 与 parity contract GREEN；每个终态都有 role evidence，未闭合项保留准确 gap。
+
+**Steps:** 对每项执行 fixed-original → current Android → shared/adapter → Desktop production call path 核验；只有真实行为与失败路径被测试执行后才改为终态。
+
+### Task 7：核验状态批次 B（16、17、19、22、24、26、28、29）
+
+**Risk axis:** status-b
+
+**Platform boundary:** verification
+
+**Estimated scope:** 4 files, 360 lines
+
+**Verification:** library/detail/source focused tests 与 parity contract GREEN；8 项状态不由源码字符串扫描自证。
+
+**Steps:** 核验分类、筛选、批处理、收藏/分类、章节、封面、source membership 与单源浏览的真实 consumer。
+
+### Task 8：核验状态批次 C（30、32、33、34、35、36、37、38）
+
+**Risk axis:** status-c
+
+**Platform boundary:** verification
+
+**Estimated scope:** 4 files, 360 lines
+
+**Verification:** source/extension shared、Android、Desktop 与真实 compat fixture tests GREEN；8 项状态和 evidence 一致。
+
+**Steps:** 复用既有逐符号 compat evidence；ID35 在 Task 16 前不得删除仍被真实扩展 fixture 触达的 shim。
+
+### Task 9：核验状态批次 D（39、40、43、44、45、47、49、51）
+
+**Risk axis:** status-d
+
+**Platform boundary:** verification
+
+**Estimated scope:** 4 files, 360 lines
+
+**Verification:** login/Cloudflare/reader focused tests 与 parity contract GREEN；固定 reader 默认和 Desktop 增强清楚分层。
+
+**Steps:** 核验浏览器登录/挑战恢复和 reader 解码、预载、过渡、导航、色彩链；平台 IO 只作为 adapter。
+
+### Task 10：核验状态批次 E（53、54、56、57、59、61、62、64）
+
+**Risk axis:** status-e
+
+**Platform boundary:** verification
+
+**Estimated scope:** 4 files, 360 lines
+
+**Verification:** reader-progress/download/update/history focused tests 与 parity contract GREEN；ID56 分组差异没有被错误升级。
+
+**Steps:** 核验 progress transaction、chapter navigation、队列/并发/自动下载、library update、updates/history；若 ID56 仍有语义差异，输出实际 gap 给 Task 14。
+
+### Task 11：核验状态批次 F（66、67、68、69、70、71、72、73）
+
+**Risk axis:** status-f
+
+**Platform boundary:** verification
+
+**Estimated scope:** 4 files, 380 lines
+
+**Verification:** stats/migration/tracking/backup focused tests 与 parity contract GREEN；当前 reliability 增强不冒充 fixed-main。
+
+**Steps:** 核验统计、单/批迁移、tracker provider/sync、手动备份/恢复/自动备份；69/70 的 fixed-main 缺口逐字写入 Task 14 输入。
+
+### Task 12：核验状态批次 G（74、81、82、83、84、85、86、87）
+
+**Risk axis:** status-g
+
+**Platform boundary:** verification
+
+**Estimated scope:** 4 files, 380 lines
+
+**Verification:** backup compatibility、platform integration、i18n focused tests 与 parity contract GREEN；ID85 豁免证据仍成立。
+
+**Steps:** 核验跨端备份、URI、分享、锁、屏幕隐私、Widget 豁免、更新、i18n；候选 OS 结论留给 Task 15。
+
+### Task 13：核验状态批次 H（88、90、91、92、93、94、95、96）
+
+**Risk axis:** status-h
+
+**Platform boundary:** verification
+
+**Estimated scope:** 4 files, 380 lines
+
+**Verification:** settings/accessibility/maintenance/architecture focused tests 与 parity contract GREEN；已终态 90/91/94 不回退。
+
+**Steps:** 复核 88 的真实共享边界、92 的 Unsupported 子能力反馈、93/95/96 的 production/architecture evidence。
+
+> Tasks 6–13 共用文件边界：只修改 manifest、parity contract、本计划和至多一个该批现有 protection test；不得把多批产品修复混入状态提交。
+
+### Task 14：逐项裁决 8 项 `UNCLASSIFIED_DEBT`
+
+**Risk axis:** unclassified-debt
+
+**Platform boundary:** verification
+
+**Estimated scope:** 4 files, 400 lines
+
+**Verification:** 3、4、32、39、69、70、87、88 每项都有 `reuse | extract | adapter | deviation | exempt` 唯一决策、真实 call path 和保护证据；无 “待以后处理” 空结论。
+
+**Files:**
+- Modify: `app-desktop/src/test/resources/parity/parity-manifest.json`
+- Modify: `docs/desktop-parity/PARITY_TRACKER.md`
+- Modify: `docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md`
+- Create if needed: `docs/superpowers/plans/<date>-mihon-desktop-final-parity-<context-cluster>.md`
+
+**Steps:**
+1. 逐项决定能否直接复用、是否应抽共享能力、是否只需平台 adapter，以及用户入口/反馈是否完整。
+2. 已有证据足够则删除 `UNCLASSIFIED_DEBT` 并给出终态；需要产品改动时按上下文簇创建有限 child plan，不在本 Task 顺手改代码。
+3. child plan 必须固定原版 ref，列真实文件和 TDD，单 Task 不超过 8 files/400 lines，并更新本计划 resume 入口。
+
+### Task 15：完成候选平台能力与 `EXEMPT` 审查
+
+**Risk axis:** platform-terminal-evidence
+
+**Platform boundary:** verification
+
+**Estimated scope:** 5 files, 400 lines
+
+**Verification:** 81、82、83、84、85、86、92 全部获得可重复 OS/产物证据后成为 `VERIFIED` 或严格 `EXEMPT`；显式 platform-evidence contract GREEN。
+
+**Steps:**
+1. 复用既有 Windows/macOS/Linux 能力报告，但对当前构建重新验证真实 production adapter、用户反馈与失败状态。
+2. `CANDIDATE` 不能直接改名；无法提供真实 OS 能力时，只能在能力本质不可用且 UI 诚实反馈时 `EXEMPT`。
+3. 需要产品修复时输出有限 platform child plan；环境暂缺只记录验证阻塞，不伪造豁免。
+
+### Task 16：审计 `TEMP-COMPAT`、重复规则与架构边界
+
+**Risk axis:** duplicate-compat-architecture
+
+**Platform boundary:** verification
+
+**Estimated scope:** 6 files, 400 lines
+
+**Verification:** 35、74、96 有逐符号调用/evidence/removal-condition；UI→data/network/manager 架构守卫执行真实 production 依赖；无证据 shim、旧 writer 和重复规则均有明确删除 child plan。
+
+**Steps:**
+1. 对 source/extension compat 复用真实 fixture evidence，删除条件按符号判断，不能按目录一刀切。
+2. 对 backup reader/writer 先跑固定原版、当前 Android、Desktop 历史 fixture；没有 backward compatibility 前不得切 writer 或删 reader。
+3. 审计重复状态机/规则与 UI 直连；源码文本和行数基线不能替代依赖/行为守卫。
+4. 只读 inventory 输出按上下文簇拆分的有限 child plan；保护 Desktop 独有能力和已记录 cross-platform bugfix。
+
+### Task 17：执行并回收真实产品缺口 child plan
+
+**Risk axis:** child-plan-return-gate
+
+**Platform boundary:** verification
+
+**Estimated scope:** 2 files, 160 lines
+
+**Verification:** Tasks 14–16 生成的每个 child plan 均完成其 focused tests、唯一审查、范围门禁和提交；未生成 child plan 的项目有明确“现有 production evidence 足够”结论。
+
+**Steps:** 按 child plan 顺序执行；每次完成后回到本计划更新 status 与 evidence。任何 child plan 未完成时不得进入 Task 18。
+
+### Task 18：让 64 项最终 closure 与架构 gate 变绿
+
+**Risk axis:** terminal-parity-gate
+
+**Platform boundary:** verification
+
+**Estimated scope:** 5 files, 360 lines
+
+**Verification:** 显式 final-audit Gradle 入口 GREEN，精确断言 64/64 为 `VERIFIED | EXEMPT`、角色证据完整、无 `UNCLASSIFIED_DEBT`/`TEMP-COMPAT`、架构守卫 GREEN。
+
+**Steps:**
+1. 逐项确认终态，不得批量替换状态字符串。
+2. 收紧 contract：终态、固定 ref、准确行号、当前 Android/Desktop/shared-or-adapter、fixture/protection test、EXEMPT evidence 均为强制。
+3. 将 final parity gate 接入明确的 Gradle lifecycle 入口，不用普通 compile 成功替代。
+
+### Task 19：运行全量测试、Windows/macOS 构建与运行验收
+
+**Risk axis:** final-runtime-validation
+
+**Platform boundary:** verification
+
+**Estimated scope:** 3 files, 300 lines
+
+**Verification:** Spotless、相关 shared/Android、`:app-desktop:jvmTest`、`:test-desktop:test`、Desktop smoke、final parity gate 全绿；Windows/macOS 使用构建脚本产出同一版本并运行验收，Linux 边界诚实记录。
+
+**Files:**
+- Create: `docs/superpowers/reports/2026-07-23-mihon-desktop-final-parity-verify.md`
+- Modify: `app-desktop/src/test/resources/parity/parity-manifest.json`
+- Modify: `docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md`
+
+**Steps:**
+1. 串行运行 `./gradlew spotlessCheck`、相关 shared/Android 契约、`:app-desktop:jvmTest`、`:test-desktop:test` 与 final parity gate。
+2. 运行 `./scripts/desktop-smoke-test.sh`。
+3. Desktop 迭代只能用 `./scripts/build-desktop.sh` 构建；启动固定未打包 Windows EXE，核对版本和核心用户路径。
+4. 在 macOS 使用同一提交和构建脚本验收 app bundle；Linux/WSL 无真实环境时只记录边界，不外推。
+5. 报告真实命令、测试数、失败/跳过、版本、绝对产物路径、EXEMPT、deviation 和环境限制。
+
+### Task 20：收口维护文档与父子 checkbox
+
+**Risk axis:** final-doc-authority
+
+**Platform boundary:** docs
+
+**Estimated scope:** 6 files, 400 lines
+
+**Verification:** 两份计划 guard、final parity gate、文档路径/状态一致性检查和 `git diff --check` GREEN；父 Task 6 仅在全部证据成立后勾选。
+
+**Files:**
+- Modify: `docs/desktop-parity/PARITY_TRACKER.md`
+- Modify: `docs/MIHON_ANDROID_DESKTOP_FEATURE_IMPLEMENTATION_COMPARISON.md`
+- Modify: `TEST_COVERAGE_REPORT.md`
+- Modify: `docs/automation/TASK_TRACKER.md`
+- Modify: `docs/superpowers/plans/2026-07-12-mihon-desktop-upstream-parity-roadmap-main-authority.md`
+- Modify: `docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md`
+
+**Steps:**
+1. tracker 保持治理说明和由 manifest 导出的终态摘要，不复制第二份 64 项权威表。
+2. 比较报告只写 fixed-original、intentional cross-platform bugfix、Desktop product deviation 或有证据 EXEMPT。
+3. 更新根目录 coverage report 与 automation tracker，删除已关闭 gap，保留真实剩余边界。
+4. 对齐父 overview、Task 0 正文细项、Task 6 正文与 child overview；全部完成后才勾父 Task 6，并将 `active-child-plan` 设为 `none`。
+5. 运行：
+   - `bash scripts/comet-project-guard.sh plan docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md`
+   - `bash scripts/comet-project-guard.sh plan docs/superpowers/plans/2026-07-12-mihon-desktop-upstream-parity-roadmap-main-authority.md`
+   - `git diff --check`
+
+## 任务交付物与过程产物
+
+任务交付物：
+
+- 64/64 terminal manifest 与可执行 final gate；
+- 清晰分层的 fixed original / current Android / shared-or-adapter / Desktop evidence；
+- 删除或有证据保留的兼容层、重复规则与平台豁免；
+- 可维护的 comparison、coverage、automation、tracker 和父路线图状态；
+- Windows/macOS 当前提交的真实构建与运行验收。
+
+过程产物仅限：
+
+- 本 child plan；
+- 必要时由 Tasks 14–16 产生的有限、按上下文簇拆分的产品 child plan；
+- 一份最终验证报告。不得创建逐项快照、第二份 manifest 或巨型 diff 包。
