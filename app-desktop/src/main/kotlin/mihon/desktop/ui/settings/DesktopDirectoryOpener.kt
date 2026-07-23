@@ -17,6 +17,9 @@ object DesktopDirectoryOpener {
     }
 
     private fun openWithSystemFileManager(directory: File) {
+        check(System.getProperty("org.gradle.test.worker") == null) {
+            "System file manager is disabled in Gradle test workers"
+        }
         check(Desktop.isDesktopSupported()) { "Desktop API is not supported" }
         Desktop.getDesktop().open(directory)
     }
