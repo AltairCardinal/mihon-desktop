@@ -89,7 +89,7 @@ status-source: this-file
 - [x] Task 18F：Desktop Tracking service-action state matrix
 - [x] Task 18G：Desktop Tracking login dialog keyboard accessibility
 - [x] Task 18H：Desktop Tracking logout/unbind dialog keyboard accessibility
-- [ ] Task 19：IDs 88/90/91/94 exact parity evidence
+- [x] Task 19：IDs 88/90/91/94 exact parity evidence
 - [ ] Task 20：whole-change 审查与三平台 verify
 
 ## 全局门禁
@@ -1007,6 +1007,8 @@ status-source: this-file
 1. RED：删除/交换任一 ID 的 fixed-main symbol、shared/current consumer或行为方法时失败。
 2. GREEN：真实 capability完成后才更新状态；ID88不虚构页面，ID94不以generator自测冒充UI。
 3. 运行 exact contract、绑定 behavior smoke、JSON/Spotless/range gate。
+
+**Review status（已完成）：** 实现 `91e584903e` 将 17 条 fixed-main path/symbol/blob 按 capability ownership 绑定到 IDs 88/90/91/94，并锁定 exact shared/current Android/Desktop adapter/protection 方法集合；跨 ID symbol/authority/method/protection、inventory path/ownership/blob mutation 均精确失败。ID88 仅为 `CHARACTERIZED` 并机器可见记录无 commonMain primitive/跨端 shared consumer 的剩余债务；90/91/94 为 `VERIFIED`，91 保留 Desktop grid，94 使用真实 production DI 执行 About→LicenseList→LicenseDetail 而非 generator 自测，updater/诊断未降级。独立审查 APPROVED `0/0/0`：17/17 blob、严格 JSON、exact/full contract、四 ID behavior smoke `54/54`、Android consumer `5/5`、compile/Spotless 均通过；范围 `3 files/269 touched`，外部副作用为 0。下一项为父 Task 5B / 子 Task 20。
 
 ### Task 20：whole-change 审查与三平台 verify
 
