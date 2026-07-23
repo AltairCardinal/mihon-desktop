@@ -86,7 +86,8 @@ status-source: this-file
 - [x] Task 18C：Desktop ExtensionRepo physical-key coverage
 - [x] Task 18D：Desktop ExtensionRepo async test stabilization
 - [ ] Task 18E：Desktop Tracking accessibility
-- [ ] Task 18F：Desktop Tracking dialog keyboard accessibility
+- [ ] Task 18F：Desktop Tracking service-action state matrix
+- [ ] Task 18G：Desktop Tracking dialog keyboard accessibility
 - [ ] Task 19：IDs 88/90/91/94 exact parity evidence
 - [ ] Task 20：whole-change 审查与三平台 verify
 
@@ -932,7 +933,25 @@ status-source: this-file
 2. GREEN：整行不再复制 trailing action，source-managed/unsupported 诚实禁用；password/API key 复用正式敏感字段，保留 registry/auth/model、typed-message、同步与服务独有行为。
 3. 运行 Tracking production wiring、LazyList anchor、semantics、identity、Spotless 与 range gate。
 
-### Task 18F：Desktop Tracking dialog keyboard accessibility
+**Review status（未完成，已重规划）：** 实现 `3c8b5164d0` 完成 Tracking 服务行整行单 action、source-managed/unavailable 诚实禁用及 username/password/API key identity；首审 `0/1/0` 发现真实 Screen 测试未锁定 action 的 `Role.Button` 与服务名/trailing 文案同属 clickable 子树。唯一修复 `87c674fab3` 在累计硬上限 `2 files/220 touched` 内补齐唯一 action、`Role.Button` 与未登录 `Login` 子树合同，精确 Role mutation RED，focused `1/1`、相关回归 `46/46`、compile/Spotless 通过且外部副作用为 0；唯一复审仍以 `0/1/0` 拒绝，因为设置页已登录 `Logout` 与漫画页已登录 `Manage` 两种 production 状态尚无同类子树证据。按门禁停止第二修复，production 保持当前正确 wiring，新增 test-only 18F 关闭三状态矩阵；18F 通过后同时勾选 18E/18F。
+
+### Task 18F：Desktop Tracking service-action state matrix
+
+**Risk axis:** settings-accessibility-tracking-actions
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 1 files, 120 lines
+
+**Verification:** Tracking Login/Logout/Manage 三种真实服务状态的唯一 Button action、服务名与 trailing 文案同一 clickable 子树
+
+**Files:** tracking accessibility test。
+
+1. RED：任一 Login/Logout/Manage trailing 文案脱离整行 clickable 子树、Role 不为 Button 或出现重复 OnClick 时失败。
+2. GREEN：仅扩展真实 `TrackingSettingsScreen` 状态 fixture 与可复用断言，不增加 production seam，不点击认证动作，不触发 URL/OAuth/浏览器/网络。
+3. 运行 focused 三状态 semantics、Tracking production wiring、compile、Spotless 与 range gate；通过独立审查后同时勾选 18E/18F。
+
+### Task 18G：Desktop Tracking dialog keyboard accessibility
 
 **Risk axis:** settings-accessibility-tracking-dialogs
 
