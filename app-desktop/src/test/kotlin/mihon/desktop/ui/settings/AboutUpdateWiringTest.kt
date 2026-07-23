@@ -4,6 +4,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -28,7 +30,9 @@ import kotlinx.coroutines.withTimeout
 import mihon.desktop.APP_VERSION
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.di.initDesktopDIForTest
 import mihon.desktop.extension.DesktopExtensionManager
+import mihon.desktop.license.DependencyNoticeProvider
 import mihon.desktop.platform.DesktopPlatformPaths
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.update.*
@@ -46,6 +50,10 @@ import tachiyomi.domain.release.model.ReleaseTarget
 import tachiyomi.domain.release.model.ReleaseVariant
 import tachiyomi.domain.release.model.Release
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import tachiyomi.core.common.preference.DesktopPreferenceStore
+import mihon.domain.license.model.DependencyNotice
+import mihon.domain.license.model.LicenseNoticeFailureReason
+import mihon.domain.license.model.LicenseNoticeResult
 import tachiyomi.i18n.MR
 import java.nio.file.Files
 import java.nio.file.Path
@@ -57,6 +65,103 @@ import java.util.concurrent.CountDownLatch
 @OptIn(ExperimentalComposeUiApi::class)
 @Isolated
 class AboutUpdateWiringTest {
+    @Test
+    fun `about routes real injected dependency notices to their first license content`(@TempDir tempDir: Path) = runBlocking {
+        val context = initDesktopDIForTest(tempDir.toFile(), DesktopPreferenceStore())
+        val dependencies = DesktopUiDependencies.fromInjekt()
+        val notices = (dependencies.dependencyNoticeProvider.getNotices() as LicenseNoticeResult.Success).notices
+        val coroutinesIndex = notices.indexOfFirst { "kotlinx-coroutines-core" in it.name }
+        val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
+        lateinit var navigator: Navigator
+        try {
+            assertEquals(192, notices.size)
+            assertTrue(coroutinesIndex >= 0)
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    Navigator(AboutScreen(DesktopPlatformPaths.resolve("Linux", tempDir.toString(), emptyMap()))) { nav ->
+                        navigator = nav
+                        CurrentScreen()
+                    }
+                }
+            }
+            render(scene)
+            click(scene, MR.strings.licenses.localized())
+            render(scene)
+            assertTrue(navigator.lastItem is LicenseListScreen)
+
+            val list = nodes(scene, true).single { it.config.contains(SemanticsActions.ScrollToIndex) }
+            assertTrue(requireNotNull(list.config[SemanticsActions.ScrollToIndex].action).invoke(coroutinesIndex))
+            render(scene)
+            click(scene, notices[coroutinesIndex].name)
+            render(scene)
+
+            val detail = navigator.lastItem as LicenseDetailScreen
+            assertEquals(notices[coroutinesIndex].name, detail.name)
+            assertEquals(notices[coroutinesIndex].license, detail.license)
+            assertTrue(requireNotNull(detail.license) in texts(scene))
+        } finally {
+            scene.close()
+            context.closeAndJoin()
+        }
+    }
+
+    @Test
+    fun `license UI uses URI adapter and gives honest localized failure feedback`() = runBlocking {
+        val notice = DependencyNotice("Website dependency", "https://example.com/library", "Full license content")
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true)
+        every { dependencies.dependencyNoticeProvider } returns
+            DependencyNoticeProvider { LicenseNoticeResult.Success(listOf(notice)) }
+        val opened = mutableListOf<String>()
+        val uriHandler = object : UriHandler {
+            override fun openUri(uri: String) {
+                opened += uri
+            }
+        }
+        val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
+        lateinit var navigator: Navigator
+        val previousLocale = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale.US)
+            scene.setContent {
+                CompositionLocalProvider(
+                    LocalDesktopUiDependencies provides dependencies,
+                    LocalUriHandler provides uriHandler,
+                ) {
+                    Navigator(LicenseListScreen()) { nav ->
+                        navigator = nav
+                        CurrentScreen()
+                    }
+                }
+            }
+            render(scene)
+            click(scene, notice.name)
+            render(scene)
+            assertTrue(notice.license in texts(scene))
+            click(scene, MR.strings.website.localized())
+            assertEquals(listOf(notice.website), opened)
+
+            listOf(Locale.US, Locale.SIMPLIFIED_CHINESE).forEach { locale ->
+                Locale.setDefault(locale)
+                listOf<String?>(null, "  ").forEach { missingLicense ->
+                    navigator.replace(LicenseDetailScreen("Missing content", "  ", missingLicense))
+                    render(scene)
+                    assertTrue(MR.strings.desktop_license_content_unavailable.localized(locale) in texts(scene))
+                    assertFalse(MR.strings.website.localized(locale) in texts(scene))
+                }
+
+                every { dependencies.dependencyNoticeProvider } returns DependencyNoticeProvider {
+                    LicenseNoticeResult.Failure(LicenseNoticeFailureReason.MALFORMED_METADATA)
+                }
+                navigator.replace(LicenseListScreen())
+                render(scene)
+                assertTrue(MR.strings.desktop_license_notices_unavailable.localized(locale) in texts(scene))
+            }
+        } finally {
+            Locale.setDefault(previousLocale)
+            scene.close()
+        }
+    }
+
     @Test
     fun `catalog result anchors once and preserves diagnostics action and ordering`(@TempDir tempDir: Path) = runBlocking {
         val paths = DesktopPlatformPaths.resolve("Linux", tempDir.toString(), emptyMap())

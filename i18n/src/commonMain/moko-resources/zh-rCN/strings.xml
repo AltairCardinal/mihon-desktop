@@ -1096,6 +1096,8 @@
     <string name="desktop_about_unknown">未知</string>
     <string name="desktop_about_info_row">%1$s：%2$s</string>
     <string name="desktop_about_version_value">%1$s：%2$s</string>
+    <string name="desktop_license_notices_unavailable">无法读取依赖项许可证信息。</string>
+    <string name="desktop_license_content_unavailable">无许可证内容。</string>
     <string name="desktop_update_idle">检查是否有较新的 Mihon Desktop 版本</string>
     <string name="desktop_update_checking">正在检查更新…</string>
     <string name="desktop_update_available">可更新至 %1$s</string>

@@ -37,6 +37,8 @@ import mihon.desktop.ui.settings.DownloadSettingsScreen
 import mihon.desktop.ui.settings.ExtensionRepoScreen
 import mihon.desktop.ui.settings.GeneralSettingsScreen
 import mihon.desktop.ui.settings.LibrarySettingsScreen
+import mihon.desktop.ui.settings.LicenseDetailScreen
+import mihon.desktop.ui.settings.LicenseListScreen
 import mihon.desktop.ui.settings.MoreRootScreen
 import mihon.desktop.ui.settings.ReaderSettingsScreen
 import mihon.desktop.ui.settings.SecuritySettingsScreen
@@ -253,6 +255,18 @@ class ScreenInstantiationSmokeTest {
 
     @Test fun `AboutScreen is Screen`() {
         val s = AboutScreen()
+        assert(s is Screen)
+        assert(s !is Tab)
+    }
+
+    @Test fun `LicenseListScreen is Screen`() {
+        val s = LicenseListScreen()
+        assert(s is Screen)
+        assert(s !is Tab)
+    }
+
+    @Test fun `LicenseDetailScreen is Screen`() {
+        val s = LicenseDetailScreen("Library", "https://example.com", "License content")
         assert(s is Screen)
         assert(s !is Tab)
     }

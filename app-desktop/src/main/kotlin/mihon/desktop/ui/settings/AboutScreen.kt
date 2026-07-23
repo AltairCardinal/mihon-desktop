@@ -40,6 +40,10 @@ import java.util.Locale
 
 class AboutScreen(internal val platformPaths: DesktopPlatformPaths = DesktopPlatformPaths.current()) : Screen {
 
+    internal fun onLicenses(navigator: cafe.adriel.voyager.navigator.Navigator) {
+        navigator.push(licenseListDestination())
+    }
+
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     override fun Content() {
@@ -103,6 +107,9 @@ class AboutScreen(internal val platformPaths: DesktopPlatformPaths = DesktopPlat
                     color = MaterialTheme.colorScheme.primary,
                 )
                 InfoRow(label = MR.strings.website.localized(), value = "https://github.com/mihonapp/mihon")
+                Button(onClick = { onLicenses(navigator) }) {
+                    Text(MR.strings.licenses.localized())
+                }
 
                 Spacer(modifier = Modifier.height(24.dp))
                 HorizontalDivider()

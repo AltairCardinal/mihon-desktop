@@ -1280,6 +1280,8 @@
     <string name="desktop_about_unknown">Unknown</string>
     <string name="desktop_about_info_row">%1$s: %2$s</string>
     <string name="desktop_about_version_value">%1$s %2$s</string>
+    <string name="desktop_license_notices_unavailable">Dependency license information is unavailable.</string>
+    <string name="desktop_license_content_unavailable">No license content is available.</string>
     <string name="desktop_update_idle">Check whether a newer Mihon Desktop release is available</string>
     <string name="desktop_update_checking">Checking for updates…</string>
     <string name="desktop_update_available">%1$s is available</string>

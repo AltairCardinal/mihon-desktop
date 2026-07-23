@@ -5,8 +5,13 @@ import cafe.adriel.voyager.navigator.tab.Tab
 import mihon.desktop.ui.settings.AboutScreen
 import mihon.desktop.ui.settings.AppearanceSettingsScreen
 import mihon.desktop.ui.settings.LibrarySettingsScreen
+import mihon.desktop.ui.settings.LicenseDetailScreen
+import mihon.desktop.ui.settings.LicenseListScreen
 import mihon.desktop.ui.settings.MoreRootScreen
 import mihon.desktop.ui.settings.ReaderSettingsScreen
+import mihon.desktop.ui.settings.licenseDetailDestination
+import mihon.desktop.ui.settings.licenseListDestination
+import mihon.domain.license.model.DependencyNotice
 import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -51,6 +56,20 @@ class PhaseFNavigationContractTest {
     }
 
     @Test
+    fun `license destinations are Screens not Tabs and preserve detail arguments`() {
+        val notice = DependencyNotice("Library", "https://example.com", "License content")
+        val list = licenseListDestination()
+        val detail = licenseDetailDestination(notice)
+
+        assertTrue(list is Screen)
+        assertFalse(list is Tab)
+        assertTrue(detail is Screen)
+        assertFalse(detail is Tab)
+        assertTrue(detail is LicenseDetailScreen)
+        assertTrue(detail.name == notice.name && detail.website == notice.website && detail.license == notice.license)
+    }
+
+    @Test
     fun `all settings screens can be instantiated without DI`() {
         assertDoesNotThrow {
             MoreRootScreen()
@@ -58,6 +77,8 @@ class PhaseFNavigationContractTest {
             ReaderSettingsScreen()
             LibrarySettingsScreen()
             AboutScreen()
+            LicenseListScreen()
+            LicenseDetailScreen("Library", null, null)
         }
     }
 }
