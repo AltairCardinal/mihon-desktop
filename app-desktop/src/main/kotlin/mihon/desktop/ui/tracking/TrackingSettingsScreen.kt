@@ -54,7 +54,9 @@ import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.tracking.DesktopAuthenticatingTrackerService
 import mihon.desktop.ui.security.DesktopPasswordField
 import mihon.desktop.ui.settings.DesktopSettingsAnchorResources
+import mihon.desktop.ui.settings.DesktopSettingsButton
 import mihon.desktop.ui.settings.DesktopSettingsLazyAnchor
+import mihon.desktop.ui.settings.DesktopSettingsTextButton
 import mihon.desktop.ui.settings.SwitchSettingsItem
 import mihon.desktop.ui.settings.desktopSettingsAction
 import mihon.desktop.ui.settings.desktopSettingsAnchor
@@ -376,6 +378,8 @@ private fun LoginDialog(
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     val method = service.profile.value.authentication
+    val credentialsValid = method == TrackerAuthentication.OAUTH ||
+        password.isNotBlank() && (method != TrackerAuthentication.USERNAME_PASSWORD || username.isNotBlank())
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(MR.strings.login_title.localized(Locale.getDefault(), service.profile.value.name)) },
@@ -393,8 +397,8 @@ private fun LoginDialog(
             }
         },
         confirmButton = {
-            Button(
-                enabled = authenticating != null,
+            DesktopSettingsButton(
+                enabled = authenticating != null && credentialsValid,
                 onClick = {
                     onRun {
                         when (method) {
@@ -406,7 +410,7 @@ private fun LoginDialog(
                 },
             ) { Text(MR.strings.login.localized()) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) } },
+        dismissButton = { DesktopSettingsTextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) } },
     )
 }
 
