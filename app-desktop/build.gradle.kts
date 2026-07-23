@@ -163,6 +163,7 @@ tasks.withType<Test> {
         testTempDir.mkdirs()
     }
     systemProperty("java.io.tmpdir", testTempDir.absolutePath)
+    systemProperty("java.awt.headless", "true")
     if (includeLiveNetworkTests) {
         val proxyHost = providers.environmentVariable("MIHON_LIVE_PROXY_HOST").getOrElse("127.0.0.1")
         val proxyPort = providers.environmentVariable("MIHON_LIVE_PROXY_PORT").getOrElse("10808")

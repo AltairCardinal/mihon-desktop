@@ -21,6 +21,7 @@ class DesktopDirectoryOpenerTest {
     @Test
     fun `default launcher is blocked inside a Gradle test worker`() {
         assertNotNull(System.getProperty("org.gradle.test.worker"))
+        assertEquals("true", System.getProperty("java.awt.headless"))
         val target = File(tempDir, "logs")
         val desktop = mockk<Desktop>(relaxed = true)
         mockkStatic(Desktop::class)
