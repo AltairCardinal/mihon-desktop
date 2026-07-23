@@ -1065,6 +1065,22 @@ status-source: this-file
 2. GREEN：只调整测试 helper 的有界启动等待，不改变 updater production timeout、取消、强制终止或 reader 清理合同；不得改生产代码或以无限等待掩盖启动失败。
 3. 运行两个直接消费 helper 的 focused 测试类、Spotless、diff/range/guard；独立审查通过后再恢复 Task 20 full-tests。
 
+### Task 20D：Desktop 测试进程外部目录动作隔离
+
+**Risk axis:** desktop-test-directory-isolation
+
+**Platform boundary:** desktop
+
+**Estimated scope:** 2 files, 80 lines
+
+**Verification:** DesktopDirectoryOpener focused、Desktop compile、Spotless、diff/range/guard
+
+**Files:** `app-desktop/src/main/kotlin/mihon/desktop/ui/settings/DesktopDirectoryOpener.kt`、`app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopDirectoryOpenerTest.kt`
+
+1. RED：新增测试锁定 Gradle test worker 中默认目录 opener 不得调用真实系统 launcher，同时保留显式注入 fake launcher 的目录创建、成功与失败合同。
+2. GREEN：只在 Gradle test worker 边界阻止默认 `Desktop.open`；正常 Desktop 运行时与显式注入 launcher 的测试行为不变，不按路径名猜测或仅屏蔽 `test-tmp`。
+3. 运行 opener focused、Desktop compile、Spotless、diff/range/guard；独立审查通过前不恢复 Desktop full-tests。
+
 ### Task 20：whole-change 审查与三平台 verify
 
 **Risk axis:** settings-change-verify
