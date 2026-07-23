@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 6
+active-task: Task 7
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -45,7 +45,7 @@ active-task: Task 6
 - [x] Task 3：补齐 provenance 批次 P2（24、26、44、45、47、49、51、53）
 - [x] Task 4：补齐 provenance 批次 P3（54、56、57、59、61、62、64、66）
 - [x] Task 5：补齐 provenance 批次 P4（71、72、73、74、93、95、96）
-- [ ] Task 6：核验状态批次 A（3、4、7、8、9、10、11、12）
+- [x] Task 6：核验状态批次 A（3、4、7、8、9、10、11、12）
 - [ ] Task 7：核验状态批次 B（16、17、19、22、24、26、28、29）
 - [ ] Task 8：核验状态批次 C（30、32、33、34、35、36、37、38）
 - [ ] Task 9：核验状态批次 D（39、40、43、44、45、47、49、51）
@@ -208,9 +208,9 @@ active-task: Task 6
 
 **Scope correction:** 独立审查要求加入 `behaviorMethods ⊆ protectionTests` mutation guard，并准确解析父子计划 YAML frontmatter 与产品文件范围；文件数仍为 4，触达上限修正为 400 行。
 
-**Audit evidence（Task 6A 已回收，等待父状态裁决）：** 基线 `0cec5ed06a96dde60e63a9c882a42c9cbbaf1ba4`。逐项 production 行为核验后，仅 ID 9 同时具备固定原版、当前 Android、shared decoder、Desktop Skia consumer、真实成功/失败 fixture 与 protection tests，状态可从 `WIRED` 提升为 `VERIFIED`。ID 3/4 的未分类架构债务交给 Task 14；ID 8 的 network/manager wiring gap 已由 Task 16C 接收；ID 10 的 Android/Desktop 重复任务规则交给 Task 16B；ID 11 保留 native delivery success 与 Android shared-event consumption gap，交给 Task 17。ID 7 缺当前 Android PreferenceStore adapter 的真实行为契约，保持 `WIRED`。ID 12 的 [Task 6A child plan](2026-07-24-task-6a-desktop-crash-log-failure-boundary.md) 已用真实不可写路径修复并保护 crash persistence failure boundary，控制权恢复到 `active-task: Task 6`；本 Task 仍保持未勾选，由父审计重新裁决 ID 12 的最终状态。
+**Audit evidence（已完成）：** 基线 `0cec5ed06a96dde60e63a9c882a42c9cbbaf1ba4`，ID 12 closeout 基线 `30eef79cd0c8ea6b2449c9c0fb4369d26acba5a1`。ID 9 同时具备固定原版、当前 Android、shared decoder、Desktop Skia consumer、真实成功/失败 fixture 与 protection tests，状态从 `WIRED` 提升为 `VERIFIED`。ID 12 的 fixed-main 与 current Android `CrashLogUtil.dumpLogs()` 均覆盖成功日志导出及失败反馈；Desktop 因无 Android logcat/share runtime 使用平台 adapter，并由 `Main.kt` 在 production startup 安装 `CrashHandler`，测试覆盖成功写入、轮转、不可写 failure containment 以及 stderr 原始异常/失败/截断反馈，因此从 `NOT_STARTED` 提升为 `VERIFIED`。ID 3/4 的未分类架构债务交给 Task 14；ID 8 的 network/manager wiring gap 交给 Task 16C；ID 10 的 Android/Desktop 重复任务规则交给 Task 16B；ID 11 的 native delivery success 与 Android shared-event consumption gap 交给 Task 17；ID 7 缺 current Android PreferenceStore adapter 真实行为契约，保持 `WIRED`。控制权推进到 `active-task: Task 7`。
 
-**Verification evidence：** 状态契约先精确 RED 于 `ID 9 expected VERIFIED but was WIRED`，补证后 focused 与普通 parity contract GREEN；真实行为矩阵为 domain `7/7`、Desktop preference `22/22`、当前 Android decoder `8/8`、Desktop 八类 production tests `222/222`。显式 final gate 按设计 RED，并将非终态从 60 项准确缩减为 59 项（ID 9 已移出）。
+**Verification evidence：** 初始状态契约精确 RED 于 `ID 9 expected VERIFIED but was WIRED`；ID 12 closeout 状态契约精确 RED 于 `ID 12 expected VERIFIED but was NOT_STARTED`。补证后 Task 6 focused `1/1` 与普通 parity contract `39/39` GREEN；真实行为矩阵为 domain `7/7`、Desktop preference `22/22`、current Android decoder `8/8`、Desktop 八类 production tests `224/224`。显式 final gate 按设计 RED，并将非终态从 60 项依次准确缩减为 59 项和 58 项（ID 9、12 已移出）。
 
 ### Task 7：核验状态批次 B（16、17、19、22、24、26、28、29）
 

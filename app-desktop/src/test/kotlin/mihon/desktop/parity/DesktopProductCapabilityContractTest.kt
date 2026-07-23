@@ -38,7 +38,7 @@ class DesktopProductCapabilityContractTest {
     private val requiredTerminalEvidenceRoles =
         setOf("FIXED_ORIGINAL", "CURRENT_ANDROID", "SHARED_OR_ADAPTER", "DESKTOP_CONSUMER", "FIXTURE")
     private val task2ProvenanceStatuses =
-        mapOf(9 to "VERIFIED", 10 to "WIRED", 11 to "WIRED", 12 to "NOT_STARTED", 16 to "SHARED", 17 to "SHARED", 19 to "WIRED", 22 to "SHARED")
+        mapOf(9 to "VERIFIED", 10 to "WIRED", 11 to "WIRED", 12 to "VERIFIED", 16 to "SHARED", 17 to "SHARED", 19 to "WIRED", 22 to "SHARED")
     private val task2BehaviorMethods =
         mapOf(
             9 to mapOf("app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt" to setOf("decode JPEG returns correct dimensions")),
@@ -230,7 +230,7 @@ class DesktopProductCapabilityContractTest {
             8 to "SHARED",
             10 to "WIRED",
             11 to "WIRED",
-            12 to "NOT_STARTED",
+            12 to "VERIFIED",
         )
     private val task6FollowUps =
         mapOf(
@@ -241,7 +241,7 @@ class DesktopProductCapabilityContractTest {
             9 to "NONE",
             10 to "Task 16B",
             11 to "Task 17",
-            12 to "Task 6",
+            12 to "NONE",
         )
     private val task6BehaviorMethods =
         mapOf(
@@ -1581,16 +1581,15 @@ class DesktopProductCapabilityContractTest {
             val decision = item.getValue("statusDecision").jsonObject
             val expectedDecision =
                 when (id) {
-                    9 -> "PROMOTE_VERIFIED"
-                    12 -> "RETURNED_FOR_PARENT_REVIEW"
+                    9, 12 -> "PROMOTE_VERIFIED"
                     else -> "KEEP_GAP"
                 }
             assertEquals("Task 6", requiredText(decision, "task", id, "statusDecision"))
             assertEquals(expectedDecision, requiredText(decision, "decision", id, "statusDecision"))
             assertEquals(task6FollowUps.getValue(id), requiredText(decision, "followUp", id, "statusDecision"))
             val gap = requiredText(decision, "gap", id, "statusDecision")
-            if (id == 9) {
-                assertEquals("NONE", gap, "ID 9: verified capability has no remaining evidence gap")
+            if (id in setOf(9, 12)) {
+                assertEquals("NONE", gap, "ID $id: verified capability has no remaining evidence gap")
                 validateRoleEvidence(item, repositoryRoot, inventory)
             } else {
                 assertTrue(gap != "NONE", "ID $id: non-terminal decision must name the remaining gap")
@@ -1617,7 +1616,7 @@ class DesktopProductCapabilityContractTest {
 
         val parentPlanPath = "docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"
         val plan = Files.readString(repositoryRoot.resolve(parentPlanPath))
-        assertEquals("Task 6", markdownFrontmatter(plan)["active-task"], "Completed Task 6A must return control to its parent")
+        assertEquals("Task 7", markdownFrontmatter(plan)["active-task"], "Completed Task 6 must advance to Task 7")
         val childPlanPath = repositoryRoot.resolve("docs/superpowers/plans/2026-07-24-task-6a-desktop-crash-log-failure-boundary.md")
         assertTrue(Files.isRegularFile(childPlanPath), "Task 6A crash-log child plan must exist")
         val childPlan = Files.readString(childPlanPath)
@@ -1629,8 +1628,8 @@ class DesktopProductCapabilityContractTest {
         setOf("app-desktop/src/test/kotlin/mihon/desktop/CrashHandlerTest.kt", "app-desktop/src/main/kotlin/mihon/desktop/CrashHandler.kt")
             .forEach { assertTrue(childPlan.contains("Modify: `$it`"), "Task 6A missing product scope: $it") }
         assertTrue(
-            Regex("""(?m)^- \[ \] Task 6[：:]""").containsMatchIn(plan),
-            "Task 6 must remain pending until the parent completes its final status decision",
+            Regex("""(?m)^- \[x] Task 6[：:]""").containsMatchIn(plan),
+            "Task 6 must be checked after the parent completes its final status decision",
         )
     }
 

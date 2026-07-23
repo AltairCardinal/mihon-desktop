@@ -339,24 +339,27 @@
     "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/util/CrashLogUtil.kt", "symbol": "CrashLogUtil"}],
     "sharedImplementationPaths": [],
     "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/util/CrashLogUtil.kt"],
-    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/CrashHandler.kt"],
+    "desktopConsumerAdapterPaths": [
+      "app-desktop/src/main/kotlin/mihon/desktop/CrashHandler.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/Main.kt"
+    ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/util/CrashLogUtil.kt", "symbol": "CrashLogUtil", "line": 20}],
-      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/util/CrashLogUtil.kt", "symbol": "class CrashLogUtil", "line": 20}],
-      "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app/src/main/java/eu/kanade/tachiyomi/util/CrashLogUtil.kt", "symbol": "class CrashLogUtil", "line": 20}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/CrashHandler.kt", "symbol": "object CrashHandler", "line": 14}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/util/CrashLogUtil.kt", "symbol": "suspend fun dumpLogs", "line": 26}],
+      "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/CrashHandler.kt", "symbol": "object CrashHandler", "line": 14}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt", "symbol": "CrashHandler.install()", "line": 63}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/CrashHandlerTest.kt#uncaught handler reports original exception when crash log write fails", "productionMarkers": ["CrashHandler.uncaughtException"]}]
     },
     "group": "平台基础",
     "tags": [
       "PLATFORM-ADAPTER"
     ],
-    "status": "NOT_STARTED",
+    "status": "VERIFIED",
     "statusDecision": {
       "task": "Task 6",
-      "decision": "RETURNED_FOR_PARENT_REVIEW",
-      "followUp": "Task 6",
-      "gap": "Task 6A now contains Desktop persistence failure and preserves stderr diagnostics; parent Task 6 must re-evaluate fixed/current/shared/Desktop semantic closure before changing the non-terminal status.",
+      "decision": "PROMOTE_VERIFIED",
+      "followUp": "NONE",
+      "gap": "NONE",
       "behaviorMethods": {
         "app-desktop/src/test/kotlin/mihon/desktop/CrashHandlerTest.kt": [
           "appendCrashReport creates parent directory and writes report",
@@ -367,10 +370,12 @@
       }
     },
     "authoritativeImplementation": "Fixed-main original Mihon capability #12: CrashLogUtil dumps Android logs and diagnostics.",
-    "desktopImplementation": "Desktop CrashHandler writes and rotates uncaught-exception reports; persistence failures are contained and reported with the original exception on stderr. No shared crash runtime is claimed.",
+    "desktopImplementation": "Desktop installs CrashHandler during production startup, writes and rotates uncaught-exception reports, and contains persistence failures while reporting both failures and the original exception on stderr.",
     "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/CrashHandlerTest.kt"],
     "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/CrashHandlerTest.kt": ["appendCrashReport creates parent directory and writes report"]},
     "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
+    "deviations": [{"classification": "PLATFORM_ADAPTER", "description": "Android collects logcat into a shareable cache file and reports collection failure with a Toast; Desktop has no Android logcat/share runtime, so its startup-installed uncaught-exception adapter persists JVM diagnostics and uses stderr as the reliable crash-time failure channel."}],
+    "verificationScope": "VERIFIED: fixed-main and current Android success/failure semantics, the Desktop platform adapter, production startup installation, successful write, rotation, unwritable-path containment, and stderr diagnostics are bound.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
