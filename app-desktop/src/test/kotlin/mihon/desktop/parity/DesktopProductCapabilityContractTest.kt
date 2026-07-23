@@ -50,8 +50,9 @@ class DesktopProductCapabilityContractTest {
             7 to "WIRED",
             8 to "SHARED",
         )
+    private val settingsParityIds = setOf(88, 90, 91, 94)
     private val structuredProvenanceIds =
-        platformProvenanceBatchOneIds + setOf(28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 43, 67, 68, 69, 70, 87)
+        platformProvenanceBatchOneIds + setOf(28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 39, 40, 43, 67, 68, 69, 70, 87) + settingsParityIds
     private val sourceExtensionParityStatuses =
         mapOf(
             28 to "WIRED",
@@ -226,6 +227,75 @@ class DesktopProductCapabilityContractTest {
     )
     private val exactPlatformCapabilityProtectionPaths =
         exactPlatformCapabilityProtection.mapValues { it.value.keys }
+    private val exactSettingsStatuses = mapOf(88 to "CHARACTERIZED", 90 to "VERIFIED", 91 to "VERIFIED", 94 to "VERIFIED")
+    private val exactSettingsUpstream =
+        mapOf(
+            88 to setOf(
+                "presentation-core/src/main/java/tachiyomi/presentation/core/util/Modifier.kt" to "Modifier.runOnEnterKeyPressed",
+                "presentation-core/src/main/java/tachiyomi/presentation/core/components/LabeledCheckbox.kt" to "LabeledCheckbox role Checkbox minimum 48dp",
+                "presentation-core/src/main/java/tachiyomi/presentation/core/components/material/Surface.kt" to "Surface minimumInteractiveComponentSize role Button",
+            ),
+            90 to setOf(
+                "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSearchScreen.kt" to "SettingsSearchScreen SearchResult getIndex breadcrumb highlight replace",
+                "app/src/main/java/eu/kanade/presentation/more/settings/screen/SearchableSettings.kt" to "SearchableSettings.highlightKey",
+                "app/src/main/java/eu/kanade/presentation/more/settings/PreferenceScreen.kt" to "PreferenceScreen.findHighlightedIndex animateScrollToItem",
+            ),
+            91 to setOf(
+                "core/common/src/main/kotlin/tachiyomi/core/common/preference/PreferenceStore.kt" to "PreferenceStore.getEnum",
+                "app/src/main/java/eu/kanade/domain/ui/UiPreferences.kt" to "UiPreferences themeMode appTheme themeDarkAmoled",
+                "app/src/main/java/eu/kanade/domain/ui/model/AppTheme.kt" to "AppTheme canonical and deprecated themes",
+                "app/src/main/java/eu/kanade/presentation/more/settings/widget/AppThemePreferenceWidget.kt" to "AppThemePreferenceWidget selectable themes",
+                "app/src/main/java/eu/kanade/presentation/theme/TachiyomiTheme.kt" to "TachiyomiTheme.getThemeColorScheme",
+                "app/src/main/java/eu/kanade/presentation/theme/colorscheme/BaseColorScheme.kt" to "BaseColorScheme light dark amoled",
+                "app/src/main/java/eu/kanade/presentation/more/settings/screen/appearance/AppLanguageScreen.kt" to "AppLanguageScreen application locales",
+            ),
+            94 to setOf(
+                "app/build.gradle.kts" to "aboutLibraries Gradle plugin and compose dependency",
+                "app/src/main/java/eu/kanade/presentation/more/settings/screen/about/AboutScreen.kt" to "AboutScreen.getVersionName and licenses navigation",
+                "app/src/main/java/eu/kanade/presentation/more/settings/screen/about/OpenSourceLicensesScreen.kt" to "OpenSourceLicensesScreen produceLibraries first license",
+                "app/src/main/java/eu/kanade/presentation/more/settings/screen/about/OpenSourceLibraryLicenseScreen.kt" to "OpenSourceLibraryLicenseScreen website and HTML license",
+            ),
+        )
+    private val exactSettingsShared = mapOf(
+        88 to emptySet(),
+        90 to setOf("domain/src/commonMain/kotlin/mihon/domain/settings/SettingsSearchPolicy.kt", "domain/src/commonMain/kotlin/mihon/domain/settings/SearchablePreference.kt"),
+        91 to setOf("presentation-theme/src/commonMain/kotlin/eu/kanade/domain/ui/model/AppTheme.kt", "presentation-theme/src/commonMain/kotlin/eu/kanade/domain/ui/model/ThemeMode.kt", "presentation-theme/src/commonMain/kotlin/eu/kanade/presentation/theme/colorscheme/AppThemeColorScheme.kt", "presentation-theme/src/commonMain/kotlin/eu/kanade/presentation/theme/colorscheme/BaseColorScheme.kt"),
+        94 to setOf("domain/src/commonMain/kotlin/mihon/domain/license/model/DependencyNotice.kt", "domain/src/commonMain/kotlin/mihon/domain/license/service/LicenseNoticePolicy.kt"),
+    )
+    private val exactSettingsAndroid = mapOf(
+        88 to setOf("presentation-core/src/main/java/tachiyomi/presentation/core/util/Modifier.kt", "presentation-core/src/main/java/tachiyomi/presentation/core/components/LabeledCheckbox.kt", "presentation-core/src/main/java/tachiyomi/presentation/core/components/material/Surface.kt"),
+        90 to setOf("app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSearchScreen.kt", "app/src/main/java/eu/kanade/presentation/more/settings/screen/SearchableSettings.kt", "app/src/main/java/eu/kanade/presentation/more/settings/PreferenceScreen.kt"),
+        91 to setOf("app/src/main/java/eu/kanade/domain/ui/UiPreferences.kt", "app/src/main/java/eu/kanade/presentation/more/settings/widget/AppThemePreferenceWidget.kt", "app/src/main/java/eu/kanade/presentation/theme/TachiyomiTheme.kt"),
+        94 to setOf("app/src/main/java/eu/kanade/presentation/more/settings/screen/about/AboutScreen.kt", "app/src/main/java/eu/kanade/presentation/more/settings/screen/about/OpenSourceLicensesScreen.kt", "app/src/main/java/eu/kanade/presentation/more/settings/screen/about/OpenSourceLibraryLicenseScreen.kt"),
+    )
+    private val exactSettingsDesktop = mapOf(
+        88 to setOf("app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SettingsComposables.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/GeneralSettingsScreen.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AppearanceSettingsScreen.kt"),
+        90 to setOf("app-desktop/src/main/kotlin/mihon/desktop/ui/settings/DesktopSettingsCatalog.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SettingsSearchScreen.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/DesktopSettingsAnchor.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/MoreRootScreen.kt"),
+        91 to setOf("app-desktop/src/main/kotlin/mihon/desktop/settings/DesktopAppPreferences.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/theme/DesktopTheme.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AppearanceSettingsScreen.kt"),
+        94 to setOf("app-desktop/src/main/kotlin/mihon/desktop/license/DesktopDependencyNoticeProvider.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AboutScreen.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LicenseListScreen.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LicenseDetailScreen.kt", "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt"),
+    )
+    private val exactSettingsBehavior = mapOf(
+        88 to mapOf(
+            "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsContentAccessibilityTest.kt" to setOf("Backup production button activates once on key down and respects disabled state", "Library checkbox production row activates once on key down"),
+            "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsAccessibilityContractTest.kt" to setOf("General and Appearance rows expose one action role state and disabled semantics"),
+        ),
+        90 to mapOf(
+            "domain/src/commonTest/kotlin/mihon/domain/settings/SettingsSearchPolicyTest.kt" to setOf("fixed main excludes disabled blank info and disabled or blank groups"),
+            "app/src/test/java/eu/kanade/presentation/more/settings/screen/SettingsSearchConsumerBehaviorTest.kt" to setOf("real Android preference projection is searched by shared policy"),
+            "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSearchWiringTest.kt" to setOf("catalog delegates search to shared policy", "search has feedback focus submission keys and result navigation", "More search entry opens the production search screen"),
+        ),
+        91 to mapOf(
+            "presentation-theme/src/commonTest/kotlin/eu/kanade/presentation/theme/colorscheme/AppThemeColorSchemeTest.kt" to setOf("every static app theme selects its fixed main palette", "amoled only changes dark static colors and preserves fixed containers"),
+            "app/src/test/java/eu/kanade/presentation/theme/AndroidSharedPaletteWiringTest.kt" to setOf("android theme consumer delegates static selection to shared selector"),
+            "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSearchWiringTest.kt" to setOf("desktop theme consumes shared static theme and amoled preferences", "appearance selects static theme and amoled while preserving grid"),
+        ),
+        94 to mapOf(
+            "domain/src/commonTest/kotlin/mihon/domain/license/service/LicenseNoticePolicyTest.kt" to setOf("first license is selected without later entries overwriting it"),
+            "app-desktop/src/test/kotlin/mihon/desktop/license/DesktopDependencyNoticeProviderTest.kt" to setOf("provider maps metadata through the notice policy and caches the result"),
+            "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AboutUpdateWiringTest.kt" to setOf("about routes real injected dependency notices to their first license content", "about renders full version and routes ready confirmation intents"),
+        ),
+    )
+    private val exactSettingsOwners = exactSettingsUpstream.flatMap { (id, paths) -> paths.map { it.first to id } }.toMap()
     private val forkOnlyReaderPairingPaths =
         setOf(
             "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagePairingAlgorithm.kt",
@@ -338,12 +408,32 @@ class DesktopProductCapabilityContractTest {
                     "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAppearanceScreen.kt",
                     "core/common/src/main/kotlin/tachiyomi/core/common/i18n/Localize.kt",
                 ),
+            88 to exactSettingsUpstream.getValue(88).map { it.first }.toSet(),
+            90 to exactSettingsUpstream.getValue(90).map { it.first }.toSet(),
+            91 to exactSettingsUpstream.getValue(91).map { it.first }.toSet(),
+            94 to exactSettingsUpstream.getValue(94).map { it.first }.toSet(),
         )
     private val exactAuthorityBlobIds =
         mapOf(
             "app/src/main/java/eu/kanade/tachiyomi/ui/main/MainActivity.kt" to "e80e5c947829ebdba73bfbc263c4e8f16196056a",
             "app/src/main/java/eu/kanade/tachiyomi/util/system/IntentExtensions.kt" to "65acbed18fc489e5cb088bf119ac04ce22ecb902",
             "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSecurityScreen.kt" to "69a5993263fb36aead01ce75d2cff8160fba8fce",
+            "presentation-core/src/main/java/tachiyomi/presentation/core/util/Modifier.kt" to "857674a5c94065a2065f2140418fe9463f8d7a12",
+            "presentation-core/src/main/java/tachiyomi/presentation/core/components/LabeledCheckbox.kt" to "a66bf0d184acbac6f80bfc4fcce0a33a60f62aac",
+            "presentation-core/src/main/java/tachiyomi/presentation/core/components/material/Surface.kt" to "0e857ef75c4c420f69af3c9b21ea0c61bcb56aa1",
+            "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSearchScreen.kt" to "b5a9ac937af81a5eb1feb13ca7963bec64cc72bc",
+            "app/src/main/java/eu/kanade/presentation/more/settings/screen/SearchableSettings.kt" to "5652ace76c752bce59d4ee82f436c63f8d436d58",
+            "app/src/main/java/eu/kanade/presentation/more/settings/PreferenceScreen.kt" to "e0938738fb6191234a283c7ffb82d52ffccad26d",
+            "app/src/main/java/eu/kanade/domain/ui/UiPreferences.kt" to "84e405dee827b4d9fd47f2ca6cba7938c31b5cb4",
+            "app/src/main/java/eu/kanade/domain/ui/model/AppTheme.kt" to "2394c5a429031312d4192989dc5bc3920133acc7",
+            "app/src/main/java/eu/kanade/presentation/more/settings/widget/AppThemePreferenceWidget.kt" to "5e3f76efe6e106e108eb7bf1598d78a52a41c07b",
+            "app/src/main/java/eu/kanade/presentation/theme/TachiyomiTheme.kt" to "71ee3d988c388d35676de91607dd43225e4aeffe",
+            "app/src/main/java/eu/kanade/presentation/theme/colorscheme/BaseColorScheme.kt" to "4ad2bfb807563c6d10c46b51bc02fa72d2fe4005",
+            "app/src/main/java/eu/kanade/presentation/more/settings/screen/appearance/AppLanguageScreen.kt" to "b59b26acaccce2612ce34904c704a4930ec99dc3",
+            "app/build.gradle.kts" to "cdaa6f9604cd9bdada2c1e0359aba2e60ac156a1",
+            "app/src/main/java/eu/kanade/presentation/more/settings/screen/about/AboutScreen.kt" to "01e35c1ecccc8b86d41d24137fd6ec0b94dfb063",
+            "app/src/main/java/eu/kanade/presentation/more/settings/screen/about/OpenSourceLicensesScreen.kt" to "3385f7430b005c021f9c8469964755557a7da7a4",
+            "app/src/main/java/eu/kanade/presentation/more/settings/screen/about/OpenSourceLibraryLicenseScreen.kt" to "725ed640788b217d6d71a731d798d7b5f1c25f01",
             "presentation-widget/src/main/java/tachiyomi/presentation/widget/BaseUpdatesGridGlanceWidget.kt" to "17b8d41fc85bd891fae6fd09db9c44fd05211957",
             "app/src/main/java/eu/kanade/tachiyomi/data/updater/AppUpdateChecker.kt" to "c6781277e453d4c5a6e15e7d62d3e0f721c97bd6",
             "app/src/main/java/eu/kanade/presentation/more/NewUpdateScreen.kt" to "f6b5f4b0b52a5af959866cc63c80ca2bd5af6399",
@@ -1649,6 +1739,38 @@ class DesktopProductCapabilityContractTest {
     }
 
     @Test
+    fun `settings capabilities bind exact fixed-main ownership and production behavior methods`() {
+        val repositoryRoot = repositoryRoot()
+        val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
+        assertSettingsInventory(fixedMainPathInventory(repositoryRoot))
+        settingsParityIds.forEach { id -> assertSettingsCapability(id, items.getValue(id).jsonObject, repositoryRoot) }
+    }
+
+    @Test
+    fun `settings capability contract rejects cross id authority method protection and inventory ownership`() {
+        val repositoryRoot = repositoryRoot()
+        val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
+        val accessibility = items.getValue(88).jsonObject
+        val search = items.getValue(90).jsonObject
+        listOf("upstreamSymbols", "behaviorMethods", "protectionTests").forEach { field ->
+            val mutation = JsonObject(accessibility.toMutableMap().apply { put(field, search.getValue(field)) })
+            assertThrows(AssertionError::class.java) { assertSettingsCapability(88, mutation, repositoryRoot) }
+        }
+        val deletedAuthority = JsonObject(search.toMutableMap().apply { put("upstreamSymbols", buildJsonArray {}) })
+        assertThrows(AssertionError::class.java) { assertSettingsCapability(90, deletedAuthority, repositoryRoot) }
+        val inventory = Files.readString(repositoryRoot.resolve(fixedMainPathInventoryResource))
+            .replaceFirst("\"capabilityIds\": [88]", "\"capabilityIds\": [90]")
+        assertThrows(AssertionError::class.java) {
+            fixedMainPathInventory(Json.parseToJsonElement(inventory).jsonObject)
+        }
+        val exactInventory = fixedMainPathInventory(repositoryRoot)
+        val searchPath = exactSettingsUpstream.getValue(90).first().first
+        assertThrows(AssertionError::class.java) { assertSettingsInventory(exactInventory - searchPath) }
+        val wrongBlob = exactInventory + (searchPath to exactAuthorityBlobIds.getValue(exactSettingsUpstream.getValue(91).first().first))
+        assertThrows(AssertionError::class.java) { assertSettingsInventory(wrongBlob) }
+    }
+
+    @Test
     fun `missing empty non-integer and wrong-type ids fail with item context`() {
         val invalidItems =
             listOf(
@@ -1918,6 +2040,35 @@ class DesktopProductCapabilityContractTest {
         }
     }
 
+    private fun assertSettingsCapability(id: Int, item: JsonObject, repositoryRoot: Path) {
+        assertEquals(exactSettingsStatuses.getValue(id), requiredText(item, "status", id))
+        assertEquals(fixedOriginalMihonRef, requiredText(item, "upstreamRef", id))
+        assertTrue(requiredText(item, "authoritativeImplementation", id).startsWith("Fixed-main original Mihon capability #$id:"))
+        val upstream = item.getValue("upstreamSymbols").jsonArray.map {
+            it.jsonObject.let { symbol -> symbol.getValue("path").jsonPrimitive.content to symbol.getValue("symbol").jsonPrimitive.content }
+        }.toSet()
+        assertEquals(exactSettingsUpstream.getValue(id), upstream, "ID $id fixed-main path/symbol ownership")
+        assertExactPaths(item, "sharedImplementationPaths", id, exactSettingsShared.getValue(id))
+        assertExactPaths(item, "currentAndroidConsumerPaths", id, exactSettingsAndroid.getValue(id))
+        assertExactPaths(item, "desktopConsumerAdapterPaths", id, exactSettingsDesktop.getValue(id))
+        assertExactPaths(item, "protectionTests", id, exactSettingsBehavior.getValue(id).keys)
+        val methods = item.getValue("behaviorMethods").jsonObject.mapValues { (_, value) ->
+            value.jsonArray.map { it.jsonPrimitive.content }.toSet()
+        }
+        assertEquals(exactSettingsBehavior.getValue(id), methods, "ID $id behavior method binding")
+        listOf("sharedImplementationPaths", "currentAndroidConsumerPaths", "desktopConsumerAdapterPaths", "protectionTests")
+            .flatMap { field -> item.getValue(field).jsonArray.map { it.jsonPrimitive.content } }
+            .forEach { path -> assertTrue(Files.isRegularFile(repositoryRoot.resolve(path)), "ID $id missing production evidence $path") }
+        assertTrue(requiredText(item, "verificationScope", id).contains(exactSettingsStatuses.getValue(id)))
+        if (id == 88) assertEquals("false", item.getValue("dedicatedScreenPresent").jsonPrimitive.content)
+    }
+
+    private fun assertSettingsInventory(inventory: Map<String, String>) {
+        exactSettingsUpstream.values.flatten().forEach { (path, _) ->
+            assertEquals(exactAuthorityBlobIds.getValue(path), inventory[path], "Settings fixed-main inventory has the wrong or missing blob for $path")
+        }
+    }
+
     private fun validateSourceExtensionProvenance(
         item: JsonObject,
         repositoryRoot: Path,
@@ -1956,7 +2107,7 @@ class DesktopProductCapabilityContractTest {
                 )
             }
             assertTrue(
-                path.endsWith(".kt") && !Path.of(path).isAbsolute && path.split('/').none { it == ".." },
+                (path.endsWith(".kt") || path.endsWith(".kts")) && !Path.of(path).isAbsolute && path.split('/').none { it == ".." },
                 "ID $id: incomplete upstream path $path",
             )
             assertTrue(
@@ -1978,6 +2129,7 @@ class DesktopProductCapabilityContractTest {
             when (id) {
                 29 -> setOf("app/src/main/", "data/src/androidMain/")
                 40 -> setOf("app/src/main/", "core/common/src/androidMain/")
+                88 -> setOf("presentation-core/src/main/")
                 else -> setOf("app/src/main/")
             }
         validateCurrentPaths(item, "currentAndroidConsumerPaths", id, repositoryRoot, requiredPrefixes = androidRoots)
@@ -2085,6 +2237,10 @@ class DesktopProductCapabilityContractTest {
                     "Fixed-main inventory paths[$index].blobId must be lowercase 40-hex",
                 )
                 assertTrue(put(path, blobId!!) == null, "Fixed-main inventory path must be unique: $path")
+                exactSettingsOwners[path]?.let { expected ->
+                    val owners = entry["capabilityIds"]?.jsonArray?.map { it.jsonPrimitive.content.toInt() }.orEmpty().toSet()
+                    assertEquals(setOf(expected), owners.intersect(settingsParityIds), "Fixed-main inventory owner for $path")
+                }
             }
             exactAuthorityBlobIds.forEach { (path, expectedBlobId) ->
                 get(path)?.let { actualBlobId ->
