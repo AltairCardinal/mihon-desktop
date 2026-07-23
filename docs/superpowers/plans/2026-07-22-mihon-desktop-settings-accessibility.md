@@ -87,7 +87,7 @@ status-source: this-file
 - [x] Task 18D：Desktop ExtensionRepo async test stabilization
 - [x] Task 18E：Desktop Tracking accessibility
 - [x] Task 18F：Desktop Tracking service-action state matrix
-- [ ] Task 18G：Desktop Tracking login dialog keyboard accessibility
+- [x] Task 18G：Desktop Tracking login dialog keyboard accessibility
 - [ ] Task 18H：Desktop Tracking logout/unbind dialog keyboard accessibility
 - [ ] Task 19：IDs 88/90/91/94 exact parity evidence
 - [ ] Task 20：whole-change 审查与三平台 verify
@@ -971,6 +971,8 @@ status-source: this-file
 3. 运行 Tracking auth/action production wiring、dialog semantics、keyboard、i18n、Spotless 与 range gate。
 
 **Scope status（实现前已重规划）：** 原合并 18G 的未跟踪测试草稿已为 301 行，且仅覆盖 logout/unbind，尚缺 login 与 disabled safety；production 正式 Button/TextButton helper 接线还会继续增加 touched，完整实现预计再需 80–120 行。代码零修改、零 Gradle 时确认无法满足原 `2 files/280 touched`，拒绝压缩 harness 或省略真实路径；本 Task 仅关闭正式 helper、login confirm/cancel 与 disabled safety，新增 18H 关闭 logout/unbind。
+
+**Review status（已完成）：** 实现 `a9f5d44155` 将正式 `LoginDialog` confirm/cancel 接入既有 Desktop Button helper，并以真实 Screen 覆盖三键 confirm、cancel 结果与无效输入；首审 `0/2/0` 指出 USERNAME_PASSWORD 单字段/blank 边界及幂等 dismiss 不能证明 exact-once。唯一修复 `97632068f9` 仅将 `LoginDialog` 从 private 调整为 internal 以直接渲染 production 组件，补齐全空、单字段、双方 blank、API key 空/blank 的 Disabled/auth0 矩阵，以及三键非幂等 dismiss `0→1→1`，同时保留完整 Screen→Dialog cancel wiring。双 dismiss mutation 精确 RED；独立安全回归 `22/22`、compile/Spotless 通过，累计 `2 files/279 touched`，URL/OAuth/浏览器/网络副作用为 0。唯一复审 APPROVED `0/0/0`。下一项为父 Task 5B / 子 Task 18H。
 
 ### Task 18H：Desktop Tracking logout/unbind dialog keyboard accessibility
 
