@@ -72,7 +72,7 @@ status-source: this-file
 - [x] Task 10A：共享静态调色板基础与第一批
 - [x] Task 10B：共享静态调色板第一批收口
 - [x] Task 10C：共享静态调色板第二批
-- [ ] Task 10D：共享静态调色板第三批
+- [x] Task 10D：共享静态调色板第三批
 - [ ] Task 10E：共享调色板 selector/AMOLED 与 Monet adapter 收口
 - [ ] Task 11：Desktop 主题 adapter、外观 UI 与迁移
 - [ ] Task 12：共享许可证 notice 与详情选择契约
@@ -690,6 +690,8 @@ status-source: this-file
 1. 按 10A/10B 的 RED/rename/consumer mutation 模式执行。
 2. 原版拼写/序列化 identity 保持兼容，并在 rename 内把本批 palette 调整为最小跨模块可见，使当前 Android 在本提交可编译消费。
 3. 检查 touched≤400；超限实施前按 2+2 拆分。
+
+**Review status（已完成）：** 实现 `64dfbbd34` 将 Strawberry/Tako/TealTurqoise/TidalWave 四套 palette 以 R98 高相似度 move 到共享模块，normalized fixed-main 精确且唯一 production 变化为最小 public；旧 Android 定义全部消失。`TEALTURQUOISE` enum、`theme_tealturquoise` 资源、`TealTurqoiseColorScheme` 类型及 Android map 历史 identity 均保持。shared exact 对每套 light/dark 执行完整 36-role 快照，Android singleton/runtime origin、缺失 type、旧 local origin 与四套 token mutation 均闭合。独立审查 APPROVED `0/0/0`，shared `20/20`、Android wiring `2/2`、provenance `6/6`、跨端编译、Spotless、diff 与 12-Task guard 通过；范围严格为 `6 files/100 touched`。下一项为父 Task 5B / 子 Task 10E。
 
 ### Task 10E：共享调色板 selector/AMOLED 与 Monet adapter 收口
 
