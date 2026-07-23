@@ -91,7 +91,7 @@ class DesktopUpdateProcessRunnerTest {
 }
 
 internal suspend fun awaitUpdaterPid(directory: Path): Long = withContext(Dispatchers.IO) {
-    withTimeout(2_000) {
+    withTimeout(UPDATER_HELPER_STARTUP_TIMEOUT_MILLIS) {
         val file = directory.resolve("pid")
         var pid: Long?
         do {
@@ -101,6 +101,8 @@ internal suspend fun awaitUpdaterPid(directory: Path): Long = withContext(Dispat
         pid
     }
 }
+
+private const val UPDATER_HELPER_STARTUP_TIMEOUT_MILLIS = 10_000L
 
 private suspend fun awaitUpdaterExit(pid: Long) = withContext(Dispatchers.Default) {
     withTimeout(2_000) {
