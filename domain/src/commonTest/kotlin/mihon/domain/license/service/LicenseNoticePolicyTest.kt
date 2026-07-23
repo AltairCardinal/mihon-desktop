@@ -55,7 +55,7 @@ class LicenseNoticePolicyTest {
     }
 
     @Test
-    fun `empty first license is preserved and does not select a later license`() {
+    fun `blank first license is normalized to absent and does not select a later license`() {
         val notice = LicenseNoticePolicy.create(
             Result.success(
                 listOf(
@@ -67,7 +67,7 @@ class LicenseNoticePolicyTest {
             ),
         ).success().single()
 
-        assertEquals("", notice.license)
+        assertNull(notice.license)
     }
 
     @Test

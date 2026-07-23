@@ -27,15 +27,13 @@ class ClasspathDependencyNoticeProvider internal constructor(
                 }
                 val metadata = json.decodeFromString<AboutLibrariesMetadata>(resource)
                 metadata.libraries.map { library ->
-                    val firstLicenseContent = library.licenses
-                        .firstOrNull()
-                        ?.let(metadata.licenses::get)
-                        ?.content
-                        ?.takeUnless(String::isBlank)
+                    val licenseCandidates = library.licenses.map { licenseId ->
+                        metadata.licenses[licenseId]?.content.orEmpty()
+                    }
                     DependencyNoticeMetadata(
                         name = library.name,
                         website = library.website,
-                        licenses = listOfNotNull(firstLicenseContent),
+                        licenses = licenseCandidates,
                     )
                 }
             },

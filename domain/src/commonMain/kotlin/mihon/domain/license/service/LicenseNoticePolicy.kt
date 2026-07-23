@@ -17,6 +17,9 @@ object LicenseNoticePolicy {
         )
     }
 
+    fun selectLicense(candidates: List<String>): String? =
+        candidates.firstOrNull()?.takeUnless(String::isBlank)
+
     private fun create(metadata: List<DependencyNoticeMetadata>): LicenseNoticeResult {
         if (metadata.any { it.name.isBlank() }) {
             return LicenseNoticeResult.Failure(LicenseNoticeFailureReason.MALFORMED_METADATA)
@@ -28,7 +31,7 @@ object LicenseNoticePolicy {
                     DependencyNotice(
                         name = dependency.name,
                         website = dependency.website?.takeUnless(String::isBlank),
-                        license = dependency.licenses.firstOrNull(),
+                        license = selectLicense(dependency.licenses),
                     )
                 },
         )
