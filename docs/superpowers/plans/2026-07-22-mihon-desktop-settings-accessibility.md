@@ -81,7 +81,7 @@ status-source: this-file
 - [x] Task 15：Desktop 许可证列表/详情与 About wiring
 - [x] Task 16：Desktop 设置 accessibility primitives 与入口页面
 - [x] Task 17：Desktop 设置 accessibility 内容页面第一批
-- [ ] Task 18A：Desktop Security/Advanced accessibility
+- [x] Task 18A：Desktop Security/Advanced accessibility
 - [ ] Task 18B：Desktop About/ExtensionRepo accessibility
 - [ ] Task 18C：Desktop Tracking accessibility
 - [ ] Task 19：IDs 88/90/91/94 exact parity evidence
@@ -854,6 +854,8 @@ status-source: this-file
 1. RED：锁定/延迟/secure mode 无唯一 role/state、unsupported 被读成成功开关、密码/Cookie 身份字段暴露错误，或危险清理确认/取消无实体键路径时失败。
 2. GREEN：复用 Task16 primitives 与 Button helper；保留 credential/window privacy/challenge、缓存/Cookie 清理的真实平台反馈，labels 来自 Task4G/4H 同一 MR。
 3. 运行 Security/Advanced production wiring、anchor、semantics、keyboard、Spotless 与 range gate。
+
+**Review status（已完成）：** 实现 `0710e3a4f` 完成 Security/Advanced accessibility：应用锁整行唯一 Role.Switch action，delay/secure mode 具备 selected/state/disabled；三类 passphrase 保持 Password，`cf_clearance` 值标记敏感而 domain/solver URL 不误标；Cookie/缓存危险对话框按钮复用 Desktop 键盘 helper，unsupported privacy 仍是无 toggle 的诚实反馈。三类 mutation 精确 RED 后恢复。首审 `0/1/0` 发现相关 `WindowPrivacyWiringTest` 在默认 zh-CN 下硬编码英文、6 项中 2 项失败；唯一测试隔离修复 `435383d5cf` 以 PER_METHOD 实例保存/设置 Locale.US，并由既有 `@AfterEach` 恢复。唯一复审 APPROVED `0/0/0`：默认 zh-CN、无语言参数的 WindowPrivacy `6/6`、联合 10 类 `113/113`、Desktop compile、Spotless、diff 与 5-Task guard 通过；累计严格为 `5 files/389 touched`，Task 18B+/计划/OpenSpec/用户脏文件零差异。下一项为父 Task 5B / 子 Task 18B。
 
 ### Task 18B：Desktop About/ExtensionRepo accessibility
 
