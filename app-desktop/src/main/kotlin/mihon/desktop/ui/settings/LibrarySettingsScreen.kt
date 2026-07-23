@@ -2,7 +2,6 @@ package mihon.desktop.ui.settings
 
 import mihon.desktop.LocalDesktopUiDependencies
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,6 +26,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -131,19 +136,11 @@ class LibrarySettingsScreen : Screen {
                     prefs = prefs,
                     checked = hideMissingChapterIndicators,
                 ).copy(title = MR.strings.pref_hide_missing_chapter_indicators.localized())
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(onClick = missingChapterIndicatorItem.onClick)
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Checkbox(
-                        checked = missingChapterIndicatorItem.checked,
-                        onCheckedChange = missingChapterIndicatorItem.onCheckedChange,
-                    )
-                    Text(missingChapterIndicatorItem.title, modifier = Modifier.padding(start = 8.dp))
-                }
+                CheckboxSettingsRow(
+                    title = missingChapterIndicatorItem.title,
+                    checked = missingChapterIndicatorItem.checked,
+                    onCheckedChange = missingChapterIndicatorItem.onCheckedChange,
+                )
 
                 if (categories.isNotEmpty()) {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -161,28 +158,44 @@ class LibrarySettingsScreen : Screen {
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     )
                     categories.forEach { cat ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    excludeIds = if (cat.id in excludeIds) excludeIds - cat.id else excludeIds + cat.id
-                                    prefs.updateCategoryExcludes.set(excludeIds.joinToString(","))
-                                }
-                                .padding(horizontal = 16.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Checkbox(
-                                checked = cat.id in excludeIds,
-                                onCheckedChange = { checked ->
-                                    excludeIds = if (checked) excludeIds + cat.id else excludeIds - cat.id
-                                    prefs.updateCategoryExcludes.set(excludeIds.joinToString(","))
-                                },
-                            )
-                            Text(cat.name, modifier = Modifier.padding(start = 8.dp))
-                        }
+                        CheckboxSettingsRow(
+                            title = cat.name,
+                            checked = cat.id in excludeIds,
+                            onCheckedChange = { checked ->
+                                excludeIds = if (checked) excludeIds + cat.id else excludeIds - cat.id
+                                prefs.updateCategoryExcludes.set(excludeIds.joinToString(","))
+                            },
+                        )
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+internal fun CheckboxSettingsRow(
+    title: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    val description = if (checked) MR.strings.on.localized() else MR.strings.off.localized()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                toggleableState = if (checked) ToggleableState.On else ToggleableState.Off
+                stateDescription = description
+            }
+            .desktopSettingsAction(Role.Checkbox) { onCheckedChange(!checked) }
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(
+            checked = checked,
+            onCheckedChange = null,
+            modifier = Modifier.clearAndSetSemantics {},
+        )
+        Text(title, modifier = Modifier.padding(start = 8.dp))
     }
 }
