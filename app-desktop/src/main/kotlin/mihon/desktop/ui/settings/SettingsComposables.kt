@@ -37,7 +37,7 @@ internal fun Modifier.desktopSettingsAction(
 ): Modifier = desktopSettingsActivationKeys(role = role, onClick = onClick)
     .clickable(role = role, onClick = onClick)
 
-private fun Modifier.desktopSettingsActivationKeys(
+internal fun Modifier.desktopSettingsActivationKeys(
     role: Role,
     enabled: Boolean = true,
     onClick: () -> Unit,

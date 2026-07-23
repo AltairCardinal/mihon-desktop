@@ -3,6 +3,7 @@ package mihon.desktop.ui.settings
 import mihon.desktop.LocalDesktopUiDependencies
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -32,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import mihon.desktop.backup.AutoBackupInterval
 import mihon.desktop.settings.DesktopAppPreferences
@@ -123,7 +125,7 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(12.dp))
-                Button(
+                DesktopSettingsButton(
                     onClick = {
                         scope.launch {
                             val request = DesktopBackupFilePickerRequest.Directory(
@@ -167,7 +169,7 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(12.dp))
-                OutlinedButton(
+                DesktopSettingsButton(
                     onClick = {
                         scope.launch {
                             val request = DesktopBackupFilePickerRequest.BackupFile(
@@ -187,6 +189,7 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
                     },
                     enabled = !isBusy && restoreState !is BackupRestoreUiState.Loading &&
                         restoreState !is BackupRestoreUiState.Restoring,
+                    outlined = true,
                 ) {
                     Text(MR.strings.file_select_backup.localized())
                 }
@@ -246,6 +249,21 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
         }
     }
 
+}
+
+@Composable
+internal fun DesktopSettingsButton(
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    outlined: Boolean = false,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val modifier = Modifier.desktopSettingsActivationKeys(Role.Button, enabled, onClick)
+    if (outlined) {
+        OutlinedButton(onClick = onClick, modifier = modifier, enabled = enabled, content = content)
+    } else {
+        Button(onClick = onClick, modifier = modifier, enabled = enabled, content = content)
+    }
 }
 
 internal sealed interface BackupPresentationText {

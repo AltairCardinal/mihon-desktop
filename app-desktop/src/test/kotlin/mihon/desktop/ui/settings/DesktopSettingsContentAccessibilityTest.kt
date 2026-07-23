@@ -2,6 +2,7 @@ package mihon.desktop.ui.settings
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material3.Text
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.input.key.Key
@@ -40,6 +41,45 @@ import java.util.Locale
 @OptIn(ExperimentalComposeUiApi::class)
 @org.junit.jupiter.api.parallel.Isolated
 class DesktopSettingsContentAccessibilityTest {
+    @Test
+    fun `Backup production button activates once on key down and respects disabled state`() = runBlocking {
+        val scene = ImageComposeScene(700, 200, coroutineContext = coroutineContext) {}
+        val enabled = mutableStateOf(true)
+        var calls = 0
+        try {
+            scene.setContent {
+                DesktopSettingsButton(onClick = { calls++ }, enabled = enabled.value) {
+                    Text("Backup")
+                }
+            }
+            render(scene)
+            val action = nodes(scene, true).single { it.config.contains(SemanticsActions.OnClick) }
+            assertTrue(requireNotNull(action.config[SemanticsActions.RequestFocus].action).invoke())
+            render(scene)
+            listOf(Key.Enter, Key.NumPadEnter, Key.Spacebar).forEach { key ->
+                calls = 0
+                scene.sendKeyEvent(composeKeyEvent(key, KeyEventType.KeyUp))
+                render(scene)
+                assertEquals(0, calls)
+                scene.sendKeyEvent(composeKeyEvent(key, KeyEventType.KeyDown))
+                render(scene)
+                assertEquals(1, calls)
+                scene.sendKeyEvent(composeKeyEvent(key, KeyEventType.KeyUp))
+                render(scene)
+                assertEquals(1, calls)
+            }
+            enabled.value = false
+            calls = 0
+            render(scene)
+            assertTrue(nodes(scene, true).any { it.config.contains(SemanticsProperties.Disabled) })
+            scene.sendKeyEvent(composeKeyEvent(Key.Enter, KeyEventType.KeyDown))
+            render(scene)
+            assertEquals(0, calls)
+        } finally {
+            scene.close()
+        }
+    }
+
     @Test
     fun `Library checkbox production row activates once on key down`() = runBlocking {
         val scene = ImageComposeScene(700, 200, coroutineContext = coroutineContext) {}
@@ -172,6 +212,7 @@ class DesktopSettingsContentAccessibilityTest {
     private fun assertAction(scene: ImageComposeScene, label: String, role: Role) {
         val branch = semanticBranch(scene, label, role)
         assertEquals(1, flatten(branch).count { it.config.contains(SemanticsActions.OnClick) }, label)
+        assertTrue(branch.config.contains(SemanticsActions.RequestFocus), label)
     }
 
     private fun assertToggle(
