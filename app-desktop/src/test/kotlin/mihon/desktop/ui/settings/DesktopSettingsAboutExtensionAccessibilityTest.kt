@@ -138,9 +138,14 @@ class DesktopSettingsAboutExtensionAccessibilityTest {
         val delete = mockk<DeleteExtensionRepo> { coEvery { await(any()) } returns Unit }
         val clipboard = mockk<ClipboardManager>(relaxed = true)
         val opened = mutableListOf<String>()
+        var refreshCalls = 0
+        val update = mockk<UpdateExtensionRepo> {
+            coEvery { awaitAll() } coAnswers { refreshCalls++; emptyList() }
+        }
         val scene = extensionScene(
             repository,
             delete = delete,
+            update = update,
             clipboard = clipboard,
             urlOpener = ExtensionRepoUrlOpener(opened::add),
         )
@@ -155,6 +160,30 @@ class DesktopSettingsAboutExtensionAccessibilityTest {
             )
             activate(scene, MR.strings.action_copy_link.localized(), Key.Spacebar)
             verify(exactly = 1) { clipboard.setText(AnnotatedString("${repo.baseUrl}/index.min.json")) }
+            activate(
+                scene,
+                MR.strings.action_webview_refresh.localized(),
+                Key.Enter,
+                afterInitialKeyUp = { assertEquals(0, refreshCalls) },
+                afterKeyDown = { assertEquals(1, refreshCalls) },
+                afterFinalKeyUp = { assertEquals(1, refreshCalls) },
+            )
+            activate(
+                scene,
+                MR.strings.action_add_repo.localized(),
+                Key.Spacebar,
+                afterInitialKeyUp = { assertFalse(hasTextField(scene)) },
+                afterKeyDown = { assertTrue(hasTextField(scene)) },
+                afterFinalKeyUp = { assertTrue(hasTextField(scene)) },
+            )
+            activate(
+                scene,
+                MR.strings.action_cancel.localized(),
+                Key.NumPadEnter,
+                afterInitialKeyUp = { assertTrue(hasTextField(scene)) },
+                afterKeyDown = { assertFalse(hasTextField(scene)) },
+                afterFinalKeyUp = { assertFalse(hasTextField(scene)) },
+            )
 
             activate(scene, MR.strings.action_delete_repo.localized(), Key.NumPadEnter)
             assertTrue(MR.strings.desktop_extension_repo_delete_consequence.localized() in sceneLabels(scene))
@@ -193,6 +222,23 @@ class DesktopSettingsAboutExtensionAccessibilityTest {
             activate(scene, MR.strings.action_add.localized(), Key.Enter)
             coVerify(exactly = 1) { create.await(newRepo.baseUrl) }
             render(scene)
+            activate(
+                scene,
+                MR.strings.action_cancel.localized(),
+                Key.NumPadEnter,
+                afterInitialKeyUp = { assertTrue(hasAction(scene, MR.strings.action_replace_repo.localized())) },
+                afterKeyDown = { assertFalse(hasAction(scene, MR.strings.action_replace_repo.localized())) },
+                afterFinalKeyUp = { assertFalse(hasAction(scene, MR.strings.action_replace_repo.localized())) },
+            )
+            coVerify(exactly = 0) { replace.await(any()) }
+
+            click(scene, MR.strings.action_add_repo.localized())
+            render(scene)
+            setText(scene, newRepo.baseUrl)
+            render(scene)
+            activate(scene, MR.strings.action_add.localized(), Key.Enter)
+            coVerify(exactly = 2) { create.await(newRepo.baseUrl) }
+            render(scene)
             activate(scene, MR.strings.action_replace_repo.localized(), Key.Spacebar)
             coVerify(exactly = 1) { replace.await(newRepo) }
         } finally {
@@ -206,6 +252,7 @@ class DesktopSettingsAboutExtensionAccessibilityTest {
         create: CreateExtensionRepo = mockk(relaxed = true),
         delete: DeleteExtensionRepo = mockk(relaxed = true),
         replace: ReplaceExtensionRepo = mockk(relaxed = true),
+        update: UpdateExtensionRepo = mockk(relaxed = true),
         clipboard: ClipboardManager = mockk(relaxed = true),
         urlOpener: ExtensionRepoUrlOpener = ExtensionRepoUrlOpener {},
     ): ImageComposeScene {
@@ -214,7 +261,7 @@ class DesktopSettingsAboutExtensionAccessibilityTest {
             every { createExtensionRepo } returns create
             every { deleteExtensionRepo } returns delete
             every { replaceExtensionRepo } returns replace
-            every { updateExtensionRepo } returns mockk<UpdateExtensionRepo>(relaxed = true)
+            every { updateExtensionRepo } returns update
         }
         return ImageComposeScene(900, 1_200, coroutineContext = kotlinx.coroutines.currentCoroutineContext()).also { scene ->
             scene.setContent {
@@ -277,6 +324,9 @@ class DesktopSettingsAboutExtensionAccessibilityTest {
     }
 
     private fun sceneLabels(scene: ImageComposeScene) = nodes(scene).flatMap(::labels)
+    private fun hasTextField(scene: ImageComposeScene) = nodes(scene, true).any { it.config.contains(SemanticsActions.SetText) }
+    private fun hasAction(scene: ImageComposeScene, label: String) =
+        nodes(scene, true).any { it.config.contains(SemanticsActions.OnClick) && label in labels(it) }
     private fun nodes(scene: ImageComposeScene, unmerged: Boolean = false) = scene.semanticsOwners.flatMap {
         flatten(if (unmerged) it.unmergedRootSemanticsNode else it.rootSemanticsNode)
     }
