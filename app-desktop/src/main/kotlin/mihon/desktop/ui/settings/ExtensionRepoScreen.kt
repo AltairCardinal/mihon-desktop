@@ -196,14 +196,11 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
                 )
             },
             floatingActionButton = {
-                FloatingActionButton(
+                ExtensionRepoAddButton(
                     onClick = showCreate,
                     modifier = Modifier
-                        .desktopSettingsAnchor(addRepoTitle, "add-repo", anchorHost)
-                        .desktopSettingsActivationKeys(Role.Button, onClick = showCreate),
-                ) {
-                    Icon(Icons.Outlined.Add, contentDescription = MR.strings.action_add_repo.localized())
-                }
+                        .desktopSettingsAnchor(addRepoTitle, "add-repo", anchorHost),
+                )
             },
             snackbarHost = { SnackbarHost(snackbarHostState) },
         ) { padding ->
@@ -274,6 +271,19 @@ internal fun extensionRepoCreateMessage(result: CreateExtensionRepo.Result, loca
         CreateExtensionRepo.Result.Success,
         is CreateExtensionRepo.Result.DuplicateFingerprint,
         -> null
+    }
+}
+
+@Composable
+internal fun ExtensionRepoAddButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    FloatingActionButton(
+        onClick = onClick,
+        modifier = modifier.desktopSettingsActivationKeys(Role.Button, onClick = onClick),
+    ) {
+        Icon(Icons.Outlined.Add, contentDescription = MR.strings.action_add_repo.localized())
     }
 }
 
@@ -352,7 +362,7 @@ private fun RepoCard(
 }
 
 @Composable
-private fun CreateRepoDialog(
+internal fun CreateRepoDialog(
     initialUrl: String,
     existingUrls: Set<String>,
     onDismiss: () -> Unit,
@@ -434,7 +444,7 @@ private fun DeleteRepoDialog(
 }
 
 @Composable
-private fun ConflictRepoDialog(
+internal fun ConflictRepoDialog(
     oldRepo: ExtensionRepo,
     newRepo: ExtensionRepo,
     onDismiss: () -> Unit,

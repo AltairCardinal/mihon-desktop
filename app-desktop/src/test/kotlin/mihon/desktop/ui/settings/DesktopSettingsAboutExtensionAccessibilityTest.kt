@@ -1,6 +1,7 @@
 package mihon.desktop.ui.settings
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
@@ -246,6 +247,22 @@ class DesktopSettingsAboutExtensionAccessibilityTest {
         }
     }
 
+    @Test
+    fun `Extension repository production controls dispatch keyboard callbacks exactly once`() = runBlocking {
+        val oldRepo = ExtensionRepo("https://old.invalid", "Old", null, "https://old.invalid", "same")
+        val newRepo = ExtensionRepo("https://new.invalid", "New", null, "https://new.invalid", "same")
+
+        assertControlActivatesExactlyOnce(MR.strings.action_add_repo.localized(), Key.Enter) { onClick ->
+            ExtensionRepoAddButton(onClick = onClick)
+        }
+        assertControlActivatesExactlyOnce(MR.strings.action_cancel.localized(), Key.Spacebar) { onDismiss ->
+            CreateRepoDialog(initialUrl = "", existingUrls = emptySet(), onDismiss = onDismiss, onCreate = {})
+        }
+        assertControlActivatesExactlyOnce(MR.strings.action_cancel.localized(), Key.NumPadEnter) { onDismiss ->
+            ConflictRepoDialog(oldRepo, newRepo, onDismiss = onDismiss, onReplace = {})
+        }
+    }
+
     private suspend fun extensionScene(
         repository: FakeExtensionRepoRepository,
         screen: ExtensionRepoScreen = ExtensionRepoScreen(),
@@ -339,6 +356,33 @@ class DesktopSettingsAboutExtensionAccessibilityTest {
             .invoke(null)
         val factory = events.declaredMethods.single { it.name.startsWith("KeyEvent-") && !it.name.endsWith("\$default") }
         return androidx.compose.ui.input.key.KeyEvent(factory.invoke(null, key.keyCode, eventType, 0, false, false, false, false, null))
+    }
+
+    private suspend fun assertControlActivatesExactlyOnce(
+        label: String,
+        key: Key,
+        content: @Composable (() -> Unit) -> Unit,
+    ) {
+        var calls = 0
+        val scene = ImageComposeScene(900, 1_200, coroutineContext = kotlinx.coroutines.currentCoroutineContext())
+        try {
+            scene.setContent {
+                MaterialTheme {
+                    content { calls++ }
+                }
+            }
+            render(scene)
+            activate(
+                scene,
+                label,
+                key,
+                afterInitialKeyUp = { assertEquals(0, calls) },
+                afterKeyDown = { assertEquals(1, calls) },
+                afterFinalKeyUp = { assertEquals(1, calls) },
+            )
+        } finally {
+            scene.close()
+        }
     }
 
     private suspend fun render(scene: ImageComposeScene) = repeat(8) {
