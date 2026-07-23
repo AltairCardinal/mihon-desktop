@@ -74,7 +74,7 @@ status-source: this-file
 - [x] Task 10C：共享静态调色板第二批
 - [x] Task 10D：共享静态调色板第三批
 - [x] Task 10E：共享调色板 selector/AMOLED 与 Monet adapter 收口
-- [ ] Task 11：Desktop 主题 adapter、外观 UI 与迁移
+- [x] Task 11：Desktop 主题 adapter、外观 UI 与迁移
 - [ ] Task 12：共享许可证 notice 与详情选择契约
 - [ ] Task 13：Desktop 许可证元数据构建生成
 - [ ] Task 14：Desktop 许可证 provider 与 DI identity
@@ -726,6 +726,8 @@ status-source: this-file
 1. RED：Desktop 重复 enum、legacy 丢失、主题/AMOLED不改变真实 scheme、grid 删除、Monet虚假可选时失败。
 2. GREEN：Desktop 直接依赖 `presentation-theme` 静态实现；system-dark 留 adapter，Monet capability=false。
 3. 回归 search anchor/i18n；运行 focused/Spotless/range gate。
+
+**Review status（已完成）：** 实现 `32f35d1ef` 让 Desktop 直接依赖 `presentation-theme`，本地 `ThemeMode` 以 shared typealias 兼容旧 import，迁移到 canonical theme/appTheme/AMOLED key/default/codec，并从 legacy `theme_mode` 无损迁移且 canonical 新值优先；grid key/default/UI 保持。`DesktopTheme` 订阅真实偏好并调用共享 selector，SYSTEM 仅由桌面 adapter 决定；Appearance 提供可用 static theme、AMOLED 与 grid 控件，MONET/deprecated 诚实隐藏，Catalog/Page 使用同一 MR 并支持真实 route-anchor。10 类 production mutation 精确 RED 后恢复。独立审查 APPROVED `0/0/0`，Desktop focused `254/254`、shared `26/26`、JVM/Android/Desktop compile、Spotless、diff 与 10-Task guard 通过；范围严格为 `8 files/280 touched`，Task 12/OpenSpec/用户脏文件零差异。下一项为父 Task 5B / 子 Task 12。
 
 ### Task 12：共享许可证 notice 与详情选择契约
 
