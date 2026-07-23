@@ -369,7 +369,7 @@ private sealed interface TrackingConfirmation {
 }
 
 @Composable
-private fun LoginDialog(
+internal fun LoginDialog(
     service: TrackerService,
     onDismiss: () -> Unit,
     onRun: (suspend () -> Unit) -> Unit,

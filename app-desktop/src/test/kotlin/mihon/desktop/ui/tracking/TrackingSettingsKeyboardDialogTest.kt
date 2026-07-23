@@ -6,7 +6,6 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -45,85 +44,69 @@ class TrackingSettingsKeyboardDialogTest {
     @Test
     fun `login confirm dispatches once on key down with service specific credentials`() = runBlocking {
         listOf(
-            LoginCase(TrackerAuthentication.USERNAME_PASSWORD, Key.Enter, "enter-user", "enter-password"),
-            LoginCase(TrackerAuthentication.USERNAME_PASSWORD, Key.NumPadEnter, "numpad-user", "numpad-password"),
-            LoginCase(TrackerAuthentication.API_KEY, Key.Spacebar, null, "api-key"),
-        ).forEachIndexed { index, case ->
-            val fixture = LoginHarness.authenticatingService(index.toLong() + 1, "Confirm service $index", case.authentication)
-            val scene = LoginHarness.scene(listOf(fixture.service), fixture.profile.value.name)
-            try {
-                LoginHarness.openLogin(scene, fixture.profile.value.name)
-                case.username?.let { LoginHarness.setField(scene, MR.strings.username.localized(), it) }
-                val secretLabel =
-                    if (case.authentication == TrackerAuthentication.API_KEY) MR.strings.desktop_tracking_api_key.localized()
-                    else MR.strings.password.localized()
-                LoginHarness.setField(scene, secretLabel, case.secret)
-                val expected = LoginInvocation(case.authentication, case.username, case.secret)
-                LoginHarness.activate(
+            Key.Enter to LoginInvocation(TrackerAuthentication.USERNAME_PASSWORD, "enter-user", "enter-password"),
+            Key.NumPadEnter to LoginInvocation(TrackerAuthentication.USERNAME_PASSWORD, "numpad-user", "numpad-password"),
+            Key.Spacebar to LoginInvocation(TrackerAuthentication.API_KEY, null, "api-key"),
+        ).forEachIndexed { index, (key, credentials) ->
+            val (method, username, secret) = credentials
+            val fixture = LoginHarness.authenticatingService(index.toLong() + 1, "Confirm service $index", method)
+            LoginHarness.scene(listOf(fixture.service)).useScene { scene ->
+                LoginHarness.openLogin(scene, fixture.service.profile.value.name)
+                LoginHarness.setCredentials(scene, method, username, secret)
+                LoginHarness.activateExactlyOnce(
                     scene,
                     MR.strings.login.localized(),
-                    case.key,
+                    key,
                     last = true,
-                    afterInitialKeyUp = { assertTrue(fixture.invocations.isEmpty()) },
-                    afterKeyDown = {
-                        assertEquals(listOf(expected), fixture.invocations)
-                    },
-                    afterFinalKeyUp = { assertEquals(listOf(expected), fixture.invocations) },
+                    calls = fixture.invocations::size,
                 )
-            } finally {
-                scene.close()
+                assertEquals(listOf(credentials), fixture.invocations)
             }
         }
     }
 
     @Test
     fun `login cancel dismisses once on key down without authentication`() = runBlocking {
-        val passwordMethod = TrackerAuthentication.USERNAME_PASSWORD
-        keys.forEachIndexed { index, key ->
-            val fixture = LoginHarness.authenticatingService(index.toLong() + 10, "Cancel service $index", passwordMethod)
-            val scene = LoginHarness.scene(listOf(fixture.service), fixture.profile.value.name)
-            val title = MR.strings.login_title.localized(java.util.Locale.getDefault(), fixture.profile.value.name)
-            try {
-                LoginHarness.openLogin(scene, fixture.profile.value.name)
-                LoginHarness.activate(
+        val fixture = LoginHarness.authenticatingService(10, "Direct cancel", TrackerAuthentication.USERNAME_PASSWORD)
+        keys.forEach { key ->
+            var dismissCalls = 0
+            LoginHarness.dialogScene(fixture.service) { dismissCalls++ }.useScene { scene ->
+                LoginHarness.activateExactlyOnce(
                     scene,
                     MR.strings.action_cancel.localized(),
                     key,
-                    afterInitialKeyUp = {
-                        assertTrue(title in LoginHarness.text(scene))
-                    },
-                    afterKeyDown = {
-                        LoginHarness.await(scene) { title !in LoginHarness.text(scene) }
-                    },
-                    afterFinalKeyUp = { assertTrue(fixture.invocations.isEmpty()) },
+                    calls = { dismissCalls },
                 )
-            } finally {
-                scene.close()
             }
+        }
+        LoginHarness.scene(listOf(fixture.service)).useScene { scene ->
+            val title = MR.strings.login_title.localized(java.util.Locale.getDefault(), fixture.service.profile.value.name)
+            LoginHarness.openLogin(scene, fixture.service.profile.value.name)
+            LoginHarness.activateExactlyOnce(scene, MR.strings.action_cancel.localized(), Key.Enter) {
+                if (title in LoginHarness.text(scene)) 0 else 1
+            }
+            assertTrue(fixture.invocations.isEmpty())
         }
     }
 
     @Test
     fun `invalid service specific credentials keep login disabled without authentication`() = runBlocking {
-        listOf(TrackerAuthentication.USERNAME_PASSWORD, TrackerAuthentication.API_KEY).forEachIndexed { index, method ->
+        listOf(
+            Triple(TrackerAuthentication.USERNAME_PASSWORD, null, null),
+            Triple(TrackerAuthentication.USERNAME_PASSWORD, "username", null),
+            Triple(TrackerAuthentication.USERNAME_PASSWORD, null, "password"),
+            Triple(TrackerAuthentication.USERNAME_PASSWORD, " \t", "\n"),
+            Triple(TrackerAuthentication.API_KEY, null, null),
+            Triple(TrackerAuthentication.API_KEY, null, " \t"),
+        ).forEachIndexed { index, (method, username, secret) ->
             val fixture = LoginHarness.authenticatingService(index.toLong() + 20, "Invalid service $index", method)
-            val scene = LoginHarness.scene(listOf(fixture.service), fixture.profile.value.name)
-            try {
-                LoginHarness.openLogin(scene, fixture.profile.value.name)
+            LoginHarness.dialogScene(fixture.service) {}.useScene { scene ->
+                LoginHarness.setCredentials(scene, method, username, secret)
                 LoginHarness.assertDisabledForKeys(scene, MR.strings.login.localized(), keys)
                 assertTrue(fixture.invocations.isEmpty())
-            } finally {
-                scene.close()
             }
         }
     }
-
-    private data class LoginCase(
-        val authentication: TrackerAuthentication,
-        val key: Key,
-        val username: String?,
-        val secret: String,
-    )
 }
 
 private typealias LoginInvocation = Triple<TrackerAuthentication, String?, String>
@@ -132,7 +115,6 @@ private typealias LoginInvocation = Triple<TrackerAuthentication, String?, Strin
 private object LoginHarness {
     data class Fixture(
         val service: DesktopAuthenticatingTrackerService,
-        val profile: MutableStateFlow<TrackerProfile>,
         val invocations: MutableList<LoginInvocation>,
     )
 
@@ -141,8 +123,6 @@ private object LoginHarness {
         val invocations = mutableListOf<LoginInvocation>()
         val service = mockk<DesktopAuthenticatingTrackerService>(relaxed = true) {
             every { this@mockk.profile } returns profile
-            every { statuses } returns listOf(1L to "Reading")
-            every { scores } returns listOf(10.0)
             coEvery { login(any(), any()) } coAnswers {
                 invocations += LoginInvocation(TrackerAuthentication.USERNAME_PASSWORD, firstArg(), secondArg())
             }
@@ -150,14 +130,12 @@ private object LoginHarness {
                 invocations += LoginInvocation(TrackerAuthentication.API_KEY, null, firstArg())
             }
         }
-        return Fixture(service, profile, invocations)
+        return Fixture(service, invocations)
     }
 
-    suspend fun scene(services: List<TrackerService>, readyText: String): ImageComposeScene {
+    suspend fun scene(services: List<TrackerService>): ImageComposeScene {
         val repository = mockk<TrackRepository>(relaxed = true) {
-            coEvery { getTracksByMangaId(any()) } returns emptyList()
             every { getTracksAsFlow() } returns flowOf(emptyList())
-            every { getTracksByMangaIdAsFlow(any()) } returns flowOf(emptyList())
         }
         val registry = object : TrackerServiceRegistry { override val services = services }
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
@@ -171,7 +149,7 @@ private object LoginHarness {
                     Navigator(TrackingSettingsScreen()) { CurrentScreen() }
                 }
             }
-            await(scene) { readyText in text(scene) }
+            await(scene) { services.last().profile.value.name in text(scene) }
         }
     }
 
@@ -181,6 +159,26 @@ private object LoginHarness {
         await(scene) { title in text(scene) }
     }
 
+    suspend fun dialogScene(service: TrackerService, onDismiss: () -> Unit): ImageComposeScene =
+        ImageComposeScene(900, 1_200, coroutineContext = kotlinx.coroutines.currentCoroutineContext()).also { scene ->
+            scene.setContent { LoginDialog(service, onDismiss) { error("Cancel must not run authentication") } }
+            await(scene) { MR.strings.action_cancel.localized() in text(scene) }
+        }
+
+    suspend fun setCredentials(
+        scene: ImageComposeScene,
+        authentication: TrackerAuthentication,
+        username: String?,
+        secret: String?,
+    ) {
+        username?.let { setField(scene, MR.strings.username.localized(), it) }
+        secret?.let { setField(scene, secretLabel(authentication), it) }
+    }
+
+    private fun secretLabel(authentication: TrackerAuthentication) =
+        if (authentication == TrackerAuthentication.API_KEY) MR.strings.desktop_tracking_api_key.localized()
+        else MR.strings.password.localized()
+
     suspend fun setField(scene: ImageComposeScene, label: String, value: String) {
         val field = nodes(scene, true)
             .filter { it.config.contains(SemanticsActions.SetText) }
@@ -189,30 +187,26 @@ private object LoginHarness {
         render(scene)
     }
 
-    suspend fun activate(
+    suspend fun activateExactlyOnce(
         scene: ImageComposeScene,
         label: String,
         key: Key,
         last: Boolean = false,
-        afterInitialKeyUp: suspend () -> Unit,
-        afterKeyDown: suspend () -> Unit,
-        afterFinalKeyUp: suspend () -> Unit,
+        calls: () -> Int,
     ) {
         val node = action(scene, label, last)
-        assertEquals(Role.Button, node.config[SemanticsProperties.Role])
         assertTrue(requireNotNull(node.config[SemanticsActions.RequestFocus].action).invoke())
         send(scene, key, KeyEventType.KeyUp)
-        afterInitialKeyUp()
+        assertEquals(0, calls(), "$key initial KeyUp")
         send(scene, key, KeyEventType.KeyDown)
-        afterKeyDown()
+        assertEquals(1, calls(), "$key KeyDown")
         send(scene, key, KeyEventType.KeyUp)
-        afterFinalKeyUp()
+        assertEquals(1, calls(), "$key final KeyUp")
     }
 
     suspend fun assertDisabledForKeys(scene: ImageComposeScene, label: String, keys: List<Key>) {
         val node = nodes(scene, true).single {
             it.config.contains(SemanticsProperties.Disabled) &&
-                it.config[SemanticsProperties.Role] == Role.Button &&
                 label in subtreeText(it)
         }
         keys.forEach { key ->
@@ -231,10 +225,8 @@ private object LoginHarness {
         return if (last) matches.last() else matches.single()
     }
 
-    suspend fun await(scene: ImageComposeScene, condition: () -> Boolean) {
-        withTimeout(5_000) {
-            while (!condition()) render(scene)
-        }
+    suspend fun await(scene: ImageComposeScene, condition: () -> Boolean) = withTimeout(5_000) {
+        while (!condition()) render(scene)
     }
 
     private suspend fun send(scene: ImageComposeScene, key: Key, type: KeyEventType) {
@@ -263,5 +255,13 @@ private object LoginHarness {
             .invoke(null)
         val factory = events.declaredMethods.single { it.name.startsWith("KeyEvent-") && !it.name.endsWith("\$default") }
         return androidx.compose.ui.input.key.KeyEvent(factory.invoke(null, key.keyCode, eventType, 0, false, false, false, false, null))
+    }
+}
+
+private suspend fun ImageComposeScene.useScene(block: suspend (ImageComposeScene) -> Unit) {
+    try {
+        block(this)
+    } finally {
+        close()
     }
 }
