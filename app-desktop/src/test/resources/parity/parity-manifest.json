@@ -1184,11 +1184,25 @@
     "status": "WIRED",
     "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderNavigation.kt 定义 read、filtered、duplicate 可组合跳过、当前章保留以及 Found/Boundary/InvalidCurrent 明确结果；app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt 的 getChapterList 以 sortedChapters、chapterId、skipPolicy、isFiltered 命名参数实际调用 filterAndroidReaderChapters",
     "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderNavigator.kt 消费共享 findAdjacentChapter，并保留 Desktop 章节引用与界面入口",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "symbol": "private val chapterList by lazy"}],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/reader/ReaderNavigation.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderNavigator.kt"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "symbol": "private val chapterList by lazy", "line": 157}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "symbol": "filterAndroidReaderChapters(", "line": 190}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderNavigation.kt", "symbol": "fun filterChaptersForReader", "line": 156}, {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderNavigation.kt", "symbol": "fun findAdjacentChapter", "line": 188}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderNavigator.kt", "symbol": "fun result", "line": 68}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderNavigatorTest.kt#reader navigator combines read filtered and duplicate skip flags", "productionMarkers": ["ReaderNavigator("]}]
+    },
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderNavigatorTest.kt"
     ],
+    "behaviorMethods": {"domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt": ["read filtered and duplicate skip rules can be combined"], "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderNavigatorTest.kt": ["reader navigator combines read filtered and duplicate skip flags"]},
+    "behaviorVerificationTask": ":app-desktop:task4ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -1199,9 +1213,24 @@
       "SHARE-EXTRACT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Legacy capability summary #56: 下载队列; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Desktop file adapter consumes the shared queue state machine backed by SQLDelight",
-    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/download/DesktopDownloadRecoveryIntegrationTest.kt"],
+    "authoritativeImplementation": "Fixed-main DownloadQueueScreenModel groups queued Download objects by source object before exposing queue sections.",
+    "desktopImplementation": "Desktop DownloadQueueScreenModel groups persistent DownloadItem rows by sourceId and resolves current source names with a stable missing-source fallback; this is an explicit current projection, not a claim that fixed source-object grouping is the same implementation.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/download/DownloadQueueScreenModel.kt", "symbol": ".groupBy { it.source }"}],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/download/DownloadQueueStateMachine.kt", "data/src/commonMain/kotlin/tachiyomi/data/download/PersistentDownloadStore.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/download/DownloadQueueScreenModel.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/download/DownloadQueueScreenModel.kt", "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt"],
+    "deviations": [{"classification": "MIGRATION_OUTPUT", "description": "Desktop persists sourceId rather than Android Source objects, then resolves display names at projection time; missing sources remain visible through an explicit fallback instead of being silently merged or omitted."}, {"classification": "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT", "description": "The fork shared queue state and SQLDelight store add restart recovery beyond fixed-main UI source grouping."}],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/download/DownloadQueueScreenModel.kt", "symbol": ".groupBy { it.source }", "line": 123}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/download/DownloadQueueScreenModel.kt", "symbol": ".groupBy { it.source }", "line": 123}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/download/DownloadQueueStateMachine.kt", "symbol": "class DownloadQueueStateMachine", "line": 22}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/download/DownloadQueueScreenModel.kt", "symbol": "queue.groupBy(DownloadItem::sourceId)", "line": 117}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/download/DownloadQueueSourceGroupingWiringTest.kt#queue renders one header per source with source names and a stable missing-source fallback", "productionMarkers": ["DownloadQueueScreenModel("]}]
+    },
+    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/download/DesktopDownloadRecoveryIntegrationTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/ui/download/DownloadQueueSourceGroupingWiringTest.kt"],
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/download/DownloadQueueSourceGroupingWiringTest.kt": ["queue renders one header per source with source names and a stable missing-source fallback"]},
+    "behaviorVerificationTask": ":app-desktop:task4ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -1212,9 +1241,24 @@
       "SHARE-EXTRACT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Legacy capability summary #57: 下载并发; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Desktop worker consumes shared fair scheduling and Android retry backoff rules",
-    "protectionTests": ["domain/src/commonTest/kotlin/mihon/domain/download/DownloadQueueStateMachineTest.kt"],
+    "authoritativeImplementation": "Fixed-main Downloader limits concurrent source work and retries image downloads after 2, 4, and 8 seconds.",
+    "desktopImplementation": "DesktopDownloadManager consumes the fork shared fair source scheduler and the same retry delay sequence.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/download/Downloader.kt", "symbol": "downloadPreferences.parallelSourceLimit.changes()"}, {"path": "app/src/main/java/eu/kanade/tachiyomi/data/download/Downloader.kt", "symbol": ".retryWhen { _, attempt ->"}],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/download/DownloadQueueStateMachine.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/data/download/Downloader.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt"],
+    "deviations": [{"classification": "MIGRATION_OUTPUT", "description": "Fair round-robin scheduling is fork shared behavior consumed by Desktop; current Android retains fixed-main first-per-source selection and is not claimed as a shared consumer."}],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/data/download/Downloader.kt", "symbol": "downloadPreferences.parallelSourceLimit.changes()", "line": 196}, {"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/data/download/Downloader.kt", "symbol": ".retryWhen { _, attempt ->", "line": 504}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/download/Downloader.kt", "symbol": "downloadPreferences.parallelSourceLimit().changes()", "line": 196}, {"path": "app/src/main/java/eu/kanade/tachiyomi/data/download/Downloader.kt", "symbol": ".retryWhen { _, attempt ->", "line": 504}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/download/DownloadQueueStateMachine.kt", "symbol": "fun schedule", "line": 42}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt", "symbol": "val batch = stateMachine.schedule", "line": 273}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/download/DownloadManagerReactivityTest.kt#three items enqueued after start all leave QUEUED state", "productionMarkers": ["mgr.start()"]}]
+    },
+    "protectionTests": ["domain/src/commonTest/kotlin/mihon/domain/download/DownloadQueueStateMachineTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/download/DownloadManagerReactivityTest.kt"],
+    "behaviorMethods": {"domain/src/commonTest/kotlin/mihon/domain/download/DownloadQueueStateMachineTest.kt": ["scheduler is fair between sources while preserving per source order", "retry uses Android exponential backoff and stops after three retries"], "app-desktop/src/test/kotlin/mihon/desktop/download/DownloadManagerReactivityTest.kt": ["three items enqueued after start all leave QUEUED state"]},
+    "behaviorVerificationTask": ":app-desktop:task4ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -1226,12 +1270,26 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Legacy capability summary #59: 自动下载; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Library update forwards new chapters through shared FilterChaptersForDownload into the persistent queue",
+    "authoritativeImplementation": "Fixed-main LibraryUpdateJob delegates new chapters to FilterChaptersForDownload before queueing automatic downloads.",
+    "desktopImplementation": "Desktop LibraryUpdateScheduler forwards new chapters through the shared filter and enqueues every accepted chapter through production DI.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt", "symbol": "filterChaptersForDownload.await(manga, newChapters)"}],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/chapter/interactor/FilterChaptersForDownload.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateScheduler.kt", "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt", "symbol": "filterChaptersForDownload.await(manga, newChapters)", "line": 268}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt", "symbol": "filterChaptersForDownload.await(manga, newChapters)", "line": 271}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/chapter/interactor/FilterChaptersForDownload.kt", "symbol": "class FilterChaptersForDownload", "line": 16}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "filterChaptersForDownload.await(manga, chapters)", "line": 825}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/FilterChaptersForDownloadIntegrationTest.kt#开启后保留候选数量与上游排序且正确处理空列表", "productionMarkers": ["filter.await"]}]
+    },
     "protectionTests": [
       "app-desktop/src/test/kotlin/mihon/desktop/domain/FilterChaptersForDownloadIntegrationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
     ],
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/domain/FilterChaptersForDownloadIntegrationTest.kt": ["开启后保留候选数量与上游排序且正确处理空列表"], "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateSchedulerTest.kt": ["new chapters are forwarded to shared auto download policy"]},
+    "behaviorVerificationTask": ":app-desktop:task4ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -1243,13 +1301,28 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Legacy capability summary #61: 书库更新; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 书库更新",
+    "authoritativeImplementation": "Fixed-main LibraryUpdateJob owns constrained WorkManager execution, per-source library refresh, progress, and terminal notification behavior.",
+    "desktopImplementation": "Desktop LibraryUpdateScheduler adapts library refresh to the JVM lifecycle and persists shared BackgroundTask checkpoints and terminal state.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt", "symbol": "override suspend fun doWork"}],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/task/BackgroundTask.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateScheduler.kt"],
+    "deviations": [{"classification": "PLATFORM_ADAPTER", "description": "Desktop schedules against the JVM process lifecycle instead of Android WorkManager constraints."}, {"classification": "MIGRATION_OUTPUT", "description": "Shared BackgroundTask checkpoints and durable recovery are fork output consumed by Desktop; current Android retains WorkManager state and is not claimed as a shared consumer."}],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt", "symbol": "override suspend fun doWork", "line": 98}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt", "symbol": "override suspend fun doWork", "line": 100}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/task/BackgroundTask.kt", "symbol": "data class BackgroundTask", "line": 6}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateScheduler.kt", "symbol": "fun runNow", "line": 83}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt#real update emits progress and one terminal success event", "productionMarkers": ["scheduler.runNow"]}]
+    },
     "protectionTests": [
       "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateSchedulerTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt"
     ],
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt": ["real update emits progress and one terminal success event"]},
+    "behaviorVerificationTask": ":app-desktop:task4ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -1260,9 +1333,23 @@
       "SHARE-DIRECT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Legacy capability summary #62: 更新列表; fixed-main original Mihon provenance pending",
+    "authoritativeImplementation": "Fixed-main UpdatesScreenModel observes GetUpdates and mutates chapter read state through UpdateChapter.",
     "desktopImplementation": "Desktop UpdatesScreenModel consumes shared GetUpdates and UpdateChapter use cases",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/updates/UpdatesScreenModel.kt", "symbol": "class UpdatesScreenModel"}],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/tachiyomi/domain/updates/interactor/GetUpdates.kt", "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/interactor/UpdateChapter.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/updates/UpdatesScreenModel.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/updates/UpdatesScreenModel.kt"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/updates/UpdatesScreenModel.kt", "symbol": "class UpdatesScreenModel", "line": 58}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/updates/UpdatesScreenModel.kt", "symbol": "getUpdates.subscribe(", "line": 91}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/updates/interactor/GetUpdates.kt", "symbol": "class GetUpdates", "line": 8}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/updates/UpdatesScreenModel.kt", "symbol": "rawItems = getUpdates.subscribe(", "line": 74}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/updates/UpdatesScreenModelTest.kt#loadUpdates applies downloaded filter without losing raw items", "productionMarkers": ["model.loadUpdates"]}]
+    },
     "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/updates/UpdatesScreenModelTest.kt"],
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/updates/UpdatesScreenModelTest.kt": ["loadUpdates applies downloaded filter without losing raw items", "markAllRead marks unread visible items and closes dialog"]},
+    "behaviorVerificationTask": ":app-desktop:task4ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -1273,9 +1360,23 @@
       "SHARE-DIRECT"
     ],
     "status": "WIRED",
-    "authoritativeImplementation": "Legacy capability summary #64: 历史记录; fixed-main original Mihon provenance pending",
+    "authoritativeImplementation": "Fixed-main HistoryScreenModel observes GetHistory and removes entries through RemoveHistory.",
     "desktopImplementation": "Desktop HistoryScreenModel consumes shared history/chapter/manga use cases",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/history/HistoryScreenModel.kt", "symbol": "class HistoryScreenModel"}],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/tachiyomi/domain/history/interactor/GetHistory.kt", "domain/src/commonMain/kotlin/tachiyomi/domain/history/interactor/RemoveHistory.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/history/HistoryScreenModel.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/history/HistoryScreenModel.kt"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/history/HistoryScreenModel.kt", "symbol": "class HistoryScreenModel", "line": 48}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/history/HistoryScreenModel.kt", "symbol": "getHistory.subscribe(query ?: \"\")", "line": 71}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/history/interactor/GetHistory.kt", "symbol": "class GetHistory", "line": 8}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/history/HistoryScreenModel.kt", "symbol": "getHistory.subscribe(query).first()", "line": 43}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/history/HistoryScreenModelTest.kt#loadHistory updates search query and items", "productionMarkers": ["model.loadHistory"]}]
+    },
     "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/history/HistoryScreenModelTest.kt"],
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/history/HistoryScreenModelTest.kt": ["loadHistory updates search query and items", "removeHistory removes one item and refreshes current query"]},
+    "behaviorVerificationTask": ":app-desktop:task4ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -1287,12 +1388,27 @@
       "SHARE-EXTRACT"
     ],
     "status": "SHARED",
-    "authoritativeImplementation": "Legacy capability summary #66: 统计; fixed-main original Mihon provenance pending",
-    "desktopImplementation": "Desktop current implementation to characterize and align: 统计",
+    "authoritativeImplementation": "Fixed-main StatsScreenModel aggregates overview, title, chapter, and tracker statistics directly from library rows.",
+    "desktopImplementation": "Desktop StatsScreenModel consumes the fork shared AggregateLibraryStats projection and exposes loading, content, and error feedback.",
+    "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/stats/StatsScreenModel.kt", "symbol": "class StatsScreenModel"}],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/tachiyomi/domain/library/interactor/AggregateLibraryStats.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/stats/StatsScreenModel.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/ui/more/StatsScreenModel.kt"],
+    "deviations": [{"classification": "MIGRATION_OUTPUT", "description": "AggregateLibraryStats is fork-added shared output consumed by Desktop; current Android retains direct StatsData aggregation and is not claimed as a shared consumer."}],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/stats/StatsScreenModel.kt", "symbol": "class StatsScreenModel", "line": 28}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/stats/StatsScreenModel.kt", "symbol": "val overviewStatData = StatsData.Overview(", "line": 50}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/library/interactor/AggregateLibraryStats.kt", "symbol": "class AggregateLibraryStats", "line": 15}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/more/StatsScreenModel.kt", "symbol": "StatsUiState.Content(aggregate(it))", "line": 34}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/more/StatsScreenModelTest.kt#state moves from loading to shared aggregation and exposes errors", "productionMarkers": ["StatsScreenModel("]}]
+    },
     "protectionTests": [
       "domain/src/commonTest/kotlin/tachiyomi/domain/library/interactor/AggregateLibraryStatsTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/more/StatsScreenModelTest.kt"
     ],
+    "behaviorMethods": {"domain/src/commonTest/kotlin/tachiyomi/domain/library/interactor/AggregateLibraryStatsTest.kt": ["distinct titles aggregate categories sources statuses and chapters"], "app-desktop/src/test/kotlin/mihon/desktop/ui/more/StatsScreenModelTest.kt": ["state moves from loading to shared aggregation and exposes errors"]},
+    "behaviorVerificationTask": ":app-desktop:task4ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },

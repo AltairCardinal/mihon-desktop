@@ -296,6 +296,41 @@ tasks.register<Test>("task3ParityVerification") {
     }
 }
 
+tasks.register<Test>("task4ParityVerification") {
+    group = "verification"
+    description = "Runs Task 4 provenance plus its selected Desktop and domain production behavior tests."
+    dependsOn(tasks.named("jvmTestClasses"), ":domain:jvmTestClasses")
+    testClassesDirs = files(
+        jvmTestTask.get().testClassesDirs,
+        domainJvmTestTask.get().testClassesDirs,
+    )
+    classpath = files(
+        jvmTestTask.get().classpath,
+        domainJvmTestTask.get().classpath,
+    )
+    filter {
+        listOf(
+            "mihon.desktop.di.DesktopDiWiringTest",
+            "mihon.desktop.domain.FilterChaptersForDownloadIntegrationTest",
+            "mihon.desktop.domain.LibraryUpdateRecoveryIntegrationTest",
+            "mihon.desktop.domain.LibraryUpdateSchedulerTest",
+            "mihon.desktop.download.DownloadManagerReactivityTest",
+            "mihon.desktop.history.HistoryScreenModelTest",
+            "mihon.desktop.parity.DesktopProductCapabilityContractTest",
+            "mihon.desktop.reader.ReaderNavigatorTest",
+            "mihon.desktop.ui.download.DownloadQueueSourceGroupingWiringTest",
+            "mihon.desktop.ui.more.StatsScreenModelTest",
+            "mihon.desktop.updates.UpdatesScreenModelTest",
+            "mihon.domain.download.DownloadQueueStateMachineTest",
+            "mihon.domain.reader.ReaderParityContractTest",
+            "tachiyomi.domain.library.interactor.AggregateLibraryStatsTest",
+        ).forEach(::includeTestsMatching)
+    }
+    useJUnitPlatform {
+        excludeTags("final-parity-audit", "integration", "live-network", "network-survey")
+    }
+}
+
 compose.desktop {
     application {
         mainClass = "mihon.desktop.MainKt"

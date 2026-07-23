@@ -113,6 +113,62 @@ class DesktopProductCapabilityContractTest {
                         setOf("reading to last page marks shared event as read"),
                 ),
         )
+    private val task4ProvenanceStatuses =
+        mapOf(54 to "WIRED", 56 to "WIRED", 57 to "WIRED", 59 to "WIRED", 61 to "WIRED", 62 to "WIRED", 64 to "WIRED", 66 to "SHARED")
+    private val task4BehaviorMethods =
+        mapOf(
+            54 to
+                mapOf(
+                    "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt" to
+                        setOf("read filtered and duplicate skip rules can be combined"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderNavigatorTest.kt" to
+                        setOf("reader navigator combines read filtered and duplicate skip flags"),
+                ),
+            56 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/download/DownloadQueueSourceGroupingWiringTest.kt" to
+                        setOf("queue renders one header per source with source names and a stable missing-source fallback"),
+                ),
+            57 to
+                mapOf(
+                    "domain/src/commonTest/kotlin/mihon/domain/download/DownloadQueueStateMachineTest.kt" to
+                        setOf(
+                            "scheduler is fair between sources while preserving per source order",
+                            "retry uses Android exponential backoff and stops after three retries",
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/download/DownloadManagerReactivityTest.kt" to
+                        setOf("three items enqueued after start all leave QUEUED state"),
+                ),
+            59 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/domain/FilterChaptersForDownloadIntegrationTest.kt" to
+                        setOf("开启后保留候选数量与上游排序且正确处理空列表"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateSchedulerTest.kt" to
+                        setOf("new chapters are forwarded to shared auto download policy"),
+                ),
+            61 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt" to
+                        setOf("real update emits progress and one terminal success event"),
+                ),
+            62 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/updates/UpdatesScreenModelTest.kt" to
+                        setOf("loadUpdates applies downloaded filter without losing raw items", "markAllRead marks unread visible items and closes dialog"),
+                ),
+            64 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/history/HistoryScreenModelTest.kt" to
+                        setOf("loadHistory updates search query and items", "removeHistory removes one item and refreshes current query"),
+                ),
+            66 to
+                mapOf(
+                    "domain/src/commonTest/kotlin/tachiyomi/domain/library/interactor/AggregateLibraryStatsTest.kt" to
+                        setOf("distinct titles aggregate categories sources statuses and chapters"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/more/StatsScreenModelTest.kt" to
+                        setOf("state moves from loading to shared aggregation and exposes errors"),
+                ),
+        )
     private val validTags =
         setOf(
             "SHARE-DIRECT",
@@ -1242,6 +1298,46 @@ class DesktopProductCapabilityContractTest {
                 methods.forEach { method ->
                     assertTrue(
                         kotlinTestMethod(source, method, "ID $id behavior method $path#$method").contains("assert"),
+                        "ID $id behavior method must execute assertions: $path#$method",
+                    )
+                }
+            }
+            validateRoleEvidence(item, repositoryRoot, inventory)
+            val upstream = item.getValue("upstreamSymbols").jsonArray.map { it.jsonObject }
+            val fixedEntries = item.getValue("roleEvidence").jsonObject.getValue("FIXED_ORIGINAL").jsonArray.map { it.jsonObject }
+            fixedEntries.forEach { fixed ->
+                assertTrue(
+                    upstream.any {
+                        it.getValue("path").jsonPrimitive.content == fixed.getValue("path").jsonPrimitive.content &&
+                            it.getValue("symbol").jsonPrimitive.content == fixed.getValue("symbol").jsonPrimitive.content
+                    },
+                    "ID $id: fixed role path/symbol must match upstreamSymbols",
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `task 4 provenance batch resolves fixed and current role evidence`() {
+        val repositoryRoot = repositoryRoot()
+        val inventory = fixedMainPathInventory(repositoryRoot)
+        val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
+        task4ProvenanceStatuses.forEach { (id, expectedStatus) ->
+            val item = items.getValue(id).jsonObject
+            assertEquals(expectedStatus, requiredText(item, "status", id), "Task 4 must not change capability status")
+            assertEquals(fixedOriginalMihonRef, requiredText(item, "upstreamRef", id))
+            assertEquals(":app-desktop:task4ParityVerification", requiredText(item, "behaviorVerificationTask", id))
+            val behaviorMethods =
+                item.getValue("behaviorMethods").jsonObject.mapValues { (_, methods) ->
+                    methods.jsonArray.map { it.jsonPrimitive.content }.toSet()
+                }
+            assertEquals(task4BehaviorMethods.getValue(id), behaviorMethods, "ID $id behavior methods")
+            behaviorMethods.forEach { (path, methods) ->
+                val source = Files.readString(repositoryRoot.resolve(path))
+                methods.forEach { method ->
+                    val methodSource = kotlinTestMethod(source, method, "ID $id behavior method $path#$method")
+                    assertTrue(
+                        listOf("assert", " shouldBe ", ".shouldContain").any(methodSource::contains),
                         "ID $id behavior method must execute assertions: $path#$method",
                     )
                 }

@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 4
+active-task: Task 5
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -43,7 +43,7 @@ active-task: Task 4
 - [x] Task 1：建立可独立触发的最终 closure RED gate
 - [x] Task 2：补齐 provenance 批次 P1（9、10、11、12、16、17、19、22）
 - [x] Task 3：补齐 provenance 批次 P2（24、26、44、45、47、49、51、53）
-- [ ] Task 4：补齐 provenance 批次 P3（54、56、57、59、61、62、64、66）
+- [x] Task 4：补齐 provenance 批次 P3（54、56、57、59、61、62、64、66）
 - [ ] Task 5：补齐 provenance 批次 P4（71、72、73、74、93、95、96）
 - [ ] Task 6：核验状态批次 A（3、4、7、8、9、10、11、12）
 - [ ] Task 7：核验状态批次 B（16、17、19、22、24、26、28、29）
@@ -147,19 +147,25 @@ active-task: Task 4
 
 **Platform boundary:** verification
 
-**Estimated scope:** 3 files, 360 lines
+**Estimated scope:** 5 files, 400 lines
 
 **Verification:** parity contract 与下载、更新、历史、统计 protection tests GREEN；8 项固定原版和当前 consumer 角色完整。
 
 **Files:**
 - Modify: `app-desktop/src/test/resources/parity/parity-manifest.json`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt`
+- Modify: `app-desktop/src/test/resources/parity/fixed-main-path-inventory.json`
+- Modify: `app-desktop/build.gradle.kts`
 - Modify: `docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md`
+
+**Scope correction:** Task 1 的 fixed-blob/line 契约要求本批 fixed-original path 进入 inventory；Task 2/3 已建立“manifest 方法必须由单一 Gradle 入口实际执行”的约束。因此 fixed inventory 与 `task4ParityVerification` 是本批完成条件，范围由 3 文件修正为 5 文件、上限 400 touched。
 
 **Steps:**
 1. 从固定 ref 取 reader navigation、download queue、自动下载、library update、updates/history/stats 证据。
 2. 对 ID56 明确比较固定原版 source 分组与当前 Desktop 分组；差异在状态核验前不得被文案掩盖。
 3. 当前 SQLDelight/shared 测试只证明 current wiring，另行绑定固定 fixture。
+
+**Execution evidence（已完成）：** 基线 `af3ccf6e0637a8b1909f8532de8888c5296cda5b`。新增 batch contract 首次 RED 精确命中 `ID 54: upstreamRef must not be blank`；8 项均从 `6fbf6df...` 取得 path/symbol/line/blob，状态保持 `WIRED/WIRED/WIRED/WIRED/WIRED/WIRED/WIRED/SHARED`。ID56 明确绑定 fixed `DownloadQueueScreenModel.groupBy { it.source }` 与 current Desktop `queue.groupBy(DownloadItem::sourceId)`，保留 source-name 解析及 missing-source fallback 差异；ID57、61、66 的 fork shared scheduler/checkpoint/aggregation 均记录为 `MIGRATION_OUTPUT`，没有用 SQLDelight/shared current 测试冒充 fixed authority。聚合 `:app-desktop:task4ParityVerification` 以全局 headless 模式执行 14 个 Desktop/domain 生产行为类、162 tests、0 failure/0 skipped；focused batch 与普通 contract GREEN；显式 final gate 仍报告同一 60 个非终态 ID 并按设计 RED；根 `spotlessCheck`、plan guard、JSON、diff/range 通过。范围 `5 files/296 touched`，提交 hash 见交付报告；下一项为 Task 5。
 
 ### Task 5：补齐 provenance 批次 P4（71、72、73、74、93、95、96）
 
