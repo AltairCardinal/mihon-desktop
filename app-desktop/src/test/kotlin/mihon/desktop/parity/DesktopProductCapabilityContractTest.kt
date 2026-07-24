@@ -398,7 +398,7 @@ class DesktopProductCapabilityContractTest {
                 ),
         )
     private val task8Statuses =
-        mapOf(30 to "VERIFIED", 32 to "WIRED", 33 to "VERIFIED", 34 to "VERIFIED", 35 to "WIRED", 36 to "VERIFIED", 37 to "VERIFIED", 38 to "WIRED")
+        mapOf(30 to "VERIFIED", 32 to "WIRED", 33 to "VERIFIED", 34 to "VERIFIED", 35 to "VERIFIED", 36 to "VERIFIED", 37 to "VERIFIED", 38 to "WIRED")
     private val task8FollowUps =
         mapOf(30 to "NONE", 32 to "Task 14", 33 to "NONE", 34 to "NONE", 35 to "Task 16A", 36 to "NONE", 37 to "NONE", 38 to "Task 18")
     private val task8BehaviorMethods =
@@ -737,7 +737,7 @@ class DesktopProductCapabilityContractTest {
             93 to "WIRED",
             94 to "VERIFIED",
             95 to "WIRED",
-            96 to "WIRED",
+            96 to "VERIFIED",
         )
     private val task13FollowUps =
         mapOf(
@@ -874,7 +874,7 @@ class DesktopProductCapabilityContractTest {
             32 to "WIRED",
             33 to "VERIFIED",
             34 to "VERIFIED",
-            35 to "WIRED",
+            35 to "VERIFIED",
             36 to "VERIFIED",
             37 to "VERIFIED",
             38 to "WIRED",
@@ -2043,7 +2043,16 @@ class DesktopProductCapabilityContractTest {
                 item.getValue("behaviorMethods").jsonObject.mapValues { (_, methods) ->
                     methods.jsonArray.map { it.jsonPrimitive.content }.toSet()
                 }
-            val auditedBehaviorMethods = task13BehaviorMethods[id] ?: task5BehaviorMethods.getValue(id)
+            val auditedBehaviorMethods =
+                if (id == 96) {
+                    task13BehaviorMethods.getValue(id) +
+                        mapOf(
+                            "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt" to
+                                setOf("desktop DI binds the started Android compat Application exact type"),
+                        )
+                } else {
+                    task13BehaviorMethods[id] ?: task5BehaviorMethods.getValue(id)
+                }
             assertEquals(auditedBehaviorMethods, behaviorMethods, "ID $id behavior methods")
             behaviorMethods.forEach { (path, methods) ->
                 val source = Files.readString(repositoryRoot.resolve(path))
@@ -2127,7 +2136,7 @@ class DesktopProductCapabilityContractTest {
         val parentPlanPath = "docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"
         val plan = Files.readString(repositoryRoot.resolve(parentPlanPath))
         assertTrue(
-            markdownFrontmatter(plan)["active-task"] in setOf("Task 7", "Task 7A child plan", "Task 7R2 replan", "Task 8", "Task 9", "Task 9A child plan", "Task 9R replan", "Task 10", "Task 11", "Task 12", "Task 13", "Task 14", "Task 14B", "Task 14C", "Task 15", "Task 16A"),
+            markdownFrontmatter(plan)["active-task"] in setOf("Task 7", "Task 7A child plan", "Task 7R2 replan", "Task 8", "Task 9", "Task 9A child plan", "Task 9R replan", "Task 10", "Task 11", "Task 12", "Task 13", "Task 14", "Task 14B", "Task 14C", "Task 15", "Task 16A", "Task 16B"),
             "Completed Task 6 must advance to Task 7, its active child plan, or the next completed-batch task",
         )
         val childPlanPath = repositoryRoot.resolve("docs/superpowers/plans/2026-07-24-task-6a-desktop-crash-log-failure-boundary.md")
@@ -2206,7 +2215,7 @@ class DesktopProductCapabilityContractTest {
         }
 
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
-        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 8", "Task 9", "Task 9A child plan", "Task 9R replan", "Task 10", "Task 11", "Task 12", "Task 13", "Task 14", "Task 14B", "Task 14C", "Task 15", "Task 16A"), "Completed Task 7 must advance to Task 8 or later")
+        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 8", "Task 9", "Task 9A child plan", "Task 9R replan", "Task 10", "Task 11", "Task 12", "Task 13", "Task 14", "Task 14B", "Task 14C", "Task 15", "Task 16A", "Task 16B"), "Completed Task 7 must advance to Task 8 or later")
         assertTrue(Regex("""(?m)^- \[x] Task 7[：:]""").containsMatchIn(plan), "Completed Task 7 must be checked")
         assertTrue("6fb82074adeceda25be2f3a12621ce510fd0423c" in plan, "Task 7 closeout must retain R1 evidence")
         assertTrue("af9c522ec9f5c7032ebe3503bab6f9a6a1659e6f" in plan, "Task 7 closeout must retain R2 evidence")
@@ -2279,9 +2288,9 @@ class DesktopProductCapabilityContractTest {
 
         val compat = items.getValue(35).jsonObject
         assertTrue("TEMP-COMPAT" in compat.getValue("tags").jsonArray.map { it.jsonPrimitive.content })
-        assertTrue(requiredText(compat.getValue("statusDecision").jsonObject, "gap", 35, "statusDecision").contains("fixture"))
+        assertTrue(requiredText(statusDecisionForTask(compat, 35, "Task 8"), "gap", 35, "statusDecision").contains("fixture"))
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
-        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 9", "Task 9A child plan", "Task 9R replan", "Task 10", "Task 11", "Task 12", "Task 13", "Task 14", "Task 14B", "Task 14C", "Task 15", "Task 16A"), "Completed Task 8 must advance to Task 9 or later")
+        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 9", "Task 9A child plan", "Task 9R replan", "Task 10", "Task 11", "Task 12", "Task 13", "Task 14", "Task 14B", "Task 14C", "Task 15", "Task 16A", "Task 16B"), "Completed Task 8 must advance to Task 9 or later")
         assertTrue(Regex("""(?m)^- \[x] Task 8[：:]""").containsMatchIn(plan), "Completed Task 8 must be checked")
     }
 
@@ -2354,7 +2363,7 @@ class DesktopProductCapabilityContractTest {
 
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
         val activeTask = markdownFrontmatter(plan)["active-task"]
-        assertTrue(activeTask in setOf("Task 10", "Task 11", "Task 12", "Task 13", "Task 14", "Task 14B", "Task 14C", "Task 15", "Task 16A"), "Task 9 closeout must advance to Task 10 or later")
+        assertTrue(activeTask in setOf("Task 10", "Task 11", "Task 12", "Task 13", "Task 14", "Task 14B", "Task 14C", "Task 15", "Task 16A", "Task 16B"), "Task 9 closeout must advance to Task 10 or later")
         assertTrue(Regex("""(?m)^- \[x] Task 9[：:]""").containsMatchIn(plan), "Completed Task 9 must be checked")
         assertTrue(
             Regex(if (activeTask == "Task 10") """(?m)^- \[ ] Task 10[：:]""" else """(?m)^- \[x] Task 10[：:]""").containsMatchIn(plan),
@@ -2433,7 +2442,7 @@ class DesktopProductCapabilityContractTest {
         )
 
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
-        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 11", "Task 12", "Task 13", "Task 14", "Task 14B", "Task 14C", "Task 15", "Task 16A"), "Task 10 closeout must advance to Task 11 or later")
+        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 11", "Task 12", "Task 13", "Task 14", "Task 14B", "Task 14C", "Task 15", "Task 16A", "Task 16B"), "Task 10 closeout must advance to Task 11 or later")
         assertTrue(Regex("""(?m)^- \[x] Task 10[：:]""").containsMatchIn(plan), "Completed Task 10 must be checked")
         assertTrue(Regex("""(?m)^- \[[x ]\] Task 11[：:]""").containsMatchIn(plan), "Task 11 must remain tracked")
         assertTrue("ID 56" in plan && "source object" in plan && "sourceId" in plan && "Task 14" in plan, "Task 10 must record the finite ID 56 follow-up")
@@ -2528,7 +2537,7 @@ class DesktopProductCapabilityContractTest {
         )
 
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
-        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 12", "Task 13", "Task 14", "Task 14B", "Task 14C", "Task 15", "Task 16A"), "Task 11 closeout must advance to Task 12 or later")
+        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 12", "Task 13", "Task 14", "Task 14B", "Task 14C", "Task 15", "Task 16A", "Task 16B"), "Task 11 closeout must advance to Task 12 or later")
         assertTrue(Regex("""(?m)^- \[x] Task 11[：:]""").containsMatchIn(plan), "Completed Task 11 must be checked")
         assertTrue(Regex("""(?m)^- \[[x ]\] Task 12[：:]""").containsMatchIn(plan), "Task 12 must remain tracked")
         assertTrue("ID 69" in plan && "ID 70" in plan && "Task 14" in plan, "Task 11 must record the finite tracking follow-up")
@@ -2611,7 +2620,7 @@ class DesktopProductCapabilityContractTest {
         )
 
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
-        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 13", "Task 14", "Task 14B", "Task 14C", "Task 15", "Task 16A"), "Task 12 closeout must advance to Task 13 or later")
+        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 13", "Task 14", "Task 14B", "Task 14C", "Task 15", "Task 16A", "Task 16B"), "Task 12 closeout must advance to Task 13 or later")
         assertTrue(Regex("""(?m)^- \[x] Task 12[：:]""").containsMatchIn(plan), "Completed Task 12 must be checked")
         assertTrue(Regex("""(?m)^- \[[x ]\] Task 13[：:]""").containsMatchIn(plan), "Task 13 must remain tracked")
         assertTrue("ID 85" in plan && "217" in plan && "Task 15" in plan, "Task 12 must preserve the approved exemption and OS follow-up")
@@ -2737,7 +2746,7 @@ class DesktopProductCapabilityContractTest {
         assertTrue(compatFixtures.any { it.contains("RealExtensionWebViewUnsupportedCompatTest.kt#") })
 
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
-        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 14", "Task 14B", "Task 14C", "Task 15", "Task 16A"), "Task 13 closeout must advance to Task 14")
+        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 14", "Task 14B", "Task 14C", "Task 15", "Task 16A", "Task 16B"), "Task 13 closeout must advance to Task 14")
         assertTrue(Regex("""(?m)^- \[x] Task 13[：:]""").containsMatchIn(plan), "Completed Task 13 must be checked")
         assertTrue(Regex("""(?m)^- \[[x ]\] Task 14[：:]""").containsMatchIn(plan), "Task 14 must remain tracked")
         assertTrue("ID 95" in plan && "Task 16C" in plan && "ID 96" in plan && "Task 16A" in plan, "Task 13 must retain finite architecture follow-ups")
@@ -2835,7 +2844,7 @@ class DesktopProductCapabilityContractTest {
         }
 
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
-        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 14C", "Task 15", "Task 16A"))
+        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 14C", "Task 15", "Task 16A", "Task 16B"))
         assertTrue(Regex("""(?m)^- \[[x ]\] Task 14[：:]""").containsMatchIn(plan))
         assertTrue("Task 14A" in plan && "Task 14B" in plan && "Task 14C" in plan)
     }
@@ -2861,7 +2870,7 @@ class DesktopProductCapabilityContractTest {
             val actual = requiredText(items.getValue(id).jsonObject.getValue("statusDecision").jsonObject, "followUp", id, "statusDecision")
             if (actual != expected) handoffProblems += "ID $id followUp is still `$actual`"
         }
-        if (markdownFrontmatter(parent)["active-task"] !in setOf("Task 14C", "Task 15", "Task 16A")) handoffProblems += "parent active-task has not advanced to Task 14C or later"
+        if (markdownFrontmatter(parent)["active-task"] !in setOf("Task 14C", "Task 15", "Task 16A", "Task 16B")) handoffProblems += "parent active-task has not advanced to Task 14C or later"
         if (!Regex("""(?m)^  - \[x] Task 14B[：:]""").containsMatchIn(parent)) handoffProblems += "Task 14B is not checked"
         assertTrue(handoffProblems.isEmpty(), handoffProblems.joinToString("; "))
 
@@ -2947,7 +2956,7 @@ class DesktopProductCapabilityContractTest {
         assertEquals(task14Ids, expected.keys, "Task 14 manifest ID set must stay exact")
         val problems = mutableListOf<String>()
         if ("## Task 14 governance snapshot" !in tracker) problems += "tracker Task 14 governance snapshot is missing"
-        if (markdownFrontmatter(parent)["active-task"] !in setOf("Task 15", "Task 16A")) problems += "parent active-task has not advanced to Task 15 or later"
+        if (markdownFrontmatter(parent)["active-task"] !in setOf("Task 15", "Task 16A", "Task 16B")) problems += "parent active-task has not advanced to Task 15 or later"
         if (!Regex("""(?m)^- \[x] Task 14[：:]""").containsMatchIn(parent)) problems += "parent Task 14 is not checked"
         if (!Regex("""(?m)^  - \[x] Task 14C[：:]""").containsMatchIn(parent)) problems += "Task 14C is not checked"
         assertTrue(problems.isEmpty(), problems.joinToString("; "))
@@ -3005,7 +3014,7 @@ class DesktopProductCapabilityContractTest {
             if (requiredText(decision, "task", id, "statusDecision") != "Task 15") problems += "ID $id current decision is not Task 15"
             if (requiredText(decision, "followUp", id, "statusDecision") != expectedFollowUps.getValue(id)) problems += "ID $id follow-up is not finite"
         }
-        if (markdownFrontmatter(parent)["active-task"] != "Task 16A") problems += "parent active-task has not advanced to Task 16A"
+        if (markdownFrontmatter(parent)["active-task"] !in setOf("Task 16A", "Task 16B")) problems += "parent active-task has not advanced to Task 16A or later"
         if (!Regex("""(?m)^- \[x] Task 15[：:]""").containsMatchIn(parent)) problems += "Task 15 is not checked"
         assertTrue(problems.isEmpty(), problems.joinToString("; "))
 
@@ -3078,7 +3087,160 @@ class DesktopProductCapabilityContractTest {
         assertFalse("app-desktop/src/main/kotlin/" in task153, "Task 153 must not pre-authorize product changes")
         assertFalse("DesktopUpdateInstallerTest.kt" in task153, "Task 153 must not pre-authorize product-test changes")
         assertTrue("另建 TDD 产品修复计划" in task153, "Task 153 must stop and replan when a real probe finds a product defect")
-        assertTrue(Regex("""(?m)^- \[ ] Task 16A[：:]""").containsMatchIn(parent), "Task 16A remains open")
+        assertTrue(Regex("""(?m)^- \[[x ]\] Task 16A[：:]""").containsMatchIn(parent), "Task 16A remains tracked")
+    }
+
+    @Test
+    fun `Task 16A closes symbol scoped compat and historical format removal evidence`() {
+        data class RemovalExpectation(
+            val previousTask: String,
+            val decision: String,
+            val disposition: String,
+            val symbols: Set<String>,
+            val fixtures: Set<String>,
+            val removalTerms: Set<String>,
+            val symbolInventory: String = "NONE",
+        )
+
+        val repositoryRoot = repositoryRoot()
+        val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
+        val parent = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
+        val expected =
+            mapOf(
+                35 to
+                    RemovalExpectation(
+                        previousTask = "Task 8",
+                        decision = "PROMOTE_VERIFIED",
+                        disposition = "RETAIN_ADAPTER",
+                        symbols =
+                            setOf(
+                                "ExtensionLoader.loadExtension",
+                                "DesktopExtensionInstallPort.apkConverter.convert",
+                                "DesktopExtensionManager.loader.loadExtensions/loadPackage",
+                                "DesktopExtensionLoader.loadFromJar/loadByClassName",
+                                "ExtensionClassLoader.loadClass",
+                            ),
+                        fixtures =
+                            setOf(
+                                "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt#immutable ManHuaGui APK loads through the production converter and loader",
+                            ),
+                        removalTerms = setOf("immutable APK", "production converter", "loader", "per symbol"),
+                    ),
+                74 to
+                    RemovalExpectation(
+                        previousTask = "Task 12",
+                        decision = "KEEP_VERIFIED",
+                        disposition = "RETAIN_READER_WRITER",
+                        symbols =
+                            setOf(
+                                "BackupCodec.encode",
+                                "BackupCodec.decode",
+                                "BackupCreator.encodeForBackup",
+                                "BackupDecoder.decode",
+                                "DesktopBackupCreator.encodeToBytes",
+                                "DesktopBackupCreator.decodeFromBytes",
+                            ),
+                        fixtures =
+                            setOf(
+                                "data/src/commonTest/kotlin/tachiyomi/data/backup/BackupCodecContractTest.kt#fixed-main Android full fixture decodes and reencodes with canonical schema",
+                                "app/src/test/java/eu/kanade/tachiyomi/data/backup/BackupAndroidCodecIntegrationTest.kt#decoder reads common codec backup through content uri",
+                                "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCompatibilityTest.kt#first Desktop protobuf writer fixture restores every historical field",
+                            ),
+                        removalTerms = setOf("fixed-main", "current Android", "Desktop first-writer", "decode", "writer"),
+                    ),
+                96 to
+                    RemovalExpectation(
+                        previousTask = "Task 13",
+                        decision = "PROMOTE_VERIFIED",
+                        disposition = "RETAIN_ADAPTER",
+                        symbols =
+                            setOf(
+                                "DesktopExtensionInstallPort.apkConverter.convert",
+                                "DesktopExtensionLoader.loadFromJar",
+                                "AndroidCompat.initialize/startApp",
+                                "DesktopAppModule.initAndroidCompatApplication",
+                            ),
+                        fixtures =
+                            setOf(
+                                "app-desktop/src/test/kotlin/mihon/desktop/extension/CompatEvidenceContractTest.kt#inventory covers the complete public compat adapter surface",
+                                "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionBuildCompatTest.kt#real MangaDex headers use host version and Android release ABI",
+                                "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt#real Comix WebView path fails fast with the explicit desktop boundary",
+                                "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt#desktop DI binds the started Android compat Application exact type",
+                            ),
+                        removalTerms = setOf("45", "44 required", "WebView", "per symbol", "immutable APK"),
+                        symbolInventory = "app-desktop/src/test/resources/extensions/compat-inventory.json",
+                    ),
+            )
+
+        expected.forEach { (id, expectation) ->
+            val item = items.getValue(id).jsonObject
+            assertEquals("VERIFIED", requiredText(item, "status", id))
+            statusDecisionForTask(item, id, expectation.previousTask)
+            val decision = item.getValue("statusDecision").jsonObject
+            assertEquals("Task 16A", requiredText(decision, "task", id, "statusDecision"))
+            assertEquals(expectation.decision, requiredText(decision, "decision", id, "statusDecision"))
+            assertEquals("NONE", requiredText(decision, "followUp", id, "statusDecision"))
+            assertEquals("NONE", requiredText(decision, "gap", id, "statusDecision"))
+
+            val audit = item.getValue("compatRemovalAudit").jsonObject
+            assertEquals(
+                setOf("task", "disposition", "auditedSymbols", "fixtureEvidence", "symbolInventory", "removalCondition"),
+                audit.keys,
+                "ID $id Task 16A audit schema",
+            )
+            assertEquals("Task 16A", requiredText(audit, "task", id, "compatRemovalAudit"))
+            assertEquals(expectation.disposition, requiredText(audit, "disposition", id, "compatRemovalAudit"))
+            assertEquals(expectation.symbols, audit.getValue("auditedSymbols").jsonArray.map { it.jsonPrimitive.content }.toSet())
+            assertEquals(expectation.fixtures, audit.getValue("fixtureEvidence").jsonArray.map { it.jsonPrimitive.content }.toSet())
+            assertEquals(expectation.symbolInventory, requiredText(audit, "symbolInventory", id, "compatRemovalAudit"))
+            val removalCondition = requiredText(audit, "removalCondition", id, "compatRemovalAudit")
+            expectation.removalTerms.forEach { term -> assertTrue(term in removalCondition, "ID $id removal condition must record `$term`") }
+        }
+
+        val compat = items.getValue(96).jsonObject
+        val bootstrapPath = "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt"
+        assertTrue(
+            bootstrapPath in compat.getValue("desktopConsumerAdapterPaths").jsonArray.map { it.jsonPrimitive.content },
+            "ID 96 must declare the production bootstrap adapter path",
+        )
+        val bootstrapConsumers =
+            compat.getValue("roleEvidence").jsonObject.getValue("DESKTOP_CONSUMER").jsonArray
+                .map { it.jsonObject }
+                .filter { requiredText(it, "path", 96, "roleEvidence.DESKTOP_CONSUMER") == bootstrapPath }
+        assertEquals(
+            setOf("AndroidCompat.initialize" to "191", "AndroidCompat.startApp" to "193"),
+            bootstrapConsumers.map {
+                requiredText(it, "symbol", 96, "roleEvidence.DESKTOP_CONSUMER") to
+                    requiredText(it, "line", 96, "roleEvidence.DESKTOP_CONSUMER")
+            }.toSet(),
+            "ID 96 must bind both production bootstrap calls",
+        )
+        val bootstrapTest = "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
+        val bootstrapMethod = "desktop DI binds the started Android compat Application exact type"
+        assertTrue(bootstrapTest in compat.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content })
+        assertTrue(
+            bootstrapMethod in
+                compat.getValue("statusDecision").jsonObject.getValue("behaviorMethods").jsonObject
+                    .getValue(bootstrapTest).jsonArray.map { it.jsonPrimitive.content },
+            "ID 96 production bootstrap caller must stay executable through DI wiring",
+        )
+
+        val inventory =
+            Json.parseToJsonElement(
+                Files.readString(repositoryRoot.resolve(expected.getValue(96).symbolInventory)),
+            ).jsonObject
+        assertEquals(fixedOriginalMihonRef, requiredText(inventory, "authorityRef", 96, "compat inventory"))
+        val inventoryEntries = inventory.getValue("entries").jsonArray.map { it.jsonObject }
+        assertEquals(45, inventoryEntries.size)
+        assertEquals(45, inventoryEntries.map { requiredText(it, "symbol", 96, "compat inventory") }.distinct().size)
+        assertEquals(
+            mapOf("required" to 44, "unsupported" to 1),
+            inventoryEntries.groupingBy { requiredText(it, "status", 96, "compat inventory") }.eachCount(),
+        )
+
+        assertEquals("Task 16B", markdownFrontmatter(parent)["active-task"])
+        assertTrue(Regex("""(?m)^- \[x] Task 16A[：:]""").containsMatchIn(parent), "Task 16A must be checked")
+        assertTrue(Regex("""(?m)^- \[ ] Task 16B[：:]""").containsMatchIn(parent), "Task 16B remains open")
     }
 
     @Test

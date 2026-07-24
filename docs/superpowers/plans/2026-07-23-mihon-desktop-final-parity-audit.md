@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 16A
+active-task: Task 16B
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -58,7 +58,7 @@ active-task: Task 16A
   - [x] Task 14B：为产品缺口创建 consolidated child plan
   - [x] Task 14C：同步 tracker 并关闭父 Task 14
 - [x] Task 15：完成候选平台能力与 `EXEMPT` 审查
-- [ ] Task 16A：审计 compat 与历史格式删除证据（35、74、96）
+- [x] Task 16A：审计 compat 与历史格式删除证据（35、74、96）
 - [ ] Task 16B：审计重复业务规则
 - [ ] Task 16C：建立 UI→data/network/manager 架构守卫
 - [ ] Task 16D：盘点并约束最终 Test Mode 全场景入口
@@ -423,6 +423,8 @@ active-task: Task 16A
 1. 对 source/extension compat 复用真实 fixture evidence，删除条件按符号判断，不能按目录一刀切。
 2. 对 backup reader/writer 先跑固定原版、当前 Android、Desktop 历史 fixture；没有 backward compatibility 前不得切 writer 或删 reader。
 3. 本 Task 只决定 compat/历史格式的删除或保留证据；需要产品修改时输出有限 child plan，不混入重复规则或架构守卫。
+
+**Execution evidence（已完成）：** 基线 `e0b5e2057c8a57dfef20679f7aaf6b6a3c86c175`。Task16A contract 首次精确 RED 于 `ID 35 expected VERIFIED but was WIRED`；逐符号审计固定 `ExtensionLoader.loadExtension`、当前 Android consumer、Desktop production converter/install/manager/loader/classloader 后，ID 35/96 以 `RETAIN_ADAPTER` 提升 `VERIFIED`，45 项 compat inventory 保持 44 `required`、1 个 WebView `unsupported`、0 `unverified`，每项仅在真实 immutable APK 不再链接/执行或 production replacement 成立后才可删除。ID 74 保持 `VERIFIED` 与 `RETAIN_READER_WRITER`：fixed-main backup fixture `4/4`、当前 Android writer→reader `2/2`、Desktop first-writer/extension fixture `12/12` 全绿，未切 writer、未删 reader。独立审查唯一 repair 先精确 RED 于 ID 96 缺失 `DesktopAppModule.initAndroidCompatApplication`，随后将 `DesktopAppModule.kt:191/193` 的 initialize/startApp production bootstrap caller 绑定到既有可执行 `DesktopDiWiringTest`，repair focused 与该 DI wiring test 均 `1/1` GREEN。ordinary parity contract `51/51` 与 Spotless GREEN；显式 final gate 唯一按设计 RED 于 29 个非终态 ID 且已移除 35/96。未发现产品缺陷，因此未创建 child plan；JSON、plan/diff/range/headless guards 通过，范围为 3 files / 298 touched。
 
 ### Task 16B：审计重复业务规则
 

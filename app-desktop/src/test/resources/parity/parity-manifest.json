@@ -1046,12 +1046,21 @@
       "PLATFORM-ADAPTER",
       "TEMP-COMPAT"
     ],
-    "status": "WIRED",
-    "statusDecision": {
+    "status": "VERIFIED",
+    "statusDecisionHistory": [{
       "task": "Task 8",
       "decision": "KEEP_GAP",
       "followUp": "Task 16A",
       "gap": "The immutable ManHuaGui extension fixture still executes Desktop APK conversion, ExtensionClassLoader and Android compatibility shims; TEMP-COMPAT removal and terminal status require the Task 16A symbol audit.",
+      "behaviorMethods": {
+        "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt": ["immutable ManHuaGui APK loads through the production converter and loader"]
+      }
+    }],
+    "statusDecision": {
+      "task": "Task 16A",
+      "decision": "PROMOTE_VERIFIED",
+      "followUp": "NONE",
+      "gap": "NONE",
       "behaviorMethods": {
         "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt": ["immutable ManHuaGui APK loads through the production converter and loader"]
       }
@@ -1063,12 +1072,34 @@
     ],
     "sharedImplementationPaths": [],
     "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt"],
-    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/extension/ApkToJarConverter.kt", "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt", "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt", "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionManager.kt"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt", "symbol": "private suspend fun loadExtension", "line": 226}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt", "symbol": "private suspend fun loadExtension", "line": 226}],
+      "SHARED_OR_ADAPTER": [
+        {"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/ApkToJarConverter.kt", "symbol": "fun convert", "line": 30},
+        {"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt", "symbol": "private fun loadFromJar", "line": 66}
+      ],
+      "DESKTOP_CONSUMER": [
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt", "symbol": "apkConverter.convert", "line": 243},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionManager.kt", "symbol": "loader.loadExtensions", "line": 56}
+      ],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt#immutable ManHuaGui APK loads through the production converter and loader", "productionMarkers": ["ApkToJarConverter().convert", "DesktopExtensionLoader(tempDir.toFile())"]}]
+    },
+    "compatRemovalAudit": {
+      "task": "Task 16A",
+      "disposition": "RETAIN_ADAPTER",
+      "auditedSymbols": ["ExtensionLoader.loadExtension", "DesktopExtensionInstallPort.apkConverter.convert", "DesktopExtensionManager.loader.loadExtensions/loadPackage", "DesktopExtensionLoader.loadFromJar/loadByClassName", "ExtensionClassLoader.loadClass"],
+      "fixtureEvidence": ["app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt#immutable ManHuaGui APK loads through the production converter and loader"],
+      "symbolInventory": "NONE",
+      "removalCondition": "Remove per symbol only after no immutable APK executes or links that symbol through the production converter and loader, and a replacement production path preserves extension discovery and loading."
+    },
     "deviations": [
       { "classification": "PLATFORM_ADAPTER", "description": "DesktopExtensionLoader contains the JVM ExtensionClassLoader and ServiceLoader/compat path." }
     ],
     "desktopImplementation": "Desktop current implementation to characterize and align: 扩展加载",
     "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt"],
+    "verificationScope": "VERIFIED: fixed/current Android loading ownership and the Desktop converter, loader, classloader and immutable ManHuaGui production fixture are bound; TEMP-COMPAT is retained only under the recorded per-symbol removal condition.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -2487,17 +2518,23 @@
     "desktopImplementation": "Current Android and Desktop use BackupCodec; separate fixtures preserve fixed-main Android output and the first Desktop writer output.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/models/Backup.kt", "symbol": "data class Backup"}],
-    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/data/backup/BackupDecoder.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreator.kt", "app/src/main/java/eu/kanade/tachiyomi/data/backup/BackupDecoder.kt"],
     "sharedImplementationPaths": ["data/src/commonMain/kotlin/tachiyomi/data/backup/BackupCodec.kt"],
     "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupCreator.kt"],
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/models/Backup.kt", "symbol": "data class Backup", "line": 7}],
-      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/BackupDecoder.kt", "symbol": "BackupCodec.decode", "line": 27}],
+      "CURRENT_ANDROID": [
+        {"path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreator.kt", "symbol": "BackupCodec.encode", "line": 160},
+        {"path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/BackupDecoder.kt", "symbol": "BackupCodec.decode", "line": 27}
+      ],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "data/src/commonMain/kotlin/tachiyomi/data/backup/BackupCodec.kt", "symbol": "object BackupCodec", "line": 13}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupCreator.kt", "symbol": "fun decodeFromBytes", "line": 57}],
+      "DESKTOP_CONSUMER": [
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupCreator.kt", "symbol": "fun encodeToBytes", "line": 50},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupCreator.kt", "symbol": "fun decodeFromBytes", "line": 57}
+      ],
       "FIXTURE": [
         {"artifact": "data/src/commonTest/kotlin/tachiyomi/data/backup/BackupCodecContractTest.kt#fixed-main Android full fixture decodes and reencodes with canonical schema", "productionMarkers": ["BackupCodec.decode"]},
-        {"artifact": "app/src/test/java/eu/kanade/tachiyomi/data/backup/BackupAndroidCodecIntegrationTest.kt#decoder reads common codec backup through content uri", "productionMarkers": ["BackupDecoder(context).decode(uri)"]},
+        {"artifact": "app/src/test/java/eu/kanade/tachiyomi/data/backup/BackupAndroidCodecIntegrationTest.kt#decoder reads common codec backup through content uri", "productionMarkers": ["BackupCreator.encodeForBackup(expected)", "BackupDecoder(context).decode(uri)"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCompatibilityTest.kt#first Desktop protobuf writer fixture restores every historical field", "productionMarkers": ["DesktopBackupCreator.decodeFromBytes(bytes)"]}
       ]
     },
@@ -2506,7 +2543,16 @@
       "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCompatibilityTest.kt": ["canonical writer preserves every Android backup section", "first Desktop protobuf writer fixture restores every historical field"]
     },
     "protectionTests": ["data/src/commonTest/kotlin/tachiyomi/data/backup/BackupCodecContractTest.kt", "app/src/test/java/eu/kanade/tachiyomi/data/backup/BackupAndroidCodecIntegrationTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCompatibilityTest.kt"],
-    "statusDecision": {"task": "Task 12", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"data/src/commonTest/kotlin/tachiyomi/data/backup/BackupCodecContractTest.kt": ["fixed-main Android full fixture decodes and reencodes with canonical schema"], "app/src/test/java/eu/kanade/tachiyomi/data/backup/BackupAndroidCodecIntegrationTest.kt": ["decoder reads common codec backup through content uri"], "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCompatibilityTest.kt": ["canonical writer preserves every Android backup section", "first Desktop protobuf writer fixture restores every historical field"]}},
+    "statusDecisionHistory": [{"task": "Task 12", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"data/src/commonTest/kotlin/tachiyomi/data/backup/BackupCodecContractTest.kt": ["fixed-main Android full fixture decodes and reencodes with canonical schema"], "app/src/test/java/eu/kanade/tachiyomi/data/backup/BackupAndroidCodecIntegrationTest.kt": ["decoder reads common codec backup through content uri"], "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCompatibilityTest.kt": ["canonical writer preserves every Android backup section", "first Desktop protobuf writer fixture restores every historical field"]}}],
+    "statusDecision": {"task": "Task 16A", "decision": "KEEP_VERIFIED", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"data/src/commonTest/kotlin/tachiyomi/data/backup/BackupCodecContractTest.kt": ["fixed-main Android full fixture decodes and reencodes with canonical schema"], "app/src/test/java/eu/kanade/tachiyomi/data/backup/BackupAndroidCodecIntegrationTest.kt": ["decoder reads common codec backup through content uri"], "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCompatibilityTest.kt": ["canonical writer preserves every Android backup section", "first Desktop protobuf writer fixture restores every historical field"]}},
+    "compatRemovalAudit": {
+      "task": "Task 16A",
+      "disposition": "RETAIN_READER_WRITER",
+      "auditedSymbols": ["BackupCodec.encode", "BackupCodec.decode", "BackupCreator.encodeForBackup", "BackupDecoder.decode", "DesktopBackupCreator.encodeToBytes", "DesktopBackupCreator.decodeFromBytes"],
+      "fixtureEvidence": ["data/src/commonTest/kotlin/tachiyomi/data/backup/BackupCodecContractTest.kt#fixed-main Android full fixture decodes and reencodes with canonical schema", "app/src/test/java/eu/kanade/tachiyomi/data/backup/BackupAndroidCodecIntegrationTest.kt#decoder reads common codec backup through content uri", "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCompatibilityTest.kt#first Desktop protobuf writer fixture restores every historical field"],
+      "symbolInventory": "NONE",
+      "removalCondition": "Keep the canonical writer and both decode paths until a replacement decodes the fixed-main Android and Desktop first-writer fixtures, current Android writer-reader integration remains green, and an explicit migration supports every historical field before any reader deletion or writer switch."
+    },
     "deviations": [{"classification": "MIGRATION_OUTPUT", "description": "The current common schema is migration output. android-full.tachibk is generated from fixed main, while desktop-first-writer.tachibk is generated independently from Desktop commit 8c6d18c20; neither current fixture is relabeled as fixed source."}],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -2989,14 +3035,14 @@
       "PLATFORM-ADAPTER",
       "TEMP-COMPAT"
     ],
-    "status": "WIRED",
+    "status": "VERIFIED",
     "authoritativeImplementation": "Fixed-main original Mihon capability #96: ExtensionLoader consumes Android Context, PackageInfo, ApplicationInfo, and Source contracts when loading APK extensions.",
     "desktopImplementation": "DesktopExtensionLoader consumes Source through ServiceLoader while AndroidCompat supplies only the Android ABI surface required by extension consumers.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt", "symbol": "fun loadExtensions"}],
     "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt"],
     "sharedImplementationPaths": ["source-api/src/commonMain/kotlin/eu/kanade/tachiyomi/source/Source.kt"],
-    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt", "app-desktop/src/main/kotlin/mihon/desktop/compat/AndroidCompat.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt", "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt", "app-desktop/src/main/kotlin/mihon/desktop/compat/AndroidCompat.kt"],
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt", "symbol": "fun loadExtensions", "line": 117}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt", "symbol": "suspend fun loadExtensions", "line": 118}],
@@ -3004,23 +3050,39 @@
         {"kind": "SHARED", "path": "source-api/src/commonMain/kotlin/eu/kanade/tachiyomi/source/Source.kt", "symbol": "interface Source", "line": 12},
         {"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/compat/AndroidCompat.kt", "symbol": "object AndroidCompat", "line": 15}
       ],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt", "symbol": "ServiceLoader.load(Source::class.java", "line": 75}],
+      "DESKTOP_CONSUMER": [
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "AndroidCompat.initialize", "line": 191},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "AndroidCompat.startApp", "line": 193},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt", "symbol": "apkConverter.convert", "line": 243},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt", "symbol": "ServiceLoader.load(Source::class.java", "line": 75}
+      ],
       "FIXTURE": [
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/extension/CompatEvidenceContractTest.kt#inventory covers the complete public compat adapter surface", "productionMarkers": ["scanSurface(root)"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionBuildCompatTest.kt#real MangaDex headers use host version and Android release ABI", "productionMarkers": ["ApkToJarConverter()", "DesktopExtensionLoader(tempDir.toFile())"]},
-        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt#real Comix WebView path fails fast with the explicit desktop boundary", "productionMarkers": ["ApkToJarConverter()", "DesktopExtensionLoader(tempDir.toFile())"]}
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt#real Comix WebView path fails fast with the explicit desktop boundary", "productionMarkers": ["ApkToJarConverter()", "DesktopExtensionLoader(tempDir.toFile())"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt#desktop DI binds the started Android compat Application exact type", "productionMarkers": ["initDesktopDIForTest", "Injekt.get<Application>()", "assertSame(AndroidCompat.context, application.getBaseContext())"]}
       ]
     },
     "behaviorVerificationTask": ":app-desktop:task5ParityVerification",
     "behaviorMethods": {
       "app-desktop/src/test/kotlin/mihon/desktop/extension/CompatEvidenceContractTest.kt": ["inventory covers the complete public compat adapter surface"],
       "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionBuildCompatTest.kt": ["real MangaDex headers use host version and Android release ABI"],
-      "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt": ["real Comix WebView path fails fast with the explicit desktop boundary"]
+      "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt": ["real Comix WebView path fails fast with the explicit desktop boundary"],
+      "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt": ["desktop DI binds the started Android compat Application exact type"]
     },
-    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/extension/CompatEvidenceContractTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionBuildCompatTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt"],
+    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/extension/CompatEvidenceContractTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionBuildCompatTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"],
     "deviations": [{"classification": "PLATFORM_ADAPTER", "description": "Android PackageManager loading remains the fixed/current Android responsibility; Desktop ServiceLoader and ABI shims are compatibility adapters whose retained surface must stay consumer-driven."}],
-    "statusDecision": {"task": "Task 13", "decision": "PROMOTE_WIRED", "followUp": "Task 16A", "gap": "Real immutable APKs execute the production converter, loader, compat inventory, and explicit unsupported boundary, but TEMP-COMPAT removal conditions and the final symbol audit remain open for Task 16A.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/extension/CompatEvidenceContractTest.kt": ["inventory covers the complete public compat adapter surface"], "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionBuildCompatTest.kt": ["real MangaDex headers use host version and Android release ABI"], "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt": ["real Comix WebView path fails fast with the explicit desktop boundary"]}},
-    "verificationScope": "WIRED: consumer-driven inventory and immutable APK fixtures execute the Desktop compatibility adapter; TEMP-COMPAT remains nonterminal until Task 16A.",
+    "statusDecisionHistory": [{"task": "Task 13", "decision": "PROMOTE_WIRED", "followUp": "Task 16A", "gap": "Real immutable APKs execute the production converter, loader, compat inventory, and explicit unsupported boundary, but TEMP-COMPAT removal conditions and the final symbol audit remain open for Task 16A.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/extension/CompatEvidenceContractTest.kt": ["inventory covers the complete public compat adapter surface"], "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionBuildCompatTest.kt": ["real MangaDex headers use host version and Android release ABI"], "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt": ["real Comix WebView path fails fast with the explicit desktop boundary"]}}],
+    "statusDecision": {"task": "Task 16A", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/extension/CompatEvidenceContractTest.kt": ["inventory covers the complete public compat adapter surface"], "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionBuildCompatTest.kt": ["real MangaDex headers use host version and Android release ABI"], "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt": ["real Comix WebView path fails fast with the explicit desktop boundary"], "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt": ["desktop DI binds the started Android compat Application exact type"]}},
+    "compatRemovalAudit": {
+      "task": "Task 16A",
+      "disposition": "RETAIN_ADAPTER",
+      "auditedSymbols": ["DesktopExtensionInstallPort.apkConverter.convert", "DesktopExtensionLoader.loadFromJar", "AndroidCompat.initialize/startApp", "DesktopAppModule.initAndroidCompatApplication"],
+      "fixtureEvidence": ["app-desktop/src/test/kotlin/mihon/desktop/extension/CompatEvidenceContractTest.kt#inventory covers the complete public compat adapter surface", "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionBuildCompatTest.kt#real MangaDex headers use host version and Android release ABI", "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt#real Comix WebView path fails fast with the explicit desktop boundary", "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt#desktop DI binds the started Android compat Application exact type"],
+      "symbolInventory": "app-desktop/src/test/resources/extensions/compat-inventory.json",
+      "removalCondition": "Audit all 45 public compat symbols per symbol: retain the 44 required entries and Desktop bootstrap caller while an immutable APK links or executes them, and retain the explicit WebView Unsupported boundary until no supported extension reaches it or a production WebView adapter replaces it."
+    },
+    "verificationScope": "VERIFIED: fixed/current Android ownership, all 45 inventory symbols, 44 required ABI entries, the WebView Unsupported boundary, Desktop production converter/loader callers and immutable APK fixtures are bound under per-symbol removal conditions.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   }
