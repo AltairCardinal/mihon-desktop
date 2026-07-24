@@ -14,6 +14,7 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.toSharedTransitionModel
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderTransitionView
 import eu.kanade.tachiyomi.util.system.dpToPx
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.collectLatest
@@ -85,26 +86,23 @@ class WebtoonTransitionHolder(
      */
     private fun observeStatus(chapter: ReaderChapter, transition: ChapterTransition) {
         stateJob?.cancel()
-        stateJob = scope.launch {
-            chapter.sharedStateFlow
-                .collectLatest { state ->
-                    pagesContainer.removeAllViews()
-                    when (state) {
-                        is ReaderChapterState.Loading -> setLoading()
-                        is ReaderChapterState.Error -> {
-                            val retryCommand = transition.toSharedTransitionModel(state).retryCommand()
-                            setError(
-                                state.error.cause ?: IllegalStateException(state.error.toString()),
-                                transition,
-                                (retryCommand as ReaderNavigationCommand.RetryChapter).chapterId,
-                            )
-                        }
-                        is ReaderChapterState.Wait, is ReaderChapterState.Loaded -> {
-                            // No additional view is added
-                        }
-                    }
-                    pagesContainer.isVisible = pagesContainer.isNotEmpty()
+        stateJob = observeWebtoonTransitionState(scope, chapter) { state ->
+            pagesContainer.removeAllViews()
+            when (state) {
+                is ReaderChapterState.Loading -> setLoading()
+                is ReaderChapterState.Error -> {
+                    val retryCommand = transition.toSharedTransitionModel(state).retryCommand()
+                    setError(
+                        state.error.cause ?: IllegalStateException(state.error.toString()),
+                        transition,
+                        (retryCommand as ReaderNavigationCommand.RetryChapter).chapterId,
+                    )
                 }
+                is ReaderChapterState.Wait, is ReaderChapterState.Loaded -> {
+                    // No additional view is added
+                }
+            }
+            pagesContainer.isVisible = pagesContainer.isNotEmpty()
         }
     }
 
@@ -145,5 +143,15 @@ class WebtoonTransitionHolder(
 
         pagesContainer.addView(textView)
         pagesContainer.addView(retryBtn)
+    }
+}
+
+internal fun observeWebtoonTransitionState(
+    scope: CoroutineScope,
+    chapter: ReaderChapter,
+    onState: (ReaderChapterState) -> Unit,
+): Job = scope.launch {
+    chapter.sharedStateFlow.collectLatest { state ->
+        onState(state)
     }
 }

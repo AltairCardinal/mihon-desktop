@@ -53,6 +53,7 @@ import mihon.desktop.reader.DesktopReaderPageLoader
 import mihon.desktop.reader.PagePreloader
 import mihon.desktop.reader.ReaderBackgroundTheme
 import mihon.desktop.reader.ReaderChapterRef
+import mihon.desktop.reader.ReaderColorFilter
 import mihon.desktop.reader.ReaderKeyboardAction
 import mihon.desktop.reader.ReaderNavigator
 import mihon.desktop.reader.ReaderPageAction
@@ -483,7 +484,7 @@ private fun ReaderViewport(
                 )
                 state.resolvedUrls.isEmpty() -> EmptyState(onBack = { navigator.pop() })
                 else -> {
-                    Box(Modifier.fillMaxSize().readerColorTransform(state.colorFilter)) {
+                    ReaderViewportColorLayer(state.colorFilter) {
                         ReaderContent(state, model, navigator, contextMenuScope, mangaTitle, chapterTitle, preloader, readerNav, onPrevChapter, onNextChapter)
                     }
                     ColorFilterOverlay(state.colorFilter)
@@ -526,6 +527,14 @@ private fun ReaderViewport(
             }
         }
     }
+}
+
+@Composable
+internal fun ReaderViewportColorLayer(
+    colorFilter: ReaderColorFilter,
+    content: @Composable () -> Unit,
+) {
+    Box(Modifier.fillMaxSize().readerColorTransform(colorFilter), content = { content() })
 }
 
 private fun handleReaderKeyEvent(

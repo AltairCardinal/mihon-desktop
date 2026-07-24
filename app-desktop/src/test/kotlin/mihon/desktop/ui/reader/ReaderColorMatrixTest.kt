@@ -1,6 +1,15 @@
 package mihon.desktop.ui.reader
 
-import java.io.File
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asSkiaBitmap
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.test.runTest
 import kotlin.math.abs
 import mihon.desktop.reader.ReaderColorFilter
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -45,14 +54,10 @@ class ReaderColorMatrixTest {
     }
 
     @Test
-    fun `reader color matrix production chain delegates through the tested helper`() {
-        val visuals = productionSource("app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt")
-        val transform = bracedBlock(visuals, "internal fun Modifier.readerColorTransform(colorFilter: ReaderColorFilter)")
-        assertEquals(1, occurrenceCount(transform, "readerColorMatrix(colorFilter)"))
-
-        val screen = productionSource("app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt")
-        val readerViewport = bracedBlock(screen, "private fun ReaderViewport(")
-        assertEquals(1, occurrenceCount(readerViewport, "readerColorTransform(state.colorFilter)"))
+    fun `mounted reader viewport color layer renders disabled grayscale and invert pixels`() = runTest {
+        assertPixel(renderColorLayer(ReaderColorFilter()), 100, 150, 200)
+        assertPixel(renderColorLayer(ReaderColorFilter(grayscaleEnabled = true)), 143, 143, 143)
+        assertPixel(renderColorLayer(ReaderColorFilter(invertEnabled = true)), 155, 105, 55)
     }
 
     private fun transform(matrix: FloatArray, red: Float, green: Float, blue: Float, alpha: Float): FloatArray {
@@ -73,28 +78,23 @@ class ReaderColorMatrixTest {
         }
     }
 
-    private fun productionSource(path: String): String {
-        var current: File? = File(requireNotNull(System.getProperty("user.dir"))).absoluteFile
-        while (current != null && !current.resolve("settings.gradle.kts").isFile) current = current.parentFile
-        return requireNotNull(current) { "Repository root not found" }.resolve(path).readText()
-    }
-
-    private fun bracedBlock(source: String, marker: String): String {
-        val start = source.indexOf(marker)
-        require(start >= 0) { "Missing production block: $marker" }
-        val open = source.indexOf('{', start)
-        var depth = 0
-        for (index in open until source.length) {
-            when (source[index]) {
-                '{' -> depth++
-                '}' -> {
-                    depth--
-                    if (depth == 0) return source.substring(start, index + 1)
+    private suspend fun renderColorLayer(colorFilter: ReaderColorFilter): Int {
+        val scene = ImageComposeScene(16, 16, coroutineContext = currentCoroutineContext()) {}
+        return try {
+            scene.setContent {
+                ReaderViewportColorLayer(colorFilter) {
+                    Box(Modifier.fillMaxSize().background(Color(100, 150, 200)))
                 }
             }
+            scene.render().toComposeImageBitmap().asSkiaBitmap().getColor(8, 8)
+        } finally {
+            scene.close()
         }
-        error("Unclosed production block: $marker")
     }
 
-    private fun occurrenceCount(source: String, marker: String): Int = Regex(Regex.escape(marker)).findAll(source).count()
+    private fun assertPixel(color: Int, red: Int, green: Int, blue: Int) {
+        assertEquals(red, color shr 16 and 0xFF)
+        assertEquals(green, color shr 8 and 0xFF)
+        assertEquals(blue, color and 0xFF)
+    }
 }

@@ -17,6 +17,7 @@ import eu.kanade.tachiyomi.ui.reader.viewer.ReaderButton
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderTransitionView
 import eu.kanade.tachiyomi.util.system.dpToPx
 import eu.kanade.tachiyomi.widget.ViewPagerAdapter
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.collectLatest
@@ -84,24 +85,21 @@ class PagerTransitionHolder(
      */
     private fun observeStatus(chapter: ReaderChapter) {
         stateJob?.cancel()
-        stateJob = scope.launch {
-            chapter.sharedStateFlow
-                .collectLatest { state ->
-                    pagesContainer.removeAllViews()
-                    when (state) {
-                        is ReaderChapterState.Loading -> setLoading()
-                        is ReaderChapterState.Error -> {
-                            val retryCommand = transition.toSharedTransitionModel(state).retryCommand()
-                            setError(
-                                state.error.cause ?: IllegalStateException(state.error.toString()),
-                                (retryCommand as ReaderNavigationCommand.RetryChapter).chapterId,
-                            )
-                        }
-                        is ReaderChapterState.Wait, is ReaderChapterState.Loaded -> {
-                            // No additional view is added
-                        }
-                    }
+        stateJob = observePagerTransitionState(scope, chapter) { state ->
+            pagesContainer.removeAllViews()
+            when (state) {
+                is ReaderChapterState.Loading -> setLoading()
+                is ReaderChapterState.Error -> {
+                    val retryCommand = transition.toSharedTransitionModel(state).retryCommand()
+                    setError(
+                        state.error.cause ?: IllegalStateException(state.error.toString()),
+                        (retryCommand as ReaderNavigationCommand.RetryChapter).chapterId,
+                    )
                 }
+                is ReaderChapterState.Wait, is ReaderChapterState.Loaded -> {
+                    // No additional view is added
+                }
+            }
         }
     }
 
@@ -150,5 +148,15 @@ class PagerTransitionHolder(
      */
     private fun View.wrapContent() {
         layoutParams = ViewGroup.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
+    }
+}
+
+internal fun observePagerTransitionState(
+    scope: CoroutineScope,
+    chapter: ReaderChapter,
+    onState: (ReaderChapterState) -> Unit,
+): Job = scope.launch {
+    chapter.sharedStateFlow.collectLatest { state ->
+        onState(state)
     }
 }
