@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 11
+active-task: Task 12
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -50,7 +50,7 @@ active-task: Task 11
 - [x] Task 8：核验状态批次 C（30、32、33、34、35、36、37、38）
 - [x] Task 9：核验状态批次 D（39、40、43、44、45、47、49、51）
 - [x] Task 10：核验状态批次 E（53、54、56、57、59、61、62、64）
-- [ ] Task 11：核验状态批次 F（66、67、68、69、70、71、72、73）
+- [x] Task 11：核验状态批次 F（66、67、68、69、70、71、72、73）
 - [ ] Task 12：核验状态批次 G（74、81、82、83、84、85、86、87）
 - [ ] Task 13：核验状态批次 H（88、90、91、92、93、94、95、96）
 - [ ] Task 14：逐项裁决 8 项 `UNCLASSIFIED_DEBT`
@@ -291,6 +291,10 @@ active-task: Task 11
 **Verification:** stats/migration/tracking/backup focused tests 与 parity contract GREEN；当前 reliability 增强不冒充 fixed-main。
 
 **Steps:** 核验统计、单/批迁移、tracker provider/sync、手动备份/恢复/自动备份；69/70 的 fixed-main 缺口逐字写入 Task 14 输入。
+
+**Audit evidence（已完成）：** ID 67/68 的 fixed-original、current Android、shared、Desktop production consumer 与可执行 fixture 五角色闭合，提升为 `VERIFIED`。ID 66 保持 `SHARED` 并转交 Task 14：current Android 仍是独立直接 `StatsData` 聚合，缺少能在 Android 统计语义漂移时失败的 production behavior fixture。ID 69/70 保持 `CHARACTERIZED` 并有限转交 Task 14：ID 69 尚缺 production provider configuration、bind-existing/new-entry、refresh-before-update、initial reading status/date、MAL error、search model、private/date/delete、enhanced auto-match、Suwayomi delete、provider error classification/retry、Komga DNS/server discovery、Kitsu/MangaUpdates request shape；ID 70 尚缺 refresh-before-update、login/progress filtering、parallel provider updates、per-track monotonic highest progress、network constraint、unique work、exponential backoff、bounded retry、queue cleanup。OS credential、persistent checkpoint 等安全性/可靠性增强均保留为 enhancement，不冒充 fixed-main 等价证据。ID 71 的 Desktop creator production chain 可执行，但 fixed-original artifact fixture 仍缺失，源码 generator scan 被排除为行为证据，保持 `WIRED`；ID 72 现有 fixture 仅是历史 Desktop first-writer artifact，未执行 fixed-original Android artifact 或 current Android `BackupRestorer`，保持 `WIRED`；ID 73 仅证明进程内 prune，退出后唤醒与等价 periodic scheduling 未闭合，保持 `WIRED`；三项均转交 Task 14。Task 11 已勾选，控制权推进到未勾选的 Task 12。
+
+**Verification evidence：** Task 11 状态契约先精确 RED 于空 capability set，独立审查指出 ID 66/72 证据不足后又精确 RED 于保守状态预期；修复后单契约 `1/1` GREEN。Desktop migration/tracking/backup focused `75/75`、domain migration/provider/sync `19/19`、data membership/backup codec `6/6`、Android current consumer/API/codec `16/16`、ordinary parity contract `44/44` 均 GREEN，0 failure/0 skipped；`spotlessCheck`、JSON、计划交接、diff/range 与 headless 配置核验均通过。Task 4 聚合 GREEN；Task 5 聚合 `119/120`，唯一失败是用户既有未提交 `DownloadQueueScreen.kt` 触发 `DesktopArchitectureGuardTest` 大文件行数基线，与 Task 11 三文件变更无关且未回滚。显式 `finalParityAudit` 唯一按设计 RED，并精确报告 `35` 个非终态 ID。
 
 ### Task 12：核验状态批次 G（74、81、82、83、84、85、86、87）
 

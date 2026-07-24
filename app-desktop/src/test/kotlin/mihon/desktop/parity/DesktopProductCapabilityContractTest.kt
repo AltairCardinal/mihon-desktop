@@ -179,13 +179,11 @@ class DesktopProductCapabilityContractTest {
                 ),
         )
     private val task5ProvenanceStatuses =
-        mapOf(71 to "NOT_STARTED", 72 to "NOT_STARTED", 73 to "NOT_STARTED", 74 to "NOT_STARTED", 93 to "NOT_STARTED", 95 to "NOT_STARTED", 96 to "NOT_STARTED")
+        mapOf(71 to "WIRED", 72 to "WIRED", 73 to "WIRED", 74 to "NOT_STARTED", 93 to "NOT_STARTED", 95 to "NOT_STARTED", 96 to "NOT_STARTED")
     private val task5BehaviorMethods =
         mapOf(
             71 to
                 mapOf(
-                    "data/src/commonTest/kotlin/tachiyomi/data/backup/BackupCodecContractTest.kt" to
-                        setOf("Android fixture generator consumes fixed original Mihon ref"),
                     "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCreatorTest.kt" to
                         setOf("createFromDatabase collects tracking app preferences source preferences and extension repositories"),
                 ),
@@ -572,6 +570,79 @@ class DesktopProductCapabilityContractTest {
                 mapOf(
                     "app-desktop/src/test/kotlin/mihon/desktop/history/HistoryScreenModelTest.kt" to
                         setOf("loadHistory updates search query and items", "removeHistory removes one item and refreshes current query"),
+                ),
+        )
+    private val task11Statuses =
+        mapOf(
+            66 to "SHARED",
+            67 to "VERIFIED",
+            68 to "VERIFIED",
+            69 to "CHARACTERIZED",
+            70 to "CHARACTERIZED",
+            71 to "WIRED",
+            72 to "WIRED",
+            73 to "WIRED",
+        )
+    private val task11FollowUps =
+        mapOf(
+            66 to "Task 14",
+            67 to "NONE",
+            68 to "NONE",
+            69 to "Task 14",
+            70 to "Task 14",
+            71 to "Task 14",
+            72 to "Task 14",
+            73 to "Task 14",
+        )
+    private val task11BehaviorMethods =
+        mapOf(
+            66 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/more/StatsScreenModelTest.kt" to
+                        setOf("state moves from loading to shared aggregation and exposes errors"),
+                ),
+            67 to
+                mapOf(
+                    "domain/src/commonTest/kotlin/mihon/domain/migration/MigrationOrchestratorTest.kt" to
+                        setOf("library plan copies categories notes reading flags and keeps source for copy"),
+                    "app/src/test/java/mihon/domain/migration/usecases/MigrateMangaUseCaseChapterAdapterTest.kt" to
+                        setOf("Android chapter adapter only writes read when shared patch changes target"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseIntegrationTest.kt" to
+                        setOf("copy categories and replace move real library membership without half state"),
+                ),
+            68 to
+                mapOf(
+                    "app/src/test/java/mihon/feature/migration/list/MigrationListScreenModelBatchWiringTest.kt" to
+                        setOf("batch failure stays visible with title reason and retries only failed manga"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/migration/DesktopBatchMigrationControllerTest.kt" to
+                        setOf("queue persists waiting selection options failures and continues other items"),
+                ),
+            69 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopProviderTrackerServiceTest.kt" to
+                        setOf("production registry contains every public Android tracker with isolated credentials"),
+                ),
+            70 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt" to
+                        setOf("eligible tracker sync completes after caller cancellation"),
+                ),
+            71 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCreatorTest.kt" to
+                        setOf("createFromDatabase collects tracking app preferences source preferences and extension repositories"),
+                ),
+            72 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupRestorerTest.kt" to
+                        setOf("first Desktop protobuf fixture follows the current restore chain"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/backup/BackupWorkflowIntegrationTest.kt" to
+                        setOf("partial restore is reported as recoverable partial failure"),
+                ),
+            73 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/backup/AutoBackupSchedulerTest.kt" to
+                        setOf("pruneOldBackups keeps only maxBackups files"),
                 ),
         )
     private val validTags =
@@ -1852,7 +1923,7 @@ class DesktopProductCapabilityContractTest {
         val parentPlanPath = "docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"
         val plan = Files.readString(repositoryRoot.resolve(parentPlanPath))
         assertTrue(
-            markdownFrontmatter(plan)["active-task"] in setOf("Task 7", "Task 7A child plan", "Task 7R2 replan", "Task 8", "Task 9", "Task 9A child plan", "Task 9R replan", "Task 10", "Task 11"),
+            markdownFrontmatter(plan)["active-task"] in setOf("Task 7", "Task 7A child plan", "Task 7R2 replan", "Task 8", "Task 9", "Task 9A child plan", "Task 9R replan", "Task 10", "Task 11", "Task 12"),
             "Completed Task 6 must advance to Task 7, its active child plan, or the next completed-batch task",
         )
         val childPlanPath = repositoryRoot.resolve("docs/superpowers/plans/2026-07-24-task-6a-desktop-crash-log-failure-boundary.md")
@@ -1931,7 +2002,7 @@ class DesktopProductCapabilityContractTest {
         }
 
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
-        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 8", "Task 9", "Task 9A child plan", "Task 9R replan", "Task 10", "Task 11"), "Completed Task 7 must advance to Task 8 or later")
+        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 8", "Task 9", "Task 9A child plan", "Task 9R replan", "Task 10", "Task 11", "Task 12"), "Completed Task 7 must advance to Task 8 or later")
         assertTrue(Regex("""(?m)^- \[x] Task 7[：:]""").containsMatchIn(plan), "Completed Task 7 must be checked")
         assertTrue("6fb82074adeceda25be2f3a12621ce510fd0423c" in plan, "Task 7 closeout must retain R1 evidence")
         assertTrue("af9c522ec9f5c7032ebe3503bab6f9a6a1659e6f" in plan, "Task 7 closeout must retain R2 evidence")
@@ -2006,7 +2077,7 @@ class DesktopProductCapabilityContractTest {
         assertTrue("TEMP-COMPAT" in compat.getValue("tags").jsonArray.map { it.jsonPrimitive.content })
         assertTrue(requiredText(compat.getValue("statusDecision").jsonObject, "gap", 35, "statusDecision").contains("fixture"))
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
-        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 9", "Task 9A child plan", "Task 9R replan", "Task 10", "Task 11"), "Completed Task 8 must advance to Task 9 or later")
+        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 9", "Task 9A child plan", "Task 9R replan", "Task 10", "Task 11", "Task 12"), "Completed Task 8 must advance to Task 9 or later")
         assertTrue(Regex("""(?m)^- \[x] Task 8[：:]""").containsMatchIn(plan), "Completed Task 8 must be checked")
     }
 
@@ -2082,7 +2153,7 @@ class DesktopProductCapabilityContractTest {
 
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
         val activeTask = markdownFrontmatter(plan)["active-task"]
-        assertTrue(activeTask in setOf("Task 10", "Task 11"), "Task 9 closeout must advance to Task 10 or later")
+        assertTrue(activeTask in setOf("Task 10", "Task 11", "Task 12"), "Task 9 closeout must advance to Task 10 or later")
         assertTrue(Regex("""(?m)^- \[x] Task 9[：:]""").containsMatchIn(plan), "Completed Task 9 must be checked")
         assertTrue(
             Regex(if (activeTask == "Task 10") """(?m)^- \[ ] Task 10[：:]""" else """(?m)^- \[x] Task 10[：:]""").containsMatchIn(plan),
@@ -2161,10 +2232,105 @@ class DesktopProductCapabilityContractTest {
         )
 
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
-        assertEquals("Task 11", markdownFrontmatter(plan)["active-task"], "Task 10 closeout must advance to Task 11")
+        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 11", "Task 12"), "Task 10 closeout must advance to Task 11 or later")
         assertTrue(Regex("""(?m)^- \[x] Task 10[：:]""").containsMatchIn(plan), "Completed Task 10 must be checked")
-        assertTrue(Regex("""(?m)^- \[ ] Task 11[：:]""").containsMatchIn(plan), "Task 11 must remain unchecked")
+        assertTrue(Regex("""(?m)^- \[[x ]\] Task 11[：:]""").containsMatchIn(plan), "Task 11 must remain tracked")
         assertTrue("ID 56" in plan && "source object" in plan && "sourceId" in plan && "Task 14" in plan, "Task 10 must record the finite ID 56 follow-up")
+    }
+
+    @Test
+    fun `task 11 status batch promotes only closed stats migration tracking and backup evidence`() {
+        val repositoryRoot = repositoryRoot()
+        val inventory = fixedMainPathInventory(repositoryRoot)
+        val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
+        val task11DecisionIds =
+            items.filterValues { item ->
+                item.jsonObject["statusDecision"]?.jsonObject?.get("task")?.jsonPrimitive?.content == "Task 11"
+            }.keys
+        assertEquals(task11Statuses.keys, task11DecisionIds, "Task 11 capability set")
+        task11Statuses.forEach { (id, expectedStatus) ->
+            val item = items.getValue(id).jsonObject
+            assertEquals(expectedStatus, requiredText(item, "status", id), "ID $id Task 11 status")
+            validateRoleEvidence(item, repositoryRoot, inventory)
+            val decision = item.getValue("statusDecision").jsonObject
+            assertEquals("Task 11", requiredText(decision, "task", id, "statusDecision"))
+            val verified = id in setOf(67, 68)
+            assertEquals(if (verified) "PROMOTE_VERIFIED" else "KEEP_GAP", requiredText(decision, "decision", id, "statusDecision"))
+            assertEquals(task11FollowUps.getValue(id), requiredText(decision, "followUp", id, "statusDecision"))
+            val gap = requiredText(decision, "gap", id, "statusDecision")
+            if (verified) {
+                assertEquals("NONE", gap, "ID $id verified gap")
+            } else {
+                assertTrue(gap != "NONE", "ID $id must retain a concrete gap")
+            }
+            val behaviorMethods =
+                decision.getValue("behaviorMethods").jsonObject.mapValues { (_, methods) ->
+                    methods.jsonArray.map { it.jsonPrimitive.content }.toSet()
+                }
+            assertEquals(task11BehaviorMethods.getValue(id), behaviorMethods, "ID $id Task 11 behavior methods")
+            val protectionTests = item.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content }.toSet()
+            assertTrue(behaviorMethods.keys.all(protectionTests::contains), "ID $id Task 11 behavior methods must be protection tests")
+            behaviorMethods.forEach { (path, methods) ->
+                val source = Files.readString(repositoryRoot.resolve(path))
+                methods.forEach { method ->
+                    kotlinTestMethod(source, method, "ID $id Task 11 behavior $path#$method")
+                }
+            }
+        }
+
+        val trackerGap = requiredText(items.getValue(69).jsonObject.getValue("statusDecision").jsonObject, "gap", 69, "statusDecision")
+        listOf(
+            "production provider configuration",
+            "bind-existing/new-entry",
+            "refresh-before-update",
+            "reading status/date",
+            "MAL error",
+            "search model",
+            "private/date/delete",
+            "enhanced auto-match",
+            "Suwayomi delete",
+            "provider error classification/retry",
+            "Komga DNS",
+            "Kitsu/MangaUpdates request shape",
+        ).forEach { term -> assertTrue(term in trackerGap, "ID 69 gap must preserve `$term`") }
+        val triggerGap = requiredText(items.getValue(70).jsonObject.getValue("statusDecision").jsonObject, "gap", 70, "statusDecision")
+        listOf(
+            "refresh-before-update",
+            "login/progress filtering",
+            "parallel provider updates",
+            "highest progress",
+            "network constraint",
+            "unique work",
+            "exponential backoff",
+            "bounded retry",
+            "queue cleanup",
+        ).forEach { term -> assertTrue(term in triggerGap, "ID 70 gap must preserve `$term`") }
+        val statsGap = requiredText(items.getValue(66).jsonObject.getValue("statusDecision").jsonObject, "gap", 66, "statusDecision")
+        assertTrue("current Android" in statsGap && "production behavior" in statsGap, "ID 66 gap must name the unprotected Android aggregation")
+        val creator = items.getValue(71).jsonObject
+        assertTrue(
+            creator.getValue("behaviorMethods").jsonObject.values.flatMap { it.jsonArray }.none {
+                it.jsonPrimitive.content == "Android fixture generator consumes fixed original Mihon ref"
+            },
+            "ID 71 must not treat generator source scanning as production behavior",
+        )
+        assertTrue(
+            "fixed-original artifact fixture" in requiredText(creator.getValue("statusDecision").jsonObject, "gap", 71, "statusDecision"),
+            "ID 71 gap must name the missing fixed-original artifact fixture",
+        )
+        val schedulerGap = requiredText(items.getValue(73).jsonObject.getValue("statusDecision").jsonObject, "gap", 73, "statusDecision")
+        assertTrue("exit" in schedulerGap && "periodic scheduling" in schedulerGap, "ID 73 gap must name the process-lifetime scheduling difference")
+        val restoreGap = requiredText(items.getValue(72).jsonObject.getValue("statusDecision").jsonObject, "gap", 72, "statusDecision")
+        assertTrue(
+            "fixed-original Android artifact" in restoreGap && "current Android BackupRestorer" in restoreGap,
+            "ID 72 gap must name both missing Android restore boundaries",
+        )
+
+        val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
+        assertEquals("Task 12", markdownFrontmatter(plan)["active-task"], "Task 11 closeout must advance to Task 12")
+        assertTrue(Regex("""(?m)^- \[x] Task 11[：:]""").containsMatchIn(plan), "Completed Task 11 must be checked")
+        assertTrue(Regex("""(?m)^- \[ ] Task 12[：:]""").containsMatchIn(plan), "Task 12 must remain unchecked")
+        assertTrue("ID 69" in plan && "ID 70" in plan && "Task 14" in plan, "Task 11 must record the finite tracking follow-up")
     }
 
     @Test
@@ -2567,7 +2733,7 @@ class DesktopProductCapabilityContractTest {
         val deviations = item.getValue("deviations").jsonArray.map { it.jsonObject }
         val protectionTests = item.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content }.toSet()
 
-        assertEquals("WIRED", item.getValue("status").jsonPrimitive.content)
+        assertEquals("VERIFIED", item.getValue("status").jsonPrimitive.content)
         assertTrue(desktopImplementation.contains(fixedOriginalMihonRef))
         assertTrue(desktopImplementation.contains("shared migration plan"))
         assertTrue(desktopImplementation.contains("Desktop consumer"))
@@ -2623,7 +2789,7 @@ class DesktopProductCapabilityContractTest {
         assertTrue(
             "domain/src/commonTest/kotlin/tachiyomi/domain/track/service/TrackerProviderContractTest.kt" in trackingTests,
         )
-        assertEquals("WIRED", migration.getValue("status").jsonPrimitive.content)
+        assertEquals("VERIFIED", migration.getValue("status").jsonPrimitive.content)
         assertEquals("CHARACTERIZED", tracking.getValue("status").jsonPrimitive.content)
     }
 

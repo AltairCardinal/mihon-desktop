@@ -1895,6 +1895,7 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/more/StatsScreenModelTest.kt"
     ],
     "behaviorMethods": {"domain/src/commonTest/kotlin/tachiyomi/domain/library/interactor/AggregateLibraryStatsTest.kt": ["distinct titles aggregate categories sources statuses and chapters"], "app-desktop/src/test/kotlin/mihon/desktop/ui/more/StatsScreenModelTest.kt": ["state moves from loading to shared aggregation and exposes errors"]},
+    "statusDecision": {"task": "Task 11", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "The current Android consumer retains an independent direct StatsData aggregation chain and has no production behavior fixture that would fail on Android statistics semantic drift; only the shared/Desktop aggregation is executable.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/more/StatsScreenModelTest.kt": ["state moves from loading to shared aggregation and exposes errors"]}},
     "behaviorVerificationTask": ":app-desktop:task4ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -1906,7 +1907,7 @@
       "SHARE-DIRECT",
       "SHARE-EXTRACT"
     ],
-    "status": "WIRED",
+    "status": "VERIFIED",
     "authoritativeImplementation": "Fixed original Mihon single-manga migration behavior at main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8.",
     "desktopImplementation": "The fixed original Mihon main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8 single-manga persistence rules are replayed end-to-end by the shared migration plan and Desktop consumer: category no-touch when copy is disabled, chapter/viewer flags, invocation-time or source dateAdded, notes, and replace/copy membership. Desktop-specific reliability enhancements are classified separately below.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -1947,10 +1948,24 @@
     ],
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/migration/MigrationOrchestratorTest.kt",
+      "app/src/test/java/mihon/domain/migration/usecases/MigrateMangaUseCaseChapterAdapterTest.kt",
       "data/src/jvmTest/kotlin/tachiyomi/data/manga/MangaRepositoryMembershipIntegrationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/migration/DesktopMigrationParityTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseIntegrationTest.kt"
     ],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/mihon/domain/migration/usecases/MigrateMangaUseCase.kt", "symbol": "class MigrateMangaUseCase(", "line": 26}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/mihon/domain/migration/usecases/MigrateMangaUseCase.kt", "symbol": "class MigrateMangaUseCase(", "line": 29}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/migration/MigrationOrchestrator.kt", "symbol": "class MigrationOrchestrator", "line": 51}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCase.kt", "symbol": "class DesktopMigrateMangaUseCase(", "line": 33}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseIntegrationTest.kt#copy categories and replace move real library membership without half state", "productionMarkers": ["f.useCase.await"]}]
+    },
+    "behaviorMethods": {
+      "domain/src/commonTest/kotlin/mihon/domain/migration/MigrationOrchestratorTest.kt": ["library plan copies categories notes reading flags and keeps source for copy"],
+      "app/src/test/java/mihon/domain/migration/usecases/MigrateMangaUseCaseChapterAdapterTest.kt": ["Android chapter adapter only writes read when shared patch changes target"],
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseIntegrationTest.kt": ["copy categories and replace move real library membership without half state"]
+    },
+    "statusDecision": {"task": "Task 11", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"domain/src/commonTest/kotlin/mihon/domain/migration/MigrationOrchestratorTest.kt": ["library plan copies categories notes reading flags and keeps source for copy"], "app/src/test/java/mihon/domain/migration/usecases/MigrateMangaUseCaseChapterAdapterTest.kt": ["Android chapter adapter only writes read when shared patch changes target"], "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopMigrateMangaUseCaseIntegrationTest.kt": ["copy categories and replace move real library membership without half state"]}},
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -1960,7 +1975,7 @@
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "WIRED",
+    "status": "VERIFIED",
     "authoritativeImplementation": "Fixed original Mihon batch order, ordinary-failure continuation, cancellation, progress and cancel feedback at main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8.",
     "desktopImplementation": "Current shared reliability protocol and Desktop durable queue retain behavior absent from fixed main; they are explicit enhancements, not original-Mihon extraction.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -2016,6 +2031,18 @@
       "app-desktop/src/test/kotlin/mihon/desktop/migration/DesktopBatchMigrationQueueTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/migration/DesktopBatchMigrationTestModeTest.kt"
     ],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/mihon/feature/migration/list/MigrationListScreenModel.kt", "symbol": "fun migrateMangas() {", "line": 258}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/mihon/feature/migration/list/AndroidBatchMigrationRunner.kt", "symbol": "class AndroidBatchMigrationRunner<T>(", "line": 7}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/migration/MigrationOrchestrator.kt", "symbol": "class MigrationOrchestrator", "line": 51}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/migration/DesktopBatchMigrationController.kt", "symbol": "class DesktopBatchMigrationController(", "line": 75}],
+      "FIXTURE": [{"artifact": "app/src/test/java/mihon/feature/migration/list/MigrationListScreenModelBatchWiringTest.kt#batch failure stays visible with title reason and retries only failed manga", "productionMarkers": ["screenModel.migrateMangas()"]}]
+    },
+    "behaviorMethods": {
+      "app/src/test/java/mihon/feature/migration/list/MigrationListScreenModelBatchWiringTest.kt": ["batch failure stays visible with title reason and retries only failed manga"],
+      "app-desktop/src/test/kotlin/mihon/desktop/migration/DesktopBatchMigrationControllerTest.kt": ["queue persists waiting selection options failures and continues other items"]
+    },
+    "statusDecision": {"task": "Task 11", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"app/src/test/java/mihon/feature/migration/list/MigrationListScreenModelBatchWiringTest.kt": ["batch failure stays visible with title reason and retries only failed manga"], "app-desktop/src/test/kotlin/mihon/desktop/migration/DesktopBatchMigrationControllerTest.kt": ["queue persists waiting selection options failures and continues other items"]}},
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -2207,6 +2234,15 @@
       "app-desktop/src/test/kotlin/mihon/desktop/tracking/TrackingNavigationContractTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopTrackerSessionProviderTest.kt"
     ],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/TrackerManager.kt", "symbol": "class TrackerManager", "line": 14}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/track/TrackerManager.kt", "symbol": "class TrackerManager", "line": 14}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/track/service/TrackerProviderProtocol.kt", "symbol": "object TrackerProviderProtocols", "line": 175}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopTrackerServiceRegistry.kt", "symbol": "class DesktopTrackerServiceRegistry(", "line": 46}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopProviderTrackerServiceTest.kt#production registry contains every public Android tracker with isolated credentials", "productionMarkers": ["DesktopTrackerServiceRegistry.production("]}]
+    },
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopProviderTrackerServiceTest.kt": ["production registry contains every public Android tracker with isolated credentials"]},
+    "statusDecision": {"task": "Task 11", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Fixed-main production provider configuration; bind-existing/new-entry and refresh-before-update; initial reading status/date and MAL error behavior; search model and private/date/delete editing; enhanced auto-match; Suwayomi delete preference; provider error classification/retry; Komga DNS/server discovery; and Kitsu/MangaUpdates request shape remain unclosed.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopProviderTrackerServiceTest.kt": ["production registry contains every public Android tracker with isolated credentials"]}},
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -2311,6 +2347,15 @@
       "app-desktop/src/test/kotlin/mihon/desktop/extension/ExtensionIncognitoPreferenceWiringTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
     ],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/domain/track/interactor/TrackChapter.kt", "symbol": "class TrackChapter(", "line": 17}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/domain/track/interactor/TrackChapter.kt", "symbol": "class TrackChapter(", "line": 17}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/track/interactor/SyncReadingProgressWithTrack.kt", "symbol": "class SyncReadingProgressWithTrack(", "line": 27}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/domain/ReaderProgressTracker.kt", "symbol": "class ReaderProgressTracker(", "line": 23}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt#eligible tracker sync completes after caller cancellation", "productionMarkers": ["ReaderProgressTracker("]}]
+    },
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt": ["eligible tracker sync completes after caller cancellation"]},
+    "statusDecision": {"task": "Task 11", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Fixed-main refresh-before-update, login/progress filtering and parallel provider updates; delayed queue per-track monotonic highest progress; and network constraint, unique work, exponential backoff, bounded retry and queue cleanup remain unclosed.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt": ["eligible tracker sync completes after caller cancellation"]}},
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -2320,7 +2365,7 @@
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "NOT_STARTED",
+    "status": "WIRED",
     "authoritativeImplementation": "Fixed-main original Mihon capability #71: BackupCreator assembles the manual backup sections and writes the original protobuf artifact.",
     "desktopImplementation": "DesktopBackupCreator consumes the current shared wire schema and collects manga, chapter, category, history, tracking, preference, source, and extension-repository data.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -2333,13 +2378,11 @@
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreator.kt", "symbol": "BackupCodec.encode", "line": 160}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "data/src/commonMain/kotlin/tachiyomi/data/backup/BackupCodec.kt", "symbol": "object BackupCodec", "line": 13}],
       "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupCreator.kt", "symbol": "suspend fun createFromDatabase", "line": 103}],
-      "FIXTURE": [{"artifact": "data/src/commonTest/kotlin/tachiyomi/data/backup/BackupCodecContractTest.kt#Android fixture generator consumes fixed original Mihon ref", "productionMarkers": ["generator.contains("]}]
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCreatorTest.kt#createFromDatabase collects tracking app preferences source preferences and extension repositories", "productionMarkers": ["DesktopBackupCreator.createFromDatabase("]}]
     },
     "behaviorVerificationTask": ":app-desktop:task5ParityVerification",
-    "behaviorMethods": {
-      "data/src/commonTest/kotlin/tachiyomi/data/backup/BackupCodecContractTest.kt": ["Android fixture generator consumes fixed original Mihon ref"],
-      "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCreatorTest.kt": ["createFromDatabase collects tracking app preferences source preferences and extension repositories"]
-    },
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCreatorTest.kt": ["createFromDatabase collects tracking app preferences source preferences and extension repositories"]},
+    "statusDecision": {"task": "Task 11", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "The current Desktop creator production chain is executable, but no fixed-original artifact fixture executes through the current shared codec and creator compatibility boundary; generator source scanning is not completion evidence.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCreatorTest.kt": ["createFromDatabase collects tracking app preferences source preferences and extension repositories"]}},
     "protectionTests": ["data/src/commonTest/kotlin/tachiyomi/data/backup/BackupCodecContractTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCreatorTest.kt"],
     "deviations": [{"classification": "MIGRATION_OUTPUT", "description": "The fixed-main creator owns app-local model serialization; current Android and Desktop consume the fork-extracted common schema and BackupCodec without treating that migration output as fixed-main source."}],
     "platformExemptionEvidence": "NONE",
@@ -2351,7 +2394,7 @@
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "NOT_STARTED",
+    "status": "WIRED",
     "authoritativeImplementation": "Fixed-main original Mihon capability #72: BackupRestorer validates the original artifact and restores categories, preferences, manga, sources, and repositories with progress.",
     "desktopImplementation": "DesktopBackupRestorer executes the current restore chain and BackupWorkflow preserves partial-failure and cancellation feedback.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -2371,6 +2414,7 @@
       "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupRestorerTest.kt": ["first Desktop protobuf fixture follows the current restore chain"],
       "app-desktop/src/test/kotlin/mihon/desktop/backup/BackupWorkflowIntegrationTest.kt": ["partial restore is reported as recoverable partial failure"]
     },
+    "statusDecision": {"task": "Task 11", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "The executable restore fixture is only the historical Desktop first-writer artifact; no fixed-original Android artifact executes through the Desktop restorer, and no production behavior test executes the current Android BackupRestorer.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupRestorerTest.kt": ["first Desktop protobuf fixture follows the current restore chain"], "app-desktop/src/test/kotlin/mihon/desktop/backup/BackupWorkflowIntegrationTest.kt": ["partial restore is reported as recoverable partial failure"]}},
     "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupRestorerTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/backup/BackupWorkflowIntegrationTest.kt"],
     "deviations": [{"classification": "PLATFORM_ADAPTER", "description": "Fixed-main restoration is an Android background job with notifications; Desktop uses a lifecycle-bound workflow and UI progress while retaining field-level restore behavior."}],
     "platformExemptionEvidence": "NONE",
@@ -2382,7 +2426,7 @@
     "tags": [
       "PLATFORM-ADAPTER"
     ],
-    "status": "NOT_STARTED",
+    "status": "WIRED",
     "authoritativeImplementation": "Fixed-main original Mihon capability #73: BackupCreateJob schedules recurring WorkManager creation from BackupPreferences.",
     "desktopImplementation": "AutoBackupScheduler wakes only while Desktop is running, invokes the canonical writer, and prunes older .tachibk files.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -2399,6 +2443,7 @@
     },
     "behaviorVerificationTask": ":app-desktop:task5ParityVerification",
     "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/backup/AutoBackupSchedulerTest.kt": ["pruneOldBackups keeps only maxBackups files"]},
+    "statusDecision": {"task": "Task 11", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Desktop proves only process-bound pruning; wake after process exit and equivalent periodic scheduling remain unverified against fixed-main WorkManager behavior.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/backup/AutoBackupSchedulerTest.kt": ["pruneOldBackups keeps only maxBackups files"]}},
     "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/backup/AutoBackupSchedulerTest.kt"],
     "deviations": [{"classification": "PLATFORM_ADAPTER", "description": "Android WorkManager can wake after app exit; the current Desktop scheduler is process-bound and is not claimed equivalent before platform scheduling is verified."}],
     "platformExemptionEvidence": "NONE",
