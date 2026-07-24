@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 14
+active-task: Task 14B
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -54,6 +54,9 @@ active-task: Task 14
 - [x] Task 12：核验状态批次 G（74、81、82、83、84、85、86、87）
 - [x] Task 13：核验状态批次 H（88、90、91、92、93、94、95、96）
 - [ ] Task 14：逐项裁决 8 项 `UNCLASSIFIED_DEBT`
+  - [x] Task 14A：固定唯一裁决与直接终态
+  - [ ] Task 14B：为产品缺口创建 consolidated child plan
+  - [ ] Task 14C：同步 tracker 并关闭父 Task 14
 - [ ] Task 15：完成候选平台能力与 `EXEMPT` 审查
 - [ ] Task 16A：审计 compat 与历史格式删除证据（35、74、96）
 - [ ] Task 16B：审计重复业务规则
@@ -200,7 +203,7 @@ active-task: Task 14
 
 **Platform boundary:** verification
 
-**Estimated scope:** 4 files, 400 lines
+**Estimated scope:** 三个串行提交；每个提交独立不超过 4 files / 400 touched lines
 
 **Verification:** 8 项 production wiring/protection tests 与 parity contract GREEN；每个终态都有 role evidence，未闭合项保留准确 gap。
 
@@ -350,6 +353,36 @@ active-task: Task 14
 1. 逐项决定能否直接复用、是否应抽共享能力、是否只需平台 adapter，以及用户入口/反馈是否完整。
 2. 已有证据足够则删除 `UNCLASSIFIED_DEBT` 并给出终态；需要产品改动时按上下文簇创建有限 child plan，不在本 Task 顺手改代码。
 3. child plan 必须固定原版 ref，列真实文件和 TDD，单 Task 不超过 8 files/400 lines，并更新本计划 resume 入口。
+
+### Task 14A：固定唯一裁决与直接终态
+
+固定 ref 为 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`。唯一裁决为 ID 3 `extract`、ID 4 `adapter`、ID 32 `reuse`、ID 39 `adapter`、ID 69 `extract`、ID 70 `extract`、ID 87 `adapter`、ID 88 `adapter`，无 `deviation`/`exempt`。八项均记录 current Android → shared/adapter → Desktop production call path、可执行保护、用户入口/反馈与非空理由，并移除各自 `UNCLASSIFIED_DEBT`。ID 4/39/88 的五角色和真实成功/失败或语义 fixture 已闭合，提升为 `VERIFIED`；ID 3/69/70 保持 `CHARACTERIZED`，ID 32 依据既有 shared CRUD 与 Desktop production tests 提升为 `WIRED`，ID 87 保持 `SHARED`。后五项统一交接 `Task 14B`，不在只读裁决提交中改产品。
+
+**独立审查修复：** 初版 `statusDecision` 与 `task14StatusDecision` 形成双权威；契约先精确 RED，现将旧裁决迁入唯一 task 的 `statusDecisionHistory`，Task 14A 成为唯一当前 `statusDecision`，通用校验拒绝旧字段与当前/历史重复 task。
+
+### Task 14B：创建 consolidated child plan
+
+**Risk axis:** classified-product-gaps
+
+**Platform boundary:** verification
+
+**Estimated scope:** 4 files, 400 lines
+
+**Verification:** child scope/anchor contract、普通 parity contract 与 plan guard GREEN。
+
+仅创建一份 consolidated child plan，并同步 contract、manifest 与本计划；按三个 context cluster 覆盖 IDs 3/32、IDs 69/70、ID 87，每个 SubTask 不超过 8 files/400 lines，固定 TDD、UI 入口/反馈和 Desktop 独有能力零回退。完成后 `active-task` 推进到 `Task 14C`。
+
+### Task 14C：同步 tracker 并关闭父 Task 14
+
+**Risk axis:** task14-closeout
+
+**Platform boundary:** verification
+
+**Estimated scope:** 3 files, 400 lines
+
+**Verification:** tracker/manifest/plan 状态契约、普通 parity contract 与 plan guard GREEN。
+
+仅同步 tracker、contract 与本计划；确认八项裁决和 child 路径一致后勾选父 Task 14，并将 `active-task` 推进到 `Task 15`。
 
 ### Task 15：完成候选平台能力与 `EXEMPT` 审查
 

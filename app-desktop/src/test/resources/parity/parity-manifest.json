@@ -6,7 +6,7 @@
       "SHARE-EXTRACT"
     ],
     "status": "CHARACTERIZED",
-    "statusDecision": {
+    "statusDecisionHistory": [{
       "task": "Task 6",
       "decision": "KEEP_GAP",
       "followUp": "Task 14",
@@ -15,10 +15,12 @@
         "domain/src/commonTest/kotlin/mihon/domain/error/AppErrorTest.kt": ["partial failure identifies each failed unit"],
         "domain/src/commonTest/kotlin/mihon/domain/task/TaskStateTest.kt": ["任务状态表达进度结果失败与取消"]
       }
-    },
+    }],
+    "statusDecision": {"task": "Task 14A", "decision": "KEEP_GAP", "followUp": "Task 14B", "gap": "Current Android SourcesScreenModel and Desktop state containers still lack one shared immutable screen-state/event production core and a cross-platform consumer contract."},
     "authoritativeImplementation": "Fixed-main original Mihon capability #3: SourcesScreenModel uses Voyager StateScreenModel, immutable State snapshots, Flow collection, and an explicit Event channel.",
     "desktopImplementation": "Current Android SourcesScreenModel and Desktop HistoryScreenModel are independent state-container examples. Shared TaskState/AppError primitives exist, but no production wiring proves that either screen model consumes them as one cross-platform state-management capability.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "unclassifiedDebtResolution": {"decision": "extract", "reason": "Immutable loading/content/error state and one-shot event semantics are cross-platform behavior, while Compose/Voyager lifecycle collection stays in platform consumers.", "fixedMainRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "productionCallPath": {"currentAndroid": ["SourcesScreen → SourcesScreenModel State/Event"], "sharedOrAdapter": ["AppError + TaskState primitives → planned shared source-screen state core"], "desktop": ["BrowseTab/HistoryTab → Desktop state models → rendered list, empty and action state"]}, "protectionEvidence": ["domain/src/commonTest/kotlin/mihon/domain/error/AppErrorTest.kt#partial failure identifies each failed unit"], "userEntry": "Browse → Sources on Android and Browse/History on Desktop.", "userFeedback": "Loading, populated/empty content and action failures remain visible; the child contract must preserve one-shot events."},
     "upstreamSymbols": [
       { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt", "symbol": "SourcesScreenModel : StateScreenModel<State>; immutable State and Event channel" }
     ],
@@ -33,8 +35,7 @@
       "app-desktop/src/main/kotlin/mihon/desktop/history/HistoryScreenModel.kt"
     ],
     "deviations": [
-      { "classification": "MIGRATION_OUTPUT", "description": "TaskState and AppError are fork-added shared primitives with unit coverage; they are not evidence that the listed Android and Desktop screen models share a production state-management chain." },
-      { "classification": "UNCLASSIFIED_DEBT", "description": "Cross-platform screen-state wiring remains unproved, and Desktop screen models still commonly expose ad-hoc MutableStateFlow state instead of the fixed-main StateScreenModel plus immutable State and Event pattern." }
+      { "classification": "MIGRATION_OUTPUT", "description": "TaskState and AppError are fork-added shared primitives with unit coverage; they are not evidence that the listed Android and Desktop screen models share a production state-management chain." }
     ],
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/error/AppErrorTest.kt",
@@ -47,10 +48,11 @@
     "id": 4,
     "group": "平台基础",
     "tags": [
-      "SHARE-EXTRACT"
+      "SHARE-EXTRACT",
+      "PLATFORM-ADAPTER"
     ],
-    "status": "WIRED",
-    "statusDecision": {
+    "status": "VERIFIED",
+    "statusDecisionHistory": [{
       "task": "Task 6",
       "decision": "KEEP_GAP",
       "followUp": "Task 14",
@@ -61,10 +63,12 @@
           "reinitializing while scheduler runs joins old work and closes old database"
         ]
       }
-    },
+    }],
+    "statusDecision": {"task": "Task 14A", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE"},
     "authoritativeImplementation": "Fixed-main original Mihon capability #4: AppModule and DomainModule register application and domain dependency graphs through InjektModule boundaries.",
     "desktopImplementation": "Current Desktop registers Injekt services from DesktopAppModule during JVM bootstrap.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "unclassifiedDebtResolution": {"decision": "adapter", "reason": "Android Application bindings and Desktop JVM lifecycle services require separate composition roots; parity is dependency resolution, ownership and deterministic teardown rather than identical module file shape.", "fixedMainRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "productionCallPath": {"currentAndroid": ["Application startup → AppModule/DomainModule.registerInjectables"], "sharedOrAdapter": ["Desktop platform adapter → initDesktopDI"], "desktop": ["Main.createOwnerIngress → initDesktopDI → DesktopUiDependencies.fromInjekt → UI"]}, "protectionEvidence": ["app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt#reinitializing while scheduler runs joins old work and closes old database"], "userEntry": "Launch Mihon Desktop.", "userFeedback": "The owner graph resolves before the main window is shown and old scheduler/database work is closed on reinitialization."},
     "upstreamSymbols": [
       { "path": "app/src/main/java/eu/kanade/tachiyomi/di/AppModule.kt", "symbol": "AppModule.registerInjectables" },
       { "path": "app/src/main/java/eu/kanade/domain/DomainModule.kt", "symbol": "DomainModule.registerInjectables" }
@@ -75,15 +79,23 @@
       "app/src/main/java/eu/kanade/domain/DomainModule.kt"
     ],
     "desktopConsumerAdapterPaths": [
-      "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/Main.kt"
     ],
     "deviations": [
-      { "classification": "PLATFORM_ADAPTER", "description": "Desktop has a JVM lifecycle and platform services, so its composition root cannot reuse Android Application bindings directly." },
-      { "classification": "UNCLASSIFIED_DEBT", "description": "DesktopAppModule remains a broad manual composition root rather than matching fixed-main's smaller InjektModule boundaries." }
+      { "classification": "PLATFORM_ADAPTER", "description": "Desktop has a JVM lifecycle and platform services, so its composition root cannot reuse Android Application bindings directly." }
     ],
     "protectionTests": [
       "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
     ],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/di/AppModule.kt", "symbol": "override fun InjektRegistrar.registerInjectables", "line": 52}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/domain/DomainModule.kt", "symbol": "override fun InjektRegistrar.registerInjectables", "line": 113}],
+      "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "fun initDesktopDI", "line": 169}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt", "symbol": "initDesktopDI()", "line": 75}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt#reinitializing while scheduler runs joins old work and closes old database", "productionMarkers": ["initDesktopDIForTest", "Injekt.get"]}]
+    },
+    "verificationScope": "VERIFIED: platform-specific composition roots, Desktop production bootstrap, dependency resolution, ownership replacement and deterministic teardown are executable.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -881,16 +893,18 @@
     "tags": [
       "SHARE-DIRECT"
     ],
-    "status": "NOT_STARTED",
-    "statusDecision": {
+    "status": "WIRED",
+    "statusDecisionHistory": [{
       "task": "Task 8",
       "decision": "KEEP_GAP",
       "followUp": "Task 14",
       "gap": "Fixed-main extension repository CRUD and current Android/Desktop shared repository migration behavior have no production behavior contract; fingerprint continuity alone cannot close the capability.",
       "behaviorMethods": {}
-    },
+    }],
+    "statusDecision": {"task": "Task 14A", "decision": "KEEP_GAP", "followUp": "Task 14B", "gap": "Android and Desktop both reuse the shared extension-repository API, but current Android CRUD wiring has no executable consumer contract that fails when create/replace/delete production wiring breaks."},
     "authoritativeImplementation": "Fixed-main original Mihon capability #32: 扩展仓库",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "unclassifiedDebtResolution": {"decision": "reuse", "reason": "The shared ExtensionRepoRepository/service and interactors already own CRUD semantics; a second Desktop implementation would duplicate behavior, so the remaining work is an Android/Desktop production-consumer contract.", "fixedMainRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "productionCallPath": {"currentAndroid": ["ExtensionReposScreen → ExtensionReposScreenModel → create/replace/delete interactors"], "sharedOrAdapter": ["extension-repository interactors → ExtensionRepoRepository/ExtensionRepoService"], "desktop": ["ExtensionRepoScreen → DesktopUiDependencies → shared interactors → DesktopAppModule repository"]}, "protectionEvidence": ["app-desktop/src/test/kotlin/mihon/desktop/domain/ExtensionRepoUseCaseTest.kt#replaceRepo replaces repo with same signing key fingerprint", "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/ExtensionRepoScreenFeedbackTest.kt#pending repository message is visible immediately after submit"], "userEntry": "Settings → Browse → Extension repositories.", "userFeedback": "Submitting shows pending/result feedback; replacement is explicit and deletion immediately updates the repository list."},
     "upstreamSymbols": [
       { "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/browse/ExtensionReposScreenModel.kt", "symbol": "ExtensionReposScreenModel → extension-repo interactors" }
     ],
@@ -905,11 +919,10 @@
       "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt"
     ],
     "deviations": [
-      { "classification": "SECURITY_ENHANCEMENT", "description": "Repository fingerprint continuity is cross-platform evidence, not fixed-main authority." },
-      { "classification": "UNCLASSIFIED_DEBT", "description": "Repository CRUD migration behavior must be replayed from fixed main." }
+      { "classification": "SECURITY_ENHANCEMENT", "description": "Repository fingerprint continuity is cross-platform evidence, not fixed-main authority." }
     ],
     "desktopImplementation": "Desktop current implementation to characterize and align: 扩展仓库",
-    "protectionTests": [],
+    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/domain/ExtensionRepoUseCaseTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/ExtensionRepoScreenFeedbackTest.kt"],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -1236,8 +1249,8 @@
     "tags": [
       "PLATFORM-ADAPTER"
     ],
-    "status": "WIRED",
-    "statusDecision": {
+    "status": "VERIFIED",
+    "statusDecisionHistory": [{
       "task": "Task 9",
       "decision": "KEEP_GAP",
       "followUp": "Task 14",
@@ -1245,9 +1258,11 @@
       "behaviorMethods": {
         "app-desktop/src/test/kotlin/mihon/desktop/network/DesktopBrowserLoginAdapterTest.kt": ["opens external browser then commits controlled completion through the real jar", "production committer late persistence failure publishes commit failed and restores old jar and file"]
       }
-    },
+    }],
+    "statusDecision": {"task": "Task 14A", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE"},
     "authoritativeImplementation": "Fixed-main original Mihon capability #39: WebView/源登录",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "unclassifiedDebtResolution": {"decision": "adapter", "reason": "Embedded Android WebView and Desktop external-browser handoff are platform UI adapters over the same controlled authentication-session and cookie-commit outcome; Desktop must not add a fake WebView compat layer.", "fixedMainRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "productionCallPath": {"currentAndroid": ["WebViewScreen → WebViewScreenContent → Android CookieManager → WebViewScreenModel"], "sharedOrAdapter": ["SourceLoginSession → DesktopBrowserLoginAdapter → DesktopAuthenticatedSessionCommitter"], "desktop": ["SourceBrowseScreen recovery → DesktopSourceLoginController/Dialog → commit cookie jar → retry source request"]}, "protectionEvidence": ["app-desktop/src/test/kotlin/mihon/desktop/network/DesktopBrowserLoginAdapterTest.kt#opens external browser then commits controlled completion through the real jar", "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceLoginTestModeWiringTest.kt#source browse installs observation after real open login recovery"], "userEntry": "Browse a source → authentication failure → Open login.", "userFeedback": "The dialog exposes cancel/manual-cookie actions and terminal authenticated, rejected, timed-out, unavailable or commit-failed feedback before retry."},
     "upstreamSymbols": [
       { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/webview/WebViewScreenModel.kt", "symbol": "WebViewScreenModel" },
       { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/webview/WebViewScreen.kt", "symbol": "WebViewScreen" },
@@ -1261,15 +1276,23 @@
     ],
     "desktopConsumerAdapterPaths": [
       "app-desktop/src/main/kotlin/mihon/desktop/network/DesktopBrowserLoginAdapter.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceLoginDialog.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceLoginDialog.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt"
     ],
     "deviations": [
       { "classification": "MIGRATION_OUTPUT", "description": "SourceLoginSession state is migration output, not original WebView authority." },
-      { "classification": "PLATFORM_ADAPTER", "description": "Controlled browser and cookie storage are platform-specific." },
-      { "classification": "UNCLASSIFIED_DEBT", "description": "Desktop has no embedded WebView; unsupported compat stubs do not prove WebView parity." }
+      { "classification": "PLATFORM_ADAPTER", "description": "Desktop intentionally uses a controlled external browser and cookie storage adapter instead of Android's embedded WebView." }
     ],
     "desktopImplementation": "Desktop current implementation to characterize and align: WebView/源登录",
     "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/network/DesktopBrowserLoginAdapterTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceLoginTestModeWiringTest.kt"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/webview/WebViewScreen.kt", "symbol": "class WebViewScreen(", "line": 12}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/presentation/webview/WebViewScreenContent.kt", "symbol": "fun WebViewScreenContent(", "line": 69}],
+      "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/network/DesktopBrowserLoginAdapter.kt", "symbol": "class DesktopBrowserLoginAdapter", "line": 69}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt", "symbol": "fun recover()", "line": 342}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceLoginTestModeWiringTest.kt#source browse installs observation after real open login recovery", "productionMarkers": ["SourceBrowseScreen("]}]
+    },
+    "verificationScope": "VERIFIED: fixed/current Android embedded login, shared authentication outcome, Desktop external-browser adapter, real cookie commit/rollback and source-browse feedback are bound.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -2056,6 +2079,7 @@
     "authoritativeImplementation": "Fixed original Mihon tracker manager, UI workflows, provider APIs and enhanced tracker contracts at main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8.",
     "desktopImplementation": "Current shared provider protocol plus current Android and Desktop consumers remain characterized; current app tests are consumer evidence, never fixed-main evidence.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "unclassifiedDebtResolution": {"decision": "extract", "reason": "Provider-neutral login, search, bind, refresh, update/delete and error semantics are shared behavior; OAuth redirects, credentials and provider transports remain adapters.", "fixedMainRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "productionCallPath": {"currentAndroid": ["TrackerManager/TrackInfoDialog → provider Tracker + API implementations"], "sharedOrAdapter": ["TrackerProviderProtocols/contracts → TrackerService ports"], "desktop": ["Tracking settings/model → DesktopTrackerServiceRegistry → provider/enhanced services → sync scheduler"]}, "protectionEvidence": ["app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopProviderTrackerServiceTest.kt#production registry contains every public Android tracker with isolated credentials", "app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopEnhancedTrackerServiceTest.kt#all enhanced providers preserve malformed and HTTP failures instead of returning empty matches"], "userEntry": "Settings → Tracking → provider Login/Manage, then manga tracking search/editor.", "userFeedback": "Rows expose availability and login state; search, bind, update/delete and provider failures remain explicit."},
     "upstreamSymbols": [
       {
         "path": "app/src/main/java/eu/kanade/tachiyomi/data/track/TrackerManager.kt",
@@ -2181,27 +2205,27 @@
         "description": "Desktop adds a persistent event/checkpoint scheduler for tracker retry across restarts."
       },
       {
-        "classification": "UNCLASSIFIED_DEBT",
+        "classification": "PRODUCT_GAP",
         "description": "production provider configuration remains unclosed for deployed OAuth redirect and external-secret requirements."
       },
       {
-        "classification": "UNCLASSIFIED_DEBT",
+        "classification": "PRODUCT_GAP",
         "description": "The bind-existing/new-entry split and refresh-before-update workflow still require fixed-main replay evidence."
       },
       {
-        "classification": "UNCLASSIFIED_DEBT",
+        "classification": "PRODUCT_GAP",
         "description": "Initial reading status/date behavior and provider-specific MAL error behavior remain unclosed."
       },
       {
-        "classification": "UNCLASSIFIED_DEBT",
+        "classification": "PRODUCT_GAP",
         "description": "The provider search model plus private/date/delete editing rules remain unclosed."
       },
       {
-        "classification": "UNCLASSIFIED_DEBT",
+        "classification": "PRODUCT_GAP",
         "description": "enhanced auto-match behavior remains unclosed."
       },
       {
-        "classification": "UNCLASSIFIED_DEBT",
+        "classification": "PRODUCT_GAP",
         "description": "The Suwayomi delete preference remains unclosed."
       },
       {
@@ -2209,15 +2233,15 @@
         "description": "provider-specific fixed-main status replay is implemented: MAL preserves unknown outbound and inbound fallback to reading; AniList, Kitsu, Shikimori and Bangumi reject unknown outbound statuses, and Shikimori rejects unknown inbound statuses."
       },
       {
-        "classification": "UNCLASSIFIED_DEBT",
+        "classification": "PRODUCT_GAP",
         "description": "Original provider error classification/retry behavior has not yet been reconciled with Desktop retry policy."
       },
       {
-        "classification": "UNCLASSIFIED_DEBT",
+        "classification": "PRODUCT_GAP",
         "description": "Komga DNS and server-discovery behavior still requires fixed-main production replay evidence."
       },
       {
-        "classification": "UNCLASSIFIED_DEBT",
+        "classification": "PRODUCT_GAP",
         "description": "Kitsu/MangaUpdates request shape must still be replayed field by field against fixed main."
       }
     ],
@@ -2241,7 +2265,8 @@
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopProviderTrackerServiceTest.kt#production registry contains every public Android tracker with isolated credentials", "productionMarkers": ["DesktopTrackerServiceRegistry.production("]}]
     },
     "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopProviderTrackerServiceTest.kt": ["production registry contains every public Android tracker with isolated credentials"]},
-    "statusDecision": {"task": "Task 11", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Fixed-main production provider configuration; bind-existing/new-entry and refresh-before-update; initial reading status/date and MAL error behavior; search model and private/date/delete editing; enhanced auto-match; Suwayomi delete preference; provider error classification/retry; Komga DNS/server discovery; and Kitsu/MangaUpdates request shape remain unclosed.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopProviderTrackerServiceTest.kt": ["production registry contains every public Android tracker with isolated credentials"]}},
+    "statusDecisionHistory": [{"task": "Task 11", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Fixed-main production provider configuration; bind-existing/new-entry and refresh-before-update; initial reading status/date and MAL error behavior; search model and private/date/delete editing; enhanced auto-match; Suwayomi delete preference; provider error classification/retry; Komga DNS/server discovery; and Kitsu/MangaUpdates request shape remain unclosed.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopProviderTrackerServiceTest.kt": ["production registry contains every public Android tracker with isolated credentials"]}}],
+    "statusDecision": {"task": "Task 14A", "decision": "KEEP_GAP", "followUp": "Task 14B", "gap": "Extract provider-neutral production configuration, bind/refresh/status/date/search/edit/delete/error contracts and close enhanced-provider replay without weakening Desktop credential/checkpoint enhancements."},
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -2255,6 +2280,7 @@
     "authoritativeImplementation": "Fixed original Mihon reader-triggered TrackChapter and delayed update chain at main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8, including incognito and auto-update preference gates plus non-cancellable eligible updates.",
     "desktopImplementation": "Desktop replays the fixed-main reader trigger gates and non-cancellable completion while retaining its persistent checkpoint scheduler; fixed-main filtering, refresh, concurrency and delayed-work behavior remain to be replayed.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "unclassifiedDebtResolution": {"decision": "extract", "reason": "Refresh/filter/parallel update and durable delayed-queue retry semantics are platform-neutral workflow rules; WorkManager and Desktop lifecycle scheduling are adapters.", "fixedMainRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "productionCallPath": {"currentAndroid": ["ReaderViewModel → TrackChapter → DelayedTrackingStore/DelayedTrackingUpdateJob"], "sharedOrAdapter": ["SyncReadingProgressWithTrack → planned shared delayed-sync workflow/queue contract"], "desktop": ["ReaderLifecycleEffect → ReaderProgressTracker → DesktopTrackerSyncScheduler"]}, "protectionEvidence": ["app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt#eligible tracker sync completes after caller cancellation", "app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopTrackerSyncSchedulerTest.kt#failed sync request is persisted and recovered by a new scheduler"], "userEntry": "Finish or exit a chapter in the reader with automatic tracking enabled.", "userFeedback": "Local progress commits first; eligible remote tracking completes or remains durably queued without regressing the highest chapter."},
     "upstreamSymbols": [
       {
         "path": "app/src/main/java/eu/kanade/domain/track/interactor/TrackChapter.kt",
@@ -2321,15 +2347,15 @@
         "description": "SyncReadingProgressWithTrack is current shared migration output, not fixed-main authority."
       },
       {
-        "classification": "UNCLASSIFIED_DEBT",
+        "classification": "PRODUCT_GAP",
         "description": "Fixed-main refresh-before-update, login/progress filtering and parallel provider updates remain unclosed in the shared/Desktop replay."
       },
       {
-        "classification": "UNCLASSIFIED_DEBT",
+        "classification": "PRODUCT_GAP",
         "description": "The delayed queue's per-track monotonic highest progress rule remains unclosed."
       },
       {
-        "classification": "UNCLASSIFIED_DEBT",
+        "classification": "PRODUCT_GAP",
         "description": "Fixed-main network constraint, unique work, exponential backoff, bounded retry and queue cleanup semantics remain unclosed."
       },
       {
@@ -2354,7 +2380,8 @@
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt#eligible tracker sync completes after caller cancellation", "productionMarkers": ["ReaderProgressTracker("]}]
     },
     "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt": ["eligible tracker sync completes after caller cancellation"]},
-    "statusDecision": {"task": "Task 11", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Fixed-main refresh-before-update, login/progress filtering and parallel provider updates; delayed queue per-track monotonic highest progress; and network constraint, unique work, exponential backoff, bounded retry and queue cleanup remain unclosed.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt": ["eligible tracker sync completes after caller cancellation"]}},
+    "statusDecisionHistory": [{"task": "Task 11", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Fixed-main refresh-before-update, login/progress filtering and parallel provider updates; delayed queue per-track monotonic highest progress; and network constraint, unique work, exponential backoff, bounded retry and queue cleanup remain unclosed.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt": ["eligible tracker sync completes after caller cancellation"]}}],
+    "statusDecision": {"task": "Task 14A", "decision": "KEEP_GAP", "followUp": "Task 14B", "gap": "Extract refresh/filter/parallel update plus monotonic delayed queue, constraint, unique-work, exponential-backoff, bounded-retry and cleanup semantics while retaining Desktop restart checkpoints."},
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -2671,6 +2698,7 @@
     "status": "SHARED",
     "authoritativeImplementation": "Compatibility summary only; fixed-main app-language selection and Context localization are authoritative.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "unclassifiedDebtResolution": {"decision": "adapter", "reason": "Shared MR resources are reused directly, but selecting and persisting an application locale requires a Desktop JVM locale adapter and an Appearance settings entry.", "fixedMainRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "productionCallPath": {"currentAndroid": ["SettingsAppearanceScreen → AppLanguageScreen → AppCompatDelegate.setApplicationLocales"], "sharedOrAdapter": ["MR resources → platform locale/resource lookup"], "desktop": ["AppearanceSettingsScreen → planned Desktop locale preference/adapter → localized consumers"]}, "protectionEvidence": ["app-desktop/src/test/kotlin/mihon/desktop/i18n/DesktopExtensionListRenderedCopyTest.kt#extension list filter and uninstall render localized copy"], "userEntry": "More → Settings → Appearance → Application language (planned).", "userFeedback": "The selected locale is persisted and supported labels update consistently; any restart requirement must be stated in the row."},
     "upstreamSymbols": [
       { "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/appearance/AppLanguageScreen.kt", "symbol": "Content/getLangs/AppCompatDelegate.setApplicationLocales" },
       { "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAppearanceScreen.kt", "symbol": "getDisplayGroup → AppLanguageScreen" },
@@ -2692,8 +2720,7 @@
       "app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionDetailsScreen.kt"
     ],
     "deviations": [
-      { "classification": "PLATFORM_ADAPTER", "description": "Android locale APIs and Desktop JVM resource lookup differ by platform." },
-      { "classification": "UNCLASSIFIED_DEBT", "description": "Desktop has no app-language selector and still contains unlocalized copy." }
+      { "classification": "PLATFORM_ADAPTER", "description": "Android locale APIs and Desktop JVM resource lookup differ by platform; the missing Desktop selector is assigned to the finite product child plan." }
     ],
     "desktopImplementation": "Compatibility summary only; current Desktop consumers render shared MR resources.",
     "protectionTests": [
@@ -2707,7 +2734,8 @@
       "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionListScreen.kt", "symbol": "MR.strings.ext_uninstall.localized()", "line": 176}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/i18n/DesktopExtensionListRenderedCopyTest.kt#extension list filter and uninstall render localized copy", "productionMarkers": ["ExtensionListScreen()"]}]
     },
-    "statusDecision": {"task": "Task 12", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Desktop still has no app-language selector and retains unlocalized copy outside the currently rendered shared MR paths.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/i18n/DesktopExtensionListRenderedCopyTest.kt": ["extension list filter and uninstall render localized copy"], "app-desktop/src/test/kotlin/mihon/desktop/i18n/MoreSourceExtensionRenderedCopyTest.kt": ["source extension entries render localized copy and navigate"]}},
+    "statusDecisionHistory": [{"task": "Task 12", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Desktop still has no app-language selector and retains unlocalized copy outside the currently rendered shared MR paths.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/i18n/DesktopExtensionListRenderedCopyTest.kt": ["extension list filter and uninstall render localized copy"], "app-desktop/src/test/kotlin/mihon/desktop/i18n/MoreSourceExtensionRenderedCopyTest.kt": ["source extension entries render localized copy and navigate"]}}],
+    "statusDecision": {"task": "Task 14A", "decision": "KEEP_GAP", "followUp": "Task 14B", "gap": "Desktop needs an Appearance language selector, persisted JVM locale adapter and remaining production-copy localization without regressing shared MR consumers."},
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -2718,11 +2746,12 @@
       "SHARE-EXTRACT",
       "PLATFORM-ADAPTER"
     ],
-    "status": "CHARACTERIZED",
+    "status": "VERIFIED",
     "authoritativeImplementation": "Fixed-main original Mihon capability #88: keyboard activation and minimum interactive roles are implemented by runOnEnterKeyPressed, LabeledCheckbox, and material Surface; there is no dedicated accessibility screen.",
     "desktopImplementation": "Desktop settings expose real Button and Checkbox semantics plus exact-once physical-key activation, but this is a platform adapter rather than a completed shared accessibility layer.",
     "dedicatedScreenPresent": false,
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+    "unclassifiedDebtResolution": {"decision": "adapter", "reason": "Compose Android and Compose Desktop expose different key-event and semantics APIs; the user-visible contract is keyboard activation, role/state, disabled behavior and minimum target semantics, all protected in real Desktop settings content.", "fixedMainRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "productionCallPath": {"currentAndroid": ["settings controls → runOnEnterKeyPressed/LabeledCheckbox/Surface semantics"], "sharedOrAdapter": ["Desktop Compose adapter → desktopSettingsEnterKey + Material Button/Checkbox semantics"], "desktop": ["General/Appearance/Backup/Library settings → production controls → exact-once keyboard actions"]}, "protectionEvidence": ["app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsContentAccessibilityTest.kt#Backup production button activates once on key down and respects disabled state", "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsAccessibilityContractTest.kt#General and Appearance rows expose one action role state and disabled semantics"], "userEntry": "Open More → Settings and navigate controls by keyboard.", "userFeedback": "Buttons, switches and checkboxes expose labels, roles, state and disabled semantics and activate exactly once on Enter."},
     "upstreamSymbols": [
       { "path": "presentation-core/src/main/java/tachiyomi/presentation/core/util/Modifier.kt", "symbol": "Modifier.runOnEnterKeyPressed" },
       { "path": "presentation-core/src/main/java/tachiyomi/presentation/core/components/LabeledCheckbox.kt", "symbol": "LabeledCheckbox role Checkbox minimum 48dp" },
@@ -2732,8 +2761,7 @@
     "currentAndroidConsumerPaths": ["presentation-core/src/main/java/tachiyomi/presentation/core/util/Modifier.kt", "presentation-core/src/main/java/tachiyomi/presentation/core/components/LabeledCheckbox.kt", "presentation-core/src/main/java/tachiyomi/presentation/core/components/material/Surface.kt"],
     "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SettingsComposables.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/GeneralSettingsScreen.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AppearanceSettingsScreen.kt"],
     "deviations": [
-      { "classification": "PLATFORM_ADAPTER", "description": "Desktop keyboard and semantics adapters use Compose Desktop events and roles." },
-      { "classification": "UNCLASSIFIED_DEBT", "description": "No commonMain accessibility primitive or cross-platform shared consumer exists, so completed Desktop accessibility coverage is not full capability verification." }
+      { "classification": "PLATFORM_ADAPTER", "description": "Desktop keyboard and semantics adapters use Compose Desktop events and roles; a commonMain wrapper would not remove the platform event boundary." }
     ],
     "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsContentAccessibilityTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsAccessibilityContractTest.kt"],
     "behaviorMethods": {
@@ -2750,8 +2778,9 @@
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsAccessibilityContractTest.kt#General and Appearance rows expose one action role state and disabled semantics", "productionMarkers": ["GeneralSettingsScreen()", "AppearanceSettingsScreen()"]}
       ]
     },
-    "statusDecision": {"task": "Task 13", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "No commonMain accessibility primitive or cross-platform production consumer exists; Desktop keyboard and semantics coverage remains a platform adapter.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsContentAccessibilityTest.kt": ["Backup production button activates once on key down and respects disabled state", "Library checkbox production row activates once on key down"], "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsAccessibilityContractTest.kt": ["General and Appearance rows expose one action role state and disabled semantics"]}},
-    "verificationScope": "CHARACTERIZED: fixed-main behavior and Desktop production coverage are recorded; shared extraction and a cross-platform common consumer remain open for the final 64-item audit.",
+    "statusDecisionHistory": [{"task": "Task 13", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "No commonMain accessibility primitive or cross-platform production consumer exists; Desktop keyboard and semantics coverage remains a platform adapter.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsContentAccessibilityTest.kt": ["Backup production button activates once on key down and respects disabled state", "Library checkbox production row activates once on key down"], "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsAccessibilityContractTest.kt": ["General and Appearance rows expose one action role state and disabled semantics"]}}],
+    "statusDecision": {"task": "Task 14A", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE"},
+    "verificationScope": "VERIFIED: fixed/current Android semantics, the Desktop platform adapter, production setting consumers and exact-once keyboard/role/state/disabled fixtures are bound.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
