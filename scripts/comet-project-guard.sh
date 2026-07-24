@@ -128,6 +128,7 @@ for line_number, line in visible_markdown(source_lines):
             metadata_value[(current_task, field)] = value.strip()
 
 errors = []
+warnings = []
 
 
 def error(task, message):
@@ -179,13 +180,17 @@ for task in sorted(pending):
     elif scope_match:
         files, lines = map(int, scope_match.groups())
         if files > 8 or lines > 400:
-            waiver_count = metadata_count[(task, "Split waiver")]
             waiver = metadata_value.get((task, "Split waiver"), "")
-            if waiver_count != 1 or not waiver:
-                error(task, "scope exceeds 8 files or 400 lines and requires one non-empty **Split waiver:**")
+            suffix = f"; rationale: {waiver}" if waiver else ""
+            warnings.append(
+                f"WARNING: Task {task}: estimated scope {files} files, {lines} lines exceeds the review hint{suffix}"
+            )
 
     if metadata_count[(task, "Split waiver")] > 1:
         error(task, "Split waiver may appear at most once")
+
+if warnings:
+    print("\n".join(warnings), file=sys.stderr)
 
 if errors:
     print("\n".join(errors), file=sys.stderr)

@@ -7,7 +7,6 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 GUARD="$REPO_ROOT/scripts/comet-project-guard.sh"
 HOOK="$REPO_ROOT/.codex/hooks/enforce-build-script.sh"
 HOOKS_JSON="$REPO_ROOT/.codex/hooks.json"
-PROJECT_CONFIG="$REPO_ROOT/.comet/config.yaml"
 REAL_PLAN="$REPO_ROOT/docs/superpowers/plans/2026-07-15-mihon-source-extension-shared-core.md"
 TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/mihon-comet-guard.XXXXXX")"
 PASS_COUNT=0
@@ -84,66 +83,6 @@ find_python() {
   else
     return 1
   fi
-}
-
-find_comet_state() {
-  if [ -n "${COMET_STATE_SH:-}" ] && [ -f "$COMET_STATE_SH" ]; then
-    printf '%s\n' "$COMET_STATE_SH"
-    return 0
-  fi
-  local root found windows_home=""
-  for found in \
-    "$REPO_ROOT/.codex/skills/comet/scripts/comet-state.sh" \
-    "$HOME/.codex/skills/comet/scripts/comet-state.sh" \
-    "$HOME/.agents/skills/comet/scripts/comet-state.sh" \
-    /mnt/c/Users/*/.codex/skills/comet/scripts/comet-state.sh \
-    /c/Users/*/.codex/skills/comet/scripts/comet-state.sh; do
-    if [ -f "$found" ]; then
-      printf '%s\n' "$found"
-      return 0
-    fi
-  done
-  if [ -n "${USERPROFILE:-}" ]; then
-    if command -v cygpath >/dev/null 2>&1; then
-      windows_home="$(cygpath -u "$USERPROFILE")"
-    elif command -v wslpath >/dev/null 2>&1; then
-      windows_home="$(wslpath -u "$USERPROFILE")"
-    fi
-  fi
-  for root in "$REPO_ROOT/.codex/skills" "$HOME/.codex/skills" "$HOME/.agents/skills" "$windows_home/.codex/skills" "$HOME/.config" "$HOME/.gemini"; do
-    [ -d "$root" ] || continue
-    found="$(find "$root" -path '*/comet/scripts/comet-state.sh' -type f -print -quit 2>/dev/null)"
-    if [ -n "$found" ]; then
-      printf '%s\n' "$found"
-      return 0
-    fi
-  done
-  return 1
-}
-
-verify_comet_init_defaults() {
-  local state_script="$1"
-  local init_repo="$2"
-  local output_file="$init_repo/init-output.log"
-
-  mkdir -p "$init_repo/.comet"
-  cp "$PROJECT_CONFIG" "$init_repo/.comet/config.yaml"
-  (
-    cd "$init_repo" || exit 1
-    git init -q
-    unset COMET_CONTEXT_COMPRESSION COMET_AUTO_TRANSITION COMET_REVIEW_MODE
-    bash "$state_script" init config-proof full
-  ) >"$output_file" 2>&1
-  local status=$?
-  if [ "$status" -ne 0 ]; then
-    cat "$output_file"
-    return "$status"
-  fi
-
-  local state_file="$init_repo/openspec/changes/config-proof/.comet.yaml"
-  grep -Fx 'context_compression: beta' "$state_file" >/dev/null \
-    && grep -Fx 'auto_transition: true' "$state_file" >/dev/null \
-    && grep -Fx 'review_mode: thorough' "$state_file" >/dev/null
 }
 
 expect_hook_case() {
@@ -295,7 +234,7 @@ expect_status "android+desktop 边界失败" 1 "Task 1.*Platform boundary" bash 
 
 OVERSIZE_PLAN="$TMP_ROOT/oversize.md"
 write_plan "$OVERSIZE_PLAN" " " "$(valid_body | sed 's/4 files, 120 lines/9 files, 401 lines/')"
-expect_status "超限无 waiver 失败" 1 "Task 1.*Split waiver" bash "$GUARD" plan "$OVERSIZE_PLAN"
+expect_status "超限无 waiver 仅警告并通过" 0 "WARNING.*Task 1.*9 files.*401 lines" bash "$GUARD" plan "$OVERSIZE_PLAN"
 
 OVERSIZE_WAIVER_PLAN="$TMP_ROOT/oversize-waiver.md"
 write_plan "$OVERSIZE_WAIVER_PLAN" " " "$(valid_body | sed 's/4 files, 120 lines/9 files, 401 lines/')
@@ -305,13 +244,13 @@ expect_status "超限有 waiver 通过" 0 "PASS.*1.*待办" bash "$GUARD" plan "
 EMPTY_WAIVER_PLAN="$TMP_ROOT/empty-waiver.md"
 write_plan "$EMPTY_WAIVER_PLAN" " " "$(valid_body | sed 's/4 files, 120 lines/9 files, 401 lines/')
 **Split waiver:**   "
-expect_status "超限空 waiver 失败" 1 "Task 1.*Split waiver" bash "$GUARD" plan "$EMPTY_WAIVER_PLAN"
+expect_status "超限空 waiver 仍仅警告并通过" 0 "WARNING.*Task 1.*9 files.*401 lines" bash "$GUARD" plan "$EMPTY_WAIVER_PLAN"
 
 COMPLETED_PLAN="$TMP_ROOT/completed.md"
 write_plan "$COMPLETED_PLAN" "x" "正文也没有新门禁元数据。"
 expect_status "已完成旧 Task 可跳过" 0 "PASS.*0.*待办" bash "$GUARD" plan "$COMPLETED_PLAN"
 
-expect_status "当前真实计划通过" 0 "PASS.*9.*待办" bash "$GUARD" plan "$REAL_PLAN"
+expect_status "当前真实计划通过" 0 "PASS.*0.*待办" bash "$GUARD" plan "$REAL_PLAN"
 
 TASK3_PLANNED_FILES="$TMP_ROOT/task3-planned-files"
 TASK3_COMMIT_FILES="$TMP_ROOT/task3-commit-files"
@@ -394,51 +333,6 @@ PY
   else
     fail "hooks.json 从任意子目录定位 git root 且目标为 UTF-8" "$hooks_output"
   fi
-fi
-
-if [ ! -f "$PROJECT_CONFIG" ]; then
-  fail "Comet 项目配置存在" "缺少 $PROJECT_CONFIG"
-else
-  config_output="$(awk '
-    /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
-    { values[$1] = $2; keys = keys $1 " " }
-    END {
-      if (keys != "context_compression: auto_transition: review_mode: ") exit 1
-      if (values["context_compression:"] != "beta") exit 2
-      if (values["auto_transition:"] != "true") exit 3
-      if (values["review_mode:"] != "thorough") exit 4
-      print "native project config values are correct"
-    }
-  ' "$PROJECT_CONFIG" 2>&1)"
-  config_status=$?
-  if [ "$config_status" -eq 0 ]; then
-    pass "Comet 项目配置仅含原生字段且值正确"
-  else
-    fail "Comet 项目配置仅含原生字段且值正确（awk 退出码 $config_status）" "$config_output"
-  fi
-fi
-
-COMET_STATE="$(find_comet_state)"
-if [ -z "$COMET_STATE" ] || [ ! -f "$COMET_STATE" ]; then
-  fail "定位实际 comet-state.sh" "可通过 COMET_STATE_SH 指定"
-elif [ ! -f "$PROJECT_CONFIG" ]; then
-  fail "项目 config 默认值写入新 change" "项目配置缺失，无法执行集成测试"
-else
-  INIT_REPO="$TMP_ROOT/comet-init"
-  expect_status "实际 comet-state.sh init 使用项目 config 默认值" 0 "" verify_comet_init_defaults "$COMET_STATE" "$INIT_REPO"
-
-  FAKE_STATE="$TMP_ROOT/fake-comet-state.sh"
-  cat >"$FAKE_STATE" <<'EOF'
-#!/usr/bin/env bash
-mkdir -p "openspec/changes/$2"
-cat >"openspec/changes/$2/.comet.yaml" <<'YAML'
-context_compression: beta
-auto_transition: true
-review_mode: thorough
-YAML
-exit 99
-EOF
-  expect_status "comet-state 写字段后 exit 99 仍失败" 99 "" verify_comet_init_defaults "$FAKE_STATE" "$TMP_ROOT/comet-init-fake"
 fi
 
 printf '\nRESULT: %d passed, %d failed\n' "$PASS_COUNT" "$FAIL_COUNT"

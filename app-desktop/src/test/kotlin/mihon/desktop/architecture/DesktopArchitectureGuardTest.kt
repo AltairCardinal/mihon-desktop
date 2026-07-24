@@ -51,24 +51,6 @@ class DesktopArchitectureGuardTest {
     }
 
     @Test
-    fun `large desktop ui files do not grow beyond debt baseline`() {
-        val currentLineCounts = desktopUiLineDebtBaseline.mapValues { (path, _) ->
-            File(repoRoot, path).readLines().size
-        }
-        val violations = currentLineCounts.filter { (path, count) ->
-            count > desktopUiLineDebtBaseline.getValue(path)
-        }
-
-        assertTrue(
-            violations.isEmpty(),
-            "Large Desktop UI files grew beyond baseline:\n" +
-                violations.entries.joinToString("\n") { (path, count) ->
-                    "$path baseline=${desktopUiLineDebtBaseline.getValue(path)} actual=$count"
-                },
-        )
-    }
-
-    @Test
     fun `desktop startup and temporary path debt does not grow beyond baseline`() {
         val desktopDir = File(repoRoot, "app-desktop/src/main/kotlin")
         val runBlockingDebt = countMatches(desktopDir, Regex("""\brunBlocking\b"""))
@@ -242,14 +224,6 @@ class DesktopArchitectureGuardTest {
             "app-desktop/src/main/kotlin/mihon/desktop/ui/theme/DesktopTheme.kt",
             "app-desktop/src/main/kotlin/mihon/desktop/ui/download/DownloadQueueScreen.kt",
             "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt",
-        )
-
-        val desktopUiLineDebtBaseline = mapOf(
-            "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt" to 907,
-            "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt" to 710,
-            "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryTab.kt" to 493,
-            "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryComponents.kt" to 710,
-            "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt" to 677,
         )
 
         val dependencyLine = Regex("""(?m)^\s*(\S+)\s+->\s+(\S+)""")

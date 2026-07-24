@@ -3,7 +3,6 @@ parent-plan: docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.
 parent-task: Task 16C
 original-ref: main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status: planned
-active-task: Task 164
 ---
 # UI dependency boundary closure
 本计划只关闭 ID8/95 已确认的 current Android mapper 缺边与 32 条 Desktop compiled UI 违规。顺序固定为 164→169；每项独立红绿重构、mutation、focused test 和提交，不创建第二套 repository/manager。UI 入口与成功、失败、取消反馈保持不变；平台 adapter 只允许带非空理由的 OS side effect port。

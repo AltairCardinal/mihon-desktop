@@ -16,20 +16,30 @@
 
 **没有对应测试的功能代码不允许提交。**
 
-纯文档、纯文案或不改变产品行为的机械配置调整可以直接执行。Comet 的 `tdd_mode: direct` 仅允许用于这类非行为变更；功能性 hotfix 和其他产品行为变更必须使用 `tdd`。
+纯文档、纯文案或不改变产品行为的机械配置调整可以直接执行。
 
 ---
 
-## Comet 项目执行约束
+## 工程治理与进度状态
 
-- 执行计划前运行 `bash scripts/comet-project-guard.sh plan <plan-file>`；门禁只检查顶部总览中未完成 Task 的结构，不判断内容语义。
-- Desktop 构建 hook 只拦截常见的 Gradle 分发任务直接调用，并要求改用 `scripts/build-desktop.sh`；它是工作流提示与门禁，不是不可绕过的 shell 安全沙箱。
-- 每个待办 Task 必须声明单个 `Risk axis` slug（只含字母、数字、`-` 或 `_`，不使用多值分隔符）、允许的 `Platform boundary`、`Estimated scope: N files, M lines` 和非空 `Verification`。边界仅允许 `shared`、`android`、`desktop`、`shared+android`、`shared+desktop`、`verification`、`docs`、`tooling`，禁止 `android+desktop`。
-- Task 预计超过 8 个文件或 400 行时应继续拆分；确实不可拆时必须写具体、非空的 `Split waiver`，说明不可独立调度的原因。
-- Subagent 只接收完成当前 Task 所需的最小上下文；同一 Task 只设一个实现者和一个审查者。修复后复审最多一轮，仍未通过则停止并重新规划。
-- 同一 worktree 禁止并发 Gradle。协调者在每个 Task 后持久化状态；长任务至少每 60 秒报告心跳、当前步骤和阻塞情况。
+- 按能够独立交付和审查的功能批次执行，不按文件、测试类或机械行数切成微任务。
+- `Estimated scope` 只是审查提示。超过 8 个文件或 400 行时记录内聚性与风险说明即可；不得为满足估算值压缩格式、复制实现或拆开不可独立编译/验收的上下文。
+- 父 roadmap 只保存宏观阶段与唯一 `active-child-plan`；当前执行计划保存唯一 `active-task`；产品 child plan 从第一个未勾选项推导进度，不再声明 `active-task`。
+- `parity-manifest.json` 是 capability 状态与证据的机器权威；tracker/report 只保存说明或生成视图，不得反向覆盖 manifest。
+- checkbox 仅表示“实现、独立审查、验证、提交全部完成”。测试已绿但未审查或未提交时保持未勾选。
+- 一个功能批次原则上只产生一个包含测试、production 与必要 checkoff 的提交；审查修复最多增加一个提交。不得为 close、advance、record evidence 等纯状态推进单独提交。
+- 独立审查按功能批次进行。仅在架构假设失效、数据/格式迁移、安全边界或独立用户能力出现时重规划；不得仅因行数增长或格式化结果重规划。
+
+### 分层验证
+
+- 红绿循环：仅运行当前行为的 focused tests。
+- 批次完成：运行相关单元、集成、wiring 与格式检查。
+- 阶段完成：运行对应模块完整测试。
+- 最终收口：运行全量 Android/Desktop 测试、Test Mode、Windows/macOS 构建和运行验收。
+- `finalParityAudit`、完整 Desktop 测试和发布构建不得在每个微任务后重复运行。
 
 ---
+
 
 ## 功能规划原则
 
@@ -96,8 +106,8 @@ Android 与 Desktop 预期一致的行为必须使用共享契约测试覆盖；
 - 每项都必须描述用户实际可见或可操作的变化，不写纯代码细节作为主要内容。
 - 验收清单必须可执行；可在几分钟内手动完成的行为给出操作路径，其余行为给出自动化验证命令或运行时证据。
 - 必须说明功能边界，例如“仅 QUEUED 状态可取消，DOWNLOADING 不可取消”。
-- 内部重构或 Comet 中间 Task 无需虚构新增 UI；应报告它保护的既有用户行为、production wiring、自动化验证证据和当前功能边界。
-- Comet Task 之间只记录任务状态和验证证据；完整的用户可见完成报告在 change 或迭代最终完成时统一输出。
+- 内部重构无需虚构新增 UI；应报告它保护的既有用户行为、production wiring、自动化验证证据和当前功能边界。
+- 拆分的 Task 之间只记录任务状态和验证证据；完整的用户可见完成报告在 change 或迭代最终完成时统一输出。
 
 ## 桌面端构建与部署
 
@@ -110,31 +120,6 @@ Android 与 Desktop 预期一致的行为必须使用共享契约测试覆盖；
 ./scripts/build-desktop.sh msi       # 显式生成 MSI，最后重新生成并验收未打包应用
 ```
 
-### Comet 工作流中的桌面端验证
-
-通过 `/goal` 或 `/comet` 执行时，实施计划中的普通 Task 只运行与改动范围匹配的定向测试、编译检查，或使用 `./scripts/build-desktop.sh test-only` / `full-tests`；不得因为每个 Task 完成而递增版本或启动分发应用。
-
-仅在 Comet verify、阶段性交付、发布构建，或用户明确要求可运行产物时，执行会递增版本的完整构建脚本，并完成下述 Windows EXE 与适用的 macOS 运行验收。
-
-版本格式：`0.STAGE.FEATURE.BUILD.GIT_HASH`，例如 `0.11.14.3.92dab15`。每次非测试构建都必须产生新的 `BUILD`；`test-only` 和 `full-tests` 不修改版本号。
-
-Windows 开发验收只能使用以下固定路径的未打包 EXE：
-
-```text
-app-desktop/tmp/mihon-dist/main/app/Mihon Desktop/Mihon Desktop.exe
-```
-
-MSI 是显式生成的发布产物，不能替代未打包 EXE 的开发验收。即使执行 `msi` 模式，脚本也必须最后重新运行 `createDistributable`，避免 MSI 任务清理或遗留旧的未打包目录。
-
-Windows 构建完成前必须启动上述 EXE，确认窗口标题中的运行版本与本轮预期完整版本完全一致；EXE 不存在、修改时间早于本轮构建或运行版本不一致时，不得报告完成。
-
-macOS 构建继续部署到 `/Applications/Mihon Desktop.app`。
-
-完成报告必须同时包含完整版本号和未打包 EXE 的绝对路径，例如：`已验收 Mihon Desktop 0.11.14.3.abc1234，EXE：D:\...\Mihon Desktop.exe`。
-
-版本号唯一来源：`app-desktop/src/main/kotlin/mihon/desktop/AppVersion.kt`。
-
----
 
 ## 常用命令
 

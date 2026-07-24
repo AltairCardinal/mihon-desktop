@@ -4,7 +4,6 @@ parent-task: Task 14
 task-base: 0c6d360441c6ba64613063db7b197c0f88fa3d08
 original-ref: main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status: planned
-active-task: Task 144
 ---
 
 # Task 14 产品 parity 缺口收口计划

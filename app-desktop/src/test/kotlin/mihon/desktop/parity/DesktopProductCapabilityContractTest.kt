@@ -1908,6 +1908,7 @@ class DesktopProductCapabilityContractTest {
         )
     }
 
+    @Tag("parity-governance")
     @Test
     fun `task 2 provenance batch resolves fixed and current role evidence`() {
         val repositoryRoot = repositoryRoot()
@@ -1949,6 +1950,7 @@ class DesktopProductCapabilityContractTest {
         }
     }
 
+    @Tag("parity-governance")
     @Test
     fun `task 3 provenance batch resolves fixed and current role evidence`() {
         val repositoryRoot = repositoryRoot()
@@ -1988,6 +1990,7 @@ class DesktopProductCapabilityContractTest {
         }
     }
 
+    @Tag("parity-governance")
     @Test
     fun `task 4 provenance batch resolves fixed and current role evidence`() {
         val repositoryRoot = repositoryRoot()
@@ -2028,6 +2031,7 @@ class DesktopProductCapabilityContractTest {
         }
     }
 
+    @Tag("parity-governance")
     @Test
     fun `task 5 provenance batch resolves fixed current and historical role evidence`() {
         val repositoryRoot = repositoryRoot()
@@ -2086,6 +2090,7 @@ class DesktopProductCapabilityContractTest {
         )
     }
 
+    @Tag("parity-governance")
     @Test
     fun `task 6 status batch keeps gaps and promotes only complete production evidence`() {
         val repositoryRoot = repositoryRoot()
@@ -2155,6 +2160,7 @@ class DesktopProductCapabilityContractTest {
         )
     }
 
+    @Tag("parity-governance")
     @Test
     fun `task 7 status batch promotes only complete library detail and source evidence`() {
         val repositoryRoot = repositoryRoot()
@@ -2246,6 +2252,7 @@ class DesktopProductCapabilityContractTest {
         assertTrue("af9c522ec9f5c7032ebe3503bab6f9a6a1659e6f" in replan, "Task 7R2 must record R2")
     }
 
+    @Tag("parity-governance")
     @Test
     fun `task 8 status batch promotes only closed source and extension evidence`() {
         val repositoryRoot = repositoryRoot()
@@ -2294,6 +2301,7 @@ class DesktopProductCapabilityContractTest {
         assertTrue(Regex("""(?m)^- \[x] Task 8[：:]""").containsMatchIn(plan), "Completed Task 8 must be checked")
     }
 
+    @Tag("parity-governance")
     @Test
     fun `task 9 status batch promotes only closed login challenge and reader evidence`() {
         val repositoryRoot = repositoryRoot()
@@ -2385,6 +2393,7 @@ class DesktopProductCapabilityContractTest {
         assertTrue("84add84daad5606a20ac9793d39349b7bbb0a744" in replan, "Task 9 replan must record the S3 commit")
     }
 
+    @Tag("parity-governance")
     @Test
     fun `task 10 status batch promotes only closed progress download update and history evidence`() {
         val repositoryRoot = repositoryRoot()
@@ -2448,6 +2457,7 @@ class DesktopProductCapabilityContractTest {
         assertTrue("ID 56" in plan && "source object" in plan && "sourceId" in plan && "Task 14" in plan, "Task 10 must record the finite ID 56 follow-up")
     }
 
+    @Tag("parity-governance")
     @Test
     fun `task 11 status batch promotes only closed stats migration tracking and backup evidence`() {
         val repositoryRoot = repositoryRoot()
@@ -2543,6 +2553,7 @@ class DesktopProductCapabilityContractTest {
         assertTrue("ID 69" in plan && "ID 70" in plan && "Task 14" in plan, "Task 11 must record the finite tracking follow-up")
     }
 
+    @Tag("parity-governance")
     @Test
     fun `task 12 status batch promotes only closed backup and preserves platform decisions`() {
         val repositoryRoot = repositoryRoot()
@@ -2626,6 +2637,7 @@ class DesktopProductCapabilityContractTest {
         assertTrue("ID 85" in plan && "217" in plan && "Task 15" in plan, "Task 12 must preserve the approved exemption and OS follow-up")
     }
 
+    @Tag("parity-governance")
     @Test
     fun `task 13 status batch preserves terminal settings and records finite architecture gaps`() {
         val repositoryRoot = repositoryRoot()
@@ -2752,6 +2764,7 @@ class DesktopProductCapabilityContractTest {
         assertTrue("ID 95" in plan && "Task 16C" in plan && "ID 96" in plan && "Task 16A" in plan, "Task 13 must retain finite architecture follow-ups")
     }
 
+    @Tag("parity-governance")
     @Test
     fun `Task 14A resolves every unclassified debt and records the finite product child plan`() {
         val repositoryRoot = repositoryRoot()
@@ -2854,6 +2867,7 @@ class DesktopProductCapabilityContractTest {
         assertTrue("Task 14A" in plan && "Task 14B" in plan && "Task 14C" in plan)
     }
 
+    @Tag("parity-governance")
     @Test
     fun `Task 14B creates one finite product closure plan and advances parent handoff`() {
         val repositoryRoot = repositoryRoot()
@@ -2901,7 +2915,7 @@ class DesktopProductCapabilityContractTest {
             )
         val allowedBoundaries = setOf("shared", "android", "desktop", "shared+android", "shared+desktop", "verification", "docs", "tooling")
         val overviewTasks =
-            Regex("""(?m)^- \[ ] Task (\d+)[：:]([A-Z]\d)""").findAll(child)
+            Regex("""(?m)^- \[[ xX]] Task (\d+)[：:]([A-Z]\d)""").findAll(child)
                 .map { "${it.groupValues[1]} ${it.groupValues[2]}" }
                 .toSet()
         assertEquals(boundaries.keys, overviewTasks, "child overview must track every product Task")
@@ -2913,11 +2927,11 @@ class DesktopProductCapabilityContractTest {
             assertTrue(declaredBoundary in allowedBoundaries && declaredBoundary == boundary, "Task $task platform boundary")
             val scope = Regex("""\*\*Estimated scope:\*\* (\d+) files, (\d+) lines""").find(section)
                 ?: throw AssertionError("Task $task estimated scope is required")
-            assertTrue(scope.groupValues[1].toInt() <= 8 && scope.groupValues[2].toInt() <= 400, "Task $task scope exceeds 8 files/400 lines")
+            assertTrue(scope.groupValues[1].toInt() > 0 && scope.groupValues[2].toInt() > 0, "Task $task scope must be a positive review hint")
             listOf("**Verification:**", "**RED:**", "**GREEN:**", "**Mutation:**", "**User entry:**", "**Feedback:**", "**Desktop zero-regression:**")
                 .forEach { marker -> assertTrue(marker in section, "Task $task missing $marker") }
             val plannedFiles = Regex("""(?m)^- (?:Create|Modify): `([^`]+)`$""").findAll(section).map { it.groupValues[1] }.toList()
-            assertTrue(plannedFiles.isNotEmpty() && plannedFiles.size <= 8, "Task $task must name 1..8 candidate files")
+            assertTrue(plannedFiles.isNotEmpty(), "Task $task must name candidate files")
             plannedFiles.forEach { path -> assertFalse(path.contains("*") || path.contains("TBD"), "Task $task has a non-finite file path") }
             assertFalse(
                 plannedFiles.any { it.startsWith("app/src/") } && plannedFiles.any { it.startsWith("app-desktop/src/") },
@@ -2936,6 +2950,7 @@ class DesktopProductCapabilityContractTest {
         assertTrue(Regex("""(?m)^  - \[[x ]\] Task 14C[：:]""").containsMatchIn(parent), "Task 14C remains tracked")
     }
 
+    @Tag("parity-governance")
     @Test
     fun `Task 14C records the governance snapshot and closes the parent decision task`() {
         val repositoryRoot = repositoryRoot()
@@ -2943,7 +2958,7 @@ class DesktopProductCapabilityContractTest {
         val parent = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
         val child = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md"))
         assertEquals("planned", markdownFrontmatter(child)["status"])
-        assertEquals("Task 141", markdownFrontmatter(child)["active-task"])
+        assertFalse("active-task" in markdownFrontmatter(child), "child progress must derive from its first unchecked checkbox")
         val task14Ids = setOf(3, 4, 32, 39, 69, 70, 87, 88)
         val expected =
             manifestItems(repositoryRoot)
@@ -2982,6 +2997,7 @@ class DesktopProductCapabilityContractTest {
         assertTrue(Regex("""(?m)^- \[[x ]\] Task 15[：:]""").containsMatchIn(parent), "Task 15 remains tracked")
     }
 
+    @Tag("parity-governance")
     @Test
     fun `Task 15 preserves unaccepted platform candidates and creates finite acceptance work`() {
         val repositoryRoot = repositoryRoot()
@@ -3045,7 +3061,7 @@ class DesktopProductCapabilityContractTest {
 
         val child = Files.readString(childPath)
         assertEquals("planned", markdownFrontmatter(child)["status"])
-        assertEquals("Task 151", markdownFrontmatter(child)["active-task"])
+        assertFalse("active-task" in markdownFrontmatter(child), "child progress must derive from its first unchecked checkbox")
         assertEquals(
             setOf("151", "152", "153"),
             Regex("""(?m)^- \[ ] Task (\d+)[：:]""").findAll(child).map { it.groupValues[1] }.toSet(),
@@ -3095,6 +3111,7 @@ class DesktopProductCapabilityContractTest {
         assertTrue(Regex("""(?m)^- \[[x ]\] Task 16A[：:]""").containsMatchIn(parent), "Task 16A remains tracked")
     }
 
+    @Tag("parity-governance")
     @Test
     fun `Task 16A closes symbol scoped compat and historical format removal evidence`() {
         data class RemovalExpectation(
@@ -3248,6 +3265,7 @@ class DesktopProductCapabilityContractTest {
         assertTrue(Regex("""(?m)^- \[[x ]\] Task 16B[：:]""").containsMatchIn(parent), "Task 16B remains tracked")
     }
 
+    @Tag("parity-governance")
     @Test
     fun `Task 16B extracts the only duplicated business state machine into a finite child plan`() {
         val repositoryRoot = repositoryRoot()
@@ -3385,7 +3403,7 @@ class DesktopProductCapabilityContractTest {
         assertEquals("Task 16B", metadata["parent-task"])
         assertEquals(fixedOriginalMihonRef, metadata["original-ref"])
         assertEquals("planned", metadata["status"])
-        assertEquals("Task 161", metadata["active-task"])
+        assertFalse("active-task" in metadata, "child progress must derive from its first unchecked checkbox")
         setOf("Task 161", "Task 162", "Task 163").forEach { task ->
             assertEquals(1, Regex("""(?m)^### $task(?:\s|$)""").findAll(child).count(), "$task must be finite and unique")
         }
@@ -3397,6 +3415,7 @@ class DesktopProductCapabilityContractTest {
         assertTrue(Regex("""(?m)^- \[[x ]\] Task 16C[：:]""").containsMatchIn(parent))
     }
 
+    @Tag("parity-governance")
     @Test
     fun `Task 16C binds compiled dependency guards and finite product remediation`() {
         val repositoryRoot = repositoryRoot()
@@ -3467,7 +3486,7 @@ class DesktopProductCapabilityContractTest {
         val child = Files.readString(repositoryRoot.resolve(childPlan))
         val metadata = markdownFrontmatter(child)
         assertEquals("Task 16C", metadata["parent-task"])
-        assertEquals("Task 164", metadata["active-task"])
+        assertFalse("active-task" in metadata, "child progress must derive from its first unchecked checkbox")
         val pendingOverview = Regex("""(?m)^- \[ ] Task (\d+)[：:]""").findAll(child.substringBefore("### Task 164")).map { it.groupValues[1] }.toList()
         assertEquals("planned" to (164..169).map { it.toString() }, metadata["status"] to pendingOverview)
         (164..169).forEach { task ->
@@ -3480,6 +3499,7 @@ class DesktopProductCapabilityContractTest {
         assertTrue(Regex("""(?m)^- \[[x ]\] Task 16D[：:]""").containsMatchIn(parent))
     }
 
+    @Tag("parity-governance")
     @Test
     fun `Task 16D binds exact Test Mode inventory gaps and handoff`() {
         val repositoryRoot = repositoryRoot()
@@ -3505,7 +3525,7 @@ class DesktopProductCapabilityContractTest {
         val metadata = markdownFrontmatter(child)
         assertEquals("Task 16D", metadata["parent-task"])
         assertEquals("planned", metadata["status"])
-        assertEquals("Task 171", metadata["active-task"])
+        assertFalse("active-task" in metadata, "child progress must derive from its first unchecked checkbox")
         val overview = Regex("""(?m)^- \[ ] Task (17[1-7])[：:]""").findAll(child.substringBefore("### Task 171")).map { it.groupValues[1] }.toList()
         assertEquals((171..177).map { it.toString() }, overview)
 

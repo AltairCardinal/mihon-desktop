@@ -4,7 +4,6 @@ parent-task: Task 15
 task-base: 148594c791c88f45f9412577ad17b0a6b92ac635
 original-ref: main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status: planned
-active-task: Task 151
 ---
 
 # Task 15 platform evidence closure

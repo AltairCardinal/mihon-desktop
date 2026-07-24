@@ -3,7 +3,6 @@ parent-plan: docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.
 parent-task: Task 16D
 original-ref: main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status: planned
-active-task: Task 171
 ---
 # Test Mode scenario closure
 本计划只关闭 Task16D inventory 中 9 个 Desktop TestMode wiring/runner gap 和缺失的最终固定 EXE runner；ID3 产品闭环仍归 Task141/142，本计划只消费其完成产物，并按 171→177 串行执行。

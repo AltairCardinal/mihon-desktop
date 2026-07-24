@@ -4,7 +4,6 @@ parent-task: Task 16B
 task-base: c15f31897d0b736653ba6b11c4bdf732748fc1f4
 original-ref: main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status: planned
-active-task: Task 161
 ---
 
 # Background task state-machine closure

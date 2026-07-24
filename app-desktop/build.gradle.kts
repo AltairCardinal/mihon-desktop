@@ -195,7 +195,17 @@ tasks.withType<Test> {
 val jvmTestTask = tasks.named<Test>("jvmTest")
 jvmTestTask {
     useJUnitPlatform {
-        excludeTags("final-parity-audit")
+        excludeTags("final-parity-audit", "parity-governance")
+    }
+}
+tasks.register<Test>("parityGovernanceCheck") {
+    group = "verification"
+    description = "Runs explicit roadmap, manifest handoff, and historical parity governance contracts."
+    dependsOn(tasks.named("jvmTestClasses"))
+    testClassesDirs = jvmTestTask.get().testClassesDirs
+    classpath = jvmTestTask.get().classpath
+    useJUnitPlatform {
+        includeTags("parity-governance")
     }
 }
 tasks.register<Test>("finalParityAudit") {
