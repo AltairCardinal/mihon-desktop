@@ -59,7 +59,7 @@ class DesktopProductCapabilityContractTest {
                 ),
         )
     private val task3ProvenanceStatuses =
-        mapOf(24 to "SHARED", 26 to "WIRED", 44 to "VERIFIED", 45 to "VERIFIED", 47 to "WIRED", 49 to "VERIFIED", 51 to "WIRED", 53 to "WIRED")
+        mapOf(24 to "SHARED", 26 to "WIRED", 44 to "VERIFIED", 45 to "VERIFIED", 47 to "VERIFIED", 49 to "VERIFIED", 51 to "VERIFIED", 53 to "WIRED")
     private val task3BehaviorMethods =
         mapOf(
             24 to
@@ -92,6 +92,11 @@ class DesktopProductCapabilityContractTest {
                 mapOf(
                     "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt" to
                         setOf("chapter transition exposes wait loading loaded error missing count and retry command"),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterTransitionIntegrationTest.kt" to
+                        setOf(
+                            "pager holder production observer executes loading error and loaded states",
+                            "webtoon holder production observer executes loading error and loaded states",
+                        ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to
                         setOf("production adjacent chain publishes loading error retry loaded and navigates with loaded pages"),
                 ),
@@ -102,8 +107,12 @@ class DesktopProductCapabilityContractTest {
                 ),
             51 to
                 mapOf(
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt" to
+                        setOf("current Android consumer grayscale and invert preferences map to the shared filter contract"),
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt" to
                         setOf("grayscale and invert are effective shared filter modes"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt" to
+                        setOf("mounted reader viewport color layer renders disabled grayscale and invert pixels"),
                 ),
             53 to
                 mapOf(
@@ -433,9 +442,9 @@ class DesktopProductCapabilityContractTest {
                 ),
         )
     private val task9Statuses =
-        mapOf(39 to "WIRED", 40 to "VERIFIED", 43 to "VERIFIED", 44 to "VERIFIED", 45 to "VERIFIED", 47 to "WIRED", 49 to "VERIFIED", 51 to "WIRED")
+        mapOf(39 to "WIRED", 40 to "VERIFIED", 43 to "VERIFIED", 44 to "VERIFIED", 45 to "VERIFIED", 47 to "VERIFIED", 49 to "VERIFIED", 51 to "VERIFIED")
     private val task9FollowUps =
-        mapOf(39 to "Task 14", 40 to "NONE", 43 to "NONE", 44 to "NONE", 45 to "NONE", 47 to "Task 9A child plan", 49 to "NONE", 51 to "Task 9A child plan")
+        mapOf(39 to "Task 14", 40 to "NONE", 43 to "NONE", 44 to "NONE", 45 to "NONE", 47 to "NONE", 49 to "NONE", 51 to "NONE")
     private val task9BehaviorMethods =
         mapOf(
             39 to
@@ -480,8 +489,8 @@ class DesktopProductCapabilityContractTest {
             47 to
                 mapOf(
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterTransitionIntegrationTest.kt" to setOf(
-                        "previous and next errors retain their own retry target",
-                        "both chapter edges map to explicit shared boundaries without a target",
+                        "pager holder production observer executes loading error and loaded states",
+                        "webtoon holder production observer executes loading error and loaded states",
                     ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to setOf(
                         "production adjacent chain publishes loading error retry loaded and navigates with loaded pages",
@@ -499,7 +508,7 @@ class DesktopProductCapabilityContractTest {
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt" to setOf("current Android consumer grayscale and invert preferences map to the shared filter contract"),
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt" to setOf("grayscale and invert survive preference round trip"),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt" to setOf(
-                        "disabled grayscale invert and combined color matrices transform pixels",
+                        "mounted reader viewport color layer renders disabled grayscale and invert pixels",
                     ),
                 ),
         )
@@ -1155,16 +1164,10 @@ class DesktopProductCapabilityContractTest {
                 mapOf(
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterTransitionIntegrationTest.kt" to
                         mapOf(
-                            "pager and webtoon transition holders subscribe to every shared production state" to
-                                setOf(
-                                    "PagerTransitionHolder.kt",
-                                    "WebtoonTransitionHolder.kt",
-                                    "chapter.sharedStateFlow",
-                                    ".collectLatest { state ->",
-                                    "ReaderChapterState.Loading",
-                                    "ReaderChapterState.Error",
-                                    "ReaderChapterState.Loaded",
-                                ),
+                            "pager holder production observer executes loading error and loaded states" to
+                                setOf("observePagerTransitionState"),
+                            "webtoon holder production observer executes loading error and loaded states" to
+                                setOf("observeWebtoonTransitionState"),
                             "previous and next errors retain their own retry target" to
                                 setOf("toSharedTransitionModel", "retryCommand()"),
                             "both chapter edges map to explicit shared boundaries without a target" to
@@ -1212,6 +1215,8 @@ class DesktopProductCapabilityContractTest {
                         mapOf(
                             "disabled grayscale invert and combined color matrices transform pixels" to
                                 setOf("readerColorMatrix", "transform("),
+                            "mounted reader viewport color layer renders disabled grayscale and invert pixels" to
+                                setOf("renderColorLayer(", "assertPixel("),
                         ),
                 ),
             54 to
@@ -1283,9 +1288,9 @@ class DesktopProductCapabilityContractTest {
                     "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt" to
                         setOf("mutableSharedStateFlow", "ReaderChapterState.Error"),
                     "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt" to
-                        setOf("chapter.sharedStateFlow"),
+                        setOf("observePagerTransitionState(scope, chapter)", "chapter.sharedStateFlow.collectLatest"),
                     "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonTransitionHolder.kt" to
-                        setOf("chapter.sharedStateFlow"),
+                        setOf("observeWebtoonTransitionState(scope, chapter)", "chapter.sharedStateFlow.collectLatest"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt" to
                         setOf("ReaderChapterTransitionModel("),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt" to
@@ -1312,9 +1317,9 @@ class DesktopProductCapabilityContractTest {
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderSettingsPanel.kt" to
                         setOf("grayscaleEnabled", "invertEnabled"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt" to
-                        setOf("val matrix = readerColorMatrix(colorFilter) ?: return this"),
+                        setOf("val matrix = readerColorMatrix(colorFilter) ?: return this", "internal fun readerColorMatrix"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt" to
-                        setOf("readerColorTransform(state.colorFilter)"),
+                        setOf("ReaderViewportColorLayer(state.colorFilter)", "readerColorTransform(colorFilter)"),
                 ),
             54 to
                 mapOf(
@@ -1958,7 +1963,7 @@ class DesktopProductCapabilityContractTest {
             assertEquals(expectedStatus, requiredText(item, "status", id), "ID $id Task 9 status")
             val decision = item.getValue("statusDecision").jsonObject
             assertEquals("Task 9", requiredText(decision, "task", id, "statusDecision"))
-            val verified = id !in setOf(39, 47, 51)
+            val verified = id != 39
             assertEquals(if (verified) "PROMOTE_VERIFIED" else "KEEP_GAP", requiredText(decision, "decision", id, "statusDecision"))
             assertEquals(task9FollowUps.getValue(id), requiredText(decision, "followUp", id, "statusDecision"))
             val gap = requiredText(decision, "gap", id, "statusDecision")
@@ -1992,14 +1997,6 @@ class DesktopProductCapabilityContractTest {
             requiredText(login.getValue("statusDecision").jsonObject, "gap", 39, "statusDecision").contains("embedded WebView"),
             "ID 39 gap must name the missing embedded WebView parity",
         )
-        assertTrue(
-            requiredText(items.getValue(47).jsonObject.getValue("statusDecision").jsonObject, "gap", 47, "statusDecision").contains("source scan"),
-            "ID 47 gap must name the non-executable holder wiring evidence",
-        )
-        assertTrue(
-            requiredText(items.getValue(51).jsonObject.getValue("statusDecision").jsonObject, "gap", 51, "statusDecision").contains("source scan"),
-            "ID 51 gap must name the non-executable Compose wiring evidence",
-        )
         val colorScanMethod = "reader color matrix production chain delegates through the tested helper"
         val colorTopLevelMethods = items.getValue(51).jsonObject.getValue("behaviorMethods").jsonObject.values.flatMap { it.jsonArray }.map { it.jsonPrimitive.content }
         assertTrue(colorScanMethod !in colorTopLevelMethods, "ID 51 top-level behaviorMethods must reject source scan evidence")
@@ -2022,12 +2019,17 @@ class DesktopProductCapabilityContractTest {
         assertTrue("CROSS_PLATFORM_PRODUCT_ENHANCEMENT" in classifications, "ID 43 portrait pairing must stay an explicit enhancement")
 
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
-        assertEquals("Task 9R replan", markdownFrontmatter(plan)["active-task"], "Task 9 audit gap must activate Task 9R")
+        assertEquals("Task 9", markdownFrontmatter(plan)["active-task"], "Task 9A closeout must return control to Task 9")
         assertTrue(Regex("""(?m)^- \[ ] Task 9[：:]""").containsMatchIn(plan), "Task 9 must remain unchecked")
         val child = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-24-task-9a-reader-wiring-protection.md"))
-        assertEquals("planned", markdownFrontmatter(child)["status"])
+        assertEquals("completed", markdownFrontmatter(child)["status"])
         assertEquals("Task 9", markdownFrontmatter(child)["parent"])
         assertEquals("[47, 51]", markdownFrontmatter(child)["capability-ids"])
+        assertTrue("d0311eb381a45d323bc28cd1ee4ac010e312fc2d" in child, "Task 9A must record the Stage A commit")
+        assertTrue("14/14" in child && "21/21" in child && "0 skipped" in child, "Task 9A must record zero-skip executable verification")
+        assertTrue("adb45f9979871ada2230f9599baefa82a5d80ec4" in child, "Task 9A must record the pager mutation")
+        assertTrue("f7c2be665c461a039ecc28216c5b9373a35c3e90" in child, "Task 9A must record the webtoon mutation")
+        assertTrue("28c3968724488eb283d454a02829fae4bb73f10b" in child, "Task 9A must record the Desktop mutation")
         val replan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-24-task-9-status-d-replan.md"))
         assertEquals("active", markdownFrontmatter(replan)["status"])
         assertEquals("Task 9", markdownFrontmatter(replan)["parent-task"])
@@ -2527,9 +2529,9 @@ class DesktopProductCapabilityContractTest {
             43 to "VERIFIED",
             44 to "VERIFIED",
             45 to "VERIFIED",
-            47 to "WIRED",
+            47 to "VERIFIED",
             49 to "VERIFIED",
-            51 to "WIRED",
+            51 to "VERIFIED",
             54 to "WIRED",
         )
 

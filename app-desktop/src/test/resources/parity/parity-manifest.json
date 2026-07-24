@@ -1497,14 +1497,14 @@
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "WIRED",
+    "status": "VERIFIED",
     "statusDecision": {
       "task": "Task 9",
-      "decision": "KEEP_GAP",
-      "followUp": "Task 9A child plan",
-      "gap": "Android PagerTransitionHolder/WebtoonTransitionHolder sharedStateFlow wiring is covered only by a production source scan; existing executable tests validate the shared model but do not instantiate and drive both holders.",
+      "decision": "PROMOTE_VERIFIED",
+      "followUp": "NONE",
+      "gap": "NONE",
       "behaviorMethods": {
-        "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterTransitionIntegrationTest.kt": ["previous and next errors retain their own retry target", "both chapter edges map to explicit shared boundaries without a target"],
+        "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterTransitionIntegrationTest.kt": ["pager holder production observer executes loading error and loaded states", "webtoon holder production observer executes loading error and loaded states"],
         "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt": ["production adjacent chain publishes loading error retry loaded and navigates with loaded pages", "both adjacent boundaries never invoke the production loader"]
       }
     },
@@ -1513,14 +1513,14 @@
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt", "symbol": "sealed interface State"}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt", "symbol": "private fun observeStatus"}],
     "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt"],
-    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt", "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt", "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt", "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonTransitionHolder.kt"],
     "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt"],
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt", "symbol": "sealed interface State", "line": 45}, {"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt", "symbol": "private fun observeStatus", "line": 82}],
-      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt", "symbol": "val sharedStateFlow", "line": 16}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt", "symbol": "internal fun observePagerTransitionState", "line": 154}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonTransitionHolder.kt", "symbol": "internal fun observeWebtoonTransitionState", "line": 149}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt", "symbol": "sealed interface ReaderChapterState", "line": 26}],
       "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt", "symbol": "fun setChapterTransitionState", "line": 246}],
-      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt#production adjacent chain publishes loading error retry loaded and navigates with loaded pages", "productionMarkers": ["screen.requestAdjacentChapterTransition"]}]
+      "FIXTURE": [{"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterTransitionIntegrationTest.kt#pager holder production observer executes loading error and loaded states", "productionMarkers": ["observePagerTransitionState"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterTransitionIntegrationTest.kt#webtoon holder production observer executes loading error and loaded states", "productionMarkers": ["observeWebtoonTransitionState"]}]
     },
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
@@ -1530,7 +1530,7 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt"
     ],
-    "behaviorMethods": {"domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt": ["chapter transition exposes wait loading loaded error missing count and retry command"], "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt": ["production adjacent chain publishes loading error retry loaded and navigates with loaded pages"]},
+    "behaviorMethods": {"domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt": ["chapter transition exposes wait loading loaded error missing count and retry command"], "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterTransitionIntegrationTest.kt": ["pager holder production observer executes loading error and loaded states", "webtoon holder production observer executes loading error and loaded states"], "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt": ["production adjacent chain publishes loading error retry loaded and navigates with loaded pages"]},
     "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -1587,16 +1587,16 @@
       "SHARE-EXTRACT",
       "PLATFORM-ADAPTER"
     ],
-    "status": "WIRED",
+    "status": "VERIFIED",
     "statusDecision": {
       "task": "Task 9",
-      "decision": "KEEP_GAP",
-      "followUp": "Task 9A child plan",
-      "gap": "Desktop ReaderViewport -> readerColorTransform -> readerColorMatrix Compose/Modifier production wiring is covered only by a source scan; pixel transforms and preference round trips execute, but the mounted render chain is not driven.",
+      "decision": "PROMOTE_VERIFIED",
+      "followUp": "NONE",
+      "gap": "NONE",
       "behaviorMethods": {
         "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt": ["current Android consumer grayscale and invert preferences map to the shared filter contract"],
         "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt": ["grayscale and invert survive preference round trip"],
-        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt": ["disabled grayscale invert and combined color matrices transform pixels"]
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt": ["mounted reader viewport color layer renders disabled grayscale and invert pixels"]
       }
     },
     "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt 的 ReaderColorFilterParams 统一亮度、色调、灰度、反色、归一化与 effective 语义；app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderColorFilter.kt 映射参数，app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt 以共享 effective/normalized 驱动 Android 硬件图层",
@@ -1605,14 +1605,14 @@
     "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt", "symbol": "private fun getCombinedPaint"}],
     "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt"],
     "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderColorFilter.kt", "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt"],
-    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderColorFilter.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderColorFilter.kt"],
     "deviations": [{"classification": "PLATFORM_ADAPTER", "description": "Android Paint/ColorMatrix and Desktop Compose ColorMatrix are platform render adapters over the shared normalized filter parameters."}],
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt", "symbol": "private fun getCombinedPaint", "line": 812}],
-      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderColorFilter.kt", "symbol": "internal fun buildAndroidReaderColorFilterParams", "line": 5}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt", "symbol": "readerPreferences.grayscale().changes()", "line": 908}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderColorFilter.kt", "symbol": "internal fun buildAndroidLayerFilterParams", "line": 27}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt", "symbol": "data class ReaderColorFilterParams", "line": 241}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun readerColorMatrix", "line": 59}],
-      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt#disabled grayscale invert and combined color matrices transform pixels", "productionMarkers": ["readerColorMatrix("]}]
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "ReaderViewportColorLayer(state.colorFilter)", "line": 487}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "internal fun ReaderViewportColorLayer", "line": 533}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun Modifier.readerColorTransform", "line": 49}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun readerColorMatrix", "line": 59}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt#mounted reader viewport color layer renders disabled grayscale and invert pixels", "productionMarkers": ["renderColorLayer(", "assertPixel("]}]
     },
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
@@ -1621,7 +1621,7 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt"
     ],
-    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt": ["grayscale and invert are effective shared filter modes"]},
+    "behaviorMethods": {"app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt": ["current Android consumer grayscale and invert preferences map to the shared filter contract"], "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt": ["grayscale and invert are effective shared filter modes"], "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt": ["mounted reader viewport color layer renders disabled grayscale and invert pixels"]},
     "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"

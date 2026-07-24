@@ -1,5 +1,5 @@
 ---
-status: planned
+status: completed
 parent: Task 9
 capability-ids: [47, 51]
 original-ref: main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8
@@ -34,3 +34,12 @@ resume-parent: docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audi
 ## Verification
 
 运行两端 focused tests、普通 parity contract、显式 final gate、`spotlessCheck`、`git diff --check`、精确范围守卫与一次独立审查；测试失败或审查发现阻塞问题时仅允许一次修复复审，仍失败则停止并重新规划。
+
+## Execution evidence
+
+- Stage A 基线为 S1 `c04721f44b5c490c541f05c868c77975142e87e2`，产品与 fixture 提交为 `d0311eb381a45d323bc28cd1ee4ac010e312fc2d`；范围为 5 文件、251 touched，独立审查 `APPROVED 0/0/0`。
+- RED 先精确命中缺失的 Pager/Webtoon production observer seam 与 Desktop mounted color layer；GREEN 后 Android reader 为 `14/14`、Desktop reader 为 `21/21`，两端均 `0 skipped`。
+- Pager mutation `adb45f9979871ada2230f9599baefa82a5d80ec4` 退化为一次读取时精确 RED，恢复为 `1895d5fdbe716f710ccf68f2e820886a03c06f5c`。
+- Webtoon mutation `f7c2be665c461a039ecc28216c5b9373a35c3e90` 退化为一次读取时精确 RED，恢复为 `39cc3b93bbdbecbde301dffb9c3a0a5778bc3c22`。
+- Desktop mutation `28c3968724488eb283d454a02829fae4bb73f10b` 移除 mounted layer 的 transform 时像素测试精确 RED，恢复为 `fddd1f2acadfe04aa2c75b6e072fbf36afd65ca4`。
+- Stage B 复核确认 ID 47/51 的固定原版、当前 Android、shared/adapter、Desktop consumer 与可执行 fixture 五角色均闭合，因此两项提升为 `VERIFIED`；Stage B 自身提交 hash 仅在交付报告中提供。

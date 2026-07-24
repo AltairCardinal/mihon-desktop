@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 9R replan
+active-task: Task 9
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -258,9 +258,9 @@ active-task: Task 9R replan
 
 **Steps:** 核验浏览器登录/挑战恢复和 reader 解码、预载、过渡、导航、色彩链；平台 IO 只作为 adapter。
 
-**Audit evidence（待 Task 9A 收口）：** ID 39 缺 fixed-main embedded WebView 等价能力，保留 `WIRED` 并交 Task 14。ID 40/43/44/45/49 的挑战恢复、配对增强边界、区域解码、预载取消与导航证据闭合，提升为 `VERIFIED`。ID 47 的 Android 两种 transition holder wiring 与 ID 51 的 Desktop mounted render chain 目前都只由 production source scan 声称保护，不是可执行 production wiring 证据；两项保持 `WIRED` 并交 `Task 9A child plan`，Task 9 保持未完成。
+**Audit evidence（Task 9A 已收口）：** ID 39 缺 fixed-main embedded WebView 等价能力，保留 `WIRED` 并交 Task 14。ID 40/43/44/45/49 的挑战恢复、配对增强边界、区域解码、预载取消与导航证据闭合，保持 `VERIFIED`。ID 47 已由 Pager/Webtoon holder → production observer seam → `sharedStateFlow.collectLatest` 的两项可执行 fixture 保护；ID 51 已由 current Android preference/helper 与 Desktop `ReaderViewport → ReaderViewportColorLayer → readerColorTransform → readerColorMatrix` 的 mounted 像素 fixture 保护。两项五角色及断链 mutation 均闭合，提升为 `VERIFIED`；控制权恢复父 Task 9，Task 9 仍待 S4 勾选。
 
-**Verification evidence：** 状态契约先精确 RED 于空 capability set；独立审查再以 source-scan mutation 揭示 47/51 误升，并精确 RED 于 `ID 47 expected WIRED but was VERIFIED`。domain `67/67`、隔离 Android SDK `26/26`、Desktop `170/170`、普通契约 `42/42` 均全绿且零跳过；恢复 gap 后 focused contract GREEN，显式 `finalParityAudit` 应只按设计 RED 于 `45` 个非终态 ID。
+**Verification evidence：** 初始 Task 9 审计由 source-scan mutation 揭示 47/51 误升并恢复 gap；S1 `c04721f44b5c490c541f05c868c77975142e87e2` 清除了 manifest、Task 3 历史及 reader evidence 中的 scan 认证。S2 `d0311eb381a45d323bc28cd1ee4ac010e312fc2d` 以 Android `14/14`、Desktop `21/21`、均 0 skipped 的真实 wiring 测试替代扫描；Pager、Webtoon 与 Desktop 三项断链 mutation 均精确 RED 后恢复。S3 状态契约先精确 RED 于 `ID 47 expected VERIFIED but was WIRED`，补齐五角色后 focused `1/1`、新增 Android `5/5`、新增 Desktop `2/2`、ordinary contract `42/42` 均 GREEN 且 0 skipped；显式 `finalParityAudit` 实际只按设计 RED 于 `43` 个非终态 ID。
 
 ### Task 10：核验状态批次 E（53、54、56、57、59、61、62、64）
 
