@@ -2070,12 +2070,11 @@ class DesktopProductCapabilityContractTest {
         }
 
         val tracker = Files.readString(repositoryRoot.resolve("docs/desktop-parity/PARITY_TRACKER.md"))
-        setOf(71, 72, 73, 74).forEach { id ->
-            assertTrue(
-                Regex("""(?m)^\|\s*$id\b[^|]*\|\s*NOT_STARTED\s*\|""").containsMatchIn(tracker),
-                "ID $id: tracker status must match the unchanged manifest status",
-            )
-        }
+        assertFalse("## 71–74 备份对齐进展" in tracker, "Tracker must not duplicate the manifest's current status table")
+        assertFalse(
+            Regex("""(?m)^\|\s*(?:71|72|73|74)\b""").containsMatchIn(tracker),
+            "Tracker must not duplicate current manifest status rows for IDs 71–74",
+        )
     }
 
     @Test
@@ -2128,7 +2127,7 @@ class DesktopProductCapabilityContractTest {
         val parentPlanPath = "docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"
         val plan = Files.readString(repositoryRoot.resolve(parentPlanPath))
         assertTrue(
-            markdownFrontmatter(plan)["active-task"] in setOf("Task 7", "Task 7A child plan", "Task 7R2 replan", "Task 8", "Task 9", "Task 9A child plan", "Task 9R replan", "Task 10", "Task 11", "Task 12", "Task 13", "Task 14", "Task 14B", "Task 14C"),
+            markdownFrontmatter(plan)["active-task"] in setOf("Task 7", "Task 7A child plan", "Task 7R2 replan", "Task 8", "Task 9", "Task 9A child plan", "Task 9R replan", "Task 10", "Task 11", "Task 12", "Task 13", "Task 14", "Task 14B", "Task 14C", "Task 15"),
             "Completed Task 6 must advance to Task 7, its active child plan, or the next completed-batch task",
         )
         val childPlanPath = repositoryRoot.resolve("docs/superpowers/plans/2026-07-24-task-6a-desktop-crash-log-failure-boundary.md")
@@ -2207,7 +2206,7 @@ class DesktopProductCapabilityContractTest {
         }
 
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
-        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 8", "Task 9", "Task 9A child plan", "Task 9R replan", "Task 10", "Task 11", "Task 12", "Task 13", "Task 14", "Task 14B", "Task 14C"), "Completed Task 7 must advance to Task 8 or later")
+        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 8", "Task 9", "Task 9A child plan", "Task 9R replan", "Task 10", "Task 11", "Task 12", "Task 13", "Task 14", "Task 14B", "Task 14C", "Task 15"), "Completed Task 7 must advance to Task 8 or later")
         assertTrue(Regex("""(?m)^- \[x] Task 7[：:]""").containsMatchIn(plan), "Completed Task 7 must be checked")
         assertTrue("6fb82074adeceda25be2f3a12621ce510fd0423c" in plan, "Task 7 closeout must retain R1 evidence")
         assertTrue("af9c522ec9f5c7032ebe3503bab6f9a6a1659e6f" in plan, "Task 7 closeout must retain R2 evidence")
@@ -2282,7 +2281,7 @@ class DesktopProductCapabilityContractTest {
         assertTrue("TEMP-COMPAT" in compat.getValue("tags").jsonArray.map { it.jsonPrimitive.content })
         assertTrue(requiredText(compat.getValue("statusDecision").jsonObject, "gap", 35, "statusDecision").contains("fixture"))
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
-        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 9", "Task 9A child plan", "Task 9R replan", "Task 10", "Task 11", "Task 12", "Task 13", "Task 14", "Task 14B", "Task 14C"), "Completed Task 8 must advance to Task 9 or later")
+        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 9", "Task 9A child plan", "Task 9R replan", "Task 10", "Task 11", "Task 12", "Task 13", "Task 14", "Task 14B", "Task 14C", "Task 15"), "Completed Task 8 must advance to Task 9 or later")
         assertTrue(Regex("""(?m)^- \[x] Task 8[：:]""").containsMatchIn(plan), "Completed Task 8 must be checked")
     }
 
@@ -2355,7 +2354,7 @@ class DesktopProductCapabilityContractTest {
 
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
         val activeTask = markdownFrontmatter(plan)["active-task"]
-        assertTrue(activeTask in setOf("Task 10", "Task 11", "Task 12", "Task 13", "Task 14", "Task 14B", "Task 14C"), "Task 9 closeout must advance to Task 10 or later")
+        assertTrue(activeTask in setOf("Task 10", "Task 11", "Task 12", "Task 13", "Task 14", "Task 14B", "Task 14C", "Task 15"), "Task 9 closeout must advance to Task 10 or later")
         assertTrue(Regex("""(?m)^- \[x] Task 9[：:]""").containsMatchIn(plan), "Completed Task 9 must be checked")
         assertTrue(
             Regex(if (activeTask == "Task 10") """(?m)^- \[ ] Task 10[：:]""" else """(?m)^- \[x] Task 10[：:]""").containsMatchIn(plan),
@@ -2434,7 +2433,7 @@ class DesktopProductCapabilityContractTest {
         )
 
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
-        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 11", "Task 12", "Task 13", "Task 14", "Task 14B", "Task 14C"), "Task 10 closeout must advance to Task 11 or later")
+        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 11", "Task 12", "Task 13", "Task 14", "Task 14B", "Task 14C", "Task 15"), "Task 10 closeout must advance to Task 11 or later")
         assertTrue(Regex("""(?m)^- \[x] Task 10[：:]""").containsMatchIn(plan), "Completed Task 10 must be checked")
         assertTrue(Regex("""(?m)^- \[[x ]\] Task 11[：:]""").containsMatchIn(plan), "Task 11 must remain tracked")
         assertTrue("ID 56" in plan && "source object" in plan && "sourceId" in plan && "Task 14" in plan, "Task 10 must record the finite ID 56 follow-up")
@@ -2529,7 +2528,7 @@ class DesktopProductCapabilityContractTest {
         )
 
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
-        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 12", "Task 13", "Task 14", "Task 14B", "Task 14C"), "Task 11 closeout must advance to Task 12 or later")
+        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 12", "Task 13", "Task 14", "Task 14B", "Task 14C", "Task 15"), "Task 11 closeout must advance to Task 12 or later")
         assertTrue(Regex("""(?m)^- \[x] Task 11[：:]""").containsMatchIn(plan), "Completed Task 11 must be checked")
         assertTrue(Regex("""(?m)^- \[[x ]\] Task 12[：:]""").containsMatchIn(plan), "Task 12 must remain tracked")
         assertTrue("ID 69" in plan && "ID 70" in plan && "Task 14" in plan, "Task 11 must record the finite tracking follow-up")
@@ -2612,7 +2611,7 @@ class DesktopProductCapabilityContractTest {
         )
 
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
-        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 13", "Task 14", "Task 14B", "Task 14C"), "Task 12 closeout must advance to Task 13 or later")
+        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 13", "Task 14", "Task 14B", "Task 14C", "Task 15"), "Task 12 closeout must advance to Task 13 or later")
         assertTrue(Regex("""(?m)^- \[x] Task 12[：:]""").containsMatchIn(plan), "Completed Task 12 must be checked")
         assertTrue(Regex("""(?m)^- \[[x ]\] Task 13[：:]""").containsMatchIn(plan), "Task 13 must remain tracked")
         assertTrue("ID 85" in plan && "217" in plan && "Task 15" in plan, "Task 12 must preserve the approved exemption and OS follow-up")
@@ -2738,9 +2737,9 @@ class DesktopProductCapabilityContractTest {
         assertTrue(compatFixtures.any { it.contains("RealExtensionWebViewUnsupportedCompatTest.kt#") })
 
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
-        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 14", "Task 14B", "Task 14C"), "Task 13 closeout must advance to Task 14")
+        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 14", "Task 14B", "Task 14C", "Task 15"), "Task 13 closeout must advance to Task 14")
         assertTrue(Regex("""(?m)^- \[x] Task 13[：:]""").containsMatchIn(plan), "Completed Task 13 must be checked")
-        assertTrue(Regex("""(?m)^- \[ ] Task 14[：:]""").containsMatchIn(plan), "Task 14 must remain unchecked")
+        assertTrue(Regex("""(?m)^- \[[x ]\] Task 14[：:]""").containsMatchIn(plan), "Task 14 must remain tracked")
         assertTrue("ID 95" in plan && "Task 16C" in plan && "ID 96" in plan && "Task 16A" in plan, "Task 13 must retain finite architecture follow-ups")
     }
 
@@ -2836,8 +2835,8 @@ class DesktopProductCapabilityContractTest {
         }
 
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
-        assertEquals("Task 14C", markdownFrontmatter(plan)["active-task"])
-        assertTrue(Regex("""(?m)^- \[ ] Task 14[：:]""").containsMatchIn(plan))
+        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 14C", "Task 15"))
+        assertTrue(Regex("""(?m)^- \[[x ]\] Task 14[：:]""").containsMatchIn(plan))
         assertTrue("Task 14A" in plan && "Task 14B" in plan && "Task 14C" in plan)
     }
 
@@ -2862,7 +2861,7 @@ class DesktopProductCapabilityContractTest {
             val actual = requiredText(items.getValue(id).jsonObject.getValue("statusDecision").jsonObject, "followUp", id, "statusDecision")
             if (actual != expected) handoffProblems += "ID $id followUp is still `$actual`"
         }
-        if (markdownFrontmatter(parent)["active-task"] != "Task 14C") handoffProblems += "parent active-task has not advanced to Task 14C"
+        if (markdownFrontmatter(parent)["active-task"] !in setOf("Task 14C", "Task 15")) handoffProblems += "parent active-task has not advanced to Task 14C or later"
         if (!Regex("""(?m)^  - \[x] Task 14B[：:]""").containsMatchIn(parent)) handoffProblems += "Task 14B is not checked"
         assertTrue(handoffProblems.isEmpty(), handoffProblems.joinToString("; "))
 
@@ -2919,8 +2918,54 @@ class DesktopProductCapabilityContractTest {
             "app/src/test/java/eu/kanade/domain/track/service/DelayedTrackingUpdateJobSharedQueueTest.kt",
         ).forEach { assertTrue("`$it`" in b3, "Task B3 must execute Android production owner $it") }
         assertFalse("cross-platform" in child || "platform-adapter" in child || "desktop-product" in child)
-        assertTrue(Regex("""(?m)^- \[ ] Task 14[：:]""").containsMatchIn(parent), "Task 14 remains open for Task 14C")
-        assertTrue(Regex("""(?m)^  - \[ ] Task 14C[：:]""").containsMatchIn(parent), "Task 14C remains open")
+        assertTrue(Regex("""(?m)^- \[[x ]\] Task 14[：:]""").containsMatchIn(parent), "Task 14 remains tracked")
+        assertTrue(Regex("""(?m)^  - \[[x ]\] Task 14C[：:]""").containsMatchIn(parent), "Task 14C remains tracked")
+    }
+
+    @Test
+    fun `Task 14C records the governance snapshot and closes the parent decision task`() {
+        val repositoryRoot = repositoryRoot()
+        val tracker = Files.readString(repositoryRoot.resolve("docs/desktop-parity/PARITY_TRACKER.md"))
+        val parent = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
+        val child = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md"))
+        assertEquals("planned", markdownFrontmatter(child)["status"])
+        assertEquals("Task 141", markdownFrontmatter(child)["active-task"])
+        val task14Ids = setOf(3, 4, 32, 39, 69, 70, 87, 88)
+        val expected =
+            manifestItems(repositoryRoot)
+                .map { it.jsonObject }
+                .filter { validatedId(it) in task14Ids }
+                .associate { item ->
+                    val id = validatedId(item)
+                    id to
+                        Triple(
+                            requiredText(item.getValue("unclassifiedDebtResolution").jsonObject, "decision", id, "unclassifiedDebtResolution"),
+                            requiredText(item, "status", id),
+                            requiredText(item.getValue("statusDecision").jsonObject, "followUp", id, "statusDecision"),
+                        )
+                }
+        assertEquals(task14Ids, expected.keys, "Task 14 manifest ID set must stay exact")
+        val problems = mutableListOf<String>()
+        if ("## Task 14 governance snapshot" !in tracker) problems += "tracker Task 14 governance snapshot is missing"
+        if (markdownFrontmatter(parent)["active-task"] != "Task 15") problems += "parent active-task has not advanced to Task 15"
+        if (!Regex("""(?m)^- \[x] Task 14[：:]""").containsMatchIn(parent)) problems += "parent Task 14 is not checked"
+        if (!Regex("""(?m)^  - \[x] Task 14C[：:]""").containsMatchIn(parent)) problems += "Task 14C is not checked"
+        assertTrue(problems.isEmpty(), problems.joinToString("; "))
+
+        val snapshot = tracker.substringAfter("## Task 14 governance snapshot").substringBefore("\n## ")
+        assertTrue("manifest is the only machine-readable status authority" in snapshot)
+        val rowEntries =
+            Regex("""(?m)^\| (\d+) \| `([^`]+)` \| `([^`]+)` \| `([^`]+)` \|$""")
+                .findAll(snapshot)
+                .map { match ->
+                    match.groupValues[1].toInt() to Triple(match.groupValues[2], match.groupValues[3], match.groupValues[4])
+                }
+                .toList()
+        assertEquals(8, rowEntries.size, "Task 14 governance snapshot must contain exactly eight rows")
+        assertEquals(8, rowEntries.map { it.first }.distinct().size, "Task 14 governance snapshot must not repeat IDs")
+        val rows = rowEntries.toMap()
+        assertEquals(expected, rows, "Task 14 governance decisions must be unique and exact")
+        assertTrue(Regex("""(?m)^- \[ ] Task 15[：:]""").containsMatchIn(parent), "Task 15 remains open")
     }
 
     @Test

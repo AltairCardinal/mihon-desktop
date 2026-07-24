@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 14C
+active-task: Task 15
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -53,10 +53,10 @@ active-task: Task 14C
 - [x] Task 11：核验状态批次 F（66、67、68、69、70、71、72、73）
 - [x] Task 12：核验状态批次 G（74、81、82、83、84、85、86、87）
 - [x] Task 13：核验状态批次 H（88、90、91、92、93、94、95、96）
-- [ ] Task 14：逐项裁决 8 项 `UNCLASSIFIED_DEBT`
+- [x] Task 14：逐项裁决 8 项 `UNCLASSIFIED_DEBT`
   - [x] Task 14A：固定唯一裁决与直接终态
   - [x] Task 14B：为产品缺口创建 consolidated child plan
-  - [ ] Task 14C：同步 tracker 并关闭父 Task 14
+  - [x] Task 14C：同步 tracker 并关闭父 Task 14
 - [ ] Task 15：完成候选平台能力与 `EXEMPT` 审查
 - [ ] Task 16A：审计 compat 与历史格式删除证据（35、74、96）
 - [ ] Task 16B：审计重复业务规则
@@ -380,11 +380,13 @@ active-task: Task 14C
 
 **Platform boundary:** verification
 
-**Estimated scope:** 3 files, 400 lines
+**Estimated scope:** 4 files, 400 lines
 
 **Verification:** tracker/manifest/plan 状态契约、普通 parity contract 与 plan guard GREEN。
 
-仅同步 tracker、contract 与本计划；确认八项裁决和 child 路径一致后勾选父 Task 14，并将 `active-task` 推进到 `Task 15`。
+仅同步 tracker、contract、本计划与 child 的活动任务 frontmatter；确认八项裁决和 child 路径一致后勾选父 Task 14，并将 `active-task` 推进到 `Task 15`。
+
+**Execution evidence：** focused contract 先精确 RED 于 child `active-task` 仍为旧语义名 `Task A1`，修正为 overview 首个未完成任务 `Task 141`。独立审查后又以重复 tracker 行 mutation 精确 RED 于 `expected 8, actual 9`，契约现直接从 manifest 的八项 `unclassifiedDebtResolution.decision`、顶层 `status` 与当前 `statusDecision.followUp` 派生期望，并在 `associate` 前拒绝数量或 ID 重复。tracker 仅保留八项治理交接快照，删除 71–74 旧当前状态表，并明确 manifest 是唯一机器状态权威；Task 14A/14B/14C 与父 Task 14 全部收口，控制权推进到仍未勾选的 Task 15。最终 focused `1/1`、ordinary parity contract `49/49` 与 Spotless GREEN，显式 final gate 唯一按设计 RED 于原 31 项；范围为 4 files / 123 touched。
 
 ### Task 15：完成候选平台能力与 `EXEMPT` 审查
 
