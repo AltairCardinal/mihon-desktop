@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 9
+active-task: Task 10
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -48,7 +48,7 @@ active-task: Task 9
 - [x] Task 6：核验状态批次 A（3、4、7、8、9、10、11、12）
 - [x] Task 7：核验状态批次 B（16、17、19、22、24、26、28、29）
 - [x] Task 8：核验状态批次 C（30、32、33、34、35、36、37、38）
-- [ ] Task 9：核验状态批次 D（39、40、43、44、45、47、49、51）
+- [x] Task 9：核验状态批次 D（39、40、43、44、45、47、49、51）
 - [ ] Task 10：核验状态批次 E（53、54、56、57、59、61、62、64）
 - [ ] Task 11：核验状态批次 F（66、67、68、69、70、71、72、73）
 - [ ] Task 12：核验状态批次 G（74、81、82、83、84、85、86、87）
@@ -258,9 +258,11 @@ active-task: Task 9
 
 **Steps:** 核验浏览器登录/挑战恢复和 reader 解码、预载、过渡、导航、色彩链；平台 IO 只作为 adapter。
 
-**Audit evidence（Task 9A 已收口）：** ID 39 缺 fixed-main embedded WebView 等价能力，保留 `WIRED` 并交 Task 14。ID 40/43/44/45/49 的挑战恢复、配对增强边界、区域解码、预载取消与导航证据闭合，保持 `VERIFIED`。ID 47 已由 Pager/Webtoon holder → production observer seam → `sharedStateFlow.collectLatest` 的两项可执行 fixture 保护；ID 51 已由 current Android preference/helper 与 Desktop `ReaderViewport → ReaderViewportColorLayer → readerColorTransform → readerColorMatrix` 的 mounted 像素 fixture 保护。两项五角色及断链 mutation 均闭合，提升为 `VERIFIED`；控制权恢复父 Task 9，Task 9 仍待 S4 勾选。
+**Audit evidence（Task 9 已完成）：** ID 39 缺 fixed-main embedded WebView 等价能力，保留 `WIRED` 并交 Task 14。ID 40/43/44/45/49 的挑战恢复、配对增强边界、区域解码、预载取消与导航证据闭合，保持 `VERIFIED`。ID 47 已由 Pager/Webtoon holder → production observer seam → `sharedStateFlow.collectLatest` 的两项可执行 fixture 保护；ID 51 已由 current Android preference/helper 与 Desktop `ReaderViewport → ReaderViewportColorLayer → readerColorTransform → readerColorMatrix` 的 mounted 像素 fixture 保护。两项五角色及断链 mutation 均闭合，保持 `VERIFIED`；Task 9 已勾选，控制权推进到未勾选的 Task 10。
 
 **Verification evidence：** 初始 Task 9 审计由 source-scan mutation 揭示 47/51 误升并恢复 gap；S1 `c04721f44b5c490c541f05c868c77975142e87e2` 清除了 manifest、Task 3 历史及 reader evidence 中的 scan 认证。S2 `d0311eb381a45d323bc28cd1ee4ac010e312fc2d` 以 Android `14/14`、Desktop `21/21`、均 0 skipped 的真实 wiring 测试替代扫描；Pager、Webtoon 与 Desktop 三项断链 mutation 均精确 RED 后恢复。S3 状态契约先精确 RED 于 `ID 47 expected VERIFIED but was WIRED`，补齐五角色后 focused `1/1`、新增 Android `5/5`、新增 Desktop `2/2`、ordinary contract `42/42` 均 GREEN 且 0 skipped；显式 `finalParityAudit` 实际只按设计 RED 于 `43` 个非终态 ID。
+
+**Closeout execution evidence（已完成）：** S1 `c04721f44b5c490c541f05c868c77975142e87e2`、S2 `d0311eb381a45d323bc28cd1ee4ac010e312fc2d`、S3 `84add84daad5606a20ac9793d39349b7bbb0a744` 已顺序闭合；最终裁决为 ID 39 `WIRED → Task 14`，ID 40/43/44/45/47/49/51 `VERIFIED`。S4 focused 先精确 RED 于 `Task 9 closeout must advance to Task 10 ==> expected Task 10 but was Task 9`（1 test/1 failed），补齐父状态后 GREEN `1/1`；ordinary contract `42/42`、0 skip，显式 final gate 唯一按设计 RED 于精确 43 个非终态 ID 且不含 47/51，`spotlessCheck`、JSON、plan、diff、range guards 均 PASS。范围为 3 files/21 touched；S4 自身提交 hash 仅在交付报告中提供，不写回计划。
 
 ### Task 10：核验状态批次 E（53、54、56、57、59、61、62、64）
 

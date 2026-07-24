@@ -2019,8 +2019,10 @@ class DesktopProductCapabilityContractTest {
         assertTrue("CROSS_PLATFORM_PRODUCT_ENHANCEMENT" in classifications, "ID 43 portrait pairing must stay an explicit enhancement")
 
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
-        assertEquals("Task 9", markdownFrontmatter(plan)["active-task"], "Task 9A closeout must return control to Task 9")
-        assertTrue(Regex("""(?m)^- \[ ] Task 9[：:]""").containsMatchIn(plan), "Task 9 must remain unchecked")
+        assertEquals("Task 10", markdownFrontmatter(plan)["active-task"], "Task 9 closeout must advance to Task 10")
+        assertTrue(Regex("""(?m)^- \[x] Task 9[：:]""").containsMatchIn(plan), "Completed Task 9 must be checked")
+        assertTrue(Regex("""(?m)^- \[ ] Task 10[：:]""").containsMatchIn(plan), "Task 10 must remain unchecked")
+        assertTrue("84add84daad5606a20ac9793d39349b7bbb0a744" in plan, "Task 9 closeout must record the S3 commit")
         val child = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-24-task-9a-reader-wiring-protection.md"))
         assertEquals("completed", markdownFrontmatter(child)["status"])
         assertEquals("Task 9", markdownFrontmatter(child)["parent"])
@@ -2031,8 +2033,9 @@ class DesktopProductCapabilityContractTest {
         assertTrue("f7c2be665c461a039ecc28216c5b9373a35c3e90" in child, "Task 9A must record the webtoon mutation")
         assertTrue("28c3968724488eb283d454a02829fae4bb73f10b" in child, "Task 9A must record the Desktop mutation")
         val replan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-24-task-9-status-d-replan.md"))
-        assertEquals("active", markdownFrontmatter(replan)["status"])
+        assertEquals("completed", markdownFrontmatter(replan)["status"])
         assertEquals("Task 9", markdownFrontmatter(replan)["parent-task"])
+        assertTrue("84add84daad5606a20ac9793d39349b7bbb0a744" in replan, "Task 9 replan must record the S3 commit")
     }
 
     @Test

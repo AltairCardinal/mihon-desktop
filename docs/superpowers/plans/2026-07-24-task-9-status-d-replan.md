@@ -1,5 +1,5 @@
 ---
-status: active
+status: completed
 parent: docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md
 parent-task: Task 9
 task-base: 511c811e91574dc524f450a66a13d0ed7c084fd6
@@ -40,5 +40,7 @@ Task 9 首审发现 ID 47/51 的 production wiring 只由源码扫描声称保�
 **Budget:** 最多 3 文件、160 行；contract、父计划与 replan。
 
 勾选父 Task 9、推进 `active-task: Task 10`、标记 replan completed；S4 自身 hash 仅在交付报告中提供。一个实现代理、一个独立审查代理，单独提交。
+
+**Evidence:** S1 `c04721f44b5c490c541f05c868c77975142e87e2`、S2 `d0311eb381a45d323bc28cd1ee4ac010e312fc2d`、S3 `84add84daad5606a20ac9793d39349b7bbb0a744` 已闭合。最终 ID 39 保持 `WIRED` 并交 Task 14，ID 40/43/44/45/47/49/51 保持 `VERIFIED`；父 Task 9 已勾选，`active-task` 推进到未勾选的 Task 10。S4 focused 先精确 RED 于 `Task 9 closeout must advance to Task 10 ==> expected Task 10 but was Task 9`（1 test/1 failed），再 GREEN `1/1`；ordinary contract `42/42`、0 skip，显式 final gate 唯一按设计 RED 于精确 43 个非终态 ID 且不含 47/51，`spotlessCheck`、JSON、plan、diff、range guards 均 PASS。范围为 3 files/21 touched；S4 自身 hash 不写入计划。
 
 任一阶段测试或独立审查失败时停止；每阶段最多一次修复复审，不得跨阶段顺手修改。
