@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 8
+active-task: Task 9
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -47,7 +47,7 @@ active-task: Task 8
 - [x] Task 5：补齐 provenance 批次 P4（71、72、73、74、93、95、96）
 - [x] Task 6：核验状态批次 A（3、4、7、8、9、10、11、12）
 - [x] Task 7：核验状态批次 B（16、17、19、22、24、26、28、29）
-- [ ] Task 8：核验状态批次 C（30、32、33、34、35、36、37、38）
+- [x] Task 8：核验状态批次 C（30、32、33、34、35、36、37、38）
 - [ ] Task 9：核验状态批次 D（39、40、43、44、45、47、49、51）
 - [ ] Task 10：核验状态批次 E（53、54、56、57、59、61、62、64）
 - [ ] Task 11：核验状态批次 F（66、67、68、69、70、71、72、73）
@@ -241,6 +241,10 @@ active-task: Task 8
 **Verification:** source/extension shared、Android、Desktop 与真实 compat fixture tests GREEN；8 项状态和 evidence 一致。
 
 **Steps:** 复用既有逐符号 compat evidence；ID35 在 Task 16A 前不得删除仍被真实扩展 fixture 触达的 shim。
+
+**Audit evidence（已完成）：** ID 30 的 fixed-main 全局搜索、current Android shared-service consumer、shared query service、Desktop canonical/retry/stale-generation consumer 与两端 fixture 闭合；ID 33 的两端 catalog consumer 覆盖成功、空、畸形及 403/429/500；ID 34 的两端 install coordinator/adapter 覆盖真实 JAR 安装、digest/repository/signer、HTTP taxonomy 与 rollback；ID 36 的 shared trust policy 在两端覆盖 legacy/untrusted failure；ID 37 的 shared presentation store 在两端覆盖分类、搜索、失败反馈与重试，五项均提升为 `VERIFIED`。ID 32 保持 `NOT_STARTED` 并交 Task 14；ID 35 的真实 ManHuaGui fixture 仍执行 compat shim，保持 `WIRED`/`TEMP-COMPAT` 并交 Task 16A；ID 38 缺 current Android real-source preference behavior fixture，保持 `WIRED` 并交 Task 18。无本轮可顺手修复的产品缺口，未创建 child plan。
+
+**Verification evidence：** Task 8 状态契约先精确 RED 于 `ID 30 expected VERIFIED but was WIRED`，再 GREEN `1/1`；shared/domain `64/64`、Android `37/37`、Desktop/compat `91/91`、普通契约 `41/41` 均全绿且零跳过。显式 `finalParityAudit` 仅按设计 RED 于恰好 `50` 个非终态 ID；完成逐项五角色与真实行为绑定后，控制权推进到 `active-task: Task 9`。
 
 ### Task 9：核验状态批次 D（39、40、43、44、45、47、49、51）
 

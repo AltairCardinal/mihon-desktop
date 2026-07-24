@@ -390,6 +390,50 @@ class DesktopProductCapabilityContractTest {
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceSharedStateWiringTest.kt" to setOf("source projector preserves content while a later page loads and fails"),
                 ),
         )
+    private val task8Statuses =
+        mapOf(30 to "VERIFIED", 32 to "NOT_STARTED", 33 to "VERIFIED", 34 to "VERIFIED", 35 to "WIRED", 36 to "VERIFIED", 37 to "VERIFIED", 38 to "WIRED")
+    private val task8FollowUps =
+        mapOf(30 to "NONE", 32 to "Task 14", 33 to "NONE", 34 to "NONE", 35 to "Task 16A", 36 to "NONE", 37 to "NONE", 38 to "Task 18")
+    private val task8BehaviorMethods =
+        mapOf(
+            30 to
+                mapOf(
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/SearchScreenModelBehaviorTest.kt" to setOf("production global search uses shared failure and recovery without direct source call"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/GlobalSearchResultProductionWiringTest.kt" to setOf("production search gates canonical rows retries materialization and rejects old completion"),
+                ),
+            32 to emptyMap(),
+            33 to
+                mapOf(
+                    "app/src/test/java/eu/kanade/tachiyomi/extension/api/ExtensionApiSharedCatalogTest.kt" to setOf("Android production API preserves successful repository when another repository fails", "Android production API maps malformed and HTTP repository failures"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionApiSharedCatalogTest.kt" to setOf("Desktop production API preserves successful repository when another repository fails", "Desktop production API maps malformed and HTTP repository failures"),
+                ),
+            34 to
+                mapOf(
+                    "domain/src/jvmTest/kotlin/mihon/domain/extension/ExtensionInstallCoordinatorTest.kt" to setOf("successful install emits stages in order and only installs after reload", "reload failure rolls back artifact and metadata then verifies old runtime"),
+                    "app/src/test/java/eu/kanade/tachiyomi/extension/AndroidExtensionInstallSecurityRollbackTest.kt" to setOf("downloaded digest repository continuity and signer are enforced", "download HTTP taxonomy remains distinct"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionInstallTransactionTest.kt" to setOf("jvm jar installs through production api loader and manager", "http 404 maps to Server with status code"),
+                ),
+            35 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt" to setOf("immutable ManHuaGui APK loads through the production converter and loader"),
+                ),
+            36 to
+                mapOf(
+                    "domain/src/jvmTest/kotlin/mihon/domain/extension/ExtensionSharedContractTest.kt" to setOf("legacy sidecar without repository identity requires explicit confirmation"),
+                    "app/src/test/java/eu/kanade/tachiyomi/extension/AndroidExtensionInstallSecurityRollbackTest.kt" to setOf("untrusted confirmation remains a failed terminal state"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionApiSharedCatalogTest.kt" to setOf("Desktop existing extension with legacy sidecar missing identity requires trust before download"),
+                ),
+            37 to
+                mapOf(
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionPresentationWiringTest.kt" to setOf("android get extensions consumes shared classification and source projection"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionPresentationUiTest.kt" to setOf("search input filters through model state and survives content remount", "production content renders local empty data with failure and retries"),
+                ),
+            38 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionMangaDexFactoryCompatTest.kt" to setOf("real MangaDex factory verifier links Android text callback descriptors"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionDetailsPreferencesWiringTest.kt" to setOf("source preference availability states stay distinct and content persists"),
+                ),
+        )
     private val validTags =
         setOf(
             "SHARE-DIRECT",
@@ -414,13 +458,13 @@ class DesktopProductCapabilityContractTest {
         mapOf(
             28 to "WIRED",
             29 to "VERIFIED",
-            30 to "WIRED",
+            30 to "VERIFIED",
             32 to "NOT_STARTED",
-            33 to "WIRED",
-            34 to "WIRED",
+            33 to "VERIFIED",
+            34 to "VERIFIED",
             35 to "WIRED",
-            36 to "WIRED",
-            37 to "WIRED",
+            36 to "VERIFIED",
+            37 to "VERIFIED",
             38 to "WIRED",
             39 to "WIRED",
             40 to "WIRED",
@@ -931,6 +975,7 @@ class DesktopProductCapabilityContractTest {
             34 to
                 setOf(
                     "domain/src/jvmTest/kotlin/mihon/domain/extension/ExtensionInstallCoordinatorTest.kt",
+                    "app/src/test/java/eu/kanade/tachiyomi/extension/AndroidExtensionInstallSecurityRollbackTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/extension/ApkToJarConverterTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionInstallTransactionTest.kt",
                 ),
@@ -1678,7 +1723,7 @@ class DesktopProductCapabilityContractTest {
         val parentPlanPath = "docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"
         val plan = Files.readString(repositoryRoot.resolve(parentPlanPath))
         assertTrue(
-            markdownFrontmatter(plan)["active-task"] in setOf("Task 7", "Task 7A child plan", "Task 7R2 replan", "Task 8"),
+            markdownFrontmatter(plan)["active-task"] in setOf("Task 7", "Task 7A child plan", "Task 7R2 replan", "Task 8", "Task 9"),
             "Completed Task 6 must advance to Task 7, its active child plan, or the next completed-batch task",
         )
         val childPlanPath = repositoryRoot.resolve("docs/superpowers/plans/2026-07-24-task-6a-desktop-crash-log-failure-boundary.md")
@@ -1757,7 +1802,7 @@ class DesktopProductCapabilityContractTest {
         }
 
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
-        assertEquals("Task 8", markdownFrontmatter(plan)["active-task"], "Completed Task 7 must advance to Task 8")
+        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 8", "Task 9"), "Completed Task 7 must advance to Task 8 or later")
         assertTrue(Regex("""(?m)^- \[x] Task 7[：:]""").containsMatchIn(plan), "Completed Task 7 must be checked")
         assertTrue("6fb82074adeceda25be2f3a12621ce510fd0423c" in plan, "Task 7 closeout must retain R1 evidence")
         assertTrue("af9c522ec9f5c7032ebe3503bab6f9a6a1659e6f" in plan, "Task 7 closeout must retain R2 evidence")
@@ -1786,6 +1831,54 @@ class DesktopProductCapabilityContractTest {
         assertEquals("completed", markdownFrontmatter(replan)["status"])
         assertTrue("6fb82074adeceda25be2f3a12621ce510fd0423c" in replan, "Task 7R2 must record R1")
         assertTrue("af9c522ec9f5c7032ebe3503bab6f9a6a1659e6f" in replan, "Task 7R2 must record R2")
+    }
+
+    @Test
+    fun `task 8 status batch promotes only closed source and extension evidence`() {
+        val repositoryRoot = repositoryRoot()
+        val inventory = fixedMainPathInventory(repositoryRoot)
+        val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
+        val task8DecisionIds =
+            items.filterValues { item ->
+                item.jsonObject["statusDecision"]?.jsonObject?.get("task")?.jsonPrimitive?.content == "Task 8"
+            }.keys
+        assertEquals(task8Statuses.keys, task8DecisionIds, "Task 8 capability set")
+        task8Statuses.forEach { (id, expectedStatus) ->
+            val item = items.getValue(id).jsonObject
+            assertEquals(expectedStatus, requiredText(item, "status", id), "ID $id Task 8 status")
+            val decision = item.getValue("statusDecision").jsonObject
+            assertEquals("Task 8", requiredText(decision, "task", id, "statusDecision"))
+            val verified = id in setOf(30, 33, 34, 36, 37)
+            assertEquals(if (verified) "PROMOTE_VERIFIED" else "KEEP_GAP", requiredText(decision, "decision", id, "statusDecision"))
+            assertEquals(task8FollowUps.getValue(id), requiredText(decision, "followUp", id, "statusDecision"))
+            val gap = requiredText(decision, "gap", id, "statusDecision")
+            if (verified) {
+                assertEquals("NONE", gap, "ID $id verified gap")
+                validateRoleEvidence(item, repositoryRoot, inventory)
+            } else {
+                assertTrue(gap != "NONE", "ID $id must retain a concrete gap")
+            }
+            val behaviorMethods =
+                decision.getValue("behaviorMethods").jsonObject.mapValues { (_, methods) ->
+                    methods.jsonArray.map { it.jsonPrimitive.content }.toSet()
+                }
+            assertEquals(task8BehaviorMethods.getValue(id), behaviorMethods, "ID $id Task 8 behavior methods")
+            val protectionTests = item.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content }.toSet()
+            assertTrue(behaviorMethods.keys.all(protectionTests::contains), "ID $id Task 8 behavior methods must be protection tests")
+            behaviorMethods.forEach { (path, methods) ->
+                val source = Files.readString(repositoryRoot.resolve(path))
+                methods.forEach { method ->
+                    assertTrue("assert" in kotlinTestMethod(source, method, "ID $id Task 8 behavior $path#$method"))
+                }
+            }
+        }
+
+        val compat = items.getValue(35).jsonObject
+        assertTrue("TEMP-COMPAT" in compat.getValue("tags").jsonArray.map { it.jsonPrimitive.content })
+        assertTrue(requiredText(compat.getValue("statusDecision").jsonObject, "gap", 35, "statusDecision").contains("fixture"))
+        val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
+        assertEquals("Task 9", markdownFrontmatter(plan)["active-task"], "Completed Task 8 must advance to Task 9")
+        assertTrue(Regex("""(?m)^- \[x] Task 8[：:]""").containsMatchIn(plan), "Completed Task 8 must be checked")
     }
 
     @Test
