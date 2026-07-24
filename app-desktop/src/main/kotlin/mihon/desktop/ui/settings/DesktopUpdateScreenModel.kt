@@ -9,12 +9,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import mihon.desktop.APP_VERSION
+import mihon.desktop.platform.DesktopUrlOpener
 import mihon.desktop.update.DesktopUpdateController
 import mihon.desktop.update.DesktopUpdateState
 import tachiyomi.domain.release.interactor.GetApplicationRelease
 import tachiyomi.i18n.MR
-import java.awt.Desktop
-import java.net.URI
 import java.util.Locale
 import kotlin.coroutines.CoroutineContext
 
@@ -138,7 +137,4 @@ class DesktopUpdateScreenModel(
         )
     }
 }
-private fun openDesktopUpdateUrl(url: String): Boolean = runCatching {
-    check(Desktop.isDesktopSupported())
-    Desktop.getDesktop().browse(URI(url))
-}.isSuccess
+private fun openDesktopUpdateUrl(url: String): Boolean = DesktopUrlOpener.open(url).isSuccess

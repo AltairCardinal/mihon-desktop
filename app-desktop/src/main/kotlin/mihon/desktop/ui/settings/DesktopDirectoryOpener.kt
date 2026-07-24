@@ -1,5 +1,6 @@
 package mihon.desktop.ui.settings
 
+import mihon.desktop.platform.DesktopExternalActionPolicy
 import java.awt.Desktop
 import java.io.File
 
@@ -17,9 +18,7 @@ object DesktopDirectoryOpener {
     }
 
     private fun openWithSystemFileManager(directory: File) {
-        check(System.getProperty("org.gradle.test.worker") == null) {
-            "System file manager is disabled in Gradle test workers"
-        }
+        DesktopExternalActionPolicy.requireAllowed("System file manager")
         check(Desktop.isDesktopSupported()) { "Desktop API is not supported" }
         Desktop.getDesktop().open(directory)
     }

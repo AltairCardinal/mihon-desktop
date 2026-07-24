@@ -50,6 +50,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.platform.DesktopOAuthCallbackServer
+import mihon.desktop.platform.DesktopUrlOpener
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.tracking.DesktopAuthenticatingTrackerService
 import mihon.desktop.ui.security.DesktopPasswordField
@@ -67,8 +68,6 @@ import tachiyomi.domain.track.service.TrackSearchResult
 import tachiyomi.domain.track.service.TrackerAuthentication
 import tachiyomi.domain.track.service.TrackerService
 import tachiyomi.i18n.MR
-import java.awt.Desktop
-import java.net.URI
 import java.time.Duration
 import java.util.Locale
 import java.util.UUID
@@ -435,7 +434,7 @@ private suspend fun oauthLogin(service: DesktopAuthenticatingTrackerService) {
     DesktopOAuthCallbackServer().use { callback ->
         val state = UUID.randomUUID().toString()
         val session = callback.start(state, Duration.ofMinutes(2))
-        Desktop.getDesktop().browse(URI(service.authorizationUrl(session.redirectUri, state)))
+        DesktopUrlOpener.open(service.authorizationUrl(session.redirectUri, state)).getOrThrow()
         service.finishOAuth(session.awaitCode(), session.redirectUri)
     }
 }

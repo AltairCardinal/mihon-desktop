@@ -38,6 +38,20 @@
 - 最终收口：运行全量 Android/Desktop 测试、Test Mode、Windows/macOS 构建和运行验收。
 - `finalParityAudit`、完整 Desktop 测试和发布构建不得在每个微任务后重复运行。
 
+### 子代理完成回执与等待
+
+- 子代理完成实现或审查时，先发送结构化回执，再结束任务。回执包含 `status`、`diff`、`tests`、`commit`、`process` 和 `next`；可用 `python scripts/agent-handoff.py` 验证。
+- 长时间工具调用前报告命令、预计时间和可用的 PID/日志位置。
+- 等待超时后先检查代理状态和已报告进程。进程仍运行时继续等待，不重复执行命令。
+- 代理空闲但没有回执时，只发送一次“返回完成摘要”的 follow-up；连续两次确认空闲且仍无回执后才允许中断。
+- 恢复代理时传递现有 diff、测试结果和进程状态，不重新探索或重新实现已经完成的工作。
+
+### Gradle 生命周期
+
+- 同一 worktree 的重型 Gradle 验证由一个协调者串行执行。一次性等待使用 `python scripts/gradle-coordinator.py run --key <name> -- <gradle command>`；需分离启动时使用 `start`，再用 `wait/status` 查询。
+- 外层等待超时不代表 Gradle 结束；先查询协调器状态，仍为 `STARTING/RUNNING` 时不得启动第二个 Gradle。
+- 需要终止时只停止协调器记录的进程树，不使用全局 Java/Gradle 进程清理。
+
 ---
 
 

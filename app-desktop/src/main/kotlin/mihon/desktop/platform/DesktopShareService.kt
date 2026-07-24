@@ -26,7 +26,9 @@ class DesktopShareService(
     private val nativeSharePort: DesktopNativeSharePort = UnavailableDesktopNativeSharePort,
     private val clipboardPort: DesktopClipboardPort = AwtDesktopClipboardPort,
     private val savePort: DesktopSavePort = SwingDesktopSavePort,
-    private val isHeadless: () -> Boolean = GraphicsEnvironment::isHeadless,
+    private val isHeadless: () -> Boolean = {
+        GraphicsEnvironment.isHeadless() || DesktopExternalActionPolicy.isSuppressed()
+    },
     private val revealPort: DesktopRevealPort = AwtDesktopRevealPort,
 ) {
     fun share(
@@ -264,9 +266,7 @@ private object AwtDesktopClipboardPort : DesktopClipboardPort {
 
 private object AwtDesktopRevealPort : DesktopRevealPort {
     override fun reveal(file: File) {
-        check(System.getProperty("org.gradle.test.worker") == null) {
-            "Desktop reveal is disabled in Gradle test workers"
-        }
+        DesktopExternalActionPolicy.requireAllowed("Desktop reveal")
         check(Desktop.isDesktopSupported())
         Desktop.getDesktop().open(file.parentFile ?: file)
     }

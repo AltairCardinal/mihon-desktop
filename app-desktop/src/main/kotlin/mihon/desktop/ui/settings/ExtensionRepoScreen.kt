@@ -1,6 +1,7 @@
 package mihon.desktop.ui.settings
 
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.platform.DesktopUrlOpener
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -64,8 +65,6 @@ import mihon.domain.extensionrepo.interactor.ReplaceExtensionRepo
 import mihon.domain.extensionrepo.interactor.UpdateExtensionRepo
 import mihon.domain.extensionrepo.model.ExtensionRepo
 import tachiyomi.i18n.MR
-import java.awt.Desktop
-import java.net.URI
 import java.util.Locale
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -80,7 +79,7 @@ internal fun interface ExtensionRepoUrlOpener {
 }
 
 internal val LocalExtensionRepoUrlOpener = staticCompositionLocalOf<ExtensionRepoUrlOpener> {
-    ExtensionRepoUrlOpener { url -> Desktop.getDesktop().browse(URI(url)) }
+    ExtensionRepoUrlOpener { url -> DesktopUrlOpener.open(url).getOrThrow() }
 }
 
 /** 扩展仓库管理页面：添加/删除/刷新仓库。 */

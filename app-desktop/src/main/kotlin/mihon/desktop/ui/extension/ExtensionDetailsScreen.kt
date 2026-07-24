@@ -59,10 +59,10 @@ import kotlinx.coroutines.launch
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.LocalExtensionScreenModel
 import mihon.desktop.extension.ExtensionOrigin
+import mihon.desktop.platform.DesktopUrlOpener
 import mihon.desktop.ui.settings.DesktopDirectoryOpener
 import tachiyomi.core.common.preference.getAndSet
 import tachiyomi.i18n.MR
-import java.awt.Desktop
 import java.io.File
 import java.net.URI
 import java.util.Locale
@@ -75,7 +75,7 @@ internal data class ExtensionDetailsPlatformActions(
 internal val LocalExtensionDetailsPlatformActions = staticCompositionLocalOf {
     ExtensionDetailsPlatformActions(
         openDirectory = DesktopDirectoryOpener::open,
-        openUrl = { url -> runCatching { Desktop.getDesktop().browse(URI(url)) } },
+        openUrl = DesktopUrlOpener::open,
     )
 }
 

@@ -90,6 +90,31 @@ class DesktopArchitectureGuardTest {
     }
 
     @Test
+    fun `desktop production routes browser actions through the platform opener`() {
+        val desktopSourceDir = File(repoRoot, "app-desktop/src/main/kotlin/mihon/desktop")
+        val platformAdapterDir = "app-desktop/src/main/kotlin/mihon/desktop/platform/"
+        val violations =
+            desktopSourceDir
+                .walkTopDown()
+                .filter { it.isFile && it.extension == "kt" }
+                .filterNot { it.relativeTo(repoRoot).invariantSeparatorsPath.startsWith(platformAdapterDir) }
+                .flatMap { file ->
+                    file.readLines().mapIndexedNotNull { index, line ->
+                        if (".browse(" in line || "Desktop.Action.BROWSE" in line) {
+                            "${file.relativeTo(repoRoot).invariantSeparatorsPath}:${index + 1}: ${line.trim()}"
+                        } else {
+                            null
+                        }
+                    }
+                }.toList()
+
+        assertTrue(
+            violations.isEmpty(),
+            "Desktop production must route browser launches through DesktopUrlOpener:\n${violations.joinToString("\n")}",
+        )
+    }
+
+    @Test
     fun `compiled production UI dependency graph matches finite violation inventory`() {
         val edges = compiledEdges(LibraryScreenModel::class.java).map(CompiledEdge::canonical).toSet()
         requiredProductionEdges.forEach { edge ->

@@ -70,14 +70,13 @@ import eu.kanade.tachiyomi.source.ConfigurableSource
 import mihon.desktop.extension.DesktopAvailableExtension
 import mihon.desktop.extension.InstalledExtension
 import mihon.desktop.extension.isExtensionAvailableOnDesktop
+import mihon.desktop.platform.DesktopUrlOpener
 import mihon.desktop.ui.browse.SourceBrowseScreen
 import mihon.domain.error.AppError
 import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
 import mihon.domain.extension.presentation.extensionActionEligibility
 import tachiyomi.i18n.MR
-import java.awt.Desktop
-import java.net.URI
 import java.util.Locale
 
 /** Lists installed extensions and available extensions from registered repositories. */
@@ -342,7 +341,7 @@ internal fun ExtensionListContent(
                     onRetry = { model.retry(it) },
                     onCancel = { model.cancel(it.operationPackageName) },
                     onOpenUrl = { url ->
-                        runCatching { Desktop.getDesktop().browse(URI(url)) }
+                        DesktopUrlOpener.open(url)
                             .onFailure {
                                 scope.launch {
                                     snackbarHostState.showSnackbar(

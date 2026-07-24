@@ -4,6 +4,7 @@ import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.DesktopNotificationService
 import mihon.desktop.platform.DesktopShareService
 import mihon.desktop.platform.DesktopShareResult
+import mihon.desktop.platform.DesktopUrlOpener
 import mihon.desktop.platform.toDesktopNotification
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -105,8 +106,6 @@ import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.manga.model.Manga
-import java.awt.Desktop
-import java.net.URI
 import androidx.compose.foundation.layout.size as layoutSize
 
 @Composable
@@ -578,9 +577,7 @@ internal fun mangaLinkActions(url: String): MangaLinkActions {
 }
 
 internal fun openExternalLink(url: String) {
-    runCatching {
-        Desktop.getDesktop().browse(URI(url))
-    }
+    DesktopUrlOpener.open(url)
 }
 
 /**

@@ -2,6 +2,8 @@
 .gradle
 .kotlin
 build
+.gradle-coordinator/
+__pycache__/
 
 # IDE files
 *.iml

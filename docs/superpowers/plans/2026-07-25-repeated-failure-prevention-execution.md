@@ -1,7 +1,7 @@
 # 反复失败预防执行计划
 
-日期：2026-07-25  
-状态：执行中
+日期：2026-07-25
+状态：已完成
 
 ## 目标
 
@@ -23,7 +23,7 @@
 
 ## Task R2：Gradle 进程生命周期协调器
 
-- [ ] 完成
+- [x] 完成
 
 修改：
 
@@ -52,7 +52,7 @@ GREEN：
 
 ## Task R3：子代理完成回执协议
 
-- [ ] 完成
+- [x] 完成
 
 修改：
 
@@ -80,12 +80,13 @@ GREEN：
 
 ## Task R4：GUI/系统副作用默认隔离
 
-- [ ] 完成
+- [x] 完成
 
 修改：
 
-- 新增统一 `DesktopUrlOpener`
-- 迁移已知 UI 中直接 `java.awt.Desktop.browse` 的调用
+- 新增统一 `DesktopExternalActionPolicy` 与 `DesktopUrlOpener`
+- 迁移已知 UI 和网络登录 adapter 中直接 `java.awt.Desktop.browse` 的调用
+- 将目录 reveal、分享回退与 URL 打开统一接入自动化测试隔离策略
 - 增加行为测试与架构保护
 
 RED：
@@ -93,24 +94,24 @@ RED：
 1. 测试默认 launcher 在 Gradle worker 中不得调用 AWT Desktop。
 2. 注入 recording launcher 时精确记录 URL。
 3. launcher 失败时返回明确 failure。
-4. UI 源目录出现新的直接 `java.awt.Desktop` 依赖时架构测试失败。
+4. Desktop production 在平台 adapter 外出现新的直接 browser launch 时架构测试失败。
 5. 先运行新测试，预期因实现缺失 RED。
 
 GREEN：
 
 1. production 真实调用集中在平台 opener。
 2. Gradle worker/test mode 默认 fail-closed，不启动浏览器。
-3. UI 使用 opener 或已存在的可注入 port。
-4. 目录 reveal 继续保持测试 worker 禁用。
+3. UI 与网络登录使用 opener 或已存在的可注入 port。
+4. 目录 reveal 与分享回退同时识别 Gradle worker 和应用 Test Mode。
 
 成功标准：
 
 - 运行相关 UI/平台测试时不启动浏览器、Explorer 或 Finder。
-- 直接在 UI 新增 AWT Desktop 调用会被架构测试拒绝。
+- 直接在平台 adapter 外新增 browser launch 会被架构测试拒绝。
 
 ## Task R5：组合验证
 
-- [ ] 完成
+- [x] 完成
 
 验证：
 
@@ -119,10 +120,45 @@ GREEN：
 - `DesktopUrlOpenerTest`；
 - `DesktopDirectoryOpenerTest`；
 - `DesktopShareServiceTest`；
+- `DesktopBrowserLoginAdapterTest`；
 - `DesktopArchitectureGuardTest`；
 - 两份治理 guard；
 - `spotlessCheck`。
 
 ## 执行结果
 
-待执行后填写。
+### R1
+
+- 复用方案一的 GREEN：范围 guard `27/27`，超出 8 files/400 lines 只输出 warning；roadmap fixture `3/3`，真实修正版父 roadmap、最终审计计划和五份 child plan 检查 PASS。
+- child plan 不再保存 `active-task`；唯一活动任务权威为最终审计计划的 `active-task: Task 17`。
+
+### R2
+
+- RED：协调器尚不存在时，超时附着与失败退出码两个测试均失败；补充 `run` 合同后又精确失败于 argparse 不认识 `run`。
+- GREEN：`gradle-coordinator-test.py` 为 `3/3`。慢任务第一次等待返回超时后继续运行，第二次 start 返回 `ATTACHED`，计数器最终仍为 `1`；失败任务保留真实退出码 `7`；`run` 同时返回 start 与终态。
+- 首轮 GREEN 暴露 Windows 上 `os.kill(pid, 0)` 不能可靠区分已退出进程，已改用 `OpenProcess/GetExitCodeProcess` 后转绿。
+- 真实 Gradle 验证由协调器运行：focused 任务记录 `workerPid=4688`、`processPid=39840`、退出码 `0`；完整套件第一次 50 秒 wait 超时后仍保持同一 `workerPid=45712`、`processPid=9124`，没有重启第二份 Gradle。
+
+### R3
+
+- RED：validator 不存在时，合法回执、缺字段和非法状态三类测试均失败。
+- GREEN：`agent-handoff-test.py` 为 `3/3`；六个必填字段逐项缺失都会失败，合法 `IMPLEMENTED` 回执通过，非法 status 与 `RUNNING` 无 PID 均被拒绝。
+- `AGENTS.md` 已固定“先回执、后结束；先查状态/PID、后 follow-up；两次空闲无回执才中断；恢复时复用 diff/tests/process”的协议。
+
+### R4
+
+- RED：`DesktopUrlOpenerTest` 首轮因 production opener 缺失而编译失败；共享外部动作策略首轮因 `DesktopExternalActionPolicy` 缺失而编译失败。
+- RED：将架构保护扩大到全部 Desktop production 后，精确捕获 `DesktopBrowserLoginAdapter.kt` 的 `Desktop.Action.BROWSE` 与 `desktop.browse(uri)` 两处绕行。
+- GREEN：`DesktopUrlOpenerTest` `4/4`，覆盖 Gradle worker、应用 Test Mode、注入 recorder、非法 URI 与 launcher failure；默认路径在触碰 AWT 前 fail-closed。
+- GREEN：已迁移扩展列表、扩展详情、仓库设置、追踪 OAuth、漫画详情、更新器和网络登录共七条 browser launch 链；目录打开、分享/文件 reveal 复用同一隔离策略。
+- GREEN：架构保护 `7/7`；相关平台和 UI 回归合计 `62/62`，0 failure、0 error、0 skipped。测试通过 MockK 明确验证未调用 `Desktop.isDesktopSupported/getDesktop/browse/open`，执行期间没有启动浏览器、Explorer 或 Finder。
+
+### R5
+
+- Python：Gradle coordinator `3/3`，agent handoff `3/3`，roadmap state guard `3/3`。
+- Shell guard：`27/27`；真实 roadmap state guard：PASS。
+- Desktop focused：12 个测试类、`62/62`，0 failure、0 error、0 skipped。
+- 根 `spotlessCheck`：GREEN。
+- 额外完整 Desktop JVM 套件实际执行 `2118` 项：`2114` 通过、`1` 失败、`3` 跳过。唯一失败为既有 `LibraryPageCompositionTest` 未提供 `LocalDesktopUiDependencies`；本方案未修改该测试、`LibraryTab` 或对应依赖提供链，因此记录为本方案范围外的全量门禁残留，不重复启动完整套件，也不把其产品修复扩入本方案。
+
+结论：五类反复失败均已有可执行保护和精确行为证据。计划内验证全部 GREEN；额外全量套件的单一既有失败已如实隔离记录。

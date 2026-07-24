@@ -2,6 +2,7 @@ package mihon.desktop.network
 
 import eu.kanade.tachiyomi.network.DesktopCookieJar
 import kotlinx.coroutines.CompletableDeferred
+import mihon.desktop.platform.DesktopUrlOpener
 import okhttp3.Cookie
 import tachiyomi.domain.source.service.AuthenticatedCookie
 import tachiyomi.domain.source.service.AuthenticatedSession
@@ -12,7 +13,6 @@ import tachiyomi.domain.source.service.BrowserLoginSession
 import tachiyomi.domain.source.service.BrowserOpenResult
 import tachiyomi.domain.source.service.SourceLoginRequest
 import tachiyomi.domain.source.service.SourceLoginSession
-import java.awt.Desktop
 import java.net.URI
 import java.util.IdentityHashMap
 
@@ -142,13 +142,8 @@ class DesktopAuthenticatedSessionCommitter(
 }
 
 private object SystemDesktopBrowserOpener : DesktopBrowserOpener {
-    override fun open(uri: URI, completion: DesktopBrowserLoginTicket): Boolean {
-        if (!Desktop.isDesktopSupported()) return false
-        val desktop = Desktop.getDesktop()
-        if (!desktop.isSupported(Desktop.Action.BROWSE)) return false
-        desktop.browse(uri)
-        return true
-    }
+    override fun open(uri: URI, completion: DesktopBrowserLoginTicket): Boolean =
+        DesktopUrlOpener.open(uri.toString()).isSuccess
 }
 
 private fun AuthenticatedCookie.toOkHttpCookie(): Cookie = Cookie.Builder()
