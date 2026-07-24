@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 10
+active-task: Task 11
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -49,7 +49,7 @@ active-task: Task 10
 - [x] Task 7：核验状态批次 B（16、17、19、22、24、26、28、29）
 - [x] Task 8：核验状态批次 C（30、32、33、34、35、36、37、38）
 - [x] Task 9：核验状态批次 D（39、40、43、44、45、47、49、51）
-- [ ] Task 10：核验状态批次 E（53、54、56、57、59、61、62、64）
+- [x] Task 10：核验状态批次 E（53、54、56、57、59、61、62、64）
 - [ ] Task 11：核验状态批次 F（66、67、68、69、70、71、72、73）
 - [ ] Task 12：核验状态批次 G（74、81、82、83、84、85、86、87）
 - [ ] Task 13：核验状态批次 H（88、90、91、92、93、94、95、96）
@@ -275,6 +275,10 @@ active-task: Task 10
 **Verification:** reader-progress/download/update/history focused tests 与 parity contract GREEN；ID56 分组差异没有被错误升级。
 
 **Steps:** 核验 progress transaction、chapter navigation、队列/并发/自动下载、library update、updates/history；若 ID56 仍有语义差异，输出实际 gap 给 Task 14。
+
+**Audit evidence（已完成）：** ID 53/57/59/61/62/64 的 fixed-original、current Android、shared/adapter、Desktop production consumer 与可执行 fixture 五角色均闭合，提升为 `VERIFIED`。ID 54 保持 `WIRED`：current Android `ReaderViewModel.getChapterList → shared filter` 目前只有 source scan，断开 production wiring 不会让可执行测试失败，有限转交 Task 14。ID 57 明确绑定 shared `schedule`/`retryDelayMillis` 与 Desktop 三个 production 调用，并由真实 `DesktopDownloadManager` + MockWebServer fixture 断言 2/4/8 秒策略；ID 59 由完整 DI 初始化后的 `LibraryUpdateScheduler → FilterChaptersForDownload → EnqueueDownload → PersistentDownloadStore` 链保护，fixture 以真实“仅未读”偏好排除已读同号候选、只持久化保留候选。ID 56 不误升：fixed-main 按 source object identity 分组，而 Desktop 按持久化 `sourceId` 投影并提供 missing-source fallback，替换 source object 或重复 ID 时的等价性未闭合，保持 `WIRED` 并有限转交 Task 14。Task 10 已勾选，控制权推进到未勾选的 Task 11。
+
+**Verification evidence：** Task 10 初始状态契约精确 RED 于 capability set `expected [53,54,56,57,59,61,62,64] but was []`；fresh review 修复又精确 RED 于 `ID 54 expected WIRED but was VERIFIED`。ID 59 临时绕过 production filter 后 fixture 精确 RED 于 `expected [103] but was [102,103]`，恢复 production wiring 后 Task 10 focused + DI `2/2` GREEN。Task 3 reader/progress 聚合 `261/261`、Task 4 download/update/history 聚合 `168/168`、Desktop retry 集成 `8/8`、ordinary parity contract `43/43` 均 GREEN，0 failure/0 skipped；`spotlessCheck` GREEN。显式 `finalParityAudit` 唯一按设计 RED 于精确 `37` 个非终态 ID，ID 54/56 均保留在清单中。
 
 ### Task 11：核验状态批次 F（66、67、68、69、70、71、72、73）
 

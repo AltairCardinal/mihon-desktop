@@ -1632,7 +1632,7 @@
     "tags": [
       "SHARE-DIRECT"
     ],
-    "status": "WIRED",
+    "status": "VERIFIED",
     "authoritativeImplementation": "Fixed-main ReaderViewModel persists last-page and read completion through UpdateChapter.",
     "desktopImplementation": "Desktop ReaderProgressTracker submits ReadingProgressEvent through the fork shared RecordReadingProgress transaction workflow.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -1650,6 +1650,7 @@
     },
     "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerIntegrationTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt"],
     "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt": ["reading to last page marks shared event as read"]},
+    "statusDecision": {"task": "Task 10", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt": ["reading to last page marks shared event as read"]}},
     "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -1681,6 +1682,7 @@
       "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderNavigatorTest.kt"
     ],
     "behaviorMethods": {"domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt": ["read filtered and duplicate skip rules can be combined"], "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderNavigatorTest.kt": ["reader navigator combines read filtered and duplicate skip flags"]},
+    "statusDecision": {"task": "Task 10", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Current Android ReaderViewModel.getChapterList to shared filter production wiring is evidenced only by source scan; disconnecting that production wiring does not fail an executable test.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderNavigatorTest.kt": ["reader navigator combines read filtered and duplicate skip flags"]}},
     "behaviorVerificationTask": ":app-desktop:task4ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -1709,6 +1711,7 @@
     },
     "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/download/DesktopDownloadRecoveryIntegrationTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/ui/download/DownloadQueueSourceGroupingWiringTest.kt"],
     "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/download/DownloadQueueSourceGroupingWiringTest.kt": ["queue renders one header per source with source names and a stable missing-source fallback"]},
+    "statusDecision": {"task": "Task 10", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Fixed-main groups by source object identity, while Desktop groups persisted rows by sourceId and adds a missing-source fallback; equivalence across source replacement or duplicate IDs is not closed.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/download/DownloadQueueSourceGroupingWiringTest.kt": ["queue renders one header per source with source names and a stable missing-source fallback"]}},
     "behaviorVerificationTask": ":app-desktop:task4ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -1719,7 +1722,7 @@
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "WIRED",
+    "status": "VERIFIED",
     "authoritativeImplementation": "Fixed-main Downloader limits concurrent source work and retries image downloads after 2, 4, and 8 seconds.",
     "desktopImplementation": "DesktopDownloadManager consumes the fork shared fair source scheduler and the same retry delay sequence.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -1731,12 +1734,13 @@
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/data/download/Downloader.kt", "symbol": "downloadPreferences.parallelSourceLimit.changes()", "line": 196}, {"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/data/download/Downloader.kt", "symbol": ".retryWhen { _, attempt ->", "line": 504}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/download/Downloader.kt", "symbol": "downloadPreferences.parallelSourceLimit().changes()", "line": 196}, {"path": "app/src/main/java/eu/kanade/tachiyomi/data/download/Downloader.kt", "symbol": ".retryWhen { _, attempt ->", "line": 504}],
-      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/download/DownloadQueueStateMachine.kt", "symbol": "fun schedule", "line": 42}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt", "symbol": "val batch = stateMachine.schedule", "line": 273}],
-      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/download/DownloadManagerReactivityTest.kt#three items enqueued after start all leave QUEUED state", "productionMarkers": ["mgr.start()"]}]
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/download/DownloadQueueStateMachine.kt", "symbol": "fun schedule", "line": 42}, {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/download/DownloadQueueStateMachine.kt", "symbol": "fun retryDelayMillis", "line": 61}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt", "symbol": "val batch = stateMachine.schedule", "line": 273}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt", "symbol": "stateMachine.retryDelayMillis(attempt++)", "line": 408}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt", "symbol": "stateMachine.retryDelayMillis(renameAttempt++)", "line": 450}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/download/DownloadManagerReactivityTest.kt#three items enqueued after start all leave QUEUED state", "productionMarkers": ["mgr.start()"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/download/DesktopDownloadRetryIntegrationTest.kt#HTTP failures use 2 4 8 retry policy without sleeping", "productionMarkers": ["manager(server, delays)", "manager.start()"]}]
     },
-    "protectionTests": ["domain/src/commonTest/kotlin/mihon/domain/download/DownloadQueueStateMachineTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/download/DownloadManagerReactivityTest.kt"],
-    "behaviorMethods": {"domain/src/commonTest/kotlin/mihon/domain/download/DownloadQueueStateMachineTest.kt": ["scheduler is fair between sources while preserving per source order", "retry uses Android exponential backoff and stops after three retries"], "app-desktop/src/test/kotlin/mihon/desktop/download/DownloadManagerReactivityTest.kt": ["three items enqueued after start all leave QUEUED state"]},
+    "protectionTests": ["domain/src/commonTest/kotlin/mihon/domain/download/DownloadQueueStateMachineTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/download/DownloadManagerReactivityTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/download/DesktopDownloadRetryIntegrationTest.kt"],
+    "behaviorMethods": {"domain/src/commonTest/kotlin/mihon/domain/download/DownloadQueueStateMachineTest.kt": ["scheduler is fair between sources while preserving per source order", "retry uses Android exponential backoff and stops after three retries"], "app-desktop/src/test/kotlin/mihon/desktop/download/DownloadManagerReactivityTest.kt": ["three items enqueued after start all leave QUEUED state"], "app-desktop/src/test/kotlin/mihon/desktop/download/DesktopDownloadRetryIntegrationTest.kt": ["HTTP failures use 2 4 8 retry policy without sleeping"]},
+    "statusDecision": {"task": "Task 10", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/download/DownloadManagerReactivityTest.kt": ["three items enqueued after start all leave QUEUED state"], "app-desktop/src/test/kotlin/mihon/desktop/download/DesktopDownloadRetryIntegrationTest.kt": ["HTTP failures use 2 4 8 retry policy without sleeping"]}},
     "behaviorVerificationTask": ":app-desktop:task4ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -1748,7 +1752,7 @@
       "SHARE-DIRECT",
       "PLATFORM-ADAPTER"
     ],
-    "status": "WIRED",
+    "status": "VERIFIED",
     "authoritativeImplementation": "Fixed-main LibraryUpdateJob delegates new chapters to FilterChaptersForDownload before queueing automatic downloads.",
     "desktopImplementation": "Desktop LibraryUpdateScheduler forwards new chapters through the shared filter and enqueues every accepted chapter through production DI.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -1761,13 +1765,14 @@
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt", "symbol": "filterChaptersForDownload.await(manga, newChapters)", "line": 271}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/chapter/interactor/FilterChaptersForDownload.kt", "symbol": "class FilterChaptersForDownload", "line": 16}],
       "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "filterChaptersForDownload.await(manga, chapters)", "line": 825}],
-      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/FilterChaptersForDownloadIntegrationTest.kt#开启后保留候选数量与上游排序且正确处理空列表", "productionMarkers": ["filter.await"]}]
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/FilterChaptersForDownloadIntegrationTest.kt#开启后保留候选数量与上游排序且正确处理空列表", "productionMarkers": ["filter.await"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt#reinitializing test DI replaces every binding and scheduler context", "productionMarkers": ["Injekt.get<LibraryUpdateScheduler>().runNow().join()", "PersistentDownloadStore("]}]
     },
     "protectionTests": [
       "app-desktop/src/test/kotlin/mihon/desktop/domain/FilterChaptersForDownloadIntegrationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
     ],
-    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/domain/FilterChaptersForDownloadIntegrationTest.kt": ["开启后保留候选数量与上游排序且正确处理空列表"], "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateSchedulerTest.kt": ["new chapters are forwarded to shared auto download policy"]},
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/domain/FilterChaptersForDownloadIntegrationTest.kt": ["开启后保留候选数量与上游排序且正确处理空列表"], "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt": ["reinitializing test DI replaces every binding and scheduler context"]},
+    "statusDecision": {"task": "Task 10", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/domain/FilterChaptersForDownloadIntegrationTest.kt": ["开启后保留候选数量与上游排序且正确处理空列表"], "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt": ["reinitializing test DI replaces every binding and scheduler context"]}},
     "behaviorVerificationTask": ":app-desktop:task4ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -1779,7 +1784,7 @@
       "SHARE-EXTRACT",
       "PLATFORM-ADAPTER"
     ],
-    "status": "WIRED",
+    "status": "VERIFIED",
     "authoritativeImplementation": "Fixed-main LibraryUpdateJob owns constrained WorkManager execution, per-source library refresh, progress, and terminal notification behavior.",
     "desktopImplementation": "Desktop LibraryUpdateScheduler adapts library refresh to the JVM lifecycle and persists shared BackgroundTask checkpoints and terminal state.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -1801,6 +1806,7 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt"
     ],
     "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt": ["real update emits progress and one terminal success event"]},
+    "statusDecision": {"task": "Task 10", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt": ["real update emits progress and one terminal success event"]}},
     "behaviorVerificationTask": ":app-desktop:task4ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -1811,7 +1817,7 @@
     "tags": [
       "SHARE-DIRECT"
     ],
-    "status": "WIRED",
+    "status": "VERIFIED",
     "authoritativeImplementation": "Fixed-main UpdatesScreenModel observes GetUpdates and mutates chapter read state through UpdateChapter.",
     "desktopImplementation": "Desktop UpdatesScreenModel consumes shared GetUpdates and UpdateChapter use cases",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -1828,6 +1834,7 @@
     },
     "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/updates/UpdatesScreenModelTest.kt"],
     "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/updates/UpdatesScreenModelTest.kt": ["loadUpdates applies downloaded filter without losing raw items", "markAllRead marks unread visible items and closes dialog"]},
+    "statusDecision": {"task": "Task 10", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/updates/UpdatesScreenModelTest.kt": ["loadUpdates applies downloaded filter without losing raw items", "markAllRead marks unread visible items and closes dialog"]}},
     "behaviorVerificationTask": ":app-desktop:task4ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -1838,7 +1845,7 @@
     "tags": [
       "SHARE-DIRECT"
     ],
-    "status": "WIRED",
+    "status": "VERIFIED",
     "authoritativeImplementation": "Fixed-main HistoryScreenModel observes GetHistory and removes entries through RemoveHistory.",
     "desktopImplementation": "Desktop HistoryScreenModel consumes shared history/chapter/manga use cases",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -1855,6 +1862,7 @@
     },
     "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/history/HistoryScreenModelTest.kt"],
     "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/history/HistoryScreenModelTest.kt": ["loadHistory updates search query and items", "removeHistory removes one item and refreshes current query"]},
+    "statusDecision": {"task": "Task 10", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/history/HistoryScreenModelTest.kt": ["loadHistory updates search query and items", "removeHistory removes one item and refreshes current query"]}},
     "behaviorVerificationTask": ":app-desktop:task4ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
