@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 12
+active-task: Task 13
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -51,7 +51,7 @@ active-task: Task 12
 - [x] Task 9：核验状态批次 D（39、40、43、44、45、47、49、51）
 - [x] Task 10：核验状态批次 E（53、54、56、57、59、61、62、64）
 - [x] Task 11：核验状态批次 F（66、67、68、69、70、71、72、73）
-- [ ] Task 12：核验状态批次 G（74、81、82、83、84、85、86、87）
+- [x] Task 12：核验状态批次 G（74、81、82、83、84、85、86、87）
 - [ ] Task 13：核验状态批次 H（88、90、91、92、93、94、95、96）
 - [ ] Task 14：逐项裁决 8 项 `UNCLASSIFIED_DEBT`
 - [ ] Task 15：完成候选平台能力与 `EXEMPT` 审查
@@ -307,6 +307,10 @@ active-task: Task 12
 **Verification:** backup compatibility、platform integration、i18n focused tests 与 parity contract GREEN；ID85 豁免证据仍成立。
 
 **Steps:** 核验跨端备份、URI、分享、锁、屏幕隐私、Widget 豁免、更新、i18n；候选 OS 结论留给 Task 15。
+
+**Audit evidence（已完成）：** ID 74 的 fixed-original Android 完整 `.tachibk` fixture、current Android `BackupDecoder → BackupCodec`、共享 codec、Desktop reader/writer 与历史 Desktop fixture 均由真实执行测试闭合，提升为 `VERIFIED`；生成器源码扫描不作为终态证据。ID 81/82/83/84/86 保持 `CANDIDATE` 并转交 Task 15：分别等待真实 application bundle URI 冷/热启动、host share、各 OS credential backend、real capture acceptance、signed release artifact 与 OS installer handoff 验收；单实例、安全与更新 hardening 不冒充 fixed-main 等价性。ID 85 保留既有 `EXEMPT`，没有生成新批准；批准仍精确引用 `docs/superpowers/specs/2026-07-12-mihon-desktop-upstream-parity-design.md:217`，Widget Android production wiring、共享 Updates consumer 与 Desktop Unsupported 边界均有可执行 fixture。ID 87 保持 `SHARED` 并转交 Task 14：Desktop 已渲染共享 MR 文案，但仍无 app-language selector 且存在 unlocalized copy。Task 12 已勾选，控制权推进到未勾选的 Task 13。
+
+**Verification evidence：** Task 12 状态契约先精确 RED 于空 capability set，写入有限裁决后 `1/1` GREEN。备份兼容 focused `9/9`、平台 contract/adapter/UI focused `89/89`、i18n rendered-copy focused `2/2`、ordinary parity contract `45/45` 均 GREEN，0 failure/0 skipped；完整契约曾捕获新增夹具名中的模糊 `Android authoritative` 措辞，改为明确的 `fixed-main Android` 后复跑全绿。`spotlessCheck`、Node JSON（64 项、34 个非终态）、计划交接、`git diff --check`、4 files / 252 touched（238 additions/14 deletions）范围与 `java.awt.headless=true` 复跑均通过。显式 `finalParityAudit` 唯一按设计 RED，并精确报告 `34` 个非终态 ID。
 
 ### Task 13：核验状态批次 H（88、90、91、92、93、94、95、96）
 

@@ -37,7 +37,7 @@ class BackupCodecContractTest {
 
     @Test
     @Suppress("DEPRECATION")
-    fun `Android authoritative full fixture decodes and reencodes with canonical schema`() {
+    fun `fixed-main Android full fixture decodes and reencodes with canonical schema`() {
         val bytes = requireNotNull(javaClass.getResourceAsStream("/backup/android-full.tachibk")).readBytes()
         assertEquals(
             "43fa65a3469932f4da2794e8bdf69c7bef7d65d4e77fe894e1b1798ed1efad8d",
