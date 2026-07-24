@@ -4,7 +4,7 @@ parent-task: Task 14
 task-base: 0c6d360441c6ba64613063db7b197c0f88fa3d08
 original-ref: main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status: planned
-active-task: Task 143
+active-task: Task 144
 ---
 
 # Task 14 产品 parity 缺口收口计划
@@ -23,7 +23,7 @@ active-task: Task 143
 
 - [x] Task 141：A1 ID 3 Android shared screen state
 - [x] Task 142：A2 ID 3 Desktop screen state consumer
-- [ ] Task 143：A3 ID 32 Android extension repository wiring
+- [x] Task 143：A3 ID 32 Android extension repository wiring
 - [ ] Task 144：A4 ID 32 Desktop extension repository wiring
 - [ ] Task 145：B1 ID 69 Android provider-neutral core
 - [ ] Task 146：B2 ID 69 Desktop provider adapters
@@ -81,13 +81,15 @@ active-task: Task 143
 
 **Risk axis:** android-extension-repo-crud
 **Platform boundary:** shared+android
-**Estimated scope:** 4 files, 320 lines
+**Estimated scope:** 5 files, 340 lines
+**Scope correction:** 第 5 个文件仅为本进度计划持久化；产品与测试范围仍是原定 4 文件。
 
 **Files:**
 - Modify: `domain/src/commonMain/kotlin/mihon/domain/extensionrepo/service/ExtensionRepoService.kt`
 - Create: `domain/src/commonTest/kotlin/mihon/domain/extensionrepo/service/ExtensionRepoServiceContractTest.kt`
 - Modify: `app/src/main/java/eu/kanade/presentation/more/settings/screen/browse/ExtensionReposScreenModel.kt`
 - Create: `app/src/test/java/eu/kanade/presentation/more/settings/screen/browse/ExtensionReposScreenModelWiringTest.kt`
+- Modify: `docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md`
 
 **User entry:** Android Settings → Browse → Extension repositories。
 **Feedback:** create/replace/delete 显示 pending、success、validation、fingerprint conflict 和 failure。
@@ -97,6 +99,7 @@ active-task: Task 143
 **Verification:** domain service contract、Android ScreenModel wiring、父 parity contract、Spotless。
 **Desktop zero-regression:** 本 Task 不改 Desktop；A4 必须保留 normalization、确认和即时反馈。
 
+**Execution evidence（已完成）：** 现有 DI `ExtensionRepoService` 以 domain-owned outcome 和单向 suspend operations 统一 create/replace/delete 的 pending/success/validation/fingerprint conflict/failure，不再引用三类 interactors；Android production ScreenModel 穷尽适配既有 create result，replace 保留旧 fingerprint 原值。shared operation API 编译 RED、各 mutation 断开与 continuity 破坏均精确 RED；恢复后 domain `2/2`、Android `1/1`、父 parity `1/1` GREEN，Android 表驱动覆盖全部 validation/conflict/failure `stringRes`，仅 3 次成功刷新。进程级 SDK `assembleDebug` 与 5038 `emulator-5556` 安装 GREEN；`aapt` 列出 `app.mihon.dev/MainActivity`，但 resolver 仍为 `No activity found`、显式启动 `Error type 3`，故未虚报设置页 runtime 通过。
 ### Task 144 A4 ID 32 Desktop extension repository wiring
 
 **Risk axis:** desktop-extension-repo-crud

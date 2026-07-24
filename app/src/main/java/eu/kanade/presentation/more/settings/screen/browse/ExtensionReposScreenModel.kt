@@ -17,6 +17,12 @@ import mihon.domain.extensionrepo.interactor.GetExtensionRepo
 import mihon.domain.extensionrepo.interactor.ReplaceExtensionRepo
 import mihon.domain.extensionrepo.interactor.UpdateExtensionRepo
 import mihon.domain.extensionrepo.model.ExtensionRepo
+import mihon.domain.extensionrepo.service.ExtensionRepoAction
+import mihon.domain.extensionrepo.service.ExtensionRepoActionResult
+import mihon.domain.extensionrepo.service.ExtensionRepoCreateOutcome
+import mihon.domain.extensionrepo.service.ExtensionRepoFailure
+import mihon.domain.extensionrepo.service.ExtensionRepoService
+import mihon.domain.extensionrepo.service.ExtensionRepoValidation
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
@@ -29,6 +35,7 @@ class ExtensionReposScreenModel(
     private val replaceExtensionRepo: ReplaceExtensionRepo = Injekt.get(),
     private val updateExtensionRepo: UpdateExtensionRepo = Injekt.get(),
     private val extensionManager: ExtensionManager = Injekt.get(),
+    private val extensionRepoService: ExtensionRepoService = Injekt.get(),
 ) : StateScreenModel<RepoScreenState>(RepoScreenState.Loading) {
 
     private val _events: Channel<RepoEvent> = Channel(Int.MAX_VALUE)
@@ -54,14 +61,13 @@ class ExtensionReposScreenModel(
      */
     fun createRepo(baseUrl: String) {
         screenModelScope.launchIO {
-            when (val result = createExtensionRepo.await(baseUrl)) {
-                CreateExtensionRepo.Result.Success -> extensionManager.findAvailableExtensions()
-                CreateExtensionRepo.Result.InvalidUrl -> _events.send(RepoEvent.InvalidUrl)
-                CreateExtensionRepo.Result.RepoAlreadyExists -> _events.send(RepoEvent.RepoAlreadyExists)
-                is CreateExtensionRepo.Result.DuplicateFingerprint -> {
+            publish(ExtensionRepoActionResult.Pending(ExtensionRepoAction.CREATE))
+            when (val result = extensionRepoService.create(baseUrl) { createExtensionRepo.await(it).toOutcome() }) {
+                is ExtensionRepoActionResult.FingerprintConflict -> {
                     showDialog(RepoDialog.Conflict(result.oldRepo, result.newRepo))
+                    publish(result)
                 }
-                else -> {}
+                else -> publishResult(result)
             }
         }
     }
@@ -73,7 +79,14 @@ class ExtensionReposScreenModel(
      */
     fun replaceRepo(newRepo: ExtensionRepo) {
         screenModelScope.launchIO {
-            replaceExtensionRepo.await(newRepo)
+            publish(ExtensionRepoActionResult.Pending(ExtensionRepoAction.REPLACE))
+            val oldRepo = ((state.value as? RepoScreenState.Success)?.dialog as? RepoDialog.Conflict)?.oldRepo
+            val result = oldRepo?.let { extensionRepoService.replace(it, newRepo, replaceExtensionRepo::await) }
+                ?: ExtensionRepoActionResult.Validation(
+                    ExtensionRepoAction.REPLACE,
+                    ExtensionRepoValidation.FINGERPRINT_CHANGED,
+                )
+            publishResult(result)
         }
     }
 
@@ -95,9 +108,20 @@ class ExtensionReposScreenModel(
      */
     fun deleteRepo(baseUrl: String) {
         screenModelScope.launchIO {
-            deleteExtensionRepo.await(baseUrl)
+            publish(ExtensionRepoActionResult.Pending(ExtensionRepoAction.DELETE))
+            publishResult(extensionRepoService.delete(baseUrl, deleteExtensionRepo::await))
+        }
+    }
+
+    private suspend fun publishResult(result: ExtensionRepoActionResult) {
+        publish(result)
+        if (result is ExtensionRepoActionResult.Success) {
             extensionManager.findAvailableExtensions()
         }
+    }
+
+    private suspend fun publish(result: ExtensionRepoActionResult) {
+        _events.send(RepoEvent.ActionResult(result))
     }
 
     fun showDialog(dialog: RepoDialog) {
@@ -119,10 +143,39 @@ class ExtensionReposScreenModel(
     }
 }
 
+private fun CreateExtensionRepo.Result.toOutcome() = when (this) {
+    CreateExtensionRepo.Result.Success -> ExtensionRepoCreateOutcome.Success
+    CreateExtensionRepo.Result.InvalidUrl -> ExtensionRepoCreateOutcome.InvalidUrl
+    CreateExtensionRepo.Result.RepoAlreadyExists -> ExtensionRepoCreateOutcome.AlreadyExists
+    is CreateExtensionRepo.Result.DuplicateFingerprint -> ExtensionRepoCreateOutcome.Conflict(oldRepo, newRepo)
+    CreateExtensionRepo.Result.RepositoryUnavailable -> ExtensionRepoCreateOutcome.RepositoryUnavailable
+    CreateExtensionRepo.Result.InvalidRepository -> ExtensionRepoCreateOutcome.InvalidRepository
+    CreateExtensionRepo.Result.Error -> ExtensionRepoCreateOutcome.Failure
+}
+
 sealed class RepoEvent {
     sealed class LocalizedMessage(val stringRes: StringResource) : RepoEvent()
     data object InvalidUrl : LocalizedMessage(MR.strings.invalid_repo_name)
     data object RepoAlreadyExists : LocalizedMessage(MR.strings.error_repo_exists)
+    data class ActionResult(
+        val result: ExtensionRepoActionResult,
+    ) : LocalizedMessage(
+        when (result) {
+            is ExtensionRepoActionResult.Pending -> MR.strings.ext_pending
+            is ExtensionRepoActionResult.Success -> MR.strings.completed
+            is ExtensionRepoActionResult.FingerprintConflict -> MR.strings.action_replace_repo_title
+            is ExtensionRepoActionResult.Validation -> when (result.reason) {
+                ExtensionRepoValidation.INVALID_URL -> MR.strings.invalid_repo_name
+                ExtensionRepoValidation.ALREADY_EXISTS -> MR.strings.error_repo_exists
+                ExtensionRepoValidation.FINGERPRINT_CHANGED -> MR.strings.action_replace_repo_title
+            }
+            is ExtensionRepoActionResult.Failure -> when (result.reason) {
+                ExtensionRepoFailure.REPOSITORY_UNAVAILABLE -> MR.strings.desktop_extension_repo_unavailable
+                ExtensionRepoFailure.INVALID_REPOSITORY -> MR.strings.desktop_extension_repo_invalid_metadata
+                ExtensionRepoFailure.UNKNOWN -> MR.strings.unknown_error
+            }
+        },
+    )
 }
 
 sealed class RepoDialog {
