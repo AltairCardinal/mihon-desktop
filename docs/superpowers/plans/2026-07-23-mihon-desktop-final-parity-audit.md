@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 16D
+active-task: Task 17
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -61,7 +61,7 @@ active-task: Task 16D
 - [x] Task 16A：审计 compat 与历史格式删除证据（35、74、96）
 - [x] Task 16B：审计重复业务规则
 - [x] Task 16C：建立 UI→data/network/manager 架构守卫
-- [ ] Task 16D：盘点并约束最终 Test Mode 全场景入口
+- [x] Task 16D：盘点并约束最终 Test Mode 全场景入口
 - [ ] Task 17：执行并回收真实产品缺口 child plan
 - [ ] Task 18：让 64 项最终 closure 与架构 gate 变绿
 - [ ] Task 19：运行全量测试、Windows/macOS 构建与运行验收
@@ -476,15 +476,15 @@ active-task: Task 16D
 
 1. `library`
 2. `manga-detail`
-3. `browse/global-search+source-login`
+3. `browse-global-search-source-login`
 4. `extensions`
 5. `reader`
 6. `downloads`
-7. `updates/upcoming`
+7. `updates-upcoming`
 8. `history`
 9. `migration`
-10. `backup/restore`
-11. `settings/platform`
+10. `backup-restore`
+11. `settings-platform`
 12. `tracking`
 13. `about`
 
@@ -495,6 +495,10 @@ active-task: Task 16D
 2. 最终唯一 runtime 入口固定为 `./scripts/desktop-final-parity-test.sh`：它必须启动本轮构建脚本产出的固定未打包 EXE，并报告 `13/13`、`5/5`、64 项零未映射。
 3. 现有 `./scripts/desktop-smoke-test.sh` 只能作为补充回归，不能替代上述入口或其精确计数。
 4. 若入口、Test Mode action/state 或场景断言缺失，只输出有限产品 child plan，由 Task 17 实施。
+
+**Execution evidence（已完成）：** 64 项恰好映射一次且 unmapped=0；13 个稳定 family 中仅 `extensions`、`reader`、`migration`、`about` 的真实 HTTP endpoint→compiled production handler→observable feedback→runner 链闭合，另外 9 个明确为 `gap`，不得计作通过。ID4/8/10/11/12 由真实 non-UI 行为测试承接，ID3 与缺失的 `scripts/desktop-final-parity-test.sh` 保持 gap；5/5 Desktop 永久保护均绑定 compiled handler 与可执行行为测试。family/boundary/protection 状态改写、四条 covered witness tuple 漂移、逐 entry compiled handler/runner 断连及 Task173 跨边界 mutation 均被契约拒绝；修复工作只进入唯一 Task171–177 child plan。
+
+**Verification evidence：** coverage contract `2/2`、ordinary parity `54/54`、真实 Test Mode HTTP/dispatcher/controller `20/20`、headless focused `3/3` 与 `spotlessCheck` GREEN；显式 final gate 唯一按设计 RED，并精确报告既有 29 个非终态 ID。JSON（13 family=`4 covered + 9 gap`、7 boundary、5 protection、64 unique mapped、0 unmapped）、父/child plan guards、`git diff --check` 与 `6 files / 392 touched` 范围均通过。ID3 当前 Task16D 同时保留 Task141/142 product closure 与 Task173 coverage follow-up；Task173 依赖二者完成产物且只允许 Desktop TestMode/HTTP/coverage 文件，历史 Task14A 裁决仍可达。
 
 ### Task 17：执行并回收真实产品缺口 child plan
 
