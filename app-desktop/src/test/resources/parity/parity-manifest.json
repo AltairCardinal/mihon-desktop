@@ -458,8 +458,7 @@
       "app/src/test/java/eu/kanade/tachiyomi/ui/library/LibrarySharedEvaluationWiringTest.kt",
       "domain/src/commonTest/kotlin/tachiyomi/domain/library/interactor/EvaluateLibraryTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryPageCompositionTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt"
     ],
     "behaviorMethods": {
       "app/src/test/java/eu/kanade/tachiyomi/ui/library/LibrarySharedEvaluationWiringTest.kt": ["Android production filter and sort consumers execute shared evaluation behavior"],
@@ -2741,6 +2740,17 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsContentAccessibilityTest.kt": ["Backup production button activates once on key down and respects disabled state", "Library checkbox production row activates once on key down"],
       "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsAccessibilityContractTest.kt": ["General and Appearance rows expose one action role state and disabled semantics"]
     },
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "presentation-core/src/main/java/tachiyomi/presentation/core/util/Modifier.kt", "symbol": "fun Modifier.runOnEnterKeyPressed", "line": 55}],
+      "CURRENT_ANDROID": [{"path": "presentation-core/src/main/java/tachiyomi/presentation/core/util/Modifier.kt", "symbol": "fun Modifier.runOnEnterKeyPressed", "line": 55}],
+      "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SettingsComposables.kt", "symbol": "internal fun Modifier.desktopSettingsEnterKey", "line": 27}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/GeneralSettingsScreen.kt", "symbol": "SwitchSettingsItem(", "line": 62}],
+      "FIXTURE": [
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsContentAccessibilityTest.kt#Backup production button activates once on key down and respects disabled state", "productionMarkers": ["DesktopSettingsButton("]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsAccessibilityContractTest.kt#General and Appearance rows expose one action role state and disabled semantics", "productionMarkers": ["GeneralSettingsScreen()", "AppearanceSettingsScreen()"]}
+      ]
+    },
+    "statusDecision": {"task": "Task 13", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "No commonMain accessibility primitive or cross-platform production consumer exists; Desktop keyboard and semantics coverage remains a platform adapter.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsContentAccessibilityTest.kt": ["Backup production button activates once on key down and respects disabled state", "Library checkbox production row activates once on key down"], "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsAccessibilityContractTest.kt": ["General and Appearance rows expose one action role state and disabled semantics"]}},
     "verificationScope": "CHARACTERIZED: fixed-main behavior and Desktop production coverage are recorded; shared extraction and a cross-platform common consumer remain open for the final 64-item audit.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -2769,6 +2779,7 @@
       "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SettingsSearchScreen.kt", "symbol": "DesktopSettingsCatalog.search", "line": 47}],
       "FIXTURE": [{"artifact": "domain/src/commonTest/kotlin/mihon/domain/settings/SettingsSearchPolicyTest.kt#fixed main excludes disabled blank info and disabled or blank groups", "productionMarkers": ["SettingsSearchPolicy.search"]}]
     },
+    "statusDecision": {"task": "Task 13", "decision": "KEEP_VERIFIED", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"domain/src/commonTest/kotlin/mihon/domain/settings/SettingsSearchPolicyTest.kt": ["fixed main excludes disabled blank info and disabled or blank groups"], "app/src/test/java/eu/kanade/presentation/more/settings/screen/SettingsSearchConsumerBehaviorTest.kt": ["real Android preference projection is searched by shared policy"], "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSearchWiringTest.kt": ["catalog delegates search to shared policy", "search has feedback focus submission keys and result navigation", "More search entry opens the production search screen"]}},
     "verificationScope": "VERIFIED: exact fixed-main search ownership, shared policy, Android projection, Desktop production entry/feedback/navigation, and behavior methods are bound.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -2798,6 +2809,7 @@
       "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/theme/DesktopTheme.kt", "symbol": "AppThemeColorScheme.colorScheme", "line": 43}],
       "FIXTURE": [{"artifact": "app/src/test/java/eu/kanade/presentation/theme/AndroidSharedPaletteWiringTest.kt#android theme consumer delegates static selection to shared selector", "productionMarkers": ["getThemeColorScheme"]}]
     },
+    "statusDecision": {"task": "Task 13", "decision": "KEEP_VERIFIED", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"presentation-theme/src/commonTest/kotlin/eu/kanade/presentation/theme/colorscheme/AppThemeColorSchemeTest.kt": ["every static app theme selects its fixed main palette", "amoled only changes dark static colors and preserves fixed containers"], "app/src/test/java/eu/kanade/presentation/theme/AndroidSharedPaletteWiringTest.kt": ["android theme consumer delegates static selection to shared selector"], "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSearchWiringTest.kt": ["desktop theme consumes shared static theme and amoled preferences", "appearance selects static theme and amoled while preserving grid"]}},
     "verificationScope": "VERIFIED: exact fixed-main theme ownership, shared palette behavior, both production consumers, AMOLED handling, and preserved Desktop grid controls are bound.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -2825,7 +2837,15 @@
     "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSecurityScreen.kt", "app/src/main/java/eu/kanade/tachiyomi/ui/base/delegate/SecureActivityDelegate.kt"],
     "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/security/DesktopAppLock.kt", "app-desktop/src/main/kotlin/mihon/desktop/privacy/DesktopWindowPrivacy.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SecuritySettingsScreen.kt"],
     "deviations": [{ "classification": "PLATFORM_ADAPTER", "description": "App lock and delay are consumers; screen privacy is capability-limited; native notification content and telemetry remain Unsupported with no deceptive switch." }],
-    "protectionTests": ["domain/src/commonTest/kotlin/mihon/domain/security/AppSecurityPolicyTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/security/AndroidSecuritySharedPolicyTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/SecuritySettingsWiringTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/privacy/WindowPrivacyWiringTest.kt"],
+    "protectionTests": ["domain/src/commonTest/kotlin/mihon/domain/security/AppSecurityPolicyTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/security/AndroidSecuritySharedPolicyTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/privacy/DesktopPrivacyCapabilitiesTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/SecuritySettingsWiringTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/privacy/WindowPrivacyWiringTest.kt"],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSecurityScreen.kt", "symbol": "object SettingsSecurityScreen", "line": 25}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsSecurityScreen.kt", "symbol": "object SettingsSecurityScreen", "line": 26}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "core/common/src/commonMain/kotlin/eu/kanade/tachiyomi/core/security/SecurityPreferences.kt", "symbol": "class SecurityPreferences", "line": 9}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SecuritySettingsScreen.kt", "symbol": "internal fun DesktopPrivacySettings", "line": 452}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/SecuritySettingsWiringTest.kt#unsupported desktop privacy integrations show info without rendering controls", "productionMarkers": ["DesktopPrivacyCapabilities.production", "DesktopPrivacySettings("]}]
+    },
+    "statusDecision": {"task": "Task 13", "decision": "KEEP_GAP", "followUp": "Task 15", "gap": "Unsupported native-notification and telemetry controls have honest UI feedback, but OS credential and capture acceptance remain pending on supported Desktop operating systems.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/privacy/DesktopPrivacyCapabilitiesTest.kt": ["production capabilities report only real desktop integrations"], "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/SecuritySettingsWiringTest.kt": ["catalog anchor preserves native toggle and unsupported capability boundaries", "unsupported desktop privacy integrations show info without rendering controls"]}},
     "verificationScope": "CANDIDATE: JVM production wiring evidence; credential and capture behavior remain OS-limited.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -2834,27 +2854,33 @@
     "id": 93,
     "group": "设置与维护",
     "tags": [
-      "SHARE-EXTRACT"
+      "SHARE-EXTRACT",
+      "PLATFORM-ADAPTER"
     ],
-    "status": "NOT_STARTED",
+    "status": "WIRED",
     "authoritativeImplementation": "Fixed-main original Mihon capability #93: SettingsAdvancedScreen exposes crash logs, cache/database maintenance, cookie clearing, and WebView cleanup.",
     "desktopImplementation": "AdvancedSettingsScreen exposes Desktop-safe cache, cookie, and crash-log actions with confirmations and visible feedback.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt", "symbol": "object SettingsAdvancedScreen"}],
     "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt"],
-    "sharedImplementationPaths": ["core/common/src/commonMain/kotlin/eu/kanade/tachiyomi/network/NetworkPreferences.kt"],
+    "sharedImplementationPaths": [],
     "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreen.kt"],
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt", "symbol": "object SettingsAdvancedScreen", "line": 75}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt", "symbol": "object SettingsAdvancedScreen", "line": 75}],
-      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "core/common/src/commonMain/kotlin/eu/kanade/tachiyomi/network/NetworkPreferences.kt", "symbol": "class NetworkPreferences", "line": 6}],
+      "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreen.kt", "symbol": "internal interface AdvancedSettingsPlatformActions", "line": 188}],
       "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreen.kt", "symbol": "class AdvancedSettingsScreen", "line": 205}],
-      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSecurityAdvancedAccessibilityTest.kt#Advanced fields and dangerous confirmation expose honest keyboard semantics", "productionMarkers": ["AdvancedSettingsScreen()", "fixture.cookieJar.clear()"]}]
+      "FIXTURE": [
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreenTest.kt#catalog result anchors once and preserves platform success and failure feedback", "productionMarkers": ["AdvancedSettingsScreen::class"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSecurityAdvancedAccessibilityTest.kt#Advanced fields and dangerous confirmation expose honest keyboard semantics", "productionMarkers": ["AdvancedSettingsScreen()", "fixture.cookieJar.clear()"]}
+      ]
     },
     "behaviorVerificationTask": ":app-desktop:task5ParityVerification",
-    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSecurityAdvancedAccessibilityTest.kt": ["Advanced fields and dangerous confirmation expose honest keyboard semantics"]},
-    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSecurityAdvancedAccessibilityTest.kt"],
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreenTest.kt": ["catalog result anchors once and preserves platform success and failure feedback"], "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSecurityAdvancedAccessibilityTest.kt": ["Advanced fields and dangerous confirmation expose honest keyboard semantics"]},
+    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreenTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSecurityAdvancedAccessibilityTest.kt"],
     "deviations": [{"classification": "DESKTOP_PRODUCT_ENHANCEMENT", "description": "Desktop opens its crash-log directory and clears JVM network storage; Android-only WebView and download-cache maintenance remain outside the Desktop adapter. NetworkPreferences is only a shared configuration dependency, not proof of an extracted maintenance workflow."}],
+    "statusDecision": {"task": "Task 13", "decision": "PROMOTE_WIRED", "followUp": "Task 14", "gap": "No shared maintenance use case or result model exists; fixed-main database repair, cache maintenance, WebView cleanup, and worker diagnostics remain Android-only while Desktop directory actions are enhancements.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreenTest.kt": ["catalog result anchors once and preserves platform success and failure feedback"], "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSecurityAdvancedAccessibilityTest.kt": ["Advanced fields and dangerous confirmation expose honest keyboard semantics"]}},
+    "verificationScope": "WIRED: Desktop maintenance actions execute through the production Screen and platform adapter with feedback; shared maintenance semantics remain open.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -2883,6 +2909,7 @@
       "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/license/DesktopDependencyNoticeProvider.kt", "symbol": "LicenseNoticePolicy.create", "line": 23}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AboutUpdateWiringTest.kt#about routes real injected dependency notices to their first license content", "productionMarkers": ["DesktopUiDependencies.fromInjekt"]}]
     },
+    "statusDecision": {"task": "Task 13", "decision": "KEEP_VERIFIED", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"domain/src/commonTest/kotlin/mihon/domain/license/service/LicenseNoticePolicyTest.kt": ["first license is selected without later entries overwriting it"], "app/src/test/java/eu/kanade/presentation/more/settings/screen/about/OpenSourceLicensesConsumerBehaviorTest.kt": ["real Android license candidates are delegated to shared policy in order", "blank first Android license does not fall through to later content"], "app-desktop/src/test/kotlin/mihon/desktop/license/DesktopDependencyNoticeProviderTest.kt": ["provider maps metadata through the notice policy and caches the result"], "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AboutUpdateWiringTest.kt": ["about routes real injected dependency notices to their first license content", "about renders full version and routes ready confirmation intents"]}},
     "verificationScope": "VERIFIED: exact fixed-main build/license ownership, shared first-license behavior, Android full-candidate adapter, Desktop provider DI, and real About-to-list-to-detail UI are bound; generator self-tests are not completion evidence.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -2893,7 +2920,7 @@
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "NOT_STARTED",
+    "status": "WIRED",
     "authoritativeImplementation": "Fixed-main original Mihon capability #95: the Android app module consumes the domain module through an explicit Gradle dependency.",
     "desktopImplementation": "The Desktop app consumes the same domain boundary; architecture guards reject new UI repository/DI debt and Android-to-Desktop dependencies.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -2906,11 +2933,16 @@
       "CURRENT_ANDROID": [{"path": "app/build.gradle.kts", "symbol": "implementation(projects.domain)", "line": 182}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/build.gradle.kts", "symbol": "commonMain {", "line": 16}],
       "DESKTOP_CONSUMER": [{"path": "app-desktop/build.gradle.kts", "symbol": "implementation(projects.domain)", "line": 79}],
-      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt#desktop ui DI and repository debt does not grow beyond baseline", "productionMarkers": ["File(repoRoot, \"app-desktop/src/main/kotlin/mihon/desktop/ui\")"]}]
+      "FIXTURE": [
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt#production library stream exposes only logged in tracker rows and reacts to login logout", "productionMarkers": ["GetLibraryManga(repository)", "model.libraryMangaFlow()"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt#desktop ui DI and repository debt does not grow beyond baseline", "productionMarkers": ["File(repoRoot, \"app-desktop/src/main/kotlin/mihon/desktop/ui\")"]}
+      ]
     },
     "behaviorVerificationTask": ":app-desktop:task5ParityVerification",
-    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt": ["desktop ui DI and repository debt does not grow beyond baseline", "android main source must not depend on desktop runtime or awt swing"]},
-    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt"],
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": ["production library stream exposes only logged in tracker rows and reacts to login logout"], "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt": ["desktop ui DI and repository debt does not grow beyond baseline", "android main source must not depend on desktop runtime or awt swing"]},
+    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt"],
+    "statusDecision": {"task": "Task 13", "decision": "PROMOTE_WIRED", "followUp": "Task 16C", "gap": "Both apps compile against domain and a real Desktop screen model executes domain use cases, but app-desktop still owns broad business logic; source and line-count guards cannot close the Task 16C module-boundary audit.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": ["production library stream exposes only logged in tracker rows and reacts to login logout"], "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt": ["desktop ui DI and repository debt does not grow beyond baseline", "android main source must not depend on desktop runtime or awt swing"]}},
+    "verificationScope": "WIRED: compile-time domain dependencies and a real Desktop domain consumer are bound; the broader UI-to-domain architecture boundary remains open.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -2921,7 +2953,7 @@
       "PLATFORM-ADAPTER",
       "TEMP-COMPAT"
     ],
-    "status": "NOT_STARTED",
+    "status": "WIRED",
     "authoritativeImplementation": "Fixed-main original Mihon capability #96: ExtensionLoader consumes Android Context, PackageInfo, ApplicationInfo, and Source contracts when loading APK extensions.",
     "desktopImplementation": "DesktopExtensionLoader consumes Source through ServiceLoader while AndroidCompat supplies only the Android ABI surface required by extension consumers.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -2932,17 +2964,27 @@
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt", "symbol": "fun loadExtensions", "line": 117}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt", "symbol": "suspend fun loadExtensions", "line": 118}],
-      "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/compat/AndroidCompat.kt", "symbol": "object AndroidCompat", "line": 15}],
+      "SHARED_OR_ADAPTER": [
+        {"kind": "SHARED", "path": "source-api/src/commonMain/kotlin/eu/kanade/tachiyomi/source/Source.kt", "symbol": "interface Source", "line": 12},
+        {"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/compat/AndroidCompat.kt", "symbol": "object AndroidCompat", "line": 15}
+      ],
       "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt", "symbol": "ServiceLoader.load(Source::class.java", "line": 75}],
-      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/extension/ExtensionCompatibilityTest.kt#loader loads minimal source from ServiceLoader JAR", "productionMarkers": ["DesktopExtensionLoader(tempDir)"]}]
+      "FIXTURE": [
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/extension/CompatEvidenceContractTest.kt#inventory covers the complete public compat adapter surface", "productionMarkers": ["scanSurface(root)"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionBuildCompatTest.kt#real MangaDex headers use host version and Android release ABI", "productionMarkers": ["ApkToJarConverter()", "DesktopExtensionLoader(tempDir.toFile())"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt#real Comix WebView path fails fast with the explicit desktop boundary", "productionMarkers": ["ApkToJarConverter()", "DesktopExtensionLoader(tempDir.toFile())"]}
+      ]
     },
     "behaviorVerificationTask": ":app-desktop:task5ParityVerification",
     "behaviorMethods": {
-      "app-desktop/src/test/kotlin/mihon/desktop/extension/ExtensionCompatibilityTest.kt": ["loader loads minimal source from ServiceLoader JAR"],
-      "app-desktop/src/test/kotlin/mihon/desktop/compat/AndroidCompatTest.kt": ["Application and ContextWrapper preserve Android Context inheritance"]
+      "app-desktop/src/test/kotlin/mihon/desktop/extension/CompatEvidenceContractTest.kt": ["inventory covers the complete public compat adapter surface"],
+      "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionBuildCompatTest.kt": ["real MangaDex headers use host version and Android release ABI"],
+      "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt": ["real Comix WebView path fails fast with the explicit desktop boundary"]
     },
-    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/extension/ExtensionCompatibilityTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/compat/AndroidCompatTest.kt"],
+    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/extension/CompatEvidenceContractTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionBuildCompatTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt"],
     "deviations": [{"classification": "PLATFORM_ADAPTER", "description": "Android PackageManager loading remains the fixed/current Android responsibility; Desktop ServiceLoader and ABI shims are compatibility adapters whose retained surface must stay consumer-driven."}],
+    "statusDecision": {"task": "Task 13", "decision": "PROMOTE_WIRED", "followUp": "Task 16A", "gap": "Real immutable APKs execute the production converter, loader, compat inventory, and explicit unsupported boundary, but TEMP-COMPAT removal conditions and the final symbol audit remain open for Task 16A.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/extension/CompatEvidenceContractTest.kt": ["inventory covers the complete public compat adapter surface"], "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionBuildCompatTest.kt": ["real MangaDex headers use host version and Android release ABI"], "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionWebViewUnsupportedCompatTest.kt": ["real Comix WebView path fails fast with the explicit desktop boundary"]}},
+    "verificationScope": "WIRED: consumer-driven inventory and immutable APK fixtures execute the Desktop compatibility adapter; TEMP-COMPAT remains nonterminal until Task 16A.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   }

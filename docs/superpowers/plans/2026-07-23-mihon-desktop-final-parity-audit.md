@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 13
+active-task: Task 14
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -52,7 +52,7 @@ active-task: Task 13
 - [x] Task 10：核验状态批次 E（53、54、56、57、59、61、62、64）
 - [x] Task 11：核验状态批次 F（66、67、68、69、70、71、72、73）
 - [x] Task 12：核验状态批次 G（74、81、82、83、84、85、86、87）
-- [ ] Task 13：核验状态批次 H（88、90、91、92、93、94、95、96）
+- [x] Task 13：核验状态批次 H（88、90、91、92、93、94、95、96）
 - [ ] Task 14：逐项裁决 8 项 `UNCLASSIFIED_DEBT`
 - [ ] Task 15：完成候选平台能力与 `EXEMPT` 审查
 - [ ] Task 16A：审计 compat 与历史格式删除证据（35、74、96）
@@ -323,6 +323,10 @@ active-task: Task 13
 **Verification:** settings/accessibility/maintenance/architecture focused tests 与 parity contract GREEN；已终态 90/91/94 不回退。
 
 **Steps:** 复核 88 的真实共享边界、92 的 Unsupported 子能力反馈、93/95/96 的 production/architecture evidence。
+
+**Audit evidence（已完成）：** ID 90/91/94 的五角色与既有 production behavior fixture 仍闭合，保持 `VERIFIED`，Desktop 独有设置、网格、updater 与诊断能力不回退。ID 88 保持 `CHARACTERIZED` 并转交 Task 14：fixed-main/current Android 原语仍位于 Android `presentation-core/src/main/java`，Desktop 的真实角色、焦点和键盘覆盖属于平台 adapter，尚无 commonMain primitive 或 cross-platform production consumer。ID 92 保持 `CANDIDATE` 并转交 Task 15：production capability 与 Security UI 已隐藏 Unsupported native-notification/telemetry controls 并显示不可用反馈，但 OS credential 与 capture acceptance 仍未闭合。ID 93 提升为 `WIRED` 并转交 Task 14：Desktop Advanced Screen 真实执行 Cookie、缓存与崩溃目录动作/反馈，但没有 shared maintenance use case/result model，Android database/WebView/worker 等语义未闭合。ID 95 提升为 `WIRED` 并转交 Task 16C：两端 Gradle domain 依赖与 Desktop real domain consumer 均存在，但源码/行数 guard 不足以证明 `app-desktop` 的业务边界已终态。ID 96 提升为 `WIRED` 并转交 Task 16A：不可变真实 APK 已穿透 converter、production loader、consumer-driven compat inventory 与明确 Unsupported 边界；`TEMP-COMPAT` 的删除条件与最终符号审计仍未闭合。Task 13 已勾选，控制权推进到未勾选的 Task 14。
+
+**Verification evidence：** Task 13 状态契约先精确 RED 于空 capability set，补齐有限裁决后 `1/1` GREEN；修正无 `DesktopUiDependencies` provider 的既有 `LibraryPageCompositionTest` 候选证据后，改由真实 `LibraryScreenModel → GetLibraryManga` production flow 作为 ID 95 fixture。独立审查继续发现该无效 fixture 残留在 ID 17/Task 3A 完成证据；全局负向守卫精确 RED 于两处引用，移除后 ID 17 仍由 fixed/current/shared/Desktop 四角色、Android production fixture 及 Android/shared/Desktop 行为测试支撑其既有 `VERIFIED`。最终 focused behavior 为 Desktop `72/72`、domain `16/16`、theme `5/5`、Android consumers `7/7`，ordinary parity contract `46/46` GREEN。`spotlessCheck`、Node JSON（64 项、34 个非终态）、计划交接、`git diff --check`、3 files / 367 touched 与 headless 复跑均通过；显式 `finalParityAudit` 唯一按设计 RED，并精确报告相同的 `34` 个非终态 ID。
 
 > Tasks 6–13 共用文件边界：只修改 manifest、parity contract、本计划和至多一个该批现有 protection test；不得把多批产品修复混入状态提交。
 
