@@ -269,7 +269,7 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "WIRED",
-    "statusDecision": {
+    "statusDecisionHistory": [{
       "task": "Task 6",
       "decision": "KEEP_GAP",
       "followUp": "Task 16B",
@@ -285,6 +285,85 @@
           "outer failure records failed state instead of being swallowed"
         ]
       }
+    }],
+    "statusDecision": {
+      "task": "Task 16B",
+      "decision": "EXTRACT",
+      "followUp": "docs/superpowers/plans/2026-07-24-task-16b-background-task-state-machine-closure.md#task-161-shared-task-lifecycle-core",
+      "gap": "Current Android LibraryUpdateJob and its production callers still own WorkManager lifecycle rules without consuming a shared legal-transition core or an Android production-caller behavior test; DesktopTaskScheduler independently owns those transitions.",
+      "behaviorMethods": {
+        "domain/src/commonTest/kotlin/mihon/domain/task/BackgroundTaskContractTest.kt": [
+          "task contract carries constraints checkpoint and idempotency key",
+          "task states are explicit instead of stringly typed"
+        ],
+        "app-desktop/src/test/kotlin/mihon/desktop/task/DesktopTaskSchedulerIntegrationTest.kt": [
+          "checkpoint and cancellation obey legal terminal transitions",
+          "idempotency key deduplicates pending registrations"
+        ],
+        "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt": [
+          "new instance resumes after cursor and never repeats successful manga"
+        ],
+        "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt": [
+          "reinitializing while scheduler runs joins old work and closes old database"
+        ]
+      }
+    },
+    "duplicateBusinessRuleAudit": {
+      "task": "Task 16B",
+      "disposition": "EXTRACT",
+      "fixedOriginalSemantics": [
+        "Periodic scheduling maps interval, network, Wi-Fi, charging and battery restrictions to one unique WorkManager job with linear backoff.",
+        "Manual refresh refuses a second tagged running update and enqueues one unique manual job with KEEP semantics.",
+        "Stopping cancels running tagged work and restores the periodic job; worker cancellation is reported as a non-error terminal result."
+      ],
+      "crossPlatformBugfixes": [
+        "Explicit idempotency keys, checkpoints, typed task states and single-terminal notifications are fork reliability improvements that require one shared transition core; current Android does not consume that core yet."
+      ],
+      "desktopProductDeviations": [
+        "Desktop persists worksets, completed manga IDs, checkpoints and structured partial failures for crash recovery.",
+        "Desktop startup recovery and concurrent runNow occurrence sharing remain Desktop runtime behavior layered on the shared lifecycle."
+      ],
+      "platformSideEffectAdapters": {
+        "android": ["WorkManager constraints, unique-work enqueue/cancel, foreground execution and Android notifications"],
+        "desktop": ["FileTaskCheckpointStore atomic persistence, coroutine runtime ownership and Desktop notifications"]
+      },
+      "productionCallers": {
+        "currentAndroid": [
+          "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt#setupTask/startNow/stop",
+          "app/src/main/java/mihon/core/migration/migrations/SetupLibraryUpdateMigration.kt#LibraryUpdateJob.setupTask",
+          "app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/restorers/PreferenceRestorer.kt#LibraryUpdateJob.setupTask",
+          "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsLibraryScreen.kt#LibraryUpdateJob.setupTask",
+          "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryTab.kt#LibraryUpdateJob.startNow",
+          "app/src/main/java/eu/kanade/tachiyomi/ui/updates/UpdatesScreenModel.kt#LibraryUpdateJob.startNow",
+          "app/src/main/java/eu/kanade/tachiyomi/data/notification/NotificationReceiver.kt#LibraryUpdateJob.stop"
+        ],
+        "shared": ["domain/src/commonMain/kotlin/mihon/domain/task/BackgroundTask.kt#BackgroundTask/TaskConstraint/TaskCheckpoint/TaskStatus"],
+        "desktop": [
+          "app-desktop/src/main/kotlin/mihon/desktop/task/DesktopTaskScheduler.kt#DesktopTaskScheduler",
+          "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateScheduler.kt#start/runNow/cancelUpdate",
+          "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt#DesktopTaskScheduler/LibraryUpdateScheduler bindings"
+        ]
+      },
+      "writerOwnership": {
+        "currentAndroid": "WorkManager owns durable queue and execution state; the Android adapter owns enqueue, cancellation and foreground side effects.",
+        "shared": "The child plan moves legal transition, idempotency and terminal-result decisions into one shared core without owning platform persistence.",
+        "desktop": "FileTaskCheckpointStore remains the Desktop persistence writer while DesktopTaskScheduler delegates legal transition decisions to the shared core."
+      },
+      "behaviorEvidence": {
+        "currentAndroid": [],
+        "shared": [
+          "domain/src/commonTest/kotlin/mihon/domain/task/BackgroundTaskContractTest.kt#task contract carries constraints checkpoint and idempotency key",
+          "domain/src/commonTest/kotlin/mihon/domain/task/BackgroundTaskContractTest.kt#task states are explicit instead of stringly typed"
+        ],
+        "desktop": [
+          "app-desktop/src/test/kotlin/mihon/desktop/task/DesktopTaskSchedulerIntegrationTest.kt#checkpoint and cancellation obey legal terminal transitions",
+          "app-desktop/src/test/kotlin/mihon/desktop/task/DesktopTaskSchedulerIntegrationTest.kt#idempotency key deduplicates pending registrations",
+          "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt#new instance resumes after cursor and never repeats successful manga",
+          "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt#reinitializing while scheduler runs joins old work and closes old database"
+        ]
+      },
+      "missingBehaviorEvidence": "No current Android production caller test fails when LibraryUpdateJob is disconnected from shared lifecycle semantics; Task 162 must add that executable wiring evidence.",
+      "childPlan": "docs/superpowers/plans/2026-07-24-task-16b-background-task-state-machine-closure.md"
     },
     "authoritativeImplementation": "Fixed-main original Mihon capability #10: LibraryUpdateJob schedules constrained Android WorkManager library updates.",
     "desktopImplementation": "DesktopTaskScheduler persists the current shared BackgroundTask contract; scheduling remains a platform adapter.",

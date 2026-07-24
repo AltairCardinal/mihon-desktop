@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 16B
+active-task: Task 16C
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -59,7 +59,7 @@ active-task: Task 16B
   - [x] Task 14C：同步 tracker 并关闭父 Task 14
 - [x] Task 15：完成候选平台能力与 `EXEMPT` 审查
 - [x] Task 16A：审计 compat 与历史格式删除证据（35、74、96）
-- [ ] Task 16B：审计重复业务规则
+- [x] Task 16B：审计重复业务规则
 - [ ] Task 16C：建立 UI→data/network/manager 架构守卫
 - [ ] Task 16D：盘点并约束最终 Test Mode 全场景入口
 - [ ] Task 17：执行并回收真实产品缺口 child plan
@@ -440,6 +440,8 @@ active-task: Task 16B
 1. 只审计业务规则、状态机和 writer ownership，不把合法平台 side effect adapter 判为重复实现。
 2. 固定原版语义、cross-platform bugfix 与 Desktop product deviation 分栏记录。
 3. 需要产品修改时按共享上下文簇输出有限 child plan；不得用源码字符串相同/不同作为完成证据。
+
+**Execution evidence（已完成）：** Task16B 唯一候选为 ID10，唯一裁决 `EXTRACT`；Android WorkManager 与 Desktop checkpoint/runtime 保留为平台 adapter，重复的 lifecycle/idempotency/terminal 规则交给 161–163 有限 child plan。focused 首次精确 RED 于 `expected Task 16B but was Task 6` 后 GREEN `1/1`；ordinary `52/52`、shared `3/3`、Desktop scheduler/recovery/DI `59/59`、Spotless、JSON、双 plan、diff/range/headless guards 全绿。当前 Android 对 `LibraryUpdateJob` 生产调用链的行为测试为 0，因此 ID10 保持 `WIRED`；显式 final gate 仍按设计精确 RED 于 29 个非终态 ID。范围 `4 files / 374 touched`，未修改产品代码。
 
 ### Task 16C：建立 UI→data/network/manager 架构守卫
 
