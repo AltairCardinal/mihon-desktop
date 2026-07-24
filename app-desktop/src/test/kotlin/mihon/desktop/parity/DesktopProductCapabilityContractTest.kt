@@ -59,7 +59,7 @@ class DesktopProductCapabilityContractTest {
                 ),
         )
     private val task3ProvenanceStatuses =
-        mapOf(24 to "SHARED", 26 to "WIRED", 44 to "WIRED", 45 to "WIRED", 47 to "WIRED", 49 to "WIRED", 51 to "WIRED", 53 to "WIRED")
+        mapOf(24 to "SHARED", 26 to "WIRED", 44 to "VERIFIED", 45 to "VERIFIED", 47 to "WIRED", 49 to "VERIFIED", 51 to "WIRED", 53 to "WIRED")
     private val task3BehaviorMethods =
         mapOf(
             24 to
@@ -104,8 +104,6 @@ class DesktopProductCapabilityContractTest {
                 mapOf(
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt" to
                         setOf("grayscale and invert are effective shared filter modes"),
-                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt" to
-                        setOf("reader color matrix production chain delegates through the tested helper"),
                 ),
             53 to
                 mapOf(
@@ -434,6 +432,77 @@ class DesktopProductCapabilityContractTest {
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionDetailsPreferencesWiringTest.kt" to setOf("source preference availability states stay distinct and content persists"),
                 ),
         )
+    private val task9Statuses =
+        mapOf(39 to "WIRED", 40 to "VERIFIED", 43 to "VERIFIED", 44 to "VERIFIED", 45 to "VERIFIED", 47 to "WIRED", 49 to "VERIFIED", 51 to "WIRED")
+    private val task9FollowUps =
+        mapOf(39 to "Task 14", 40 to "NONE", 43 to "NONE", 44 to "NONE", 45 to "NONE", 47 to "Task 9A child plan", 49 to "NONE", 51 to "Task 9A child plan")
+    private val task9BehaviorMethods =
+        mapOf(
+            39 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/network/DesktopBrowserLoginAdapterTest.kt" to setOf(
+                        "opens external browser then commits controlled completion through the real jar",
+                        "production committer late persistence failure publishes commit failed and restores old jar and file",
+                    ),
+                ),
+            40 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/network/DesktopChallengeRecoveryPolicyTest.kt" to setOf(
+                        "production client exposes upstream cloudflare interceptor runtime contract",
+                        "successful recovery retries the intercepted request at most once",
+                        "solver failure empty cookies and malformed response preserve old credentials",
+                    ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/cloudflare/DesktopChallengeLoginWiringTest.kt" to setOf(
+                        "controller manual solver cancel and retry actions obey state and current resolver",
+                    ),
+                ),
+            43 to
+                mapOf(
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt" to setOf("fork-added pairing adapter and shared core produce the same enhancement vectors"),
+                    "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt" to setOf("fork-added shared portrait pairing enhancement groups adjacent pages"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt" to setOf("LTR single spread produces LEFT then RIGHT"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt" to setOf("shared pairing keeps cover edge matching adjust and landscape parity enhancements"),
+                ),
+            44 to
+                mapOf(
+                    "app/src/test/java/eu/kanade/tachiyomi/data/coil/AndroidReaderPageDecoderContractTest.kt" to setOf("Android reader cache adapter keeps tiled pages out of Coil decoded caches"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt" to setOf("Skia region adapter decodes only the requested tile"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt" to setOf("ordinary non large page path still enforces decoded dimension bounds"),
+                ),
+            45 to
+                mapOf(
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoaderIntegrationTest.kt" to setOf("rapid zero one two selection cancels stale jobs without error and reorders current first"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt" to setOf(
+                        "fast page change cancels stale preload and prevents a late cache write",
+                        "page change cancels every active or queued old generation request",
+                    ),
+                ),
+            47 to
+                mapOf(
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterTransitionIntegrationTest.kt" to setOf(
+                        "previous and next errors retain their own retry target",
+                        "both chapter edges map to explicit shared boundaries without a target",
+                    ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to setOf(
+                        "production adjacent chain publishes loading error retry loaded and navigates with loaded pages",
+                        "both adjacent boundaries never invoke the production loader",
+                    ),
+                ),
+            49 to
+                mapOf(
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt" to setOf("current Android consumer navigation adapters match every shared preset and inversion"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/TapZoneTest.kt" to setOf("tap regions delegate to the shared navigation presets"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderKeyboardNavigationPositionTest.kt" to setOf("all tap presets move logical pages before mapping to LTR pager storage"),
+                ),
+            51 to
+                mapOf(
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt" to setOf("current Android consumer grayscale and invert preferences map to the shared filter contract"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt" to setOf("grayscale and invert survive preference round trip"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt" to setOf(
+                        "disabled grayscale invert and combined color matrices transform pixels",
+                    ),
+                ),
+        )
     private val validTags =
         setOf(
             "SHARE-DIRECT",
@@ -467,7 +536,7 @@ class DesktopProductCapabilityContractTest {
             37 to "VERIFIED",
             38 to "WIRED",
             39 to "WIRED",
-            40 to "WIRED",
+            40 to "VERIFIED",
             87 to "SHARED",
         )
     private val allowedDeviationClassifications =
@@ -1143,13 +1212,6 @@ class DesktopProductCapabilityContractTest {
                         mapOf(
                             "disabled grayscale invert and combined color matrices transform pixels" to
                                 setOf("readerColorMatrix", "transform("),
-                            "reader color matrix production chain delegates through the tested helper" to
-                                setOf(
-                                    "ReaderVisualComponents.kt",
-                                    "DesktopReaderScreen.kt",
-                                    "readerColorMatrix(colorFilter)",
-                                    "readerColorTransform(state.colorFilter)",
-                                ),
                         ),
                 ),
             54 to
@@ -1723,7 +1785,7 @@ class DesktopProductCapabilityContractTest {
         val parentPlanPath = "docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"
         val plan = Files.readString(repositoryRoot.resolve(parentPlanPath))
         assertTrue(
-            markdownFrontmatter(plan)["active-task"] in setOf("Task 7", "Task 7A child plan", "Task 7R2 replan", "Task 8", "Task 9"),
+            markdownFrontmatter(plan)["active-task"] in setOf("Task 7", "Task 7A child plan", "Task 7R2 replan", "Task 8", "Task 9", "Task 9A child plan", "Task 9R replan", "Task 10"),
             "Completed Task 6 must advance to Task 7, its active child plan, or the next completed-batch task",
         )
         val childPlanPath = repositoryRoot.resolve("docs/superpowers/plans/2026-07-24-task-6a-desktop-crash-log-failure-boundary.md")
@@ -1802,7 +1864,7 @@ class DesktopProductCapabilityContractTest {
         }
 
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
-        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 8", "Task 9"), "Completed Task 7 must advance to Task 8 or later")
+        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 8", "Task 9", "Task 9A child plan", "Task 9R replan", "Task 10"), "Completed Task 7 must advance to Task 8 or later")
         assertTrue(Regex("""(?m)^- \[x] Task 7[：:]""").containsMatchIn(plan), "Completed Task 7 must be checked")
         assertTrue("6fb82074adeceda25be2f3a12621ce510fd0423c" in plan, "Task 7 closeout must retain R1 evidence")
         assertTrue("af9c522ec9f5c7032ebe3503bab6f9a6a1659e6f" in plan, "Task 7 closeout must retain R2 evidence")
@@ -1877,8 +1939,98 @@ class DesktopProductCapabilityContractTest {
         assertTrue("TEMP-COMPAT" in compat.getValue("tags").jsonArray.map { it.jsonPrimitive.content })
         assertTrue(requiredText(compat.getValue("statusDecision").jsonObject, "gap", 35, "statusDecision").contains("fixture"))
         val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
-        assertEquals("Task 9", markdownFrontmatter(plan)["active-task"], "Completed Task 8 must advance to Task 9")
+        assertTrue(markdownFrontmatter(plan)["active-task"] in setOf("Task 9", "Task 9A child plan", "Task 9R replan", "Task 10"), "Completed Task 8 must advance to Task 9 or later")
         assertTrue(Regex("""(?m)^- \[x] Task 8[：:]""").containsMatchIn(plan), "Completed Task 8 must be checked")
+    }
+
+    @Test
+    fun `task 9 status batch promotes only closed login challenge and reader evidence`() {
+        val repositoryRoot = repositoryRoot()
+        val inventory = fixedMainPathInventory(repositoryRoot)
+        val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
+        val task9DecisionIds =
+            items.filterValues { item ->
+                item.jsonObject["statusDecision"]?.jsonObject?.get("task")?.jsonPrimitive?.content == "Task 9"
+            }.keys
+        assertEquals(task9Statuses.keys, task9DecisionIds, "Task 9 capability set")
+        task9Statuses.forEach { (id, expectedStatus) ->
+            val item = items.getValue(id).jsonObject
+            assertEquals(expectedStatus, requiredText(item, "status", id), "ID $id Task 9 status")
+            val decision = item.getValue("statusDecision").jsonObject
+            assertEquals("Task 9", requiredText(decision, "task", id, "statusDecision"))
+            val verified = id !in setOf(39, 47, 51)
+            assertEquals(if (verified) "PROMOTE_VERIFIED" else "KEEP_GAP", requiredText(decision, "decision", id, "statusDecision"))
+            assertEquals(task9FollowUps.getValue(id), requiredText(decision, "followUp", id, "statusDecision"))
+            val gap = requiredText(decision, "gap", id, "statusDecision")
+            if (verified) {
+                assertEquals("NONE", gap, "ID $id verified gap")
+                validateRoleEvidence(item, repositoryRoot, inventory)
+            } else {
+                assertTrue(gap != "NONE", "ID $id must retain a concrete gap")
+            }
+            val behaviorMethods =
+                decision.getValue("behaviorMethods").jsonObject.mapValues { (_, methods) ->
+                    methods.jsonArray.map { it.jsonPrimitive.content }.toSet()
+                }
+            assertEquals(task9BehaviorMethods.getValue(id), behaviorMethods, "ID $id Task 9 behavior methods")
+            val protectionTests = item.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content }.toSet()
+            assertTrue(behaviorMethods.keys.all(protectionTests::contains), "ID $id Task 9 behavior methods must be protection tests")
+            behaviorMethods.forEach { (path, methods) ->
+                val source = Files.readString(repositoryRoot.resolve(path))
+                methods.forEach { method ->
+                    assertTrue("assert" in kotlinTestMethod(source, method, "ID $id Task 9 behavior $path#$method"))
+                }
+            }
+        }
+
+        val login = items.getValue(39).jsonObject
+        val loginDebt =
+            login.getValue("deviations").jsonArray
+                .map { requiredText(it.jsonObject, "classification", 39, "deviations") }
+        assertTrue("UNCLASSIFIED_DEBT" in loginDebt, "ID 39 must retain the embedded WebView debt for Task 14")
+        assertTrue(
+            requiredText(login.getValue("statusDecision").jsonObject, "gap", 39, "statusDecision").contains("embedded WebView"),
+            "ID 39 gap must name the missing embedded WebView parity",
+        )
+        assertTrue(
+            requiredText(items.getValue(47).jsonObject.getValue("statusDecision").jsonObject, "gap", 47, "statusDecision").contains("source scan"),
+            "ID 47 gap must name the non-executable holder wiring evidence",
+        )
+        assertTrue(
+            requiredText(items.getValue(51).jsonObject.getValue("statusDecision").jsonObject, "gap", 51, "statusDecision").contains("source scan"),
+            "ID 51 gap must name the non-executable Compose wiring evidence",
+        )
+        val colorScanMethod = "reader color matrix production chain delegates through the tested helper"
+        val colorTopLevelMethods = items.getValue(51).jsonObject.getValue("behaviorMethods").jsonObject.values.flatMap { it.jsonArray }.map { it.jsonPrimitive.content }
+        assertTrue(colorScanMethod !in colorTopLevelMethods, "ID 51 top-level behaviorMethods must reject source scan evidence")
+        assertTrue(task3BehaviorMethods.getValue(51).values.none { colorScanMethod in it }, "ID 51 Task 3 history must reject source scan evidence")
+        assertTrue(readerBehaviorEvidence.getValue(51).values.none { colorScanMethod in it }, "ID 51 reader behavior map must reject source scan evidence")
+
+        val dualPage = items.getValue(43).jsonObject
+        val fixedPaths =
+            dualPage.getValue("roleEvidence").jsonObject
+                .getValue("FIXED_ORIGINAL").jsonArray
+                .map { requiredText(it.jsonObject, "path", 43, "roleEvidence.FIXED_ORIGINAL") }
+        assertTrue(fixedPaths.none(forkOnlyReaderPairingPaths::contains), "ID 43 fork pairing must not masquerade as fixed original")
+        assertTrue(
+            "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerViewerAdapter.kt" in fixedPaths,
+            "ID 43 fixed role must retain original pager viewer authority",
+        )
+        val classifications =
+            dualPage.getValue("deviations").jsonArray
+                .map { requiredText(it.jsonObject, "classification", 43, "deviations") }
+        assertTrue("CROSS_PLATFORM_PRODUCT_ENHANCEMENT" in classifications, "ID 43 portrait pairing must stay an explicit enhancement")
+
+        val plan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
+        assertEquals("Task 9R replan", markdownFrontmatter(plan)["active-task"], "Task 9 audit gap must activate Task 9R")
+        assertTrue(Regex("""(?m)^- \[ ] Task 9[：:]""").containsMatchIn(plan), "Task 9 must remain unchecked")
+        val child = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-24-task-9a-reader-wiring-protection.md"))
+        assertEquals("planned", markdownFrontmatter(child)["status"])
+        assertEquals("Task 9", markdownFrontmatter(child)["parent"])
+        assertEquals("[47, 51]", markdownFrontmatter(child)["capability-ids"])
+        val replan = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-24-task-9-status-d-replan.md"))
+        assertEquals("active", markdownFrontmatter(replan)["status"])
+        assertEquals("Task 9", markdownFrontmatter(replan)["parent-task"])
     }
 
     @Test
@@ -2372,11 +2524,11 @@ class DesktopProductCapabilityContractTest {
         val items = manifestItems(repositoryRoot()).associateBy { validatedId(it.jsonObject) }
         val expectedStatuses = mapOf(
             9 to "VERIFIED",
-            43 to "WIRED",
-            44 to "WIRED",
-            45 to "WIRED",
+            43 to "VERIFIED",
+            44 to "VERIFIED",
+            45 to "VERIFIED",
             47 to "WIRED",
-            49 to "WIRED",
+            49 to "VERIFIED",
             51 to "WIRED",
             54 to "WIRED",
         )

@@ -1238,6 +1238,15 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "WIRED",
+    "statusDecision": {
+      "task": "Task 9",
+      "decision": "KEEP_GAP",
+      "followUp": "Task 14",
+      "gap": "Desktop source login uses a controlled external browser and real cookie commit feedback, but it has no embedded WebView equivalent for fixed-main WebView navigation and cookie synchronization; the existing UNCLASSIFIED_DEBT remains unresolved.",
+      "behaviorMethods": {
+        "app-desktop/src/test/kotlin/mihon/desktop/network/DesktopBrowserLoginAdapterTest.kt": ["opens external browser then commits controlled completion through the real jar", "production committer late persistence failure publishes commit failed and restores old jar and file"]
+      }
+    },
     "authoritativeImplementation": "Fixed-main original Mihon capability #39: WebView/源登录",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
@@ -1272,7 +1281,17 @@
       "PLATFORM-ADAPTER",
       "DESKTOP-PRODUCT"
     ],
-    "status": "WIRED",
+    "status": "VERIFIED",
+    "statusDecision": {
+      "task": "Task 9",
+      "decision": "PROMOTE_VERIFIED",
+      "followUp": "NONE",
+      "gap": "NONE",
+      "behaviorMethods": {
+        "app-desktop/src/test/kotlin/mihon/desktop/network/DesktopChallengeRecoveryPolicyTest.kt": ["production client exposes upstream cloudflare interceptor runtime contract", "successful recovery retries the intercepted request at most once", "solver failure empty cookies and malformed response preserve old credentials"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/cloudflare/DesktopChallengeLoginWiringTest.kt": ["controller manual solver cancel and retry actions obey state and current resolver"]
+      }
+    },
     "authoritativeImplementation": "Fixed-main original Mihon capability #40: Cloudflare 绕过",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
@@ -1290,8 +1309,16 @@
       "app-desktop/src/main/kotlin/mihon/desktop/network/CloudflareChallengeManager.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/network/DesktopCloudflareInterceptor.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/network/FlareSolverrClient.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/cloudflare/CloudflareBypassDialog.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/cloudflare/CloudflareBypassDialog.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopNetworkHelper.kt"
     ],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareInterceptor.kt", "symbol": "class CloudflareInterceptor(", "line": 25}],
+      "CURRENT_ANDROID": [{"path": "core/common/src/androidMain/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareInterceptor.kt", "symbol": "class CloudflareInterceptor(", "line": 25}],
+      "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/network/DesktopCloudflareInterceptor.kt", "symbol": "typealias DesktopCloudflareInterceptor", "line": 61}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopNetworkHelper.kt", "symbol": "class DesktopNetworkHelper(", "line": 19}],
+      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/network/DesktopChallengeRecoveryPolicyTest.kt#production client exposes upstream cloudflare interceptor runtime contract", "productionMarkers": ["DesktopNetworkHelper(", "simpleName == \"CloudflareInterceptor\""]}]
+    },
     "deviations": [
       { "classification": "DESKTOP_PRODUCT", "description": "FlareSolverr is an explicit user-selected Desktop fallback, never fixed-main behavior." },
       { "classification": "PLATFORM_ADAPTER", "description": "Desktop challenge and cookie integration must not silently replace normal requests." }
@@ -1313,7 +1340,19 @@
       "SHARE-EXTRACT",
       "DESKTOP-PRODUCT"
     ],
-    "status": "WIRED",
+    "status": "VERIFIED",
+    "statusDecision": {
+      "task": "Task 9",
+      "decision": "PROMOTE_VERIFIED",
+      "followUp": "NONE",
+      "gap": "NONE",
+      "behaviorMethods": {
+        "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt": ["fork-added pairing adapter and shared core produce the same enhancement vectors"],
+        "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt": ["fork-added shared portrait pairing enhancement groups adjacent pages"],
+        "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt": ["LTR single spread produces LEFT then RIGHT"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt": ["shared pairing keeps cover edge matching adjust and landscape parity enhancements"]
+      }
+    },
     "authoritativeImplementation": "fixed main 的 PagerViewerAdapter/PagerPageHolder 与 WebtoonAdapter/WebtoonPageHolder 提供单页顺序、RTL 反转、章节过渡与同一宽源页拆分/旋转；固定原版没有相邻 portrait 页配对默认算法",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
@@ -1326,6 +1365,7 @@
     ],
     "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt"],
     "currentAndroidConsumerPaths": [
+      "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerViewerAdapter.kt",
       "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagePairingAlgorithm.kt",
       "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PairingState.kt",
       "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/DualPageViewerAdapter.kt"
@@ -1335,6 +1375,19 @@
       "app-desktop/src/main/kotlin/mihon/desktop/reader/DualPageState.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/PageSplitHalf.kt"
     ],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerViewerAdapter.kt", "symbol": "class PagerViewerAdapter", "line": 18}],
+      "CURRENT_ANDROID": [
+        {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerViewerAdapter.kt", "symbol": "class PagerViewerAdapter", "line": 18},
+        {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagePairingAlgorithm.kt", "symbol": "ReaderPagePairing.build(", "line": 13}
+      ],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt", "symbol": "object ReaderPagePairing", "line": 122}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/reader/VirtualPageList.kt", "symbol": "fun buildVirtualPageList(", "line": 8}],
+      "FIXTURE": [
+        {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt#fork-added pairing adapter and shared core produce the same enhancement vectors", "productionMarkers": ["PagePairingAlgorithm.buildPairings", "ReaderPagePairing.build"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt#LTR single spread produces LEFT then RIGHT", "productionMarkers": ["buildVirtualPageList", "PageSplitHalf.LEFT"]}
+      ]
+    },
     "deviations": [
       { "classification": "CROSS_PLATFORM_PRODUCT_ENHANCEMENT", "description": "ReaderPagePairing/ReaderPairingState pair adjacent portrait pages and power current Android/Desktop dual-page modes; these fork-added classes are absent from fixed main." },
       { "classification": "DESKTOP_PRODUCT", "description": "Cover single, manual spread adjustment, edge matching and landscape parity remain explicit Desktop product options." },
@@ -1358,7 +1411,18 @@
     "tags": [
       "PLATFORM-ADAPTER"
     ],
-    "status": "WIRED",
+    "status": "VERIFIED",
+    "statusDecision": {
+      "task": "Task 9",
+      "decision": "PROMOTE_VERIFIED",
+      "followUp": "NONE",
+      "gap": "NONE",
+      "behaviorMethods": {
+        "app/src/test/java/eu/kanade/tachiyomi/data/coil/AndroidReaderPageDecoderContractTest.kt": ["Android reader cache adapter keeps tiled pages out of Coil decoded caches"],
+        "app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt": ["Skia region adapter decodes only the requested tile"],
+        "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt": ["ordinary non large page path still enforces decoded dimension bounds"]
+      }
+    },
     "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt 定义区域解码请求、结果尺寸和缓存字节预算；app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ReaderPageImageView.kt 将 Android tile reader 映射为共享无重复完整解码缓存策略",
     "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopPageDecoders.kt 通过 SkiaRegionPageDecoder 物化有界输出，app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt 禁止超大完整 bitmap 长驻普通缓存",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -1391,7 +1455,17 @@
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "WIRED",
+    "status": "VERIFIED",
+    "statusDecision": {
+      "task": "Task 9",
+      "decision": "PROMOTE_VERIFIED",
+      "followUp": "NONE",
+      "gap": "NONE",
+      "behaviorMethods": {
+        "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoaderIntegrationTest.kt": ["rapid zero one two selection cancels stale jobs without error and reorders current first"],
+        "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt": ["fast page change cancels stale preload and prevents a late cache write", "page change cancels every active or queued old generation request"]
+      }
+    },
     "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt 的 ReaderPreloadPlanner 统一窗口、优先级、generation、取消与淘汰；app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt 消费同一规划器并保留 Android 前向 4 页权威配置",
     "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt 消费共享规划器并取消旧协程、拒绝过期回填、淘汰旧窗口",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -1424,6 +1498,16 @@
       "SHARE-EXTRACT"
     ],
     "status": "WIRED",
+    "statusDecision": {
+      "task": "Task 9",
+      "decision": "KEEP_GAP",
+      "followUp": "Task 9A child plan",
+      "gap": "Android PagerTransitionHolder/WebtoonTransitionHolder sharedStateFlow wiring is covered only by a production source scan; existing executable tests validate the shared model but do not instantiate and drive both holders.",
+      "behaviorMethods": {
+        "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterTransitionIntegrationTest.kt": ["previous and next errors retain their own retry target", "both chapter edges map to explicit shared boundaries without a target"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt": ["production adjacent chain publishes loading error retry loaded and navigates with loaded pages", "both adjacent boundaries never invoke the production loader"]
+      }
+    },
     "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt 统一 Wait/Loading/Loaded/Error、相邻章节、缺章数、边界与重试命令；app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt 发布共享状态，app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt 与 app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonTransitionHolder.kt 均消费 sharedStateFlow 并处理 Loading/Error/Loaded",
     "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt 与 app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt 消费共享状态，app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt 提供可操作 Retry、Continue/Dismiss 过渡和章节边界反馈",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -1458,7 +1542,18 @@
       "SHARE-DIRECT",
       "DESKTOP-PRODUCT"
     ],
-    "status": "WIRED",
+    "status": "VERIFIED",
+    "statusDecision": {
+      "task": "Task 9",
+      "decision": "PROMOTE_VERIFIED",
+      "followUp": "NONE",
+      "gap": "NONE",
+      "behaviorMethods": {
+        "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt": ["current Android consumer navigation adapters match every shared preset and inversion"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/TapZoneTest.kt": ["tap regions delegate to the shared navigation presets"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderKeyboardNavigationPositionTest.kt": ["all tap presets move logical pages before mapping to LTR pager storage"]
+      }
+    },
     "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderNavigation.kt 固化 Android RightAndLeft、L、Kindle、Edge、Disabled 区域及横向/纵向反转语义；app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ViewerNavigation.kt 从共享区域构建 Android RectF",
     "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/TapZone.kt 与 app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderKeyboardAction.kt 把鼠标/键盘映射到共享命令",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -1493,6 +1588,17 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "WIRED",
+    "statusDecision": {
+      "task": "Task 9",
+      "decision": "KEEP_GAP",
+      "followUp": "Task 9A child plan",
+      "gap": "Desktop ReaderViewport -> readerColorTransform -> readerColorMatrix Compose/Modifier production wiring is covered only by a source scan; pixel transforms and preference round trips execute, but the mounted render chain is not driven.",
+      "behaviorMethods": {
+        "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt": ["current Android consumer grayscale and invert preferences map to the shared filter contract"],
+        "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt": ["grayscale and invert survive preference round trip"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt": ["disabled grayscale invert and combined color matrices transform pixels"]
+      }
+    },
     "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt 的 ReaderColorFilterParams 统一亮度、色调、灰度、反色、归一化与 effective 语义；app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderColorFilter.kt 映射参数，app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt 以共享 effective/normalized 驱动 Android 硬件图层",
     "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderSettingsPanel.kt、app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt 与 app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt 提供持久化开关；app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt 的 readerColorTransform 委托 readerColorMatrix 构建 Compose ColorMatrix 并实际渲染灰度/反色",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -1515,7 +1621,7 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt"
     ],
-    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt": ["grayscale and invert are effective shared filter modes"], "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt": ["reader color matrix production chain delegates through the tested helper"]},
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt": ["grayscale and invert are effective shared filter modes"]},
     "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
