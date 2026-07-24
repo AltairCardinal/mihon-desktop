@@ -4,7 +4,7 @@ parent-task: Task 14
 task-base: 0c6d360441c6ba64613063db7b197c0f88fa3d08
 original-ref: main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status: planned
-active-task: Task 141
+active-task: Task 142
 ---
 
 # Task 14 产品 parity 缺口收口计划
@@ -21,7 +21,7 @@ active-task: Task 141
 
 ## Task 总览
 
-- [ ] Task 141：A1 ID 3 Android shared screen state
+- [x] Task 141：A1 ID 3 Android shared screen state
 - [ ] Task 142：A2 ID 3 Desktop screen state consumer
 - [ ] Task 143：A3 ID 32 Android extension repository wiring
 - [ ] Task 144：A4 ID 32 Desktop extension repository wiring
@@ -35,7 +35,8 @@ active-task: Task 141
 
 **Risk axis:** android-source-state
 **Platform boundary:** shared+android
-**Estimated scope:** 4 files, 320 lines
+**Estimated scope:** 5 files, 340 lines
+**Scope correction:** 仅新增本进度计划持久化文件，产品与测试边界仍为原 4 文件。
 
 **Files:**
 - Create: `domain/src/commonMain/kotlin/mihon/domain/source/model/SourceScreenState.kt`
@@ -50,6 +51,8 @@ active-task: Task 141
 **Mutation:** 断开 reducer 或重复消费 event，确认对应测试精确变红后恢复。
 **Verification:** domain state test、Android consumer test、父 parity contract、Spotless。
 **Desktop zero-regression:** 本 Task 不改 Desktop；A2 必须保留现有最近使用、置顶、语言和本地源行为。
+**Execution evidence（已完成）：** fixed original 仅为 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`；shared reducer 统一 loading/content/empty/retryable failure 与 disabled/pinned/retryable failure 一次性事件，Android production `SourcesScreenModel` 保留 Voyager lifecycle，并从 reducer 的 domain `Source` 输出生成原有 last-used/pinned/lang/local-source UI 分组。原始 domain 测试精确编译 RED 于全部 shared 类型缺失；Android 首次可运行失败只是 IO dispatcher 时序，不计 wiring RED。随后断开 production reducer 精确 timeout RED，重复消费 mutation 精确 RED 于 pending event 未清；repair 再以错误 ID 仍清事件 mutation 精确 RED 于 state identity，并以 disable 参数 `false→true` mutation 精确 RED 于 `ActionFailed/Disabled` 类型。恢复后 domain `3/3`、Android production `2/2` GREEN。
+**Runtime evidence：** `assembleDebug` GREEN；x86_64 APK 在 Android 16 `emulator-5556` 安装成功，`aapt` 与 PackageManager 均列出 `MainActivity` launcher，但 runtime resolver 返回 `No activity found`、显式启动返回 `Error type 3`，因此未虚报 Browse→Sources UI 通过，交 Task142 前保留该环境验收缺口。
 
 ### Task 142 A2 ID 3 Desktop screen state consumer
 

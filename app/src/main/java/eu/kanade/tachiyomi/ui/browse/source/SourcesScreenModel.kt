@@ -11,11 +11,17 @@ import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import logcat.LogPriority
+import mihon.domain.source.model.SourceScreenAction
+import mihon.domain.source.model.SourceScreenContent
+import mihon.domain.source.model.SourceScreenReducer
+import mihon.domain.source.model.SourceScreenState
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.source.model.Pin
@@ -28,16 +34,25 @@ class SourcesScreenModel(
     private val getEnabledSources: GetEnabledSources = Injekt.get(),
     private val toggleSource: ToggleSource = Injekt.get(),
     private val toggleSourcePin: ToggleSourcePin = Injekt.get(),
+    private val sourceReducer: SourceScreenReducer = SourceScreenReducer(),
 ) : StateScreenModel<SourcesScreenModel.State>(State()) {
 
     private val _events = Channel<Event>(Int.MAX_VALUE)
     val events = _events.receiveAsFlow()
+    private val _sourceState = MutableStateFlow(SourceScreenState())
+    val sourceState = _sourceState.asStateFlow()
 
     init {
+        observeSources()
+    }
+
+    private fun observeSources() {
         screenModelScope.launchIO {
             getEnabledSources.subscribe()
-                .catch {
-                    logcat(LogPriority.ERROR, it)
+                .catch { throwable ->
+                    logcat(LogPriority.ERROR, throwable)
+                    _sourceState.update { sourceReducer.loadFailed(it, throwable.message ?: "source load failed") }
+                    mutableState.update { it.copy(isLoading = false) }
                     _events.send(Event.FailedFetchingSources)
                 }
                 .collectLatest(::collectLatestSources)
@@ -45,6 +60,8 @@ class SourcesScreenModel(
     }
 
     private fun collectLatestSources(sources: List<Source>) {
+        _sourceState.update { sourceReducer.loaded(it, sources) }
+        val reducedSources = (sourceState.value.content as? SourceScreenContent.Content)?.sources.orEmpty()
         mutableState.update { state ->
             val map = TreeMap<String, MutableList<Source>> { d1, d2 ->
                 // Sources without a lang defined will be placed at the end
@@ -58,7 +75,7 @@ class SourcesScreenModel(
                     else -> d1.compareTo(d2)
                 }
             }
-            val byLang = sources.groupByTo(map) {
+            val byLang = reducedSources.groupByTo(map) {
                 when {
                     it.isUsedLast -> LAST_USED_KEY
                     Pin.Actual in it.pin -> PINNED_KEY
@@ -83,11 +100,32 @@ class SourcesScreenModel(
     }
 
     fun toggleSource(source: Source) {
-        toggleSource.await(source)
+        runCatching { toggleSource.await(source, enable = false) }
+            .onSuccess { _sourceState.update { sourceReducer.disabled(it, source.id, disabled = true) } }
+            .onFailure { actionFailed(SourceScreenAction.DISABLE, it) }
     }
 
     fun togglePin(source: Source) {
-        toggleSourcePin.await(source)
+        runCatching { toggleSourcePin.await(source) }
+            .onSuccess { _sourceState.update { sourceReducer.pinned(it, source.id, Pin.Actual !in source.pin) } }
+            .onFailure { actionFailed(SourceScreenAction.PIN, it) }
+    }
+
+    fun consumeSourceEvent(eventId: Long) {
+        _sourceState.update { sourceReducer.consumeEvent(it, eventId) }
+    }
+
+    fun retrySources() {
+        if (sourceState.value.content !is SourceScreenContent.Failure) return
+        _sourceState.update(sourceReducer::loading)
+        mutableState.update { it.copy(isLoading = true) }
+        observeSources()
+    }
+
+    private fun actionFailed(action: SourceScreenAction, throwable: Throwable) {
+        logcat(LogPriority.ERROR, throwable)
+        _sourceState.update { sourceReducer.actionFailed(it, action, throwable.message ?: "source action failed") }
+        _events.trySend(Event.FailedFetchingSources)
     }
 
     fun showSourceDialog(source: Source) {
