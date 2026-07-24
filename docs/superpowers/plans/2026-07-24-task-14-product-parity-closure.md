@@ -4,7 +4,7 @@ parent-task: Task 14
 task-base: 0c6d360441c6ba64613063db7b197c0f88fa3d08
 original-ref: main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status: planned
-active-task: Task 142
+active-task: Task 143
 ---
 
 # Task 14 产品 parity 缺口收口计划
@@ -22,7 +22,7 @@ active-task: Task 142
 ## Task 总览
 
 - [x] Task 141：A1 ID 3 Android shared screen state
-- [ ] Task 142：A2 ID 3 Desktop screen state consumer
+- [x] Task 142：A2 ID 3 Desktop screen state consumer
 - [ ] Task 143：A3 ID 32 Android extension repository wiring
 - [ ] Task 144：A4 ID 32 Desktop extension repository wiring
 - [ ] Task 145：B1 ID 69 Android provider-neutral core
@@ -76,6 +76,7 @@ active-task: Task 142
 **Verification:** shared state、Desktop model/projector、父 parity contract、Spotless。
 **Desktop zero-regression:** 最近使用、置顶、语言分组、禁用源、本地源入口与排序完全保留。
 
+**Execution evidence（已完成）：** Desktop production `DesktopSourcesScreenModel` 直接收集真实 `SourceManager.catalogueSources` 与 language/disabled/pinned/last-used preferences，复用 A1 `SourceScreenReducer` 生成 loading/content/empty/retryable failure 和 pin 一次性结果；`BrowseSourceListScreen` 仅收集 model state，经 shared-aware projector 保留 last-used→pinned→language 排序、disabled/language 过滤、本地源、源选择与搜索，并以稳定 Snackbar 反馈后消费 event。RED 精确编译失败于 model/projector shared consumer 缺失，接线前 mounted Screen 精确 timeout RED 于 pin feedback；event-consume no-op mutation 精确 RED 于 pending `Pinned` 未清，恢复后 model `2/2`、projector `3/3`、mounted wiring `1/1` GREEN。修复验证用真实已移除 Preferences 节点触发首次 pin 读取失败，model 断言 `ActionFailed(PIN, "source pin failed")`，mounted Screen 断言同文案 Snackbar；删除 `onFailure` 时两项精确 RED，恢复后 `2/2` GREEN。
 ### Task 143 A3 ID 32 Android extension repository wiring
 
 **Risk axis:** android-extension-repo-crud

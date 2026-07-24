@@ -58,9 +58,11 @@ class FakeHttpSource(
     override fun imageUrlParse(response: Response): String = ""
 }
 
-class FakeDesktopSourceManager(private val sources: List<CatalogueSource>) : SourceManager {
+class FakeDesktopSourceManager(
+    private val sources: List<CatalogueSource>,
+    override val catalogueSources: Flow<List<CatalogueSource>> = flowOf(sources),
+) : SourceManager {
     override val isInitialized: StateFlow<Boolean> = MutableStateFlow(true)
-    override val catalogueSources: Flow<List<CatalogueSource>> = flowOf(sources)
     override fun getCatalogueSources(): List<CatalogueSource> = sources
     override fun getOnlineSources(): List<HttpSource> = sources.filterIsInstance<HttpSource>()
     override fun getStubSources(): List<StubSource> = emptyList()

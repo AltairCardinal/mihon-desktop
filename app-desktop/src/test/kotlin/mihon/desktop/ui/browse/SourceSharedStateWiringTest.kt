@@ -290,17 +290,25 @@ class SourceSharedStateWiringTest {
                     delay(10)
                 }
             }
+            suspend fun awaitSharedFeedback(scene: ImageComposeScene, message: String) = withTimeout(2_000) {
+                while (!rendered(scene).contains(message)) {
+                    scene.render()
+                    delay(10)
+                }
+            }
 
             val preferences = DesktopAppPreferences(DesktopPreferenceStore(root))
             preferences.enabledLanguages.set(setOf("en"))
             val mountedScene = scene(preferences)
             val pinLabel = "${MR.strings.action_pin.localized(locale)} ${zeta.name}"
             val unpinLabel = "${MR.strings.action_unpin.localized(locale)} ${zeta.name}"
+            awaitFeedback(mountedScene, pinLabel)
             val pin = semantics(mountedScene).first {
                 it.config.contains(SemanticsActions.OnClick) && it.hasContentDescription(pinLabel)
             }
             assertTrue(requireNotNull(pin.config[SemanticsActions.OnClick].action).invoke())
             awaitFeedback(mountedScene, unpinLabel)
+            awaitSharedFeedback(mountedScene, "Pinned ${zeta.name}")
             assertEquals(setOf(zeta.id.toString()), preferences.pinnedSources.get())
             assertTrue(rendered(mountedScene).indexOf(zeta.name) < rendered(mountedScene).indexOf(alpha.name))
 
@@ -319,10 +327,13 @@ class SourceSharedStateWiringTest {
             awaitFeedback(mountedScene, unpinLabel)
             assertEquals(setOf(zeta.id.toString()), preferences.pinnedSources.get())
             assertTrue(rendered(mountedScene).indexOf(zeta.name) < rendered(mountedScene).indexOf(alpha.name))
+            root.removeNode()
+            assertTrue(requireNotNull(unpin.config[SemanticsActions.OnClick].action).invoke())
+            awaitSharedFeedback(mountedScene, "source pin failed")
             mountedScene.close()
         } finally {
             Locale.setDefault(previousLocale)
-            root.removeNode()
+            runCatching { root.removeNode() }
         }
     }
 

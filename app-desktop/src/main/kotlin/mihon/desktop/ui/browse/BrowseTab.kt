@@ -34,10 +34,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.unit.dp
+import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -56,9 +60,10 @@ import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import eu.kanade.tachiyomi.source.CatalogueSource
 import mihon.desktop.ui.extension.ExtensionListScreen
-import mihon.desktop.source.selectEnabledCatalogueSourceCandidates
-import tachiyomi.core.common.preference.getAndSet
-import tachiyomi.domain.source.service.SourceManager
+import mihon.domain.source.model.SourceScreenContent
+import mihon.domain.source.model.SourceScreenEvent
+import mihon.domain.source.model.SourceScreenState
+import tachiyomi.domain.source.model.Pin
 import tachiyomi.i18n.MR
 import java.util.Locale
 
@@ -68,7 +73,11 @@ sealed interface DesktopSourceGroupKey {
     data class Language(val code: String) : DesktopSourceGroupKey
 }
 
-data class DesktopSourceListItem(val source: CatalogueSource, val isUsedLast: Boolean = false)
+data class DesktopSourceListItem(
+    val source: CatalogueSource,
+    val isUsedLast: Boolean = false,
+    val isPinned: Boolean = false,
+)
 
 data class DesktopSourceListGroup(val key: DesktopSourceGroupKey, val items: List<DesktopSourceListItem>)
 
@@ -94,26 +103,33 @@ private fun String.sourceLocale(defaultLocale: Locale): Locale = when (this) {
 
 object DesktopSourceListProjector {
     fun project(
-        sources: List<CatalogueSource>,
-        pinnedSourceIds: Set<String>,
-        lastUsedSourceId: Long,
+        sourceState: SourceScreenState,
+        catalogueSources: List<CatalogueSource>,
+        selectedLanguage: String? = null,
     ): List<DesktopSourceListGroup> {
-        val sorted = sources.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+        val sources = (sourceState.content as? SourceScreenContent.Content)?.sources.orEmpty()
+            .filter { selectedLanguage == null || it.lang == selectedLanguage }
+        val catalogueById = catalogueSources.associateBy(CatalogueSource::id)
+        val items = sources.mapNotNull { source ->
+            catalogueById[source.id]?.let {
+                DesktopSourceListItem(it, source.isUsedLast, Pin.Actual in source.pin)
+            }
+        }
         return buildList {
-            sorted.firstOrNull { it.id == lastUsedSourceId }?.let {
-                add(DesktopSourceListGroup(DesktopSourceGroupKey.LastUsed, listOf(DesktopSourceListItem(it, true))))
+            items.filter(DesktopSourceListItem::isUsedLast).takeIf(List<DesktopSourceListItem>::isNotEmpty)?.let {
+                add(DesktopSourceListGroup(DesktopSourceGroupKey.LastUsed, it))
             }
-            sorted.filter { it.id.toString() in pinnedSourceIds }.takeIf { it.isNotEmpty() }?.let {
-                add(DesktopSourceListGroup(DesktopSourceGroupKey.Pinned, it.map { source -> DesktopSourceListItem(source) }))
+            items.filter { it.isPinned && !it.isUsedLast }.takeIf(List<DesktopSourceListItem>::isNotEmpty)?.let {
+                add(DesktopSourceListGroup(DesktopSourceGroupKey.Pinned, it))
             }
-            sorted.filterNot { it.id.toString() in pinnedSourceIds }
-                .groupBy { it.lang }
+            items.filterNot { it.isPinned || it.isUsedLast }
+                .groupBy { it.source.lang }
                 .toSortedMap(compareBy<String> { it.isEmpty() }.thenBy { it })
                 .forEach { (language, languageSources) ->
                     add(
                         DesktopSourceListGroup(
                             DesktopSourceGroupKey.Language(language),
-                            languageSources.map { source -> DesktopSourceListItem(source) },
+                            languageSources,
                         ),
                     )
                 }
@@ -157,50 +173,35 @@ class BrowseSourceListScreen : Screen {
         val dependencies = LocalDesktopUiDependencies.current
         val sourceManager = dependencies.sourceManager
         val appPreferences = dependencies.appPreferences
-        val installedSources by sourceManager.catalogueSources.collectAsState(
-            initial = sourceManager.getCatalogueSources(),
-        )
-        val enabledLanguages by appPreferences.enabledLanguages.changes().collectAsState(
-            initial = appPreferences.enabledLanguages.get(),
-        )
-        val disabledSources by appPreferences.disabledSources.changes().collectAsState(
-            initial = appPreferences.disabledSources.get(),
-        )
-        val pinnedSourceIds by appPreferences.pinnedSources.changes().collectAsState(
-            initial = appPreferences.pinnedSources.get(),
-        )
-        val lastUsedSourceId by appPreferences.lastUsedSource.changes().collectAsState(
-            initial = appPreferences.lastUsedSource.get(),
-        )
-        val allSources = remember(installedSources, enabledLanguages, disabledSources) {
-            selectEnabledCatalogueSourceCandidates(installedSources, enabledLanguages, disabledSources)
+        val model = rememberScreenModel { DesktopSourcesScreenModel(sourceManager, appPreferences) }
+        val state by model.state.collectAsState()
+        val contentSources = (state.sourceState.content as? SourceScreenContent.Content)?.sources.orEmpty()
+        val snackbar = remember { SnackbarHostState() }
+        val event = state.sourceState.pendingEvent
+        LaunchedEffect(event?.id) {
+            event?.let {
+                snackbar.showSnackbar(sourceEventMessage(it, state.catalogueSources))
+                model.consumeEvent(it.id)
+            }
         }
 
         var selectedLang by remember { mutableStateOf<String?>(null) }
         var showLanguageFilter by remember { mutableStateOf(false) }
 
-        val languages = remember(allSources) {
-            allSources.map { it.lang }.distinct().sorted()
+        val languages = remember(contentSources) {
+            contentSources.map { it.lang }.distinct().sorted()
         }
         val effectiveSelectedLang = selectedLang?.takeIf { it in languages }
-        val installedLanguages = remember(installedSources) {
-            installedSources.map { it.lang }.distinct().sorted()
+        val installedLanguages = remember(state.catalogueSources) {
+            state.catalogueSources.map { it.lang }.distinct().sorted()
         }
 
-        val displayedSourceGroups = remember(allSources, effectiveSelectedLang, pinnedSourceIds, lastUsedSourceId) {
-            val filtered = if (effectiveSelectedLang == null) {
-                allSources
-            } else {
-                allSources.filter { it.lang == effectiveSelectedLang }
-            }
-            DesktopSourceListProjector.project(filtered, pinnedSourceIds, lastUsedSourceId)
+        val displayedSourceGroups = remember(state, effectiveSelectedLang) {
+            DesktopSourceListProjector.project(state.sourceState, state.catalogueSources, effectiveSelectedLang)
         }
 
         fun togglePin(sourceId: Long) {
-            appPreferences.pinnedSources.getAndSet { pinned ->
-                val id = sourceId.toString()
-                if (id in pinned) pinned - id else pinned + id
-            }
+            state.catalogueSources.firstOrNull { it.id == sourceId }?.let(model::togglePin)
         }
 
         if (showLanguageFilter) {
@@ -214,14 +215,12 @@ class BrowseSourceListScreen : Screen {
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        appPreferences.enabledLanguages.getAndSet { enabled ->
-                                            if (language in enabled) enabled - language else enabled + language
-                                        }
+                                        model.toggleLanguage(language)
                                     },
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Checkbox(
-                                    checked = language in enabledLanguages,
+                                    checked = language in state.enabledLanguages,
                                     onCheckedChange = null,
                                 )
                                 Text(language.uppercase())
@@ -238,6 +237,7 @@ class BrowseSourceListScreen : Screen {
         }
 
         Scaffold(
+            snackbarHost = { SnackbarHost(snackbar) },
             topBar = {
                 TopAppBar(
                     title = { Text("Browse") },
@@ -294,10 +294,20 @@ class BrowseSourceListScreen : Screen {
                 )
                 HorizontalDivider()
 
-                if (displayedSourceGroups.isEmpty()) {
-                    EmptySources(onExtensionsClick = { navigator.push(ExtensionListScreen()) })
-                } else {
-                    LazyColumn(
+                val content = state.sourceState.content
+                when {
+                    content is SourceScreenContent.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("Loading sources…")
+                    }
+                    content is SourceScreenContent.Failure -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(content.message)
+                            TextButton(onClick = model::retry) { Text(MR.strings.action_retry.localized()) }
+                        }
+                    }
+                    displayedSourceGroups.isEmpty() ->
+                        EmptySources(onExtensionsClick = { navigator.push(ExtensionListScreen()) })
+                    else -> LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(vertical = 4.dp),
                     ) {
@@ -314,7 +324,7 @@ class BrowseSourceListScreen : Screen {
                                 key = { "${group.key}-${it.source.id}-${it.isUsedLast}" },
                             ) { entry ->
                                 val source = entry.source
-                                val isPinned = source.id.toString() in pinnedSourceIds
+                                val isPinned = entry.isPinned
                                 ListItem(
                                     headlineContent = { Text(source.name) },
                                     supportingContent = { Text(source.lang.uppercase()) },
@@ -342,6 +352,15 @@ class BrowseSourceListScreen : Screen {
                 }
             }
         }
+    }
+}
+
+internal fun sourceEventMessage(event: SourceScreenEvent, sources: List<CatalogueSource>): String {
+    val name = sources.firstOrNull { it.id == (event as? SourceScreenEvent.Pinned)?.sourceId }?.name.orEmpty()
+    return when (event) {
+        is SourceScreenEvent.Pinned -> "${if (event.pinned) "Pinned" else "Unpinned"} $name"
+        is SourceScreenEvent.Disabled -> "${if (event.disabled) "Disabled" else "Enabled"} source"
+        is SourceScreenEvent.ActionFailed -> event.message
     }
 }
 

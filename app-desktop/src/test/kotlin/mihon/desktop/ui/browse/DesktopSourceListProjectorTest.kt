@@ -1,9 +1,13 @@
 package mihon.desktop.ui.browse
 
 import mihon.desktop.source.FakeSource
+import mihon.domain.source.model.SourceScreenContent
+import mihon.domain.source.model.SourceScreenState
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
+import tachiyomi.domain.source.model.Pins
+import tachiyomi.domain.source.model.Source
 import tachiyomi.i18n.MR
 import java.util.Locale
 
@@ -16,9 +20,15 @@ class DesktopSourceListProjectorTest {
         val languageUnknown = FakeSource(4, "", "Unknown")
         val bravo = FakeSource(5, "en", "Bravo")
         val groups = DesktopSourceListProjector.project(
-            sources = listOf(lastUsed, languageUnknown, pinned, bravo, alpha),
-            pinnedSourceIds = setOf(pinned.id.toString()),
-            lastUsedSourceId = lastUsed.id,
+            sourceState = sourceState(
+                alpha.domain(),
+                lastUsed.domain(),
+                lastUsed.domain(isUsedLast = true),
+                pinned.domain(pin = Pins.pinned),
+                languageUnknown.domain(),
+                bravo.domain(),
+            ),
+            catalogueSources = listOf(lastUsed, languageUnknown, pinned, bravo, alpha),
         )
         assertEquals(
             listOf(
@@ -42,9 +52,11 @@ class DesktopSourceListProjectorTest {
     fun `pinned last used keeps originals in both fixed-main priority groups`() {
         val source = FakeSource(11, "en", "Pinned last used")
         val groups = DesktopSourceListProjector.project(
-            sources = listOf(source),
-            pinnedSourceIds = setOf(source.id.toString()),
-            lastUsedSourceId = source.id,
+            sourceState = sourceState(
+                source.domain(pin = Pins.pinned),
+                source.domain(isUsedLast = true),
+            ),
+            catalogueSources = listOf(source),
         )
 
         assertEquals(listOf(DesktopSourceGroupKey.LastUsed, DesktopSourceGroupKey.Pinned), groups.map { it.key })
@@ -87,6 +99,12 @@ class DesktopSourceListProjectorTest {
         assertEquals(defaultLocale.selfDisplayName(), defaultLanguage)
         assertFalse(defaultLanguage.isBlank())
     }
+
+    private fun sourceState(vararg sources: Source) =
+        SourceScreenState(content = SourceScreenContent.Content(sources.toList()))
+
+    private fun FakeSource.domain(pin: Pins = Pins.unpinned, isUsedLast: Boolean = false) =
+        Source(id, lang, name, supportsLatest, isStub = false, pin = pin, isUsedLast = isUsedLast)
 
     private fun Locale.selfDisplayName() = getDisplayName(this).replaceFirstChar { it.uppercase(this) }
 }
