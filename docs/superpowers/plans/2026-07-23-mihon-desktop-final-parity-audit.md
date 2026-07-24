@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 14B
+active-task: Task 14C
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -55,7 +55,7 @@ active-task: Task 14B
 - [x] Task 13：核验状态批次 H（88、90、91、92、93、94、95、96）
 - [ ] Task 14：逐项裁决 8 项 `UNCLASSIFIED_DEBT`
   - [x] Task 14A：固定唯一裁决与直接终态
-  - [ ] Task 14B：为产品缺口创建 consolidated child plan
+  - [x] Task 14B：为产品缺口创建 consolidated child plan
   - [ ] Task 14C：同步 tracker 并关闭父 Task 14
 - [ ] Task 15：完成候选平台能力与 `EXEMPT` 审查
 - [ ] Task 16A：审计 compat 与历史格式删除证据（35、74、96）
@@ -356,7 +356,7 @@ active-task: Task 14B
 
 ### Task 14A：固定唯一裁决与直接终态
 
-固定 ref 为 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`。唯一裁决为 ID 3 `extract`、ID 4 `adapter`、ID 32 `reuse`、ID 39 `adapter`、ID 69 `extract`、ID 70 `extract`、ID 87 `adapter`、ID 88 `adapter`，无 `deviation`/`exempt`。八项均记录 current Android → shared/adapter → Desktop production call path、可执行保护、用户入口/反馈与非空理由，并移除各自 `UNCLASSIFIED_DEBT`。ID 4/39/88 的五角色和真实成功/失败或语义 fixture 已闭合，提升为 `VERIFIED`；ID 3/69/70 保持 `CHARACTERIZED`，ID 32 依据既有 shared CRUD 与 Desktop production tests 提升为 `WIRED`，ID 87 保持 `SHARED`。后五项统一交接 `Task 14B`，不在只读裁决提交中改产品。
+固定 ref 为 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`。唯一裁决为 ID 3 `extract`、ID 4 `adapter`、ID 32 `reuse`、ID 39 `adapter`、ID 69 `extract`、ID 70 `extract`、ID 87 `adapter`、ID 88 `adapter`，无 `deviation`/`exempt`。八项均记录 current Android → shared/adapter → Desktop production call path、可执行保护、用户入口/反馈与非空理由，并移除各自 `UNCLASSIFIED_DEBT`。ID 4/39/88 的五角色和真实成功/失败或语义 fixture 已闭合，提升为 `VERIFIED`；ID 3/69/70 保持 `CHARACTERIZED`，ID 32 依据既有 shared CRUD 与 Desktop production tests 提升为 `WIRED`，ID 87 保持 `SHARED`。后五项交接 consolidated child plan，不在只读裁决提交中改产品。
 
 **独立审查修复：** 初版 `statusDecision` 与 `task14StatusDecision` 形成双权威；契约先精确 RED，现将旧裁决迁入唯一 task 的 `statusDecisionHistory`，Task 14A 成为唯一当前 `statusDecision`，通用校验拒绝旧字段与当前/历史重复 task。
 
@@ -371,6 +371,8 @@ active-task: Task 14B
 **Verification:** child scope/anchor contract、普通 parity contract 与 plan guard GREEN。
 
 仅创建一份 consolidated child plan，并同步 contract、manifest 与本计划；按三个 context cluster 覆盖 IDs 3/32、IDs 69/70、ID 87，每个 SubTask 不超过 8 files/400 lines，固定 TDD、UI 入口/反馈和 Desktop 独有能力零回退。完成后 `active-task` 推进到 `Task 14C`。
+
+**Execution evidence：** focused contract 先精确 RED 于 child 缺失、五项临时 follow-up、父 active-task 和 Task 14B 状态；非法 boundary contract 再精确 RED 于 A1；审查修复 contract 精确 RED 于 overview 缺失，并固定 B3 必须穿透 Android store/job/TrackChapter owners，最终 focused `1/1` GREEN。`docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md` 以 A1/A2/A3/A4/B1/B2/B3/B4/C1 九个有限 SubTask 分开 Android/Desktop consumer，五项 manifest follow-up 指向具体锚点，父 Task 14 保持未完成并推进到 Task 14C。普通 parity contract `48/48`、Spotless、JSON/anchor/plan/diff/range/headless 与 `comet-project-guard.sh plan` 全绿；显式 final gate 唯一按设计 RED 于原 31 项；范围为 4 files/359 touched。
 
 ### Task 14C：同步 tracker 并关闭父 Task 14
 

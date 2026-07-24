@@ -16,7 +16,7 @@
         "domain/src/commonTest/kotlin/mihon/domain/task/TaskStateTest.kt": ["任务状态表达进度结果失败与取消"]
       }
     }],
-    "statusDecision": {"task": "Task 14A", "decision": "KEEP_GAP", "followUp": "Task 14B", "gap": "Current Android SourcesScreenModel and Desktop state containers still lack one shared immutable screen-state/event production core and a cross-platform consumer contract."},
+    "statusDecision": {"task": "Task 14A", "decision": "KEEP_GAP", "followUp": "docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-141-a1-id-3-shared-screen-state", "gap": "Current Android SourcesScreenModel and Desktop state containers still lack one shared immutable screen-state/event production core and a cross-platform consumer contract."},
     "authoritativeImplementation": "Fixed-main original Mihon capability #3: SourcesScreenModel uses Voyager StateScreenModel, immutable State snapshots, Flow collection, and an explicit Event channel.",
     "desktopImplementation": "Current Android SourcesScreenModel and Desktop HistoryScreenModel are independent state-container examples. Shared TaskState/AppError primitives exist, but no production wiring proves that either screen model consumes them as one cross-platform state-management capability.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -901,7 +901,7 @@
       "gap": "Fixed-main extension repository CRUD and current Android/Desktop shared repository migration behavior have no production behavior contract; fingerprint continuity alone cannot close the capability.",
       "behaviorMethods": {}
     }],
-    "statusDecision": {"task": "Task 14A", "decision": "KEEP_GAP", "followUp": "Task 14B", "gap": "Android and Desktop both reuse the shared extension-repository API, but current Android CRUD wiring has no executable consumer contract that fails when create/replace/delete production wiring breaks."},
+    "statusDecision": {"task": "Task 14A", "decision": "KEEP_GAP", "followUp": "docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-143-a3-id-32-android-extension-repository-wiring", "gap": "Android and Desktop both reuse the shared extension-repository API, but current Android CRUD wiring has no executable consumer contract that fails when create/replace/delete production wiring breaks."},
     "authoritativeImplementation": "Fixed-main original Mihon capability #32: 扩展仓库",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "unclassifiedDebtResolution": {"decision": "reuse", "reason": "The shared ExtensionRepoRepository/service and interactors already own CRUD semantics; a second Desktop implementation would duplicate behavior, so the remaining work is an Android/Desktop production-consumer contract.", "fixedMainRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "productionCallPath": {"currentAndroid": ["ExtensionReposScreen → ExtensionReposScreenModel → create/replace/delete interactors"], "sharedOrAdapter": ["extension-repository interactors → ExtensionRepoRepository/ExtensionRepoService"], "desktop": ["ExtensionRepoScreen → DesktopUiDependencies → shared interactors → DesktopAppModule repository"]}, "protectionEvidence": ["app-desktop/src/test/kotlin/mihon/desktop/domain/ExtensionRepoUseCaseTest.kt#replaceRepo replaces repo with same signing key fingerprint", "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/ExtensionRepoScreenFeedbackTest.kt#pending repository message is visible immediately after submit"], "userEntry": "Settings → Browse → Extension repositories.", "userFeedback": "Submitting shows pending/result feedback; replacement is explicit and deletion immediately updates the repository list."},
@@ -2266,7 +2266,7 @@
     },
     "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopProviderTrackerServiceTest.kt": ["production registry contains every public Android tracker with isolated credentials"]},
     "statusDecisionHistory": [{"task": "Task 11", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Fixed-main production provider configuration; bind-existing/new-entry and refresh-before-update; initial reading status/date and MAL error behavior; search model and private/date/delete editing; enhanced auto-match; Suwayomi delete preference; provider error classification/retry; Komga DNS/server discovery; and Kitsu/MangaUpdates request shape remain unclosed.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopProviderTrackerServiceTest.kt": ["production registry contains every public Android tracker with isolated credentials"]}}],
-    "statusDecision": {"task": "Task 14A", "decision": "KEEP_GAP", "followUp": "Task 14B", "gap": "Extract provider-neutral production configuration, bind/refresh/status/date/search/edit/delete/error contracts and close enhanced-provider replay without weakening Desktop credential/checkpoint enhancements."},
+    "statusDecision": {"task": "Task 14A", "decision": "KEEP_GAP", "followUp": "docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-145-b1-id-69-provider-neutral-core", "gap": "Extract provider-neutral production configuration, bind/refresh/status/date/search/edit/delete/error contracts and close enhanced-provider replay without weakening Desktop credential/checkpoint enhancements."},
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -2381,7 +2381,7 @@
     },
     "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt": ["eligible tracker sync completes after caller cancellation"]},
     "statusDecisionHistory": [{"task": "Task 11", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Fixed-main refresh-before-update, login/progress filtering and parallel provider updates; delayed queue per-track monotonic highest progress; and network constraint, unique work, exponential backoff, bounded retry and queue cleanup remain unclosed.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt": ["eligible tracker sync completes after caller cancellation"]}}],
-    "statusDecision": {"task": "Task 14A", "decision": "KEEP_GAP", "followUp": "Task 14B", "gap": "Extract refresh/filter/parallel update plus monotonic delayed queue, constraint, unique-work, exponential-backoff, bounded-retry and cleanup semantics while retaining Desktop restart checkpoints."},
+    "statusDecision": {"task": "Task 14A", "decision": "KEEP_GAP", "followUp": "docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-147-b3-id-70-delayed-tracker-sync", "gap": "Extract refresh/filter/parallel update plus monotonic delayed queue, constraint, unique-work, exponential-backoff, bounded-retry and cleanup semantics while retaining Desktop restart checkpoints."},
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -2735,7 +2735,7 @@
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/i18n/DesktopExtensionListRenderedCopyTest.kt#extension list filter and uninstall render localized copy", "productionMarkers": ["ExtensionListScreen()"]}]
     },
     "statusDecisionHistory": [{"task": "Task 12", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Desktop still has no app-language selector and retains unlocalized copy outside the currently rendered shared MR paths.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/i18n/DesktopExtensionListRenderedCopyTest.kt": ["extension list filter and uninstall render localized copy"], "app-desktop/src/test/kotlin/mihon/desktop/i18n/MoreSourceExtensionRenderedCopyTest.kt": ["source extension entries render localized copy and navigate"]}}],
-    "statusDecision": {"task": "Task 14A", "decision": "KEEP_GAP", "followUp": "Task 14B", "gap": "Desktop needs an Appearance language selector, persisted JVM locale adapter and remaining production-copy localization without regressing shared MR consumers."},
+    "statusDecision": {"task": "Task 14A", "decision": "KEEP_GAP", "followUp": "docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-149-c1-id-87-desktop-language", "gap": "Desktop needs an Appearance language selector, persisted JVM locale adapter and remaining production-copy localization without regressing shared MR consumers."},
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
