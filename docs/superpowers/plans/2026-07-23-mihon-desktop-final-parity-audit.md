@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 15
+active-task: Task 16A
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -57,7 +57,7 @@ active-task: Task 15
   - [x] Task 14A：固定唯一裁决与直接终态
   - [x] Task 14B：为产品缺口创建 consolidated child plan
   - [x] Task 14C：同步 tracker 并关闭父 Task 14
-- [ ] Task 15：完成候选平台能力与 `EXEMPT` 审查
+- [x] Task 15：完成候选平台能力与 `EXEMPT` 审查
 - [ ] Task 16A：审计 compat 与历史格式删除证据（35、74、96）
 - [ ] Task 16B：审计重复业务规则
 - [ ] Task 16C：建立 UI→data/network/manager 架构守卫
@@ -396,12 +396,18 @@ active-task: Task 15
 
 **Estimated scope:** 5 files, 400 lines
 
-**Verification:** 81、82、83、84、85、86、92 全部获得可重复 OS/产物证据后成为 `VERIFIED` 或严格 `EXEMPT`；每个 `EXEMPT` 均有真实、可追溯的用户批准记录，显式 platform-evidence contract GREEN。
+**Verification:** 逐项核验 81、82、83、84、85、86、92；只有可重复 OS/产物证据闭合才提升 `VERIFIED`，只有真实可追溯批准才保留或新增 `EXEMPT`，否则保持 `CANDIDATE` 并交接有限 child plan；显式 platform-evidence contract GREEN。
 
 **Steps:**
 1. 复用既有 Windows/macOS/Linux 能力报告，但对当前构建重新验证真实 production adapter、用户反馈与失败状态。
-2. `CANDIDATE` 不能直接改名；无法提供真实 OS 能力时，只有能力本质不可用、UI 诚实反馈且用户明确批准该具体边界时才能 `EXEMPT`。没有批准记录必须保持非终态并请求用户决定，代理不得补写或推断批准。
+2. `CANDIDATE` 不能直接改名；无法提供真实 OS 能力时，只有能力本质不可用、UI 诚实反馈且用户明确批准该具体边界时才能 `EXEMPT`。没有批准记录必须保持非终态并交接有限验证计划，代理不得补写或推断批准。
 3. 需要产品修复时输出有限 platform child plan；环境暂缺只记录验证阻塞，不伪造豁免。
+
+**Audit evidence（已完成）：** 基线 `148594c791c88f45f9412577ad17b0a6b92ac635` 上的 Windows 平台 focused 真实执行 DPAPI、URI registration/broker、share service、window privacy、Security UI、Widget 边界和 updater installer 共 `94/94` GREEN；但 HKCU 没有 `tachiyomi` handler，固定 EXE 仅为早于当前提交的 BUILD 45，因此不能证明当前提交的冷/热 URI、host share、真实 capture 或安装交接。`ssh mbp` 首次连接后因远端带空格路径参数解析失败，按规则仅改用 `ssh mbp-lan` 重试并成功：macOS 14.8.4、远端仓库 `c84ed331fa0b7851b62dc44a66a8602bb3f60876`、部署 app BUILD 45、Keychain 命令可达，但非交互 SSH 与非当前提交不能证明 GUI Share Sheet、Keychain roundtrip、capture 或 DMG handoff。WSL 为 Ubuntu 24.04.4，缺少 Java、`xdg-open`、`secret-tool`，Secret Service 返回 `ServiceUnknown`，不外推 Linux GUI 验收。
+
+**Decision：** ID 81/82/83/84/86/92 均无具体用户豁免批准且缺少当前提交的真实 OS/签名产物验收，保守保持 `CANDIDATE`；ID 85 仅复核并保留 `docs/superpowers/specs/2026-07-12-mihon-desktop-upstream-parity-design.md:217` 的既有明确 Widget 批准与 `EXEMPT`。六项缺口交接 `docs/superpowers/plans/2026-07-24-task-15-platform-evidence-closure.md` 的 Task 151–153；child 保持 `planned`，父审计继续推进 Task 16A。
+
+**Verification evidence：** Task15 focused contract 先精确 RED 于 child 缺失、七项当前裁决仍属于 Task12/13、六项 follow-up 未有限化及父计划未推进，最小更新后 `1/1` GREEN；独立审查修复契约再精确 RED 于 Task 151 缺少同 tree 可复现命令，补齐三平台 URI/share、credential/capture、签名/installer handoff 命令与原始日志口径，并移除 Task 153 的产品代码预授权后恢复 `1/1` GREEN。ordinary parity contract `50/50`、Windows 平台 focused `94/94` 与 Spotless GREEN。macOS 隔离 archive 的 tree `b7bff0d321c0a5428f6d3d5592364cab986ae2c4` 与基线提交 tree 精确一致，但 `./gradlew --offline` 在测试前因 SSH 环境没有 Java 退出，临时目录与 archive 已清理，未计为测试失败或通过。JSON（64 项）、父/child plan guard、`git diff --check`、headless 与 4 files / 344 touched 范围均通过；显式 final gate 唯一按设计 RED，并精确报告原 31 个非终态 ID。
 
 ### Task 16A：审计 compat 与历史格式删除证据（35、74、96）
 
