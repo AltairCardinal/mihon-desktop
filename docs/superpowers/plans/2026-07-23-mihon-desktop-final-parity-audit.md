@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 16C
+active-task: Task 16D
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -60,7 +60,7 @@ active-task: Task 16C
 - [x] Task 15：完成候选平台能力与 `EXEMPT` 审查
 - [x] Task 16A：审计 compat 与历史格式删除证据（35、74、96）
 - [x] Task 16B：审计重复业务规则
-- [ ] Task 16C：建立 UI→data/network/manager 架构守卫
+- [x] Task 16C：建立 UI→data/network/manager 架构守卫
 - [ ] Task 16D：盘点并约束最终 Test Mode 全场景入口
 - [ ] Task 17：执行并回收真实产品缺口 child plan
 - [ ] Task 18：让 64 项最终 closure 与架构 gate 变绿
@@ -457,6 +457,10 @@ active-task: Task 16C
 1. 盘点现有 Architecture Guard 能力，行数基线与源码文本扫描不能作为唯一守卫。
 2. 为 `UI → shared use case/port → repository/platform adapter` 建立可执行依赖约束。
 3. 发现违规时输出有限产品 child plan；本 Task 不顺手重构 consumer。
+
+**Execution evidence（已完成）：** 候选精确为 ID8/95，均裁决 `REMEDIATE`；JDK `jdeps` 从 compiled production graph 确认 32 条 UI 违规（repository 14、manager/HTTP/ClassLoader 18），ID8 另缺 current Android `NetworkErrorMapper` consumer edge，有限修复计划固定为 Task164–169。合法 use case、断连 use case、注回 forbidden manager、空 adapter reason 与不存在的 allowlist edge mutation 均由 compiled guard 执行。初始契约精确 RED 于 `ID8 expected Task 16C but was Task 6` 后 focused `4/4` GREEN；独立审查指出此前自定义 child 检查不能替代项目 guard，repair 契约精确 RED 于 `expected (planned,[164…169]) but was (null,[])`，补齐 `status` 与 6 项顶层 overview 后 `1/1` GREEN，随后真实 child plan guard 才首次记录 PASS（6 个待办 Task 正文）。
+
+**Verification evidence：** 架构/DI/production focused `67/67`、ordinary parity `53/53`、headless focused `4/4` 与 `spotlessCheck` GREEN；显式 final gate 唯一按设计 RED，并精确报告 `3,7,8,10,11,16,22,24,26,28,32,38,54,56,66,69,70,71,72,73,81,82,83,84,86,87,92,93,95` 共 29 个非终态 ID。repair 后父/child plan guards、JSON inventory、`git diff --check` 与 `5 files / 392 touched` 范围守卫均通过；未修改产品代码。
 
 ### Task 16D：盘点并约束最终 Test Mode 全场景入口
 

@@ -160,7 +160,7 @@
       "PLATFORM-ADAPTER"
     ],
     "status": "SHARED",
-    "statusDecision": {
+    "statusDecisionHistory": [{
       "task": "Task 6",
       "decision": "KEEP_GAP",
       "followUp": "Task 16C",
@@ -171,6 +171,26 @@
           "429 preserves retry after"
         ]
       }
+    }],
+    "statusDecision": {
+      "task": "Task 16C",
+      "decision": "REMEDIATE",
+      "followUp": "docs/superpowers/plans/2026-07-24-task-16c-ui-dependency-boundary-closure.md#task-164-android-network-error-mapper-consumer",
+      "gap": "Compiled Desktop wiring proves MangaDexSource uses the shared mapper and DesktopAppModule owns the client adapter, but current Android has no compiled production edge or behavior test consuming NetworkErrorMapper.",
+      "behaviorMethods": {
+        "app-desktop/src/test/kotlin/mihon/desktop/network/NetworkErrorContractTest.kt": ["real source parses successful response", "429 preserves retry after"],
+        "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt": ["compiled production UI dependency graph matches finite violation inventory", "platform adapter allowlist requires compiled edges and nonblank reasons"]
+      }
+    },
+    "architectureBoundaryAudit": {
+      "task": "Task 16C",
+      "mechanism": "JDK ToolProvider jdeps over compiled production and fixture classes",
+      "requiredCompiledEdges": ["mihon.desktop.source.MangaDexSource -> mihon.domain.network.NetworkErrorMapperKt", "mihon.desktop.di.DesktopAppModuleKt -> mihon.desktop.platform.DesktopNetworkHelper"],
+      "missingRequiredEdges": ["CURRENT_ANDROID -> mihon.domain.network.NetworkErrorMapperKt"],
+      "forbiddenCompiledEdges": [],
+      "permittedPlatformAdapters": [{"edge": "mihon.desktop.di.DesktopAppModuleKt -> mihon.desktop.platform.DesktopNetworkHelper", "reason": "The Desktop composition root owns JVM HTTP clients, cookie persistence and browser integration outside UI."}],
+      "mutationEvidence": ["app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt#compiled fixtures reject a forbidden manager and a disconnected use case", "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt#platform adapter allowlist requires compiled edges and nonblank reasons"],
+      "childPlan": "docs/superpowers/plans/2026-07-24-task-16c-ui-dependency-boundary-closure.md"
     },
     "authoritativeImplementation": "Fixed-main original Mihon capability #8: NetworkHelper owns configured OkHttp clients, cookies, user-agent and Cloudflare integration; OkHttpExtensions centralizes response and JSON handling.",
     "desktopImplementation": "Current Desktop MangaDexSource is the production consumer protected by NetworkErrorContractTest for the shared HTTP error mapper. DesktopNetworkHelper and DesktopAppModule are separate platform client adapters and are not claimed as mapper-test coverage.",
@@ -196,7 +216,8 @@
       { "classification": "MIGRATION_OUTPUT", "description": "The shared NetworkErrorMapper is proven through the production Desktop MangaDexSource for authentication, throttling, server and malformed-payload failures; current Android mapper consumption is not claimed." }
     ],
     "protectionTests": [
-      "app-desktop/src/test/kotlin/mihon/desktop/network/NetworkErrorContractTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/network/NetworkErrorContractTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt"
     ],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -3102,8 +3123,52 @@
     "behaviorVerificationTask": ":app-desktop:task5ParityVerification",
     "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": ["production library stream exposes only logged in tracker rows and reacts to login logout"], "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt": ["desktop ui DI and repository debt does not grow beyond baseline", "android main source must not depend on desktop runtime or awt swing"]},
     "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt"],
-    "statusDecision": {"task": "Task 13", "decision": "PROMOTE_WIRED", "followUp": "Task 16C", "gap": "Both apps compile against domain and a real Desktop screen model executes domain use cases, but app-desktop still owns broad business logic; source and line-count guards cannot close the Task 16C module-boundary audit.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": ["production library stream exposes only logged in tracker rows and reacts to login logout"], "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt": ["desktop ui DI and repository debt does not grow beyond baseline", "android main source must not depend on desktop runtime or awt swing"]}},
-    "verificationScope": "WIRED: compile-time domain dependencies and a real Desktop domain consumer are bound; the broader UI-to-domain architecture boundary remains open.",
+    "statusDecisionHistory": [{"task": "Task 13", "decision": "PROMOTE_WIRED", "followUp": "Task 16C", "gap": "Both apps compile against domain and a real Desktop screen model executes domain use cases, but app-desktop still owns broad business logic; source and line-count guards cannot close the Task 16C module-boundary audit.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": ["production library stream exposes only logged in tracker rows and reacts to login logout"], "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt": ["desktop ui DI and repository debt does not grow beyond baseline", "android main source must not depend on desktop runtime or awt swing"]}}],
+    "statusDecision": {"task": "Task 16C", "decision": "REMEDIATE", "followUp": "docs/superpowers/plans/2026-07-24-task-16c-ui-dependency-boundary-closure.md#task-165-library-ui-use-case-boundary", "gap": "Compiled production bytecode contains 14 direct UI-to-repository edges and 18 direct UI-to-manager, HTTP client or ClassLoader edges; they require finite product remediation before the boundary is terminal.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": ["production library stream exposes only logged in tracker rows and reacts to login logout"], "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt": ["compiled production UI dependency graph matches finite violation inventory", "compiled fixtures reject a forbidden manager and a disconnected use case", "platform adapter allowlist requires compiled edges and nonblank reasons"]}},
+    "architectureBoundaryAudit": {
+      "task": "Task 16C",
+      "mechanism": "JDK ToolProvider jdeps over compiled production and fixture classes",
+      "requiredCompiledEdges": ["mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.manga.interactor.GetLibraryManga"],
+      "missingRequiredEdges": [],
+      "forbiddenCompiledEdges": [
+        {"category": "REPOSITORY", "edge": "mihon.desktop.ui.authors.AuthorDetailScreen -> tachiyomi.domain.creator.repository.CreatorRepository"},
+        {"category": "REPOSITORY", "edge": "mihon.desktop.ui.authors.AuthorsRootScreen -> tachiyomi.domain.creator.repository.CreatorRepository"},
+        {"category": "REPOSITORY", "edge": "mihon.desktop.ui.authors.WorkCompareScreen -> tachiyomi.domain.creator.repository.CreatorRepository"},
+        {"category": "REPOSITORY", "edge": "mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.category.repository.CategoryRepository"},
+        {"category": "REPOSITORY", "edge": "mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.chapter.repository.ChapterRepository"},
+        {"category": "REPOSITORY", "edge": "mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.manga.repository.MangaRepository"},
+        {"category": "REPOSITORY", "edge": "mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.track.repository.TrackRepository"},
+        {"category": "REPOSITORY", "edge": "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.category.repository.CategoryRepository"},
+        {"category": "REPOSITORY", "edge": "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.chapter.repository.ChapterRepository"},
+        {"category": "REPOSITORY", "edge": "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.creator.repository.CreatorRepository"},
+        {"category": "REPOSITORY", "edge": "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.manga.repository.LibraryMembershipRepository"},
+        {"category": "REPOSITORY", "edge": "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.manga.repository.MangaRepository"},
+        {"category": "REPOSITORY", "edge": "mihon.desktop.ui.tracking.TrackingScreenModel -> tachiyomi.domain.track.repository.TrackRepository"},
+        {"category": "REPOSITORY", "edge": "mihon.desktop.ui.tracking.TrackingSettingsScreen -> tachiyomi.domain.track.repository.TrackRepository"},
+        {"category": "MANAGER_HTTP_OR_CLASSLOADER", "edge": "mihon.desktop.ui.browse.DesktopSourceCookieHeaderParser -> okhttp3.HttpUrl"},
+        {"category": "MANAGER_HTTP_OR_CLASSLOADER", "edge": "mihon.desktop.ui.browse.DesktopSourceLastUsedRecorder -> mihon.desktop.extension.DesktopExtensionManager"},
+        {"category": "MANAGER_HTTP_OR_CLASSLOADER", "edge": "mihon.desktop.ui.browse.DesktopSourceLoginController -> okhttp3.HttpUrl"},
+        {"category": "MANAGER_HTTP_OR_CLASSLOADER", "edge": "mihon.desktop.ui.browse.DesktopSourceLoginUiActions -> okhttp3.HttpUrl"},
+        {"category": "MANAGER_HTTP_OR_CLASSLOADER", "edge": "mihon.desktop.ui.browse.SourceBrowseScreen -> mihon.desktop.extension.DesktopExtensionManager"},
+        {"category": "MANAGER_HTTP_OR_CLASSLOADER", "edge": "mihon.desktop.ui.cloudflare.DesktopChallengeLoginController -> mihon.desktop.network.CloudflareChallengeManager"},
+        {"category": "MANAGER_HTTP_OR_CLASSLOADER", "edge": "mihon.desktop.ui.cloudflare.DesktopChallengeLoginController -> okhttp3.HttpUrl"},
+        {"category": "MANAGER_HTTP_OR_CLASSLOADER", "edge": "mihon.desktop.ui.extension.DesktopExtensionPresentationPort -> mihon.desktop.extension.DesktopExtensionManager"},
+        {"category": "MANAGER_HTTP_OR_CLASSLOADER", "edge": "mihon.desktop.ui.extension.ExtensionDetailsScreen -> mihon.desktop.platform.DesktopNetworkHelper"},
+        {"category": "MANAGER_HTTP_OR_CLASSLOADER", "edge": "mihon.desktop.ui.extension.SourcePreferencesScreen -> mihon.desktop.extension.DesktopExtensionManager"},
+        {"category": "MANAGER_HTTP_OR_CLASSLOADER", "edge": "mihon.desktop.ui.extension.SourcePreferencesScreenKt -> java.lang.ClassLoader"},
+        {"category": "MANAGER_HTTP_OR_CLASSLOADER", "edge": "mihon.desktop.ui.home.HomeScreen -> mihon.desktop.network.CloudflareChallengeManager"},
+        {"category": "MANAGER_HTTP_OR_CLASSLOADER", "edge": "mihon.desktop.ui.library.LibraryRootScreen -> mihon.desktop.download.DesktopDownloadManager"},
+        {"category": "MANAGER_HTTP_OR_CLASSLOADER", "edge": "mihon.desktop.ui.settings.AboutScreen -> mihon.desktop.extension.DesktopExtensionManager"},
+        {"category": "MANAGER_HTTP_OR_CLASSLOADER", "edge": "mihon.desktop.ui.settings.AdvancedSettingsScreen -> mihon.desktop.platform.DesktopNetworkHelper"},
+        {"category": "MANAGER_HTTP_OR_CLASSLOADER", "edge": "mihon.desktop.ui.settings.AdvancedSettingsScreen -> okhttp3.HttpUrl"},
+        {"category": "MANAGER_HTTP_OR_CLASSLOADER", "edge": "mihon.desktop.ui.settings.AdvancedSettingsScreenKt -> okhttp3.HttpUrl"},
+        {"category": "MANAGER_HTTP_OR_CLASSLOADER", "edge": "mihon.desktop.ui.settings.MoreRootScreen -> mihon.desktop.download.DesktopDownloadManager"}
+      ],
+      "permittedPlatformAdapters": [{"edge": "mihon.desktop.ui.ExternalActionNavigator -> mihon.desktop.platform.DesktopExternalActionTarget", "reason": "OS URI ingress is a Desktop navigation adapter with typed rejection feedback."}, {"edge": "mihon.desktop.ui.library.MangaDetailComponentsKt -> mihon.desktop.platform.DesktopShareService", "reason": "Host share is an OS side-effect port with structured success, fallback and failure results."}],
+      "mutationEvidence": ["app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt#compiled fixtures reject a forbidden manager and a disconnected use case", "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt#platform adapter allowlist requires compiled edges and nonblank reasons"],
+      "childPlan": "docs/superpowers/plans/2026-07-24-task-16c-ui-dependency-boundary-closure.md"
+    },
+    "verificationScope": "WIRED: the compiled guard executes a real domain use-case edge and rejects new forbidden edges, while 32 exact production violations remain assigned to finite remediation.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
