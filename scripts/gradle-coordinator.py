@@ -14,7 +14,7 @@ from pathlib import Path
 
 
 ACTIVE = {"STARTING", "RUNNING"}
-TERMINAL = {"PASSED", "FAILED", "CANCELLED"}
+TERMINAL = {"PASSED", "FAILED", "CANCELLED", "ORPHANED"}
 
 
 def now() -> str:
@@ -42,14 +42,73 @@ def load_state(state_dir: Path, key: str) -> dict[str, object] | None:
 def write_state(state_dir: Path, key: str, state: dict[str, object]) -> None:
     state_dir.mkdir(parents=True, exist_ok=True)
     target = state_path(state_dir, key)
-    temporary = target.with_suffix(".tmp")
-    temporary.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
-    temporary.replace(target)
+    temporary = target.with_name(f"{target.name}.{os.getpid()}.tmp")
+    try:
+        temporary.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
+        temporary.replace(target)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
-def pid_is_alive(pid: object) -> bool:
+def darwin_process_identity(pid: int) -> str | None:
+    import ctypes
+
+    class ProcBsdInfo(ctypes.Structure):
+        _fields_ = [
+            ("pbi_flags", ctypes.c_uint32),
+            ("pbi_status", ctypes.c_uint32),
+            ("pbi_xstatus", ctypes.c_uint32),
+            ("pbi_pid", ctypes.c_uint32),
+            ("pbi_ppid", ctypes.c_uint32),
+            ("pbi_uid", ctypes.c_uint32),
+            ("pbi_gid", ctypes.c_uint32),
+            ("pbi_ruid", ctypes.c_uint32),
+            ("pbi_rgid", ctypes.c_uint32),
+            ("pbi_svuid", ctypes.c_uint32),
+            ("pbi_svgid", ctypes.c_uint32),
+            ("rfu_1", ctypes.c_uint32),
+            ("pbi_comm", ctypes.c_char * 16),
+            ("pbi_name", ctypes.c_char * 32),
+            ("pbi_nfiles", ctypes.c_uint32),
+            ("pbi_pgid", ctypes.c_uint32),
+            ("pbi_pjobc", ctypes.c_uint32),
+            ("e_tdev", ctypes.c_uint32),
+            ("e_tpgid", ctypes.c_uint32),
+            ("pbi_nice", ctypes.c_int32),
+            ("pbi_start_tvsec", ctypes.c_uint64),
+            ("pbi_start_tvusec", ctypes.c_uint64),
+        ]
+
+    try:
+        libproc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+        proc_pidinfo = libproc.proc_pidinfo
+        proc_pidinfo.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_uint64,
+            ctypes.c_void_p,
+            ctypes.c_int,
+        ]
+        proc_pidinfo.restype = ctypes.c_int
+        info = ProcBsdInfo()
+        proc_pid_tbsd_info = 3
+        result = proc_pidinfo(
+            pid,
+            proc_pid_tbsd_info,
+            0,
+            ctypes.byref(info),
+            ctypes.sizeof(info),
+        )
+    except (AttributeError, OSError):
+        return None
+    if result != ctypes.sizeof(info) or info.pbi_pid != pid:
+        return None
+    return f"darwin:{info.pbi_start_tvsec}:{info.pbi_start_tvusec}"
+
+
+def process_identity(pid: object) -> str | None:
     if not isinstance(pid, int) or pid <= 0:
-        return False
+        return None
     if os.name == "nt":
         import ctypes
 
@@ -61,23 +120,114 @@ def pid_is_alive(pid: object) -> bool:
             pid,
         )
         if not handle:
-            return False
+            return None
         try:
             exit_code = ctypes.c_ulong()
-            return bool(
-                ctypes.windll.kernel32.GetExitCodeProcess(
-                    handle,
-                    ctypes.byref(exit_code),
-                )
-                and exit_code.value == still_active
-            )
+            if not ctypes.windll.kernel32.GetExitCodeProcess(
+                handle,
+                ctypes.byref(exit_code),
+            ) or exit_code.value != still_active:
+                return None
+
+            class FileTime(ctypes.Structure):
+                _fields_ = [
+                    ("low", ctypes.c_ulong),
+                    ("high", ctypes.c_ulong),
+                ]
+
+            created = FileTime()
+            exited = FileTime()
+            kernel = FileTime()
+            user = FileTime()
+            if not ctypes.windll.kernel32.GetProcessTimes(
+                handle,
+                ctypes.byref(created),
+                ctypes.byref(exited),
+                ctypes.byref(kernel),
+                ctypes.byref(user),
+            ):
+                return None
+            created_ticks = (created.high << 32) | created.low
+            return f"windows:{created_ticks}"
         finally:
             ctypes.windll.kernel32.CloseHandle(handle)
     try:
         os.kill(pid, 0)
     except OSError:
+        return None
+
+    if sys.platform == "darwin":
+        return darwin_process_identity(pid)
+
+    proc_stat = Path(f"/proc/{pid}/stat")
+    if proc_stat.exists():
+        try:
+            fields_after_command = proc_stat.read_text(encoding="utf-8").rsplit(")", 1)[1].split()
+            start_ticks = fields_after_command[19]
+            boot_id_path = Path("/proc/sys/kernel/random/boot_id")
+            boot_id = boot_id_path.read_text(encoding="utf-8").strip() if boot_id_path.exists() else "unknown"
+            return f"proc:{boot_id}:{start_ticks}"
+        except (OSError, IndexError):
+            return None
+
+    return None
+
+
+def process_matches(pid: object, expected_identity: object) -> bool:
+    return isinstance(expected_identity, str) and bool(expected_identity) and process_identity(pid) == expected_identity
+
+
+def await_process_identity(pid: int, timeout: float = 0.5) -> str | None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        identity = process_identity(pid)
+        if identity is not None:
+            return identity
+        time.sleep(0.01)
+    return None
+
+
+def active_process_is_alive(state: dict[str, object]) -> bool:
+    return process_matches(
+        state.get("workerPid"),
+        state.get("workerIdentity"),
+    ) or process_matches(
+        state.get("processPid"),
+        state.get("processIdentity"),
+    )
+
+
+def try_lock_descriptor(descriptor: int) -> bool:
+    if os.name == "nt":
+        import msvcrt
+
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        try:
+            msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
+            return True
+        except OSError:
+            return False
+
+    import fcntl
+
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return True
+    except BlockingIOError:
         return False
-    return True
+
+
+def unlock_descriptor(descriptor: int) -> None:
+    if os.name == "nt":
+        import msvcrt
+
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
+        return
+
+    import fcntl
+
+    fcntl.flock(descriptor, fcntl.LOCK_UN)
 
 
 @contextmanager
@@ -85,20 +235,31 @@ def state_lock(state_dir: Path, key: str):
     state_dir.mkdir(parents=True, exist_ok=True)
     lock = state_dir / f"{key}.lock"
     deadline = time.monotonic() + 5
-    descriptor: int | None = None
-    while descriptor is None:
-        try:
-            descriptor = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except FileExistsError:
-            if time.monotonic() >= deadline:
-                raise TimeoutError(f"coordinator lock is busy: {lock}")
-            time.sleep(0.02)
+    descriptor = os.open(lock, os.O_CREAT | os.O_RDWR, 0o600)
+    acquired = False
     try:
-        os.write(descriptor, str(os.getpid()).encode())
+        while not acquired:
+            acquired = try_lock_descriptor(descriptor)
+            if not acquired:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(f"coordinator lock is busy: {lock}")
+                time.sleep(0.02)
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        os.ftruncate(descriptor, 0)
+        os.write(
+            descriptor,
+            json.dumps(
+                {
+                    "pid": os.getpid(),
+                    "identity": process_identity(os.getpid()),
+                },
+            ).encode(),
+        )
         yield
     finally:
+        if acquired:
+            unlock_descriptor(descriptor)
         os.close(descriptor)
-        lock.unlink(missing_ok=True)
 
 
 def detached_options() -> dict[str, object]:
@@ -123,11 +284,11 @@ def command_start(args: argparse.Namespace) -> int:
         if (
             existing
             and existing.get("status") in ACTIVE
-            and pid_is_alive(existing.get("workerPid"))
+            and active_process_is_alive(existing)
         ):
             print(
                 f"ATTACHED key={args.key} status={existing['status']} "
-                f"workerPid={existing['workerPid']}"
+                f"workerPid={existing['workerPid']} processPid={existing.get('processPid')}"
             )
             return 0
 
@@ -150,6 +311,11 @@ def command_start(args: argparse.Namespace) -> int:
             close_fds=True,
             **detached_options(),
         )
+        worker_identity = await_process_identity(worker.pid)
+        if worker_identity is None:
+            worker.terminate()
+            print("ERROR: failed to identify coordinator worker", file=sys.stderr)
+            return 1
         write_state(
             args.state_dir,
             args.key,
@@ -157,7 +323,9 @@ def command_start(args: argparse.Namespace) -> int:
                 "status": "STARTING",
                 "command": command,
                 "workerPid": worker.pid,
+                "workerIdentity": worker_identity,
                 "processPid": None,
+                "processIdentity": None,
                 "startedAt": now(),
                 "exitCode": None,
             },
@@ -176,9 +344,14 @@ def command_run(args: argparse.Namespace) -> int:
 def command_worker(args: argparse.Namespace) -> int:
     command = json.loads(args.command_json)
     deadline = time.monotonic() + 5
+    worker_identity = process_identity(os.getpid())
     while time.monotonic() < deadline:
         state = load_state(args.state_dir, args.key)
-        if state and state.get("workerPid") == os.getpid():
+        if (
+            state
+            and state.get("workerPid") == os.getpid()
+            and state.get("workerIdentity") == worker_identity
+        ):
             break
         time.sleep(0.01)
     else:
@@ -195,12 +368,18 @@ def command_worker(args: argparse.Namespace) -> int:
                 stderr=subprocess.STDOUT,
                 text=True,
             )
+            process_identity_value = await_process_identity(process.pid)
+            if process_identity_value is None:
+                process.terminate()
+                raise RuntimeError("failed to identify managed process")
             state = load_state(args.state_dir, args.key) or {}
             state.update(
                 {
                     "status": "RUNNING",
                     "processPid": process.pid,
+                    "processIdentity": process_identity_value,
                     "workerPid": os.getpid(),
+                    "workerIdentity": worker_identity,
                 }
             )
             write_state(args.state_dir, args.key, state)
@@ -240,8 +419,35 @@ def describe(state: dict[str, object] | None, key: str) -> str:
     )
 
 
+def reconcile_stale_active(
+    state_dir: Path,
+    key: str,
+    state: dict[str, object] | None,
+) -> dict[str, object] | None:
+    if state is None or state.get("status") not in ACTIVE or active_process_is_alive(state):
+        return state
+    with state_lock(state_dir, key):
+        current = load_state(state_dir, key)
+        if current is None or current.get("status") not in ACTIVE or active_process_is_alive(current):
+            return current
+        current.update(
+            {
+                "status": "ORPHANED",
+                "exitCode": 125,
+                "finishedAt": now(),
+                "error": "worker and managed process exited without recording a terminal state",
+            },
+        )
+        write_state(state_dir, key, current)
+        return current
+
+
 def command_status(args: argparse.Namespace) -> int:
-    state = load_state(args.state_dir, args.key)
+    state = reconcile_stale_active(
+        args.state_dir,
+        args.key,
+        load_state(args.state_dir, args.key),
+    )
     print(describe(state, args.key))
     return 0 if state else 3
 
@@ -249,7 +455,11 @@ def command_status(args: argparse.Namespace) -> int:
 def command_wait(args: argparse.Namespace) -> int:
     deadline = time.monotonic() + args.timeout_seconds
     while True:
-        state = load_state(args.state_dir, args.key)
+        state = reconcile_stale_active(
+            args.state_dir,
+            args.key,
+            load_state(args.state_dir, args.key),
+        )
         if state is None:
             print(describe(state, args.key))
             return 3
@@ -263,8 +473,8 @@ def command_wait(args: argparse.Namespace) -> int:
         time.sleep(0.05)
 
 
-def terminate_process_tree(pid: object) -> None:
-    if not isinstance(pid, int) or not pid_is_alive(pid):
+def terminate_process_tree(pid: object, expected_identity: object) -> None:
+    if not isinstance(pid, int) or not process_matches(pid, expected_identity):
         return
     if os.name == "nt":
         subprocess.run(
@@ -286,8 +496,8 @@ def command_stop(args: argparse.Namespace) -> int:
             print(describe(state, args.key))
             return 0
         if state.get("status") in ACTIVE:
-            terminate_process_tree(state.get("processPid"))
-            terminate_process_tree(state.get("workerPid"))
+            terminate_process_tree(state.get("processPid"), state.get("processIdentity"))
+            terminate_process_tree(state.get("workerPid"), state.get("workerIdentity"))
             state.update(
                 {
                     "status": "CANCELLED",

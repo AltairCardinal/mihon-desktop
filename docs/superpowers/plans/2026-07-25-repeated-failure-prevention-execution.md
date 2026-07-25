@@ -139,6 +139,32 @@ GREEN：
 - 首轮 GREEN 暴露 Windows 上 `os.kill(pid, 0)` 不能可靠区分已退出进程，已改用 `OpenProcess/GetExitCodeProcess` 后转绿。
 - 真实 Gradle 验证由协调器运行：focused 任务记录 `workerPid=4688`、`processPid=39840`、退出码 `0`；完整套件第一次 50 秒 wait 超时后仍保持同一 `workerPid=45712`、`processPid=9124`，没有重启第二份 Gradle。
 
+### R2 可靠性复审补强
+
+- 触发原因：真实 `spotlessCheck` 已成功退出，但 worker 未写回终态，状态长期停在
+  `RUNNING`；首轮补强虽然能回收为 `ORPHANED`，独立复审仍发现锁回收 TOCTOU、
+  macOS 秒级身份、旧 PID-only 锁和错误身份 stop 覆盖缺口。
+- RED：旧实现下，陈旧锁内容测试和两个并发回收者测试均因锁文件被删除而精确失败；
+  ACTIVE 状态的错误进程身份测试改为先执行 `stop`，确保真实进入停止分支。
+- GREEN：锁改为 Windows `msvcrt.locking` / POSIX `fcntl.flock`，锁文件永久保留，
+  进程退出由操作系统自动释放锁，不再读取、信任或删除旧 PID-only 锁。
+- GREEN：Windows 使用进程创建 ticks，Linux 使用 boot ID + `/proc` start ticks，
+  macOS 使用 `libproc.proc_pidinfo(PROC_PIDTBSDINFO)` 的秒和微秒创建时间；其他无法
+  获得可靠身份的平台 fail closed。
+- 自动化结果：`gradle-coordinator-test.py` `8/8`，覆盖等待超时后附着、真实失败码、
+  worker 丢失后的 ORPHANED、错误身份不附着且不误杀、陈旧锁内容、双并发回收和锁文件持久化；
+  `py_compile` 通过。
+- 确定性竞争证据：持锁者先锁定并把锁文件截断为零；竞争者通过 `waiter-ready`
+  屏障证明已经到达锁尝试点，首次非阻塞加锁必须返回失败，释放后由同一进程取得锁并
+  完成 ORPHANED 125 回收。旧实现在 Windows 精确抛出 `PermissionError(13)`；
+  删除加锁前的 sentinel 写入后该场景与完整 `8/8` 均转绿。
+- Windows 真实 Gradle：协调器运行 `gradlew help --offline --no-daemon`，
+  `workerPid=18404`、`processPid=25920`、退出码 `0`、`BUILD SUCCESSFUL in 33s`，
+  终态为 `PASSED` 且锁文件仍存在。
+- macOS 真实验证（`ssh mbp`）：同一进程身份稳定且不同进程身份不同，
+  格式为 `darwin:<seconds>:<microseconds>`；两个进程竞争同一锁时第二个实际等待
+  `0.624s`，进程退出后自动获得锁且锁文件仍存在。
+
 ### R3
 
 - RED：validator 不存在时，合法回执、缺字段和非法状态三类测试均失败。
