@@ -6,6 +6,7 @@
 #   ./scripts/build-desktop.sh feature     # bump FEATURE, reset BUILD, then build
 #   ./scripts/build-desktop.sh stage       # bump STAGE, reset FEATURE/BUILD, then build
 #   ./scripts/build-desktop.sh msi         # bump BUILD, build MSI, then rebuild unpackaged app
+#   ./scripts/build-desktop.sh evidence    # build a committed version allocation and seal provenance
 #   ./scripts/build-desktop.sh test-only   # run tests only where supported
 #   ./scripts/build-desktop.sh full-tests  # run full tests only where supported
 
@@ -13,7 +14,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP_VERSION_FILE="$REPO_ROOT/app-desktop/src/main/kotlin/mihon/desktop/AppVersion.kt"
-HOST_OS="$(uname -s)"
+HOST_OS="${MIHON_HOST_OS:-$(uname -s)}"
 MODE="${1:-hash}"
 
 read_version_constant() {
@@ -33,7 +34,7 @@ replace_version_constant() {
 
 print_usage_and_exit() {
   echo "Unknown mode: $MODE"
-  echo "Use: hash, feature, stage, msi, test-only, or full-tests."
+  echo "Use: hash, feature, stage, msi, evidence, test-only, or full-tests."
   exit 1
 }
 
@@ -63,6 +64,9 @@ case "$MODE" in
     echo "Build bump: 0.$STAGE.$FEATURE.$BUILD"
     replace_version_constant BUILD "$BUILD"
     ;;
+  evidence)
+    echo "Evidence build: 0.$STAGE.$FEATURE.$BUILD (committed version allocation required)"
+    ;;
   test-only|full-tests)
     echo "Test version: 0.$STAGE.$FEATURE.$BUILD (version unchanged)"
     ;;
@@ -78,6 +82,14 @@ echo "Full version: $FULL_VERSION"
 run_macos() {
   local DEPLOY_DIR="/Applications/Mihon Desktop.app"
   local DIST_DIR="/private/tmp/mihon-dist/main/app/Mihon Desktop.app"
+  local PROVENANCE_SOURCE=""
+
+  cleanup_macos_provenance_source() {
+    if [[ -n "${PROVENANCE_SOURCE:-}" ]]; then
+      rm -f -- "$PROVENANCE_SOURCE"
+    fi
+  }
+  trap cleanup_macos_provenance_source EXIT
 
   export JAVA_HOME="${JAVA_HOME:-/Users/altair/.jdks/jdk-21.0.10+7/Contents/Home}"
 
@@ -87,6 +99,11 @@ run_macos() {
   fi
 
   cd "$REPO_ROOT"
+  if [[ "$MODE" == "evidence" ]]; then
+    PROVENANCE_SOURCE="$(mktemp "${TMPDIR:-/tmp}/mihon-task151-source.XXXXXX")"
+    python3 scripts/task15-build-provenance.py source \
+      --repo "$REPO_ROOT" --require-version-allocation --output "$PROVENANCE_SOURCE"
+  fi
   echo ""
   echo "Running desktop JVM tests..."
   if [[ "$MODE" == "full-tests" ]]; then
@@ -110,6 +127,16 @@ run_macos() {
   rm -rf "$DEPLOY_DIR"
   cp -R "$DIST_DIR" "$DEPLOY_DIR"
 
+  if [[ "$MODE" == "evidence" ]]; then
+    local ARTIFACT="$DEPLOY_DIR"
+    python3 scripts/task15-build-provenance.py seal \
+      --repo "$REPO_ROOT" --require-version-allocation \
+      --source "$PROVENANCE_SOURCE" --artifact "$ARTIFACT" \
+      --output "$ARTIFACT.task151-provenance.json"
+    rm -f "$PROVENANCE_SOURCE"
+    PROVENANCE_SOURCE=""
+  fi
+
   echo ""
   echo "Deployed Mihon Desktop $FULL_VERSION"
   echo "  $DEPLOY_DIR"
@@ -120,7 +147,9 @@ run_windows() {
 
   local WINDOWS_PS_SCRIPT="scripts/build-windows.ps1"
   local POWERSHELL_BIN=""
-  if command -v pwsh >/dev/null 2>&1; then
+  if [[ -n "${MIHON_POWERSHELL_BIN:-}" ]]; then
+    POWERSHELL_BIN="$MIHON_POWERSHELL_BIN"
+  elif command -v pwsh >/dev/null 2>&1; then
     POWERSHELL_BIN="pwsh"
   elif command -v powershell.exe >/dev/null 2>&1; then
     POWERSHELL_BIN="powershell.exe"
@@ -141,6 +170,9 @@ run_windows() {
       ;;
     msi)
       ps_args+=(-PackageMsi -VersionAllocated -ExpectedVersion "$FULL_VERSION")
+      ;;
+    evidence)
+      ps_args+=(-VersionAllocated -EvidenceProvenance -ExpectedVersion "$FULL_VERSION")
       ;;
     hash|feature|stage)
       ps_args+=(-VersionAllocated -ExpectedVersion "$FULL_VERSION")

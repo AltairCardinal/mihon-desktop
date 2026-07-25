@@ -62,6 +62,7 @@ class WindowPrivacyWiringTest {
             assertEquals(false, controller.state.value.appliedProtected)
             app.incognitoMode.set(true)
             awaitSetCalls(bridge, 2)
+            awaitPolicyState(controller, expectedProtected = true)
             assertEquals(listOf(WDA_NONE, WDA_EXCLUDEFROMCAPTURE), bridge.setCalls)
             assertTrue(controller.state.value.shouldProtect)
             assertEquals(true, controller.state.value.appliedProtected)
@@ -69,6 +70,7 @@ class WindowPrivacyWiringTest {
             assertEquals(2, bridge.setCalls.size)
             security.secureScreen().set(SecurityPreferences.SecureScreenMode.NEVER)
             awaitSetCalls(bridge, 3)
+            awaitPolicyState(controller, expectedProtected = false)
             assertEquals(listOf(WDA_NONE, WDA_EXCLUDEFROMCAPTURE, WDA_NONE), bridge.setCalls)
             assertFalse(controller.state.value.shouldProtect)
             assertEquals(false, controller.state.value.appliedProtected)
@@ -87,6 +89,18 @@ class WindowPrivacyWiringTest {
 
     private suspend fun awaitSetCalls(bridge: RecordingBridge, expected: Int) = withTimeout(5_000) {
         while (bridge.setCalls.size < expected) yield()
+    }
+
+    private suspend fun awaitPolicyState(
+        controller: DesktopWindowPrivacyController,
+        expectedProtected: Boolean,
+    ) = withTimeout(5_000) {
+        while (
+            controller.state.value.shouldProtect != expectedProtected ||
+            controller.state.value.appliedProtected != expectedProtected
+        ) {
+            yield()
+        }
     }
 
     @Test

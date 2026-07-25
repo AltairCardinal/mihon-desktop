@@ -709,7 +709,12 @@ class SourceSharedStateWiringTest {
                 assertTrue(click(copy.submit))
                 scene.render()
                 assertTrue(nodes().joinToString { it.config.toString() }.contains(copy.invalidHeader))
-                assertTrue(requireNotNull(cookieHeader.config[SemanticsActions.SetText].action).invoke(AnnotatedString("session=secret")))
+                val currentCookieHeader = nodes().filter { it.config.contains(SemanticsActions.SetText) }.last()
+                assertTrue(
+                    requireNotNull(currentCookieHeader.config[SemanticsActions.SetText].action)
+                        .invoke(AnnotatedString("session=secret")),
+                )
+                scene.render()
                 assertTrue(click(copy.submit))
 
                 val contentState = async(start = CoroutineStart.UNDISPATCHED) {

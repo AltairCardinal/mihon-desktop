@@ -65,4 +65,28 @@ class TestHttpServerJsonTest {
             applicationState.registerActions(previousActions)
         }
     }
+
+    @Test
+    fun `history endpoint preserves external action rejection target`() = runBlocking {
+        applicationState.reset()
+        applicationState.recordExternalAction("Rejected", "ParserRejected")
+        val server = embeddedServer(CIO, host = "127.0.0.1", port = 0) { testHttpServer() }.start()
+        try {
+            val port = server.resolvedConnectors().single().port
+            val response = HttpClient.newHttpClient().send(
+                HttpRequest.newBuilder(URI.create("http://127.0.0.1:$port/test/history")).GET().build(),
+                HttpResponse.BodyHandlers.ofString(),
+            )
+            val record = Json.parseToJsonElement(response.body()).jsonArray.single().jsonObject
+
+            assertEquals("ExternalActionRejected", record.getValue("action").jsonPrimitive.content)
+            assertEquals(
+                "ParserRejected",
+                record.getValue("params").jsonObject.getValue("target").jsonPrimitive.content,
+            )
+        } finally {
+            server.stop(0, 0)
+            applicationState.reset()
+        }
+    }
 }

@@ -6,6 +6,7 @@ import java.nio.file.AccessDeniedException
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.nio.charset.StandardCharsets
 import java.util.UUID
 
 fun interface DesktopUriSchemeRegistrar {
@@ -19,6 +20,7 @@ class DesktopUriSchemeRegistration(
     private val linuxApplicationsDirectory: File = defaultLinuxApplicationsDirectory(),
     private val resourceLoader: (String) -> String? = ::loadResource,
     private val writeFile: (File, String) -> Unit = ::writeAtomically,
+    private val writeWindowsRegistryFile: (File, String) -> Unit = ::writeRegistryAtomically,
 ) : DesktopUriSchemeRegistrar {
     override fun register(): Result {
         if (platform == OperatingSystem.UNSUPPORTED) {
@@ -51,24 +53,22 @@ class DesktopUriSchemeRegistration(
 
     private fun registerWindows(): Result {
         validateExecutable(executable)
-        val key = "HKCU\\Software\\Classes\\$SCHEME"
-        val commands = listOf(
-            listOf("reg", "add", key, "/ve", "/t", "REG_SZ", "/d", "URL:$SCHEME", "/f"),
-            listOf("reg", "add", key, "/v", "URL Protocol", "/t", "REG_SZ", "/d", "", "/f"),
-            listOf(
-                "reg",
-                "add",
-                "$key\\shell\\open\\command",
-                "/ve",
-                "/t",
-                "REG_SZ",
-                "/d",
-                "\"${executable.absolutePath}\" \"%1\"",
-                "/f",
-            ),
-        )
-        return commands.firstNotNullOfOrNull(::commandFailure)
-            ?: Result.Configured(Mechanism.WINDOWS_CURRENT_USER_REGISTRY)
+        val template = resourceLoader(WINDOWS_REGISTRY_TEMPLATE)
+            ?: return Result.Failed(FailureReason.RESOURCE_MISSING)
+        val registryFile = Files.createTempFile("mihon-uri-scheme-", ".reg").toFile()
+        return try {
+            writeWindowsRegistryFile(
+                registryFile,
+                template.replace(
+                    EXECUTABLE_PLACEHOLDER,
+                    executable.absolutePath.replace("\\", "\\\\"),
+                ),
+            )
+            commandFailure(listOf("reg", "import", registryFile.absolutePath))
+                ?: Result.Configured(Mechanism.WINDOWS_CURRENT_USER_REGISTRY)
+        } finally {
+            registryFile.delete()
+        }
     }
 
     private fun registerMacOs(): Result {
@@ -133,6 +133,7 @@ class DesktopUriSchemeRegistration(
         private const val LINUX_DESKTOP_FILE = "mihon-desktop.desktop"
         private const val LINUX_DESKTOP_ENTRY = "platform/linux/$LINUX_DESKTOP_FILE"
         private const val MACOS_PLIST = "platform/macos/tachiyomi-url-types.plist"
+        private const val WINDOWS_REGISTRY_TEMPLATE = "platform/windows/tachiyomi-url-protocol.reg.template"
 
         fun currentExecutable(): File = ProcessHandle.current().info().command()
             .map(::File)
@@ -198,10 +199,21 @@ class DesktopUriSchemeRegistration(
         }
 
         private fun writeAtomically(destination: File, content: String) {
+            writeBytesAtomically(destination, content.toByteArray(StandardCharsets.UTF_8))
+        }
+
+        private fun writeRegistryAtomically(destination: File, content: String) {
+            writeBytesAtomically(
+                destination,
+                byteArrayOf(0xff.toByte(), 0xfe.toByte()) + content.toByteArray(StandardCharsets.UTF_16LE),
+            )
+        }
+
+        private fun writeBytesAtomically(destination: File, content: ByteArray) {
             destination.parentFile?.mkdirs()
             val temporary = File(destination.parentFile, ".${destination.name}.${UUID.randomUUID()}.tmp")
             try {
-                Files.writeString(temporary.toPath(), content)
+                Files.write(temporary.toPath(), content)
                 try {
                     Files.move(
                         temporary.toPath(),

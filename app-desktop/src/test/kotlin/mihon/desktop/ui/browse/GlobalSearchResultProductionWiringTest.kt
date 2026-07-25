@@ -193,7 +193,7 @@ class GlobalSearchResultProductionWiringTest {
                     }
                 }
                 scene.render()
-                withTimeout(ASYNC_TIMEOUT_MS) { fixture.repository.oldStarted.await() }
+                awaitWhileRendering(scene) { fixture.repository.oldStarted.isCompleted }
                 scene.render()
                 assertFalse(text(scene).contains("old canonical"), "raw result must remain gated")
 
@@ -201,27 +201,17 @@ class GlobalSearchResultProductionWiringTest {
                 scene.render()
                 click(scene, "Search")
                 fixture.repository.releaseOld.complete(Unit)
-                withTimeout(ASYNC_TIMEOUT_MS) { fixture.repository.oldInserted.await() }
-                withTimeout(ASYNC_TIMEOUT_MS) {
-                    while (!fixture.repository.newStarted.isCompleted) {
-                        scene.render()
-                        yield()
-                    }
-                }
+                awaitWhileRendering(scene) { fixture.repository.oldInserted.isCompleted }
+                awaitWhileRendering(scene) { fixture.repository.newStarted.isCompleted }
                 scene.render()
                 assertFalse(text(scene).contains("old canonical"), "stale completion must be rejected before the new result publishes")
                 fixture.repository.releaseNew.complete(Unit)
-                withTimeout(ASYNC_TIMEOUT_MS) {
-                    while (!fixture.repository.newFailed.isCompleted) {
-                        scene.render()
-                        yield()
-                    }
-                }
+                awaitWhileRendering(scene) { fixture.repository.newFailed.isCompleted }
                 scene.render()
                 assertTrue(text(scene).contains(MR.strings.unknown_error.localized()))
                 assertFalse(text(scene).contains("new canonical"))
                 click(scene, MR.strings.action_retry.localized())
-                withTimeout(ASYNC_TIMEOUT_MS) { fixture.repository.newInserted.await() }
+                awaitWhileRendering(scene) { fixture.repository.newInserted.isCompleted }
                 scene.render()
                 assertTrue(text(scene).contains("new canonical"))
                 assertNotNull(fixture.mangas.getMangaByUrlAndSourceId("/new/0", source.id))
@@ -280,6 +270,16 @@ class GlobalSearchResultProductionWiringTest {
     private fun setText(scene: ImageComposeScene, value: String) = requireNotNull(
         nodes(scene).first { it.config.contains(SemanticsActions.SetText) }.config[SemanticsActions.SetText].action,
     ).invoke(AnnotatedString(value))
+
+    private suspend fun awaitWhileRendering(
+        scene: ImageComposeScene,
+        condition: () -> Boolean,
+    ) = withTimeout(ASYNC_TIMEOUT_MS) {
+        while (!condition()) {
+            scene.render()
+            yield()
+        }
+    }
 
     private fun SourceResultMaterializer?.diagnostic(): Map<Long, String>? = this?.results?.mapValues { (_, result) ->
         when (result) {

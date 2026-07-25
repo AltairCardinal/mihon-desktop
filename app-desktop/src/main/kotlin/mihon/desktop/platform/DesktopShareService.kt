@@ -27,7 +27,7 @@ class DesktopShareService(
     private val clipboardPort: DesktopClipboardPort = AwtDesktopClipboardPort,
     private val savePort: DesktopSavePort = SwingDesktopSavePort,
     private val isHeadless: () -> Boolean = {
-        GraphicsEnvironment.isHeadless() || DesktopExternalActionPolicy.isSuppressed()
+        GraphicsEnvironment.isHeadless() || DesktopExternalActionPolicy.isShareSuppressed()
     },
     private val revealPort: DesktopRevealPort = AwtDesktopRevealPort,
 ) {

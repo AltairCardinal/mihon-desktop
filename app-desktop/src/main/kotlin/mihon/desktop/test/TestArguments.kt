@@ -9,6 +9,7 @@ data class TestArguments(
     val jmxPort: Int = DEFAULT_JMX_PORT,
     val headless: Boolean = false,
     val screenshotDir: String = DEFAULT_SCREENSHOT_DIR,
+    val platformAcceptanceToken: String? = null,
 ) {
     companion object {
         const val DEFAULT_HTTP_PORT = 8080
@@ -24,6 +25,7 @@ data class TestArguments(
             var jmxPort = DEFAULT_JMX_PORT
             var headless = false
             var screenshotDir = DEFAULT_SCREENSHOT_DIR
+            var platformAcceptanceToken: String? = null
 
             for (arg in args) {
                 when {
@@ -38,6 +40,9 @@ data class TestArguments(
                     arg.startsWith("--screenshot-dir=") -> {
                         screenshotDir = arg.substringAfter("=")
                     }
+                    arg.startsWith("--platform-acceptance-token=") -> {
+                        platformAcceptanceToken = arg.substringAfter("=")
+                    }
                 }
             }
 
@@ -47,6 +52,7 @@ data class TestArguments(
                 jmxPort = jmxPort,
                 headless = headless,
                 screenshotDir = screenshotDir,
+                platformAcceptanceToken = platformAcceptanceToken,
             )
         }
     }

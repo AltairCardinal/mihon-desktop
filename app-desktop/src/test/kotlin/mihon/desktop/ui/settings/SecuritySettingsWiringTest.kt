@@ -372,6 +372,7 @@ class SecuritySettingsWiringTest {
     fun `production GUI close application return and headless lifecycle wait for updater cleanup`() = runBlocking {
         listOf("gui-close", "application-return", "headless").forEach { path ->
             val headless = path == "headless"
+            val checkStarted = CompletableDeferred<Unit>()
             val cleanupStarted = CompletableDeferred<Unit>()
             val releaseCleanup = CompletableDeferred<Unit>()
             val terminationReached = CompletableDeferred<Unit>()
@@ -380,6 +381,7 @@ class SecuritySettingsWiringTest {
             val model = DesktopUpdateScreenModel(
                 DesktopUpdateController(
                     {
+                        checkStarted.complete(Unit)
                         try {
                             awaitCancellation()
                         } finally {
@@ -406,6 +408,7 @@ class SecuritySettingsWiringTest {
             }
             val runtime = DesktopAppRuntime(service, service, service, startupCleanup = {}, scope = parentScope, updateScreenModel = model)
             assertTrue(model.intent(DesktopUpdateIntent.CHECK))
+            withTimeout(1_000) { checkStarted.await() }
             val closing = async(Dispatchers.Default) {
                 runProductionOwnerLifecycle(
                     testArgs = TestArguments(testMode = headless, headless = headless),

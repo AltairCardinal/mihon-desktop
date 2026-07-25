@@ -4,6 +4,7 @@ param(
     [switch]$SkipTests,
     [switch]$PackageMsi,
     [switch]$VersionAllocated,
+    [switch]$EvidenceProvenance,
     [string]$ExpectedVersion
 )
 
@@ -13,7 +14,15 @@ $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $Gradle = Join-Path $RepoRoot "gradlew.bat"
 $AppVersionFile = Join-Path $RepoRoot "app-desktop\src\main\kotlin\mihon\desktop\AppVersion.kt"
 $UnpackedExe = Join-Path $RepoRoot "app-desktop\tmp\mihon-dist\main\app\Mihon Desktop\Mihon Desktop.exe"
+$UnpackedApp = Split-Path $UnpackedExe
 $MsiOutputDir = Join-Path $RepoRoot "app-desktop\tmp\mihon-dist\main\msi"
+$ProvenanceTool = Join-Path $RepoRoot "scripts\task15-build-provenance.py"
+$ProvenanceSource = Join-Path ([IO.Path]::GetTempPath()) "mihon-task151-source-$([Guid]::NewGuid().ToString('N')).json"
+$Python = if ($env:MIHON_PYTHON) {
+    $env:MIHON_PYTHON
+} else {
+    (Get-Command python -ErrorAction SilentlyContinue).Source
+}
 
 if (-not (Test-Path $Gradle)) {
     throw "Gradle wrapper not found at $Gradle"
@@ -78,6 +87,14 @@ $BuildStartedAt = [DateTime]::UtcNow
 
 Push-Location $RepoRoot
 try {
+    if ($EvidenceProvenance) {
+        if (-not $VersionAllocated) {
+            throw "Evidence provenance requires an already committed version allocation"
+        }
+        if (-not $Python) { throw "Python 3 is required; set MIHON_PYTHON to its executable" }
+        & $Python $ProvenanceTool source --repo $RepoRoot --require-version-allocation --output $ProvenanceSource
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    }
     if (-not $SkipTests) {
         Write-Host ""
         Write-Host "Running desktop JVM tests..."
@@ -161,10 +178,17 @@ try {
 
     Write-Host ""
     Write-Host "Validated Mihon Desktop $FullVersion"
+    if ($EvidenceProvenance) {
+        & $Python $ProvenanceTool seal --repo $RepoRoot --require-version-allocation `
+            --source $ProvenanceSource --artifact $UnpackedApp `
+            --output "$UnpackedApp.task151-provenance.json"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    }
     Write-Host "Unpacked EXE: $UnpackedExe"
     if ($PackageMsi) {
         Write-Host "MSI output: $MsiOutputDir"
     }
 } finally {
+    Remove-Item -LiteralPath $ProvenanceSource -Force -ErrorAction SilentlyContinue
     Pop-Location
 }

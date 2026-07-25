@@ -7,10 +7,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import mihon.desktop.platform.DesktopShareService
+import mihon.desktop.test.http.createPlatformAcceptanceController
 import mihon.desktop.test.http.testHttpServer
 import mihon.desktop.test.screenshot.ScreenshotService
 import mihon.desktop.test.state.applicationState
 import org.slf4j.LoggerFactory
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
+import java.nio.file.Path
 import java.util.concurrent.CountDownLatch
 
 /**
@@ -94,7 +99,7 @@ object TestMode {
         )
 
         // Start HTTP server
-        startHttpServer(args.httpPort, run)
+        startHttpServer(args, run)
 
         isStarted = true
         logger.info("Test mode started successfully on port ${args.httpPort}")
@@ -103,12 +108,16 @@ object TestMode {
     /**
      * Start the HTTP test server.
      */
-    private fun startHttpServer(port: Int, run: TestModeRun) {
+    private fun startHttpServer(args: TestArguments, run: TestModeRun) {
+        val platformAcceptance = createPlatformAcceptanceController(
+            args = args,
+            evidenceRoot = Path.of(System.getProperty("java.io.tmpdir"), "mihon", "platform-acceptance"),
+        ) { Injekt.get<DesktopShareService>() }
         val job = serverScope.launch {
             var startedServer: ApplicationEngine? = null
             try {
-                startedServer = embeddedServer(Netty, port = port) {
-                    testHttpServer()
+                startedServer = embeddedServer(Netty, host = TEST_MODE_HOST, port = args.httpPort) {
+                    testHttpServer(platformAcceptanceController = platformAcceptance)
                 }.start(wait = false)
 
                 val belongsToActiveRun = synchronized(lifecycleLock) {
@@ -138,7 +147,7 @@ object TestMode {
             }
         }
 
-        logger.info("HTTP test server started on port $port")
+        logger.info("HTTP test server started on $TEST_MODE_HOST:${args.httpPort}")
     }
 
     /**
@@ -193,6 +202,7 @@ object TestMode {
 
     private const val SERVER_STOP_GRACE_MS = 100L
     private const val SERVER_STOP_TIMEOUT_MS = 1_000L
+    internal const val TEST_MODE_HOST = "127.0.0.1"
 }
 
 internal class TestModeRun {

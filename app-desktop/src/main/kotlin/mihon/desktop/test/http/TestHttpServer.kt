@@ -14,6 +14,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.encodeToJsonElement
@@ -138,8 +139,9 @@ private fun actionJson(
 /**
  * Configure HTTP test routes.
  */
-fun Application.testHttpServer(
+internal fun Application.testHttpServer(
     updateModel: DesktopUpdateScreenModel? = runCatching { Injekt.get<DesktopUpdateScreenModel>() }.getOrNull(),
+    platformAcceptanceController: DesktopPlatformAcceptanceController? = null,
 ) {
     routing {
         // Health check
@@ -158,6 +160,39 @@ fun Application.testHttpServer(
                 contentType = ContentType.Application.Json,
                 status = HttpStatusCode.OK,
             ) { currentTestStateJson(updateModel) }
+        }
+
+        platformAcceptanceController?.let { controller ->
+            post("/test/platform-acceptance/share/{kind}") {
+                val kind = when (call.parameters["kind"]?.lowercase()) {
+                    "text" -> PlatformShareKind.TEXT
+                    "file" -> PlatformShareKind.FILE
+                    else -> {
+                        call.respondText(
+                            """{"accepted":false,"failure":"INVALID_KIND"}""",
+                            ContentType.Application.Json,
+                            HttpStatusCode.BadRequest,
+                        )
+                        return@post
+                    }
+                }
+                val result = controller.share(
+                    call.request.headers[PLATFORM_ACCEPTANCE_TOKEN_HEADER],
+                    kind,
+                )
+                val status = when (result.failure) {
+                    null -> HttpStatusCode.OK
+                    PlatformAcceptanceFailure.MISSING_TOKEN -> HttpStatusCode.Unauthorized
+                    PlatformAcceptanceFailure.INVALID_TOKEN -> HttpStatusCode.Forbidden
+                    PlatformAcceptanceFailure.TOKEN_ALREADY_USED -> HttpStatusCode.Conflict
+                    PlatformAcceptanceFailure.TERMINAL_TIMEOUT -> HttpStatusCode.GatewayTimeout
+                }
+                call.respondText(
+                    Json.encodeToString(PlatformShareAcceptanceResult.serializer(), result),
+                    ContentType.Application.Json,
+                    status,
+                )
+            }
         }
 
         // Get list of available screens
@@ -662,10 +697,24 @@ fun Application.testHttpServer(
                 contentType = ContentType.Application.Json,
                 status = HttpStatusCode.OK,
             ) {
-                val history = applicationState.actionHistory.value.map { record ->
-                    """{"action":"${record.action}","params":{},"timestamp":"${record.timestamp}"}"""
-                }
-                "[${history.joinToString(",")}]"
+                buildJsonArray {
+                    applicationState.actionHistory.value.forEach { record ->
+                        add(
+                            buildJsonObject {
+                                put("action", JsonPrimitive(record.action))
+                                put(
+                                    "params",
+                                    buildJsonObject {
+                                        record.params.forEach { (key, value) ->
+                                            put(key, JsonPrimitive(value.toString()))
+                                        }
+                                    },
+                                )
+                                put("timestamp", JsonPrimitive(record.timestamp.toString()))
+                            },
+                        )
+                    }
+                }.toString()
             }
         }
 

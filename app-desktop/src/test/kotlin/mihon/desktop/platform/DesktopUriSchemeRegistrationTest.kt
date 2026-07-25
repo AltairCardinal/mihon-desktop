@@ -11,13 +11,15 @@ import java.nio.file.AccessDeniedException
 
 class DesktopUriSchemeRegistrationTest {
     @Test
-    fun `Windows overwrites HKCU canonical scheme with quoted current executable`(@TempDir tempDir: File) {
+    fun `Windows imports canonical registry template without command line quote corruption`(@TempDir tempDir: File) {
         val runner = RecordingRunner()
         val executable = packagedExecutable(File(tempDir, "windows"), OperatingSystem.WINDOWS).executable
+        var renderedRegistry: String? = null
         val registration = DesktopUriSchemeRegistration(
             platform = OperatingSystem.WINDOWS,
             executable = executable,
             commandRunner = runner,
+            writeWindowsRegistryFile = { _, content -> renderedRegistry = content },
         )
 
         assertEquals(
@@ -26,21 +28,14 @@ class DesktopUriSchemeRegistrationTest {
             ),
             registration.register(),
         )
-        assertEquals(3, runner.commands.size)
-        assertTrue(runner.commands.all { it.first() == "reg" && "/f" in it })
-        assertTrue(runner.commands.all { command -> command.any { "tachiyomi" in it } })
-        assertFalse(runner.commands.flatten().any { "mihon" in it.lowercase() && "mihon desktop" !in it.lowercase() })
-        assertEquals("\"${executable.absolutePath}\" \"%1\"", runner.commands.last()[runner.commands.last().indexOf("/d") + 1])
+        assertEquals(1, runner.commands.size)
+        assertEquals(listOf("reg", "import"), runner.commands.single().take(2))
+        assertTrue(runner.commands.single().last().endsWith(".reg"))
 
-        val renderedTemplate = resource("platform/windows/tachiyomi-url-protocol.reg.template")
+        val expectedRegistry = resource("platform/windows/tachiyomi-url-protocol.reg.template")
             .replace("{{EXECUTABLE}}", executable.absolutePath.replace("\\", "\\\\"))
-        val commandEntries = runner.commands.map { command ->
-            val key = command[2].replace("HKCU", "HKEY_CURRENT_USER")
-            val valueName = if ("/ve" in command) "@" else "\"${command[command.indexOf("/v") + 1]}\""
-            val data = command[command.indexOf("/d") + 1]
-            RegistryEntry(key, valueName, data)
-        }
-        assertEquals(commandEntries.toSet(), parseRegistryTemplate(renderedTemplate).toSet())
+        assertEquals(parseRegistryTemplate(expectedRegistry), parseRegistryTemplate(checkNotNull(renderedRegistry)))
+        assertFalse(checkNotNull(renderedRegistry).contains("mihon://"))
     }
 
     @Test

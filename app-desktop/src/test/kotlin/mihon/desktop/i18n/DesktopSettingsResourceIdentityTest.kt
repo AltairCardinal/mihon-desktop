@@ -1133,9 +1133,9 @@ class DesktopSettingsResourceIdentityTest {
                 try {
                     assertCopy(snapshot(successScene).text, MR.strings.desktop_advanced_calculating.localized(locale))
                     cacheSize.complete("42 KB")
-                    assertCopy(snapshot(successScene).text, "42 KB")
+                    awaitText(successScene, "42 KB")
                     click(successScene, MR.strings.desktop_advanced_crash_log_open.localized(locale))
-                    assertCopy(snapshot(successScene).text, MR.strings.desktop_advanced_crash_log_opened.localized(locale))
+                    awaitText(successScene, MR.strings.desktop_advanced_crash_log_opened.localized(locale))
                 } finally {
                     successScene.close()
                 }
@@ -1147,7 +1147,7 @@ class DesktopSettingsResourceIdentityTest {
                 try {
                     snapshot(failureScene)
                     click(failureScene, MR.strings.desktop_advanced_crash_log_open.localized(locale))
-                    assertCopy(snapshot(failureScene).text, MR.strings.desktop_advanced_crash_log_open_failed.localized(locale))
+                    awaitText(failureScene, MR.strings.desktop_advanced_crash_log_open_failed.localized(locale))
                 } finally {
                     failureScene.close()
                 }
