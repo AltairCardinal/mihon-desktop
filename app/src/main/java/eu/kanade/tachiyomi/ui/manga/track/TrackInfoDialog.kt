@@ -39,7 +39,6 @@ import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.domain.track.interactor.RefreshTracks
-import eu.kanade.domain.track.model.toDbTrack
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.track.TrackChapterSelector
 import eu.kanade.presentation.track.TrackDateSelector
@@ -193,23 +192,29 @@ data class TrackInfoDialogHomeScreen(
         }
     }
 
-    private class Model(
+    internal class Model(
         private val mangaId: Long,
         private val sourceId: Long,
         private val getTracks: GetTracks = Injekt.get(),
+        private val actions: TrackInfoDialogActions = trackInfoDialogActions,
+        startObservers: Boolean = true,
     ) : StateScreenModel<Model.State>(State()) {
 
         init {
-            screenModelScope.launch {
-                refreshTrackers()
+            if (startObservers) {
+                screenModelScope.launch {
+                    refreshTrackers()
+                }
             }
 
-            screenModelScope.launch {
-                getTracks.subscribe(mangaId)
-                    .catch { logcat(LogPriority.ERROR, it) }
-                    .distinctUntilChanged()
-                    .map { it.mapToTrackItem() }
-                    .collectLatest { trackItems -> mutableState.update { it.copy(trackItems = trackItems) } }
+            if (startObservers) {
+                screenModelScope.launch {
+                    getTracks.subscribe(mangaId)
+                        .catch { logcat(LogPriority.ERROR, it) }
+                        .distinctUntilChanged()
+                        .map { it.mapToTrackItem() }
+                        .collectLatest { trackItems -> mutableState.update { it.copy(trackItems = trackItems) } }
+                }
             }
         }
 
@@ -250,7 +255,7 @@ data class TrackInfoDialogHomeScreen(
 
         fun togglePrivate(item: TrackItem) {
             screenModelScope.launchNonCancellable {
-                item.tracker.setRemotePrivate(item.track!!.toDbTrack(), !item.track.private)
+                actions.setPrivate(item.track!!, !item.track.private)
             }
         }
 
@@ -271,7 +276,7 @@ data class TrackInfoDialogHomeScreen(
     }
 }
 
-private data class TrackStatusSelectorScreen(
+internal data class TrackStatusSelectorScreen(
     private val track: Track,
     private val serviceId: Long,
 ) : Screen() {
@@ -298,9 +303,10 @@ private data class TrackStatusSelectorScreen(
         )
     }
 
-    private class Model(
+    internal class Model(
         private val track: Track,
         private val tracker: Tracker,
+        private val actions: TrackInfoDialogActions = trackInfoDialogActions,
     ) : StateScreenModel<Model.State>(State(track.status)) {
 
         fun getSelections(): Map<Long, StringResource?> {
@@ -313,7 +319,7 @@ private data class TrackStatusSelectorScreen(
 
         fun setStatus() {
             screenModelScope.launchNonCancellable {
-                tracker.setRemoteStatus(track.toDbTrack(), state.value.selection)
+                actions.setStatus(track, state.value.selection)
             }
         }
 
@@ -324,7 +330,7 @@ private data class TrackStatusSelectorScreen(
     }
 }
 
-private data class TrackChapterSelectorScreen(
+internal data class TrackChapterSelectorScreen(
     private val track: Track,
     private val serviceId: Long,
 ) : Screen() {
@@ -352,9 +358,10 @@ private data class TrackChapterSelectorScreen(
         )
     }
 
-    private class Model(
+    internal class Model(
         private val track: Track,
         private val tracker: Tracker,
+        private val actions: TrackInfoDialogActions = trackInfoDialogActions,
     ) : StateScreenModel<Model.State>(State(track.lastChapterRead.toInt())) {
 
         fun getRange(): Iterable<Int> {
@@ -372,7 +379,7 @@ private data class TrackChapterSelectorScreen(
 
         fun setChapter() {
             screenModelScope.launchNonCancellable {
-                tracker.setRemoteLastChapterRead(track.toDbTrack(), state.value.selection)
+                actions.setChapter(track, state.value.selection.toDouble())
             }
         }
 
@@ -383,7 +390,7 @@ private data class TrackChapterSelectorScreen(
     }
 }
 
-private data class TrackScoreSelectorScreen(
+internal data class TrackScoreSelectorScreen(
     private val track: Track,
     private val serviceId: Long,
 ) : Screen() {
@@ -411,9 +418,10 @@ private data class TrackScoreSelectorScreen(
         )
     }
 
-    private class Model(
+    internal class Model(
         private val track: Track,
         private val tracker: Tracker,
+        private val actions: TrackInfoDialogActions = trackInfoDialogActions,
     ) : StateScreenModel<Model.State>(State(tracker.displayScore(track))) {
 
         fun getSelections(): ImmutableList<String> {
@@ -426,7 +434,8 @@ private data class TrackScoreSelectorScreen(
 
         fun setScore() {
             screenModelScope.launchNonCancellable {
-                tracker.setRemoteScore(track.toDbTrack(), state.value.selection)
+                val index = tracker.getScoreList().indexOf(state.value.selection)
+                actions.setScore(track, tracker.indexToScore(index))
             }
         }
 
@@ -437,7 +446,7 @@ private data class TrackScoreSelectorScreen(
     }
 }
 
-private data class TrackDateSelectorScreen(
+internal data class TrackDateSelectorScreen(
     private val track: Track,
     private val serviceId: Long,
     private val start: Boolean,
@@ -523,10 +532,11 @@ private data class TrackDateSelectorScreen(
         )
     }
 
-    private class Model(
+    internal class Model(
         private val track: Track,
         private val tracker: Tracker,
         private val start: Boolean,
+        private val actions: TrackInfoDialogActions = trackInfoDialogActions,
     ) : ScreenModel {
 
         // In UTC
@@ -544,9 +554,9 @@ private data class TrackDateSelectorScreen(
             val localMillis = millis.convertEpochMillisZone(ZoneOffset.UTC, ZoneOffset.systemDefault())
             screenModelScope.launchNonCancellable {
                 if (start) {
-                    tracker.setRemoteStartDate(track.toDbTrack(), localMillis)
+                    actions.setStartDate(track, localMillis)
                 } else {
-                    tracker.setRemoteFinishDate(track.toDbTrack(), localMillis)
+                    actions.setFinishDate(track, localMillis)
                 }
             }
         }
@@ -557,7 +567,7 @@ private data class TrackDateSelectorScreen(
     }
 }
 
-private data class TrackDateRemoverScreen(
+internal data class TrackDateRemoverScreen(
     private val track: Track,
     private val serviceId: Long,
     private val start: Boolean,
@@ -622,21 +632,18 @@ private data class TrackDateRemoverScreen(
         )
     }
 
-    private class Model(
+    internal class Model(
         private val track: Track,
         private val tracker: Tracker,
         private val start: Boolean,
+        private val actions: TrackInfoDialogActions = trackInfoDialogActions,
     ) : ScreenModel {
 
         fun getServiceName() = tracker.name
 
         fun removeDate() {
             screenModelScope.launchNonCancellable {
-                if (start) {
-                    tracker.setRemoteStartDate(track.toDbTrack(), 0)
-                } else {
-                    tracker.setRemoteFinishDate(track.toDbTrack(), 0)
-                }
+                actions.removeDate(track, start)
             }
         }
     }
@@ -735,7 +742,7 @@ data class TrackerSearchScreen(
     }
 }
 
-private data class TrackerRemoveScreen(
+internal data class TrackerRemoveScreen(
     private val mangaId: Long,
     private val track: Track,
     private val serviceId: Long,
@@ -813,11 +820,12 @@ private data class TrackerRemoveScreen(
         )
     }
 
-    private class Model(
+    internal class Model(
         private val mangaId: Long,
         private val track: Track,
         private val tracker: Tracker,
         private val deleteTrack: DeleteTrack = Injekt.get(),
+        private val actions: TrackInfoDialogActions = trackInfoDialogActions,
     ) : ScreenModel {
 
         fun getName() = tracker.name
@@ -826,11 +834,7 @@ private data class TrackerRemoveScreen(
 
         fun deleteMangaFromService() {
             screenModelScope.launchNonCancellable {
-                try {
-                    (tracker as DeletableTracker).delete(track)
-                } catch (e: Exception) {
-                    logcat(LogPriority.ERROR, e) { "Failed to delete entry from service" }
-                }
+                actions.delete(track)
             }
         }
 

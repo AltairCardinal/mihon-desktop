@@ -26,7 +26,7 @@ status: planned
 - [x] Task 144：A4 ID 32 Desktop extension repository wiring
 - [x] Task 145A：B1a ID 69 shared provider-neutral core
 - [x] Task 145B1：B1b-1 ID 69 Android provider adapter
-- [ ] Task 145B2：B1b-2 ID 69 Android tracking UI actions
+- [x] Task 145B2：B1b-2 ID 69 Android tracking UI actions
 - [ ] Task 146：B2 ID 69 Desktop provider adapters
 - [ ] Task 147：B3 ID 70 Android delayed tracker sync
 - [ ] Task 148：B4 ID 70 Desktop delayed sync consumer
@@ -221,6 +221,14 @@ Android compile、app/domain Spotless 与 diff-check GREEN；产品/测试范围
 确认 wiring test 精确失败后恢复。
 **Verification:** Android action wiring、145B1 integration、父 parity contract、Android compile、Spotless。
 **Desktop zero-regression:** 本 Task 不改 Desktop；146 继续消费同一 shared contract。
+
+**Execution evidence（已完成）：** action facade 永久 RED 于 production class 缺失，GREEN 后
+executor bypass、chapter `false→true` 与 failure feedback 删除三项 mutation 均精确失败并恢复。
+独立审查发现 facade 测试尚不能保护 UI call site 后，七个真实 production Model 改为注入同一
+Actions，并由行为测试直接执行 private/status/chapter/score、双 date、双 remove 与 delete；
+真实 `setChapter` call site 错接 `setStatus` mutation 精确出现缺 chapter、多 status 后恢复。
+最终 UI `2/2`、145B1 integration、父 parity `34/34`、Android compile、Spotless 与 diff-check
+GREEN；范围 3 files/272 touched，修复复审 `APPROVED`，P0/P1/P2/P3 均为 0。
 
 ### Task 146 B2 ID 69 Desktop provider adapters
 
