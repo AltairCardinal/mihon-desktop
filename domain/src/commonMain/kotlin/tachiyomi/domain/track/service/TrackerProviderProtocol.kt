@@ -100,7 +100,11 @@ private fun Track.apply(edit: TrackEdit, configuration: TrackerProviderConfigura
     val edited = copy(
         status = edit.status ?: status,
         score = edit.score ?: score,
-        lastChapterRead = edit.lastChapterRead ?: lastChapterRead,
+        lastChapterRead = if (edit.status == configuration.completionStatus && totalChapters > 0) {
+            totalChapters.toDouble()
+        } else {
+            edit.lastChapterRead ?: lastChapterRead
+        },
         startDate = edit.startDate ?: startDate,
         finishDate = edit.finishDate ?: finishDate,
         private = edit.private ?: private,

@@ -6,7 +6,7 @@ original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 completed-child-plan: docs/superpowers/plans/2026-07-21-mihon-desktop-platform-integration.md
 completed-settings-child-plan: docs/superpowers/plans/2026-07-22-mihon-desktop-settings-accessibility.md
 active-child-plan: docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md
-resume-order: continue with active-child-plan Task 1
+resume-order: continue with active-child-plan active-task
 ---
 
 # Mihon Desktop 对齐原版 Mihon 实施计划（原版基线修正版）
@@ -25,7 +25,7 @@ resume-order: continue with active-child-plan Task 1
 
 如果后续需要升级原版基线，必须先更新 `original-ref`，重新核验受影响的原版实现与 fixture，再更新计划和 parity evidence；不得让移动中的 `main` 静默改变任务语义。
 
-设置、外观、无障碍与许可施工已由 `completed-settings-child-plan` 完成。父 Task 6 已拆分到 `active-child-plan`，恢复执行时从该 child plan 的 Task 1 开始；父 Task 6 在 child plan 全部完成前保持未勾选。保留的 `original-roadmap` 仅供历史对照，不得重新作为可执行权威入口。
+设置、外观、无障碍与许可施工已由 `completed-settings-child-plan` 完成。父 Task 6 已拆分到 `active-child-plan`，恢复执行时以该 child plan 的 `active-task` 为唯一施工位置；父 Task 6 在 child plan 全部完成前保持未勾选。保留的 `original-roadmap` 仅供历史对照，不得重新作为可执行权威入口。
 
 **Goal:** 以固定原版 Mihon 的成熟行为、流程和工程边界为权威契约，消除 Mihon Desktop 当初为快速完成功能而产生的非平台必要简化与重复实现；将适合共用的规则迁入当前分支 shared core，让当前 Android 构建版和 Desktop JVM 实现共同消费，同时保持全部 Desktop 独有产品能力零回退。
 

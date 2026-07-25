@@ -12,7 +12,9 @@ import eu.kanade.tachiyomi.data.track.myanimelist.dto.MALSearchResult
 import eu.kanade.tachiyomi.data.track.myanimelist.dto.MALUser
 import eu.kanade.tachiyomi.network.DELETE
 import eu.kanade.tachiyomi.network.GET
+import eu.kanade.tachiyomi.network.HttpException
 import eu.kanade.tachiyomi.network.POST
+import eu.kanade.tachiyomi.network.await
 import eu.kanade.tachiyomi.network.awaitSuccess
 import eu.kanade.tachiyomi.network.parseAs
 import eu.kanade.tachiyomi.util.PkceUtil
@@ -32,6 +34,7 @@ class MyAnimeListApi(
     private val trackId: Long,
     private val client: OkHttpClient,
     interceptor: MyAnimeListInterceptor,
+    private val listStatusUrl: (Long) -> String = { mangaUrl(it).toString() },
 ) {
 
     private val json: Json by injectLazy()
@@ -118,13 +121,18 @@ class MyAnimeListApi(
             }
 
             val request = Request.Builder()
-                .url(mangaUrl(track.remote_id).toString())
+                .url(listStatusUrl(track.remote_id))
                 .put(formBodyBuilder.build())
                 .build()
             with(json) {
-                authClient.newCall(request)
-                    .awaitSuccess()
-                    .parseAs<MALListItemStatus>()
+                val response = authClient.newCall(request).await()
+                if (!response.isSuccessful) {
+                    if (response.body.string().contains("invalid_content")) {
+                        throw MALTitleNotApproved()
+                    }
+                    throw HttpException(response.code)
+                }
+                response.parseAs<MALListItemStatus>()
                     .let { parseMangaItem(it, track) }
             }
         }
@@ -133,7 +141,7 @@ class MyAnimeListApi(
     suspend fun deleteItem(track: DomainTrack) {
         withIOContext {
             authClient
-                .newCall(DELETE(mangaUrl(track.remoteId).toString()))
+                .newCall(DELETE(listStatusUrl(track.remoteId)))
                 .awaitSuccess()
         }
     }

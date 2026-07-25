@@ -153,6 +153,12 @@ class TrackerProviderProtocolTest {
             ),
         ) as TrackerProviderResult.Success
         assertEquals(track().copy(lastChapterRead = 10.0, status = 2), mangaUpdates.track)
+
+        val explicitCompletion = workflow.execute(
+            FakePort(mutableListOf()),
+            TrackerProviderRequest.Edit(track().copy(lastChapterRead = 3.0), TrackEdit(status = 4)),
+        ) as TrackerProviderResult.Success
+        assertEquals(10.0, explicitCompletion.track!!.lastChapterRead)
     }
 
     @Test

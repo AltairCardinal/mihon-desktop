@@ -10,12 +10,21 @@ import eu.kanade.tachiyomi.data.track.kitsu.Kitsu
 import eu.kanade.tachiyomi.data.track.kitsu.KitsuApi
 import eu.kanade.tachiyomi.data.track.kitsu.KitsuInterceptor
 import eu.kanade.tachiyomi.data.track.kitsu.dto.KitsuOAuth
+import eu.kanade.tachiyomi.data.track.myanimelist.MALTitleNotApproved
+import eu.kanade.tachiyomi.data.track.myanimelist.MALTokenExpired
+import eu.kanade.tachiyomi.data.track.myanimelist.MyAnimeList
+import eu.kanade.tachiyomi.data.track.myanimelist.MyAnimeListApi
+import eu.kanade.tachiyomi.data.track.myanimelist.MyAnimeListInterceptor
+import eu.kanade.tachiyomi.data.track.myanimelist.dto.MALOAuth
 import eu.kanade.tachiyomi.data.track.shikimori.Shikimori
 import eu.kanade.tachiyomi.data.track.shikimori.ShikimoriApi
 import eu.kanade.tachiyomi.data.track.shikimori.ShikimoriInterceptor
 import eu.kanade.tachiyomi.data.track.shikimori.dto.SMOAuth
 import eu.kanade.tachiyomi.network.HttpException
 import io.mockk.Runs
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
@@ -34,7 +43,16 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.domain.track.service.TrackEdit
+import tachiyomi.domain.track.service.TrackerAuthentication
+import tachiyomi.domain.track.service.TrackerChapterReadPolicy
+import tachiyomi.domain.track.service.TrackerProviderErrorKind
 import tachiyomi.domain.track.service.TrackerProviderProtocols
+import tachiyomi.domain.track.service.TrackerProviderRequest
+import tachiyomi.domain.track.service.TrackerProviderResult
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.addSingleton
+import java.io.IOException
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.time.Instant
@@ -42,6 +60,107 @@ import java.time.Instant
 class AndroidTrackerApiIntegrationTest {
     private val json = Json { ignoreUnknownKeys = true }
     private val passThrough = Interceptor { chain -> chain.proceed(chain.request()) }
+
+    @Test
+    fun `Android manager consumes provider configuration session refresh edit delete and errors`() = runTest {
+        val tracker = mockk<Tracker>(
+            relaxed = true,
+            moreInterfaces = arrayOf(DeletableTracker::class),
+        )
+        every { tracker.id } returns 1
+        every { tracker.name } returns "MyAnimeList"
+        every { tracker.isLoggedIn } returns true
+        every { tracker.getUsername() } returns "reader"
+        every { tracker.getReadingStatus() } returns 2
+        every { tracker.getRereadingStatus() } returns 6
+        every { tracker.getCompletionStatus() } returns 4
+        every { tracker.supportsReadingDates } returns true
+        every { tracker.supportsPrivateTracking } returns false
+        coEvery { tracker.refresh(any()) } answers { firstArg() }
+        coEvery { tracker.update(any(), false) } answers { firstArg() }
+        coEvery { (tracker as DeletableTracker).delete(any()) } just Runs
+        val persisted = mutableListOf<tachiyomi.domain.track.model.Track>()
+        val manager = TrackerManager(listOf(tracker), persisted::add, clock = { 1234L })
+        val original = domainTrack()
+
+        assertEquals(TrackerAuthentication.OAUTH, manager.configuration(1)!!.authentication)
+        assertEquals("reader", manager.session(1)!!.username)
+        val edit = manager.execute(
+            TrackerProviderRequest.Edit(original, TrackEdit(lastChapterRead = 1.0, didReadChapter = true)),
+        )
+        assertEquals(2, (edit as TrackerProviderResult.Success).track!!.status)
+        assertEquals(1234L, edit.track!!.startDate)
+        assertEquals(edit.track, persisted.single())
+        coVerifyOrder {
+            tracker.refresh(any())
+            tracker.update(any(), false)
+        }
+
+        val completion = manager.execute(
+            TrackerProviderRequest.Edit(original, TrackEdit(status = tracker.getCompletionStatus())),
+        ) as TrackerProviderResult.Success
+        assertEquals(original.totalChapters.toDouble(), completion.track!!.lastChapterRead)
+        assertEquals(completion.track, persisted.last())
+        coVerify { tracker.update(match { it.last_chapter_read == original.totalChapters.toDouble() }, false) }
+
+        assertTrue(manager.execute(TrackerProviderRequest.Delete(original)) is TrackerProviderResult.Success)
+        coVerify { (tracker as DeletableTracker).delete(original) }
+        coVerify(exactly = 2) { tracker.refresh(any()) }
+
+        listOf(
+            HttpException(401) to TrackerProviderErrorKind.AUTHENTICATION,
+            HttpException(403) to TrackerProviderErrorKind.AUTHENTICATION,
+            HttpException(404) to TrackerProviderErrorKind.NOT_FOUND,
+            HttpException(429) to TrackerProviderErrorKind.RATE_LIMITED,
+            HttpException(503) to TrackerProviderErrorKind.SERVER,
+            IOException("offline") to TrackerProviderErrorKind.NETWORK,
+            IOException("MAL request failed", IOException("interceptor failed", MALTokenExpired())) to
+                TrackerProviderErrorKind.AUTHENTICATION,
+            MALTitleNotApproved() to TrackerProviderErrorKind.TITLE_NOT_APPROVED,
+        ).forEach { (error, kind) ->
+            coEvery { tracker.refresh(any()) } throws error
+            val failure = manager.execute(TrackerProviderRequest.Edit(original, TrackEdit(status = 3)))
+            assertEquals(kind, (failure as TrackerProviderResult.Failure).error.kind)
+        }
+
+        every { tracker.isLoggedIn } returns false
+        val loggedOut = manager.execute(TrackerProviderRequest.Edit(original, TrackEdit(status = 3)))
+        assertEquals(TrackerProviderErrorKind.AUTHENTICATION, (loggedOut as TrackerProviderResult.Failure).error.kind)
+        coVerify(exactly = 10) { tracker.refresh(any()) }
+
+        val mangaUpdates = mockk<Tracker>(relaxed = true) {
+            every { id } returns 7
+        }
+        assertEquals(
+            TrackerChapterReadPolicy.ALWAYS_READING,
+            TrackerManager(listOf(mangaUpdates)).configuration(7)!!.chapterReadPolicy,
+        )
+    }
+
+    @Test
+    fun `MyAnimeList production update distinguishes unapproved title response`() = runTest {
+        MockWebServer().also { it.start() }.use { server ->
+            Injekt.addSingleton(json)
+            val tracker = mockk<MyAnimeList> {
+                every { loadOAuth() } returns MALOAuth("Bearer", "refresh", "access", 3600)
+                every { getIfAuthExpired() } returns false
+            }
+            val api = MyAnimeListApi(1, OkHttpClient(), MyAnimeListInterceptor(tracker)) {
+                server.url("/my_list_status").toString()
+            }
+            server.enqueue(
+                MockResponse(code = 400, body = """{"message":"Invalid content","error":"invalid_content"}"""),
+            )
+
+            val error = assertThrows(MALTitleNotApproved::class.java) { runBlocking { api.updateItem(track(1, 1)) } }
+            assertEquals("MAL: This title can't be added because it is waiting for approval.", error.message)
+            assertEquals("Bearer access", server.takeRequest().headers["Authorization"])
+
+            every { tracker.getIfAuthExpired() } returns true
+            val expired = assertThrows(IOException::class.java) { runBlocking { api.updateItem(track(1, 1)) } }
+            assertTrue(expired.cause?.cause is MALTokenExpired)
+        }
+    }
 
     @Test
     fun `AniList production bind and update use shared protocol with full fields`() = runTest {
@@ -412,6 +531,23 @@ class AndroidTrackerApiIntegrationTest {
         tracking_url = ""
         private = false
     }
+
+    private fun domainTrack() = tachiyomi.domain.track.model.Track(
+        id = 1,
+        mangaId = 2,
+        trackerId = 1,
+        remoteId = 3,
+        libraryId = 4,
+        title = "Manga",
+        lastChapterRead = 0.0,
+        totalChapters = 10,
+        status = 5,
+        score = 0.0,
+        remoteUrl = "",
+        startDate = 0,
+        finishDate = 0,
+        private = false,
+    )
 
     private companion object {
         const val KITSU_CLIENT_ID = "dd031b32d2f56c990b1425efe6c42ad847e7fe3ab46bf1299f05ecd856bdb7dd"

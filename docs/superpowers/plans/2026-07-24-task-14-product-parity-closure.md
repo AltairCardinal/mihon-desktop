@@ -25,7 +25,8 @@ status: planned
 - [x] Task 143：A3 ID 32 Android extension repository wiring
 - [x] Task 144：A4 ID 32 Desktop extension repository wiring
 - [x] Task 145A：B1a ID 69 shared provider-neutral core
-- [ ] Task 145B：B1b ID 69 Android provider consumer
+- [x] Task 145B1：B1b-1 ID 69 Android provider adapter
+- [ ] Task 145B2：B1b-2 ID 69 Android tracking UI actions
 - [ ] Task 146：B2 ID 69 Desktop provider adapters
 - [ ] Task 147：B3 ID 70 Android delayed tracker sync
 - [ ] Task 148：B4 ID 70 Desktop delayed sync consumer
@@ -163,24 +164,63 @@ configuration/session、request/result/error、refresh-before-update 与 DELETE 
 `10/10`，JVM/Android release compile、domain Spotless 与 diff-check GREEN；范围为 5 shared
 files/345 touched，Android 145B WIP 未纳入。独立最终确认 `APPROVED`，P0/P1/P2/P3 均为 0。
 
-### Task 145B B1b ID 69 Android provider consumer
+### Task 145B1 B1b-1 ID 69 Android provider adapter
 
 **Risk axis:** android-tracker-provider-consumer
 **Platform boundary:** android
-**Estimated scope:** 3 files, 260 lines
+**Estimated scope:** 6 files, 320 lines
 
 **Files:**
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/data/track/TrackerManager.kt`
-- Modify: `app/src/main/java/eu/kanade/tachiyomi/ui/manga/track/TrackInfoDialog.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/data/track/myanimelist/MyAnimeListApi.kt`
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/data/track/myanimelist/MyAnimeListInterceptor.kt`
 - Modify: `app/src/test/java/eu/kanade/tachiyomi/data/track/AndroidTrackerApiIntegrationTest.kt`
+- Modify: `domain/src/commonMain/kotlin/tachiyomi/domain/track/service/TrackerProviderProtocol.kt`
+- Modify: `domain/src/commonTest/kotlin/tachiyomi/domain/track/service/TrackerProviderProtocolTest.kt`
 
-**User entry:** Android Manga detail → Tracking 与 Settings → Tracking。
-**Feedback:** bind/search/update/delete、initial status/date、auth 和 provider error 返回稳定分类。
-**RED:** Android production consumer 必须执行 145A 的 configuration/session/workflow，并覆盖 provider adapter 结果。
-**GREEN:** `TrackerManager` 与 `TrackInfoDialog` 委托 145A shared contract；Android 只保留网络/credential adapter。
-**Mutation:** 绕过 shared workflow 或错误映射，确认 Android integration 精确失败后恢复。
+**User entry:** Android Manga detail → Tracking 的 provider 请求。
+**Feedback:** provider adapter 对 bind/update/delete、auth 和错误返回稳定分类。
+**RED:** Android manager 必须执行 145A workflow，并覆盖 fixed-main completion 与真实 MAL 错误链路。
+**GREEN:** `TrackerManager` 委托 shared contract；Android 只保留 transport、credential、persist 与错误 adapter。
+**Mutation:** 绕过 shared workflow、refresh、completion 或错误映射，确认 integration 精确失败后恢复。
 **Verification:** Android API integration、父 parity contract、Android compile、Spotless。
-**Desktop zero-regression:** 本 Task 不改 Desktop；146 必须保留凭据与 enhanced provider 能力。
+**Desktop zero-regression:** 本 Task 不改 Desktop 或 Android UI；145B2 接入 UI，146 保留 Desktop 凭据与 enhanced provider 能力。
+
+**Scope correction:** 原 3 文件/260 行边界在独立审查中暴露 fixed-main completion 丢失、
+MAL `invalid_content` production 分支被测试内同名假异常冒充，以及真实 `MALTokenExpired`
+被 OkHttp 包装后误分类。修复这些 production 风险需要 shared rule、真实 MAL API/interceptor
+与 Android adapter 六文件，故先作为可独立验收的 145B1 收口；原 `TrackInfoDialog` WIP
+移交 145B2，不混入本提交。
+
+**Execution evidence（已完成）：** shared completion RED 精确为预期总章节 `10.0`、实际
+`3.0`；修复后由 Android manager 真实验证 refresh → shared apply → `update(false)` → persist。
+真实 MockWebServer `invalid_content` 经 production API 抛 `MALTitleNotApproved`；真实 interceptor
+产生的两层 `IOException` wrapper 又精确 RED 于预期 AUTHENTICATION、实际 NETWORK，修复为最多
+8 层且自环安全的 cause-chain 分类。最终 Android `9/9`、shared `10/10`、父 parity `34/34`、
+Android compile、app/domain Spotless 与 diff-check GREEN；产品/测试范围为 6 files/295 touched，
+独立修复复审 `APPROVED`，P0/P1/P2/P3 均为 0，145B2 UI WIP 未纳入。
+
+### Task 145B2 B1b-2 ID 69 Android tracking UI actions
+
+**Risk axis:** android-tracker-ui-wiring
+**Platform boundary:** android
+**Estimated scope:** 3 files, 300 lines
+
+**Files:**
+- Modify: `app/src/main/java/eu/kanade/tachiyomi/ui/manga/track/TrackInfoDialog.kt`
+- Create: `app/src/main/java/eu/kanade/tachiyomi/ui/manga/track/TrackInfoDialogActions.kt`
+- Create: `app/src/test/java/eu/kanade/tachiyomi/ui/manga/track/TrackInfoDialogActionWiringTest.kt`
+
+**User entry:** Android Manga detail → Tracking 的 status、chapter、score、date、private 与 delete 操作。
+**Feedback:** 所有动作复用 145B1 manager；失败显示稳定反馈，成功沿既有 track flow 刷新。
+**RED:** 行为测试直接执行 production action，覆盖六类精确 request、手工 chapter
+`didReadChapter=false` 与 failure feedback；断开任一 action→manager wiring 时测试失败。
+**GREEN:** 七个 ScreenModel call site 只委托可注入 executor/feedback 的 production action，
+不得在 UI 复制 shared workflow、provider error 或章节规则。
+**Mutation:** 分别绕过 action executor、把手工 chapter 标为自动阅读、删除 failure feedback，
+确认 wiring test 精确失败后恢复。
+**Verification:** Android action wiring、145B1 integration、父 parity contract、Android compile、Spotless。
+**Desktop zero-regression:** 本 Task 不改 Desktop；146 继续消费同一 shared contract。
 
 ### Task 146 B2 ID 69 Desktop provider adapters
 
