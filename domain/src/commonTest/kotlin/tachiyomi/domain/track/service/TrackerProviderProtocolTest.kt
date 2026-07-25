@@ -1,5 +1,6 @@
 package tachiyomi.domain.track.service
 
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -9,6 +10,30 @@ import org.junit.jupiter.api.Test
 import tachiyomi.domain.track.model.Track
 
 class TrackerProviderProtocolTest {
+    @Test
+    fun `enhanced workflow owns accept match bind order and short circuits rejected or missing matches`() = runTest {
+        val manga = EnhancedTrackerManga(42, 600, "/api/v1/series/series-1", "Never use this title")
+        val workflow = EnhancedTrackerWorkflow()
+        val matched = FakeEnhancedService(
+            accepted = true,
+            match = TrackSearchResult(10, "Remote title", 12, remoteUrl = manga.url),
+        )
+
+        val bound = workflow.bindIfMatched(matched, manga)
+
+        assertEquals(listOf("accept", "match", "bind"), matched.calls)
+        assertEquals(42, bound!!.mangaId)
+        assertEquals(manga.url, bound.remoteUrl)
+
+        val rejected = FakeEnhancedService(accepted = false, match = null)
+        assertEquals(null, workflow.bindIfMatched(rejected, manga))
+        assertEquals(listOf("accept"), rejected.calls)
+
+        val missing = FakeEnhancedService(accepted = true, match = null)
+        assertEquals(null, workflow.bindIfMatched(missing, manga))
+        assertEquals(listOf("accept", "match"), missing.calls)
+    }
+
     @Test
     fun `AniList keeps original implicit authorization and complete update mutation`() {
         val auth = TrackerProviderProtocols.aniList.authorization("16329", "mihon://anilist-auth", "state")
@@ -260,6 +285,52 @@ class TrackerProviderProtocolTest {
     }
 
     private fun track() = Track(1, 2, 1, 3, 4, "Manga", 0.0, 10, 5, 0.0, "", 0, 0, false)
+
+    private class FakeEnhancedService(
+        private val accepted: Boolean,
+        private val match: TrackSearchResult?,
+    ) : EnhancedTrackerService {
+        val calls = mutableListOf<String>()
+        override val profile = MutableStateFlow(TrackerProfile(6, "Enhanced", TrackerAuthentication.API_KEY, true))
+        override val configuration = TrackerProviderCatalog.configuration(6)
+        override val session = TrackerProviderSession(6, true)
+        override val statuses = emptyList<Pair<Long, String>>()
+        override val scores = emptyList<Double>()
+
+        override fun accept(manga: EnhancedTrackerManga): Boolean {
+            calls += "accept"
+            return accepted
+        }
+
+        override suspend fun match(manga: EnhancedTrackerManga): TrackSearchResult? {
+            calls += "match"
+            return match
+        }
+
+        override suspend fun search(query: String) = emptyList<TrackSearchResult>()
+        override suspend fun bind(mangaId: Long, result: TrackSearchResult): Track {
+            calls += "bind"
+            return Track(
+                id = 0,
+                mangaId = mangaId,
+                trackerId = 6,
+                remoteId = result.remoteId,
+                libraryId = null,
+                title = result.title,
+                lastChapterRead = result.lastChapterRead,
+                totalChapters = result.totalChapters,
+                status = result.status ?: 1,
+                score = 0.0,
+                remoteUrl = result.remoteUrl,
+                startDate = 0,
+                finishDate = 0,
+                private = false,
+            )
+        }
+        override suspend fun update(track: Track, edit: TrackEdit) = track
+        override suspend fun execute(request: TrackerProviderRequest) = TrackerProviderResult.Success(request.track)
+        override suspend fun logout() = Unit
+    }
 
     private class FakePort(
         val calls: MutableList<String>,

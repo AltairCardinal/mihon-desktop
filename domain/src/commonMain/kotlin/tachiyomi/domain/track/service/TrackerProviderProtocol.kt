@@ -64,6 +64,29 @@ fun TrackerProviderResult.trackOrThrow(): Track? = when (this) {
     is TrackerProviderResult.Failure -> throw TrackerProviderResultException(error)
 }
 
+data class EnhancedTrackerManga(
+    val mangaId: Long,
+    val sourceId: Long,
+    val url: String,
+    val title: String,
+)
+
+interface EnhancedTrackerService : TrackerProviderService {
+    fun accept(manga: EnhancedTrackerManga): Boolean
+    suspend fun match(manga: EnhancedTrackerManga): TrackSearchResult?
+}
+
+class EnhancedTrackerWorkflow {
+    suspend fun bindIfMatched(
+        service: EnhancedTrackerService,
+        manga: EnhancedTrackerManga,
+    ): Track? {
+        if (!service.accept(manga)) return null
+        val match = service.match(manga) ?: return null
+        return service.bind(manga.mangaId, match)
+    }
+}
+
 interface TrackerProviderService : TrackerService {
     val configuration: TrackerProviderConfiguration
     val session: TrackerProviderSession

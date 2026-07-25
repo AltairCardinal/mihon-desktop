@@ -1,5 +1,6 @@
 package mihon.desktop.tracking
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
@@ -10,6 +11,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.withTimeout
 import mihon.desktop.domain.fakes.FakeChapterRepository
+import mihon.desktop.domain.fakes.FakeMangaRepository
 import mihon.desktop.ui.tracking.TrackingMessage
 import mihon.desktop.ui.tracking.TrackingMessageException
 import mihon.desktop.ui.tracking.TrackingScreenModel
@@ -19,8 +21,12 @@ import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.repository.TrackRepository
+import tachiyomi.domain.track.service.EnhancedTrackerManga
+import tachiyomi.domain.track.service.EnhancedTrackerService
 import tachiyomi.domain.track.service.TrackEdit
 import tachiyomi.domain.track.service.TrackSearchResult
 import tachiyomi.domain.track.service.TrackerAuthentication
@@ -28,6 +34,7 @@ import tachiyomi.domain.track.service.TrackerProfile
 import tachiyomi.domain.track.service.TrackerProviderCatalog
 import tachiyomi.domain.track.service.TrackerProviderError
 import tachiyomi.domain.track.service.TrackerProviderErrorKind
+import tachiyomi.domain.track.service.TrackerProviderException
 import tachiyomi.domain.track.service.TrackerProviderOperation
 import tachiyomi.domain.track.service.TrackerProviderRequest
 import tachiyomi.domain.track.service.TrackerProviderResult
@@ -316,12 +323,88 @@ class TrackingScreenModelTest {
         }
     }
 
+    @Test
+    fun `load propagates cancellation from registry and enhanced matching`() = runTest {
+        val repository = FakeTrackRepository()
+        val registryCancellation = CancellationException("registry cancelled")
+        val registryModel = TrackingScreenModel(42, "Manga", 12, repository, failingRegistry(registryCancellation))
+        assertEquals(registryCancellation, runCatching { registryModel.load() }.exceptionOrNull())
+
+        val matchCancellation = CancellationException("match cancelled")
+        val service = FakeTrackerService(6, loggedIn = true).apply {
+            matchFailure = matchCancellation
+        }
+        val mangas = FakeMangaRepository().apply {
+            seed(Manga.create().copy(id = 42, source = 600, url = "/manga/42", title = "Manga"))
+        }
+        val matchingModel = TrackingScreenModel(42, "Manga", 12, repository, registry(service), mangas)
+
+        assertEquals(matchCancellation, runCatching { matchingModel.load() }.exceptionOrNull())
+    }
+
+    @Test
+    fun `accepted enhanced no match keeps manual search available and reports stable feedback`() = runTest {
+        val repository = FakeTrackRepository()
+        val service = FakeTrackerService(6, loggedIn = true).apply {
+            matchResult = null
+        }
+        val mangas = FakeMangaRepository().apply {
+            seed(Manga.create().copy(id = 42, source = 600, url = "/manga/42", title = "Manga"))
+        }
+        val model = TrackingScreenModel(42, "Manga", 12, repository, registry(service), mangas)
+
+        model.load()
+        model.search(6, "Manual title")
+
+        assertEquals(TrackingMessage.EnhancedNoMatch, model.state.value.feedback)
+        assertTrue(repository.rows.isEmpty())
+        assertEquals(listOf("Manual title"), service.searches)
+    }
+
+    @Test
+    fun `enhanced authentication and server failures report stable errors without removing manual search`() = runTest {
+        val cases = listOf(
+            Triple(8L, TrackerProviderException(TrackerProviderErrorKind.AUTHENTICATION), TrackingMessage.LoginRequired),
+            Triple(
+                9L,
+                TrackerProviderException(TrackerProviderErrorKind.SERVER, message = "Tracker service unavailable"),
+                TrackingMessage.External("Tracker service unavailable"),
+            ),
+        )
+        cases.forEach { (trackerId, failure, expected) ->
+            val repository = FakeTrackRepository()
+            val service = FakeTrackerService(trackerId, loggedIn = true).apply {
+                matchFailure = failure
+            }
+            val mangas = FakeMangaRepository().apply {
+                seed(
+                    Manga.create().copy(
+                        id = 42,
+                        source = trackerId * 100,
+                        url = "/manga/42",
+                        title = "Manga",
+                    ),
+                )
+            }
+            val model = TrackingScreenModel(42, "Manga", 12, repository, registry(service), mangas)
+
+            model.load()
+            val manualResults = model.search(trackerId, "Manual title")
+
+            assertEquals(expected, model.state.value.error)
+            assertEquals("Manual title", manualResults.single().title)
+            assertEquals(listOf("Manual title"), service.searches)
+            assertTrue(repository.rows.isEmpty())
+        }
+    }
+
     private fun TrackingScreenModel(
         mangaId: Long?,
         mangaTitle: String?,
         totalChapters: Long?,
         repository: TrackRepository,
         registry: TrackerServiceRegistry,
+        mangaRepository: MangaRepository? = null,
     ) = mihon.desktop.ui.tracking.TrackingScreenModel(
         mangaId = mangaId,
         mangaTitle = mangaTitle,
@@ -329,6 +412,7 @@ class TrackingScreenModelTest {
         repository = repository,
         chapterRepository = FakeChapterRepository(),
         registry = registry,
+        mangaRepository = mangaRepository,
     )
 
     private fun registry(vararg services: TrackerService) = object : TrackerServiceRegistry {
@@ -386,7 +470,7 @@ class TrackingScreenModelTest {
         loggedIn: Boolean,
         unavailableReason: String? = null,
         supportsDelete: Boolean = false,
-    ) : TrackerProviderService {
+    ) : EnhancedTrackerService {
         override val profile = MutableStateFlow(TrackerProfile(id, "Service $id", TrackerAuthentication.OAUTH, loggedIn, unavailableReason = unavailableReason))
         override val configuration = TrackerProviderCatalog.configuration(id).copy(supportsDelete = supportsDelete)
         override val session: TrackerProviderSession
@@ -403,6 +487,16 @@ class TrackingScreenModelTest {
         var bindCalls = 0
         val bindReadStates = mutableListOf<Boolean>()
         var updateCalls = 0
+        var acceptResult = true
+        var matchResult: TrackSearchResult? = TrackSearchResult(10, "Matched", 12, remoteUrl = "/matched")
+        var matchFailure: Throwable? = null
+
+        override fun accept(manga: EnhancedTrackerManga) = acceptResult && manga.sourceId == profile.value.id * 100
+
+        override suspend fun match(manga: EnhancedTrackerManga): TrackSearchResult? {
+            matchFailure?.let { throw it }
+            return matchResult
+        }
 
         override suspend fun search(query: String): List<TrackSearchResult> {
             searches += query

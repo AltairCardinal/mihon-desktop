@@ -29,11 +29,23 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.service.EnhancedTrackerContext
 import tachiyomi.domain.track.service.EnhancedTrackerContextProvider
+import tachiyomi.domain.track.service.EnhancedTrackerManga
+import tachiyomi.domain.track.service.EnhancedTrackerService
 import tachiyomi.domain.track.service.TrackEdit
 import tachiyomi.domain.track.service.TrackSearchResult
 import tachiyomi.domain.track.service.TrackerAuthentication
 import tachiyomi.domain.track.service.TrackerProfile
+import tachiyomi.domain.track.service.TrackerProviderCatalog
+import tachiyomi.domain.track.service.TrackerProviderErrorKind
+import tachiyomi.domain.track.service.TrackerProviderException
+import tachiyomi.domain.track.service.TrackerProviderPort
+import tachiyomi.domain.track.service.TrackerProviderRequest
+import tachiyomi.domain.track.service.TrackerProviderResult
+import tachiyomi.domain.track.service.TrackerProviderService
+import tachiyomi.domain.track.service.TrackerProviderSession
+import tachiyomi.domain.track.service.TrackerProviderWorkflow
 import tachiyomi.domain.track.service.TrackerService
+import tachiyomi.domain.track.service.trackOrThrow
 import tachiyomi.domain.track.service.trackerProviderHttpError
 import java.io.IOException
 import kotlin.math.max
@@ -56,9 +68,10 @@ private class DesktopEnhancedTrackerService(
     private val json: Json,
     private val contextProvider: EnhancedTrackerContextProvider,
     private val sourceClient: (Long) -> OkHttpClient?,
-) : TrackerService {
+) : EnhancedTrackerService, TrackerProviderPort {
     private val mutableProfile = MutableStateFlow(profile(contextProvider.contexts.value))
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    private val workflow = TrackerProviderWorkflow()
 
     init {
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -67,8 +80,28 @@ private class DesktopEnhancedTrackerService(
     }
 
     override val profile: StateFlow<TrackerProfile> = mutableProfile
+    override val configuration = TrackerProviderCatalog.configuration(trackerId)
+    override val session: TrackerProviderSession
+        get() = TrackerProviderSession(trackerId, profile.value.loggedIn)
     override val statuses = listOf(1L to "Unread", 2L to "Reading", 3L to "Completed")
     override val scores = emptyList<Double>()
+
+    override fun accept(manga: EnhancedTrackerManga): Boolean =
+        contextFor(manga)?.configured == true
+
+    override suspend fun match(manga: EnhancedTrackerManga): TrackSearchResult? {
+        val context = contextFor(manga) ?: return null
+        return try {
+            when (trackerId) {
+                6L -> komgaSearch(context, manga.url)
+                8L -> kavitaSearch(context, manga.url)
+                9L -> suwayomiSearch(context, mangaId(manga.url)).copy(remoteUrl = manga.url)
+                else -> error("Unsupported enhanced tracker $trackerId")
+            }
+        } catch (error: TrackerProviderException) {
+            if (error.kind == TrackerProviderErrorKind.NOT_FOUND) null else throw error
+        }
+    }
 
     override suspend fun search(query: String): List<TrackSearchResult> {
         val context = contextFor(query)
@@ -99,18 +132,25 @@ private class DesktopEnhancedTrackerService(
         private = false,
     )
 
-    override suspend fun update(track: Track, edit: TrackEdit): Track {
-        val desired = track.copy(
-            status = edit.status ?: track.status,
-            score = edit.score ?: track.score,
-            lastChapterRead = edit.lastChapterRead ?: track.lastChapterRead,
+    override suspend fun update(track: Track, edit: TrackEdit): Track =
+        requireNotNull(execute(TrackerProviderRequest.Edit(track, edit)).trackOrThrow())
+
+    override suspend fun execute(request: TrackerProviderRequest): TrackerProviderResult =
+        workflow.execute(this, request)
+
+    override suspend fun refresh(track: Track): Track =
+        bind(track.mangaId, search(track.remoteUrl).single()).copy(
+            id = track.id,
+            remoteUrl = track.remoteUrl,
         )
+
+    override suspend fun update(track: Track): Track {
         val context = contextFor(track.remoteUrl)
         return when (trackerId) {
             6L -> {
                 val progressUrl = komgaProgressUrl(track.remoteUrl)
                 val key = if (track.remoteUrl.contains("/api/v1/series/")) "lastBookNumberSortRead" else "lastBookRead"
-                execute(context, Request.Builder().url(progressUrl).put(buildJsonObject { put(key, desired.lastChapterRead) }.toString().toRequestBody(JSON)).build())
+                execute(context, Request.Builder().url(progressUrl).put(buildJsonObject { put(key, track.lastChapterRead) }.toString().toRequestBody(JSON)).build())
                 bind(track.mangaId, komgaSearch(context, track.remoteUrl)).copy(id = track.id)
             }
             8L -> {
@@ -119,17 +159,24 @@ private class DesktopEnhancedTrackerService(
                 val api = context.baseUrl.trimEnd('/')
                 execute(
                     context,
-                    Request.Builder().url("$api/Tachiyomi/mark-chapter-until-as-read?seriesId=$seriesId&chapterNumber=${desired.lastChapterRead}")
+                    Request.Builder().url("$api/Tachiyomi/mark-chapter-until-as-read?seriesId=$seriesId&chapterNumber=${track.lastChapterRead}")
                         .header("Authorization", "Bearer $token").post(EMPTY_JSON).build(),
                 )
                 bind(track.mangaId, kavitaSearch(context, track.remoteUrl)).copy(id = track.id)
             }
             9L -> {
-                suwayomiUpdate(context, desired)
-                bind(track.mangaId, suwayomiSearch(context, track.remoteId)).copy(id = track.id)
+                suwayomiUpdate(context, track)
+                bind(track.mangaId, suwayomiSearch(context, track.remoteId)).copy(
+                    id = track.id,
+                    remoteUrl = track.remoteUrl,
+                )
             }
             else -> error("Unsupported enhanced tracker $trackerId")
         }
+    }
+
+    override suspend fun delete(track: Track) {
+        throw UnsupportedOperationException("$trackerName does not support remote deletion")
     }
 
     override suspend fun logout() = Unit
@@ -153,6 +200,13 @@ private class DesktopEnhancedTrackerService(
         return candidates.maxByOrNull { context -> if (value.startsWith(context.baseUrl.trimEnd('/'))) context.baseUrl.length else -1 }
             ?: error(profile.value.unavailableReason ?: "$trackerName source configuration is unavailable")
     }
+
+    private fun contextFor(manga: EnhancedTrackerManga): EnhancedTrackerContext? =
+        desktopEnhancedTrackerContext(
+            contexts = contextProvider.contexts.value,
+            trackerId = trackerId,
+            sourceId = manga.sourceId,
+        )
 
     private suspend fun komgaSearch(context: EnhancedTrackerContext, url: String): TrackSearchResult {
         require(url.startsWith(context.baseUrl.trimEnd('/'))) { "Komga manga URL does not belong to the configured source" }
@@ -246,9 +300,14 @@ private class DesktopEnhancedTrackerService(
             buildJsonObject { put("mangaId", track.remoteId) },
         ).requiredObject("data").requiredObject("chapters").requiredArray("nodes")
             .mapNotNull { it.jsonObject.long("id").takeIf { _ -> (it.jsonObject.double("chapterNumber") ?: Double.MAX_VALUE) <= track.lastChapterRead + .001 } }
+        val markQuery = if (context.deleteDownloadsOnServer) {
+            "mutation MarkChaptersRead(\u0024chapters: [Int!]!) { updateChapters(input: {ids: \u0024chapters, patch: {isRead: true}}) { __typename } deleteDownloadedChapters(input: {ids: \u0024chapters}) { __typename } }"
+        } else {
+            "mutation MarkChaptersRead(\u0024chapters: [Int!]!) { updateChapters(input: {ids: \u0024chapters, patch: {isRead: true}}) { __typename } }"
+        }
         graphql(
             context,
-            "mutation MarkChaptersRead(\u0024chapters: [Int!]!) { updateChapters(input: {ids: \u0024chapters, patch: {isRead: true}}) { __typename } }",
+            markQuery,
             buildJsonObject { putJsonArray("chapters") { chapters.forEach { add(JsonPrimitive(it)) } } },
         )
         graphql(

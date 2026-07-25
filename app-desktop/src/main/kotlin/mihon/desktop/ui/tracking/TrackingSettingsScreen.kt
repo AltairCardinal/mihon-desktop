@@ -102,6 +102,7 @@ data class TrackingSettingsScreen(
                 repository = dependencies.trackRepository,
                 chapterRepository = dependencies.chapterRepository,
                 registry = dependencies.trackerServiceRegistry,
+                mangaRepository = dependencies.mangaRepository,
             )
         }
         val state by model.state.collectAsState()
@@ -406,6 +407,7 @@ internal fun trackingMessageText(message: TrackingMessage, locale: Locale = Loca
     TrackingMessage.LoginFailed -> MR.strings.desktop_tracking_login_failed.localized(locale)
     TrackingMessage.LogoutFailed -> MR.strings.desktop_tracking_logout_failed.localized(locale)
     TrackingMessage.UnbindFailed -> MR.strings.desktop_tracking_unbind_failed.localized(locale)
+    TrackingMessage.EnhancedNoMatch -> MR.strings.error_no_match.localized(locale)
     is TrackingMessage.External -> message.text
 }
 

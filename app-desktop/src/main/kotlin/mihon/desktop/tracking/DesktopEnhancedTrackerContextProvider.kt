@@ -35,12 +35,7 @@ class DesktopEnhancedTrackerContextProvider(
 
     private fun contextFor(source: Source): EnhancedTrackerContext? {
         val className = source::class.qualifiedName ?: source.javaClass.name
-        val trackerId = when (className) {
-            KOMGA_SOURCE -> 6L
-            KAVITA_SOURCE -> 8L
-            SUWAYOMI_SOURCE -> 9L
-            else -> return null
-        }
+        val trackerId = desktopEnhancedTrackerId(className) ?: return null
         val httpSource = source as? HttpSource ?: return null
         val preferences = (source as? ConfigurableSource)?.let {
             AndroidCompat.context.getSharedPreferences("source_${source.id}", 0).getAll()
@@ -64,9 +59,23 @@ class DesktopEnhancedTrackerContextProvider(
         )
     }
 
-    private companion object {
-        const val KOMGA_SOURCE = "eu.kanade.tachiyomi.extension.all.komga.Komga"
-        const val KAVITA_SOURCE = "eu.kanade.tachiyomi.extension.all.kavita.Kavita"
-        const val SUWAYOMI_SOURCE = "eu.kanade.tachiyomi.extension.all.tachidesk.Tachidesk"
-    }
+}
+
+internal fun desktopEnhancedTrackerId(sourceClassName: String): Long? = when (sourceClassName) {
+    "eu.kanade.tachiyomi.extension.all.komga.Komga" -> 6L
+    "eu.kanade.tachiyomi.extension.all.kavita.Kavita" -> 8L
+    "eu.kanade.tachiyomi.extension.all.tachidesk.Tachidesk" -> 9L
+    else -> null
+}
+
+internal fun desktopEnhancedTrackerContext(
+    contexts: List<EnhancedTrackerContext>,
+    trackerId: Long,
+    sourceId: Long,
+): EnhancedTrackerContext? = contexts.firstOrNull { context ->
+    context.trackerId == trackerId &&
+        context.sourceId == sourceId &&
+        desktopEnhancedTrackerId(context.sourceClassName) == trackerId &&
+        context.configured &&
+        (trackerId != 8L || !context.apiKey.isNullOrBlank())
 }

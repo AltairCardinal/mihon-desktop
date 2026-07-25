@@ -30,7 +30,7 @@ status: planned
 - [x] Task 146A：B2a ID 69 Desktop public provider lifecycle
 - [x] Task 146B：B2b ID 69 Desktop production OAuth ingress
 - [x] Task 146C：B2c ID 69 Desktop tracking edit and unbind capability
-- [ ] Task 146D：B2d ID 69 Desktop enhanced tracker auto-match
+- [x] Task 146D：B2d ID 69 Desktop enhanced tracker auto-match
 - [ ] Task 147：B3 ID 70 Android delayed tracker sync
 - [ ] Task 148：B4 ID 70 Desktop delayed sync consumer
 - [ ] Task 149：C1 ID 87 Desktop language
@@ -389,6 +389,20 @@ system-local epoch 双向转换，并让 bound 条目优先进入 Manage。未�
 **Mutation:** 绕过 source accept、改用标题猜测、断开真实 manga URL、破坏 Komga discovery 或 Suwayomi delete flag，确认 production integration test 精确失败后恢复。
 **Verification:** shared protocol、enhanced provider/context、ScreenModel integration、父 parity contract、Spotless。
 **Desktop zero-regression:** 保留每 source 独立 client/session、restart checkpoint、手动搜索入口和 Desktop 独有远端下载删除选项；四批全部通过后才视为原 Task 146 完成。
+
+**Execution evidence（已完成）：** 既有 refresh-before-update 与 Suwayomi download-delete 草案先由
+`task146d-baseline` 证明可运行；shared `EnhancedTrackerWorkflow` 的 clean compile RED 仅缺
+`EnhancedTrackerManga`/`EnhancedTrackerService`/workflow API，随后以 domain `8/8` GREEN
+固定 `accept→match→bind` 与 rejected/no-match 短路。Desktop wiring RED 先缺真实
+`MangaRepository` 输入；GREEN 后由 production registry、真实 manga source/id/url、MockWebServer
+和持久化 repository 覆盖 Komga/Kavita/Suwayomi accepted-source match/bind、无标题猜测与既有
+track checkpoint。补证 RED 精确暴露取消传播、Kavita 配置、Suwayomi remote URL 与
+no-match/auth/server 反馈缺口，修复后保留手动搜索、每 source client、Komga discovery、Kavita
+认证、Suwayomi delete flag 及 refresh-before-update。移除 sourceId 隔离的 mutation 使 9 项中
+2 项精确失败，恢复后独立审查 `APPROVED`，P0/P1/P2 均为 0。主代理强制重新执行 domain `8/8`
+与 Desktop `23/23`，父 parity contract `34/34`、根 `spotlessCheck` 和 diff-check 均 GREEN，
+0 failure/0 error/0 skipped。精确范围为 8 files/643 touched；第 8 文件是 shared workflow
+必需的 domain TDD，不含用户 DownloadQueue 改动或环境噪声。
 
 ### Task 147 B3 ID 70 delayed tracker sync
 

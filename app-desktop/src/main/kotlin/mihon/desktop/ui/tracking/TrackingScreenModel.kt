@@ -1,20 +1,27 @@
 package mihon.desktop.ui.tracking
 
 import cafe.adriel.voyager.core.model.ScreenModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.repository.TrackRepository
+import tachiyomi.domain.track.service.EnhancedTrackerManga
+import tachiyomi.domain.track.service.EnhancedTrackerService
+import tachiyomi.domain.track.service.EnhancedTrackerWorkflow
 import tachiyomi.domain.track.service.TrackEdit
 import tachiyomi.domain.track.service.TrackSearchResult
 import tachiyomi.domain.track.service.TrackerProfile
-import tachiyomi.domain.track.service.TrackerProviderConfiguration
-import tachiyomi.domain.track.service.TrackerProviderRequest
 import tachiyomi.domain.track.service.TrackerProviderCatalog
+import tachiyomi.domain.track.service.TrackerProviderConfiguration
+import tachiyomi.domain.track.service.TrackerProviderErrorKind
+import tachiyomi.domain.track.service.TrackerProviderException
+import tachiyomi.domain.track.service.TrackerProviderRequest
 import tachiyomi.domain.track.service.TrackerProviderService
 import tachiyomi.domain.track.service.TrackerService
 import tachiyomi.domain.track.service.TrackerServiceRegistry
@@ -48,6 +55,7 @@ sealed interface TrackingMessage {
     data object LoginFailed : TrackingMessage
     data object LogoutFailed : TrackingMessage
     data object UnbindFailed : TrackingMessage
+    data object EnhancedNoMatch : TrackingMessage
     data class External(val text: String) : TrackingMessage
 }
 
@@ -77,6 +85,7 @@ class TrackingScreenModel(
     private val repository: TrackRepository,
     private val chapterRepository: ChapterRepository,
     private val registry: TrackerServiceRegistry,
+    private val mangaRepository: MangaRepository? = null,
 ) : ScreenModel {
     private val operationMutex = Mutex()
     private val mutableState = MutableStateFlow(TrackingState())
@@ -84,14 +93,48 @@ class TrackingScreenModel(
 
     suspend fun load() {
         mutableState.value = mutableState.value.copy(loading = true, error = null)
-        runCatching {
+        val enhancedManga: EnhancedTrackerManga?
+        val tracks: Map<Long, Track>
+        val services: List<TrackerService>
+        try {
             registry.refresh()
-            val tracks = mangaId?.let { repository.getTracksByMangaId(it) }.orEmpty().associateBy(Track::trackerId)
-            registry.services.map { service -> service.toState(tracks[service.profile.value.id]) }
-        }.onSuccess { services ->
-            mutableState.value = mutableState.value.copy(loading = false, services = services)
-        }.onFailure { error ->
+            tracks = mangaId?.let { repository.getTracksByMangaId(it) }.orEmpty().associateBy(Track::trackerId)
+            enhancedManga = mangaId
+                ?.takeIf { mangaRepository != null }
+                ?.let { mangaRepository!!.getMangaById(it) }
+                ?.let { manga -> EnhancedTrackerManga(manga.id, manga.source, manga.url, manga.title) }
+            services = registry.services.filter { service ->
+                service !is EnhancedTrackerService ||
+                    enhancedManga == null ||
+                    service.accept(enhancedManga)
+            }
+            mutableState.value = mutableState.value.copy(
+                loading = false,
+                services = services.map { service -> service.toState(tracks[service.profile.value.id]) },
+            )
+        } catch (error: Throwable) {
+            if (error is CancellationException) throw error
             mutableState.value = mutableState.value.copy(loading = false, error = error.toTrackingMessage(TrackingMessage.LoadFailed))
+            return
+        }
+        if (enhancedManga == null) return
+        services.filterIsInstance<EnhancedTrackerService>().forEach { service ->
+            val trackerId = service.profile.value.id
+            if (tracks[trackerId] != null) return@forEach
+            try {
+                val matched = EnhancedTrackerWorkflow().bindIfMatched(service, enhancedManga)
+                if (matched == null) {
+                    mutableState.value = mutableState.value.copy(feedback = TrackingMessage.EnhancedNoMatch)
+                } else {
+                    repository.insert(matched)
+                    replaceTrack(trackerId, matched, TrackingMessage.Bound)
+                }
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                mutableState.value = mutableState.value.copy(
+                    error = error.toTrackingMessage(TrackingMessage.LoadFailed),
+                )
+            }
         }
     }
 
@@ -212,6 +255,10 @@ class TrackingScreenModel(
 
     private fun Throwable.toTrackingMessage(fallback: TrackingMessage) = when (this) {
         is TrackingMessageException -> trackingMessage
+        is TrackerProviderException -> when (kind) {
+            TrackerProviderErrorKind.AUTHENTICATION -> TrackingMessage.LoginRequired
+            else -> message?.takeIf(String::isNotBlank)?.let(TrackingMessage::External) ?: fallback
+        }
         else -> message?.takeIf(String::isNotBlank)?.let(TrackingMessage::External) ?: fallback
     }
 
