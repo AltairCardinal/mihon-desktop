@@ -13,6 +13,8 @@ $Bash = if ($env:MIHON_BASH) {
 }
 if (-not $Python) { throw "Python 3 is required; set MIHON_PYTHON to its executable" }
 if (-not $Bash) { throw "Bash is required; set MIHON_BASH to its executable" }
+$WindowsRunner = Join-Path $RepoRoot "scripts\task15-platform-evidence-test.ps1"
+$MacRunner = Join-Path $RepoRoot "scripts\task15-platform-evidence-test.sh"
 
 $TempRoot = Join-Path ([IO.Path]::GetTempPath()) "mihon-task151-policy-$([Guid]::NewGuid().ToString('N'))"
 $VersionPath = Join-Path $TempRoot "app-desktop\src\main\kotlin\mihon\desktop\AppVersion.kt"
@@ -76,9 +78,46 @@ function RejectionRecord {
 }
 
 try {
+    $windowsCases = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $WindowsRunner -ListCases 2>$null
+    if ($LASTEXITCODE -ne 0 -or "credential-roundtrip" -notin $windowsCases -or "capture" -notin $windowsCases) {
+        throw "Windows runner does not expose Task152 cases"
+    }
+    $unixCases = & $Bash $MacRunner --list-cases 2>$null
+    if ($LASTEXITCODE -ne 0 -or "credential-roundtrip" -notin $unixCases -or "capture" -notin $unixCases) {
+        throw "Unix runner does not expose Task152 cases"
+    }
+
     New-Item -ItemType Directory -Force -Path (Split-Path $VersionPath), (
         Split-Path $HelperPath
     ), (Split-Path $ArtifactJar) | Out-Null
+    $CaptureFixtureBin = Join-Path $TempRoot "capture-fixture-bin"
+    $CaptureFixtureEvidence = Join-Path $TempRoot "capture-fixture-evidence"
+    $CaptureFixtureScript = Join-Path $TempRoot "capture-function-contract.sh"
+    New-Item -ItemType Directory -Force -Path $CaptureFixtureBin, $CaptureFixtureEvidence | Out-Null
+    Set-Content -LiteralPath (Join-Path $CaptureFixtureBin "import") -Encoding ascii -Value @'
+#!/usr/bin/env bash
+output="${@: -1}"
+printf 'fixture-png' >"$output"
+'@
+    $UnixCaptureFixtureBin = (& $Bash -c "cygpath -u '$CaptureFixtureBin'").Trim()
+    $UnixCaptureFixtureEvidence = (& $Bash -c "cygpath -u '$CaptureFixtureEvidence'").Trim()
+    $UnixMacRunner = (& $Bash -c "cygpath -u '$MacRunner'").Trim()
+    Set-Content -LiteralPath $CaptureFixtureScript -Encoding ascii -Value @"
+#!/usr/bin/env bash
+set -euo pipefail
+export PATH="$UnixCaptureFixtureBin`:`$PATH"
+export EVIDENCE_DIR="$UnixCaptureFixtureEvidence"
+export OS_ID=linux
+mihon_window_geometry() { printf '%s\n' '0,0 2x2'; }
+mihon_window_handle() { printf '%s\n' '42'; }
+eval "`$(awk '/^capture_native_window\(\) \{/{copy=1} copy{print} copy && /^\}/{exit}' "$UnixMacRunner")"
+result="`$(capture_native_window 42 task152-contract)"
+[[ -s "`$result" ]]
+"@
+    & $Bash $CaptureFixtureScript
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unix capture function did not reach its screenshot command under set -u"
+    }
     Copy-Item -LiteralPath (Join-Path $RepoRoot "scripts\task15-build-provenance.py") -Destination $HelperPath
     Copy-Item -LiteralPath (Join-Path $RepoRoot "scripts\build-desktop.sh") -Destination $BuildPath
     Set-Content -LiteralPath $VersionPath -Encoding utf8 -Value @"
@@ -154,6 +193,126 @@ object AppVersion {
     if (@($cleanup.kill).Count -ne 1 -or $cleanup.kill[0] -ne 202) {
         throw "PID cleanup policy selected a process outside this run"
     }
+
+    Invoke-Policy "credential" @{
+        status = "PASS"
+        os = "windows"
+        backend = "DPAPI"
+        storeIdentity = "DesktopCredentialStore(backend=OsCredentialBackend)"
+        backendIdentity = "OsCredentialBackend(platform=WINDOWS)"
+        service = "mihon-desktop-tracker"
+        saved = $true
+        firstReadMatched = $true
+        overwritten = $true
+        secondReadMatched = $true
+        deleted = $true
+        missingAfterDelete = $true
+    } | Out-Null
+    Invoke-Policy "credential" @{
+        status = "PASS"
+        os = "windows"
+        backend = "DPAPI"
+        storeIdentity = "DesktopCredentialStore(backend=OsCredentialBackend)"
+        backendIdentity = "OsCredentialBackend(platform=WINDOWS)"
+        service = "mihon-desktop-tracker"
+        saved = $true
+        firstReadMatched = $true
+        overwritten = $false
+        secondReadMatched = $true
+        deleted = $true
+        missingAfterDelete = $true
+    } $false
+    Invoke-Policy "credential" @{
+        status = "PASS"
+        os = "windows"
+        backend = "DPAPI"
+        storeIdentity = "DesktopCredentialStore(backend=MemoryBackend)"
+        backendIdentity = "MemoryBackend"
+        service = "mihon-desktop-tracker"
+        saved = $true
+        firstReadMatched = $true
+        overwritten = $true
+        secondReadMatched = $true
+        deleted = $true
+        missingAfterDelete = $true
+    } $false
+
+    $captureFiles = @{}
+    foreach ($role in @("protected", "clear", "feedback")) {
+        $path = Join-Path $TempRoot "$role-window.png"
+        Set-Content -LiteralPath $path -Encoding utf8 -NoNewline -Value "$role-observation"
+        $captureFiles[$role] = @{
+            role = $role
+            path = $path
+            sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
+        }
+    }
+    $windowsCapture = @{
+        status = "PENDING_REVIEW"
+        os = "windows"
+        capability = "Supported"
+        windowHandle = 123
+        adapter = @{
+            identity = "DesktopWindowPrivacy"
+            os = "windows"
+            attachResult = "Supported"
+            applyResult = "Supported"
+            queryResult = "Supported"
+            clearResult = "Supported"
+        }
+        appliedAffinity = 17
+        clearedAffinity = 0
+        screenshots = @($captureFiles.protected, $captureFiles.clear, $captureFiles.feedback)
+    }
+    Invoke-Policy "capture" $windowsCapture | Out-Null
+    $windowsReview = @{
+        case = "capture"
+        decision = "PASS"
+        reviewer = "Task152 Reviewer"
+        reviewedAtUtc = "2026-07-26T00:00:00Z"
+        observations = @{
+            protected = "MihonExcluded"
+            clear = "MihonVisible"
+            feedback = "Supported"
+        }
+        screenshots = @($captureFiles.protected, $captureFiles.clear, $captureFiles.feedback)
+    }
+    Invoke-Policy "capture-review" @{ runtime = $windowsCapture; review = $windowsReview } | Out-Null
+    Invoke-Policy "capture-review" @{ runtime = $windowsCapture } $false
+
+    $wrongHashReview = $windowsReview.Clone()
+    $wrongHashReview.screenshots = @(
+        @{ role = "protected"; path = $captureFiles.protected.path; sha256 = ("0" * 64) },
+        $captureFiles.clear,
+        $captureFiles.feedback
+    )
+    Invoke-Policy "capture-review" @{ runtime = $windowsCapture; review = $wrongHashReview } $false
+
+    $wrongFeedbackReview = $windowsReview.Clone()
+    $wrongFeedbackReview.observations = $windowsReview.observations.Clone()
+    $wrongFeedbackReview.observations.feedback = "Unsupported"
+    Invoke-Policy "capture-review" @{ runtime = $windowsCapture; review = $wrongFeedbackReview } $false
+
+    Invoke-Policy "capture" @{
+        status = "PENDING_REVIEW"
+        os = "macos"
+        capability = "Unsupported"
+        windowHandle = 456
+        adapter = @{
+            identity = "DesktopWindowPrivacy"
+            os = "macos"
+            queryResult = "Unsupported"
+            reason = "macos_capture_affinity_unavailable"
+        }
+        screenshots = @($captureFiles.protected, $captureFiles.clear, $captureFiles.feedback)
+    } | Out-Null
+    Invoke-Policy "capture" @{
+        status = "PENDING_REVIEW"
+        os = "macos"
+        capability = "Unsupported"
+        windowHandle = 456
+        screenshots = @($captureFiles.protected, $captureFiles.clear, $captureFiles.feedback)
+    } $false
 
     # Execute the real Windows runner's process-tree selection. A packaged app may
     # expose a root and child process with the same executable; only the root owns

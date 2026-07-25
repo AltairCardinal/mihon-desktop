@@ -75,6 +75,8 @@ Linux 先记录 `command -v java xdg-open` 与 `git rev-parse 'HEAD^{tree}'`，�
 
 **Feedback:** 目标页面/安全错误，以及已系统分享、已复制、已保存、取消或失败的区分反馈。
 
+**Execution evidence（部分完成，保持未勾选）：** 提交 `631e47d4f`、tree `442c84cc2` 的 Windows/macOS 产物均由 `scripts/build-desktop.sh evidence` 构建，版本同为 `0.11.14.46.631e47d`，production 输入摘要同为 `c6baa0a556d4`。Windows 冷启动 URI、运行中 URI、文字/文件 host share 全部通过；macOS 当前提交的运行中 URI 通过。macOS SSH audit chain 的 `/usr/libexec/sshd-keygen-wrapper` 在系统 TCC 中为 Accessibility `auth_value=0`，`osascript` 对窗口和 Share Sheet 的访问返回 `-25211`；Linux/WSL 又缺少 `java`、`xdg-open` 与 `secret-tool`。完整证据见 `docs/superpowers/reports/2026-07-26-task-15-platform-evidence-verify.md`。因此 Task 151 与 IDs 81/82 保持原状态；不重复执行相同 TCC 失败路径，继续不依赖该权限的工作。
+
 ### Task 152 credential and capture OS matrix
 
 **Risk axis:** credential-capture-os-acceptance

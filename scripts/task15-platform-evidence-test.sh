@@ -3,30 +3,58 @@ set -euo pipefail
 
 CASE=""
 EVIDENCE_DIR=""
-APP_BUNDLE="/Applications/Mihon Desktop.app"
+APP_BUNDLE=""
 PORT=18151
 TIMEOUT_SECONDS=90
 COLD_REVIEW_FILE=""
+REVIEW_FILE=""
+LIST_CASES=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --list-cases) LIST_CASES=true; shift ;;
     --case) CASE="$2"; shift 2 ;;
     --evidence-dir) EVIDENCE_DIR="$2"; shift 2 ;;
     --app-bundle) APP_BUNDLE="$2"; shift 2 ;;
     --port) PORT="$2"; shift 2 ;;
     --timeout-seconds) TIMEOUT_SECONDS="$2"; shift 2 ;;
     --cold-review-file) COLD_REVIEW_FILE="$2"; shift 2 ;;
+    --review-file) REVIEW_FILE="$2"; shift 2 ;;
     *) echo "Unknown argument: $1" >&2; exit 64 ;;
   esac
 done
-case "$CASE" in uri-cold|uri-running|host-share) ;; *) echo "--case is required" >&2; exit 64 ;; esac
+if [[ "$LIST_CASES" == "true" ]]; then
+  printf '%s\n' uri-cold uri-running host-share credential-roundtrip capture
+  exit 0
+fi
+case "$CASE" in
+  uri-cold|uri-running|host-share|credential-roundtrip|capture) ;;
+  *) echo "--case is required" >&2; exit 64 ;;
+esac
 [[ -n "$EVIDENCE_DIR" ]] || { echo "--evidence-dir is required" >&2; exit 64; }
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+HOST_OS="$(uname -s)"
+case "$HOST_OS" in
+  Darwin)
+    OS_ID="macos"
+    APP_BUNDLE="${APP_BUNDLE:-/Applications/Mihon Desktop.app}"
+    EXECUTABLE="$APP_BUNDLE/Contents/MacOS/Mihon Desktop"
+    INFO_PLIST="$APP_BUNDLE/Contents/Info.plist"
+    ;;
+  Linux*)
+    OS_ID="linux"
+    APP_BUNDLE="${APP_BUNDLE:-$REPO_ROOT/app-desktop/tmp/mihon-dist/main/app/Mihon Desktop}"
+    EXECUTABLE="$APP_BUNDLE/bin/Mihon Desktop"
+    INFO_PLIST=""
+    ;;
+  *)
+    echo "Unsupported Unix host: $HOST_OS" >&2
+    exit 64
+    ;;
+esac
 if [[ "$EVIDENCE_DIR" != /* ]]; then EVIDENCE_DIR="$REPO_ROOT/$EVIDENCE_DIR"; fi
 mkdir -p "$EVIDENCE_DIR"
-EXECUTABLE="$APP_BUNDLE/Contents/MacOS/Mihon Desktop"
-INFO_PLIST="$APP_BUNDLE/Contents/Info.plist"
 RESULT_PATH="$EVIDENCE_DIR/$CASE.json"
 DETAIL_PATH="$EVIDENCE_DIR/.$CASE-result.json"
 META_PATH="$EVIDENCE_DIR/.$CASE-meta.json"
@@ -36,12 +64,38 @@ STARTED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 OWNED_PIDS=()
 OWNED_APP_ACTIVE=false
 
+if [[ "$OS_ID" == "linux" ]]; then
+  missing=()
+  command -v java >/dev/null 2>&1 || missing+=(java)
+  if [[ "$CASE" == "credential-roundtrip" ]]; then
+    [[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]] || missing+=(dbus-session)
+    command -v secret-tool >/dev/null 2>&1 || missing+=(secret-tool)
+    command -v dbus-send >/dev/null 2>&1 || missing+=(dbus-send)
+  fi
+  if [[ "$CASE" == "capture" ]]; then
+    [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]] || missing+=(gui-session)
+    command -v xdotool >/dev/null 2>&1 || missing+=(xdotool)
+    command -v import >/dev/null 2>&1 || missing+=(imagemagick-import)
+  fi
+  if ((${#missing[@]})); then
+    python3 - "$RESULT_PATH" "$CASE" "${missing[*]}" <<'PY'
+import json, pathlib, sys
+path, case, missing = sys.argv[1:]
+pathlib.Path(path).write_text(json.dumps({
+    "schemaVersion": 1, "os": "linux", "case": case,
+    "result": {"status": "BLOCKED", "missingPrerequisites": missing.split()},
+    "error": "Linux GUI, DBus, Secret Service, Java, and window tooling are required",
+}, indent=2) + "\n")
+PY
+    cat "$RESULT_PATH"
+    exit 1
+  fi
+fi
 [[ -x "$EXECUTABLE" ]] || { echo "Packaged executable not found: $EXECUTABLE" >&2; exit 66; }
 
-python3 - "$REPO_ROOT" "$EXECUTABLE" "$INFO_PLIST" "$META_PATH" <<'PY'
+python3 - "$REPO_ROOT" "$APP_BUNDLE" "$EXECUTABLE" "$INFO_PLIST" "$META_PATH" <<'PY'
 import hashlib, json, os, pathlib, subprocess, sys
-root, executable, plist, output = map(pathlib.Path, sys.argv[1:])
-bundle = executable.parents[2]
+root, bundle, executable, plist, output = map(pathlib.Path, sys.argv[1:])
 
 def product_input(path):
     value = path.as_posix()
@@ -158,6 +212,14 @@ if (
     or provenance.get("productSource", {}).get("fileCount") != product_source["fileCount"]
 ):
     raise SystemExit("Artifact provenance does not match committed product inputs and executable")
+bundle_version = short_version = None
+if plist.is_file():
+    bundle_version = subprocess.check_output(
+        ["/usr/libexec/PlistBuddy", "-c", "Print :CFBundleVersion", str(plist)], text=True
+    ).strip()
+    short_version = subprocess.check_output(
+        ["/usr/libexec/PlistBuddy", "-c", "Print :CFBundleShortVersionString", str(plist)], text=True
+    ).strip()
 data = {
     "taskBaseCommit": source_commit,
     "taskBaseTree": source_tree,
@@ -171,12 +233,8 @@ data = {
         "executablePath": str(executable),
         "executableSha256": artifact_hash,
         "modifiedUtc": executable.stat().st_mtime,
-        "bundleVersion": subprocess.check_output(
-            ["/usr/libexec/PlistBuddy", "-c", "Print :CFBundleVersion", str(plist)], text=True
-        ).strip(),
-        "shortVersion": subprocess.check_output(
-            ["/usr/libexec/PlistBuddy", "-c", "Print :CFBundleShortVersionString", str(plist)], text=True
-        ).strip(),
+        "bundleVersion": bundle_version,
+        "shortVersion": short_version,
         "provenancePath": str(provenance_path),
         "provenanceSha256": hashlib.sha256(provenance_path.read_bytes()).hexdigest(),
     },
@@ -274,7 +332,11 @@ start_test_app() {
   assert_no_existing_app || return 1
   local args=(--test-mode "--test-http-port=$port" "--screenshot-dir=$EVIDENCE_DIR")
   [[ -z "$token" ]] || args+=("--platform-acceptance-token=$token")
-  open -na "$APP_BUNDLE" --args "${args[@]}" || return 1
+  if [[ "$OS_ID" == "macos" ]]; then
+    open -na "$APP_BUNDLE" --args "${args[@]}" || return 1
+  else
+    "$EXECUTABLE" "${args[@]}" >"$EVIDENCE_DIR/.task152-linux-app.log" 2>&1 &
+  fi
   wait_health "$port" || { register_owned_app || true; return 1; }
   register_owned_app
 }
@@ -346,6 +408,110 @@ out.write_text(json.dumps(data, ensure_ascii=False, indent=2))
 PY
 }
 
+new_platform_probe() {
+  PROBE_SOURCE="$EVIDENCE_DIR/.Task152PlatformProbe.java"
+  python3 "$REPO_ROOT/scripts/task15-build-provenance.py" write-probe --output "$PROBE_SOURCE" >/dev/null
+  if [[ "$OS_ID" == "macos" ]]; then
+    PROBE_CLASSPATH="$APP_BUNDLE/Contents/app/*"
+  else
+    PROBE_CLASSPATH="$APP_BUNDLE/lib/*"
+  fi
+}
+
+run_platform_probe() {
+  local output status
+  set +e
+  output="$(java --class-path "$PROBE_CLASSPATH" "$PROBE_SOURCE" "$@" 2>&1)"
+  status=$?
+  set -e
+  printf '%s\n' "$output" | awk '/^\{/{line=$0} END{print line}'
+  return "$status"
+}
+
+set_secure_screen_preference() {
+  local value="$1" output
+  output="$(run_platform_probe preference set "$value")" || return 1
+  python3 -c 'import json,sys; assert json.load(sys.stdin)["status"] == "PASS"' <<<"$output"
+}
+
+restore_secure_screen_preference() {
+  local original="$1" output
+  if [[ "$original" == "__MISSING__" ]]; then
+    output="$(run_platform_probe preference delete)" || return 1
+  else
+    output="$(run_platform_probe preference set "$original")" || return 1
+  fi
+  python3 -c 'import json,sys; assert json.load(sys.stdin)["status"] == "PASS"' <<<"$output"
+}
+
+run_credential_roundtrip() {
+  if [[ "$OS_ID" == "macos" ]]; then
+    command -v security >/dev/null 2>&1 || { echo "macOS security command is unavailable" >&2; return 1; }
+  else
+    dbus-send --session --dest=org.freedesktop.secrets --type=method_call \
+      /org/freedesktop/secrets org.freedesktop.DBus.Peer.Ping >/dev/null || return 1
+  fi
+  new_platform_probe || return 1
+  local result
+  result="$(run_platform_probe credential "mihon.task152.$(uuidgen | tr -d -)")" || return 1
+  run_policy credential "$result" >/dev/null || return 1
+  printf '%s\n' "$result" >"$DETAIL_PATH"
+}
+
+run_capture() {
+  new_platform_probe || return 1
+  local original adapter capability first_pid second_pid handle first_shot second_shot feedback result
+  original="$(run_platform_probe preference get)" || return 1
+  original="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<<"$original")" || return 1
+  trap 'stop_owned_app || true; restore_secure_screen_preference "$original" || true; rm -f "$PROBE_SOURCE"' RETURN
+
+  adapter="$(run_platform_probe privacy)" || return 1
+  capability="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["queryResult"])' <<<"$adapter")" || return 1
+  set_secure_screen_preference ALWAYS || return 1
+  start_test_app "$PORT" || return 1
+  first_pid="${OWNED_PIDS[0]}"
+  handle="$(mihon_window_handle "$first_pid")" || return 1
+  [[ "$handle" =~ ^[0-9]+$ && "$handle" -gt 0 ]] || return 1
+  first_shot="$(capture_native_window "$first_pid" "task152-$OS_ID-capture-protected")" || return 1
+  stop_owned_app || return 1
+
+  set_secure_screen_preference NEVER || return 1
+  start_test_app "$((PORT + 1))" || return 1
+  second_pid="${OWNED_PIDS[0]}"
+  curl -fsS --max-time 10 -X POST \
+    "http://127.0.0.1:$((PORT + 1))/test/navigate/SecuritySettingsScreen" >/dev/null || return 1
+  sleep 0.5
+  second_shot="$(capture_native_window "$second_pid" "task152-$OS_ID-capture-cleared")" || return 1
+  feedback="$(capture_test_screenshot "$((PORT + 1))" "task152-$OS_ID-window-privacy-feedback")" || return 1
+  result="$(python3 - "$OS_ID" "$handle" "$adapter" "$capability" "$first_shot" "$second_shot" "$feedback" <<'PY'
+import hashlib, json, pathlib, sys
+os_id, handle, adapter, capability, first, second, feedback = sys.argv[1:]
+digest = lambda value: hashlib.sha256(pathlib.Path(value).read_bytes()).hexdigest()
+print(json.dumps({
+    "status": "PENDING_REVIEW", "os": os_id, "capability": capability,
+    "windowHandle": int(handle), "adapter": json.loads(adapter),
+    "screenshots": [
+        {"role": "protected", "path": first, "sha256": digest(first)},
+        {"role": "clear", "path": second, "sha256": digest(second)},
+        {
+            "role": "feedback",
+            "path": json.loads(feedback)["path"],
+            "sha256": digest(json.loads(feedback)["path"]),
+        },
+    ],
+    "reviewRequired": "Review exact screenshot paths and hashes before declaring observations.",
+}))
+PY
+)" || return 1
+  run_policy capture "$result" >/dev/null || return 1
+  printf '%s\n' "$result" >"$DETAIL_PATH"
+  stop_owned_app
+  restore_secure_screen_preference "$original"
+  rm -f "$PROBE_SOURCE"
+  trap - RETURN
+  return 1
+}
+
 choose_copy_service() {
   local share_pid="$1"
   local script="$EVIDENCE_DIR/.choose-copy.applescript"
@@ -371,6 +537,16 @@ APPLESCRIPT
 
 mihon_window_geometry() {
   local app_pid="$1"
+  if [[ "$OS_ID" == "linux" ]]; then
+    local handle
+    handle="$(xdotool search --onlyvisible --pid "$app_pid" | head -n 1)" || return 1
+    xdotool getwindowgeometry --shell "$handle" | python3 -c '
+import sys
+values=dict(line.strip().split("=",1) for line in sys.stdin if "=" in line)
+print(",".join(values[key] for key in ("X","Y","WIDTH","HEIGHT")))
+'
+    return
+  fi
   local script="$EVIDENCE_DIR/.mihon-window.applescript"
   cat >"$script" <<APPLESCRIPT
 tell application "System Events"
@@ -384,6 +560,44 @@ tell application "System Events"
 end tell
 APPLESCRIPT
   /usr/bin/osascript "$script"
+}
+
+mihon_window_handle() {
+  local app_pid="$1"
+  if [[ "$OS_ID" == "linux" ]]; then
+    xdotool search --onlyvisible --pid "$app_pid" | head -n 1
+    return
+  fi
+  local script="$EVIDENCE_DIR/.task152-window.swift"
+  cat >"$script" <<'SWIFT'
+import CoreGraphics
+import Foundation
+let pid = Int32(CommandLine.arguments[1])!
+let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+let rows = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] ?? []
+for row in rows {
+    if (row[kCGWindowOwnerPID as String] as? Int32) == pid,
+       let number = row[kCGWindowNumber as String] as? Int {
+        print(number)
+        break
+    }
+}
+SWIFT
+  swift "$script" "$app_pid"
+}
+
+capture_native_window() {
+  local app_pid="$1" name="$2" geometry handle path
+  path="$EVIDENCE_DIR/$name.png"
+  geometry="$(mihon_window_geometry "$app_pid")" || return 1
+  if [[ "$OS_ID" == "macos" ]]; then
+    /usr/sbin/screencapture -x -R"$geometry" "$path" || return 1
+  else
+    handle="$(mihon_window_handle "$app_pid")" || return 1
+    import -window "$handle" "$path" || return 1
+  fi
+  [[ -s "$path" ]] || return 1
+  printf '%s\n' "$path"
 }
 
 find_share_pid() {
@@ -548,9 +762,52 @@ raise SystemExit(0 if review["decision"] == "PASS" else 1)
 PY
 }
 
+apply_capture_review() {
+  [[ "$CASE" == "capture" ]] || { echo "--review-file is valid only for capture" >&2; return 64; }
+  [[ -f "$RESULT_PATH" ]] || { echo "Run capture once before applying its review: $RESULT_PATH" >&2; return 66; }
+  [[ -f "$REVIEW_FILE" ]] || { echo "Capture review file not found: $REVIEW_FILE" >&2; return 66; }
+  python3 - "$RESULT_PATH" "$REVIEW_FILE" "$META_PATH" "$REPO_ROOT/scripts/task15-build-provenance.py" <<'PY'
+import json, pathlib, subprocess, sys, tempfile
+result_path, review_path, meta_path, helper = map(pathlib.Path, sys.argv[1:])
+result = json.loads(result_path.read_text())
+review = json.loads(review_path.read_text())
+current = json.loads(meta_path.read_text())
+if (
+    result.get("taskBaseCommit") != current.get("taskBaseCommit")
+    or result.get("taskBaseTree") != current.get("taskBaseTree")
+    or result.get("productSource", {}).get("digest") != current.get("productSource", {}).get("digest")
+    or result.get("artifact", {}).get("sha256") != current.get("artifact", {}).get("sha256")
+):
+    raise SystemExit("Capture evidence provenance no longer matches the committed build and artifact")
+payload = {"runtime": result.get("result"), "review": review}
+temporary = tempfile.NamedTemporaryFile(
+    mode="w", encoding="utf-8", suffix=".json", dir=result_path.parent, delete=False,
+)
+try:
+    with temporary:
+        json.dump(payload, temporary)
+    validated = json.loads(subprocess.check_output(
+        [sys.executable, str(helper), "policy", "--kind", "capture-review", "--input", temporary.name],
+        text=True,
+    ))
+finally:
+    pathlib.Path(temporary.name).unlink(missing_ok=True)
+result["result"]["status"] = validated["decision"]
+result["result"]["review"] = validated["review"]
+result["error"] = None
+result_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+raise SystemExit(0 if validated["decision"] == "PASS" else 1)
+PY
+}
+
 if [[ -n "$COLD_REVIEW_FILE" ]]; then
   if [[ "$COLD_REVIEW_FILE" != /* ]]; then COLD_REVIEW_FILE="$PWD/$COLD_REVIEW_FILE"; fi
   apply_cold_review
+  exit $?
+fi
+if [[ -n "$REVIEW_FILE" ]]; then
+  if [[ "$REVIEW_FILE" != /* ]]; then REVIEW_FILE="$PWD/$REVIEW_FILE"; fi
+  apply_capture_review
   exit $?
 fi
 
@@ -560,6 +817,8 @@ case "$CASE" in
   uri-cold) run_uri_cold >"$EVIDENCE_DIR/$CASE.raw.log" 2>&1 || exit_code=$? ;;
   uri-running) run_uri_running >"$EVIDENCE_DIR/$CASE.raw.log" 2>&1 || exit_code=$? ;;
   host-share) run_host_share >"$EVIDENCE_DIR/$CASE.raw.log" 2>&1 || exit_code=$? ;;
+  credential-roundtrip) run_credential_roundtrip >"$EVIDENCE_DIR/$CASE.raw.log" 2>&1 || exit_code=$? ;;
+  capture) run_capture >"$EVIDENCE_DIR/$CASE.raw.log" 2>&1 || exit_code=$? ;;
 esac
 stop_owned_app || exit_code=1
 if [[ ! -s "$DETAIL_PATH" ]]; then
@@ -569,12 +828,12 @@ if [[ ! -s "$DETAIL_PATH" ]]; then
 fi
 
 FINISHED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-python3 - "$META_PATH" "$DETAIL_PATH" "$RESULT_PATH" "$CASE" "$STARTED_AT" "$FINISHED_AT" "$ERROR_PATH" <<'PY'
+python3 - "$META_PATH" "$DETAIL_PATH" "$RESULT_PATH" "$CASE" "$STARTED_AT" "$FINISHED_AT" "$ERROR_PATH" "$OS_ID" <<'PY'
 import json, pathlib, sys
 meta_path, detail_path, result_path = map(pathlib.Path, sys.argv[1:4])
-case, started, finished, error_path = sys.argv[4:]
+case, started, finished, error_path, os_id = sys.argv[4:]
 data = json.loads(meta_path.read_text())
-data.update({"schemaVersion": 1, "os": "macos", "case": case, "startedAtUtc": started, "finishedAtUtc": finished})
+data.update({"schemaVersion": 1, "os": os_id, "case": case, "startedAtUtc": started, "finishedAtUtc": finished})
 data["result"] = json.loads(detail_path.read_text())
 error = pathlib.Path(error_path)
 data["error"] = error.read_text() if error.exists() else None

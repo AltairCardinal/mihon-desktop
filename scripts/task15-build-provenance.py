@@ -11,6 +11,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import textwrap
 from typing import Any, Dict, List, Tuple, Union
 
 ALGORITHM = "mihon-production-input-v1:sha256(mode<TAB>relative-path<TAB>raw-byte-sha256<LF>)"
@@ -209,6 +210,121 @@ def write(path: pathlib.Path, value: Dict[str, Any]) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def capture_screenshots(payload: Dict[str, Any]) -> Dict[str, Dict[str, str]]:
+    screenshots = payload.get("screenshots")
+    if not isinstance(screenshots, list) or len(screenshots) != 3:
+        raise ValueError("capture requires protected, clear, and feedback screenshots")
+    records: Dict[str, Dict[str, str]] = {}
+    for item in screenshots:
+        if not isinstance(item, dict):
+            raise ValueError("capture screenshot record must be an object")
+        role = item.get("role")
+        path = item.get("path")
+        digest = item.get("sha256")
+        if (
+            role not in {"protected", "clear", "feedback"}
+            or not isinstance(path, str)
+            or not path
+            or not isinstance(digest, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", digest)
+            or role in records
+        ):
+            raise ValueError("capture screenshot record is incomplete")
+        records[role] = item
+    if set(records) != {"protected", "clear", "feedback"}:
+        raise ValueError("capture screenshot roles are incomplete")
+    return records
+
+
+def validate_capture_runtime(payload: Dict[str, Any]) -> Dict[str, Any]:
+    os_name = payload.get("os")
+    if payload.get("status") != "PENDING_REVIEW" or os_name not in {
+        "windows",
+        "macos",
+        "linux",
+    }:
+        raise ValueError("capture runtime must remain pending human review")
+    if int(payload.get("windowHandle", 0)) <= 0:
+        raise ValueError("capture result is missing a real window handle")
+    adapter = payload.get("adapter")
+    if (
+        not isinstance(adapter, dict)
+        or adapter.get("identity") != "DesktopWindowPrivacy"
+        or adapter.get("os") != os_name
+    ):
+        raise ValueError("capture result is not from the production privacy adapter")
+    if os_name == "windows":
+        capability = payload.get("capability")
+        expected_affinity = {"Supported": 0x11, "Limited": 0x1}.get(capability)
+        if (
+            expected_affinity is None
+            or adapter.get("attachResult") != "Supported"
+            or adapter.get("applyResult") != capability
+            or adapter.get("queryResult") != capability
+            or adapter.get("clearResult") != "Supported"
+            or int(payload.get("appliedAffinity", -1)) != expected_affinity
+            or int(payload.get("clearedAffinity", -1)) != 0
+        ):
+            raise ValueError("Windows adapter and affinity evidence are inconsistent")
+    else:
+        expected_reason = {
+            "macos": "macos_capture_affinity_unavailable",
+            "linux": "linux_capture_affinity_unavailable",
+        }[os_name]
+        if (
+            payload.get("capability") != "Unsupported"
+            or adapter.get("queryResult") != "Unsupported"
+            or adapter.get("reason") != expected_reason
+        ):
+            raise ValueError(f"{os_name} production adapter evidence is inconsistent")
+    capture_screenshots(payload)
+    return {"status": "VALID", "capability": payload["capability"]}
+
+
+def validate_capture_review(payload: Dict[str, Any]) -> Dict[str, Any]:
+    runtime = payload.get("runtime")
+    review = payload.get("review")
+    if not isinstance(runtime, dict) or not isinstance(review, dict):
+        raise ValueError("capture review requires runtime and review objects")
+    validate_capture_runtime(runtime)
+    if (
+        review.get("case") != "capture"
+        or review.get("decision") not in {"PASS", "FAIL"}
+        or not review.get("reviewer")
+        or not review.get("reviewedAtUtc")
+    ):
+        raise ValueError("capture review identity, decision, reviewer, or time is missing")
+    runtime_shots = capture_screenshots(runtime)
+    reviewed_shots = capture_screenshots({"screenshots": review.get("screenshots")})
+    for role, expected in runtime_shots.items():
+        reviewed = reviewed_shots[role]
+        path = pathlib.Path(expected["path"]).resolve()
+        if (
+            pathlib.Path(reviewed["path"]).resolve() != path
+            or reviewed["sha256"] != expected["sha256"]
+            or not path.is_file()
+            or hashlib.sha256(path.read_bytes()).hexdigest() != expected["sha256"]
+        ):
+            raise ValueError(f"capture review screenshot mismatch: {role}")
+    observations = review.get("observations")
+    if not isinstance(observations, dict):
+        raise ValueError("capture review observations are missing")
+    if review["decision"] == "PASS":
+        capability = runtime["capability"]
+        expected_protected = {
+            "Supported": "MihonExcluded",
+            "Limited": "MihonObscured",
+            "Unsupported": "MihonVisible",
+        }[capability]
+        if (
+            observations.get("protected") != expected_protected
+            or observations.get("clear") != "MihonVisible"
+            or observations.get("feedback") != capability
+        ):
+            raise ValueError("capture observations do not match adapter capability")
+    return {"status": "VALID", "decision": review["decision"], "review": review}
+
+
 def seal(args: argparse.Namespace) -> Dict[str, Any]:
     root = args.repo.resolve()
     captured = load(args.source)
@@ -298,7 +414,201 @@ def policy(args: argparse.Namespace) -> Dict[str, Any]:
             "status": "VALID",
             "kill": [value for value in current if value in owned],
         }
+    if args.kind == "credential":
+        expected_backends = {
+            "windows": ("DPAPI", "OsCredentialBackend(platform=WINDOWS)"),
+            "macos": ("Keychain", "OsCredentialBackend(platform=MACOS)"),
+            "linux": ("SecretService", "OsCredentialBackend(platform=LINUX)"),
+        }
+        os_name = payload.get("os")
+        expected = expected_backends.get(os_name)
+        if (
+            payload.get("status") != "PASS"
+            or expected is None
+            or payload.get("backend") != expected[0]
+            or payload.get("storeIdentity") != "DesktopCredentialStore(backend=OsCredentialBackend)"
+            or payload.get("backendIdentity") != expected[1]
+            or payload.get("service") != "mihon-desktop-tracker"
+        ):
+            raise ValueError("credential result does not identify a successful OS backend")
+        required = (
+            "saved",
+            "firstReadMatched",
+            "overwritten",
+            "secondReadMatched",
+            "deleted",
+            "missingAfterDelete",
+        )
+        if any(payload.get(field) is not True for field in required):
+            raise ValueError("credential roundtrip is incomplete")
+        return {"status": "VALID", "backend": payload["backend"]}
+    if args.kind == "capture":
+        return validate_capture_runtime(payload)
+    if args.kind == "capture-review":
+        return validate_capture_review(payload)
     raise ValueError(f"unsupported policy kind: {args.kind}")
+
+
+def write_probe(args: argparse.Namespace) -> Dict[str, Any]:
+    source = textwrap.dedent(
+        r"""
+        import java.util.Locale;
+        import java.util.UUID;
+        import java.util.prefs.Preferences;
+        import java.awt.Frame;
+        import mihon.desktop.platform.DesktopCredentialStore;
+        import mihon.desktop.platform.OsCredentialBackend;
+        import mihon.desktop.platform.CredentialNamespace;
+        import mihon.desktop.privacy.DesktopWindowPrivacy;
+        import mihon.desktop.privacy.DesktopWindowPrivacyResult;
+
+        public final class Task152PlatformProbe {
+            private static String jsonString(String value) {
+                return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+            }
+
+            private static String osId() {
+                String value = System.getProperty("os.name").toLowerCase(Locale.ROOT);
+                if (value.contains("win")) return "windows";
+                if (value.contains("mac") || value.contains("darwin")) return "macos";
+                if (value.contains("linux")) return "linux";
+                return "unsupported";
+            }
+
+            private static String backend(String os) {
+                return switch (os) {
+                    case "windows" -> "DPAPI";
+                    case "macos" -> "Keychain";
+                    case "linux" -> "SecretService";
+                    default -> "Unsupported";
+                };
+            }
+
+            private static void credential(String account) {
+                DesktopCredentialStore store = new DesktopCredentialStore();
+                OsCredentialBackend backendInstance = new OsCredentialBackend();
+                String first = "task152-first-" + UUID.randomUUID();
+                String second = "task152-second-" + UUID.randomUUID();
+                boolean saved = false, firstRead = false, overwritten = false;
+                boolean secondRead = false, deleted = false, missing = false;
+                try {
+                    store.delete(account);
+                    store.save(account, first);
+                    saved = true;
+                    firstRead = first.equals(store.load(account));
+                    store.save(account, second);
+                    overwritten = true;
+                    secondRead = second.equals(store.load(account));
+                    store.delete(account);
+                    deleted = true;
+                    missing = store.load(account) == null;
+                    String os = osId();
+                    System.out.println(
+                        "{\"status\":\"PASS\",\"os\":" + jsonString(os) +
+                        ",\"backend\":" + jsonString(backend(os)) +
+                        ",\"storeIdentity\":" + jsonString(store.toString()) +
+                        ",\"backendIdentity\":" + jsonString(backendInstance.toString()) +
+                        ",\"service\":" + jsonString(CredentialNamespace.TRACKER_V1.getService()) +
+                        ",\"saved\":" + saved +
+                        ",\"firstReadMatched\":" + firstRead +
+                        ",\"overwritten\":" + overwritten +
+                        ",\"secondReadMatched\":" + secondRead +
+                        ",\"deleted\":" + deleted +
+                        ",\"missingAfterDelete\":" + missing + "}"
+                    );
+                } finally {
+                    try { store.delete(account); } catch (RuntimeException ignored) {}
+                }
+            }
+
+            private static String resultName(DesktopWindowPrivacyResult result) {
+                return result.getClass().getSimpleName();
+            }
+
+            private static String reason(DesktopWindowPrivacyResult result) {
+                if (result instanceof DesktopWindowPrivacyResult.Unsupported value) {
+                    return value.getReasonSlug();
+                }
+                if (result instanceof DesktopWindowPrivacyResult.Limited value) {
+                    return value.getReasonSlug();
+                }
+                if (result instanceof DesktopWindowPrivacyResult.Failed value) {
+                    return value.getError().getReasonSlug();
+                }
+                return "";
+            }
+
+            private static void privacy() {
+                Frame frame = new Frame("Mihon Task152 privacy probe");
+                frame.setSize(320, 200);
+                DesktopWindowPrivacy privacy = new DesktopWindowPrivacy();
+                try {
+                    frame.setVisible(true);
+                    DesktopWindowPrivacyResult attached = privacy.attach(frame);
+                    DesktopWindowPrivacyResult applied = privacy.apply(true);
+                    DesktopWindowPrivacyResult queried = privacy.query();
+                    DesktopWindowPrivacyResult cleared = privacy.clear();
+                    System.out.println(
+                        "{\"status\":\"PASS\",\"os\":" + jsonString(osId()) +
+                        ",\"identity\":" + jsonString(privacy.getClass().getSimpleName()) +
+                        ",\"attachResult\":" + jsonString(resultName(attached)) +
+                        ",\"applyResult\":" + jsonString(resultName(applied)) +
+                        ",\"queryResult\":" + jsonString(resultName(queried)) +
+                        ",\"clearResult\":" + jsonString(resultName(cleared)) +
+                        ",\"reason\":" + jsonString(reason(queried)) + "}"
+                    );
+                } finally {
+                    privacy.detach();
+                    frame.dispose();
+                }
+            }
+
+            private static void preference(String operation, String value) throws Exception {
+                Preferences preferences = Preferences.userRoot().node("/mihon");
+                String key = "secure_screen_v2";
+                String result;
+                switch (operation) {
+                    case "get" -> result = preferences.get(key, "__MISSING__");
+                    case "set" -> {
+                        preferences.put(key, value);
+                        preferences.flush();
+                        result = value;
+                    }
+                    case "delete" -> {
+                        preferences.remove(key);
+                        preferences.flush();
+                        result = "__MISSING__";
+                    }
+                    default -> throw new IllegalArgumentException("unsupported preference operation");
+                }
+                System.out.println("{\"status\":\"PASS\",\"value\":" + jsonString(result) + "}");
+            }
+
+            public static void main(String[] args) {
+                try {
+                    if (args.length >= 2 && args[0].equals("credential")) {
+                        credential(args[1]);
+                    } else if (args.length == 1 && args[0].equals("privacy")) {
+                        privacy();
+                    } else if (args.length >= 2 && args[0].equals("preference")) {
+                        preference(args[1], args.length >= 3 ? args[2] : "");
+                    } else {
+                        throw new IllegalArgumentException("credential or preference operation required");
+                    }
+                } catch (Throwable error) {
+                    System.out.println(
+                        "{\"status\":\"FAILED\",\"errorClass\":" +
+                        jsonString(error.getClass().getName()) + "}"
+                    );
+                    System.exit(1);
+                }
+            }
+        }
+        """,
+    ).strip() + "\n"
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(source, encoding="utf-8")
+    return {"status": "WRITTEN", "output": str(args.output)}
 
 
 def parser() -> argparse.ArgumentParser:
@@ -320,10 +630,21 @@ def parser() -> argparse.ArgumentParser:
     policy_command = subcommands.add_parser("policy")
     policy_command.add_argument(
         "--kind",
-        choices=("terminal", "screenshot", "pid-empty", "pid-owned", "pid-cleanup"),
+        choices=(
+            "terminal",
+            "screenshot",
+            "pid-empty",
+            "pid-owned",
+            "pid-cleanup",
+            "credential",
+            "capture",
+            "capture-review",
+        ),
         required=True,
     )
     policy_command.add_argument("--input", type=pathlib.Path, required=True)
+    probe_command = subcommands.add_parser("write-probe")
+    probe_command.add_argument("--output", type=pathlib.Path, required=True)
     return result
 
 
@@ -337,8 +658,10 @@ def main() -> int:
             value = seal(args)
         elif args.command == "verify":
             value = verify(args)
-        else:
+        elif args.command == "policy":
             value = policy(args)
+        else:
+            value = write_probe(args)
         print(json.dumps(value, ensure_ascii=False))
         return 0
     except (OSError, subprocess.CalledProcessError, ValueError, json.JSONDecodeError) as error:

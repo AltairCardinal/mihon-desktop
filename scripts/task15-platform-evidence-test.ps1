@@ -1,17 +1,23 @@
 param(
-    [Parameter(Mandatory = $true)]
-    [ValidateSet("uri-cold", "uri-running", "host-share")]
+    [ValidateSet("uri-cold", "uri-running", "host-share", "credential-roundtrip", "capture")]
     [string]$Case,
-    [Parameter(Mandatory = $true)]
     [string]$EvidenceDir,
     [string]$Executable,
     [int]$Port = 18151,
     [int]$TimeoutSeconds = 90,
     [string]$ColdReviewFile,
-    [string]$ProcessPolicyFixture
+    [string]$ReviewFile,
+    [string]$ProcessPolicyFixture,
+    [switch]$ListCases
 )
 
 $ErrorActionPreference = "Stop"
+if ($ListCases) {
+    "uri-cold", "uri-running", "host-share", "credential-roundtrip", "capture"
+    exit 0
+}
+if (-not $Case) { throw "-Case is required" }
+if (-not $EvidenceDir) { throw "-EvidenceDir is required" }
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 if ([IO.Path]::IsPathRooted($EvidenceDir)) {
     $EvidenceDir = [IO.Path]::GetFullPath($EvidenceDir)
@@ -234,6 +240,8 @@ public static class Task151NativeWindow {
     public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")]
     public static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool GetWindowDisplayAffinity(IntPtr window, out uint affinity);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern int GetClassName(IntPtr window, StringBuilder className, int maxCount);
 }
@@ -285,6 +293,143 @@ function Capture-MihonWindow([Diagnostics.Process]$Process, [string]$Name) {
         $bitmap.Dispose()
     }
     $path
+}
+
+function New-PlatformProbe {
+    $java = (Get-Command java -ErrorAction SilentlyContinue).Source
+    if (-not $java) { throw "Java is required for packaged credential and preference probes" }
+    $source = Join-Path $EvidenceDir ".Task152PlatformProbe.java"
+    & $Python $ProvenanceTool write-probe --output $source | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Unable to create the temporary Task152 product probe" }
+    [ordered]@{
+        java = $java
+        source = $source
+        classPath = Join-Path $ArtifactRoot "app\*"
+    }
+}
+
+function Invoke-PlatformProbe($Probe, [string[]]$Arguments) {
+    $output = @(& $Probe.java --class-path $Probe.classPath $Probe.source @Arguments 2>&1)
+    $exit = $LASTEXITCODE
+    $jsonLine = @($output | Where-Object { "$_".TrimStart().StartsWith("{") })[-1]
+    if (-not $jsonLine) { throw "Task152 product probe returned no JSON" }
+    $result = "$jsonLine" | ConvertFrom-Json
+    if ($exit -ne 0 -or $result.status -ne "PASS") {
+        throw "Task152 product probe failed: $($result.errorClass)"
+    }
+    $result
+}
+
+function Get-WindowAffinity([Diagnostics.Process]$Process) {
+    Initialize-Task151NativeWindow
+    $Process.Refresh()
+    if ($Process.MainWindowHandle -eq [IntPtr]::Zero) { throw "Mihon main window handle is unavailable" }
+    [uint32]$affinity = 0
+    if (-not [Task151NativeWindow]::GetWindowDisplayAffinity($Process.MainWindowHandle, [ref]$affinity)) {
+        throw "GetWindowDisplayAffinity failed for the owned Mihon window"
+    }
+    [ordered]@{
+        handle = $Process.MainWindowHandle.ToInt64()
+        affinity = [int]$affinity
+    }
+}
+
+function Set-SecureScreenProbePreference($Probe, [string]$Value) {
+    Invoke-PlatformProbe $Probe @("preference", "set", $Value) | Out-Null
+}
+
+function Restore-SecureScreenProbePreference($Probe, [string]$Value) {
+    if ($Value -eq "__MISSING__") {
+        Invoke-PlatformProbe $Probe @("preference", "delete") | Out-Null
+    } else {
+        Set-SecureScreenProbePreference $Probe $Value
+    }
+}
+
+function Invoke-CredentialRoundtrip {
+    $probe = New-PlatformProbe
+    try {
+        $result = Invoke-PlatformProbe $probe @(
+            "credential",
+            "mihon.task152.$([Guid]::NewGuid().ToString('N'))"
+        )
+        Invoke-RunnerPolicy "credential" $result | Out-Null
+        $result
+    } finally {
+        Remove-Item -LiteralPath $probe.source -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function New-CaptureScreenshotRecord([string]$Role, [string]$Path) {
+    $absolute = [IO.Path]::GetFullPath($Path)
+    if (-not (Test-Path -LiteralPath $absolute -PathType Leaf)) {
+        throw "Capture screenshot is missing: $absolute"
+    }
+    [ordered]@{
+        role = $Role
+        path = $absolute
+        sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $absolute).Hash.ToLowerInvariant()
+    }
+}
+
+function Invoke-CaptureAcceptance {
+    $probe = New-PlatformProbe
+    $original = (Invoke-PlatformProbe $probe @("preference", "get")).value
+    $protectedScreenshot = $null
+    $clearScreenshot = $null
+    try {
+        $adapter = Invoke-PlatformProbe $probe @("privacy")
+        Set-SecureScreenProbePreference $probe "ALWAYS"
+        Start-TestApp $Port | Out-Null
+        $protectedPid = Wait-OwnedWindowProcessId
+        $protectedProcess = Get-Process -Id $protectedPid -ErrorAction Stop
+        Start-Sleep -Milliseconds 500
+        $applied = Get-WindowAffinity $protectedProcess
+        $capability = switch ($applied.affinity) {
+            0x11 { "Supported" }
+            0x1 { "Limited" }
+            default { throw "Product defect: protected Mihon window affinity is $($applied.affinity)" }
+        }
+        $protectedScreenshot = Capture-MihonWindow $protectedProcess "task152-windows-capture-protected"
+        Stop-OwnedAppProcesses
+
+        Set-SecureScreenProbePreference $probe "NEVER"
+        Start-TestApp ($Port + 1) | Out-Null
+        $clearPid = Wait-OwnedWindowProcessId
+        $clearProcess = Get-Process -Id $clearPid -ErrorAction Stop
+        Start-Sleep -Milliseconds 500
+        $cleared = Get-WindowAffinity $clearProcess
+        if ($cleared.affinity -ne 0) {
+            throw "Product defect: cleared Mihon window affinity is $($cleared.affinity)"
+        }
+        Invoke-RestMethod -Method Post `
+            -Uri "http://127.0.0.1:$($Port + 1)/test/navigate/SecuritySettingsScreen" `
+            -TimeoutSec 10 | Out-Null
+        Start-Sleep -Milliseconds 500
+        $clearScreenshot = Capture-MihonWindow $clearProcess "task152-windows-capture-cleared"
+        $feedback = Capture-Screenshot ($Port + 1) "task152-windows-window-privacy-feedback"
+        $result = [ordered]@{
+            status = "PENDING_REVIEW"
+            os = "windows"
+            capability = $capability
+            windowHandle = $applied.handle
+            adapter = $adapter
+            appliedAffinity = $applied.affinity
+            clearedAffinity = $cleared.affinity
+            screenshots = @(
+                (New-CaptureScreenshotRecord "protected" $protectedScreenshot),
+                (New-CaptureScreenshotRecord "clear" $clearScreenshot),
+                (New-CaptureScreenshotRecord "feedback" $feedback.path)
+            )
+            reviewRequired = "Review each screenshot by exact path/hash before declaring protected, clear, or feedback observations."
+        }
+        Invoke-RunnerPolicy "capture" $result | Out-Null
+        $result
+    } finally {
+        Stop-OwnedAppProcesses
+        Restore-SecureScreenProbePreference $probe $original
+        Remove-Item -LiteralPath $probe.source -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function New-AcceptanceToken {
@@ -582,6 +727,35 @@ function Apply-ColdReview([string]$ReviewFile) {
     if ($review.decision -eq "PASS") { exit 0 } else { exit 1 }
 }
 
+function Apply-CaptureReview([string]$ReviewPath) {
+    if ($Case -ne "capture") { throw "-ReviewFile is valid only for capture" }
+    if (-not (Test-Path -LiteralPath $ResultPath -PathType Leaf)) {
+        throw "Run capture once before applying its review: $ResultPath"
+    }
+    if (-not (Test-Path -LiteralPath $ReviewPath -PathType Leaf)) {
+        throw "Capture review file not found: $ReviewPath"
+    }
+    $prior = Get-Content -Raw -LiteralPath $ResultPath | ConvertFrom-Json
+    $review = Get-Content -Raw -LiteralPath $ReviewPath | ConvertFrom-Json
+    if ($prior.taskBaseCommit -ne $provenance.sourceCommit -or
+        $prior.taskBaseTree -ne $provenance.sourceTree -or
+        $prior.productSource.digest -ne $provenance.productSource.digest -or
+        $prior.artifact.sha256 -ne $artifact.sha256) {
+        throw "Capture evidence provenance no longer matches the committed build and artifact"
+    }
+    $validated = Invoke-RunnerPolicy "capture-review" @{
+        runtime = $prior.result
+        review = $review
+    }
+    $prior.result.status = $validated.decision
+    $prior.result | Add-Member -MemberType NoteProperty -Name review -Value $validated.review -Force
+    $prior.finishedAtUtc = [DateTime]::UtcNow.ToString("o")
+    $prior.error = $null
+    $prior | ConvertTo-Json -Depth 14 | Set-Content -LiteralPath $ResultPath -Encoding utf8
+    Get-Content -LiteralPath $ResultPath
+    if ($validated.decision -eq "PASS") { exit 0 } else { exit 1 }
+}
+
 if ($ProcessPolicyFixture) {
     $fixture = Get-Content -Raw -LiteralPath $ProcessPolicyFixture | ConvertFrom-Json
     foreach ($processId in @($fixture.ownedProcessIds)) {
@@ -610,6 +784,9 @@ $artifact = Get-ArtifactIdentity $provenance
 if ($ColdReviewFile) {
     Apply-ColdReview ([IO.Path]::GetFullPath($ColdReviewFile))
 }
+if ($ReviewFile) {
+    Apply-CaptureReview ([IO.Path]::GetFullPath($ReviewFile))
+}
 
 $payload = [ordered]@{
     schemaVersion = 1
@@ -631,6 +808,8 @@ try {
         "uri-cold" { Invoke-UriCold }
         "uri-running" { Invoke-UriRunning }
         "host-share" { Invoke-HostShare }
+        "credential-roundtrip" { Invoke-CredentialRoundtrip }
+        "capture" { Invoke-CaptureAcceptance }
     }
     if ($payload.result.status -ne "PASS") { $exitCode = 1 }
 } catch {
