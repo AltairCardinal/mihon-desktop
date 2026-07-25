@@ -21,6 +21,8 @@ import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
+import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.track.model.Track
@@ -64,7 +66,7 @@ class TrackingScreenModelTest {
                 mangaTitle = "Manga",
                 totalChapters = 12,
                 repository = repository,
-                chapterRepository = chapters,
+                getChaptersByMangaId = GetChaptersByMangaId(chapters),
                 registry = registry(provider),
             ).also { it.load() }
 
@@ -410,9 +412,9 @@ class TrackingScreenModelTest {
         mangaTitle = mangaTitle,
         totalChapters = totalChapters,
         repository = repository,
-        chapterRepository = FakeChapterRepository(),
+        getChaptersByMangaId = GetChaptersByMangaId(FakeChapterRepository()),
         registry = registry,
-        mangaRepository = mangaRepository,
+        getManga = mangaRepository?.let(::GetManga),
     )
 
     private fun registry(vararg services: TrackerService) = object : TrackerServiceRegistry {

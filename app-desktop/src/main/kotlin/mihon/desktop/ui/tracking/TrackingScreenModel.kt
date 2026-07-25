@@ -7,8 +7,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import tachiyomi.domain.chapter.repository.ChapterRepository
-import tachiyomi.domain.manga.repository.MangaRepository
+import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
+import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.EnhancedTrackerManga
@@ -83,9 +83,9 @@ class TrackingScreenModel(
     val mangaTitle: String?,
     val totalChapters: Long?,
     private val repository: TrackRepository,
-    private val chapterRepository: ChapterRepository,
+    private val getChaptersByMangaId: GetChaptersByMangaId,
     private val registry: TrackerServiceRegistry,
-    private val mangaRepository: MangaRepository? = null,
+    private val getManga: GetManga? = null,
 ) : ScreenModel {
     private val operationMutex = Mutex()
     private val mutableState = MutableStateFlow(TrackingState())
@@ -100,8 +100,8 @@ class TrackingScreenModel(
             registry.refresh()
             tracks = mangaId?.let { repository.getTracksByMangaId(it) }.orEmpty().associateBy(Track::trackerId)
             enhancedManga = mangaId
-                ?.takeIf { mangaRepository != null }
-                ?.let { mangaRepository!!.getMangaById(it) }
+                ?.takeIf { getManga != null }
+                ?.let { getManga!!.await(it) }
                 ?.let { manga -> EnhancedTrackerManga(manga.id, manga.source, manga.url, manga.title) }
             services = registry.services.filter { service ->
                 service !is EnhancedTrackerService ||
@@ -150,7 +150,7 @@ class TrackingScreenModel(
             service is TrackerProviderService &&
             service.configuration.id in TrackerProviderCatalog.publicProviderIds
         ) {
-            val hasReadChapters = chapterRepository.getChapterByMangaId(mangaId).any { it.read }
+            val hasReadChapters = getChaptersByMangaId.await(mangaId).any { it.read }
             service.bind(mangaId, result, hasReadChapters)
         } else {
             service.bind(mangaId, result)

@@ -3,7 +3,9 @@ package mihon.desktop.ui.library
 import androidx.compose.runtime.AbstractApplier
 import androidx.compose.runtime.BroadcastFrameClock
 import androidx.compose.runtime.Composition
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Recomposer
+import io.mockk.mockk
 import java.nio.file.Files
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -15,6 +17,8 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import mihon.desktop.DesktopUiDependencies
+import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.fakes.FakeCategoryRepository
 import mihon.desktop.domain.fakes.FakeMangaRepository
 import mihon.desktop.download.DesktopDownloadProvider
@@ -61,6 +65,7 @@ class LibraryPageCompositionTest {
             trackRepository = trackRepositoryOf(tracks),
             trackerSessionProvider = TrackerSessionProvider { sessions },
         )
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true)
         model.setFilter(
             LibraryFilter(
                 downloaded = TriState.ENABLED_NOT,
@@ -83,9 +88,11 @@ class LibraryPageCompositionTest {
             val nextComposition = Composition(UnitTestApplier(), recomposer)
             composition = nextComposition
             nextComposition.setContent {
-                ProvideLibraryScreenModelFactory(factory = { model }) {
-                    ProvideLibraryPageProbe(probe = { snapshot = it }) {
-                        LibraryTab.Content()
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    ProvideLibraryScreenModelFactory(factory = { model }) {
+                        ProvideLibraryPageProbe(probe = { snapshot = it }) {
+                            LibraryTab.Content()
+                        }
                     }
                 }
             }

@@ -100,9 +100,9 @@ data class TrackingSettingsScreen(
                 mangaTitle = mangaTitle,
                 totalChapters = totalChapters,
                 repository = dependencies.trackRepository,
-                chapterRepository = dependencies.chapterRepository,
+                getChaptersByMangaId = dependencies.getChaptersByMangaId,
                 registry = dependencies.trackerServiceRegistry,
-                mangaRepository = dependencies.mangaRepository,
+                getManga = dependencies.getManga,
             )
         }
         val state by model.state.collectAsState()

@@ -46,6 +46,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.platform.DesktopLocaleAdapter
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.ui.theme.DesktopTheme
 import mihon.desktop.ui.theme.desktopColorScheme
@@ -452,8 +453,12 @@ class DesktopSettingsSearchWiringTest {
     private fun dependencies(content: @androidx.compose.runtime.Composable () -> Unit) {
         val downloads = mockk<DesktopDownloadManager> { every { queue } returns MutableStateFlow(emptyList()) }
         currentPreferences = androidx.compose.runtime.remember { mihon.desktop.settings.DesktopAppPreferences(InMemoryPreferenceStore()) }
+        val localeAdapter = androidx.compose.runtime.remember(currentPreferences) {
+            DesktopLocaleAdapter(currentPreferences.appLanguage)
+        }
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns currentPreferences
+            every { this@mockk.localeAdapter } returns localeAdapter
             every { downloadManager } returns downloads
         }
         CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies, content = content)

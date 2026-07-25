@@ -57,6 +57,8 @@ class TrackingAutoSyncPreferenceWiringTest {
         }
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns preferences
+            every { getChaptersByMangaId } returns mockk()
+            every { getManga } returns mockk()
             every { trackRepository } returns mockk(relaxed = true)
             every { trackerServiceRegistry } returns registry
         }
@@ -121,6 +123,8 @@ class TrackingAutoSyncPreferenceWiringTest {
         }
         val dependencies = mockk<DesktopUiDependencies> {
             every { appPreferences } returns preferences
+            every { getChaptersByMangaId } returns mockk()
+            every { getManga } returns mockk()
             every { trackRepository } returns mockk()
             every { trackerServiceRegistry } returns registry
         }

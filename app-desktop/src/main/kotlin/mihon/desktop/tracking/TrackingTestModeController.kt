@@ -1,6 +1,7 @@
 package mihon.desktop.tracking
 
 import mihon.desktop.ui.tracking.TrackingScreenModel
+import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.repository.TrackRepository
@@ -85,7 +86,7 @@ class TrackingTestModeController(
             mangaTitle = params["title"],
             totalChapters = params["totalChapters"]?.toLongOrNull(),
             repository = repository,
-            chapterRepository = chapterRepository,
+            getChaptersByMangaId = GetChaptersByMangaId(chapterRepository),
             registry = registry,
         ).also {
             it.load()

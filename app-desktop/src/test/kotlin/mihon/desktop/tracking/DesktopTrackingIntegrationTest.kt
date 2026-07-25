@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.TrackEdit
@@ -213,7 +214,7 @@ class DesktopTrackingIntegrationTest {
                 mangaTitle = "Manga",
                 totalChapters = 10,
                 repository = repository,
-                chapterRepository = FakeChapterRepository(),
+                getChaptersByMangaId = GetChaptersByMangaId(FakeChapterRepository()),
                 registry = registry,
             ).also { it.load() }
             val edit = TrackEdit(

@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.TrackEdit
@@ -1093,7 +1094,7 @@ class DesktopProviderTrackerServiceTest {
                     mangaTitle = "Manga",
                     totalChapters = 12,
                     repository = tracks,
-                    chapterRepository = chapters,
+                    getChaptersByMangaId = GetChaptersByMangaId(chapters),
                     registry = registry,
                 ).also { it.load() }
                 server.enqueue(MockResponse(body = """{"num_chapters":12,"my_list_status":null}"""))

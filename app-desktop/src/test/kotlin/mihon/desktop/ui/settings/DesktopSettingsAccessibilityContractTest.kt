@@ -19,6 +19,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.platform.DesktopLocaleAdapter
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.settings.DesktopAppPreferences
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -98,6 +99,7 @@ class DesktopSettingsAccessibilityContractTest {
         val downloads = mockk<DesktopDownloadManager> { every { queue } returns MutableStateFlow(emptyList()) }
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns preferences
+            every { localeAdapter } returns DesktopLocaleAdapter(preferences.appLanguage)
             every { downloadManager } returns downloads
         }
         val previousLocale = Locale.getDefault()

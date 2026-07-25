@@ -20,6 +20,8 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
+import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.repository.TrackRepository
@@ -91,9 +93,9 @@ class DesktopEnhancedTrackerServiceTest {
                 mangaTitle = "Must not be queried",
                 totalChapters = 10,
                 repository = trackRepository,
-                chapterRepository = FakeChapterRepository(),
+                getChaptersByMangaId = GetChaptersByMangaId(FakeChapterRepository()),
                 registry = registry,
-                mangaRepository = mangaRepository,
+                getManga = GetManga(mangaRepository),
             )
 
             model.load()
@@ -117,9 +119,9 @@ class DesktopEnhancedTrackerServiceTest {
                 mangaTitle = "Changed title",
                 totalChapters = 10,
                 repository = trackRepository,
-                chapterRepository = FakeChapterRepository(),
+                getChaptersByMangaId = GetChaptersByMangaId(FakeChapterRepository()),
                 registry = registry,
-                mangaRepository = mangaRepository,
+                getManga = GetManga(mangaRepository),
             ).load()
             assertEquals(requestCount, server.requestCount)
         }

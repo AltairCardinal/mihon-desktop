@@ -45,6 +45,7 @@ import mihon.domain.extensionrepo.interactor.UpdateExtensionRepo
 import mihon.domain.upcoming.interactor.GetUpcomingManga
 import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.category.interactor.GetCategories
+import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.creator.service.CreatorDiscoveryService
@@ -71,6 +72,7 @@ data class DesktopUiDependencies(
     val getCategories: GetCategories,
     val categoryRepository: CategoryRepository,
     val chapterRepository: ChapterRepository,
+    val getChaptersByMangaId: GetChaptersByMangaId,
     val cloudflareChallengeManager: CloudflareChallengeManager,
     val challengeBrowserLoginBridge: DesktopChallengeBrowserLoginBridge,
     val sourceLoginSessionFactory: DesktopSourceLoginSessionFactory,
@@ -146,6 +148,7 @@ data class DesktopUiDependencies(
                 getCategories = Injekt.get(),
                 categoryRepository = Injekt.get(),
                 chapterRepository = Injekt.get(),
+                getChaptersByMangaId = Injekt.get(),
                 cloudflareChallengeManager = Injekt.get(),
                 challengeBrowserLoginBridge = Injekt.get(),
                 sourceLoginSessionFactory = Injekt.get(),
