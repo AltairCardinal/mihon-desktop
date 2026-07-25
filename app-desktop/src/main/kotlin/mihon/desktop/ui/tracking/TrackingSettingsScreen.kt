@@ -49,10 +49,10 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import mihon.desktop.LocalDesktopUiDependencies
-import mihon.desktop.platform.DesktopOAuthCallbackServer
 import mihon.desktop.platform.DesktopUrlOpener
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.tracking.DesktopAuthenticatingTrackerService
+import mihon.desktop.tracking.DesktopTrackerOAuthCallbackBroker
 import mihon.desktop.ui.security.DesktopPasswordField
 import mihon.desktop.ui.settings.DesktopSettingsAnchorResources
 import mihon.desktop.ui.settings.DesktopSettingsButton
@@ -70,7 +70,6 @@ import tachiyomi.domain.track.service.TrackerService
 import tachiyomi.i18n.MR
 import java.time.Duration
 import java.util.Locale
-import java.util.UUID
 
 /** Tracker settings when [mangaId] is null; manga binding and editing when it is present. */
 data class TrackingSettingsScreen(
@@ -237,6 +236,7 @@ data class TrackingSettingsScreen(
             when {
                 !profile.loggedIn -> LoginDialog(
                     service = service,
+                    oauthCallbackBroker = dependencies.trackerOAuthCallbackBroker,
                     onDismiss = {
                         selectedId = null
                     },
@@ -395,6 +395,8 @@ private sealed interface TrackingConfirmation {
 internal fun LoginDialog(
     service: TrackerService,
     onDismiss: () -> Unit,
+    oauthCallbackBroker: DesktopTrackerOAuthCallbackBroker = DesktopTrackerOAuthCallbackBroker(),
+    openUrl: (String) -> Result<Unit> = DesktopUrlOpener::open,
     onRun: (suspend () -> Unit) -> Unit,
 ) {
     val authenticating = service as? DesktopAuthenticatingTrackerService
@@ -427,7 +429,11 @@ internal fun LoginDialog(
                         when (method) {
                             TrackerAuthentication.USERNAME_PASSWORD -> authenticating!!.login(username, password)
                             TrackerAuthentication.API_KEY -> authenticating!!.loginWithApiKey(password)
-                            TrackerAuthentication.OAUTH -> oauthLogin(authenticating!!)
+                            TrackerAuthentication.OAUTH -> oauthLogin(
+                                authenticating!!,
+                                oauthCallbackBroker,
+                                openUrl = openUrl,
+                            )
                         }
                     }
                 },
@@ -437,12 +443,18 @@ internal fun LoginDialog(
     )
 }
 
-private suspend fun oauthLogin(service: DesktopAuthenticatingTrackerService) {
-    DesktopOAuthCallbackServer().use { callback ->
-        val state = UUID.randomUUID().toString()
-        val session = callback.start(state, Duration.ofMinutes(2))
-        DesktopUrlOpener.open(service.authorizationUrl(session.redirectUri, state)).getOrThrow()
-        service.finishOAuth(session.awaitCode(), session.redirectUri)
+internal suspend fun oauthLogin(
+    service: DesktopAuthenticatingTrackerService,
+    callbackBroker: DesktopTrackerOAuthCallbackBroker,
+    timeout: Duration = Duration.ofMinutes(2),
+    openUrl: (String) -> Result<Unit> = DesktopUrlOpener::open,
+) {
+    val provider = checkNotNull(service.oauthProvider) {
+        "${service.profile.value.name} does not expose a Desktop OAuth callback"
+    }
+    callbackBroker.begin(provider, timeout).use { session ->
+        openUrl(service.authorizationUrl(session.redirectUri, session.state)).getOrThrow()
+        service.finishOAuth(session.awaitCredential(), session.redirectUri)
     }
 }
 

@@ -98,6 +98,7 @@ import mihon.desktop.platform.DesktopCredentialStore
 import mihon.desktop.platform.CredentialBackend
 import mihon.desktop.platform.CredentialNamespace
 import mihon.desktop.tracking.DesktopTrackerSyncScheduler
+import mihon.desktop.tracking.DesktopTrackerOAuthCallbackBroker
 import tachiyomi.domain.track.interactor.ReadingProgressTrackSync
 import tachiyomi.domain.source.service.AuthenticatedCookie
 import tachiyomi.domain.source.service.AuthenticatedSession
@@ -146,6 +147,26 @@ import okio.Buffer
 
 @Isolated
 class DesktopDiWiringTest {
+    @Test
+    fun `desktop DI shares one OAuth broker and production tracker clients with UI`(@TempDir tempDir: File) = runBlocking {
+        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+        try {
+            val broker = Injekt.get<DesktopTrackerOAuthCallbackBroker>()
+            val registry = Injekt.get<TrackerServiceRegistry>()
+            val ui = DesktopUiDependencies.fromInjekt()
+
+            assertSame(broker, ui.trackerOAuthCallbackBroker)
+            assertSame(registry, ui.trackerServiceRegistry)
+            assertTrue(
+                registry.services
+                    .filter { it.profile.value.id in 1L..5L }
+                    .all { it.profile.value.unavailableReason == null },
+            )
+        } finally {
+            context.closeAndJoin()
+        }
+    }
+
     @Test
     fun `desktop DI exposes one dependency notice provider instance to UI`(@TempDir tempDir: File) = runBlocking {
         val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())

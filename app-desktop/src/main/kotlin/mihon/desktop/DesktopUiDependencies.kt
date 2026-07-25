@@ -29,6 +29,7 @@ import mihon.desktop.privacy.DesktopPrivacyCapabilities
 import mihon.desktop.privacy.DesktopWindowPrivacyController
 import mihon.desktop.security.DesktopPassphraseVerifier
 import mihon.desktop.settings.DesktopAppPreferences
+import mihon.desktop.tracking.DesktopTrackerOAuthCallbackBroker
 import mihon.desktop.tracking.DesktopTrackerServiceRegistry
 import mihon.desktop.source.LocalSourceScanService
 import mihon.desktop.ui.extension.ExtensionsScreenModel
@@ -111,6 +112,7 @@ data class DesktopUiDependencies(
     val updateMangaNotes: UpdateMangaNotes,
     val trackRepository: TrackRepository,
     val trackerServiceRegistry: TrackerServiceRegistry = DesktopTrackerServiceRegistry(),
+    val trackerOAuthCallbackBroker: DesktopTrackerOAuthCallbackBroker = DesktopTrackerOAuthCallbackBroker(),
     val updateController: DesktopUpdateController? = null,
     val updateScreenModel: DesktopUpdateScreenModel? = null,
 ) {
@@ -184,6 +186,7 @@ data class DesktopUiDependencies(
                 updateMangaNotes = Injekt.get(),
                 trackRepository = Injekt.get(),
                 trackerServiceRegistry = Injekt.get(),
+                trackerOAuthCallbackBroker = Injekt.get(),
                 updateController = Injekt.get(),
                 updateScreenModel = Injekt.get(),
             )

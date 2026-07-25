@@ -29,15 +29,123 @@ import java.util.TimeZone
 
 class DesktopProviderTrackerServiceTest {
     @Test
-    fun `production profiles do not claim login when desktop client configuration is unavailable`() {
+    fun `production profiles expose every fixed original client configuration`() {
         val registry = DesktopTrackerServiceRegistry.production(
             client = OkHttpClient(),
             json = Json { ignoreUnknownKeys = true },
             credentialStore = DesktopCredentialStore(MemoryBackend()),
         )
 
-        assertTrue(registry.services.filter { it.profile.value.id in 1L..5L }.all { it.profile.value.unavailableReason != null })
+        assertTrue(registry.services.filter { it.profile.value.id in 1L..5L }.all { it.profile.value.unavailableReason == null })
         assertEquals(null, registry.services.single { it.profile.value.id == 7L }.profile.value.unavailableReason)
+    }
+
+    @Test
+    fun `production clients preserve fixed auth token callback and secret contracts across separate hosts`() = runTest {
+        MockWebServer().also { it.start() }.use { api ->
+            MockWebServer().also { it.start() }.use { oauth ->
+                val registry = DesktopTrackerServiceRegistry.production(
+                    client = OkHttpClient(),
+                    json = Json { ignoreUnknownKeys = true },
+                    credentialStore = DesktopCredentialStore(MemoryBackend()),
+                    endpoints = DesktopTrackerEndpoints.all(api.url("/").toString()).copy(
+                        myAnimeListOAuth = oauth.url("/").toString(),
+                        aniListOAuth = oauth.url("/").toString(),
+                        shikimoriOAuth = oauth.url("/").toString(),
+                        bangumiOAuth = oauth.url("/").toString(),
+                    ),
+                )
+                val oauthProviders = listOf(
+                    Triple("MyAnimeList", DesktopTrackerOAuthProvider.MY_ANIME_LIST, "code"),
+                    Triple("AniList", DesktopTrackerOAuthProvider.ANI_LIST, "token"),
+                    Triple("Shikimori", DesktopTrackerOAuthProvider.SHIKIMORI, "code"),
+                    Triple("Bangumi", DesktopTrackerOAuthProvider.BANGUMI, "code"),
+                )
+                val clientIds = mapOf(
+                    DesktopTrackerOAuthProvider.MY_ANIME_LIST to "c46c9e24640a64dad5be5ca7a1a53a0f",
+                    DesktopTrackerOAuthProvider.ANI_LIST to "16329",
+                    DesktopTrackerOAuthProvider.SHIKIMORI to "PB9dq8DzI405s7wdtwTdirYqHiyVMh--djnP7lBUqSA",
+                    DesktopTrackerOAuthProvider.BANGUMI to "bgm291665acbd06a4c28",
+                )
+                oauthProviders.forEach { (name, provider, responseType) ->
+                    val auth = service(registry, name).authorizationUrl(provider.redirectUri, "state-${provider.trackerId}").toHttpUrl()
+                    assertEquals(oauth.hostName, auth.host)
+                    assertEquals(clientIds.getValue(provider), auth.queryParameter("client_id"))
+                    assertEquals(responseType, auth.queryParameter("response_type"))
+                    assertEquals("state-${provider.trackerId}", auth.queryParameter("state"))
+                    assertEquals(
+                        provider.redirectUri.takeIf { provider in setOf(DesktopTrackerOAuthProvider.SHIKIMORI, DesktopTrackerOAuthProvider.BANGUMI) },
+                        auth.queryParameter("redirect_uri"),
+                    )
+                    if (provider == DesktopTrackerOAuthProvider.MY_ANIME_LIST) {
+                        assertTrue(auth.queryParameter("code_challenge")!!.isNotBlank())
+                        assertEquals(null, auth.queryParameter("code_challenge_method"))
+                    }
+                }
+
+                oauth.enqueue(MockResponse(body = tokenFixture()))
+                service(registry, "MyAnimeList").finishOAuth(
+                    "mal-code",
+                    DesktopTrackerOAuthProvider.MY_ANIME_LIST.redirectUri,
+                )
+                oauth.takeRequest().also { request ->
+                    assertEquals("/v1/oauth2/token", request.url.encodedPath)
+                    val body = request.body!!.utf8()
+                    assertTrue(body.contains("client_id=c46c9e24640a64dad5be5ca7a1a53a0f"))
+                    assertTrue(body.contains("code_verifier="))
+                    assertFalse(body.contains("redirect_uri="))
+                    assertFalse(body.contains("client_secret="))
+                }
+
+                api.enqueue(MockResponse(body = """{"data":{"Viewer":{"id":22,"mediaListOptions":{"scoreFormat":"POINT_100"}}}}"""))
+                service(registry, "AniList").finishOAuth(
+                    "ani-token",
+                    DesktopTrackerOAuthProvider.ANI_LIST.redirectUri,
+                )
+                api.takeRequest().also { request ->
+                    assertEquals(api.hostName, request.url.host)
+                    assertTrue(request.body!!.utf8().contains("Viewer"))
+                }
+
+                api.enqueue(MockResponse(body = tokenFixture()))
+                service(registry, "Kitsu").login("user", "password")
+                api.takeRequest().also { request ->
+                    assertEquals("/api/oauth/token", request.url.encodedPath)
+                    val body = request.body!!.utf8()
+                    assertTrue(body.contains("client_id=dd031b32d2f56c990b1425efe6c42ad847e7fe3ab46bf1299f05ecd856bdb7dd"))
+                    assertTrue(body.contains("client_secret=54d7307928f63414defd96399fc31ba847961ceaecef3a5fd93144e960c0e151"))
+                    assertTrue(body.contains("grant_type=password"))
+                }
+
+                oauth.enqueue(MockResponse(body = tokenFixture()))
+                api.enqueue(MockResponse(body = """{"id":77}"""))
+                service(registry, "Shikimori").finishOAuth(
+                    "shiki-code",
+                    DesktopTrackerOAuthProvider.SHIKIMORI.redirectUri,
+                )
+                oauth.takeRequest().also { request ->
+                    assertEquals("/oauth/token", request.url.encodedPath)
+                    val body = request.body!!.utf8()
+                    assertTrue(body.contains("client_secret=NajpZcOBKB9sJtgNcejf8OB9jBN1OYYoo-k4h2WWZus"))
+                    assertTrue(body.contains("redirect_uri=mihon%3A%2F%2Fshikimori-auth"))
+                }
+                assertEquals("/api/users/whoami", api.takeRequest().url.encodedPath)
+
+                oauth.enqueue(MockResponse(body = tokenFixture()))
+                api.enqueue(MockResponse(body = """{"username":"reader"}"""))
+                service(registry, "Bangumi").finishOAuth(
+                    "bangumi-code",
+                    DesktopTrackerOAuthProvider.BANGUMI.redirectUri,
+                )
+                oauth.takeRequest().also { request ->
+                    assertEquals("/oauth/access_token", request.url.encodedPath)
+                    val body = request.body!!.utf8()
+                    assertTrue(body.contains("client_secret=43e5ce36b207de16e5d3cfd3e79118db"))
+                    assertTrue(body.contains("redirect_uri=mihon%3A%2F%2Fbangumi-auth"))
+                }
+                assertEquals("/v0/me", api.takeRequest().url.encodedPath)
+            }
+        }
     }
 
     @Test
@@ -94,6 +202,53 @@ class DesktopProviderTrackerServiceTest {
             val refresh = server.takeRequest()
             assertEquals("refresh_token", refresh.body?.utf8()?.substringAfter("grant_type=")?.substringBefore('&'))
             assertEquals("Bearer new", server.takeRequest().headers["Authorization"])
+        }
+    }
+
+    @Test
+    fun `Bangumi refresh keeps fixed redirect while Shikimori refresh does not add one`() = runTest {
+        MockWebServer().also { it.start() }.use { api ->
+            MockWebServer().also { it.start() }.use { oauth ->
+                val backend = MemoryBackend().apply {
+                    listOf(4L, 5L).forEach { id ->
+                        save(
+                            "tracker.$id.account.default.session.v1",
+                            """
+                                {
+                                  "accessToken":"expired",
+                                  "refreshToken":"refresh-secret",
+                                  "username":"reader",
+                                  "expiresAtEpochSeconds":0
+                                }
+                            """.trimIndent().toCharArray(),
+                        )
+                    }
+                }
+                val registry = registry(api, oauth, backend, "default")
+
+                listOf(
+                    "Bangumi" to """{"data":[]}""",
+                    "Shikimori" to "[]",
+                ).forEach { (name, searchFixture) ->
+                    oauth.enqueue(MockResponse(body = tokenFixture()))
+                    api.enqueue(MockResponse(body = searchFixture))
+
+                    service(registry, name).search("refresh")
+
+                    val refreshBody = oauth.takeRequest().body!!.utf8()
+                    if (name == "Bangumi") {
+                        assertTrue(
+                            refreshBody.contains(
+                                "redirect_uri=mihon%3A%2F%2Fbangumi-auth",
+                            ),
+                            refreshBody,
+                        )
+                    } else {
+                        assertFalse(refreshBody.contains("redirect_uri="), refreshBody)
+                    }
+                    api.takeRequest()
+                }
+            }
         }
     }
 
@@ -1063,6 +1218,7 @@ class DesktopProviderTrackerServiceTest {
         endpoints = DesktopTrackerEndpoints.all(api.url("/").toString()).copy(
             myAnimeListOAuth = oauth.url("/").toString(),
             aniListOAuth = oauth.url("/").toString(),
+            shikimoriOAuth = oauth.url("/").toString(),
             bangumiOAuth = oauth.url("/").toString(),
         ),
         clientConfig = DesktopTrackerClientConfig.forTesting(),

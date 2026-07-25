@@ -2,7 +2,9 @@ package mihon.desktop.tracking
 
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
+import mihon.desktop.ui.tracking.oauthLogin
 import mihon.desktop.platform.CredentialBackend
 import mihon.desktop.platform.DesktopCredentialStore
 import mihon.desktop.platform.DesktopOAuthCallbackServer
@@ -13,6 +15,11 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import io.mockk.coVerify
+import io.mockk.every
+import io.mockk.mockk
+import tachiyomi.domain.track.service.TrackerAuthentication
+import tachiyomi.domain.track.service.TrackerProfile
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.time.Duration
@@ -21,6 +28,49 @@ import java.util.concurrent.Executors
 
 class DesktopTrackingIntegrationTest {
     private val client = OkHttpClient()
+
+    @Test
+    fun `tracking OAuth login uses fixed broker redirect and injected opener without loopback browser`() = runTest {
+        val broker = DesktopTrackerOAuthCallbackBroker { "desktop-state" }
+        val service = mockk<DesktopAuthenticatingTrackerService>(relaxed = true)
+        every { service.profile } returns MutableStateFlow(
+            TrackerProfile(
+                id = 1,
+                name = "MyAnimeList",
+                authentication = TrackerAuthentication.OAUTH,
+                loggedIn = false,
+            ),
+        )
+        every { service.oauthProvider } returns DesktopTrackerOAuthProvider.MY_ANIME_LIST
+        every { service.authorizationUrl(any(), any()) } answers {
+            assertEquals(DesktopTrackerOAuthProvider.MY_ANIME_LIST.redirectUri, firstArg())
+            assertEquals("desktop-state", secondArg())
+            "https://oauth.example/authorize"
+        }
+
+        oauthLogin(
+            service = service,
+            callbackBroker = broker,
+            timeout = Duration.ofSeconds(2),
+            openUrl = {
+                assertEquals("https://oauth.example/authorize", it)
+                assertEquals(
+                    DesktopTrackerOAuthCallbackBroker.Outcome.DELIVERED,
+                    broker.handle(
+                        "mihon://myanimelist-auth?code=desktop-code&state=desktop-state",
+                    ).outcome,
+                )
+                Result.success(Unit)
+            },
+        )
+
+        coVerify(exactly = 1) {
+            service.finishOAuth(
+                "desktop-code",
+                DesktopTrackerOAuthProvider.MY_ANIME_LIST.redirectUri,
+            )
+        }
+    }
 
     @Test
     fun `oauth callback accepts matching state on loopback`() = runTest {

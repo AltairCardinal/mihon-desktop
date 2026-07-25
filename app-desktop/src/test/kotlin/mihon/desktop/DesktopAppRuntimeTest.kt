@@ -31,6 +31,8 @@ import mihon.desktop.test.TestArguments
 import mihon.desktop.test.TestModeRun
 import mihon.desktop.test.completeTestModeStop
 import mihon.desktop.test.state.TestState
+import mihon.desktop.tracking.DesktopTrackerOAuthCallbackBroker
+import mihon.desktop.tracking.DesktopTrackerOAuthProvider
 import mihon.desktop.ui.ExternalActionNavigator
 import mihon.desktop.ui.navigatorFixture
 import mihon.desktop.ui.settings.DesktopUpdateIntent
@@ -203,6 +205,77 @@ class DesktopAppRuntimeTest {
         fixture.close()
         secondary.close()
         owner.close()
+    }
+
+    @Test
+    fun `startup hot and open URI ingress consume OAuth before preserving ordinary navigation`(
+        @org.junit.jupiter.api.io.TempDir tempDir: File,
+    ) = runTest {
+        val states = ArrayDeque(listOf("startup-state", "hot-state", "open-state"))
+        val oauth = DesktopTrackerOAuthCallbackBroker(states::removeFirst)
+        val resolvedInputs = mutableListOf<ExternalActionInput>()
+        val navigator = ExternalActionNavigator(
+            resolveTarget = { input ->
+                resolvedInputs += input
+                DesktopExternalActionTarget.Rejected(DesktopExternalActionTarget.Rejection.ParserRejected)
+            },
+            chapterDestination = { error("not a chapter") },
+            testState = TestState(),
+        )
+
+        val startup = oauth.begin(DesktopTrackerOAuthProvider.MY_ANIME_LIST)
+        submitDesktopExternalAction(
+            arrayOf("mihon://myanimelist-auth?code=attacker&state=wrong"),
+            navigator,
+            oauth,
+        )
+        submitDesktopExternalAction(
+            arrayOf("mihon://myanimelist-auth?code=startup-code&state=startup-state"),
+            navigator,
+            oauth,
+        )
+        assertEquals("startup-code", startup.awaitCredential())
+        submitDesktopExternalAction(arrayOf("tachiyomi://manga?url=startup"), navigator, oauth)
+
+        val instanceBroker = DesktopExternalActionBroker(File(tempDir, "instance.json"))
+        instanceBroker.startOrForward(null)
+        wireDesktopExternalActionBroker(instanceBroker, navigator, oauth)
+        val hot = oauth.begin(DesktopTrackerOAuthProvider.ANI_LIST)
+        DesktopExternalActionBroker(File(tempDir, "instance.json")).use { secondary ->
+            assertEquals(
+                DesktopExternalActionBroker.StartResult.Forwarded,
+                secondary.startOrForward("mihon://anilist-auth#access_token=hot-token&state=hot-state"),
+            )
+        }
+        assertEquals("hot-token", hot.awaitCredential())
+        instanceBroker.startOrForward("tachiyomi://manga?url=hot")
+
+        val openUriPlatform = RecordingOpenUriPlatform()
+        val port = AwtDesktopOpenUriEventPort(
+            FakeOpenUriEnvironment(OperatingSystem.MACOS),
+            openUriPlatform,
+        )
+        val openUriRegistration =
+            (wireDesktopOpenUriEvents(port, navigator, oauth) as DesktopOpenUriInstallResult.Installed).registration
+        val open = oauth.begin(DesktopTrackerOAuthProvider.BANGUMI)
+        openUriPlatform.emit("mihon://bangumi-auth?code=open-code&state=open-state")
+        assertEquals("open-code", open.awaitCredential())
+        openUriPlatform.emit("mihon://bangumi-auth?code=duplicate&state=open-state")
+        openUriPlatform.emit("tachiyomi://manga?url=open")
+
+        val fixture = navigatorFixture()
+        navigator.consumePending(fixture.navigator) {}
+        assertEquals(
+            listOf(
+                ExternalActionInput.ViewUri("tachiyomi://manga?url=startup"),
+                ExternalActionInput.ViewUri("tachiyomi://manga?url=hot"),
+                ExternalActionInput.ViewUri("tachiyomi://manga?url=open"),
+            ),
+            resolvedInputs,
+        )
+        fixture.close()
+        openUriRegistration.close()
+        instanceBroker.close()
     }
 
     @Test

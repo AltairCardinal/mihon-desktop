@@ -76,7 +76,7 @@ class DesktopTrackerServiceRegistry(
             endpoints: DesktopTrackerEndpoints = DesktopTrackerEndpoints(),
             enhancedContextProvider: tachiyomi.domain.track.service.EnhancedTrackerContextProvider? = null,
             sourceClient: (Long) -> OkHttpClient? = { null },
-            clientConfig: DesktopTrackerClientConfig = DesktopTrackerClientConfig(),
+            clientConfig: DesktopTrackerClientConfig = DesktopTrackerClientConfig.production(),
         ): DesktopTrackerServiceRegistry = DesktopTrackerServiceRegistry(
             ProviderDefinition.publicProviders(endpoints, clientConfig).map { definition ->
                 DesktopProviderTrackerService(client, json, credentialStore, definition, account)
@@ -96,14 +96,25 @@ class DesktopTrackerServiceRegistry(
 }
 
 data class DesktopTrackerClientConfig(
-    val loopbackRedirectProviderIds: Set<Long> = emptySet(),
-    val implicitTokenCallbackProviderIds: Set<Long> = emptySet(),
+    val callbackUris: Map<Long, String> = emptyMap(),
     val clientSecrets: Map<Long, String> = emptyMap(),
 ) {
     companion object {
+        fun production() = DesktopTrackerClientConfig(
+            callbackUris = DesktopTrackerOAuthProvider.entries.associate {
+                it.trackerId to it.redirectUri
+            },
+            clientSecrets = mapOf(
+                3L to "54d7307928f63414defd96399fc31ba847961ceaecef3a5fd93144e960c0e151",
+                4L to "NajpZcOBKB9sJtgNcejf8OB9jBN1OYYoo-k4h2WWZus",
+                5L to "43e5ce36b207de16e5d3cfd3e79118db",
+            ),
+        )
+
         fun forTesting() = DesktopTrackerClientConfig(
-            loopbackRedirectProviderIds = setOf(1, 4, 5),
-            implicitTokenCallbackProviderIds = setOf(2),
+            callbackUris = DesktopTrackerOAuthProvider.entries.associate {
+                it.trackerId to it.redirectUri
+            },
             clientSecrets = mapOf(
                 3L to "test-kitsu-secret",
                 4L to "test-shikimori-secret",
@@ -114,6 +125,8 @@ data class DesktopTrackerClientConfig(
 }
 
 interface DesktopAuthenticatingTrackerService : TrackerService {
+    val oauthProvider: DesktopTrackerOAuthProvider?
+        get() = DesktopTrackerOAuthProvider.fromTrackerId(profile.value.id)
     fun authorizationUrl(redirectUri: String, state: String): String
     suspend fun finishOAuth(code: String, redirectUri: String)
     suspend fun login(username: String, password: String)
@@ -127,6 +140,7 @@ data class DesktopTrackerEndpoints(
     val aniListOAuth: String = "https://anilist.co/",
     val kitsu: String = "https://kitsu.app/",
     val shikimori: String = "https://shikimori.one/",
+    val shikimoriOAuth: String = "https://shikimori.one/",
     val bangumi: String = "https://api.bgm.tv/",
     val bangumiOAuth: String = "https://bgm.tv/",
     val mangaUpdates: String = "https://api.mangaupdates.com/",
@@ -139,6 +153,7 @@ data class DesktopTrackerEndpoints(
             aniListOAuth = baseUrl,
             kitsu = baseUrl,
             shikimori = baseUrl,
+            shikimoriOAuth = baseUrl,
             bangumi = baseUrl,
             bangumiOAuth = baseUrl,
             mangaUpdates = baseUrl,
@@ -176,7 +191,7 @@ private data class ProviderDefinition(
                 1, "MyAnimeList", TrackerAuthentication.OAUTH, ProviderKind.MAL,
                 e.myAnimeList, e.myAnimeListOAuth, "c46c9e24640a64dad5be5ca7a1a53a0f",
                 clientSecret = null,
-                unavailableReason = "MyAnimeList desktop OAuth client has no registered loopback redirect.".takeUnless { 1L in config.loopbackRedirectProviderIds },
+                unavailableReason = callbackConfigurationReason(1, "MyAnimeList", config),
                 statuses = standardStatuses.dropLast(1) + (6L to "Plan to read") + (7L to "Rereading"),
                 initialStatus = 6,
                 (0..10).map(Int::toDouble),
@@ -185,7 +200,7 @@ private data class ProviderDefinition(
                 2, "AniList", TrackerAuthentication.OAUTH, ProviderKind.ANILIST,
                 e.aniList, e.aniListOAuth, "16329",
                 clientSecret = null,
-                unavailableReason = "AniList uses an implicit token callback that the loopback server cannot receive.".takeUnless { 2L in config.implicitTokenCallbackProviderIds },
+                unavailableReason = callbackConfigurationReason(2, "AniList", config),
                 statuses = standardStatuses + (6L to "Rereading"),
                 initialStatus = 5,
                 (0..100).map(Int::toDouble),
@@ -201,7 +216,7 @@ private data class ProviderDefinition(
             ),
             ProviderDefinition(
                 4, "Shikimori", TrackerAuthentication.OAUTH, ProviderKind.SHIKIMORI,
-                e.shikimori, clientId = "PB9dq8DzI405s7wdtwTdirYqHiyVMh--djnP7lBUqSA",
+                e.shikimori, e.shikimoriOAuth, "PB9dq8DzI405s7wdtwTdirYqHiyVMh--djnP7lBUqSA",
                 clientSecret = config.clientSecrets[4],
                 unavailableReason = providerConfigurationReason(4, "Shikimori", config),
                 statuses = standardStatuses + (6L to "Rereading"),
@@ -226,9 +241,16 @@ private data class ProviderDefinition(
             ),
         )
 
+        private fun callbackConfigurationReason(
+            id: Long,
+            name: String,
+            config: DesktopTrackerClientConfig,
+        ): String? = "$name desktop OAuth callback is not configured."
+            .takeIf { config.callbackUris[id].isNullOrBlank() }
+
         private fun providerConfigurationReason(id: Long, name: String, config: DesktopTrackerClientConfig): String? = when {
             config.clientSecrets[id].isNullOrBlank() -> "$name desktop client secret is not configured."
-            id !in config.loopbackRedirectProviderIds -> "$name desktop OAuth client has no registered loopback redirect."
+            config.callbackUris[id].isNullOrBlank() -> "$name desktop OAuth callback is not configured."
             else -> null
         }
     }
@@ -255,6 +277,7 @@ private class DesktopProviderTrackerService(
         get() = TrackerProviderSession(definition.id, profile.value.loggedIn, profile.value.username)
     override val statuses = definition.statuses
     override val scores = definition.scores
+    override val oauthProvider = DesktopTrackerOAuthProvider.fromTrackerId(definition.id)
 
     override fun authorizationUrl(redirectUri: String, state: String): String {
         requireAvailable()
@@ -270,17 +293,23 @@ private class DesktopProviderTrackerService(
             else -> error("${definition.name} does not use OAuth")
         }
         val parameters = when (definition.kind) {
-            ProviderKind.ANILIST -> TrackerProviderProtocols.aniList.authorization(definition.clientId, redirectUri, state).parameters
+            ProviderKind.ANILIST -> TrackerProviderProtocols.aniList.authorization(
+                clientId = definition.clientId,
+                state = state,
+            ).parameters
             ProviderKind.SHIKIMORI -> TrackerProviderProtocols.shikimori.authorization(definition.clientId, redirectUri, state).parameters
             ProviderKind.BANGUMI -> TrackerProviderProtocols.bangumi.authorization(definition.clientId, redirectUri, state).parameters
-            else -> mapOf("client_id" to definition.clientId, "redirect_uri" to redirectUri, "response_type" to "code", "state" to state)
+            else -> mapOf(
+                "client_id" to definition.clientId,
+                "response_type" to "code",
+                "state" to state,
+            )
         }
         return url(definition.oauthBase, path).newBuilder()
             .apply { parameters.forEach { (name, value) -> addQueryParameter(name, value) } }
             .apply {
                 challenge?.let {
                     addQueryParameter("code_challenge", it)
-                    addQueryParameter("code_challenge_method", "plain")
                 }
             }
             .build().toString()
@@ -314,7 +343,7 @@ private class DesktopProviderTrackerService(
                 definition.clientId, requireNotNull(definition.clientSecret), code, redirectUri,
             )
             else -> buildMap {
-                put("grant_type", "authorization_code"); put("client_id", definition.clientId); put("code", code); put("redirect_uri", redirectUri)
+                put("grant_type", "authorization_code"); put("client_id", definition.clientId); put("code", code)
                 pkceVerifier?.let { put("code_verifier", it) }
             }
         }
@@ -1103,7 +1132,7 @@ private class DesktopProviderTrackerService(
             )
             ProviderKind.BANGUMI -> TrackerProviderProtocols.bangumi.refreshToken(
                 definition.clientId, requireNotNull(definition.clientSecret), requireNotNull(current.refreshToken),
-            )
+            ) + ("redirect_uri" to DesktopTrackerOAuthProvider.BANGUMI.redirectUri)
             else -> mapOf("grant_type" to "refresh_token", "client_id" to definition.clientId, "refresh_token" to requireNotNull(current.refreshToken))
         }
         val refreshed = parseToken(

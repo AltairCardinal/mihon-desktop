@@ -28,7 +28,7 @@ status: planned
 - [x] Task 145B1：B1b-1 ID 69 Android provider adapter
 - [x] Task 145B2：B1b-2 ID 69 Android tracking UI actions
 - [x] Task 146A：B2a ID 69 Desktop public provider lifecycle
-- [ ] Task 146B：B2b ID 69 Desktop production OAuth ingress
+- [x] Task 146B：B2b ID 69 Desktop production OAuth ingress
 - [ ] Task 146C：B2c ID 69 Desktop tracking edit and unbind capability
 - [ ] Task 146D：B2d ID 69 Desktop enhanced tracker auto-match
 - [ ] Task 147：B3 ID 70 Android delayed tracker sync
@@ -294,26 +294,45 @@ production caller 与审查补证，未按行数压缩或混入 146C/146D 产品
 
 **Risk axis:** desktop-tracker-oauth-production-wiring
 **Platform boundary:** desktop-platform+desktop
-**Estimated scope:** 8 files, 520 lines
+**Estimated scope:** 11 files, 620 lines
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopTrackerServiceRegistry.kt`
 - Create: `app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopTrackerOAuthCallbackBroker.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/DesktopUiDependencies.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/Main.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/tracking/TrackingSettingsScreen.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopProviderTrackerServiceTest.kt`
 - Create: `app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopTrackerOAuthCallbackBrokerTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopTrackingIntegrationTest.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/DesktopAppRuntimeTest.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt`
 
 **User entry:** Desktop Settings → Tracking → 登录对应 provider。
-**Feedback:** 五家 OAuth provider 在真实 production wiring 中可登录；启动参数和运行中 `mihon://...-auth` 回调均只完成当前 state/provider 的一次登录，过期、错 provider 或重复回调显示安全失败且不进入普通导航。
+**Feedback:** MAL、AniList、Kitsu、Shikimori、Bangumi 五家需客户端配置的 provider 在真实 production wiring 中可登录；四家 OAuth provider 的启动参数和运行中 `mihon://...-auth` 回调均只完成当前 state/provider 的一次登录，过期、错 provider 或重复回调显示安全失败且不进入普通导航。
 **RED:** 先让 production `DesktopAppModule` 解析五家可用 provider，并用独立 OAuth/API server 固定 authorization/token 路径；覆盖启动 URI、热 URI、query/fragment、错误 state、重复交付与 token redaction。
 **GREEN:** 使用 fixed original 的 provider client/callback 语义；既有 Desktop URI scheme/single-instance ingress 先交给 OAuth broker，未消费的 URI 才进入 `ExternalActionNavigator`。loopback server 只作为确有平台需求的 adapter，不再是五家 provider 的默认前提。
 **Mutation:** 清空 production client config、交换 API/OAuth base、让 OAuth URI落入普通导航、跳过 state 或重复消费，确认 production wiring/integration test 精确失败后恢复。
 **Verification:** provider、OAuth broker、Main ingress、DI wiring、父 parity contract、Spotless。
 **Desktop zero-regression:** 保留单实例、普通 deep link、search/backup/repository URI 行为；凭据和 token 不进入日志或普通导航反馈。
+
+**Execution evidence（已完成）：** fixed original 仅取
+`main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`。production registry 以原版 client
+ID/secret、OAuth/API endpoint 和 grant 参数启用 MAL、AniList、Kitsu、Shikimori、Bangumi；
+MAL 保留 plain PKCE 且不强制 redirect，AniList 只从 fragment 接收 implicit token，
+Shikimori/Bangumi 使用固定 custom redirect，Bangumi refresh 同样携带该 redirect。共享
+OAuth broker 以单 pending session、provider/state、query/fragment、错误、超时、取消和一次性交付
+约束 startup、single-instance hot event 与 AWT OpenURI 三条 production ingress；错 host/provider/state、
+过期、重复或畸形回调均被消费且不会进入普通导航或诊断泄密。初始 broker/config/ingress 编译与行为
+RED、69 项 focused GREEN、ingress fallthrough mutation RED 均成立；独立审查发现 wrong-host、
+跨 query/fragment 和 Bangumi refresh 三个缺口后，repair RED 为 5 项中 3 项精确失败，
+GREEN 后删除 Bangumi redirect 的 mutation 精确失败，恢复后 34 项 repair focused 全绿，唯一复审
+`APPROVED`（P0/P1/P2=0）。主代理最终按 146B 边界运行 67 项 provider/broker/integration/runtime/
+DI/login UI focused 全绿；一次包含未暂存 146C 对话框草案的扩大集合出现 1 个 Compose 场景失败，
+该测试隔离运行通过，未据此修改或提前收口 146C。父 parity contract 34 项与根 `spotlessCheck`
+最终全绿；OAuth import/wiring 造成既有 manifest 六处 evidence 行号漂移，仅更新位置，未改变
+capability 状态。精确暂存不含 146C/146D 或用户下载队列改动。
 
 ### Task 146C B2c ID 69 Desktop tracking edit and unbind capability
 

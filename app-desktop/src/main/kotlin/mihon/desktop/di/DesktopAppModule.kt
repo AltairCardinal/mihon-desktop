@@ -73,6 +73,7 @@ import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import mihon.desktop.security.DesktopAppLock
 import mihon.desktop.security.DesktopPassphraseVerifier
 import mihon.desktop.tracking.DesktopTrackerServiceRegistry
+import mihon.desktop.tracking.DesktopTrackerOAuthCallbackBroker
 import mihon.desktop.tracking.DesktopTrackerSyncScheduler
 import mihon.desktop.migration.DesktopBatchMigrationController
 import mihon.desktop.domain.MigrationOptions
@@ -512,6 +513,7 @@ private fun registerDesktopTracking(sourceManager: SourceManager, client: OkHttp
     val trackRepository = Injekt.get<TrackRepository>()
     val chapterRepository = Injekt.get<ChapterRepository>()
     val credentialStore = DesktopCredentialStore()
+    val oauthCallbackBroker = DesktopTrackerOAuthCallbackBroker()
     val enhancedTrackerContexts = mihon.desktop.tracking.DesktopEnhancedTrackerContextProvider().apply {
         attach(sourceManager)
     }
@@ -523,6 +525,7 @@ private fun registerDesktopTracking(sourceManager: SourceManager, client: OkHttp
         sourceClient = enhancedTrackerContexts::sourceClient,
     )
     Injekt.addSingleton<TrackerServiceRegistry>(trackerRegistry)
+    Injekt.addSingleton(oauthCallbackBroker)
     TrackingTestBridge.controller = TrackingTestModeController(trackRepository, chapterRepository, trackerRegistry)
     Injekt.addSingleton(credentialStore)
     Injekt.addSingleton<tachiyomi.domain.track.service.EnhancedTrackerContextProvider>(enhancedTrackerContexts)

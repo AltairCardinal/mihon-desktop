@@ -39,6 +39,7 @@ import mihon.desktop.test.TestArguments
 import mihon.desktop.test.TestMode
 import mihon.desktop.test.state.TestState
 import mihon.desktop.test.state.applicationState
+import mihon.desktop.tracking.DesktopTrackerOAuthCallbackBroker
 import mihon.desktop.ui.ExternalActionNavigator
 import mihon.desktop.ui.home.HomeScreen
 import mihon.desktop.ui.security.DesktopProtectedRoot
@@ -213,8 +214,18 @@ private fun prepareDesktopOwner(
         windowPrivacyController = Injekt.get(),
     )
     try {
-        submitDesktopExternalAction(args, ingress.uiDependencies.externalActionNavigator)
-        initializeDesktopOwnerExternalActionIngress(broker, ingress.uiDependencies.externalActionNavigator, startup.runtime, openUriEventPort)
+        submitDesktopExternalAction(
+            args,
+            ingress.uiDependencies.externalActionNavigator,
+            ingress.uiDependencies.trackerOAuthCallbackBroker,
+        )
+        initializeDesktopOwnerExternalActionIngress(
+            broker,
+            ingress.uiDependencies.externalActionNavigator,
+            startup.runtime,
+            openUriEventPort,
+            ingress.uiDependencies.trackerOAuthCallbackBroker,
+        )
         return startup
     } catch (failure: Throwable) { throw failure }
 }
@@ -496,35 +507,50 @@ internal fun desktopExternalActionRaw(args: Array<String>): String? = args.first
 internal fun desktopExternalActionInput(args: Array<String>): ExternalActionInput? =
     desktopExternalActionRaw(args)?.let(ExternalActionInput::ViewUri)
 
-internal fun submitDesktopExternalAction(args: Array<String>, navigator: mihon.desktop.ui.ExternalActionNavigator) {
-    desktopExternalActionInput(args)?.let(navigator::submit)
+internal fun submitDesktopExternalAction(
+    args: Array<String>,
+    navigator: mihon.desktop.ui.ExternalActionNavigator,
+    oauthBroker: DesktopTrackerOAuthCallbackBroker = DesktopTrackerOAuthCallbackBroker(),
+) {
+    desktopExternalActionRaw(args)?.let { submitDesktopExternalAction(it, navigator, oauthBroker) }
 }
 
-internal fun submitDesktopExternalAction(raw: String, navigator: ExternalActionNavigator) {
-    navigator.submit(ExternalActionInput.ViewUri(raw))
+internal fun submitDesktopExternalAction(
+    raw: String,
+    navigator: ExternalActionNavigator,
+    oauthBroker: DesktopTrackerOAuthCallbackBroker = DesktopTrackerOAuthCallbackBroker(),
+): DesktopTrackerOAuthCallbackBroker.HandleResult {
+    val result = oauthBroker.handle(raw)
+    if (result is DesktopTrackerOAuthCallbackBroker.HandleResult.NotOAuth) {
+        navigator.submit(ExternalActionInput.ViewUri(raw))
+    }
+    return result
 }
 
 internal fun wireDesktopExternalActionBroker(
     broker: DesktopExternalActionBroker,
     navigator: ExternalActionNavigator,
+    oauthBroker: DesktopTrackerOAuthCallbackBroker = DesktopTrackerOAuthCallbackBroker(),
 ) {
-    broker.setActionConsumer { raw -> submitDesktopExternalAction(raw, navigator) }
+    broker.setActionConsumer { raw -> submitDesktopExternalAction(raw, navigator, oauthBroker) }
 }
 
 internal fun wireDesktopOpenUriEvents(
     port: mihon.desktop.platform.DesktopOpenUriEventPort,
     navigator: ExternalActionNavigator,
-) = port.install { raw -> submitDesktopExternalAction(raw, navigator) }
+    oauthBroker: DesktopTrackerOAuthCallbackBroker = DesktopTrackerOAuthCallbackBroker(),
+) = port.install { raw -> submitDesktopExternalAction(raw, navigator, oauthBroker) }
 
 internal fun initializeDesktopOwnerExternalActionIngress(
     broker: DesktopExternalActionBroker,
     navigator: ExternalActionNavigator,
     runtime: DesktopAppRuntime,
     openUriEventPort: DesktopOpenUriEventPort,
+    oauthBroker: DesktopTrackerOAuthCallbackBroker = DesktopTrackerOAuthCallbackBroker(),
 ) {
-    wireDesktopExternalActionBroker(broker, navigator)
+    wireDesktopExternalActionBroker(broker, navigator, oauthBroker)
     runtime.attachInstanceBroker(broker)
-    val openUriResult = wireDesktopOpenUriEvents(openUriEventPort, navigator)
+    val openUriResult = wireDesktopOpenUriEvents(openUriEventPort, navigator, oauthBroker)
     (openUriResult as? DesktopOpenUriInstallResult.Installed)?.let { runtime.attachCloseable(it.registration) }
 }
 
