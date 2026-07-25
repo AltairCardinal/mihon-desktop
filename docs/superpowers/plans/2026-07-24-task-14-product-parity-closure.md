@@ -29,7 +29,7 @@ status: planned
 - [x] Task 145B2：B1b-2 ID 69 Android tracking UI actions
 - [x] Task 146A：B2a ID 69 Desktop public provider lifecycle
 - [x] Task 146B：B2b ID 69 Desktop production OAuth ingress
-- [ ] Task 146C：B2c ID 69 Desktop tracking edit and unbind capability
+- [x] Task 146C：B2c ID 69 Desktop tracking edit and unbind capability
 - [ ] Task 146D：B2d ID 69 Desktop enhanced tracker auto-match
 - [ ] Task 147：B3 ID 70 Android delayed tracker sync
 - [ ] Task 148：B4 ID 70 Desktop delayed sync consumer
@@ -354,6 +354,18 @@ capability 状态。精确暂存不含 146C/146D 或用户下载队列改动。
 **Mutation:** 删除任一 edit 字段、恢复 remote-first 顺序、重新要求登录才能本地解绑或制造双 checkbox semantics，确认 production integration/UI test 精确失败后恢复。
 **Verification:** ScreenModel、mounted Compose dialog、真实 registry adapter integration、父 parity contract、Spotless。
 **Desktop zero-regression:** 默认仍仅解绑本地；危险远端删除必须显式勾选并保留失败反馈，不静默删除远端记录。
+
+**Execution evidence（已完成）：** `task146c-red-local-checkbox-2` 先以 18 项中的 3 个精确失败固定
+local-first、logged-out/unavailable 本地解绑与单一 checkbox semantics，`task146c-red-all-fields`
+再以 27 项中的 5 个精确失败补齐 private/date 与真实 registry 六字段链；实现 GREEN 后恢复
+remote-first 的 mutation 精确 RED。独立首审发现自由 ISO 日期输入和已绑定但登出/不可用条目无法从
+mounted UI 进入解绑两项 P1；修复 RED 为 12 项中的 2 项精确失败，改为 Material3
+`DatePicker`/`DatePickerDialog`/`SelectableDates`、显式 Remove→`0`、UTC picker 日历日与
+system-local epoch 双向转换，并让 bound 条目优先进入 Manage。未来日期边界 mutation 精确 RED
+后恢复，最终 repair focused `31/31` GREEN；修复复审 `APPROVED`，P0/P1/P2 均为 0。
+主代理强制重新执行 ScreenModel、mounted dialog、registry integration `31/31`，父 parity contract
+`34/34` 与根 `spotlessCheck` 均 GREEN，0 failure/0 error/0 skipped。精确范围为计划内
+5 files/885 touched，不含 146D enhanced auto-match、用户 DownloadQueue 改动或环境噪声。
 
 ### Task 146D B2d ID 69 Desktop enhanced tracker auto-match
 

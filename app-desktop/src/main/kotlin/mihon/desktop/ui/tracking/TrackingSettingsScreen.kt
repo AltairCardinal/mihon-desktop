@@ -1,5 +1,6 @@
 package mihon.desktop.ui.tracking
 
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,7 +14,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -24,9 +28,11 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -59,6 +65,7 @@ import mihon.desktop.ui.settings.DesktopSettingsButton
 import mihon.desktop.ui.settings.DesktopSettingsLazyAnchor
 import mihon.desktop.ui.settings.DesktopSettingsTextButton
 import mihon.desktop.ui.settings.SwitchSettingsItem
+import mihon.desktop.ui.settings.desktopSettingsActivationKeys
 import mihon.desktop.ui.settings.desktopSettingsAction
 import mihon.desktop.ui.settings.desktopSettingsAnchor
 import mihon.desktop.ui.settings.rememberDesktopSettingsAnchorLazyListHost
@@ -66,9 +73,14 @@ import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.service.TrackEdit
 import tachiyomi.domain.track.service.TrackSearchResult
 import tachiyomi.domain.track.service.TrackerAuthentication
+import tachiyomi.domain.track.service.TrackerProviderService
 import tachiyomi.domain.track.service.TrackerService
 import tachiyomi.i18n.MR
 import java.time.Duration
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZoneOffset
 import java.util.Locale
 
 /** Tracker settings when [mangaId] is null; manga binding and editing when it is present. */
@@ -105,7 +117,7 @@ data class TrackingSettingsScreen(
             state.services.forEachIndexed { index, item ->
                 val sourceManaged =
                     dependencies.trackerServiceRegistry.get(item.profile.id) !is DesktopAuthenticatingTrackerService
-                if (!item.profile.loggedIn && (!sourceManaged || mangaId != null)) {
+                if (item.track == null && !item.profile.loggedIn && (!sourceManaged || mangaId != null)) {
                     add(
                         DesktopSettingsLazyAnchor(
                             loginTitle,
@@ -170,8 +182,10 @@ data class TrackingSettingsScreen(
                                 val profile = item.profile
                                 val sourceManaged =
                                     dependencies.trackerServiceRegistry.get(profile.id) !is DesktopAuthenticatingTrackerService
+                                val boundManga = mangaId != null && item.track != null
                                 val actionEnabled =
-                                    profile.unavailableReason == null && (!sourceManaged || mangaId != null)
+                                    boundManga ||
+                                        (profile.unavailableReason == null && (!sourceManaged || mangaId != null))
                                 val serviceAction = {
                                     if (profile.loggedIn && mangaId == null) {
                                         confirmation = TrackingConfirmation.Logout(profile.id, profile.name)
@@ -182,7 +196,7 @@ data class TrackingSettingsScreen(
                                 val actionLabel = when {
                                     sourceManaged && mangaId == null -> MR.strings.desktop_tracking_source_managed.localized()
                                     profile.loggedIn && mangaId == null -> MR.strings.logout.localized()
-                                    profile.loggedIn -> MR.strings.desktop_tracking_manage.localized()
+                                    boundManga || profile.loggedIn -> MR.strings.desktop_tracking_manage.localized()
                                     else -> loginTitle
                                 }
                                 ListItem(
@@ -207,7 +221,7 @@ data class TrackingSettingsScreen(
                                     trailingContent = {
                                         Text(actionLabel)
                                     },
-                                    modifier = (if (!profile.loggedIn && (!sourceManaged || mangaId != null)) {
+                                    modifier = (if (item.track == null && !profile.loggedIn && (!sourceManaged || mangaId != null)) {
                                         Modifier.desktopSettingsAnchor(
                                             loginTitle,
                                             "tracking-login-${profile.id}",
@@ -233,7 +247,20 @@ data class TrackingSettingsScreen(
             val service = dependencies.trackerServiceRegistry.services.firstOrNull { it.profile.value.id == trackerId }
                 ?: return@let
             val profile by service.profile.collectAsState()
+            val selectedItem = state.services.first { it.profile.id == trackerId }
             when {
+                mangaId != null && selectedItem.track != null -> MangaTrackingDialog(
+                    item = selectedItem,
+                    model = model,
+                    onDismiss = { selectedId = null },
+                    onRequestUnbind = {
+                        confirmation = TrackingConfirmation.Unbind(
+                            trackerId,
+                            profile.name,
+                            (service as? TrackerProviderService)?.configuration?.supportsDelete == true,
+                        )
+                    },
+                )
                 !profile.loggedIn -> LoginDialog(
                     service = service,
                     oauthCallbackBroker = dependencies.trackerOAuthCallbackBroker,
@@ -255,16 +282,23 @@ data class TrackingSettingsScreen(
                     },
                 )
                 mangaId != null -> MangaTrackingDialog(
-                    item = state.services.first { it.profile.id == trackerId },
+                    item = selectedItem,
                     model = model,
                     onDismiss = { selectedId = null },
-                    onRequestUnbind = { confirmation = TrackingConfirmation.Unbind(trackerId, profile.name) },
+                    onRequestUnbind = {
+                        confirmation = TrackingConfirmation.Unbind(
+                            trackerId,
+                            profile.name,
+                            (service as? TrackerProviderService)?.configuration?.supportsDelete == true,
+                        )
+                    },
                 )
                 else -> selectedId = null
             }
         }
 
         confirmation?.let { request ->
+            var removeRemoteTrack by remember(request) { mutableStateOf(false) }
             TrackingConfirmationDialog(
                 request.title,
                 request.message,
@@ -278,13 +312,19 @@ data class TrackingSettingsScreen(
                         runCatching {
                             when (request) {
                                 is TrackingConfirmation.Logout -> model.logout(request.trackerId)
-                                is TrackingConfirmation.Unbind -> model.unbind(request.trackerId)
+                                is TrackingConfirmation.Unbind ->
+                                    model.unbind(request.trackerId, removeRemoteTrack)
                             }
                         }.onFailure { model.reportError(it, request.failure) }
                         selectedId = null
                     }
                 },
                 onDismiss = { confirmation = null },
+                remoteDeleteLabel = (request as? TrackingConfirmation.Unbind)
+                    ?.takeIf { it.supportsRemoteDelete }
+                    ?.let { MR.strings.track_delete_remote_text.localized(Locale.getDefault(), it.serviceName) },
+                removeRemoteTrack = removeRemoteTrack,
+                onRemoveRemoteChange = { removeRemoteTrack = it },
             )
         }
     }
@@ -297,11 +337,39 @@ internal fun TrackingConfirmationDialog(
     confirmLabel: String,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    remoteDeleteLabel: String? = null,
+    removeRemoteTrack: Boolean = false,
+    onRemoveRemoteChange: (Boolean) -> Unit = {},
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
-        text = { Text(message) },
+        text = {
+            Column {
+                Text(message)
+                remoteDeleteLabel?.let { label ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .desktopSettingsActivationKeys(Role.Checkbox) {
+                                onRemoveRemoteChange(!removeRemoteTrack)
+                            }
+                            .toggleable(
+                                value = removeRemoteTrack,
+                                role = Role.Checkbox,
+                                onValueChange = onRemoveRemoteChange,
+                            ),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = removeRemoteTrack,
+                            onCheckedChange = null,
+                        )
+                        Text(label)
+                    }
+                }
+            }
+        },
         confirmButton = {
             DesktopSettingsTextButton(onClick = onConfirm) {
                 Text(confirmLabel)
@@ -384,7 +452,11 @@ private sealed interface TrackingConfirmation {
         override val failure = TrackingMessage.LogoutFailed
     }
 
-    data class Unbind(override val trackerId: Long, val serviceName: String) : TrackingConfirmation {
+    data class Unbind(
+        override val trackerId: Long,
+        val serviceName: String,
+        val supportsRemoteDelete: Boolean,
+    ) : TrackingConfirmation {
         override val title = MR.strings.track_delete_title.localized(Locale.getDefault(), serviceName)
         override val message = MR.strings.track_delete_text.localized()
         override val failure = TrackingMessage.UnbindFailed
@@ -472,6 +544,10 @@ private fun MangaTrackingDialog(
     var status by remember(bound) { mutableStateOf(bound?.status) }
     var score by remember(bound) { mutableStateOf(bound?.score) }
     var chapter by remember(bound) { mutableStateOf(bound?.lastChapterRead ?: 0.0) }
+    var privateTracking by remember(bound) { mutableStateOf(bound?.private ?: false) }
+    var startDate by remember(bound) { mutableStateOf(bound?.startDate ?: 0) }
+    var finishDate by remember(bound) { mutableStateOf(bound?.finishDate ?: 0) }
+    var datePickerTarget by remember { mutableStateOf<TrackingDateTarget?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var working by remember { mutableStateOf(false) }
     AlertDialog(
@@ -530,11 +606,44 @@ private fun MangaTrackingDialog(
                         ChoiceField(MR.strings.score.localized(), item.scores.map { it to it.toString() }, score) { score = it }
                     }
                     ChapterStepper(chapter, model.totalChapters?.takeIf { it > 0 } ?: bound.totalChapters.takeIf { it > 0 }) { chapter = it }
+                    if (item.providerConfiguration?.supportsPrivateTracking == true) {
+                        SwitchSettingsItem(
+                            title = MR.strings.tracked_privately.localized(),
+                            subtitle = null,
+                            checked = privateTracking,
+                            onCheckedChange = { privateTracking = it },
+                        )
+                    }
+                    if (item.providerConfiguration?.supportsReadingDates == true) {
+                        TrackingDateField(
+                            label = MR.strings.track_started_reading_date.localized(),
+                            epochMillis = startDate,
+                            onClick = { datePickerTarget = TrackingDateTarget.START },
+                        )
+                        TrackingDateField(
+                            label = MR.strings.track_finished_reading_date.localized(),
+                            epochMillis = finishDate,
+                            onClick = { datePickerTarget = TrackingDateTarget.FINISH },
+                        )
+                    }
                     Button(enabled = !working, onClick = {
                         scope.launch {
                             working = true
                             runCatching {
-                                model.update(item.profile.id, TrackEdit(status, score, chapter))
+                                val supportsDates = item.providerConfiguration?.supportsReadingDates == true
+                                model.update(
+                                    item.profile.id,
+                                    TrackEdit(
+                                        status = status,
+                                        score = score,
+                                        lastChapterRead = chapter,
+                                        startDate = startDate.takeIf { supportsDates },
+                                        finishDate = finishDate.takeIf { supportsDates },
+                                        private = privateTracking.takeIf {
+                                            item.providerConfiguration?.supportsPrivateTracking == true
+                                        },
+                                    ),
+                                )
                             }.onSuccess { onDismiss() }
                                 .onFailure {
                                     error = (it as? TrackingMessageException)?.trackingMessage?.let(::trackingMessageText)
@@ -549,6 +658,146 @@ private fun MangaTrackingDialog(
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(MR.strings.action_close.localized()) } },
     )
+    datePickerTarget?.let { target ->
+        val currentDate = if (target == TrackingDateTarget.START) startDate else finishDate
+        TrackingDatePickerDialog(
+            title = if (target == TrackingDateTarget.START) {
+                MR.strings.track_started_reading_date.localized()
+            } else {
+                MR.strings.track_finished_reading_date.localized()
+            },
+            selectingStart = target == TrackingDateTarget.START,
+            currentDate = currentDate,
+            startDate = startDate,
+            finishDate = finishDate,
+            onSelected = { selected ->
+                if (target == TrackingDateTarget.START) startDate = selected else finishDate = selected
+                datePickerTarget = null
+            },
+            onRemove = {
+                if (target == TrackingDateTarget.START) startDate = 0 else finishDate = 0
+                datePickerTarget = null
+            },
+            onDismiss = { datePickerTarget = null },
+        )
+    }
+}
+
+private enum class TrackingDateTarget { START, FINISH }
+
+@Composable
+private fun TrackingDateField(
+    label: String,
+    epochMillis: Long,
+    onClick: () -> Unit,
+) {
+    ListItem(
+        headlineContent = { Text(label) },
+        supportingContent = {
+            Text(
+                epochMillis.takeIf { it > 0 }
+                    ?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate().toString() }
+                    ?: MR.strings.none.localized(),
+            )
+        },
+        modifier = Modifier.desktopSettingsAction(Role.Button, onClick),
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TrackingDatePickerDialog(
+    title: String,
+    selectingStart: Boolean,
+    currentDate: Long,
+    startDate: Long,
+    finishDate: Long,
+    onSelected: (Long) -> Unit,
+    onRemove: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val zone = ZoneId.systemDefault()
+    val initialSelection = remember(currentDate, zone) {
+        currentDate.takeIf { it > 0 }
+            ?.let { trackingDatePickerSelection(it, zone) }
+            ?: LocalDate.now(zone).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+    }
+    val selectableDates = remember(selectingStart, startDate, finishDate, zone) {
+        TrackingSelectableDates(selectingStart, startDate, finishDate, zone)
+    }
+    val state = rememberDatePickerState(
+        initialSelectedDateMillis = initialSelection,
+        selectableDates = selectableDates,
+    )
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            DesktopSettingsTextButton(
+                enabled = state.selectedDateMillis != null,
+                onClick = {
+                    state.selectedDateMillis?.let { onSelected(trackingDateFromPickerSelection(it, zone)) }
+                },
+            ) {
+                Text(MR.strings.action_ok.localized())
+            }
+        },
+        dismissButton = {
+            Row {
+                if (currentDate > 0) {
+                    DesktopSettingsTextButton(onClick = onRemove) {
+                        Text(MR.strings.action_remove.localized())
+                    }
+                }
+                DesktopSettingsTextButton(onClick = onDismiss) {
+                    Text(MR.strings.action_cancel.localized())
+                }
+            }
+        },
+    ) {
+        DatePicker(
+            state = state,
+            title = { Text(title) },
+        )
+    }
+}
+
+internal fun trackingDatePickerSelection(localEpochMillis: Long, zone: ZoneId): Long =
+    Instant.ofEpochMilli(localEpochMillis)
+        .atZone(zone)
+        .toLocalDate()
+        .atStartOfDay(ZoneOffset.UTC)
+        .toInstant()
+        .toEpochMilli()
+
+internal fun trackingDateFromPickerSelection(utcEpochMillis: Long, zone: ZoneId): Long =
+    Instant.ofEpochMilli(utcEpochMillis)
+        .atZone(ZoneOffset.UTC)
+        .toLocalDate()
+        .atStartOfDay(zone)
+        .toInstant()
+        .toEpochMilli()
+
+@OptIn(ExperimentalMaterial3Api::class)
+internal class TrackingSelectableDates(
+    private val selectingStart: Boolean,
+    startDate: Long,
+    finishDate: Long,
+    zone: ZoneId,
+    private val today: LocalDate = LocalDate.now(zone),
+) : SelectableDates {
+    private val start = startDate.takeIf { it > 0 }?.let { Instant.ofEpochMilli(it).atZone(zone).toLocalDate() }
+    private val finish = finishDate.takeIf { it > 0 }?.let { Instant.ofEpochMilli(it).atZone(zone).toLocalDate() }
+
+    override fun isSelectableDate(utcTimeMillis: Long): Boolean {
+        val target = Instant.ofEpochMilli(utcTimeMillis).atZone(ZoneOffset.UTC).toLocalDate()
+        if (target > today) return false
+        return if (selectingStart) finish == null || target <= finish else start == null || target >= start
+    }
+
+    override fun isSelectableYear(year: Int): Boolean {
+        if (year > today.year) return false
+        return if (selectingStart) finish == null || year <= finish.year else start == null || year >= start.year
+    }
 }
 
 @Composable

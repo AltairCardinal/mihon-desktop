@@ -12,16 +12,20 @@ import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.TrackEdit
 import tachiyomi.domain.track.service.TrackSearchResult
 import tachiyomi.domain.track.service.TrackerProfile
+import tachiyomi.domain.track.service.TrackerProviderConfiguration
+import tachiyomi.domain.track.service.TrackerProviderRequest
 import tachiyomi.domain.track.service.TrackerProviderCatalog
 import tachiyomi.domain.track.service.TrackerProviderService
 import tachiyomi.domain.track.service.TrackerService
 import tachiyomi.domain.track.service.TrackerServiceRegistry
+import tachiyomi.domain.track.service.trackOrThrow
 
 data class TrackingServiceState(
     val profile: TrackerProfile,
     val statuses: List<Pair<Long, String>>,
     val scores: List<Double>,
     val track: Track?,
+    val providerConfiguration: TrackerProviderConfiguration?,
 )
 
 sealed interface TrackingMessage {
@@ -123,10 +127,19 @@ class TrackingScreenModel(
         updated
     }
 
-    suspend fun unbind(trackerId: Long) = operationMutex.withLock {
+    suspend fun unbind(trackerId: Long, removeRemoteTrack: Boolean = false) = operationMutex.withLock {
         val mangaId = mangaId ?: failArgument(TrackingMessage.MangaRequired)
+        val track = item(trackerId).track ?: failArgument(TrackingMessage.NotBound)
         repository.delete(mangaId, trackerId)
         replaceTrack(trackerId, null, TrackingMessage.Removed)
+        val service = service(trackerId)
+        if (
+            removeRemoteTrack &&
+            service is TrackerProviderService &&
+            service.configuration.supportsDelete
+        ) {
+            service.execute(TrackerProviderRequest.Delete(track)).trackOrThrow()
+        }
     }
 
     suspend fun logout(trackerId: Long) = operationMutex.withLock {
@@ -189,7 +202,13 @@ class TrackingScreenModel(
         return this
     }
 
-    private fun TrackerService.toState(track: Track?) = TrackingServiceState(profile.value, statuses, scores, track)
+    private fun TrackerService.toState(track: Track?) = TrackingServiceState(
+        profile = profile.value,
+        statuses = statuses,
+        scores = scores,
+        track = track,
+        providerConfiguration = (this as? TrackerProviderService)?.configuration,
+    )
 
     private fun Throwable.toTrackingMessage(fallback: TrackingMessage) = when (this) {
         is TrackingMessageException -> trackingMessage

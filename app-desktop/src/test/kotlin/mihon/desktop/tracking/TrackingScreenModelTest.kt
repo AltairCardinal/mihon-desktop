@@ -1,9 +1,14 @@
 package mihon.desktop.tracking
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.withTimeout
 import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.ui.tracking.TrackingMessage
 import mihon.desktop.ui.tracking.TrackingMessageException
@@ -20,10 +25,48 @@ import tachiyomi.domain.track.service.TrackEdit
 import tachiyomi.domain.track.service.TrackSearchResult
 import tachiyomi.domain.track.service.TrackerAuthentication
 import tachiyomi.domain.track.service.TrackerProfile
+import tachiyomi.domain.track.service.TrackerProviderCatalog
+import tachiyomi.domain.track.service.TrackerProviderError
+import tachiyomi.domain.track.service.TrackerProviderErrorKind
+import tachiyomi.domain.track.service.TrackerProviderOperation
+import tachiyomi.domain.track.service.TrackerProviderRequest
+import tachiyomi.domain.track.service.TrackerProviderResult
+import tachiyomi.domain.track.service.TrackerProviderResultException
+import tachiyomi.domain.track.service.TrackerProviderService
+import tachiyomi.domain.track.service.TrackerProviderSession
 import tachiyomi.domain.track.service.TrackerService
 import tachiyomi.domain.track.service.TrackerServiceRegistry
 
 class TrackingScreenModelTest {
+    @Test
+    fun `bind forwards production chapter read state only to provider services`() = runTest {
+        for (hasRead in listOf(false, true)) {
+            val repository = FakeTrackRepository()
+            val chapters = FakeChapterRepository().apply {
+                seed(
+                    tachiyomi.domain.chapter.model.Chapter.create().copy(
+                        id = 1,
+                        mangaId = 42,
+                        read = hasRead,
+                    ),
+                )
+            }
+            val provider = FakeTrackerService(1, loggedIn = true)
+            val model = TrackingScreenModel(
+                mangaId = 42,
+                mangaTitle = "Manga",
+                totalChapters = 12,
+                repository = repository,
+                chapterRepository = chapters,
+                registry = registry(provider),
+            ).also { it.load() }
+
+            model.bind(1, TrackSearchResult(10, "Manga", 12))
+
+            assertEquals(listOf(hasRead), provider.bindReadStates)
+        }
+    }
+
     @Test
     fun `load merges persisted manga tracks with every registered service`() = runTest {
         val bound = track(trackerId = 1)
@@ -100,12 +143,115 @@ class TrackingScreenModelTest {
 
         model.unbind(1)
         assertEquals(TrackingMessage.Removed, model.state.value.feedback)
+        assertTrue(service.providerRequests.isEmpty())
         model.logout(1)
 
         assertEquals(listOf(2L), repository.rows.map { it.trackerId })
         assertTrue(service.loggedOut)
         assertFalse(service.profile.value.loggedIn)
         assertEquals(TrackingMessage.LoggedOut, model.state.value.feedback)
+    }
+
+    @Test
+    fun `unbind removes and refreshes local binding before optional remote delete settles`() = runTest {
+        val original = track(1)
+        val events = mutableListOf<String>()
+        val repository = FakeTrackRepository(mutableListOf(original), events)
+        val service = FakeTrackerService(1, loggedIn = true, supportsDelete = true)
+        val model = TrackingScreenModel(42, "Manga", 12, repository, registry(service)).also { it.load() }
+        service.events = events
+        service.executeGate = CompletableDeferred()
+        service.providerFailure = TrackerProviderError(
+            TrackerProviderOperation.DELETE,
+            TrackerProviderErrorKind.RATE_LIMITED,
+            429,
+        )
+
+        val pending = async { runCatching { model.unbind(1, removeRemoteTrack = true) } }
+        runCurrent()
+
+        assertEquals(listOf("local", "remote"), events)
+        assertTrue(repository.rows.isEmpty())
+        assertEquals(null, model.state.value.services.single().track)
+        assertEquals(TrackingMessage.Removed, model.state.value.feedback)
+
+        service.executeGate!!.complete(Unit)
+        val failure = assertInstanceOf(
+            TrackerProviderResultException::class.java,
+            pending.await().exceptionOrNull(),
+        )
+        assertEquals(TrackerProviderErrorKind.RATE_LIMITED, failure.error.kind)
+        assertTrue(service.providerRequests.single() is TrackerProviderRequest.Delete)
+    }
+
+    @Test
+    fun `logged out and unavailable providers cannot block local unbind`() = runTest {
+        listOf(
+            FakeTrackerService(1, loggedIn = false, supportsDelete = true),
+            FakeTrackerService(1, loggedIn = false, unavailableReason = "Provider unavailable", supportsDelete = true),
+        ).forEach { service ->
+            val repository = FakeTrackRepository(mutableListOf(track(1)))
+            val model = TrackingScreenModel(42, "Manga", 12, repository, registry(service)).also { it.load() }
+
+            model.unbind(1, removeRemoteTrack = false)
+
+            assertTrue(repository.rows.isEmpty())
+            assertEquals(null, model.state.value.services.single().track)
+            assertEquals(TrackingMessage.Removed, model.state.value.feedback)
+            assertTrue(service.providerRequests.isEmpty())
+        }
+    }
+
+    @Test
+    fun `remote authentication availability and timeout failures preserve completed local unbind`() = runTest {
+        listOf(
+            FakeTrackerService(1, loggedIn = false, supportsDelete = true).apply {
+                providerFailure = TrackerProviderError(
+                    TrackerProviderOperation.DELETE,
+                    TrackerProviderErrorKind.AUTHENTICATION,
+                )
+            },
+            FakeTrackerService(1, loggedIn = false, unavailableReason = "Provider unavailable", supportsDelete = true).apply {
+                providerFailure = TrackerProviderError(
+                    TrackerProviderOperation.DELETE,
+                    TrackerProviderErrorKind.NOT_CONFIGURED,
+                )
+            },
+        ).forEach { service ->
+            val repository = FakeTrackRepository(mutableListOf(track(1)))
+            val model = TrackingScreenModel(42, "Manga", 12, repository, registry(service)).also { it.load() }
+
+            assertInstanceOf(
+                TrackerProviderResultException::class.java,
+                runCatching { model.unbind(1, removeRemoteTrack = true) }.exceptionOrNull(),
+            )
+            assertTrue(repository.rows.isEmpty())
+            assertEquals(null, model.state.value.services.single().track)
+            assertEquals(TrackingMessage.Removed, model.state.value.feedback)
+            assertTrue(service.providerRequests.single() is TrackerProviderRequest.Delete)
+        }
+
+        val timedOutRepository = FakeTrackRepository(mutableListOf(track(1)))
+        val timedOutService = FakeTrackerService(1, loggedIn = true, supportsDelete = true).apply {
+            executeGate = CompletableDeferred()
+        }
+        val timedOutModel = TrackingScreenModel(
+            42,
+            "Manga",
+            12,
+            timedOutRepository,
+            registry(timedOutService),
+        ).also { it.load() }
+
+        assertInstanceOf(
+            TimeoutCancellationException::class.java,
+            runCatching {
+                withTimeout(1) { timedOutModel.unbind(1, removeRemoteTrack = true) }
+            }.exceptionOrNull(),
+        )
+        assertTrue(timedOutRepository.rows.isEmpty())
+        assertEquals(null, timedOutModel.state.value.services.single().track)
+        assertEquals(TrackingMessage.Removed, timedOutModel.state.value.feedback)
     }
 
     @Test
@@ -216,14 +362,21 @@ class TrackingScreenModelTest {
         private = false,
     )
 
-    private class FakeTrackRepository(val rows: MutableList<Track> = mutableListOf()) : TrackRepository {
+    private class FakeTrackRepository(
+        val rows: MutableList<Track> = mutableListOf(),
+        private val events: MutableList<String>? = null,
+    ) : TrackRepository {
         var insertCalls = 0
         var deleteCalls = 0
         override suspend fun getTrackById(id: Long) = rows.firstOrNull { it.id == id }
         override suspend fun getTracksByMangaId(mangaId: Long) = rows.filter { it.mangaId == mangaId }
         override fun getTracksAsFlow(): Flow<List<Track>> = flowOf(rows)
         override fun getTracksByMangaIdAsFlow(mangaId: Long): Flow<List<Track>> = flowOf(rows.filter { it.mangaId == mangaId })
-        override suspend fun delete(mangaId: Long, trackerId: Long) { deleteCalls++; rows.removeAll { it.mangaId == mangaId && it.trackerId == trackerId } }
+        override suspend fun delete(mangaId: Long, trackerId: Long) {
+            deleteCalls++
+            rows.removeAll { it.mangaId == mangaId && it.trackerId == trackerId }
+            events?.add("local")
+        }
         override suspend fun insert(track: Track) { insertCalls++; rows.removeAll { it.mangaId == track.mangaId && it.trackerId == track.trackerId }; rows += track }
         override suspend fun insertAll(tracks: List<Track>) { tracks.forEach { insert(it) } }
     }
@@ -232,14 +385,23 @@ class TrackingScreenModelTest {
         id: Long,
         loggedIn: Boolean,
         unavailableReason: String? = null,
-    ) : TrackerService {
+        supportsDelete: Boolean = false,
+    ) : TrackerProviderService {
         override val profile = MutableStateFlow(TrackerProfile(id, "Service $id", TrackerAuthentication.OAUTH, loggedIn, unavailableReason = unavailableReason))
+        override val configuration = TrackerProviderCatalog.configuration(id).copy(supportsDelete = supportsDelete)
+        override val session: TrackerProviderSession
+            get() = TrackerProviderSession(profile.value.id, profile.value.loggedIn, profile.value.username)
         override val statuses = listOf(1L to "Reading", 2L to "Completed")
         override val scores = listOf(0.0, 10.0)
         val searches = mutableListOf<String>()
+        val providerRequests = mutableListOf<TrackerProviderRequest>()
+        var providerFailure: TrackerProviderError? = null
+        var executeGate: CompletableDeferred<Unit>? = null
+        var events: MutableList<String>? = null
         var updateFailure: Throwable? = null
         var loggedOut = false
         var bindCalls = 0
+        val bindReadStates = mutableListOf<Boolean>()
         var updateCalls = 0
 
         override suspend fun search(query: String): List<TrackSearchResult> {
@@ -266,6 +428,14 @@ class TrackingScreenModelTest {
                 private = false,
             )
         }
+        override suspend fun bind(
+            mangaId: Long,
+            result: TrackSearchResult,
+            hasReadChapters: Boolean,
+        ): Track {
+            bindReadStates += hasReadChapters
+            return bind(mangaId, result)
+        }
         override suspend fun update(track: Track, edit: TrackEdit): Track {
             updateCalls++
             updateFailure?.let { throw it }
@@ -274,6 +444,13 @@ class TrackingScreenModelTest {
                 score = edit.score ?: track.score,
                 lastChapterRead = edit.lastChapterRead ?: track.lastChapterRead,
             )
+        }
+        override suspend fun execute(request: TrackerProviderRequest): TrackerProviderResult {
+            providerRequests += request
+            events?.add("remote")
+            executeGate?.await()
+            providerFailure?.let { return TrackerProviderResult.Failure(it) }
+            return TrackerProviderResult.Success(request.track)
         }
         override suspend fun logout() { loggedOut = true; profile.value = profile.value.copy(loggedIn = false) }
     }
