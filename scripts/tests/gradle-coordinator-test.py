@@ -247,6 +247,100 @@ class GradleCoordinatorTest(unittest.TestCase):
         self.assertIn("ORPHANED", reconciled.stdout)
         self.assertTrue(lock.exists())
 
+    def test_state_write_waits_for_a_reader_that_temporarily_blocks_replace(self) -> None:
+        state_path = self.state_dir / f"{self.key}.json"
+        state_path.write_text(json.dumps({"status": "RUNNING"}))
+        reader_ready = self.state_dir / "reader-ready"
+        release_reader = self.state_dir / "release-reader"
+        first_failure = self.state_dir / "first-replace-failure"
+        retry_observed = self.state_dir / "replace-retry-observed"
+        reader_code = (
+            "import pathlib,sys,time; "
+            "target=pathlib.Path(sys.argv[1]); "
+            "handle=target.open('r',encoding='utf-8'); "
+            "pathlib.Path(sys.argv[2]).write_text('ready'); "
+            "release=pathlib.Path(sys.argv[3]); "
+            "exec('while not release.exists():\\n time.sleep(0.01)'); "
+            "handle.close()"
+        )
+        writer_code = (
+            "import importlib.util,pathlib,sys,time; "
+            "spec=importlib.util.spec_from_file_location('coordinator',sys.argv[1]); "
+            "module=importlib.util.module_from_spec(spec); "
+            "spec.loader.exec_module(module); "
+            "first_failure=pathlib.Path(sys.argv[4]); "
+            "retry_observed=pathlib.Path(sys.argv[5]); "
+            "release=pathlib.Path(sys.argv[6]); "
+            "original_replace=pathlib.Path.replace; "
+            "replace_attempts=0; "
+            "exec(\"def observed_replace(self,target):\\n"
+            " global replace_attempts\\n"
+            " replace_attempts += 1\\n"
+            " if replace_attempts == 1:\\n"
+            "  first_failure.write_text('failed')\\n"
+            "  raise PermissionError('injected sharing violation')\\n"
+            " if replace_attempts == 2:\\n"
+            "  retry_observed.write_text('retry')\\n"
+            "  while not release.exists():\\n"
+            "   time.sleep(0.01)\\n"
+            " return original_replace(self,target)\"); "
+            "pathlib.Path.replace=observed_replace; "
+            "module.write_state(pathlib.Path(sys.argv[2]),sys.argv[3],{'status':'PASSED','exitCode':0})"
+        )
+        reader = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                reader_code,
+                str(state_path),
+                str(reader_ready),
+                str(release_reader),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        writer: subprocess.Popen[str] | None = None
+        try:
+            deadline = time.monotonic() + 5
+            while not reader_ready.exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertTrue(reader_ready.exists())
+            writer = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-c",
+                    writer_code,
+                    str(COORDINATOR),
+                    str(self.state_dir),
+                    self.key,
+                    str(first_failure),
+                    str(retry_observed),
+                    str(release_reader),
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            deadline = time.monotonic() + 5
+            while not retry_observed.exists() and writer.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertTrue(first_failure.exists())
+            self.assertTrue(retry_observed.exists())
+            self.assertIsNone(writer.poll())
+        finally:
+            release_reader.write_text("release")
+            reader_stdout, reader_stderr = reader.communicate(timeout=5)
+            writer_stdout, writer_stderr = (
+                writer.communicate(timeout=5) if writer is not None else ("", "")
+            )
+
+        self.assertEqual(0, reader.returncode, reader_stderr or reader_stdout)
+        assert writer is not None
+        self.assertEqual(0, writer.returncode, writer_stderr or writer_stdout)
+        self.assertEqual("PASSED", json.loads(state_path.read_text())["status"])
+        self.assertEqual([], list(self.state_dir.glob(f"{self.key}.json.*.tmp")))
+
     def test_concurrent_reconciliation_uses_one_os_lock_without_deleting_it(self) -> None:
         state_path = self.write_dead_active_state()
         lock = self.state_dir / f"{self.key}.lock"

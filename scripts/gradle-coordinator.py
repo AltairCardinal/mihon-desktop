@@ -39,13 +39,25 @@ def load_state(state_dir: Path, key: str) -> dict[str, object] | None:
         return None
 
 
+def replace_state_file(temporary: Path, target: Path, timeout: float = 2) -> None:
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            temporary.replace(target)
+            return
+        except PermissionError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.01)
+
+
 def write_state(state_dir: Path, key: str, state: dict[str, object]) -> None:
     state_dir.mkdir(parents=True, exist_ok=True)
     target = state_path(state_dir, key)
     temporary = target.with_name(f"{target.name}.{os.getpid()}.tmp")
     try:
         temporary.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
-        temporary.replace(target)
+        replace_state_file(temporary, target)
     finally:
         temporary.unlink(missing_ok=True)
 

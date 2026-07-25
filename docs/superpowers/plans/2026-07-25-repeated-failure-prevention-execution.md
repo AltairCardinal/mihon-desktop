@@ -164,6 +164,11 @@ GREEN：
 - macOS 真实验证（`ssh mbp`）：同一进程身份稳定且不同进程身份不同，
   格式为 `darwin:<seconds>:<microseconds>`；两个进程竞争同一锁时第二个实际等待
   `0.624s`，进程退出后自动获得锁且锁文件仍存在。
+- Task145A 验证又真实暴露 Windows reader 短暂持有状态文件时原子 replace 返回
+  `PermissionError(13)`，导致 Gradle 已成功但状态误报失败。持有 reader 的定向测试先精确
+  RED；测试以首次失败和第二次 replace 调用的跨进程 marker 确认重试真实发生，不依赖固定
+  sleep。仅对 PermissionError 增加 2 秒有界重试后，coordinator `9/9` GREEN，真实 start
+  期间连续 80 次 status 读取后仍写回 `PASSED`，未重复启动进程。
 
 ### R3
 
