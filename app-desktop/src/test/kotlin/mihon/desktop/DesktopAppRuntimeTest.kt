@@ -55,11 +55,58 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import tachiyomi.core.common.preference.DesktopPreferenceStore
+import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.util.Locale
+import java.util.prefs.Preferences
 
 @OptIn(ExperimentalCoroutinesApi::class)
+@org.junit.jupiter.api.parallel.Isolated
 class DesktopAppRuntimeTest {
+
+    @Test
+    fun `production owner restores persisted application locale before first window resource read`(
+        @org.junit.jupiter.api.io.TempDir tempDir: File,
+    ) = runTest {
+        val previousLocale = Locale.getDefault()
+        val preferenceNode = Preferences.userRoot().node("/mihon/task149-startup/${System.nanoTime()}")
+        val preferenceStore = DesktopPreferenceStore(preferenceNode)
+        preferenceStore.getString("app_language", "").set("zh-TW")
+        Locale.setDefault(Locale.US)
+        val context = initDesktopDIForTest(tempDir, preferenceStore)
+        val uiDependencies = DesktopUiDependencies.fromInjekt()
+        val runtime = headlessRuntime()
+        val broker = DesktopExternalActionBroker(File(tempDir, "locale-owner.json"))
+        try {
+            assertEquals("zh-TW", Locale.getDefault().toLanguageTag(), "fromInjekt must restore locale itself")
+            Locale.setDefault(Locale.US)
+
+            startProductionDesktopApplication(
+                args = emptyArray(),
+                broker = broker,
+                registrar = mihon.desktop.platform.DesktopUriSchemeRegistrar {
+                    DesktopUriSchemeRegistration.Result.Unavailable(
+                        DesktopUriSchemeRegistration.UnavailableReason.NON_PACKAGED_RUNTIME,
+                    )
+                },
+                ownerIngressDependencies = { DesktopOwnerIngressDependencies(runtime, uiDependencies) },
+                runWindowEventLoop = { _, requestClose ->
+                    assertEquals("zh-TW", Locale.getDefault().toLanguageTag())
+                    assertEquals(
+                        MR.strings.pref_app_language.localized(Locale.forLanguageTag("zh-TW")),
+                        MR.strings.pref_app_language.localized(),
+                    )
+                    requestClose()
+                },
+            )
+        } finally {
+            Locale.setDefault(previousLocale)
+            broker.close()
+            context.closeAndJoin()
+            preferenceNode.removeNode()
+        }
+    }
 
     @Test
     fun `packaged JVM main uses default production entry to forward secondary action`(@org.junit.jupiter.api.io.TempDir tempDir: File) {

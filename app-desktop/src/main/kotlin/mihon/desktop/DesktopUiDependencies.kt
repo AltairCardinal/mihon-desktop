@@ -29,6 +29,7 @@ import mihon.desktop.privacy.DesktopPrivacyCapabilities
 import mihon.desktop.privacy.DesktopWindowPrivacyController
 import mihon.desktop.security.DesktopPassphraseVerifier
 import mihon.desktop.settings.DesktopAppPreferences
+import mihon.desktop.platform.DesktopLocaleAdapter
 import mihon.desktop.tracking.DesktopTrackerOAuthCallbackBroker
 import mihon.desktop.tracking.DesktopTrackerServiceRegistry
 import mihon.desktop.source.LocalSourceScanService
@@ -64,6 +65,7 @@ import uy.kohesive.injekt.api.get
 
 data class DesktopUiDependencies(
     val appPreferences: DesktopAppPreferences,
+    val localeAdapter: DesktopLocaleAdapter = DesktopLocaleAdapter(appPreferences.appLanguage),
     val backupRestoreScreenModelFactory: BackupRestoreScreenModelFactory,
     val backupFilePicker: DesktopBackupFilePicker,
     val getCategories: GetCategories,
@@ -132,10 +134,13 @@ data class DesktopUiDependencies(
 
     companion object {
         fun fromInjekt(): DesktopUiDependencies {
+            val appPreferences = Injekt.get<DesktopAppPreferences>()
+            val localeAdapter = DesktopLocaleAdapter(appPreferences.appLanguage).also { it.applyPersisted() }
             val saveSourceMangaForDetails = Injekt.get<SaveSourceMangaForDetails>()
             val sourceManager = Injekt.get<SourceManager>()
             return DesktopUiDependencies(
-                appPreferences = Injekt.get(),
+                appPreferences = appPreferences,
+                localeAdapter = localeAdapter,
                 backupRestoreScreenModelFactory = Injekt.get(),
                 backupFilePicker = Injekt.get(),
                 getCategories = Injekt.get(),

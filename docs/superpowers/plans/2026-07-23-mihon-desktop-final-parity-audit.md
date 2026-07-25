@@ -512,6 +512,13 @@ active-task: Task 17
 
 **Steps:** 按 child plan 顺序执行；每次完成后回到本计划更新 status 与 evidence。14、15、16A–16D 任一 inventory 未完成或任一 child plan 未完成时，不得进入 Task 18。
 
+**Child return progress:** Task 14 consolidated product child plan 的 14 个可独立验收批次均已提交、
+独立审查并勾选，child `status: completed`。最后一项 Task 149 由本次同批提交闭合，主代理最终
+关联矩阵 `226/226`、根 `spotlessCheck`、Snackbar 生命周期 RED→GREEN 与最终独立复审
+`APPROVED`（P0/P1/P2 `0/0/0`）共同构成回收证据。Task 17 保持活动；下一恢复位置为
+Task 15 child 的首个未勾选 Task 151，随后依次执行 Task 16B、16C、16D child。Task 16A
+审计已明确无需生成产品 child plan。
+
 ### Task 18：让 64 项最终 closure 与架构 gate 变绿
 
 **Risk axis:** terminal-parity-gate

@@ -3,7 +3,7 @@ parent-plan: docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.
 parent-task: Task 14
 task-base: 0c6d360441c6ba64613063db7b197c0f88fa3d08
 original-ref: main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8
-status: planned
+status: completed
 ---
 
 # Task 14 产品 parity 缺口收口计划
@@ -33,7 +33,7 @@ status: planned
 - [x] Task 146D：B2d ID 69 Desktop enhanced tracker auto-match
 - [x] Task 147：B3 ID 70 Android delayed tracker sync
 - [x] Task 148：B4 ID 70 Desktop delayed sync consumer
-- [ ] Task 149：C1 ID 87 Desktop language
+- [x] Task 149：C1 ID 87 Desktop language
 
 ### Task 141 A1 ID 3 shared screen state
 
@@ -488,6 +488,10 @@ manifest 仅更新一条证据行号，未改变 capability 状态。用户 `Dow
 **Risk axis:** desktop-locale-selection
 **Platform boundary:** desktop
 **Estimated scope:** 7 files, 360 lines
+**Scope correction:** 实际产品、测试与机器证据范围为 10 files / +923/-13。为保护真实
+production startup、稳定 Navigator/反馈宿主和父 parity 证据，内聚增加
+`DesktopUiDependencies`、`DesktopAppRuntimeTest` 与仅三处 `Main.kt` evidence 行号维护；
+未扩张到 Android locale API、source language 或相邻 capability。
 
 **Files:**
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/settings/DesktopAppPreferences.kt`
@@ -505,6 +509,17 @@ manifest 仅更新一条证据行号，未改变 capability 状态。用户 `Dow
 **Mutation:** 断开 preference write、startup restore 或 UI apply，确认 adapter/rendered-copy tests 失败后恢复。
 **Verification:** locale adapter、preference migration、Appearance resources、父 parity contract、Spotless。
 **Desktop zero-regression:** 主题、纯黑、reader 与现有 MR consumers 不变；语言切换不重置其他 preference。
+
+**Evidence:** 固定 main 生成的 67 项应用语言清单（包括权威旧标签 `in`）、默认跟随系统、
+BCP47/中文 Hans-Hant 显示、持久化与启动恢复、即时 MR 刷新、写入/JVM apply/二次 rollback
+失败协调均先取得精确 RED；production 现把 locale `key` 限制在既有 Navigator 内，并把
+Snackbar host 保持在 key 外，切换后保留 Appearance 路由与状态。唯一独立审查和同一修复
+复审最终 `APPROVED`（P0/P1/P2 均为 0）；其中反馈生命周期强化测试先以 2/2 精确 RED 证明
+提前 ack 会自取消，再以 2/2 GREEN 证明跨额外重组持续可见、Dismiss 后仅消费一次。主代理
+最终完整关联矩阵（adapter、完整 Settings resources、runtime、migration、父 parity contract）
+`226/226` 与根 `spotlessCheck` 全绿，`diff --check` 通过；manifest 只维护三处因 Main import
+移动产生的证据行号，未改变 capability 状态。用户 `DownloadQueueScreen.kt` 与环境噪声未进入
+本 Task。
 
 ## 最终回收
 

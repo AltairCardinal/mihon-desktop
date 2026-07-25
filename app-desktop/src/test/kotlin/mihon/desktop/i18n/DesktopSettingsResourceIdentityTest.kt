@@ -22,9 +22,13 @@ import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
+import mihon.desktop.DesktopLocalizedNavigatorContent
+import mihon.desktop.DesktopOwnerIngressDependencies
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.OwnerUiDependencies
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.backup.AutoBackupInterval
 import mihon.desktop.backup.BackupPreview
@@ -37,6 +41,7 @@ import mihon.desktop.domain.fakes.FakeExtensionRepoRepository
 import mihon.desktop.platform.CredentialBackend
 import mihon.desktop.platform.DesktopCredentialStore
 import mihon.desktop.platform.DesktopPlatformPaths
+import mihon.desktop.platform.DesktopLocaleAdapter
 import mihon.desktop.platform.OperatingSystem
 import mihon.desktop.platform.PlatformCredentialUnavailableException
 import mihon.desktop.privacy.DesktopCapabilitySupport
@@ -96,6 +101,8 @@ import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
@@ -471,16 +478,19 @@ class DesktopSettingsResourceIdentityTest {
     @Test
     fun `More General and Appearance render their shared MR identities`() = runBlocking {
         val prefs = DesktopAppPreferences(InMemoryPreferenceStore())
+        val localeAdapter = DesktopLocaleAdapter(prefs.appLanguage, english, Locale::setDefault)
         val downloads = mockk<DesktopDownloadManager> {
             every { queue } returns MutableStateFlow(listOf(mockk<DownloadItem>(), mockk<DownloadItem>()))
         }
         val emptyDownloads = mockk<DesktopDownloadManager> { every { queue } returns MutableStateFlow(emptyList()) }
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns prefs
+            every { this@mockk.localeAdapter } returns localeAdapter
             every { downloadManager } returns downloads
         }
         val emptyDependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns prefs
+            every { this@mockk.localeAdapter } returns localeAdapter
             every { downloadManager } returns emptyDownloads
         }
         val previousLocale = Locale.getDefault()
@@ -549,6 +559,8 @@ class DesktopSettingsResourceIdentityTest {
                 assertCopy(
                     appearance.text,
                     MR.strings.pref_category_appearance.localized(locale),
+                    MR.strings.pref_app_language.localized(locale),
+                    MR.strings.label_default.localized(locale),
                     MR.strings.pref_category_theme.localized(locale),
                     MR.strings.theme_system.localized(locale),
                     MR.strings.theme_light.localized(locale),
@@ -563,6 +575,126 @@ class DesktopSettingsResourceIdentityTest {
             }
         } finally {
             Locale.setDefault(previousLocale)
+        }
+    }
+
+    @Test
+    fun `Appearance language entry applies default and reports persistence failure without changing selection`() = runBlocking {
+        val preferenceStore = InMemoryPreferenceStore()
+        val preferences = DesktopAppPreferences(preferenceStore)
+        preferences.appLanguage.set("en")
+        val localeAdapter = DesktopLocaleAdapter(preferences.appLanguage, chinese, Locale::setDefault)
+        localeAdapter.applyPersisted()
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+            every { appPreferences } returns preferences
+            every { this@mockk.localeAdapter } returns localeAdapter
+        }
+        val firstLanguage = localeAdapter.availableLanguages(english).first()
+        val dialog = renderAfterClicks(
+            AppearanceSettingsScreen(),
+            dependencies,
+            english,
+            MR.strings.pref_app_language.localized(english),
+            useLocalizedHost = true,
+        )
+        assertCopy(dialog.text, firstLanguage.displayName, requireNotNull(firstLanguage.localizedDisplayName))
+
+        val applied = renderAfterClicks(
+            AppearanceSettingsScreen(),
+            dependencies,
+            english,
+            MR.strings.pref_app_language.localized(english),
+            MR.strings.label_default.localized(english),
+            expectedTextAfterClicks = "${MR.strings.pref_app_language.localized(chinese)}: ${MR.strings.label_default.localized(chinese)}",
+            useLocalizedHost = true,
+        )
+
+        assertEquals("", preferences.appLanguage.get())
+        assertEquals("", localeAdapter.activeLanguageTag.value)
+        assertEntry(
+            applied,
+            MR.strings.pref_app_language.localized(chinese),
+            MR.strings.label_default.localized(chinese),
+        )
+        assertCopy(
+            applied.text,
+            MR.strings.pref_app_language.localized(chinese),
+            MR.strings.label_default.localized(chinese),
+            "${MR.strings.pref_app_language.localized(chinese)}: ${MR.strings.label_default.localized(chinese)}",
+        )
+
+        preferences.appLanguage.set("en")
+        val failingPreference = FailingStringPreference(preferences.appLanguage)
+        val failing = DesktopLocaleAdapter(failingPreference, chinese, Locale::setDefault)
+        failing.applyPersisted()
+        failingPreference.failWrites = true
+        val failingDependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+            every { appPreferences } returns preferences
+            every { this@mockk.localeAdapter } returns failing
+        }
+        val failed = renderAfterClicks(
+            AppearanceSettingsScreen(),
+            failingDependencies,
+            english,
+            MR.strings.pref_app_language.localized(english),
+            MR.strings.label_default.localized(english),
+            useLocalizedHost = true,
+        )
+
+        assertEquals("en", preferences.appLanguage.get())
+        assertEquals("en", failing.activeLanguageTag.value)
+        assertCopy(failed.text, MR.strings.unknown_error.localized(english))
+    }
+
+    @Test
+    fun `production locale navigation retains Appearance and delivers feedback after localized recreation`() = runBlocking {
+        val preferences = DesktopAppPreferences(InMemoryPreferenceStore())
+        preferences.appLanguage.set("en")
+        val localeAdapter = DesktopLocaleAdapter(preferences.appLanguage, chinese, Locale::setDefault)
+        localeAdapter.applyPersisted()
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+            every { appPreferences } returns preferences
+            every { this@mockk.localeAdapter } returns localeAdapter
+        }
+        val owner = DesktopOwnerIngressDependencies(mockk(relaxed = true), dependencies)
+        val scene = ImageComposeScene(900, 2_400, coroutineContext = coroutineContext) {}
+        var originalNavigator: Navigator? = null
+        var latestNavigator: Navigator? = null
+        try {
+            scene.setContent {
+                OwnerUiDependencies(owner) {
+                    Navigator(AppearanceSettingsScreen()) { navigator ->
+                        if (originalNavigator == null) originalNavigator = navigator
+                        latestNavigator = navigator
+                        DesktopLocalizedNavigatorContent(localeAdapter, navigator)
+                    }
+                }
+            }
+            repeat(3) { scene.render(); yield() }
+            click(scene, MR.strings.pref_app_language.localized(english))
+            repeat(3) { scene.render(); yield() }
+            click(scene, MR.strings.label_default.localized(english))
+            val expectedFeedback =
+                "${MR.strings.pref_app_language.localized(chinese)}: ${MR.strings.label_default.localized(chinese)}"
+            awaitText(scene, expectedFeedback)
+            val rendered = RenderedCopy(textCopy(scene), descriptionCopy(scene), entryCopy(scene), selectedEntryCopy(scene))
+
+            assertSame(requireNotNull(originalNavigator), requireNotNull(latestNavigator))
+            assertInstanceOf(AppearanceSettingsScreen::class.java, requireNotNull(latestNavigator).lastItem)
+            dismissSnackbar(scene, localeAdapter)
+            assertNull(localeAdapter.pendingFeedback.value)
+            assertEntry(
+                rendered,
+                MR.strings.pref_app_language.localized(chinese),
+                MR.strings.label_default.localized(chinese),
+            )
+            assertCopy(
+                rendered.text,
+                MR.strings.pref_category_appearance.localized(chinese),
+                expectedFeedback,
+            )
+        } finally {
+            scene.close()
         }
     }
 
@@ -1487,13 +1619,21 @@ class DesktopSettingsResourceIdentityTest {
         dependencies: DesktopUiDependencies,
         locale: Locale,
         vararg labels: String,
+        expectedTextAfterClicks: String? = null,
+        useLocalizedHost: Boolean = false,
     ): RenderedCopy {
         Locale.setDefault(locale)
         val scene = ImageComposeScene(900, 2_400, coroutineContext = kotlinx.coroutines.currentCoroutineContext()) {}
         return try {
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
-                    Navigator(screen) { CurrentScreen() }
+                    Navigator(screen) { navigator ->
+                        if (useLocalizedHost) {
+                            DesktopLocalizedNavigatorContent(dependencies.localeAdapter, navigator)
+                        } else {
+                            CurrentScreen()
+                        }
+                    }
                 }
             }
             repeat(3) { scene.render(); yield() }
@@ -1504,9 +1644,40 @@ class DesktopSettingsResourceIdentityTest {
                 assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
                 repeat(3) { scene.render(); yield() }
             }
-            RenderedCopy(textCopy(scene), descriptionCopy(scene), entryCopy(scene), selectedEntryCopy(scene))
+            if (expectedTextAfterClicks != null) {
+                awaitText(scene, expectedTextAfterClicks)
+                RenderedCopy(textCopy(scene), descriptionCopy(scene), entryCopy(scene), selectedEntryCopy(scene)).also {
+                    dismissSnackbar(scene, dependencies.localeAdapter)
+                    assertNull(dependencies.localeAdapter.pendingFeedback.value)
+                }
+            } else {
+                RenderedCopy(textCopy(scene), descriptionCopy(scene), entryCopy(scene), selectedEntryCopy(scene))
+            }
         } finally {
             scene.close()
+        }
+    }
+
+    private suspend fun awaitText(scene: ImageComposeScene, expected: String) = withTimeout(5_000) {
+        while (expected !in textCopy(scene)) {
+            scene.render()
+            yield()
+        }
+        repeat(3) {
+            scene.render()
+            yield()
+        }
+        assertTrue(expected in textCopy(scene), "Expected '$expected' to remain visible across recomposition")
+    }
+
+    private suspend fun dismissSnackbar(scene: ImageComposeScene, localeAdapter: DesktopLocaleAdapter) {
+        val dismiss = nodes(scene).first { it.config.contains(SemanticsActions.Dismiss) }
+        assertTrue(requireNotNull(dismiss.config[SemanticsActions.Dismiss].action).invoke())
+        withTimeout(5_000) {
+            while (localeAdapter.pendingFeedback.value != null) {
+                scene.render()
+                yield()
+            }
         }
     }
 
@@ -1805,6 +1976,17 @@ class DesktopSettingsResourceIdentityTest {
         override fun load(account: String): CharArray? = secret?.copyOf()
         override fun delete(account: String) {
             secret = null
+        }
+    }
+
+    private class FailingStringPreference(
+        private val delegate: tachiyomi.core.common.preference.Preference<String>,
+    ) : tachiyomi.core.common.preference.Preference<String> by delegate {
+        var failWrites = false
+
+        override fun set(value: String) {
+            if (failWrites) error("language preference write failed")
+            delegate.set(value)
         }
     }
 

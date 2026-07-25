@@ -72,6 +72,11 @@ class DesktopAppPreferences(
         store.getBoolean(key = "pref_theme_dark_amoled_key", defaultValue = false)
     }
 
+    /** Empty follows the system locale; non-empty values are canonical supported BCP 47 tags. */
+    val appLanguage: Preference<String> by lazy {
+        string(key = "app_language", default = "")
+    }
+
     val defaultReaderMode: Preference<ReaderDefaultMode> by lazy {
         store.getObjectFromString(
             key = "default_reader_mode",

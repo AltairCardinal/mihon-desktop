@@ -60,6 +60,7 @@ class DesktopPreferenceMigrationTest {
 
     private val appCases = listOf(
         MigrationCase("theme_mode", ThemeDefaults.THEME_MODE_KEY, "DARK", "LIGHT", ThemeDefaults.themeMode) { s, l -> DesktopAppPreferences(s, l).themeMode.get() },
+        MigrationCase("app_language", "app_language", "zh-CN", "zh-TW", "") { s, l -> DesktopAppPreferences(s, l).appLanguage.get() },
         MigrationCase("default_reader_mode", "default_reader_mode", "WEBTOON", "PAGER", ReaderDefaultMode.PAGER) { s, l -> DesktopAppPreferences(s, l).defaultReaderMode.get() },
         MigrationCase("library_grid_columns", "library_grid_columns", "5", "6", 3) { s, l -> DesktopAppPreferences(s, l).libraryGridColumns.get() },
         MigrationCase("default_rtl", "default_rtl", "true", "false", false) { s, l -> DesktopAppPreferences(s, l).defaultRtl.get() },
@@ -86,9 +87,9 @@ class DesktopPreferenceMigrationTest {
         readerCases[9],
         readerCases[12],
         appCases[0],
-        appCases[1],
-        appCases[7],
-        appCases[9],
+        appCases[2],
+        appCases[8],
+        appCases[10],
     )
 
     @TestFactory
