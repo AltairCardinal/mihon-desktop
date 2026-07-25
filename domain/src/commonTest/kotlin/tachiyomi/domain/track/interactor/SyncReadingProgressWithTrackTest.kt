@@ -11,6 +11,16 @@ import tachiyomi.domain.track.service.TrackEdit
 import tachiyomi.domain.track.service.TrackSearchResult
 import tachiyomi.domain.track.service.TrackerAuthentication
 import tachiyomi.domain.track.service.TrackerProfile
+import tachiyomi.domain.track.service.TrackerProviderCatalog
+import tachiyomi.domain.track.service.TrackerProviderConfiguration
+import tachiyomi.domain.track.service.TrackerProviderErrorKind
+import tachiyomi.domain.track.service.TrackerProviderException
+import tachiyomi.domain.track.service.TrackerProviderPort
+import tachiyomi.domain.track.service.TrackerProviderRequest
+import tachiyomi.domain.track.service.TrackerProviderResult
+import tachiyomi.domain.track.service.TrackerProviderService
+import tachiyomi.domain.track.service.TrackerProviderSession
+import tachiyomi.domain.track.service.TrackerProviderWorkflow
 import tachiyomi.domain.track.service.TrackerService
 import tachiyomi.domain.track.service.TrackerServiceRegistry
 
@@ -25,6 +35,7 @@ class SyncReadingProgressWithTrackTest {
         sync.sync(TrackerSyncRequest("reader-1", mangaId = 3, chapterNumber = 5.0))
 
         assertEquals(listOf(5.0), service.updates.map { it.lastChapterRead })
+        assertEquals(listOf("refresh", "update"), service.events)
         assertEquals(5.0, repository.tracks.first().lastChapterRead)
         assertEquals(emptyList<TrackerSyncRequest>(), retries)
     }
@@ -45,6 +56,8 @@ class SyncReadingProgressWithTrackTest {
         sync.sync(TrackerSyncRequest("reader-2", mangaId = 3, chapterNumber = 4.0))
 
         assertEquals(listOf(4.0), success.updates.map { it.lastChapterRead })
+        assertEquals(TrackerProviderErrorKind.SERVER, failing.failureKind)
+        assertEquals(listOf("refresh", "update"), success.events)
         assertEquals(listOf(8L), retries.map { it.trackerId })
         assertEquals("reader-2:8", retries.single().idempotencyKey)
     }
@@ -57,17 +70,39 @@ class SyncReadingProgressWithTrackTest {
         id, 3, trackerId, 10, null, "Manga", lastChapter, 10, 1, 0.0, "", 0, 0, false,
     )
 
-    private class FakeService(id: Long, private val fail: Boolean = false) : TrackerService {
+    private class FakeService(id: Long, private val fail: Boolean = false) : TrackerProviderService {
         override val profile = MutableStateFlow(TrackerProfile(id, "Tracker", TrackerAuthentication.OAUTH, true))
         override val statuses = emptyList<Pair<Long, String>>()
         override val scores = emptyList<Double>()
+        override val configuration: TrackerProviderConfiguration = TrackerProviderCatalog.configuration(id)
+        override val session get() = TrackerProviderSession(profile.value.id, profile.value.loggedIn)
         val updates = mutableListOf<TrackEdit>()
+        val events = mutableListOf<String>()
+        var failureKind: TrackerProviderErrorKind? = null
         override suspend fun search(query: String) = emptyList<TrackSearchResult>()
         override suspend fun bind(mangaId: Long, result: TrackSearchResult): Track = error("unused")
         override suspend fun update(track: Track, edit: TrackEdit): Track {
-            if (fail) error("offline")
             updates += edit
             return track.copy(lastChapterRead = requireNotNull(edit.lastChapterRead))
+        }
+        override suspend fun execute(request: TrackerProviderRequest): TrackerProviderResult {
+            val result = TrackerProviderWorkflow().execute(
+                object : TrackerProviderPort {
+                    override val configuration = this@FakeService.configuration
+                    override val session = this@FakeService.session
+                    override suspend fun refresh(track: Track) = track.also { events += "refresh" }
+                    override suspend fun update(track: Track): Track {
+                        events += "update"
+                        if (fail) throw TrackerProviderException(TrackerProviderErrorKind.SERVER)
+                        updates += TrackEdit(lastChapterRead = track.lastChapterRead)
+                        return track
+                    }
+                    override suspend fun delete(track: Track) = Unit
+                },
+                request,
+            )
+            failureKind = (result as? TrackerProviderResult.Failure)?.error?.kind
+            return result
         }
         override suspend fun logout() = Unit
     }

@@ -31,7 +31,7 @@ status: planned
 - [x] Task 146B：B2b ID 69 Desktop production OAuth ingress
 - [x] Task 146C：B2c ID 69 Desktop tracking edit and unbind capability
 - [x] Task 146D：B2d ID 69 Desktop enhanced tracker auto-match
-- [ ] Task 147：B3 ID 70 Android delayed tracker sync
+- [x] Task 147：B3 ID 70 Android delayed tracker sync
 - [ ] Task 148：B4 ID 70 Desktop delayed sync consumer
 - [ ] Task 149：C1 ID 87 Desktop language
 
@@ -427,6 +427,23 @@ no-match/auth/server 反馈缺口，修复后保留手动搜索、每 source cli
 **Mutation:** 分别断开 store、job `setupTask`、`TrackChapter` 或 shared queue，确认 production integration test 精确失败后恢复。
 **Verification:** shared queue/interactor、Android store/job/TrackChapter integration、父 parity contract、Spotless。
 **Desktop zero-regression:** 本 Task 不改 Desktop；B4 必须复用现有 checkpoint。
+
+**Execution evidence（已完成）：** fixed original 仅使用
+`main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` 的 `DelayedTrackingStore`、
+`DelayedTrackingUpdateJob` 与 `TrackChapter` 语义；shared `DelayedTrackerSyncQueue`
+统一登录/进度过滤、provider workflow 的 refresh-before-update、并行更新、失败原因、
+有界重试与 cleanup，Android Store/Job/`TrackChapter` 仅保留持久化、WorkManager 与
+`TrackerManager.execute` adapter。初始 domain/app RED 分别精确缺失 shared queue 与
+production seam，GREEN 后四项 mutation 分别断开最高进度、Store reason、CONNECTED
+constraint 和 `TrackChapter` queue wiring，均精确失败并恢复。独立审查随后发现跨 queue
+实例可发生低进度覆盖或低成功删除高进度，以及 Worker 委派、旧 Float 迁移和 provider
+consumer 分支证据不足；修复 RED 四组精确失败后，将原子 `upsertMax` 与条件
+`removeUpTo` 提升为 persistence 契约，补齐 production worker runner、旧 Float fixture
+及真实 `TrackerProviderWorkflow` consumer 测试。唯一修复复审 `APPROVED`，P0/P1/P2
+均为 0。主代理最终重跑 shared/domain `8/8`、Android integration `4/4`、父 parity
+contract `34/34` 与根 `spotlessCheck` 全绿；Android 首次重跑仅因 shell 未设置 SDK
+路径在测试发现前失败，显式使用仓库 `.android-sdk` 后通过。精确范围为计划内 8 files /
+771 touched，不含 Desktop、用户 DownloadQueue 改动或环境噪声。
 
 ### Task 148 B4 ID 70 Desktop delayed sync consumer
 

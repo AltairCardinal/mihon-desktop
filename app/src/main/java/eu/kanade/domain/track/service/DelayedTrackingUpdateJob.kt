@@ -5,16 +5,16 @@ import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
+import androidx.work.ListenableWorker
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequest
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkerParameters
 import eu.kanade.domain.track.interactor.TrackChapter
-import eu.kanade.domain.track.store.DelayedTrackingStore
 import eu.kanade.tachiyomi.util.system.workManager
-import logcat.LogPriority
 import tachiyomi.core.common.util.lang.withIOContext
-import tachiyomi.core.common.util.system.logcat
-import tachiyomi.domain.track.interactor.GetTracks
+import tachiyomi.domain.track.service.DelayedTrackerSyncQueue
+import tachiyomi.domain.track.service.DelayedTrackerSyncReport
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.util.concurrent.TimeUnit
@@ -23,39 +23,26 @@ class DelayedTrackingUpdateJob(private val context: Context, workerParams: Worke
     CoroutineWorker(context, workerParams) {
 
     override suspend fun doWork(): Result {
-        if (runAttemptCount > 3) {
-            return Result.failure()
-        }
-
-        val getTracks = Injekt.get<GetTracks>()
         val trackChapter = Injekt.get<TrackChapter>()
-
-        val delayedTrackingStore = Injekt.get<DelayedTrackingStore>()
-
-        withIOContext {
-            delayedTrackingStore.getItems()
-                .mapNotNull {
-                    val track = getTracks.awaitOne(it.trackId)
-                    if (track == null) {
-                        delayedTrackingStore.remove(it.trackId)
-                    }
-                    track?.copy(lastChapterRead = it.lastChapterRead.toDouble())
-                }
-                .forEach { track ->
-                    logcat(LogPriority.DEBUG) {
-                        "Updating delayed track item: ${track.mangaId}, last chapter read: ${track.lastChapterRead}"
-                    }
-                    trackChapter.await(context, track.mangaId, track.lastChapterRead, setupJobOnFailure = false)
-                }
-        }
-
-        return if (delayedTrackingStore.getItems().isEmpty()) Result.success() else Result.retry()
+        return DelayedTrackingWorkerRunner(
+            drain = { withIOContext { trackChapter.drainDelayed() } },
+            markRetryExhausted = { withIOContext { trackChapter.markRetryExhausted() } },
+        ).run(runAttemptCount)
     }
 
     companion object {
         private const val TAG = "DelayedTrackingUpdate"
 
         fun setupTask(context: Context) {
+            setupTask { name, policy, request ->
+                context.workManager.enqueueUniqueWork(name, policy, request)
+                request
+            }
+        }
+
+        internal fun setupTask(
+            enqueue: (String, ExistingWorkPolicy, OneTimeWorkRequest) -> OneTimeWorkRequest,
+        ): OneTimeWorkRequest {
             val constraints = Constraints(
                 requiredNetworkType = NetworkType.CONNECTED,
             )
@@ -66,7 +53,27 @@ class DelayedTrackingUpdateJob(private val context: Context, workerParams: Worke
                 .addTag(TAG)
                 .build()
 
-            context.workManager.enqueueUniqueWork(TAG, ExistingWorkPolicy.REPLACE, request)
+            return enqueue(TAG, ExistingWorkPolicy.REPLACE, request)
+        }
+
+        internal fun isRetryExhausted(runAttemptCount: Int) =
+            runAttemptCount > DelayedTrackerSyncQueue.MAX_RUN_ATTEMPT_COUNT
+    }
+}
+
+internal class DelayedTrackingWorkerRunner(
+    private val drain: suspend () -> DelayedTrackerSyncReport,
+    private val markRetryExhausted: suspend () -> Unit,
+) {
+    suspend fun run(runAttemptCount: Int): ListenableWorker.Result {
+        if (DelayedTrackingUpdateJob.isRetryExhausted(runAttemptCount)) {
+            markRetryExhausted()
+            return ListenableWorker.Result.failure()
+        }
+        return if (drain().remaining == 0) {
+            ListenableWorker.Result.success()
+        } else {
+            ListenableWorker.Result.retry()
         }
     }
 }

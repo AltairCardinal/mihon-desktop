@@ -1,8 +1,13 @@
 package tachiyomi.domain.track.interactor
 
-import kotlinx.coroutines.CancellationException
 import tachiyomi.domain.track.repository.TrackRepository
+import tachiyomi.domain.track.service.DelayedTrackerSyncItem
+import tachiyomi.domain.track.service.DelayedTrackerSyncPersistence
+import tachiyomi.domain.track.service.DelayedTrackerSyncQueue
 import tachiyomi.domain.track.service.TrackEdit
+import tachiyomi.domain.track.service.TrackerProviderResult
+import tachiyomi.domain.track.service.TrackerProviderService
+import tachiyomi.domain.track.service.TrackerProviderSession
 import tachiyomi.domain.track.service.TrackerServiceRegistry
 
 data class TrackerSyncRequest(
@@ -30,22 +35,41 @@ class SyncReadingProgressWithTrack(
     private val retryScheduler: TrackerSyncRetryScheduler,
 ) : ReadingProgressTrackSync {
     override suspend fun sync(request: TrackerSyncRequest) {
-        repository.getTracksByMangaId(request.mangaId)
-            .asSequence()
-            .filter { request.trackerId == null || it.trackerId == request.trackerId }
-            .filter { it.lastChapterRead < request.chapterNumber }
-            .forEach { track ->
-                val service = registry.get(track.trackerId)
-                    ?.takeIf { it.profile.value.loggedIn }
-                    ?: return@forEach
-                try {
-                    val updated = service.update(track, TrackEdit(lastChapterRead = request.chapterNumber))
-                    repository.insert(updated)
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (_: Throwable) {
-                    retryScheduler.schedule(request.copy(trackerId = track.trackerId, attempt = request.attempt + 1))
-                }
+        val persistence = object : DelayedTrackerSyncPersistence {
+            override suspend fun getItems() = emptyList<DelayedTrackerSyncItem>()
+            override suspend fun upsertMax(item: DelayedTrackerSyncItem): DelayedTrackerSyncItem {
+                retryScheduler.schedule(request.copy(trackerId = item.trackerId, attempt = request.attempt + 1))
+                return item
             }
+            override suspend fun removeUpTo(trackId: Long, lastChapterRead: Double) = false
+        }
+        DelayedTrackerSyncQueue(
+            persistence = persistence,
+            session = { id ->
+                registry.get(id)?.profile?.value?.let { TrackerProviderSession(id, it.loggedIn, it.username) }
+            },
+            execute = { providerRequest ->
+                val service = requireNotNull(registry.get(providerRequest.track.trackerId))
+                val result = if (service is TrackerProviderService) {
+                    service.execute(providerRequest)
+                } else {
+                    TrackerProviderResult.Success(
+                        service.update(
+                            providerRequest.track,
+                            TrackEdit(
+                                lastChapterRead = providerRequest.edit.lastChapterRead,
+                                didReadChapter = true,
+                            ),
+                        ),
+                    )
+                }
+                (result as? TrackerProviderResult.Success)?.track?.let { repository.insert(it) }
+                result
+            },
+        ).sync(
+            repository.getTracksByMangaId(request.mangaId)
+                .filter { request.trackerId == null || it.trackerId == request.trackerId },
+            request.chapterNumber,
+        )
     }
 }
