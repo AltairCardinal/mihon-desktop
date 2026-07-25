@@ -24,7 +24,8 @@ status: planned
 - [x] Task 142：A2 ID 3 Desktop screen state consumer
 - [x] Task 143：A3 ID 32 Android extension repository wiring
 - [x] Task 144：A4 ID 32 Desktop extension repository wiring
-- [ ] Task 145：B1 ID 69 Android provider-neutral core
+- [x] Task 145A：B1a ID 69 shared provider-neutral core
+- [ ] Task 145B：B1b ID 69 Android provider consumer
 - [ ] Task 146：B2 ID 69 Desktop provider adapters
 - [ ] Task 147：B3 ID 70 Android delayed tracker sync
 - [ ] Task 148：B4 ID 70 Desktop delayed sync consumer
@@ -123,11 +124,11 @@ status: planned
 **Desktop zero-regression:** 保留 URL normalization、fingerprint replacement 和 partial failure。
 **Execution evidence（已完成）：** shared `ExtensionRepoService.Actions` 持有 create/replace/delete/execute 的唯一实现，实例 API 与 Desktop production coordinator 均委托该 contract；Desktop Screen 继续使用现有 DI interactors/repository，mutation 后仅由 repository Flow 刷新列表，并保留 replace/delete 确认、URL normalization、旧 fingerprint 原值和 partial failure。shared/desktop 缺失 API 的编译 RED 后，domain `3/3`、Desktop use-case `8/8`、feedback `3/3` GREEN；replace、delete、fingerprint continuity 与 failure 误分类 4 个 mutation 均精确 RED 后恢复，其中误分类断言为预期成功动作 `[CREATE, REPLACE, DELETE]`、实际 `[CREATE, REPLACE, REPLACE, DELETE]`。headless production Screen 渲染验证覆盖 create outcomes 与空列表 delete 回归；未启动 GUI。独立审查 `APPROVED`，P0/P1/P2/P3 均为 0；主代理提交前复验 domain `3/3`、Desktop Screen/use-case/feedback/DI `45/45`、父 governance `1/1`，均 0 failure/0 error/0 skipped；根 `spotlessCheck` GREEN。
 
-### Task 145 B1 ID 69 provider neutral core
+### Task 145A B1a ID 69 shared provider-neutral core
 
 **Risk axis:** android-tracker-provider-core
-**Platform boundary:** shared+android
-**Estimated scope:** 8 files, 400 lines
+**Platform boundary:** shared
+**Estimated scope:** 5 files, 360 lines
 
 **Files:**
 - Modify: `domain/src/commonMain/kotlin/tachiyomi/domain/track/service/TrackerService.kt`
@@ -135,17 +136,51 @@ status: planned
 - Modify: `domain/src/commonMain/kotlin/tachiyomi/domain/track/service/TrackerProviderProtocol.kt`
 - Modify: `domain/src/commonTest/kotlin/tachiyomi/domain/track/service/TrackerProviderContractTest.kt`
 - Modify: `domain/src/commonTest/kotlin/tachiyomi/domain/track/service/TrackerProviderProtocolTest.kt`
+
+**User entry:** 为 Android Manga detail → Tracking 与 Settings → Tracking 提供共享语义，不新增独立 UI。
+**Feedback:** configuration/session、refresh-before-update、edit/delete request/result/error 返回稳定分类。
+**RED:** 固定 provider configuration、session、refresh-before-update、edit/delete 与 request/error contract。
+**GREEN:** provider-neutral 请求、状态、错误和 workflow 进入现有 domain contract，不包含 Android 网络或 credential 类型。
+**Mutation:** 绕过 refresh、initial status/date 或错误映射，确认 shared tests 失败后恢复。
+**Verification:** shared provider tests、domain JVM/Android compile、Spotless。
+**Desktop zero-regression:** 本 Task 不改 Desktop 或 Android production；145B 和 146 分别消费同一 shared contract。
+
+**Scope correction:** 原 Task 145 的 8 文件 GREEN 草案达到 `429 additions + 31 deletions = 460 touched`，
+超过 400 硬门禁；代码未压缩、未提交、未勾选时按可独立验收边界拆为 145A/145B。现有 WIP
+中 145A 初始草案为 5 文件/235 touched，145B 为 3 文件/225 touched；145A 经格式化、自审与
+unsupported-delete RED 修复后为 255 touched，独立审查修复预算校正为 340 touched。两批串行复用
+相同原版取证与 RED，不得在 Android consumer 中复制 145A 的 workflow 或错误规则。
+修复复审后将剩余日期差异收口到 Protocol 及其测试：手工 0→1 不写 startDate，手工末章
+无视 `supportsReadingDates` 写 finishDate，AUTO_COMPLETE 才按能力写日期；为保留 false/true
+对照而不压缩，145A 预算校正为 360 touched，硬门禁仍为 400。
+**Execution evidence（已完成）：** fixed original 仅为
+`main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`。shared contract 统一 provider
+configuration/session、request/result/error、refresh-before-update 与 DELETE 零 refresh；
+章节进度由 `INITIAL_ONLY`、`AUTO_COMPLETE`、`ALWAYS_READING` 三策略表达 BaseTracker、
+常规 provider 与 MangaUpdates 原版差异。初始 RED 精确编译失败于缺失 shared API；审查修复
+又分别以 unsupported DELETE、session bypass、paused existing progress、MangaUpdates final、
+手工 startDate 与无日期支持的手工 finishDate mutation 精确 RED，全部恢复。最终 focused
+`10/10`，JVM/Android release compile、domain Spotless 与 diff-check GREEN；范围为 5 shared
+files/345 touched，Android 145B WIP 未纳入。独立最终确认 `APPROVED`，P0/P1/P2/P3 均为 0。
+
+### Task 145B B1b ID 69 Android provider consumer
+
+**Risk axis:** android-tracker-provider-consumer
+**Platform boundary:** android
+**Estimated scope:** 3 files, 260 lines
+
+**Files:**
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/data/track/TrackerManager.kt`
 - Modify: `app/src/main/java/eu/kanade/tachiyomi/ui/manga/track/TrackInfoDialog.kt`
 - Modify: `app/src/test/java/eu/kanade/tachiyomi/data/track/AndroidTrackerApiIntegrationTest.kt`
 
 **User entry:** Android Manga detail → Tracking 与 Settings → Tracking。
 **Feedback:** bind/search/update/delete、initial status/date、auth 和 provider error 返回稳定分类。
-**RED:** 先固定 provider configuration、session、refresh-before-update、edit/delete 与 request/error contract，并由 Android production consumer 执行。
-**GREEN:** provider-neutral 请求、状态和错误进入现有 domain contract；Android 只保留网络/credential adapter。
-**Mutation:** 绕过 refresh、初始状态/date 或错误映射，确认 shared/Android tests 失败后恢复。
-**Verification:** shared provider tests、Android API integration、父 parity contract、Spotless。
-**Desktop zero-regression:** 本 Task 不改 Desktop；B2 必须保留凭据与 enhanced provider 能力。
+**RED:** Android production consumer 必须执行 145A 的 configuration/session/workflow，并覆盖 provider adapter 结果。
+**GREEN:** `TrackerManager` 与 `TrackInfoDialog` 委托 145A shared contract；Android 只保留网络/credential adapter。
+**Mutation:** 绕过 shared workflow 或错误映射，确认 Android integration 精确失败后恢复。
+**Verification:** Android API integration、父 parity contract、Android compile、Spotless。
+**Desktop zero-regression:** 本 Task 不改 Desktop；146 必须保留凭据与 enhanced provider 能力。
 
 ### Task 146 B2 ID 69 Desktop provider adapters
 

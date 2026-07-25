@@ -43,4 +43,22 @@ class TrackerProviderContractTest {
             TrackerProviderContracts.shikimori.wireToStatus("unknown")
         }
     }
+
+    @Test
+    fun `Android provider configuration preserves fixed main authentication`() {
+        assertEquals(
+            listOf(
+                TrackerAuthentication.OAUTH,
+                TrackerAuthentication.OAUTH,
+                TrackerAuthentication.USERNAME_PASSWORD,
+                TrackerAuthentication.OAUTH,
+                TrackerAuthentication.OAUTH,
+                TrackerAuthentication.API_KEY,
+                TrackerAuthentication.USERNAME_PASSWORD,
+                TrackerAuthentication.API_KEY,
+                TrackerAuthentication.API_KEY,
+            ),
+            TrackerProviderContracts.androidProviderIds.map(TrackerProviderContracts::authentication),
+        )
+    }
 }

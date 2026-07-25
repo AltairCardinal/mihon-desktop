@@ -31,6 +31,30 @@ data class TrackerProfile(
     val unavailableReason: String? = null,
 )
 
+data class TrackerProviderConfiguration(
+    val id: Long,
+    val authentication: TrackerAuthentication,
+    val readingStatus: Long,
+    val completionStatus: Long,
+    val rereadingStatus: Long? = null,
+    val supportsReadingDates: Boolean = false,
+    val supportsPrivateTracking: Boolean = false,
+    val supportsDelete: Boolean = false,
+    val chapterReadPolicy: TrackerChapterReadPolicy = TrackerChapterReadPolicy.AUTO_COMPLETE,
+)
+
+enum class TrackerChapterReadPolicy {
+    INITIAL_ONLY,
+    AUTO_COMPLETE,
+    ALWAYS_READING,
+}
+
+data class TrackerProviderSession(
+    val trackerId: Long,
+    val loggedIn: Boolean,
+    val username: String? = null,
+)
+
 /**
  * Platform-neutral description of an installed source that can back an enhanced tracker.
  *
@@ -63,6 +87,10 @@ data class TrackEdit(
     val status: Long? = null,
     val score: Double? = null,
     val lastChapterRead: Double? = null,
+    val startDate: Long? = null,
+    val finishDate: Long? = null,
+    val private: Boolean? = null,
+    val didReadChapter: Boolean = false,
 )
 
 /** Platform-neutral tracker contract consumed by Android and Desktop presentation/domain code. */

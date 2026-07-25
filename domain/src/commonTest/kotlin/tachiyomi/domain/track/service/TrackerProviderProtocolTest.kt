@@ -1,10 +1,12 @@
 package tachiyomi.domain.track.service
 
+import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.domain.track.model.Track
 
 class TrackerProviderProtocolTest {
     @Test
@@ -73,5 +75,159 @@ class TrackerProviderProtocolTest {
             TrackerProviderProtocols.kitsu.update(0, "current", 2, 16, false)
         }
         assertEquals(91, TrackerProviderProtocols.kitsu.update(91, "current", 2, 16, false).libraryId)
+    }
+
+    @Test
+    fun `chapter edit preserves fixed main initial auto complete and MangaUpdates policies`() = runTest {
+        val calls = mutableListOf<String>()
+        val port = FakePort(calls)
+        val workflow = TrackerProviderWorkflow(clock = { 1234L })
+
+        val result = workflow.execute(
+            port,
+            TrackerProviderRequest.Edit(track(), TrackEdit(lastChapterRead = 1.0)),
+        )
+
+        assertEquals(listOf("refresh", "update"), calls)
+        assertEquals(TrackerProviderSession(1, true, "reader"), port.session)
+        assertEquals(
+            track().copy(lastChapterRead = 1.0, status = 2),
+            (result as TrackerProviderResult.Success).track,
+        )
+
+        listOf(3L, 5L, 7L).forEach { status ->
+            val existing = track().copy(lastChapterRead = 2.0, status = status)
+            val updated = workflow.execute(
+                FakePort(mutableListOf()),
+                TrackerProviderRequest.Edit(existing, TrackEdit(lastChapterRead = 3.0)),
+            )
+            assertEquals(status, (updated as TrackerProviderResult.Success).track!!.status)
+        }
+        val completed = workflow.execute(
+            FakePort(mutableListOf()),
+            TrackerProviderRequest.Edit(
+                track().copy(lastChapterRead = 9.0, status = 4),
+                TrackEdit(lastChapterRead = 10.0),
+            ),
+        ) as TrackerProviderResult.Success
+        assertEquals(track().copy(lastChapterRead = 10.0, status = 4, finishDate = 1234L), completed.track)
+        val noDateInitial = workflow.execute(
+            FakePort(mutableListOf(), supportsReadingDates = false),
+            TrackerProviderRequest.Edit(track().copy(lastChapterRead = 9.0), TrackEdit(lastChapterRead = 10.0)),
+        ) as TrackerProviderResult.Success
+        assertEquals(1234L, noDateInitial.track!!.finishDate)
+        val noDateAuto = workflow.execute(
+            FakePort(mutableListOf(), supportsReadingDates = false),
+            TrackerProviderRequest.Edit(
+                track().copy(lastChapterRead = 9.0, finishDate = 77),
+                TrackEdit(lastChapterRead = 10.0, didReadChapter = true),
+            ),
+        ) as TrackerProviderResult.Success
+        assertEquals(77L, noDateAuto.track!!.finishDate)
+        val autoStarted = workflow.execute(
+            FakePort(mutableListOf()),
+            TrackerProviderRequest.Edit(track(), TrackEdit(lastChapterRead = 1.0, didReadChapter = true)),
+        ) as TrackerProviderResult.Success
+        assertEquals(1234L, autoStarted.track!!.startDate)
+        val rereading = workflow.execute(
+            FakePort(mutableListOf()),
+            TrackerProviderRequest.Edit(
+                track().copy(lastChapterRead = 2.0, status = 6),
+                TrackEdit(lastChapterRead = 3.0, didReadChapter = true),
+            ),
+        ) as TrackerProviderResult.Success
+        assertEquals(6, rereading.track!!.status)
+        val rereadingFinished = workflow.execute(
+            FakePort(mutableListOf()),
+            TrackerProviderRequest.Edit(
+                track().copy(lastChapterRead = 9.0, status = 6),
+                TrackEdit(lastChapterRead = 10.0, didReadChapter = true),
+            ),
+        ) as TrackerProviderResult.Success
+        assertEquals(track().copy(lastChapterRead = 10.0, status = 4, finishDate = 1234L), rereadingFinished.track)
+        val mangaUpdates = workflow.execute(
+            FakePort(mutableListOf(), chapterReadPolicy = TrackerChapterReadPolicy.ALWAYS_READING),
+            TrackerProviderRequest.Edit(
+                track().copy(lastChapterRead = 9.0),
+                TrackEdit(lastChapterRead = 10.0, didReadChapter = true),
+            ),
+        ) as TrackerProviderResult.Success
+        assertEquals(track().copy(lastChapterRead = 10.0, status = 2), mangaUpdates.track)
+    }
+
+    @Test
+    fun `session delete and provider errors return stable results before transport`() = runTest {
+        val port =
+            FakePort(mutableListOf(), failure = TrackerProviderException(TrackerProviderErrorKind.RATE_LIMITED, 429))
+        val workflow = TrackerProviderWorkflow()
+
+        val failure = workflow.execute(port, TrackerProviderRequest.Edit(track(), TrackEdit(status = 3)))
+        assertEquals(
+            TrackerProviderError(TrackerProviderOperation.EDIT, TrackerProviderErrorKind.RATE_LIMITED, 429),
+            (failure as TrackerProviderResult.Failure).error,
+        )
+
+        port.failure = null
+        assertTrue(workflow.execute(port, TrackerProviderRequest.Delete(track())) is TrackerProviderResult.Success)
+        assertEquals(listOf("delete"), port.calls.takeLast(1))
+
+        val unsupportedPort =
+            FakePort(mutableListOf(), failure = IllegalStateException("must not refresh"), supportsDelete = false)
+        val unsupported = workflow.execute(
+            unsupportedPort,
+            TrackerProviderRequest.Delete(track()),
+        )
+        assertEquals(
+            TrackerProviderErrorKind.UNSUPPORTED,
+            (unsupported as TrackerProviderResult.Failure).error.kind,
+        )
+        assertTrue(unsupportedPort.calls.isEmpty())
+
+        listOf(
+            FakePort(mutableListOf(), loggedIn = false) to TrackerProviderErrorKind.AUTHENTICATION,
+            FakePort(mutableListOf(), sessionId = 2) to TrackerProviderErrorKind.INVALID_REQUEST,
+            FakePort(mutableListOf(), configurationId = 2) to TrackerProviderErrorKind.INVALID_REQUEST,
+        ).forEach { (invalidPort, kind) ->
+            val invalid = workflow.execute(invalidPort, TrackerProviderRequest.Edit(track(), TrackEdit(status = 3)))
+            assertEquals(kind, (invalid as TrackerProviderResult.Failure).error.kind)
+            assertTrue(invalidPort.calls.isEmpty())
+        }
+    }
+
+    private fun track() = Track(1, 2, 1, 3, 4, "Manga", 0.0, 10, 5, 0.0, "", 0, 0, false)
+
+    private class FakePort(
+        val calls: MutableList<String>,
+        var failure: Throwable? = null,
+        supportsDelete: Boolean = true,
+        loggedIn: Boolean = true,
+        configurationId: Long = 1,
+        sessionId: Long = configurationId,
+        chapterReadPolicy: TrackerChapterReadPolicy = TrackerChapterReadPolicy.AUTO_COMPLETE,
+        supportsReadingDates: Boolean = true,
+    ) : TrackerProviderPort {
+        override val configuration = TrackerProviderConfiguration(
+            id = configurationId,
+            authentication = TrackerAuthentication.OAUTH,
+            readingStatus = 2,
+            completionStatus = 4,
+            rereadingStatus = 6,
+            supportsReadingDates = supportsReadingDates,
+            supportsDelete = supportsDelete,
+            chapterReadPolicy = chapterReadPolicy,
+        )
+        override val session = TrackerProviderSession(sessionId, loggedIn, "reader")
+        override suspend fun refresh(track: Track): Track {
+            calls += "refresh"
+            failure?.let { throw it }
+            return track
+        }
+        override suspend fun update(track: Track): Track {
+            calls += "update"
+            return track
+        }
+        override suspend fun delete(track: Track) {
+            calls += "delete"
+        }
     }
 }

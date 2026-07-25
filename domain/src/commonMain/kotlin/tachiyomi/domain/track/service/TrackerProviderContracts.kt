@@ -8,6 +8,13 @@ package tachiyomi.domain.track.service
 object TrackerProviderContracts {
     val androidProviderIds = (1L..9L).toList()
 
+    fun authentication(id: Long): TrackerAuthentication = when (id) {
+        1L, 2L, 4L, 5L -> TrackerAuthentication.OAUTH
+        3L, 7L -> TrackerAuthentication.USERNAME_PASSWORD
+        6L, 8L, 9L -> TrackerAuthentication.API_KEY
+        else -> throw IllegalArgumentException("Unknown Android tracker: $id")
+    }
+
     val myAnimeList = StatusWireContract(
         mapOf(
             1L to "reading",

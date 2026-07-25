@@ -1,5 +1,141 @@
 package tachiyomi.domain.track.service
 
+import kotlinx.coroutines.CancellationException
+import tachiyomi.domain.track.model.Track
+
+enum class TrackerProviderOperation {
+    EDIT,
+    DELETE,
+}
+
+enum class TrackerProviderErrorKind {
+    AUTHENTICATION,
+    NOT_FOUND,
+    RATE_LIMITED,
+    SERVER,
+    NETWORK,
+    INVALID_REQUEST,
+    TITLE_NOT_APPROVED,
+    UNSUPPORTED,
+    NOT_CONFIGURED,
+    UNKNOWN,
+}
+
+data class TrackerProviderError(
+    val operation: TrackerProviderOperation,
+    val kind: TrackerProviderErrorKind,
+    val statusCode: Int? = null,
+    val message: String? = null,
+)
+
+class TrackerProviderException(
+    val kind: TrackerProviderErrorKind,
+    val statusCode: Int? = null,
+    message: String? = null,
+) : RuntimeException(message)
+
+sealed interface TrackerProviderRequest {
+    val track: Track
+
+    data class Edit(
+        override val track: Track,
+        val edit: TrackEdit,
+    ) : TrackerProviderRequest
+
+    data class Delete(override val track: Track) : TrackerProviderRequest
+}
+
+sealed interface TrackerProviderResult {
+    data class Success(val track: Track? = null) : TrackerProviderResult
+    data class Failure(val error: TrackerProviderError) : TrackerProviderResult
+}
+
+interface TrackerProviderPort {
+    val configuration: TrackerProviderConfiguration
+    val session: TrackerProviderSession
+    suspend fun refresh(track: Track): Track
+    suspend fun update(track: Track): Track
+    suspend fun delete(track: Track)
+}
+
+class TrackerProviderWorkflow(
+    private val clock: () -> Long = System::currentTimeMillis,
+    private val classify: (Throwable) -> Pair<TrackerProviderErrorKind, Int?> = ::classifyProviderError,
+) {
+    suspend fun execute(port: TrackerProviderPort, request: TrackerProviderRequest): TrackerProviderResult {
+        val operation = when (request) {
+            is TrackerProviderRequest.Edit -> TrackerProviderOperation.EDIT
+            is TrackerProviderRequest.Delete -> TrackerProviderOperation.DELETE
+        }
+        return try {
+            require(
+                request.track.trackerId == port.configuration.id &&
+                    port.session.trackerId == port.configuration.id,
+            ) { "Tracker configuration mismatch" }
+            if (!port.session.loggedIn) {
+                throw TrackerProviderException(TrackerProviderErrorKind.AUTHENTICATION)
+            }
+            when (request) {
+                is TrackerProviderRequest.Edit -> TrackerProviderResult.Success(
+                    port.update(port.refresh(request.track).apply(request.edit, port.configuration, clock())),
+                )
+                is TrackerProviderRequest.Delete -> {
+                    if (!port.configuration.supportsDelete) {
+                        throw UnsupportedOperationException("Tracker does not support remote deletion")
+                    }
+                    port.delete(request.track)
+                    TrackerProviderResult.Success()
+                }
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            val (kind, statusCode) = classify(error)
+            TrackerProviderResult.Failure(TrackerProviderError(operation, kind, statusCode, error.message))
+        }
+    }
+}
+
+private fun Track.apply(edit: TrackEdit, configuration: TrackerProviderConfiguration, now: Long): Track {
+    val edited = copy(
+        status = edit.status ?: status,
+        score = edit.score ?: score,
+        lastChapterRead = edit.lastChapterRead ?: lastChapterRead,
+        startDate = edit.startDate ?: startDate,
+        finishDate = edit.finishDate ?: finishDate,
+        private = edit.private ?: private,
+    )
+    if (edit.lastChapterRead == null) return edited
+    val policy = if (edit.didReadChapter) configuration.chapterReadPolicy else TrackerChapterReadPolicy.INITIAL_ONLY
+    val isLast = edited.totalChapters > 0 && edited.lastChapterRead.toLong() == edited.totalChapters
+    val startDate = if (configuration.supportsReadingDates && edited.lastChapterRead == 1.0) now else edited.startDate
+    val finishDate = if (configuration.supportsReadingDates) now else edited.finishDate
+    return when (policy) {
+        TrackerChapterReadPolicy.INITIAL_ONLY -> when {
+            isLast -> edited.copy(status = configuration.completionStatus, finishDate = now)
+            lastChapterRead == 0.0 && edited.lastChapterRead > lastChapterRead &&
+                status != configuration.rereadingStatus ->
+                edited.copy(status = configuration.readingStatus)
+            else -> edited
+        }
+        TrackerChapterReadPolicy.AUTO_COMPLETE -> when {
+            status == configuration.completionStatus -> edited
+            isLast -> edited.copy(status = configuration.completionStatus, finishDate = finishDate)
+            status == configuration.rereadingStatus -> edited
+            else -> edited.copy(status = configuration.readingStatus, startDate = startDate)
+        }
+        TrackerChapterReadPolicy.ALWAYS_READING ->
+            if (status == configuration.completionStatus) edited else edited.copy(status = configuration.readingStatus)
+    }
+}
+
+private fun classifyProviderError(error: Throwable): Pair<TrackerProviderErrorKind, Int?> = when (error) {
+    is TrackerProviderException -> error.kind to error.statusCode
+    is IllegalArgumentException -> TrackerProviderErrorKind.INVALID_REQUEST to null
+    is UnsupportedOperationException -> TrackerProviderErrorKind.UNSUPPORTED to null
+    else -> TrackerProviderErrorKind.UNKNOWN to null
+}
+
 data class ProviderAuthorizationRequest(
     val parameters: Map<String, String>,
 )
