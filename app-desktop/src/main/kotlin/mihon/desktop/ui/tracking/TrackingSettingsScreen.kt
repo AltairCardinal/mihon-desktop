@@ -84,7 +84,14 @@ data class TrackingSettingsScreen(
         val navigator = LocalNavigator.currentOrThrow
         val dependencies = LocalDesktopUiDependencies.current
         val model = rememberScreenModel {
-            TrackingScreenModel(mangaId, mangaTitle, totalChapters, dependencies.trackRepository, dependencies.trackerServiceRegistry)
+            TrackingScreenModel(
+                mangaId = mangaId,
+                mangaTitle = mangaTitle,
+                totalChapters = totalChapters,
+                repository = dependencies.trackRepository,
+                chapterRepository = dependencies.chapterRepository,
+                registry = dependencies.trackerServiceRegistry,
+            )
         }
         val state by model.state.collectAsState()
         var selectedId by remember { mutableStateOf<Long?>(null) }

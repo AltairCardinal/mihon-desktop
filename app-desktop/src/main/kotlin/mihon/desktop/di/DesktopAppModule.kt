@@ -510,6 +510,7 @@ private fun registerDesktopExtension(
 
 private fun registerDesktopTracking(sourceManager: SourceManager, client: OkHttpClient) {
     val trackRepository = Injekt.get<TrackRepository>()
+    val chapterRepository = Injekt.get<ChapterRepository>()
     val credentialStore = DesktopCredentialStore()
     val enhancedTrackerContexts = mihon.desktop.tracking.DesktopEnhancedTrackerContextProvider().apply {
         attach(sourceManager)
@@ -522,7 +523,7 @@ private fun registerDesktopTracking(sourceManager: SourceManager, client: OkHttp
         sourceClient = enhancedTrackerContexts::sourceClient,
     )
     Injekt.addSingleton<TrackerServiceRegistry>(trackerRegistry)
-    TrackingTestBridge.controller = TrackingTestModeController(trackRepository, trackerRegistry)
+    TrackingTestBridge.controller = TrackingTestModeController(trackRepository, chapterRepository, trackerRegistry)
     Injekt.addSingleton(credentialStore)
     Injekt.addSingleton<tachiyomi.domain.track.service.EnhancedTrackerContextProvider>(enhancedTrackerContexts)
     Injekt.addSingleton(enhancedTrackerContexts)

@@ -26,12 +26,14 @@ data class TrackerProviderError(
     val kind: TrackerProviderErrorKind,
     val statusCode: Int? = null,
     val message: String? = null,
+    val retryAfterSeconds: Long? = null,
 )
 
 class TrackerProviderException(
     val kind: TrackerProviderErrorKind,
     val statusCode: Int? = null,
     message: String? = null,
+    val retryAfterSeconds: Long? = null,
 ) : RuntimeException(message)
 
 sealed interface TrackerProviderRequest {
@@ -48,6 +50,29 @@ sealed interface TrackerProviderRequest {
 sealed interface TrackerProviderResult {
     data class Success(val track: Track? = null) : TrackerProviderResult
     data class Failure(val error: TrackerProviderError) : TrackerProviderResult
+}
+
+class TrackerProviderResultException(
+    val error: TrackerProviderError,
+) : RuntimeException(
+    error.message?.takeIf(String::isNotBlank)
+        ?: "${error.operation} failed: ${error.kind}${error.statusCode?.let { " (HTTP $it)" }.orEmpty()}",
+)
+
+fun TrackerProviderResult.trackOrThrow(): Track? = when (this) {
+    is TrackerProviderResult.Success -> track
+    is TrackerProviderResult.Failure -> throw TrackerProviderResultException(error)
+}
+
+interface TrackerProviderService : TrackerService {
+    val configuration: TrackerProviderConfiguration
+    val session: TrackerProviderSession
+    suspend fun bind(
+        mangaId: Long,
+        result: TrackSearchResult,
+        hasReadChapters: Boolean,
+    ): Track = bind(mangaId, result)
+    suspend fun execute(request: TrackerProviderRequest): TrackerProviderResult
 }
 
 interface TrackerProviderPort {
@@ -91,10 +116,67 @@ class TrackerProviderWorkflow(
             throw error
         } catch (error: Throwable) {
             val (kind, statusCode) = classify(error)
-            TrackerProviderResult.Failure(TrackerProviderError(operation, kind, statusCode, error.message))
+            TrackerProviderResult.Failure(
+                TrackerProviderError(
+                    operation = operation,
+                    kind = kind,
+                    statusCode = statusCode,
+                    message = error.message,
+                    retryAfterSeconds = (error as? TrackerProviderException)?.retryAfterSeconds,
+                ),
+            )
         }
     }
 }
+
+object TrackerProviderCatalog {
+    val publicProviderIds = setOf(1L, 2L, 3L, 4L, 5L, 7L)
+
+    fun configuration(id: Long): TrackerProviderConfiguration {
+        require(id in TrackerProviderContracts.androidProviderIds) { "Unknown Android tracker: $id" }
+        return TrackerProviderConfiguration(
+            id = id,
+            authentication = TrackerProviderContracts.authentication(id),
+            readingStatus = when (id) {
+                5L -> 3L
+                6L, 8L, 9L -> 2L
+                7L -> 0L
+                else -> 1L
+            },
+            completionStatus = if (id in setOf(6L, 8L, 9L)) 3L else 2L,
+            rereadingStatus = when (id) {
+                1L -> 7L
+                2L, 4L -> 6L
+                else -> null
+            },
+            supportsReadingDates = id in setOf(1L, 2L, 3L),
+            supportsPrivateTracking = id in setOf(2L, 3L, 5L),
+            supportsDelete = id in setOf(1L, 2L, 3L, 4L, 7L),
+            chapterReadPolicy = if (id == 7L) {
+                TrackerChapterReadPolicy.ALWAYS_READING
+            } else {
+                TrackerChapterReadPolicy.AUTO_COMPLETE
+            },
+        )
+    }
+}
+
+fun trackerProviderHttpError(
+    statusCode: Int,
+    message: String? = null,
+    retryAfterSeconds: Long? = null,
+): TrackerProviderException = TrackerProviderException(
+    kind = when (statusCode) {
+        401, 403 -> TrackerProviderErrorKind.AUTHENTICATION
+        404 -> TrackerProviderErrorKind.NOT_FOUND
+        429 -> TrackerProviderErrorKind.RATE_LIMITED
+        in 500..599 -> TrackerProviderErrorKind.SERVER
+        else -> TrackerProviderErrorKind.UNKNOWN
+    },
+    statusCode = statusCode,
+    message = message,
+    retryAfterSeconds = retryAfterSeconds,
+)
 
 private fun Track.apply(edit: TrackEdit, configuration: TrackerProviderConfiguration, now: Long): Track {
     val edited = copy(

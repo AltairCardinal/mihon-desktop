@@ -21,7 +21,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
-import mihon.desktop.tracking.api.TrackerHttpException
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -35,6 +34,8 @@ import tachiyomi.domain.track.service.TrackSearchResult
 import tachiyomi.domain.track.service.TrackerAuthentication
 import tachiyomi.domain.track.service.TrackerProfile
 import tachiyomi.domain.track.service.TrackerService
+import tachiyomi.domain.track.service.trackerProviderHttpError
+import java.io.IOException
 import kotlin.math.max
 
 internal fun enhancedTrackerServices(
@@ -270,12 +271,26 @@ private class DesktopEnhancedTrackerService(
     }
 
     private suspend fun execute(context: EnhancedTrackerContext, request: Request, allowNoContent: Boolean = false): String = withContext(Dispatchers.IO) {
-        (sourceClient(context.sourceId) ?: fallbackClient).newCall(request).execute().use { response ->
-            val body = response.body.string()
-            if (!response.isSuccessful && !(allowNoContent && response.code == 204)) {
-                throw TrackerHttpException(response.code, response.header("Retry-After")?.toLongOrNull(), "$trackerName request failed with HTTP ${response.code}")
+        try {
+            (sourceClient(context.sourceId) ?: fallbackClient).newCall(request).execute().use { response ->
+                val body = response.body.string()
+                if (!response.isSuccessful && !(allowNoContent && response.code == 204)) {
+                    throw trackerProviderHttpError(
+                        response.code,
+                        "$trackerName request failed with HTTP ${response.code}",
+                        response.header("Retry-After")
+                            ?.trim()
+                            ?.toLongOrNull()
+                            ?.takeIf { it >= 0 },
+                    )
+                }
+                body
             }
-            body
+        } catch (error: IOException) {
+            throw tachiyomi.domain.track.service.TrackerProviderException(
+                tachiyomi.domain.track.service.TrackerProviderErrorKind.NETWORK,
+                message = error.message,
+            )
         }
     }
 

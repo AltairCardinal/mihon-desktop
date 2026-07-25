@@ -10,6 +10,8 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
@@ -18,9 +20,11 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.putJsonObject
 import mihon.desktop.platform.DesktopCredentialStore
-import mihon.desktop.tracking.api.TrackerHttpException
+import okhttp3.CacheControl
 import okhttp3.FormBody
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
@@ -33,15 +37,31 @@ import tachiyomi.domain.track.service.TrackSearchResult
 import tachiyomi.domain.track.service.ProviderFuzzyDate
 import tachiyomi.domain.track.service.TrackerAuthentication
 import tachiyomi.domain.track.service.TrackerProfile
+import tachiyomi.domain.track.service.TrackerProviderCatalog
 import tachiyomi.domain.track.service.TrackerProviderContracts
+import tachiyomi.domain.track.service.TrackerProviderErrorKind
+import tachiyomi.domain.track.service.TrackerProviderException
+import tachiyomi.domain.track.service.TrackerProviderPort
 import tachiyomi.domain.track.service.TrackerProviderProtocols
+import tachiyomi.domain.track.service.TrackerProviderRequest
+import tachiyomi.domain.track.service.TrackerProviderResult
+import tachiyomi.domain.track.service.TrackerProviderService
+import tachiyomi.domain.track.service.TrackerProviderSession
+import tachiyomi.domain.track.service.TrackerProviderWorkflow
 import tachiyomi.domain.track.service.TrackerService
 import tachiyomi.domain.track.service.TrackerServiceRegistry
+import tachiyomi.domain.track.service.trackOrThrow
+import tachiyomi.domain.track.service.trackerProviderHttpError
+import java.io.IOException
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Base64
+import java.util.Locale
 
 class DesktopTrackerServiceRegistry(
     override val services: List<TrackerService> = emptyList(),
@@ -220,15 +240,19 @@ private class DesktopProviderTrackerService(
     private val credentialStore: DesktopCredentialStore,
     private val definition: ProviderDefinition,
     account: String,
-) : DesktopAuthenticatingTrackerService {
+) : DesktopAuthenticatingTrackerService, TrackerProviderService, TrackerProviderPort {
     private val credentialKey = "tracker.${definition.id}.account.$account.session.v1"
-    private var session = credentialStore.load(credentialKey)?.let {
+    private var storedSession = credentialStore.load(credentialKey)?.let {
         runCatching { json.decodeFromString<StoredSession>(it) }.getOrNull()
     }
     private var pkceVerifier: String? = null
-    private val mutableProfile = MutableStateFlow(profileFor(session))
+    private val mutableProfile = MutableStateFlow(profileFor(storedSession))
+    private val workflow = TrackerProviderWorkflow()
 
     override val profile: StateFlow<TrackerProfile> = mutableProfile
+    override val configuration = TrackerProviderCatalog.configuration(definition.id)
+    override val session: TrackerProviderSession
+        get() = TrackerProviderSession(definition.id, profile.value.loggedIn, profile.value.username)
     override val statuses = definition.statuses
     override val scores = definition.scores
 
@@ -266,7 +290,13 @@ private class DesktopProviderTrackerService(
         requireAvailable()
         check(definition.authentication == TrackerAuthentication.OAUTH)
         if (definition.kind == ProviderKind.ANILIST) {
-            saveSession(StoredSession(accessToken = code))
+            val authenticated = StoredSession(accessToken = code)
+            saveSession(authenticated)
+            val userId = runCatching { resolveAniListUserId() }.getOrElse { error ->
+                logout()
+                throw error
+            }
+            saveSession(authenticated.copy(username = userId))
             return
         }
         val path = when (definition.kind) {
@@ -289,7 +319,19 @@ private class DesktopProviderTrackerService(
             }
         }
         val body = fields.toFormBody()
-        saveSession(parseToken(execute(Request.Builder().url(url(definition.oauthBase, path)).post(body).build())))
+        val authenticated = parseToken(
+            execute(Request.Builder().url(url(definition.oauthBase, path)).post(body).build()),
+        )
+        saveSession(authenticated)
+        when (definition.kind) {
+            ProviderKind.SHIKIMORI -> parse(
+                executeAuthenticated(Request.Builder().url(url(definition.apiBase, "api/users/whoami")).get().build()),
+            ).jsonObject.requiredLong("id").toString()
+            ProviderKind.BANGUMI -> parse(
+                executeAuthenticated(Request.Builder().url(url(definition.apiBase, "v0/me")).get().build()),
+            ).jsonObject.requiredString("username")
+            else -> null
+        }?.let { saveSession(authenticated.copy(username = it)) }
         pkceVerifier = null
     }
 
@@ -336,89 +378,249 @@ private class DesktopProviderTrackerService(
     }
 
     override suspend fun bind(mangaId: Long, result: TrackSearchResult): Track {
+        return bind(mangaId, result, hasReadChapters = false)
+    }
+
+    override suspend fun bind(
+        mangaId: Long,
+        result: TrackSearchResult,
+        hasReadChapters: Boolean,
+    ): Track {
         requireAvailable()
         var track = Track(
-        id = 0,
-        mangaId = mangaId,
-        trackerId = definition.id,
-        remoteId = result.remoteId,
-        libraryId = null,
-        title = result.title,
-        lastChapterRead = 0.0,
-        totalChapters = result.totalChapters,
-        status = definition.initialStatus,
-        score = 0.0,
-        remoteUrl = result.remoteUrl,
-        startDate = 0,
-        finishDate = 0,
+            id = 0,
+            mangaId = mangaId,
+            trackerId = definition.id,
+            remoteId = result.remoteId,
+            libraryId = null,
+            title = result.title,
+            lastChapterRead = 0.0,
+            totalChapters = result.totalChapters,
+            status = newStatus(hasReadChapters),
+            score = 0.0,
+            remoteUrl = result.remoteUrl,
+            startDate = 0,
+            finishDate = 0,
             private = false,
         )
-        if (definition.kind == ProviderKind.ANILIST) {
-            val bind = TrackerProviderProtocols.aniList.bind(
-                mediaId = result.remoteId,
-                progress = track.lastChapterRead.toInt(),
-                status = TrackerProviderContracts.aniList.statusToWire(track.status),
-                private = track.private,
-            )
-            val payload = buildJsonObject {
-                put("query", bind.query)
-                putJsonObject("variables") {
-                    put("mediaId", bind.mediaId)
-                    put("progress", bind.progress)
-                    put("status", bind.status)
-                    put("private", bind.private)
+        when (definition.kind) {
+            ProviderKind.MAL -> {
+                val root = parse(executeAuthenticated(refreshRequest(track))).jsonObject
+                val existing = root.obj("my_list_status")?.let { parseRefreshed(track, root) }
+                track = if (existing != null) {
+                    update(existing.withExistingStatus(hasReadChapters))
+                } else {
+                    parseUpdated(track, parse(executeAuthenticated(updateRequest(track))))
                 }
             }
-            val created = parse(
-                executeAuthenticated(
-                    Request.Builder()
-                        .url(definition.apiBase.toHttpUrl())
-                        .post(payload.toString().toRequestBody(JSON))
-                        .build(),
-                ),
-            )
-            track = track.copy(
-                libraryId = created.jsonObject
-                    .requiredObject("data")
-                    .requiredObject("SaveMediaListEntry")
-                    .requiredLong("id"),
-            )
-        } else if (definition.kind == ProviderKind.KITSU) {
-            val user = parse(executeAuthenticated(Request.Builder().url(url(definition.apiBase, "api/edge/users")).get().build()))
-                .jsonObject.requiredArray("data").first().jsonObject.requiredString("id")
-            val bind = TrackerProviderProtocols.kitsu.bind(result.remoteId, user, kitsuStatus(track.status), 0, false)
-            val payload = buildJsonObject {
-                putJsonObject("data") {
-                    put("type", "libraryEntries")
-                    putJsonObject("attributes") { put("status", bind.status); put("progress", bind.progress); put("private", bind.private) }
-                    putJsonObject("relationships") {
-                        putJsonObject("user") { putJsonObject("data") { put("id", bind.userId); put("type", "users") } }
-                        putJsonObject("media") { putJsonObject("data") { put("id", bind.mediaId); put("type", "manga") } }
+            ProviderKind.ANILIST -> {
+                val userId = ensureAniListUserId()
+                val existing = parseAniListBindResult(
+                    track,
+                    parse(executeAuthenticated(aniListBindLookupRequest(track, userId))),
+                )
+                if (existing != null) {
+                    track = update(
+                        existing.copy(private = track.private).withExistingStatus(hasReadChapters),
+                    )
+                } else {
+                    val bind = TrackerProviderProtocols.aniList.bind(
+                        mediaId = result.remoteId,
+                        progress = track.lastChapterRead.toInt(),
+                        status = TrackerProviderContracts.aniList.statusToWire(track.status),
+                        private = track.private,
+                    )
+                    val payload = buildJsonObject {
+                        put("query", bind.query)
+                        putJsonObject("variables") {
+                            put("mediaId", bind.mediaId)
+                            put("progress", bind.progress)
+                            put("status", bind.status)
+                            put("private", bind.private)
+                        }
                     }
+                    val created = parse(
+                        executeAuthenticated(
+                            Request.Builder()
+                                .url(definition.apiBase.toHttpUrl())
+                                .post(payload.toString().toRequestBody(JSON))
+                                .build(),
+                        ),
+                    )
+                    track = track.copy(
+                        libraryId = created.jsonObject
+                            .requiredObject("data")
+                            .requiredObject("SaveMediaListEntry")
+                            .requiredLong("id"),
+                    )
                 }
             }
-            val created = parse(executeAuthenticated(Request.Builder().url(url(definition.apiBase, "api/edge/library-entries")).post(payload.toString().toRequestBody(JSON_API)).build()))
-            track = track.copy(libraryId = created.jsonObject.requiredObject("data").requiredString("id").toLong())
+            ProviderKind.KITSU -> {
+                val user = parse(
+                    executeAuthenticated(
+                        Request.Builder().url(
+                            url(definition.apiBase, "api/edge/users").newBuilder()
+                                .addQueryParameter("filter[self]", "true")
+                                .build(),
+                        ).get().build(),
+                    ),
+                ).jsonObject.requiredArray("data").first().jsonObject.requiredString("id")
+                val existingRoot = parse(executeAuthenticated(kitsuBindLookupRequest(track, user))).jsonObject
+                val existing = if (
+                    existingRoot.requiredArray("data").isNotEmpty() &&
+                    existingRoot.requiredArray("included").isNotEmpty()
+                ) {
+                    parseRefreshed(track, existingRoot)
+                } else {
+                    null
+                }
+                if (existing != null) {
+                    track = update(
+                        existing.copy(private = track.private).withExistingStatus(hasReadChapters),
+                    )
+                } else {
+                    val bind = TrackerProviderProtocols.kitsu.bind(
+                        result.remoteId,
+                        user,
+                        kitsuStatus(track.status),
+                        0,
+                        false,
+                    )
+                    val payload = buildJsonObject {
+                        putJsonObject("data") {
+                            put("type", "libraryEntries")
+                            putJsonObject("attributes") {
+                                put("status", bind.status)
+                                put("progress", bind.progress)
+                                put("private", bind.private)
+                            }
+                            putJsonObject("relationships") {
+                                putJsonObject("user") {
+                                    putJsonObject("data") {
+                                        put("id", bind.userId)
+                                        put("type", "users")
+                                    }
+                                }
+                                putJsonObject("media") {
+                                    putJsonObject("data") {
+                                        put("id", bind.mediaId)
+                                        put("type", "manga")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    val created = parse(
+                        executeAuthenticated(
+                            Request.Builder()
+                                .url(url(definition.apiBase, "api/edge/library-entries"))
+                                .post(payload.toString().toRequestBody(JSON_API))
+                                .build(),
+                        ),
+                    )
+                    track = track.copy(
+                        libraryId = created.jsonObject.requiredObject("data").requiredString("id").toLong(),
+                    )
+                }
+            }
+            ProviderKind.SHIKIMORI -> {
+                val manga = parse(
+                    executeAuthenticated(
+                        Request.Builder().url(url(definition.apiBase, "api/mangas/${track.remoteId}")).get().build(),
+                    ),
+                ).jsonObject
+                track = track.copy(totalChapters = manga.long("chapters"))
+                val entries = parse(executeAuthenticated(refreshRequest(track))).jsonArray
+                require(entries.size <= 1) { "Too many manga in Shikimori response" }
+                track = if (entries.isNotEmpty()) {
+                    update(
+                        parseRefreshed(track, entries)
+                            .withExistingStatus(hasReadChapters),
+                    )
+                } else {
+                    parseUpdated(track, parse(executeAuthenticated(addRequest(track))))
+                }
+            }
+            ProviderKind.BANGUMI -> {
+                val existing = try {
+                    parseRefreshed(track, parse(executeAuthenticated(refreshRequest(track))))
+                } catch (error: TrackerProviderException) {
+                    if (error.kind == TrackerProviderErrorKind.NOT_FOUND) null else throw error
+                }
+                if (existing != null) {
+                    track = update(
+                        existing.copy(private = track.private).withExistingStatus(hasReadChapters),
+                    )
+                } else {
+                    executeAuthenticated(addRequest(track))
+                }
+            }
+            ProviderKind.MANGA_UPDATES -> {
+                val existing = try {
+                    refresh(track)
+                } catch (_: Exception) {
+                    null
+                }
+                if (existing != null) {
+                    track = existing
+                } else {
+                    executeAuthenticated(addRequest(track))
+                    track = track.copy(lastChapterRead = 1.0)
+                }
+            }
         }
         return track
     }
 
     override suspend fun update(track: Track, edit: TrackEdit): Track {
         requireAvailable()
-        val updated = track.copy(
-            status = edit.status ?: track.status,
-            score = edit.score ?: track.score,
-            lastChapterRead = edit.lastChapterRead ?: track.lastChapterRead,
-            startDate = track.startDate,
-            finishDate = track.finishDate,
-        )
-        val request = updateRequest(updated)
-        val response = parse(executeAuthenticated(request))
-        return parseUpdated(updated, response)
+        return requireNotNull(execute(TrackerProviderRequest.Edit(track, edit)).trackOrThrow())
+    }
+
+    override suspend fun execute(request: TrackerProviderRequest): TrackerProviderResult {
+        if (request is TrackerProviderRequest.Edit) {
+            val invalid = request.edit.status?.takeIf { status -> statuses.none { it.first == status } } != null ||
+                request.edit.score?.takeIf { score -> scores.none { it == score } } != null
+            if (invalid) {
+                return TrackerProviderResult.Failure(
+                    tachiyomi.domain.track.service.TrackerProviderError(
+                        tachiyomi.domain.track.service.TrackerProviderOperation.EDIT,
+                        tachiyomi.domain.track.service.TrackerProviderErrorKind.INVALID_REQUEST,
+                    ),
+                )
+            }
+        }
+        return workflow.execute(this, request)
+    }
+
+    override suspend fun refresh(track: Track): Track {
+        val refreshed = parseRefreshed(track, parse(executeAuthenticated(refreshRequest(track))))
+        if (definition.kind != ProviderKind.MANGA_UPDATES) return refreshed
+        val rating = runCatching {
+            parse(
+                executeAuthenticated(
+                    Request.Builder().url(url(definition.apiBase, "v1/series/${track.remoteId}/rating")).get().build(),
+                ),
+            ).jsonObject["rating"]?.jsonPrimitive?.doubleOrNull
+        }.getOrNull()
+        return refreshed.copy(score = rating ?: 0.0)
+    }
+
+    override suspend fun update(track: Track): Track {
+        val request = updateRequest(track)
+        val body = executeAuthenticated(request)
+        if (definition.kind == ProviderKind.MANGA_UPDATES) {
+            executeAuthenticated(ratingRequest(track))
+        }
+        return body.takeIf(String::isNotBlank)?.let { parseUpdated(track, parse(it)) } ?: track
+    }
+
+    override suspend fun delete(track: Track) {
+        executeAuthenticated(deleteRequest(track))
     }
 
     override suspend fun logout() {
-        session = null
+        storedSession = null
         credentialStore.delete(credentialKey)
         mutableProfile.value = profileFor(null)
     }
@@ -454,12 +656,14 @@ private class DesktopProviderTrackerService(
     private fun updateRequest(track: Track): Request = when (definition.kind) {
         ProviderKind.MAL -> Request.Builder().url(url(definition.apiBase, "v2/manga/${track.remoteId}/my_list_status"))
             .put(
-                FormBody.Builder()
-                    .add("status", malStatus(track.status))
-                    .add("is_rereading", (track.status == 7L).toString())
-                    .add("score", track.score.toInt().toString())
-                    .add("num_chapters_read", track.lastChapterRead.toInt().toString())
-                    .build(),
+                FormBody.Builder().apply {
+                    add("status", malStatus(track.status))
+                    add("is_rereading", (track.status == 7L).toString())
+                    add("score", track.score.toString())
+                    add("num_chapters_read", track.lastChapterRead.toInt().toString())
+                    track.startDate.toIsoDate()?.let { add("start_date", it) }
+                    track.finishDate.toIsoDate()?.let { add("finish_date", it) }
+                }.build(),
             ).build()
         ProviderKind.ANILIST -> Request.Builder().url(definition.apiBase.toHttpUrl()).post(
             TrackerProviderProtocols.aniList.update(
@@ -497,7 +701,15 @@ private class DesktopProviderTrackerService(
                     putJsonObject("data") {
                         put("type", "libraryEntries"); put("id", update.libraryId.toString())
                         putJsonObject("attributes") {
-                            put("status", update.status); put("progress", update.progress); put("ratingTwenty", update.ratingTwenty); put("private", update.private)
+                            put("status", update.status)
+                            put("progress", update.progress)
+                            if (track.score == 0.0) {
+                                put("ratingTwenty", JsonNull)
+                            } else {
+                                put("ratingTwenty", update.ratingTwenty)
+                            }
+                            put("startedAt", track.startDate.toKitsuDate()); put("finishedAt", track.finishDate.toKitsuDate())
+                            put("private", update.private)
                         }
                     }
                 }.toString().toRequestBody(JSON_API),
@@ -505,24 +717,220 @@ private class DesktopProviderTrackerService(
         ProviderKind.SHIKIMORI -> Request.Builder().url(url(definition.apiBase, "api/v2/user_rates")).post(
             buildJsonObject {
                 putJsonObject("user_rate") {
-                    put("target_id", track.remoteId); put("target_type", "Manga"); put("status", shikimoriStatus(track.status))
+                    put("user_id", requireNotNull(session.username).toLong()); put("target_id", track.remoteId)
+                    put("target_type", "Manga"); put("status", shikimoriStatus(track.status))
                     put("chapters", track.lastChapterRead.toInt()); put("score", track.score.toInt())
                 }
             }.toString().toRequestBody(JSON),
         ).build()
         ProviderKind.BANGUMI -> Request.Builder().url(url(definition.apiBase, "v0/users/-/collections/${track.remoteId}"))
-            .post(
+            .patch(
                 buildJsonObject {
                     put("type", TrackerProviderContracts.bangumi.statusToWire(track.status).toInt())
-                    put("rate", track.score.toInt())
+                    put("rate", track.score.toInt().coerceIn(0, 10)); put("ep_status", track.lastChapterRead.toInt())
+                    put("private", track.private)
                 }.toString().toRequestBody(JSON),
             ).build()
         ProviderKind.MANGA_UPDATES -> Request.Builder().url(url(definition.apiBase, "v1/lists/series/update"))
             .post(
-                buildJsonObject {
-                    put("series_id", track.remoteId); put("list_id", track.status); put("chapter", track.lastChapterRead)
-                }.toString().toRequestBody(JSON_API),
+                buildJsonArray {
+                    addJsonObject {
+                        putJsonObject("series") { put("id", track.remoteId) }
+                        put("list_id", track.status)
+                        putJsonObject("status") { put("chapter", track.lastChapterRead.toInt()) }
+                    }
+                }.toString().toRequestBody(JSON),
             ).build()
+    }
+
+    private fun addRequest(track: Track): Request = when (definition.kind) {
+        ProviderKind.SHIKIMORI -> updateRequest(track)
+        ProviderKind.BANGUMI -> updateRequest(track).let { update ->
+            update.newBuilder().post(requireNotNull(update.body)).build()
+        }
+        ProviderKind.MANGA_UPDATES -> Request.Builder().url(url(definition.apiBase, "v1/lists/series"))
+            .post(
+                buildJsonArray {
+                    addJsonObject {
+                        putJsonObject("series") { put("id", track.remoteId) }
+                        put("list_id", track.status)
+                    }
+                }.toString().toRequestBody(JSON),
+            ).build()
+        else -> throw UnsupportedOperationException("${definition.name} does not use addRequest")
+    }
+
+    private fun ratingRequest(track: Track): Request {
+        val builder = Request.Builder().url(url(definition.apiBase, "v1/series/${track.remoteId}/rating"))
+        return if (track.score == 0.0) {
+            builder.delete().build()
+        } else {
+            builder.put(buildJsonObject { put("rating", track.score) }.toString().toRequestBody(JSON)).build()
+        }
+    }
+
+    private fun refreshRequest(track: Track): Request = when (definition.kind) {
+        ProviderKind.MAL -> Request.Builder().url(
+            url(definition.apiBase, "v2/manga/${track.remoteId}").newBuilder()
+                .addQueryParameter("fields", "num_chapters,my_list_status{start_date,finish_date}")
+                .build(),
+        ).get().build()
+        ProviderKind.ANILIST -> Request.Builder().url(definition.apiBase.toHttpUrl()).post(
+            buildJsonObject {
+                put(
+                    "query",
+                    "query RefreshManga(\u0024listId: Int) { MediaList(id: \u0024listId) { id status score(format: POINT_100) progress private startedAt { year month day } completedAt { year month day } media { chapters } } }",
+                )
+                putJsonObject("variables") { put("listId", requireNotNull(track.libraryId)) }
+            }.toString().toRequestBody(JSON),
+        ).build()
+        ProviderKind.KITSU -> Request.Builder().url(
+            url(
+                definition.apiBase,
+                "api/edge/library-entries",
+            ).newBuilder()
+                .addQueryParameter("filter[id]", requireNotNull(track.libraryId).toString())
+                .addQueryParameter("include", "manga")
+                .build(),
+        ).get().build()
+        ProviderKind.SHIKIMORI -> Request.Builder().url(
+            url(definition.apiBase, "api/v2/user_rates").newBuilder()
+                .addQueryParameter("user_id", requireNotNull(session.username))
+                .addQueryParameter("target_id", track.remoteId.toString())
+                .addQueryParameter("target_type", "Manga")
+                .build(),
+        ).get().build()
+        ProviderKind.BANGUMI -> Request.Builder()
+            .url(url(definition.apiBase, "v0/users/${requireNotNull(session.username)}/collections/${track.remoteId}"))
+            .cacheControl(CacheControl.FORCE_NETWORK)
+            .get()
+            .build()
+        ProviderKind.MANGA_UPDATES -> Request.Builder()
+            .url(url(definition.apiBase, "v1/lists/series/${track.remoteId}"))
+            .get()
+            .build()
+    }
+
+    private fun aniListBindLookupRequest(track: Track, userId: Long): Request = Request.Builder()
+        .url(definition.apiBase.toHttpUrl())
+        .post(
+            buildJsonObject {
+                put(
+                    "query",
+                    "query BindManga(\u0024userId: Int!, \u0024mediaId: Int!) { Page { mediaList(userId: \u0024userId, mediaId: \u0024mediaId, type: MANGA) { id status scoreRaw: score(format: POINT_100) progress private startedAt { year month day } completedAt { year month day } media { chapters } } } }",
+                )
+                putJsonObject("variables") {
+                    put("userId", userId)
+                    put("mediaId", track.remoteId)
+                }
+            }.toString().toRequestBody(JSON),
+        )
+        .build()
+
+    private fun kitsuBindLookupRequest(track: Track, userId: String): Request = Request.Builder()
+        .url(
+            url(definition.apiBase, "api/edge/library-entries").newBuilder()
+                .addQueryParameter("filter[manga_id]", track.remoteId.toString())
+                .addQueryParameter("filter[user_id]", userId)
+                .addQueryParameter("include", "manga")
+                .build(),
+        )
+        .get()
+        .build()
+
+    private fun parseAniListBindResult(track: Track, response: JsonElement): Track? {
+        val item = response.jsonObject
+            .requiredObject("data")
+            .requiredObject("Page")
+            .requiredArray("mediaList")
+            .firstOrNull()
+            ?.jsonObject
+            ?: return null
+        return track.copy(
+            libraryId = item.requiredLong("id"),
+            totalChapters = item.obj("media")?.long("chapters") ?: track.totalChapters,
+            status = TrackerProviderContracts.aniList.wireToStatus(item.requiredString("status")),
+            score = item["scoreRaw"]?.jsonPrimitive?.doubleOrNull ?: 0.0,
+            lastChapterRead = item["progress"]?.jsonPrimitive?.doubleOrNull ?: 0.0,
+            private = item["private"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false,
+            startDate = item.obj("startedAt")?.toProviderEpochMilli() ?: 0,
+            finishDate = item.obj("completedAt")?.toProviderEpochMilli() ?: 0,
+        )
+    }
+
+    private suspend fun ensureAniListUserId(): Long {
+        storedSession?.username?.toLongOrNull()?.let { return it }
+        val userId = resolveAniListUserId()
+        saveSession(requireNotNull(storedSession).copy(username = userId))
+        return userId.toLong()
+    }
+
+    private suspend fun resolveAniListUserId(): String {
+        val response = parse(
+            executeAuthenticated(
+                Request.Builder()
+                    .url(definition.apiBase.toHttpUrl())
+                    .post(
+                        buildJsonObject {
+                            put(
+                                "query",
+                                "query User { Viewer { id mediaListOptions { scoreFormat } } }",
+                            )
+                        }.toString().toRequestBody(JSON),
+                    )
+                    .build(),
+            ),
+        )
+        return response.jsonObject
+            .requiredObject("data")
+            .requiredObject("Viewer")
+            .requiredLong("id")
+            .toString()
+    }
+
+    private fun newStatus(hasReadChapters: Boolean): Long = if (hasReadChapters) {
+        configuration.readingStatus
+    } else {
+        definition.initialStatus
+    }
+
+    private fun Track.withExistingStatus(hasReadChapters: Boolean): Track {
+        if (!hasReadChapters || status == configuration.completionStatus) return this
+        return when (definition.kind) {
+            ProviderKind.MAL, ProviderKind.ANILIST, ProviderKind.SHIKIMORI ->
+                if (status == configuration.rereadingStatus) this else copy(status = configuration.readingStatus)
+            ProviderKind.KITSU, ProviderKind.BANGUMI -> copy(status = configuration.readingStatus)
+            ProviderKind.MANGA_UPDATES -> this
+        }
+    }
+
+    private fun deleteRequest(track: Track): Request = when (definition.kind) {
+        ProviderKind.MAL -> Request.Builder()
+            .url(url(definition.apiBase, "v2/manga/${track.remoteId}/my_list_status"))
+            .delete()
+            .build()
+        ProviderKind.ANILIST -> Request.Builder().url(definition.apiBase.toHttpUrl()).post(
+            buildJsonObject {
+                put(
+                    "query",
+                    "mutation DeleteManga(\u0024listId: Int) { DeleteMediaListEntry(id: \u0024listId) { deleted } }",
+                )
+                putJsonObject("variables") { put("listId", requireNotNull(track.libraryId)) }
+            }.toString().toRequestBody(JSON),
+        ).build()
+        ProviderKind.KITSU -> Request.Builder()
+            .url(url(definition.apiBase, "api/edge/library-entries/${requireNotNull(track.libraryId)}"))
+            .delete()
+            .build()
+        ProviderKind.SHIKIMORI -> Request.Builder()
+            .url(url(definition.apiBase, "api/v2/user_rates/${requireNotNull(track.libraryId)}"))
+            .delete()
+            .build()
+        ProviderKind.MANGA_UPDATES -> Request.Builder()
+            .url(url(definition.apiBase, "v1/lists/series/delete"))
+            .post(buildJsonArray { add(JsonPrimitive(track.remoteId)) }.toString().toRequestBody(JSON))
+            .build()
+        ProviderKind.BANGUMI -> throw UnsupportedOperationException("Bangumi does not support remote deletion")
     }
 
     private fun parseSearch(root: JsonElement): List<TrackSearchResult> = when (definition.kind) {
@@ -574,18 +982,97 @@ private class DesktopProviderTrackerService(
         }
     }
 
-    private fun parseUpdated(track: Track, response: JsonElement): Track {
-        if (definition.kind != ProviderKind.MAL) return track
-        val item = response.jsonObject
-        return track.copy(
-            status = item.string("status")?.let(::malStatus) ?: track.status,
-            score = item["score"]?.jsonPrimitive?.doubleOrNull ?: track.score,
-            lastChapterRead = item["num_chapters_read"]?.jsonPrimitive?.doubleOrNull ?: track.lastChapterRead,
-        )
+    private fun parseUpdated(track: Track, response: JsonElement): Track = when (definition.kind) {
+        ProviderKind.MAL -> response.jsonObject.let { item ->
+            track.copy(
+                status = if (item["is_rereading"]?.jsonPrimitive?.contentOrNull == "true") {
+                    7L
+                } else {
+                    item.string("status")?.let(::malStatus) ?: track.status
+                },
+                score = item["score"]?.jsonPrimitive?.doubleOrNull ?: track.score,
+                lastChapterRead = item["num_chapters_read"]?.jsonPrimitive?.doubleOrNull ?: track.lastChapterRead,
+            )
+        }
+        ProviderKind.SHIKIMORI -> track.copy(libraryId = response.jsonObject.requiredLong("id"))
+        else -> track
+    }
+
+    private fun parseRefreshed(track: Track, response: JsonElement): Track = when (definition.kind) {
+        ProviderKind.MAL -> response.jsonObject.let { item ->
+            val status = item.requiredObject("my_list_status")
+            track.copy(
+                totalChapters = item.long("num_chapters"),
+                status = if (status["is_rereading"]?.jsonPrimitive?.contentOrNull == "true") {
+                    7L
+                } else {
+                    malStatus(status.requiredString("status"))
+                },
+                score = status["score"]?.jsonPrimitive?.doubleOrNull ?: track.score,
+                lastChapterRead = status["num_chapters_read"]?.jsonPrimitive?.doubleOrNull
+                    ?: track.lastChapterRead,
+                startDate = status.string("start_date")?.toIsoEpochMilli() ?: track.startDate,
+                finishDate = status.string("finish_date")?.toIsoEpochMilli() ?: track.finishDate,
+            )
+        }
+        ProviderKind.ANILIST -> response.jsonObject.requiredObject("data").requiredObject("MediaList").let { item ->
+            track.copy(
+                libraryId = item.requiredLong("id"),
+                totalChapters = item.obj("media")?.long("chapters") ?: track.totalChapters,
+                status = TrackerProviderContracts.aniList.wireToStatus(item.requiredString("status")),
+                score = item["score"]?.jsonPrimitive?.doubleOrNull ?: track.score,
+                lastChapterRead = item["progress"]?.jsonPrimitive?.doubleOrNull ?: track.lastChapterRead,
+                private = item["private"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: track.private,
+                startDate = item.obj("startedAt")?.toProviderEpochMilli() ?: 0,
+                finishDate = item.obj("completedAt")?.toProviderEpochMilli() ?: 0,
+            )
+        }
+        ProviderKind.KITSU -> response.jsonObject.let { root ->
+            val item = root.requiredArray("data").first().jsonObject
+            val attributes = item.requiredObject("attributes")
+            track.copy(
+                libraryId = item.requiredString("id").toLong(),
+                totalChapters = root.requiredArray("included").first().jsonObject
+                    .requiredObject("attributes")
+                    .long("chapterCount"),
+                status = TrackerProviderContracts.kitsu.wireToStatus(attributes.requiredString("status")),
+                score = attributes["ratingTwenty"]?.jsonPrimitive?.doubleOrNull?.div(2) ?: 0.0,
+                lastChapterRead = attributes["progress"]?.jsonPrimitive?.doubleOrNull ?: track.lastChapterRead,
+                private = attributes["private"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull()
+                    ?: track.private,
+                startDate = attributes.string("startedAt").toKitsuEpochMilli(),
+                finishDate = attributes.string("finishedAt").toKitsuEpochMilli(),
+            )
+        }
+        ProviderKind.SHIKIMORI -> response.jsonArray.single().jsonObject.let { item ->
+            track.copy(
+                libraryId = item.requiredLong("id"),
+                status = TrackerProviderContracts.shikimori.wireToStatus(item.requiredString("status")),
+                score = item["score"]?.jsonPrimitive?.doubleOrNull ?: track.score,
+                lastChapterRead = item["chapters"]?.jsonPrimitive?.doubleOrNull ?: track.lastChapterRead,
+            )
+        }
+        ProviderKind.BANGUMI -> response.jsonObject.let { item ->
+            track.copy(
+                status = TrackerProviderContracts.bangumi.wireToStatus(item.requiredLong("type").toString()),
+                score = item["rate"]?.jsonPrimitive?.doubleOrNull ?: track.score,
+                lastChapterRead = item["ep_status"]?.jsonPrimitive?.doubleOrNull ?: track.lastChapterRead,
+                totalChapters = item.obj("subject")?.long("eps") ?: track.totalChapters,
+                private = item["private"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull()
+                    ?: track.private,
+            )
+        }
+        ProviderKind.MANGA_UPDATES -> response.jsonObject.let { item ->
+            track.copy(
+                status = item["list_id"]?.jsonPrimitive?.longOrNull ?: track.status,
+                lastChapterRead = item.obj("status")?.get("chapter")?.jsonPrimitive?.doubleOrNull
+                    ?: track.lastChapterRead,
+            )
+        }
     }
 
     private suspend fun executeAuthenticated(request: Request): String {
-        val current = requireNotNull(session?.takeIf { it.accessToken.isNotBlank() }) { "${definition.name} is not authenticated" }
+        val current = requireNotNull(storedSession?.takeIf { it.accessToken.isNotBlank() }) { "${definition.name} is not authenticated" }
         if (
             current.expiresAtEpochSeconds != null &&
             current.expiresAtEpochSeconds <= System.currentTimeMillis() / 1000 + 30 &&
@@ -593,7 +1080,7 @@ private class DesktopProviderTrackerService(
         ) {
             refreshSession(current)
         }
-        val auth = requireNotNull(session?.accessToken?.takeIf(String::isNotBlank)) { "${definition.name} is not authenticated" }
+        val auth = requireNotNull(storedSession?.accessToken?.takeIf(String::isNotBlank)) { "${definition.name} is not authenticated" }
         val authenticated = request.newBuilder().header("Authorization", "Bearer $auth").build()
         return execute(authenticated)
     }
@@ -635,16 +1122,37 @@ private class DesktopProviderTrackerService(
     }
 
     private suspend fun execute(request: Request): String = withContext(Dispatchers.IO) {
-        client.newCall(request).execute().use { response ->
-            val body = response.body.string()
-            if (!response.isSuccessful) {
-                throw TrackerHttpException(
-                    response.code,
-                    response.header("Retry-After")?.toLongOrNull(),
-                    "${definition.name} request failed with HTTP ${response.code}",
-                )
+        try {
+            client.newCall(request).execute().use { response ->
+                val body = response.body.string()
+                if (!response.isSuccessful) {
+                    if (
+                        definition.kind == ProviderKind.MAL &&
+                        response.code == 400 &&
+                        runCatching { parse(body).jsonObject.string("error") }.getOrNull() == "invalid_content"
+                    ) {
+                        throw TrackerProviderException(
+                            kind = TrackerProviderErrorKind.TITLE_NOT_APPROVED,
+                            statusCode = response.code,
+                            message = "MyAnimeList title is not approved",
+                        )
+                    }
+                    throw trackerProviderHttpError(
+                        response.code,
+                        "${definition.name} request failed with HTTP ${response.code}",
+                        response.header("Retry-After")
+                            ?.trim()
+                            ?.toLongOrNull()
+                            ?.takeIf { it >= 0 },
+                    )
+                }
+                body
             }
-            body
+        } catch (error: IOException) {
+            throw tachiyomi.domain.track.service.TrackerProviderException(
+                tachiyomi.domain.track.service.TrackerProviderErrorKind.NETWORK,
+                message = error.message,
+            )
         }
     }
 
@@ -661,7 +1169,7 @@ private class DesktopProviderTrackerService(
     }
 
     private fun saveSession(value: StoredSession) {
-        session = value
+        storedSession = value
         credentialStore.save(credentialKey, json.encodeToString(value))
         mutableProfile.value = profileFor(value)
     }
@@ -735,4 +1243,39 @@ private fun Long.toProviderFuzzyDate(): ProviderFuzzyDate {
     if (this == 0L) return ProviderFuzzyDate(null, null, null)
     val date = Instant.ofEpochMilli(this).atZone(ZoneId.systemDefault())
     return ProviderFuzzyDate(date.year, date.monthValue, date.dayOfMonth)
+}
+
+private fun Long.toIsoDate(): String? {
+    if (this == 0L) return ""
+    return Instant.ofEpochMilli(this).atZone(ZoneId.systemDefault()).toLocalDate().toString()
+}
+
+private fun kitsuDateFormatter() = DateTimeFormatter
+    .ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.ENGLISH)
+    .withZone(ZoneId.systemDefault())
+
+private fun Long.toKitsuDate(): String? = takeIf { it != 0L }?.let { epoch ->
+    kitsuDateFormatter().format(Instant.ofEpochMilli(epoch))
+}
+
+private fun String.toIsoEpochMilli(): Long = LocalDate.parse(this)
+    .atStartOfDay(ZoneId.systemDefault())
+    .toInstant()
+    .toEpochMilli()
+
+private fun JsonObject.toProviderEpochMilli(): Long = runCatching {
+    LocalDate.of(requiredLong("year").toInt(), requiredLong("month").toInt(), requiredLong("day").toInt())
+        .atStartOfDay(ZoneId.systemDefault())
+        .toInstant()
+        .toEpochMilli()
+}.getOrDefault(0)
+
+private fun String?.toKitsuEpochMilli(): Long {
+    if (this == null) return 0
+    return runCatching {
+        LocalDateTime.parse(this, kitsuDateFormatter())
+            .atZone(ZoneId.systemDefault())
+            .toInstant()
+            .toEpochMilli()
+    }.getOrDefault(0)
 }

@@ -2,8 +2,10 @@ package mihon.desktop.tracking
 
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.platform.CredentialBackend
 import mihon.desktop.platform.DesktopCredentialStore
+import mihon.desktop.ui.tracking.TrackingScreenModel
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -13,8 +15,17 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.domain.track.model.Track
+import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.TrackEdit
 import tachiyomi.domain.track.service.TrackerAuthentication
+import tachiyomi.domain.track.service.TrackerProviderErrorKind
+import tachiyomi.domain.track.service.TrackerProviderException
+import tachiyomi.domain.track.service.TrackerProviderRequest
+import tachiyomi.domain.track.service.TrackerProviderResult
+import tachiyomi.domain.track.service.TrackerProviderService
+import java.time.Instant
+import java.util.TimeZone
 
 class DesktopProviderTrackerServiceTest {
     @Test
@@ -46,11 +57,15 @@ class DesktopProviderTrackerServiceTest {
             for (name in listOf("Shikimori", "Bangumi")) {
                 val oauth = service(registry, name)
                 server.enqueue(MockResponse(body = tokenFixture()))
+                server.enqueue(
+                    MockResponse(body = if (name == "Shikimori") """{"id":77}""" else """{"username":"reader"}"""),
+                )
                 oauth.finishOAuth("code", "http://127.0.0.1/callback")
                 val body = server.takeRequest().body!!.utf8()
                 assertTrue(body.contains("grant_type=authorization_code"))
                 assertTrue(body.contains("client_secret=test-${name.lowercase()}-secret"))
                 assertTrue(body.contains("redirect_uri=http%3A%2F%2F127.0.0.1%2Fcallback"))
+                server.takeRequest()
             }
         }
     }
@@ -154,36 +169,55 @@ class DesktopProviderTrackerServiceTest {
             }
 
             val mal = registry.services.first()
+            server.enqueue(MockResponse(body = """{"num_chapters":12,"my_list_status":null}"""))
+            server.enqueue(MockResponse(body = """{"status":"plan_to_read","score":0,"num_chapters_read":0}"""))
             val bound = mal.bind(99, tachiyomi.domain.track.service.TrackSearchResult(11, "MAL", 12))
+            server.takeRequest()
+            server.takeRequest()
+            server.enqueue(
+                MockResponse(
+                    body = """{"num_chapters":12,"my_list_status":{"status":"reading","score":0,"num_chapters_read":0,"is_rereading":false}}""",
+                ),
+            )
             server.enqueue(
                 MockResponse(
                     body = """{"status":"reading","score":8,"num_chapters_read":3,"is_rereading":false}""",
                 ),
             )
             val updated = mal.update(bound, TrackEdit(status = 1, score = 8.0, lastChapterRead = 3.0))
+            val refreshRequest = server.takeRequest()
             val updateRequest = server.takeRequest()
+            assertTrue(refreshRequest.url.encodedPath.endsWith("/v2/manga/11"))
             assertEquals("PUT", updateRequest.method)
             assertTrue(updateRequest.url.encodedPath.contains("/v2/manga/11/my_list_status"))
             assertEquals(3.0, updated.lastChapterRead)
 
             val aniList = registry.services.single { it.profile.value.name == "AniList" }
+            server.enqueue(MockResponse(body = """{"data":{"Page":{"mediaList":[]}}}"""))
             server.enqueue(MockResponse(body = """{"data":{"SaveMediaListEntry":{"id":44,"status":"PLANNING","progress":0}}}"""))
             val aniBound = aniList.bind(100, tachiyomi.domain.track.service.TrackSearchResult(12, "AL", 13))
+            server.takeRequest()
             val aniBindBody = server.takeRequest().body!!.utf8()
             assertEquals(44, aniBound.libraryId)
             assertEquals(5, aniBound.status)
             assertTrue(aniBindBody.contains("SaveMediaListEntry"))
             assertTrue(aniBindBody.contains("PLANNING"))
-            server.enqueue(MockResponse(body = """{"data":{"SaveMediaListEntry":{"id":44,"status":"CURRENT","progress":5}}}"""))
             val datedAniListTrack = aniBound.copy(
                 startDate = 1_704_153_600_000,
                 finishDate = 1_741_046_400_000,
             )
             assertEquals(2024, java.time.Instant.ofEpochMilli(datedAniListTrack.startDate).atZone(java.time.ZoneId.systemDefault()).year)
+            server.enqueue(
+                MockResponse(
+                    body = """{"data":{"MediaList":{"id":44,"status":"PLANNING","score":0,"progress":0,"private":false,"startedAt":{"year":2024,"month":1,"day":2},"completedAt":{"year":2025,"month":3,"day":4},"media":{"chapters":13}}}}""",
+                ),
+            )
+            server.enqueue(MockResponse(body = """{"data":{"SaveMediaListEntry":{"id":44,"status":"CURRENT","progress":5}}}"""))
             aniList.update(
                 datedAniListTrack,
                 TrackEdit(status = 1, score = 80.0, lastChapterRead = 5.0),
             )
+            server.takeRequest()
             val aniBody = server.takeRequest().body!!.utf8()
             assertTrue(aniBody.contains("\u0024progress: Int"))
             assertTrue(aniBody.contains("progress: \u0024progress"))
@@ -196,13 +230,24 @@ class DesktopProviderTrackerServiceTest {
 
             val kitsu = registry.services.single { it.profile.value.name == "Kitsu" }
             server.enqueue(MockResponse(body = """{"data":[{"id":"7"}]}"""))
+            server.enqueue(MockResponse(body = """{"data":[],"included":[]}"""))
             server.enqueue(MockResponse(body = """{"data":{"id":"91","type":"libraryEntries"}}"""))
             val kitsuBound = kitsu.bind(101, tachiyomi.domain.track.service.TrackSearchResult(13, "Kitsu", 14))
             assertEquals("/api/edge/users", server.takeRequest().url.encodedPath)
+            assertEquals("/api/edge/library-entries", server.takeRequest().url.encodedPath)
             assertEquals("POST", server.takeRequest().method)
             assertEquals(91, kitsuBound.libraryId)
+            server.enqueue(
+                MockResponse(
+                    body = """{"data":[{"id":"91","attributes":{"status":"planned","progress":0,"ratingTwenty":null,"private":false,"startedAt":null,"finishedAt":null}}],"included":[{"id":"13","attributes":{"chapterCount":14}}]}""",
+                ),
+            )
             server.enqueue(MockResponse(body = """{"data":{"id":"91"}}"""))
             kitsu.update(kitsuBound, TrackEdit(status = 1, score = 8.0, lastChapterRead = 2.0))
+            server.takeRequest().also {
+                assertEquals("/api/edge/library-entries", it.url.encodedPath)
+                assertEquals("91", it.url.queryParameter("filter[id]"))
+            }
             assertEquals("/api/edge/library-entries/91", server.takeRequest().url.encodedPath)
         }
     }
@@ -217,15 +262,701 @@ class DesktopProviderTrackerServiceTest {
                 )
             }
             val bangumi = service(registry(server, backend), "Bangumi")
-            val bound = bangumi.bind(102, tachiyomi.domain.track.service.TrackSearchResult(15, "BGM", 16))
+            val bound = providerTrack().copy(
+                mangaId = 102,
+                trackerId = 5,
+                remoteId = 15,
+                libraryId = null,
+                title = "BGM",
+                totalChapters = 16,
+            )
 
             assertTrue(bangumi.profile.value.loggedIn)
-            assertThrows(IllegalArgumentException::class.java) {
+            val failure = assertThrows(tachiyomi.domain.track.service.TrackerProviderResultException::class.java) {
                 kotlinx.coroutines.runBlocking {
                     bangumi.update(bound, TrackEdit(status = Long.MAX_VALUE))
                 }
             }
+            assertEquals(TrackerProviderErrorKind.INVALID_REQUEST, failure.error.kind)
             assertEquals(0, server.requestCount)
+        }
+    }
+
+    @Test
+    fun `public provider executes shared chapter workflow and fixed main remote delete`() = runTest {
+        MockWebServer().also { it.start() }.use { server ->
+            val backend = MemoryBackend().apply {
+                save("tracker.1.account.default.session.v1", """{"accessToken":"access-secret"}""".toCharArray())
+            }
+            val service = service(registry(server, backend), "MyAnimeList") as TrackerProviderService
+            server.enqueue(
+                MockResponse(
+                    body = """{"num_chapters":10,"my_list_status":{"status":"reading","score":0,"num_chapters_read":9,"is_rereading":false}}""",
+                ),
+            )
+            server.enqueue(MockResponse(body = """{"status":"completed","num_chapters_read":10}"""))
+
+            val edited = service.execute(
+                TrackerProviderRequest.Edit(
+                    providerTrack(),
+                    TrackEdit(lastChapterRead = 10.0, didReadChapter = true),
+                ),
+            ) as TrackerProviderResult.Success
+
+            val refresh = server.takeRequest()
+            val update = server.takeRequest()
+            assertEquals("/v2/manga/11", refresh.url.encodedPath)
+            assertEquals("PUT", update.method)
+            assertTrue(update.body!!.utf8().contains("status=completed"))
+            assertEquals(2L, edited.track!!.status)
+            assertTrue(edited.track!!.finishDate > 0)
+
+            server.enqueue(MockResponse(code = 204))
+            assertTrue(
+                service.execute(TrackerProviderRequest.Delete(edited.track!!)) is TrackerProviderResult.Success,
+            )
+            val delete = server.takeRequest()
+            assertEquals("DELETE", delete.method)
+            assertEquals("/v2/manga/11/my_list_status", delete.url.encodedPath)
+        }
+    }
+
+    @Test
+    fun `Kitsu and MangaUpdates failures use shared stable error mapping`() = runTest {
+        MockWebServer().also { it.start() }.use { server ->
+            val backend = MemoryBackend().apply {
+                listOf(3L, 7L).forEach {
+                    save("tracker.$it.account.default.session.v1", """{"accessToken":"access-secret"}""".toCharArray())
+                }
+            }
+            val registry = registry(server, backend)
+
+            listOf("Kitsu", "MangaUpdates").forEach { name ->
+                server.enqueue(MockResponse(code = 429, body = "{}"))
+                val error = assertThrows(TrackerProviderException::class.java) {
+                    kotlinx.coroutines.runBlocking {
+                        registry.services.single { it.profile.value.name == name }.search("rate limited")
+                    }
+                }
+                assertEquals(TrackerProviderErrorKind.RATE_LIMITED, error.kind)
+                assertEquals(429, error.statusCode)
+                server.takeRequest()
+            }
+        }
+    }
+
+    @Test
+    fun `fixed main register dates and provider request fields survive Desktop adapters`() = runTest {
+        MockWebServer().also { it.start() }.use { server ->
+            val backend = MemoryBackend().apply {
+                mapOf(1L to "mal", 3L to "kitsu", 4L to "77", 5L to "reader", 7L to "mu").forEach { (id, user) ->
+                    save(
+                        "tracker.$id.account.default.session.v1",
+                        """{"accessToken":"access-secret","username":"$user"}""".toCharArray(),
+                    )
+                }
+            }
+            val registry = registry(server, backend)
+
+            server.enqueue(MockResponse(body = """{"num_chapters":12,"my_list_status":null}"""))
+            server.enqueue(MockResponse(body = """{"status":"plan_to_read","score":0,"num_chapters_read":0}"""))
+            val mal = registry.services.single { it.profile.value.id == 1L }
+            val malBound = mal.bind(1, tachiyomi.domain.track.service.TrackSearchResult(11, "MAL", 12))
+            server.takeRequest()
+            assertEquals("PUT", server.takeRequest().method)
+            server.enqueue(
+                MockResponse(
+                    body = """{"num_chapters":12,"my_list_status":{"status":"reading","score":0,"num_chapters_read":1,"is_rereading":false}}""",
+                ),
+            )
+            server.enqueue(MockResponse(body = """{"status":"reading","score":0,"num_chapters_read":1}"""))
+            mal.update(
+                malBound.copy(startDate = 1_704_153_600_000, finishDate = 1_741_046_400_000),
+                TrackEdit(status = 1),
+            )
+            server.takeRequest()
+            val malUpdate = server.takeRequest().body!!.utf8()
+            assertTrue(malUpdate.contains("start_date=2024-01-02"), malUpdate)
+            assertTrue(malUpdate.contains("&finish_date=2025-03-04"), malUpdate)
+
+            val kitsu = registry.services.single { it.profile.value.id == 3L }
+            val kitsuTrack = providerTrack().copy(
+                trackerId = 3,
+                remoteId = 13,
+                libraryId = 91,
+                startDate = 1_704_153_600_000,
+                finishDate = 1_741_046_400_000,
+            )
+            server.enqueue(
+                MockResponse(
+                    body = """{"data":[{"id":"91","attributes":{"status":"planned","progress":0,"ratingTwenty":null,"private":false,"startedAt":null,"finishedAt":null}}],"included":[{"id":"13","attributes":{"chapterCount":14}}]}""",
+                ),
+            )
+            server.enqueue(MockResponse(body = """{"data":{"id":"91"}}"""))
+            kitsu.update(kitsuTrack, TrackEdit(status = 1))
+            server.takeRequest()
+            val kitsuUpdate = server.takeRequest().body!!.utf8()
+            assertTrue(kitsuUpdate.contains("\"startedAt\":"), kitsuUpdate)
+            assertTrue(kitsuUpdate.contains("\"finishedAt\":"), kitsuUpdate)
+
+            val shikimori = registry.services.single { it.profile.value.id == 4L }
+            server.enqueue(MockResponse(body = """{"id":14,"name":"Shiki","chapters":15}"""))
+            server.enqueue(MockResponse(body = "[]"))
+            server.enqueue(MockResponse(body = """{"id":401}"""))
+            val shikiBound = shikimori.bind(1, tachiyomi.domain.track.service.TrackSearchResult(14, "Shiki", 15))
+            server.takeRequest()
+            server.takeRequest()
+            val shikiAdd = server.takeRequest().body!!.utf8()
+            assertTrue(shikiAdd.contains("\"user_id\":77"), shikiAdd)
+            assertEquals(401, shikiBound.libraryId)
+
+            val bangumi = registry.services.single { it.profile.value.id == 5L }
+            server.enqueue(MockResponse(code = 404))
+            server.enqueue(MockResponse(code = 202))
+            val bgmBound = bangumi.bind(1, tachiyomi.domain.track.service.TrackSearchResult(15, "BGM", 16))
+            server.takeRequest()
+            val bgmAdd = server.takeRequest()
+            assertEquals("POST", bgmAdd.method)
+            assertTrue(bgmAdd.body!!.utf8().contains("\"ep_status\":0"))
+
+            server.enqueue(
+                MockResponse(
+                    body = """{"type":1,"rate":0,"ep_status":0,"private":true,"subject":{"eps":16}}""",
+                ),
+            )
+            server.enqueue(MockResponse(code = 204))
+            val bgmUpdated = bangumi.update(bgmBound, TrackEdit(status = 3, private = true))
+            val bgmRefresh = server.takeRequest()
+            val bgmUpdate = server.takeRequest()
+            assertTrue(bgmRefresh.url.encodedPath.contains("/v0/users/reader/collections/15"))
+            assertEquals("PATCH", bgmUpdate.method)
+            assertTrue(bgmUpdate.body!!.utf8().contains("\"private\":true"))
+            assertEquals(16, bgmUpdated.totalChapters)
+            assertTrue(bgmUpdated.private)
+
+            val mangaUpdates = registry.services.single { it.profile.value.id == 7L } as TrackerProviderService
+            server.enqueue(MockResponse(code = 404))
+            server.enqueue(MockResponse(code = 200))
+            val muBound = mangaUpdates.bind(1, tachiyomi.domain.track.service.TrackSearchResult(16, "MU", 0))
+            server.takeRequest()
+            val muAdd = server.takeRequest().body!!.utf8()
+            assertTrue(muAdd.startsWith("[{\"series\":{\"id\":16},\"list_id\":"), muAdd)
+
+            server.enqueue(MockResponse(body = """{"list_id":1,"status":{"chapter":0}}"""))
+            server.enqueue(MockResponse(body = """{"rating":7.5}"""))
+            server.enqueue(MockResponse())
+            server.enqueue(MockResponse())
+            mangaUpdates.update(muBound.copy(score = 7.5), TrackEdit(lastChapterRead = 2.0))
+            server.takeRequest()
+            server.takeRequest()
+            val muUpdate = server.takeRequest().body!!.utf8()
+            val muRating = server.takeRequest()
+            assertTrue(muUpdate.startsWith("[{\"series\":{\"id\":16},\"list_id\":"), muUpdate)
+            assertEquals("PUT", muRating.method)
+            assertTrue(muRating.url.encodedPath.endsWith("/v1/series/16/rating"))
+
+            server.enqueue(MockResponse(code = 204))
+            mangaUpdates.execute(TrackerProviderRequest.Delete(muBound))
+            assertEquals("[16]", server.takeRequest().body!!.utf8())
+        }
+    }
+
+    @Test
+    fun `fixed main refresh preserves exact MAL AniList and Kitsu dates`() = runTest {
+        val previousTimeZone = TimeZone.getDefault()
+        TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+        try {
+            MockWebServer().also { it.start() }.use { server ->
+                val backend = MemoryBackend().apply {
+                    listOf(1L, 2L, 3L).forEach { id ->
+                        save("tracker.$id.account.default.session.v1", """{"accessToken":"access-secret"}""".toCharArray())
+                    }
+                }
+                val registry = registry(server, backend)
+
+                val mal = registry.services.single { it.profile.value.id == 1L }
+                server.enqueue(
+                    MockResponse(
+                        body = """{"num_chapters":12,"my_list_status":{"status":"reading","score":8,"num_chapters_read":3,"is_rereading":false,"start_date":"2024-01-02","finish_date":"2025-03-04"}}""",
+                    ),
+                )
+                server.enqueue(MockResponse(body = """{"status":"reading","score":8,"num_chapters_read":3}"""))
+                val malDated = mal.update(providerTrack(), TrackEdit(status = 1))
+                server.takeRequest()
+                val malDatedBody = server.takeRequest().body!!.utf8()
+                assertEquals(1_704_153_600_000, malDated.startDate)
+                assertEquals(1_741_046_400_000, malDated.finishDate)
+                assertTrue(malDatedBody.contains("start_date=2024-01-02"), malDatedBody)
+                assertTrue(malDatedBody.contains("&finish_date=2025-03-04"), malDatedBody)
+
+                server.enqueue(
+                    MockResponse(
+                        body = """{"num_chapters":12,"my_list_status":{"status":"reading","score":8,"num_chapters_read":3,"is_rereading":false,"start_date":"2024-01-02","finish_date":"2025-03-04"}}""",
+                    ),
+                )
+                server.enqueue(MockResponse(body = """{"status":"reading","score":8,"num_chapters_read":3}"""))
+                mal.update(malDated, TrackEdit(startDate = 0, finishDate = 0))
+                server.takeRequest()
+                val malClearedBody = server.takeRequest().body!!.utf8()
+                assertTrue(malClearedBody.contains("start_date=&"), malClearedBody)
+                assertTrue(malClearedBody.endsWith("&finish_date="), malClearedBody)
+
+                val aniList = registry.services.single { it.profile.value.id == 2L }
+                server.enqueue(
+                    MockResponse(
+                        body = """{"data":{"MediaList":{"id":44,"status":"CURRENT","score":80,"progress":3,"private":false,"startedAt":{"year":2024,"month":1,"day":2},"completedAt":{"year":2025,"month":3,"day":4},"media":{"chapters":13}}}}""",
+                    ),
+                )
+                server.enqueue(MockResponse(body = """{"data":{"SaveMediaListEntry":{"id":44}}}"""))
+                val aniDated = aniList.update(
+                    providerTrack().copy(trackerId = 2, remoteId = 12, totalChapters = 13),
+                    TrackEdit(status = 1),
+                )
+                val aniRefresh = server.takeRequest().body!!.utf8()
+                val aniUpdate = server.takeRequest().body!!.utf8()
+                assertTrue(aniRefresh.contains("startedAt { year month day }"), aniRefresh)
+                assertTrue(aniRefresh.contains("completedAt { year month day }"), aniRefresh)
+                assertEquals(1_704_153_600_000, aniDated.startDate)
+                assertEquals(1_741_046_400_000, aniDated.finishDate)
+                assertTrue(aniUpdate.contains("\"startedAt\":{\"year\":2024,\"month\":1,\"day\":2}"), aniUpdate)
+                assertTrue(aniUpdate.contains("\"completedAt\":{\"year\":2025,\"month\":3,\"day\":4}"), aniUpdate)
+
+                val kitsu = registry.services.single { it.profile.value.id == 3L }
+                server.enqueue(
+                    MockResponse(
+                        body = """{"data":[{"id":"91","attributes":{"status":"current","progress":3,"ratingTwenty":16,"private":false,"startedAt":"2024-01-02T03:04:05.006Z","finishedAt":"2025-03-04T05:06:07.008Z"}}],"included":[{"id":"13","attributes":{"chapterCount":14}}]}""",
+                    ),
+                )
+                server.enqueue(MockResponse(body = """{"data":{"id":"91"}}"""))
+                val kitsuDated = kitsu.update(
+                    providerTrack().copy(trackerId = 3, remoteId = 13, libraryId = 91, totalChapters = 14),
+                    TrackEdit(status = 1),
+                )
+                val kitsuRefresh = server.takeRequest()
+                val kitsuUpdate = server.takeRequest().body!!.utf8()
+                assertEquals("/api/edge/library-entries", kitsuRefresh.url.encodedPath)
+                assertEquals("91", kitsuRefresh.url.queryParameter("filter[id]"))
+                assertEquals(Instant.parse("2024-01-02T03:04:05.006Z").toEpochMilli(), kitsuDated.startDate)
+                assertEquals(Instant.parse("2025-03-04T05:06:07.008Z").toEpochMilli(), kitsuDated.finishDate)
+                assertTrue(kitsuUpdate.contains("\"startedAt\":\"2024-01-02T03:04:05.006Z\""), kitsuUpdate)
+                assertTrue(kitsuUpdate.contains("\"finishedAt\":\"2025-03-04T05:06:07.008Z\""), kitsuUpdate)
+            }
+        } finally {
+            TimeZone.setDefault(previousTimeZone)
+        }
+    }
+
+    @Test
+    fun `public bind queries fixed main existing entries before update`() = runTest {
+        MockWebServer().also { it.start() }.use { server ->
+            val backend = authenticatedBackend()
+            val registry = registry(server, backend)
+            val result = tachiyomi.domain.track.service.TrackSearchResult(11, "Remote manga", 12)
+
+            val mal = registry.get(1) as TrackerProviderService
+            server.enqueue(
+                MockResponse(
+                    body = """{"num_chapters":12,"my_list_status":{"status":"on_hold","score":8,"num_chapters_read":4,"is_rereading":false,"start_date":"2024-01-02","finish_date":"2025-03-04"}}""",
+                ),
+            )
+            server.enqueue(MockResponse(body = """{"status":"reading","score":8,"num_chapters_read":4}"""))
+            val malBound = mal.bind(101, result, hasReadChapters = true)
+            assertEquals("GET", server.takeRequest().method)
+            assertEquals("PUT", server.takeRequest().method)
+            assertEquals(11, malBound.remoteId)
+            assertEquals(4.0, malBound.lastChapterRead)
+            assertEquals(8.0, malBound.score)
+            assertEquals(1, malBound.status)
+            assertTrue(malBound.startDate > 0)
+            assertTrue(malBound.finishDate > 0)
+
+            val aniList = registry.get(2) as TrackerProviderService
+            server.enqueue(
+                MockResponse(
+                    body = """{"data":{"Page":{"mediaList":[{"id":44,"status":"PAUSED","scoreRaw":80,"progress":4,"private":true,"startedAt":{"year":2024,"month":1,"day":2},"completedAt":{"year":2025,"month":3,"day":4},"media":{"chapters":12}}]}}}""",
+                ),
+            )
+            server.enqueue(MockResponse(body = """{"data":{"SaveMediaListEntry":{"id":44}}}"""))
+            val aniBound = aniList.bind(102, result.copy(remoteId = 12), hasReadChapters = true)
+            assertTrue(server.takeRequest().body!!.utf8().contains("mediaList"))
+            assertTrue(server.takeRequest().body!!.utf8().contains("\"listId\":44"))
+            assertEquals(44, aniBound.libraryId)
+            assertEquals(4.0, aniBound.lastChapterRead)
+            assertEquals(80.0, aniBound.score)
+            assertEquals(1, aniBound.status)
+            assertFalse(aniBound.private)
+            assertTrue(aniBound.startDate > 0)
+            assertTrue(aniBound.finishDate > 0)
+
+            val kitsu = registry.get(3) as TrackerProviderService
+            server.enqueue(MockResponse(body = """{"data":[{"id":"7"}]}"""))
+            server.enqueue(
+                MockResponse(
+                    body = """{"data":[{"id":"91","attributes":{"status":"on_hold","progress":4,"ratingTwenty":16,"private":true,"startedAt":"2024-01-02T03:04:05.006Z","finishedAt":"2025-03-04T05:06:07.008Z"}}],"included":[{"id":"13","attributes":{"chapterCount":12}}]}""",
+                ),
+            )
+            server.enqueue(MockResponse(body = """{"data":{"id":"91"}}"""))
+            val kitsuBound = kitsu.bind(103, result.copy(remoteId = 13), hasReadChapters = true)
+            server.takeRequest().also {
+                assertEquals("/api/edge/users", it.url.encodedPath)
+                assertEquals("true", it.url.queryParameter("filter[self]"))
+            }
+            assertEquals("13", server.takeRequest().url.queryParameter("filter[manga_id]"))
+            assertEquals("PATCH", server.takeRequest().method)
+            assertEquals(91, kitsuBound.libraryId)
+            assertEquals(4.0, kitsuBound.lastChapterRead)
+            assertEquals(8.0, kitsuBound.score)
+            assertEquals(1, kitsuBound.status)
+            assertFalse(kitsuBound.private)
+            assertTrue(kitsuBound.startDate > 0)
+            assertTrue(kitsuBound.finishDate > 0)
+
+            val shikimori = registry.get(4) as TrackerProviderService
+            server.enqueue(MockResponse(body = """{"id":14,"name":"Shiki","chapters":12}"""))
+            server.enqueue(
+                MockResponse(
+                    body = """[{"id":401,"status":"on_hold","score":8,"chapters":4}]""",
+                ),
+            )
+            server.enqueue(MockResponse(body = """{"id":401}"""))
+            val shikiBound = shikimori.bind(104, result.copy(remoteId = 14), hasReadChapters = true)
+            assertEquals("/api/mangas/14", server.takeRequest().url.encodedPath)
+            assertEquals("/api/v2/user_rates", server.takeRequest().url.encodedPath)
+            assertEquals("POST", server.takeRequest().method)
+            assertEquals(401, shikiBound.libraryId)
+            assertEquals(4.0, shikiBound.lastChapterRead)
+            assertEquals(8.0, shikiBound.score)
+            assertEquals(1, shikiBound.status)
+
+            val bangumi = registry.get(5) as TrackerProviderService
+            server.enqueue(
+                MockResponse(
+                    body = """{"type":3,"rate":8,"ep_status":4,"private":true,"subject":{"eps":12}}""",
+                ),
+            )
+            server.enqueue(MockResponse(code = 204))
+            val bangumiBound = bangumi.bind(105, result.copy(remoteId = 15), hasReadChapters = true)
+            server.takeRequest().also {
+                assertEquals("/v0/users/reader/collections/15", it.url.encodedPath)
+                assertEquals("no-cache", it.headers["Cache-Control"])
+            }
+            assertEquals("PATCH", server.takeRequest().method)
+            assertEquals(4.0, bangumiBound.lastChapterRead)
+            assertEquals(8.0, bangumiBound.score)
+            assertEquals(3, bangumiBound.status)
+            assertFalse(bangumiBound.private)
+
+            val mangaUpdates = registry.get(7) as TrackerProviderService
+            server.enqueue(MockResponse(body = """{"list_id":4,"status":{"chapter":4}}"""))
+            server.enqueue(MockResponse(body = """{"rating":8.0}"""))
+            val muBound = mangaUpdates.bind(106, result.copy(remoteId = 16), hasReadChapters = true)
+            assertEquals("/v1/lists/series/16", server.takeRequest().url.encodedPath)
+            assertEquals("/v1/series/16/rating", server.takeRequest().url.encodedPath)
+            assertEquals(4.0, muBound.lastChapterRead)
+            assertEquals(8.0, muBound.score)
+            assertEquals(4, muBound.status)
+        }
+    }
+
+    @Test
+    fun `existing completed and rereading statuses survive has read bind`() = runTest {
+        MockWebServer().also { it.start() }.use { server ->
+            val registry = registry(server, authenticatedBackend())
+            val result = tachiyomi.domain.track.service.TrackSearchResult(11, "Existing", 12)
+            val mal = registry.get(1) as TrackerProviderService
+
+            server.enqueue(
+                MockResponse(
+                    body = """{"num_chapters":12,"my_list_status":{"status":"completed","score":8,"num_chapters_read":12,"is_rereading":false}}""",
+                ),
+            )
+            server.enqueue(MockResponse(body = """{"status":"completed","score":8,"num_chapters_read":12}"""))
+            assertEquals(2, mal.bind(501, result, hasReadChapters = true).status)
+            server.takeRequest()
+            server.takeRequest()
+
+            server.enqueue(
+                MockResponse(
+                    body = """{"num_chapters":12,"my_list_status":{"status":"reading","score":8,"num_chapters_read":4,"is_rereading":true}}""",
+                ),
+            )
+            server.enqueue(MockResponse(body = """{"status":"reading","score":8,"num_chapters_read":4,"is_rereading":true}"""))
+            assertEquals(7, mal.bind(502, result, hasReadChapters = true).status)
+            server.takeRequest()
+            server.takeRequest()
+
+            val aniList = registry.get(2) as TrackerProviderService
+            server.enqueue(
+                MockResponse(
+                    body = """{"data":{"Page":{"mediaList":[{"id":44,"status":"REPEATING","scoreRaw":80,"progress":4,"private":true,"startedAt":{"year":2024,"month":1,"day":2},"completedAt":{"year":null,"month":null,"day":null},"media":{"chapters":12}}]}}}""",
+                ),
+            )
+            server.enqueue(MockResponse(body = """{"data":{"SaveMediaListEntry":{"id":44}}}"""))
+            val aniBound = aniList.bind(503, result.copy(remoteId = 12), hasReadChapters = true)
+            assertEquals(6, aniBound.status)
+            assertFalse(aniBound.private)
+            server.takeRequest()
+            server.takeRequest()
+
+            val shikimori = registry.get(4) as TrackerProviderService
+            server.enqueue(MockResponse(body = """{"id":14,"name":"Shiki","chapters":12}"""))
+            server.enqueue(MockResponse(body = """[{"id":401,"status":"rewatching","score":8,"chapters":4}]"""))
+            server.enqueue(MockResponse(body = """{"id":401}"""))
+            assertEquals(
+                6,
+                shikimori.bind(504, result.copy(remoteId = 14), hasReadChapters = true).status,
+            )
+            server.takeRequest()
+            server.takeRequest()
+            server.takeRequest()
+        }
+    }
+
+    @Test
+    fun `public bind creates fixed main initial status from has read chapters`() = runTest {
+        suspend fun verify(hasReadChapters: Boolean, expected: Map<Long, Long>) {
+            MockWebServer().also { it.start() }.use { server ->
+                val registry = registry(server, authenticatedBackend())
+                for ((id, expectedStatus) in expected) {
+                    when (id) {
+                        1L -> {
+                            server.enqueue(MockResponse(body = """{"num_chapters":12,"my_list_status":null}"""))
+                            server.enqueue(
+                                MockResponse(
+                                    body = """{"status":"${if (hasReadChapters) "reading" else "plan_to_read"}","score":0,"num_chapters_read":0}""",
+                                ),
+                            )
+                        }
+                        2L -> {
+                            server.enqueue(MockResponse(body = """{"data":{"Page":{"mediaList":[]}}}"""))
+                            server.enqueue(MockResponse(body = """{"data":{"SaveMediaListEntry":{"id":44}}}"""))
+                        }
+                        3L -> {
+                            server.enqueue(MockResponse(body = """{"data":[{"id":"7"}]}"""))
+                            server.enqueue(MockResponse(body = """{"data":[],"included":[]}"""))
+                            server.enqueue(MockResponse(body = """{"data":{"id":"91"}}"""))
+                        }
+                        4L -> {
+                            server.enqueue(MockResponse(body = """{"id":14,"name":"Shiki","chapters":12}"""))
+                            server.enqueue(MockResponse(body = "[]"))
+                            server.enqueue(MockResponse(body = """{"id":401}"""))
+                        }
+                        5L -> {
+                            server.enqueue(MockResponse(code = 404))
+                            server.enqueue(MockResponse(code = 202))
+                        }
+                        7L -> {
+                            server.enqueue(MockResponse(code = 404))
+                            server.enqueue(MockResponse(code = 200))
+                        }
+                    }
+                    val bound = (registry.get(id) as TrackerProviderService).bind(
+                        mangaId = 200 + id,
+                        result = tachiyomi.domain.track.service.TrackSearchResult(10 + id, "New $id", 12),
+                        hasReadChapters = hasReadChapters,
+                    )
+                    assertEquals(expectedStatus, bound.status, "provider $id")
+                    if (id == 7L) assertEquals(1.0, bound.lastChapterRead)
+                    repeat(
+                        when (id) {
+                            3L, 4L -> 3
+                            else -> 2
+                        },
+                    ) { server.takeRequest() }
+                }
+            }
+        }
+
+        verify(
+            hasReadChapters = true,
+            expected = mapOf(1L to 1L, 2L to 1L, 3L to 1L, 4L to 1L, 5L to 3L, 7L to 0L),
+        )
+        verify(
+            hasReadChapters = false,
+            expected = mapOf(1L to 6L, 2L to 5L, 3L to 5L, 4L to 5L, 5L to 1L, 7L to 1L),
+        )
+    }
+
+    @Test
+    fun `Kitsu null score clears stale value and updates as JSON null`() = runTest {
+        MockWebServer().also { it.start() }.use { server ->
+            val kitsu = registry(server, authenticatedBackend()).get(3)!!
+            server.enqueue(
+                MockResponse(
+                    body = """{"data":[{"id":"91","attributes":{"status":"current","progress":4,"ratingTwenty":null,"private":false,"startedAt":null,"finishedAt":null}}],"included":[{"id":"13","attributes":{"chapterCount":12}}]}""",
+                ),
+            )
+            server.enqueue(MockResponse(body = """{"data":{"id":"91"}}"""))
+
+            val updated = kitsu.update(
+                providerTrack().copy(trackerId = 3, remoteId = 13, libraryId = 91, score = 9.0),
+                TrackEdit(),
+            )
+
+            server.takeRequest()
+            val body = server.takeRequest().body!!.utf8()
+            assertEquals(0.0, updated.score)
+            assertTrue(body.contains("\"ratingTwenty\":null"), body)
+        }
+    }
+
+    @Test
+    fun `MAL invalid content and retry after use shared typed failures`() = runTest {
+        MockWebServer().also { it.start() }.use { server ->
+            val mal = registry(server, authenticatedBackend()).get(1) as TrackerProviderService
+            server.enqueue(MockResponse(body = """{"num_chapters":12,"my_list_status":null}"""))
+            server.enqueue(MockResponse(code = 400, body = """{"message":"Invalid content","error":"invalid_content"}"""))
+            val rejected = assertThrows(TrackerProviderException::class.java) {
+                kotlinx.coroutines.runBlocking {
+                    mal.bind(
+                        301,
+                        tachiyomi.domain.track.service.TrackSearchResult(11, "Unapproved", 12),
+                        hasReadChapters = false,
+                    )
+                }
+            }
+            assertEquals(TrackerProviderErrorKind.TITLE_NOT_APPROVED, rejected.kind)
+
+            listOf(429 to "37", 503 to "120").forEach { (status, retryAfter) ->
+                server.enqueue(
+                    MockResponse(
+                        code = status,
+                        headers = okhttp3.Headers.headersOf("Retry-After", retryAfter),
+                        body = "{}",
+                    ),
+                )
+                val failure = assertThrows(TrackerProviderException::class.java) {
+                    kotlinx.coroutines.runBlocking { mal.search("rate") }
+                }
+                assertEquals(retryAfter.toLong(), failure.retryAfterSeconds)
+                server.takeRequest()
+            }
+            listOf("-1", "later").forEach { retryAfter ->
+                server.enqueue(
+                    MockResponse(
+                        code = 429,
+                        headers = okhttp3.Headers.headersOf("Retry-After", retryAfter),
+                        body = "{}",
+                    ),
+                )
+                val failure = assertThrows(TrackerProviderException::class.java) {
+                    kotlinx.coroutines.runBlocking { mal.search("invalid retry") }
+                }
+                assertEquals(null, failure.retryAfterSeconds)
+                server.takeRequest()
+            }
+        }
+    }
+
+    @Test
+    fun `API OAuth endpoint separation and account sessions cannot cross`() = runTest {
+        MockWebServer().also { it.start() }.use { api ->
+            MockWebServer().also { it.start() }.use { oauth ->
+                val backend = MemoryBackend()
+                val first = registry(api, oauth, backend, "first")
+                val second = registry(api, oauth, backend, "second")
+                val firstAniList = service(first, "AniList")
+                val secondAniList = service(second, "AniList")
+                assertEquals(
+                    oauth.hostName,
+                    firstAniList.authorizationUrl("http://127.0.0.1/callback", "state").toHttpUrl().host,
+                )
+                api.enqueue(MockResponse(body = """{"data":{"Viewer":{"id":21,"mediaListOptions":{"scoreFormat":"POINT_100"}}}}"""))
+                firstAniList.finishOAuth("first-token", "http://127.0.0.1/callback")
+                assertTrue(api.takeRequest().body!!.utf8().contains("Viewer"))
+                api.enqueue(MockResponse(body = """{"data":{"Viewer":{"id":22,"mediaListOptions":{"scoreFormat":"POINT_100"}}}}"""))
+                secondAniList.finishOAuth("second-token", "http://127.0.0.1/callback")
+                assertTrue(api.takeRequest().body!!.utf8().contains("Viewer"))
+                api.enqueue(MockResponse(body = """{"data":{"Page":{"media":[]}}}"""))
+                api.enqueue(MockResponse(body = """{"data":{"Page":{"media":[]}}}"""))
+
+                firstAniList.search("one")
+                secondAniList.search("two")
+
+                assertEquals("Bearer first-token", api.takeRequest().headers["Authorization"])
+                assertEquals("Bearer second-token", api.takeRequest().headers["Authorization"])
+                assertTrue(backend.loadedKeys.contains("tracker.2.account.first.session.v1"))
+                assertTrue(backend.loadedKeys.contains("tracker.2.account.second.session.v1"))
+
+                oauth.enqueue(MockResponse(body = tokenFixture()))
+                service(first, "MyAnimeList").finishOAuth("code", "http://127.0.0.1/callback")
+                assertEquals("/v1/oauth2/token", oauth.takeRequest().url.encodedPath)
+
+                oauth.enqueue(MockResponse(body = tokenFixture()))
+                api.enqueue(MockResponse(body = """{"username":"reader"}"""))
+                service(first, "Bangumi").finishOAuth("code", "http://127.0.0.1/callback")
+                assertEquals("/oauth/access_token", oauth.takeRequest().url.encodedPath)
+                assertEquals("/v0/me", api.takeRequest().url.encodedPath)
+            }
+        }
+    }
+
+    @Test
+    fun `AniList legacy token lazily resolves Viewer before fixed bind lookup`() = runTest {
+        MockWebServer().also { it.start() }.use { server ->
+            val backend = MemoryBackend().apply {
+                save("tracker.2.account.default.session.v1", """{"accessToken":"legacy-token"}""".toCharArray())
+            }
+            val aniList = registry(server, backend).get(2) as TrackerProviderService
+            server.enqueue(MockResponse(body = """{"data":{"Viewer":{"id":22,"mediaListOptions":{"scoreFormat":"POINT_100"}}}}"""))
+            server.enqueue(MockResponse(body = """{"data":{"Page":{"mediaList":[]}}}"""))
+            server.enqueue(MockResponse(body = """{"data":{"SaveMediaListEntry":{"id":44}}}"""))
+
+            aniList.bind(
+                401,
+                tachiyomi.domain.track.service.TrackSearchResult(12, "Ani", 12),
+                hasReadChapters = false,
+            )
+
+            assertTrue(server.takeRequest().body!!.utf8().contains("Viewer"))
+            val lookup = server.takeRequest().body!!.utf8()
+            assertTrue(lookup.contains("\u0024userId"), lookup)
+            assertTrue(lookup.contains("\u0024mediaId"), lookup)
+            assertTrue(lookup.contains("\"userId\":22"), lookup)
+            assertTrue(lookup.contains("\"mediaId\":12"), lookup)
+            server.takeRequest()
+        }
+    }
+
+    @Test
+    fun `production model passes real chapter read state into public adapter`() = runTest {
+        for (hasRead in listOf(false, true)) {
+            MockWebServer().also { it.start() }.use { server ->
+                val registry = registry(server, authenticatedBackend())
+                val chapters = FakeChapterRepository().apply {
+                    seed(
+                        tachiyomi.domain.chapter.model.Chapter.create().copy(
+                            id = 1,
+                            mangaId = 42,
+                            read = hasRead,
+                        ),
+                    )
+                }
+                val tracks = MemoryTrackRepository()
+                val model = TrackingScreenModel(
+                    mangaId = 42,
+                    mangaTitle = "Manga",
+                    totalChapters = 12,
+                    repository = tracks,
+                    chapterRepository = chapters,
+                    registry = registry,
+                ).also { it.load() }
+                server.enqueue(MockResponse(body = """{"num_chapters":12,"my_list_status":null}"""))
+                server.enqueue(
+                    MockResponse(
+                        body = """{"status":"${if (hasRead) "reading" else "plan_to_read"}","score":0,"num_chapters_read":0}""",
+                    ),
+                )
+
+                model.bind(1, tachiyomi.domain.track.service.TrackSearchResult(11, "MAL", 12))
+
+                server.takeRequest()
+                val update = server.takeRequest().body!!.utf8()
+                assertTrue(
+                    update.contains("status=${if (hasRead) "reading" else "plan_to_read"}"),
+                    update,
+                )
+            }
         }
     }
 
@@ -249,7 +980,7 @@ class DesktopProviderTrackerServiceTest {
 
                 for (status in listOf(401, 403, 429, 500)) {
                     server.enqueue(MockResponse(code = status, body = "{}"))
-                    val error = assertThrows(mihon.desktop.tracking.api.TrackerHttpException::class.java) {
+                    val error = assertThrows(TrackerProviderException::class.java) {
                         kotlinx.coroutines.runBlocking { service.search("error") }
                     }
                     assertEquals(status, error.statusCode)
@@ -269,15 +1000,27 @@ class DesktopProviderTrackerServiceTest {
             when (raw.profile.value.authentication) {
                 TrackerAuthentication.OAUTH -> {
                     if (raw.profile.value.name == "AniList") {
+                        server.enqueue(
+                            MockResponse(
+                                body = """{"data":{"Viewer":{"id":22,"mediaListOptions":{"scoreFormat":"POINT_100"}}}}""",
+                            ),
+                        )
                         service.finishOAuth("access-secret", "http://127.0.0.1/callback")
+                        server.takeRequest()
                     } else {
                         server.enqueue(
                             MockResponse(
                                 body = """{"access_token":"access-secret","refresh_token":"refresh-secret","expires_in":3600,"token_type":"Bearer"}""",
                             ),
                         )
+                        if (raw.profile.value.name == "Shikimori") {
+                            server.enqueue(MockResponse(body = """{"id":77}"""))
+                        } else if (raw.profile.value.name == "Bangumi") {
+                            server.enqueue(MockResponse(body = """{"username":"reader"}"""))
+                        }
                         service.finishOAuth("code", "http://127.0.0.1/callback")
                         server.takeRequest()
+                        if (raw.profile.value.name in setOf("Shikimori", "Bangumi")) server.takeRequest()
                     }
                 }
                 TrackerAuthentication.USERNAME_PASSWORD -> {
@@ -307,6 +1050,40 @@ class DesktopProviderTrackerServiceTest {
         clientConfig = DesktopTrackerClientConfig.forTesting(),
     )
 
+    private fun registry(
+        api: MockWebServer,
+        oauth: MockWebServer,
+        backend: MemoryBackend,
+        account: String,
+    ) = DesktopTrackerServiceRegistry.production(
+        client = OkHttpClient(),
+        json = Json { ignoreUnknownKeys = true },
+        credentialStore = DesktopCredentialStore(backend),
+        account = account,
+        endpoints = DesktopTrackerEndpoints.all(api.url("/").toString()).copy(
+            myAnimeListOAuth = oauth.url("/").toString(),
+            aniListOAuth = oauth.url("/").toString(),
+            bangumiOAuth = oauth.url("/").toString(),
+        ),
+        clientConfig = DesktopTrackerClientConfig.forTesting(),
+    )
+
+    private fun authenticatedBackend() = MemoryBackend().apply {
+        mapOf(
+            1L to "mal",
+            2L to "22",
+            3L to "kitsu",
+            4L to "77",
+            5L to "reader",
+            7L to "mu",
+        ).forEach { (id, username) ->
+            save(
+                "tracker.$id.account.default.session.v1",
+                """{"accessToken":"access-secret","username":"$username"}""".toCharArray(),
+            )
+        }
+    }
+
     private fun service(registry: DesktopTrackerServiceRegistry, name: String) =
         registry.services.single { it.profile.value.name == name } as DesktopAuthenticatingTrackerService
 
@@ -317,6 +1094,41 @@ class DesktopProviderTrackerServiceTest {
         "Shikimori" -> "[]"
         "MangaUpdates" -> """{"results":[]}"""
         else -> """{"data":[]}"""
+    }
+
+    private fun providerTrack() = Track(
+        id = 1,
+        mangaId = 99,
+        trackerId = 1,
+        remoteId = 11,
+        libraryId = 44,
+        title = "MAL",
+        lastChapterRead = 9.0,
+        totalChapters = 10,
+        status = 1,
+        score = 0.0,
+        remoteUrl = "https://myanimelist.net/manga/11",
+        startDate = 0,
+        finishDate = 0,
+        private = false,
+    )
+
+    private class MemoryTrackRepository : TrackRepository {
+        private val rows = mutableListOf<Track>()
+
+        override suspend fun getTrackById(id: Long) = rows.firstOrNull { it.id == id }
+        override suspend fun getTracksByMangaId(mangaId: Long) = rows.filter { it.mangaId == mangaId }
+        override fun getTracksAsFlow() = kotlinx.coroutines.flow.flowOf(rows.toList())
+        override fun getTracksByMangaIdAsFlow(mangaId: Long) =
+            kotlinx.coroutines.flow.flowOf(rows.filter { it.mangaId == mangaId })
+        override suspend fun delete(mangaId: Long, trackerId: Long) {
+            rows.removeAll { it.mangaId == mangaId && it.trackerId == trackerId }
+        }
+        override suspend fun insert(track: Track) {
+            rows.removeAll { it.mangaId == track.mangaId && it.trackerId == track.trackerId }
+            rows += track
+        }
+        override suspend fun insertAll(tracks: List<Track>) = tracks.forEach { insert(it) }
     }
 
     private class MemoryBackend : CredentialBackend {

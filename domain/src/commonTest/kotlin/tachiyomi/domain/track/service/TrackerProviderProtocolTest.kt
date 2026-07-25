@@ -164,12 +164,24 @@ class TrackerProviderProtocolTest {
     @Test
     fun `session delete and provider errors return stable results before transport`() = runTest {
         val port =
-            FakePort(mutableListOf(), failure = TrackerProviderException(TrackerProviderErrorKind.RATE_LIMITED, 429))
+            FakePort(
+                mutableListOf(),
+                failure = TrackerProviderException(
+                    TrackerProviderErrorKind.RATE_LIMITED,
+                    429,
+                    retryAfterSeconds = 37,
+                ),
+            )
         val workflow = TrackerProviderWorkflow()
 
         val failure = workflow.execute(port, TrackerProviderRequest.Edit(track(), TrackEdit(status = 3)))
         assertEquals(
-            TrackerProviderError(TrackerProviderOperation.EDIT, TrackerProviderErrorKind.RATE_LIMITED, 429),
+            TrackerProviderError(
+                TrackerProviderOperation.EDIT,
+                TrackerProviderErrorKind.RATE_LIMITED,
+                429,
+                retryAfterSeconds = 37,
+            ),
             (failure as TrackerProviderResult.Failure).error,
         )
 
@@ -198,6 +210,53 @@ class TrackerProviderProtocolTest {
             assertEquals(kind, (invalid as TrackerProviderResult.Failure).error.kind)
             assertTrue(invalidPort.calls.isEmpty())
         }
+    }
+
+    @Test
+    fun `provider catalog preserves fixed main capabilities for public and enhanced trackers`() {
+        val configurations = (1L..9L).associateWith(TrackerProviderCatalog::configuration)
+
+        assertEquals(setOf(1L, 2L, 3L, 4L, 7L), configurations.filterValues { it.supportsDelete }.keys)
+        assertEquals(setOf(1L, 2L, 3L), configurations.filterValues { it.supportsReadingDates }.keys)
+        assertEquals(setOf(2L, 3L, 5L), configurations.filterValues { it.supportsPrivateTracking }.keys)
+        assertEquals(7L, configurations.getValue(1).rereadingStatus)
+        assertEquals(6L, configurations.getValue(2).rereadingStatus)
+        assertEquals(0L, configurations.getValue(7).readingStatus)
+        assertEquals(TrackerChapterReadPolicy.ALWAYS_READING, configurations.getValue(7).chapterReadPolicy)
+        assertEquals(
+            listOf(2L to 3L, 2L to 3L, 2L to 3L),
+            listOf(6L, 8L, 9L).map {
+                configurations.getValue(it).readingStatus to
+                    configurations.getValue(it).completionStatus
+            },
+        )
+        assertThrows(IllegalArgumentException::class.java) { TrackerProviderCatalog.configuration(10) }
+    }
+
+    @Test
+    fun `HTTP status mapping returns stable provider failures and result exception`() {
+        assertEquals(TrackerProviderErrorKind.AUTHENTICATION, trackerProviderHttpError(401).kind)
+        assertEquals(TrackerProviderErrorKind.AUTHENTICATION, trackerProviderHttpError(403).kind)
+        assertEquals(TrackerProviderErrorKind.NOT_FOUND, trackerProviderHttpError(404).kind)
+        assertEquals(TrackerProviderErrorKind.RATE_LIMITED, trackerProviderHttpError(429).kind)
+        assertEquals(TrackerProviderErrorKind.SERVER, trackerProviderHttpError(500).kind)
+        assertEquals(TrackerProviderErrorKind.UNKNOWN, trackerProviderHttpError(418).kind)
+        assertEquals(37, trackerProviderHttpError(429, retryAfterSeconds = 37).retryAfterSeconds)
+        assertEquals(120, trackerProviderHttpError(503, retryAfterSeconds = 120).retryAfterSeconds)
+        assertEquals(null, trackerProviderHttpError(429).retryAfterSeconds)
+
+        val failure = TrackerProviderResult.Failure(
+            TrackerProviderError(
+                TrackerProviderOperation.EDIT,
+                TrackerProviderErrorKind.RATE_LIMITED,
+                429,
+                retryAfterSeconds = 37,
+            ),
+        )
+        val exception = assertThrows(TrackerProviderResultException::class.java) { failure.trackOrThrow() }
+        assertEquals(TrackerProviderErrorKind.RATE_LIMITED, exception.error.kind)
+        assertEquals(37, exception.error.retryAfterSeconds)
+        assertTrue(exception.message!!.contains("RATE_LIMITED"))
     }
 
     private fun track() = Track(1, 2, 1, 3, 4, "Manga", 0.0, 10, 5, 0.0, "", 0, 0, false)

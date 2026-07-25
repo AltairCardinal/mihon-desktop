@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
+import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.ui.tracking.TrackingMessage
 import mihon.desktop.ui.tracking.TrackingMessageException
 import mihon.desktop.ui.tracking.TrackingScreenModel
@@ -168,6 +169,21 @@ class TrackingScreenModelTest {
             assertEquals(fallback, externalModel.state.value.error)
         }
     }
+
+    private fun TrackingScreenModel(
+        mangaId: Long?,
+        mangaTitle: String?,
+        totalChapters: Long?,
+        repository: TrackRepository,
+        registry: TrackerServiceRegistry,
+    ) = mihon.desktop.ui.tracking.TrackingScreenModel(
+        mangaId = mangaId,
+        mangaTitle = mangaTitle,
+        totalChapters = totalChapters,
+        repository = repository,
+        chapterRepository = FakeChapterRepository(),
+        registry = registry,
+    )
 
     private fun registry(vararg services: TrackerService) = object : TrackerServiceRegistry {
         override val services = services.toList()

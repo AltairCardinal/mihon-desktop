@@ -6,11 +6,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.TrackEdit
 import tachiyomi.domain.track.service.TrackSearchResult
 import tachiyomi.domain.track.service.TrackerProfile
+import tachiyomi.domain.track.service.TrackerProviderCatalog
+import tachiyomi.domain.track.service.TrackerProviderService
 import tachiyomi.domain.track.service.TrackerService
 import tachiyomi.domain.track.service.TrackerServiceRegistry
 
@@ -68,6 +71,7 @@ class TrackingScreenModel(
     val mangaTitle: String?,
     val totalChapters: Long?,
     private val repository: TrackRepository,
+    private val chapterRepository: ChapterRepository,
     private val registry: TrackerServiceRegistry,
 ) : ScreenModel {
     private val operationMutex = Mutex()
@@ -95,7 +99,15 @@ class TrackingScreenModel(
     suspend fun bind(trackerId: Long, result: TrackSearchResult): Track = operationMutex.withLock {
         val mangaId = mangaId ?: failArgument(TrackingMessage.MangaRequired)
         val service = service(trackerId).requireAvailableAndLoggedIn()
-        val persisted = service.bind(mangaId, result)
+        val persisted = if (
+            service is TrackerProviderService &&
+            service.configuration.id in TrackerProviderCatalog.publicProviderIds
+        ) {
+            val hasReadChapters = chapterRepository.getChapterByMangaId(mangaId).any { it.read }
+            service.bind(mangaId, result, hasReadChapters)
+        } else {
+            service.bind(mangaId, result)
+        }
         repository.insert(persisted)
         replaceTrack(trackerId, persisted, TrackingMessage.Bound)
         persisted

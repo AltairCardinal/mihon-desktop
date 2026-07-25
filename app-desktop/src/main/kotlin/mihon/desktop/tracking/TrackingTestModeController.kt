@@ -1,6 +1,7 @@
 package mihon.desktop.tracking
 
 import mihon.desktop.ui.tracking.TrackingScreenModel
+import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.TrackEdit
@@ -18,6 +19,7 @@ data class TrackingTestState(
 /** Test-mode adapter over the same repository, services, and validation used by production UI. */
 class TrackingTestModeController(
     private val repository: TrackRepository,
+    private val chapterRepository: ChapterRepository,
     private val registry: TrackerServiceRegistry,
 ) {
     private var model: TrackingScreenModel? = null
@@ -83,6 +85,7 @@ class TrackingTestModeController(
             mangaTitle = params["title"],
             totalChapters = params["totalChapters"]?.toLongOrNull(),
             repository = repository,
+            chapterRepository = chapterRepository,
             registry = registry,
         ).also {
             it.load()

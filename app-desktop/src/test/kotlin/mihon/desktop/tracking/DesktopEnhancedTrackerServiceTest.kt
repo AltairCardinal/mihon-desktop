@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test
 import tachiyomi.domain.track.service.EnhancedTrackerContext
 import tachiyomi.domain.track.service.EnhancedTrackerContextProvider
 import tachiyomi.domain.track.service.TrackEdit
+import tachiyomi.domain.track.service.TrackerProviderException
 
 class DesktopEnhancedTrackerServiceTest {
     @Test
@@ -158,11 +159,22 @@ class DesktopEnhancedTrackerServiceTest {
             for (id in listOf(6L, 8L, 9L)) {
                 val service = registry.services.single { it.profile.value.id == id }
                 for (status in listOf(401, 403, 429, 500)) {
-                    server.enqueue(MockResponse(code = status, body = "{}"))
-                    val error = assertThrows(mihon.desktop.tracking.api.TrackerHttpException::class.java) {
+                    server.enqueue(
+                        MockResponse(
+                            code = status,
+                            headers = if (status == 429) {
+                                okhttp3.Headers.headersOf("Retry-After", "19")
+                            } else {
+                                okhttp3.Headers.EMPTY
+                            },
+                            body = "{}",
+                        ),
+                    )
+                    val error = assertThrows(TrackerProviderException::class.java) {
                         kotlinx.coroutines.runBlocking { service.search(queries.getValue(id)) }
                     }
                     assertEquals(status, error.statusCode)
+                    assertEquals(if (status == 429) 19 else null, error.retryAfterSeconds)
                     server.takeRequest()
                 }
 

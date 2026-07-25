@@ -27,7 +27,10 @@ status: planned
 - [x] Task 145A：B1a ID 69 shared provider-neutral core
 - [x] Task 145B1：B1b-1 ID 69 Android provider adapter
 - [x] Task 145B2：B1b-2 ID 69 Android tracking UI actions
-- [ ] Task 146：B2 ID 69 Desktop provider adapters
+- [x] Task 146A：B2a ID 69 Desktop public provider lifecycle
+- [ ] Task 146B：B2b ID 69 Desktop production OAuth ingress
+- [ ] Task 146C：B2c ID 69 Desktop tracking edit and unbind capability
+- [ ] Task 146D：B2d ID 69 Desktop enhanced tracker auto-match
 - [ ] Task 147：B3 ID 70 Android delayed tracker sync
 - [ ] Task 148：B4 ID 70 Desktop delayed sync consumer
 - [ ] Task 149：C1 ID 87 Desktop language
@@ -230,29 +233,131 @@ Actions，并由行为测试直接执行 private/status/chapter/score、双 date
 最终 UI `2/2`、145B1 integration、父 parity `34/34`、Android compile、Spotless 与 diff-check
 GREEN；范围 3 files/272 touched，修复复审 `APPROVED`，P0/P1/P2/P3 均为 0。
 
-### Task 146 B2 ID 69 Desktop provider adapters
+### Task 146A B2a ID 69 Desktop public provider lifecycle
 
-**Risk axis:** desktop-tracker-provider-adapters
+**Risk axis:** desktop-public-tracker-lifecycle
 **Platform boundary:** shared+desktop
-**Estimated scope:** 8 files, 400 lines
+**Estimated scope:** 11 files, 790 lines
+
+**Scope correction:** 原 Task 146 首轮实现形成 10 文件、1145 touched 的 GREEN 草案；独立审查证明它同时混合
+public provider 远端记录生命周期、OAuth 平台入口、编辑/解绑 UI 与 enhanced auto-match 四条可独立验收的产品链。
+本拆分由实际架构与产品风险触发，不是文件/行数预算触发；保留现有草案，按 146A→146B→146C→146D
+依次收敛，每一批均有独立 production wiring 与行为测试。
 
 **Files:**
 - Modify: `domain/src/commonMain/kotlin/tachiyomi/domain/track/service/TrackerProviderProtocol.kt`
 - Modify: `domain/src/commonTest/kotlin/tachiyomi/domain/track/service/TrackerProviderProtocolTest.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopTrackerServiceRegistry.kt`
-- Modify: `app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopEnhancedTrackerServices.kt`
+- Delete after migration: `app-desktop/src/main/kotlin/mihon/desktop/tracking/api/TrackerHttpException.kt`
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/tracking/TrackingScreenModel.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/tracking/TrackingSettingsScreen.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/tracking/TrackingTestModeController.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopProviderTrackerServiceTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/tracking/TrackingScreenModelTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/tracking/TrackingTestModeControllerTest.kt`
+- Modify: `app-desktop/src/test/resources/parity/parity-manifest.json`（仅维护因 DI wiring 行数变化产生的既有证据行号）
+
+**User entry:** Desktop Manga detail → Tracking → 搜索并绑定 MAL、AniList、Kitsu、Shikimori、Bangumi 或 MangaUpdates。
+**Feedback:** 已存在远端记录时保留远端 ID、进度、评分、隐私与日期；新记录按是否已有阅读章节选择原版初始状态；provider 错误与退避时间可见且可重试。
+**RED:** 先固定 original Mihon 六家 provider 的 existing/new bind 分支、`hasReadChapters`、Kitsu `ratingTwenty=null`、MAL `invalid_content` 和 `Retry-After` 语义；API 与 OAuth 使用不同 MockWebServer，账户隔离至少覆盖两个账户；真实 ScreenModel 从 production chapter state 计算 `hasReadChapters`，不得由测试直接调用三参数接口冒充 wiring。
+**GREEN:** shared contract 表达现有/新增远端记录与退避元数据，Desktop adapter 只保留 HTTP、凭据、endpoint 和序列化差异；删除第二套 `TrackerHttpException`；ScreenModel 对 public provider 传递真实已读状态，对 enhanced/provider-neutral 服务保留原契约。
+**Mutation:** 绕过远端查询、丢失 remote library ID、把 Kitsu null 写成 0、丢弃 `Retry-After` 或把 MAL title rejection 映射为 UNKNOWN，确认对应测试精确失败后恢复。
+**Verification:** shared protocol、Desktop public provider、ScreenModel/TestMode production caller、父 parity contract、Spotless。
+**Desktop zero-regression:** 保留每 provider 独立 endpoint override、账户 session isolation、日志 redaction 与 MangaUpdates rating。
+
+**Execution evidence（已完成）：** fixed original 仅取
+`main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` 的六家 public provider
+`bind/find/update/refresh` 与 `AddTracks`；shared contract 新增保留 `Retry-After` 的统一错误模型及
+`hasReadChapters` bind 输入，Desktop production ScreenModel 通过 required `ChapterRepository`
+把真实章节已读状态传给 public provider，enhanced/provider-neutral 服务仍走原两参数契约。六家
+existing-first/new 分支分别保留原版的 completed、rereading、remote ID/library ID、进度、评分、
+private 与日期语义；AniList 持久化并迁移 Viewer ID，Kitsu 使用 `filter[self]=true`，Bangumi
+强制网络读取，Kitsu null score、MAL `invalid_content`、MangaUpdates rating 均有 production
+fixture。旧 `TrackerHttpException` 已删除；enhanced 在本提交中只迁移 shared HTTP/network error
+与非负 `Retry-After`，其余 146D WIP 保持未暂存。
+
+原始 RED `task146a-red` 精确编译失败于三参数 bind 与 retry metadata 缺失；GREEN
+`task146a-green-2` 后，`task146a-mutation-red` 以绕过 MAL existing 查询、保留 Kitsu stale
+score、丢弃 `Retry-After` 三项 mutation 精确 RED 并恢复。独立审查发现用户身份、真实 caller
+wiring、force-network 与分支/endpoint 测试缺口后，repair RED `task146a-repair-red` 精确失败于
+required chapter repository wiring；`task146a-repair-green-2` GREEN，真实 hasRead wiring
+mutation `task146a-repair-mutation-red` 精确 RED 后恢复。修复复审确认全部 provider 语义和
+146A/146D 暂存边界，仅指出 staged UI 构造参数错序；随后改为命名参数并由主代理重新验证。
+最终 `task146a-main-final-focused` 的 shared/provider/enhanced/ScreenModel/TestMode/UI caller
+49 项 GREEN；`task146a-main-gates-2` 的 ordinary parity 34 项与根 `spotlessCheck` GREEN；
+`git diff --cached --check`、工作树 `git diff --check` 均 clean。DI wiring 新增一行导致既有
+ID 59 evidence 行号由 825 漂移到 826，manifest 仅维护该位置，未改变 capability 状态。
+精确暂存为 15 files、1926 touched；超出初始估算来自六家 provider 的真实请求/响应 fixture、
+production caller 与审查补证，未按行数压缩或混入 146C/146D 产品行为。
+
+### Task 146B B2b ID 69 Desktop production OAuth ingress
+
+**Risk axis:** desktop-tracker-oauth-production-wiring
+**Platform boundary:** desktop-platform+desktop
+**Estimated scope:** 8 files, 520 lines
+
+**Files:**
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopTrackerServiceRegistry.kt`
+- Create: `app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopTrackerOAuthCallbackBroker.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/DesktopUiDependencies.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/Main.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/tracking/TrackingSettingsScreen.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopProviderTrackerServiceTest.kt`
+- Create: `app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopTrackerOAuthCallbackBrokerTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/DesktopAppRuntimeTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt`
+
+**User entry:** Desktop Settings → Tracking → 登录对应 provider。
+**Feedback:** 五家 OAuth provider 在真实 production wiring 中可登录；启动参数和运行中 `mihon://...-auth` 回调均只完成当前 state/provider 的一次登录，过期、错 provider 或重复回调显示安全失败且不进入普通导航。
+**RED:** 先让 production `DesktopAppModule` 解析五家可用 provider，并用独立 OAuth/API server 固定 authorization/token 路径；覆盖启动 URI、热 URI、query/fragment、错误 state、重复交付与 token redaction。
+**GREEN:** 使用 fixed original 的 provider client/callback 语义；既有 Desktop URI scheme/single-instance ingress 先交给 OAuth broker，未消费的 URI 才进入 `ExternalActionNavigator`。loopback server 只作为确有平台需求的 adapter，不再是五家 provider 的默认前提。
+**Mutation:** 清空 production client config、交换 API/OAuth base、让 OAuth URI落入普通导航、跳过 state 或重复消费，确认 production wiring/integration test 精确失败后恢复。
+**Verification:** provider、OAuth broker、Main ingress、DI wiring、父 parity contract、Spotless。
+**Desktop zero-regression:** 保留单实例、普通 deep link、search/backup/repository URI 行为；凭据和 token 不进入日志或普通导航反馈。
+
+### Task 146C B2c ID 69 Desktop tracking edit and unbind capability
+
+**Risk axis:** desktop-tracker-user-actions
+**Platform boundary:** desktop
+**Estimated scope:** 5 files, 460 lines
+
+**Files:**
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/tracking/TrackingScreenModel.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/tracking/TrackingSettingsScreen.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/tracking/TrackingScreenModelTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/tracking/TrackingSettingsKeyboardDialogTest.kt`
+- Modify: `app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopTrackingIntegrationTest.kt`
+
+**User entry:** Desktop Manga detail → Tracking → 编辑或删除绑定。
+**Feedback:** provider 支持时可编辑 status、score、chapter、private、开始日期与完成日期；本地解绑立即生效，远端删除是显式可选动作，远端失败/超时不阻塞本地结果并给出反馈。
+**RED:** 先覆盖 private/date 的真实 UI→ScreenModel→registry adapter 链；覆盖 logged-out、unavailable、远端挂起与远端失败时 local-first unbind；确认删除行只有一个 checkbox operable semantics，Space/Enter 每次只切换一次。
+**GREEN:** UI 穷尽 provider config 输出可编辑字段；先删除本地绑定并刷新可见状态，再独立尝试可选远端删除；`Row.toggleable(Role.Checkbox)` 配合只读 `Checkbox`。
+**Mutation:** 删除任一 edit 字段、恢复 remote-first 顺序、重新要求登录才能本地解绑或制造双 checkbox semantics，确认 production integration/UI test 精确失败后恢复。
+**Verification:** ScreenModel、mounted Compose dialog、真实 registry adapter integration、父 parity contract、Spotless。
+**Desktop zero-regression:** 默认仍仅解绑本地；危险远端删除必须显式勾选并保留失败反馈，不静默删除远端记录。
+
+### Task 146D B2d ID 69 Desktop enhanced tracker auto-match
+
+**Risk axis:** desktop-enhanced-tracker-auto-match
+**Platform boundary:** shared+desktop
+**Estimated scope:** 7 files, 520 lines
+
+**Files:**
+- Modify: `domain/src/commonMain/kotlin/tachiyomi/domain/track/service/TrackerProviderProtocol.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopEnhancedTrackerServices.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/tracking/DesktopEnhancedTrackerContextProvider.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/tracking/TrackingScreenModel.kt`
+- Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/tracking/TrackingSettingsScreen.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopEnhancedTrackerServiceTest.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/tracking/TrackingScreenModelTest.kt`
 
-**User entry:** Desktop Manga detail → Tracking 与 Settings → Tracking。
-**Feedback:** bind/search/edit/delete、enhanced auto-match、Suwayomi delete、Komga discovery、Kitsu/MangaUpdates request failure 均可见。
-**RED:** 先让 registry/enhanced services/ScreenModel 重放 B1 shared contract 和 provider-specific fixture。
-**GREEN:** 只在 Desktop adapter 保留 transport、DNS、credential 与 endpoint 差异。
-**Mutation:** 破坏 delete flag、discovery endpoint、request field 或 error mapping，确认测试失败后恢复。
-**Verification:** shared protocol、Desktop registry/enhanced/ScreenModel tests、父 parity contract、Spotless。
-**Desktop zero-regression:** 保留每 provider 独立凭据、session isolation、endpoint override、redaction 与 checkpoint。
+**User entry:** Desktop Manga detail → Tracking。
+**Feedback:** 当前 manga 的 source 被 Komga、Kavita 或 Suwayomi 接受时自动匹配并绑定；无匹配、认证失败与服务失败均显示稳定结果，仍可使用现有手动搜索。
+**RED:** 用真实 manga source/id/url 和 production context provider 固定 fixed original `accept(source)→match(manga)→bind`；覆盖 Komga、Kavita、Suwayomi 的成功、无匹配、认证失败及 Suwayomi remote-download delete flag。
+**GREEN:** shared/provider contract 承载 accept/match/bind 语义，Desktop 仅提供 source client、endpoint、credential 与 URL/ID adapter；ScreenModel 从真实 manga 详情上下文触发自动匹配并持久化结果。
+**Mutation:** 绕过 source accept、改用标题猜测、断开真实 manga URL、破坏 Komga discovery 或 Suwayomi delete flag，确认 production integration test 精确失败后恢复。
+**Verification:** shared protocol、enhanced provider/context、ScreenModel integration、父 parity contract、Spotless。
+**Desktop zero-regression:** 保留每 source 独立 client/session、restart checkpoint、手动搜索入口和 Desktop 独有远端下载删除选项；四批全部通过后才视为原 Task 146 完成。
 
 ### Task 147 B3 ID 70 delayed tracker sync
 

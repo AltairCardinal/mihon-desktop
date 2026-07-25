@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
+import mihon.desktop.domain.fakes.FakeChapterRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -22,7 +23,11 @@ class TrackingTestModeControllerTest {
     fun `test actions drive login search bind update and logout state`() = runTest {
         val repository = MemoryRepository()
         val service = TestService()
-        val controller = TrackingTestModeController(repository, registry(service))
+        val controller = TrackingTestModeController(
+            repository = repository,
+            chapterRepository = FakeChapterRepository(),
+            registry = registry(service),
+        )
 
         controller.execute("tracking_login", mapOf("trackerId" to "1", "username" to "user", "password" to "pass"))
         controller.execute("tracking_search", mapOf("trackerId" to "1", "mangaId" to "42", "title" to "Manga", "totalChapters" to "12"))
