@@ -23,7 +23,7 @@ status: planned
 - [x] Task 141：A1 ID 3 Android shared screen state
 - [x] Task 142：A2 ID 3 Desktop screen state consumer
 - [x] Task 143：A3 ID 32 Android extension repository wiring
-- [ ] Task 144：A4 ID 32 Desktop extension repository wiring
+- [x] Task 144：A4 ID 32 Desktop extension repository wiring
 - [ ] Task 145：B1 ID 69 Android provider-neutral core
 - [ ] Task 146：B2 ID 69 Desktop provider adapters
 - [ ] Task 147：B3 ID 70 Android delayed tracker sync
@@ -103,7 +103,8 @@ status: planned
 
 **Risk axis:** desktop-extension-repo-crud
 **Platform boundary:** shared+desktop
-**Estimated scope:** 5 files, 360 lines
+**Estimated scope:** 6 files, 380 lines
+**Scope correction:** 第 6 个文件仅为本进度计划持久化；产品与测试范围仍是原定 5 文件。
 
 **Files:**
 - Modify: `domain/src/commonMain/kotlin/mihon/domain/extensionrepo/service/ExtensionRepoService.kt`
@@ -111,6 +112,7 @@ status: planned
 - Modify: `app-desktop/src/main/kotlin/mihon/desktop/ui/settings/ExtensionRepoScreen.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/domain/ExtensionRepoUseCaseTest.kt`
 - Modify: `app-desktop/src/test/kotlin/mihon/desktop/ui/settings/ExtensionRepoScreenFeedbackTest.kt`
+- Modify: `docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md`
 
 **User entry:** Desktop Settings → Browse → Extension repositories。
 **Feedback:** pending/result、replace/delete 确认与失败原因立即显示并刷新列表。
@@ -119,6 +121,7 @@ status: planned
 **Mutation:** 断开 replace 或 delete wiring，确认 use-case/feedback tests 失败后恢复。
 **Verification:** shared contract、Desktop use-case/feedback、父 parity contract、Spotless。
 **Desktop zero-regression:** 保留 URL normalization、fingerprint replacement 和 partial failure。
+**Execution evidence（已完成）：** shared `ExtensionRepoService.Actions` 持有 create/replace/delete/execute 的唯一实现，实例 API 与 Desktop production coordinator 均委托该 contract；Desktop Screen 继续使用现有 DI interactors/repository，mutation 后仅由 repository Flow 刷新列表，并保留 replace/delete 确认、URL normalization、旧 fingerprint 原值和 partial failure。shared/desktop 缺失 API 的编译 RED 后，domain `3/3`、Desktop use-case `8/8`、feedback `3/3` GREEN；replace、delete、fingerprint continuity 与 failure 误分类 4 个 mutation 均精确 RED 后恢复，其中误分类断言为预期成功动作 `[CREATE, REPLACE, DELETE]`、实际 `[CREATE, REPLACE, REPLACE, DELETE]`。headless production Screen 渲染验证覆盖 create outcomes 与空列表 delete 回归；未启动 GUI。独立审查 `APPROVED`，P0/P1/P2/P3 均为 0；主代理提交前复验 domain `3/3`、Desktop Screen/use-case/feedback/DI `45/45`、父 governance `1/1`，均 0 failure/0 error/0 skipped；根 `spotlessCheck` GREEN。
 
 ### Task 145 B1 ID 69 provider neutral core
 

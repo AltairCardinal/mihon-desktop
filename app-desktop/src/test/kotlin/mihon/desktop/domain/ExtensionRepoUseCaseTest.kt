@@ -3,10 +3,14 @@ package mihon.desktop.domain
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import mihon.desktop.domain.fakes.FakeExtensionRepoRepository
+import mihon.desktop.ui.settings.DesktopExtensionRepoActions
 import mihon.domain.extensionrepo.interactor.DeleteExtensionRepo
 import mihon.domain.extensionrepo.interactor.GetExtensionRepo
 import mihon.domain.extensionrepo.interactor.ReplaceExtensionRepo
 import mihon.domain.extensionrepo.model.ExtensionRepo
+import mihon.domain.extensionrepo.service.ExtensionRepoAction
+import mihon.domain.extensionrepo.service.ExtensionRepoActionResult
+import mihon.domain.extensionrepo.service.ExtensionRepoCreateOutcome
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -104,5 +108,37 @@ class ExtensionRepoUseCaseTest {
         val result = getExtensionRepo.subscribeAll().first()
         assertEquals(1, result.size)
         assertEquals("https://b.com", result[0].baseUrl)
+    }
+
+    @Test
+    fun `desktop actions execute shared contract and repository flow refreshes only after committed mutations`() = runBlocking {
+        val events = mutableListOf<ExtensionRepoActionResult>()
+        var failReplace = false
+        val actions = DesktopExtensionRepoActions(
+            create = { url ->
+                repo.insertRepo(url, "Created", null, url, "FINGERPRINT")
+                ExtensionRepoCreateOutcome.Success
+            },
+            replace = {
+                if (failReplace) error("replace")
+                replaceExtensionRepo.await(it)
+            },
+            delete = deleteExtensionRepo::await,
+        )
+        actions.create("https://created.example", events::add)
+        val created = getExtensionRepo.subscribeAll().first().single()
+        val replacement = ExtensionRepo("https://new.example", "New", null, "https://new.example", "fingerprint")
+        actions.replace(created, replacement, events::add)
+        assertEquals("FINGERPRINT", getExtensionRepo.subscribeAll().first().single().signingKeyFingerprint)
+        failReplace = true
+        actions.replace(replacement.copy(signingKeyFingerprint = "FINGERPRINT"), replacement, events::add)
+        assertEquals("https://new.example", getExtensionRepo.subscribeAll().first().single().baseUrl)
+        actions.delete(replacement.baseUrl, events::add)
+        assertTrue(getExtensionRepo.subscribeAll().first().isEmpty())
+        assertEquals(
+            listOf(ExtensionRepoAction.CREATE, ExtensionRepoAction.REPLACE, ExtensionRepoAction.DELETE),
+            events.filterIsInstance<ExtensionRepoActionResult.Success>().map { it.action },
+        )
+        assertTrue(events.any { it is ExtensionRepoActionResult.Failure })
     }
 }

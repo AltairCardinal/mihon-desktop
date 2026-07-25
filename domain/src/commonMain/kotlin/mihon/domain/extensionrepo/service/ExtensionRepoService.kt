@@ -64,46 +64,78 @@ class ExtensionRepoService private constructor(
     suspend fun create(
         repo: String,
         operation: suspend (String) -> ExtensionRepoCreateOutcome,
-    ): ExtensionRepoActionResult {
-        return when (val result = runCatching { operation(repo) }.getOrElse { return failure() }) {
-            ExtensionRepoCreateOutcome.Success -> ExtensionRepoActionResult.Success(ExtensionRepoAction.CREATE)
-            ExtensionRepoCreateOutcome.InvalidUrl -> validation(ExtensionRepoValidation.INVALID_URL)
-            ExtensionRepoCreateOutcome.AlreadyExists -> validation(ExtensionRepoValidation.ALREADY_EXISTS)
-            is ExtensionRepoCreateOutcome.Conflict ->
-                ExtensionRepoActionResult.FingerprintConflict(result.oldRepo, result.newRepo)
-            ExtensionRepoCreateOutcome.RepositoryUnavailable -> failure(ExtensionRepoFailure.REPOSITORY_UNAVAILABLE)
-            ExtensionRepoCreateOutcome.InvalidRepository -> failure(ExtensionRepoFailure.INVALID_REPOSITORY)
-            ExtensionRepoCreateOutcome.Failure -> failure()
-        }
-    }
+    ) = Actions.create(repo, operation)
+
+    suspend fun execute(
+        action: ExtensionRepoAction,
+        publish: (ExtensionRepoActionResult) -> Unit,
+        operation: suspend () -> ExtensionRepoActionResult,
+    ) = Actions.execute(action, publish, operation)
 
     suspend fun replace(
         oldRepo: ExtensionRepo,
         newRepo: ExtensionRepo,
         operation: suspend (ExtensionRepo) -> Unit,
-    ): ExtensionRepoActionResult {
-        if (!oldRepo.signingKeyFingerprint.equals(newRepo.signingKeyFingerprint, ignoreCase = true)) {
-            return validation(ExtensionRepoValidation.FINGERPRINT_CHANGED, ExtensionRepoAction.REPLACE)
-        }
-        return runCatching { operation(newRepo.copy(signingKeyFingerprint = oldRepo.signingKeyFingerprint)) }.fold(
-            onSuccess = { ExtensionRepoActionResult.Success(ExtensionRepoAction.REPLACE) },
-            onFailure = { failure(action = ExtensionRepoAction.REPLACE) },
-        )
-    }
+    ) = Actions.replace(oldRepo, newRepo, operation)
 
     suspend fun delete(repo: String, operation: suspend (String) -> Unit) =
-        runCatching { operation(repo) }.fold(
-            onSuccess = { ExtensionRepoActionResult.Success(ExtensionRepoAction.DELETE) },
-            onFailure = { failure(action = ExtensionRepoAction.DELETE) },
-        )
+        Actions.delete(repo, operation)
 
-    private fun validation(reason: ExtensionRepoValidation, action: ExtensionRepoAction = ExtensionRepoAction.CREATE) =
-        ExtensionRepoActionResult.Validation(action, reason)
-    private fun failure(
-        reason: ExtensionRepoFailure = ExtensionRepoFailure.UNKNOWN,
-        action: ExtensionRepoAction = ExtensionRepoAction.CREATE,
-    ) =
-        ExtensionRepoActionResult.Failure(action, reason)
+    companion object Actions {
+        suspend fun create(
+            repo: String,
+            operation: suspend (String) -> ExtensionRepoCreateOutcome,
+        ): ExtensionRepoActionResult {
+            return when (val result = runCatching { operation(repo) }.getOrElse { return failure() }) {
+                ExtensionRepoCreateOutcome.Success -> ExtensionRepoActionResult.Success(ExtensionRepoAction.CREATE)
+                ExtensionRepoCreateOutcome.InvalidUrl -> validation(ExtensionRepoValidation.INVALID_URL)
+                ExtensionRepoCreateOutcome.AlreadyExists -> validation(ExtensionRepoValidation.ALREADY_EXISTS)
+                is ExtensionRepoCreateOutcome.Conflict ->
+                    ExtensionRepoActionResult.FingerprintConflict(result.oldRepo, result.newRepo)
+                ExtensionRepoCreateOutcome.RepositoryUnavailable -> failure(ExtensionRepoFailure.REPOSITORY_UNAVAILABLE)
+                ExtensionRepoCreateOutcome.InvalidRepository -> failure(ExtensionRepoFailure.INVALID_REPOSITORY)
+                ExtensionRepoCreateOutcome.Failure -> failure()
+            }
+        }
+
+        suspend fun execute(
+            action: ExtensionRepoAction,
+            publish: (ExtensionRepoActionResult) -> Unit,
+            operation: suspend () -> ExtensionRepoActionResult,
+        ): ExtensionRepoActionResult {
+            publish(ExtensionRepoActionResult.Pending(action))
+            return operation().also(publish)
+        }
+
+        suspend fun replace(
+            oldRepo: ExtensionRepo,
+            newRepo: ExtensionRepo,
+            operation: suspend (ExtensionRepo) -> Unit,
+        ): ExtensionRepoActionResult {
+            if (!oldRepo.signingKeyFingerprint.equals(newRepo.signingKeyFingerprint, ignoreCase = true)) {
+                return validation(ExtensionRepoValidation.FINGERPRINT_CHANGED, ExtensionRepoAction.REPLACE)
+            }
+            return runCatching { operation(newRepo.copy(signingKeyFingerprint = oldRepo.signingKeyFingerprint)) }.fold(
+                onSuccess = { ExtensionRepoActionResult.Success(ExtensionRepoAction.REPLACE) },
+                onFailure = { failure(action = ExtensionRepoAction.REPLACE) },
+            )
+        }
+
+        suspend fun delete(repo: String, operation: suspend (String) -> Unit) =
+            runCatching { operation(repo) }.fold(
+                onSuccess = { ExtensionRepoActionResult.Success(ExtensionRepoAction.DELETE) },
+                onFailure = { failure(action = ExtensionRepoAction.DELETE) },
+            )
+
+        private fun validation(
+            reason: ExtensionRepoValidation,
+            action: ExtensionRepoAction = ExtensionRepoAction.CREATE,
+        ) = ExtensionRepoActionResult.Validation(action, reason)
+        private fun failure(
+            reason: ExtensionRepoFailure = ExtensionRepoFailure.UNKNOWN,
+            action: ExtensionRepoAction = ExtensionRepoAction.CREATE,
+        ) = ExtensionRepoActionResult.Failure(action, reason)
+    }
 
     sealed interface FetchRepoDetailsResult {
         data class Success(val repo: ExtensionRepo) : FetchRepoDetailsResult

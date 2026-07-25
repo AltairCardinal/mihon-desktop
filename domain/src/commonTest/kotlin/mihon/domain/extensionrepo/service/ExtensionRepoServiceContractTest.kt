@@ -16,8 +16,10 @@ class ExtensionRepoServiceContractTest {
             ExtensionRepoCreateOutcome.Success to success(ExtensionRepoAction.CREATE),
             ExtensionRepoCreateOutcome.InvalidUrl to validation(ExtensionRepoValidation.INVALID_URL),
             ExtensionRepoCreateOutcome.AlreadyExists to validation(ExtensionRepoValidation.ALREADY_EXISTS),
-            ExtensionRepoCreateOutcome.RepositoryUnavailable to failure(ExtensionRepoFailure.REPOSITORY_UNAVAILABLE),
-            ExtensionRepoCreateOutcome.InvalidRepository to failure(ExtensionRepoFailure.INVALID_REPOSITORY),
+            ExtensionRepoCreateOutcome.RepositoryUnavailable to
+                failure(ExtensionRepoFailure.REPOSITORY_UNAVAILABLE, ExtensionRepoAction.CREATE),
+            ExtensionRepoCreateOutcome.InvalidRepository to
+                failure(ExtensionRepoFailure.INVALID_REPOSITORY, ExtensionRepoAction.CREATE),
             ExtensionRepoCreateOutcome.Failure to failure(ExtensionRepoFailure.UNKNOWN, ExtensionRepoAction.CREATE),
         )
         cases.forEach { (outcome, expected) ->
@@ -47,6 +49,16 @@ class ExtensionRepoServiceContractTest {
         val failedDelete = service.delete(old.baseUrl) { error("delete") }
         assertEquals(failure(ExtensionRepoFailure.UNKNOWN, ExtensionRepoAction.DELETE), failedDelete)
         assertEquals(changedResult, service.replace(old, changed) { error("replace") })
+    }
+
+    @Test
+    fun `execute publishes pending before the terminal shared result`() = runTest {
+        val events = mutableListOf<ExtensionRepoActionResult>()
+        val service = ExtensionRepoService()
+        val result = service.execute(ExtensionRepoAction.DELETE, events::add) {
+            success(ExtensionRepoAction.DELETE)
+        }
+        assertEquals(listOf(ExtensionRepoActionResult.Pending(ExtensionRepoAction.DELETE), result), events)
     }
 
     private fun success(action: ExtensionRepoAction) = ExtensionRepoActionResult.Success(action)

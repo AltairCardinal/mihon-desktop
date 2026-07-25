@@ -64,6 +64,12 @@ import mihon.domain.extensionrepo.interactor.GetExtensionRepo
 import mihon.domain.extensionrepo.interactor.ReplaceExtensionRepo
 import mihon.domain.extensionrepo.interactor.UpdateExtensionRepo
 import mihon.domain.extensionrepo.model.ExtensionRepo
+import mihon.domain.extensionrepo.service.ExtensionRepoAction
+import mihon.domain.extensionrepo.service.ExtensionRepoActionResult
+import mihon.domain.extensionrepo.service.ExtensionRepoCreateOutcome
+import mihon.domain.extensionrepo.service.ExtensionRepoFailure
+import mihon.domain.extensionrepo.service.ExtensionRepoService
+import mihon.domain.extensionrepo.service.ExtensionRepoValidation
 import tachiyomi.i18n.MR
 import java.util.Locale
 import kotlin.time.Duration.Companion.milliseconds
@@ -83,6 +89,30 @@ internal val LocalExtensionRepoUrlOpener = staticCompositionLocalOf<ExtensionRep
 }
 
 /** 扩展仓库管理页面：添加/删除/刷新仓库。 */
+internal class DesktopExtensionRepoActions(
+    private val create: suspend (String) -> ExtensionRepoCreateOutcome,
+    private val replace: suspend (ExtensionRepo) -> Unit,
+    private val delete: suspend (String) -> Unit,
+) {
+    suspend fun create(url: String, publish: (ExtensionRepoActionResult) -> Unit) =
+        ExtensionRepoService.execute(ExtensionRepoAction.CREATE, publish) {
+            ExtensionRepoService.create(url, create)
+        }
+
+    suspend fun replace(
+        oldRepo: ExtensionRepo,
+        newRepo: ExtensionRepo,
+        publish: (ExtensionRepoActionResult) -> Unit,
+    ) = ExtensionRepoService.execute(ExtensionRepoAction.REPLACE, publish) {
+        ExtensionRepoService.replace(oldRepo, newRepo, replace)
+    }
+
+    suspend fun delete(url: String, publish: (ExtensionRepoActionResult) -> Unit) =
+        ExtensionRepoService.execute(ExtensionRepoAction.DELETE, publish) {
+            ExtensionRepoService.delete(url, delete)
+        }
+}
+
 data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
     internal fun initialCreatePrompt(): RepoDialog.Create? = initialUrl?.let(RepoDialog::Create)
     internal fun freshCreatePrompt() = RepoDialog.Create()
@@ -101,10 +131,18 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
         val deleteExtensionRepo = LocalDesktopUiDependencies.current.deleteExtensionRepo
         val replaceExtensionRepo = LocalDesktopUiDependencies.current.replaceExtensionRepo
         val updateExtensionRepo = LocalDesktopUiDependencies.current.updateExtensionRepo
+        val actions = remember(createExtensionRepo, deleteExtensionRepo, replaceExtensionRepo) {
+            DesktopExtensionRepoActions(
+                create = { createExtensionRepo.await(it).toDesktopOutcome() },
+                replace = replaceExtensionRepo::await,
+                delete = deleteExtensionRepo::await,
+            )
+        }
 
         val repos by getExtensionRepo.subscribeAll().collectAsState(initial = emptyList())
         var dialog by remember { mutableStateOf<RepoDialog?>(initialCreatePrompt()) }
-        var pendingRepoUrl by remember { mutableStateOf<String?>(null) }
+        var actionResult by remember { mutableStateOf<ExtensionRepoActionResult?>(null) }
+        var actionDetail by remember { mutableStateOf<String?>(null) }
         val addRepoTitle = DesktopSettingsAnchorResources.extensionRepoAdd.localized()
         val deleteRepoTitle = DesktopSettingsAnchorResources.extensionRepoDelete.localized()
         val anchors = buildList {
@@ -114,7 +152,7 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
                     DesktopSettingsLazyAnchor(
                         deleteRepoTitle,
                         "delete-${repo.baseUrl}",
-                        index + if (pendingRepoUrl == null) 0 else 1,
+                        index + if (actionResult == null) 0 else 1,
                     ),
                 )
             }
@@ -136,17 +174,13 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
                     onDismiss = { dialog = null },
                     onCreate = { url ->
                         dialog = null
-                        pendingRepoUrl = url
+                        actionDetail = url
                         scope.launch {
-                            when (val result = createExtensionRepo.await(url)) {
-                                CreateExtensionRepo.Result.Success -> Unit
-                                CreateExtensionRepo.Result.RepoAlreadyExists ->
-                                    extensionRepoCreateMessage(result, Locale.getDefault())?.let(::showSnackbar)
-                                is CreateExtensionRepo.Result.DuplicateFingerprint ->
+                            when (val result = actions.create(url) { actionResult = it }) {
+                                is ExtensionRepoActionResult.FingerprintConflict ->
                                     dialog = RepoDialog.Conflict(result.oldRepo, result.newRepo)
-                                else -> extensionRepoCreateMessage(result, Locale.getDefault())?.let(::showSnackbar)
+                                else -> extensionRepoActionMessage(result, Locale.getDefault()).let(::showSnackbar)
                             }
-                            pendingRepoUrl = null
                         }
                     },
                 )
@@ -157,7 +191,11 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
                     onDismiss = { dialog = null },
                     onDelete = {
                         dialog = null
-                        scope.launch { deleteExtensionRepo.await(d.baseUrl) }
+                        actionDetail = d.baseUrl
+                        scope.launch {
+                            val result = actions.delete(d.baseUrl) { actionResult = it }
+                            showSnackbar(extensionRepoActionMessage(result, Locale.getDefault()))
+                        }
                     },
                 )
             }
@@ -168,7 +206,11 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
                     onDismiss = { dialog = null },
                     onReplace = {
                         dialog = null
-                        scope.launch { replaceExtensionRepo.await(d.newRepo) }
+                        actionDetail = d.newRepo.baseUrl
+                        scope.launch {
+                            val result = actions.replace(d.oldRepo, d.newRepo) { actionResult = it }
+                            showSnackbar(extensionRepoActionMessage(result, Locale.getDefault()))
+                        }
                     },
                 )
             }
@@ -203,8 +245,10 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
             },
             snackbarHost = { SnackbarHost(snackbarHostState) },
         ) { padding ->
-            val pendingUrl = pendingRepoUrl
-            if (repos.isEmpty() && pendingUrl == null) {
+            val result = actionResult
+            val showEmpty = repos.isEmpty() &&
+                (result == null || result is ExtensionRepoActionResult.Success && result.action == ExtensionRepoAction.DELETE)
+            if (showEmpty) {
                 Box(
                     modifier = Modifier.fillMaxSize().padding(padding),
                     contentAlignment = Alignment.Center,
@@ -229,9 +273,9 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    pendingUrl?.let { url ->
-                        item(key = "pending-repo-$url") {
-                            PendingRepoCard(url = url)
+                    result?.let {
+                        item(key = "repo-action-${it.action}") {
+                            RepoActionCard(result = it, detail = actionDetail)
                         }
                     }
                     items(repos, key = { it.baseUrl }) { repo ->
@@ -260,17 +304,36 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
 internal fun extensionRepoPendingTitle(@Suppress("UNUSED_PARAMETER") url: String, locale: Locale = Locale.US): String =
     MR.strings.desktop_extension_repo_pending.localized(locale)
 
-internal fun extensionRepoCreateMessage(result: CreateExtensionRepo.Result, locale: Locale = Locale.US): String? {
+internal fun extensionRepoActionMessage(result: ExtensionRepoActionResult, locale: Locale = Locale.US): String {
     return when (result) {
-        CreateExtensionRepo.Result.InvalidUrl -> MR.strings.desktop_extension_repo_https_required.localized(locale)
-        CreateExtensionRepo.Result.RepositoryUnavailable -> MR.strings.desktop_extension_repo_unavailable.localized(locale)
-        CreateExtensionRepo.Result.InvalidRepository -> MR.strings.desktop_extension_repo_invalid_metadata.localized(locale)
-        CreateExtensionRepo.Result.RepoAlreadyExists -> MR.strings.error_repo_exists.localized(locale)
-        CreateExtensionRepo.Result.Error -> MR.strings.desktop_extension_repo_add_failed.localized(locale)
-        CreateExtensionRepo.Result.Success,
-        is CreateExtensionRepo.Result.DuplicateFingerprint,
-        -> null
+        is ExtensionRepoActionResult.Pending -> MR.strings.desktop_extension_repo_pending.localized(locale)
+        is ExtensionRepoActionResult.Success -> MR.strings.completed.localized(locale)
+        is ExtensionRepoActionResult.FingerprintConflict -> MR.strings.action_replace_repo_title.localized(locale)
+        is ExtensionRepoActionResult.Validation -> when (result.reason) {
+            ExtensionRepoValidation.INVALID_URL -> MR.strings.desktop_extension_repo_https_required.localized(locale)
+            ExtensionRepoValidation.ALREADY_EXISTS -> MR.strings.error_repo_exists.localized(locale)
+            ExtensionRepoValidation.FINGERPRINT_CHANGED -> MR.strings.action_replace_repo_title.localized(locale)
+        }
+        is ExtensionRepoActionResult.Failure -> when (result.reason) {
+            ExtensionRepoFailure.REPOSITORY_UNAVAILABLE -> MR.strings.desktop_extension_repo_unavailable.localized(locale)
+            ExtensionRepoFailure.INVALID_REPOSITORY -> MR.strings.desktop_extension_repo_invalid_metadata.localized(locale)
+            ExtensionRepoFailure.UNKNOWN -> if (result.action == ExtensionRepoAction.CREATE) {
+                MR.strings.desktop_extension_repo_add_failed.localized(locale)
+            } else {
+                MR.strings.unknown_error.localized(locale)
+            }
+        }
     }
+}
+
+private fun CreateExtensionRepo.Result.toDesktopOutcome() = when (this) {
+    CreateExtensionRepo.Result.Success -> ExtensionRepoCreateOutcome.Success
+    CreateExtensionRepo.Result.InvalidUrl -> ExtensionRepoCreateOutcome.InvalidUrl
+    CreateExtensionRepo.Result.RepoAlreadyExists -> ExtensionRepoCreateOutcome.AlreadyExists
+    is CreateExtensionRepo.Result.DuplicateFingerprint -> ExtensionRepoCreateOutcome.Conflict(oldRepo, newRepo)
+    CreateExtensionRepo.Result.RepositoryUnavailable -> ExtensionRepoCreateOutcome.RepositoryUnavailable
+    CreateExtensionRepo.Result.InvalidRepository -> ExtensionRepoCreateOutcome.InvalidRepository
+    CreateExtensionRepo.Result.Error -> ExtensionRepoCreateOutcome.Failure
 }
 
 @Composable
@@ -287,8 +350,9 @@ internal fun ExtensionRepoAddButton(
 }
 
 @Composable
-private fun PendingRepoCard(
-    url: String,
+private fun RepoActionCard(
+    result: ExtensionRepoActionResult,
+    detail: String?,
     modifier: Modifier = Modifier,
 ) {
     ElevatedCard(modifier = modifier.fillMaxWidth()) {
@@ -298,14 +362,12 @@ private fun PendingRepoCard(
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            CircularProgressIndicator()
+            if (result is ExtensionRepoActionResult.Pending) CircularProgressIndicator()
             Column(modifier = Modifier.padding(start = 12.dp)) {
-                Text(text = extensionRepoPendingTitle(url, Locale.getDefault()), style = MaterialTheme.typography.titleSmall)
-                Text(
-                    text = url,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.outline,
-                )
+                Text(text = extensionRepoActionMessage(result, Locale.getDefault()), style = MaterialTheme.typography.titleSmall)
+                detail?.let {
+                    Text(text = it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                }
             }
         }
     }
