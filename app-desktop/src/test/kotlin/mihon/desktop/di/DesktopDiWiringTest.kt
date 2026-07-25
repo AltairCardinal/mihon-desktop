@@ -6,11 +6,13 @@ import androidx.compose.ui.ImageComposeScene
 import java.awt.GraphicsEnvironment
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -98,8 +100,23 @@ import mihon.desktop.platform.DesktopCredentialStore
 import mihon.desktop.platform.CredentialBackend
 import mihon.desktop.platform.CredentialNamespace
 import mihon.desktop.tracking.DesktopTrackerSyncScheduler
+import mihon.desktop.tracking.DesktopNetworkConnectivity
 import mihon.desktop.tracking.DesktopTrackerOAuthCallbackBroker
 import tachiyomi.domain.track.interactor.ReadingProgressTrackSync
+import tachiyomi.domain.track.model.Track
+import tachiyomi.domain.track.service.TrackEdit
+import tachiyomi.domain.track.service.TrackSearchResult
+import tachiyomi.domain.track.service.TrackerAuthentication
+import tachiyomi.domain.track.service.TrackerProfile
+import tachiyomi.domain.track.service.TrackerProviderCatalog
+import tachiyomi.domain.track.service.TrackerProviderError
+import tachiyomi.domain.track.service.TrackerProviderErrorKind
+import tachiyomi.domain.track.service.TrackerProviderOperation
+import tachiyomi.domain.track.service.TrackerProviderRequest
+import tachiyomi.domain.track.service.TrackerProviderResult
+import tachiyomi.domain.track.service.TrackerProviderService
+import tachiyomi.domain.track.service.TrackerProviderSession
+import tachiyomi.domain.track.service.TrackerService
 import tachiyomi.domain.source.service.AuthenticatedCookie
 import tachiyomi.domain.source.service.AuthenticatedSession
 import tachiyomi.domain.source.service.AuthenticatedSessionCommitter
@@ -542,6 +559,121 @@ class DesktopDiWiringTest {
         } finally {
             context.closeAndJoin()
         }
+    }
+
+    @Test
+    fun `full DI reader tracker failure survives restart and runtime automatically cleans it`(@TempDir tempDir: File) = runBlocking {
+        val registry = MutableTestTrackerRegistry()
+        val preferences = DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}"))
+        val first = initDesktopDIForTest(
+            tempDir,
+            preferences,
+            startDownloadWorker = false,
+            trackerServiceRegistry = registry,
+            trackerConnectivity = DesktopNetworkConnectivity { true },
+        )
+        lateinit var manga: Manga
+        try {
+            assertNotNull(Injekt.get<ReaderProgressTracker>())
+            assertNotNull(Injekt.get<ReadingProgressTrackSync>())
+            assertNotNull(Injekt.get<DesktopTrackerSyncScheduler>())
+            manga = Injekt.get<MangaRepository>().insertNetworkManga(
+                listOf(Manga.create().copy(source = 9, url = "/tracked", title = "Tracked manga")),
+            ).single()
+            Injekt.get<ChapterRepository>().addAll(
+                listOf(Chapter.create().copy(mangaId = manga.id, url = "/chapter", name = "Chapter")),
+            )
+            val chapter = Injekt.get<ChapterRepository>().getChapterByMangaId(manga.id).single()
+            Injekt.get<TrackRepository>().insert(
+                Track(0, manga.id, 9, 90, null, manga.title, 0.0, 10, 1, 0.0, "", 0, 0, false),
+            )
+            registry.service.fail = true
+
+            Injekt.get<ReaderProgressTracker>().track(
+                eventId = "di-tracker-restart",
+                chapterId = chapter.id,
+                lastPageRead = 9,
+                totalPages = 10,
+                sourceId = manga.source,
+                mangaId = manga.id,
+                chapterNumber = 4.0,
+            )
+
+            val queued = Injekt.get<DesktopTrackerSyncScheduler>().getItems().single()
+            assertEquals(4.0, queued.lastChapterRead)
+            assertEquals(0, queued.attempt)
+        } finally {
+            first.closeAndJoin()
+        }
+
+        registry.service.fail = false
+        val restarted = initDesktopDIForTest(
+            tempDir,
+            preferences,
+            startDownloadWorker = false,
+            trackerServiceRegistry = registry,
+            trackerConnectivity = DesktopNetworkConnectivity { true },
+        )
+        try {
+            val scheduler = Injekt.get<DesktopTrackerSyncScheduler>()
+            val trackRepository = Injekt.get<TrackRepository>()
+            Injekt.get<DesktopAppRuntime>().start()
+
+            withTimeout(5_000) {
+                while (
+                    scheduler.getItems().isNotEmpty() ||
+                    trackRepository.getTracksByMangaId(manga.id).single().lastChapterRead != 4.0
+                ) {
+                    delay(10)
+                }
+            }
+
+            assertTrue(scheduler.getItems().isEmpty())
+            assertEquals(
+                4.0,
+                trackRepository.getTracksByMangaId(manga.id).single().lastChapterRead,
+            )
+            assertEquals(2, registry.service.updateCalls)
+        } finally {
+            restarted.closeAndJoin()
+        }
+    }
+
+    private class MutableTestTrackerRegistry : TrackerServiceRegistry {
+        val service = MutableTestTrackerService()
+        override val services: List<TrackerService> = listOf(service)
+    }
+
+    private class MutableTestTrackerService : TrackerProviderService {
+        override val profile = MutableStateFlow(
+            TrackerProfile(9, "Test tracker", TrackerAuthentication.OAUTH, true),
+        )
+        override val statuses = emptyList<Pair<Long, String>>()
+        override val scores = emptyList<Double>()
+        override val configuration = TrackerProviderCatalog.configuration(9)
+        override val session get() = TrackerProviderSession(9, true)
+        var fail = false
+        var updateCalls = 0
+        override suspend fun search(query: String) = emptyList<TrackSearchResult>()
+        override suspend fun bind(mangaId: Long, result: TrackSearchResult): Track = error("unused")
+        override suspend fun update(track: Track, edit: TrackEdit): Track = error("provider workflow must be used")
+        override suspend fun execute(request: TrackerProviderRequest): TrackerProviderResult {
+            require(request is TrackerProviderRequest.Edit)
+            updateCalls++
+            return if (fail) {
+                TrackerProviderResult.Failure(
+                    TrackerProviderError(
+                        operation = TrackerProviderOperation.EDIT,
+                        kind = TrackerProviderErrorKind.SERVER,
+                    ),
+                )
+            } else {
+                TrackerProviderResult.Success(
+                    request.track.copy(lastChapterRead = requireNotNull(request.edit.lastChapterRead)),
+                )
+            }
+        }
+        override suspend fun logout() = Unit
     }
 
     private fun sourceJar(): ByteArray {

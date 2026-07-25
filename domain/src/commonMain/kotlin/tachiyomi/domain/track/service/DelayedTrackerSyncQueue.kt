@@ -12,7 +12,12 @@ data class DelayedTrackerSyncItem(
     val trackerId: Long,
     val lastChapterRead: Double,
     val failureReason: String? = null,
+    val eventId: String? = null,
+    val attempt: Int = 0,
 )
+
+fun DelayedTrackerSyncItem.mergeHighest(candidate: DelayedTrackerSyncItem): DelayedTrackerSyncItem =
+    if (candidate.lastChapterRead >= lastChapterRead) candidate else this
 
 interface DelayedTrackerSyncPersistence {
     suspend fun getItems(): List<DelayedTrackerSyncItem>
@@ -71,8 +76,8 @@ class DelayedTrackerSyncQueue(
         return report(items.size, outcomes)
     }
 
-    suspend fun markRetryExhausted() {
-        persistence.getItems().forEach {
+    suspend fun markRetryExhausted(trackId: Long? = null) {
+        persistence.getItems().filter { trackId == null || it.trackId == trackId }.forEach {
             if (it.failureReason == null) {
                 persistence.upsertMax(it.copy(failureReason = RETRY_EXHAUSTED))
             }

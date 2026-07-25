@@ -208,6 +208,9 @@ internal suspend fun initDesktopDIForTest(
         { namespace -> OsCredentialBackend(namespace = namespace) },
     profileDirectoryOpener: (File) -> Boolean = mihon.desktop.ui.settings.DesktopDirectoryOpener::open,
     nativeSharePort: DesktopNativeSharePort = defaultDesktopNativeSharePort(),
+    trackerServiceRegistry: TrackerServiceRegistry? = null,
+    trackerConnectivity: mihon.desktop.tracking.DesktopNetworkConnectivity =
+        mihon.desktop.tracking.JvmDesktopNetworkConnectivity,
 ): DesktopTestDIContext {
     activeDesktopTestDIContext?.closeAndJoin()
     patchInjekt()
@@ -217,7 +220,7 @@ internal suspend fun initDesktopDIForTest(
     initDesktopConfigurationForTest(appDir, preferenceStore)
     val networkHelper = initNetworkLayer(paths, preferenceStore, browserOpener)
     val handler = initDataLayer(paths)
-    initExtensionLayer(paths, networkHelper, handler, artifactAuthenticator)
+    initExtensionLayer(paths, networkHelper, handler, artifactAuthenticator, trackerServiceRegistry)
     initDomainLayer(handler)
     initUILayer(
         paths,
@@ -231,6 +234,7 @@ internal suspend fun initDesktopDIForTest(
         credentialBackendFactory,
         profileDirectoryOpener,
         nativeSharePort,
+        trackerConnectivity,
     )
     return DesktopTestDIContext(
         handler = handler as JvmDatabaseHandler,
@@ -453,8 +457,9 @@ internal fun initExtensionLayer(
     networkHelper: DesktopNetworkHelper,
     handler: DatabaseHandler,
     artifactAuthenticator: DesktopArtifactAuthenticator = DefaultDesktopArtifactAuthenticator,
+    trackerServiceRegistry: TrackerServiceRegistry? = null,
 ) {
-    registerDesktopExtension(paths, networkHelper, handler, artifactAuthenticator)
+    registerDesktopExtension(paths, networkHelper, handler, artifactAuthenticator, trackerServiceRegistry)
 }
 
 private fun registerDesktopExtension(
@@ -462,6 +467,7 @@ private fun registerDesktopExtension(
     networkHelper: DesktopNetworkHelper,
     handler: DatabaseHandler,
     artifactAuthenticator: DesktopArtifactAuthenticator,
+    trackerServiceRegistry: TrackerServiceRegistry?,
 ) {
     val extensionRepoRepository = Injekt.get<ExtensionRepoRepository>()
     val extensionApi = DesktopExtensionApi(
@@ -498,7 +504,7 @@ private fun registerDesktopExtension(
     val extensionController = SourceExtensionTestModeController(extensionScreenModel)
     Injekt.addSingleton(extensionController)
     SourceExtensionTestModeBridge.install(extensionController)
-    registerDesktopTracking(sourceManager, networkHelper.client)
+    registerDesktopTracking(sourceManager, networkHelper.client, trackerServiceRegistry)
     Injekt.addSingleton<SourceRepository>(DesktopSourceRepository(sourceManager, handler))
     val extensionRepoService = ExtensionRepoService(Injekt.get<NetworkHelper>(), Injekt.get<Json>())
     Injekt.addSingleton(extensionRepoService)
@@ -509,7 +515,7 @@ private fun registerDesktopExtension(
     Injekt.addSingleton(UpdateExtensionRepo(extensionRepoRepository, extensionRepoService))
 }
 
-private fun registerDesktopTracking(sourceManager: SourceManager, client: OkHttpClient) {
+private fun registerDesktopTracking(sourceManager: SourceManager, client: OkHttpClient, trackerServiceRegistry: TrackerServiceRegistry? = null) {
     val trackRepository = Injekt.get<TrackRepository>()
     val chapterRepository = Injekt.get<ChapterRepository>()
     val credentialStore = DesktopCredentialStore()
@@ -517,7 +523,7 @@ private fun registerDesktopTracking(sourceManager: SourceManager, client: OkHttp
     val enhancedTrackerContexts = mihon.desktop.tracking.DesktopEnhancedTrackerContextProvider().apply {
         attach(sourceManager)
     }
-    val trackerRegistry = DesktopTrackerServiceRegistry.production(
+    val trackerRegistry = trackerServiceRegistry ?: DesktopTrackerServiceRegistry.production(
         client = client,
         json = Injekt.get<Json>(),
         credentialStore = credentialStore,
@@ -609,6 +615,8 @@ internal fun initUILayer(
         { namespace -> OsCredentialBackend(namespace = namespace) },
     profileDirectoryOpener: (File) -> Boolean = mihon.desktop.ui.settings.DesktopDirectoryOpener::open,
     nativeSharePort: DesktopNativeSharePort = defaultDesktopNativeSharePort(),
+    trackerConnectivity: mihon.desktop.tracking.DesktopNetworkConnectivity =
+        mihon.desktop.tracking.JvmDesktopNetworkConnectivity,
 ) {
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val passphraseVerifier = DesktopPassphraseVerifier(
@@ -709,7 +717,8 @@ internal fun initUILayer(
     )
 
     lateinit var trackSync: ReadingProgressTrackSync
-    val trackerSyncScheduler = DesktopTrackerSyncScheduler(Injekt.get<DesktopTaskScheduler>()) { trackSync }
+    val trackerSyncScheduler =
+        DesktopTrackerSyncScheduler(Injekt.get<DesktopTaskScheduler>(), connectivity = trackerConnectivity) { trackSync }
     trackSync = SyncReadingProgressWithTrack(
         repository = Injekt.get<TrackRepository>(),
         registry = Injekt.get<TrackerServiceRegistry>(),

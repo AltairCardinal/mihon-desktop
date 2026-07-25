@@ -32,7 +32,7 @@ status: planned
 - [x] Task 146C：B2c ID 69 Desktop tracking edit and unbind capability
 - [x] Task 146D：B2d ID 69 Desktop enhanced tracker auto-match
 - [x] Task 147：B3 ID 70 Android delayed tracker sync
-- [ ] Task 148：B4 ID 70 Desktop delayed sync consumer
+- [x] Task 148：B4 ID 70 Desktop delayed sync consumer
 - [ ] Task 149：C1 ID 87 Desktop language
 
 ### Task 141 A1 ID 3 shared screen state
@@ -450,6 +450,11 @@ contract `34/34` 与根 `spotlessCheck` 全绿；Android 首次重跑仅因 shel
 **Risk axis:** desktop-delayed-tracker-sync
 **Platform boundary:** shared+desktop
 **Estimated scope:** 6 files, 400 lines
+**Scope correction:** 实际范围为 10 files / +1043/-50。除计划内 shared queue、Desktop scheduler
+与 Reader 测试外，为保证跨实例文件事务和真实 production wiring，内聚增加
+`DesktopTaskScheduler`、shared `SyncReadingProgressWithTrack`、`DesktopAppModule`、
+DI wiring test，以及一条因 AppModule 行移动产生的 manifest evidence 行号维护；未扩张到
+相邻 capability。
 
 **Files:**
 - Modify: `domain/src/commonMain/kotlin/tachiyomi/domain/track/service/DelayedTrackerSyncQueue.kt`
@@ -466,6 +471,17 @@ contract `34/34` 与根 `spotlessCheck` 全绿；Android 首次重跑仅因 shel
 **Mutation:** 断开 queue 注入、restart restore 或 cleanup，确认 scheduler/tracker tests 失败后恢复。
 **Verification:** shared queue、Desktop scheduler/tracker、父 parity contract、Spotless。
 **Desktop zero-regression:** 保留 restart checkpoint、取消隔离、caller cancellation 后完成与失败原因持久化。
+
+**Evidence:** network gate、attempt 0..3、跨 scheduler 原子 merge/cleanup、new/legacy malformed
+隔离与完整 DI restart 均先取得精确 RED；修复后 Desktop 使用真实 JVM connectivity gate、
+共享文件锁内单事务和 shared `queue.drain` consumer。补充 mutation/受控并发证明 missing
+track 与已完成进度会清理、logged-out/provider failure 每次 invocation 恰增一次、读取前替换
+的新 checkpoint 会计次而读取后替换不会误计，并证明移除
+`DesktopAppRuntime → trackerSyncScheduler` production wiring 时测试精确超时失败。唯一独立
+修复复审最终 `APPROVED`（P0/P1/P2 均为 0）。主代理最终重跑 Reader/scheduler/真实 DI
+focused、shared queue/interactor、父 parity contract `34/34` 与根 `spotlessCheck` 全绿；
+manifest 仅更新一条证据行号，未改变 capability 状态。用户 `DownloadQueueScreen.kt` 与环境
+噪声均未进入提交。
 
 ### Task 149 C1 ID 87 Desktop language
 

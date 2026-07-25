@@ -85,7 +85,7 @@ class DelayedTrackerSyncQueueTest {
         )
 
         queue.drain(tracks::get)
-        queue.markRetryExhausted()
+        queue.markRetryExhausted(trackId = 3)
 
         assertEquals(listOf(3L), store.items.map { it.trackId })
         assertEquals("RETRY_EXHAUSTED", store.items.single().failureReason)

@@ -75,11 +75,14 @@ class FileTaskCheckpointStore(
 
     fun load(): List<StoredTask> = lock.withLock { loadUnlocked() }
 
-    fun update(transform: (MutableList<StoredTask>) -> Unit) = lock.withLock {
+    fun <R> transaction(transform: (MutableList<StoredTask>) -> R): R = lock.withLock {
         val tasks = loadUnlocked().toMutableList()
-        transform(tasks)
+        val result = transform(tasks)
         saveUnlocked(tasks)
+        result
     }
+
+    fun update(transform: (MutableList<StoredTask>) -> Unit) = transaction(transform)
 
     fun diagnostics(): List<String> = lock.withLock { diagnosticMessages.toList() }
 
@@ -127,6 +130,8 @@ class FileTaskCheckpointStore(
 }
 
 class DesktopTaskScheduler(private val store: FileTaskCheckpointStore) {
+    fun <R> transaction(transform: (MutableList<StoredTask>) -> R): R = store.transaction(transform)
+
     fun register(task: BackgroundTask): StoredTask {
         var result: StoredTask? = null
         store.update { tasks ->
