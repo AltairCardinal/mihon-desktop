@@ -18,7 +18,7 @@ status: planned
 - ID10 只有在 Android 与 Desktop production consumer 都会因断开 shared core 而测试失败后，才能从 `WIRED` 提升为 `VERIFIED`。
 - 任一任务超过预算或发现相邻产品缺陷时停止并修订本计划，不把新 capability、UI redesign 或架构治理静默并入。
 
-- [ ] Task 161：shared task lifecycle core
+- [x] Task 161：shared task lifecycle core
 - [ ] Task 162：Android WorkManager consumer
 - [ ] Task 163：Desktop scheduler consumer and closeout
 
@@ -47,6 +47,8 @@ status: planned
 **Feedback:** shared core 输出 typed transition/result；Android 与 Desktop 在后续任务保持各自 already-running、progress、success、failure 与 cancelled 反馈。
 
 **Desktop zero-regression:** 本任务不改 Desktop；checkpoint、workset、partial failure、startup recovery 和 teardown 行为全部保持现状。
+
+**Execution evidence（已完成）：** 本批在既有 `mihon.domain.task` 模型旁增加无平台依赖的 `BackgroundTaskLifecycle` reducer、typed event/outcome/rejection 与 occurrence；register 以 idempotency key 返回既有 occurrence，start/checkpoint/complete/fail/cancel 只接受固定原版允许的状态转换，终态不可重复或改写。RED 精确失败于 lifecycle API/reducer 缺失；GREEN focused `11/11`。Completed→Running、重复 terminal 与同 key 新 occurrence 三项 mutation 均精确失败并恢复。首审唯一 P1 指出 Pending cancel 偏离固定原版 `LibraryUpdateJob.stop()` 只取消 RUNNING 的语义；唯一修复 RED 仅失败于 cancel matrix，GREEN 后 Cancel 仅允许 Running→Cancelled，复审 APPROVED（P0/P1/P2 `0/0/0`）。`:domain:spotlessCheck` 与 `git diff --check` 通过；没有修改 Android/Desktop adapter、IO、coroutine、通知、checkpoint writer 或用户脏文件。下一项为 Task 162。
 
 ### Task 162 Android WorkManager consumer
 
