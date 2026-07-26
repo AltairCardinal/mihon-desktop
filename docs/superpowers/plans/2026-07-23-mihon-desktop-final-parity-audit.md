@@ -526,6 +526,13 @@ shared lifecycle RED→GREEN、三项 mutation、唯一审查修复与复审，�
 Task 17 保持活动；下一恢复位置为 Task 16C，随后按 Task 16D 顺序执行。Task 16A 审计已明确
 无需生成产品 child plan。
 
+Task 16C 的 Task 164 已完成 current Android extension repository response adapter：固定原版
+`GET → awaitSuccess → parseAs` 链路保持不变，HTTP 状态、`Retry-After` 与 malformed payload
+委托 shared `NetworkErrorMapper`。focused `10/10`、主门禁 Android `19/19`、三项断连
+mutation、唯一审查修复复审、parity governance 及 Spotless 均通过；ID8 的 current Android
+缺边已关闭但保留 `SHARED`，由 Task 169 统一完成
+五角色与终态收口。下一恢复位置为 Task 165。
+
 ### Task 18：让 64 项最终 closure 与架构 gate 变绿
 
 **Risk axis:** terminal-parity-gate

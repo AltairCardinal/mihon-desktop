@@ -15,6 +15,7 @@ import eu.kanade.tachiyomi.extension.util.AndroidInstallLocation
 import eu.kanade.tachiyomi.extension.util.DefaultAndroidInstallGateway
 import eu.kanade.tachiyomi.extension.util.ExtensionInstallReceiver
 import eu.kanade.tachiyomi.extension.util.ExtensionInstaller
+import eu.kanade.tachiyomi.network.AndroidNetworkResponseAdapter
 import eu.kanade.tachiyomi.util.lang.Hash
 import io.mockk.every
 import io.mockk.just
@@ -78,6 +79,7 @@ class ExtensionInstallCoordinatorWiringTest {
                     json = Json { ignoreUnknownKeys = true },
                     repositories = { listOf(repository) },
                     catalogService = ExtensionCatalogService(),
+                    responseAdapter = AndroidNetworkResponseAdapter(),
                 )
                 val packageManager = mockk<PackageManager> {
                     every { getPackageInfo(any<String>(), any<Int>()) } throws PackageManager.NameNotFoundException()
@@ -143,6 +145,7 @@ class ExtensionInstallCoordinatorWiringTest {
                 json = Json { ignoreUnknownKeys = true },
                 repositories = { listOf(repository) },
                 catalogService = ExtensionCatalogService(),
+                responseAdapter = AndroidNetworkResponseAdapter(),
             )
             val available = api.findExtensions().single()
             val port = RecordingInstallPort()

@@ -176,9 +176,12 @@
     "statusDecision": {
       "task": "Task 16C",
       "decision": "REMEDIATE",
-      "followUp": "docs/superpowers/plans/2026-07-24-task-16c-ui-dependency-boundary-closure.md#task-164-android-network-error-mapper-consumer",
-      "gap": "Compiled Desktop wiring proves MangaDexSource uses the shared mapper and DesktopAppModule owns the client adapter, but current Android has no compiled production edge or behavior test consuming NetworkErrorMapper.",
+      "followUp": "docs/superpowers/plans/2026-07-24-task-16c-ui-dependency-boundary-closure.md#task-169-compiled-boundary-closeout",
+      "gap": "Task 164 closed the current Android mapper edge through the production extension repository response adapter; Task 169 still owns final five-role and terminal-status closeout after the Desktop UI boundary work.",
       "behaviorMethods": {
+        "app/src/test/java/eu/kanade/tachiyomi/extension/api/ExtensionApiSharedCatalogTest.kt": ["Android raw repository responses execute shared network error mapper", "Android malformed repository executes shared payload parser", "Android no arg API resolves AppModule adapter for raw repository response"],
+        "app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/SourceSharedQueryWiringTest.kt": ["Android app DI resolves production shared network response adapter"],
+        "app/src/test/java/eu/kanade/tachiyomi/extension/ExtensionInstallCoordinatorWiringTest.kt": ["catalog manager coordinator and default gateway install the catalog artifact unchanged", "catalog repository identity digest and download URL reach Android install request unchanged"],
         "app-desktop/src/test/kotlin/mihon/desktop/network/NetworkErrorContractTest.kt": ["real source parses successful response", "429 preserves retry after"],
         "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt": ["compiled production UI dependency graph matches finite violation inventory", "platform adapter allowlist requires compiled edges and nonblank reasons"]
       }
@@ -186,8 +189,8 @@
     "architectureBoundaryAudit": {
       "task": "Task 16C",
       "mechanism": "JDK ToolProvider jdeps over compiled production and fixture classes",
-      "requiredCompiledEdges": ["mihon.desktop.source.MangaDexSource -> mihon.domain.network.NetworkErrorMapperKt", "mihon.desktop.di.DesktopAppModuleKt -> mihon.desktop.platform.DesktopNetworkHelper"],
-      "missingRequiredEdges": ["CURRENT_ANDROID -> mihon.domain.network.NetworkErrorMapperKt"],
+      "requiredCompiledEdges": ["eu.kanade.tachiyomi.network.AndroidNetworkResponseAdapter -> mihon.domain.network.NetworkErrorMapperKt", "mihon.desktop.source.MangaDexSource -> mihon.domain.network.NetworkErrorMapperKt", "mihon.desktop.di.DesktopAppModuleKt -> mihon.desktop.platform.DesktopNetworkHelper"],
+      "missingRequiredEdges": [],
       "forbiddenCompiledEdges": [],
       "permittedPlatformAdapters": [{"edge": "mihon.desktop.di.DesktopAppModuleKt -> mihon.desktop.platform.DesktopNetworkHelper", "reason": "The Desktop composition root owns JVM HTTP clients, cookie persistence and browser integration outside UI."}],
       "mutationEvidence": ["app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt#compiled fixtures reject a forbidden manager and a disconnected use case", "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt#platform adapter allowlist requires compiled edges and nonblank reasons"],
@@ -205,7 +208,9 @@
       "domain/src/commonMain/kotlin/mihon/domain/network/NetworkErrorMapper.kt"
     ],
     "currentAndroidConsumerPaths": [
-      "app/src/main/java/eu/kanade/tachiyomi/di/AppModule.kt"
+      "app/src/main/java/eu/kanade/tachiyomi/di/AppModule.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/network/AndroidNetworkResponseAdapter.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/extension/api/ExtensionApi.kt"
     ],
     "desktopConsumerAdapterPaths": [
       "app-desktop/src/main/kotlin/mihon/desktop/source/MangaDexSource.kt",
@@ -214,9 +219,12 @@
     ],
     "deviations": [
       { "classification": "PLATFORM_ADAPTER", "description": "DesktopNetworkHelper and DesktopAppModule replace Android context, cookie and WebView integration with JVM and browser client wiring; NetworkErrorContractTest does not protect those client adapters." },
-      { "classification": "MIGRATION_OUTPUT", "description": "The shared NetworkErrorMapper is proven through the production Desktop MangaDexSource for authentication, throttling, server and malformed-payload failures; current Android mapper consumption is not claimed." }
+      { "classification": "MIGRATION_OUTPUT", "description": "The shared NetworkErrorMapper is proven through both the production Desktop MangaDexSource and current Android ExtensionApi response adapter for authentication, throttling, server and malformed-payload failures." }
     ],
     "protectionTests": [
+      "app/src/test/java/eu/kanade/tachiyomi/extension/api/ExtensionApiSharedCatalogTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/SourceSharedQueryWiringTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/extension/ExtensionInstallCoordinatorWiringTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/network/NetworkErrorContractTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt"
     ],

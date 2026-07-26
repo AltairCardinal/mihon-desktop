@@ -3461,7 +3461,7 @@ class DesktopProductCapabilityContractTest {
         val childPlan = "docs/superpowers/plans/2026-07-24-task-16c-ui-dependency-boundary-closure.md"
         val expected =
             mapOf(
-                8 to Triple("SHARED", "$childPlan#task-164-android-network-error-mapper-consumer", 0),
+                8 to Triple("SHARED", "$childPlan#task-169-compiled-boundary-closeout", 0),
                 95 to Triple("WIRED", "$childPlan#task-165-library-ui-use-case-boundary", 32),
             )
         val guardTest = "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt"
@@ -3493,12 +3493,37 @@ class DesktopProductCapabilityContractTest {
         val networkAudit = items.getValue(8).jsonObject.getValue("architectureBoundaryAudit").jsonObject
         assertEquals(
             setOf(
+                "eu.kanade.tachiyomi.network.AndroidNetworkResponseAdapter -> mihon.domain.network.NetworkErrorMapperKt",
                 "mihon.desktop.source.MangaDexSource -> mihon.domain.network.NetworkErrorMapperKt",
                 "mihon.desktop.di.DesktopAppModuleKt -> mihon.desktop.platform.DesktopNetworkHelper",
             ),
             networkAudit.strings("requiredCompiledEdges"),
         )
-        assertEquals(setOf("CURRENT_ANDROID -> mihon.domain.network.NetworkErrorMapperKt"), networkAudit.strings("missingRequiredEdges"))
+        assertTrue(networkAudit.strings("missingRequiredEdges").isEmpty())
+        val network = items.getValue(8).jsonObject
+        assertTrue(
+            setOf(
+                "app/src/main/java/eu/kanade/tachiyomi/di/AppModule.kt",
+                "app/src/main/java/eu/kanade/tachiyomi/network/AndroidNetworkResponseAdapter.kt",
+                "app/src/main/java/eu/kanade/tachiyomi/extension/api/ExtensionApi.kt",
+            ).all(network.getValue("currentAndroidConsumerPaths").jsonArray.map { it.jsonPrimitive.content }::contains),
+        )
+        val androidMapperTest = "app/src/test/java/eu/kanade/tachiyomi/extension/api/ExtensionApiSharedCatalogTest.kt"
+        val androidDiTest = "app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/SourceSharedQueryWiringTest.kt"
+        assertTrue(setOf(androidMapperTest, androidDiTest).all(network.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content }::contains))
+        val networkBehavior = network.getValue("statusDecision").jsonObject.getValue("behaviorMethods").jsonObject
+        assertEquals(
+            setOf(
+                "Android raw repository responses execute shared network error mapper",
+                "Android malformed repository executes shared payload parser",
+                "Android no arg API resolves AppModule adapter for raw repository response",
+            ),
+            networkBehavior.getValue(androidMapperTest).jsonArray.map { it.jsonPrimitive.content }.toSet(),
+        )
+        assertEquals(
+            setOf("Android app DI resolves production shared network response adapter"),
+            networkBehavior.getValue(androidDiTest).jsonArray.map { it.jsonPrimitive.content }.toSet(),
+        )
 
         val moduleAudit = items.getValue(95).jsonObject.getValue("architectureBoundaryAudit").jsonObject
         assertEquals(
@@ -3518,8 +3543,13 @@ class DesktopProductCapabilityContractTest {
         val metadata = markdownFrontmatter(child)
         assertEquals("Task 16C", metadata["parent-task"])
         assertFalse("active-task" in metadata, "child progress must derive from its first unchecked checkbox")
-        val pendingOverview = Regex("""(?m)^- \[ ] Task (\d+)[：:]""").findAll(child.substringBefore("### Task 164")).map { it.groupValues[1] }.toList()
-        assertEquals("planned" to (164..169).map { it.toString() }, metadata["status"] to pendingOverview)
+        val overview =
+            Regex("""(?m)^- \[([ xX])\] Task (\d+)[：:]""").findAll(child.substringBefore("### Task 164"))
+                .associate { it.groupValues[2] to it.groupValues[1].lowercase() }
+        assertEquals((164..169).map(Int::toString).toSet(), overview.keys)
+        assertEquals("x", overview.getValue("164"))
+        assertEquals((165..169).map(Int::toString), overview.filterValues { it == " " }.keys.toList())
+        assertEquals("planned", metadata["status"])
         (164..169).forEach { task ->
             assertEquals(1, Regex("""(?m)^### Task $task(?:\s|$)""").findAll(child).count(), "Task $task must be unique")
         }

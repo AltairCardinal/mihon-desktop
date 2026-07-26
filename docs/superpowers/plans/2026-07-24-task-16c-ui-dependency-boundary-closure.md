@@ -6,7 +6,7 @@ status: planned
 ---
 # UI dependency boundary closure
 本计划只关闭 ID8/95 已确认的 current Android mapper 缺边与 32 条 Desktop compiled UI 违规。顺序固定为 164→169；每项独立红绿重构、mutation、focused test 和提交，不创建第二套 repository/manager。UI 入口与成功、失败、取消反馈保持不变；平台 adapter 只允许带非空理由的 OS side effect port。
-- [ ] Task 164：Android network error mapper consumer
+- [x] Task 164：Android network error mapper consumer
 - [ ] Task 165：Library UI use-case boundary
 - [ ] Task 166：Creator and tracking use-case boundary
 - [ ] Task 167：Extension and browse ports
@@ -20,6 +20,7 @@ status: planned
 **Files:** `NetworkErrorMapper.kt`, Android response adapter/installer, its MockWebServer test, DI wiring test。
 **TDD:** 先写 current Android raw response→`AppError` 集成 RED，再最小委托 shared mapper；mutation 绕过 mapper 必须失败。
 **User/feedback:** Android browse/extension network actions；保留 login、retry-after、server 与 malformed feedback。
+**Execution evidence:** MockWebServer RED 精确证明 current Android 未消费 shared mapper 且 429 丢失 `Retry-After`；GREEN 后 production `ExtensionApi → AndroidNetworkResponseAdapter → NetworkErrorMapper` 与 AppModule no-arg wiring focused `10/10`。绕过 shared status mapper、绕过 shared payload parser及移除 AppModule binding 均分别精确 RED 后恢复；唯一审查的两项 P1 与一项 P2 经一轮修复复审后 `APPROVED`。主门禁补入 catalog→install 下游回归后 Android `19/19`、parity governance 与 Spotless 全绿。
 ### Task 165 Library UI use-case boundary
 **Risk axis:** desktop-library-repository-boundary
 **Platform boundary:** shared+desktop

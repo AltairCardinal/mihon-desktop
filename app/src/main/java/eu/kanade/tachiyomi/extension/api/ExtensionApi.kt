@@ -5,9 +5,9 @@ import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.LoadResult
 import eu.kanade.tachiyomi.extension.util.ExtensionLoader
+import eu.kanade.tachiyomi.network.AndroidNetworkResponseAdapter
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.NetworkHelper
-import eu.kanade.tachiyomi.network.awaitSuccess
 import eu.kanade.tachiyomi.network.parseAs
 import kotlinx.serialization.json.Json
 import mihon.domain.extension.model.ExtensionCatalogResult
@@ -40,9 +40,11 @@ internal class ExtensionApi(
     private val availableExtensionsForUpdate: (suspend () -> List<Extension.Available>)? = null,
     private val installedExtensions: (suspend (Context) -> List<Extension.Installed>)? = null,
     private val notifyUpdates: ((Context, List<String>) -> Unit)? = null,
+    private val responseAdapter: AndroidNetworkResponseAdapter? = null,
 ) {
 
     private val networkService: NetworkHelper by injectLazy()
+    private val injectedResponseAdapter: AndroidNetworkResponseAdapter by injectLazy()
     private val preferenceStore: PreferenceStore by injectLazy()
     private val getExtensionRepo: GetExtensionRepo by injectLazy()
     private val updateExtensionRepo: UpdateExtensionRepo by injectLazy()
@@ -91,12 +93,15 @@ internal class ExtensionApi(
     }
 
     private suspend fun fetchRepository(repository: ExtensionRepo): RepositoryFetchResult {
-        val response = (client ?: networkService.client)
+        val adapter = responseAdapter ?: injectedResponseAdapter
+        val call = adapter.install(client ?: networkService.client)
             .newCall(GET("${repository.baseUrl}/index.min.json"))
-            .awaitSuccess()
-        val entries = with(json ?: injectedJson) {
-            response.parseAs<List<ExtensionRepoIndexEntryDto>>()
-                .map { it.toCatalogEntry(repository) }
+        val response = adapter.awaitSuccess(call)
+        val entries = adapter.parsePayload {
+            with(json ?: injectedJson) {
+                response.parseAs<List<ExtensionRepoIndexEntryDto>>()
+                    .map { it.toCatalogEntry(repository) }
+            }
         }
         return RepositoryFetchResult.Success(repository.toIdentity(), entries)
     }
