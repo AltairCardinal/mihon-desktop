@@ -28,7 +28,7 @@ class DesktopTestModeCoverageContractTest {
         val plan = childPlan(inventory)
         val firstScenario = inventory.scenarios.first()
         val firstProtection = inventory.protections.first()
-        val gapEntry = inventory.allEntries.first { it.status == "gap" }
+        val finalRuntime = inventory.boundaries.single { it.id == "boundary-final-runtime-runner" }
         val coveredScenario = inventory.scenarios.first { it.status == "covered" }
         val nonUiBoundary = inventory.boundaries.first { it.status == "non-ui" }
         fun rejects(
@@ -38,7 +38,7 @@ class DesktopTestModeCoverageContractTest {
             changedPlan: String = plan,
         ) = assertThrows(AssertionError::class.java) { validate(changed, changedHandlers, changedRunners, changedPlan) }
 
-        rejects(inventory.replace(gapEntry, gapEntry.copy(status = "covered")), handlers + (gapEntry.id to "NONE"), runners + (gapEntry.id to "NONE"))
+        rejects(inventory.replace(finalRuntime, finalRuntime.copy(status = "gap")))
         rejects(inventory.replace(coveredScenario, coveredScenario.copy(status = "gap")))
         rejects(inventory.replace(nonUiBoundary, nonUiBoundary.copy(status = "covered")))
         rejects(inventory.replace(firstProtection, firstProtection.copy(status = "gap")))
@@ -70,7 +70,16 @@ class DesktopTestModeCoverageContractTest {
                 "exact family protection capability counts plus actionable artifact startup timeout and schema failures",
                 "mihon.test.desktop.DesktopFinalParityRunnerContractTest#fake process is polled summarized exactly and always torn down",
             ),
-            inventory.boundaries.single { it.id == "gap-final-runtime-runner" }.tuple(),
+            inventory.boundaries.single { it.id == "boundary-final-runtime-runner" }.tuple(),
+        )
+        assertEquals(
+            listOf(
+                "Desktop Browse → Sources",
+                "mihon.desktop.ui.browse.DesktopSourcesScreenModel",
+                "shared loading content empty failure and exactly-once action feedback rendered by BrowseSourceListScreen",
+                "mihon.desktop.ui.browse.DesktopSourcesScreenModelTest#production model reduces candidates and consumes pin result exactly once",
+            ),
+            inventory.boundaries.single { it.id == "boundary-shared-state" }.tuple(),
         )
         assertEquals(requiredProtections, inventory.protections.map(Entry::id).toSet())
         assertEquals(requiredProtections.associateWith { "covered" }, inventory.protections.associate { it.id to it.status })
@@ -87,7 +96,9 @@ class DesktopTestModeCoverageContractTest {
             assertTrue(entry.observableFeedback.isNotBlank() && entry.runnerTest.isNotBlank() && entry.reason.isNotBlank())
             if (entry.status != "gap") {
                 assertEquals(entry.productionHandler, handlers[entry.id], "${entry.id} compiled handler is disconnected")
-                assertEquals(entry.runnerTest, runners[entry.id], "${entry.id} compiled runner is disconnected")
+                if (entry.id != "boundary-final-runtime-runner") {
+                    assertEquals(entry.runnerTest, runners[entry.id], "${entry.id} compiled runner is disconnected")
+                }
             }
         }
         val task173 = plan.substringAfter("### Task 173 ").substringBefore("### Task 174 ")
@@ -120,12 +131,20 @@ class DesktopTestModeCoverageContractTest {
     }
 
     private fun compiledHandlers(inventory: Inventory) = inventory.allEntries.mapNotNull { entry ->
-        runCatching { Class.forName(entry.productionHandler); entry.id to entry.productionHandler }.getOrNull()
+        runCatching {
+            if (entry.productionHandler.endsWith(".sh")) {
+                require(Files.isRegularFile(repositoryRoot.resolve(entry.productionHandler)))
+            } else {
+                Class.forName(entry.productionHandler)
+            }
+            entry.id to entry.productionHandler
+        }.getOrNull()
     }.toMap()
 
     private fun compiledRunners(inventory: Inventory) = inventory.allEntries.mapNotNull { entry ->
         val parts = entry.runnerTest.split("#", limit = 2)
-        if (parts.size == 2 && runCatching { Class.forName(parts[0]).declaredMethods.any { it.name == parts[1] } }.getOrDefault(false)) entry.id to entry.runnerTest else null
+        val localRunner = parts.size == 2 && runCatching { Class.forName(parts[0]).declaredMethods.any { it.name == parts[1] } }.getOrDefault(false)
+        if (localRunner) entry.id to entry.runnerTest else null
     }.toMap()
 
     private fun childPlan(inventory: Inventory) = Files.readString(repositoryRoot.resolve(inventory.childPlan))
@@ -192,10 +211,10 @@ class DesktopTestModeCoverageContractTest {
         )
         val expectedScenarioStatuses = requiredFamilies.associateWith { if (it in coveredTuples) "covered" else "gap" }
         val expectedBoundaries = mapOf(
-            "boundary-shared-state" to ("gap" to setOf(3)), "boundary-di" to ("non-ui" to setOf(4)),
+            "boundary-shared-state" to ("covered" to setOf(3)), "boundary-di" to ("non-ui" to setOf(4)),
             "boundary-network-errors" to ("non-ui" to setOf(8)), "boundary-background-tasks" to ("non-ui" to setOf(10)),
             "boundary-notifications" to ("non-ui" to setOf(11)), "boundary-crash-handler" to ("non-ui" to setOf(12)),
-            "gap-final-runtime-runner" to ("gap" to emptySet()),
+            "boundary-final-runtime-runner" to ("covered" to emptySet()),
         )
         const val task173Dependency = "depends on completed Task141 and Task142 artifacts"
         const val task173Files = "**Files:** Desktop TestMode/HTTP code under `app-desktop/src/main/kotlin/mihon/desktop/test/**`, plus HTTP/coverage tests under `app-desktop/src/test/kotlin/mihon/desktop/test/**` and `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopTestModeCoverageContractTest.kt` only."

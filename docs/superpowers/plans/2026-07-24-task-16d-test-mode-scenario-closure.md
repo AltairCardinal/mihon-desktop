@@ -2,7 +2,7 @@
 parent-plan: docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md
 parent-task: Task 16D
 original-ref: main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8
-status: planned
+status: completed
 ---
 # Test Mode scenario closure
 本计划只关闭 Task16D inventory 中 9 个 Desktop TestMode wiring/runner gap 和缺失的最终固定 EXE runner；ID3 产品闭环仍归 Task141/142，本计划只消费其完成产物，并按 171→177 串行执行。
@@ -12,7 +12,7 @@ status: planned
 - [x] Task 174：Downloads, updates and history actions
 - [x] Task 175：Backup and settings actions
 - [x] Task 176：Tracking HTTP runner
-- [ ] Task 177：Scenario inventory closeout
+- [x] Task 177：Scenario inventory closeout
 ### Task 171 Final fixed-EXE runner
 **Risk axis:** final-testmode-runner
 **Platform boundary:** verification
@@ -76,3 +76,5 @@ status: planned
 **Files:** coverage inventory/contract, parity manifest/contract, parent plan and runner summary test.
 **TDD:** expected gaps and unmapped sets remain RED until 171–176 close; rerun removal/duplicate/unknown/disconnected-handler/missing-protection mutations before handoff.
 **User/feedback:** no new UI; the final report truthfully distinguishes covered, non-UI, unsupported and failed runtime evidence.
+**Execution evidence（已完成）：** closeout contract 先精确 RED 于旧 `gap-final-runtime-runner` 和未完成状态。`boundary-shared-state` 现绑定 Task 141/142 已完成的 shared `SourceScreenReducer` production consumer：`DesktopSourcesScreenModel`、`BrowseSourceListScreen` 反馈及真实行为测试；最终边界重命名为 `boundary-final-runtime-runner` 并标记 covered。干净 detached worktree 从提交 `dbc02bb9ad53f26f570427cc70a574bcbadff5ac` 使用 `scripts/build-desktop.sh evidence` 构建，完整 Desktop 测试及未打包运行时验证通过，provenance 封存版本 `0.11.14.48.dbc02bb`、366 个制品文件。随后固定 EXE runner 实际启动 PID 1742 并通过 13/13 families、5/5 permanent protections、64/64 mapped capabilities、`unmapped=0`，正常 teardown；inventory 不再包含 Test Mode gap。
+**Review repair：** 独立审查拒绝 manifest 中 ID3 “已闭合裁决”与旧 AppError/TaskState/HistoryScreenModel 当前事实互相矛盾，并指出 app-desktop classpath 只能检查 test-desktop 源文件存在。修复将 ID3 五角色、production call path、当前 protection tests 和 Task18 promotion gate 同步到真实 SourceScreenReducer 两端 consumer；跨模块精确 class/method 绑定移入实际编译执行的 `DesktopFinalParityRunnerContractTest`。全量治理门禁同时批量校正 Task172/175/176 后 3 个证据行号、ID93 production marker 和 ID96 易漂移行号硬编码；最终 `parityGovernanceCheck` 20/20、coverage 2/2、runner contract 11/11 GREEN。

@@ -16,32 +16,52 @@
         "domain/src/commonTest/kotlin/mihon/domain/task/TaskStateTest.kt": ["任务状态表达进度结果失败与取消"]
       }
     }, {"task": "Task 14A", "decision": "KEEP_GAP", "followUp": "docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-141-a1-id-3-shared-screen-state", "gap": "Current Android SourcesScreenModel and Desktop state containers still lack one shared immutable screen-state/event production core and a cross-platform consumer contract."}],
-    "statusDecision": {"task": "Task 16D", "decision": "REMEDIATE", "followUp": "docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-141-a1-id-3-shared-screen-state", "productClosureFollowUps": ["docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-141-a1-id-3-shared-screen-state","docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-142-a2-id-3-desktop-screen-state-consumer"], "coverageFollowUp": "docs/superpowers/plans/2026-07-24-task-16d-test-mode-scenario-closure.md#task-177-scenario-inventory-closeout", "gap": "ID3 still lacks a shared production state consumer; all 13 Test Mode scenario families are covered and the fixed-EXE final runner awaits Task 177 closeout."},
-    "testModeCoverageAudit": {"task":"Task 16D","inventory":"app-desktop/src/test/resources/parity/test-mode-coverage-inventory.json","families":13,"coveredFamilies":13,"gapFamilies":0,"permanentProtections":5,"mappedCapabilities":64,"unmappedCapabilities":0,"childPlan":"docs/superpowers/plans/2026-07-24-task-16d-test-mode-scenario-closure.md"},
+    "statusDecision": {"task": "Task 16D", "decision": "READY_FOR_PROMOTION", "followUp": "docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-141-a1-id-3-shared-screen-state", "productClosureFollowUps": ["docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-141-a1-id-3-shared-screen-state","docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-142-a2-id-3-desktop-screen-state-consumer"], "coverageFollowUp": "NONE", "promotionFollowUp": "Task 18", "gap": "NONE"},
+    "testModeCoverageAudit": {"task":"Task 16D","inventory":"app-desktop/src/test/resources/parity/test-mode-coverage-inventory.json","families":13,"coveredFamilies":13,"gapFamilies":0,"permanentProtections":5,"mappedCapabilities":64,"unmappedCapabilities":0,"runtimeRunner":"PASSED","runtimeSourceCommit":"dbc02bb9ad53f26f570427cc70a574bcbadff5ac","runtimeVersion":"0.11.14.48.dbc02bb","childPlan":"docs/superpowers/plans/2026-07-24-task-16d-test-mode-scenario-closure.md"},
     "authoritativeImplementation": "Fixed-main original Mihon capability #3: SourcesScreenModel uses Voyager StateScreenModel, immutable State snapshots, Flow collection, and an explicit Event channel.",
-    "desktopImplementation": "Current Android SourcesScreenModel and Desktop HistoryScreenModel are independent state-container examples. Shared TaskState/AppError primitives exist, but no production wiring proves that either screen model consumes them as one cross-platform state-management capability.",
+    "desktopImplementation": "Current Android SourcesScreenModel and Desktop DesktopSourcesScreenModel both consume the shared SourceScreenReducer. BrowseSourceListScreen renders the Desktop state and exactly-once action feedback while retaining Desktop source grouping, filtering and local-source behavior.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
-    "unclassifiedDebtResolution": {"decision": "extract", "reason": "Immutable loading/content/error state and one-shot event semantics are cross-platform behavior, while Compose/Voyager lifecycle collection stays in platform consumers.", "fixedMainRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "productionCallPath": {"currentAndroid": ["SourcesScreen → SourcesScreenModel State/Event"], "sharedOrAdapter": ["AppError + TaskState primitives → planned shared source-screen state core"], "desktop": ["BrowseTab/HistoryTab → Desktop state models → rendered list, empty and action state"]}, "protectionEvidence": ["domain/src/commonTest/kotlin/mihon/domain/error/AppErrorTest.kt#partial failure identifies each failed unit"], "userEntry": "Browse → Sources on Android and Browse/History on Desktop.", "userFeedback": "Loading, populated/empty content and action failures remain visible; the child contract must preserve one-shot events."},
+    "unclassifiedDebtResolution": {"decision": "extract", "reason": "Immutable loading/content/error state and one-shot event semantics are cross-platform behavior, while Compose/Voyager lifecycle collection stays in platform consumers.", "fixedMainRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "productionCallPath": {"currentAndroid": ["SourcesScreen → SourcesScreenModel → SourceScreenReducer"], "sharedOrAdapter": ["SourceScreenReducer → immutable SourceScreenState and exactly-once SourceScreenEvent"], "desktop": ["BrowseTab → BrowseSourceListScreen → DesktopSourcesScreenModel → SourceScreenReducer"]}, "protectionEvidence": ["domain/src/commonTest/kotlin/mihon/domain/source/model/SourceScreenStateTest.kt#disabled and pinned results are consumed exactly once","app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModelSharedStateTest.kt#production ScreenModel renders reducer output and consumes action results once","app-desktop/src/test/kotlin/mihon/desktop/ui/browse/DesktopSourcesScreenModelTest.kt#production model reduces candidates and consumes pin result exactly once","app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceSharedStateWiringTest.kt#browse pin buttons and long click update feedback and ordering in the mounted scene"], "userEntry": "Android Browse → Sources and Desktop Browse → Sources.", "userFeedback": "Both platforms expose shared loading, content, empty, retryable failure and exactly-once action results; Desktop keeps its source grouping, filtering and local-source entry."},
     "upstreamSymbols": [
       { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt", "symbol": "SourcesScreenModel : StateScreenModel<State>; immutable State and Event channel" }
     ],
     "sharedImplementationPaths": [
-      "domain/src/commonMain/kotlin/mihon/domain/error/AppError.kt",
-      "domain/src/commonMain/kotlin/mihon/domain/task/TaskState.kt"
+      "domain/src/commonMain/kotlin/mihon/domain/source/model/SourceScreenState.kt"
     ],
     "currentAndroidConsumerPaths": [
       "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt"
     ],
     "desktopConsumerAdapterPaths": [
-      "app-desktop/src/main/kotlin/mihon/desktop/history/HistoryScreenModel.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourcesScreenModel.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/BrowseTab.kt"
     ],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt", "symbol": "class SourcesScreenModel(", "line": 27}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt", "symbol": "private val sourceReducer: SourceScreenReducer = SourceScreenReducer()", "line": 37}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/source/model/SourceScreenState.kt", "symbol": "class SourceScreenReducer", "line": 53}],
+      "DESKTOP_CONSUMER": [
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourcesScreenModel.kt", "symbol": "class DesktopSourcesScreenModel(", "line": 30},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/BrowseTab.kt", "symbol": "rememberScreenModel { DesktopSourcesScreenModel", "line": 176}
+      ],
+      "FIXTURE": [
+        {"artifact": "domain/src/commonTest/kotlin/mihon/domain/source/model/SourceScreenStateTest.kt#disabled and pinned results are consumed exactly once", "productionMarkers": ["reducer.disabled", "reducer.pinned", "reducer.consumeEvent"]},
+        {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModelSharedStateTest.kt#production ScreenModel renders reducer output and consumes action results once", "productionMarkers": ["SourcesScreenModel(", "model.consumeSourceEvent"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/DesktopSourcesScreenModelTest.kt#production model reduces candidates and consumes pin result exactly once", "productionMarkers": ["DesktopSourcesScreenModel(", "model.consumeEvent"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceSharedStateWiringTest.kt#browse pin buttons and long click update feedback and ordering in the mounted scene", "productionMarkers": ["BrowseSourceListScreen()", "awaitSharedFeedback"]}
+      ]
+    },
     "deviations": [
-      { "classification": "MIGRATION_OUTPUT", "description": "TaskState and AppError are fork-added shared primitives with unit coverage; they are not evidence that the listed Android and Desktop screen models share a production state-management chain." }
+      {"classification": "MIGRATION_OUTPUT", "description": "Task 141/142 extracted SourceScreenReducer so current Android and Desktop consume one state/event core; Voyager lifecycle and Desktop-only grouping remain in platform consumers."}
     ],
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/error/AppErrorTest.kt",
-      "domain/src/commonTest/kotlin/mihon/domain/task/TaskStateTest.kt"
+      "domain/src/commonTest/kotlin/mihon/domain/task/TaskStateTest.kt",
+      "domain/src/commonTest/kotlin/mihon/domain/source/model/SourceScreenStateTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModelSharedStateTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/DesktopSourcesScreenModelTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceSharedStateWiringTest.kt"
     ],
+    "verificationScope": "CHARACTERIZED and ready for Task 18 promotion: fixed original, current Android, shared reducer, Desktop production consumer and executable fixtures are complete; Task 177 also closed the fixed-EXE runtime boundary.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -740,7 +760,7 @@
         {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/category/interactor/SetMangaCategories.kt", "symbol": "class SetMangaCategories", "line": 7}
       ],
       "DESKTOP_CONSUMER": [
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt", "symbol": "suspend fun toggleLibrary", "line": 264},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt", "symbol": "suspend fun toggleLibrary", "line": 265},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "suspend fun setCategoriesForManga", "line": 526}
       ],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt#toggleLibrary clears favorite date and categories when removing", "productionMarkers": ["model.toggleLibrary", "getMangaCategoryIds"]}]
@@ -811,7 +831,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt", "symbol": "fun markChaptersRead", "line": 748}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt", "symbol": "fun markChaptersRead", "line": 748}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/interactor/BatchUpdateChapters.kt", "symbol": "class BatchUpdateChapters", "line": 5}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt", "symbol": "suspend fun markSelectedRead", "line": 229}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt", "symbol": "suspend fun markSelectedRead", "line": 230}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt#selected read action exposes partial failure in state", "productionMarkers": ["model.runChapterBatch"]}]
     },
     "protectionTests": [
@@ -3116,10 +3136,10 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt", "symbol": "object SettingsAdvancedScreen", "line": 75}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt", "symbol": "object SettingsAdvancedScreen", "line": 75}],
       "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreen.kt", "symbol": "internal interface AdvancedSettingsPlatformActions", "line": 184}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreen.kt", "symbol": "class AdvancedSettingsScreen", "line": 201}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreen.kt", "symbol": "class AdvancedSettingsScreen", "line": 207}],
       "FIXTURE": [
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreenTest.kt#catalog result anchors once and preserves platform success and failure feedback", "productionMarkers": ["AdvancedSettingsScreen::class"]},
-        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSecurityAdvancedAccessibilityTest.kt#Advanced fields and dangerous confirmation expose honest keyboard semantics", "productionMarkers": ["AdvancedSettingsScreen()", "fixture.cookieJar.clear()"]}
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSecurityAdvancedAccessibilityTest.kt#Advanced fields and dangerous confirmation expose honest keyboard semantics", "productionMarkers": ["AdvancedSettingsScreen()", "fixture.networkMaintenance.clearCookies()"]}
       ]
     },
     "behaviorVerificationTask": ":app-desktop:task5ParityVerification",

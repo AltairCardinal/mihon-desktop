@@ -2053,14 +2053,18 @@ class DesktopProductCapabilityContractTest {
                     methods.jsonArray.map { it.jsonPrimitive.content }.toSet()
                 }
             val auditedBehaviorMethods =
-                if (id == 96) {
-                    task13BehaviorMethods.getValue(id) +
-                        mapOf(
-                            "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt" to
-                                setOf("desktop DI binds the started Android compat Application exact type"),
-                        )
-                } else {
-                    task13BehaviorMethods[id] ?: task5BehaviorMethods.getValue(id)
+                when (id) {
+                    95 ->
+                        item.getValue("statusDecision").jsonObject.getValue("behaviorMethods").jsonObject.mapValues { (_, methods) ->
+                            methods.jsonArray.map { it.jsonPrimitive.content }.toSet()
+                        }
+                    96 ->
+                        task13BehaviorMethods.getValue(id) +
+                            mapOf(
+                                "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt" to
+                                    setOf("desktop DI binds the started Android compat Application exact type"),
+                            )
+                    else -> task13BehaviorMethods[id] ?: task5BehaviorMethods.getValue(id)
                 }
             assertEquals(auditedBehaviorMethods, behaviorMethods, "ID $id behavior methods")
             behaviorMethods.forEach { (path, methods) ->
@@ -3255,11 +3259,8 @@ class DesktopProductCapabilityContractTest {
                 .map { it.jsonObject }
                 .filter { requiredText(it, "path", 96, "roleEvidence.DESKTOP_CONSUMER") == bootstrapPath }
         assertEquals(
-            setOf("AndroidCompat.initialize" to "192", "AndroidCompat.startApp" to "194"),
-            bootstrapConsumers.map {
-                requiredText(it, "symbol", 96, "roleEvidence.DESKTOP_CONSUMER") to
-                    requiredText(it, "line", 96, "roleEvidence.DESKTOP_CONSUMER")
-            }.toSet(),
+            setOf("AndroidCompat.initialize", "AndroidCompat.startApp"),
+            bootstrapConsumers.map { requiredText(it, "symbol", 96, "roleEvidence.DESKTOP_CONSUMER") }.toSet(),
             "ID 96 must bind both production bootstrap calls",
         )
         val bootstrapTest = "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
@@ -3630,24 +3631,43 @@ class DesktopProductCapabilityContractTest {
         statusDecisionForTask(id3, 3, "Task 14A")
         val decision = id3.getValue("statusDecision").jsonObject
         assertEquals("Task 16D", requiredText(decision, "task", 3))
-        assertEquals("REMEDIATE", requiredText(decision, "decision", 3))
+        assertEquals("READY_FOR_PROMOTION", requiredText(decision, "decision", 3))
         val childPlan = "docs/superpowers/plans/2026-07-24-task-16d-test-mode-scenario-closure.md"
         val productPlan = "docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md"
         assertEquals("$productPlan#task-141-a1-id-3-shared-screen-state", requiredText(decision, "followUp", 3))
+        assertEquals("Task 18", requiredText(decision, "promotionFollowUp", 3))
         assertEquals(setOf("$productPlan#task-141-a1-id-3-shared-screen-state", "$productPlan#task-142-a2-id-3-desktop-screen-state-consumer"), decision.getValue("productClosureFollowUps").jsonArray.map { it.jsonPrimitive.content }.toSet())
-        assertEquals("$childPlan#task-177-scenario-inventory-closeout", requiredText(decision, "coverageFollowUp", 3))
-        assertTrue(requiredText(decision, "gap", 3) != "NONE")
+        assertEquals("NONE", requiredText(decision, "coverageFollowUp", 3))
+        assertEquals("NONE", requiredText(decision, "gap", 3))
+        assertEquals(
+            listOf("domain/src/commonMain/kotlin/mihon/domain/source/model/SourceScreenState.kt"),
+            id3.getValue("sharedImplementationPaths").jsonArray.map { it.jsonPrimitive.content },
+        )
+        assertEquals(
+            setOf(
+                "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourcesScreenModel.kt",
+                "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/BrowseTab.kt",
+            ),
+            id3.getValue("desktopConsumerAdapterPaths").jsonArray.map { it.jsonPrimitive.content }.toSet(),
+        )
+        val id3CallPath = id3.getValue("unclassifiedDebtResolution").jsonObject.getValue("productionCallPath").jsonObject
+        assertTrue(id3CallPath.values.all { "SourceScreenReducer" in it.toString() })
+        assertTrue("HistoryScreenModel" !in requiredText(id3, "desktopImplementation", 3))
+        validateRoleEvidence(id3, repositoryRoot, fixedMainPathInventory(repositoryRoot))
 
         val audit = id3.getValue("testModeCoverageAudit").jsonObject
         assertEquals("Task 16D", requiredText(audit, "task", 3))
         assertEquals("app-desktop/src/test/resources/parity/test-mode-coverage-inventory.json", requiredText(audit, "inventory", 3))
         assertEquals(listOf(13, 13, 0, 5, 64, 0), listOf("families", "coveredFamilies", "gapFamilies", "permanentProtections", "mappedCapabilities", "unmappedCapabilities").map { audit.getValue(it).jsonPrimitive.content.toInt() })
         assertEquals(childPlan, requiredText(audit, "childPlan", 3))
+        assertEquals("PASSED", requiredText(audit, "runtimeRunner", 3))
+        assertEquals("dbc02bb9ad53f26f570427cc70a574bcbadff5ac", requiredText(audit, "runtimeSourceCommit", 3))
+        assertEquals("0.11.14.48.dbc02bb", requiredText(audit, "runtimeVersion", 3))
 
         val child = Files.readString(repositoryRoot.resolve(childPlan))
         val metadata = markdownFrontmatter(child)
         assertEquals("Task 16D", metadata["parent-task"])
-        assertEquals("planned", metadata["status"])
+        assertEquals("completed", metadata["status"])
         assertFalse("active-task" in metadata, "child progress must derive from its first unchecked checkbox")
         val overview =
             Regex("""(?m)^- \[([ xX])\] Task (17[1-7])[：:]""")
@@ -3660,7 +3680,7 @@ class DesktopProductCapabilityContractTest {
         assertEquals("x", overview.getValue("174"))
         assertEquals("x", overview.getValue("175"))
         assertEquals("x", overview.getValue("176"))
-        assertEquals(listOf("177"), overview.filterValues { it == " " }.keys.toList())
+        assertTrue(overview.values.all { it == "x" })
         val task171 = child.substringAfter("### Task 171 Final fixed-EXE runner").substringBefore("### Task 172 ")
         assertTrue("10/10" in task171 && "13/13" in task171 && "5/5" in task171 && "unmapped=0" in task171)
         val task172 = child.substringAfter("### Task 172 Library and manga-detail actions").substringBefore("### Task 173 ")
@@ -3676,6 +3696,10 @@ class DesktopProductCapabilityContractTest {
         val task176 = child.substringAfter("### Task 176 Tracking HTTP runner").substringBefore("### Task 177 ")
         assertTrue("TrackingTestModeHttpTest" in task176 && "TrackingTestModeLifecycleTest" in task176)
         assertTrue("Task 176R" in task176 && "13/13 covered" in task176 && "0 gap" in task176 && "APPROVED" in task176)
+        val task177 = child.substringAfter("### Task 177 Scenario inventory closeout")
+        assertTrue("dbc02bb9ad53f26f570427cc70a574bcbadff5ac" in task177)
+        assertTrue("0.11.14.48.dbc02bb" in task177 && "13/13" in task177 && "5/5" in task177 && "64/64" in task177)
+        assertTrue("boundary-shared-state" in task177 && "boundary-final-runtime-runner" in task177)
 
         val parent = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
         assertEquals("Task 17", markdownFrontmatter(parent)["active-task"])
@@ -3688,6 +3712,7 @@ class DesktopProductCapabilityContractTest {
         assertTrue("Task 174" in task17 && "10/13 covered" in task17 && "3 gap" in task17)
         assertTrue("Task 175" in task17 && "12/13 covered" in task17 && "1 gap" in task17)
         assertTrue("Task 176" in task17 && "Task 176R" in task17 && "13/13 covered" in task17 && "0 gap" in task17)
+        assertTrue("Task 177" in task17 && "dbc02bb9ad53f26f570427cc70a574bcbadff5ac" in task17)
     }
 
     @Test

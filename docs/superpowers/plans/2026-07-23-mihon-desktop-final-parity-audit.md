@@ -547,6 +547,12 @@ Task 176 已完成 Tracking production HTTP runner；`tracking_*` 复用既有 c
 cancellation 及 closed 单调状态均有 RED→GREEN 行为证据。复审后以 Task 176R 将 action 改为
 controller-owned job，消除 caller cancellation 与 self-join；最终独立审查 `APPROVED`。
 inventory 现为 13/13 covered、0 gap、64/64 mapped、unmapped=0。下一恢复位置为 Task 177。
+Task 177 已完成 scenario inventory closeout。`boundary-shared-state` 已绑定 Task 141/142 的
+shared reducer、Android/Desktop production consumer 与 Desktop feedback 行为测试；
+`boundary-final-runtime-runner` 由 provenance-sealed `0.11.14.48.dbc02bb`
+（source commit `dbc02bb9ad53f26f570427cc70a574bcbadff5ac`）实际启动固定 EXE 验证。
+最终 runner 通过 13/13 families、5/5 permanent protections、64/64 mapped capabilities、
+`unmapped=0` 并正常 teardown；Task 16D child `status: completed`，不再保留 runtime gap。
 Task 16A 审计已明确无需生成产品 child plan。
 
 Task 16C 的 Task 164 已完成 current Android extension repository response adapter：固定原版

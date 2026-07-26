@@ -25,6 +25,20 @@ class DesktopFinalParityRunnerContractTest {
     private val inventory = repositoryRoot.resolve("app-desktop/src/test/resources/parity/test-mode-coverage-inventory.json")
 
     @Test
+    fun `inventory final runtime boundary binds an executable runner contract method`() {
+        val root = Json.parseToJsonElement(Files.readString(inventory)).jsonObject
+        val boundary =
+            root.getValue("boundaries").jsonArray
+                .map { it.jsonObject }
+                .single { it.getValue("id").jsonPrimitive.content == "boundary-final-runtime-runner" }
+        val method = "fake process is polled summarized exactly and always torn down"
+
+        assertEquals("${javaClass.name}#$method", boundary.getValue("runnerTest").jsonPrimitive.content)
+        assertTrue(javaClass.declaredMethods.any { it.name == method })
+        assertEquals("covered", boundary.getValue("status").jsonPrimitive.content)
+    }
+
+    @Test
     fun `default command targets a real test desktop client entry`() {
         val source = Files.readString(runner)
         val client = repositoryRoot.resolve("test-desktop/src/main/python/mihon_desktop_final_parity_client.py")
