@@ -42,7 +42,7 @@ class CloudflareChallengeManager(
     private val browserAdapterProvider: ((CloudflareChallenge) -> BrowserLoginAdapter)? = null,
     private val committerProvider: (() -> AuthenticatedSessionCommitter)? = null,
     private val flareSolverrClientProvider: (() -> FlareSolverrClient?)? = null,
-) {
+) : DesktopChallengeRecoveryPort {
     private val _challenges = MutableSharedFlow<CloudflareChallenge>(
         extraBufferCapacity = 1,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
@@ -133,7 +133,7 @@ class CloudflareChallengeManager(
         _challenges.tryEmit(challenge)
     }
 
-    suspend fun recover(
+    override suspend fun recover(
         challenge: CloudflareChallenge,
         intent: ChallengeRecoveryIntent,
     ): ChallengeRecoveryState {

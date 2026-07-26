@@ -12,7 +12,7 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import mihon.desktop.extension.DesktopAvailableExtension
 import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopExtensionInstallStart
-import mihon.desktop.extension.DesktopExtensionManager
+import mihon.desktop.extension.DesktopExtensionPresentationService
 import mihon.desktop.extension.InstalledExtension
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.domain.extension.model.ExtensionCatalogResult
@@ -97,8 +97,8 @@ data class DesktopExtensionCatalogState(
 
 class DesktopExtensionPresentationPort(
     private val api: DesktopExtensionApi,
-    private val manager: DesktopExtensionManager,
-    installedExtensions: StateFlow<List<InstalledExtension>> = manager.installedExtensions,
+    private val service: DesktopExtensionPresentationService,
+    installedExtensions: StateFlow<List<InstalledExtension>> = service.installedExtensions,
     private val updatePolicy: ExtensionUpdatePolicy = SharedExtensionUpdatePolicy,
     private val sourcePreferences: DesktopExtensionSourcePreferenceAdapter? = null,
 ) {
@@ -111,12 +111,12 @@ class DesktopExtensionPresentationPort(
     }
 
     suspend fun beginInstall(extension: DesktopAvailableExtension): DesktopExtensionInstallStart =
-        api.beginInstall(extension, manager)
+        api.beginInstall(extension, service)
 
     suspend fun beginPresentationInstall(extension: DesktopAvailableExtension): DesktopPresentationInstallStart =
         beginInstall(extension).toPresentation()
 
-    fun confirmTrust(requestId: String): Flow<ExtensionInstallState>? = api.confirmTrust(requestId, manager)
+    fun confirmTrust(requestId: String): Flow<ExtensionInstallState>? = api.confirmTrust(requestId, service)
 
     fun confirmPresentationTrust(requestId: String): Flow<DesktopPresentationInstallEvent>? =
         confirmTrust(requestId)?.toPresentationEvents()
@@ -139,9 +139,9 @@ class DesktopExtensionPresentationPort(
     )
 
     fun uninstall(item: DesktopExtensionItem): Boolean =
-        item.installed?.let(manager::removeExtensionWithMeta) == true
+        item.installed?.let(service::removeExtensionWithMeta) == true
 
-    suspend fun reloadInstalled() = withContext(Dispatchers.IO) { manager.reloadAll() }
+    suspend fun reloadInstalled() = withContext(Dispatchers.IO) { service.reloadAll() }
 
     fun extensionSources(extension: InstalledExtension, disabledSources: Set<String>): List<DesktopExtensionSourceItem> {
         val isMultiSource = extension.sources.size > 1

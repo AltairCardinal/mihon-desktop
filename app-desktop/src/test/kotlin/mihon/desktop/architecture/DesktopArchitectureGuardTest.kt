@@ -331,10 +331,7 @@ class DesktopArchitectureGuardTest {
             )
         val acknowledgedProductionViolations =
             """
-            mihon.desktop.ui.browse.DesktopSourceCookieHeaderParser -> okhttp3.HttpUrl;mihon.desktop.ui.browse.DesktopSourceLastUsedRecorder -> mihon.desktop.extension.DesktopExtensionManager
-            mihon.desktop.ui.browse.DesktopSourceLoginController -> okhttp3.HttpUrl;mihon.desktop.ui.browse.DesktopSourceLoginUiActions -> okhttp3.HttpUrl;mihon.desktop.ui.browse.SourceBrowseScreen -> mihon.desktop.extension.DesktopExtensionManager;mihon.desktop.ui.cloudflare.DesktopChallengeLoginController -> mihon.desktop.network.CloudflareChallengeManager
-            mihon.desktop.ui.cloudflare.DesktopChallengeLoginController -> okhttp3.HttpUrl;mihon.desktop.ui.extension.DesktopExtensionPresentationPort -> mihon.desktop.extension.DesktopExtensionManager;mihon.desktop.ui.extension.ExtensionDetailsScreen -> mihon.desktop.platform.DesktopNetworkHelper;mihon.desktop.ui.extension.SourcePreferencesScreen -> mihon.desktop.extension.DesktopExtensionManager
-            mihon.desktop.ui.extension.SourcePreferencesScreenKt -> java.lang.ClassLoader;mihon.desktop.ui.home.HomeScreen -> mihon.desktop.network.CloudflareChallengeManager;mihon.desktop.ui.library.LibraryRootScreen -> mihon.desktop.download.DesktopDownloadManager;mihon.desktop.ui.settings.AboutScreen -> mihon.desktop.extension.DesktopExtensionManager
+            mihon.desktop.ui.home.HomeScreen -> mihon.desktop.network.CloudflareChallengeManager;mihon.desktop.ui.library.LibraryRootScreen -> mihon.desktop.download.DesktopDownloadManager;mihon.desktop.ui.settings.AboutScreen -> mihon.desktop.extension.DesktopExtensionManager
             mihon.desktop.ui.settings.AdvancedSettingsScreen -> mihon.desktop.platform.DesktopNetworkHelper;mihon.desktop.ui.settings.AdvancedSettingsScreen -> okhttp3.HttpUrl;mihon.desktop.ui.settings.AdvancedSettingsScreenKt -> okhttp3.HttpUrl;mihon.desktop.ui.settings.MoreRootScreen -> mihon.desktop.download.DesktopDownloadManager
             """.trimIndent()
                 .split(';', '\n')

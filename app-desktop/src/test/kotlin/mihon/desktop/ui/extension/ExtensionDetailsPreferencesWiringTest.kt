@@ -15,7 +15,6 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import dev.mihon.injekt.patchInjekt
-import eu.kanade.tachiyomi.network.DesktopCookieJar
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.PreferenceScreen
 import eu.kanade.tachiyomi.source.Source
@@ -121,16 +120,16 @@ class ExtensionDetailsPreferencesWiringTest {
             this,
             ExtensionPresentationOptions(false, setOf("en")),
         )
-        val cookies = mockk<DesktopCookieJar> {
-            every { clearDomains(setOf("source.example")) } returns 2
+        val network = mockk<DesktopNetworkHelper> {
+            every { clearCookies(listOf(source)) } returns 2
         }
-        val network = mockk<DesktopNetworkHelper> { every { cookieJar } returns cookies }
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { extensionApi } returns api
             every { extensionManager } returns manager
             every { appPreferences } returns preferences
             every { this@mockk.sourceManager } returns sourceManager
             every { networkHelper } returns network
+            every { extensionCookiePort } returns network
         }
         val scene = ImageComposeScene(900, 1400, coroutineContext = coroutineContext) {}
         val openedDirectories = mutableListOf<File>()
@@ -202,7 +201,7 @@ class ExtensionDetailsPreferencesWiringTest {
             click(scene, MR.strings.desktop_extension_incognito_for.localized(Locale.getDefault(), installed.pkgName))
             assertTrue(installed.pkgName in preferences.incognitoExtensions.get())
             click(scene, MR.strings.pref_clear_cookies.localized())
-            verify { cookies.clearDomains(setOf("source.example")) }
+            verify { network.clearCookies(listOf(source)) }
             renderUntil(scene, "cookie feedback") { nodes(scene).any { it.config.toString().contains(MR.strings.desktop_extension_cookies_cleared.localized(Locale.getDefault(), 2)) } }
             dismissSnackbar(scene)
             directoryResult = false

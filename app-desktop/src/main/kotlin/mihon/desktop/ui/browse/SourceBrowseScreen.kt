@@ -74,7 +74,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.SaveSourceMangaForDetails
-import mihon.desktop.extension.DesktopExtensionManager
+import mihon.desktop.extension.DesktopSourceExtensionLookup
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.ui.library.MangaDetailScreen
 import mihon.domain.error.AppError
@@ -157,11 +157,11 @@ internal val LocalSourceLoginDialogInitialState = staticCompositionLocalOf<Deskt
 
 internal class DesktopSourceLastUsedRecorder(
     private val preferences: DesktopAppPreferences,
-    private val extensionManager: DesktopExtensionManager,
+    private val extensionLookup: DesktopSourceExtensionLookup,
 ) {
     fun record(sourceId: Long) {
         if (preferences.incognitoMode.get()) return
-        val extensionPackage = extensionManager.getExtensionPackage(sourceId)
+        val extensionPackage = extensionLookup.getExtensionPackage(sourceId)
         if (extensionPackage != null && extensionPackage in preferences.incognitoExtensions.get()) return
         preferences.lastUsedSource.set(sourceId)
     }
@@ -257,8 +257,8 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
         val scope = rememberCoroutineScope()
         val lastUsedRecorder = source?.let {
             val preferences = dependencies.appPreferences
-            val extensionManager = dependencies.extensionManager
-            remember(preferences, extensionManager) { DesktopSourceLastUsedRecorder(preferences, extensionManager) }
+            val extensionLookup = dependencies.sourceExtensionLookup
+            remember(preferences, extensionLookup) { DesktopSourceLastUsedRecorder(preferences, extensionLookup) }
         }
 
         LaunchedEffect(source?.id) {

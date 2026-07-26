@@ -9,7 +9,7 @@ status: planned
 - [x] Task 164：Android network error mapper consumer
 - [x] Task 165：Library UI use-case boundary
 - [x] Task 166：Creator and tracking use-case boundary
-- [ ] Task 167：Extension and browse ports
+- [x] Task 167：Extension and browse ports
 - [ ] Task 168：Settings, home and download ports
 - [ ] Task 169：Compiled boundary closeout
 ### Task 164 Android network error mapper consumer
@@ -47,6 +47,7 @@ status: planned
 **Files:** presentation port、source browse/login/preferences/details、既有 extension/network ports 与 wiring tests。
 **TDD:** 先对 typed URL/context/install ports 写 consumer RED，再迁移；注回任一禁止类型时 compiled guard RED。
 **User/feedback:** Extensions、Source browse/login/preferences；trust、login、retry、unsupported 与 failure feedback 不变。
+**Execution evidence:** compiled guard 移除 extension/browse 的 11 条 manager、raw `HttpUrl`、network helper 与 `ClassLoader` edge 后精确 RED；GREEN 后 URL/cookie、challenge recovery、extension lifecycle/last-used/context 与 cookie clearing 均下沉到 typed adapter/窄端口，UI 保留 trust、安装、更新、卸载、login、取消、超时、invalid/commit、Cloudflare retry/failure 及 Desktop JAR/context 行为。完整 focused gate、真实 forbidden-edge mutation、独立审查、主门禁、Spotless 与 residual/diff checks 全绿；11 条目标 edge 清零。
 ### Task 168 Settings, home and download ports
 **Risk axis:** desktop-settings-manager-boundary
 **Platform boundary:** shared+desktop

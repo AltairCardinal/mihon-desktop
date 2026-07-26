@@ -29,7 +29,7 @@ class DesktopExtensionManager(
     apkConverter: ApkToJarConverter = ApkToJarConverter(),
     fileSystem: DesktopExtensionFileSystem = DefaultDesktopExtensionFileSystem,
     artifactAuthenticator: DesktopArtifactAuthenticator = DefaultDesktopArtifactAuthenticator,
-) : AutoCloseable {
+) : AutoCloseable, DesktopExtensionPresentationService, DesktopSourceExtensionLookup {
 
     private val loadedExtensions = mutableListOf<LoadedExtension>()
     private val runtimeLock = Any()
@@ -48,7 +48,7 @@ class DesktopExtensionManager(
     )
     private val installCoordinator = ExtensionInstallCoordinator(installPort, installScope)
     private val mutableInstalledExtensions = MutableStateFlow<List<InstalledExtension>>(emptyList())
-    val installedExtensions: StateFlow<List<InstalledExtension>> = mutableInstalledExtensions.asStateFlow()
+    override val installedExtensions: StateFlow<List<InstalledExtension>> = mutableInstalledExtensions.asStateFlow()
 
     /** Loads all extensions from the extensions directory. */
     fun loadAll() {
@@ -73,7 +73,7 @@ class DesktopExtensionManager(
         synchronized(runtimeLock) { loadedExtensions.find { it.source.id == sourceId }?.source }
 
     /** Returns the installed extension package that owns [sourceId]. */
-    fun getExtensionPackage(sourceId: Long): String? = synchronized(runtimeLock) {
+    override fun getExtensionPackage(sourceId: Long): String? = synchronized(runtimeLock) {
         loadedExtensions.find { it.source.id == sourceId }?.jarFile?.nameWithoutExtension
     }
 
@@ -130,7 +130,7 @@ class DesktopExtensionManager(
      * Deletes the JAR file and its meta sidecar for [extension].
      * @return true if the JAR was deleted successfully.
      */
-    fun removeExtensionWithMeta(extension: InstalledExtension): Boolean {
+    override fun removeExtensionWithMeta(extension: InstalledExtension): Boolean {
         val removed = lifecycleGate.withPublicOperation {
             releaseRuntime(extension.pkgName)
             extension.jarFile.delete().also { deleted ->
@@ -146,12 +146,12 @@ class DesktopExtensionManager(
     }
 
     /** Re-scans the extensions directory and reloads all extensions. */
-    fun reloadAll() = loadAll()
+    override fun reloadAll() = loadAll()
 
     internal suspend fun installExtension(artifact: ExtensionArtifact): ExtensionInstallState =
         installExtensionStates(artifact).last()
 
-    internal fun installExtensionStates(artifact: ExtensionArtifact): Flow<ExtensionInstallState> =
+    override fun installExtensionStates(artifact: ExtensionArtifact): Flow<ExtensionInstallState> =
         installCoordinator.install(ExtensionInstallRequest(artifact))
             .onCompletion { publishInstalledExtensions() }
 
@@ -203,7 +203,7 @@ class DesktopExtensionManager(
     }
 
     /** Returns the directory where extensions should be placed. */
-    val extensionsDirectory get() = loader.extensionsDirectory
+    override val extensionsDirectory get() = loader.extensionsDirectory
 }
 
 /**

@@ -7,13 +7,17 @@ import eu.kanade.tachiyomi.network.interceptor.UserAgentInterceptor
 import mihon.desktop.network.CloudflareChallengeManager
 import mihon.desktop.network.DesktopCloudflareInterceptor
 import mihon.desktop.network.DesktopCloudflareCredentialInterceptor
+import mihon.desktop.network.DesktopExtensionCookiePort
 import mihon.desktop.settings.DohProvider
+import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.online.HttpSource
 import okhttp3.Cache
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.brotli.BrotliInterceptor
 import okhttp3.dnsoverhttps.DnsOverHttps
 import java.io.File
+import java.net.URI
 import java.util.concurrent.TimeUnit
 
 class DesktopNetworkHelper(
@@ -21,7 +25,7 @@ class DesktopNetworkHelper(
     cookieStorageFile: File = DesktopPlatformPaths.current().cookiesFile,
     dohProvider: DohProvider = DohProvider.OFF,
     challengeManager: CloudflareChallengeManager? = null,
-) : AutoCloseable {
+) : AutoCloseable, DesktopExtensionCookiePort {
 
     val cookieJar = DesktopCookieJar(
         storageFile = cookieStorageFile,
@@ -66,6 +70,14 @@ class DesktopNetworkHelper(
             .includeIPv6(false)
             .build()
         baseClient.newBuilder().dns(dns).build()
+    }
+
+    override fun clearCookies(sources: List<Source>): Int {
+        val domains = sources
+            .filterIsInstance<HttpSource>()
+            .mapNotNull { runCatching { URI(it.baseUrl).host }.getOrNull() }
+            .toSet()
+        return cookieJar.clearDomains(domains)
     }
 
     override fun close() {

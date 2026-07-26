@@ -50,7 +50,7 @@ import eu.kanade.tachiyomi.source.preference.ListPreference
 import eu.kanade.tachiyomi.source.preference.MultiSelectListPreference
 import eu.kanade.tachiyomi.source.preference.PreferenceCategoryItem
 import eu.kanade.tachiyomi.source.preference.SwitchPreference
-import mihon.desktop.extension.DesktopExtensionManager
+import mihon.desktop.extension.DesktopSourcePreferenceContextFactory
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.i18n.MR
 import java.util.Locale
@@ -66,14 +66,14 @@ internal sealed interface SourcePreferencesState {
 
 internal fun resolveSourcePreferencesState(
     source: Source?,
-    contextFactory: (ClassLoader?) -> Any? = ::createExtensionContext,
+    contextFactory: (Source) -> Any? = DesktopSourcePreferenceContextFactory::create,
 ): SourcePreferencesState = when (source) {
     null -> SourcePreferencesState.Missing
     !is ConfigurableSource -> SourcePreferencesState.NonConfigurable
     else -> {
         val screen = PreferenceScreen()
         try {
-            contextFactory(source::class.java.classLoader)?.let(screen::setContext)
+            contextFactory(source)?.let(screen::setContext)
         } catch (_: Exception) {
             // Context is optional compatibility wiring; setup decides actual availability.
         } catch (_: LinkageError) {
@@ -91,11 +91,6 @@ internal fun resolveSourcePreferencesState(
         }
     }
 }
-
-private fun createExtensionContext(classLoader: ClassLoader?): Any? = classLoader
-    ?.loadClass("android.content.Context")
-    ?.getDeclaredConstructor()
-    ?.newInstance()
 
 internal val LocalSourcePreferencesStateResolver = staticCompositionLocalOf<(Source?) -> SourcePreferencesState> {
     { source -> resolveSourcePreferencesState(source) }
@@ -115,9 +110,9 @@ data class SourcePreferencesScreen(
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val manager = LocalDesktopUiDependencies.current.extensionManager
+        val sourceManager = LocalDesktopUiDependencies.current.sourceManager
 
-        val source = remember(sourceId) { manager.getSource(sourceId) }
+        val source = remember(sourceId) { sourceManager.get(sourceId) }
         val stateResolver = LocalSourcePreferencesStateResolver.current
         val state = remember(sourceId, source, stateResolver) { stateResolver(source) }
 

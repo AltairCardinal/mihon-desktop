@@ -16,10 +16,12 @@ import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.download.DownloadQueueScreenModel
 import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopExtensionManager
+import mihon.desktop.extension.DesktopSourceExtensionLookup
 import mihon.desktop.license.DependencyNoticeProvider
 import mihon.desktop.network.CloudflareChallengeManager
 import mihon.desktop.network.DesktopChallengeBrowserLoginBridge
 import mihon.desktop.network.DesktopSourceLoginSessionFactory
+import mihon.desktop.network.DesktopExtensionCookiePort
 import mihon.desktop.migration.DesktopBatchMigrationController
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.platform.DesktopDeepLinkHandler
@@ -91,6 +93,7 @@ data class DesktopUiDependencies(
     val dependencyNoticeProvider: DependencyNoticeProvider,
     val extensionApi: DesktopExtensionApi,
     val extensionManager: DesktopExtensionManager,
+    val sourceExtensionLookup: DesktopSourceExtensionLookup = extensionManager,
     val externalActionNavigator: ExternalActionNavigator,
     val getExcludedScanlators: GetExcludedScanlators,
     val getExtensionRepo: GetExtensionRepo,
@@ -106,6 +109,7 @@ data class DesktopUiDependencies(
     val batchMigrationController: DesktopBatchMigrationController,
     val migrateManga: DesktopMigrateMangaUseCase,
     val networkHelper: DesktopNetworkHelper,
+    val extensionCookiePort: DesktopExtensionCookiePort = networkHelper,
     val notificationService: DesktopNotificationService,
     val privacyCapabilities: DesktopPrivacyCapabilities,
     val windowPrivacyController: DesktopWindowPrivacyController,

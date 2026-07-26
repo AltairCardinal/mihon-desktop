@@ -23,11 +23,11 @@ import mihon.desktop.network.ChallengeRecoveryFailure
 import mihon.desktop.network.ChallengeRecoveryIntent
 import mihon.desktop.network.ChallengeRecoveryState
 import mihon.desktop.network.CloudflareChallenge
-import mihon.desktop.network.CloudflareChallengeManager
 import mihon.desktop.network.DesktopChallengeBrowserLoginBridge
+import mihon.desktop.network.DesktopChallengeRecoveryPort
+import mihon.desktop.network.clearanceSession
+import mihon.desktop.network.target
 import mihon.desktop.settings.DesktopAppPreferences
-import tachiyomi.domain.source.service.AuthenticatedCookie
-import tachiyomi.domain.source.service.AuthenticatedSession
 import tachiyomi.i18n.MR
 import java.util.Locale
 
@@ -46,7 +46,7 @@ data class DesktopChallengeLoginUiState(
 )
 
 class DesktopChallengeLoginController(
-    private val manager: CloudflareChallengeManager,
+    private val recoveryPort: DesktopChallengeRecoveryPort,
     private val browserBridge: DesktopChallengeBrowserLoginBridge,
     private val preferences: DesktopAppPreferences,
     private val locale: Locale = Locale.getDefault(),
@@ -58,7 +58,7 @@ class DesktopChallengeLoginController(
         val solverAvailable = preferences.flareSolverrRuntimeConfig() != null
         val recovered = state as? ChallengeRecoveryState.Recovered
         return DesktopChallengeLoginUiState(
-            targetHost = challenge.request.url.host,
+            targetHost = challenge.target().host,
             feedback = state.feedback(locale),
             runningAction = (state as? ChallengeRecoveryState.Running)?.action,
             allowConflictingActions = state !is ChallengeRecoveryState.Running,
@@ -87,27 +87,13 @@ class DesktopChallengeLoginController(
         if (intent == ChallengeRecoveryIntent.UseFlareSolverr && preferences.flareSolverrRuntimeConfig() == null) {
             return current
         }
-        return manager.recover(challenge, intent)
+        return recoveryPort.recover(challenge, intent)
     }
 
     suspend fun submitClearance(challenge: CloudflareChallenge, value: String): ChallengeRecoveryState {
         val normalized = value.trim()
         if (normalized.isEmpty()) return challenge.state.value
-        val url = challenge.request.url
-        val session = AuthenticatedSession(
-            cookies = listOf(
-                AuthenticatedCookie(
-                    name = "cf_clearance",
-                    value = normalized,
-                    domain = url.host,
-                    hostOnly = true,
-                    path = "/",
-                    expiresAt = null,
-                    secure = url.isHttps,
-                    httpOnly = true,
-                ),
-            ),
-        )
+        val session = challenge.clearanceSession(normalized)
         return if (challenge.state.value == ChallengeRecoveryState.Running(ChallengeRecoveryAction.Browser)) {
             browserBridge.complete(challenge, session)
             challenge.state.value

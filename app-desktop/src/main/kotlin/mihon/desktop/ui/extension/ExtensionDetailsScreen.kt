@@ -64,7 +64,6 @@ import mihon.desktop.ui.settings.DesktopDirectoryOpener
 import tachiyomi.core.common.preference.getAndSet
 import tachiyomi.i18n.MR
 import java.io.File
-import java.net.URI
 import java.util.Locale
 
 internal data class ExtensionDetailsPlatformActions(
@@ -297,11 +296,7 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                                 )
                             }
                             OutlinedButton(onClick = {
-                                val domains = extension.sources
-                                    .filterIsInstance<HttpSource>()
-                                    .mapNotNull { runCatching { URI(it.baseUrl).host }.getOrNull() }
-                                    .toSet()
-                                val removed = dependencies.networkHelper.cookieJar.clearDomains(domains)
+                                val removed = dependencies.extensionCookiePort.clearCookies(extension.sources)
                                 scope.launch { snackbar.showSnackbar(MR.strings.desktop_extension_cookies_cleared.localized(Locale.getDefault(), removed)) }
                             }) { Text(MR.strings.pref_clear_cookies.localized()) }
                         }

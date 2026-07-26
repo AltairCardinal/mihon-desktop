@@ -105,7 +105,7 @@ class DesktopExtensionApi(
 
     suspend fun installExtension(
         extension: DesktopAvailableExtension,
-        manager: DesktopExtensionManager,
+        manager: DesktopExtensionPresentationService,
     ): InstallResult = withContext(Dispatchers.IO) {
         when (val start = beginInstall(extension, manager)) {
             is DesktopExtensionInstallStart.Started -> when (val terminal = start.states.last()) {
@@ -125,7 +125,7 @@ class DesktopExtensionApi(
 
     internal suspend fun beginInstall(
         extension: DesktopAvailableExtension,
-        manager: DesktopExtensionManager,
+        manager: DesktopExtensionPresentationService,
     ): DesktopExtensionInstallStart = withContext(Dispatchers.IO) {
         try {
             val installedJar = extensionArtifactFile(manager.extensionsDirectory, extension.pkgName, "jar")
@@ -151,7 +151,7 @@ class DesktopExtensionApi(
 
     internal fun confirmTrust(
         requestId: String,
-        manager: DesktopExtensionManager,
+        manager: DesktopExtensionPresentationService,
     ): Flow<ExtensionInstallState>? = synchronized(pendingTrust) { pendingTrust.remove(requestId) }
         ?.let { manager.installExtensionStates(it.incomingArtifact) }
 

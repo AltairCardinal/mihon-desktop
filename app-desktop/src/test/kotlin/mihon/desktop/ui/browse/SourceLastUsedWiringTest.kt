@@ -179,6 +179,7 @@ class SourceLastUsedWiringTest {
                 every { subscribe(any<String>(), any<Long>()) } returns flowOf(null)
             }
             every { this@mockk.extensionManager } returns extensionManager
+            every { sourceExtensionLookup } returns extensionManager
             every { sourceLoginSessionFactory } returns mockk(relaxed = true)
         }
         val lifecycle = Job(coroutineContext[Job])

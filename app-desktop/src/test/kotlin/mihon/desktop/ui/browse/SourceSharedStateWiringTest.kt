@@ -53,6 +53,7 @@ import mihon.desktop.network.CloudflareChallengeManager
 import mihon.desktop.network.DesktopBrowserOpener
 import mihon.desktop.network.DesktopAuthenticatedSessionCommitter
 import mihon.desktop.network.DesktopSourceLoginSessionFactory
+import mihon.desktop.network.DesktopSourceLoginAdapter
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.FakeDesktopSourceManager
@@ -1304,14 +1305,14 @@ class SourceSharedStateWiringTest {
 
     @Test
     fun `cookie header parser rejects unsafe input without exposing values`() {
-        val url = "https://example.com/path".toHttpUrl()
+        val endpoint = requireNotNull(DesktopSourceLoginAdapter.parseEndpoint("https://example.com/path"))
         listOf(
             "", "missing", "=secret", "session=", "session=one; session=two", "bad name=secret",
             "session=bad value", "session=bad,comma", "session=bad\\slash", "session=line\r\nbreak",
             "session=\u007f", "session=é",
         )
-            .forEach { assertEquals(null, DesktopSourceCookieHeaderParser.parse(it, url)) }
-        val parsed = requireNotNull(DesktopSourceCookieHeaderParser.parse("session=secret", url))
+            .forEach { assertEquals(null, DesktopSourceCookieHeaderParser.parse(it, endpoint)) }
+        val parsed = requireNotNull(DesktopSourceCookieHeaderParser.parse("session=secret", endpoint))
         assertFalse(parsed.toString().contains("secret"))
     }
 

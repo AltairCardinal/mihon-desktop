@@ -543,7 +543,14 @@ Task 166 已将 authors/tracking 的 5 条 compiled repository edge 清零；Des
 改由 creator interactors 承载列表、详情、发现、关注与候选读取，Tracking 复用固定原版
 方向的 `GetTracks` 及 shared `InsertTrack`/`DeleteTrack` throwing 路径。实现 focused、
 repository 回注 mutation、主组合门禁、独立审查及 Spotless 全绿；ID95 保持 `WIRED`，
-剩余 18 条均为 manager/HTTP/ClassLoader 边。下一恢复位置为 Task 167。
+剩余 18 条均为 manager/HTTP/ClassLoader 边。
+
+Task 167 已将 extension/browse 的 11 条 manager、raw `HttpUrl`、network helper 与
+`ClassLoader` compiled edge 清零；URL/cookie、challenge recovery、extension
+lifecycle/last-used/context 与 cookie clearing 均由 typed adapter/窄端口承载，原有 trust、
+安装、更新、卸载、login、取消、超时、invalid/commit、Cloudflare retry/failure 及 Desktop
+JAR/context 行为保持不变。完整 focused gate、forbidden-edge mutation、独立审查、主门禁及
+Spotless 全绿；ID95 保持 `WIRED`，剩余精确 7 条均属于 Task 168。下一恢复位置为 Task 168。
 
 ### Task 18：让 64 项最终 closure 与架构 gate 变绿
 

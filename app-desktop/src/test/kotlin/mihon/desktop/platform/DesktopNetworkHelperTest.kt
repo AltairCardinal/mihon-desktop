@@ -1,6 +1,17 @@
 package mihon.desktop.platform
 
+import eu.kanade.tachiyomi.source.online.HttpSource
+import okhttp3.Cookie
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.MangasPage
+import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SManga
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -41,10 +52,53 @@ class DesktopNetworkHelperTest {
         assertNotNull(helper.cookieJar)
     }
 
+    @Test
+    fun `extension cookie port clears only valid source domains`() {
+        val helper = DesktopNetworkHelper(
+            cacheDir = createTempCacheDir(),
+            cookieStorageFile = File(createTempCacheDir(), "cookies.json"),
+        )
+        val sourceUrl = "https://source.example/path".toHttpUrl()
+        val otherUrl = "https://other.example/path".toHttpUrl()
+        helper.cookieJar.saveFromResponse(
+            sourceUrl,
+            listOf(Cookie.Builder().name("source").value("one").domain(sourceUrl.host).build()),
+        )
+        helper.cookieJar.saveFromResponse(
+            otherUrl,
+            listOf(Cookie.Builder().name("other").value("two").domain(otherUrl.host).build()),
+        )
+
+        assertEquals(1, helper.clearCookies(listOf(TestHttpSource(sourceUrl.toString()), TestHttpSource("not a url"))))
+        assertTrue(helper.cookieJar.loadForRequest(sourceUrl).isEmpty())
+        assertEquals(listOf("other"), helper.cookieJar.loadForRequest(otherUrl).map { cookie: Cookie -> cookie.name })
+        helper.close()
+    }
+
     private fun createTempCacheDir(): File {
         return File(System.getProperty("java.io.tmpdir"), "mihon-test-cache-${System.nanoTime()}").apply {
             mkdirs()
             deleteOnExit()
         }
+    }
+
+    private class TestHttpSource(override val baseUrl: String) : HttpSource() {
+        override val id: Long = baseUrl.hashCode().toLong()
+        override val name: String = "Test"
+        override val lang: String = "en"
+        override val supportsLatest: Boolean = false
+        override val client: OkHttpClient = OkHttpClient()
+
+        override fun popularMangaRequest(page: Int): Request = error("not used")
+        override fun popularMangaParse(response: Response): MangasPage = error("not used")
+        override fun latestUpdatesRequest(page: Int): Request = error("not used")
+        override fun latestUpdatesParse(response: Response): MangasPage = error("not used")
+        override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request = error("not used")
+        override fun searchMangaParse(response: Response): MangasPage = error("not used")
+        override fun mangaDetailsParse(response: Response): SManga = error("not used")
+        override fun chapterListParse(response: Response): List<SChapter> = error("not used")
+        override fun chapterPageParse(response: Response): SChapter = error("not used")
+        override fun pageListParse(response: Response): List<Page> = error("not used")
+        override fun imageUrlParse(response: Response): String = error("not used")
     }
 }
