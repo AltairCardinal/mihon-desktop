@@ -91,3 +91,23 @@ http://localhost:8080/test
 - `POST /reset`：重置测试状态
 
 完整字段见 [API_REFERENCE.md](./API_REFERENCE.md)。
+
+## 最终对齐固定 EXE Runner
+
+本轮构建已产出固定的 Windows 未打包应用后，运行：
+
+```bash
+./scripts/desktop-final-parity-test.sh
+```
+
+Runner 固定使用 `app-desktop/tmp/mihon-dist/main/app/Mihon Desktop/Mihon Desktop.exe`，并要求 `./scripts/build-desktop.sh evidence` 生成的 Task151 provenance sidecar。启动前会复用既有 provenance verifier 同时核对当前已提交 product source identity 和完整未打包应用哈希；EXE、sidecar 缺失或任一身份不匹配都会 fail-closed，不以 mtime 猜测 freshness。有效产物始终以 `--test-mode --headless` 启动；若 `/test/health` 在启动前已响应则拒绝覆盖旧实例，启动后还会同时确认 health 与本次 PID 存活，并在成功、失败或超时时关闭本次启动的精确进程，不打开系统 UI。
+
+`test-desktop` 客户端通过 `MIHON_FINAL_PARITY_SUMMARY_FILE` 写入汇总。Runner 将它与既有 `test-mode-coverage-inventory.json` 对比，逐项输出 family 和 permanent protection，并要求：
+
+```text
+Families: 13/13
+Permanent protections: 5/5
+Capabilities: 64/64 unmapped=0
+```
+
+产物错误会给出固定路径和 `evidence` 构建命令；启动错误会区分旧 health 占用、本次进程提前退出与超时，并给出进程或启动日志。provenance、health command 和 test command override 仅用于隔离 runner fixture，正常验收不得用它们替换真实 verifier、固定路径或默认 `test-desktop` client。

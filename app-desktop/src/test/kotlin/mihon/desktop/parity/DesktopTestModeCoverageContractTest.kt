@@ -63,6 +63,15 @@ class DesktopTestModeCoverageContractTest {
         assertEquals(requiredFamilies, inventory.scenarios.mapNotNull(Entry::family).toSet())
         assertEquals(expectedScenarioStatuses, inventory.scenarios.associate { requireNotNull(it.family) to it.status })
         assertEquals(expectedBoundaries, inventory.boundaries.associate { it.id to (it.status to it.capabilityIds.toSet()) })
+        assertEquals(
+            listOf(
+                "scripts/desktop-final-parity-test.sh",
+                "scripts/desktop-final-parity-test.sh",
+                "exact family protection capability counts plus actionable artifact startup timeout and schema failures",
+                "mihon.test.desktop.DesktopFinalParityRunnerContractTest#fake process is polled summarized exactly and always torn down",
+            ),
+            inventory.boundaries.single { it.id == "gap-final-runtime-runner" }.tuple(),
+        )
         assertEquals(requiredProtections, inventory.protections.map(Entry::id).toSet())
         assertEquals(requiredProtections.associateWith { "covered" }, inventory.protections.associate { it.id to it.status })
         assertEquals((inventory.allEntries).size, inventory.allEntries.map(Entry::id).toSet().size)

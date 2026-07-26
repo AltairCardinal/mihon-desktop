@@ -3649,13 +3649,22 @@ class DesktopProductCapabilityContractTest {
         assertEquals("Task 16D", metadata["parent-task"])
         assertEquals("planned", metadata["status"])
         assertFalse("active-task" in metadata, "child progress must derive from its first unchecked checkbox")
-        val overview = Regex("""(?m)^- \[ ] Task (17[1-7])[：:]""").findAll(child.substringBefore("### Task 171")).map { it.groupValues[1] }.toList()
-        assertEquals((171..177).map { it.toString() }, overview)
+        val overview =
+            Regex("""(?m)^- \[([ xX])\] Task (17[1-7])[：:]""")
+                .findAll(child.substringBefore("### Task 171"))
+                .associate { it.groupValues[2] to it.groupValues[1].lowercase() }
+        assertEquals((171..177).map(Int::toString).toSet(), overview.keys)
+        assertEquals("x", overview.getValue("171"))
+        assertEquals((172..177).map(Int::toString), overview.filterValues { it == " " }.keys.toList())
+        val task171 = child.substringAfter("### Task 171 Final fixed-EXE runner").substringBefore("### Task 172 ")
+        assertTrue("10/10" in task171 && "13/13" in task171 && "5/5" in task171 && "unmapped=0" in task171)
 
         val parent = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
         assertEquals("Task 17", markdownFrontmatter(parent)["active-task"])
         assertTrue(Regex("""(?m)^- \[x] Task 16D[：:]""").containsMatchIn(parent))
         assertTrue(Regex("""(?m)^- \[ ] Task 17[：:]""").containsMatchIn(parent))
+        val task17 = parent.substringAfter("### Task 17：").substringBefore("### Task 18：")
+        assertTrue("Task 171" in task17 && "10/10" in task17)
     }
 
     @Test

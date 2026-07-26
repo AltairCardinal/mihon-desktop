@@ -6,7 +6,7 @@ status: planned
 ---
 # Test Mode scenario closure
 本计划只关闭 Task16D inventory 中 9 个 Desktop TestMode wiring/runner gap 和缺失的最终固定 EXE runner；ID3 产品闭环仍归 Task141/142，本计划只消费其完成产物，并按 171→177 串行执行。
-- [ ] Task 171：Final fixed-EXE runner
+- [x] Task 171：Final fixed-EXE runner
 - [ ] Task 172：Library and manga-detail actions
 - [ ] Task 173：Browse search and source login
 - [ ] Task 174：Downloads, updates and history actions
@@ -21,6 +21,7 @@ status: planned
 **Files:** final runner, test client summary model, runner contract, automation guide, tracker.
 **TDD:** first make missing/stale EXE and incomplete family/protection summaries RED; minimally add deterministic startup, polling, teardown and exact result aggregation.
 **User/feedback:** one CLI entry displays per-family status, permanent protections, unmapped IDs and actionable startup/timeout failures; it never opens system UI.
+**Execution evidence:** runner contract 首先因入口缺失 5/5 RED；GREEN 后 fixed EXE 与 Task151 provenance sidecar/verifier fail-closed，启动前拒绝旧 health owner，ready 后绑定本轮 PID，fake process 轮询/teardown、严格 summary schema 与 missing/rejected/stale/incomplete/timeout 分支共 `10/10`。唯一审查的默认 client、旧 health 冒充、mtime provenance 与 schema traceback 问题均以精确 RED→GREEN 修复；主代理再补 provenance 恢复命令 `./scripts/build-desktop.sh evidence` 的 `2` 项 RED→GREEN。coverage contract `2/2`、Bash/Python 语法、Spotless 与 diff 全绿。runner 从唯一 inventory 汇总 13/13、5/5、64/64 与 `unmapped=0`，当前 9 个场景 gap 诚实返回非终态，交 Tasks 172–176 关闭。
 ### Task 172 Library and manga-detail actions
 **Risk axis:** testmode-library-detail
 **Platform boundary:** desktop

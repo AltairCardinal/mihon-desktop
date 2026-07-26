@@ -560,6 +560,12 @@ forbidden-edge mutation、DI same-instance、独立审查、主门禁及 Spotles
 违规现已全部归零，ID95 保持 `WIRED` 等待 Task 169 五角色与终态收口。下一恢复位置为
 Task 169。
 
+Task 16D 的 Task 171 已完成固定未打包 EXE final runner：Task151 provenance
+fail-closed、旧 health owner 拒绝、本轮 PID 绑定、轮询/teardown、严格 summary schema 与
+可行动错误均由 runner contract `10/10` 保护；coverage `2/2`、Bash/Python 语法、Spotless
+和主 RED→GREEN 门禁全绿。runner 从唯一 inventory 汇总 13/13、5/5、64/64 与
+`unmapped=0`；当前 9 个场景 gap 保持诚实非终态。下一恢复位置为 Task 172。
+
 ### Task 18：让 64 项最终 closure 与架构 gate 变绿
 
 **Risk axis:** terminal-parity-gate

@@ -38,3 +38,12 @@
 - 一次性验证报告
 - agent 中间状态文件
 - 本机构建产物
+
+## Final parity runner 状态
+
+- Task 171 fixed-EXE runner：已完成。
+- 入口：`./scripts/desktop-final-parity-test.sh`。
+- 产物边界：只接受 `scripts/build-desktop.sh evidence` 的固定未打包 EXE 与 Task151 provenance sidecar；当前 source identity 或应用哈希不匹配时在启动前 fail-closed。
+- 运行边界：仅 headless Test Mode；启动前拒绝已有 health owner，启动后同时验证 health 与本次 PID，并精确 teardown。
+- 汇总边界：`test-desktop` 汇总对照既有 coverage inventory，必须报告 13/13 families、5/5 permanent protections、64/64 capability IDs 且 `unmapped=0`。
+- 场景 wiring gap 仍由 Task 172–177 负责；Task 171 不会把这些 gap 误标为已完成。
