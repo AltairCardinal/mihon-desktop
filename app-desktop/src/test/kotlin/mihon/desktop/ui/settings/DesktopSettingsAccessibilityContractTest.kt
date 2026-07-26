@@ -101,6 +101,7 @@ class DesktopSettingsAccessibilityContractTest {
             every { appPreferences } returns preferences
             every { localeAdapter } returns DesktopLocaleAdapter(preferences.appLanguage)
             every { downloadManager } returns downloads
+            every { downloadQueuePort } returns downloads
         }
         val previousLocale = Locale.getDefault()
         val scene = ImageComposeScene(1_000, height, coroutineContext = kotlinx.coroutines.currentCoroutineContext()) {}

@@ -138,6 +138,7 @@ class SourceExtensionNavigationContractTest {
         val downloadManager = mockk<DesktopDownloadManager> { every { queue } returns MutableStateFlow(emptyList()) }
         val dependencies = mockk<DesktopUiDependencies> {
             every { this@mockk.downloadManager } returns downloadManager
+            every { downloadQueuePort } returns downloadManager
         }
         lateinit var navigator: Navigator
         val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}

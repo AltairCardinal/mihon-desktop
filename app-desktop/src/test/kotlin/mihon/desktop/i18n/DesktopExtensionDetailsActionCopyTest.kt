@@ -8,7 +8,6 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import cafe.adriel.voyager.navigator.Navigator
 import dev.mihon.injekt.patchInjekt
-import eu.kanade.tachiyomi.network.DesktopCookieJar
 import eu.kanade.tachiyomi.source.online.HttpSource
 import io.mockk.coEvery
 import io.mockk.every
@@ -23,7 +22,7 @@ import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.extension.InstalledExtension
-import mihon.desktop.platform.DesktopNetworkHelper
+import mihon.desktop.network.DesktopExtensionCookiePort
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.ui.extension.DesktopExtensionPresentationPort
 import mihon.desktop.ui.extension.ExtensionDetailsPlatformActions
@@ -65,11 +64,12 @@ class DesktopExtensionDetailsActionCopyTest {
         }
         val manager = mockk<DesktopExtensionManager> { every { removeExtensionWithMeta(extension) } returns false }
         val model = ExtensionsScreenModel(DesktopExtensionPresentationPort(api, manager, MutableStateFlow(listOf(extension))), this, ExtensionPresentationOptions(false, setOf("en")))
-        val cookies = mockk<DesktopCookieJar> { every { clearDomains(setOf("source.example")) } returns 2 }
-        val network = mockk<DesktopNetworkHelper> { every { cookieJar } returns cookies }
+        val extensionCookies = mockk<DesktopExtensionCookiePort> {
+            every { clearCookies(extension.sources) } returns 2
+        }
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { extensionApi } returns api
-            every { networkHelper } returns network
+            every { extensionCookiePort } returns extensionCookies
             every { sourceManager } returns mockk<SourceManager>()
             every { appPreferences } returns DesktopAppPreferences(DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")))
         }

@@ -7,7 +7,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import mihon.desktop.platform.DesktopShareService
 import mihon.desktop.network.DesktopNetworkMaintenancePort
 import mihon.desktop.security.DesktopPassphraseVerifier
@@ -336,9 +335,7 @@ object TestMode {
             { activeSettings?.close() },
             {
                 activeTracking?.let {
-                    runBlocking {
-                        it.closeAndJoin()
-                    }
+                    it.closeAndWait()
                     TrackingTestBridge.clear(it)
                 }
             },

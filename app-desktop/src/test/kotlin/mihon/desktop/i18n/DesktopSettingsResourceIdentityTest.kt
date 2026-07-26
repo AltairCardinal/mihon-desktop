@@ -44,6 +44,8 @@ import mihon.desktop.platform.DesktopPlatformPaths
 import mihon.desktop.platform.DesktopLocaleAdapter
 import mihon.desktop.platform.OperatingSystem
 import mihon.desktop.platform.PlatformCredentialUnavailableException
+import mihon.desktop.network.DesktopCloudflareCookieImportResult
+import mihon.desktop.network.DesktopNetworkMaintenancePort
 import mihon.desktop.privacy.DesktopCapabilitySupport
 import mihon.desktop.privacy.DesktopPrivacyCapabilities
 import mihon.desktop.privacy.DesktopWindowPrivacy
@@ -489,11 +491,13 @@ class DesktopSettingsResourceIdentityTest {
             every { appPreferences } returns prefs
             every { this@mockk.localeAdapter } returns localeAdapter
             every { downloadManager } returns downloads
+            every { downloadQueuePort } returns downloads
         }
         val emptyDependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns prefs
             every { this@mockk.localeAdapter } returns localeAdapter
             every { downloadManager } returns emptyDownloads
+            every { downloadQueuePort } returns emptyDownloads
         }
         val previousLocale = Locale.getDefault()
         try {
@@ -717,6 +721,7 @@ class DesktopSettingsResourceIdentityTest {
         val extensionManager = DesktopExtensionManager()
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { this@mockk.extensionManager } returns extensionManager
+            every { extensionPresentationService } returns extensionManager
             every { updateScreenModel } returns model
         }
         val previousLocale = Locale.getDefault()
@@ -1118,8 +1123,12 @@ class DesktopSettingsResourceIdentityTest {
     @Test
     fun `Advanced renders localized production states and shared identities`() = runBlocking {
         val appPreferences = DesktopAppPreferences(InMemoryPreferenceStore())
+        val networkMaintenance = mockk<DesktopNetworkMaintenancePort>(relaxed = true) {
+            every { importCloudflareCookie("", "") } returns DesktopCloudflareCookieImportResult.InvalidValue
+        }
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { this@mockk.appPreferences } returns appPreferences
+            every { networkMaintenancePort } returns networkMaintenance
         }
         val previousLocale = Locale.getDefault()
         try {

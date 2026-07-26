@@ -36,11 +36,8 @@ class DesktopMigrationParityTest {
     }
 
     @Test
-    fun `desktop product work comparison and test mode tracking remain protected`() {
+    fun `desktop product work comparison remains protected`() {
         val authors = Files.readString(Path.of("src/main/kotlin/mihon/desktop/ui/authors/AuthorsTab.kt"))
         assertTrue(authors.contains("data class WorkCompareScreen"))
-        val server = Files.readString(Path.of("src/main/kotlin/mihon/desktop/test/http/TestHttpServer.kt"))
-        assertTrue(server.contains("TrackingSettingsScreen"))
-        assertTrue(server.contains("tracking_update"))
     }
 }

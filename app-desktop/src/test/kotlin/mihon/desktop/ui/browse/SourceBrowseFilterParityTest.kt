@@ -126,6 +126,7 @@ class SourceBrowseFilterParityTest {
             every { sourceManager } returns FakeDesktopSourceManager(listOf(source))
             every { appPreferences } returns sourceBrowseHistoryPreferences()
             every { extensionManager } returns sourceBrowseExtensionManager()
+            every { sourceExtensionLookup } returns sourceBrowseExtensionManager()
             every { sourceMangaSearchService } returns SourceMangaSearchService()
             every { saveSourceMangaForDetails } returns mockk(relaxed = true)
             every { getManga } returns mockk<GetManga>(relaxed = true)

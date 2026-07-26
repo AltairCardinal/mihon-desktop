@@ -5,7 +5,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -27,6 +26,7 @@ import tachiyomi.domain.track.service.TrackerAuthentication
 import tachiyomi.domain.track.service.TrackerServiceRegistry
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.CountDownLatch
 
 @Serializable
 data class TrackingTestState(
@@ -66,6 +66,7 @@ class TrackingTestModeController(
     private val ownerScope = CoroutineScope(ownerJob + Dispatchers.Default)
     private val currentState = AtomicReference(TrackingTestState())
     private val activeOperation = AtomicReference<Deferred<TrackingTestActionResult>?>()
+    private val finalization = CountDownLatch(1)
     private var model: TrackingScreenModel? = null
     private val results = mutableMapOf<Long, List<TrackSearchResult>>()
 
@@ -114,13 +115,9 @@ class TrackingTestModeController(
         finalizeClosedOwner()
     }
 
-    suspend fun closeAndJoin() {
+    internal fun closeAndWait() {
         close()
-        val operation = activeOperation.get()
-        if (operation != null && currentCoroutineContext()[Job] !== operation) {
-            operation.join()
-        }
-        finalizeClosedOwner()
+        finalization.await()
     }
 
     private suspend fun executeOwned(
@@ -235,10 +232,14 @@ class TrackingTestModeController(
     private fun finalizeClosedOwner() {
         if (!closed.get() || activeOperation.get() != null) return
         if (!finalized.compareAndSet(false, true)) return
-        model?.onDispose()
-        model = null
-        results.clear()
-        currentState.updateAndGet { it.copy(closed = true) }
+        try {
+            model?.onDispose()
+            model = null
+            results.clear()
+        } finally {
+            currentState.updateAndGet { it.copy(closed = true) }
+            finalization.countDown()
+        }
     }
 
     private fun fail(code: TrackingTestFailureCode): Nothing = throw TrackingTestFailureException(code)

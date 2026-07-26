@@ -15,7 +15,6 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
-import eu.kanade.tachiyomi.network.DesktopCookieJar
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -24,7 +23,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
-import mihon.desktop.platform.DesktopNetworkHelper
+import mihon.desktop.network.DesktopNetworkMaintenancePort
 import mihon.desktop.privacy.DesktopPrivacyCapabilities
 import mihon.desktop.privacy.DesktopWindowPrivacy
 import mihon.desktop.privacy.DesktopWindowPrivacyController
@@ -105,7 +104,7 @@ class DesktopSettingsSecurityAdvancedAccessibilityTest {
             assertKeyCloses(scene, MR.strings.desktop_settings_clear_cookies_confirm.localized()) {
                 MR.strings.desktop_settings_clear_cookies_warning.localized() in sceneText(scene)
             }
-            verify(exactly = 1) { fixture.cookieJar.clear() }
+            verify(exactly = 1) { fixture.networkMaintenance.clearCookies() }
 
             click(scene, MR.strings.desktop_advanced_clear_network_cache.localized())
             render(scene)
@@ -218,19 +217,16 @@ class DesktopSettingsSecurityAdvancedAccessibilityTest {
 
     private fun advancedFixture(): AdvancedFixture {
         val preferences = DesktopAppPreferences(InMemoryPreferenceStore())
-        val cookieJar = mockk<DesktopCookieJar>(relaxed = true)
-        val networkHelper = mockk<DesktopNetworkHelper>(relaxed = true) {
-            every { this@mockk.cookieJar } returns cookieJar
-        }
+        val networkMaintenance = mockk<DesktopNetworkMaintenancePort>(relaxed = true)
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns preferences
-            every { this@mockk.networkHelper } returns networkHelper
+            every { networkMaintenancePort } returns networkMaintenance
         }
         val actions = mockk<AdvancedSettingsPlatformActions> {
             coEvery { loadNetworkCacheSize() } returns "0 B"
             coEvery { openCrashLogFolder() } returns false
         }
-        return AdvancedFixture(dependencies, actions, cookieJar)
+        return AdvancedFixture(dependencies, actions, networkMaintenance)
     }
 
     private fun branch(scene: ImageComposeScene, label: String, role: Role) = nodes(scene, true)
@@ -286,6 +282,6 @@ class DesktopSettingsSecurityAdvancedAccessibilityTest {
     private data class AdvancedFixture(
         val dependencies: DesktopUiDependencies,
         val actions: AdvancedSettingsPlatformActions,
-        val cookieJar: DesktopCookieJar,
+        val networkMaintenance: DesktopNetworkMaintenancePort,
     )
 }

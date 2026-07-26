@@ -460,6 +460,7 @@ class DesktopSettingsSearchWiringTest {
             every { appPreferences } returns currentPreferences
             every { this@mockk.localeAdapter } returns localeAdapter
             every { downloadManager } returns downloads
+            every { downloadQueuePort } returns downloads
         }
         CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies, content = content)
     }

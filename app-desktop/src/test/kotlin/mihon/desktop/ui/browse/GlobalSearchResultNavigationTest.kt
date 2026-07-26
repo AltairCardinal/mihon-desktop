@@ -174,6 +174,7 @@ class GlobalSearchResultNavigationTest {
             every { sourceManager } returns FakeDesktopSourceManager(listOf(source))
             every { appPreferences } returns preferences
             every { extensionManager } returns sourceBrowseExtensionManager()
+            every { sourceExtensionLookup } returns sourceBrowseExtensionManager()
             every { sourceMangaSearchService } returns SourceMangaSearchService()
             every { saveSourceMangaForDetails } returns saver
             every { getManga } returns mockk<GetManga> {
