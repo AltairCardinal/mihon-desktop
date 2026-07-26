@@ -2,7 +2,7 @@
 parent-plan: docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md
 parent-task: Task 16C
 original-ref: main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8
-status: planned
+status: completed
 ---
 # UI dependency boundary closure
 本计划只关闭 ID8/95 已确认的 current Android mapper 缺边与 32 条 Desktop compiled UI 违规。顺序固定为 164→169；每项独立红绿重构、mutation、focused test 和提交，不创建第二套 repository/manager。UI 入口与成功、失败、取消反馈保持不变；平台 adapter 只允许带非空理由的 OS side effect port。
@@ -11,7 +11,7 @@ status: planned
 - [x] Task 166：Creator and tracking use-case boundary
 - [x] Task 167：Extension and browse ports
 - [x] Task 168：Settings, home and download ports
-- [ ] Task 169：Compiled boundary closeout
+- [x] Task 169：Compiled boundary closeout
 ### Task 164 Android network error mapper consumer
 **Risk axis:** android-network-error-wiring
 **Platform boundary:** shared+android
@@ -65,3 +65,4 @@ status: planned
 **Files:** compiled architecture guard、parity manifest、parity contract、父计划。
 **TDD:** 先将 expected violations 设为空产生 RED；164–168 全闭合后 GREEN，并复跑 forbidden/disconnected/blank-reason mutations。
 **User/feedback:** 无新增入口；证明既有入口只能经 use case/port，平台 side effect feedback 保持可执行。
+**Execution evidence:** Task16C focused contract 先精确 RED 于 ID8 `expected VERIFIED but was SHARED`。终态审计确认 ID8/95 五角色闭合，ID8 的 3 条与 ID95 的 40 条 required compiled edge 全部存在，`forbidden=0`、`missing=0`；forbidden/disconnected mutation 与 platform allowlist 的缺边、空 reason mutation 均有效。ID8/95 分别由 `SHARED`/`WIRED` 精确提升为 `VERIFIED`，未批量 promotion。

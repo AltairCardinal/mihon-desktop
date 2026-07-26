@@ -234,7 +234,7 @@ class DesktopProductCapabilityContractTest {
             3 to "CHARACTERIZED",
             4 to "VERIFIED",
             7 to "WIRED",
-            8 to "SHARED",
+            8 to "VERIFIED",
             10 to "VERIFIED",
             11 to "WIRED",
             12 to "VERIFIED",
@@ -736,7 +736,7 @@ class DesktopProductCapabilityContractTest {
             92 to "CANDIDATE",
             93 to "WIRED",
             94 to "VERIFIED",
-            95 to "WIRED",
+            95 to "VERIFIED",
             96 to "VERIFIED",
         )
     private val task13FollowUps =
@@ -861,7 +861,7 @@ class DesktopProductCapabilityContractTest {
             3 to "CHARACTERIZED",
             4 to "VERIFIED",
             7 to "WIRED",
-            8 to "SHARED",
+            8 to "VERIFIED",
         )
     private val settingsParityIds = setOf(88, 90, 91, 94)
     private val structuredProvenanceIds =
@@ -3466,27 +3466,34 @@ class DesktopProductCapabilityContractTest {
         val childPlan = "docs/superpowers/plans/2026-07-24-task-16c-ui-dependency-boundary-closure.md"
         val expected =
             mapOf(
-                8 to Triple("SHARED", "$childPlan#task-169-compiled-boundary-closeout", 0),
-                95 to Triple("WIRED", "$childPlan#task-169-compiled-boundary-closeout", 0),
+                8 to 3,
+                95 to 40,
             )
         val guardTest = "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt"
         fun JsonObject.strings(field: String) = getValue(field).jsonArray.map { it.jsonPrimitive.content }.toSet()
         expected.forEach { (id, expectation) ->
             val item = items.getValue(id).jsonObject
-            assertEquals(expectation.first, requiredText(item, "status", id))
+            assertEquals("VERIFIED", requiredText(item, "status", id))
             statusDecisionForTask(item, id, if (id == 8) "Task 6" else "Task 13")
             val decision = item.getValue("statusDecision").jsonObject
             assertEquals("Task 16C", requiredText(decision, "task", id, "statusDecision"))
-            assertEquals("REMEDIATE", requiredText(decision, "decision", id, "statusDecision"))
-            assertEquals(expectation.second, requiredText(decision, "followUp", id, "statusDecision"))
-            assertTrue(requiredText(decision, "gap", id, "statusDecision") != "NONE")
+            assertEquals("PROMOTE_VERIFIED", requiredText(decision, "decision", id, "statusDecision"))
+            assertEquals("NONE", requiredText(decision, "followUp", id, "statusDecision"))
+            assertEquals("NONE", requiredText(decision, "gap", id, "statusDecision"))
             assertTrue(guardTest in item.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content })
+            val roleEvidence = item.getValue("roleEvidence").jsonObject
+            assertEquals(requiredTerminalEvidenceRoles, roleEvidence.keys)
+            requiredTerminalEvidenceRoles.forEach { role ->
+                assertTrue(roleEvidence.getValue(role).jsonArray.isNotEmpty(), "ID $id roleEvidence.$role must be non-empty")
+            }
 
             val audit = item.getValue("architectureBoundaryAudit").jsonObject
             assertEquals("Task 16C", requiredText(audit, "task", id, "architectureBoundaryAudit"))
             assertEquals("JDK ToolProvider jdeps over compiled production and fixture classes", requiredText(audit, "mechanism", id))
             assertEquals(childPlan, requiredText(audit, "childPlan", id, "architectureBoundaryAudit"))
-            assertEquals(expectation.third, audit.getValue("forbiddenCompiledEdges").jsonArray.size)
+            assertEquals(expectation, audit.getValue("requiredCompiledEdges").jsonArray.size)
+            assertTrue(audit.getValue("missingRequiredEdges").jsonArray.isEmpty())
+            assertTrue(audit.getValue("forbiddenCompiledEdges").jsonArray.isEmpty())
             audit.getValue("permittedPlatformAdapters").jsonArray.forEach { adapter ->
                 requiredText(adapter.jsonObject, "edge", id)
                 requiredText(adapter.jsonObject, "reason", id)
@@ -3598,8 +3605,13 @@ class DesktopProductCapabilityContractTest {
         assertEquals("x", overview.getValue("166"))
         assertEquals("x", overview.getValue("167"))
         assertEquals("x", overview.getValue("168"))
-        assertEquals(listOf("169"), overview.filterValues { it == " " }.keys.toList())
-        assertEquals("planned", metadata["status"])
+        assertEquals("x", overview.getValue("169"))
+        assertTrue(overview.values.all { it == "x" })
+        assertEquals("completed", metadata["status"])
+        val task169 = child.substringAfter("### Task 169 Compiled boundary closeout")
+        assertTrue("forbidden=0" in task169)
+        assertTrue("missing=0" in task169)
+        assertTrue("ID8/95" in task169 && "VERIFIED" in task169)
         (164..169).forEach { task ->
             assertEquals(1, Regex("""(?m)^### Task $task(?:\s|$)""").findAll(child).count(), "Task $task must be unique")
         }
