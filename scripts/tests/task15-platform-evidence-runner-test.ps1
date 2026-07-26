@@ -79,11 +79,13 @@ function RejectionRecord {
 
 try {
     $windowsCases = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $WindowsRunner -ListCases 2>$null
-    if ($LASTEXITCODE -ne 0 -or "credential-roundtrip" -notin $windowsCases -or "capture" -notin $windowsCases) {
+    if ($LASTEXITCODE -ne 0 -or "credential-roundtrip" -notin $windowsCases -or
+        "capture" -notin $windowsCases -or "installer-handoff" -notin $windowsCases) {
         throw "Windows runner does not expose Task152 cases"
     }
     $unixCases = & $Bash $MacRunner --list-cases 2>$null
-    if ($LASTEXITCODE -ne 0 -or "credential-roundtrip" -notin $unixCases -or "capture" -notin $unixCases) {
+    if ($LASTEXITCODE -ne 0 -or "credential-roundtrip" -notin $unixCases -or
+        "capture" -notin $unixCases -or "installer-handoff" -notin $unixCases) {
         throw "Unix runner does not expose Task152 cases"
     }
 
@@ -102,6 +104,7 @@ printf 'fixture-png' >"$output"
     $UnixCaptureFixtureBin = (& $Bash -c "cygpath -u '$CaptureFixtureBin'").Trim()
     $UnixCaptureFixtureEvidence = (& $Bash -c "cygpath -u '$CaptureFixtureEvidence'").Trim()
     $UnixMacRunner = (& $Bash -c "cygpath -u '$MacRunner'").Trim()
+    $UnixPython = (& $Bash -c "cygpath -u '$Python'").Trim()
     Set-Content -LiteralPath $CaptureFixtureScript -Encoding ascii -Value @"
 #!/usr/bin/env bash
 set -euo pipefail
@@ -117,6 +120,21 @@ result="`$(capture_native_window 42 task152-contract)"
     & $Bash $CaptureFixtureScript
     if ($LASTEXITCODE -ne 0) {
         throw "Unix capture function did not reach its screenshot command under set -u"
+    }
+    $InstallerExitFixtureScript = Join-Path $TempRoot "installer-result-exit-contract.sh"
+    Set-Content -LiteralPath $InstallerExitFixtureScript -Encoding ascii -Value @"
+#!/usr/bin/env bash
+set -euo pipefail
+python3() { "$UnixPython" "`$@"; }
+eval "`$(awk '/^installer_result_passed\(\) \{/{copy=1} copy{print} copy && /^\}/{exit}' "$UnixMacRunner")"
+installer_result_passed '{"status":"PASS"}'
+if installer_result_passed '{"status":"BLOCKED"}'; then
+  exit 1
+fi
+"@
+    & $Bash $InstallerExitFixtureScript
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unix installer PASS/BLOCKED result did not map to exit code 0/non-zero"
     }
     Copy-Item -LiteralPath (Join-Path $RepoRoot "scripts\task15-build-provenance.py") -Destination $HelperPath
     Copy-Item -LiteralPath (Join-Path $RepoRoot "scripts\build-desktop.sh") -Destination $BuildPath
@@ -313,6 +331,114 @@ object AppVersion {
         windowHandle = 456
         screenshots = @($captureFiles.protected, $captureFiles.clear, $captureFiles.feedback)
     } $false
+
+    $installerArtifact = Join-Path $TempRoot "mihon-desktop-windows-x86_64-v1.2.3.msi"
+    Set-Content -LiteralPath $installerArtifact -Encoding utf8 -NoNewline -Value "signed-installer-fixture"
+    $installerHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installerArtifact).Hash.ToLowerInvariant()
+    $installerSize = (Get-Item -LiteralPath $installerArtifact).Length
+    $installerSidecar = "$installerArtifact.task153-provenance.json"
+    Invoke-Helper @(
+        "seal-installer", "--repo", $TempRoot, "--artifact", $installerArtifact,
+        "--canonical-name", ([IO.Path]::GetFileName($installerArtifact)), "--output", $installerSidecar
+    ) $true | Out-Null
+    Invoke-Helper @(
+        "verify-installer", "--repo", $TempRoot, "--artifact", $installerArtifact,
+        "--canonical-name", ([IO.Path]::GetFileName($installerArtifact)), "--provenance", $installerSidecar
+    ) $true | Out-Null
+    $validInstaller = @{
+        status = "PASS"
+        os = "windows"
+        releaseTag = "v1.2.3"
+        trustedIdentity = "CN=Mihon Desktop Release"
+        provenance = @{ repo = $TempRoot; sidecarPath = $installerSidecar }
+        artifact = @{
+            path = $installerArtifact
+            name = "mihon-desktop-windows-x86_64-v1.2.3.msi"
+            sha256 = $installerHash
+            size = $installerSize
+        }
+        signature = @{
+            tool = "Get-AuthenticodeSignature"
+            status = "Valid"
+            publisher = "CN=Mihon Desktop Release"
+        }
+        production = @{
+            identity = "DesktopUpdateInstaller"
+            preparationResult = "ReadyToInstall"
+            cancellationResult = "InstallCancelled"
+            userConfirmation = "Confirmed"
+            launchResult = "InstallHandedOff"
+            feedback = "InstallerHandedOff"
+            productionRevalidation = "prepare+handoff"
+        }
+    }
+    # A plain-text file cannot become a signed installer by forging JSON fields.
+    Invoke-Policy "installer-handoff" $validInstaller $false
+    foreach ($mutation in @("canonical", "publisher", "thirdParty", "trust", "checksum", "size", "cancel", "confirm", "launch", "feedback")) {
+        $changed = $validInstaller | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+        switch ($mutation) {
+            "canonical" { $changed.artifact.name = "renamed.msi" }
+            "publisher" { $changed.signature.publisher = "" }
+            "thirdParty" { $changed.signature.publisher = "CN=Third Party" }
+            "trust" { $changed.trustedIdentity = "" }
+            "checksum" { $changed.artifact.sha256 = "0" * 64 }
+            "size" { $changed.artifact.size = $installerSize + 1 }
+            "cancel" { $changed.production.cancellationResult = "" }
+            "confirm" { $changed.production.userConfirmation = "" }
+            "launch" { $changed.production.launchResult = "" }
+            "feedback" { $changed.production.feedback = "" }
+        }
+        Invoke-Policy "installer-handoff" $changed $false
+    }
+    $manualPass = $validInstaller | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+    $manualPass.production.preparationResult = "InstallManualOnly"
+    $manualPass.production.launchResult = "NotAttempted"
+    $manualPass.production.feedback = "ManualOnly"
+    Invoke-Policy "installer-handoff" $manualPass $false
+
+    $blockedInstaller = @{
+        status = "BLOCKED"
+        os = "windows"
+        blockers = @("TrustedPublisherSignatureUnavailable")
+        artifact = $validInstaller.artifact
+        provenance = $validInstaller.provenance
+        production = @{
+            identity = "DesktopUpdateInstaller"
+            preparationResult = "InstallManualOnly"
+            userConfirmation = "NotRequested"
+            cancellationResult = "NotApplicable"
+            launchResult = "NotAttempted"
+            feedback = "ManualOnly"
+        }
+    }
+    Invoke-Policy "installer-handoff" $blockedInstaller | Out-Null
+    $missingProvenance = $validInstaller | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+    $missingProvenance.PSObject.Properties.Remove("provenance")
+    Invoke-Policy "installer-handoff" $missingProvenance $false
+    $wrongProvenance = Get-Content -Raw -LiteralPath $installerSidecar | ConvertFrom-Json
+    $wrongProvenance.artifact.sha256 = "0" * 64
+    $wrongProvenance | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $installerSidecar -Encoding utf8
+    Invoke-Policy "installer-handoff" $blockedInstaller $false
+    Invoke-Helper @(
+        "verify-installer", "--repo", $TempRoot, "--artifact", $installerArtifact,
+        "--canonical-name", ([IO.Path]::GetFileName($installerArtifact)), "--provenance", $installerSidecar
+    ) $false | Out-Null
+    Invoke-Helper @(
+        "seal-installer", "--repo", $TempRoot, "--artifact", $installerArtifact,
+        "--canonical-name", ([IO.Path]::GetFileName($installerArtifact)), "--output", $installerSidecar
+    ) $true | Out-Null
+    $installerFixture = Join-Path $TempRoot "installer-policy-fixture.json"
+    $validInstaller | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $installerFixture -Encoding utf8
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & $PowerShell -NoProfile -ExecutionPolicy Bypass -File $WindowsRunner `
+            -Case installer-handoff -EvidenceDir (Join-Path $TempRoot "installer-runner") `
+            -InstallerPolicyFixture $installerFixture 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { throw "Actual runner accepted a plain-text forged MSI" }
+    } finally {
+        $ErrorActionPreference = $previousPreference
+    }
 
     # Execute the real Windows runner's process-tree selection. A packaged app may
     # expose a root and child process with the same executable; only the root owns

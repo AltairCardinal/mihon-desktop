@@ -325,6 +325,147 @@ def validate_capture_review(payload: Dict[str, Any]) -> Dict[str, Any]:
     return {"status": "VALID", "decision": review["decision"], "review": review}
 
 
+def validate_installer_handoff(payload: Dict[str, Any]) -> Dict[str, Any]:
+    artifact = payload.get("artifact")
+    if artifact is not None and (
+        payload.get("status") == "PASS" or payload.get("provenance") is not None
+    ):
+        provenance = payload.get("provenance")
+        if not isinstance(artifact, dict) or not isinstance(provenance, dict):
+            raise ValueError("installer artifact requires independent provenance")
+        installer_provenance(
+            pathlib.Path(str(provenance.get("repo", ""))).resolve(),
+            pathlib.Path(str(artifact.get("path", ""))).resolve(),
+            pathlib.Path(str(provenance.get("sidecarPath", ""))).resolve(),
+            str(artifact.get("name", "")),
+        )
+    if payload.get("status") == "BLOCKED":
+        blockers = payload.get("blockers")
+        if not isinstance(blockers, list) or not blockers or not all(
+            isinstance(value, str) and value for value in blockers
+        ):
+            raise ValueError("blocked installer handoff requires explicit blockers")
+        production = payload.get("production")
+        if production is not None:
+            manual = (
+                isinstance(production, dict)
+                and production.get("identity") == "DesktopUpdateInstaller"
+                and production.get("preparationResult") == "InstallManualOnly"
+                and production.get("userConfirmation") == "NotRequested"
+                and production.get("cancellationResult") == "NotApplicable"
+                and production.get("launchResult") == "NotAttempted"
+                and production.get("feedback") == "ManualOnly"
+            )
+            confirmation_required = (
+                isinstance(production, dict)
+                and production.get("identity") == "DesktopUpdateInstaller"
+                and production.get("preparationResult") == "ReadyToInstall"
+                and production.get("userConfirmation") == "AwaitingConfirmation"
+                and production.get("cancellationResult") == "InstallCancelled"
+                and production.get("launchResult") == "NotAttempted"
+                and production.get("feedback") == "ConfirmationRequired"
+                and production.get("productionRevalidation") == "prepare+handoff"
+            )
+            if not (manual or confirmation_required):
+                raise ValueError("blocked production installer evidence is inconsistent")
+        return {"status": "VALID", "outcome": "BLOCKED"}
+    if payload.get("status") != "PASS":
+        raise ValueError("installer handoff must be PASS or BLOCKED")
+    os_name = payload.get("os")
+    if os_name not in {"windows", "macos"}:
+        raise ValueError("only signed Windows/macOS handoff can pass")
+    release_tag = payload.get("releaseTag")
+    signature = payload.get("signature")
+    production = payload.get("production")
+    if (
+        not isinstance(release_tag, str)
+        or not release_tag
+        or any(value.isspace() for value in release_tag)
+        or not isinstance(artifact, dict)
+        or not isinstance(signature, dict)
+        or not isinstance(production, dict)
+    ):
+        raise ValueError("installer handoff metadata is incomplete")
+    path = pathlib.Path(str(artifact.get("path", ""))).resolve()
+    digest = artifact.get("sha256")
+    size = artifact.get("size")
+    name = artifact.get("name")
+    if os_name == "windows":
+        canonical = f"mihon-desktop-windows-x86_64-{release_tag}.msi"
+        signature_valid = (
+            signature.get("tool") == "Get-AuthenticodeSignature"
+            and signature.get("status") == "Valid"
+            and isinstance(signature.get("publisher"), str)
+            and bool(signature["publisher"])
+            and signature.get("publisher") == payload.get("trustedIdentity")
+        )
+    else:
+        canonical = re.fullmatch(
+            rf"mihon-desktop-macos-(x86_64|arm64)-{re.escape(release_tag)}\.dmg",
+            str(name),
+        )
+        signature_valid = (
+            signature.get("tool") == "codesign+spctl"
+            and signature.get("status") == "Valid"
+            and isinstance(signature.get("teamId"), str)
+            and re.fullmatch(r"[A-Z0-9]{10}", signature["teamId"]) is not None
+            and signature.get("teamId") == payload.get("trustedIdentity")
+        )
+    if (
+        not path.is_file()
+        or name != path.name
+        or (name != canonical if isinstance(canonical, str) else canonical is None)
+        or not isinstance(digest, str)
+        or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+        or hashlib.sha256(path.read_bytes()).hexdigest() != digest
+        or not isinstance(size, int)
+        or path.stat().st_size != size
+        or not signature_valid
+    ):
+        raise ValueError("canonical artifact, checksum, size, or signature evidence is invalid")
+    if os_name == "windows":
+        command = (
+            "$s=Get-AuthenticodeSignature -LiteralPath $args[0];"
+            "if($s.Status -ne 'Valid' -or -not $s.SignerCertificate){exit 31};"
+            "[Console]::Out.Write($s.SignerCertificate.Subject)"
+        )
+        actual_identity = subprocess.check_output(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command, str(path)],
+            text=True,
+        ).strip()
+    else:
+        subprocess.check_call(
+            ["/usr/bin/codesign", "--verify", "--deep", "--strict", str(path)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        subprocess.check_call(
+            ["/usr/sbin/spctl", "-a", "-t", "install", str(path)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        details = subprocess.check_output(
+            ["/usr/bin/codesign", "-dv", "--verbose=4", str(path)],
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        match = re.search(r"(?m)^TeamIdentifier=([A-Z0-9]{10})$", details)
+        actual_identity = match.group(1) if match else ""
+    if actual_identity != payload.get("trustedIdentity"):
+        raise ValueError("system signer identity does not match independent trust")
+    if (
+        production.get("identity") != "DesktopUpdateInstaller"
+        or production.get("preparationResult") != "ReadyToInstall"
+        or production.get("cancellationResult") != "InstallCancelled"
+        or production.get("userConfirmation") != "Confirmed"
+        or production.get("launchResult") != "InstallHandedOff"
+        or production.get("feedback") != "InstallerHandedOff"
+        or production.get("productionRevalidation") != "prepare+handoff"
+    ):
+        raise ValueError("user confirmation, cancellation, launch, or feedback evidence is incomplete")
+    return {"status": "VALID", "outcome": "PASS"}
+
+
 def seal(args: argparse.Namespace) -> Dict[str, Any]:
     root = args.repo.resolve()
     captured = load(args.source)
@@ -355,6 +496,54 @@ def verify(args: argparse.Namespace) -> Dict[str, Any]:
     if provenance.get("artifact") != artifact_identity(args.artifact):
         raise ValueError("provenance artifact hash/size mismatch")
     return provenance
+
+
+def installer_provenance(
+    repo: pathlib.Path,
+    artifact: pathlib.Path,
+    provenance_path: pathlib.Path,
+    canonical_name: str,
+) -> Dict[str, Any]:
+    if not artifact.is_file() or artifact.name != canonical_name:
+        raise ValueError("installer artifact is missing or canonical name mismatches")
+    provenance = load(provenance_path)
+    current = source_identity(repo.resolve(), require_version_allocation=False)
+    for key in ("sourceCommit", "sourceTree", "productSource"):
+        if provenance.get(key) != current.get(key):
+            raise ValueError(f"installer provenance {key} does not match committed source")
+    expected_artifact = {
+        **artifact_identity(artifact),
+        "canonicalName": canonical_name,
+    }
+    if provenance.get("artifact") != expected_artifact:
+        raise ValueError("installer provenance hash, size, or canonical name mismatch")
+    return provenance
+
+
+def seal_installer(args: argparse.Namespace) -> Dict[str, Any]:
+    artifact = args.artifact.resolve()
+    if artifact.name != args.canonical_name:
+        raise ValueError("installer canonical name does not match artifact")
+    result = {
+        "schemaVersion": 1,
+        "generatedBy": "controlled-release:task15-installer",
+        **source_identity(args.repo.resolve(), require_version_allocation=False),
+        "artifact": {
+            **artifact_identity(artifact),
+            "canonicalName": args.canonical_name,
+        },
+    }
+    write(args.output, result)
+    return result
+
+
+def verify_installer(args: argparse.Namespace) -> Dict[str, Any]:
+    return installer_provenance(
+        args.repo.resolve(),
+        args.artifact.resolve(),
+        args.provenance.resolve(),
+        args.canonical_name,
+    )
 
 
 def policy(args: argparse.Namespace) -> Dict[str, Any]:
@@ -446,6 +635,8 @@ def policy(args: argparse.Namespace) -> Dict[str, Any]:
         return validate_capture_runtime(payload)
     if args.kind == "capture-review":
         return validate_capture_review(payload)
+    if args.kind == "installer-handoff":
+        return validate_installer_handoff(payload)
     raise ValueError(f"unsupported policy kind: {args.kind}")
 
 
@@ -456,11 +647,34 @@ def write_probe(args: argparse.Namespace) -> Dict[str, Any]:
         import java.util.UUID;
         import java.util.prefs.Preferences;
         import java.awt.Frame;
+        import java.nio.file.Path;
+        import java.util.List;
+        import kotlin.coroutines.Continuation;
+        import kotlin.coroutines.CoroutineContext;
+        import kotlin.coroutines.EmptyCoroutineContext;
+        import kotlin.coroutines.intrinsics.IntrinsicsKt;
+        import kotlin.jvm.functions.Function1;
+        import kotlin.jvm.functions.Function2;
+        import kotlinx.coroutines.BuildersKt;
+        import kotlinx.coroutines.CoroutineScope;
         import mihon.desktop.platform.DesktopCredentialStore;
         import mihon.desktop.platform.OsCredentialBackend;
         import mihon.desktop.platform.CredentialNamespace;
         import mihon.desktop.privacy.DesktopWindowPrivacy;
         import mihon.desktop.privacy.DesktopWindowPrivacyResult;
+        import mihon.desktop.update.DesktopUpdateInstaller;
+        import mihon.desktop.update.DesktopUpdateProcessRunner;
+        import mihon.desktop.update.InstallPreparation;
+        import mihon.desktop.update.InstallHandoffResult;
+        import mihon.desktop.update.InstallerTrust;
+        import mihon.desktop.update.ReadyToInstall;
+        import mihon.desktop.update.VerifiedDownload;
+        import tachiyomi.domain.release.model.ReleaseAsset;
+        import tachiyomi.domain.release.model.ReleaseChecksum;
+        import tachiyomi.domain.release.model.ReleaseOs;
+        import tachiyomi.domain.release.model.ReleasePackageType;
+        import tachiyomi.domain.release.model.ReleaseTarget;
+        import tachiyomi.domain.release.model.ReleaseVariant;
 
         public final class Task152PlatformProbe {
             private static String jsonString(String value) {
@@ -563,6 +777,103 @@ def write_probe(args: argparse.Namespace) -> Dict[str, Any]:
                 }
             }
 
+            private static void installer(String[] args) throws Exception {
+                Path path = Path.of(args[1]);
+                String releaseTag = args[2];
+                ReleaseOs os = ReleaseOs.valueOf(args[3]);
+                String arch = args[4];
+                String sha256 = args[5];
+                long size = Long.parseLong(args[6]);
+                String trustedIdentity = args[7];
+                boolean confirmed = Boolean.parseBoolean(args[8]);
+                ReleasePackageType packageType =
+                    os == ReleaseOs.WINDOWS ? ReleasePackageType.MSI :
+                    os == ReleaseOs.MACOS ? ReleasePackageType.DMG :
+                    ReleasePackageType.APPIMAGE;
+                ReleaseTarget target =
+                    new ReleaseTarget(os, arch, packageType, ReleaseVariant.STANDARD);
+                ReleaseAsset asset = new ReleaseAsset(
+                    path.getFileName().toString(),
+                    target,
+                    new ReleaseChecksum("sha256", sha256)
+                );
+                VerifiedDownload download = new VerifiedDownload(path, asset, sha256, size);
+                InstallerTrust trust = new InstallerTrust(
+                    os == ReleaseOs.WINDOWS ? trustedIdentity : null,
+                    os == ReleaseOs.MACOS ? trustedIdentity : null
+                );
+                java.lang.reflect.Constructor<?> defaulted = null;
+                for (java.lang.reflect.Constructor<?> candidate :
+                    DesktopUpdateInstaller.class.getDeclaredConstructors()) {
+                    if (candidate.getParameterCount() == 6) defaulted = candidate;
+                }
+                if (defaulted == null) throw new IllegalStateException("default installer constructor missing");
+                defaulted.setAccessible(true);
+                DesktopUpdateInstaller installer = (DesktopUpdateInstaller) defaulted.newInstance(
+                    target, trust, null, null, 12, null
+                );
+                InstallPreparation prepared = BuildersKt.runBlocking(
+                    EmptyCoroutineContext.INSTANCE,
+                    new Function2<CoroutineScope, Continuation<? super InstallPreparation>, Object>() {
+                        public Object invoke(
+                            CoroutineScope scope,
+                            Continuation<? super InstallPreparation> continuation
+                        ) {
+                            return installer.prepare(download, releaseTag, continuation);
+                        }
+                    }
+                );
+                boolean ready = prepared instanceof ReadyToInstall;
+                String cancellation = "NotApplicable";
+                String confirmation = "NotRequested";
+                String launch = "NotAttempted";
+                String feedback = "ManualOnly";
+                if (ready) {
+                    InstallHandoffResult cancelled = BuildersKt.runBlocking(
+                        EmptyCoroutineContext.INSTANCE,
+                        new Function2<CoroutineScope, Continuation<? super InstallHandoffResult>, Object>() {
+                            public Object invoke(
+                                CoroutineScope scope,
+                                Continuation<? super InstallHandoffResult> continuation
+                            ) {
+                                return installer.handoff((ReadyToInstall) prepared, false, continuation);
+                            }
+                        }
+                    );
+                    cancellation = cancelled.getClass().getSimpleName();
+                    confirmation = confirmed ? "Confirmed" : "AwaitingConfirmation";
+                    feedback = confirmed ? "InstallerHandedOff" : "ConfirmationRequired";
+                    if (confirmed) {
+                        InstallHandoffResult handedOff = BuildersKt.runBlocking(
+                            EmptyCoroutineContext.INSTANCE,
+                            new Function2<CoroutineScope, Continuation<? super InstallHandoffResult>, Object>() {
+                                public Object invoke(
+                                    CoroutineScope scope,
+                                    Continuation<? super InstallHandoffResult> continuation
+                                ) {
+                                    return installer.handoff((ReadyToInstall) prepared, true, continuation);
+                                }
+                            }
+                        );
+                        launch = handedOff.getClass().getSimpleName();
+                    }
+                }
+                System.out.println(
+                    "{\"status\":\"PASS\",\"identity\":" +
+                    jsonString(installer.getClass().getSimpleName()) +
+                    ",\"preparationResult\":" +
+                    jsonString(prepared.getClass().getSimpleName()) +
+                    ",\"userConfirmation\":" +
+                    jsonString(confirmation) +
+                    ",\"cancellationResult\":" +
+                    jsonString(cancellation) +
+                    ",\"launchResult\":" + jsonString(launch) +
+                    ",\"productionRevalidation\":\"prepare+handoff\"" +
+                    ",\"feedback\":" +
+                    jsonString(feedback) + "}"
+                );
+            }
+
             private static void preference(String operation, String value) throws Exception {
                 Preferences preferences = Preferences.userRoot().node("/mihon");
                 String key = "secure_screen_v2";
@@ -590,6 +901,8 @@ def write_probe(args: argparse.Namespace) -> Dict[str, Any]:
                         credential(args[1]);
                     } else if (args.length == 1 && args[0].equals("privacy")) {
                         privacy();
+                    } else if (args.length == 9 && args[0].equals("installer")) {
+                        installer(args);
                     } else if (args.length >= 2 && args[0].equals("preference")) {
                         preference(args[1], args.length >= 3 ? args[2] : "");
                     } else {
@@ -627,6 +940,15 @@ def parser() -> argparse.ArgumentParser:
             command.add_argument("--output", type=pathlib.Path, required=True)
         else:
             command.add_argument("--provenance", type=pathlib.Path, required=True)
+    for name in ("seal-installer", "verify-installer"):
+        command = subcommands.add_parser(name)
+        command.add_argument("--repo", type=pathlib.Path, required=True)
+        command.add_argument("--artifact", type=pathlib.Path, required=True)
+        command.add_argument("--canonical-name", required=True)
+        if name == "seal-installer":
+            command.add_argument("--output", type=pathlib.Path, required=True)
+        else:
+            command.add_argument("--provenance", type=pathlib.Path, required=True)
     policy_command = subcommands.add_parser("policy")
     policy_command.add_argument(
         "--kind",
@@ -639,6 +961,7 @@ def parser() -> argparse.ArgumentParser:
             "credential",
             "capture",
             "capture-review",
+            "installer-handoff",
         ),
         required=True,
     )
@@ -658,6 +981,10 @@ def main() -> int:
             value = seal(args)
         elif args.command == "verify":
             value = verify(args)
+        elif args.command == "seal-installer":
+            value = seal_installer(args)
+        elif args.command == "verify-installer":
+            value = verify_installer(args)
         elif args.command == "policy":
             value = policy(args)
         else:

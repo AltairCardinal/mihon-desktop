@@ -4,6 +4,10 @@ set -euo pipefail
 CASE=""
 EVIDENCE_DIR=""
 APP_BUNDLE=""
+INSTALLER_ARTIFACT=""
+INSTALLER_PROVENANCE=""
+TRUSTED_TEAM_ID=""
+CONFIRM_INSTALLER_HANDOFF=false
 PORT=18151
 TIMEOUT_SECONDS=90
 COLD_REVIEW_FILE=""
@@ -16,6 +20,10 @@ while [[ $# -gt 0 ]]; do
     --case) CASE="$2"; shift 2 ;;
     --evidence-dir) EVIDENCE_DIR="$2"; shift 2 ;;
     --app-bundle) APP_BUNDLE="$2"; shift 2 ;;
+    --artifact) INSTALLER_ARTIFACT="$2"; shift 2 ;;
+    --installer-provenance) INSTALLER_PROVENANCE="$2"; shift 2 ;;
+    --trusted-team-id) TRUSTED_TEAM_ID="$2"; shift 2 ;;
+    --confirm-installer-handoff) CONFIRM_INSTALLER_HANDOFF=true; shift ;;
     --port) PORT="$2"; shift 2 ;;
     --timeout-seconds) TIMEOUT_SECONDS="$2"; shift 2 ;;
     --cold-review-file) COLD_REVIEW_FILE="$2"; shift 2 ;;
@@ -24,11 +32,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 if [[ "$LIST_CASES" == "true" ]]; then
-  printf '%s\n' uri-cold uri-running host-share credential-roundtrip capture
+  printf '%s\n' uri-cold uri-running host-share credential-roundtrip capture installer-handoff
   exit 0
 fi
 case "$CASE" in
-  uri-cold|uri-running|host-share|credential-roundtrip|capture) ;;
+  uri-cold|uri-running|host-share|credential-roundtrip|capture|installer-handoff) ;;
   *) echo "--case is required" >&2; exit 64 ;;
 esac
 [[ -n "$EVIDENCE_DIR" ]] || { echo "--evidence-dir is required" >&2; exit 64; }
@@ -90,6 +98,22 @@ PY
     cat "$RESULT_PATH"
     exit 1
   fi
+fi
+if [[ ! -x "$EXECUTABLE" && "$CASE" == "installer-handoff" ]]; then
+  python3 - "$RESULT_PATH" "$OS_ID" "$EXECUTABLE" <<'PY'
+import json, pathlib, sys
+path, os_id, executable = sys.argv[1:]
+pathlib.Path(path).write_text(json.dumps({
+    "schemaVersion": 1, "os": os_id, "case": "installer-handoff",
+    "result": {
+        "status": "BLOCKED",
+        "blockers": ["PackagedApplicationMissing", "CanonicalSignedArtifactMissing"],
+    },
+    "error": f"Packaged executable not found: {executable}",
+}, indent=2) + "\n")
+PY
+  cat "$RESULT_PATH"
+  exit 1
 fi
 [[ -x "$EXECUTABLE" ]] || { echo "Packaged executable not found: $EXECUTABLE" >&2; exit 66; }
 
@@ -512,6 +536,131 @@ PY
   return 1
 }
 
+installer_result_passed() {
+  [[ "$(python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])' <<<"$1")" == "PASS" ]]
+}
+
+run_installer_handoff() {
+  new_platform_probe || return 1
+  local path production_path name release_tag arch sha256 size production signature blockers result sidecar provenance
+  blockers=""
+  if [[ -n "$INSTALLER_ARTIFACT" ]]; then
+    if [[ "$INSTALLER_ARTIFACT" != /* ]]; then INSTALLER_ARTIFACT="$PWD/$INSTALLER_ARTIFACT"; fi
+    path="$INSTALLER_ARTIFACT"
+  elif [[ "$OS_ID" == "macos" ]]; then
+    path="$EVIDENCE_DIR/mihon-desktop-macos-arm64-missing.dmg"
+  else
+    path="$EVIDENCE_DIR/mihon-desktop-linux-x86_64-missing.AppImage"
+  fi
+  name="$(basename "$path")"
+  if [[ "$OS_ID" == "macos" && "$name" =~ ^mihon-desktop-macos-(x86_64|arm64)-([^[:space:]]+)\.dmg$ ]]; then
+    arch="${BASH_REMATCH[1]}"
+    release_tag="${BASH_REMATCH[2]}"
+  elif [[ "$OS_ID" == "linux" ]]; then
+    arch="x86_64"
+    release_tag="missing"
+  else
+    arch="arm64"
+    release_tag="invalid"
+    blockers="CanonicalArtifactNameMismatch"
+  fi
+  if [[ "$release_tag" == "invalid" ]]; then
+    production_path="$EVIDENCE_DIR/mihon-desktop-macos-$arch-invalid.dmg"
+  else
+    production_path="$path"
+  fi
+  if [[ -f "$path" ]]; then
+    read -r sha256 size < <(python3 - "$path" <<'PY'
+import hashlib, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+print(hashlib.sha256(path.read_bytes()).hexdigest(), path.stat().st_size)
+PY
+)
+  else
+    sha256="$(printf '0%.0s' {1..64})"
+    size=0
+    blockers+="${blockers:+|}CanonicalSignedArtifactMissing"
+  fi
+  sidecar="${INSTALLER_PROVENANCE:-$path.task153-provenance.json}"
+  provenance=""
+  if [[ -f "$path" && -f "$sidecar" ]] &&
+    python3 "$REPO_ROOT/scripts/task15-build-provenance.py" verify-installer \
+      --repo "$REPO_ROOT" --artifact "$path" --canonical-name "$name" \
+      --provenance "$sidecar" >/dev/null 2>&1; then
+    provenance="$(python3 - "$REPO_ROOT" "$sidecar" <<'PY'
+import json, sys
+print(json.dumps({"repo": sys.argv[1], "sidecarPath": sys.argv[2]}))
+PY
+)"
+  else
+    blockers+="${blockers:+|}InstallerProvenanceMissingOrInvalid"
+  fi
+
+  if [[ "$OS_ID" == "macos" && -f "$path" ]]; then
+    local codesign_status=0 spctl_status=0 details team_id
+    /usr/bin/codesign --verify --deep --strict --verbose=2 "$path" >/dev/null 2>&1 ||
+      codesign_status=$?
+    /usr/sbin/spctl -a -vv -t install "$path" >/dev/null 2>&1 || spctl_status=$?
+    details="$(/usr/bin/codesign -dv --verbose=4 "$path" 2>&1 || true)"
+    team_id="$(sed -n 's/^TeamIdentifier=//p' <<<"$details" | head -n 1)"
+    signature="$(python3 - "$codesign_status" "$spctl_status" "$team_id" <<'PY'
+import json, sys
+codesign, spctl, team = sys.argv[1:]
+valid = codesign == "0" and spctl == "0" and len(team) == 10
+print(json.dumps({
+    "tool": "codesign+spctl", "status": "Valid" if valid else "Invalid",
+    "teamId": team or None, "codesignExitCode": int(codesign), "spctlExitCode": int(spctl),
+}))
+PY
+)"
+    if [[ -z "$TRUSTED_TEAM_ID" ]]; then
+      blockers+="${blockers:+|}IndependentTrustedTeamMissing"
+    elif [[ "$(python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])' <<<"$signature")" != "Valid" ||
+      "$team_id" != "$TRUSTED_TEAM_ID" ]]; then
+      blockers+="${blockers:+|}TrustedSignatureOrNotarizationUnavailable"
+    fi
+  else
+    signature='{"tool":"NotApplicable","status":"NotApplicable"}'
+    [[ "$OS_ID" == "linux" ]] || blockers+="${blockers:+|}TrustedSignatureOrNotarizationUnavailable"
+  fi
+
+  local allow_confirm=false
+  [[ "$CONFIRM_INSTALLER_HANDOFF" == "true" && -z "$blockers" ]] && allow_confirm=true
+  production="$(run_platform_probe installer "$production_path" "$release_tag" \
+    "$(tr '[:lower:]' '[:upper:]' <<<"$OS_ID")" "$arch" "$sha256" "$size" \
+    "$TRUSTED_TEAM_ID" "$allow_confirm")" || return 1
+  local preparation
+  preparation="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["preparationResult"])' <<<"$production")"
+  if [[ "$preparation" != "ReadyToInstall" ]]; then
+    blockers+="${blockers:+|}ProductionDefaultTrustReturned$preparation"
+  elif [[ "$CONFIRM_INSTALLER_HANDOFF" != "true" ]]; then
+    blockers+="${blockers:+|}ExplicitInstallerConfirmationRequired"
+  fi
+  result="$(python3 - "$OS_ID" "$blockers" "$release_tag" "$path" "$name" "$sha256" "$size" \
+    "$signature" "$production" "$TRUSTED_TEAM_ID" "$provenance" <<'PY'
+import json, pathlib, sys
+os_id, blockers, tag, path, name, sha256, size, signature, production, trusted, provenance = sys.argv[1:]
+artifact = None
+if pathlib.Path(path).is_file():
+    artifact = {"path": path, "name": name, "sha256": sha256, "size": int(size)}
+production = json.loads(production)
+passed = not blockers and production.get("cancellationResult") == "InstallCancelled" and production.get("launchResult") == "InstallHandedOff"
+print(json.dumps({
+    "status": "PASS" if passed else "BLOCKED", "os": os_id,
+    "blockers": blockers.split("|") if blockers else [],
+    "releaseTag": tag, "artifact": artifact, "signature": json.loads(signature),
+    "trustedIdentity": trusted or None,
+    "provenance": json.loads(provenance) if provenance else None,
+    "production": production,
+}))
+PY
+)" || return 1
+  run_policy installer-handoff "$result" >/dev/null || return 1
+  printf '%s\n' "$result" >"$DETAIL_PATH"
+  rm -f "$PROBE_SOURCE"
+  installer_result_passed "$result"
+}
+
 choose_copy_service() {
   local share_pid="$1"
   local script="$EVIDENCE_DIR/.choose-copy.applescript"
@@ -819,6 +968,7 @@ case "$CASE" in
   host-share) run_host_share >"$EVIDENCE_DIR/$CASE.raw.log" 2>&1 || exit_code=$? ;;
   credential-roundtrip) run_credential_roundtrip >"$EVIDENCE_DIR/$CASE.raw.log" 2>&1 || exit_code=$? ;;
   capture) run_capture >"$EVIDENCE_DIR/$CASE.raw.log" 2>&1 || exit_code=$? ;;
+  installer-handoff) run_installer_handoff >"$EVIDENCE_DIR/$CASE.raw.log" 2>&1 || exit_code=$? ;;
 esac
 stop_owned_app || exit_code=1
 if [[ ! -s "$DETAIL_PATH" ]]; then

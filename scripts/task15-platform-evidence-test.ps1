@@ -1,19 +1,25 @@
 param(
-    [ValidateSet("uri-cold", "uri-running", "host-share", "credential-roundtrip", "capture")]
+    [ValidateSet("uri-cold", "uri-running", "host-share", "credential-roundtrip", "capture", "installer-handoff")]
     [string]$Case,
     [string]$EvidenceDir,
     [string]$Executable,
+    [Alias("Artifact")]
+    [string]$InstallerArtifact,
+    [string]$InstallerProvenance,
+    [string]$TrustedPublisher,
+    [switch]$ConfirmInstallerHandoff,
     [int]$Port = 18151,
     [int]$TimeoutSeconds = 90,
     [string]$ColdReviewFile,
     [string]$ReviewFile,
     [string]$ProcessPolicyFixture,
+    [string]$InstallerPolicyFixture,
     [switch]$ListCases
 )
 
 $ErrorActionPreference = "Stop"
 if ($ListCases) {
-    "uri-cold", "uri-running", "host-share", "credential-roundtrip", "capture"
+    "uri-cold", "uri-running", "host-share", "credential-roundtrip", "capture", "installer-handoff"
     exit 0
 }
 if (-not $Case) { throw "-Case is required" }
@@ -432,6 +438,119 @@ function Invoke-CaptureAcceptance {
     }
 }
 
+function Invoke-InstallerHandoff {
+    $probe = New-PlatformProbe
+    try {
+        $blockers = [Collections.Generic.List[string]]::new()
+        $path = if ($InstallerArtifact) {
+            [IO.Path]::GetFullPath($InstallerArtifact)
+        } else {
+            Join-Path $EvidenceDir "mihon-desktop-windows-x86_64-missing.msi"
+        }
+        $name = [IO.Path]::GetFileName($path)
+        $match = [regex]::Match($name, "^mihon-desktop-windows-x86_64-(?<tag>[^\\s]+)\.msi$")
+        $releaseTag = if ($match.Success) { $match.Groups["tag"].Value } else { "invalid" }
+        if (-not $match.Success) { $blockers.Add("CanonicalArtifactNameMismatch") }
+        $productionPath = if ($match.Success) {
+            $path
+        } else {
+            Join-Path $EvidenceDir "mihon-desktop-windows-x86_64-invalid.msi"
+        }
+        $file = Get-Item -LiteralPath $path -ErrorAction SilentlyContinue
+        $sha256 = if ($file) {
+            (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
+        } else {
+            "0" * 64
+        }
+        $size = if ($file) { [long]$file.Length } else { 0L }
+        if (-not $file) { $blockers.Add("CanonicalSignedArtifactMissing") }
+        $sidecar = if ($InstallerProvenance) {
+            [IO.Path]::GetFullPath($InstallerProvenance)
+        } else {
+            "$path.task153-provenance.json"
+        }
+        $verifiedProvenance = $null
+        if ($file -and (Test-Path -LiteralPath $sidecar -PathType Leaf)) {
+            $previousPreference = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            try {
+                $verifiedJson = & $Python $ProvenanceTool verify-installer --repo $RepoRoot `
+                    --artifact $path --canonical-name $name --provenance $sidecar 2>$null
+                if ($LASTEXITCODE -eq 0) { $verifiedProvenance = $verifiedJson | ConvertFrom-Json }
+            } finally {
+                $ErrorActionPreference = $previousPreference
+            }
+        }
+        if (-not $verifiedProvenance) { $blockers.Add("InstallerProvenanceMissingOrInvalid") }
+
+        $signature = $null
+        if ($file) {
+            $raw = Get-AuthenticodeSignature -LiteralPath $path
+            $signature = [ordered]@{
+                tool = "Get-AuthenticodeSignature"
+                status = $raw.Status.ToString()
+                publisher = if ($raw.SignerCertificate) { $raw.SignerCertificate.Subject } else { $null }
+                statusMessage = $raw.StatusMessage
+            }
+            if (-not $TrustedPublisher) {
+                $blockers.Add("IndependentTrustedPublisherMissing")
+            } elseif ($signature.status -ne "Valid" -or
+                -not [string]::Equals($signature.publisher, $TrustedPublisher, [StringComparison]::Ordinal)) {
+                $blockers.Add("TrustedPublisherSignatureUnavailable")
+            }
+        } else {
+            $signature = [ordered]@{
+                tool = "Get-AuthenticodeSignature"
+                status = "FileMissing"
+                publisher = $null
+            }
+        }
+
+        $production = Invoke-PlatformProbe $probe @(
+            "installer",
+            $productionPath,
+            $releaseTag,
+            "WINDOWS",
+            "x86_64",
+            $sha256,
+            "$size"
+            $(if ($TrustedPublisher) { $TrustedPublisher } else { "" })
+            "$($ConfirmInstallerHandoff.IsPresent -and $blockers.Count -eq 0)"
+        )
+        if ($production.preparationResult -ne "ReadyToInstall") {
+            $blockers.Add("ProductionDefaultTrustReturned$($production.preparationResult)")
+        } elseif (-not $ConfirmInstallerHandoff) {
+            $blockers.Add("ExplicitInstallerConfirmationRequired")
+        }
+        $passed = $blockers.Count -eq 0 -and
+            $production.cancellationResult -eq "InstallCancelled" -and
+            $production.launchResult -eq "InstallHandedOff"
+        $result = [ordered]@{
+            status = if ($passed) { "PASS" } else { "BLOCKED" }
+            os = "windows"
+            blockers = @($blockers)
+            releaseTag = $releaseTag
+            artifact = if ($file) {
+                [ordered]@{ path = $path; name = $name; sha256 = $sha256; size = $size }
+            } else {
+                $null
+            }
+            signature = $signature
+            trustedIdentity = $TrustedPublisher
+            provenance = if ($verifiedProvenance) {
+                [ordered]@{ repo = $RepoRoot; sidecarPath = $sidecar }
+            } else {
+                $null
+            }
+            production = $production
+        }
+        Invoke-RunnerPolicy "installer-handoff" $result | Out-Null
+        $result
+    } finally {
+        Remove-Item -LiteralPath $probe.source -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function New-AcceptanceToken {
     $bytes = [byte[]]::new(32)
     $random = [Security.Cryptography.RandomNumberGenerator]::Create()
@@ -776,6 +895,11 @@ if ($ProcessPolicyFixture) {
     } | ConvertTo-Json -Depth 5
     exit 0
 }
+if ($InstallerPolicyFixture) {
+    $fixture = Get-Content -Raw -LiteralPath $InstallerPolicyFixture | ConvertFrom-Json
+    Invoke-RunnerPolicy "installer-handoff" $fixture | ConvertTo-Json -Depth 12
+    exit 0
+}
 
 $provenance = Get-VerifiedProvenance
 $productSource = $provenance.productSource
@@ -810,6 +934,7 @@ try {
         "host-share" { Invoke-HostShare }
         "credential-roundtrip" { Invoke-CredentialRoundtrip }
         "capture" { Invoke-CaptureAcceptance }
+        "installer-handoff" { Invoke-InstallerHandoff }
     }
     if ($payload.result.status -ne "PASS") { $exitCode = 1 }
 } catch {

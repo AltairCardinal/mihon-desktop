@@ -123,6 +123,8 @@ macOS/Linux 的 credential case 必须实际完成保存、覆盖、读取、删
 
 **Feedback:** 凭据不可用/恢复说明，以及 Supported、Limited、Unsupported、Failed 的准确窗口隐私状态。
 
+**Execution evidence（部分完成，保持未勾选）：** 提交 `056dcb79db`、tree `e5d1466fd2` 的 Windows/macOS 产物均由 `scripts/build-desktop.sh evidence` 构建，版本同为 `0.11.14.47.056dcb7`，production 输入摘要同为 `e18589c4e42c`。Windows production `DesktopCredentialStore(backend=OsCredentialBackend)` 使用 DPAPI 完成保存、读取、覆盖、再读取、删除及删除后缺失六项往返，服务名为 `mihon-desktop-tracker`；真实 capture 在第一张受保护截图前因无法把目标 Mihon HWND 激活为前台窗口而写入 `BLOCKED`，未生成可供人工确认的截图，未宣称屏幕保护通过。macOS SSH 会话的 login keychain 返回 `User interaction is not allowed`，credential roundtrip 保持 `BLOCKED`；production `DesktopWindowPrivacy` 探针在建立可观察窗口时以 `IllegalArgumentException` 失败，且现有 SSH audit chain 仍受 Accessibility/TCC 限制，无法取得可信 capture 观察。WSL 有 DISPLAY/Wayland/session DBus 且 `dbus-send` 可用，但缺少 `java`、`secret-tool`、`xdotool` 与 `import`，因此未启动伪 Linux GUI 验收。完整证据见 `docs/superpowers/reports/2026-07-26-task-15-platform-evidence-verify.md`。Task 152 与 IDs 83/84/92 保持原状态；相同环境路径不再重跑。
+
 ### Task 153 signed artifact and installer handoff
 
 **Risk axis:** signed-release-handoff
@@ -167,6 +169,8 @@ runner 必须保存用户确认、取消、启动结果和 manual-only 反馈；
 **User entry:** More → About → Check for updates → 下载 → 确认安装。
 
 **Feedback:** 下载/校验进度、取消、无可信产物、安装交接失败和手动更新路径均可见。
+
+**Execution evidence（验证工具完成，平台验收保持未勾选）：** 提交 `056dcb79db` 的只读产物盘点没有发现可绑定当前 commit/tree/productSource provenance 的 canonical signed MSI/DMG。Windows 隔离验收树没有 MSI；主工作树残留的 `Mihon Desktop-1.11.14.msi` 为 `NotSigned` 且没有 Task 153 installer provenance sidecar，不能冒充本轮产物。macOS 没有 DMG，当前部署 `.app` 被 `codesign` 判定为 `not signed at all`，`spctl` 拒绝并报告 `no usable signature`。production DI 又以默认空 `InstallerTrust` 创建 `DesktopUpdateInstaller`，真实行为只能返回 manual-only。验证 runner 已用 RED→GREEN 增加独立 trust identity、installer 自身签名、current commit/tree/productSource sidecar、canonical name/hash/size、production prepare/cancel/显式确认 handoff 的 fail-closed 合同；普通文本 MSI、第三方身份、伪 production 字段及错/缺 sidecar 均被拒绝。首审三项 P1 已关闭，修复复审又发现 Unix PASS 无条件返回 1；主代理按既有授权直接修正并以真实抽取函数 fixture 验证 PASS=0、BLOCKED≠0，未再增加审查轮次。Task 153 与 ID 86 保持 `CANDIDATE`；完整证据见 `docs/superpowers/reports/2026-07-26-task-15-platform-evidence-verify.md`。
 
 ## 回收条件
 

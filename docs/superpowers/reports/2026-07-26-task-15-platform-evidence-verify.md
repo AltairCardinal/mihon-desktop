@@ -91,6 +91,62 @@ kTCCServiceAccessibility|/usr/local/Cellar/node/25.8.1_1/bin/node|2
 
 因此没有启动 Linux 构建，也没有把 WSLg/DBus 的存在外推为 Linux GUI 通过。
 
+## Task 152：credential 与 capture OS matrix
+
+Task 152 验收提交为 `056dcb79db869b4246bda74c937ac3e6c0e08d79`，tree 为 `e5d1466fd252c997aecabca72f206be714adbb9b`，production 输入摘要为 `e18589c4e42c756a220ba3af1695cdfe92d2ea1cf58caddf7ba5db14a29672be`。
+
+| 平台 | 构建结果 | 版本 | 产物 tree SHA-256 | 结果 |
+|---|---:|---|---|---|
+| Windows | PASS | `0.11.14.47.056dcb7` | `3b50a0c45a786e25d1867f169403e8c5ce6d304fd762236b82ea1bc80a33fa75` | credential PASS；capture BLOCKED |
+| macOS | PASS | `0.11.14.47.056dcb7` | `2e68c68a6517ffaef20e0d4cd4349d679305813a8c869e75902ad1b1cd798b56` | credential BLOCKED；capture BLOCKED |
+| Linux / WSL | 未启动 | — | — | 前置条件 BLOCKED |
+
+Windows 产物含 366 个文件、共 252,057,078 bytes，EXE SHA-256 为 `4aabd2d7b94e428294a0c0a7d00b6389320077fc9fbe34e6d9335a45d23d7f32`。macOS 产物含 327 个文件、共 264,092,365 bytes，可执行文件 SHA-256 为 `e9a9c74b1f59f964438d6f1dee86185a6ae17e284cadb55f10b274629dbe2fa7`。Windows 协调器 key 为 `task152-windows-evidence-build-056d`，macOS key 为 `task152-macos-evidence-build-056d`，二者终态均为 `PASSED`；验收结束后没有重复或残留的 Gradle 进程。
+
+### Windows
+
+- `credential-roundtrip`：PASS。真实 production identity 为 `DesktopCredentialStore(backend=OsCredentialBackend)` 与 `OsCredentialBackend(platform=WINDOWS)`；服务名为 `mihon-desktop-tracker`，保存、读取、覆盖、再读取、删除与删除后缺失六项均为 true。秘密值没有进入 argv、JSON 或日志。
+- `capture`：BLOCKED。runner 在第一张受保护截图前无法把目标 Mihon HWND 激活为前台窗口，随后按合同停止；没有生成 protected/clear/feedback 三张截图，也没有人工 review JSON，因此不得把 affinity 或 adapter 返回值冒充真实 capture acceptance。
+
+原始证据位于 `D:\Shell\Github\mihon-task151-final\build\task15-platform-evidence\windows`。
+
+### macOS
+
+- `credential-roundtrip`：BLOCKED。production roundtrip 从 SSH 会话进入用户 login keychain，但 `security show-keychain-info "$HOME/Library/Keychains/login.keychain-db"` 明确返回 `User interaction is not allowed.`，因此没有把 Keychain 命令可达外推为保存/覆盖/读取/删除通过。
+- `capture`：BLOCKED。带正确 JDK 的 production `DesktopWindowPrivacy` Java 探针实际返回 `{"status":"FAILED","errorClass":"java.lang.IllegalArgumentException"}`；该失败发生在形成可信窗口和截图观察之前，现有 SSH audit chain 又仍被 Accessibility/TCC 拒绝，故既不声明 Supported，也不把它改写成产品缺陷结论。
+
+原始证据位于 `/tmp/mihon-task151-1c4a7c7/build/task15-platform-evidence/macos`。
+
+### Linux / WSL
+
+WSL 具有 `DISPLAY=:0`、`WAYLAND_DISPLAY=wayland-0`、session DBus 和 `/usr/bin/dbus-send`，但缺少 `java`、`secret-tool`、`xdotool` 与 ImageMagick `import`。这不足以执行 production credential backend 或真实窗口 capture，因此没有启动 Linux 构建和 runner，也没有把 WSLg/DBus 的存在计为通过。
+
+### Task 152 审查与状态
+
+- 首轮独立审查发现 capture 自我声明、macOS/Linux 静态写死 Unsupported、credential backend 自我声明三个高优先级问题；修复后 runner 改为 production adapter/backend identity，并要求精确截图 hash 与人工 review。
+- 修复复审发现 Bash `set -u` 下 `capture_native_window` 同一 `local` 声明引用新变量的问题；主代理最小修复后，直接执行抽取出的真实函数 fixture，联合 runner gate、PowerShell parser、`bash -n`、Python compile 与 `git diff --check` 均通过。由于约定的一轮修复复审预算已经用完，Task 152 没有获得额外独立批准，保持未完成。
+- Task 152 checkbox 不勾选；IDs 83、84、92 保持 `CANDIDATE`。相同前台窗口、Keychain/SSH 与缺工具路径不再重复执行。
+
+## Task 153：signed artifact 与 installer handoff
+
+### 当前产物与 production 边界
+
+- Windows 隔离验收树没有 MSI。主工作树构建目录中存在 `app-desktop/tmp/mihon-dist/main/msi/Mihon Desktop-1.11.14.msi`，但 `Get-AuthenticodeSignature` 返回 `NotSigned`，且没有能绑定当前 commit/tree/productSource 的 Task 153 installer provenance sidecar；它不构成本轮签名产物证据。
+- macOS 隔离树及 `/tmp/mihon-dist` 没有 DMG。`/Applications/Mihon Desktop.app` 被 `/usr/bin/codesign` 判定为 `code object is not signed at all`，`spctl` 返回 rejected，来源为 `no usable signature`。
+- production `DesktopAppModule` 以默认空 `InstallerTrust` 创建 `DesktopUpdateInstaller`；即使文件名、checksum 与 size 正确，当前真实安装准备也只能诚实返回 manual-only，不能执行可信 handoff。
+
+因此没有启动 MSI/DMG，也没有把无签名包、已安装 app、JVM fake launcher 或手写 JSON 冒充真实安装交接。ID 86 保持 `CANDIDATE`。
+
+### RED→GREEN 与审查证据
+
+- RED 首先精确失败于 Windows/Unix runner 均未暴露 `installer-handoff`。
+- GREEN 增加的合同要求 installer artifact 具有独立 sidecar，并绑定当前 commit、tree、productSource、canonical name、SHA-256 与 size；Windows signer Subject、macOS DMG 自身 Team ID 必须分别与 artifact 外部提供的受信 publisher/Team ID 精确一致。
+- 生成的 production probe 以显式 `InstallerTrust` 调用真实 `DesktopUpdateInstaller.prepare()`，先验证 `handoff(false) == InstallCancelled`，再仅在 runner 显式确认时调用 `handoff(true)`；缺少显式确认、可信身份、签名、公证、sidecar 或真实启动结果均只能 `BLOCKED`。
+- 首轮独立审查提出三项 P1：未执行 handoff、签名身份从 artifact 自举、provenance/production 字段可自报。唯一修复用普通文本 MSI、第三方/缺失 trust、伪 production 字段、错误/缺失 sidecar 与实际 runner 旁路 fixture 将三项全部关闭。
+- 修复复审确认三项 P1 已关闭，但发现 Unix 成功分支仍无条件 `return 1`。该单行控制流问题由主代理直接修正，并补充抽取真实 `installer_result_passed` 的行为 fixture；PASS 必须返回 0，BLOCKED 必须返回非零。没有再增加独立审查轮次，Task 153 因真实签名材料仍缺失而保持未完成。
+
+最终 focused runner contract 为 PASS（36.4 秒）；PowerShell parser、`bash -n`、Python compile 与 `git diff --check` 全部通过。没有运行 Gradle、重新构建、安装器或会改变系统状态的命令。
+
 ## 脚本与审查证据
 
 - `scripts/tests/task15-platform-evidence-runner-test.ps1`：PASS。
