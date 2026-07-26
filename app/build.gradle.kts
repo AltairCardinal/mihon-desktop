@@ -18,6 +18,10 @@ if (Config.includeTelemetry) {
     }
 }
 
+configurations.matching { it.name.endsWith("UnitTestRuntimeClasspath") }.configureEach {
+    exclude(group = "org.conscrypt", module = "conscrypt-android")
+}
+
 shortcutHelper.setFilePath("./shortcuts.xml")
 
 android {
@@ -289,7 +293,12 @@ dependencies {
     testImplementation(libs.bundles.test)
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(androidx.paging.testing)
+    testImplementation("androidx.work:work-testing:2.11.1")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.16.1")
     testRuntimeOnly(libs.junit.platform.launcher)
+    testRuntimeOnly("org.junit.vintage:junit-vintage-engine:6.0.3")
+    testRuntimeOnly("org.conscrypt:conscrypt-openjdk-uber:2.5.2")
 
     androidTestImplementation(platform(androidCompose.bom))
     androidTestImplementation(androidCompose.ui.test.junit4)

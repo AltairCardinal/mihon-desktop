@@ -518,8 +518,10 @@ active-task: Task 17
 Windows capture 前台限制、Linux 前置缺失及没有受信 MSI/DMG 保持未勾选和 `CANDIDATE`，
 所有不依赖这些外部条件的工作已完成且不重复失败路径。Task 16B child 的 Task 161 已完成
 shared lifecycle RED→GREEN、三项 mutation、唯一审查修复与复审，固定原版只取消 RUNNING
-的语义已闭合。Task 17 保持活动；下一恢复位置为 Task 162，随后按 Task 163、Task 16C、
-Task 16D 顺序执行。Task 16A 审计已明确无需生成产品 child plan。
+的语义已闭合；Task 162 已完成当前 Android WorkManager production consumer，真实 worker、
+周期/手动调度、停止恢复与 Updates feedback focused tests `10/10`，首审两个 P1 经一轮修复
+后复审 APPROVED。Task 17 保持活动；下一恢复位置为 Task 163，随后按 Task 16C、Task 16D
+顺序执行。Task 16A 审计已明确无需生成产品 child plan。
 
 ### Task 18：让 64 项最终 closure 与架构 gate 变绿
 

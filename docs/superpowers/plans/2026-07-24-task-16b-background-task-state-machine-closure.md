@@ -19,7 +19,7 @@ status: planned
 - 任一任务超过预算或发现相邻产品缺陷时停止并修订本计划，不把新 capability、UI redesign 或架构治理静默并入。
 
 - [x] Task 161：shared task lifecycle core
-- [ ] Task 162：Android WorkManager consumer
+- [x] Task 162：Android WorkManager consumer
 - [ ] Task 163：Desktop scheduler consumer and closeout
 
 ### Task 161 shared task lifecycle core
@@ -78,6 +78,8 @@ status: planned
 **Feedback:** 已开始或已在运行的可见结果不变；worker progress/success/failure/cancel 通知继续由 Android adapter 呈现。
 
 **Desktop zero-regression:** 本任务不改 Desktop；Task 161 的 API 不能要求 Android-only Context、WorkerParameters 或 WorkInfo。
+
+**Execution evidence（已完成）：** 当前 Android `LibraryUpdateJob` 已将周期任务注册、手动任务注册/启动、运行中取消以及 worker Complete/Fail 终态接入 Task 161 shared lifecycle；WorkManager 仍是唯一平台 driver，并完整保留固定原版的 UPDATE/KEEP、interval/flex、Wi-Fi/unmetered、charging、battery-not-low、linear backoff、前台通知、自动任务恢复和 early retry 边界。Updates production caller 继续反馈“已触发/已在运行”。RED 分别精确失败于 shared decision 未控制真实 request、KEEP 被替换、stop 后自动任务未恢复、Pending+Running 时未优先 Running，以及真实 `LibraryUpdateJob.doWork()` 在 shared Complete rejection 后仍返回 Success；GREEN 后真实 WorkManager/Robolectric 与 caller focused tests `10/10`。唯一首审的两个 P1（worker terminal decision 未接入、混合 active state 未优先 Running）均在一轮修复后由同一独立审查代理复审 APPROVED；`:app:spotlessCheck` 与 `git diff --check` 通过。测试依赖仅位于 app unit-test scope，Robolectric SDK 使用已缓存离线 artifact；本任务没有修改 Desktop 或用户已有脏文件。下一项为 Task 163。
 
 ### Task 163 Desktop scheduler consumer and closeout
 

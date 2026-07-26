@@ -41,6 +41,13 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import logcat.LogPriority
 import mihon.domain.chapter.interactor.FilterChaptersForDownload
+import mihon.domain.task.BackgroundTask
+import mihon.domain.task.BackgroundTaskLifecycle
+import mihon.domain.task.TaskConstraint
+import mihon.domain.task.TaskLifecycleEvent
+import mihon.domain.task.TaskLifecycleOutcome
+import mihon.domain.task.TaskOccurrence
+import mihon.domain.task.TaskStatus
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.getAndSet
 import tachiyomi.core.common.util.lang.withIOContext
@@ -113,6 +120,13 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
             }
         }
 
+        val lifecycleOccurrence = TaskOccurrence(
+            task = BackgroundTask(
+                id = TAG,
+                idempotencyKey = if (tags.contains(WORK_NAME_AUTO)) WORK_NAME_AUTO else WORK_NAME_MANUAL,
+            ),
+            status = TaskStatus.Running,
+        )
         setForegroundSafely()
 
         libraryPreferences.lastUpdatedTimestamp().set(Instant.now().toEpochMilli())
@@ -124,19 +138,28 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
             try {
                 updateChapterList()
                 discoverCreatorWorks()
-                Result.success()
+                finishLifecycle(lifecycleOccurrence, TaskLifecycleEvent.Complete, Result.success())
             } catch (e: Exception) {
                 if (e is CancellationException) {
                     // Assume success although cancelled
-                    Result.success()
+                    finishLifecycle(lifecycleOccurrence, TaskLifecycleEvent.Complete, Result.success())
                 } else {
                     logcat(LogPriority.ERROR, e)
-                    Result.failure()
+                    finishLifecycle(lifecycleOccurrence, TaskLifecycleEvent.Fail, Result.failure())
                 }
             } finally {
                 notifier.cancelProgressNotification()
             }
         }
+    }
+
+    private fun finishLifecycle(
+        occurrence: TaskOccurrence,
+        event: TaskLifecycleEvent,
+        result: Result,
+    ): Result {
+        val decision = BackgroundTaskLifecycle.reduce(occurrence, event)
+        return if (decision.outcome == TaskLifecycleOutcome.Rejected) Result.failure() else result
     }
 
     override suspend fun getForegroundInfo(): ForegroundInfo {
@@ -438,6 +461,29 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                 } else {
                     NetworkType.CONNECTED
                 }
+                val task = BackgroundTask(
+                    id = WORK_NAME_AUTO,
+                    idempotencyKey = WORK_NAME_AUTO,
+                    constraints = buildSet {
+                        add(
+                            if (DEVICE_NETWORK_NOT_METERED in restrictions) {
+                                TaskConstraint.UnmeteredNetwork
+                            } else {
+                                TaskConstraint.NetworkConnected
+                            },
+                        )
+                        if (DEVICE_CHARGING in restrictions) {
+                            add(TaskConstraint.Charging)
+                        }
+                    },
+                )
+                val workManager = context.workManager
+                val current = workManager.getWorkInfosForUniqueWork(WORK_NAME_AUTO).get()
+                    .firstOrNull { !it.state.isFinished }
+                    ?.let { TaskOccurrence(task, it.state.toTaskStatus()) }
+                val registration = BackgroundTaskLifecycle.reduce(current, TaskLifecycleEvent.Register(task))
+                if (registration.outcome == TaskLifecycleOutcome.Rejected) return
+
                 val networkRequest = NetworkRequest.Builder().apply {
                     removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
                     if (DEVICE_ONLY_ON_WIFI in restrictions) {
@@ -467,7 +513,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                     .setBackoffCriteria(BackoffPolicy.LINEAR, 10, TimeUnit.MINUTES)
                     .build()
 
-                context.workManager.enqueueUniquePeriodicWork(
+                workManager.enqueueUniquePeriodicWork(
                     WORK_NAME_AUTO,
                     ExistingPeriodicWorkPolicy.UPDATE,
                     request,
@@ -482,10 +528,24 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
             category: Category? = null,
         ): Boolean {
             val wm = context.workManager
-            if (wm.isRunning(TAG)) {
-                // Already running either as a scheduled or manual job
-                return false
-            }
+            val task = BackgroundTask(
+                id = TAG,
+                idempotencyKey = WORK_NAME_MANUAL,
+            )
+            val active = wm.getWorkInfosByTag(TAG).get()
+                .filter {
+                    it.state in setOf(
+                        WorkInfo.State.ENQUEUED,
+                        WorkInfo.State.BLOCKED,
+                        WorkInfo.State.RUNNING,
+                    )
+                }
+            val current = (active.firstOrNull { it.state == WorkInfo.State.RUNNING } ?: active.firstOrNull())
+                ?.let { TaskOccurrence(task, it.state.toTaskStatus()) }
+            val registration = BackgroundTaskLifecycle.reduce(current, TaskLifecycleEvent.Register(task))
+            if (registration.outcome == TaskLifecycleOutcome.Rejected) return false
+            val start = BackgroundTaskLifecycle.reduce(registration.occurrence, TaskLifecycleEvent.Start)
+            if (start.outcome != TaskLifecycleOutcome.Applied) return false
 
             val inputData = workDataOf(
                 KEY_CATEGORY to category?.id,
@@ -508,6 +568,16 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
             wm.getWorkInfos(workQuery).get()
                 // Should only return one work but just in case
                 .forEach {
+                    val occurrence = TaskOccurrence(
+                        task = BackgroundTask(
+                            id = TAG,
+                            idempotencyKey = "$TAG:${it.id}",
+                        ),
+                        status = TaskStatus.Running,
+                    )
+                    val decision = BackgroundTaskLifecycle.reduce(occurrence, TaskLifecycleEvent.Cancel)
+                    if (decision.outcome != TaskLifecycleOutcome.Applied) return@forEach
+
                     wm.cancelWorkById(it.id)
 
                     // Re-enqueue cancelled scheduled work
@@ -515,6 +585,16 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                         setupTask(context)
                     }
                 }
+        }
+
+        private fun WorkInfo.State.toTaskStatus(): TaskStatus = when (this) {
+            WorkInfo.State.ENQUEUED,
+            WorkInfo.State.BLOCKED,
+            -> TaskStatus.Pending
+            WorkInfo.State.RUNNING -> TaskStatus.Running
+            WorkInfo.State.SUCCEEDED -> TaskStatus.Completed
+            WorkInfo.State.FAILED -> TaskStatus.Failed
+            WorkInfo.State.CANCELLED -> TaskStatus.Cancelled
         }
     }
 }
