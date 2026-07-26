@@ -7,7 +7,7 @@ status: planned
 # Test Mode scenario closure
 本计划只关闭 Task16D inventory 中 9 个 Desktop TestMode wiring/runner gap 和缺失的最终固定 EXE runner；ID3 产品闭环仍归 Task141/142，本计划只消费其完成产物，并按 171→177 串行执行。
 - [x] Task 171：Final fixed-EXE runner
-- [ ] Task 172：Library and manga-detail actions
+- [x] Task 172：Library and manga-detail actions
 - [ ] Task 173：Browse search and source login
 - [ ] Task 174：Downloads, updates and history actions
 - [ ] Task 175：Backup and settings actions
@@ -30,6 +30,7 @@ status: planned
 **Files:** TestHttpServer dispatcher, library/detail observation ports, owner wiring, HTTP integration tests and runner assertions.
 **TDD:** each current no-op action first REDs on unchanged production state; wire the smallest owner-scoped port and prove closed/unavailable behavior.
 **User/feedback:** library/detail scenario reports visible rows, navigation, mutations, partial failure and unavailable owner rather than unconditional success.
+**Execution evidence:** search 首先以 HTTP `200` 但真实 DI-owned `LibraryScreenModel.searchQuery` 不变精确 RED；独立审查发现 repository rows 与 detail chapters 被测试 setter 掩盖后，分别以真实 `libraryMangaFlow()` 缺行和 production `mangaWithChaptersFlow()` 缺章节 RED，修复为 owner-scoped 持续收集并移除测试手工注入。复审确认原两个 P1 关闭，并发现 READY 后断流 stale owner、失败重选与 close cancellation 边界；主代理以 3 项精确 RED 补齐 load-state 门控、旧 owner 清理和 typed cancellation，controller 最终 `9/9`。`LibraryMangaTestModeHttpTest`、`DesktopDiWiringTest`、coverage contract 与 Spotless 合并门禁通过；inventory 的 library/manga-detail 两族转为 covered，当前为 6/13 covered、7 gap，64 项仍唯一映射且 unmapped=0。
 ### Task 173 Browse search and source login
 **Risk axis:** testmode-browse-login
 **Platform boundary:** desktop

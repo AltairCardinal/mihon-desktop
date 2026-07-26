@@ -65,6 +65,8 @@ import mihon.desktop.ui.settings.DesktopUpdateScreenModel
 import mihon.desktop.task.DesktopTaskScheduler
 import mihon.desktop.test.http.SourceExtensionTestModeBridge
 import mihon.desktop.test.http.SourceExtensionTestModeController
+import mihon.desktop.test.http.LibraryMangaTestModeController
+import mihon.desktop.ui.library.LibraryScreenModel
 import mihon.desktop.migration.DesktopBatchMigrationController
 import mihon.desktop.network.ChallengeRecoveryFailure
 import mihon.desktop.network.ChallengeRecoveryIntent
@@ -1084,6 +1086,8 @@ class DesktopDiWiringTest {
         assertNotNull(Injekt.get<ReorderCategory>())
         assertNotNull(Injekt.get<UpdateLibraryMembership>())
         assertNotNull(Injekt.get<DesktopCustomCoverStore>())
+        assertSame(context.libraryScreenModel, Injekt.get<LibraryScreenModel>())
+        assertSame(context.libraryController, Injekt.get<LibraryMangaTestModeController>())
         assertNotNull(LibraryScreenModelFactory.create())
         assertNotNull(MangaDetailScreenModelFactory.create(manga.id))
         assertNotNull(StatsScreenModel(Injekt.get<GetLibraryManga>().subscribe()))

@@ -258,6 +258,8 @@ internal suspend fun initDesktopDIForTest(
         extensionManager = Injekt.get(),
         extensionScreenModel = Injekt.get(),
         extensionController = Injekt.get(),
+        libraryScreenModel = Injekt.get(),
+        libraryController = Injekt.get(),
         runtime = Injekt.get(),
     ).also { activeDesktopTestDIContext = it }
 }
@@ -279,12 +281,15 @@ internal class DesktopTestDIContext(
     private val extensionManager: DesktopExtensionManager,
     val extensionScreenModel: ExtensionsScreenModel,
     private val extensionController: SourceExtensionTestModeController,
+    val libraryScreenModel: mihon.desktop.ui.library.LibraryScreenModel,
+    val libraryController: mihon.desktop.test.http.LibraryMangaTestModeController,
     private val runtime: mihon.desktop.DesktopAppRuntime,
 ) : AutoCloseable {
     private var closed = false
 
     override fun close() {
         if (closed) return
+        libraryController.close()
         runtime.close()
         scheduler.stop()
     }
@@ -294,6 +299,7 @@ internal class DesktopTestDIContext(
         closed = true
         runtime.closeAndJoin()
         scheduler.stopAndJoin()
+        libraryController.closeAndJoin()
         SourceExtensionTestModeBridge.clear(extensionController)
         extensionScreenModel.closeAndJoin()
         // Cancel calls before joining downloads because OkHttp execute() is blocking.
@@ -752,6 +758,11 @@ internal fun initUILayer(
         libraryProvider,
         updateManga,
     )
+    val libraryScreenModel = mihon.desktop.library.LibraryScreenModelFactory.create()
+    val libraryTestController = mihon.desktop.test.http.LibraryMangaTestModeController(libraryScreenModel)
+    Injekt.addSingleton(libraryScreenModel)
+    Injekt.addSingleton(libraryTestController)
+    mihon.desktop.test.http.LibraryMangaTestModeBridge.install(libraryTestController)
 
     lateinit var trackSync: ReadingProgressTrackSync
     val trackerSyncScheduler =

@@ -34,6 +34,7 @@ import tachiyomi.domain.manga.interactor.GetMangaWithChapters
 import tachiyomi.domain.manga.interactor.SetMangaChapterFlags
 import tachiyomi.domain.manga.interactor.UpdateManga
 import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
+import tachiyomi.domain.manga.interactor.LibraryMembershipResult
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.source.service.SourceManager
@@ -226,9 +227,9 @@ class MangaDetailScreenModel(
             .awaitOrThrow(chapters, read = true)
     }
 
-    suspend fun markSelectedRead(chapters: List<Chapter>, read: Boolean) {
+    suspend fun markSelectedRead(chapters: List<Chapter>, read: Boolean): BatchChapterResult {
         val updater = requireNotNull(setChapterReadStatus) { "SetChapterReadStatus is required" }
-        runChapterBatch(updater.filterToUpdate(chapters, read)) { updater.awaitOrThrow(it, read) }
+        return runChapterBatch(updater.filterToUpdate(chapters, read)) { updater.awaitOrThrow(it, read) }
     }
 
     suspend fun runChapterBatch(
@@ -240,10 +241,10 @@ class MangaDetailScreenModel(
         }
     }
 
-    suspend fun markSelectedBookmark(chapters: List<Chapter>) {
+    suspend fun markSelectedBookmark(chapters: List<Chapter>): BatchChapterResult {
         val shouldBookmark = chapters.any { !it.bookmark }
         val updater = requireNotNull(updateChapter) { "UpdateChapter is required" }
-        runChapterBatch(chapters) { updater.awaitOrThrow(ChapterUpdate(id = it.id, bookmark = shouldBookmark)) }
+        return runChapterBatch(chapters) { updater.awaitOrThrow(ChapterUpdate(id = it.id, bookmark = shouldBookmark)) }
     }
 
     suspend fun markAtOrBelowRead(displayedChapters: List<Chapter>, selectedIds: Set<Long>) {
@@ -261,8 +262,8 @@ class MangaDetailScreenModel(
             .awaitOrThrow(chapter, read = !chapter.read)
     }
 
-    suspend fun toggleLibrary(manga: Manga, nowMillis: Long = System.currentTimeMillis()) {
-        requireNotNull(updateLibraryMembership) { "UpdateLibraryMembership is required" }
+    suspend fun toggleLibrary(manga: Manga, nowMillis: Long = System.currentTimeMillis()): LibraryMembershipResult {
+        return requireNotNull(updateLibraryMembership) { "UpdateLibraryMembership is required" }
             .await(manga, favorite = !manga.favorite, nowMillis = nowMillis)
     }
 
@@ -406,8 +407,8 @@ class MangaDetailScreenModel(
         )
     }
 
-    suspend fun setCategoriesForManga(mangaId: Long, categoryIds: List<Long>) {
-        requireNotNull(setMangaCategories) { "SetMangaCategories is required" }.await(mangaId, categoryIds)
+    suspend fun setCategoriesForManga(mangaId: Long, categoryIds: List<Long>): SetMangaCategories.Result {
+        return requireNotNull(setMangaCategories) { "SetMangaCategories is required" }.awaitResult(mangaId, categoryIds)
     }
 
     suspend fun categories(): List<Category> {

@@ -116,6 +116,18 @@ internal fun currentTestStateJson(updateModel: DesktopUpdateScreenModel? = null)
                 Json.encodeToJsonElement(SourceBrowseTestSnapshot.serializer(), it)
             } ?: JsonNull,
         )
+        put(
+            "library",
+            LibraryMangaTestModeBridge.controller?.snapshot()?.let {
+                Json.encodeToJsonElement(LibraryTestSnapshot.serializer(), it)
+            } ?: JsonNull,
+        )
+        put(
+            "detail",
+            LibraryMangaTestModeBridge.controller?.detailSnapshot()?.let {
+                Json.encodeToJsonElement(MangaDetailTestSnapshot.serializer(), it)
+            } ?: JsonNull,
+        )
     })
 }
 
@@ -125,6 +137,8 @@ private fun actionJson(
     error: String? = null,
     extension: kotlinx.serialization.json.JsonElement = JsonNull,
     source: kotlinx.serialization.json.JsonElement = JsonNull,
+    library: kotlinx.serialization.json.JsonElement = JsonNull,
+    detail: kotlinx.serialization.json.JsonElement = JsonNull,
     tracking: JsonObject? = null,
 ) = buildJsonObject {
     put("success", JsonPrimitive(success))
@@ -133,6 +147,8 @@ private fun actionJson(
     put("timestamp", JsonPrimitive(Instant.now().toString()))
     put("extension", extension)
     put("source", source)
+    put("library", library)
+    put("detail", detail)
     tracking?.let { put("tracking", it) }
 }
 
@@ -343,30 +359,24 @@ internal fun Application.testHttpServer(
                 return@post
             }
             val extensionResult = extensionController?.execute(action, params)
+            val isLibraryAction = action in setOf(
+                "search", "filter", "sort", "select", "open_manga_detail",
+                "addToLibrary", "removeFromLibrary", "detail_categories", "detail_chapter", "detail_cover", "download",
+            )
+            val libraryController = if (isLibraryAction) LibraryMangaTestModeBridge.controller else null
+            if (isLibraryAction && libraryController == null) {
+                call.respondText(
+                    jsonText(actionJson(action, false, "LIBRARY_OWNER_UNAVAILABLE")),
+                    ContentType.Application.Json,
+                    HttpStatusCode.ServiceUnavailable,
+                )
+                return@post
+            }
+            val libraryResult = libraryController?.execute(action, params)
 
             // Process actions
             var trackingResult: mihon.desktop.tracking.TrackingTestState? = null
-            if (!isExtensionAction) when (action) {
-                // Library actions
-                "search", "filter", "sort" -> { }
-
-                // Select manga and open detail
-                "select" -> {
-                    val index = params["index"]?.toIntOrNull() ?: 0
-                    // Record the selection - UI should handle actual navigation
-                    applicationState.recordAction("select", mapOf("index" to index))
-                }
-
-                // Open manga detail by mangaId
-                "open_manga_detail" -> {
-                    val mangaId = params["mangaId"]?.toLongOrNull() ?: 0L
-                    if (mangaId > 0) {
-                        TestNavigationController.navigateToMangaDetail(mangaId)
-                        applicationState.setCurrentScreen("MangaDetailScreen")
-                        applicationState.recordAction("open_manga_detail", mapOf("mangaId" to mangaId))
-                    }
-                }
-
+            if (!isExtensionAction && !isLibraryAction) when (action) {
                 // Read chapter - open reader
                 "read_chapter", "start_reading" -> {
                     val mangaId = params["mangaId"]?.toLongOrNull()
@@ -444,8 +454,6 @@ internal fun Application.testHttpServer(
                     .execute(action, params)
                 // Backup actions
                 "backup_create", "backup_restore" -> { }
-                // Manga detail actions
-                "addToLibrary", "removeFromLibrary", "download" -> { }
             }
 
             call.respondText(
@@ -468,7 +476,27 @@ internal fun Application.testHttpServer(
                     SourceExtensionActionFailureCode.TRUST_PACKAGE_MISMATCH,
                     SourceExtensionActionFailureCode.OPERATION_REJECTED,
                     -> HttpStatusCode.Conflict
-                        null -> HttpStatusCode.OK
+                        null -> when (libraryResult?.failureCode) {
+                            LibraryMangaActionFailureCode.MISSING_PARAMETER,
+                            LibraryMangaActionFailureCode.INVALID_PARAMETER,
+                            LibraryMangaActionFailureCode.UNSUPPORTED_ACTION,
+                            -> HttpStatusCode.BadRequest
+                            LibraryMangaActionFailureCode.ROW_NOT_FOUND,
+                            LibraryMangaActionFailureCode.DETAIL_NOT_FOUND,
+                            -> HttpStatusCode.NotFound
+                            LibraryMangaActionFailureCode.DETAIL_NOT_OPEN,
+                            LibraryMangaActionFailureCode.ACTION_UNAVAILABLE,
+                            LibraryMangaActionFailureCode.OPERATION_REJECTED,
+                            LibraryMangaActionFailureCode.PARTIAL_FAILURE,
+                            LibraryMangaActionFailureCode.LIBRARY_LOADING,
+                            LibraryMangaActionFailureCode.DETAIL_LOADING,
+                            -> HttpStatusCode.Conflict
+                            LibraryMangaActionFailureCode.LIBRARY_UNAVAILABLE,
+                            LibraryMangaActionFailureCode.DETAIL_LOAD_FAILED,
+                            LibraryMangaActionFailureCode.PORT_CLOSED,
+                            -> HttpStatusCode.ServiceUnavailable
+                            null -> HttpStatusCode.OK
+                        }
                     }
                 },
             ) {
@@ -483,13 +511,21 @@ internal fun Application.testHttpServer(
                 jsonText(
                     actionJson(
                         action = action,
-                        success = sourceResult?.success ?: extensionResult?.success ?: true,
-                        error = sourceResult?.failureCode?.name ?: extensionResult?.failureCode?.name,
+                        success = sourceResult?.success ?: extensionResult?.success ?: libraryResult?.success ?: true,
+                        error = sourceResult?.failureCode?.name
+                            ?: extensionResult?.failureCode?.name
+                            ?: libraryResult?.failureCode?.name,
                         extension = extensionResult?.let {
                             Json.encodeToJsonElement(SourceExtensionTestSnapshot.serializer(), it.snapshot)
                         } ?: JsonNull,
                         source = sourceResult?.let {
                             Json.encodeToJsonElement(SourceBrowseTestSnapshot.serializer(), it.snapshot)
+                        } ?: JsonNull,
+                        library = libraryResult?.let {
+                            Json.encodeToJsonElement(LibraryTestSnapshot.serializer(), it.snapshot)
+                        } ?: JsonNull,
+                        detail = libraryController?.detailSnapshot()?.let {
+                            Json.encodeToJsonElement(MangaDetailTestSnapshot.serializer(), it)
                         } ?: JsonNull,
                         tracking = tracking,
                     ),
