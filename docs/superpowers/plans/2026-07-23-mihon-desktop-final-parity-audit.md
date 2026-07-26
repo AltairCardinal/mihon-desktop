@@ -529,6 +529,12 @@ wiring，controller `9/9`、HTTP/DI/coverage/Spotless 门禁通过。Task 173 �
 Search/Source Login production TestMode wiring；generation lease 修复后，Task 173R 又以
 null-result fallback 与 typed stale 不回退测试关闭双 bridge 共存路由，独立审查 APPROVED。
 inventory 现为 7/13 covered、6 gap、64/64 mapped、unmapped=0。下一恢复位置为 Task 174。
+
+Task 174 已完成 Downloads、Updates/Upcoming、History production TestMode wiring。三类 action
+分别接入 `DesktopDownloadManager`、`UpdatesScreenModel`、`HistoryScreenModel`，启动水合、
+稳定 `chapterId` 破坏性定位、typed failures 与 Upcoming/Reader 导航均由 HTTP/生命周期测试
+保护；唯一修复复审 `APPROVED`。inventory 现为 10/13 covered、3 gap、64/64 mapped、
+unmapped=0。下一恢复位置为 Task 175。
 Task 16A 审计已明确无需生成产品 child plan。
 
 Task 16C 的 Task 164 已完成 current Android extension repository response adapter：固定原版

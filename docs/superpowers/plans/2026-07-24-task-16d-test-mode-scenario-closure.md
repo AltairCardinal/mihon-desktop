@@ -9,7 +9,7 @@ status: planned
 - [x] Task 171：Final fixed-EXE runner
 - [x] Task 172：Library and manga-detail actions
 - [x] Task 173：Browse search and source login
-- [ ] Task 174：Downloads, updates and history actions
+- [x] Task 174：Downloads, updates and history actions
 - [ ] Task 175：Backup and settings actions
 - [ ] Task 176：Tracking HTTP runner
 - [ ] Task 177：Scenario inventory closeout
@@ -49,6 +49,7 @@ status: planned
 **Files:** three owner ports, TestHttpServer dispatcher/state projection, DI lifecycle wiring and HTTP tests.
 **TDD:** existing TestState-only/no-op branches RED against unchanged managers/models; wire one owner-scoped port per context and reject calls after close.
 **User/feedback:** scenario reports queue progress/failures, update rows/read state, upcoming navigation and history removal outcomes.
+**Execution evidence:** Downloads、Updates/Upcoming、History 三个 HTTP family 均先以旧 no-op/TestState 行为取得精确 RED，再接入 `DesktopDownloadManager`、`UpdatesScreenModel`、`HistoryScreenModel` 的真实 production owner。`DownloadTestModeHttpTest`、`UpdatesTestModeHttpTest`、`HistoryTestModeHttpTest` 覆盖队列控制/失败/排序边界、更新加载/筛选/已读/下载/Upcoming 与 Reader 导航、历史搜索/删除/清空/Reader 导航及 typed unavailable/closed/rejected/partial failures。初审发现启动水合、破坏性 index 定位和伪 `date_added` 排序问题；唯一修复以 `TestModeTimelineHydrationTest` 及下载 HTTP 测试分别 RED→GREEN，改为 server 暴露前真实水合、仅稳定 `chapterId` 取消，并对无真实语义的 `date_added` 返回 `INVALID_PARAMETER`。唯一修复复审 `APPROVED`、无 P0/P1/P2；组合 focused、DI/coverage、Spotless 与 diff check 通过。inventory 现为 10/13 covered、3 gap，64/64 mapped、unmapped=0。
 ### Task 175 Backup and settings actions
 **Risk axis:** testmode-backup-settings
 **Platform boundary:** desktop

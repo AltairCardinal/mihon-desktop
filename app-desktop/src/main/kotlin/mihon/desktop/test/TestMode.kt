@@ -11,6 +11,12 @@ import mihon.desktop.platform.DesktopShareService
 import mihon.desktop.test.http.createPlatformAcceptanceController
 import mihon.desktop.test.http.BrowseSearchTestModeBridge
 import mihon.desktop.test.http.BrowseSearchTestModeController
+import mihon.desktop.test.http.DownloadTestModeBridge
+import mihon.desktop.test.http.DownloadTestModeController
+import mihon.desktop.test.http.HistoryTestModeBridge
+import mihon.desktop.test.http.HistoryTestModeController
+import mihon.desktop.test.http.UpdatesTestModeBridge
+import mihon.desktop.test.http.UpdatesTestModeController
 import mihon.desktop.test.http.testHttpServer
 import mihon.desktop.test.screenshot.ScreenshotService
 import mihon.desktop.test.state.applicationState
@@ -40,6 +46,9 @@ object TestMode {
     private val lifecycleLock = Any()
     private var activeRun: TestModeRun? = null
     private var browseController: BrowseSearchTestModeController? = null
+    private var downloadController: DownloadTestModeController? = null
+    private var updatesController: UpdatesTestModeController? = null
+    private var historyController: HistoryTestModeController? = null
 
     /**
      * Start test mode with the given configuration.
@@ -70,6 +79,21 @@ object TestMode {
         BrowseSearchTestModeBridge.install(browse)
         synchronized(lifecycleLock) {
             browseController = browse
+        }
+        val downloads = DownloadTestModeController(Injekt.get())
+        DownloadTestModeBridge.install(downloads)
+        synchronized(lifecycleLock) {
+            downloadController = downloads
+        }
+        val updates = UpdatesTestModeController(mihon.desktop.updates.UpdatesScreenModelFactory.create())
+        UpdatesTestModeBridge.install(updates)
+        synchronized(lifecycleLock) {
+            updatesController = updates
+        }
+        val history = HistoryTestModeController(mihon.desktop.history.HistoryScreenModelFactory.create())
+        HistoryTestModeBridge.install(history)
+        synchronized(lifecycleLock) {
+            historyController = history
         }
 
         // Register available screens
@@ -114,13 +138,34 @@ object TestMode {
                 "source_login_start",
                 "source_login_complete",
                 "source_login_cancel",
+                "downloads_pause_all",
+                "downloads_resume_all",
+                "downloads_cancel",
+                "downloads_cancel_all",
+                "downloads_clear_errors",
+                "downloads_retry_errors",
+                "downloads_reorder",
+                "downloads_sort",
+                "downloads_reverse",
+                "updates_refresh",
+                "updates_mark_all_read",
+                "updates_filter",
+                "updates_clear_filters",
+                "updates_open_upcoming",
+                "updates_select",
+                "updates_download",
+                "updates_mark_read",
+                "history_search",
+                "history_clear_all",
+                "history_remove",
+                "history_select",
                 "setting_change",
                 "setting_reset",
             ),
         )
 
         // Start HTTP server
-        startHttpServer(args, run)
+        startHttpServer(args, run, updates, history)
 
         isStarted = true
         logger.info("Test mode started successfully on port ${args.httpPort}")
@@ -129,7 +174,12 @@ object TestMode {
     /**
      * Start the HTTP test server.
      */
-    private fun startHttpServer(args: TestArguments, run: TestModeRun) {
+    private fun startHttpServer(
+        args: TestArguments,
+        run: TestModeRun,
+        updates: UpdatesTestModeController,
+        history: HistoryTestModeController,
+    ) {
         val platformAcceptance = createPlatformAcceptanceController(
             args = args,
             evidenceRoot = Path.of(System.getProperty("java.io.tmpdir"), "mihon", "platform-acceptance"),
@@ -137,6 +187,7 @@ object TestMode {
         val job = serverScope.launch {
             var startedServer: ApplicationEngine? = null
             try {
+                hydrateTimelineTestModeOwners(updates, history)
                 startedServer = embeddedServer(Netty, host = TEST_MODE_HOST, port = args.httpPort) {
                     testHttpServer(platformAcceptanceController = platformAcceptance)
                 }.start(wait = false)
@@ -195,9 +246,21 @@ object TestMode {
         val activeBrowse = synchronized(lifecycleLock) {
             browseController.also { browseController = null }
         }
+        val activeDownloads = synchronized(lifecycleLock) {
+            downloadController.also { downloadController = null }
+        }
+        val activeUpdates = synchronized(lifecycleLock) {
+            updatesController.also { updatesController = null }
+        }
+        val activeHistory = synchronized(lifecycleLock) {
+            historyController.also { historyController = null }
+        }
         completeTestModeStop(
             run,
             { activeBrowse?.close() },
+            { activeDownloads?.close() },
+            { activeUpdates?.close() },
+            { activeHistory?.close() },
             { activeServer?.stop(SERVER_STOP_GRACE_MS, SERVER_STOP_TIMEOUT_MS) },
             { activeJob?.cancel() },
             ScreenshotService::disable,
@@ -228,6 +291,14 @@ object TestMode {
     private const val SERVER_STOP_GRACE_MS = 100L
     private const val SERVER_STOP_TIMEOUT_MS = 1_000L
     internal const val TEST_MODE_HOST = "127.0.0.1"
+}
+
+internal suspend fun hydrateTimelineTestModeOwners(
+    updates: UpdatesTestModeController,
+    history: HistoryTestModeController,
+) {
+    updates.hydrate()
+    history.hydrate()
 }
 
 internal class TestModeRun {

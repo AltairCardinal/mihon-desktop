@@ -85,6 +85,9 @@ internal fun currentTestStateJson(updateModel: DesktopUpdateScreenModel? = null)
     val upState = updatesState
     val histState = historyState
     val migrationQueues = MigrationBatchTestBridge.controller?.queues?.value?.size ?: 0
+    val downloads = DownloadTestModeBridge.controller?.snapshot()
+    val updates = UpdatesTestModeBridge.controller?.snapshot()
+    val history = HistoryTestModeBridge.controller?.snapshot()
     return jsonText(buildJsonObject {
         put("currentScreen", JsonPrimitive(state.currentScreen.value ?: "HomeScreen"))
         put("isLoading", JsonPrimitive(state.isLoading.value))
@@ -93,17 +96,35 @@ internal fun currentTestStateJson(updateModel: DesktopUpdateScreenModel? = null)
         put("screens", JsonArray(state.screens.value.map(::JsonPrimitive)))
         put("actions", JsonArray(state.actions.value.map(::JsonPrimitive)))
         put("testMode", JsonPrimitive(state.testMode))
-        put("downloadQueueSize", JsonPrimitive(dlState.queueSize))
-        put("downloadsPaused", JsonPrimitive(dlState.isPaused))
-        put("updateCount", JsonPrimitive(upState.count))
-        put("hasUnreadUpdates", JsonPrimitive(upState.hasUnread))
-        put("historyCount", JsonPrimitive(histState.count))
+        put("downloadQueueSize", JsonPrimitive(downloads?.rows?.size ?: dlState.queueSize))
+        put("downloadsPaused", JsonPrimitive(downloads?.paused ?: dlState.isPaused))
+        put("updateCount", JsonPrimitive(updates?.rows?.size ?: upState.count))
+        put("hasUnreadUpdates", JsonPrimitive(updates?.rows?.any { !it.read } ?: upState.hasUnread))
+        put("historyCount", JsonPrimitive(history?.rows?.size ?: histState.count))
         put("migrationQueueCount", JsonPrimitive(migrationQueues))
         val update = updateModel?.state?.value?.presentation()
         put("updateStatus", update?.status?.let(::JsonPrimitive) ?: JsonNull)
         put("updateProgress", update?.progress?.let(::JsonPrimitive) ?: JsonNull)
         put("updateReleasePage", update?.releasePage?.let(::JsonPrimitive) ?: JsonNull)
         put("timestamp", JsonPrimitive(Instant.now().toString()))
+        put(
+            "updates",
+            updates?.let {
+                Json.encodeToJsonElement(UpdatesTestSnapshot.serializer(), it)
+            } ?: JsonNull,
+        )
+        put(
+            "downloads",
+            downloads?.let {
+                Json.encodeToJsonElement(DownloadTestSnapshot.serializer(), it)
+            } ?: JsonNull,
+        )
+        put(
+            "history",
+            history?.let {
+                Json.encodeToJsonElement(HistoryTestSnapshot.serializer(), it)
+            } ?: JsonNull,
+        )
         put(
             "extension",
             SourceExtensionTestModeBridge.controller?.snapshot()?.let {
@@ -141,6 +162,9 @@ private fun actionJson(
     action: String,
     success: Boolean,
     error: String? = null,
+    history: kotlinx.serialization.json.JsonElement = JsonNull,
+    updates: kotlinx.serialization.json.JsonElement = JsonNull,
+    downloads: kotlinx.serialization.json.JsonElement = JsonNull,
     extension: kotlinx.serialization.json.JsonElement = JsonNull,
     browse: kotlinx.serialization.json.JsonElement = JsonNull,
     source: kotlinx.serialization.json.JsonElement = JsonNull,
@@ -152,6 +176,9 @@ private fun actionJson(
     put("action", JsonPrimitive(action))
     put("error", error?.let(::JsonPrimitive) ?: JsonNull)
     put("timestamp", JsonPrimitive(Instant.now().toString()))
+    put("history", history)
+    put("updates", updates)
+    put("downloads", downloads)
     put("extension", extension)
     put("browse", browse)
     put("source", source)
@@ -415,10 +442,43 @@ internal fun Application.testHttpServer(
                 return@post
             }
             val libraryResult = libraryController?.execute(action, params)
+            val isDownloadAction = action.startsWith("downloads_")
+            val downloadController = if (isDownloadAction) DownloadTestModeBridge.controller else null
+            if (isDownloadAction && downloadController == null) {
+                call.respondText(
+                    jsonText(actionJson(action, false, "DOWNLOAD_OWNER_UNAVAILABLE")),
+                    ContentType.Application.Json,
+                    HttpStatusCode.ServiceUnavailable,
+                )
+                return@post
+            }
+            val downloadResult = downloadController?.execute(action, params)
+            val isUpdatesAction = action.startsWith("updates_")
+            val updatesController = if (isUpdatesAction) UpdatesTestModeBridge.controller else null
+            if (isUpdatesAction && updatesController == null) {
+                call.respondText(
+                    jsonText(actionJson(action, false, "UPDATES_OWNER_UNAVAILABLE")),
+                    ContentType.Application.Json,
+                    HttpStatusCode.ServiceUnavailable,
+                )
+                return@post
+            }
+            val updatesResult = updatesController?.execute(action, params)
+            val isHistoryAction = action.startsWith("history_")
+            val historyController = if (isHistoryAction) HistoryTestModeBridge.controller else null
+            if (isHistoryAction && historyController == null) {
+                call.respondText(
+                    jsonText(actionJson(action, false, "HISTORY_OWNER_UNAVAILABLE")),
+                    ContentType.Application.Json,
+                    HttpStatusCode.ServiceUnavailable,
+                )
+                return@post
+            }
+            val historyResult = historyController?.execute(action, params)
 
             // Process actions
             var trackingResult: mihon.desktop.tracking.TrackingTestState? = null
-            if (!isExtensionAction && !isLibraryAction && !isBrowseAction && !isSourceLoginAction) when (action) {
+            if (!isExtensionAction && !isLibraryAction && !isBrowseAction && !isSourceLoginAction && !isDownloadAction && !isUpdatesAction && !isHistoryAction) when (action) {
                 // Read chapter - open reader
                 "read_chapter", "start_reading" -> {
                     val mangaId = params["mangaId"]?.toLongOrNull()
@@ -453,20 +513,6 @@ internal fun Application.testHttpServer(
                 // Settings actions
                 "setting_change", "setting_reset" -> { }
                 // Browse actions
-                // Download actions
-                "downloads_pause_all" -> downloadState.isPaused = true
-                "downloads_resume_all" -> downloadState.isPaused = false
-                "downloads_cancel", "downloads_cancel_all", "downloads_clear_errors",
-                "downloads_retry_errors", "downloads_reorder", "downloads_sort",
-                "downloads_reverse",
-                -> { }
-                // Updates actions
-                "updates_refresh", "updates_mark_all_read", "updates_filter",
-                "updates_clear_filters", "updates_open_upcoming", "updates_select",
-                "updates_download", "updates_mark_read",
-                -> { }
-                // History actions
-                "history_search", "history_clear_all", "history_remove", "history_select" -> { }
                 // Migration actions
                 "migration_search", "migration_select" -> { }
                 "migration_submit" -> {
@@ -500,7 +546,37 @@ internal fun Application.testHttpServer(
 
             call.respondText(
                 contentType = ContentType.Application.Json,
-                status = when (browseResult?.failureCode) {
+                status = when (historyResult?.failureCode) {
+                    TimelineTestFailureCode.MISSING_PARAMETER,
+                    TimelineTestFailureCode.INVALID_PARAMETER,
+                    TimelineTestFailureCode.UNSUPPORTED_ACTION,
+                    -> HttpStatusCode.BadRequest
+                    TimelineTestFailureCode.ROW_NOT_FOUND -> HttpStatusCode.NotFound
+                    TimelineTestFailureCode.OPERATION_REJECTED,
+                    TimelineTestFailureCode.PARTIAL_FAILURE,
+                    -> HttpStatusCode.Conflict
+                    TimelineTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
+                    null -> when (updatesResult?.failureCode) {
+                    TimelineTestFailureCode.MISSING_PARAMETER,
+                    TimelineTestFailureCode.INVALID_PARAMETER,
+                    TimelineTestFailureCode.UNSUPPORTED_ACTION,
+                    -> HttpStatusCode.BadRequest
+                    TimelineTestFailureCode.ROW_NOT_FOUND -> HttpStatusCode.NotFound
+                    TimelineTestFailureCode.OPERATION_REJECTED,
+                    TimelineTestFailureCode.PARTIAL_FAILURE,
+                    -> HttpStatusCode.Conflict
+                    TimelineTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
+                    null -> when (downloadResult?.failureCode) {
+                    DownloadTestFailureCode.MISSING_PARAMETER,
+                    DownloadTestFailureCode.INVALID_PARAMETER,
+                    DownloadTestFailureCode.UNSUPPORTED_ACTION,
+                    -> HttpStatusCode.BadRequest
+                    DownloadTestFailureCode.ROW_NOT_FOUND -> HttpStatusCode.NotFound
+                    DownloadTestFailureCode.OPERATION_REJECTED,
+                    DownloadTestFailureCode.PARTIAL_FAILURE,
+                    -> HttpStatusCode.Conflict
+                    DownloadTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
+                    null -> when (browseResult?.failureCode) {
                     BrowseSearchTestFailureCode.MISSING_PARAMETER,
                     BrowseSearchTestFailureCode.BLANK_QUERY,
                     BrowseSearchTestFailureCode.UNSUPPORTED_ACTION,
@@ -557,6 +633,9 @@ internal fun Application.testHttpServer(
                         }
                     }
                     }
+                    }
+                    }
+                    }
                 },
             ) {
                 val tracking = trackingResult?.let {
@@ -570,15 +649,30 @@ internal fun Application.testHttpServer(
                 jsonText(
                     actionJson(
                         action = action,
-                        success = browseResult?.success
+                        success = historyResult?.success
+                            ?: updatesResult?.success
+                            ?: downloadResult?.success
+                            ?: browseResult?.success
                             ?: sourceResult?.success
                             ?: extensionResult?.success
                             ?: libraryResult?.success
                             ?: true,
-                        error = browseResult?.failureCode?.name
+                        error = historyResult?.failureCode?.name
+                            ?: updatesResult?.failureCode?.name
+                            ?: downloadResult?.failureCode?.name
+                            ?: browseResult?.failureCode?.name
                             ?: sourceResult?.failureCode?.name
                             ?: extensionResult?.failureCode?.name
                             ?: libraryResult?.failureCode?.name,
+                        history = historyResult?.let {
+                            Json.encodeToJsonElement(HistoryTestSnapshot.serializer(), it.snapshot)
+                        } ?: JsonNull,
+                        updates = updatesResult?.let {
+                            Json.encodeToJsonElement(UpdatesTestSnapshot.serializer(), it.snapshot)
+                        } ?: JsonNull,
+                        downloads = downloadResult?.let {
+                            Json.encodeToJsonElement(DownloadTestSnapshot.serializer(), it.snapshot)
+                        } ?: JsonNull,
                         extension = extensionResult?.let {
                             Json.encodeToJsonElement(SourceExtensionTestSnapshot.serializer(), it.snapshot)
                         } ?: JsonNull,
