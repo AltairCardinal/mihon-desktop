@@ -298,6 +298,29 @@ class DesktopArchitectureGuardTest {
                     "mihon.desktop.ui.library.MangaDetailScreenModel",
                     "tachiyomi.domain.manga.interactor.UpdateLibraryMembership",
                 ),
+                CompiledEdge("mihon.desktop.ui.authors.AuthorsRootScreen", "tachiyomi.domain.creator.interactor.GetCreators"),
+                CompiledEdge(
+                    "mihon.desktop.ui.authors.AuthorDetailScreen",
+                    "tachiyomi.domain.creator.interactor.GetCreatorDetails",
+                ),
+                CompiledEdge(
+                    "mihon.desktop.ui.authors.AuthorDetailScreen",
+                    "tachiyomi.domain.creator.interactor.DiscoverCreatorWorks",
+                ),
+                CompiledEdge(
+                    "mihon.desktop.ui.authors.AuthorDetailScreen",
+                    "tachiyomi.domain.creator.interactor.SetCreatorFollow",
+                ),
+                CompiledEdge(
+                    "mihon.desktop.ui.authors.WorkCompareScreen",
+                    "tachiyomi.domain.creator.interactor.GetCreatorDetails",
+                ),
+                CompiledEdge("mihon.desktop.ui.tracking.TrackingScreenModel", "tachiyomi.domain.track.interactor.GetTracks"),
+                CompiledEdge("mihon.desktop.ui.tracking.TrackingScreenModel", "tachiyomi.domain.track.interactor.InsertTrack"),
+                CompiledEdge("mihon.desktop.ui.tracking.TrackingScreenModel", "tachiyomi.domain.track.interactor.DeleteTrack"),
+                CompiledEdge("mihon.desktop.ui.tracking.TrackingSettingsScreen", "tachiyomi.domain.track.interactor.GetTracks"),
+                CompiledEdge("mihon.desktop.ui.tracking.TrackingSettingsScreen", "tachiyomi.domain.track.interactor.InsertTrack"),
+                CompiledEdge("mihon.desktop.ui.tracking.TrackingSettingsScreen", "tachiyomi.domain.track.interactor.DeleteTrack"),
             )
         val permittedPlatformAdapters =
             mapOf(
@@ -308,8 +331,7 @@ class DesktopArchitectureGuardTest {
             )
         val acknowledgedProductionViolations =
             """
-            mihon.desktop.ui.authors.AuthorDetailScreen -> tachiyomi.domain.creator.repository.CreatorRepository;mihon.desktop.ui.authors.AuthorsRootScreen -> tachiyomi.domain.creator.repository.CreatorRepository;mihon.desktop.ui.authors.WorkCompareScreen -> tachiyomi.domain.creator.repository.CreatorRepository;mihon.desktop.ui.tracking.TrackingScreenModel -> tachiyomi.domain.track.repository.TrackRepository
-            mihon.desktop.ui.tracking.TrackingSettingsScreen -> tachiyomi.domain.track.repository.TrackRepository;mihon.desktop.ui.browse.DesktopSourceCookieHeaderParser -> okhttp3.HttpUrl;mihon.desktop.ui.browse.DesktopSourceLastUsedRecorder -> mihon.desktop.extension.DesktopExtensionManager
+            mihon.desktop.ui.browse.DesktopSourceCookieHeaderParser -> okhttp3.HttpUrl;mihon.desktop.ui.browse.DesktopSourceLastUsedRecorder -> mihon.desktop.extension.DesktopExtensionManager
             mihon.desktop.ui.browse.DesktopSourceLoginController -> okhttp3.HttpUrl;mihon.desktop.ui.browse.DesktopSourceLoginUiActions -> okhttp3.HttpUrl;mihon.desktop.ui.browse.SourceBrowseScreen -> mihon.desktop.extension.DesktopExtensionManager;mihon.desktop.ui.cloudflare.DesktopChallengeLoginController -> mihon.desktop.network.CloudflareChallengeManager
             mihon.desktop.ui.cloudflare.DesktopChallengeLoginController -> okhttp3.HttpUrl;mihon.desktop.ui.extension.DesktopExtensionPresentationPort -> mihon.desktop.extension.DesktopExtensionManager;mihon.desktop.ui.extension.ExtensionDetailsScreen -> mihon.desktop.platform.DesktopNetworkHelper;mihon.desktop.ui.extension.SourcePreferencesScreen -> mihon.desktop.extension.DesktopExtensionManager
             mihon.desktop.ui.extension.SourcePreferencesScreenKt -> java.lang.ClassLoader;mihon.desktop.ui.home.HomeScreen -> mihon.desktop.network.CloudflareChallengeManager;mihon.desktop.ui.library.LibraryRootScreen -> mihon.desktop.download.DesktopDownloadManager;mihon.desktop.ui.settings.AboutScreen -> mihon.desktop.extension.DesktopExtensionManager

@@ -7,10 +7,13 @@ import tachiyomi.domain.track.repository.TrackRepository
 class DeleteTrack(
     private val trackRepository: TrackRepository,
 ) {
+    suspend fun awaitOrThrow(mangaId: Long, trackerId: Long) {
+        trackRepository.delete(mangaId, trackerId)
+    }
 
     suspend fun await(mangaId: Long, trackerId: Long) {
         try {
-            trackRepository.delete(mangaId, trackerId)
+            awaitOrThrow(mangaId, trackerId)
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
         }

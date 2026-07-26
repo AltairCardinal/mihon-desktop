@@ -538,7 +538,12 @@ Task 165 已将 Library/Detail 的 9 条 compiled repository edge 清零，并�
 shared interactors 承载排序、scanlator filter、未读进度清零与 flags 规则。focused
 `113/113`、单项 NEXT RED→GREEN、compiled/吞异常 mutations、组合门禁与 Spotless 全绿；
 ID95 仍保持 `WIRED`，剩余精确违规为 repository 5 条、manager/HTTP/ClassLoader 18 条。
-下一恢复位置为 Task 166。
+
+Task 166 已将 authors/tracking 的 5 条 compiled repository edge 清零；Desktop 独有 Authors
+改由 creator interactors 承载列表、详情、发现、关注与候选读取，Tracking 复用固定原版
+方向的 `GetTracks` 及 shared `InsertTrack`/`DeleteTrack` throwing 路径。实现 focused、
+repository 回注 mutation、主组合门禁、独立审查及 Spotless 全绿；ID95 保持 `WIRED`，
+剩余 18 条均为 manager/HTTP/ClassLoader 边。下一恢复位置为 Task 167。
 
 ### Task 18：让 64 项最终 closure 与架构 gate 变绿
 

@@ -10,7 +10,9 @@ import kotlinx.coroutines.sync.withLock
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.track.model.Track
-import tachiyomi.domain.track.repository.TrackRepository
+import tachiyomi.domain.track.interactor.DeleteTrack
+import tachiyomi.domain.track.interactor.GetTracks
+import tachiyomi.domain.track.interactor.InsertTrack
 import tachiyomi.domain.track.service.EnhancedTrackerManga
 import tachiyomi.domain.track.service.EnhancedTrackerService
 import tachiyomi.domain.track.service.EnhancedTrackerWorkflow
@@ -82,7 +84,9 @@ class TrackingScreenModel(
     val mangaId: Long?,
     val mangaTitle: String?,
     val totalChapters: Long?,
-    private val repository: TrackRepository,
+    private val getTracks: GetTracks,
+    private val insertTrack: InsertTrack,
+    private val deleteTrack: DeleteTrack,
     private val getChaptersByMangaId: GetChaptersByMangaId,
     private val registry: TrackerServiceRegistry,
     private val getManga: GetManga? = null,
@@ -98,7 +102,7 @@ class TrackingScreenModel(
         val services: List<TrackerService>
         try {
             registry.refresh()
-            tracks = mangaId?.let { repository.getTracksByMangaId(it) }.orEmpty().associateBy(Track::trackerId)
+            tracks = mangaId?.let { getTracks.awaitOrThrow(it) }.orEmpty().associateBy(Track::trackerId)
             enhancedManga = mangaId
                 ?.takeIf { getManga != null }
                 ?.let { getManga!!.await(it) }
@@ -126,7 +130,7 @@ class TrackingScreenModel(
                 if (matched == null) {
                     mutableState.value = mutableState.value.copy(feedback = TrackingMessage.EnhancedNoMatch)
                 } else {
-                    repository.insert(matched)
+                    insertTrack.awaitOrThrow(matched)
                     replaceTrack(trackerId, matched, TrackingMessage.Bound)
                 }
             } catch (error: Throwable) {
@@ -155,7 +159,7 @@ class TrackingScreenModel(
         } else {
             service.bind(mangaId, result)
         }
-        repository.insert(persisted)
+        insertTrack.awaitOrThrow(persisted)
         replaceTrack(trackerId, persisted, TrackingMessage.Bound)
         persisted
     }
@@ -165,7 +169,7 @@ class TrackingScreenModel(
         val track = item.track ?: failArgument(TrackingMessage.NotBound)
         validateEdit(item, track, edit)
         val updated = service(trackerId).requireAvailableAndLoggedIn().update(track, edit)
-        repository.insert(updated)
+        insertTrack.awaitOrThrow(updated)
         replaceTrack(trackerId, updated, TrackingMessage.Updated)
         updated
     }
@@ -173,7 +177,7 @@ class TrackingScreenModel(
     suspend fun unbind(trackerId: Long, removeRemoteTrack: Boolean = false) = operationMutex.withLock {
         val mangaId = mangaId ?: failArgument(TrackingMessage.MangaRequired)
         val track = item(trackerId).track ?: failArgument(TrackingMessage.NotBound)
-        repository.delete(mangaId, trackerId)
+        deleteTrack.awaitOrThrow(mangaId, trackerId)
         replaceTrack(trackerId, null, TrackingMessage.Removed)
         val service = service(trackerId)
         if (

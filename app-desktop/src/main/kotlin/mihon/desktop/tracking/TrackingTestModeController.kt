@@ -4,6 +4,9 @@ import mihon.desktop.ui.tracking.TrackingScreenModel
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.track.model.Track
+import tachiyomi.domain.track.interactor.DeleteTrack
+import tachiyomi.domain.track.interactor.GetTracks
+import tachiyomi.domain.track.interactor.InsertTrack
 import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.TrackEdit
 import tachiyomi.domain.track.service.TrackSearchResult
@@ -85,7 +88,9 @@ class TrackingTestModeController(
             mangaId = mangaId,
             mangaTitle = params["title"],
             totalChapters = params["totalChapters"]?.toLongOrNull(),
-            repository = repository,
+            getTracks = GetTracks(repository),
+            insertTrack = InsertTrack(repository),
+            deleteTrack = DeleteTrack(repository),
             getChaptersByMangaId = GetChaptersByMangaId(chapterRepository),
             registry = registry,
         ).also {

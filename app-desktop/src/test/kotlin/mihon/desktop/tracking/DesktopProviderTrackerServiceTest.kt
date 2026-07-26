@@ -17,6 +17,9 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.track.model.Track
+import tachiyomi.domain.track.interactor.DeleteTrack
+import tachiyomi.domain.track.interactor.GetTracks
+import tachiyomi.domain.track.interactor.InsertTrack
 import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.TrackEdit
 import tachiyomi.domain.track.service.TrackerAuthentication
@@ -1093,7 +1096,9 @@ class DesktopProviderTrackerServiceTest {
                     mangaId = 42,
                     mangaTitle = "Manga",
                     totalChapters = 12,
-                    repository = tracks,
+                    getTracks = GetTracks(tracks),
+                    insertTrack = InsertTrack(tracks),
+                    deleteTrack = DeleteTrack(tracks),
                     getChaptersByMangaId = GetChaptersByMangaId(chapters),
                     registry = registry,
                 ).also { it.load() }

@@ -131,6 +131,10 @@ import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.creator.interactor.LinkMangaCreator
+import tachiyomi.domain.creator.interactor.DiscoverCreatorWorks
+import tachiyomi.domain.creator.interactor.GetCreatorDetails
+import tachiyomi.domain.creator.interactor.GetCreators
+import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.creator.service.CreatorDiscoveryService
 import tachiyomi.domain.history.interactor.GetHistory
@@ -143,6 +147,9 @@ import tachiyomi.domain.track.service.TrackerSessionProvider
 import tachiyomi.domain.track.service.TrackerServiceRegistry
 import tachiyomi.domain.track.interactor.ReadingProgressTrackSync
 import tachiyomi.domain.track.interactor.GetTracksPerManga
+import tachiyomi.domain.track.interactor.GetTracks
+import tachiyomi.domain.track.interactor.InsertTrack
+import tachiyomi.domain.track.interactor.DeleteTrack
 import tachiyomi.domain.track.interactor.SyncReadingProgressWithTrack
 import tachiyomi.domain.updates.interactor.GetUpdates
 import tachiyomi.domain.updates.repository.UpdatesRepository
@@ -583,7 +590,14 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
     Injekt.addSingleton(RemoveHistory(historyRepository))
     Injekt.addSingleton(GetUpdates(updatesRepository))
     Injekt.addSingleton(GetTracksPerManga(Injekt.get<TrackRepository>()))
+    Injekt.addSingleton(GetTracks(Injekt.get<TrackRepository>()))
+    Injekt.addSingleton(InsertTrack(Injekt.get<TrackRepository>()))
+    Injekt.addSingleton(DeleteTrack(Injekt.get<TrackRepository>()))
     Injekt.addSingleton(LinkMangaCreator(creatorRepository))
+    val getCreatorDetails = GetCreatorDetails(creatorRepository)
+    Injekt.addSingleton(GetCreators(creatorRepository))
+    Injekt.addSingleton(getCreatorDetails)
+    Injekt.addSingleton(SetCreatorFollow(creatorRepository))
 
     val networkToLocalManga = NetworkToLocalManga(mangaRepository)
     val updateChapter = UpdateChapter(chapterRepository)
@@ -615,7 +629,9 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
     Injekt.addSingleton(UpdateMangaNotes(mangaRepository))
     Injekt.addSingleton(ReaderModeMemoryCleaner(mangaRepository))
     Injekt.addSingleton(LibraryUpdateChecker(chapterRepository))
-    Injekt.addSingleton(CreatorDiscoveryService(creatorRepository, sourceMangaSearchService))
+    val creatorDiscoveryService = CreatorDiscoveryService(creatorRepository, sourceMangaSearchService)
+    Injekt.addSingleton(creatorDiscoveryService)
+    Injekt.addSingleton(DiscoverCreatorWorks(creatorDiscoveryService, getCreatorDetails))
 }
 
 // ── UI / Service layer ────────────────────────────────────────────────────────

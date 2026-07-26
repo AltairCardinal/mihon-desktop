@@ -110,7 +110,9 @@ class TrackingSettingsAccessibilityTest {
         val registry = object : TrackerServiceRegistry { override val services = services }
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns DesktopAppPreferences(InMemoryPreferenceStore())
-            every { trackRepository } returns repository
+            every { getTracks } returns tachiyomi.domain.track.interactor.GetTracks(repository)
+            every { insertTrack } returns tachiyomi.domain.track.interactor.InsertTrack(repository)
+            every { deleteTrack } returns tachiyomi.domain.track.interactor.DeleteTrack(repository)
             every { trackerServiceRegistry } returns registry
         }
         return ImageComposeScene(900, 1_200, coroutineContext = kotlinx.coroutines.currentCoroutineContext()).also { scene ->

@@ -8,10 +8,13 @@ import tachiyomi.domain.track.repository.TrackRepository
 class InsertTrack(
     private val trackRepository: TrackRepository,
 ) {
+    suspend fun awaitOrThrow(track: Track) {
+        trackRepository.insert(track)
+    }
 
     suspend fun await(track: Track) {
         try {
-            trackRepository.insert(track)
+            awaitOrThrow(track)
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
         }

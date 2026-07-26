@@ -24,6 +24,9 @@ import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.track.model.Track
+import tachiyomi.domain.track.interactor.DeleteTrack
+import tachiyomi.domain.track.interactor.GetTracks
+import tachiyomi.domain.track.interactor.InsertTrack
 import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.EnhancedTrackerContext
 import tachiyomi.domain.track.service.EnhancedTrackerContextProvider
@@ -92,7 +95,9 @@ class DesktopEnhancedTrackerServiceTest {
                 mangaId = 42,
                 mangaTitle = "Must not be queried",
                 totalChapters = 10,
-                repository = trackRepository,
+                getTracks = GetTracks(trackRepository),
+                insertTrack = InsertTrack(trackRepository),
+                deleteTrack = DeleteTrack(trackRepository),
                 getChaptersByMangaId = GetChaptersByMangaId(FakeChapterRepository()),
                 registry = registry,
                 getManga = GetManga(mangaRepository),
@@ -118,7 +123,9 @@ class DesktopEnhancedTrackerServiceTest {
                 mangaId = 42,
                 mangaTitle = "Changed title",
                 totalChapters = 10,
-                repository = trackRepository,
+                getTracks = GetTracks(trackRepository),
+                insertTrack = InsertTrack(trackRepository),
+                deleteTrack = DeleteTrack(trackRepository),
                 getChaptersByMangaId = GetChaptersByMangaId(FakeChapterRepository()),
                 registry = registry,
                 getManga = GetManga(mangaRepository),

@@ -3467,7 +3467,7 @@ class DesktopProductCapabilityContractTest {
         val expected =
             mapOf(
                 8 to Triple("SHARED", "$childPlan#task-169-compiled-boundary-closeout", 0),
-                95 to Triple("WIRED", "$childPlan#task-166-creator-and-tracking-use-case-boundary", 23),
+                95 to Triple("WIRED", "$childPlan#task-167-extension-and-browse-ports", 18),
             )
         val guardTest = "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt"
         fun JsonObject.strings(field: String) = getValue(field).jsonArray.map { it.jsonPrimitive.content }.toSet()
@@ -3548,12 +3548,23 @@ class DesktopProductCapabilityContractTest {
                 "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.manga.interactor.UpdateManga",
                 "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.manga.interactor.SetMangaChapterFlags",
                 "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.manga.interactor.UpdateLibraryMembership",
+                "mihon.desktop.ui.authors.AuthorsRootScreen -> tachiyomi.domain.creator.interactor.GetCreators",
+                "mihon.desktop.ui.authors.AuthorDetailScreen -> tachiyomi.domain.creator.interactor.GetCreatorDetails",
+                "mihon.desktop.ui.authors.AuthorDetailScreen -> tachiyomi.domain.creator.interactor.DiscoverCreatorWorks",
+                "mihon.desktop.ui.authors.AuthorDetailScreen -> tachiyomi.domain.creator.interactor.SetCreatorFollow",
+                "mihon.desktop.ui.authors.WorkCompareScreen -> tachiyomi.domain.creator.interactor.GetCreatorDetails",
+                "mihon.desktop.ui.tracking.TrackingScreenModel -> tachiyomi.domain.track.interactor.GetTracks",
+                "mihon.desktop.ui.tracking.TrackingScreenModel -> tachiyomi.domain.track.interactor.InsertTrack",
+                "mihon.desktop.ui.tracking.TrackingScreenModel -> tachiyomi.domain.track.interactor.DeleteTrack",
+                "mihon.desktop.ui.tracking.TrackingSettingsScreen -> tachiyomi.domain.track.interactor.GetTracks",
+                "mihon.desktop.ui.tracking.TrackingSettingsScreen -> tachiyomi.domain.track.interactor.InsertTrack",
+                "mihon.desktop.ui.tracking.TrackingSettingsScreen -> tachiyomi.domain.track.interactor.DeleteTrack",
             ),
             moduleAudit.strings("requiredCompiledEdges"),
         )
         assertTrue(moduleAudit.getValue("missingRequiredEdges").jsonArray.isEmpty())
         assertEquals(
-            mapOf("REPOSITORY" to 5, "MANAGER_HTTP_OR_CLASSLOADER" to 18),
+            mapOf("MANAGER_HTTP_OR_CLASSLOADER" to 18),
             moduleAudit.getValue("forbiddenCompiledEdges").jsonArray
                 .map { requiredText(it.jsonObject, "category", 95, "forbiddenCompiledEdges") }
                 .groupingBy { it }
@@ -3570,7 +3581,8 @@ class DesktopProductCapabilityContractTest {
         assertEquals((164..169).map(Int::toString).toSet(), overview.keys)
         assertEquals("x", overview.getValue("164"))
         assertEquals("x", overview.getValue("165"))
-        assertEquals((166..169).map(Int::toString), overview.filterValues { it == " " }.keys.toList())
+        assertEquals("x", overview.getValue("166"))
+        assertEquals((167..169).map(Int::toString), overview.filterValues { it == " " }.keys.toList())
         assertEquals("planned", metadata["status"])
         (164..169).forEach { task ->
             assertEquals(1, Regex("""(?m)^### Task $task(?:\s|$)""").findAll(child).count(), "Task $task must be unique")

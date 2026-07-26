@@ -1,5 +1,12 @@
 package mihon.desktop.ui.authors
 
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.every
+import io.mockk.mockk
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
@@ -9,8 +16,49 @@ import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.model.DiscoveryCandidate
 import tachiyomi.domain.creator.model.DiscoveryCandidateState
 import tachiyomi.domain.creator.model.MangaCreator
+import tachiyomi.domain.creator.model.Creator
+import tachiyomi.domain.creator.interactor.GetCreatorDetails
+import tachiyomi.domain.creator.interactor.GetCreators
+import tachiyomi.domain.creator.interactor.SetCreatorFollow
+import tachiyomi.domain.creator.repository.CreatorRepository
 
 class AuthorDetailBehaviorTest {
+    @Test
+    fun `author production interactors preserve list details candidate and follow behavior`() = runTest {
+        val repository = mockk<CreatorRepository>()
+        val creator = Creator(
+            id = 7L,
+            displayName = "Jane",
+            normalizedName = "jane",
+            sortName = null,
+            aliases = emptyList(),
+            createdAt = 1L,
+            lastModifiedAt = 1L,
+        )
+        val candidate = candidate()
+        every { repository.getCreatorsAsFlow() } returns flowOf(listOf(creator))
+        every { repository.getFollowedCreatorsAsFlow() } returns flowOf(emptyList())
+        coEvery { repository.getCreator(7L) } returns creator
+        coEvery { repository.getDiscoveryCandidatesForCreator(7L) } returns listOf(candidate)
+        coEvery { repository.getMangaCreatorsForCreator(7L) } returns emptyList()
+        coEvery { repository.getDiscoveryCandidate(candidate.id) } returns candidate
+        coEvery { repository.followCreator(7L, emptyList(), emptyList()) } returns mockk()
+        coEvery { repository.unfollowCreator(7L) } returns Unit
+
+        val creators = GetCreators(repository)
+        val details = GetCreatorDetails(repository)
+        val follow = SetCreatorFollow(repository)
+
+        assertEquals(listOf(creator), creators.subscribe().first())
+        assertTrue(creators.subscribeFollowed().first().isEmpty())
+        assertEquals(creator, details.await(7L).creator)
+        assertEquals(candidate, details.awaitCandidate(candidate.id))
+        follow.await(7L, followed = true)
+        follow.await(7L, followed = false)
+
+        coVerify(exactly = 1) { repository.followCreator(7L, emptyList(), emptyList()) }
+        coVerify(exactly = 1) { repository.unfollowCreator(7L) }
+    }
 
     @Test
     fun `collect on open skips discovery when candidates are already cached`() {

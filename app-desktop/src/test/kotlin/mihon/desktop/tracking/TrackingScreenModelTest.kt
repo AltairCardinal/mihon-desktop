@@ -26,6 +26,9 @@ import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.track.model.Track
+import tachiyomi.domain.track.interactor.DeleteTrack
+import tachiyomi.domain.track.interactor.GetTracks
+import tachiyomi.domain.track.interactor.InsertTrack
 import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.EnhancedTrackerManga
 import tachiyomi.domain.track.service.EnhancedTrackerService
@@ -65,7 +68,9 @@ class TrackingScreenModelTest {
                 mangaId = 42,
                 mangaTitle = "Manga",
                 totalChapters = 12,
-                repository = repository,
+                getTracks = GetTracks(repository),
+                insertTrack = InsertTrack(repository),
+                deleteTrack = DeleteTrack(repository),
                 getChaptersByMangaId = GetChaptersByMangaId(chapters),
                 registry = registry(provider),
             ).also { it.load() }
@@ -411,7 +416,9 @@ class TrackingScreenModelTest {
         mangaId = mangaId,
         mangaTitle = mangaTitle,
         totalChapters = totalChapters,
-        repository = repository,
+        getTracks = GetTracks(repository),
+        insertTrack = InsertTrack(repository),
+        deleteTrack = DeleteTrack(repository),
         getChaptersByMangaId = GetChaptersByMangaId(FakeChapterRepository()),
         registry = registry,
         getManga = mangaRepository?.let(::GetManga),

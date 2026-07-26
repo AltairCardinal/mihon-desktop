@@ -159,7 +159,9 @@ class DesktopSettingsResourceIdentityTest {
                     every { scores } returns listOf(10.0)
                 }
                 return mockk(relaxed = true) {
-                    every { trackRepository } returns repository
+                    every { getTracks } returns tachiyomi.domain.track.interactor.GetTracks(repository)
+                    every { insertTrack } returns tachiyomi.domain.track.interactor.InsertTrack(repository)
+                    every { deleteTrack } returns tachiyomi.domain.track.interactor.DeleteTrack(repository)
                     every { trackerServiceRegistry } returns
                         object : TrackerServiceRegistry { override val services = listOf(service) }
                 }
@@ -1758,7 +1760,9 @@ class DesktopSettingsResourceIdentityTest {
         mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns DesktopAppPreferences(InMemoryPreferenceStore())
             every { trackerServiceRegistry } returns object : TrackerServiceRegistry { override val services = services }
-            every { trackRepository } returns repository
+            every { getTracks } returns tachiyomi.domain.track.interactor.GetTracks(repository)
+            every { insertTrack } returns tachiyomi.domain.track.interactor.InsertTrack(repository)
+            every { deleteTrack } returns tachiyomi.domain.track.interactor.DeleteTrack(repository)
         }
 
     private fun trackingTrack(trackerId: Long, title: String) = Track(

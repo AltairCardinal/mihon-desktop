@@ -9,6 +9,9 @@ import tachiyomi.domain.track.repository.TrackRepository
 class GetTracks(
     private val trackRepository: TrackRepository,
 ) {
+    suspend fun awaitOrThrow(mangaId: Long): List<Track> {
+        return trackRepository.getTracksByMangaId(mangaId)
+    }
 
     suspend fun awaitOne(id: Long): Track? {
         return try {
@@ -21,7 +24,7 @@ class GetTracks(
 
     suspend fun await(mangaId: Long): List<Track> {
         return try {
-            trackRepository.getTracksByMangaId(mangaId)
+            awaitOrThrow(mangaId)
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             emptyList()

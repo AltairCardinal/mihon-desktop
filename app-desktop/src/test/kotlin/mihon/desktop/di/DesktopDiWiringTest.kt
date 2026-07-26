@@ -92,6 +92,13 @@ import org.junit.jupiter.api.parallel.Isolated
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.domain.track.repository.TrackRepository
+import tachiyomi.domain.track.interactor.DeleteTrack
+import tachiyomi.domain.track.interactor.GetTracks
+import tachiyomi.domain.track.interactor.InsertTrack
+import tachiyomi.domain.creator.interactor.DiscoverCreatorWorks
+import tachiyomi.domain.creator.interactor.GetCreatorDetails
+import tachiyomi.domain.creator.interactor.GetCreators
+import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.track.service.TrackerSessionProvider
 import tachiyomi.domain.track.service.TrackerServiceRegistry
 import tachiyomi.domain.release.interactor.GetApplicationRelease
@@ -174,6 +181,13 @@ class DesktopDiWiringTest {
 
             assertSame(broker, ui.trackerOAuthCallbackBroker)
             assertSame(registry, ui.trackerServiceRegistry)
+            assertSame(Injekt.get<GetTracks>(), ui.getTracks)
+            assertSame(Injekt.get<InsertTrack>(), ui.insertTrack)
+            assertSame(Injekt.get<DeleteTrack>(), ui.deleteTrack)
+            assertSame(Injekt.get<GetCreators>(), ui.getCreators)
+            assertSame(Injekt.get<GetCreatorDetails>(), ui.getCreatorDetails)
+            assertSame(Injekt.get<SetCreatorFollow>(), ui.setCreatorFollow)
+            assertSame(Injekt.get<DiscoverCreatorWorks>(), ui.discoverCreatorWorks)
             assertTrue(
                 registry.services
                     .filter { it.profile.value.id in 1L..5L }

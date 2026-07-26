@@ -59,7 +59,9 @@ class TrackingAutoSyncPreferenceWiringTest {
             every { appPreferences } returns preferences
             every { getChaptersByMangaId } returns mockk()
             every { getManga } returns mockk()
-            every { trackRepository } returns mockk(relaxed = true)
+            every { getTracks } returns mockk(relaxed = true)
+            every { insertTrack } returns mockk(relaxed = true)
+            every { deleteTrack } returns mockk(relaxed = true)
             every { trackerServiceRegistry } returns registry
         }
         lateinit var navigator: Navigator
@@ -125,7 +127,9 @@ class TrackingAutoSyncPreferenceWiringTest {
             every { appPreferences } returns preferences
             every { getChaptersByMangaId } returns mockk()
             every { getManga } returns mockk()
-            every { trackRepository } returns mockk()
+            every { getTracks } returns mockk()
+            every { insertTrack } returns mockk()
+            every { deleteTrack } returns mockk()
             every { trackerServiceRegistry } returns registry
         }
         val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}

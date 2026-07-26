@@ -8,7 +8,7 @@ status: planned
 本计划只关闭 ID8/95 已确认的 current Android mapper 缺边与 32 条 Desktop compiled UI 违规。顺序固定为 164→169；每项独立红绿重构、mutation、focused test 和提交，不创建第二套 repository/manager。UI 入口与成功、失败、取消反馈保持不变；平台 adapter 只允许带非空理由的 OS side effect port。
 - [x] Task 164：Android network error mapper consumer
 - [x] Task 165：Library UI use-case boundary
-- [ ] Task 166：Creator and tracking use-case boundary
+- [x] Task 166：Creator and tracking use-case boundary
 - [ ] Task 167：Extension and browse ports
 - [ ] Task 168：Settings, home and download ports
 - [ ] Task 169：Compiled boundary closeout
@@ -38,6 +38,7 @@ status: planned
 **Files:** author detail/root/compare、tracking model/settings、共享 creator/tracker interactors 与测试。
 **TDD:** 先让真实 screen/model 只接 use case；断开 port 或恢复 repository 直连时分别 RED。
 **User/feedback:** Authors、work compare、tracking settings/detail；列表、编辑、失败与重试保持可见。
+**Execution evidence:** compiled guard 先精确 RED 于 authors 3 条 `CreatorRepository` 与 tracking 2 条 `TrackRepository` edge；GREEN 后 Authors 通过 `GetCreators`/`GetCreatorDetails`/`DiscoverCreatorWorks`/`SetCreatorFollow` 保留列表、关注、发现、候选与作品比较，Tracking 复用 `GetTracks`/`InsertTrack`/`DeleteTrack` 的 throwing 路径并保留 mutex、enhanced bind、更新、解绑及反馈。Local dependencies、settings construction、Test Mode 与既有 fixtures 同步 production wiring；repository 回注 mutation 精确 RED 后恢复。实现 focused、主组合门禁、独立审查、Spotless 与 diff/residue checks 全绿。
 ### Task 167 Extension and browse ports
 **Risk axis:** desktop-extension-browse-boundary
 **Platform boundary:** shared+desktop

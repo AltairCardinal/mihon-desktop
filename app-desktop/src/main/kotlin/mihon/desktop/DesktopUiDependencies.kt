@@ -47,8 +47,10 @@ import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.repository.ChapterRepository
-import tachiyomi.domain.creator.repository.CreatorRepository
-import tachiyomi.domain.creator.service.CreatorDiscoveryService
+import tachiyomi.domain.creator.interactor.DiscoverCreatorWorks
+import tachiyomi.domain.creator.interactor.GetCreatorDetails
+import tachiyomi.domain.creator.interactor.GetCreators
+import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.history.repository.HistoryRepository
 import tachiyomi.domain.manga.interactor.GetFavorites
 import tachiyomi.domain.manga.interactor.GetLibraryManga
@@ -60,7 +62,9 @@ import tachiyomi.domain.source.model.Source
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.track.service.TrackerServiceRegistry
-import tachiyomi.domain.track.repository.TrackRepository
+import tachiyomi.domain.track.interactor.DeleteTrack
+import tachiyomi.domain.track.interactor.GetTracks
+import tachiyomi.domain.track.interactor.InsertTrack
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -77,8 +81,10 @@ data class DesktopUiDependencies(
     val challengeBrowserLoginBridge: DesktopChallengeBrowserLoginBridge,
     val sourceLoginSessionFactory: DesktopSourceLoginSessionFactory,
     val createExtensionRepo: CreateExtensionRepo,
-    val creatorDiscoveryService: CreatorDiscoveryService,
-    val creatorRepository: CreatorRepository,
+    val getCreators: GetCreators,
+    val getCreatorDetails: GetCreatorDetails,
+    val setCreatorFollow: SetCreatorFollow,
+    val discoverCreatorWorks: DiscoverCreatorWorks,
     val deleteExtensionRepo: DeleteExtensionRepo,
     val downloadManager: DesktopDownloadManager,
     val downloadPreferences: DesktopDownloadPreferences,
@@ -114,7 +120,9 @@ data class DesktopUiDependencies(
     val sourceRepository: SourceRepository,
     val updateExtensionRepo: UpdateExtensionRepo,
     val updateMangaNotes: UpdateMangaNotes,
-    val trackRepository: TrackRepository,
+    val getTracks: GetTracks,
+    val insertTrack: InsertTrack,
+    val deleteTrack: DeleteTrack,
     val trackerServiceRegistry: TrackerServiceRegistry = DesktopTrackerServiceRegistry(),
     val trackerOAuthCallbackBroker: DesktopTrackerOAuthCallbackBroker = DesktopTrackerOAuthCallbackBroker(),
     val updateController: DesktopUpdateController? = null,
@@ -153,8 +161,10 @@ data class DesktopUiDependencies(
                 challengeBrowserLoginBridge = Injekt.get(),
                 sourceLoginSessionFactory = Injekt.get(),
                 createExtensionRepo = Injekt.get(),
-                creatorDiscoveryService = Injekt.get(),
-                creatorRepository = Injekt.get(),
+                getCreators = Injekt.get(),
+                getCreatorDetails = Injekt.get(),
+                setCreatorFollow = Injekt.get(),
+                discoverCreatorWorks = Injekt.get(),
                 deleteExtensionRepo = Injekt.get(),
                 downloadManager = Injekt.get(),
                 downloadPreferences = Injekt.get(),
@@ -192,7 +202,9 @@ data class DesktopUiDependencies(
                 sourceRepository = Injekt.get(),
                 updateExtensionRepo = Injekt.get(),
                 updateMangaNotes = Injekt.get(),
-                trackRepository = Injekt.get(),
+                getTracks = Injekt.get(),
+                insertTrack = Injekt.get(),
+                deleteTrack = Injekt.get(),
                 trackerServiceRegistry = Injekt.get(),
                 trackerOAuthCallbackBroker = Injekt.get(),
                 updateController = Injekt.get(),

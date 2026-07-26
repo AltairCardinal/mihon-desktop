@@ -58,8 +58,7 @@ import mihon.desktop.ui.library.MangaDetailScreen
 import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.model.DiscoveryCandidate
 import tachiyomi.domain.creator.model.MangaCreator
-import tachiyomi.domain.creator.repository.CreatorRepository
-import tachiyomi.domain.creator.service.CreatorDiscoveryService
+import tachiyomi.domain.creator.interactor.CreatorDetails
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
 
@@ -92,9 +91,9 @@ class AuthorsRootScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val repository = LocalDesktopUiDependencies.current.creatorRepository
-        val creators by repository.getCreatorsAsFlow().collectAsState(emptyList())
-        val followed by repository.getFollowedCreatorsAsFlow().collectAsState(emptyList())
+        val getCreators = LocalDesktopUiDependencies.current.getCreators
+        val creators by getCreators.subscribe().collectAsState(emptyList())
+        val followed by getCreators.subscribeFollowed().collectAsState(emptyList())
         var query by remember { mutableStateOf("") }
 
         val followedIds = remember(followed) { followed.map { it.creatorId }.toSet() }
@@ -174,12 +173,13 @@ data class AuthorDetailScreen(
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val desktopDependencies = LocalDesktopUiDependencies.current
-        val repository = desktopDependencies.creatorRepository
-        val discoveryService = desktopDependencies.creatorDiscoveryService
+        val getCreatorDetails = desktopDependencies.getCreatorDetails
+        val discoverCreatorWorks = desktopDependencies.discoverCreatorWorks
+        val setCreatorFollow = desktopDependencies.setCreatorFollow
         val sourceManager = desktopDependencies.sourceManager
         val saveSourceMangaForDetails = desktopDependencies.saveSourceMangaForDetails
         val scope = rememberCoroutineScope()
-        val followed by repository.getFollowedCreatorsAsFlow().collectAsState(emptyList())
+        val followed by desktopDependencies.getCreators.subscribeFollowed().collectAsState(emptyList())
         var creator by remember { mutableStateOf<Creator?>(null) }
         var candidates by remember { mutableStateOf(emptyList<DiscoveryCandidate>()) }
         var mangaLinks by remember { mutableStateOf(emptyList<MangaCreator>()) }
@@ -187,15 +187,17 @@ data class AuthorDetailScreen(
         var checking by remember { mutableStateOf(false) }
         var openingCandidateId by remember { mutableStateOf<Long?>(null) }
 
+        fun applyDetails(details: CreatorDetails) {
+            creator = details.creator
+            candidates = details.candidates
+            mangaLinks = details.mangaLinks
+        }
+
         LaunchedEffect(creatorId) {
-            creator = repository.getCreator(creatorId)
-            candidates = repository.getDiscoveryCandidatesForCreator(creatorId)
-            mangaLinks = repository.getMangaCreatorsForCreator(creatorId)
+            applyDetails(getCreatorDetails.await(creatorId))
             if (shouldCollectAuthorOnOpen(collectOnOpen, candidates, mangaLinks)) {
                 checking = true
-                discoveryService.discoverCreator(creatorId, sourceManager.getCatalogueSources())
-                candidates = repository.getDiscoveryCandidatesForCreator(creatorId)
-                mangaLinks = repository.getMangaCreatorsForCreator(creatorId)
+                applyDetails(discoverCreatorWorks.await(creatorId, sourceManager.getCatalogueSources()))
                 checking = false
             }
             mangaTitles = mangaLinks.associate { link ->
@@ -221,9 +223,7 @@ data class AuthorDetailScreen(
                             onClick = {
                                 scope.launch {
                                     checking = true
-                                    discoveryService.discoverCreator(creatorId, sourceManager.getCatalogueSources())
-                                    candidates = repository.getDiscoveryCandidatesForCreator(creatorId)
-                                    mangaLinks = repository.getMangaCreatorsForCreator(creatorId)
+                                    applyDetails(discoverCreatorWorks.await(creatorId, sourceManager.getCatalogueSources()))
                                     mangaTitles = mangaLinks.associate { link ->
                                         link.mangaId to runCatching { desktopDependencies.getMangaTitle(link.mangaId) }
                                             .getOrDefault("Manga #${link.mangaId}")
@@ -271,9 +271,9 @@ data class AuthorDetailScreen(
                         onClick = {
                             scope.launch {
                                 if (isFollowed) {
-                                    repository.unfollowCreator(creatorId)
+                                    setCreatorFollow.await(creatorId, followed = false)
                                 } else {
-                                    repository.followCreator(creatorId)
+                                    setCreatorFollow.await(creatorId, followed = true)
                                 }
                             }
                         },
@@ -384,12 +384,12 @@ data class WorkCompareScreen(val workId: Long) : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val repository = LocalDesktopUiDependencies.current.creatorRepository
+        val getCreatorDetails = LocalDesktopUiDependencies.current.getCreatorDetails
         val sourceManager = LocalDesktopUiDependencies.current.sourceManager
         var candidate by remember { mutableStateOf<DiscoveryCandidate?>(null) }
 
         LaunchedEffect(workId) {
-            candidate = repository.getDiscoveryCandidate(workId)
+            candidate = getCreatorDetails.awaitCandidate(workId)
         }
 
         Scaffold(
