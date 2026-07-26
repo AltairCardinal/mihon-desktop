@@ -541,6 +541,12 @@ network maintenance 与 Advanced platform action seam。action history 密钥脱
 Cookie 分支及 owner child 的发布/调用方取消竞态均有行为或 mutation 证据，最终独立审查
 `APPROVED`。inventory 现为 12/13 covered、1 gap、64/64 mapped、unmapped=0。下一恢复位置为
 Task 176。
+Task 176 已完成 Tracking production HTTP runner；`tracking_*` 复用既有 controller、
+`TrackingScreenModel`、services 与 repositories，并公开 state、typed failures 和脱敏 history。
+严格参数、真实 TestMode start/stop/restart、network-maintenance interface DI、owner close/caller
+cancellation 及 closed 单调状态均有 RED→GREEN 行为证据。复审后以 Task 176R 将 action 改为
+controller-owned job，消除 caller cancellation 与 self-join；最终独立审查 `APPROVED`。
+inventory 现为 13/13 covered、0 gap、64/64 mapped、unmapped=0。下一恢复位置为 Task 177。
 Task 16A 审计已明确无需生成产品 child plan。
 
 Task 16C 的 Task 164 已完成 current Android extension repository response adapter：固定原版

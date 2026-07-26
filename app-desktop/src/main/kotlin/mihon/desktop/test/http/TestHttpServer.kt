@@ -32,12 +32,15 @@ import mihon.desktop.ui.browse.SourceBrowseTestSnapshot
 import java.time.Instant
 import mihon.desktop.migration.BatchMigrationRequest
 import mihon.desktop.migration.DesktopBatchMigrationController
+import mihon.desktop.tracking.TrackingTestFailureCode
 import mihon.desktop.tracking.TrackingTestModeController
+import mihon.desktop.tracking.TrackingTestState
 import mihon.desktop.ui.settings.DesktopUpdateIntent
 import mihon.desktop.ui.settings.DesktopUpdateScreenModel
 import mihon.desktop.ui.settings.presentation
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.util.concurrent.atomic.AtomicReference
 
 object MigrationBatchTestBridge {
     @Volatile
@@ -45,8 +48,18 @@ object MigrationBatchTestBridge {
 }
 
 object TrackingTestBridge {
-    @Volatile
-    var controller: TrackingTestModeController? = null
+    private val value = AtomicReference<TrackingTestModeController?>()
+    var controller: TrackingTestModeController?
+        get() = value.get()
+        set(controller) {
+            value.set(controller)
+        }
+
+    fun install(controller: TrackingTestModeController) {
+        value.set(controller)
+    }
+
+    fun clear(expected: TrackingTestModeController): Boolean = value.compareAndSet(expected, null)
 }
 
 private fun parseJsonBody(body: String): Map<String, String> {
@@ -74,6 +87,7 @@ internal fun actionHistoryParams(
         "setting_security_change_passphrase" -> setOf("currentPassphrase", "replacement", "confirmation")
         "setting_import_cloudflare_cookie" -> setOf("value")
         "source_login_complete" -> setOf("cookieHeader")
+        "tracking_login" -> setOf("password", "apiKey", "code")
         else -> emptySet()
     }
     return params.mapValues { (key, value) -> if (key in sensitiveKeys) "<redacted>" else value }
@@ -105,6 +119,7 @@ internal fun currentTestStateJson(updateModel: DesktopUpdateScreenModel? = null)
     val history = HistoryTestModeBridge.controller?.snapshot()
     val backup = BackupTestModeBridge.controller?.snapshot()
     val settings = SettingsTestModeBridge.controller?.snapshot()
+    val tracking = TrackingTestBridge.controller?.snapshot()
     return jsonText(buildJsonObject {
         put("currentScreen", JsonPrimitive(state.currentScreen.value ?: "HomeScreen"))
         put("isLoading", JsonPrimitive(state.isLoading.value))
@@ -155,6 +170,12 @@ internal fun currentTestStateJson(updateModel: DesktopUpdateScreenModel? = null)
             } ?: JsonNull,
         )
         put(
+            "tracking",
+            tracking?.let {
+                Json.encodeToJsonElement(TrackingTestState.serializer(), it)
+            } ?: JsonNull,
+        )
+        put(
             "extension",
             SourceExtensionTestModeBridge.controller?.snapshot()?.let {
                 Json.encodeToJsonElement(SourceExtensionTestSnapshot.serializer(), it)
@@ -201,7 +222,7 @@ private fun actionJson(
     source: kotlinx.serialization.json.JsonElement = JsonNull,
     library: kotlinx.serialization.json.JsonElement = JsonNull,
     detail: kotlinx.serialization.json.JsonElement = JsonNull,
-    tracking: JsonObject? = null,
+    tracking: kotlinx.serialization.json.JsonElement = JsonNull,
 ) = buildJsonObject {
     put("success", JsonPrimitive(success))
     put("action", JsonPrimitive(action))
@@ -217,7 +238,7 @@ private fun actionJson(
     put("source", source)
     put("library", library)
     put("detail", detail)
-    tracking?.let { put("tracking", it) }
+    put("tracking", tracking)
 }
 
 /**
@@ -530,10 +551,20 @@ internal fun Application.testHttpServer(
                 return@post
             }
             val settingsResult = settingsController?.execute(action, params)
+            val isTrackingAction = action.startsWith("tracking_")
+            val trackingController = if (isTrackingAction) TrackingTestBridge.controller else null
+            if (isTrackingAction && trackingController == null) {
+                call.respondText(
+                    jsonText(actionJson(action, false, "TRACKING_OWNER_UNAVAILABLE")),
+                    ContentType.Application.Json,
+                    HttpStatusCode.ServiceUnavailable,
+                )
+                return@post
+            }
+            val trackingResult = trackingController?.execute(action, params)
 
             // Process actions
-            var trackingResult: mihon.desktop.tracking.TrackingTestState? = null
-            if (!isExtensionAction && !isLibraryAction && !isBrowseAction && !isSourceLoginAction && !isDownloadAction && !isUpdatesAction && !isHistoryAction && !isBackupAction && !isSettingsAction) when (action) {
+            if (!isExtensionAction && !isLibraryAction && !isBrowseAction && !isSourceLoginAction && !isDownloadAction && !isUpdatesAction && !isHistoryAction && !isBackupAction && !isSettingsAction && !isTrackingAction) when (action) {
                 // Read chapter - open reader
                 "read_chapter", "start_reading" -> {
                     val mangaId = params["mangaId"]?.toLongOrNull()
@@ -589,15 +620,21 @@ internal fun Application.testHttpServer(
                     val queueId = params["queueId"]
                     if (mangaId != null && queueId != null) MigrationBatchTestBridge.controller?.retryItem(queueId, mangaId)
                 }
-                "tracking_login", "tracking_logout", "tracking_search", "tracking_bind",
-                "tracking_update", "tracking_cancel",
-                -> trackingResult = checkNotNull(TrackingTestBridge.controller) { "Tracking test bridge is not initialized" }
-                    .execute(action, params)
             }
 
             call.respondText(
                 contentType = ContentType.Application.Json,
-                status = when (settingsResult?.failureCode) {
+                status = when (trackingResult?.failureCode) {
+                    TrackingTestFailureCode.INVALID_PARAMETER,
+                    TrackingTestFailureCode.UNSUPPORTED_ACTION,
+                    -> HttpStatusCode.BadRequest
+                    TrackingTestFailureCode.OPERATION_IN_PROGRESS,
+                    TrackingTestFailureCode.OPERATION_REJECTED,
+                    -> HttpStatusCode.Conflict
+                    TrackingTestFailureCode.SERVICE_UNAVAILABLE,
+                    TrackingTestFailureCode.OWNER_CLOSED,
+                    -> HttpStatusCode.ServiceUnavailable
+                    null -> when (settingsResult?.failureCode) {
                     SettingsTestFailureCode.MISSING_PARAMETER,
                     SettingsTestFailureCode.INVALID_PARAMETER,
                     SettingsTestFailureCode.UNSUPPORTED_ACTION,
@@ -717,20 +754,14 @@ internal fun Application.testHttpServer(
                     }
                     }
                     }
+                    }
                 },
             ) {
-                val tracking = trackingResult?.let {
-                    buildJsonObject {
-                        put("trackerId", JsonPrimitive(it.trackerId))
-                        put("loggedIn", JsonPrimitive(it.loggedIn))
-                        put("resultCount", JsonPrimitive(it.resultCount))
-                        put("bound", JsonPrimitive(it.track != null))
-                    }
-                }
                 jsonText(
                     actionJson(
                         action = action,
-                        success = settingsResult?.success
+                        success = trackingResult?.success
+                            ?: settingsResult?.success
                             ?: backupResult?.success
                             ?: historyResult?.success
                             ?: updatesResult?.success
@@ -740,7 +771,8 @@ internal fun Application.testHttpServer(
                             ?: extensionResult?.success
                             ?: libraryResult?.success
                             ?: true,
-                        error = settingsResult?.failureCode?.name
+                        error = trackingResult?.failureCode?.name
+                            ?: settingsResult?.failureCode?.name
                             ?: backupResult?.failureCode?.name
                             ?: historyResult?.failureCode?.name
                             ?: updatesResult?.failureCode?.name
@@ -779,7 +811,9 @@ internal fun Application.testHttpServer(
                         detail = libraryController?.detailSnapshot()?.let {
                             Json.encodeToJsonElement(MangaDetailTestSnapshot.serializer(), it)
                         } ?: JsonNull,
-                        tracking = tracking,
+                        tracking = trackingResult?.let {
+                            Json.encodeToJsonElement(TrackingTestState.serializer(), it.snapshot)
+                        } ?: JsonNull,
                     ),
                 )
             }

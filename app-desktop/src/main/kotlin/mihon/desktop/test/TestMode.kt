@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import mihon.desktop.platform.DesktopShareService
 import mihon.desktop.network.DesktopNetworkMaintenancePort
 import mihon.desktop.security.DesktopPassphraseVerifier
@@ -21,16 +22,21 @@ import mihon.desktop.test.http.HistoryTestModeBridge
 import mihon.desktop.test.http.HistoryTestModeController
 import mihon.desktop.test.http.SettingsTestModeBridge
 import mihon.desktop.test.http.SettingsTestModeController
+import mihon.desktop.test.http.TrackingTestBridge
 import mihon.desktop.test.http.UpdatesTestModeBridge
 import mihon.desktop.test.http.UpdatesTestModeController
 import mihon.desktop.test.http.testHttpServer
 import mihon.desktop.test.screenshot.ScreenshotService
 import mihon.desktop.test.state.applicationState
+import mihon.desktop.tracking.TrackingTestModeController
 import mihon.desktop.ui.settings.SecuritySettingsController
 import org.slf4j.LoggerFactory
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.track.repository.TrackRepository
+import tachiyomi.domain.track.service.TrackerServiceRegistry
 import java.nio.file.Path
 import java.util.concurrent.CountDownLatch
 
@@ -59,6 +65,7 @@ object TestMode {
     private var updatesController: UpdatesTestModeController? = null
     private var historyController: HistoryTestModeController? = null
     private var settingsController: SettingsTestModeController? = null
+    private var trackingController: TrackingTestModeController? = null
 
     /**
      * Start test mode with the given configuration.
@@ -120,6 +127,15 @@ object TestMode {
         SettingsTestModeBridge.install(settings)
         synchronized(lifecycleLock) {
             settingsController = settings
+        }
+        val tracking = TrackingTestModeController(
+            repository = Injekt.get<TrackRepository>(),
+            chapterRepository = Injekt.get<ChapterRepository>(),
+            registry = Injekt.get<TrackerServiceRegistry>(),
+        )
+        TrackingTestBridge.install(tracking)
+        synchronized(lifecycleLock) {
+            trackingController = tracking
         }
 
         // Register available screens
@@ -201,6 +217,12 @@ object TestMode {
                 "setting_cancel",
                 "setting_change",
                 "setting_reset",
+                "tracking_login",
+                "tracking_logout",
+                "tracking_search",
+                "tracking_bind",
+                "tracking_update",
+                "tracking_cancel",
             ),
         )
 
@@ -301,6 +323,9 @@ object TestMode {
         val activeSettings = synchronized(lifecycleLock) {
             settingsController.also { settingsController = null }
         }
+        val activeTracking = synchronized(lifecycleLock) {
+            trackingController.also { trackingController = null }
+        }
         completeTestModeStop(
             run,
             { activeBrowse?.close() },
@@ -309,6 +334,14 @@ object TestMode {
             { activeUpdates?.close() },
             { activeHistory?.close() },
             { activeSettings?.close() },
+            {
+                activeTracking?.let {
+                    runBlocking {
+                        it.closeAndJoin()
+                    }
+                    TrackingTestBridge.clear(it)
+                }
+            },
             { activeServer?.stop(SERVER_STOP_GRACE_MS, SERVER_STOP_TIMEOUT_MS) },
             { activeJob?.cancel() },
             ScreenshotService::disable,

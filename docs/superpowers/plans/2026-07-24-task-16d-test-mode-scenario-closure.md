@@ -11,7 +11,7 @@ status: planned
 - [x] Task 173：Browse search and source login
 - [x] Task 174：Downloads, updates and history actions
 - [x] Task 175：Backup and settings actions
-- [ ] Task 176：Tracking HTTP runner
+- [x] Task 176：Tracking HTTP runner
 - [ ] Task 177：Scenario inventory closeout
 ### Task 171 Final fixed-EXE runner
 **Risk axis:** final-testmode-runner
@@ -67,6 +67,7 @@ status: planned
 **Files:** TestHttpServer tracking error mapping, controller lifecycle wiring, HTTP integration test, test client.
 **TDD:** direct controller coverage is insufficient; first RED on missing HTTP state/error assertions, then reuse the existing controller without a second tracking implementation.
 **User/feedback:** scenario exposes login state, result count, binding/progress and actionable invalid/unavailable errors.
+**Execution evidence:** `TrackingTestModeHttpTest` 的 state/history/typed failure/closed owner 先取得 4/4 精确 RED，再复用既有 `TrackingTestModeController`、`TrackingScreenModel`、tracker services 与 repositories 接入 `tracking_*` action、GET state、typed HTTP mapping 和 password/API key/OAuth code history 脱敏。首审发现严格参数、close 竞态和真实 TestMode wiring 三项 P1；修复以 blank/malformed HTTP RED、真实 `TrackingTestModeLifecycleTest` + `initDesktopDIForTest` + `TestMode.start/stop/restart` RED→GREEN 收口，并补 `DesktopNetworkMaintenancePort` 同实例 DI binding。复审发现 controller 错误取消 caller Job/self-join，最小重规为 Task 176R：owner-owned `SupervisorJob`/lazy `Deferred`、非阻塞 `close()` 与可等待 `closeAndJoin()` 以确定性死锁 RED→GREEN 修复。最终复审的 closed 状态晚回退以临时延迟 mutation 精确 RED，改为原子单调 publish；caller 主动取消亦有向下 cancel/join、向上重抛测试。最终独立审查 `APPROVED`，HTTP/controller/真实 lifecycle 合并 focused 12/12 通过。inventory 现为 13/13 covered、0 gap，64/64 mapped、unmapped=0。
 ### Task 177 Scenario inventory closeout
 **Risk axis:** testmode-inventory-closeout
 **Platform boundary:** verification

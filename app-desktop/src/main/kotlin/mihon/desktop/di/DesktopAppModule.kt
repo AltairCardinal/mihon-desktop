@@ -18,6 +18,7 @@ import mihon.desktop.extension.DefaultDesktopArtifactAuthenticator
 import mihon.desktop.source.DesktopSourceManager
 import eu.kanade.tachiyomi.network.NetworkHelper
 import mihon.desktop.platform.DesktopNetworkHelper
+import mihon.desktop.network.DesktopNetworkMaintenancePort
 import mihon.desktop.platform.DesktopNativeSharePort
 import mihon.desktop.platform.DesktopShareService
 import mihon.desktop.platform.DesktopBackupFilePicker
@@ -86,8 +87,6 @@ import mihon.desktop.network.FlareSolverrClient
 import mihon.desktop.test.http.MigrationBatchTestBridge
 import mihon.desktop.test.http.SourceExtensionTestModeBridge
 import mihon.desktop.test.http.SourceExtensionTestModeController
-import mihon.desktop.test.http.TrackingTestBridge
-import mihon.desktop.tracking.TrackingTestModeController
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.SManga
 import mihon.desktop.domain.SaveSourceMangaForDetails
@@ -414,6 +413,7 @@ private fun registerDesktopNetwork(
             ?: DesktopSourceLoginSessionFactory(authenticatedSessionCommitter),
     )
     Injekt.addSingleton(networkHelper)
+    Injekt.addSingleton<DesktopNetworkMaintenancePort>(networkHelper)
     Injekt.addSingleton(networkHelper.client)
     Injekt.addSingleton(NetworkHelper(networkHelper.client))
     Injekt.addSingleton(
@@ -552,7 +552,6 @@ private fun registerDesktopTracking(sourceManager: SourceManager, client: OkHttp
     )
     Injekt.addSingleton<TrackerServiceRegistry>(trackerRegistry)
     Injekt.addSingleton(oauthCallbackBroker)
-    TrackingTestBridge.controller = TrackingTestModeController(trackRepository, chapterRepository, trackerRegistry)
     Injekt.addSingleton(credentialStore)
     Injekt.addSingleton<tachiyomi.domain.track.service.EnhancedTrackerContextProvider>(enhancedTrackerContexts)
     Injekt.addSingleton(enhancedTrackerContexts)

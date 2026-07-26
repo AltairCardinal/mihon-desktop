@@ -28,7 +28,7 @@ class DesktopTestModeCoverageContractTest {
         val plan = childPlan(inventory)
         val firstScenario = inventory.scenarios.first()
         val firstProtection = inventory.protections.first()
-        val gapScenario = inventory.scenarios.first { it.status == "gap" }
+        val gapEntry = inventory.allEntries.first { it.status == "gap" }
         val coveredScenario = inventory.scenarios.first { it.status == "covered" }
         val nonUiBoundary = inventory.boundaries.first { it.status == "non-ui" }
         fun rejects(
@@ -38,7 +38,7 @@ class DesktopTestModeCoverageContractTest {
             changedPlan: String = plan,
         ) = assertThrows(AssertionError::class.java) { validate(changed, changedHandlers, changedRunners, changedPlan) }
 
-        rejects(inventory.replace(gapScenario, gapScenario.copy(status = "covered")), handlers + (gapScenario.id to "NONE"), runners + (gapScenario.id to "NONE"))
+        rejects(inventory.replace(gapEntry, gapEntry.copy(status = "covered")), handlers + (gapEntry.id to "NONE"), runners + (gapEntry.id to "NONE"))
         rejects(inventory.replace(coveredScenario, coveredScenario.copy(status = "gap")))
         rejects(inventory.replace(nonUiBoundary, nonUiBoundary.copy(status = "covered")))
         rejects(inventory.replace(firstProtection, firstProtection.copy(status = "gap")))
@@ -187,6 +187,7 @@ class DesktopTestModeCoverageContractTest {
             "migration" to listOf("POST /test/action/migration_*", "mihon.desktop.migration.DesktopBatchMigrationController", "migrationQueueCount and persistent queue state transitions", "mihon.desktop.migration.DesktopBatchMigrationTestModeTest#test mode migration actions drive persistent queue"),
             "backup-restore" to listOf("POST /test/action/backup_create|backup_restore|backup_cancel", "mihon.desktop.test.http.BackupTestModeController", "HTTP status plus serialized production create restore confirmation progress cancellation partial failure and typed error state", "mihon.desktop.test.http.BackupTestModeHttpTest#backup restore requires confirmation and reports production progress completion and partial failure"),
             "settings-platform" to listOf("POST /test/navigate/SettingsScreen plus /test/action/setting_*", "mihon.desktop.test.http.SettingsTestModeController", "HTTP status plus serialized production search security confirmation maintenance cancellation and redacted history state", "mihon.desktop.test.http.SettingsTestModeHttpTest#platform maintenance requires confirmation and invokes production ports"),
+            "tracking" to listOf("POST /test/action/tracking_login|tracking_logout|tracking_search|tracking_bind|tracking_update|tracking_cancel", "mihon.desktop.tracking.TrackingTestModeController", "HTTP status plus serialized production login search binding progress cancellation typed error and redacted history state", "mihon.desktop.test.http.TrackingTestModeHttpTest#tracking login dispatches through production controller and is visible in test state"),
             "about" to listOf("POST /test/action/update_* and GET /test/state", "mihon.desktop.ui.settings.DesktopUpdateScreenModel", "HTTP status plus updateStatus progress and release page", "mihon.desktop.test.http.DesktopPlatformTestModeControllerTest#update routes expose production state and reject illegal transitions"),
         )
         val expectedScenarioStatuses = requiredFamilies.associateWith { if (it in coveredTuples) "covered" else "gap" }
