@@ -172,6 +172,20 @@ runner 必须保存用户确认、取消、启动结果和 manual-only 反馈；
 
 **Execution evidence（验证工具完成，平台验收保持未勾选）：** 提交 `056dcb79db` 的只读产物盘点没有发现可绑定当前 commit/tree/productSource provenance 的 canonical signed MSI/DMG。Windows 隔离验收树没有 MSI；主工作树残留的 `Mihon Desktop-1.11.14.msi` 为 `NotSigned` 且没有 Task 153 installer provenance sidecar，不能冒充本轮产物。macOS 没有 DMG，当前部署 `.app` 被 `codesign` 判定为 `not signed at all`，`spctl` 拒绝并报告 `no usable signature`。production DI 又以默认空 `InstallerTrust` 创建 `DesktopUpdateInstaller`，真实行为只能返回 manual-only。验证 runner 已用 RED→GREEN 增加独立 trust identity、installer 自身签名、current commit/tree/productSource sidecar、canonical name/hash/size、production prepare/cancel/显式确认 handoff 的 fail-closed 合同；普通文本 MSI、第三方身份、伪 production 字段及错/缺 sidecar 均被拒绝。首审三项 P1 已关闭，修复复审又发现 Unix PASS 无条件返回 1；主代理按既有授权直接修正并以真实抽取函数 fixture 验证 PASS=0、BLOCKED≠0，未再增加审查轮次。Task 153 与 ID 86 保持 `CANDIDATE`；完整证据见 `docs/superpowers/reports/2026-07-26-task-15-platform-evidence-verify.md`。
 
+**Production wiring follow-up：** 只读复核确认验证 runner 的 Unix PASS/BLOCKED 返回码与
+capture helper 已 `APPROVED`，但 composition root 的空 trust 是独立产品 wiring 缺口。
+按 `docs/superpowers/plans/2026-07-27-task-153-installer-trust-wiring.md` 先用 TDD 接入
+release-controlled build-time trust；本 Task 在该 child 完成后仍保持未勾选，直至真实签名产物
+与 Windows/macOS handoff 通过。
+
+**Production wiring evidence（child completed，平台验收保持未勾选）：** child 以 RED→GREEN
+加入 release-controlled build-time trust，默认空值与带 Kotlin 转义字符的显式 publisher/合法
+Team ID 均通过 production DI consumer 测试，非法 Team ID 在 Gradle 配置期 fail-fast；
+`InstallerTrust` 在 composition root 只构造一次、同时注册到 Injekt 并传给 installer，运行时
+system properties 不能覆盖。installer/process runner、Task 15 runner contract 与 Spotless 均通过。
+这只关闭“production 永远 manual-only”的仓库内 wiring 缺口；Task 153 和 ID 86 仍保持
+未勾选/`CANDIDATE`，继续等待真实签名 MSI/DMG 与 Windows/macOS handoff。
+
 ## 回收条件
 
 三个 Task 各自完成 TDD、focused tests、真实 OS/产物命令记录和独立审查后，才回到父计划提升对应 ID。若签名凭据或真实桌面环境仍不可用，child 保持 `planned`，相关 ID 保持 `CANDIDATE`，不得用新的 `EXEMPT` 绕过。

@@ -8,6 +8,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.serialization.json.Json
+import mihon.desktop.BuildInfo
 import okhttp3.OkHttpClient
 import mihon.desktop.extension.DesktopExtensionLoader
 import mihon.desktop.extension.DesktopArtifactAuthenticator
@@ -115,6 +116,7 @@ import tachiyomi.domain.release.service.ReleaseService
 import mihon.desktop.update.DesktopUpdateController
 import mihon.desktop.update.DesktopUpdateDownloader
 import mihon.desktop.update.DesktopUpdateInstaller
+import mihon.desktop.update.InstallerTrust
 import mihon.desktop.ui.settings.DesktopUpdateScreenModel
 import tachiyomi.domain.category.interactor.CreateCategoryWithName
 import tachiyomi.domain.category.interactor.DeleteCategory
@@ -687,9 +689,17 @@ internal fun initUILayer(
         maxBytes = 512L * 1024 * 1024,
         maxRedirects = 3,
     )
-    val updateInstaller = DesktopUpdateInstaller(Injekt.get<PlatformInfo>().releaseTarget(isFoss = false))
+    val installerTrust = InstallerTrust(
+        windowsPublisher = BuildInfo.INSTALLER_WINDOWS_PUBLISHER.takeIf(String::isNotBlank),
+        macTeamId = BuildInfo.INSTALLER_MAC_TEAM_ID.takeIf(String::isNotBlank),
+    )
+    val updateInstaller = DesktopUpdateInstaller(
+        Injekt.get<PlatformInfo>().releaseTarget(isFoss = false),
+        installerTrust,
+    )
     Injekt.addSingleton(releaseChecker)
     Injekt.addSingleton(updateDownloader)
+    Injekt.addSingleton(installerTrust)
     Injekt.addSingleton(updateInstaller)
     val updateController = DesktopUpdateController(releaseChecker, updateDownloader, updateInstaller)
     Injekt.addSingleton(updateController)

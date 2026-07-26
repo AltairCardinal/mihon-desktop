@@ -3142,6 +3142,36 @@ class DesktopProductCapabilityContractTest {
 
     @Tag("parity-governance")
     @Test
+    fun `Task 153 installer trust child closes only production wiring`() {
+        val repositoryRoot = repositoryRoot()
+        val item86 = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }.getValue(86).jsonObject
+        val parent = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-24-task-15-platform-evidence-closure.md"))
+        val childPath = repositoryRoot.resolve("docs/superpowers/plans/2026-07-27-task-153-installer-trust-wiring.md")
+        val child = Files.readString(childPath)
+        val build = Files.readString(repositoryRoot.resolve("app-desktop/build.gradle.kts"))
+        val module = Files.readString(repositoryRoot.resolve("app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt"))
+
+        assertEquals("CANDIDATE", requiredText(item86, "status", 86))
+        assertTrue(
+            Regex("""(?m)^- \[ ] Task 153[：:]""").containsMatchIn(parent),
+            "Task 153 must remain unchecked pending signed artifacts and real OS handoff",
+        )
+        assertTrue("真实签名产物" in parent)
+        assertTrue("Windows/macOS handoff" in parent)
+        assertEquals("completed", markdownFrontmatter(child)["status"])
+        assertEquals(
+            setOf("153A", "153B"),
+            Regex("""(?m)^- \[x] Task (153[AB])[：:]""").findAll(child).map { it.groupValues[1] }.toSet(),
+        )
+        setOf("mihonInstallerWindowsPublisher", "mihonInstallerMacTeamId", "INSTALLER_WINDOWS_PUBLISHER", "INSTALLER_MAC_TEAM_ID")
+            .forEach { marker -> assertTrue(marker in build, "build-time trust contract must contain `$marker`") }
+        setOf("BuildInfo.INSTALLER_WINDOWS_PUBLISHER", "BuildInfo.INSTALLER_MAC_TEAM_ID", "Injekt.addSingleton(installerTrust)")
+            .forEach { marker -> assertTrue(marker in module, "production trust wiring must contain `$marker`") }
+        assertFalse("System.getProperty(\"mihonInstaller" in module, "runtime system properties must not become release trust roots")
+    }
+
+    @Tag("parity-governance")
+    @Test
     fun `Task 16A closes symbol scoped compat and historical format removal evidence`() {
         data class RemovalExpectation(
             val previousTask: String,

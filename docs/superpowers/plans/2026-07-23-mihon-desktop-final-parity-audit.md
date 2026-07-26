@@ -516,7 +516,13 @@ active-task: Task 17
 独立审查并勾选，child `status: completed`。Task 15 child 的 URI/share、credential/capture
 与 signed installer 验证工具和当前提交平台证据已提交；Task 151–153 因 macOS TCC/Keychain、
 Windows capture 前台限制、Linux 前置缺失及没有受信 MSI/DMG 保持未勾选和 `CANDIDATE`，
-所有不依赖这些外部条件的工作已完成且不重复失败路径。Task 16B child 的 Task 161 已完成
+所有不依赖这些外部条件的工作已完成且不重复失败路径。Task 153 的 repository-local
+production wiring follow-up 也已完成：release-controlled build-time trust 进入唯一
+`InstallerTrust` composition-root 实例，运行时属性不能覆盖，Gradle 增量输入与
+“空值→显式值→空值”同目录切换均受验证任务保护；唯一审查修复复审 `APPROVED`。这不替代
+受信 MSI/DMG 与真实 OS handoff，Task 151–153 继续保持未勾选。
+
+Task 16B child 的 Task 161 已完成
 shared lifecycle RED→GREEN、三项 mutation、唯一审查修复与复审，固定原版只取消 RUNNING
 的语义已闭合；Task 162 已完成当前 Android WorkManager production consumer，真实 worker、
 周期/手动调度、停止恢复与 Updates feedback focused tests `10/10`，首审两个 P1 经一轮修复
@@ -586,8 +592,12 @@ manager/helper/`HttpUrl` compiled edge 清零；challenge、download queue、ext
 均由同一 production flow/state 的窄端口暴露，Advanced 的校验、URL canonicalization、
 `cf_clearance` 写入与 clear-all 仅下沉到原 network helper adapter。51 项 focused、
 forbidden-edge mutation、DI same-instance、独立审查、主门禁及 Spotless 全绿；32 条初始
-违规现已全部归零，ID95 保持 `WIRED` 等待 Task 169 五角色与终态收口。下一恢复位置为
-Task 169。
+违规现已全部归零，ID95 保持 `WIRED` 等待 Task 169 五角色与终态收口。
+
+Task 169 已完成 compiled boundary closeout。ID8/95 的五角色证据与 required compiled edge
+全部闭合，`forbidden=0`、`missing=0`；forbidden/disconnected/platform allowlist mutations
+均能精确失败。两项分别从 `SHARED`/`WIRED` 提升为 `VERIFIED`，Task 16C child
+`status: completed`，提交 `f0c8bddd7`。
 
 Task 16D 的 Task 171 已完成固定未打包 EXE final runner：Task151 provenance
 fail-closed、旧 health owner 拒绝、本轮 PID 绑定、轮询/teardown、严格 summary schema 与

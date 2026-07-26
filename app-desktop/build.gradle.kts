@@ -36,8 +36,40 @@ val desktopNativePackageVersion: String by lazy {
         readAppVersionConstant("BUILD")
 }
 
+val installerWindowsPublisher = providers.gradleProperty("mihonInstallerWindowsPublisher").getOrElse("")
+val installerMacTeamId = providers.gradleProperty("mihonInstallerMacTeamId").getOrElse("")
+require(installerMacTeamId.isEmpty() || Regex("[A-Z0-9]{10}").matches(installerMacTeamId)) {
+    "mihonInstallerMacTeamId must be empty or exactly 10 uppercase ASCII letters or digits"
+}
+
+fun String.asKotlinStringLiteral(): String = buildString {
+    append('"')
+    this@asKotlinStringLiteral.forEach { character ->
+        when (character) {
+            '\\' -> append("\\\\")
+            '"' -> append("\\\"")
+            '$' -> append("\\\$")
+            '\b' -> append("\\b")
+            '\t' -> append("\\t")
+            '\n' -> append("\\n")
+            '\u000C' -> append("\\f")
+            '\r' -> append("\\r")
+            else -> {
+                if (character.code < 0x20 || character.code == 0x7F) {
+                    append("\\u%04x".format(character.code))
+                } else {
+                    append(character)
+                }
+            }
+        }
+    }
+    append('"')
+}
+
 val generateBuildInfo = tasks.register("generateBuildInfo") {
     val outputDir = layout.buildDirectory.dir("generated/src/main/kotlin")
+    inputs.property("installerWindowsPublisher", installerWindowsPublisher)
+    inputs.property("installerMacTeamId", installerMacTeamId)
     outputs.dir(outputDir)
     // Always re-run so the hash stays fresh
     outputs.upToDateWhen { false }
@@ -49,10 +81,35 @@ val generateBuildInfo = tasks.register("generateBuildInfo") {
             |package mihon.desktop
             |
             |object BuildInfo {
-            |    const val GIT_HASH = "$gitHash"
+            |    const val GIT_HASH = ${gitHash.asKotlinStringLiteral()}
+            |    const val INSTALLER_WINDOWS_PUBLISHER = ${installerWindowsPublisher.asKotlinStringLiteral()}
+            |    const val INSTALLER_MAC_TEAM_ID = ${installerMacTeamId.asKotlinStringLiteral()}
             |}
             """.trimMargin(),
         )
+    }
+}
+
+tasks.register("verifyBuildInfoInstallerTrust") {
+    group = "verification"
+    description = "Verifies installer trust is a declared BuildInfo input and the generated source matches it."
+    dependsOn(generateBuildInfo)
+    doLast {
+        val declaredInputs = generateBuildInfo.get().inputs.properties
+        check(declaredInputs["installerWindowsPublisher"] == installerWindowsPublisher) {
+            "generateBuildInfo must declare installerWindowsPublisher as a stable task input"
+        }
+        check(declaredInputs["installerMacTeamId"] == installerMacTeamId) {
+            "generateBuildInfo must declare installerMacTeamId as a stable task input"
+        }
+
+        val buildInfo = layout.buildDirectory.file("generated/src/main/kotlin/mihon/desktop/BuildInfo.kt").get().asFile.readText()
+        check("const val INSTALLER_WINDOWS_PUBLISHER = ${installerWindowsPublisher.asKotlinStringLiteral()}" in buildInfo) {
+            "generated BuildInfo retained a stale Windows publisher"
+        }
+        check("const val INSTALLER_MAC_TEAM_ID = ${installerMacTeamId.asKotlinStringLiteral()}" in buildInfo) {
+            "generated BuildInfo retained a stale macOS Team ID"
+        }
     }
 }
 
@@ -164,6 +221,8 @@ tasks.withType<Test> {
     }
     systemProperty("java.io.tmpdir", testTempDir.absolutePath)
     systemProperty("java.awt.headless", "true")
+    systemProperty("mihon.test.expectedInstallerWindowsPublisher", installerWindowsPublisher)
+    systemProperty("mihon.test.expectedInstallerMacTeamId", installerMacTeamId)
     if (includeLiveNetworkTests) {
         val proxyHost = providers.environmentVariable("MIHON_LIVE_PROXY_HOST").getOrElse("127.0.0.1")
         val proxyPort = providers.environmentVariable("MIHON_LIVE_PROXY_PORT").getOrElse("10808")

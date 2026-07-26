@@ -33,7 +33,7 @@ data object InstallCancelled : InstallHandoffResult
 data object InstallHandedOff : InstallHandoffResult
 data class InstallHandoffFailed(val reason: InstallFailure) : InstallHandoffResult
 class DesktopUpdateInstaller(
-    private val currentTarget: ReleaseTarget, private val trust: InstallerTrust = InstallerTrust(),
+    private val currentTarget: ReleaseTarget, internal val trust: InstallerTrust = InstallerTrust(),
     private val runner: DesktopUpdateCommandRunner = DesktopUpdateProcessRunner(), private val launcher: (List<String>) -> Boolean = { ProcessBuilder(it).start(); true },
 ) {
     suspend fun prepare(download: VerifiedDownload, releaseTag: String): InstallPreparation {

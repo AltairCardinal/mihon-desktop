@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import mihon.desktop.BuildInfo
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.DesktopAppRuntime
 import mihon.desktop.DesktopOwnerIngressDependencies
@@ -61,6 +62,8 @@ import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.ui.more.StatsScreenModel
 import mihon.desktop.update.DesktopUpdateController
+import mihon.desktop.update.DesktopUpdateInstaller
+import mihon.desktop.update.InstallerTrust
 import mihon.desktop.ui.settings.DesktopUpdateScreenModel
 import mihon.desktop.task.DesktopTaskScheduler
 import mihon.desktop.test.http.SourceExtensionTestModeBridge
@@ -264,6 +267,44 @@ class DesktopDiWiringTest {
             assertSame(Injekt.get<DesktopUpdateScreenModel>(), DesktopUiDependencies.fromInjekt().updateScreenModel)
             assertSame(controller, Injekt.get<DesktopUpdateScreenModel>().controller)
         } finally {
+            context.closeAndJoin()
+        }
+    }
+
+    @Test
+    fun `desktop DI binds immutable build-time trust to the production installer`(@TempDir tempDir: File) = runBlocking {
+        val expectedWindowsPublisher =
+            checkNotNull(System.getProperty("mihon.test.expectedInstallerWindowsPublisher"))
+        val expectedMacTeamId =
+            checkNotNull(System.getProperty("mihon.test.expectedInstallerMacTeamId"))
+        val runtimeWindowsProperty = "mihonInstallerWindowsPublisher"
+        val runtimeMacProperty = "mihonInstallerMacTeamId"
+        val previousRuntimeWindows = System.getProperty(runtimeWindowsProperty)
+        val previousRuntimeMac = System.getProperty(runtimeMacProperty)
+        System.setProperty(runtimeWindowsProperty, "runtime-only publisher")
+        System.setProperty(runtimeMacProperty, "RUNTIME1234")
+
+        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+        try {
+            val trust = Injekt.get<InstallerTrust>()
+            val installer = Injekt.get<DesktopUpdateInstaller>()
+
+            assertEquals(expectedWindowsPublisher, BuildInfo.INSTALLER_WINDOWS_PUBLISHER)
+            assertEquals(expectedMacTeamId, BuildInfo.INSTALLER_MAC_TEAM_ID)
+            assertEquals(expectedWindowsPublisher.takeIf(String::isNotBlank), trust.windowsPublisher)
+            assertEquals(expectedMacTeamId.takeIf(String::isNotBlank), trust.macTeamId)
+            assertSame(trust, installer.trust)
+        } finally {
+            if (previousRuntimeWindows == null) {
+                System.clearProperty(runtimeWindowsProperty)
+            } else {
+                System.setProperty(runtimeWindowsProperty, previousRuntimeWindows)
+            }
+            if (previousRuntimeMac == null) {
+                System.clearProperty(runtimeMacProperty)
+            } else {
+                System.setProperty(runtimeMacProperty, previousRuntimeMac)
+            }
             context.closeAndJoin()
         }
     }
