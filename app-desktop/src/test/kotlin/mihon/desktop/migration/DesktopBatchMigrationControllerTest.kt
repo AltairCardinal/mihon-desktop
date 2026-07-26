@@ -101,6 +101,25 @@ class DesktopBatchMigrationControllerTest {
         assertTrue(afterCancelRestart.queue(queueId)!!.items.all { it.status in setOf(BatchMigrationItemStatus.SUCCESS, BatchMigrationItemStatus.CANCELLED) })
     }
 
+    @Test
+    fun `cancelling a paused queue persists a desktop cancelled terminal`() = runTest {
+        val file = testFile()
+        val controller = controller(file) { _, _ -> error("waiting queue must not execute") }
+        val queueId = controller.submit(listOf(BatchMigrationRequest(1, "One")))
+        advanceUntilIdle()
+        assertEquals(BatchMigrationItemStatus.WAITING_FOR_USER, controller.queue(queueId)!!.items.single().status)
+
+        controller.cancelAll(queueId)
+
+        val persisted = DesktopTaskScheduler(FileTaskCheckpointStore(file))
+        assertEquals(mihon.domain.task.TaskStatus.Cancelled, persisted.snapshot(queueId)?.status)
+        assertTrue(persisted.pendingTasks().none { it.id == queueId })
+        val restored = controller(file) { _, _ -> error("cancelled queue must not execute after restart") }
+        restored.recover()
+        advanceUntilIdle()
+        assertTrue(restored.queue(queueId)!!.cancelled)
+    }
+
     private fun TestScope.controller(
         file: java.nio.file.Path,
         execute: suspend (Long, BatchMigrationTargetSelection) -> Unit,

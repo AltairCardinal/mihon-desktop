@@ -38,7 +38,7 @@ class DesktopProductCapabilityContractTest {
     private val requiredTerminalEvidenceRoles =
         setOf("FIXED_ORIGINAL", "CURRENT_ANDROID", "SHARED_OR_ADAPTER", "DESKTOP_CONSUMER", "FIXTURE")
     private val task2ProvenanceStatuses =
-        mapOf(9 to "VERIFIED", 10 to "WIRED", 11 to "WIRED", 12 to "VERIFIED", 16 to "SHARED", 17 to "SHARED", 19 to "WIRED", 22 to "SHARED")
+        mapOf(9 to "VERIFIED", 10 to "VERIFIED", 11 to "WIRED", 12 to "VERIFIED", 16 to "SHARED", 17 to "SHARED", 19 to "WIRED", 22 to "SHARED")
     private val task2BehaviorMethods =
         mapOf(
             9 to mapOf("app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt" to setOf("decode JPEG returns correct dimensions")),
@@ -235,7 +235,7 @@ class DesktopProductCapabilityContractTest {
             4 to "VERIFIED",
             7 to "WIRED",
             8 to "SHARED",
-            10 to "WIRED",
+            10 to "VERIFIED",
             11 to "WIRED",
             12 to "VERIFIED",
         )
@@ -2898,7 +2898,7 @@ class DesktopProductCapabilityContractTest {
         assertEquals("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md", metadata["parent-plan"])
         assertEquals("Task 14", metadata["parent-task"])
         assertEquals(fixedOriginalMihonRef, metadata["original-ref"])
-        assertEquals("planned", metadata["status"])
+        assertTrue(metadata["status"] in setOf("planned", "completed"))
         assertFalse("TBD" in child || "扫描" in child, "child plan must name finite files and decisions")
 
         val boundaries =
@@ -2907,18 +2907,38 @@ class DesktopProductCapabilityContractTest {
                 "142 A2" to "shared+desktop",
                 "143 A3" to "shared+android",
                 "144 A4" to "shared+desktop",
-                "145 B1" to "shared+android",
-                "146 B2" to "shared+desktop",
+                "145A B1a" to "shared",
+                "145B1 B1b-1" to "android",
+                "145B2 B1b-2" to "android",
+                "146A B2a" to "shared+desktop",
+                "146B B2b" to "desktop-platform+desktop",
+                "146C B2c" to "desktop",
+                "146D B2d" to "shared+desktop",
                 "147 B3" to "shared+android",
                 "148 B4" to "shared+desktop",
                 "149 C1" to "desktop",
             )
-        val allowedBoundaries = setOf("shared", "android", "desktop", "shared+android", "shared+desktop", "verification", "docs", "tooling")
+        val allowedBoundaries =
+            setOf(
+                "shared",
+                "android",
+                "desktop",
+                "shared+android",
+                "shared+desktop",
+                "desktop-platform+desktop",
+                "verification",
+                "docs",
+                "tooling",
+            )
         val overviewTasks =
             Regex("""(?m)^- \[[ xX]] Task (\d+)[：:]([A-Z]\d)""").findAll(child)
                 .map { "${it.groupValues[1]} ${it.groupValues[2]}" }
                 .toSet()
-        assertEquals(boundaries.keys, overviewTasks, "child overview must track every product Task")
+        val splitAwareOverviewTasks =
+            Regex("""(?m)^- \[[ xX]] Task (\d+[A-Z]?\d*)[^A-Za-z0-9]+([A-Z]\d[a-z]?(?:-\d)?)""").findAll(child)
+                .map { "${it.groupValues[1]} ${it.groupValues[2]}" }
+                .toSet()
+        assertEquals(boundaries.keys, splitAwareOverviewTasks, "child overview must track every product Task")
         boundaries.forEach { (task, boundary) ->
             val section = child.substringAfter("### Task $task ", "").substringBefore("\n### Task ")
             assertTrue(section.isNotBlank(), "Task $task section is required")
@@ -2957,7 +2977,7 @@ class DesktopProductCapabilityContractTest {
         val tracker = Files.readString(repositoryRoot.resolve("docs/desktop-parity/PARITY_TRACKER.md"))
         val parent = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
         val child = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md"))
-        assertEquals("planned", markdownFrontmatter(child)["status"])
+        assertTrue(markdownFrontmatter(child)["status"] in setOf("planned", "completed"))
         assertFalse("active-task" in markdownFrontmatter(child), "child progress must derive from its first unchecked checkbox")
         val task14Ids = setOf(3, 4, 32, 39, 69, 70, 87, 88)
         val expected =
@@ -3230,7 +3250,7 @@ class DesktopProductCapabilityContractTest {
                 .map { it.jsonObject }
                 .filter { requiredText(it, "path", 96, "roleEvidence.DESKTOP_CONSUMER") == bootstrapPath }
         assertEquals(
-            setOf("AndroidCompat.initialize" to "191", "AndroidCompat.startApp" to "193"),
+            setOf("AndroidCompat.initialize" to "192", "AndroidCompat.startApp" to "194"),
             bootstrapConsumers.map {
                 requiredText(it, "symbol", 96, "roleEvidence.DESKTOP_CONSUMER") to
                     requiredText(it, "line", 96, "roleEvidence.DESKTOP_CONSUMER")
@@ -3284,14 +3304,14 @@ class DesktopProductCapabilityContractTest {
         assertEquals(setOf(10), task16bCandidates, "Task 16B duplicate-rule inventory must stay exact")
 
         val item = items.getValue(10).jsonObject
-        assertEquals("WIRED", requiredText(item, "status", 10))
+        assertEquals("VERIFIED", requiredText(item, "status", 10))
         statusDecisionForTask(item, 10, "Task 6")
         val decision = item.getValue("statusDecision").jsonObject
-        assertEquals("Task 16B", requiredText(decision, "task", 10, "statusDecision"))
-        assertEquals("EXTRACT", requiredText(decision, "decision", 10, "statusDecision"))
+        assertEquals("Task 163", requiredText(decision, "task", 10, "statusDecision"))
+        assertEquals("PROMOTE_VERIFIED", requiredText(decision, "decision", 10, "statusDecision"))
         val childPlan = "docs/superpowers/plans/2026-07-24-task-16b-background-task-state-machine-closure.md"
-        assertEquals("$childPlan#task-161-shared-task-lifecycle-core", requiredText(decision, "followUp", 10, "statusDecision"))
-        assertTrue(requiredText(decision, "gap", 10, "statusDecision").contains("current Android", ignoreCase = true))
+        assertEquals("NONE", requiredText(decision, "followUp", 10, "statusDecision"))
+        assertEquals("NONE", requiredText(decision, "gap", 10, "statusDecision"))
 
         val audit = item.getValue("duplicateBusinessRuleAudit").jsonObject
         assertEquals(
@@ -3325,7 +3345,7 @@ class DesktopProductCapabilityContractTest {
         )
         assertEquals(
             setOf(
-                "Explicit idempotency keys, checkpoints, typed task states and single-terminal notifications are fork reliability improvements that require one shared transition core; current Android does not consume that core yet.",
+                "Explicit idempotency keys, checkpoints, typed task states and single-terminal notifications are fork reliability improvements consumed by current Android and Desktop through one shared transition core.",
             ),
             strings("crossPlatformBugfixes"),
         )
@@ -3333,6 +3353,7 @@ class DesktopProductCapabilityContractTest {
             setOf(
                 "Desktop persists worksets, completed manga IDs, checkpoints and structured partial failures for crash recovery.",
                 "Desktop startup recovery and concurrent runNow occurrence sharing remain Desktop runtime behavior layered on the shared lifecycle.",
+                "Desktop batch migration retains queued and failed cancellation as an explicit product adapter; library update cancellation remains Running-only through the shared lifecycle.",
             ),
             strings("desktopProductDeviations"),
         )
@@ -3361,13 +3382,13 @@ class DesktopProductCapabilityContractTest {
             callers.getValue("currentAndroid").jsonArray.map { it.jsonPrimitive.content }.toSet(),
         )
         assertEquals(
-            setOf("domain/src/commonMain/kotlin/mihon/domain/task/BackgroundTask.kt#BackgroundTask/TaskConstraint/TaskCheckpoint/TaskStatus"),
+            setOf("domain/src/commonMain/kotlin/mihon/domain/task/BackgroundTask.kt#BackgroundTaskLifecycle/TaskLifecycleEvent/TaskLifecycleDecision"),
             callers.getValue("shared").jsonArray.map { it.jsonPrimitive.content }.toSet(),
         )
         assertEquals(
             setOf(
-                "app-desktop/src/main/kotlin/mihon/desktop/task/DesktopTaskScheduler.kt#DesktopTaskScheduler",
-                "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateScheduler.kt#start/runNow/cancelUpdate",
+                "app-desktop/src/main/kotlin/mihon/desktop/task/DesktopTaskScheduler.kt#register/lifecycleTransition/cancelRunning",
+                "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateScheduler.kt#start/runNow/cancelUpdate/cancelRunning",
                 "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt#DesktopTaskScheduler/LibraryUpdateScheduler bindings",
             ),
             callers.getValue("desktop").jsonArray.map { it.jsonPrimitive.content }.toSet(),
@@ -3379,33 +3400,43 @@ class DesktopProductCapabilityContractTest {
         assertTrue(requiredText(writers, "desktop", 10, "writerOwnership").contains("FileTaskCheckpointStore"))
 
         val behavior = audit.getValue("behaviorEvidence").jsonObject
-        assertTrue(behavior.getValue("currentAndroid").jsonArray.isEmpty(), "No Android wiring test may be invented")
         assertEquals(
             setOf(
-                "domain/src/commonTest/kotlin/mihon/domain/task/BackgroundTaskContractTest.kt#task contract carries constraints checkpoint and idempotency key",
-                "domain/src/commonTest/kotlin/mihon/domain/task/BackgroundTaskContractTest.kt#task states are explicit instead of stringly typed",
+                "app/src/test/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJobSharedLifecycleIntegrationTest.kt#startNow uses shared register and start decisions to control enqueue and return value",
+                "app/src/test/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJobSharedLifecycleIntegrationTest.kt#rejected shared completion changes the real worker result",
+                "app/src/test/java/eu/kanade/tachiyomi/ui/updates/UpdatesScreenModelLibraryUpdateWiringTest.kt#updateLibrary exposes started and already running results through its production event",
+            ),
+            behavior.getValue("currentAndroid").jsonArray.map { it.jsonPrimitive.content }.toSet(),
+        )
+        assertEquals(
+            setOf(
+                "domain/src/commonTest/kotlin/mihon/domain/task/BackgroundTaskContractTest.kt#register creates one pending occurrence and only terminal tasks accept a new key",
+                "domain/src/commonTest/kotlin/mihon/domain/task/BackgroundTaskContractTest.kt#complete fail and cancel have explicit legal state matrices",
+                "domain/src/commonTest/kotlin/mihon/domain/task/BackgroundTaskContractTest.kt#one terminal result cannot be repeated or rewritten",
             ),
             behavior.getValue("shared").jsonArray.map { it.jsonPrimitive.content }.toSet(),
         )
         assertEquals(
             setOf(
-                "app-desktop/src/test/kotlin/mihon/desktop/task/DesktopTaskSchedulerIntegrationTest.kt#checkpoint and cancellation obey legal terminal transitions",
-                "app-desktop/src/test/kotlin/mihon/desktop/task/DesktopTaskSchedulerIntegrationTest.kt#idempotency key deduplicates pending registrations",
+                "app-desktop/src/test/kotlin/mihon/desktop/task/DesktopTaskSchedulerIntegrationTest.kt#production scheduler delegates lifecycle transitions to shared policy",
+                "app-desktop/src/test/kotlin/mihon/desktop/task/DesktopTaskSchedulerIntegrationTest.kt#rejected shared start leaves the persisted task pending",
                 "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt#new instance resumes after cursor and never repeats successful manga",
-                "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt#reinitializing while scheduler runs joins old work and closes old database",
+                "app-desktop/src/test/kotlin/mihon/desktop/migration/DesktopBatchMigrationControllerTest.kt#cancelling a paused queue persists a desktop cancelled terminal",
+                "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt#测试配置入口使用隔离内存存储并解析实际依赖",
             ),
             behavior.getValue("desktop").jsonArray.map { it.jsonPrimitive.content }.toSet(),
         )
-        assertTrue(requiredText(audit, "missingBehaviorEvidence", 10).contains("Android production caller"))
+        assertEquals("NONE", requiredText(audit, "missingBehaviorEvidence", 10))
 
         val child = Files.readString(repositoryRoot.resolve(childPlan))
         val metadata = markdownFrontmatter(child)
         assertEquals("Task 16B", metadata["parent-task"])
         assertEquals(fixedOriginalMihonRef, metadata["original-ref"])
-        assertEquals("planned", metadata["status"])
+        assertEquals("completed", metadata["status"])
         assertFalse("active-task" in metadata, "child progress must derive from its first unchecked checkbox")
         setOf("Task 161", "Task 162", "Task 163").forEach { task ->
             assertEquals(1, Regex("""(?m)^### $task(?:\s|$)""").findAll(child).count(), "$task must be finite and unique")
+            assertTrue(Regex("""(?m)^- \[x] $task[：:]""").containsMatchIn(child), "$task must be checked off")
         }
         assertFalse("Task 16C" in child, "Task 16B child plan must not absorb the architecture guard")
 

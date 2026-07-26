@@ -3,7 +3,7 @@ parent-plan: docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.
 parent-task: Task 16B
 task-base: c15f31897d0b736653ba6b11c4bdf732748fc1f4
 original-ref: main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8
-status: planned
+status: completed
 ---
 
 # Background task state-machine closure
@@ -20,7 +20,7 @@ status: planned
 
 - [x] Task 161：shared task lifecycle core
 - [x] Task 162：Android WorkManager consumer
-- [ ] Task 163：Desktop scheduler consumer and closeout
+- [x] Task 163：Desktop scheduler consumer and closeout
 
 ### Task 161 shared task lifecycle core
 
@@ -111,3 +111,5 @@ status: planned
 **Feedback:** progress、one terminal success/failure/cancel、恢复后的累计进度与 failure detail 保持可见；already-running 调用共享同一 occurrence。
 
 **Desktop zero-regression:** checkpoint 文件兼容、corrupt quarantine、concurrent writer、partial failure、creator discovery 与 shutdown join 全部必须继续通过。
+
+**Execution evidence（已完成）：** `DesktopTaskScheduler` 的 register/start/checkpoint/completeUnit/complete/fail 与 Library Running-only cancel 已真实委托 Task 161 `BackgroundTaskLifecycle`；`FileTaskCheckpointStore` 继续独占原子持久化，Failed 恢复以新 occurrence 保留 workset、worksetInitialized 与 completed IDs，structured failure 在新 occurrence 清除。Desktop 批量迁移的 queued/Failed cancel 作为明确产品 adapter 保留，Library `cancelUpdate()` 使用严格 `cancelRunning()`，因此没有用固定原版规则删除 Desktop 独有队列能力。初始 RED 精确失败于 production 未调用 shared reducer、shared rejection 不控制持久状态及 Pending cancel 未受限；GREEN 后 scheduler/library recovery/migration/tracker/DI 六类组合门禁 `86/86`。丢 completed IDs 与 DI 第二 scheduler 两项 mutation 均精确 RED 并恢复；首审唯一 P1 指出 queued migration cancel 回退，修复 RED 精确失败于 Pending 队列未持久化 Cancelled，修复后相关 focused tests GREEN，复审 APPROVED。ID10 manifest 已以 Android/shared/Desktop 三端真实 protection evidence 从 `WIRED` 提升为 `VERIFIED`，无剩余 gap；root `spotlessCheck` 与 `git diff --check` 通过。

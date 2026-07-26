@@ -520,8 +520,11 @@ Windows capture 前台限制、Linux 前置缺失及没有受信 MSI/DMG 保持�
 shared lifecycle RED→GREEN、三项 mutation、唯一审查修复与复审，固定原版只取消 RUNNING
 的语义已闭合；Task 162 已完成当前 Android WorkManager production consumer，真实 worker、
 周期/手动调度、停止恢复与 Updates feedback focused tests `10/10`，首审两个 P1 经一轮修复
-后复审 APPROVED。Task 17 保持活动；下一恢复位置为 Task 163，随后按 Task 16C、Task 16D
-顺序执行。Task 16A 审计已明确无需生成产品 child plan。
+后复审 APPROVED；Task 163 已完成 Desktop shared lifecycle consumer、Failed recovery payload、
+单 scheduler DI 与 queued migration cancel adapter，组合门禁 `86/86`，首审唯一 P1 经一轮
+修复后复审 APPROVED，ID10 从 `WIRED` 提升为 `VERIFIED`。Task 16B child 已全部勾选并完成。
+Task 17 保持活动；下一恢复位置为 Task 16C，随后按 Task 16D 顺序执行。Task 16A 审计已明确
+无需生成产品 child plan。
 
 ### Task 18：让 64 项最终 closure 与架构 gate 变绿
 

@@ -83,7 +83,7 @@ class LibraryUpdateScheduler(
     fun runNow(): Job = synchronized(updateLock) {
         updateJob?.takeIf { it.isActive }?.let { return@synchronized it }
         val existing = taskSnapshot()
-        val task = if (existing?.status in setOf(TaskStatus.Completed, TaskStatus.Cancelled)) {
+        val task = if (existing?.status in setOf(TaskStatus.Completed, TaskStatus.Failed, TaskStatus.Cancelled)) {
             LIBRARY_UPDATE_TASK.copy(idempotencyKey = "library-update:${System.nanoTime()}")
         } else {
             LIBRARY_UPDATE_TASK
@@ -118,7 +118,7 @@ class LibraryUpdateScheduler(
     }
 
     fun cancelUpdate(): Boolean {
-        val cancelled = taskScheduler?.cancel(LIBRARY_UPDATE_TASK.id) == true
+        val cancelled = taskScheduler?.cancelRunning(LIBRARY_UPDATE_TASK.id) == true
         if (cancelled) {
             updateJob?.cancel()
             taskNotifier?.notify(NotificationEvent.Cancelled(LIBRARY_UPDATE_TASK.id, "Library update cancelled"))

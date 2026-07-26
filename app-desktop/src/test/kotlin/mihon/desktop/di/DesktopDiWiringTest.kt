@@ -1041,6 +1041,19 @@ class DesktopDiWiringTest {
         assertNotNull(Injekt.get<DesktopCredentialStore>())
         assertNotNull(Injekt.get<ReadingProgressTrackSync>())
         assertNotNull(Injekt.get<DesktopTrackerSyncScheduler>())
+        val sharedTaskScheduler = Injekt.get<DesktopTaskScheduler>()
+        assertSame(
+            sharedTaskScheduler,
+            Injekt.get<LibraryUpdateScheduler>().privateField("taskScheduler"),
+        )
+        assertSame(
+            sharedTaskScheduler,
+            Injekt.get<DesktopBatchMigrationController>().privateField("scheduler"),
+        )
+        assertSame(
+            sharedTaskScheduler,
+            Injekt.get<DesktopTrackerSyncScheduler>().privateField("scheduler"),
+        )
         assertEquals(emptySet<Long>(), Injekt.get<TrackerSessionProvider>().loggedInTrackerIds().first())
         assertNotNull(Injekt.get<BackupRestoreScreenModelFactory>())
         val backupFilePicker = Injekt.get<DesktopBackupFilePicker>()
@@ -1071,4 +1084,8 @@ class DesktopDiWiringTest {
             context.closeAndJoin()
         }
     }
+
+    private fun Any.privateField(name: String): Any? = javaClass.getDeclaredField(name)
+        .apply { isAccessible = true }
+        .get(this)
 }

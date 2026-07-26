@@ -1,5 +1,8 @@
 package mihon.desktop.task
 
+import io.mockk.every
+import io.mockk.mockkObject
+import io.mockk.unmockkObject
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
@@ -9,7 +12,12 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import mihon.domain.error.AppError
 import mihon.domain.task.BackgroundTask
+import mihon.domain.task.BackgroundTaskLifecycle
 import mihon.domain.task.TaskCheckpoint
+import mihon.domain.task.TaskLifecycleDecision
+import mihon.domain.task.TaskLifecycleEvent
+import mihon.domain.task.TaskLifecycleOutcome
+import mihon.domain.task.TaskLifecycleRejection
 import mihon.domain.task.TaskStatus
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -29,9 +37,76 @@ class DesktopTaskSchedulerIntegrationTest {
     @TempDir lateinit var directory: Path
 
     @Test
+    fun `production scheduler delegates lifecycle transitions to shared policy`() {
+        val events = mutableListOf<TaskLifecycleEvent>()
+        mockkObject(BackgroundTaskLifecycle)
+        every { BackgroundTaskLifecycle.reduce(any(), any()) } answers {
+            events += secondArg<TaskLifecycleEvent>()
+            callOriginal()
+        }
+        try {
+            val scheduler = scheduler()
+            scheduler.register(task("one", "daily"))
+            assertTrue(scheduler.start("one"))
+            assertTrue(scheduler.checkpoint("one", TaskCheckpoint("page-2", 2, 0.5f)))
+            assertTrue(scheduler.complete("one"))
+            scheduler.register(task("two", "weekly"))
+            assertTrue(scheduler.start("two"))
+            assertTrue(scheduler.cancelRunning("two"))
+
+            assertEquals(
+                listOf(
+                    TaskLifecycleEvent.Register::class,
+                    TaskLifecycleEvent.Start::class,
+                    TaskLifecycleEvent.Checkpoint::class,
+                    TaskLifecycleEvent.Complete::class,
+                    TaskLifecycleEvent.Register::class,
+                    TaskLifecycleEvent.Start::class,
+                    TaskLifecycleEvent.Cancel::class,
+                ),
+                events.map { it::class },
+            )
+        } finally {
+            unmockkObject(BackgroundTaskLifecycle)
+        }
+    }
+
+    @Test
+    fun `rejected shared start leaves the persisted task pending`() {
+        val scheduler = scheduler()
+        scheduler.register(task("one", "daily"))
+        mockkObject(BackgroundTaskLifecycle)
+        every { BackgroundTaskLifecycle.reduce(any(), TaskLifecycleEvent.Start) } answers {
+            TaskLifecycleDecision(
+                outcome = TaskLifecycleOutcome.Rejected,
+                occurrence = firstArg(),
+                rejection = TaskLifecycleRejection.InvalidTransition,
+            )
+        }
+        try {
+            assertFalse(scheduler.start("one"))
+            assertEquals(TaskStatus.Pending, scheduler.snapshot("one")?.status)
+        } finally {
+            unmockkObject(BackgroundTaskLifecycle)
+        }
+    }
+
+    @Test
+    fun `only a running task can be cancelled`() {
+        val scheduler = scheduler()
+        scheduler.register(task("one", "daily"))
+
+        assertFalse(scheduler.cancelRunning("one"))
+        assertTrue(scheduler.start("one"))
+        assertTrue(scheduler.cancelRunning("one"))
+        assertEquals(TaskStatus.Cancelled, scheduler.snapshot("one")?.status)
+    }
+
+    @Test
     fun `checkpoint and cancellation obey legal terminal transitions`() {
         val scheduler = scheduler()
         scheduler.register(task("one", "same"))
+        scheduler.start("one")
         scheduler.complete("one")
 
         assertFalse(scheduler.cancel("one"))
@@ -165,8 +240,10 @@ class DesktopTaskSchedulerIntegrationTest {
         val file = directory.resolve("tasks.json")
         val scheduler = DesktopTaskScheduler(FileTaskCheckpointStore(file))
         scheduler.register(task("server", "server-key"))
+        scheduler.start("server")
         scheduler.fail("server", AppError.Server(503, IllegalStateException("unavailable")))
         scheduler.register(task("rate", "rate-key"))
+        scheduler.start("rate")
         scheduler.fail("rate", AppError.RateLimited(42, IllegalStateException("slow down")))
         scheduler.register(task("pending", "pending-key"))
 

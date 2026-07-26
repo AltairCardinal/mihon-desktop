@@ -18,7 +18,11 @@ import mihon.domain.error.AppError
 import mihon.domain.error.StoredAppError
 import mihon.domain.error.toStoredAppError
 import mihon.domain.task.BackgroundTask
+import mihon.domain.task.BackgroundTaskLifecycle
 import mihon.domain.task.TaskCheckpoint
+import mihon.domain.task.TaskLifecycleEvent
+import mihon.domain.task.TaskLifecycleOutcome
+import mihon.domain.task.TaskOccurrence
 import mihon.domain.task.TaskStatus
 import mihon.desktop.platform.retryTransientAccessDenied
 import java.nio.file.AtomicMoveNotSupportedException
@@ -136,19 +140,40 @@ class DesktopTaskScheduler(private val store: FileTaskCheckpointStore) {
         var result: StoredTask? = null
         store.update { tasks ->
             val existing = tasks.firstOrNull { it.task.idempotencyKey == task.idempotencyKey }
-            result = existing ?: StoredTask(task).also { replacement ->
-                tasks.removeAll { it.task.id == task.id && it.status in terminalStatuses }
-                tasks += replacement
+                ?: tasks.firstOrNull { it.task.id == task.id }
+            val decision = BackgroundTaskLifecycle.reduce(
+                existing?.toOccurrence(),
+                TaskLifecycleEvent.Register(task),
+            )
+            result = when (decision.outcome) {
+                TaskLifecycleOutcome.Applied -> {
+                    val replacement = if (existing?.status == TaskStatus.Failed) {
+                        StoredTask(
+                            task = task,
+                            workset = existing.workset,
+                            worksetInitialized = existing.worksetInitialized,
+                            completedUnitIds = existing.completedUnitIds,
+                        )
+                    } else {
+                        StoredTask(task)
+                    }
+                    tasks.removeAll { it.task.id == task.id && it.status in terminalStatuses }
+                    tasks += replacement
+                    replacement
+                }
+                TaskLifecycleOutcome.AlreadyApplied,
+                TaskLifecycleOutcome.Rejected,
+                -> existing
             }
         }
         return checkNotNull(result)
     }
 
-    fun checkpoint(id: String, checkpoint: TaskCheckpoint): Boolean = transition(id) { current ->
-        if (current.status !in setOf(TaskStatus.Pending, TaskStatus.Running)) current else current.copy(
-            task = current.task.copy(checkpoint = checkpoint),
-            status = TaskStatus.Running,
-        )
+    fun checkpoint(id: String, checkpoint: TaskCheckpoint): Boolean = lifecycleTransition(
+        id,
+        TaskLifecycleEvent.Checkpoint(checkpoint),
+    ) { current, occurrence ->
+        current.copy(task = occurrence.task, status = occurrence.status)
     }
 
     fun replaceCheckpoint(id: String, checkpoint: TaskCheckpoint): Boolean = transition(id) { current ->
@@ -167,37 +192,50 @@ class DesktopTaskScheduler(private val store: FileTaskCheckpointStore) {
         }
     }
 
-    fun completeUnit(id: String, unitId: Long, checkpoint: TaskCheckpoint): Boolean = transition(id) { current ->
-        if (current.status !in setOf(TaskStatus.Pending, TaskStatus.Running)) current else current.copy(
-            task = current.task.copy(checkpoint = checkpoint),
-            status = TaskStatus.Running,
+    fun completeUnit(id: String, unitId: Long, checkpoint: TaskCheckpoint): Boolean = lifecycleTransition(
+        id,
+        TaskLifecycleEvent.Checkpoint(checkpoint),
+    ) { current, occurrence ->
+        current.copy(
+            task = occurrence.task,
+            status = occurrence.status,
             completedUnitIds = current.completedUnitIds + unitId,
         )
     }
 
     fun cancel(id: String): Boolean = transition(id) { current ->
-        if (current.status !in setOf(TaskStatus.Pending, TaskStatus.Running, TaskStatus.Failed)) current else current.copy(status = TaskStatus.Cancelled)
+        if (current.status in setOf(TaskStatus.Pending, TaskStatus.Failed)) {
+            current.copy(status = TaskStatus.Cancelled)
+        } else {
+            applyLifecycle(current, TaskLifecycleEvent.Cancel) { stored, occurrence ->
+                stored.copy(status = occurrence.status)
+            }
+        }
+    }
+
+    fun cancelRunning(id: String): Boolean = lifecycleTransition(id, TaskLifecycleEvent.Cancel) { current, occurrence ->
+        current.copy(status = occurrence.status)
     }
 
     fun pause(id: String): Boolean = transition(id) { current ->
         if (current.status != TaskStatus.Running) current else current.copy(status = TaskStatus.Pending)
     }
 
-    fun start(id: String): Boolean = transition(id) { current ->
-        if (current.status !in setOf(TaskStatus.Pending, TaskStatus.Failed)) current else current.copy(
-            status = TaskStatus.Running,
+    fun start(id: String): Boolean = lifecycleTransition(id, TaskLifecycleEvent.Start) { current, occurrence ->
+        current.copy(
+            status = occurrence.status,
             failure = null,
             failedUnits = emptyList(),
         )
     }
 
-    fun complete(id: String): Boolean = transition(id) { current ->
-        if (current.status !in setOf(TaskStatus.Pending, TaskStatus.Running)) current else current.copy(status = TaskStatus.Completed)
+    fun complete(id: String): Boolean = lifecycleTransition(id, TaskLifecycleEvent.Complete) { current, occurrence ->
+        current.copy(status = occurrence.status)
     }
 
-    fun fail(id: String, error: AppError): Boolean = transition(id) { current ->
-        if (current.status !in setOf(TaskStatus.Pending, TaskStatus.Running)) current else current.copy(
-            status = TaskStatus.Failed,
+    fun fail(id: String, error: AppError): Boolean = lifecycleTransition(id, TaskLifecycleEvent.Fail) { current, occurrence ->
+        current.copy(
+            status = occurrence.status,
             failure = error.toStoredAppError(),
             failedUnits = (error as? AppError.PartialFailure)?.failedUnits?.map { it.unitId }.orEmpty(),
         )
@@ -220,6 +258,27 @@ class DesktopTaskScheduler(private val store: FileTaskCheckpointStore) {
         }
         return changed
     }
+
+    private fun lifecycleTransition(
+        id: String,
+        event: TaskLifecycleEvent,
+        change: (StoredTask, TaskOccurrence) -> StoredTask,
+    ): Boolean = transition(id) { current -> applyLifecycle(current, event, change) }
+
+    private fun applyLifecycle(
+        current: StoredTask,
+        event: TaskLifecycleEvent,
+        change: (StoredTask, TaskOccurrence) -> StoredTask,
+    ): StoredTask {
+        val decision = BackgroundTaskLifecycle.reduce(current.toOccurrence(), event)
+        return if (decision.outcome != TaskLifecycleOutcome.Applied) {
+            current
+        } else {
+            change(current, checkNotNull(decision.occurrence))
+        }
+    }
+
+    private fun StoredTask.toOccurrence() = TaskOccurrence(task = task, status = status)
 
     private companion object {
         val terminalStatuses = setOf(TaskStatus.Completed, TaskStatus.Failed, TaskStatus.Cancelled)
