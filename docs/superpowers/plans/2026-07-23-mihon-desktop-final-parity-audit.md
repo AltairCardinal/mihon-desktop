@@ -531,7 +531,14 @@ Task 16C 的 Task 164 已完成 current Android extension repository response ad
 委托 shared `NetworkErrorMapper`。focused `10/10`、主门禁 Android `19/19`、三项断连
 mutation、唯一审查修复复审、parity governance 及 Spotless 均通过；ID8 的 current Android
 缺边已关闭但保留 `SHARED`，由 Task 169 统一完成
-五角色与终态收口。下一恢复位置为 Task 165。
+五角色与终态收口。
+
+Task 165 已将 Library/Detail 的 9 条 compiled repository edge 清零，并按固定原版改由
+`GetCategories`、`GetNextChapters`、`SetChapterReadStatus`、`SetMangaChapterFlags` 等
+shared interactors 承载排序、scanlator filter、未读进度清零与 flags 规则。focused
+`113/113`、单项 NEXT RED→GREEN、compiled/吞异常 mutations、组合门禁与 Spotless 全绿；
+ID95 仍保持 `WIRED`，剩余精确违规为 repository 5 条、manager/HTTP/ClassLoader 18 条。
+下一恢复位置为 Task 166。
 
 ### Task 18：让 64 项最终 closure 与架构 gate 变绿
 

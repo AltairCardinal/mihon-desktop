@@ -20,20 +20,22 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import tachiyomi.domain.category.interactor.SetMangaCategories
+import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.model.Category
-import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.interactor.BatchChapterResult
 import tachiyomi.domain.chapter.interactor.BatchUpdateChapters
+import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
+import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
-import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.creator.interactor.LinkMangaCreator
 import tachiyomi.domain.creator.model.CreatorRole
-import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.manga.interactor.GetMangaWithChapters
+import tachiyomi.domain.manga.interactor.SetMangaChapterFlags
+import tachiyomi.domain.manga.interactor.UpdateManga
 import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
-import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
 import mihon.domain.task.TaskState
 
@@ -52,11 +54,13 @@ class MangaDetailScreenModel(
     private val getAvailableScanlators: GetAvailableScanlators? = null,
     private val getExcludedScanlators: GetExcludedScanlators? = null,
     private val setExcludedScanlators: SetExcludedScanlators? = null,
-    private val categoryRepository: CategoryRepository? = null,
-    private val chapterRepository: ChapterRepository? = null,
-    private val mangaRepository: MangaRepository? = null,
+    private val getCategories: GetCategories? = null,
+    private val updateChapter: UpdateChapter? = null,
+    private val setChapterReadStatus: SetChapterReadStatus? = null,
+    private val updateManga: UpdateManga? = null,
+    private val setMangaChapterFlags: SetMangaChapterFlags? = null,
     private val setMangaCategories: SetMangaCategories? = null,
-    private val creatorRepository: CreatorRepository? = null,
+    private val linkMangaCreator: LinkMangaCreator? = null,
     private val enqueueDownload: ((DownloadItem) -> Unit)? = null,
     private val downloadQueue: StateFlow<List<DownloadItem>>? = null,
     private val isDownloaded: ((sourceId: Long, mangaTitle: String, chapterName: String) -> Boolean)? = null,
@@ -218,13 +222,13 @@ class MangaDetailScreenModel(
     // ── Business actions ─────────────────────────────────────────────────────
 
     suspend fun markAllRead(chapters: List<Chapter>) {
-        requireNotNull(chapterRepository) { "ChapterRepository is required" }
-            .updateAll(chapters.map { ChapterUpdate(id = it.id, read = true) })
+        requireNotNull(setChapterReadStatus) { "SetChapterReadStatus is required" }
+            .awaitOrThrow(chapters, read = true)
     }
 
     suspend fun markSelectedRead(chapters: List<Chapter>, read: Boolean) {
-        val repository = requireNotNull(chapterRepository) { "ChapterRepository is required" }
-        runChapterBatch(chapters) { repository.update(ChapterUpdate(id = it.id, read = read)) }
+        val updater = requireNotNull(setChapterReadStatus) { "SetChapterReadStatus is required" }
+        runChapterBatch(updater.filterToUpdate(chapters, read)) { updater.awaitOrThrow(it, read) }
     }
 
     suspend fun runChapterBatch(
@@ -238,31 +242,28 @@ class MangaDetailScreenModel(
 
     suspend fun markSelectedBookmark(chapters: List<Chapter>) {
         val shouldBookmark = chapters.any { !it.bookmark }
-        val repository = requireNotNull(chapterRepository) { "ChapterRepository is required" }
-        runChapterBatch(chapters) { repository.update(ChapterUpdate(id = it.id, bookmark = shouldBookmark)) }
+        val updater = requireNotNull(updateChapter) { "UpdateChapter is required" }
+        runChapterBatch(chapters) { updater.awaitOrThrow(ChapterUpdate(id = it.id, bookmark = shouldBookmark)) }
     }
 
     suspend fun markAtOrBelowRead(displayedChapters: List<Chapter>, selectedIds: Set<Long>) {
-        val repository = requireNotNull(chapterRepository) { "ChapterRepository is required" }
-        chaptersAtOrBelowSelection(displayedChapters, selectedIds).forEach { chapter ->
-            repository.update(ChapterUpdate(id = chapter.id, read = true))
-        }
+        requireNotNull(setChapterReadStatus) { "SetChapterReadStatus is required" }
+            .awaitOrThrow(chaptersAtOrBelowSelection(displayedChapters, selectedIds), read = true)
     }
 
     suspend fun toggleChapterBookmark(chapter: Chapter) {
-        requireNotNull(chapterRepository) { "ChapterRepository is required" }
-            .update(ChapterUpdate(id = chapter.id, bookmark = !chapter.bookmark))
+        requireNotNull(updateChapter) { "UpdateChapter is required" }
+            .awaitOrThrow(ChapterUpdate(id = chapter.id, bookmark = !chapter.bookmark))
     }
 
     suspend fun toggleChapterRead(chapter: Chapter) {
-        requireNotNull(chapterRepository) { "ChapterRepository is required" }
-            .update(ChapterUpdate(id = chapter.id, read = !chapter.read))
+        requireNotNull(setChapterReadStatus) { "SetChapterReadStatus is required" }
+            .awaitOrThrow(chapter, read = !chapter.read)
     }
 
     suspend fun toggleLibrary(manga: Manga, nowMillis: Long = System.currentTimeMillis()) {
-        val useCase = updateLibraryMembership
-            ?: UpdateLibraryMembership(requireNotNull(mangaRepository) { "MangaRepository is required" })
-        useCase.await(manga, favorite = !manga.favorite, nowMillis = nowMillis)
+        requireNotNull(updateLibraryMembership) { "UpdateLibraryMembership is required" }
+            .await(manga, favorite = !manga.favorite, nowMillis = nowMillis)
     }
 
     suspend fun chooseCustomCover() {
@@ -302,47 +303,26 @@ class MangaDetailScreenModel(
     }
 
     suspend fun setFetchInterval(mangaId: Long, interval: Int) {
-        requireNotNull(mangaRepository) { "MangaRepository is required" }
-            .update(MangaUpdate(id = mangaId, fetchInterval = if (interval == 0) 0 else -interval))
+        requireNotNull(updateManga) { "UpdateManga is required" }
+            .await(MangaUpdate(id = mangaId, fetchInterval = if (interval == 0) 0 else -interval))
     }
 
     suspend fun setReadingMode(mangaId: Long, currentFlags: Long, mode: ReadingMode?) {
-        requireNotNull(mangaRepository) { "MangaRepository is required" }
-            .update(MangaUpdate(id = mangaId, viewerFlags = viewerFlagsWithReadingMode(currentFlags, mode)))
+        requireNotNull(updateManga) { "UpdateManga is required" }
+            .await(MangaUpdate(id = mangaId, viewerFlags = viewerFlagsWithReadingMode(currentFlags, mode)))
     }
 
     suspend fun setChapterSort(manga: Manga, requestedMode: ChapterSortMode) {
-        val (nextMode, nextAscending) = nextChapterSort(
-            currentMode = _state.value.chapterSortMode,
-            currentAscending = _state.value.chapterSortAscending,
-            requestedMode = requestedMode,
-        )
-        requireNotNull(mangaRepository) { "MangaRepository is required" }
-            .update(
-                MangaUpdate(
-                    id = manga.id,
-                    chapterFlags = chapterSortFlags(
-                        mode = nextMode,
-                        ascending = nextAscending,
-                        currentFlags = manga.chapterFlags,
-                    ),
-                ),
-            )
-        setSortMode(nextMode)
-        setSortAscending(nextAscending)
+        val requestedFlag = requestedMode.toMangaFlag()
+        requireNotNull(setMangaChapterFlags) { "SetMangaChapterFlags is required" }
+            .awaitSetSortingModeOrFlipOrder(manga, requestedFlag)
+        setSortMode(requestedMode)
+        setSortAscending(if (manga.sorting == requestedFlag) manga.sortDescending() else true)
     }
 
     suspend fun setChapterDisplayMode(manga: Manga, displayMode: Long) {
-        requireNotNull(mangaRepository) { "MangaRepository is required" }
-            .update(
-                MangaUpdate(
-                    id = manga.id,
-                    chapterFlags = chapterDisplayFlags(
-                        displayMode = displayMode,
-                        currentFlags = manga.chapterFlags,
-                    ),
-                ),
-            )
+        requireNotNull(setMangaChapterFlags) { "SetMangaChapterFlags is required" }
+            .awaitSetDisplayMode(manga, displayMode)
     }
 
     fun enqueueDownloads(manga: Manga, chapters: List<Chapter>) {
@@ -431,12 +411,12 @@ class MangaDetailScreenModel(
     }
 
     suspend fun categories(): List<Category> {
-        return requireNotNull(categoryRepository) { "CategoryRepository is required" }.getAll().sortedBy { it.order }
+        return requireNotNull(getCategories) { "GetCategories is required" }.await().sortedBy { it.order }
     }
 
     suspend fun categoryIdsForManga(mangaId: Long): Set<Long> {
-        return requireNotNull(categoryRepository) { "CategoryRepository is required" }
-            .getCategoriesByMangaId(mangaId)
+        return requireNotNull(getCategories) { "GetCategories is required" }
+            .await(mangaId)
             .map { it.id }
             .toSet()
     }
@@ -467,8 +447,8 @@ class MangaDetailScreenModel(
     }
 
     suspend fun migrateTo(targetSourceId: Long, item: SManga, fallbackTitle: String?) {
-        requireNotNull(mangaRepository) { "MangaRepository is required" }
-            .update(
+        requireNotNull(updateManga) { "UpdateManga is required" }
+            .await(
                 MangaUpdate(
                     id = mangaId,
                     source = targetSourceId,
@@ -480,17 +460,8 @@ class MangaDetailScreenModel(
     }
 
     suspend fun linkCreator(name: String, role: CreatorRole): Long {
-        val repository = requireNotNull(creatorRepository) { "CreatorRepository is required" }
-        val creator = repository.upsertCreator(name)
-        repository.linkMangaCreator(
-            mangaId = mangaId,
-            creatorId = creator.id,
-            role = role,
-            sourceText = name,
-            confidence = 1.0,
-            evidence = "manga detail ${role.name.lowercase()}",
-        )
-        return creator.id
+        return requireNotNull(linkMangaCreator) { "LinkMangaCreator is required" }
+            .await(mangaId, name, role)
     }
 }
 

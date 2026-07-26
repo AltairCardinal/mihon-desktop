@@ -1306,7 +1306,12 @@ class DesktopProductCapabilityContractTest {
                     "app/src/main/java/eu/kanade/domain/DomainModule.kt",
                 ),
             7 to setOf("app/src/main/java/eu/kanade/tachiyomi/di/PreferenceModule.kt"),
-            8 to setOf("app/src/main/java/eu/kanade/tachiyomi/di/AppModule.kt"),
+            8 to
+                setOf(
+                    "app/src/main/java/eu/kanade/tachiyomi/di/AppModule.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/network/AndroidNetworkResponseAdapter.kt",
+                    "app/src/main/java/eu/kanade/tachiyomi/extension/api/ExtensionApi.kt",
+                ),
         )
     private val exactBatchOneDesktopPaths =
         mapOf(
@@ -3462,7 +3467,7 @@ class DesktopProductCapabilityContractTest {
         val expected =
             mapOf(
                 8 to Triple("SHARED", "$childPlan#task-169-compiled-boundary-closeout", 0),
-                95 to Triple("WIRED", "$childPlan#task-165-library-ui-use-case-boundary", 32),
+                95 to Triple("WIRED", "$childPlan#task-166-creator-and-tracking-use-case-boundary", 23),
             )
         val guardTest = "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt"
         fun JsonObject.strings(field: String) = getValue(field).jsonArray.map { it.jsonPrimitive.content }.toSet()
@@ -3527,12 +3532,28 @@ class DesktopProductCapabilityContractTest {
 
         val moduleAudit = items.getValue(95).jsonObject.getValue("architectureBoundaryAudit").jsonObject
         assertEquals(
-            setOf("mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.manga.interactor.GetLibraryManga"),
+            setOf(
+                "mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.manga.interactor.GetLibraryManga",
+                "mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.category.interactor.GetCategories",
+                "mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.chapter.interactor.GetChaptersByMangaId",
+                "mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.chapter.interactor.GetBookmarkedChaptersByMangaId",
+                "mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.chapter.interactor.SetChapterReadStatus",
+                "mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.history.interactor.GetNextChapters",
+                "mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.manga.interactor.UpdateManga",
+                "mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.track.interactor.GetTracksPerManga",
+                "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.category.interactor.GetCategories",
+                "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.chapter.interactor.UpdateChapter",
+                "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.chapter.interactor.SetChapterReadStatus",
+                "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.creator.interactor.LinkMangaCreator",
+                "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.manga.interactor.UpdateManga",
+                "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.manga.interactor.SetMangaChapterFlags",
+                "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.manga.interactor.UpdateLibraryMembership",
+            ),
             moduleAudit.strings("requiredCompiledEdges"),
         )
         assertTrue(moduleAudit.getValue("missingRequiredEdges").jsonArray.isEmpty())
         assertEquals(
-            mapOf("REPOSITORY" to 14, "MANAGER_HTTP_OR_CLASSLOADER" to 18),
+            mapOf("REPOSITORY" to 5, "MANAGER_HTTP_OR_CLASSLOADER" to 18),
             moduleAudit.getValue("forbiddenCompiledEdges").jsonArray
                 .map { requiredText(it.jsonObject, "category", 95, "forbiddenCompiledEdges") }
                 .groupingBy { it }
@@ -3548,7 +3569,8 @@ class DesktopProductCapabilityContractTest {
                 .associate { it.groupValues[2] to it.groupValues[1].lowercase() }
         assertEquals((164..169).map(Int::toString).toSet(), overview.keys)
         assertEquals("x", overview.getValue("164"))
-        assertEquals((165..169).map(Int::toString), overview.filterValues { it == " " }.keys.toList())
+        assertEquals("x", overview.getValue("165"))
+        assertEquals((166..169).map(Int::toString), overview.filterValues { it == " " }.keys.toList())
         assertEquals("planned", metadata["status"])
         (164..169).forEach { task ->
             assertEquals(1, Regex("""(?m)^### Task $task(?:\s|$)""").findAll(child).count(), "Task $task must be unique")

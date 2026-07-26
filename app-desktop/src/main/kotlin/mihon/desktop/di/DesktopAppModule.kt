@@ -125,12 +125,16 @@ import tachiyomi.domain.category.interactor.ReorderCategory
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.chapter.interactor.GetChapter
+import tachiyomi.domain.chapter.interactor.GetBookmarkedChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
+import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.creator.interactor.LinkMangaCreator
 import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.creator.service.CreatorDiscoveryService
 import tachiyomi.domain.history.interactor.GetHistory
+import tachiyomi.domain.history.interactor.GetNextChapters
 import tachiyomi.domain.history.interactor.RemoveHistory
 import tachiyomi.domain.history.interactor.UpsertHistory
 import tachiyomi.domain.history.repository.HistoryRepository
@@ -138,6 +142,7 @@ import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.TrackerSessionProvider
 import tachiyomi.domain.track.service.TrackerServiceRegistry
 import tachiyomi.domain.track.interactor.ReadingProgressTrackSync
+import tachiyomi.domain.track.interactor.GetTracksPerManga
 import tachiyomi.domain.track.interactor.SyncReadingProgressWithTrack
 import tachiyomi.domain.updates.interactor.GetUpdates
 import tachiyomi.domain.updates.repository.UpdatesRepository
@@ -151,6 +156,8 @@ import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.interactor.GetMangaWithChapters
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
+import tachiyomi.domain.manga.interactor.SetMangaChapterFlags
+import tachiyomi.domain.manga.interactor.UpdateManga
 import tachiyomi.domain.manga.interactor.UpdateMangaNotes
 import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
 import tachiyomi.domain.manga.repository.MangaRepository
@@ -559,20 +566,34 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
     Injekt.addSingleton(GetManga(mangaRepository))
     Injekt.addSingleton(GetMangaWithChapters(mangaRepository, chapterRepository))
     Injekt.addSingleton(GetChapter(chapterRepository))
+    Injekt.addSingleton(GetBookmarkedChaptersByMangaId(chapterRepository))
     Injekt.addSingleton(GetChaptersByMangaId(chapterRepository))
     Injekt.addSingleton(GetCategories(categoryRepository))
     Injekt.addSingleton(GetExcludedScanlators(handler))
     Injekt.addSingleton(SetExcludedScanlators(handler))
     Injekt.addSingleton(GetAvailableScanlators(chapterRepository))
     Injekt.addSingleton(GetHistory(historyRepository))
+    Injekt.addSingleton(
+        GetNextChapters(
+            Injekt.get<GetChaptersByMangaId>(),
+            Injekt.get<GetManga>(),
+            historyRepository,
+        ),
+    )
     Injekt.addSingleton(RemoveHistory(historyRepository))
     Injekt.addSingleton(GetUpdates(updatesRepository))
+    Injekt.addSingleton(GetTracksPerManga(Injekt.get<TrackRepository>()))
+    Injekt.addSingleton(LinkMangaCreator(creatorRepository))
 
     val networkToLocalManga = NetworkToLocalManga(mangaRepository)
     val updateChapter = UpdateChapter(chapterRepository)
+    val updateManga = UpdateManga(mangaRepository)
     val upsertHistory = UpsertHistory(historyRepository)
     Injekt.addSingleton(networkToLocalManga)
     Injekt.addSingleton(updateChapter)
+    Injekt.addSingleton(SetChapterReadStatus(Injekt.get<GetChaptersByMangaId>(), updateChapter))
+    Injekt.addSingleton(updateManga)
+    Injekt.addSingleton(SetMangaChapterFlags(mangaRepository))
     Injekt.addSingleton(upsertHistory)
 
     val saveSourceMangaForDetails = SaveSourceMangaForDetails(networkToLocalManga, mangaRepository, chapterRepository)

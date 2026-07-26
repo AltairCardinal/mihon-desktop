@@ -3,6 +3,7 @@ package mihon.desktop.ui.library
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
+import mihon.desktop.domain.fakes.FakeCategoryRepository
 import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.domain.fakes.FakeMangaRepository
 import mihon.desktop.download.DownloadItem
@@ -16,13 +17,21 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Test
+import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
+import tachiyomi.domain.category.model.Category
+import tachiyomi.domain.chapter.interactor.UpdateChapter
+import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
 import tachiyomi.domain.chapter.model.ChapterUpdate
+import tachiyomi.domain.creator.interactor.LinkMangaCreator
 import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
+import tachiyomi.domain.manga.interactor.UpdateManga
+import tachiyomi.domain.manga.interactor.SetMangaChapterFlags
 import tachiyomi.domain.chapter.interactor.BatchUpdateChapters
 import mihon.domain.task.TaskState
 import mihon.domain.error.AppError
@@ -34,6 +43,21 @@ import mihon.domain.error.AppError
  * lives in a ScreenModel with StateFlow<MangaDetailState>.
  */
 class MangaDetailScreenModelTest {
+    @Test
+    fun `categories and manga assignments are read through category use case`() = runTest {
+        val repository = FakeCategoryRepository()
+        repository.insert(Category(id = 1L, name = "Second", order = 2L, flags = 0L))
+        repository.insert(Category(id = 2L, name = "First", order = 1L, flags = 0L))
+        repository.setMangaCategories(mangaId = 42L, categoryIds = setOf(1L))
+        val model = MangaDetailScreenModel(
+            mangaId = 42L,
+            getCategories = GetCategories(repository),
+        )
+
+        assertEquals(listOf(2L, 1L), model.categories().map { it.id })
+        assertEquals(setOf(1L), model.categoryIdsForManga(42L))
+    }
+
     @Test
     fun `cover selection cancellation has no side effects`() = runTest {
         var updates = 0
@@ -114,6 +138,40 @@ class MangaDetailScreenModelTest {
         val result = model.runChapterBatch(chapters) { if (it.id == 2L) error("write failed") }
 
         assertEquals(listOf(1L), result.succeededIds)
+        assertEquals("1 succeeded, 1 failed", model.state.value.batchActionMessage)
+    }
+
+    @Test
+    fun `selected unread resets progress skips unchanged and exposes write failure`() = runTest {
+        val backing = FakeChapterRepository()
+        val chapters = listOf(
+            createFakeChapter(1L).copy(read = true, lastPageRead = 6L),
+            createFakeChapter(2L).copy(read = false, lastPageRead = 0L),
+            createFakeChapter(3L).copy(read = false, lastPageRead = 2L),
+        )
+        backing.addAll(chapters)
+        val repository = object : tachiyomi.domain.chapter.repository.ChapterRepository by backing {
+            override suspend fun update(chapterUpdate: ChapterUpdate) {
+                if (chapterUpdate.id == 3L) error("write failed")
+                backing.update(chapterUpdate)
+            }
+
+            override suspend fun updateAll(chapterUpdates: List<ChapterUpdate>) {
+                chapterUpdates.forEach { update(it) }
+            }
+        }
+        val model = MangaDetailScreenModel(
+            mangaId = 1L,
+            setChapterReadStatus = SetChapterReadStatus(
+                tachiyomi.domain.chapter.interactor.GetChaptersByMangaId(repository),
+                UpdateChapter(repository),
+            ),
+        )
+
+        model.markSelectedRead(chapters, read = false)
+
+        assertEquals(listOf(1L), backing.updates.map { it.id })
+        assertEquals(0L, backing.updates.single().lastPageRead)
         assertEquals("1 succeeded, 1 failed", model.state.value.batchActionMessage)
     }
 
@@ -436,7 +494,13 @@ class MangaDetailScreenModelTest {
         val chapterRepository = FakeChapterRepository()
         val chapters = listOf(createFakeChapter(1L), createFakeChapter(2L))
         chapterRepository.addAll(chapters)
-        val model = MangaDetailScreenModel(mangaId = 1L, chapterRepository = chapterRepository)
+        val model = MangaDetailScreenModel(
+            mangaId = 1L,
+            setChapterReadStatus = SetChapterReadStatus(
+                tachiyomi.domain.chapter.interactor.GetChaptersByMangaId(chapterRepository),
+                UpdateChapter(chapterRepository),
+            ),
+        )
 
         model.markAllRead(chapters)
 
@@ -452,7 +516,7 @@ class MangaDetailScreenModelTest {
             createFakeChapter(2L).copy(bookmark = false),
         )
         chapterRepository.addAll(chapters)
-        val model = MangaDetailScreenModel(mangaId = 1L, chapterRepository = chapterRepository)
+        val model = MangaDetailScreenModel(mangaId = 1L, updateChapter = UpdateChapter(chapterRepository))
 
         model.markSelectedBookmark(chapters)
 
@@ -469,7 +533,10 @@ class MangaDetailScreenModelTest {
     fun `toggleLibrary clears favorite date and categories when removing`() = runTest {
         val mangaRepository = FakeMangaRepository()
         mangaRepository.seed(createFakeManga(id = 1L).copy(favorite = true, dateAdded = 123L))
-        val model = MangaDetailScreenModel(mangaId = 1L, mangaRepository = mangaRepository)
+        val model = MangaDetailScreenModel(
+            mangaId = 1L,
+            updateLibraryMembership = UpdateLibraryMembership(mangaRepository),
+        )
 
         model.toggleLibrary(mangaRepository.get(1L)!!)
 
@@ -479,26 +546,38 @@ class MangaDetailScreenModelTest {
     }
 
     @Test
-    fun `setChapterSort persists chapter flags and updates state`() = runTest {
-        val mangaRepository = FakeMangaRepository()
+    fun `chapter sort and display persist through chapter flags use case`() = runTest {
+        val genericRepository = FakeMangaRepository()
+        val flagsRepository = FakeMangaRepository()
         val manga = createFakeManga(id = 1L).copy(chapterFlags = chapterSortFlags(ChapterSortMode.BY_SOURCE_ORDER, false))
-        mangaRepository.seed(manga)
-        val model = MangaDetailScreenModel(mangaId = 1L, mangaRepository = mangaRepository)
+        genericRepository.seed(manga)
+        flagsRepository.seed(manga)
+        val model = MangaDetailScreenModel(
+            mangaId = 1L,
+            updateManga = UpdateManga(genericRepository),
+            setMangaChapterFlags = SetMangaChapterFlags(flagsRepository),
+        )
         model.setManga(manga)
 
         model.setChapterSort(manga, ChapterSortMode.BY_CHAPTER_NUMBER)
+        model.setChapterDisplayMode(manga, Manga.CHAPTER_DISPLAY_NUMBER)
 
-        assertEquals(ChapterSortMode.BY_CHAPTER_NUMBER, model.state.value.chapterSortMode)
-        assertFalse(model.state.value.chapterSortAscending)
-        assertEquals(1, mangaRepository.updates.size)
-        assertEquals(1L, mangaRepository.updates.single().id)
-        assertNotNull(mangaRepository.updates.single().chapterFlags)
+        assertTrue(genericRepository.updates.isEmpty())
+        assertEquals(2, flagsRepository.updates.size)
+        assertEquals(
+            Manga.CHAPTER_SORTING_NUMBER,
+            flagsRepository.updates[0].chapterFlags!! and Manga.CHAPTER_SORTING_MASK,
+        )
+        assertEquals(
+            Manga.CHAPTER_DISPLAY_NUMBER,
+            flagsRepository.updates[1].chapterFlags!! and Manga.CHAPTER_DISPLAY_MASK,
+        )
     }
 
     @Test
     fun `setReadingMode persists viewer flags`() = runTest {
         val mangaRepository = FakeMangaRepository()
-        val model = MangaDetailScreenModel(mangaId = 1L, mangaRepository = mangaRepository)
+        val model = MangaDetailScreenModel(mangaId = 1L, updateManga = UpdateManga(mangaRepository))
 
         model.setReadingMode(mangaId = 1L, currentFlags = 0L, mode = ReadingMode.WEBTOON)
 
@@ -614,7 +693,7 @@ class MangaDetailScreenModelTest {
     @Test
     fun `migrateTo persists target source and manga identity`() = runTest {
         val mangaRepository = FakeMangaRepository()
-        val model = MangaDetailScreenModel(mangaId = 1L, mangaRepository = mangaRepository)
+        val model = MangaDetailScreenModel(mangaId = 1L, updateManga = UpdateManga(mangaRepository))
         val target = SManga.create().apply {
             url = "/new"
             title = "New title"
@@ -631,7 +710,10 @@ class MangaDetailScreenModelTest {
     @Test
     fun `linkCreator stores creator relation and returns creator id`() = runTest {
         val creatorRepository = FakeCreatorRepository()
-        val model = MangaDetailScreenModel(mangaId = 42L, creatorRepository = creatorRepository)
+        val model = MangaDetailScreenModel(
+            mangaId = 42L,
+            linkMangaCreator = LinkMangaCreator(creatorRepository),
+        )
 
         val creatorId = model.linkCreator("Jane", CreatorRole.AUTHOR)
 

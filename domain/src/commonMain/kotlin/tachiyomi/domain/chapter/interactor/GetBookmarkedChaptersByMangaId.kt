@@ -9,9 +9,13 @@ class GetBookmarkedChaptersByMangaId(
     private val chapterRepository: ChapterRepository,
 ) {
 
+    suspend fun awaitOrThrow(mangaId: Long): List<Chapter> {
+        return chapterRepository.getBookmarkedChaptersByMangaId(mangaId)
+    }
+
     suspend fun await(mangaId: Long): List<Chapter> {
         return try {
-            chapterRepository.getBookmarkedChaptersByMangaId(mangaId)
+            awaitOrThrow(mangaId)
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             emptyList()

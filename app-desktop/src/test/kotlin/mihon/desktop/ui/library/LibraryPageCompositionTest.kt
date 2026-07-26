@@ -31,6 +31,7 @@ import tachiyomi.domain.library.interactor.LibraryFilter
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.track.interactor.GetTracksPerManga
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.TrackerSessionProvider
@@ -62,7 +63,7 @@ class LibraryPageCompositionTest {
             getLibraryManga = GetLibraryManga(mangaRepository),
             getCategories = GetCategories(FakeCategoryRepository()),
             downloadProvider = DesktopDownloadProvider(tempDir.toFile()),
-            trackRepository = trackRepositoryOf(tracks),
+            getTracksPerManga = GetTracksPerManga(trackRepositoryOf(tracks)),
             trackerSessionProvider = TrackerSessionProvider { sessions },
         )
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true)

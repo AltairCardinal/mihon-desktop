@@ -9,9 +9,17 @@ class UpdateChapter(
     private val chapterRepository: ChapterRepository,
 ) {
 
+    suspend fun awaitOrThrow(chapterUpdate: ChapterUpdate) {
+        chapterRepository.update(chapterUpdate)
+    }
+
+    suspend fun awaitAllOrThrow(chapterUpdates: List<ChapterUpdate>) {
+        chapterRepository.updateAll(chapterUpdates)
+    }
+
     suspend fun await(chapterUpdate: ChapterUpdate) {
         try {
-            chapterRepository.update(chapterUpdate)
+            awaitOrThrow(chapterUpdate)
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
         }
@@ -19,7 +27,7 @@ class UpdateChapter(
 
     suspend fun awaitAll(chapterUpdates: List<ChapterUpdate>) {
         try {
-            chapterRepository.updateAll(chapterUpdates)
+            awaitAllOrThrow(chapterUpdates)
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
         }

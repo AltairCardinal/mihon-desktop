@@ -67,7 +67,8 @@ class FakeChapterRepository : ChapterRepository {
 
     override suspend fun getScanlatorsByMangaId(mangaId: Long): List<String> = emptyList()
     override fun getScanlatorsByMangaIdAsFlow(mangaId: Long): Flow<List<String>> = flowOf(emptyList())
-    override suspend fun getBookmarkedChaptersByMangaId(mangaId: Long): List<Chapter> = emptyList()
+    override suspend fun getBookmarkedChaptersByMangaId(mangaId: Long): List<Chapter> =
+        store.values.filter { it.mangaId == mangaId && it.bookmark }
     override suspend fun getChapterByMangaIdAsFlow(
         mangaId: Long,
         applyScanlatorFilter: Boolean,

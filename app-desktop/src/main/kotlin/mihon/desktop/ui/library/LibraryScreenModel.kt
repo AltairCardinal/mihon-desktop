@@ -25,18 +25,19 @@ import tachiyomi.domain.category.interactor.DeleteCategory
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.RenameCategory
 import tachiyomi.domain.category.interactor.ReorderCategory
-import tachiyomi.domain.category.repository.CategoryRepository
-import tachiyomi.domain.chapter.model.ChapterUpdate
+import tachiyomi.domain.chapter.interactor.GetBookmarkedChaptersByMangaId
+import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
+import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
 import tachiyomi.domain.chapter.model.Chapter
-import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.library.model.LibraryManga
+import tachiyomi.domain.history.interactor.GetNextChapters
 import tachiyomi.domain.manga.interactor.GetLibraryManga
+import tachiyomi.domain.manga.interactor.UpdateManga
 import tachiyomi.domain.manga.model.MangaUpdate
-import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.track.model.Track
-import tachiyomi.domain.track.repository.TrackRepository
+import tachiyomi.domain.track.interactor.GetTracksPerManga
 import tachiyomi.domain.track.service.TrackerSessionProvider
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.library.interactor.LibraryFilter
@@ -77,15 +78,17 @@ class LibraryScreenModel(
     private val reorderCategory: ReorderCategory? = null,
     private val updateChecker: LibraryUpdateChecker? = null,
     private val sourceManager: SourceManager? = null,
-    private val chapterRepository: ChapterRepository? = null,
-    private val mangaRepository: MangaRepository? = null,
+    private val getChaptersByMangaId: GetChaptersByMangaId? = null,
+    private val getBookmarkedChaptersByMangaId: GetBookmarkedChaptersByMangaId? = null,
+    private val getNextChapters: GetNextChapters? = null,
+    private val setChapterReadStatus: SetChapterReadStatus? = null,
+    private val updateManga: UpdateManga? = null,
     private val setMangaCategories: SetMangaCategories? = null,
     private val enqueueDownload: ((DownloadItem) -> Unit)? = null,
     private val downloadProvider: DesktopDownloadProvider? = null,
     private val downloadPreferences: DesktopDownloadPreferences? = null,
     private val categoryPrefs: LibraryCategoryPrefs? = null,
-    private val categoryRepository: CategoryRepository? = null,
-    private val trackRepository: TrackRepository? = null,
+    private val getTracksPerManga: GetTracksPerManga? = null,
     private val trackerSessionProvider: TrackerSessionProvider? = null,
     private val startBackgroundUpdate: (() -> Job)? = null,
     private val cancelBackgroundUpdate: (() -> Boolean)? = null,
@@ -99,24 +102,26 @@ class LibraryScreenModel(
 
     fun libraryMangaFlow(): Flow<List<LibraryManga>> = combine(
         requireNotNull(getLibraryManga) { "GetLibraryManga is required" }.subscribe(),
-        trackRepository?.getTracksAsFlow() ?: flowOf(emptyList()),
+        getTracksPerManga?.subscribe() ?: flowOf(emptyMap()),
         trackerSessionProvider?.loggedInTrackerIds() ?: flowOf(emptySet()),
-    ) { items, tracks, loggedInTrackerIds ->
-        updateLibrarySnapshot(items, tracks, loggedInTrackerIds)
+    ) { items, tracksByManga, loggedInTrackerIds ->
+        updateLibrarySnapshot(items, tracksByManga, loggedInTrackerIds)
         items
     }
 
     private fun updateLibrarySnapshot(
         items: List<LibraryManga>,
-        tracks: List<Track>,
+        tracksByManga: Map<Long, List<Track>>,
         loggedInTrackerIds: Set<Long>,
     ) {
-        val activeTracks = tracks.filter { it.trackerId in loggedInTrackerIds }
-        val tracksByManga = activeTracks.groupBy { it.mangaId }
+        val activeTracksByManga = tracksByManga
+            .mapValues { (_, tracks) -> tracks.filter { it.trackerId in loggedInTrackerIds } }
+            .filterValues { it.isNotEmpty() }
+        val activeTracks = activeTracksByManga.values.flatten()
         val localMangaIds = items.mapNotNullTo(mutableSetOf()) { item ->
             item.id.takeIf { item.manga.source == LOCAL_SOURCE_ID }
         }
-        val trackerIdsByManga = tracksByManga.mapValues { (_, mangaTracks) ->
+        val trackerIdsByManga = activeTracksByManga.mapValues { (_, mangaTracks) ->
             mangaTracks.mapTo(mutableSetOf()) { track -> track.trackerId }
         }
         _state.update {
@@ -390,10 +395,8 @@ class LibraryScreenModel(
     fun cancelLibraryUpdate(): Boolean = cancelBackgroundUpdate?.invoke() == true
 
     suspend fun markMangaRead(mangaId: Long, read: Boolean) {
-        val repository = requireNotNull(chapterRepository) { "ChapterRepository is required" }
-        val updates = repository.getChapterByMangaId(mangaId)
-            .map { ChapterUpdate(id = it.id, read = read) }
-        repository.updateAll(updates)
+        requireNotNull(setChapterReadStatus) { "SetChapterReadStatus is required" }
+            .awaitOrThrow(mangaId, read)
     }
 
     suspend fun markMangaRead(mangaIds: Iterable<Long>, read: Boolean) {
@@ -401,18 +404,16 @@ class LibraryScreenModel(
     }
 
     suspend fun removeFromLibrary(mangaIds: Iterable<Long>) {
-        val repository = requireNotNull(mangaRepository) { "MangaRepository is required" }
+        val updater = requireNotNull(updateManga) { "UpdateManga is required" }
         mangaIds.forEach { mangaId ->
-            repository.update(MangaUpdate(id = mangaId, favorite = false))
+            updater.await(MangaUpdate(id = mangaId, favorite = false))
         }
     }
 
     suspend fun enqueueNextUnreadDownload(item: LibraryManga): Boolean {
-        val repository = requireNotNull(chapterRepository) { "ChapterRepository is required" }
+        val chapters = requireNotNull(getNextChapters) { "GetNextChapters is required" }
         val enqueue = requireNotNull(enqueueDownload) { "Download enqueue callback is required" }
-        val firstUnread = repository.getChapterByMangaId(item.manga.id)
-            .sortedBy { it.sourceOrder }
-            .firstOrNull { !it.read }
+        val firstUnread = chapters.awaitOrThrow(item.manga.id).firstOrNull()
             ?: return false
         enqueue(
             DownloadItem(
@@ -435,7 +436,10 @@ class LibraryScreenModel(
             _state.update { it.copy(batchCategoryResultMessage = "No manga selected") }
             return LibraryBatchDownloadResult()
         }
-        val repository = requireNotNull(chapterRepository) { "ChapterRepository is required" }
+        val bookmarkedByManga = requireNotNull(getBookmarkedChaptersByMangaId) {
+            "GetBookmarkedChaptersByMangaId is required"
+        }
+        val nextChaptersByManga = requireNotNull(getNextChapters) { "GetNextChapters is required" }
         val enqueue = requireNotNull(enqueueDownload) { "Download enqueue callback is required" }
         val activeIds = queue
             .filter { it.status == DownloadStatus.QUEUED || it.status == DownloadStatus.DOWNLOADING }
@@ -443,8 +447,19 @@ class LibraryScreenModel(
         var result = LibraryBatchDownloadResult()
         items.forEach { item ->
             val chapters = runCatching {
-                val all = repository.getChapterByMangaId(item.id)
-                if (action == MangaDetailDownloadAction.BOOKMARKED_CHAPTERS) all.filter { it.bookmark } else chaptersForDownloadAction(all, action)
+                if (action == MangaDetailDownloadAction.BOOKMARKED_CHAPTERS) {
+                    bookmarkedByManga.awaitOrThrow(item.id)
+                } else {
+                    val unread = nextChaptersByManga.awaitOrThrow(item.id)
+                    when (action) {
+                        MangaDetailDownloadAction.NEXT_1_CHAPTER -> unread.take(1)
+                        MangaDetailDownloadAction.NEXT_5_CHAPTERS -> unread.take(5)
+                        MangaDetailDownloadAction.NEXT_10_CHAPTERS -> unread.take(10)
+                        MangaDetailDownloadAction.NEXT_25_CHAPTERS -> unread.take(25)
+                        MangaDetailDownloadAction.UNREAD_CHAPTERS -> unread
+                        MangaDetailDownloadAction.BOOKMARKED_CHAPTERS -> error("Handled above")
+                    }
+                }
             }.getOrElse {
                 result = result.copy(failures = result.failures + 1)
                 return@forEach
@@ -477,8 +492,8 @@ class LibraryScreenModel(
     }
 
     suspend fun continueReadingRequest(item: LibraryManga): LibraryReaderRequest? {
-        val repository = requireNotNull(chapterRepository) { "ChapterRepository is required" }
-        val chapters = repository.getChapterByMangaId(item.manga.id)
+        val chapters = requireNotNull(getChaptersByMangaId) { "GetChaptersByMangaId is required" }
+            .awaitOrThrow(item.manga.id)
             .sortedBy { it.sourceOrder }
         val target = chapters.firstOrNull { !it.read }
             ?: chapters.maxByOrNull { it.sourceOrder }
@@ -523,8 +538,10 @@ class LibraryScreenModel(
     }
 
     suspend fun categoryIdsForManga(mangaId: Long): Set<Long> {
-        val repository = requireNotNull(categoryRepository) { "CategoryRepository is required" }
-        return repository.getCategoriesByMangaId(mangaId).map { it.id }.toSet()
+        return requireNotNull(getCategories) { "GetCategories is required" }
+            .await(mangaId)
+            .map { it.id }
+            .toSet()
     }
 }
 

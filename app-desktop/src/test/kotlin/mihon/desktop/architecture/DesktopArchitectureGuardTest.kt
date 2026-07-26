@@ -269,6 +269,35 @@ class DesktopArchitectureGuardTest {
                 CompiledEdge("mihon.desktop.source.MangaDexSource", "mihon.domain.network.NetworkErrorMapperKt"),
                 CompiledEdge("mihon.desktop.di.DesktopAppModuleKt", "mihon.desktop.platform.DesktopNetworkHelper"),
                 CompiledEdge("mihon.desktop.ui.library.LibraryScreenModel", "tachiyomi.domain.manga.interactor.GetLibraryManga"),
+                CompiledEdge("mihon.desktop.ui.library.LibraryScreenModel", "tachiyomi.domain.category.interactor.GetCategories"),
+                CompiledEdge("mihon.desktop.ui.library.LibraryScreenModel", "tachiyomi.domain.chapter.interactor.GetChaptersByMangaId"),
+                CompiledEdge(
+                    "mihon.desktop.ui.library.LibraryScreenModel",
+                    "tachiyomi.domain.chapter.interactor.GetBookmarkedChaptersByMangaId",
+                ),
+                CompiledEdge(
+                    "mihon.desktop.ui.library.LibraryScreenModel",
+                    "tachiyomi.domain.chapter.interactor.SetChapterReadStatus",
+                ),
+                CompiledEdge("mihon.desktop.ui.library.LibraryScreenModel", "tachiyomi.domain.history.interactor.GetNextChapters"),
+                CompiledEdge("mihon.desktop.ui.library.LibraryScreenModel", "tachiyomi.domain.manga.interactor.UpdateManga"),
+                CompiledEdge("mihon.desktop.ui.library.LibraryScreenModel", "tachiyomi.domain.track.interactor.GetTracksPerManga"),
+                CompiledEdge("mihon.desktop.ui.library.MangaDetailScreenModel", "tachiyomi.domain.category.interactor.GetCategories"),
+                CompiledEdge("mihon.desktop.ui.library.MangaDetailScreenModel", "tachiyomi.domain.chapter.interactor.UpdateChapter"),
+                CompiledEdge(
+                    "mihon.desktop.ui.library.MangaDetailScreenModel",
+                    "tachiyomi.domain.chapter.interactor.SetChapterReadStatus",
+                ),
+                CompiledEdge("mihon.desktop.ui.library.MangaDetailScreenModel", "tachiyomi.domain.creator.interactor.LinkMangaCreator"),
+                CompiledEdge("mihon.desktop.ui.library.MangaDetailScreenModel", "tachiyomi.domain.manga.interactor.UpdateManga"),
+                CompiledEdge(
+                    "mihon.desktop.ui.library.MangaDetailScreenModel",
+                    "tachiyomi.domain.manga.interactor.SetMangaChapterFlags",
+                ),
+                CompiledEdge(
+                    "mihon.desktop.ui.library.MangaDetailScreenModel",
+                    "tachiyomi.domain.manga.interactor.UpdateLibraryMembership",
+                ),
             )
         val permittedPlatformAdapters =
             mapOf(
@@ -279,10 +308,8 @@ class DesktopArchitectureGuardTest {
             )
         val acknowledgedProductionViolations =
             """
-            mihon.desktop.ui.authors.AuthorDetailScreen -> tachiyomi.domain.creator.repository.CreatorRepository;mihon.desktop.ui.authors.AuthorsRootScreen -> tachiyomi.domain.creator.repository.CreatorRepository;mihon.desktop.ui.authors.WorkCompareScreen -> tachiyomi.domain.creator.repository.CreatorRepository;mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.category.repository.CategoryRepository
-            mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.chapter.repository.ChapterRepository;mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.manga.repository.MangaRepository;mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.track.repository.TrackRepository;mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.category.repository.CategoryRepository
-            mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.chapter.repository.ChapterRepository;mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.creator.repository.CreatorRepository;mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.manga.repository.LibraryMembershipRepository;mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.manga.repository.MangaRepository
-            mihon.desktop.ui.tracking.TrackingScreenModel -> tachiyomi.domain.track.repository.TrackRepository;mihon.desktop.ui.tracking.TrackingSettingsScreen -> tachiyomi.domain.track.repository.TrackRepository;mihon.desktop.ui.browse.DesktopSourceCookieHeaderParser -> okhttp3.HttpUrl;mihon.desktop.ui.browse.DesktopSourceLastUsedRecorder -> mihon.desktop.extension.DesktopExtensionManager
+            mihon.desktop.ui.authors.AuthorDetailScreen -> tachiyomi.domain.creator.repository.CreatorRepository;mihon.desktop.ui.authors.AuthorsRootScreen -> tachiyomi.domain.creator.repository.CreatorRepository;mihon.desktop.ui.authors.WorkCompareScreen -> tachiyomi.domain.creator.repository.CreatorRepository;mihon.desktop.ui.tracking.TrackingScreenModel -> tachiyomi.domain.track.repository.TrackRepository
+            mihon.desktop.ui.tracking.TrackingSettingsScreen -> tachiyomi.domain.track.repository.TrackRepository;mihon.desktop.ui.browse.DesktopSourceCookieHeaderParser -> okhttp3.HttpUrl;mihon.desktop.ui.browse.DesktopSourceLastUsedRecorder -> mihon.desktop.extension.DesktopExtensionManager
             mihon.desktop.ui.browse.DesktopSourceLoginController -> okhttp3.HttpUrl;mihon.desktop.ui.browse.DesktopSourceLoginUiActions -> okhttp3.HttpUrl;mihon.desktop.ui.browse.SourceBrowseScreen -> mihon.desktop.extension.DesktopExtensionManager;mihon.desktop.ui.cloudflare.DesktopChallengeLoginController -> mihon.desktop.network.CloudflareChallengeManager
             mihon.desktop.ui.cloudflare.DesktopChallengeLoginController -> okhttp3.HttpUrl;mihon.desktop.ui.extension.DesktopExtensionPresentationPort -> mihon.desktop.extension.DesktopExtensionManager;mihon.desktop.ui.extension.ExtensionDetailsScreen -> mihon.desktop.platform.DesktopNetworkHelper;mihon.desktop.ui.extension.SourcePreferencesScreen -> mihon.desktop.extension.DesktopExtensionManager
             mihon.desktop.ui.extension.SourcePreferencesScreenKt -> java.lang.ClassLoader;mihon.desktop.ui.home.HomeScreen -> mihon.desktop.network.CloudflareChallengeManager;mihon.desktop.ui.library.LibraryRootScreen -> mihon.desktop.download.DesktopDownloadManager;mihon.desktop.ui.settings.AboutScreen -> mihon.desktop.extension.DesktopExtensionManager

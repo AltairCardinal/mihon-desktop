@@ -7,7 +7,7 @@ status: planned
 # UI dependency boundary closure
 本计划只关闭 ID8/95 已确认的 current Android mapper 缺边与 32 条 Desktop compiled UI 违规。顺序固定为 164→169；每项独立红绿重构、mutation、focused test 和提交，不创建第二套 repository/manager。UI 入口与成功、失败、取消反馈保持不变；平台 adapter 只允许带非空理由的 OS side effect port。
 - [x] Task 164：Android network error mapper consumer
-- [ ] Task 165：Library UI use-case boundary
+- [x] Task 165：Library UI use-case boundary
 - [ ] Task 166：Creator and tracking use-case boundary
 - [ ] Task 167：Extension and browse ports
 - [ ] Task 168：Settings, home and download ports
@@ -29,6 +29,7 @@ status: planned
 **Files:** 两个 ScreenModel、既有 category/chapter/manga/membership use cases、对应 production behavior tests。
 **TDD:** 每组先写 use-case port consumer RED，再移除 repository constructor/call；mutation 注回 repository 必须由 compiled guard 拒绝。
 **User/feedback:** Desktop Library 与 Manga detail；筛选、分类、章节、收藏、追踪及失败反馈零回退。
+**Execution evidence:** compiled guard 先精确 RED 于 Library/Detail 的 9 条 repository edge；GREEN 后两 ScreenModel 改由 category/chapter/history/manga/membership/creator/tracking interactors 消费，production factory 与 DI 真实 wiring。独立审查发现 unread 进度、NEXT 排序/scanlator filter、chapter flags 及错误传播语义缺口；唯一修复轮提取 shared `SetChapterReadStatus`、复用 `GetNextChapters`/`SetMangaChapterFlags` 并补 throwing mutation，单项 NEXT 遗漏由主代理以精确 RED→GREEN 收口。相关 focused `113/113`、单项 Library `34/34`、提交前组合门禁、repository 回注/吞异常 mutations、Spotless 与 diff check 全绿；Desktop creator、迁移、下载及反馈能力保留。
 ### Task 166 Creator and tracking use-case boundary
 **Risk axis:** desktop-creator-tracking-boundary
 **Platform boundary:** shared+desktop

@@ -10,9 +10,13 @@ class GetManga(
     private val mangaRepository: MangaRepository,
 ) {
 
+    suspend fun awaitOrThrow(id: Long): Manga? {
+        return mangaRepository.getMangaById(id)
+    }
+
     suspend fun await(id: Long): Manga? {
         return try {
-            mangaRepository.getMangaById(id)
+            awaitOrThrow(id)
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             null

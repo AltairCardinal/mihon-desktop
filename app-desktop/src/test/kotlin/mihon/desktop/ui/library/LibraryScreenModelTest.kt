@@ -14,6 +14,7 @@ import mihon.desktop.domain.SortMode
 import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.domain.fakes.FakeCategoryRepository
 import mihon.desktop.domain.fakes.FakeMangaRepository
+import mihon.desktop.domain.fakes.FakeHistoryRepository
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.download.DownloadStatus
@@ -25,15 +26,26 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
+import tachiyomi.domain.category.model.Category
+import tachiyomi.domain.chapter.interactor.GetBookmarkedChaptersByMangaId
+import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
+import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
+import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.library.interactor.LibraryFilter
+import tachiyomi.domain.history.interactor.GetNextChapters
 import tachiyomi.domain.manga.interactor.GetLibraryManga
+import tachiyomi.domain.manga.interactor.GetManga
+import tachiyomi.domain.manga.interactor.UpdateManga
+import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.track.model.Track
+import tachiyomi.domain.track.interactor.GetTracksPerManga
 import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.TrackerSessionProvider
 import mihon.domain.task.TaskStatus
@@ -128,6 +140,17 @@ class LibraryScreenModelTest {
         model.setCategories(cats)
         assertEquals(2, model.state.value.categories.size)
         assertEquals("Action", model.state.value.categories[0].name)
+    }
+
+    @Test
+    fun `category ids for manga are read through category use case`() = runTest {
+        val repository = FakeCategoryRepository()
+        repository.insert(Category(id = 1L, name = "Action", order = 0L, flags = 0L))
+        repository.insert(Category(id = 2L, name = "Romance", order = 1L, flags = 0L))
+        repository.setMangaCategories(mangaId = 10L, categoryIds = setOf(2L))
+        val model = LibraryScreenModel(getCategories = GetCategories(repository))
+
+        assertEquals(setOf(2L), model.categoryIdsForManga(10L))
     }
 
     @Test
@@ -341,7 +364,7 @@ class LibraryScreenModelTest {
         val model = LibraryScreenModel(
             getLibraryManga = GetLibraryManga(repository),
             downloadProvider = DesktopDownloadProvider(tempDir.toFile()),
-            trackRepository = trackRepositoryOf(tracks),
+            getTracksPerManga = GetTracksPerManga(trackRepositoryOf(tracks)),
             trackerSessionProvider = TrackerSessionProvider { loggedInTrackerIds },
         )
 
@@ -410,7 +433,7 @@ class LibraryScreenModelTest {
                 Chapter.create().copy(id = 2L, mangaId = 10L, read = false),
             ),
         )
-        val model = LibraryScreenModel(chapterRepository = chapterRepository)
+        val model = modelWithChapterUseCases(chapterRepository)
 
         model.markMangaRead(mangaId = 10L, read = true)
 
@@ -419,11 +442,29 @@ class LibraryScreenModelTest {
     }
 
     @Test
+    fun `mark manga unread resets progress and skips chapters already unread at start`() = runTest {
+        val chapterRepository = FakeChapterRepository()
+        chapterRepository.addAll(
+            listOf(
+                Chapter.create().copy(id = 1L, mangaId = 10L, read = true, lastPageRead = 8L),
+                Chapter.create().copy(id = 2L, mangaId = 10L, read = false, lastPageRead = 0L),
+                Chapter.create().copy(id = 3L, mangaId = 10L, read = false, lastPageRead = 4L),
+            ),
+        )
+        val model = modelWithChapterUseCases(chapterRepository)
+
+        model.markMangaRead(mangaId = 10L, read = false)
+
+        assertEquals(listOf(1L, 3L), chapterRepository.updates.map { it.id })
+        assertTrue(chapterRepository.updates.all { it.read == false && it.lastPageRead == 0L })
+    }
+
+    @Test
     fun `removeFromLibrary clears favorite flag for each manga`() = runTest {
         val mangaRepository = FakeMangaRepository()
         mangaRepository.seed(sampleManga(id = 1L).copy(favorite = true))
         mangaRepository.seed(sampleManga(id = 2L).copy(favorite = true))
-        val model = LibraryScreenModel(mangaRepository = mangaRepository)
+        val model = LibraryScreenModel(updateManga = UpdateManga(mangaRepository))
 
         model.removeFromLibrary(listOf(1L, 2L))
 
@@ -432,29 +473,43 @@ class LibraryScreenModelTest {
     }
 
     @Test
-    fun `enqueueNextUnreadDownload enqueues first unread chapter by source order`() = runTest {
-        val chapterRepository = FakeChapterRepository()
+    fun `enqueueNextUnreadDownload honors manga chapter sort and scanlator filter`() = runTest {
+        val backing = FakeChapterRepository()
         val enqueued = mutableListOf<DownloadItem>()
-        chapterRepository.addAll(
+        backing.addAll(
             listOf(
-                Chapter.create().copy(id = 1L, mangaId = 10L, name = "Read", url = "/read", read = true, sourceOrder = 0L),
-                Chapter.create().copy(id = 2L, mangaId = 10L, name = "Unread", url = "/unread", read = false, sourceOrder = 1L),
+                Chapter.create().copy(id = 1L, mangaId = 10L, name = "Three", url = "/1", sourceOrder = 1L, chapterNumber = 3.0),
+                Chapter.create().copy(id = 2L, mangaId = 10L, name = "Filtered", url = "/2", sourceOrder = 2L, chapterNumber = 1.0),
+                Chapter.create().copy(id = 3L, mangaId = 10L, name = "Two", url = "/3", sourceOrder = 3L, chapterNumber = 2.0),
             ),
         )
-        val model = LibraryScreenModel(
+        var scanlatorFilterApplied = false
+        val chapterRepository = object : ChapterRepository by backing {
+            override suspend fun getChapterByMangaId(mangaId: Long, applyScanlatorFilter: Boolean): List<Chapter> {
+                scanlatorFilterApplied = applyScanlatorFilter
+                val chapters = backing.getChapterByMangaId(mangaId)
+                return if (applyScanlatorFilter) chapters.filterNot { it.id == 2L } else chapters
+            }
+        }
+        val manga = sampleManga(id = 10L, source = 7L, title = "Manga").copy(
+            chapterFlags = Manga.CHAPTER_SORTING_NUMBER or Manga.CHAPTER_SORT_ASC,
+        )
+        val model = modelWithChapterUseCases(
             chapterRepository = chapterRepository,
             enqueueDownload = { enqueued += it },
+            mangaProvider = { manga },
         )
 
-        model.enqueueNextUnreadDownload(sampleLibraryManga(sampleManga(id = 10L, source = 7L, title = "Manga")))
+        model.enqueueNextUnreadDownload(sampleLibraryManga(manga))
 
+        assertTrue(scanlatorFilterApplied)
         assertEquals(
             DownloadItem(
                 sourceId = 7L,
                 mangaTitle = "Manga",
-                chapterName = "Unread",
-                chapterId = 2L,
-                chapterUrl = "/unread",
+                chapterName = "Two",
+                chapterId = 3L,
+                chapterUrl = "/3",
             ),
             enqueued.single(),
         )
@@ -480,12 +535,56 @@ class LibraryScreenModelTest {
 
         MangaDetailDownloadAction.entries.zip(expected).forEach { (action, count) ->
             val enqueued = mutableListOf<DownloadItem>()
-            val result = LibraryScreenModel(chapterRepository = repository, enqueueDownload = { enqueued += it })
+            val result = modelWithChapterUseCases(repository, enqueueDownload = { enqueued += it })
                 .enqueueDownloads(listOf(item), action)
 
             assertEquals(count, result.queued)
             assertEquals(count, enqueued.size)
         }
+    }
+
+    @Test
+    fun `next downloads honor manga chapter sort and scanlator filter`() = runTest {
+        val backing = FakeChapterRepository().apply {
+            addAll(
+                listOf(
+                    Chapter.create().copy(id = 1L, mangaId = 10L, name = "Three", url = "/1", sourceOrder = 1L, chapterNumber = 3.0),
+                    Chapter.create().copy(id = 2L, mangaId = 10L, name = "Filtered", url = "/2", sourceOrder = 2L, chapterNumber = 1.0),
+                    Chapter.create().copy(id = 3L, mangaId = 10L, name = "Two", url = "/3", sourceOrder = 3L, chapterNumber = 2.0),
+                ),
+            )
+        }
+        var scanlatorFilterApplied = false
+        val repository = object : ChapterRepository by backing {
+            override suspend fun getChapterByMangaId(mangaId: Long, applyScanlatorFilter: Boolean): List<Chapter> {
+                scanlatorFilterApplied = applyScanlatorFilter
+                val chapters = backing.getChapterByMangaId(mangaId)
+                return if (applyScanlatorFilter) chapters.filterNot { it.id == 2L } else chapters
+            }
+        }
+        val manga = sampleManga(id = 10L, source = 7L, title = "Manga").copy(
+            chapterFlags = Manga.CHAPTER_SORTING_NUMBER or Manga.CHAPTER_SORT_ASC,
+        )
+        val item = sampleLibraryManga(manga)
+
+        val nextOne = mutableListOf<Long>()
+        modelWithChapterUseCases(
+            repository,
+            enqueueDownload = { nextOne += it.chapterId },
+            mangaProvider = { manga },
+        )
+            .enqueueDownloads(listOf(item), MangaDetailDownloadAction.NEXT_1_CHAPTER)
+        val nextFive = mutableListOf<Long>()
+        modelWithChapterUseCases(
+            repository,
+            enqueueDownload = { nextFive += it.chapterId },
+            mangaProvider = { manga },
+        )
+            .enqueueDownloads(listOf(item), MangaDetailDownloadAction.NEXT_5_CHAPTERS)
+
+        assertTrue(scanlatorFilterApplied)
+        assertEquals(listOf(3L), nextOne)
+        assertEquals(listOf(3L, 1L), nextFive)
     }
 
     @Test
@@ -504,7 +603,7 @@ class LibraryScreenModelTest {
         Files.createDirectories(downloaded)
         ImageIO.write(BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB), "png", downloaded.resolve("page.png").toFile())
         val enqueued = mutableListOf<Long>()
-        val model = LibraryScreenModel(
+        val model = modelWithChapterUseCases(
             chapterRepository = repository,
             enqueueDownload = {
                 if (it.chapterId == 4L) error("source offline")
@@ -531,6 +630,25 @@ class LibraryScreenModelTest {
     }
 
     @Test
+    fun `bookmarked download query failure is reported without queueing chapters`() = runTest {
+        val backing = FakeChapterRepository()
+        val repository = object : ChapterRepository by backing {
+            override suspend fun getBookmarkedChaptersByMangaId(mangaId: Long): List<Chapter> =
+                error("bookmark query failed")
+        }
+        val enqueued = mutableListOf<DownloadItem>()
+        val model = modelWithChapterUseCases(repository, enqueueDownload = { enqueued += it })
+
+        val result = model.enqueueDownloads(
+            listOf(sampleLibraryManga(sampleManga(id = 10L))),
+            MangaDetailDownloadAction.BOOKMARKED_CHAPTERS,
+        )
+
+        assertEquals(LibraryBatchDownloadResult(failures = 1), result)
+        assertTrue(enqueued.isEmpty())
+    }
+
+    @Test
     fun `continueReadingRequest uses first unread chapter and all chapter refs`() = runTest {
         val chapterRepository = FakeChapterRepository()
         chapterRepository.addAll(
@@ -539,7 +657,7 @@ class LibraryScreenModelTest {
                 Chapter.create().copy(id = 2L, mangaId = 10L, name = "Unread", url = "/unread", read = false, sourceOrder = 1L, lastPageRead = 5L),
             ),
         )
-        val model = LibraryScreenModel(chapterRepository = chapterRepository)
+        val model = modelWithChapterUseCases(chapterRepository)
 
         val request = model.continueReadingRequest(sampleLibraryManga(sampleManga(id = 10L, source = 7L, viewerFlags = 0x44L)))
 
@@ -592,7 +710,7 @@ class LibraryScreenModelTest {
             chapterFlags = Manga.CHAPTER_SHOW_UNREAD,
         )
         val libraryRequest = requireNotNull(
-            LibraryScreenModel(chapterRepository = chapterRepository)
+            modelWithChapterUseCases(chapterRepository)
                 .continueReadingRequest(sampleLibraryManga(manga)),
         )
         val detailModel = MangaDetailScreenModel(mangaId = manga.id)
@@ -662,6 +780,27 @@ class LibraryScreenModelTest {
         viewerFlags = viewerFlags,
         chapterFlags = chapterFlags,
     )
+
+    private fun modelWithChapterUseCases(
+        chapterRepository: ChapterRepository,
+        enqueueDownload: ((DownloadItem) -> Unit)? = null,
+        downloadProvider: DesktopDownloadProvider? = null,
+        mangaProvider: (Long) -> Manga = { sampleManga(it) },
+    ): LibraryScreenModel {
+        val getChapters = GetChaptersByMangaId(chapterRepository)
+        val mangaBacking = FakeMangaRepository()
+        val mangaRepository = object : MangaRepository by mangaBacking {
+            override suspend fun getMangaById(id: Long): Manga = mangaProvider(id)
+        }
+        return LibraryScreenModel(
+            getChaptersByMangaId = getChapters,
+            getBookmarkedChaptersByMangaId = GetBookmarkedChaptersByMangaId(chapterRepository),
+            getNextChapters = GetNextChapters(getChapters, GetManga(mangaRepository), FakeHistoryRepository()),
+            setChapterReadStatus = SetChapterReadStatus(getChapters, UpdateChapter(chapterRepository)),
+            enqueueDownload = enqueueDownload,
+            downloadProvider = downloadProvider,
+        )
+    }
 
     private fun sampleLibraryManga(manga: Manga) = LibraryManga(
         manga = manga,

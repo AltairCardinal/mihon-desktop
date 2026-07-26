@@ -92,7 +92,7 @@
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/di/AppModule.kt", "symbol": "override fun InjektRegistrar.registerInjectables", "line": 52}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/domain/DomainModule.kt", "symbol": "override fun InjektRegistrar.registerInjectables", "line": 113}],
-      "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "fun initDesktopDI", "line": 170}],
+      "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "fun initDesktopDI", "line": 177}],
       "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt", "symbol": "initDesktopDI()", "line": 82}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt#reinitializing while scheduler runs joins old work and closes old database", "productionMarkers": ["initDesktopDIForTest", "Injekt.get"]}]
     },
@@ -559,7 +559,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/category/CategoryScreenModel.kt", "symbol": "CategoryScreenModel", "line": 24}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/category/CategoryScreenModel.kt", "symbol": "private val createCategoryWithName", "line": 26}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/category/interactor/CreateCategoryWithName.kt", "symbol": "class CreateCategoryWithName", "line": 10}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "private val createCategory", "line": 74}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "private val createCategory", "line": 75}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryCategoryBehaviorTest.kt#category dialog intents perform create rename reorder and delete through production DI", "productionMarkers": ["LibraryScreenModelFactory.create"]}]
     },
     "group": "书库与详情",
@@ -662,8 +662,8 @@
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/category/interactor/SetMangaCategories.kt", "symbol": "class SetMangaCategories", "line": 7}],
       "DESKTOP_CONSUMER": [
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryTab.kt", "symbol": "internal fun librarySelectionActions(", "line": 121},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "internal suspend fun enqueueDownloads(", "line": 429},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "suspend fun setCategoriesForManga", "line": 511}
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "internal suspend fun enqueueDownloads(", "line": 430},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "suspend fun setCategoriesForManga", "line": 526}
       ],
       "FIXTURE": [
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt#selection action bar exposes invert download and migrate entries", "productionMarkers": ["librarySelectionActions", "SelectionActionBar"]},
@@ -732,8 +732,8 @@
         {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/category/interactor/SetMangaCategories.kt", "symbol": "class SetMangaCategories", "line": 7}
       ],
       "DESKTOP_CONSUMER": [
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt", "symbol": "suspend fun toggleLibrary", "line": 262},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "suspend fun setCategoriesForManga", "line": 511}
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt", "symbol": "suspend fun toggleLibrary", "line": 264},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "suspend fun setCategoriesForManga", "line": 526}
       ],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt#toggleLibrary clears favorite date and categories when removing", "productionMarkers": ["model.toggleLibrary", "getMangaCategoryIds"]}]
     },
@@ -803,7 +803,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt", "symbol": "fun markChaptersRead", "line": 748}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt", "symbol": "fun markChaptersRead", "line": 748}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/interactor/BatchUpdateChapters.kt", "symbol": "class BatchUpdateChapters", "line": 5}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt", "symbol": "suspend fun markSelectedRead", "line": 225}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt", "symbol": "suspend fun markSelectedRead", "line": 229}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt#selected read action exposes partial failure in state", "productionMarkers": ["model.runChapterBatch"]}]
     },
     "protectionTests": [
@@ -1974,7 +1974,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt", "symbol": "filterChaptersForDownload.await(manga, newChapters)", "line": 268}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt", "symbol": "filterChaptersForDownload.await(manga, newChapters)", "line": 294}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/chapter/interactor/FilterChaptersForDownload.kt", "symbol": "class FilterChaptersForDownload", "line": 16}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "filterChaptersForDownload.await(manga, chapters)", "line": 838}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "filterChaptersForDownload.await(manga, chapters)", "line": 859}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/FilterChaptersForDownloadIntegrationTest.kt#开启后保留候选数量与上游排序且正确处理空列表", "productionMarkers": ["filter.await"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt#reinitializing test DI replaces every binding and scheduler context", "productionMarkers": ["Injekt.get<LibraryUpdateScheduler>().runNow().join()", "PersistentDownloadStore("]}]
     },
     "protectionTests": [
@@ -3178,28 +3178,19 @@
       ]
     },
     "behaviorVerificationTask": ":app-desktop:task5ParityVerification",
-    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": ["production library stream exposes only logged in tracker rows and reacts to login logout"], "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt": ["desktop ui DI and repository debt does not grow beyond baseline", "android main source must not depend on desktop runtime or awt swing"]},
-    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt"],
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": ["production library stream exposes only logged in tracker rows and reacts to login logout", "mark manga unread resets progress and skips chapters already unread at start", "enqueueNextUnreadDownload honors manga chapter sort and scanlator filter", "next downloads honor manga chapter sort and scanlator filter"], "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt": ["selected unread resets progress skips unchanged and exposes write failure", "chapter sort and display persist through chapter flags use case"], "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt": ["compiled production UI dependency graph matches finite violation inventory", "compiled fixtures reject a forbidden manager and a disconnected use case", "platform adapter allowlist requires compiled edges and nonblank reasons"]},
+    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt"],
     "statusDecisionHistory": [{"task": "Task 13", "decision": "PROMOTE_WIRED", "followUp": "Task 16C", "gap": "Both apps compile against domain and a real Desktop screen model executes domain use cases, but app-desktop still owns broad business logic; source and line-count guards cannot close the Task 16C module-boundary audit.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": ["production library stream exposes only logged in tracker rows and reacts to login logout"], "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt": ["desktop ui DI and repository debt does not grow beyond baseline", "android main source must not depend on desktop runtime or awt swing"]}}],
-    "statusDecision": {"task": "Task 16C", "decision": "REMEDIATE", "followUp": "docs/superpowers/plans/2026-07-24-task-16c-ui-dependency-boundary-closure.md#task-165-library-ui-use-case-boundary", "gap": "Compiled production bytecode contains 14 direct UI-to-repository edges and 18 direct UI-to-manager, HTTP client or ClassLoader edges; they require finite product remediation before the boundary is terminal.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": ["production library stream exposes only logged in tracker rows and reacts to login logout"], "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt": ["compiled production UI dependency graph matches finite violation inventory", "compiled fixtures reject a forbidden manager and a disconnected use case", "platform adapter allowlist requires compiled edges and nonblank reasons"]}},
+    "statusDecision": {"task": "Task 16C", "decision": "REMEDIATE", "followUp": "docs/superpowers/plans/2026-07-24-task-16c-ui-dependency-boundary-closure.md#task-166-creator-and-tracking-use-case-boundary", "gap": "Compiled production bytecode contains 5 direct UI-to-repository edges and 18 direct UI-to-manager, HTTP client or ClassLoader edges; they require finite product remediation before the boundary is terminal.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt": ["production library stream exposes only logged in tracker rows and reacts to login logout", "mark manga unread resets progress and skips chapters already unread at start", "enqueueNextUnreadDownload honors manga chapter sort and scanlator filter", "next downloads honor manga chapter sort and scanlator filter"], "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt": ["selected unread resets progress skips unchanged and exposes write failure", "chapter sort and display persist through chapter flags use case"], "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt": ["compiled production UI dependency graph matches finite violation inventory", "compiled fixtures reject a forbidden manager and a disconnected use case", "platform adapter allowlist requires compiled edges and nonblank reasons"]}},
     "architectureBoundaryAudit": {
       "task": "Task 16C",
       "mechanism": "JDK ToolProvider jdeps over compiled production and fixture classes",
-      "requiredCompiledEdges": ["mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.manga.interactor.GetLibraryManga"],
+      "requiredCompiledEdges": ["mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.manga.interactor.GetLibraryManga", "mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.category.interactor.GetCategories", "mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.chapter.interactor.GetChaptersByMangaId", "mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.chapter.interactor.GetBookmarkedChaptersByMangaId", "mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.chapter.interactor.SetChapterReadStatus", "mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.history.interactor.GetNextChapters", "mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.manga.interactor.UpdateManga", "mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.track.interactor.GetTracksPerManga", "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.category.interactor.GetCategories", "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.chapter.interactor.UpdateChapter", "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.chapter.interactor.SetChapterReadStatus", "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.creator.interactor.LinkMangaCreator", "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.manga.interactor.UpdateManga", "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.manga.interactor.SetMangaChapterFlags", "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.manga.interactor.UpdateLibraryMembership"],
       "missingRequiredEdges": [],
       "forbiddenCompiledEdges": [
         {"category": "REPOSITORY", "edge": "mihon.desktop.ui.authors.AuthorDetailScreen -> tachiyomi.domain.creator.repository.CreatorRepository"},
         {"category": "REPOSITORY", "edge": "mihon.desktop.ui.authors.AuthorsRootScreen -> tachiyomi.domain.creator.repository.CreatorRepository"},
         {"category": "REPOSITORY", "edge": "mihon.desktop.ui.authors.WorkCompareScreen -> tachiyomi.domain.creator.repository.CreatorRepository"},
-        {"category": "REPOSITORY", "edge": "mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.category.repository.CategoryRepository"},
-        {"category": "REPOSITORY", "edge": "mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.chapter.repository.ChapterRepository"},
-        {"category": "REPOSITORY", "edge": "mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.manga.repository.MangaRepository"},
-        {"category": "REPOSITORY", "edge": "mihon.desktop.ui.library.LibraryScreenModel -> tachiyomi.domain.track.repository.TrackRepository"},
-        {"category": "REPOSITORY", "edge": "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.category.repository.CategoryRepository"},
-        {"category": "REPOSITORY", "edge": "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.chapter.repository.ChapterRepository"},
-        {"category": "REPOSITORY", "edge": "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.creator.repository.CreatorRepository"},
-        {"category": "REPOSITORY", "edge": "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.manga.repository.LibraryMembershipRepository"},
-        {"category": "REPOSITORY", "edge": "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.manga.repository.MangaRepository"},
         {"category": "REPOSITORY", "edge": "mihon.desktop.ui.tracking.TrackingScreenModel -> tachiyomi.domain.track.repository.TrackRepository"},
         {"category": "REPOSITORY", "edge": "mihon.desktop.ui.tracking.TrackingSettingsScreen -> tachiyomi.domain.track.repository.TrackRepository"},
         {"category": "MANAGER_HTTP_OR_CLASSLOADER", "edge": "mihon.desktop.ui.browse.DesktopSourceCookieHeaderParser -> okhttp3.HttpUrl"},
@@ -3225,7 +3216,7 @@
       "mutationEvidence": ["app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt#compiled fixtures reject a forbidden manager and a disconnected use case", "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt#platform adapter allowlist requires compiled edges and nonblank reasons"],
       "childPlan": "docs/superpowers/plans/2026-07-24-task-16c-ui-dependency-boundary-closure.md"
     },
-    "verificationScope": "WIRED: the compiled guard executes a real domain use-case edge and rejects new forbidden edges, while 32 exact production violations remain assigned to finite remediation.",
+    "verificationScope": "WIRED: the compiled guard executes the Library and Manga detail domain use-case edges and rejects new forbidden edges, while 23 exact production violations remain assigned to finite remediation.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -3252,8 +3243,8 @@
         {"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/compat/AndroidCompat.kt", "symbol": "object AndroidCompat", "line": 15}
       ],
       "DESKTOP_CONSUMER": [
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "AndroidCompat.initialize", "line": 192},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "AndroidCompat.startApp", "line": 194},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "AndroidCompat.initialize", "line": 199},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "AndroidCompat.startApp", "line": 201},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt", "symbol": "apkConverter.convert", "line": 243},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt", "symbol": "ServiceLoader.load(Source::class.java", "line": 75}
       ],

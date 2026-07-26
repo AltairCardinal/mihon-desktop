@@ -10,13 +10,15 @@ import mihon.desktop.ui.library.MangaCoverAdapter
 import mihon.desktop.ui.library.DesktopCoverFilePicker
 import mihon.desktop.domain.DesktopCoverUpdater
 import mihon.desktop.domain.DesktopCustomCoverStore
+import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
-import tachiyomi.domain.category.repository.CategoryRepository
-import tachiyomi.domain.chapter.repository.ChapterRepository
-import tachiyomi.domain.creator.repository.CreatorRepository
+import tachiyomi.domain.chapter.interactor.UpdateChapter
+import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
+import tachiyomi.domain.creator.interactor.LinkMangaCreator
 import tachiyomi.domain.manga.interactor.GetMangaWithChapters
+import tachiyomi.domain.manga.interactor.SetMangaChapterFlags
+import tachiyomi.domain.manga.interactor.UpdateManga
 import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
-import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -34,11 +36,13 @@ object MangaDetailScreenModelFactory {
             getAvailableScanlators = Injekt.get<GetAvailableScanlators>(),
             getExcludedScanlators = Injekt.get<GetExcludedScanlators>(),
             setExcludedScanlators = Injekt.get<SetExcludedScanlators>(),
-            categoryRepository = Injekt.get<CategoryRepository>(),
-            chapterRepository = Injekt.get<ChapterRepository>(),
-            mangaRepository = Injekt.get<MangaRepository>(),
+            getCategories = Injekt.get<GetCategories>(),
+            updateChapter = Injekt.get<UpdateChapter>(),
+            setChapterReadStatus = Injekt.get<SetChapterReadStatus>(),
+            updateManga = Injekt.get<UpdateManga>(),
+            setMangaChapterFlags = Injekt.get<SetMangaChapterFlags>(),
             setMangaCategories = Injekt.get<SetMangaCategories>(),
-            creatorRepository = Injekt.get<CreatorRepository>(),
+            linkMangaCreator = Injekt.get<LinkMangaCreator>(),
             enqueueDownload = downloadManager?.let { it::enqueue },
             downloadQueue = downloadManager?.queue,
             isDownloaded = downloadManager?.let { manager ->
