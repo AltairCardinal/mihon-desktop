@@ -535,6 +535,12 @@ Task 174 已完成 Downloads、Updates/Upcoming、History production TestMode wi
 稳定 `chapterId` 破坏性定位、typed failures 与 Upcoming/Reader 导航均由 HTTP/生命周期测试
 保护；唯一修复复审 `APPROVED`。inventory 现为 10/13 covered、3 gap、64/64 mapped、
 unmapped=0。下一恢复位置为 Task 175。
+Task 175 已完成 Backup 与 Settings production TestMode wiring。Backup create/restore 复用真实
+workflow/model 并公开确认、进度、部分失败和取消；Settings 复用真实 catalog、安全 controller、
+network maintenance 与 Advanced platform action seam。action history 密钥脱敏、source-login
+Cookie 分支及 owner child 的发布/调用方取消竞态均有行为或 mutation 证据，最终独立审查
+`APPROVED`。inventory 现为 12/13 covered、1 gap、64/64 mapped、unmapped=0。下一恢复位置为
+Task 176。
 Task 16A 审计已明确无需生成产品 child plan。
 
 Task 16C 的 Task 164 已完成 current Android extension repository response adapter：固定原版

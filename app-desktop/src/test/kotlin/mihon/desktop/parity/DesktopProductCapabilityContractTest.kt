@@ -3641,7 +3641,7 @@ class DesktopProductCapabilityContractTest {
         val audit = id3.getValue("testModeCoverageAudit").jsonObject
         assertEquals("Task 16D", requiredText(audit, "task", 3))
         assertEquals("app-desktop/src/test/resources/parity/test-mode-coverage-inventory.json", requiredText(audit, "inventory", 3))
-        assertEquals(listOf(13, 10, 3, 5, 64, 0), listOf("families", "coveredFamilies", "gapFamilies", "permanentProtections", "mappedCapabilities", "unmappedCapabilities").map { audit.getValue(it).jsonPrimitive.content.toInt() })
+        assertEquals(listOf(13, 12, 1, 5, 64, 0), listOf("families", "coveredFamilies", "gapFamilies", "permanentProtections", "mappedCapabilities", "unmappedCapabilities").map { audit.getValue(it).jsonPrimitive.content.toInt() })
         assertEquals(childPlan, requiredText(audit, "childPlan", 3))
 
         val child = Files.readString(repositoryRoot.resolve(childPlan))
@@ -3658,7 +3658,8 @@ class DesktopProductCapabilityContractTest {
         assertEquals("x", overview.getValue("172"))
         assertEquals("x", overview.getValue("173"))
         assertEquals("x", overview.getValue("174"))
-        assertEquals((175..177).map(Int::toString), overview.filterValues { it == " " }.keys.toList())
+        assertEquals("x", overview.getValue("175"))
+        assertEquals((176..177).map(Int::toString), overview.filterValues { it == " " }.keys.toList())
         val task171 = child.substringAfter("### Task 171 Final fixed-EXE runner").substringBefore("### Task 172 ")
         assertTrue("10/10" in task171 && "13/13" in task171 && "5/5" in task171 && "unmapped=0" in task171)
         val task172 = child.substringAfter("### Task 172 Library and manga-detail actions").substringBefore("### Task 173 ")
@@ -3668,6 +3669,9 @@ class DesktopProductCapabilityContractTest {
         val task174 = child.substringAfter("### Task 174 Downloads, updates and history actions").substringBefore("### Task 175 ")
         assertTrue("DownloadTestModeHttpTest" in task174 && "UpdatesTestModeHttpTest" in task174 && "HistoryTestModeHttpTest" in task174)
         assertTrue("10/13 covered" in task174 && "3 gap" in task174 && "APPROVED" in task174)
+        val task175 = child.substringAfter("### Task 175 Backup and settings actions").substringBefore("### Task 176 ")
+        assertTrue("BackupTestModeHttpTest" in task175 && "SettingsTestModeHttpTest" in task175)
+        assertTrue("12/13 covered" in task175 && "1 gap" in task175 && "APPROVED" in task175)
 
         val parent = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
         assertEquals("Task 17", markdownFrontmatter(parent)["active-task"])
@@ -3678,6 +3682,7 @@ class DesktopProductCapabilityContractTest {
         assertTrue("Task 172" in task17 && "9/9" in task17)
         assertTrue("Task 173" in task17 && "Task 173R" in task17)
         assertTrue("Task 174" in task17 && "10/13 covered" in task17 && "3 gap" in task17)
+        assertTrue("Task 175" in task17 && "12/13 covered" in task17 && "1 gap" in task17)
     }
 
     @Test

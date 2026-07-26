@@ -10,7 +10,7 @@ status: planned
 - [x] Task 172：Library and manga-detail actions
 - [x] Task 173：Browse search and source login
 - [x] Task 174：Downloads, updates and history actions
-- [ ] Task 175：Backup and settings actions
+- [x] Task 175：Backup and settings actions
 - [ ] Task 176：Tracking HTTP runner
 - [ ] Task 177：Scenario inventory closeout
 ### Task 171 Final fixed-EXE runner
@@ -58,6 +58,7 @@ status: planned
 **Files:** backup workflow port, settings/platform action port, owner wiring, TestHttpServer dispatcher and HTTP tests.
 **TDD:** unconditional success branches RED first; then bind production workflows and mutation-test unavailable owner, cancellation and rejected dangerous actions.
 **User/feedback:** scenario exposes backup path/progress/partial failure and settings result/navigation/security/platform capability feedback.
+**Execution evidence:** Backup 与 Settings 旧 unconditional-success 路由分别取得精确 RED，再接入真实 `BackupRestoreScreenModelFactory`/`BackupWorkflow`/`BackupRestoreScreenModel` 与 `DesktopSettingsCatalog`/`SecuritySettingsController`/`DesktopNetworkMaintenancePort`/Advanced platform action seam。`BackupTestModeHttpTest` 覆盖 create/restore preview-confirm/progress/completed/partial/cancel/busy/unavailable/closed；`SettingsTestModeHttpTest` 覆盖搜索与真实 route、认证持久化、危险确认、cookie/cache/crash-log 平台动作、typed port failure、取消与 close。首审的 action-history 密钥泄漏及 active-handle 竞态均以确定性 RED→GREEN 修复：history 按 action/key 脱敏但 dispatch 保留原值，LAZY child 在启动前 CAS 发布且 caller/cancel 路径 `cancelAndJoin`；唯一修复复审的 source-login Cookie 覆盖 P2 又以 test-only mutation RED→GREEN 关闭，最终 `APPROVED`。组合 focused、DI/coverage、Spotless 与 diff check 通过。inventory 现为 12/13 covered、1 gap，64/64 mapped、unmapped=0。
 ### Task 176 Tracking HTTP runner
 **Risk axis:** testmode-tracking-http
 **Platform boundary:** desktop

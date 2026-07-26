@@ -183,16 +183,22 @@ internal fun cloudflareCookieImportedFeedback(host: String, locale: Locale): Str
 
 internal interface AdvancedSettingsPlatformActions {
     suspend fun loadNetworkCacheSize(): String
+    suspend fun clearNetworkCache(): Boolean = false
     suspend fun openCrashLogFolder(): Boolean
 }
 
-private object ProductionAdvancedSettingsPlatformActions : AdvancedSettingsPlatformActions {
+internal object ProductionAdvancedSettingsPlatformActions : AdvancedSettingsPlatformActions {
     override suspend fun loadNetworkCacheSize(): String {
         val cacheDir = DesktopPlatformPaths.current().networkCacheDir
         return if (cacheDir.exists()) formatBytes(cacheDir.walkTopDown().sumOf { it.length() }) else "0 B"
     }
 
     override suspend fun openCrashLogFolder(): Boolean = DesktopDirectoryOpener.open(CrashHandler.defaultCrashLogDir())
+
+    override suspend fun clearNetworkCache(): Boolean {
+        val cacheDir = DesktopPlatformPaths.current().networkCacheDir
+        return !cacheDir.exists() || cacheDir.deleteRecursively()
+    }
 }
 
 internal val LocalAdvancedSettingsPlatformActions =
@@ -208,7 +214,6 @@ class AdvancedSettingsScreen : Screen {
         val networkMaintenance = dependencies.networkMaintenancePort
         val preferences = dependencies.appPreferences
         val platformActions = LocalAdvancedSettingsPlatformActions.current
-        val paths = remember { DesktopPlatformPaths.current() }
         val scope = rememberCoroutineScope()
         val locale = remember { Locale.getDefault() }
         val text: (StringResource) -> String = { it.localized(locale) }
@@ -429,7 +434,7 @@ class AdvancedSettingsScreen : Screen {
                         onClick = {
                             showClearCacheDialog = false
                             scope.launch(Dispatchers.IO) {
-                                paths.networkCacheDir.deleteRecursively()
+                                platformActions.clearNetworkCache()
                                 withContext(Dispatchers.Main) {
                                     cacheCleared = !cacheCleared // trigger produceState refresh
                                 }

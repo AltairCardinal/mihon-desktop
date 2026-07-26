@@ -64,6 +64,21 @@ private fun parseJsonBody(body: String): Map<String, String> {
     }
 }
 
+internal fun actionHistoryParams(
+    action: String,
+    params: Map<String, String>,
+): Map<String, String> {
+    val sensitiveKeys = when (action) {
+        "setting_security_enable" -> setOf("passphrase", "confirmation")
+        "setting_security_disable", "setting_security_delay" -> setOf("currentPassphrase")
+        "setting_security_change_passphrase" -> setOf("currentPassphrase", "replacement", "confirmation")
+        "setting_import_cloudflare_cookie" -> setOf("value")
+        "source_login_complete" -> setOf("cookieHeader")
+        else -> emptySet()
+    }
+    return params.mapValues { (key, value) -> if (key in sensitiveKeys) "<redacted>" else value }
+}
+
 private fun jsonText(value: JsonObject) = Json.encodeToString(JsonObject.serializer(), value)
 
 private val nestedScreenActions = mapOf(
@@ -88,6 +103,8 @@ internal fun currentTestStateJson(updateModel: DesktopUpdateScreenModel? = null)
     val downloads = DownloadTestModeBridge.controller?.snapshot()
     val updates = UpdatesTestModeBridge.controller?.snapshot()
     val history = HistoryTestModeBridge.controller?.snapshot()
+    val backup = BackupTestModeBridge.controller?.snapshot()
+    val settings = SettingsTestModeBridge.controller?.snapshot()
     return jsonText(buildJsonObject {
         put("currentScreen", JsonPrimitive(state.currentScreen.value ?: "HomeScreen"))
         put("isLoading", JsonPrimitive(state.isLoading.value))
@@ -123,6 +140,18 @@ internal fun currentTestStateJson(updateModel: DesktopUpdateScreenModel? = null)
             "history",
             history?.let {
                 Json.encodeToJsonElement(HistoryTestSnapshot.serializer(), it)
+            } ?: JsonNull,
+        )
+        put(
+            "backup",
+            backup?.let {
+                Json.encodeToJsonElement(BackupTestSnapshot.serializer(), it)
+            } ?: JsonNull,
+        )
+        put(
+            "settings",
+            settings?.let {
+                Json.encodeToJsonElement(SettingsTestSnapshot.serializer(), it)
             } ?: JsonNull,
         )
         put(
@@ -162,6 +191,8 @@ private fun actionJson(
     action: String,
     success: Boolean,
     error: String? = null,
+    settings: kotlinx.serialization.json.JsonElement = JsonNull,
+    backup: kotlinx.serialization.json.JsonElement = JsonNull,
     history: kotlinx.serialization.json.JsonElement = JsonNull,
     updates: kotlinx.serialization.json.JsonElement = JsonNull,
     downloads: kotlinx.serialization.json.JsonElement = JsonNull,
@@ -176,6 +207,8 @@ private fun actionJson(
     put("action", JsonPrimitive(action))
     put("error", error?.let(::JsonPrimitive) ?: JsonNull)
     put("timestamp", JsonPrimitive(Instant.now().toString()))
+    put("settings", settings)
+    put("backup", backup)
     put("history", history)
     put("updates", updates)
     put("downloads", downloads)
@@ -336,7 +369,7 @@ internal fun Application.testHttpServer(
 
             val params = parseJsonBody(body)
 
-            applicationState.recordAction(action, params)
+            applicationState.recordAction(action, actionHistoryParams(action, params))
 
             if (action.startsWith("update_")) {
                 val intent = when (action) {
@@ -475,10 +508,32 @@ internal fun Application.testHttpServer(
                 return@post
             }
             val historyResult = historyController?.execute(action, params)
+            val isBackupAction = action in setOf("backup_create", "backup_restore", "backup_cancel")
+            val backupController = if (isBackupAction) BackupTestModeBridge.controller else null
+            if (isBackupAction && backupController == null) {
+                call.respondText(
+                    jsonText(actionJson(action, false, "BACKUP_OWNER_UNAVAILABLE")),
+                    ContentType.Application.Json,
+                    HttpStatusCode.ServiceUnavailable,
+                )
+                return@post
+            }
+            val backupResult = backupController?.execute(action, params)
+            val isSettingsAction = action.startsWith("setting_")
+            val settingsController = if (isSettingsAction) SettingsTestModeBridge.controller else null
+            if (isSettingsAction && settingsController == null) {
+                call.respondText(
+                    jsonText(actionJson(action, false, "SETTINGS_OWNER_UNAVAILABLE")),
+                    ContentType.Application.Json,
+                    HttpStatusCode.ServiceUnavailable,
+                )
+                return@post
+            }
+            val settingsResult = settingsController?.execute(action, params)
 
             // Process actions
             var trackingResult: mihon.desktop.tracking.TrackingTestState? = null
-            if (!isExtensionAction && !isLibraryAction && !isBrowseAction && !isSourceLoginAction && !isDownloadAction && !isUpdatesAction && !isHistoryAction) when (action) {
+            if (!isExtensionAction && !isLibraryAction && !isBrowseAction && !isSourceLoginAction && !isDownloadAction && !isUpdatesAction && !isHistoryAction && !isBackupAction && !isSettingsAction) when (action) {
                 // Read chapter - open reader
                 "read_chapter", "start_reading" -> {
                     val mangaId = params["mangaId"]?.toLongOrNull()
@@ -510,8 +565,6 @@ internal fun Application.testHttpServer(
                 "reader_next_page", "reader_prev_page", "reader_next_chapter", "reader_prev_chapter",
                 "reader_mode", "reader_zoom",
                 -> { }
-                // Settings actions
-                "setting_change", "setting_reset" -> { }
                 // Browse actions
                 // Migration actions
                 "migration_search", "migration_select" -> { }
@@ -540,13 +593,39 @@ internal fun Application.testHttpServer(
                 "tracking_update", "tracking_cancel",
                 -> trackingResult = checkNotNull(TrackingTestBridge.controller) { "Tracking test bridge is not initialized" }
                     .execute(action, params)
-                // Backup actions
-                "backup_create", "backup_restore" -> { }
             }
 
             call.respondText(
                 contentType = ContentType.Application.Json,
-                status = when (historyResult?.failureCode) {
+                status = when (settingsResult?.failureCode) {
+                    SettingsTestFailureCode.MISSING_PARAMETER,
+                    SettingsTestFailureCode.INVALID_PARAMETER,
+                    SettingsTestFailureCode.UNSUPPORTED_ACTION,
+                    -> HttpStatusCode.BadRequest
+                    SettingsTestFailureCode.ROW_NOT_FOUND -> HttpStatusCode.NotFound
+                    SettingsTestFailureCode.CONFIRMATION_REQUIRED,
+                    SettingsTestFailureCode.AUTHENTICATION_FAILED,
+                    SettingsTestFailureCode.OPERATION_IN_PROGRESS,
+                    SettingsTestFailureCode.OPERATION_REJECTED,
+                    SettingsTestFailureCode.NAVIGATION_REJECTED,
+                    -> HttpStatusCode.Conflict
+                    SettingsTestFailureCode.BACKEND_UNAVAILABLE,
+                    SettingsTestFailureCode.PORT_FAILURE,
+                    SettingsTestFailureCode.OWNER_CLOSED,
+                    -> HttpStatusCode.ServiceUnavailable
+                    null -> when (backupResult?.failureCode) {
+                    BackupTestFailureCode.MISSING_PARAMETER,
+                    BackupTestFailureCode.INVALID_PARAMETER,
+                    BackupTestFailureCode.UNSUPPORTED_ACTION,
+                    -> HttpStatusCode.BadRequest
+                    BackupTestFailureCode.CONFIRMATION_REQUIRED,
+                    BackupTestFailureCode.OPERATION_IN_PROGRESS,
+                    BackupTestFailureCode.OPERATION_REJECTED,
+                    BackupTestFailureCode.WORKFLOW_FAILED,
+                    BackupTestFailureCode.PARTIAL_FAILURE,
+                    -> HttpStatusCode.Conflict
+                    BackupTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
+                    null -> when (historyResult?.failureCode) {
                     TimelineTestFailureCode.MISSING_PARAMETER,
                     TimelineTestFailureCode.INVALID_PARAMETER,
                     TimelineTestFailureCode.UNSUPPORTED_ACTION,
@@ -636,6 +715,8 @@ internal fun Application.testHttpServer(
                     }
                     }
                     }
+                    }
+                    }
                 },
             ) {
                 val tracking = trackingResult?.let {
@@ -649,7 +730,9 @@ internal fun Application.testHttpServer(
                 jsonText(
                     actionJson(
                         action = action,
-                        success = historyResult?.success
+                        success = settingsResult?.success
+                            ?: backupResult?.success
+                            ?: historyResult?.success
                             ?: updatesResult?.success
                             ?: downloadResult?.success
                             ?: browseResult?.success
@@ -657,13 +740,21 @@ internal fun Application.testHttpServer(
                             ?: extensionResult?.success
                             ?: libraryResult?.success
                             ?: true,
-                        error = historyResult?.failureCode?.name
+                        error = settingsResult?.failureCode?.name
+                            ?: backupResult?.failureCode?.name
+                            ?: historyResult?.failureCode?.name
                             ?: updatesResult?.failureCode?.name
                             ?: downloadResult?.failureCode?.name
                             ?: browseResult?.failureCode?.name
                             ?: sourceResult?.failureCode?.name
                             ?: extensionResult?.failureCode?.name
                             ?: libraryResult?.failureCode?.name,
+                        settings = settingsResult?.let {
+                            Json.encodeToJsonElement(SettingsTestSnapshot.serializer(), it.snapshot)
+                        } ?: JsonNull,
+                        backup = backupResult?.let {
+                            Json.encodeToJsonElement(BackupTestSnapshot.serializer(), it.snapshot)
+                        } ?: JsonNull,
                         history = historyResult?.let {
                             Json.encodeToJsonElement(HistoryTestSnapshot.serializer(), it.snapshot)
                         } ?: JsonNull,

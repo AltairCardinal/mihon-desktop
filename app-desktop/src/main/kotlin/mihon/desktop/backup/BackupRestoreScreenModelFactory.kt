@@ -38,6 +38,8 @@ class BackupRestoreScreenModelFactory(
 ) {
     fun create(): BackupRestoreScreenModel = createModel()
 
+    internal fun create(scope: CoroutineScope): BackupRestoreScreenModel = createModel(scope)
+
     internal fun create(
         target: DesktopExternalActionTarget.Backup,
         scope: CoroutineScope? = null,

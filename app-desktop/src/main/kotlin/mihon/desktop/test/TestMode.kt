@@ -8,19 +8,27 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import mihon.desktop.platform.DesktopShareService
+import mihon.desktop.network.DesktopNetworkMaintenancePort
+import mihon.desktop.security.DesktopPassphraseVerifier
 import mihon.desktop.test.http.createPlatformAcceptanceController
 import mihon.desktop.test.http.BrowseSearchTestModeBridge
 import mihon.desktop.test.http.BrowseSearchTestModeController
+import mihon.desktop.test.http.BackupTestModeBridge
+import mihon.desktop.test.http.BackupTestModeController
 import mihon.desktop.test.http.DownloadTestModeBridge
 import mihon.desktop.test.http.DownloadTestModeController
 import mihon.desktop.test.http.HistoryTestModeBridge
 import mihon.desktop.test.http.HistoryTestModeController
+import mihon.desktop.test.http.SettingsTestModeBridge
+import mihon.desktop.test.http.SettingsTestModeController
 import mihon.desktop.test.http.UpdatesTestModeBridge
 import mihon.desktop.test.http.UpdatesTestModeController
 import mihon.desktop.test.http.testHttpServer
 import mihon.desktop.test.screenshot.ScreenshotService
 import mihon.desktop.test.state.applicationState
+import mihon.desktop.ui.settings.SecuritySettingsController
 import org.slf4j.LoggerFactory
+import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.nio.file.Path
@@ -46,9 +54,11 @@ object TestMode {
     private val lifecycleLock = Any()
     private var activeRun: TestModeRun? = null
     private var browseController: BrowseSearchTestModeController? = null
+    private var backupController: BackupTestModeController? = null
     private var downloadController: DownloadTestModeController? = null
     private var updatesController: UpdatesTestModeController? = null
     private var historyController: HistoryTestModeController? = null
+    private var settingsController: SettingsTestModeController? = null
 
     /**
      * Start test mode with the given configuration.
@@ -80,6 +90,11 @@ object TestMode {
         synchronized(lifecycleLock) {
             browseController = browse
         }
+        val backup = BackupTestModeController(Injekt.get())
+        BackupTestModeBridge.install(backup)
+        synchronized(lifecycleLock) {
+            backupController = backup
+        }
         val downloads = DownloadTestModeController(Injekt.get())
         DownloadTestModeBridge.install(downloads)
         synchronized(lifecycleLock) {
@@ -94,6 +109,17 @@ object TestMode {
         HistoryTestModeBridge.install(history)
         synchronized(lifecycleLock) {
             historyController = history
+        }
+        val settings = SettingsTestModeController(
+            security = SecuritySettingsController(
+                Injekt.get<SecurityPreferences>(),
+                Injekt.get<DesktopPassphraseVerifier>(),
+            ),
+            networkMaintenance = Injekt.get<DesktopNetworkMaintenancePort>(),
+        )
+        SettingsTestModeBridge.install(settings)
+        synchronized(lifecycleLock) {
+            settingsController = settings
         }
 
         // Register available screens
@@ -159,6 +185,20 @@ object TestMode {
                 "history_clear_all",
                 "history_remove",
                 "history_select",
+                "backup_create",
+                "backup_restore",
+                "backup_cancel",
+                "setting_search",
+                "setting_search_select",
+                "setting_security_enable",
+                "setting_security_disable",
+                "setting_security_delay",
+                "setting_security_change_passphrase",
+                "setting_import_cloudflare_cookie",
+                "setting_clear_cookies",
+                "setting_clear_network_cache",
+                "setting_open_crash_logs",
+                "setting_cancel",
                 "setting_change",
                 "setting_reset",
             ),
@@ -246,6 +286,9 @@ object TestMode {
         val activeBrowse = synchronized(lifecycleLock) {
             browseController.also { browseController = null }
         }
+        val activeBackup = synchronized(lifecycleLock) {
+            backupController.also { backupController = null }
+        }
         val activeDownloads = synchronized(lifecycleLock) {
             downloadController.also { downloadController = null }
         }
@@ -255,12 +298,17 @@ object TestMode {
         val activeHistory = synchronized(lifecycleLock) {
             historyController.also { historyController = null }
         }
+        val activeSettings = synchronized(lifecycleLock) {
+            settingsController.also { settingsController = null }
+        }
         completeTestModeStop(
             run,
             { activeBrowse?.close() },
+            { activeBackup?.close() },
             { activeDownloads?.close() },
             { activeUpdates?.close() },
             { activeHistory?.close() },
+            { activeSettings?.close() },
             { activeServer?.stop(SERVER_STOP_GRACE_MS, SERVER_STOP_TIMEOUT_MS) },
             { activeJob?.cancel() },
             ScreenshotService::disable,
