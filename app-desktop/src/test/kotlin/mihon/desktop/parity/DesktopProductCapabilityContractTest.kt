@@ -3641,7 +3641,7 @@ class DesktopProductCapabilityContractTest {
         val audit = id3.getValue("testModeCoverageAudit").jsonObject
         assertEquals("Task 16D", requiredText(audit, "task", 3))
         assertEquals("app-desktop/src/test/resources/parity/test-mode-coverage-inventory.json", requiredText(audit, "inventory", 3))
-        assertEquals(listOf(13, 6, 7, 5, 64, 0), listOf("families", "coveredFamilies", "gapFamilies", "permanentProtections", "mappedCapabilities", "unmappedCapabilities").map { audit.getValue(it).jsonPrimitive.content.toInt() })
+        assertEquals(listOf(13, 7, 6, 5, 64, 0), listOf("families", "coveredFamilies", "gapFamilies", "permanentProtections", "mappedCapabilities", "unmappedCapabilities").map { audit.getValue(it).jsonPrimitive.content.toInt() })
         assertEquals(childPlan, requiredText(audit, "childPlan", 3))
 
         val child = Files.readString(repositoryRoot.resolve(childPlan))
@@ -3656,11 +3656,14 @@ class DesktopProductCapabilityContractTest {
         assertEquals((171..177).map(Int::toString).toSet(), overview.keys)
         assertEquals("x", overview.getValue("171"))
         assertEquals("x", overview.getValue("172"))
-        assertEquals((173..177).map(Int::toString), overview.filterValues { it == " " }.keys.toList())
+        assertEquals("x", overview.getValue("173"))
+        assertEquals((174..177).map(Int::toString), overview.filterValues { it == " " }.keys.toList())
         val task171 = child.substringAfter("### Task 171 Final fixed-EXE runner").substringBefore("### Task 172 ")
         assertTrue("10/10" in task171 && "13/13" in task171 && "5/5" in task171 && "unmapped=0" in task171)
         val task172 = child.substringAfter("### Task 172 Library and manga-detail actions").substringBefore("### Task 173 ")
         assertTrue("9/9" in task172 && "LibraryMangaTestModeHttpTest" in task172 && "DesktopDiWiringTest" in task172)
+        val task173 = child.substringAfter("### Task 173 Browse search and source login").substringBefore("### Task 174 ")
+        assertTrue("Task 173R" in task173 && "BrowseSearchTestModeHttpTest" in task173 && "APPROVED" in task173)
 
         val parent = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
         assertEquals("Task 17", markdownFrontmatter(parent)["active-task"])
@@ -3669,6 +3672,7 @@ class DesktopProductCapabilityContractTest {
         val task17 = parent.substringAfter("### Task 17：").substringBefore("### Task 18：")
         assertTrue("Task 171" in task17 && "10/10" in task17)
         assertTrue("Task 172" in task17 && "9/9" in task17)
+        assertTrue("Task 173" in task17 && "Task 173R" in task17)
     }
 
     @Test

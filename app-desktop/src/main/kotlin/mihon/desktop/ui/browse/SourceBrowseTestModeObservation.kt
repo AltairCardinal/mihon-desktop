@@ -59,6 +59,8 @@ data class SourceBrowseTestSnapshot(
 @Serializable
 enum class SourceBrowseTestFailureCode {
     MISSING_TOKEN,
+    MISSING_HEADER,
+    STALE_GENERATION,
     NO_ACTIVE_LOGIN,
     ATTEMPT_MISMATCH,
     TERMINAL,
@@ -80,6 +82,10 @@ class SourceBrowseTestModeObservationPort(
     private val currentLogin: () -> DesktopSourceLoginUiState?,
     private val setLogin: (DesktopSourceLoginUiState?) -> Unit,
     private val loginActions: DesktopSourceLoginUiActions,
+    private val runIfGenerationCurrent: ((() -> Unit) -> Boolean) = { operation ->
+        operation()
+        true
+    },
 ) {
     private val lock = Any()
     private val dispatcher = requireNotNull(scope.coroutineContext[ContinuationInterceptor]) as CoroutineDispatcher
@@ -148,25 +154,23 @@ class SourceBrowseTestModeObservationPort(
     suspend fun cancel(attemptToken: String?): SourceBrowseTestActionResult {
         return withContext(dispatcher) {
             if (attemptToken.isNullOrBlank()) return@withContext failure(SourceBrowseTestFailureCode.MISSING_TOKEN)
-            val login = currentLogin()
-            val failureCode = synchronized(lock) {
-                when {
-                    closed -> SourceBrowseTestFailureCode.PORT_CLOSED
-                    login == null -> SourceBrowseTestFailureCode.NO_ACTIVE_LOGIN
-                    tokenAttempt !== login.attempt || token != attemptToken ->
-                        SourceBrowseTestFailureCode.ATTEMPT_MISMATCH
-                    login.terminal -> SourceBrowseTestFailureCode.TERMINAL
-                    else -> null
-                }
+            var result: SourceBrowseTestActionResult? = null
+            val current = runIfGenerationCurrent {
+                result = cancelCurrent(attemptToken)
             }
-            if (failureCode != null) return@withContext failure(failureCode)
-            requireNotNull(login)
-            if (
-                loginActions.cancel(login) != null
-            ) return@withContext failure(SourceBrowseTestFailureCode.OPERATION_REJECTED)
-            setLogin(null)
-            clearToken()
-            SourceBrowseTestActionResult(true, snapshot())
+            if (current) requireNotNull(result) else failure(SourceBrowseTestFailureCode.STALE_GENERATION)
+        }
+    }
+
+    suspend fun submit(attemptToken: String?, cookieHeader: String?): SourceBrowseTestActionResult {
+        return withContext(dispatcher) {
+            if (attemptToken.isNullOrBlank()) return@withContext failure(SourceBrowseTestFailureCode.MISSING_TOKEN)
+            if (cookieHeader.isNullOrBlank()) return@withContext failure(SourceBrowseTestFailureCode.MISSING_HEADER)
+            var result: SourceBrowseTestActionResult? = null
+            val current = runIfGenerationCurrent {
+                result = submitCurrent(attemptToken, cookieHeader)
+            }
+            if (current) requireNotNull(result) else failure(SourceBrowseTestFailureCode.STALE_GENERATION)
         }
     }
 
@@ -191,6 +195,45 @@ class SourceBrowseTestModeObservationPort(
     private fun clearTokenLocked() {
         tokenAttempt = null
         token = null
+    }
+
+    private fun cancelCurrent(attemptToken: String): SourceBrowseTestActionResult {
+        val login = currentLogin()
+        val failureCode = validate(login, attemptToken)
+        if (failureCode != null) return failure(failureCode)
+        requireNotNull(login)
+        if (loginActions.cancel(login) != null) return failure(SourceBrowseTestFailureCode.OPERATION_REJECTED)
+        setLogin(null)
+        clearToken()
+        return SourceBrowseTestActionResult(true, snapshot())
+    }
+
+    private fun submitCurrent(attemptToken: String, cookieHeader: String): SourceBrowseTestActionResult {
+        val login = currentLogin()
+        val failureCode = validate(login, attemptToken)
+        if (failureCode != null) return failure(failureCode)
+        requireNotNull(login)
+        val submitted = loginActions.submit(loginActions.editHeader(login, cookieHeader))
+        setLogin(submitted)
+        return if (submitted.feedback != null) {
+            failure(SourceBrowseTestFailureCode.OPERATION_REJECTED)
+        } else {
+            SourceBrowseTestActionResult(true, snapshot())
+        }
+    }
+
+    private fun validate(
+        login: DesktopSourceLoginUiState?,
+        attemptToken: String,
+    ): SourceBrowseTestFailureCode? = synchronized(lock) {
+        when {
+            closed -> SourceBrowseTestFailureCode.PORT_CLOSED
+            login == null -> SourceBrowseTestFailureCode.NO_ACTIVE_LOGIN
+            tokenAttempt !== login.attempt || token != attemptToken ->
+                SourceBrowseTestFailureCode.ATTEMPT_MISMATCH
+            login.terminal -> SourceBrowseTestFailureCode.TERMINAL
+            else -> null
+        }
     }
 
     private fun failure(code: SourceBrowseTestFailureCode) = SourceBrowseTestActionResult(false, snapshot(), code)

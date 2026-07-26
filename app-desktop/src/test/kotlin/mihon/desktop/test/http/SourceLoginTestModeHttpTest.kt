@@ -3,6 +3,7 @@ package mihon.desktop.test.http
 import eu.kanade.tachiyomi.source.CatalogueSource
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
@@ -24,6 +25,8 @@ import mihon.desktop.ui.browse.DesktopSourceLoginUiActions
 import mihon.desktop.ui.browse.DesktopSourceLoginUiState
 import mihon.desktop.ui.browse.DesktopSourceRecoveryIntent
 import mihon.desktop.ui.browse.SourceBrowseQueryCoordinator
+import mihon.desktop.ui.browse.SourceBrowseTestActionResult
+import mihon.desktop.ui.browse.SourceBrowseTestFailureCode
 import mihon.desktop.ui.browse.SourceBrowseTestModeBridge
 import mihon.desktop.ui.browse.SourceBrowseTestModeObservationPort
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -41,6 +44,7 @@ import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 class SourceLoginTestModeHttpTest {
@@ -112,7 +116,16 @@ class SourceLoginTestModeHttpTest {
         withServer { baseUrl ->
             assertSame(JsonNull, get(baseUrl, "/test/state").json["source"])
             assertEquals(503, post(baseUrl, "/test/action/source_login_cancel", "{}").status)
-            assertEquals(400, post(baseUrl, "/test/action/browse_search", """{"query":"fake"}""").status)
+            val unavailableSearch = post(baseUrl, "/test/action/browse_search", """{"query":"fake"}""")
+            assertEquals(503, unavailableSearch.status)
+            assertEquals("BROWSE_OWNER_UNAVAILABLE", unavailableSearch.json.getValue("error").jsonPrimitive.content)
+            val unavailableLogin = post(
+                baseUrl,
+                "/test/action/source_login_start",
+                """{"sourceId":"42","url":"https://login.example"}""",
+            )
+            assertEquals(503, unavailableLogin.status)
+            assertEquals("SOURCE_BROWSE_UNAVAILABLE", unavailableLogin.json.getValue("error").jsonPrimitive.content)
 
             val login = AtomicReference<DesktopSourceLoginUiState?>(
                 DesktopSourceLoginUiState(DesktopSourceLoginAttempt(), "terminal", terminal = true),
@@ -144,6 +157,107 @@ class SourceLoginTestModeHttpTest {
                 SourceBrowseTestModeBridge.clear(port)
                 port.close()
             }
+        }
+    }
+
+    @Test
+    fun `source actions fall back to installed port when browse controller has no login result`() = runBlocking {
+        val submits = AtomicInteger()
+        val cancels = AtomicInteger()
+        val login = AtomicReference<DesktopSourceLoginUiState?>(
+            DesktopSourceLoginUiState(DesktopSourceLoginAttempt(), "fallback.example"),
+        )
+        val port = port(
+            43,
+            SourceBrowseQueryCoordinator(SourceMangaSearchService()),
+            login,
+            DesktopSourceLoginUiActions(
+                { _, _ -> submits.incrementAndGet(); false },
+                { cancels.incrementAndGet(); true },
+            ),
+        )
+        val browse = mockk<BrowseSearchTestModeController>()
+        coEvery { browse.executeSourceLogin(any(), any()) } returns null
+        BrowseSearchTestModeBridge.install(browse)
+        SourceBrowseTestModeBridge.install(port)
+        try {
+            withServer { baseUrl ->
+                val token = requireNotNull(port.snapshot().login).attemptToken
+                val complete = post(
+                    baseUrl,
+                    "/test/action/source_login_complete",
+                    """{"attemptToken":"$token","cookieHeader":"invalid"}""",
+                )
+                assertEquals(409, complete.status)
+                assertEquals("OPERATION_REJECTED", complete.json.getValue("error").jsonPrimitive.content)
+                assertEquals(1, submits.get())
+
+                val cancel = post(
+                    baseUrl,
+                    "/test/action/source_login_cancel",
+                    """{"attemptToken":"$token"}""",
+                )
+                assertEquals(200, cancel.status)
+                assertEquals(1, cancels.get())
+                assertNull(login.get())
+            }
+        } finally {
+            BrowseSearchTestModeBridge.clear(browse)
+            SourceBrowseTestModeBridge.clear(port)
+            port.close()
+        }
+    }
+
+    @Test
+    fun `stale generation from browse controller never falls back to installed port`() = runBlocking {
+        val submits = AtomicInteger()
+        val cancels = AtomicInteger()
+        val login = AtomicReference<DesktopSourceLoginUiState?>(
+            DesktopSourceLoginUiState(DesktopSourceLoginAttempt(), "stale.example"),
+        )
+        val port = port(
+            44,
+            SourceBrowseQueryCoordinator(SourceMangaSearchService()),
+            login,
+            DesktopSourceLoginUiActions(
+                { _, _ -> submits.incrementAndGet(); true },
+                { cancels.incrementAndGet(); true },
+            ),
+        )
+        val browse = mockk<BrowseSearchTestModeController>()
+        val stale = SourceBrowseTestActionResult(
+            success = false,
+            snapshot = port.snapshot(),
+            failureCode = SourceBrowseTestFailureCode.STALE_GENERATION,
+        )
+        coEvery { browse.executeSourceLogin(any(), any()) } returns stale
+        BrowseSearchTestModeBridge.install(browse)
+        SourceBrowseTestModeBridge.install(port)
+        try {
+            withServer { baseUrl ->
+                val token = requireNotNull(port.snapshot().login).attemptToken
+                val complete = post(
+                    baseUrl,
+                    "/test/action/source_login_complete",
+                    """{"attemptToken":"$token","cookieHeader":"session=must-not-submit"}""",
+                )
+                assertEquals(409, complete.status)
+                assertEquals("STALE_GENERATION", complete.json.getValue("error").jsonPrimitive.content)
+                val cancel = post(
+                    baseUrl,
+                    "/test/action/source_login_cancel",
+                    """{"attemptToken":"$token"}""",
+                )
+                assertEquals(409, cancel.status)
+                assertEquals("STALE_GENERATION", cancel.json.getValue("error").jsonPrimitive.content)
+                assertEquals(0, submits.get())
+                assertEquals(0, cancels.get())
+                assertTrue(login.get() != null)
+            }
+        } finally {
+            BrowseSearchTestModeBridge.clear(browse)
+            SourceBrowseTestModeBridge.clear(port)
+            port.close()
         }
     }
 

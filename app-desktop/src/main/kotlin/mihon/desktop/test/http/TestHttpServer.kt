@@ -111,6 +111,12 @@ internal fun currentTestStateJson(updateModel: DesktopUpdateScreenModel? = null)
             } ?: JsonNull,
         )
         put(
+            "browse",
+            BrowseSearchTestModeBridge.controller?.snapshot()?.let {
+                Json.encodeToJsonElement(BrowseSearchTestSnapshot.serializer(), it)
+            } ?: JsonNull,
+        )
+        put(
             "source",
             SourceBrowseTestModeBridge.port?.snapshot()?.let {
                 Json.encodeToJsonElement(SourceBrowseTestSnapshot.serializer(), it)
@@ -136,6 +142,7 @@ private fun actionJson(
     success: Boolean,
     error: String? = null,
     extension: kotlinx.serialization.json.JsonElement = JsonNull,
+    browse: kotlinx.serialization.json.JsonElement = JsonNull,
     source: kotlinx.serialization.json.JsonElement = JsonNull,
     library: kotlinx.serialization.json.JsonElement = JsonNull,
     detail: kotlinx.serialization.json.JsonElement = JsonNull,
@@ -146,6 +153,7 @@ private fun actionJson(
     put("error", error?.let(::JsonPrimitive) ?: JsonNull)
     put("timestamp", JsonPrimitive(Instant.now().toString()))
     put("extension", extension)
+    put("browse", browse)
     put("source", source)
     put("library", library)
     put("detail", detail)
@@ -327,18 +335,34 @@ internal fun Application.testHttpServer(
                 return@post
             }
 
-            if (action == "browse_search") {
+            val isBrowseAction =
+                action == "browse_search" ||
+                    action == "browse_select" ||
+                    action == "source_login_start"
+            val browseController = if (isBrowseAction) BrowseSearchTestModeBridge.controller else null
+            if (isBrowseAction && browseController == null) {
+                val error =
+                    if (action == "source_login_start") {
+                        "SOURCE_BROWSE_UNAVAILABLE"
+                    } else {
+                        "BROWSE_OWNER_UNAVAILABLE"
+                    }
                 call.respondText(
-                    jsonText(actionJson(action, false, "UNSUPPORTED_ACTION")),
+                    jsonText(actionJson(action, false, error)),
                     ContentType.Application.Json,
-                    HttpStatusCode.BadRequest,
+                    HttpStatusCode.ServiceUnavailable,
                 )
                 return@post
             }
+            val browseResult = browseController?.execute(action, params)
 
-            val isSourceLoginAction = action == "source_login_cancel"
+            val isSourceLoginAction =
+                action == "source_login_complete" ||
+                    action == "source_login_cancel"
             val sourcePort = if (isSourceLoginAction) SourceBrowseTestModeBridge.port else null
-            if (isSourceLoginAction && sourcePort == null) {
+            val browseSourceController =
+                if (isSourceLoginAction) BrowseSearchTestModeBridge.controller else null
+            if (isSourceLoginAction && sourcePort == null && browseSourceController == null) {
                 call.respondText(
                     jsonText(actionJson(action, false, "SOURCE_BROWSE_UNAVAILABLE")),
                     ContentType.Application.Json,
@@ -346,7 +370,25 @@ internal fun Application.testHttpServer(
                 )
                 return@post
             }
-            val sourceResult = sourcePort?.cancel(params["attemptToken"])
+            val browseSourceResult = browseSourceController?.executeSourceLogin(action, params)
+            val sourceResult =
+                browseSourceResult ?: when {
+                    sourcePort == null -> null
+                    action == "source_login_complete" ->
+                        sourcePort.submit(
+                            attemptToken = params["attemptToken"],
+                            cookieHeader = params["cookieHeader"],
+                        )
+                    else -> sourcePort.cancel(params["attemptToken"])
+                }
+            if (isSourceLoginAction && sourceResult == null) {
+                call.respondText(
+                    jsonText(actionJson(action, false, "SOURCE_BROWSE_UNAVAILABLE")),
+                    ContentType.Application.Json,
+                    HttpStatusCode.ServiceUnavailable,
+                )
+                return@post
+            }
 
             val isExtensionAction = action.startsWith("extension_")
             val extensionController = if (isExtensionAction) SourceExtensionTestModeBridge.controller else null
@@ -376,7 +418,7 @@ internal fun Application.testHttpServer(
 
             // Process actions
             var trackingResult: mihon.desktop.tracking.TrackingTestState? = null
-            if (!isExtensionAction && !isLibraryAction) when (action) {
+            if (!isExtensionAction && !isLibraryAction && !isBrowseAction && !isSourceLoginAction) when (action) {
                 // Read chapter - open reader
                 "read_chapter", "start_reading" -> {
                     val mangaId = params["mangaId"]?.toLongOrNull()
@@ -458,8 +500,24 @@ internal fun Application.testHttpServer(
 
             call.respondText(
                 contentType = ContentType.Application.Json,
-                status = when (sourceResult?.failureCode) {
-                    SourceBrowseTestFailureCode.MISSING_TOKEN -> HttpStatusCode.BadRequest
+                status = when (browseResult?.failureCode) {
+                    BrowseSearchTestFailureCode.MISSING_PARAMETER,
+                    BrowseSearchTestFailureCode.BLANK_QUERY,
+                    BrowseSearchTestFailureCode.UNSUPPORTED_ACTION,
+                    -> HttpStatusCode.BadRequest
+                    BrowseSearchTestFailureCode.SOURCE_NOT_FOUND,
+                    BrowseSearchTestFailureCode.ROW_NOT_FOUND,
+                    -> HttpStatusCode.NotFound
+                    BrowseSearchTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
+                    BrowseSearchTestFailureCode.STALE_GENERATION,
+                    BrowseSearchTestFailureCode.RECOVERY_UNAVAILABLE,
+                    BrowseSearchTestFailureCode.OPERATION_REJECTED,
+                    -> HttpStatusCode.Conflict
+                    null -> when (sourceResult?.failureCode) {
+                    SourceBrowseTestFailureCode.MISSING_TOKEN,
+                    SourceBrowseTestFailureCode.MISSING_HEADER,
+                    -> HttpStatusCode.BadRequest
+                    SourceBrowseTestFailureCode.STALE_GENERATION,
                     SourceBrowseTestFailureCode.NO_ACTIVE_LOGIN,
                     SourceBrowseTestFailureCode.ATTEMPT_MISMATCH,
                     SourceBrowseTestFailureCode.TERMINAL,
@@ -498,6 +556,7 @@ internal fun Application.testHttpServer(
                             null -> HttpStatusCode.OK
                         }
                     }
+                    }
                 },
             ) {
                 val tracking = trackingResult?.let {
@@ -511,12 +570,20 @@ internal fun Application.testHttpServer(
                 jsonText(
                     actionJson(
                         action = action,
-                        success = sourceResult?.success ?: extensionResult?.success ?: libraryResult?.success ?: true,
-                        error = sourceResult?.failureCode?.name
+                        success = browseResult?.success
+                            ?: sourceResult?.success
+                            ?: extensionResult?.success
+                            ?: libraryResult?.success
+                            ?: true,
+                        error = browseResult?.failureCode?.name
+                            ?: sourceResult?.failureCode?.name
                             ?: extensionResult?.failureCode?.name
                             ?: libraryResult?.failureCode?.name,
                         extension = extensionResult?.let {
                             Json.encodeToJsonElement(SourceExtensionTestSnapshot.serializer(), it.snapshot)
+                        } ?: JsonNull,
+                        browse = browseResult?.let {
+                            Json.encodeToJsonElement(BrowseSearchTestSnapshot.serializer(), it.snapshot)
                         } ?: JsonNull,
                         source = sourceResult?.let {
                             Json.encodeToJsonElement(SourceBrowseTestSnapshot.serializer(), it.snapshot)

@@ -8,7 +8,7 @@ status: planned
 本计划只关闭 Task16D inventory 中 9 个 Desktop TestMode wiring/runner gap 和缺失的最终固定 EXE runner；ID3 产品闭环仍归 Task141/142，本计划只消费其完成产物，并按 171→177 串行执行。
 - [x] Task 171：Final fixed-EXE runner
 - [x] Task 172：Library and manga-detail actions
-- [ ] Task 173：Browse search and source login
+- [x] Task 173：Browse search and source login
 - [ ] Task 174：Downloads, updates and history actions
 - [ ] Task 175：Backup and settings actions
 - [ ] Task 176：Tracking HTTP runner
@@ -39,6 +39,8 @@ status: planned
 **Files:** Desktop TestMode/HTTP code under `app-desktop/src/main/kotlin/mihon/desktop/test/**`, plus HTTP/coverage tests under `app-desktop/src/test/kotlin/mihon/desktop/test/**` and `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopTestModeCoverageContractTest.kt` only.
 **TDD:** after Task141/142 complete, first RED on `UNSUPPORTED_ACTION` and cancel-only HTTP evidence; add only Desktop TestMode dispatch/observation wiring and preserve stale-token and owner-close mutations.
 **User/feedback:** scenario exposes loading/results/navigation plus login success, rejection, cancellation and recovery errors.
+**Residual repair batch Task 173R:** Task173 的唯一修复复审已确认 generation lease 问题关闭，但发现全局 browse controller 与普通 SourceBrowse login port 共存时缺少路由回退。173R 只允许修改 TestMode HTTP 路由及共存测试：browse controller 没有活动 login port、返回 `null` 时回退 `SourceBrowseTestModeBridge.port`；返回 `STALE_GENERATION` 等 typed 结果时禁止回退。该残余批次独立审查通过后才勾选 Task173。
+**Execution evidence:** `browse_search` 首先因旧硬编码 `UNSUPPORTED_ACTION` 取得精确 RED；实现复用 `DesktopGlobalSearchCoordinator`、`SourceBrowseRecoveryController`、`DesktopSourceLoginController` 与 production save/login ports，HTTP 观察 loading/current rows、选择导航、认证 recovery、start/complete/cancel、拒绝和 owner close。保存拒绝从 500 空体以 RED→GREEN 收敛为 typed `OPERATION_REJECTED`。唯一审查发现 login token 未绑定 generation；修复以 G→G+1 旧 complete/cancel 及受控并发发布 RED，最终保证 `STALE_GENERATION`、零提交/零退休重试。修复复审确认 generation P1 关闭后发现双 bridge 共存回退缺口，按本节 Task 173R 最小重规划；173R 先证明 null-result 错误 503、typed stale 已正确 409，再仅增加 null-result fallback，独立审查 `APPROVED`、无 P0/P1/P2。`BrowseSearchTestModeHttpTest`、`SourceLoginTestModeHttpTest`、既有 wiring、DI、coverage 与 Spotless 主门禁通过；inventory 现为 7/13 covered、6 gap，64/64 mapped、unmapped=0。
 ### Task 174 Downloads, updates and history actions
 **Risk axis:** testmode-queue-history
 **Platform boundary:** desktop

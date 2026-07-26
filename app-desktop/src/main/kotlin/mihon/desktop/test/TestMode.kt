@@ -9,6 +9,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import mihon.desktop.platform.DesktopShareService
 import mihon.desktop.test.http.createPlatformAcceptanceController
+import mihon.desktop.test.http.BrowseSearchTestModeBridge
+import mihon.desktop.test.http.BrowseSearchTestModeController
 import mihon.desktop.test.http.testHttpServer
 import mihon.desktop.test.screenshot.ScreenshotService
 import mihon.desktop.test.state.applicationState
@@ -37,6 +39,7 @@ object TestMode {
     private val serverScope = CoroutineScope(Dispatchers.Default)
     private val lifecycleLock = Any()
     private var activeRun: TestModeRun? = null
+    private var browseController: BrowseSearchTestModeController? = null
 
     /**
      * Start test mode with the given configuration.
@@ -58,6 +61,16 @@ object TestMode {
 
         // Initialize test state
         applicationState.testMode = true
+        val browse = BrowseSearchTestModeController(
+            coordinator = mihon.desktop.ui.browse.DesktopGlobalSearchCoordinator(Injekt.get()),
+            sourcesProvider = { Injekt.get<tachiyomi.domain.source.service.SourceManager>().getCatalogueSources() },
+            saveSourceMangaForDetails = Injekt.get(),
+            loginSessionFactory = Injekt.get(),
+        )
+        BrowseSearchTestModeBridge.install(browse)
+        synchronized(lifecycleLock) {
+            browseController = browse
+        }
 
         // Register available screens
         applicationState.registerScreens(
@@ -96,6 +109,11 @@ object TestMode {
                 "detail_categories",
                 "detail_chapter",
                 "detail_cover",
+                "browse_search",
+                "browse_select",
+                "source_login_start",
+                "source_login_complete",
+                "source_login_cancel",
                 "setting_change",
                 "setting_reset",
             ),
@@ -174,8 +192,12 @@ object TestMode {
             serverJob = null
             Triple(currentRun, currentServer, currentJob)
         }
+        val activeBrowse = synchronized(lifecycleLock) {
+            browseController.also { browseController = null }
+        }
         completeTestModeStop(
             run,
+            { activeBrowse?.close() },
             { activeServer?.stop(SERVER_STOP_GRACE_MS, SERVER_STOP_TIMEOUT_MS) },
             { activeJob?.cancel() },
             ScreenshotService::disable,

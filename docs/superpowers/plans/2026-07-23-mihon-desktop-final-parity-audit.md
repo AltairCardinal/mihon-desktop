@@ -525,9 +525,11 @@ shared lifecycle RED→GREEN、三项 mutation、唯一审查修复与复审，�
 修复后复审 APPROVED，ID10 从 `WIRED` 提升为 `VERIFIED`。Task 16B child 已全部勾选并完成。
 Task 17 保持活动。Task 16C 已完成；Task 16D child 的 Task 171 fixed-EXE runner 已以
 `10/10` runner contract 闭合，Task 172 已完成 Library/Manga Detail production TestMode
-wiring，controller `9/9`、HTTP/DI/coverage/Spotless 门禁通过，inventory 现为 6/13 covered、
-7 gap、64/64 mapped、unmapped=0。下一恢复位置为 Task 173。Task 16A 审计已明确无需生成
-产品 child plan。
+wiring，controller `9/9`、HTTP/DI/coverage/Spotless 门禁通过。Task 173 已完成 Global
+Search/Source Login production TestMode wiring；generation lease 修复后，Task 173R 又以
+null-result fallback 与 typed stale 不回退测试关闭双 bridge 共存路由，独立审查 APPROVED。
+inventory 现为 7/13 covered、6 gap、64/64 mapped、unmapped=0。下一恢复位置为 Task 174。
+Task 16A 审计已明确无需生成产品 child plan。
 
 Task 16C 的 Task 164 已完成 current Android extension repository response adapter：固定原版
 `GET → awaitSuccess → parseAs` 链路保持不变，HTTP 状态、`Retry-After` 与 malformed payload
