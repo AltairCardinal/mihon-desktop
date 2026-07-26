@@ -174,6 +174,7 @@ class AboutUpdateWiringTest {
         val appPreferences = DesktopAppPreferences(InMemoryPreferenceStore())
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { this@mockk.extensionManager } returns extensionManager
+            every { extensionPresentationService } returns extensionManager
             every { this@mockk.appPreferences } returns appPreferences
             every { updateScreenModel } returns updateModel
         }

@@ -42,12 +42,12 @@ class CloudflareChallengeManager(
     private val browserAdapterProvider: ((CloudflareChallenge) -> BrowserLoginAdapter)? = null,
     private val committerProvider: (() -> AuthenticatedSessionCommitter)? = null,
     private val flareSolverrClientProvider: (() -> FlareSolverrClient?)? = null,
-) : DesktopChallengeRecoveryPort {
+) : DesktopChallengeUiPort {
     private val _challenges = MutableSharedFlow<CloudflareChallenge>(
         extraBufferCapacity = 1,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
-    val challenges: SharedFlow<CloudflareChallenge> = _challenges
+    override val challenges: SharedFlow<CloudflareChallenge> = _challenges
 
     private val recentChallenge = AtomicReference<CloudflareChallenge?>()
     private val solverUserAgents = ConcurrentHashMap<String, SolverUserAgentBinding>()

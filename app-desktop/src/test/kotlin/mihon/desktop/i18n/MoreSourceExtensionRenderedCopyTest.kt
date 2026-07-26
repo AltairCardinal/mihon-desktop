@@ -28,7 +28,10 @@ class MoreSourceExtensionRenderedCopyTest {
     @Test
     fun `source extension entries render localized copy and navigate`() = runBlocking {
         val downloads = mockk<DesktopDownloadManager> { every { queue } returns MutableStateFlow(emptyList()) }
-        val dependencies = mockk<DesktopUiDependencies> { every { downloadManager } returns downloads }
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { downloadManager } returns downloads
+            every { downloadQueuePort } returns downloads
+        }
         val previousLocale = Locale.getDefault()
         try {
             listOf(Locale.forLanguageTag("zh-CN"), Locale.US).forEach { locale ->

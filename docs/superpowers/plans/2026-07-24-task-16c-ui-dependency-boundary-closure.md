@@ -10,7 +10,7 @@ status: planned
 - [x] Task 165：Library UI use-case boundary
 - [x] Task 166：Creator and tracking use-case boundary
 - [x] Task 167：Extension and browse ports
-- [ ] Task 168：Settings, home and download ports
+- [x] Task 168：Settings, home and download ports
 - [ ] Task 169：Compiled boundary closeout
 ### Task 164 Android network error mapper consumer
 **Risk axis:** android-network-error-wiring
@@ -56,6 +56,7 @@ status: planned
 **Files:** 五个 UI owner、现有 maintenance/challenge/download ports、DI 与行为测试。
 **TDD:** 先写 owner→port production wiring RED，再移除 manager；mutation 注回 manager 精确触发 compiled guard。
 **User/feedback:** About、Advanced、More、Home、Library downloads；确认、进度、错误、取消和恢复反馈零回退。
+**Execution evidence:** compiled guard 清除最后 7 条 Home/LibraryRoot/About/Advanced/More 的 concrete manager/helper/`HttpUrl` inventory 后精确 RED；GREEN 后 Home 复用同一 challenge flow/recovery port，Library/More 复用同一 download queue state，About 复用同一 extension presentation state，Advanced 的校验、URL canonicalization、`cf_clearance` 写入与 clear-all 下沉到原 network helper 的窄 maintenance port。DI 以 same-instance 断言 production wiring；51 项 focused、forbidden-edge mutation、独立审查、主门禁、Spotless 与 residual/diff checks 全绿，32 条初始违规现已归零。
 ### Task 169 Compiled boundary closeout
 **Risk axis:** compiled-boundary-closeout
 **Platform boundary:** tooling

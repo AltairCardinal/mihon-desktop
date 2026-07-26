@@ -64,8 +64,10 @@ class DesktopSettingsAboutExtensionAccessibilityTest {
             every { feedback } returns MutableStateFlow(null)
             every { intent(any()) } returns true
         }
+        val extensionManager = DesktopExtensionManager()
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
-            every { extensionManager } returns DesktopExtensionManager()
+            every { this@mockk.extensionManager } returns extensionManager
+            every { extensionPresentationService } returns extensionManager
             every { updateScreenModel } returns update
             every { dependencyNoticeProvider } returns DependencyNoticeProvider { LicenseNoticeResult.Success(emptyList()) }
         }

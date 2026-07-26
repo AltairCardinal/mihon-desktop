@@ -67,11 +67,11 @@ class HomeScreen : Screen {
     override fun Content() {
         var activeChallenge by remember { mutableStateOf<CloudflareChallenge?>(null) }
         val dependencies = LocalDesktopUiDependencies.current
-        val challengeManager = dependencies.cloudflareChallengeManager
+        val challengePort = dependencies.challengeUiPort
         val notificationService = dependencies.notificationService
-        val controller = remember(challengeManager, dependencies.challengeBrowserLoginBridge, dependencies.appPreferences) {
+        val controller = remember(challengePort, dependencies.challengeBrowserLoginBridge, dependencies.appPreferences) {
             DesktopChallengeLoginController(
-                challengeManager,
+                challengePort,
                 dependencies.challengeBrowserLoginBridge,
                 dependencies.appPreferences,
             )
@@ -95,7 +95,7 @@ class HomeScreen : Screen {
 
         // Cloudflare challenges
         LaunchedEffect(Unit) {
-            challengeManager.challenges.collect { challenge ->
+            challengePort.challenges.collect { challenge ->
                 actionJob?.cancel()
                 activeChallenge = challenge
             }

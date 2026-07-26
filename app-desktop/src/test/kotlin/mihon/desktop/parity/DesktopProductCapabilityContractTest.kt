@@ -3467,7 +3467,7 @@ class DesktopProductCapabilityContractTest {
         val expected =
             mapOf(
                 8 to Triple("SHARED", "$childPlan#task-169-compiled-boundary-closeout", 0),
-                95 to Triple("WIRED", "$childPlan#task-168-settings-home-and-download-ports", 7),
+                95 to Triple("WIRED", "$childPlan#task-169-compiled-boundary-closeout", 0),
             )
         val guardTest = "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt"
         fun JsonObject.strings(field: String) = getValue(field).jsonArray.map { it.jsonPrimitive.content }.toSet()
@@ -3568,12 +3568,17 @@ class DesktopProductCapabilityContractTest {
                 "mihon.desktop.ui.extension.DesktopExtensionPresentationPort -> mihon.desktop.extension.DesktopExtensionPresentationService",
                 "mihon.desktop.ui.extension.ExtensionDetailsScreen -> mihon.desktop.network.DesktopExtensionCookiePort",
                 "mihon.desktop.ui.extension.SourcePreferencesScreenKt -> mihon.desktop.extension.DesktopSourcePreferenceContextFactory",
+                "mihon.desktop.ui.home.HomeScreen -> mihon.desktop.network.DesktopChallengeUiPort",
+                "mihon.desktop.ui.library.LibraryRootScreen -> mihon.desktop.download.DesktopDownloadQueuePort",
+                "mihon.desktop.ui.settings.AboutScreen -> mihon.desktop.extension.DesktopExtensionPresentationService",
+                "mihon.desktop.ui.settings.AdvancedSettingsScreen -> mihon.desktop.network.DesktopNetworkMaintenancePort",
+                "mihon.desktop.ui.settings.MoreRootScreen -> mihon.desktop.download.DesktopDownloadQueuePort",
             ),
             moduleAudit.strings("requiredCompiledEdges"),
         )
         assertTrue(moduleAudit.getValue("missingRequiredEdges").jsonArray.isEmpty())
         assertEquals(
-            mapOf("MANAGER_HTTP_OR_CLASSLOADER" to 7),
+            emptyMap<String, Int>(),
             moduleAudit.getValue("forbiddenCompiledEdges").jsonArray
                 .map { requiredText(it.jsonObject, "category", 95, "forbiddenCompiledEdges") }
                 .groupingBy { it }
@@ -3592,7 +3597,8 @@ class DesktopProductCapabilityContractTest {
         assertEquals("x", overview.getValue("165"))
         assertEquals("x", overview.getValue("166"))
         assertEquals("x", overview.getValue("167"))
-        assertEquals((168..169).map(Int::toString), overview.filterValues { it == " " }.keys.toList())
+        assertEquals("x", overview.getValue("168"))
+        assertEquals(listOf("169"), overview.filterValues { it == " " }.keys.toList())
         assertEquals("planned", metadata["status"])
         (164..169).forEach { task ->
             assertEquals(1, Regex("""(?m)^### Task $task(?:\s|$)""").findAll(child).count(), "Task $task must be unique")

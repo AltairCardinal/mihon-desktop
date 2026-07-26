@@ -11,6 +11,8 @@ import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import mihon.desktop.network.CF_CLEARANCE_COOKIE_NAME
+import mihon.desktop.network.DesktopCloudflareCookieImportResult
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -72,6 +74,36 @@ class DesktopNetworkHelperTest {
         assertEquals(1, helper.clearCookies(listOf(TestHttpSource(sourceUrl.toString()), TestHttpSource("not a url"))))
         assertTrue(helper.cookieJar.loadForRequest(sourceUrl).isEmpty())
         assertEquals(listOf("other"), helper.cookieJar.loadForRequest(otherUrl).map { cookie: Cookie -> cookie.name })
+        helper.close()
+    }
+
+    @Test
+    fun `network maintenance port validates imports canonical host and clears all cookies`() {
+        val helper = DesktopNetworkHelper(
+            cacheDir = createTempCacheDir(),
+            cookieStorageFile = File(createTempCacheDir(), "cookies.json"),
+        )
+        val imported = helper.importCloudflareCookie("例子.测试", "clearance-secret")
+        assertEquals(
+            DesktopCloudflareCookieImportResult.Imported("xn--fsqu00a.xn--0zwm56d"),
+            imported,
+        )
+        val url = "https://xn--fsqu00a.xn--0zwm56d/".toHttpUrl()
+        assertEquals(
+            listOf(CF_CLEARANCE_COOKIE_NAME),
+            helper.cookieJar.loadForRequest(url).map { cookie: Cookie -> cookie.name },
+        )
+        assertEquals(
+            DesktopCloudflareCookieImportResult.InvalidDomain,
+            helper.importCloudflareCookie("", "value"),
+        )
+        assertEquals(
+            DesktopCloudflareCookieImportResult.InvalidValue,
+            helper.importCloudflareCookie("example.com", ""),
+        )
+
+        helper.clearCookies()
+        assertTrue(helper.cookieJar.loadForRequest(url).isEmpty())
         helper.close()
     }
 

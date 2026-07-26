@@ -179,6 +179,10 @@ class DesktopDiWiringTest {
             val registry = Injekt.get<TrackerServiceRegistry>()
             val ui = DesktopUiDependencies.fromInjekt()
 
+            assertSame(Injekt.get<CloudflareChallengeManager>(), ui.challengeUiPort)
+            assertSame(Injekt.get<DesktopDownloadManager>(), ui.downloadQueuePort)
+            assertSame(Injekt.get<DesktopExtensionManager>(), ui.extensionPresentationService)
+            assertSame(Injekt.get<DesktopNetworkHelper>(), ui.networkMaintenancePort)
             assertSame(broker, ui.trackerOAuthCallbackBroker)
             assertSame(registry, ui.trackerServiceRegistry)
             assertSame(Injekt.get<GetTracks>(), ui.getTracks)

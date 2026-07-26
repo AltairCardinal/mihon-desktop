@@ -12,16 +12,20 @@ import mihon.desktop.domain.GetExcludedScanlators
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.domain.SetExcludedScanlators
 import mihon.desktop.download.DesktopDownloadManager
+import mihon.desktop.download.DesktopDownloadQueuePort
 import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.download.DownloadQueueScreenModel
 import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopExtensionManager
+import mihon.desktop.extension.DesktopExtensionPresentationService
 import mihon.desktop.extension.DesktopSourceExtensionLookup
 import mihon.desktop.license.DependencyNoticeProvider
 import mihon.desktop.network.CloudflareChallengeManager
+import mihon.desktop.network.DesktopChallengeUiPort
 import mihon.desktop.network.DesktopChallengeBrowserLoginBridge
 import mihon.desktop.network.DesktopSourceLoginSessionFactory
 import mihon.desktop.network.DesktopExtensionCookiePort
+import mihon.desktop.network.DesktopNetworkMaintenancePort
 import mihon.desktop.migration.DesktopBatchMigrationController
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.platform.DesktopDeepLinkHandler
@@ -80,6 +84,7 @@ data class DesktopUiDependencies(
     val chapterRepository: ChapterRepository,
     val getChaptersByMangaId: GetChaptersByMangaId,
     val cloudflareChallengeManager: CloudflareChallengeManager,
+    val challengeUiPort: DesktopChallengeUiPort = cloudflareChallengeManager,
     val challengeBrowserLoginBridge: DesktopChallengeBrowserLoginBridge,
     val sourceLoginSessionFactory: DesktopSourceLoginSessionFactory,
     val createExtensionRepo: CreateExtensionRepo,
@@ -89,10 +94,12 @@ data class DesktopUiDependencies(
     val discoverCreatorWorks: DiscoverCreatorWorks,
     val deleteExtensionRepo: DeleteExtensionRepo,
     val downloadManager: DesktopDownloadManager,
+    val downloadQueuePort: DesktopDownloadQueuePort = downloadManager,
     val downloadPreferences: DesktopDownloadPreferences,
     val dependencyNoticeProvider: DependencyNoticeProvider,
     val extensionApi: DesktopExtensionApi,
     val extensionManager: DesktopExtensionManager,
+    val extensionPresentationService: DesktopExtensionPresentationService = extensionManager,
     val sourceExtensionLookup: DesktopSourceExtensionLookup = extensionManager,
     val externalActionNavigator: ExternalActionNavigator,
     val getExcludedScanlators: GetExcludedScanlators,
@@ -109,6 +116,7 @@ data class DesktopUiDependencies(
     val batchMigrationController: DesktopBatchMigrationController,
     val migrateManga: DesktopMigrateMangaUseCase,
     val networkHelper: DesktopNetworkHelper,
+    val networkMaintenancePort: DesktopNetworkMaintenancePort = networkHelper,
     val extensionCookiePort: DesktopExtensionCookiePort = networkHelper,
     val notificationService: DesktopNotificationService,
     val privacyCapabilities: DesktopPrivacyCapabilities,

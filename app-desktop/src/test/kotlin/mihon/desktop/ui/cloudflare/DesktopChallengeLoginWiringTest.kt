@@ -333,7 +333,7 @@ class DesktopChallengeLoginWiringTest {
     @Test
     fun `manual cookie success feedback contains only the canonical domain`() {
         val feedback = cloudflareCookieImportedFeedback(
-            "https://例子.测试/private/chapter".toHttpUrl(),
+            "xn--fsqu00a.xn--0zwm56d",
             Locale.ENGLISH,
         )
         assertEquals("Cookie imported for xn--fsqu00a.xn--0zwm56d", feedback)

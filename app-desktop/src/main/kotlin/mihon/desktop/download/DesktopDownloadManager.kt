@@ -63,14 +63,14 @@ class DesktopDownloadManager(
         Injekt.get<SourceManager>().getCatalogueSources().find { it.id == sourceId }
     },
     private val sourceCallTimeoutMs: Long = 30_000L,
-) : DownloadRepository {
+) : DownloadRepository, DesktopDownloadQueuePort {
     private val lifecycleLock = Any()
     private var stopped = false
     private var workerJob: Job? = null
     private val activeJobs = mutableSetOf<Job>()
     private val recoveredItems = store?.recover()?.map { it.toItem() } ?: emptyList()
     private val _queue = MutableStateFlow(recoveredItems)
-    val queue: StateFlow<List<DownloadItem>> = _queue.asStateFlow()
+    override val queue: StateFlow<List<DownloadItem>> = _queue.asStateFlow()
     private val _failures = MutableStateFlow(recoveredItems.mapNotNull { item -> item.failure?.let { item.chapterId to it } }.toMap())
     val failures: StateFlow<Map<Long, AppError>> = _failures.asStateFlow()
     internal val activeJobCount: Int

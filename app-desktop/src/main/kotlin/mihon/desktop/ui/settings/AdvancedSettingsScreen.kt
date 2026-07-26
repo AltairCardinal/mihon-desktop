@@ -35,11 +35,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import dev.icerock.moko.resources.StringResource
-import mihon.desktop.network.CF_CLEARANCE_COOKIE_NAME
-import mihon.desktop.network.CookieImportResult
-import mihon.desktop.network.validateCloudflareCookieInput
+import mihon.desktop.network.DesktopCloudflareCookieImportResult
 import mihon.desktop.settings.DesktopAppPreferences
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
@@ -47,7 +44,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import mihon.desktop.CrashHandler
-import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.platform.DesktopPlatformPaths
 import tachiyomi.i18n.MR
 import java.util.Locale
@@ -182,8 +178,8 @@ internal fun FlareSolverrSettingsSectionContent(
     renderUrl(section.url)
 }
 
-internal fun cloudflareCookieImportedFeedback(url: okhttp3.HttpUrl, locale: Locale): String =
-    MR.strings.desktop_settings_cloudflare_cookie_imported.localized(locale, url.host)
+internal fun cloudflareCookieImportedFeedback(host: String, locale: Locale): String =
+    MR.strings.desktop_settings_cloudflare_cookie_imported.localized(locale, host)
 
 internal interface AdvancedSettingsPlatformActions {
     suspend fun loadNetworkCacheSize(): String
@@ -209,7 +205,7 @@ class AdvancedSettingsScreen : Screen {
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val dependencies = LocalDesktopUiDependencies.current
-        val networkHelper = dependencies.networkHelper
+        val networkMaintenance = dependencies.networkMaintenancePort
         val preferences = dependencies.appPreferences
         val platformActions = LocalAdvancedSettingsPlatformActions.current
         val paths = remember { DesktopPlatformPaths.current() }
@@ -384,19 +380,14 @@ class AdvancedSettingsScreen : Screen {
                 Spacer(Modifier.height(8.dp))
                 Button(
                     onClick = {
-                        when (val result = validateCloudflareCookieInput(cfDomain, cfCookieValue)) {
-                            is CookieImportResult.InvalidDomain -> cfDomainError = cloudflare.copy.invalidDomain
-                            is CookieImportResult.InvalidValue -> cfValueError = cloudflare.copy.cookieRequired
-                            is CookieImportResult.Valid -> {
-                                val url = "https://${result.domain}".toHttpUrlOrNull()
-                                if (url != null) {
-                                    networkHelper.cookieJar.addManual(url, CF_CLEARANCE_COOKIE_NAME, result.value)
-                                    cfDomain = ""
-                                    cfCookieValue = ""
-                                    scope.launch { snackbar.showSnackbar(cloudflareCookieImportedFeedback(url, locale)) }
-                                } else {
-                                    cfDomainError = cloudflare.copy.domainParseFailed
-                                }
+                        when (val result = networkMaintenance.importCloudflareCookie(cfDomain, cfCookieValue)) {
+                            DesktopCloudflareCookieImportResult.InvalidDomain -> cfDomainError = cloudflare.copy.invalidDomain
+                            DesktopCloudflareCookieImportResult.InvalidValue -> cfValueError = cloudflare.copy.cookieRequired
+                            DesktopCloudflareCookieImportResult.DomainParseFailed -> cfDomainError = cloudflare.copy.domainParseFailed
+                            is DesktopCloudflareCookieImportResult.Imported -> {
+                                cfDomain = ""
+                                cfCookieValue = ""
+                                scope.launch { snackbar.showSnackbar(cloudflareCookieImportedFeedback(result.host, locale)) }
                             }
                         }
                     },
@@ -417,7 +408,7 @@ class AdvancedSettingsScreen : Screen {
                     DesktopSettingsTextButton(
                         onClick = {
                             showClearCookiesDialog = false
-                            networkHelper.cookieJar.clear()
+                            networkMaintenance.clearCookies()
                             cookiesCleared = true
                         },
                     ) { Text(cloudflare.copy.clearConfirm) }

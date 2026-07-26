@@ -550,7 +550,15 @@ Task 167 已将 extension/browse 的 11 条 manager、raw `HttpUrl`、network he
 lifecycle/last-used/context 与 cookie clearing 均由 typed adapter/窄端口承载，原有 trust、
 安装、更新、卸载、login、取消、超时、invalid/commit、Cloudflare retry/failure 及 Desktop
 JAR/context 行为保持不变。完整 focused gate、forbidden-edge mutation、独立审查、主门禁及
-Spotless 全绿；ID95 保持 `WIRED`，剩余精确 7 条均属于 Task 168。下一恢复位置为 Task 168。
+Spotless 全绿；ID95 保持 `WIRED`，剩余精确 7 条均属于 Task 168。
+
+Task 168 已将 Home/LibraryRoot/About/Advanced/More 的最后 7 条 concrete
+manager/helper/`HttpUrl` compiled edge 清零；challenge、download queue、extension state
+均由同一 production flow/state 的窄端口暴露，Advanced 的校验、URL canonicalization、
+`cf_clearance` 写入与 clear-all 仅下沉到原 network helper adapter。51 项 focused、
+forbidden-edge mutation、DI same-instance、独立审查、主门禁及 Spotless 全绿；32 条初始
+违规现已全部归零，ID95 保持 `WIRED` 等待 Task 169 五角色与终态收口。下一恢复位置为
+Task 169。
 
 ### Task 18：让 64 项最终 closure 与架构 gate 变绿
 

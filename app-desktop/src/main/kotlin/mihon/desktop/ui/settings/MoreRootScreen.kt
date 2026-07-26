@@ -42,7 +42,6 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.test.state.applicationState
 import mihon.desktop.ui.extension.extensionListDestination
 import mihon.desktop.ui.migration.MigrationSearchScreen
@@ -72,8 +71,8 @@ class MoreRootScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val downloadManager = LocalDesktopUiDependencies.current.downloadManager
-        val downloadQueue by downloadManager.queue.collectAsState()
+        val downloadQueuePort = LocalDesktopUiDependencies.current.downloadQueuePort
+        val downloadQueue by downloadQueuePort.queue.collectAsState()
         val activeDownloads = downloadQueue.size
 
         // Observe pending screen navigation from test automation after this screen is mounted.

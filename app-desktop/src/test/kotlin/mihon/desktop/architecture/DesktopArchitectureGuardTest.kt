@@ -329,14 +329,6 @@ class DesktopArchitectureGuardTest {
                 CompiledEdge("mihon.desktop.ui.library.MangaDetailComponentsKt", "mihon.desktop.platform.DesktopShareService") to
                     "Host share is an OS side-effect port with structured success, fallback and failure results.",
             )
-        val acknowledgedProductionViolations =
-            """
-            mihon.desktop.ui.home.HomeScreen -> mihon.desktop.network.CloudflareChallengeManager;mihon.desktop.ui.library.LibraryRootScreen -> mihon.desktop.download.DesktopDownloadManager;mihon.desktop.ui.settings.AboutScreen -> mihon.desktop.extension.DesktopExtensionManager
-            mihon.desktop.ui.settings.AdvancedSettingsScreen -> mihon.desktop.platform.DesktopNetworkHelper;mihon.desktop.ui.settings.AdvancedSettingsScreen -> okhttp3.HttpUrl;mihon.desktop.ui.settings.AdvancedSettingsScreenKt -> okhttp3.HttpUrl;mihon.desktop.ui.settings.MoreRootScreen -> mihon.desktop.download.DesktopDownloadManager
-            """.trimIndent()
-                .split(';', '\n')
-                .filter(String::isNotBlank)
-                .map { edge -> edge.trim().split(" -> ").let { CompiledEdge(it[0], it[1]) } }
-                .toSet()
+        val acknowledgedProductionViolations = emptySet<CompiledEdge>()
     }
 }

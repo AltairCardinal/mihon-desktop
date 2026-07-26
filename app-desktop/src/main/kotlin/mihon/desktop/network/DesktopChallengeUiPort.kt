@@ -1,5 +1,6 @@
 package mihon.desktop.network
 
+import kotlinx.coroutines.flow.SharedFlow
 import tachiyomi.domain.source.service.AuthenticatedCookie
 import tachiyomi.domain.source.service.AuthenticatedSession
 
@@ -8,6 +9,10 @@ fun interface DesktopChallengeRecoveryPort {
         challenge: CloudflareChallenge,
         intent: ChallengeRecoveryIntent,
     ): ChallengeRecoveryState
+}
+
+interface DesktopChallengeUiPort : DesktopChallengeRecoveryPort {
+    val challenges: SharedFlow<CloudflareChallenge>
 }
 
 data class DesktopChallengeTarget(

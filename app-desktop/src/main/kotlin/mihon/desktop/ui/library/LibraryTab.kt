@@ -225,7 +225,7 @@ class LibraryRootScreen : Screen {
         }
         val selectionActions = librarySelectionActions(
             selected = { allItems.filter { it.id in selectionState.selectedIds } },
-            queue = { desktopDependencies.downloadManager.queue.value },
+            queue = { desktopDependencies.downloadQueuePort.queue.value },
             launch = { task -> scope.launch { task() } },
             enqueue = { items, action, queue -> model.enqueueDownloads(items, action, queue) },
             submit = desktopDependencies.batchMigrationController::submit,

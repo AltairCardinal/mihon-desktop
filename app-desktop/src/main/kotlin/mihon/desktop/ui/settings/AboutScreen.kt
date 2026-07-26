@@ -33,7 +33,6 @@ import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.platform.DesktopPlatformPaths
 import mihon.desktop.APP_VERSION
 import tachiyomi.i18n.MR
@@ -54,7 +53,7 @@ class AboutScreen(internal val platformPaths: DesktopPlatformPaths = DesktopPlat
         val cacheDir = remember(paths) { paths.networkCacheDir }
         val dbFile = remember(paths) { paths.databaseFile }
         val extensionsDir = remember(paths) { paths.extensionsDir }
-        val extensionManager = LocalDesktopUiDependencies.current.extensionManager
+        val extensionService = LocalDesktopUiDependencies.current.extensionPresentationService
         val updateModel = requireNotNull(LocalDesktopUiDependencies.current.updateScreenModel)
         val updateState by updateModel.state.collectAsState()
         val updateFeedback by updateModel.feedback.collectAsState()
@@ -67,7 +66,7 @@ class AboutScreen(internal val platformPaths: DesktopPlatformPaths = DesktopPlat
         // Gather debug info once
         val dbSize = remember { formatBytes(dbFile.length()) }
         val dbPath = remember { dbFile.absolutePath }
-        val extensionCount = remember { extensionManager.getInstalledExtensions().size }
+        val extensionCount = remember { extensionService.installedExtensions.value.size }
         val javaVersion = remember { System.getProperty("java.version") ?: MR.strings.desktop_about_unknown.localized() }
         val javaVendor = remember { System.getProperty("java.vendor") ?: "" }
         val osName = remember { System.getProperty("os.name") ?: MR.strings.desktop_about_unknown.localized() }
