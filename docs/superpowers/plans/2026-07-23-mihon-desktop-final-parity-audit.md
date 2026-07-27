@@ -745,6 +745,17 @@ authority、Android/domain/Desktop focused tests、独立审查与一次修复�
 4. 在 macOS 使用同一提交和构建脚本对同一版本完成最终一次 app bundle 运行验收；不把 Task 15 历史探测替代为本轮结果。
 5. 报告必须记录固定 `original-ref`、用过的 `git show <original-ref>:<path>`/blob 校验方式及结果、真实命令、测试数、失败/跳过、13/13、5/5、零未映射、版本、绝对产物路径、每个 EXEMPT 的用户批准引用、deviation 和环境限制。
 
+**Windows/Android 阶段证据（已完成）：** 最终 Windows source commit
+`19a55d7c27e854a9a5b8baa27871b6d8e1c3608c`、版本 `0.11.14.51.19a55d7`。
+Android `231/231`、Desktop `2293 passed / 3 environment-skipped`、test-desktop
+`28/28`、补充 smoke `92/92`、Spotless 与 final parity gate 全绿；固定未打包 EXE 的
+headless Test Mode 为 13/13 families、5/5 permanent protections、64/64 capabilities、
+0 unmapped。完整 provenance、artifact hash、命令和环境边界见
+`docs/superpowers/reports/2026-07-23-mihon-desktop-final-parity-verify.md`。
+
+macOS 仍按延期决定保持未执行；Task 19 因此不勾选。迁移到 macOS 后必须检出同一 source
+commit，并对同一版本完成 app bundle 构建与真实运行验收，不得使用旧产物或历史探测代替。
+
 ### Task 20：收口维护文档与父子 checkbox
 
 **Risk axis:** final-doc-authority
