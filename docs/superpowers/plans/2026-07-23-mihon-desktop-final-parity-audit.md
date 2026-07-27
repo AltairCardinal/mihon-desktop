@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 18
+active-task: Task 19
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -69,7 +69,7 @@ active-task: Task 18
 - [x] Task 16C：建立 UI→data/network/manager 架构守卫
 - [x] Task 16D：盘点并约束最终 Test Mode 全场景入口
 - [x] Task 17：执行并回收真实产品缺口 child plan
-- [ ] Task 18：让 64 项最终 closure 与架构 gate 变绿
+- [x] Task 18：让 64 项最终 closure 与架构 gate 变绿
 - [ ] Task 19：运行全量测试、Windows/macOS 构建与运行验收
 - [ ] Task 20：收口维护文档与父子 checkbox
 
@@ -655,8 +655,8 @@ consumer，不冒充原版依据。
 - [x] Task 18B：补齐 production fixture（7、16、38、54、71、72）
 - [x] Task 18C：关闭共享语义分叉（22、24、28、66）
 - [x] Task 18D：关闭平台 adapter 终态证据（26、56、73、93）
-- [ ] Task 18E：移除 `UNCLASSIFIED_DEBT` / `TEMP-COMPAT` 分类矛盾并逐项晋升 64 项
-- [ ] Task 18F：运行 `finalParityAudit`、架构守卫、计划守卫与格式检查
+- [x] Task 18E：移除 `UNCLASSIFIED_DEBT` / `TEMP-COMPAT` 分类矛盾并逐项晋升 64 项
+- [x] Task 18F：运行 `finalParityAudit`、架构守卫、计划守卫与格式检查
 
 | 分类 | IDs | Task 18 处理方式 |
 | --- | --- | --- |
@@ -705,8 +705,13 @@ consumer，不冒充原版依据。
 - ID 73/93 已完成：Desktop 自动备份持久化成功截止时间，启动时补跑到期任务且不会因重启
   重复执行，失败保留并显示在真实备份设置页；高级维护通过 Desktop adapter 保留
   Android-only WebView/数据库边界，并对 JVM 网络缓存清理显示真实成功或失败。
-- 全部旧 gap 与 follow-up 已关闭，Task 18A/18C/18D 完成；剩余工作仅为 18E 的已有
-  `READY_FOR_PROMOTION` 项逐项晋升，以及 18F 最终门禁。
+- 全部旧 gap 与 follow-up 已关闭；11 项 `READY_FOR_PROMOTION` capability 已在保留
+  Task 15/16D/17 历史决策后统一晋升为 `VERIFIED`，ID 35/74/96 的 `TEMP-COMPAT`
+  终态分类矛盾已移除。
+- Task 18 RED→GREEN 证据：终态契约首次精确失败于尚未晋升的 capability；完成晋升后
+  `parityGovernanceCheck` 通过。`finalParityAudit` 首次精确发现 ID 4 当前 Android
+  `DomainModule` 证据行号漂移，修正为真实 production symbol 行后再次运行通过；
+  `DesktopArchitectureGuardTest`、计划守卫、JSON/diff 校验与 `spotlessCheck` 均通过。
 
 **Task 18C/18D scope note：** 本批次超过初始 5 files/360 lines 估算，是因为同一终态门禁必须
 同时提交 shared source projection、两端 production callers、四类平台 adapter 行为、红绿测试及
