@@ -479,6 +479,104 @@ object AppVersion {
         throw "Windows runner did not generate a 256-bit lowercase hexadecimal acceptance token"
     }
 
+    $ActivationFixture = Join-Path $TempRoot "window-activation.json"
+    $ActivationExecutable = Join-Path $TempRoot "Mihon Desktop.exe"
+    @{
+        scenarios = @(
+            @{
+                name = "initial-miss-then-exact"
+                targetPid = 501
+                targetHandle = 1001
+                ownedProcesses = @(@{ ProcessId = 501; ExecutablePath = $ActivationExecutable })
+                showWindowResult = $true
+                automationFocusResult = $true
+                setForegroundResult = $false
+                foregroundSnapshots = @(
+                    @{ handle = 2002; processId = 777; className = "OtherWindow" },
+                    @{ handle = 1001; processId = 501; className = "SunAwtFrame" }
+                )
+            },
+            @{
+                name = "wrong-foreground-remains-blocked"
+                targetPid = 502
+                targetHandle = 1002
+                ownedProcesses = @(@{ ProcessId = 502; ExecutablePath = $ActivationExecutable })
+                showWindowResult = $true
+                automationFocusResult = $true
+                setForegroundResult = $true
+                foregroundSnapshots = @(
+                    @{ handle = 2003; processId = 778; className = "OtherWindow" }
+                )
+            },
+            @{
+                name = "non-owned-target-remains-blocked"
+                targetPid = 503
+                targetHandle = 1003
+                ownedProcesses = @(@{ ProcessId = 999; ExecutablePath = $ActivationExecutable })
+                showWindowResult = $true
+                automationFocusResult = $true
+                setForegroundResult = $true
+                foregroundSnapshots = @(
+                    @{ handle = 1003; processId = 503; className = "SunAwtFrame" }
+                )
+            },
+            @{
+                name = "exact-target-passes"
+                targetPid = 504
+                targetHandle = 1004
+                ownedProcesses = @(@{ ProcessId = 504; ExecutablePath = $ActivationExecutable })
+                showWindowResult = $true
+                automationFocusResult = $true
+                setForegroundResult = $true
+                foregroundSnapshots = @(
+                    @{ handle = 1004; processId = 504; className = "SunAwtFrame" }
+                )
+            }
+        )
+    } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $ActivationFixture -Encoding utf8
+    $activationOutput = & $PowerShell -NoProfile -ExecutionPolicy Bypass -File $WindowsRunner `
+        -Case capture `
+        -EvidenceDir (Join-Path $TempRoot "activation-runner") `
+        -Executable $ActivationExecutable `
+        -ActivationPolicyFixture $ActivationFixture
+    if ($LASTEXITCODE -ne 0) { throw "Windows runner activation fixture failed" }
+    $activation = ($activationOutput -join [Environment]::NewLine) | ConvertFrom-Json
+    $activationByName = @{}
+    foreach ($result in @($activation.results)) {
+        $activationByName[$result.name] = $result
+    }
+    if ($activationByName["initial-miss-then-exact"].status -ne "PASS" -or
+        $activationByName["initial-miss-then-exact"].activation.setForegroundWindow -ne $false -or
+        $activationByName["initial-miss-then-exact"].activation.pollAttempts -lt 2) {
+        $actual = $activationByName["initial-miss-then-exact"] | ConvertTo-Json -Depth 8 -Compress
+        throw "Activation did not recover from an initial SetForegroundWindow miss by waiting for the exact target: $actual"
+    }
+    foreach ($blocked in @("wrong-foreground-remains-blocked", "non-owned-target-remains-blocked")) {
+        if ($activationByName[$blocked].status -ne "BLOCKED") {
+            throw "Activation fixture `$blocked` did not fail closed"
+        }
+    }
+    if ($activationByName["wrong-foreground-remains-blocked"].activation.finalForegroundHwnd -ne 2003 -or
+        $activationByName["wrong-foreground-remains-blocked"].activation.finalForegroundPid -ne 778 -or
+        $activationByName["wrong-foreground-remains-blocked"].activation.finalForegroundClass -ne "OtherWindow") {
+        throw "Blocked activation omitted the final foreground identity"
+    }
+    if ($activationByName["exact-target-passes"].status -ne "PASS" -or
+        $activationByName["exact-target-passes"].activation.finalForegroundHwnd -ne 1004) {
+        throw "Exact owned foreground target did not pass activation"
+    }
+    $runnerSource = Get-Content -Raw -LiteralPath $WindowsRunner
+    $activationSource = $runnerSource.Substring(
+        $runnerSource.IndexOf("function Activate-OwnedMihonWindow"),
+        $runnerSource.IndexOf("function Capture-MihonWindow") - $runnerSource.IndexOf("function Activate-OwnedMihonWindow")
+    )
+    foreach ($required in @("ShowWindowAsync", "AutomationElement]::FromHandle", "SetForegroundWindow", "GetForegroundWindow")) {
+        if (-not $runnerSource.Contains($required)) { throw "Activation runner omitted $required" }
+    }
+    foreach ($forbidden in @("AttachThreadInput", "SendKeys", "explorer", "Start-Process")) {
+        if ($activationSource.Contains($forbidden)) { throw "Activation helper used forbidden mechanism $forbidden" }
+    }
+
     # Real source -> seal -> verify behavior.
     Invoke-Helper @(
         "source", "--repo", $TempRoot, "--require-version-allocation", "--output", $SourcePath

@@ -13,6 +13,7 @@ param(
     [string]$ColdReviewFile,
     [string]$ReviewFile,
     [string]$ProcessPolicyFixture,
+    [string]$ActivationPolicyFixture,
     [string]$InstallerPolicyFixture,
     [switch]$ListCases
 )
@@ -243,6 +244,8 @@ public static class Task151NativeWindow {
     [DllImport("user32.dll")]
     public static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")]
+    public static extern bool ShowWindowAsync(IntPtr window, int command);
+    [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")]
     public static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
@@ -271,16 +274,141 @@ function Assert-ControlledSaveDialogForeground([IntPtr]$DialogHandle, [int]$AppP
     }
 }
 
+function Throw-WindowActivationBlocked([string]$Message, $Diagnostics) {
+    $exception = [InvalidOperationException]::new($Message)
+    $exception.Data["Task152WindowActivation"] = $Diagnostics
+    throw $exception
+}
+
+function Activate-OwnedMihonWindow(
+    [int]$TargetPid,
+    [IntPtr]$TargetHandle,
+    [string]$ExpectedExecutable = $Executable,
+    $Operations = $null,
+    [int]$TimeoutMilliseconds = 2000,
+    [int]$PollMilliseconds = 50
+) {
+    Initialize-Task151NativeWindow
+    if ($null -eq $Operations) {
+        $Operations = @{
+            ResolveOwnedProcesses = {
+                param([int]$ProcessId)
+                @(Get-ExactAppProcesses | Where-Object { [int]$_.ProcessId -eq $ProcessId })
+            }
+            ShowWindow = {
+                param([IntPtr]$Window)
+                [Task151NativeWindow]::ShowWindowAsync($Window, 9)
+            }
+            AutomationFocus = {
+                param([IntPtr]$Window)
+                Add-Type -AssemblyName UIAutomationClient
+                $element = [Windows.Automation.AutomationElement]::FromHandle($Window)
+                if ($null -eq $element) {
+                    return [ordered]@{ elementFound = $false; focusApplied = $false }
+                }
+                $element.SetFocus()
+                [ordered]@{ elementFound = $true; focusApplied = $true }
+            }
+            SetForeground = {
+                param([IntPtr]$Window)
+                [Task151NativeWindow]::SetForegroundWindow($Window)
+            }
+            GetForeground = {
+                $window = [Task151NativeWindow]::GetForegroundWindow()
+                [uint32]$processId = 0
+                $className = [Text.StringBuilder]::new(256)
+                if ($window -ne [IntPtr]::Zero) {
+                    [Task151NativeWindow]::GetWindowThreadProcessId($window, [ref]$processId) | Out-Null
+                    if ([Task151NativeWindow]::GetClassName($window, $className, $className.Capacity) -le 0) {
+                        $className.Clear() | Out-Null
+                    }
+                }
+                [ordered]@{
+                    handle = $window.ToInt64()
+                    processId = [int]$processId
+                    className = $className.ToString()
+                }
+            }
+        }
+    }
+
+    $diagnostics = [ordered]@{
+        status = "BLOCKED"
+        targetHwnd = $TargetHandle.ToInt64()
+        targetPid = $TargetPid
+        expectedExecutable = [IO.Path]::GetFullPath($ExpectedExecutable)
+        ownedProcessValidated = $false
+        ownedExecutablePath = $null
+        showWindowAsync = $null
+        showWindowError = $null
+        automationElementFound = $false
+        automationSetFocus = $false
+        automationFocusError = $null
+        setForegroundWindow = $null
+        setForegroundError = $null
+        pollAttempts = 0
+        finalForegroundHwnd = $null
+        finalForegroundPid = $null
+        finalForegroundClass = $null
+    }
+
+    $owned = @(& $Operations.ResolveOwnedProcesses $TargetPid)
+    $matching = @($owned | Where-Object { [int]$_.ProcessId -eq $TargetPid })
+    if ($matching.Count -ne 1) {
+        Throw-WindowActivationBlocked "Mihon activation target is not one exact owned process" $diagnostics
+    }
+    $resolvedExecutable = [IO.Path]::GetFullPath([string]$matching[0].ExecutablePath)
+    $diagnostics.ownedExecutablePath = $resolvedExecutable
+    if (-not $resolvedExecutable.Equals($diagnostics.expectedExecutable, [StringComparison]::OrdinalIgnoreCase)) {
+        Throw-WindowActivationBlocked "Mihon activation target executable does not match the accepted artifact" $diagnostics
+    }
+    $diagnostics.ownedProcessValidated = $true
+
+    try {
+        $diagnostics.showWindowAsync = [bool](& $Operations.ShowWindow $TargetHandle)
+    } catch {
+        $diagnostics.showWindowAsync = $false
+        $diagnostics.showWindowError = $_.Exception.Message
+    }
+    try {
+        $focus = & $Operations.AutomationFocus $TargetHandle
+        $diagnostics.automationElementFound = [bool]$focus.elementFound
+        $diagnostics.automationSetFocus = [bool]$focus.focusApplied
+    } catch {
+        $diagnostics.automationFocusError = $_.Exception.Message
+    }
+    try {
+        $diagnostics.setForegroundWindow = [bool](& $Operations.SetForeground $TargetHandle)
+    } catch {
+        $diagnostics.setForegroundWindow = $false
+        $diagnostics.setForegroundError = $_.Exception.Message
+    }
+
+    $deadline = [DateTime]::UtcNow.AddMilliseconds([Math]::Max(0, $TimeoutMilliseconds))
+    do {
+        $foreground = & $Operations.GetForeground
+        $diagnostics.pollAttempts = [int]$diagnostics.pollAttempts + 1
+        $diagnostics.finalForegroundHwnd = [long]$foreground.handle
+        $diagnostics.finalForegroundPid = [int]$foreground.processId
+        $diagnostics.finalForegroundClass = [string]$foreground.className
+        if ($diagnostics.finalForegroundHwnd -eq $TargetHandle.ToInt64() -and
+            $diagnostics.finalForegroundPid -eq $TargetPid) {
+            $diagnostics.status = "PASS"
+            return $diagnostics
+        }
+        if ([DateTime]::UtcNow -ge $deadline) { break }
+        if ($PollMilliseconds -gt 0) { Start-Sleep -Milliseconds $PollMilliseconds }
+    } while ($true)
+
+    Throw-WindowActivationBlocked "Mihon window could not be activated as the exact owned foreground target" $diagnostics
+}
+
 function Capture-MihonWindow([Diagnostics.Process]$Process, [string]$Name) {
     Add-Type -AssemblyName System.Drawing
     Initialize-Task151NativeWindow
     $Process.Refresh()
     if ($Process.MainWindowHandle -eq [IntPtr]::Zero) { throw "Mihon main window handle is unavailable" }
-    [Task151NativeWindow]::SetForegroundWindow($Process.MainWindowHandle) | Out-Null
-    Start-Sleep -Milliseconds 300
-    if ([Task151NativeWindow]::GetForegroundWindow() -ne $Process.MainWindowHandle) {
-        throw "Mihon window could not be activated for an exact screenshot"
-    }
+    Activate-OwnedMihonWindow $Process.Id $Process.MainWindowHandle | Out-Null
     $rect = [Task151NativeWindow+Rect]::new()
     if (-not [Task151NativeWindow]::GetWindowRect($Process.MainWindowHandle, [ref]$rect)) {
         throw "Unable to read Mihon window bounds"
@@ -875,6 +1003,77 @@ function Apply-CaptureReview([string]$ReviewPath) {
     if ($validated.decision -eq "PASS") { exit 0 } else { exit 1 }
 }
 
+if ($ActivationPolicyFixture) {
+    $fixture = Get-Content -Raw -LiteralPath $ActivationPolicyFixture | ConvertFrom-Json
+    $results = @(
+        foreach ($scenario in @($fixture.scenarios)) {
+            $ownedProcesses = @($scenario.ownedProcesses)
+            $snapshots = @($scenario.foregroundSnapshots)
+            $snapshotState = @{ index = 0 }
+            $showWindowResult = [bool]$scenario.showWindowResult
+            $automationFocusResult = [bool]$scenario.automationFocusResult
+            $setForegroundResult = [bool]$scenario.setForegroundResult
+            $operations = @{
+                ResolveOwnedProcesses = {
+                    param([int]$ProcessId)
+                    @($ownedProcesses)
+                }.GetNewClosure()
+                ShowWindow = {
+                    param([IntPtr]$Window)
+                    $showWindowResult
+                }.GetNewClosure()
+                AutomationFocus = {
+                    param([IntPtr]$Window)
+                    [ordered]@{
+                        elementFound = $automationFocusResult
+                        focusApplied = $automationFocusResult
+                    }
+                }.GetNewClosure()
+                SetForeground = {
+                    param([IntPtr]$Window)
+                    $setForegroundResult
+                }.GetNewClosure()
+                GetForeground = {
+                    if ($snapshots.Count -eq 0) { throw "Activation fixture requires a foreground snapshot" }
+                    $current = $snapshots[[Math]::Min([int]$snapshotState.index, $snapshots.Count - 1)]
+                    if ([int]$snapshotState.index -lt $snapshots.Count - 1) {
+                        $snapshotState.index = [int]$snapshotState.index + 1
+                    }
+                    [ordered]@{
+                        handle = [long]$current.handle
+                        processId = [int]$current.processId
+                        className = [string]$current.className
+                    }
+                }.GetNewClosure()
+            }
+            try {
+                $activation = Activate-OwnedMihonWindow `
+                    -TargetPid ([int]$scenario.targetPid) `
+                    -TargetHandle ([IntPtr][long]$scenario.targetHandle) `
+                    -ExpectedExecutable $Executable `
+                    -Operations $operations `
+                    -TimeoutMilliseconds 200 `
+                    -PollMilliseconds 1
+                [ordered]@{
+                    name = [string]$scenario.name
+                    status = "PASS"
+                    activation = $activation
+                    error = $null
+                }
+            } catch {
+                $activation = $_.Exception.Data["Task152WindowActivation"]
+                [ordered]@{
+                    name = [string]$scenario.name
+                    status = "BLOCKED"
+                    activation = $activation
+                    error = $_.Exception.Message
+                }
+            }
+        }
+    )
+    [ordered]@{ results = $results } | ConvertTo-Json -Depth 10
+    exit 0
+}
 if ($ProcessPolicyFixture) {
     $fixture = Get-Content -Raw -LiteralPath $ProcessPolicyFixture | ConvertFrom-Json
     foreach ($processId in @($fixture.ownedProcessIds)) {
@@ -940,6 +1139,13 @@ try {
 } catch {
     $exitCode = 1
     $payload.result = [ordered]@{ status = "BLOCKED" }
+    $activation = $_.Exception.Data["Task152WindowActivation"]
+    if ($null -eq $activation -and $null -ne $_.Exception.InnerException) {
+        $activation = $_.Exception.InnerException.Data["Task152WindowActivation"]
+    }
+    if ($null -ne $activation) {
+        $payload.result.activation = $activation
+    }
     $payload.error = $_.Exception.ToString()
     Stop-OwnedAppProcesses
 }
