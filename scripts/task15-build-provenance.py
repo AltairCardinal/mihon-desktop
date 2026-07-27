@@ -57,6 +57,17 @@ def is_untracked_product_input(path: pathlib.PurePosixPath) -> bool:
     if not is_product_input(path):
         return False
     value = path.as_posix()
+    if value.startswith(
+        (
+            ".android-sdk/",
+            ".gradle-local/",
+            ".gradle-local-home/",
+            ".test-tmp/",
+            "app-desktop/.test-tmp/",
+            "app-desktop/tmp/",
+        ),
+    ):
+        return False
     parts = value.split("/")
     if "src" in parts:
         source_index = parts.index("src")

@@ -920,6 +920,18 @@ object AppVersion {
     ) $false | Out-Null
     Remove-Item -LiteralPath $UntrackedPath
 
+    foreach ($LocalNoisePath in @(
+        (Join-Path $TempRoot ".android-sdk\cmdline-tools\src\main\proto\local.jar"),
+        (Join-Path $TempRoot ".test-tmp\fixture-generator\src\main\kotlin\Fixture.kt")
+    )) {
+        New-Item -ItemType Directory -Force -Path (Split-Path $LocalNoisePath) | Out-Null
+        Set-Content -LiteralPath $LocalNoisePath -Encoding utf8 -Value "local workspace input"
+    }
+    Invoke-Helper @(
+        "verify", "--repo", $TempRoot, "--require-version-allocation",
+        "--artifact", $ArtifactPath, "--provenance", $ProvenancePath
+    ) $true | Out-Null
+
     Set-Content -LiteralPath $ArtifactJar -Encoding utf8 -NoNewline -Value "business-code-v2"
     Invoke-Helper @(
         "verify", "--repo", $TempRoot, "--require-version-allocation",
