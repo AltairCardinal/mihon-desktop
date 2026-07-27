@@ -40,6 +40,7 @@ import mihon.desktop.settings.DesktopAppPreferences
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -433,11 +434,28 @@ class AdvancedSettingsScreen : Screen {
                     DesktopSettingsTextButton(
                         onClick = {
                             showClearCacheDialog = false
-                            scope.launch(Dispatchers.IO) {
-                                platformActions.clearNetworkCache()
-                                withContext(Dispatchers.Main) {
+                            scope.launch {
+                                val cleared = try {
+                                    withContext(Dispatchers.IO) {
+                                        platformActions.clearNetworkCache()
+                                    }
+                                } catch (error: CancellationException) {
+                                    throw error
+                                } catch (_: Exception) {
+                                    false
+                                }
+                                if (cleared) {
                                     cacheCleared = !cacheCleared // trigger produceState refresh
                                 }
+                                snackbar.showSnackbar(
+                                    text(
+                                        if (cleared) {
+                                            MR.strings.desktop_about_network_cache_cleared
+                                        } else {
+                                            MR.strings.cache_delete_error
+                                        },
+                                    ),
+                                )
                             }
                         },
                     ) { Text(text(MR.strings.desktop_advanced_clear_confirm)) }

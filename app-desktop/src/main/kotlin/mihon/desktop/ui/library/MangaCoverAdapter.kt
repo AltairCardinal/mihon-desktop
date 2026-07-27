@@ -1,6 +1,7 @@
 package mihon.desktop.ui.library
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import mihon.domain.task.TaskState
@@ -19,7 +20,15 @@ class MangaCoverAdapter(
     private val updateCover: suspend (Long, ByteArray) -> TaskState<Unit>,
 ) {
     suspend fun chooseAndUpdate(mangaId: Long): TaskState<Unit>? {
-        val bytes = picker.chooseBytes() ?: return null
+        val bytes = try {
+            picker.chooseBytes()
+        } catch (error: SecurityException) {
+            return TaskState.Failure(mihon.domain.error.AppError.Permission(error))
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            return TaskState.Failure(mihon.domain.error.AppError.Storage(error))
+        } ?: return null
         return updateCover(mangaId, bytes)
     }
 }

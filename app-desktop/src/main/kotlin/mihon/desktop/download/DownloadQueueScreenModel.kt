@@ -114,12 +114,17 @@ class DownloadQueueScreenModel(
     ): DownloadQueueScreenState = DownloadQueueScreenState(
         queue = queue,
         isPaused = isPaused,
-        sourceGroups = queue.groupBy(DownloadItem::sourceId).map { (sourceId, items) ->
-            DownloadQueueSourceGroup(
-                sourceId = sourceId,
-                sourceName = sourceManager.get(sourceId)?.name ?: "Unknown source ($sourceId)",
-                items = items,
-            )
-        },
+        sourceGroups = projectDownloadQueueSourceGroups(queue) { sourceId -> sourceManager.get(sourceId)?.name },
+    )
+}
+
+internal fun projectDownloadQueueSourceGroups(
+    queue: List<DownloadItem>,
+    sourceName: (Long) -> String?,
+): List<DownloadQueueSourceGroup> = queue.groupBy(DownloadItem::sourceId).map { (sourceId, items) ->
+    DownloadQueueSourceGroup(
+        sourceId = sourceId,
+        sourceName = sourceName(sourceId) ?: "Unknown source ($sourceId)",
+        items = items,
     )
 }

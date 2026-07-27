@@ -49,6 +49,8 @@ import mihon.desktop.platform.DesktopExternalActionTarget
 import mihon.domain.error.AppError
 import tachiyomi.i18n.MR
 import java.io.File
+import java.text.DateFormat
+import java.util.Date
 import java.util.Locale
 
 data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
@@ -66,6 +68,10 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
             .collectAsState(initial = appPrefs.autoBackupInterval.get())
         val autoBackupMaxFiles by appPrefs.autoBackupMaxFiles.changes()
             .collectAsState(initial = appPrefs.autoBackupMaxFiles.get())
+        val autoBackupLastSuccessAt by appPrefs.autoBackupLastSuccessAt.changes()
+            .collectAsState(initial = appPrefs.autoBackupLastSuccessAt.get())
+        val autoBackupLastError by appPrefs.autoBackupLastError.changes()
+            .collectAsState(initial = appPrefs.autoBackupLastError.get())
 
         val backupFactory = LocalDesktopUiDependencies.current.backupRestoreScreenModelFactory
         val backupFilePicker = LocalDesktopUiDependencies.current.backupFilePicker
@@ -207,6 +213,22 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (autoBackupLastError.isNotBlank()) {
+                    Text(
+                        text = MR.strings.desktop_backup_failed.localized(Locale.getDefault(), autoBackupLastError),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                } else if (autoBackupLastSuccessAt > 0L) {
+                    Text(
+                        text = MR.strings.last_auto_backup_info.localized(
+                            Locale.getDefault(),
+                            DateFormat.getDateTimeInstance().format(Date(autoBackupLastSuccessAt)),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Spacer(Modifier.height(12.dp))
 
                 Text(

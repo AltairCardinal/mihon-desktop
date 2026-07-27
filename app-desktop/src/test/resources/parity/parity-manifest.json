@@ -40,7 +40,7 @@
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt", "symbol": "private val sourceReducer: SourceScreenReducer = SourceScreenReducer()", "line": 37}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/source/model/SourceScreenState.kt", "symbol": "class SourceScreenReducer", "line": 53}],
       "DESKTOP_CONSUMER": [
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourcesScreenModel.kt", "symbol": "class DesktopSourcesScreenModel(", "line": 30},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourcesScreenModel.kt", "symbol": "class DesktopSourcesScreenModel(", "line": 31},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/BrowseTab.kt", "symbol": "rememberScreenModel { DesktopSourcesScreenModel", "line": 176}
       ],
       "FIXTURE": [
@@ -979,8 +979,8 @@
       "SHARE-EXTRACT",
       "PLATFORM-ADAPTER"
     ],
-    "status": "WIRED",
-    "statusDecision": {
+    "status": "VERIFIED",
+    "statusDecisionHistory": [{
       "task": "Task 7",
       "decision": "KEEP_GAP",
       "followUp": "Task 7 evidence gap: current Android shared cover workflow consumption",
@@ -988,6 +988,17 @@
       "behaviorMethods": {
         "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/UpdateCustomCoverTest.kt": ["successful write invalidates cover cache timestamp", "write failure is structured and does not invalidate cache", "successful delete invalidates cover cache timestamp"],
         "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaCoverAdapterTest.kt": ["selected bytes use shared workflow and preserve structured failure"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt": ["cover update success exposes feedback and refreshed model", "cover permission failure is visible and does not refresh cache", "cover delete success refreshes model and reports feedback"]
+      }
+    }],
+    "statusDecision": {
+      "task": "Task 18",
+      "decision": "PROMOTE_VERIFIED",
+      "followUp": "NONE",
+      "gap": "NONE",
+      "behaviorMethods": {
+        "domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/UpdateCustomCoverTest.kt": ["successful write invalidates cover cache timestamp", "write failure is structured and does not invalidate cache", "successful delete invalidates cover cache timestamp"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaCoverAdapterTest.kt": ["picker cancellation remains coroutine cancellation", "picker permission failure is returned through the shared cover result", "picker storage failure is returned through the shared cover result", "selected bytes use shared workflow and preserve structured failure"],
         "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt": ["cover update success exposes feedback and refreshed model", "cover permission failure is visible and does not refresh cache", "cover delete success refreshes model and reports feedback"]
       }
     },
@@ -1003,7 +1014,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaCoverScreenModel.kt", "symbol": "fun editCover", "line": 120}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaCoverScreenModel.kt", "symbol": "fun editCover", "line": 120}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/UpdateCustomCover.kt", "symbol": "class UpdateCustomCover", "line": 11}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaCoverAdapter.kt", "symbol": "suspend fun chooseAndUpdate", "line": 21}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaCoverAdapter.kt", "symbol": "suspend fun chooseAndUpdate", "line": 22}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt#cover permission failure is visible and does not refresh cache", "productionMarkers": ["model.chooseCustomCover"]}]
     },
     "protectionTests": [
@@ -1012,8 +1023,9 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
     ],
-    "behaviorMethods": {"domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/UpdateCustomCoverTest.kt": ["successful write invalidates cover cache timestamp"], "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt": ["cover permission failure is visible and does not refresh cache"]},
+    "behaviorMethods": {"domain/src/commonTest/kotlin/tachiyomi/domain/manga/interactor/UpdateCustomCoverTest.kt": ["successful write invalidates cover cache timestamp", "write failure is structured and does not invalidate cache", "successful delete invalidates cover cache timestamp"], "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaCoverAdapterTest.kt": ["picker cancellation remains coroutine cancellation", "picker permission failure is returned through the shared cover result", "picker storage failure is returned through the shared cover result", "selected bytes use shared workflow and preserve structured failure"], "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt": ["cover update success exposes feedback and refreshed model", "cover permission failure is visible and does not refresh cache", "cover delete success refreshes model and reports feedback"]},
     "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
+    "verificationScope": "VERIFIED: current Android retains the fixed-main Uri/Context cover path, while Desktop confines file selection to an adapter and routes selection, permission and storage outcomes through the shared UpdateCustomCover result and visible Manga detail feedback.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -1023,14 +1035,26 @@
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "WIRED",
-    "statusDecision": {
+    "status": "VERIFIED",
+    "statusDecisionHistory": [{
       "task": "Task 7",
       "decision": "KEEP_GAP",
       "followUp": "Task 7 evidence gap: shared source membership projection",
       "gap": "Desktop proves reactive extension membership and fixed-main-derived grouping, but Android and Desktop still project membership independently with no shared production implementation or current Android behavior contract.",
       "behaviorMethods": {
         "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/DesktopSourceListProjectorTest.kt": ["last used is a first-group copy while pinned and language originals keep fixed-main order"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceMembershipReactiveWiringTest.kt": ["mounted browse list reacts to installed reloaded and uninstalled extension sources"]
+      }
+    }],
+    "statusDecision": {
+      "task": "Task 18",
+      "decision": "PROMOTE_VERIFIED",
+      "followUp": "NONE",
+      "gap": "NONE",
+      "behaviorMethods": {
+        "domain/src/commonTest/kotlin/tachiyomi/domain/source/service/SourceMembershipProjectionTest.kt": ["fixed-main membership keeps local filters disabled and projects stable pin and last-used copies"],
+        "app/src/test/java/eu/kanade/domain/source/interactor/GetEnabledSourcesSharedProjectionWiringTest.kt": ["Android production interactor delegates repository extension membership to shared projection"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/DesktopSourcesScreenModelTest.kt": ["production model delegates installed extension membership and local marker to shared projection"],
         "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceMembershipReactiveWiringTest.kt": ["mounted browse list reacts to installed reloaded and uninstalled extension sources"]
       }
     },
@@ -1041,7 +1065,7 @@
       { "path": "app/src/main/java/eu/kanade/tachiyomi/source/AndroidSourceManager.kt", "symbol": "AndroidSourceManager → extension-driven reactive source membership" },
       { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt", "symbol": "SourcesScreenModel → reactive source groups" }
     ],
-    "sharedImplementationPaths": [],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMembershipProjection.kt"],
     "currentAndroidConsumerPaths": [
       "app/src/main/java/eu/kanade/domain/source/interactor/GetEnabledSources.kt",
       "app/src/main/java/eu/kanade/tachiyomi/source/AndroidSourceManager.kt",
@@ -1049,17 +1073,32 @@
     ],
     "desktopConsumerAdapterPaths": [
       "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/BrowseTab.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourcesScreenModel.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/source/DesktopSourceManager.kt"
     ],
     "deviations": [
-      { "classification": "PLATFORM_ADAPTER", "description": "Current Android and Desktop consumers independently project the same fixed-main grouping fixture; Desktop keeps wide-screen Compose and Voyager navigation." }
+      { "classification": "PLATFORM_ADAPTER", "description": "Android supplies LocalSource identity through its source-local adapter; Desktop maps its installed CatalogueSource rows and local source ID before both consumers invoke the shared fixed-main membership projection. Desktop keeps wide-screen Compose, local browse entry and Voyager navigation." }
     ],
-    "desktopImplementation": "DesktopSourceManager publishes extension-driven membership and DesktopSourceListProjector applies fixed-main last-used, pinned and localized language groups.",
+    "desktopImplementation": "DesktopSourceManager publishes extension-driven membership; DesktopSourcesScreenModel maps platform candidates into the shared fixed-main language, disabled, pin, last-used and local membership projection before DesktopSourceListProjector groups them.",
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/domain/source/interactor/GetEnabledSources.kt", "symbol": "class GetEnabledSources(", "line": 13}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/domain/source/interactor/GetEnabledSources.kt", "symbol": "class GetEnabledSources(", "line": 15}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMembershipProjection.kt", "symbol": "object FixedMainSourceMembershipProjection", "line": 34}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourcesScreenModel.kt", "symbol": "class DesktopSourcesScreenModel(", "line": 31}],
+      "FIXTURE": [
+        {"artifact": "app/src/test/java/eu/kanade/domain/source/interactor/GetEnabledSourcesSharedProjectionWiringTest.kt#Android production interactor delegates repository extension membership to shared projection", "productionMarkers": ["GetEnabledSources(repository, preferences, projection).subscribe().first()"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/DesktopSourcesScreenModelTest.kt#production model delegates installed extension membership and local marker to shared projection", "productionMarkers": ["DesktopSourcesScreenModel(", "membershipProjection = projection"]}
+      ]
+    },
     "protectionTests": [
-      "app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/SourceSharedQueryWiringTest.kt",
+      "domain/src/commonTest/kotlin/tachiyomi/domain/source/service/SourceMembershipProjectionTest.kt",
+      "app/src/test/java/eu/kanade/domain/source/interactor/GetEnabledSourcesSharedProjectionWiringTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/DesktopSourcesScreenModelTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/DesktopSourceListProjectorTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceMembershipReactiveWiringTest.kt"
     ],
+    "behaviorMethods": {"domain/src/commonTest/kotlin/tachiyomi/domain/source/service/SourceMembershipProjectionTest.kt": ["fixed-main membership keeps local filters disabled and projects stable pin and last-used copies"], "app/src/test/java/eu/kanade/domain/source/interactor/GetEnabledSourcesSharedProjectionWiringTest.kt": ["Android production interactor delegates repository extension membership to shared projection"], "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/DesktopSourcesScreenModelTest.kt": ["production model delegates installed extension membership and local marker to shared projection"], "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceMembershipReactiveWiringTest.kt": ["mounted browse list reacts to installed reloaded and uninstalled extension sources"]},
+    "verificationScope": "VERIFIED: fixed-main membership projection is shared by current Android and Desktop production callers; tests bind installed membership, local-source marking, preferences, stable sorting, pin/last-used copies and Desktop reactive UI without removing Desktop grouping or local browse behavior.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -2112,9 +2151,10 @@
     "id": 56,
     "group": "下载更新与历史",
     "tags": [
-      "SHARE-EXTRACT"
+      "SHARE-EXTRACT",
+      "PLATFORM-ADAPTER"
     ],
-    "status": "WIRED",
+    "status": "VERIFIED",
     "authoritativeImplementation": "Fixed-main DownloadQueueScreenModel groups queued Download objects by source object before exposing queue sections.",
     "desktopImplementation": "Desktop DownloadQueueScreenModel groups persistent DownloadItem rows by sourceId and resolves current source names with a stable missing-source fallback; this is an explicit current projection, not a claim that fixed source-object grouping is the same implementation.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -2126,14 +2166,19 @@
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/download/DownloadQueueScreenModel.kt", "symbol": ".groupBy { it.source }", "line": 123}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/download/DownloadQueueScreenModel.kt", "symbol": ".groupBy { it.source }", "line": 123}],
-      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/download/DownloadQueueStateMachine.kt", "symbol": "class DownloadQueueStateMachine", "line": 22}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/download/DownloadQueueScreenModel.kt", "symbol": "queue.groupBy(DownloadItem::sourceId)", "line": 117}],
-      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/download/DownloadQueueSourceGroupingWiringTest.kt#queue renders one header per source with source names and a stable missing-source fallback", "productionMarkers": ["DownloadQueueScreenModel("]}]
+      "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DownloadQueueScreenModel.kt", "symbol": "internal fun projectDownloadQueueSourceGroups(", "line": 121}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/download/DownloadQueueScreenModel.kt", "symbol": "sourceGroups = projectDownloadQueueSourceGroups", "line": 117}],
+      "FIXTURE": [
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/download/DownloadQueueSourceGroupingWiringTest.kt#persistent source ids remain one group when the source instance is replaced", "productionMarkers": ["projectDownloadQueueSourceGroups(queue)"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/download/DownloadQueueSourceGroupingWiringTest.kt#queue renders one header per source with source names and a stable missing-source fallback", "productionMarkers": ["DownloadQueueScreenModel("]}
+      ]
     },
     "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/download/DesktopDownloadRecoveryIntegrationTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/ui/download/DownloadQueueSourceGroupingWiringTest.kt"],
-    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/download/DownloadQueueSourceGroupingWiringTest.kt": ["queue renders one header per source with source names and a stable missing-source fallback"]},
-    "statusDecision": {"task": "Task 10", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Fixed-main groups by source object identity, while Desktop groups persisted rows by sourceId and adds a missing-source fallback; equivalence across source replacement or duplicate IDs is not closed.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/download/DownloadQueueSourceGroupingWiringTest.kt": ["queue renders one header per source with source names and a stable missing-source fallback"]}},
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/download/DownloadQueueSourceGroupingWiringTest.kt": ["persistent source ids remain one group when the source instance is replaced", "missing source has stable fallback without splitting persisted rows", "queue renders one header per source with source names and a stable missing-source fallback"]},
+    "statusDecisionHistory": [{"task": "Task 10", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Fixed-main groups by source object identity, while Desktop groups persisted rows by sourceId and adds a missing-source fallback; equivalence across source replacement or duplicate IDs is not closed.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/download/DownloadQueueSourceGroupingWiringTest.kt": ["queue renders one header per source with source names and a stable missing-source fallback"]}}],
+    "statusDecision": {"task": "Task 18", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/download/DownloadQueueSourceGroupingWiringTest.kt": ["persistent source ids remain one group when the source instance is replaced", "missing source has stable fallback without splitting persisted rows", "queue renders one header per source with source names and a stable missing-source fallback"]}},
     "behaviorVerificationTask": ":app-desktop:task4ParityVerification",
+    "verificationScope": "VERIFIED: fixed-main groups live queue entries by Source identity; Desktop persists the canonical source ID and groups by that stable key, resolving the current source name after replacement and preserving missing-source rows with explicit feedback. Unit and mounted UI tests bind the adapter to production.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -2888,9 +2933,9 @@
     "tags": [
       "PLATFORM-ADAPTER"
     ],
-    "status": "WIRED",
+    "status": "VERIFIED",
     "authoritativeImplementation": "Fixed-main original Mihon capability #73: BackupCreateJob schedules recurring WorkManager creation from BackupPreferences.",
-    "desktopImplementation": "AutoBackupScheduler wakes only while Desktop is running, invokes the canonical writer, and prunes older .tachibk files.",
+    "desktopImplementation": "AutoBackupScheduler persists the last successful deadline, checks it immediately at startup and periodically while running, invokes the canonical writer, prunes older .tachibk files, and exposes the last failure in Backup settings.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreateJob.kt", "symbol": "fun setupTask"}],
     "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreateJob.kt"],
@@ -2899,15 +2944,23 @@
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreateJob.kt", "symbol": "fun setupTask", "line": 90}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreateJob.kt", "symbol": "fun setupTask", "line": 90}],
-      "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreateJob.kt", "symbol": "class BackupCreateJob", "line": 34}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/backup/AutoBackupScheduler.kt", "symbol": "pruneOldBackups(backupDir, maxBackups)", "line": 91}],
-      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/backup/AutoBackupSchedulerTest.kt#pruneOldBackups keeps only maxBackups files", "productionMarkers": ["pruneOldBackups(dir, maxBackups = 2)"]}]
+      "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/backup/AutoBackupScheduler.kt", "symbol": "class AutoBackupScheduler(", "line": 44}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/backup/AutoBackupScheduler.kt", "symbol": "internal suspend fun runDueBackup()", "line": 77}],
+      "FIXTURE": [
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/backup/AutoBackupSchedulerTest.kt#overdue persisted schedule runs on process restart and records success", "productionMarkers": ["scheduler.runDueBackup()"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/backup/AutoBackupSchedulerTest.kt#start catches up immediately and stop cancels the waiting lifecycle", "productionMarkers": ["scheduler.start()", "scheduler.stop()"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/backup/AutoBackupSchedulerTest.kt#automatic backup failure stays visible and remains due for retry", "productionMarkers": ["scheduler.runDueBackup()"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/BackupSettingsProductionWiringTest.kt#automatic backup failure is visible on the real backup settings screen", "productionMarkers": ["scene("]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/BackupSettingsProductionWiringTest.kt#automatic backup success time is visible on the real backup settings screen", "productionMarkers": ["scene("]}
+      ]
     },
     "behaviorVerificationTask": ":app-desktop:task5ParityVerification",
-    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/backup/AutoBackupSchedulerTest.kt": ["pruneOldBackups keeps only maxBackups files"]},
-    "statusDecision": {"task": "Task 11", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Desktop proves only process-bound pruning; wake after process exit and equivalent periodic scheduling remain unverified against fixed-main WorkManager behavior.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/backup/AutoBackupSchedulerTest.kt": ["pruneOldBackups keeps only maxBackups files"]}},
-    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/backup/AutoBackupSchedulerTest.kt"],
-    "deviations": [{"classification": "PLATFORM_ADAPTER", "description": "Android WorkManager can wake after app exit; the current Desktop scheduler is process-bound and is not claimed equivalent before platform scheduling is verified."}],
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/backup/AutoBackupSchedulerTest.kt": ["overdue persisted schedule runs on process restart and records success", "restart before persisted deadline does not duplicate automatic backup", "automatic backup failure stays visible and remains due for retry", "successful deadline uses completion time rather than start time", "start catches up immediately and stop cancels the waiting lifecycle", "periodic lifecycle retries a failed due backup", "failure without a message persists stable visible feedback", "pruneOldBackups keeps only maxBackups files"], "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/BackupSettingsProductionWiringTest.kt": ["automatic backup failure is visible on the real backup settings screen", "automatic backup success time is visible on the real backup settings screen"]},
+    "statusDecisionHistory": [{"task": "Task 11", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Desktop proves only process-bound pruning; wake after process exit and equivalent periodic scheduling remain unverified against fixed-main WorkManager behavior.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/backup/AutoBackupSchedulerTest.kt": ["pruneOldBackups keeps only maxBackups files"]}}],
+    "statusDecision": {"task": "Task 18", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/backup/AutoBackupSchedulerTest.kt": ["overdue persisted schedule runs on process restart and records success", "restart before persisted deadline does not duplicate automatic backup", "automatic backup failure stays visible and remains due for retry", "successful deadline uses completion time rather than start time", "start catches up immediately and stop cancels the waiting lifecycle", "periodic lifecycle retries a failed due backup", "failure without a message persists stable visible feedback", "pruneOldBackups keeps only maxBackups files"], "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/BackupSettingsProductionWiringTest.kt": ["automatic backup failure is visible on the real backup settings screen", "automatic backup success time is visible on the real backup settings screen"]}},
+    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/backup/AutoBackupSchedulerTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/BackupSettingsProductionWiringTest.kt"],
+    "deviations": [{"classification": "PLATFORM_ADAPTER", "description": "Android WorkManager can wake a terminated mobile app. Desktop has no equivalent application-owned wake API, so it persists the successful-run deadline, catches up immediately on the next process start, avoids restart duplicates, retries failures while running, and shows the last failure in Backup settings."}],
+    "verificationScope": "VERIFIED: fixed-main WorkManager remains the Android platform scheduler; Desktop proves its explicit startup catch-up adapter, persisted deadline, periodic retry, pruning and real UI failure feedback without claiming an OS wake after process termination.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -3350,7 +3403,7 @@
       "SHARE-EXTRACT",
       "PLATFORM-ADAPTER"
     ],
-    "status": "WIRED",
+    "status": "VERIFIED",
     "authoritativeImplementation": "Fixed-main original Mihon capability #93: SettingsAdvancedScreen exposes crash logs, cache/database maintenance, cookie clearing, and WebView cleanup.",
     "desktopImplementation": "AdvancedSettingsScreen exposes Desktop-safe cache, cookie, and crash-log actions with confirmations and visible feedback.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -3361,19 +3414,20 @@
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt", "symbol": "object SettingsAdvancedScreen", "line": 75}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt", "symbol": "object SettingsAdvancedScreen", "line": 75}],
-      "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreen.kt", "symbol": "internal interface AdvancedSettingsPlatformActions", "line": 184}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreen.kt", "symbol": "class AdvancedSettingsScreen", "line": 207}],
+      "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreen.kt", "symbol": "internal interface AdvancedSettingsPlatformActions", "line": 185}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreen.kt", "symbol": "class AdvancedSettingsScreen", "line": 208}],
       "FIXTURE": [
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreenTest.kt#catalog result anchors once and preserves platform success and failure feedback", "productionMarkers": ["AdvancedSettingsScreen::class"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSecurityAdvancedAccessibilityTest.kt#Advanced fields and dangerous confirmation expose honest keyboard semantics", "productionMarkers": ["AdvancedSettingsScreen()", "fixture.networkMaintenance.clearCookies()"]}
       ]
     },
     "behaviorVerificationTask": ":app-desktop:task5ParityVerification",
-    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreenTest.kt": ["catalog result anchors once and preserves platform success and failure feedback"], "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSecurityAdvancedAccessibilityTest.kt": ["Advanced fields and dangerous confirmation expose honest keyboard semantics"]},
+    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreenTest.kt": ["catalog result anchors once and preserves platform success and failure feedback", "network cache maintenance reports platform success and failure"], "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSecurityAdvancedAccessibilityTest.kt": ["Advanced fields and dangerous confirmation expose honest keyboard semantics"]},
     "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreenTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSecurityAdvancedAccessibilityTest.kt"],
     "deviations": [{"classification": "DESKTOP_PRODUCT_ENHANCEMENT", "description": "Desktop opens its crash-log directory and clears JVM network storage; Android-only WebView and download-cache maintenance remain outside the Desktop adapter. NetworkPreferences is only a shared configuration dependency, not proof of an extracted maintenance workflow."}],
-    "statusDecision": {"task": "Task 13", "decision": "PROMOTE_WIRED", "followUp": "Task 14", "gap": "No shared maintenance use case or result model exists; fixed-main database repair, cache maintenance, WebView cleanup, and worker diagnostics remain Android-only while Desktop directory actions are enhancements.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreenTest.kt": ["catalog result anchors once and preserves platform success and failure feedback"], "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSecurityAdvancedAccessibilityTest.kt": ["Advanced fields and dangerous confirmation expose honest keyboard semantics"]}},
-    "verificationScope": "WIRED: Desktop maintenance actions execute through the production Screen and platform adapter with feedback; shared maintenance semantics remain open.",
+    "statusDecisionHistory": [{"task": "Task 13", "decision": "PROMOTE_WIRED", "followUp": "Task 14", "gap": "No shared maintenance use case or result model exists; fixed-main database repair, cache maintenance, WebView cleanup, and worker diagnostics remain Android-only while Desktop directory actions are enhancements.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreenTest.kt": ["catalog result anchors once and preserves platform success and failure feedback"], "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSecurityAdvancedAccessibilityTest.kt": ["Advanced fields and dangerous confirmation expose honest keyboard semantics"]}}],
+    "statusDecision": {"task": "Task 18", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/settings/AdvancedSettingsScreenTest.kt": ["catalog result anchors once and preserves platform success and failure feedback", "network cache maintenance reports platform success and failure"], "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSecurityAdvancedAccessibilityTest.kt": ["Advanced fields and dangerous confirmation expose honest keyboard semantics"]}},
+    "verificationScope": "VERIFIED: Android retains fixed-main Android-only database, download-cache, WebView and worker maintenance; Desktop confines JVM cache, cookie and crash-log actions to its platform adapter, requires dangerous-action confirmation and exposes both success and failure through the real Advanced settings screen.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },

@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import mihon.desktop.platform.DesktopPlatformPaths
@@ -27,8 +28,18 @@ enum class AutoBackupInterval(val hours: Long) {
     fun toMillis(): Long = hours * 3_600_000L
 }
 
+sealed interface AutoBackupRunResult {
+    data object Disabled : AutoBackupRunResult
+    data class NotDue(val nextRunAt: Long) : AutoBackupRunResult
+    data object Success : AutoBackupRunResult
+    data class Failure(val message: String) : AutoBackupRunResult
+}
+
 /**
  * Periodically creates backups, pruning old ones.
+ *
+ * Desktop cannot ask a mobile WorkManager equivalent to wake a terminated process. Instead, the
+ * successful-run deadline is persisted and checked immediately on the next application start.
  */
 class AutoBackupScheduler(
     private val appPreferences: DesktopAppPreferences,
@@ -39,6 +50,9 @@ class AutoBackupScheduler(
     private val excludedScanlatorsForManga: suspend (Long) -> List<String> = { emptyList() },
     private val defaultBackupDir: File = DesktopPlatformPaths.current().backupsDir,
     scope: CoroutineScope? = null,
+    private val nowMillis: () -> Long = System::currentTimeMillis,
+    private val backupAction: (suspend () -> Unit)? = null,
+    private val waitForNextCheck: suspend (Long) -> Unit = { delay(it) },
 ) {
     private val scope: CoroutineScope = scope ?: CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var schedulerJob: Job? = null
@@ -48,18 +62,9 @@ class AutoBackupScheduler(
     fun start() {
         if (schedulerJob?.isActive == true) return
         schedulerJob = scope.launch {
-            var lastRun = 0L
             while (true) {
-                delay(CHECK_INTERVAL_MS)
-                val intervalMs = AutoBackupInterval.valueOf(
-                    appPreferences.autoBackupInterval.get(),
-                ).toMillis()
-                if (intervalMs <= 0) continue
-                val now = System.currentTimeMillis()
-                if (lastRun == 0L || now - lastRun >= intervalMs) {
-                    lastRun = now
-                    runAutoBackup()
-                }
+                runDueBackup()
+                waitForNextCheck(CHECK_INTERVAL_MS)
             }
         }
     }
@@ -69,29 +74,54 @@ class AutoBackupScheduler(
         schedulerJob = null
     }
 
-    private suspend fun runAutoBackup() {
-        try {
-            val backupDir = File(
-                appPreferences.autoBackupDir.get().ifBlank {
-                    defaultBackupDir.path
-                },
-            )
-            backupDir.mkdirs()
+    internal suspend fun runDueBackup(): AutoBackupRunResult {
+        val interval = runCatching {
+            AutoBackupInterval.valueOf(appPreferences.autoBackupInterval.get())
+        }.getOrDefault(AutoBackupInterval.OFF)
+        val intervalMillis = interval.toMillis()
+        if (intervalMillis <= 0) return AutoBackupRunResult.Disabled
 
-            val backup = DesktopBackupCreator.createFromDatabase(
-                mangaRepository,
-                chapterRepository,
-                categoryRepository,
-                historyRepository,
-                excludedScanlatorsForManga = excludedScanlatorsForManga,
-            )
-            DesktopBackupCreator.writeBackupFile(backup, backupDir)
-
-            val maxBackups = appPreferences.autoBackupMaxFiles.get()
-            pruneOldBackups(backupDir, maxBackups)
-        } catch (_: Exception) {
-            // Silently ignore to keep the scheduler alive.
+        val now = nowMillis()
+        val lastSuccess = appPreferences.autoBackupLastSuccessAt.get()
+        if (lastSuccess > 0L && now - lastSuccess < intervalMillis) {
+            return AutoBackupRunResult.NotDue(lastSuccess + intervalMillis)
         }
+
+        return try {
+            backupAction?.invoke() ?: createAndPruneBackup()
+            appPreferences.autoBackupLastSuccessAt.set(nowMillis())
+            appPreferences.autoBackupLastError.set("")
+            AutoBackupRunResult.Success
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            val message = error.message?.takeIf(String::isNotBlank)
+                ?: error::class.simpleName?.takeIf(String::isNotBlank)
+                ?: "Unknown error"
+            appPreferences.autoBackupLastError.set(message)
+            AutoBackupRunResult.Failure(message)
+        }
+    }
+
+    private suspend fun createAndPruneBackup() {
+        val backupDir = File(
+            appPreferences.autoBackupDir.get().ifBlank {
+                defaultBackupDir.path
+            },
+        )
+        backupDir.mkdirs()
+
+        val backup = DesktopBackupCreator.createFromDatabase(
+            mangaRepository,
+            chapterRepository,
+            categoryRepository,
+            historyRepository,
+            excludedScanlatorsForManga = excludedScanlatorsForManga,
+        )
+        DesktopBackupCreator.writeBackupFile(backup, backupDir)
+
+        val maxBackups = appPreferences.autoBackupMaxFiles.get()
+        pruneOldBackups(backupDir, maxBackups)
     }
 
     companion object {

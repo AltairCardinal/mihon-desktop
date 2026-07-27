@@ -45,6 +45,8 @@ class DesktopAppPreferences(
         .migrate(key) { it }
     private fun int(key: String, default: Int) = store.getInt(key, default)
         .migrate(key) { it.toIntOrNull() }
+    private fun long(key: String, default: Long) = store.getLong(key, default)
+        .migrate(key) { it.toLongOrNull() }
     private fun boolean(key: String, default: Boolean) = store.getBoolean(key, default)
         .migrate(key) { it.toBooleanStrictOrNull() }
 
@@ -230,5 +232,15 @@ class DesktopAppPreferences(
     /** Directory for auto-backup files. Empty = ~/MihonDesktopBackups. */
     val autoBackupDir: Preference<String> by lazy {
         string(key = "auto_backup_dir", default = "")
+    }
+
+    /** Last successful automatic backup time, persisted so restart does not reset the schedule. */
+    val autoBackupLastSuccessAt: Preference<Long> by lazy {
+        long(key = "auto_backup_last_success_at", default = 0L)
+    }
+
+    /** Last automatic backup failure shown by the backup settings screen. */
+    val autoBackupLastError: Preference<String> by lazy {
+        string(key = "auto_backup_last_error", default = "")
     }
 }

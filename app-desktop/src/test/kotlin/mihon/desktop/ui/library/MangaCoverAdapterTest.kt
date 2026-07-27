@@ -1,5 +1,6 @@
 package mihon.desktop.ui.library
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import mihon.domain.error.AppError
 import mihon.domain.task.TaskState
@@ -31,5 +32,43 @@ class MangaCoverAdapterTest {
 
         val failure = assertInstanceOf(TaskState.Failure::class.java, result)
         assertInstanceOf(AppError.Storage::class.java, failure.error)
+    }
+
+    @Test
+    fun `picker permission failure is returned through the shared cover result`() = runTest {
+        val adapter = MangaCoverAdapter(
+            picker = CoverFilePicker { throw SecurityException("denied") },
+            updateCover = { _, _ -> error("update must not run") },
+        )
+
+        val result = adapter.chooseAndUpdate(1)
+
+        val failure = assertInstanceOf(TaskState.Failure::class.java, result)
+        assertInstanceOf(AppError.Permission::class.java, failure.error)
+    }
+
+    @Test
+    fun `picker storage failure is returned through the shared cover result`() = runTest {
+        val adapter = MangaCoverAdapter(
+            picker = CoverFilePicker { error("disk failed") },
+            updateCover = { _, _ -> error("update must not run") },
+        )
+
+        val result = adapter.chooseAndUpdate(1)
+
+        val failure = assertInstanceOf(TaskState.Failure::class.java, result)
+        assertInstanceOf(AppError.Storage::class.java, failure.error)
+    }
+
+    @Test
+    fun `picker cancellation remains coroutine cancellation`() = runTest {
+        val adapter = MangaCoverAdapter(
+            picker = CoverFilePicker { throw CancellationException("screen closed") },
+            updateCover = { _, _ -> error("update must not run") },
+        )
+
+        val failure = runCatching { adapter.chooseAndUpdate(1) }.exceptionOrNull()
+
+        assertInstanceOf(CancellationException::class.java, failure)
     }
 }

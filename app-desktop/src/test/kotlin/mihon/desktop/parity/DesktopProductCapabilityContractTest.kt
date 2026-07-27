@@ -44,11 +44,16 @@ class DesktopProductCapabilityContractTest {
             16 to "VERIFIED",
             22 to "VERIFIED",
             24 to "VERIFIED",
+            26 to "VERIFIED",
+            28 to "VERIFIED",
             38 to "VERIFIED",
             54 to "VERIFIED",
+            56 to "VERIFIED",
             66 to "VERIFIED",
             71 to "VERIFIED",
             72 to "VERIFIED",
+            73 to "VERIFIED",
+            93 to "VERIFIED",
         )
     private val task2ProvenanceStatuses =
         mapOf(9 to "VERIFIED", 10 to "VERIFIED", 11 to "WIRED", 12 to "VERIFIED", 16 to "SHARED", 17 to "SHARED", 19 to "WIRED", 22 to "SHARED")
@@ -2023,6 +2028,10 @@ class DesktopProductCapabilityContractTest {
                                     "markSelectedBookmark uses true when any selected chapter is not bookmarked",
                                 ),
                         )
+                } else if (id == 26) {
+                    item.getValue("statusDecision").jsonObject.getValue("behaviorMethods").jsonObject.mapValues { (_, methods) ->
+                        methods.jsonArray.map { it.jsonPrimitive.content }.toSet()
+                    }
                 } else {
                     task3BehaviorMethods.getValue(id)
                 }
@@ -2080,6 +2089,10 @@ class DesktopProductCapabilityContractTest {
                                 "app/src/test/java/eu/kanade/tachiyomi/ui/stats/StatsScreenModelSharedAggregationTest.kt" to
                                     setOf("current Android stats screen consumes shared title and chapter aggregation"),
                             )
+                    56 ->
+                        item.getValue("statusDecision").jsonObject.getValue("behaviorMethods").jsonObject.mapValues { (_, methods) ->
+                            methods.jsonArray.map { it.jsonPrimitive.content }.toSet()
+                        }
                     else -> task4BehaviorMethods.getValue(id)
                 }
             assertEquals(expectedBehaviorMethods, behaviorMethods, "ID $id behavior methods")
@@ -2143,7 +2156,7 @@ class DesktopProductCapabilityContractTest {
                                         "fixed-main Android artifact restores every Desktop persistence boundary with progress",
                                     ),
                             )
-                    95 ->
+                    73, 93, 95 ->
                         item.getValue("statusDecision").jsonObject.getValue("behaviorMethods").jsonObject.mapValues { (_, methods) ->
                             methods.jsonArray.map { it.jsonPrimitive.content }.toSet()
                         }
@@ -2533,7 +2546,7 @@ class DesktopProductCapabilityContractTest {
         }
 
         val grouping = items.getValue(56).jsonObject
-        val groupingDecision = grouping.getValue("statusDecision").jsonObject
+        val groupingDecision = statusDecisionForTask(grouping, 56, "Task 10")
         val groupingGap = requiredText(groupingDecision, "gap", 56, "statusDecision")
         assertTrue("source object" in groupingGap && "sourceId" in groupingGap, "ID 56 gap must preserve the grouping semantic difference")
         assertTrue(
@@ -2637,7 +2650,7 @@ class DesktopProductCapabilityContractTest {
             "ID 71 historical Task 11 gap must name the missing fixed-original artifact fixture",
         )
         assertEquals("NONE", requiredText(creator.getValue("statusDecision").jsonObject, "gap", 71, "statusDecision"))
-        val schedulerGap = requiredText(items.getValue(73).jsonObject.getValue("statusDecision").jsonObject, "gap", 73, "statusDecision")
+        val schedulerGap = requiredText(statusDecisionForTask(items.getValue(73).jsonObject, 73, "Task 11"), "gap", 73, "statusDecision")
         assertTrue("exit" in schedulerGap && "periodic scheduling" in schedulerGap, "ID 73 gap must name the process-lifetime scheduling difference")
         val restoreGap = requiredText(statusDecisionForTask(items.getValue(72).jsonObject, 72, "Task 11"), "gap", 72, "statusDecision")
         assertTrue(
@@ -2749,7 +2762,7 @@ class DesktopProductCapabilityContractTest {
         assertEquals(task13Statuses.keys, task13DecisionIds, "Task 13 capability set")
         task13Statuses.forEach { (id, expectedStatus) ->
             val item = items.getValue(id).jsonObject
-            assertEquals(expectedStatus, requiredText(item, "status", id), "ID $id Task 13 status")
+            assertEquals(task18PromotedStatuses[id] ?: expectedStatus, requiredText(item, "status", id), "ID $id Task 13 status")
             validateRoleEvidence(item, repositoryRoot, inventory)
             val decision = statusDecisionForTask(item, id, "Task 13")
             assertEquals("Task 13", requiredText(decision, "task", id, "statusDecision"))

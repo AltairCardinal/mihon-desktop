@@ -35,6 +35,8 @@ import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.i18n.MR
 import java.io.File
+import java.text.DateFormat
+import java.util.Date
 import java.util.Locale
 import javax.swing.JFileChooser
 import javax.swing.filechooser.FileNameExtensionFilter
@@ -146,6 +148,48 @@ class BackupSettingsProductionWiringTest {
     }
 
     @Test
+    fun `automatic backup failure is visible on the real backup settings screen`() = runBlocking {
+        val preferences = DesktopAppPreferences(InMemoryPreferenceStore()).apply {
+            autoBackupLastError.set("disk full")
+        }
+        val factory = mockk<BackupRestoreScreenModelFactory> { every { create() } returns model(this@runBlocking) }
+        val scene = scene(
+            factory = factory,
+            picker = RecordingPicker(DesktopBackupFilePickerResult.Cancelled),
+            preferences = preferences,
+        )
+        try {
+            val copy = render(scene)
+            assertTrue(MR.strings.desktop_backup_failed.localized(Locale.getDefault(), "disk full") in copy)
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    fun `automatic backup success time is visible on the real backup settings screen`() = runBlocking {
+        val timestamp = 100_000_000L
+        val preferences = DesktopAppPreferences(InMemoryPreferenceStore()).apply {
+            autoBackupLastSuccessAt.set(timestamp)
+        }
+        val factory = mockk<BackupRestoreScreenModelFactory> { every { create() } returns model(this@runBlocking) }
+        val scene = scene(
+            factory = factory,
+            picker = RecordingPicker(DesktopBackupFilePickerResult.Cancelled),
+            preferences = preferences,
+        )
+        try {
+            val expected = MR.strings.last_auto_backup_info.localized(
+                Locale.getDefault(),
+                DateFormat.getDateTimeInstance().format(Date(timestamp)),
+            )
+            assertTrue(expected in render(scene))
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
     fun `wrong route and unknown title never highlight`() = runBlocking {
         anchorFixture(this, 180).use { fixture ->
             val result = result(MR.strings.pref_download_new.localized(), DownloadSettingsScreen::class)
@@ -225,10 +269,14 @@ class BackupSettingsProductionWiringTest {
             scope = scope,
         )
 
-    private fun scene(factory: BackupRestoreScreenModelFactory, picker: DesktopBackupFilePicker): ImageComposeScene =
+    private fun scene(
+        factory: BackupRestoreScreenModelFactory,
+        picker: DesktopBackupFilePicker,
+        preferences: DesktopAppPreferences = DesktopAppPreferences(InMemoryPreferenceStore()),
+    ): ImageComposeScene =
         ImageComposeScene(900, 2_000) {
             val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
-                every { appPreferences } returns DesktopAppPreferences(InMemoryPreferenceStore())
+                every { appPreferences } returns preferences
                 every { backupRestoreScreenModelFactory } returns factory
                 every { backupFilePicker } returns picker
             }

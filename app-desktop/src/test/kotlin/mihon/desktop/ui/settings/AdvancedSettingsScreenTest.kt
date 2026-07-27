@@ -12,6 +12,7 @@ import cafe.adriel.voyager.navigator.Navigator
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
@@ -74,9 +75,41 @@ class AdvancedSettingsScreenTest {
         }
     }
 
-    private suspend fun fixture(opens: Boolean): Fixture {
+    @Test
+    fun `network cache maintenance reports platform success and failure`() = runBlocking {
+        listOf(
+            Triple(true, false, MR.strings.desktop_about_network_cache_cleared.localized()),
+            Triple(false, false, MR.strings.cache_delete_error.localized()),
+            Triple(false, true, MR.strings.cache_delete_error.localized()),
+        ).forEach { (clears, throws, feedback) ->
+            fixture(opens = true, clears = clears, clearThrows = throws).use { fixture ->
+                fixture.navigator.replace(AdvancedSettingsScreen())
+                render(fixture.scene)
+
+                click(fixture.scene, MR.strings.desktop_advanced_clear_network_cache.localized())
+                render(fixture.scene)
+                click(fixture.scene, MR.strings.desktop_advanced_clear_confirm.localized())
+                var copy = render(fixture.scene)
+                withTimeout(2_000) {
+                    while (feedback !in copy) {
+                        copy = render(fixture.scene)
+                        yield()
+                    }
+                }
+
+                assertTrue(feedback in copy)
+                assertEquals(1, fixture.actions.clearCalls)
+            }
+        }
+    }
+
+    private suspend fun fixture(
+        opens: Boolean,
+        clears: Boolean = false,
+        clearThrows: Boolean = false,
+    ): Fixture {
         val preferences = DesktopAppPreferences(InMemoryPreferenceStore())
-        val actions = RecordingActions(opens)
+        val actions = RecordingActions(opens, clears, clearThrows)
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns preferences
         }
@@ -162,12 +195,23 @@ class AdvancedSettingsScreenTest {
         override fun close() = scene.close()
     }
 
-    private class RecordingActions(private val opens: Boolean) : AdvancedSettingsPlatformActions {
+    private class RecordingActions(
+        private val opens: Boolean,
+        private val clears: Boolean,
+        private val clearThrows: Boolean,
+    ) : AdvancedSettingsPlatformActions {
         var openCalls = 0
+        var clearCalls = 0
         override suspend fun loadNetworkCacheSize() = "12 KB"
         override suspend fun openCrashLogFolder(): Boolean {
             openCalls++
             return opens
+        }
+
+        override suspend fun clearNetworkCache(): Boolean {
+            clearCalls++
+            if (clearThrows) throw SecurityException("denied")
+            return clears
         }
     }
 

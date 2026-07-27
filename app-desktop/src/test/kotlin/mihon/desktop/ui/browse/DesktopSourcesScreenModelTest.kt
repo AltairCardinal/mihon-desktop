@@ -1,5 +1,9 @@
 package mihon.desktop.ui.browse
 
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.slot
+import io.mockk.verify
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
@@ -19,9 +23,54 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.domain.source.model.Pin
+import tachiyomi.domain.source.model.Source
+import tachiyomi.domain.source.service.SourceMembershipCandidate
+import tachiyomi.domain.source.service.SourceMembershipPreferences
+import tachiyomi.domain.source.service.SourceMembershipProjection
 import java.util.prefs.Preferences
 
 class DesktopSourcesScreenModelTest {
+    @Test
+    fun `production model delegates installed extension membership and local marker to shared projection`() = runTest {
+        val root = Preferences.userRoot().node("/mihon/desktop-source-shared-projection/${System.nanoTime()}")
+        try {
+            val local = FakeSource(0, "fr", "Local")
+            val installed = FakeSource(1, "en", "Installed")
+            val preferences = DesktopAppPreferences(DesktopPreferenceStore(root)).apply {
+                enabledLanguages.set(setOf("en"))
+                disabledSources.set(setOf("9"))
+                pinnedSources.set(setOf(installed.id.toString()))
+                lastUsedSource.set(installed.id)
+            }
+            val candidates = slot<List<SourceMembershipCandidate>>()
+            val membership = slot<SourceMembershipPreferences>()
+            val projected = Source(99, "en", "Shared projection result", false, false)
+            val projection = mockk<SourceMembershipProjection> {
+                every { project(capture(candidates), capture(membership)) } returns listOf(projected)
+            }
+
+            val model = DesktopSourcesScreenModel(
+                sourceManager = FakeDesktopSourceManager(listOf(installed, local)),
+                preferences = preferences,
+                coroutineScope = this,
+                membershipProjection = projection,
+            )
+
+            val content = awaitContent(model) { it is SourceScreenContent.Content } as SourceScreenContent.Content
+            assertEquals(listOf(projected), content.sources)
+            assertEquals(listOf(installed.id, local.id), candidates.captured.map { it.source.id })
+            assertTrue(candidates.captured.single { it.source.id == local.id }.isLocal)
+            assertEquals(setOf("en"), membership.captured.enabledLanguages)
+            assertEquals(setOf("9"), membership.captured.disabledSourceIds)
+            assertEquals(setOf(installed.id.toString()), membership.captured.pinnedSourceIds)
+            assertEquals(installed.id, membership.captured.lastUsedSourceId)
+            verify(atLeast = 1) { projection.project(any(), any()) }
+            model.onDispose()
+        } finally {
+            root.removeNode()
+        }
+    }
+
     @Test
     fun `production model reduces candidates and consumes pin result exactly once`() = runTest {
         val root = Preferences.userRoot().node("/mihon/desktop-source-model/${System.nanoTime()}")

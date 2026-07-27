@@ -651,10 +651,10 @@ repository-local 实现、只待逐项晋升，另有 15 个仍保留旧 Task 6/
 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`，当前 `app/` 只作为 fork 后 Android
 consumer，不冒充原版依据。
 
-- [ ] Task 18A：清除悬空 follow-up，并关闭 ID 11 的 Desktop notification adapter
+- [x] Task 18A：清除悬空 follow-up，并关闭 ID 11 的 Desktop notification adapter
 - [x] Task 18B：补齐 production fixture（7、16、38、54、71、72）
-- [ ] Task 18C：关闭共享语义分叉（22、24、28、66）
-- [ ] Task 18D：关闭平台 adapter 终态证据（26、56、73、93）
+- [x] Task 18C：关闭共享语义分叉（22、24、28、66）
+- [x] Task 18D：关闭平台 adapter 终态证据（26、56、73、93）
 - [ ] Task 18E：移除 `UNCLASSIFIED_DEBT` / `TEMP-COMPAT` 分类矛盾并逐项晋升 64 项
 - [ ] Task 18F：运行 `finalParityAudit`、架构守卫、计划守卫与格式检查
 
@@ -696,8 +696,23 @@ consumer，不冒充原版依据。
 - ID 66 已完成：current Android statistics production model 消费共享
   `AggregateLibraryStats` 的 title/chapter 汇总，Android 独有 tracker、download、duration 与
   update-time 统计继续保留；fixture 会在绕过共享 aggregate 时失败。
-- 当前治理套件的全局 dangling 门禁仍按设计 RED；26、28、56、73、93 尚未关闭，因此
-  18A/18C 继续保持未勾选。
+- ID 28 已完成：current Android `GetEnabledSources` 与 Desktop
+  `DesktopSourcesScreenModel` 均消费共享 `SourceMembershipProjection`，统一固定原版的语言、
+  disabled、pin、last-used 与 local membership 语义；Desktop 分组、本地源入口和失败反馈保持。
+- ID 26/56 已完成：Android 自定义封面继续保留固定原版 Uri/Context 路径，Desktop picker
+  的权限与存储失败进入共享 cover result；下载队列明确以持久化 `sourceId` 作为平台稳定键，
+  source 实例替换后不拆组，缺失 source 仍显示稳定反馈。
+- ID 73/93 已完成：Desktop 自动备份持久化成功截止时间，启动时补跑到期任务且不会因重启
+  重复执行，失败保留并显示在真实备份设置页；高级维护通过 Desktop adapter 保留
+  Android-only WebView/数据库边界，并对 JVM 网络缓存清理显示真实成功或失败。
+- 全部旧 gap 与 follow-up 已关闭，Task 18A/18C/18D 完成；剩余工作仅为 18E 的已有
+  `READY_FOR_PROMOTION` 项逐项晋升，以及 18F 最终门禁。
+
+**Task 18C/18D scope note：** 本批次超过初始 5 files/360 lines 估算，是因为同一终态门禁必须
+同时提交 shared source projection、两端 production callers、四类平台 adapter 行为、红绿测试及
+manifest/contract/checkoff，拆开会产生无法独立通过治理门禁的中间状态。风险通过 fixed-main
+authority、Android/domain/Desktop focused tests、独立审查与一次修复复审、Spotless 和
+`parityGovernanceCheck` 控制；没有加入 Task 18 之外的新 capability。
 
 ### Task 19：运行全量测试、Windows/macOS 构建与运行验收
 

@@ -21,6 +21,7 @@ import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.download.DownloadQueueScreenModel
+import mihon.desktop.download.projectDownloadQueueSourceGroups
 import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.desktop.source.FakeSource
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -35,6 +36,35 @@ class DownloadQueueSourceGroupingWiringTest {
 
     @TempDir
     lateinit var tempDir: File
+
+    @Test
+    fun `persistent source ids remain one group when the source instance is replaced`() {
+        val queue = listOf(
+            download(sourceId = 1, mangaTitle = "Manga A", chapterId = 1),
+            download(sourceId = 1, mangaTitle = "Manga B", chapterId = 2),
+        )
+
+        val beforeReplacement = projectDownloadQueueSourceGroups(queue) { "Old source" }
+        val afterReplacement = projectDownloadQueueSourceGroups(queue) { "Replacement source" }
+
+        assertEquals(1, beforeReplacement.size)
+        assertEquals(listOf(1L, 2L), beforeReplacement.single().items.map(DownloadItem::chapterId))
+        assertEquals(1, afterReplacement.size)
+        assertEquals("Replacement source", afterReplacement.single().sourceName)
+    }
+
+    @Test
+    fun `missing source has stable fallback without splitting persisted rows`() {
+        val queue = listOf(
+            download(sourceId = 9, mangaTitle = "Manga A", chapterId = 1),
+            download(sourceId = 9, mangaTitle = "Manga B", chapterId = 2),
+        )
+
+        val groups = projectDownloadQueueSourceGroups(queue) { null }
+
+        assertEquals(1, groups.size)
+        assertEquals("Unknown source (9)", groups.single().sourceName)
+    }
 
     @Test
     @OptIn(ExperimentalComposeUiApi::class)

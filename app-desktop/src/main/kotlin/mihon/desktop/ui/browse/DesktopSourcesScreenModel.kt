@@ -15,21 +15,23 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import mihon.desktop.settings.DesktopAppPreferences
-import mihon.desktop.source.selectEnabledCatalogueSourceCandidates
 import mihon.domain.source.model.SourceScreenAction
 import mihon.domain.source.model.SourceScreenContent
 import mihon.domain.source.model.SourceScreenReducer
 import mihon.domain.source.model.SourceScreenState
 import tachiyomi.core.common.preference.getAndSet
-import tachiyomi.domain.source.model.Pin
-import tachiyomi.domain.source.model.Pins
 import tachiyomi.domain.source.model.Source
+import tachiyomi.domain.source.service.FixedMainSourceMembershipProjection
+import tachiyomi.domain.source.service.SourceMembershipCandidate
+import tachiyomi.domain.source.service.SourceMembershipPreferences
+import tachiyomi.domain.source.service.SourceMembershipProjection
 import tachiyomi.domain.source.service.SourceManager
 
 data class DesktopSourcesState(val sourceState: SourceScreenState = SourceScreenState(), val catalogueSources: List<CatalogueSource> = emptyList(), val enabledLanguages: Set<String> = emptySet())
 class DesktopSourcesScreenModel(
     private val sourceManager: SourceManager, private val preferences: DesktopAppPreferences, coroutineScope: CoroutineScope? = null,
     private val reducer: SourceScreenReducer = SourceScreenReducer(),
+    private val membershipProjection: SourceMembershipProjection = FixedMainSourceMembershipProjection,
 ) : ScreenModel {
     private val ownerJob = SupervisorJob(coroutineScope?.coroutineContext?.get(Job))
     private val scope = CoroutineScope((coroutineScope?.coroutineContext ?: Dispatchers.Default) + ownerJob)
@@ -75,8 +77,16 @@ class DesktopSourcesScreenModel(
                 preferences.pinnedSources.changes(),
                 preferences.lastUsedSource.changes(),
             ) { installed, enabledLanguages, disabledSources, pinnedSources, lastUsedSource ->
-                val candidates = selectEnabledCatalogueSourceCandidates(installed, enabledLanguages, disabledSources)
-                Triple(installed, candidates.toDomainSources(pinnedSources, lastUsedSource), enabledLanguages)
+                Triple(
+                    installed,
+                    installed.toDomainSources(
+                        enabledLanguages = enabledLanguages,
+                        disabledSourceIds = disabledSources,
+                        pinnedSourceIds = pinnedSources,
+                        lastUsedSourceId = lastUsedSource,
+                    ),
+                    enabledLanguages,
+                )
             }
                 .catch { error ->
                     if (error is CancellationException) throw error
@@ -102,18 +112,41 @@ class DesktopSourcesScreenModel(
     private fun initialState(): DesktopSourcesState {
         val installed = sourceManager.getCatalogueSources()
         val enabled = preferences.enabledLanguages.get()
-        val candidates = selectEnabledCatalogueSourceCandidates(installed, enabled, preferences.disabledSources.get())
-        return DesktopSourcesState(reducer.loaded(SourceScreenState(), candidates.toDomainSources(preferences.pinnedSources.get(), preferences.lastUsedSource.get())), installed, enabled)
+        return DesktopSourcesState(
+            reducer.loaded(
+                SourceScreenState(),
+                installed.toDomainSources(
+                    enabledLanguages = enabled,
+                    disabledSourceIds = preferences.disabledSources.get(),
+                    pinnedSourceIds = preferences.pinnedSources.get(),
+                    lastUsedSourceId = preferences.lastUsedSource.get(),
+                ),
+            ),
+            installed,
+            enabled,
+        )
     }
     private fun List<CatalogueSource>.toDomainSources(
+        enabledLanguages: Set<String>,
+        disabledSourceIds: Set<String>,
         pinnedSourceIds: Set<String>,
         lastUsedSourceId: Long,
-    ): List<Source> = sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name }).flatMap { source ->
-        val pin = if (source.id.toString() in pinnedSourceIds) Pins.pinned else Pins.unpinned
-        val item = Source(source.id, source.lang, source.name, source.supportsLatest, isStub = false, pin = pin)
-        buildList {
-            add(item)
-            if (source.id == lastUsedSourceId) add(item.copy(isUsedLast = true, pin = item.pin - Pin.Actual))
-        }
+    ): List<Source> = membershipProjection.project(
+        candidates = map { source ->
+            SourceMembershipCandidate(
+                source = Source(source.id, source.lang, source.name, source.supportsLatest, isStub = false),
+                isLocal = source.id == LOCAL_SOURCE_ID,
+            )
+        },
+        preferences = SourceMembershipPreferences(
+            enabledLanguages = enabledLanguages,
+            disabledSourceIds = disabledSourceIds,
+            pinnedSourceIds = pinnedSourceIds,
+            lastUsedSourceId = lastUsedSourceId,
+        ),
+    )
+
+    private companion object {
+        const val LOCAL_SOURCE_ID = 0L
     }
 }
