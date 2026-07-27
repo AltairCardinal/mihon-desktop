@@ -3,215 +3,79 @@ parent-plan: docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.
 parent-task: Task 15
 task-base: 148594c791c88f45f9412577ad17b0a6b92ac635
 original-ref: main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8
-status: planned
+status: completed
 ---
 
 # Task 15 platform evidence closure
 
 ## 固定边界
 
-本计划只补齐 IDs 81、82、83、84、86、92 缺失的真实 OS 或签名产物验收；ID 85 已有明确批准的 Widget 平台豁免，不在本计划重新裁决。测试 seam、旧构建或非交互 SSH 不能冒充当前提交的 GUI/安装验收。
+本计划完成 IDs 81、82、83、84、86、92 的 repository-local implementation/evidence
+closure；ID 85 的既有 Widget 豁免不在本计划重新裁决。
 
-- **macOS 延期（用户指令，2026-07-27）：** 本计划所有 macOS 构建、SSH、TCC/Keychain、
-  GUI/capture、签名/公证、DMG 与 installer handoff 延后到项目迁移至 macOS 机器后执行。
-  当前阶段不得重试；已有 macOS 输出只保留为历史阻塞证据。
-- 延期不是 `VERIFIED`、`EXEMPT` 或完成证据。Task 151–153 与 IDs 81、82、83、84、86、92
-  在迁移后补齐对应 macOS case 前保持未完成/`CANDIDATE`。
-- 当前阶段继续 Windows 及满足真实桌面前置的 Linux case；macOS 恢复后，Windows 与 macOS
-  必须从同一待验收提交用 `scripts/build-desktop.sh` 产出并记录版本、绝对路径和 hash。
-  不得直接用 Gradle 构建 Desktop。
-- 迁移后执行 macOS 验收时直接在 macOS 机器的隔离 worktree 恢复；不再把当前 Windows
-  阶段的 SSH 审计链作为验收入口。
-- Linux 必须有真实桌面 session、Java、`xdg-open`、Secret Service 与适用 portal；WSL 缺少这些条件时只记录阻塞。
-- IDs 81、82、83、84、86、92 没有具体用户豁免批准，不得标记 `EXEMPT`。
-- 任一真实 probe 暴露产品缺陷时停止该 Task，先建立独立产品修复计划；本计划不把运行时缺陷改写成“环境限制”。
-
-**当前恢复位置：** Task 151 的 Windows URI/share 与 Task 152 的 Windows credential/capture
-已完成；继续 Task 153 的 canonical signed Windows MSI 与真实 handoff。完成这些非 macOS
-证据后保持 checkbox 未勾选，等待项目迁移至 macOS 后恢复各 Task 的 macOS case。
-
-每个平台的原始命令输出与 runner JSON 写入 `build/task15-platform-evidence/<os>/`（不提交），
-各平台结果可以独立生成、审查和记入现有证据账本；不得因 macOS 延期而丢弃已经成立的
-Windows/Linux 结果。最终报告记录 `git rev-parse HEAD`、tree、产物绝对路径、SHA-256、版本、
-时间、case、退出码与可见反馈。只有把各平台结果合并为跨平台终态时，才要求各 OS 的
-`git rev-parse 'HEAD^{tree}'` 相同且产物 hash 与本轮记录一致；Windows 用
-`Get-FileHash -Algorithm SHA256`，macOS/Linux 用 `shasum -a 256`。若 runner 尚不存在，
-RED 必须先确认缺失，再把创建 `scripts/task15-platform-evidence-test.ps1`、
-`scripts/task15-platform-evidence-test.sh` 限定为验证文件；runner 不得绕过 production 入口。
+- 按用户本次范围校正，产品目标为 Android consumer 与 Windows/macOS Desktop。历史文件
+  `docs/superpowers/plans/2026-07-12-mihon-desktop-upstream-parity-roadmap.md` 保留原文，
+  但其中 Linux 相关文字属于早期计划污染，不定义产品平台。
+- Windows/macOS 最终真实构建与运行验收只在父计划 Task 19 对同一待验收版本执行最终一次；
+  Task 15/17 不重复设置中间 artifact gate，也不把尚未执行的 macOS case 记为通过。
+- Linux 仅保留防御性 adapter 与诚实的 fallback/Unsupported 用户反馈，不是发行平台、真实 OS
+  验收平台或完成门禁。
+- 正式发布证书、publisher、签名/公证、canonical signed MSI/DMG 及真实发布安装交接属于
+  release operations，不阻塞本重构。仓库内只要求 production verifier/trust/handoff 行为
+  fail closed，并由受控测试产物与 executable fixtures 保护。
+- 六项保持 `CANDIDATE`，由 Task 15 标记 `READY_FOR_PROMOTION`；Task 18 执行统一终态提升。
 
 ## Task 总览
 
-- [ ] Task 151：current commit URI and host share acceptance
-- [ ] Task 152：credential and capture OS matrix
-- [ ] Task 153：signed artifact and installer handoff
+- [x] Task 151：current commit URI and host share repository closure
+- [x] Task 152：credential and capture repository closure
+- [x] Task 153：verifier, trust and handoff repository closure
 
-### Task 151 current commit URI and host share acceptance
+### Task 151 current commit URI and host share repository closure
 
-**Risk axis:** uri-share-os-acceptance
+**Risk axis:** uri-share-production-contract
 
-**Platform boundary:** verification
+**Verification:** production URI broker、单实例 ingress、host-share port、fallback feedback 与验证
+runner 已闭合；Windows 历史证据保留冷启动/运行中 URI、文字/文件 share PASS，macOS 历史证据
+仅保留已实际通过的运行中 URI，不把未执行的冷启动 URI 或 host share 声明为通过。
 
-**Estimated scope:** 5 files, 350 lines
+**Execution evidence:** 提交 `631e47d4f101aa7aca9e703acde09360b8185bcd`、tree
+`442c84cc2fd1bbb55f0d070e257989caa4b7f20f` 的 Windows/macOS evidence 产物来自
+`scripts/build-desktop.sh evidence`。Windows 三个场景全部通过，macOS 运行中 URI 通过；
+其余 macOS GUI case 统一留给 Task 19 的最终一次验收。Linux 路径只验证 fallback/Unsupported
+边界，不新增产品平台承诺。
 
-**Verification:** 同一提交的 Windows/macOS 应用包完成冷启动 URI、运行中单实例 URI 与真实 host share；Linux 只在满足桌面前置条件时验收。
+### Task 152 credential and capture repository closure
 
-**Files:**
-- Modify: `app-desktop/src/test/resources/parity/parity-manifest.json`
-- Modify: `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt`
-- Create: `scripts/task15-platform-evidence-test.ps1`
-- Create: `scripts/task15-platform-evidence-test.sh`
-- Create: `docs/superpowers/reports/<date>-task-15-platform-evidence-verify.md`
+**Risk axis:** credential-capture-production-contract
 
-**RED:** 平台契约在任一目标缺少 current commit artifact、冷/热 URI 结果、host share terminal result 或用户反馈时保持 IDs 81/82 为 `CANDIDATE`。
+**Verification:** production credential backend identity、保存/覆盖/读取/删除语义、窗口隐私
+apply/query/clear、fail-closed policy 与 Supported/Limited/Unsupported/Failed 反馈均由真实
+production seams 和 executable fixtures 保护。
 
-**GREEN:** 用构建脚本产出当前提交应用，记录 Windows 协议命令与 macOS bundle URL type；分别验证无运行进程和已有 owner 进程时的 URI 路由，并在真实桌面 session 触发文字与文件分享，观察 `SharedNatively` 或诚实 fallback。
+**Execution evidence:** Windows DPAPI production roundtrip 已通过。Windows capture 在提交
+`1d0d7d8f416e27a4399ea2687c6632d0095eb0f9` 的 evidence 产物上 PASS；protected、clear、
+feedback 观察绑定报告中的三项精确 hash。尚未执行的 macOS credential/capture 不计为通过，
+统一留给 Task 19。Linux 仅保留 credential/capture fallback/Unsupported 边界，不进入剩余任务。
 
-**Repeatable evidence commands:**
+### Task 153 verifier, trust and handoff repository closure
 
-```powershell
-git rev-parse HEAD
-git rev-parse 'HEAD^{tree}'
-bash scripts/build-desktop.sh
-Get-FileHash -Algorithm SHA256 'app-desktop/tmp/mihon-dist/main/app/Mihon Desktop/Mihon Desktop.exe'
-& scripts/task15-platform-evidence-test.ps1 -Case uri-cold -EvidenceDir build/task15-platform-evidence/windows
-& scripts/task15-platform-evidence-test.ps1 -Case uri-running -EvidenceDir build/task15-platform-evidence/windows
-& scripts/task15-platform-evidence-test.ps1 -Case host-share -EvidenceDir build/task15-platform-evidence/windows
-```
+**Risk axis:** installer-production-contract
 
-```bash
-ssh mbp 'cd <isolated-current-tree> && git rev-parse HEAD && git rev-parse "HEAD^{tree}" && ./scripts/build-desktop.sh'
-ssh mbp 'shasum -a 256 "/Applications/Mihon Desktop.app/Contents/MacOS/Mihon Desktop"'
-ssh mbp 'cd <isolated-current-tree> && scripts/task15-platform-evidence-test.sh --case uri-cold --evidence-dir build/task15-platform-evidence/macos'
-ssh mbp 'cd <isolated-current-tree> && scripts/task15-platform-evidence-test.sh --case uri-running --evidence-dir build/task15-platform-evidence/macos'
-ssh mbp 'cd <isolated-current-tree> && scripts/task15-platform-evidence-test.sh --case host-share --evidence-dir build/task15-platform-evidence/macos'
-```
+**Verification:** production verifier/trust/handoff 已覆盖独立 trust identity、current
+commit/tree/productSource sidecar、canonical name/hash/size、prepare、取消、显式确认、
+handoff 成功/失败和 manual path；缺失或不匹配输入全部 fail closed。
 
-Linux 先记录 `command -v java xdg-open` 与 `git rev-parse 'HEAD^{tree}'`，再用 `scripts/build-desktop.sh`、`shasum -a 256 <artifact>` 和同一 shell runner 执行三个 case；缺少真实桌面前置条件时只写 blocked JSON，不记通过。
+**Execution evidence:** runner 合同与
+`docs/superpowers/plans/2026-07-27-task-153-installer-trust-wiring.md` 的 Task 153A/153B
+均已完成。release-controlled build-time trust 进入唯一 `InstallerTrust` composition-root
+实例，运行时 system properties 不能覆盖；受控测试产物证明 verifier、取消和 handoff 行为。
+正式发布证书、publisher、公证、canonical signed MSI/DMG 与真实发布安装交接归
+release operations，不是 repository-local closure 或 parity promotion 的 blocker。Linux
+只保留 manual fallback/Unsupported 边界。
 
-**Mutation:** 断开 broker 转发或 native share port，验收必须分别失败于 running-open 或 host share，而不是由 parser/service 单测代替。
+## 回收结论
 
-**User entry:** OS 协议链接；漫画详情与阅读器分享动作。
-
-**Feedback:** 目标页面/安全错误，以及已系统分享、已复制、已保存、取消或失败的区分反馈。
-
-**Execution evidence（部分完成，保持未勾选）：** 提交 `631e47d4f`、tree `442c84cc2` 的 Windows/macOS 产物均由 `scripts/build-desktop.sh evidence` 构建，版本同为 `0.11.14.46.631e47d`，production 输入摘要同为 `c6baa0a556d4`。Windows 冷启动 URI、运行中 URI、文字/文件 host share 全部通过；macOS 当前提交的运行中 URI 通过。macOS SSH audit chain 的 `/usr/libexec/sshd-keygen-wrapper` 在系统 TCC 中为 Accessibility `auth_value=0`，`osascript` 对窗口和 Share Sheet 的访问返回 `-25211`。Linux/WSL 已于 2026-07-27 补装 Java、`xdg-open` 与 GUI 验收工具，但统一构建脚本在纯 Linux 分支明确返回 `Linux desktop packaging is not configured for this repository`，无法生成当前提交 Linux 应用；不得绕过脚本直接调用 Gradle。完整证据见 `docs/superpowers/reports/2026-07-26-task-15-platform-evidence-verify.md`。因此 Task 151 与 IDs 81/82 保持原状态；不重复执行相同环境失败路径。
-
-### Task 152 credential and capture OS matrix
-
-**Risk axis:** credential-capture-os-acceptance
-
-**Platform boundary:** verification
-
-**Estimated scope:** 5 files, 350 lines
-
-**Verification:** Windows DPAPI、macOS Keychain、Linux Secret Service 均在真实目标 session 完成保存/覆盖/读取/删除；窗口隐私按 OS 实际能力完成应用、清除和 capture acceptance。
-
-**Files:**
-- Modify: `app-desktop/src/test/resources/parity/parity-manifest.json`
-- Modify: `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt`
-- Create: `scripts/task15-platform-evidence-test.ps1`
-- Create: `scripts/task15-platform-evidence-test.sh`
-- Modify: `docs/superpowers/reports/<date>-task-15-platform-evidence-verify.md`
-
-**RED:** 缺少任一受支持 OS backend roundtrip、真实窗口 handle 或 capture 观察时，IDs 83/84/92 保持 `CANDIDATE`；命令存在或 adapter result 不等价于验收。
-
-**GREEN:** 在当前提交应用的真实用户 session 执行三个 credential backend roundtrip；Windows 查询并验证窗口 affinity，macOS 只声明实际观察到的共享限制，Linux 无统一能力时保持 Unsupported 并验证 UI 反馈。
-
-**Repeatable evidence commands:**
-
-```powershell
-& scripts/task15-platform-evidence-test.ps1 -Case credential-roundtrip -EvidenceDir build/task15-platform-evidence/windows
-& scripts/task15-platform-evidence-test.ps1 -Case capture -EvidenceDir build/task15-platform-evidence/windows
-```
-
-```bash
-ssh mbp 'security find-generic-password -s mihon.desktop.task15 -g'
-ssh mbp 'cd <isolated-current-tree> && scripts/task15-platform-evidence-test.sh --case credential-roundtrip --evidence-dir build/task15-platform-evidence/macos'
-ssh mbp 'cd <isolated-current-tree> && scripts/task15-platform-evidence-test.sh --case capture --evidence-dir build/task15-platform-evidence/macos'
-command -v secret-tool
-dbus-send --session --dest=org.freedesktop.secrets --type=method_call /org/freedesktop/secrets org.freedesktop.DBus.Peer.Ping
-scripts/task15-platform-evidence-test.sh --case credential-roundtrip --evidence-dir build/task15-platform-evidence/linux
-scripts/task15-platform-evidence-test.sh --case capture --evidence-dir build/task15-platform-evidence/linux
-```
-
-macOS/Linux 的 credential case 必须实际完成保存、覆盖、读取、删除；capture case 必须记录真实窗口、应用/清除结果、截图或录屏观察及 UI 状态。命令缺失、无 GUI/DBus 或 `org.freedesktop.secrets` 不可用时写 blocked JSON。
-
-**Mutation:** 让 credential backend 返回权限拒绝或让 privacy apply/query 不一致，验收必须证明锁 fail closed、设置回滚且限制反馈可见。
-
-**User entry:** More → Security → 应用锁、锁定延迟与屏幕安全。
-
-**Feedback:** 凭据不可用/恢复说明，以及 Supported、Limited、Unsupported、Failed 的准确窗口隐私状态。
-
-**Execution evidence（部分完成，保持未勾选）：** Windows credential 已由提交 `056dcb79db` 的真实 production `DesktopCredentialStore(backend=OsCredentialBackend)` 使用 DPAPI 完成保存、读取、覆盖、再读取、删除及删除后缺失六项往返，服务名为 `mihon-desktop-tracker`。Windows capture 已在提交 `1d0d7d8f416e27a4399ea2687c6632d0095eb0f9`、tree `54e129eac0f3d236a301779912ce45b138413aba`、版本 `0.11.14.49.1d0d7d8` 的 evidence 产物上独立完成；产物 tree SHA-256 为 `a8848ca2c9bcd68801414b89d6d16b6d5bc8c33afac564a660533eab364aec57`，production 输入摘要为 `38d54c17918da268286d09978568aea81f77e99a19e83ee7ef52add00413aa6f`。真实 adapter 的 apply/query/clear 均报告 `Supported`，affinity 应用值为 `17`、清除后为 `0`；人工审查绑定三张精确截图 hash，确认 protected 为 `MihonExcluded`、clear 为 `MihonVisible`、feedback 为 `Supported`，策略终态为 `PASS`。macOS credential/capture 按用户指令延后到项目迁移至 macOS 机器后执行，不是通过或豁免。Linux/WSL 已补装所需命令并运行 secrets daemon，但默认 Secret Service collection 仍需要 GUI 创建/解锁，且统一构建脚本没有 Linux packaging 分支，无法生成真实 Linux 应用或启动 runner。完整证据见 `docs/superpowers/reports/2026-07-26-task-15-platform-evidence-verify.md`。Task 152 与 IDs 83/84/92 因剩余平台仍保持原状态。
-
-### Task 153 signed artifact and installer handoff
-
-**Risk axis:** signed-release-handoff
-
-**Platform boundary:** verification
-
-**Estimated scope:** 5 files, 360 lines
-
-**Verification:** 当前提交的 canonical Windows MSI 与 macOS DMG 具有可验证发布者签名、manifest checksum/size，并在真实 OS 完成用户确认后的 installer handoff；Linux 保持 manual-only。
-
-**Files:**
-- Modify: `app-desktop/src/test/resources/parity/parity-manifest.json`
-- Modify: `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopProductCapabilityContractTest.kt`
-- Create: `scripts/task15-platform-evidence-test.ps1`
-- Create: `scripts/task15-platform-evidence-test.sh`
-- Modify: `docs/superpowers/reports/<date>-task-15-platform-evidence-verify.md`
-
-**RED:** 没有受信发布凭据、canonical signed artifact 或真实 handoff 时 ID 86 保持 `CANDIDATE`；JVM fake runner 成功不得提升状态。
-
-**GREEN:** 从受控发布流程获取当前提交 MSI/DMG，验证签名、发布者、SHA-256、size 与 canonical asset name，再由 production installer 在用户确认后交接；取消、校验失败与 handoff 失败不覆盖当前应用并保留 manual path。
-
-**Repeatable evidence commands:**
-
-```powershell
-Get-AuthenticodeSignature 'build/task15-platform-evidence/windows/<canonical>.msi' | Format-List *
-Get-FileHash -Algorithm SHA256 'build/task15-platform-evidence/windows/<canonical>.msi'
-& scripts/task15-platform-evidence-test.ps1 -Case installer-handoff -Artifact 'build/task15-platform-evidence/windows/<canonical>.msi' -EvidenceDir build/task15-platform-evidence/windows
-```
-
-```bash
-codesign --verify --deep --strict --verbose=2 'build/task15-platform-evidence/macos/<canonical>.app'
-spctl -a -vv -t install 'build/task15-platform-evidence/macos/<canonical>.dmg'
-shasum -a 256 'build/task15-platform-evidence/macos/<canonical>.dmg'
-scripts/task15-platform-evidence-test.sh --case installer-handoff --artifact 'build/task15-platform-evidence/macos/<canonical>.dmg' --evidence-dir build/task15-platform-evidence/macos
-scripts/task15-platform-evidence-test.sh --case installer-handoff --evidence-dir build/task15-platform-evidence/linux
-```
-
-runner 必须保存用户确认、取消、启动结果和 manual-only 反馈；发布者、checksum、size、canonical name 任一不匹配即失败。真实 probe 若发现 production verifier 或 handoff 缺陷，立即停止并另建 TDD 产品修复计划，本 Task 不预授权任何产品代码或产品测试修改。
-
-**Mutation:** 篡改同尺寸文件、发布者或 canonical 名称，production verifier 必须在启动 installer 前拒绝。
-
-**User entry:** More → About → Check for updates → 下载 → 确认安装。
-
-**Feedback:** 下载/校验进度、取消、无可信产物、安装交接失败和手动更新路径均可见。
-
-**Execution evidence（验证工具完成，平台验收保持未勾选）：** 提交 `056dcb79db` 的只读产物盘点没有发现可绑定当前 commit/tree/productSource provenance 的 canonical signed MSI/DMG。Windows 隔离验收树没有 MSI；主工作树残留的 `Mihon Desktop-1.11.14.msi` 为 `NotSigned` 且没有 Task 153 installer provenance sidecar，不能冒充本轮产物。macOS 没有 DMG，当前部署 `.app` 被 `codesign` 判定为 `not signed at all`，`spctl` 拒绝并报告 `no usable signature`。production DI 又以默认空 `InstallerTrust` 创建 `DesktopUpdateInstaller`，真实行为只能返回 manual-only。验证 runner 已用 RED→GREEN 增加独立 trust identity、installer 自身签名、current commit/tree/productSource sidecar、canonical name/hash/size、production prepare/cancel/显式确认 handoff 的 fail-closed 合同；普通文本 MSI、第三方身份、伪 production 字段及错/缺 sidecar 均被拒绝。首审三项 P1 已关闭，修复复审又发现 Unix PASS 无条件返回 1；主代理按既有授权直接修正并以真实抽取函数 fixture 验证 PASS=0、BLOCKED≠0，未再增加审查轮次。Task 153 与 ID 86 保持 `CANDIDATE`；完整证据见 `docs/superpowers/reports/2026-07-26-task-15-platform-evidence-verify.md`。
-
-**Windows signer recheck（2026-07-27）：** Windows SDK 的 x64 `signtool.exe` 可用，但
-`Cert:\LocalMachine\My` 没有发布证书，`Cert:\CurrentUser\My` 唯一带私钥证书为
-`CN=localhost` 且 EKU 仅为 Server Authentication；环境中也没有 release-controlled
-publisher/trust 输入。该证书不能冒充 Mihon canonical code-signing identity。由于签名身份是
-不可替代的外部前置，本轮不生成必然不合格的无签名 MSI，也不临时创建并信任自签证书；
-Windows Task 153 保持 `BLOCKED`/未勾选，等待受控发布凭据和与之精确匹配的 publisher。
-
-**Production wiring follow-up：** 只读复核确认验证 runner 的 Unix PASS/BLOCKED 返回码与
-capture helper 已 `APPROVED`，但 composition root 的空 trust 是独立产品 wiring 缺口。
-按 `docs/superpowers/plans/2026-07-27-task-153-installer-trust-wiring.md` 先用 TDD 接入
-release-controlled build-time trust；本 Task 在该 child 完成后仍保持未勾选，直至真实签名产物
-与 Windows/macOS handoff 通过。
-
-**Production wiring evidence（child completed，平台验收保持未勾选）：** child 以 RED→GREEN
-加入 release-controlled build-time trust，默认空值与带 Kotlin 转义字符的显式 publisher/合法
-Team ID 均通过 production DI consumer 测试，非法 Team ID 在 Gradle 配置期 fail-fast；
-`InstallerTrust` 在 composition root 只构造一次、同时注册到 Injekt 并传给 installer，运行时
-system properties 不能覆盖。installer/process runner、Task 15 runner contract 与 Spotless 均通过。
-这只关闭“production 永远 manual-only”的仓库内 wiring 缺口；Task 153 和 ID 86 仍保持
-未勾选/`CANDIDATE`，继续等待真实签名 MSI/DMG 与 Windows/macOS handoff。
-
-## 回收条件
-
-三个 Task 各自完成 TDD、focused tests、真实 OS/产物命令记录和独立审查后，才回到父计划提升对应 ID。若签名凭据或真实桌面环境仍不可用，child 保持 `planned`，相关 ID 保持 `CANDIDATE`，不得用新的 `EXEMPT` 绕过。
+Task 151–153 的 repository-local implementation/evidence closure 全部完成。IDs
+81、82、83、84、86、92 保持 `CANDIDATE`，`gap=NONE`，进入 Task 18 统一 promotion；
+Windows/macOS 最终一次真实构建与运行验收由 Task 19 独占。

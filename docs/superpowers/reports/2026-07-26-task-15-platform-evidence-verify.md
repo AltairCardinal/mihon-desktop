@@ -4,13 +4,23 @@
 
 固定原版 provenance：`main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`
 
+## 权威校正（2026-07-27）
+
+本文以下命令、hash、PASS/BLOCKED 与环境观察保留为历史执行证据；其中“Task 151–153
+未完成”及后续平台 blocker 结论已被当前治理权威取代，不再定义剩余计划。Task 151–153
+现按 repository-local implementation/evidence closure 完成，六项保持 `CANDIDATE` 并交
+Task 18 promotion。尚未执行的 macOS case 没有被改写为通过，而是与 Windows 一起仅在
+Task 19 对同一待验收版本执行最终一次真实构建与运行验收。Linux 只保留防御性
+fallback/Unsupported 边界；正式证书、publisher、公证、canonical signed MSI/DMG 与真实发布
+安装交接属于 release operations，不阻塞本重构。
+
 Task 151 验收提交：`631e47d4f101aa7aca9e703acde09360b8185bcd`
 
 提交 tree：`442c84cc2fd1bbb55f0d070e257989caa4b7f20f`
 
 production 输入摘要：`c6baa0a556d4824c4c749817471ffa16d5358926c80a03bd043466c2cdc424be`
 
-## 当前结论
+## 历史执行时点结论
 
 Task 151 尚未完成，checkbox 保持未勾选，IDs 81/82 保持 `CANDIDATE`。
 

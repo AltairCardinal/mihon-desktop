@@ -4,18 +4,18 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 17
+active-task: Task 18
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
 
 > 本计划是父路线图 Task 6 的唯一活动执行入口。父 Task 6 在本计划全部完成前保持未勾选。
 
-> **macOS 调度边界（用户指令，2026-07-27）：** 本计划中的 macOS 构建、SSH、
-> TCC/Keychain、GUI/capture、签名/公证、DMG 与 installer handoff 全部延后到项目迁移至
-> macOS 机器后执行。当前阶段不重试这些路径，继续 Windows/Linux/仓库内工作。延期不构成
-> `VERIFIED`、`EXEMPT` 或 Task 完成，Task 17、19 与父 Task 6 的对应 checkbox 仍须在迁移后
-> 取得真实证据才能勾选。
+> **支持平台与最终验收边界（2026-07-27 校正）：** 产品平台为当前 Android consumer 与
+> Windows/macOS Desktop。Task 15/17 只回收 repository-local implementation/evidence；
+> Windows/macOS 最终真实构建与运行验收只在 Task 19 对同一版本执行最终一次，未执行的
+> macOS case 不记为通过。Linux 仅是防御性 adapter/Unsupported fallback，不是发行或验收平台；
+> 正式签名发布物与公证属于 release operations，不构成本重构的完成门禁。
 
 ## 目标与固定事实
 
@@ -68,7 +68,7 @@ active-task: Task 17
 - [x] Task 16B：审计重复业务规则
 - [x] Task 16C：建立 UI→data/network/manager 架构守卫
 - [x] Task 16D：盘点并约束最终 Test Mode 全场景入口
-- [ ] Task 17：执行并回收真实产品缺口 child plan
+- [x] Task 17：执行并回收真实产品缺口 child plan
 - [ ] Task 18：让 64 项最终 closure 与架构 gate 变绿
 - [ ] Task 19：运行全量测试、Windows/macOS 构建与运行验收
 - [ ] Task 20：收口维护文档与父子 checkbox
@@ -402,18 +402,30 @@ active-task: Task 17
 
 **Estimated scope:** 5 files, 400 lines
 
-**Verification:** 逐项核验 81、82、83、84、85、86、92；只有可重复 OS/产物证据闭合才提升 `VERIFIED`，只有真实可追溯批准才保留或新增 `EXEMPT`，否则保持 `CANDIDATE` 并交接有限 child plan；显式 platform-evidence contract GREEN。
+> **历史 inventory 时点（已被 2026-07-27 支持平台校正与 Task 17 回收结论取代）：**
+> 以下 Verification、Steps、Audit evidence、Decision 与 Verification evidence 保留当时
+> hash、命令、环境观察和裁决演进，不再定义当前剩余 gate。
 
-**Steps:**
+**历史 inventory 时点 Verification：** 逐项核验 81、82、83、84、85、86、92；只有可重复 OS/产物证据闭合才提升 `VERIFIED`，只有真实可追溯批准才保留或新增 `EXEMPT`，否则保持 `CANDIDATE` 并交接有限 child plan；显式 platform-evidence contract GREEN。
+
+**历史 inventory 时点 Steps：**
 1. 复用既有 Windows/macOS/Linux 能力报告，但对当前构建重新验证真实 production adapter、用户反馈与失败状态。
 2. `CANDIDATE` 不能直接改名；无法提供真实 OS 能力时，只有能力本质不可用、UI 诚实反馈且用户明确批准该具体边界时才能 `EXEMPT`。没有批准记录必须保持非终态并交接有限验证计划，代理不得补写或推断批准。
 3. 需要产品修复时输出有限 platform child plan；环境暂缺只记录验证阻塞，不伪造豁免。
 
-**Audit evidence（已完成）：** 基线 `148594c791c88f45f9412577ad17b0a6b92ac635` 上的 Windows 平台 focused 真实执行 DPAPI、URI registration/broker、share service、window privacy、Security UI、Widget 边界和 updater installer 共 `94/94` GREEN；但 HKCU 没有 `tachiyomi` handler，固定 EXE 仅为早于当前提交的 BUILD 45，因此不能证明当前提交的冷/热 URI、host share、真实 capture 或安装交接。`ssh mbp` 首次连接后因远端带空格路径参数解析失败，按规则仅改用 `ssh mbp-lan` 重试并成功：macOS 14.8.4、远端仓库 `c84ed331fa0b7851b62dc44a66a8602bb3f60876`、部署 app BUILD 45、Keychain 命令可达，但非交互 SSH 与非当前提交不能证明 GUI Share Sheet、Keychain roundtrip、capture 或 DMG handoff。WSL 为 Ubuntu 24.04.4，缺少 Java、`xdg-open`、`secret-tool`，Secret Service 返回 `ServiceUnknown`，不外推 Linux GUI 验收。
+**历史 inventory 时点 Audit evidence（已完成）：** 基线 `148594c791c88f45f9412577ad17b0a6b92ac635` 上的 Windows 平台 focused 真实执行 DPAPI、URI registration/broker、share service、window privacy、Security UI、Widget 边界和 updater installer 共 `94/94` GREEN；但 HKCU 没有 `tachiyomi` handler，固定 EXE 仅为早于当前提交的 BUILD 45，因此不能证明当前提交的冷/热 URI、host share、真实 capture 或安装交接。`ssh mbp` 首次连接后因远端带空格路径参数解析失败，按规则仅改用 `ssh mbp-lan` 重试并成功：macOS 14.8.4、远端仓库 `c84ed331fa0b7851b62dc44a66a8602bb3f60876`、部署 app BUILD 45、Keychain 命令可达，但非交互 SSH 与非当前提交不能证明 GUI Share Sheet、Keychain roundtrip、capture 或 DMG handoff。WSL 为 Ubuntu 24.04.4，缺少 Java、`xdg-open`、`secret-tool`，Secret Service 返回 `ServiceUnknown`，不外推 Linux GUI 验收。
 
-**Decision：** ID 81/82/83/84/86/92 均无具体用户豁免批准且缺少当前提交的真实 OS/签名产物验收，保守保持 `CANDIDATE`；ID 85 仅复核并保留 `docs/superpowers/specs/2026-07-12-mihon-desktop-upstream-parity-design.md:217` 的既有明确 Widget 批准与 `EXEMPT`。六项缺口交接 `docs/superpowers/plans/2026-07-24-task-15-platform-evidence-closure.md` 的 Task 151–153；child 保持 `planned`，父审计继续推进 Task 16A。
+**历史 inventory 时点 Decision：** ID 81/82/83/84/86/92 均无具体用户豁免批准且缺少当前提交的真实 OS/签名产物验收，保守保持 `CANDIDATE`；ID 85 仅复核并保留 `docs/superpowers/specs/2026-07-12-mihon-desktop-upstream-parity-design.md:217` 的既有明确 Widget 批准与 `EXEMPT`。六项缺口交接 `docs/superpowers/plans/2026-07-24-task-15-platform-evidence-closure.md` 的 Task 151–153；child 保持 `planned`，父审计继续推进 Task 16A。
 
-**Verification evidence：** Task15 focused contract 先精确 RED 于 child 缺失、七项当前裁决仍属于 Task12/13、六项 follow-up 未有限化及父计划未推进，最小更新后 `1/1` GREEN；独立审查修复契约再精确 RED 于 Task 151 缺少同 tree 可复现命令，补齐三平台 URI/share、credential/capture、签名/installer handoff 命令与原始日志口径，并移除 Task 153 的产品代码预授权后恢复 `1/1` GREEN。ordinary parity contract `50/50`、Windows 平台 focused `94/94` 与 Spotless GREEN。macOS 隔离 archive 的 tree `b7bff0d321c0a5428f6d3d5592364cab986ae2c4` 与基线提交 tree 精确一致，但 `./gradlew --offline` 在测试前因 SSH 环境没有 Java 退出，临时目录与 archive 已清理，未计为测试失败或通过。JSON（64 项）、父/child plan guard、`git diff --check`、headless 与 4 files / 344 touched 范围均通过；显式 final gate 唯一按设计 RED，并精确报告原 31 个非终态 ID。
+**历史 inventory 时点 Verification evidence：** Task15 focused contract 先精确 RED 于 child 缺失、七项当前裁决仍属于 Task12/13、六项 follow-up 未有限化及父计划未推进，最小更新后 `1/1` GREEN；独立审查修复契约再精确 RED 于 Task 151 缺少同 tree 可复现命令，补齐三平台 URI/share、credential/capture、签名/installer handoff 命令与原始日志口径，并移除 Task 153 的产品代码预授权后恢复 `1/1` GREEN。ordinary parity contract `50/50`、Windows 平台 focused `94/94` 与 Spotless GREEN。macOS 隔离 archive 的 tree `b7bff0d321c0a5428f6d3d5592364cab986ae2c4` 与基线提交 tree 精确一致，但 `./gradlew --offline` 在测试前因 SSH 环境没有 Java 退出，临时目录与 archive 已清理，未计为测试失败或通过。JSON（64 项）、父/child plan guard、`git diff --check`、headless 与 4 files / 344 touched 范围均通过；显式 final gate 唯一按设计 RED，并精确报告原 31 个非终态 ID。
+
+**当前回收结论（2026-07-27）：** Task 151–153 的 repository-local
+implementation/evidence closure 已全部完成，child `status: completed`；IDs
+81/82/83/84/86/92 保持 `CANDIDATE`，以 `READY_FOR_PROMOTION`、`gap=NONE` 交给 Task 18。
+Windows/macOS 最终真实构建与运行验收仅在 Task 19 对同一版本执行最终一次，未执行的 macOS
+case 不记为通过。Linux 不是产品、发行或验收平台，只保留 fallback/Unsupported 边界；
+正式证书、publisher、公证、canonical signed MSI/DMG 与真实发布安装交接属于
+release operations，不构成本重构门禁。
 
 ### Task 16A：审计 compat 与历史格式删除证据（35、74、96）
 
@@ -518,27 +530,14 @@ active-task: Task 17
 
 **Steps:** 按 child plan 顺序执行；每次完成后回到本计划更新 status 与 evidence。14、15、16A–16D 任一 inventory 未完成或任一 child plan 未完成时，不得进入 Task 18。
 
-**当前恢复顺序（macOS 延期期间）：** `Windows capture PASS` 已在提交 `1d0d7d8f4` 的
-evidence 产物上完成，protected/clear/feedback 观察均已绑定精确截图 hash，不再作为待办。
-当前非 macOS 首要边界是 `Task 153 Windows signer is an external hard blocker`：本机没有受控
-代码签名证书，也没有 canonical signed MSI，等待真实发布凭据和匹配 publisher。`macOS deferred`
-表示 Task 151–153 的 macOS case 按用户指令留到迁移后恢复，不是通过或豁免；
-`Linux prerequisites missing`：所需命令已补装，但默认 Secret Service collection 仍需 GUI
-创建/解锁，且统一构建脚本明确没有 Linux packaging 分支；仅在真实桌面、构建与 OS 前置满足后执行。Task 151–153
-与 Task 17 继续保持未勾选，不得提前进入 Task 18。
-
-**Child return progress:** Task 14 consolidated product child plan 的 14 个可独立验收批次均已提交、
-独立审查并勾选，child `status: completed`。Task 15 child 的 URI/share、credential/capture
-与 signed installer 验证工具和当前提交平台证据已提交；Windows 冷/运行中 URI、host share、
-DPAPI credential 与 capture 均已 PASS，macOS running URI 也已 PASS。`Windows capture PASS`
-的 protected/clear/feedback 观察已绑定精确截图 hash。Task 151–153 因 `macOS deferred`、
-`Linux prerequisites missing`（Secret Service collection 未闭合且没有 Linux packaging），以及 `Task 153 Windows signer is an external hard blocker`
-（无受控代码签名证书、无 canonical signed MSI）保持未勾选和 `CANDIDATE`；所有不依赖这些
-外部条件的工作已完成且不重复失败路径。Task 153 的 repository-local
-production wiring follow-up 也已完成：release-controlled build-time trust 进入唯一
-`InstallerTrust` composition-root 实例，运行时属性不能覆盖，Gradle 增量输入与
-“空值→显式值→空值”同目录切换均受验证任务保护；唯一审查修复复审 `APPROVED`。这不替代
-受信 MSI/DMG 与真实 OS handoff，Task 151–153 继续保持未勾选。
+**Child return progress（已完成）：** Task 14 consolidated product child、Task 16B/16C/16D
+child 均已完成并回收。Task 15 child 的 Task 151–153 也已按 repository-local
+implementation/evidence closure 全部勾选：URI/share、credential/capture 及
+production verifier/trust/handoff 行为与失败反馈均有 executable evidence。Windows 已成立的
+URI、host share、DPAPI 与 capture 证据继续保留，macOS 只记录实际通过的 running URI；
+其余尚未执行的 macOS case 不虚报为通过，统一进入 Task 19 的最终一次支持平台验收。
+正式签名发布物归 release operations；Linux 仅保留 fallback/Unsupported 边界，不进入剩余任务。
+六项 manifest 维持 `CANDIDATE`，以 `READY_FOR_PROMOTION`、`gap=NONE` 交给 Task 18。
 
 Task 16B child 的 Task 161 已完成
 shared lifecycle RED→GREEN、三项 mutation、唯一审查修复与复审，固定原版只取消 RUNNING
@@ -547,7 +546,7 @@ shared lifecycle RED→GREEN、三项 mutation、唯一审查修复与复审，�
 后复审 APPROVED；Task 163 已完成 Desktop shared lifecycle consumer、Failed recovery payload、
 单 scheduler DI 与 queued migration cancel adapter，组合门禁 `86/86`，首审唯一 P1 经一轮
 修复后复审 APPROVED，ID10 从 `WIRED` 提升为 `VERIFIED`。Task 16B child 已全部勾选并完成。
-Task 17 保持活动。Task 16C 已完成；Task 16D child 的 Task 171 fixed-EXE runner 已以
+Task 16C 已完成；Task 16D child 的 Task 171 fixed-EXE runner 已以
 `10/10` runner contract 闭合，Task 172 已完成 Library/Manga Detail production TestMode
 wiring，controller `9/9`、HTTP/DI/coverage/Spotless 门禁通过。Task 173 已完成 Global
 Search/Source Login production TestMode wiring；generation lease 修复后，Task 173R 又以
@@ -646,7 +645,7 @@ fail-closed、旧 health owner 拒绝、本轮 PID 绑定、轮询/teardown、�
 
 **Estimated scope:** 3 files, 300 lines
 
-**Verification:** Spotless、相关 shared/Android、`:app-desktop:jvmTest`、`:test-desktop:test`、补充 smoke、final parity gate 全绿；唯一 runtime 入口启动固定 EXE 并精确报告 13/13 场景族、5/5 永久保护、64 项零未映射；Windows/macOS 使用构建脚本产出同一版本并运行验收，Linux 边界诚实记录。
+**Verification:** 最终一次运行 Spotless、相关 shared/Android、`:app-desktop:jvmTest`、`:test-desktop:test`、补充 smoke 与 final parity gate；唯一 runtime 入口启动固定 EXE 并精确报告 13/13 场景族、5/5 永久保护、64 项零未映射；Windows/macOS 使用构建脚本产出同一版本并运行最终一次验收。
 
 **macOS 延期：** 当前 Windows 阶段只准备并执行可独立成立的非 macOS 验收；不得通过 SSH
 预跑或以旧 macOS 产物替代。Task 19 在迁移到 macOS 机器并完成同一待验收版本的构建与运行
@@ -658,10 +657,10 @@ fail-closed、旧 health owner 拒绝、本轮 PID 绑定、轮询/teardown、�
 - Modify: `docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md`
 
 **Steps:**
-1. 串行运行 `./gradlew spotlessCheck`、相关 shared/Android 契约、`:app-desktop:jvmTest`、`:test-desktop:test` 与 final parity gate。
-2. Desktop 迭代只能用 `./scripts/build-desktop.sh` 构建；随后运行唯一入口 `./scripts/desktop-final-parity-test.sh`，由它启动该轮固定未打包 Windows EXE。最终结果必须为 13 个场景族全部通过、5 项永久保护全部通过、64 项映射零遗漏。
+1. 最终一次串行运行 `./gradlew spotlessCheck`、相关 shared/Android 契约、`:app-desktop:jvmTest`、`:test-desktop:test` 与 final parity gate。
+2. Desktop 只在本 Task 使用 `./scripts/build-desktop.sh` 构建待验收版本；随后运行唯一入口 `./scripts/desktop-final-parity-test.sh`，由它启动该轮固定未打包 Windows EXE。最终结果必须为 13 个场景族全部通过、5 项永久保护全部通过、64 项映射零遗漏。
 3. 另行运行 `./scripts/desktop-smoke-test.sh` 作为补充；其通过不能替代第 2 步。
-4. 在 macOS 使用同一提交和构建脚本验收 app bundle；Linux/WSL 无真实环境时只记录边界，不外推。
+4. 在 macOS 使用同一提交和构建脚本对同一版本完成最终一次 app bundle 运行验收；不把 Task 15 历史探测替代为本轮结果。
 5. 报告必须记录固定 `original-ref`、用过的 `git show <original-ref>:<path>`/blob 校验方式及结果、真实命令、测试数、失败/跳过、13/13、5/5、零未映射、版本、绝对产物路径、每个 EXEMPT 的用户批准引用、deviation 和环境限制。
 
 ### Task 20：收口维护文档与父子 checkbox
