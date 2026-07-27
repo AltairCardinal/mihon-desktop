@@ -37,6 +37,7 @@ class DesktopProductCapabilityContractTest {
     private val terminalStatuses = setOf("VERIFIED", "EXEMPT")
     private val requiredTerminalEvidenceRoles =
         setOf("FIXED_ORIGINAL", "CURRENT_ANDROID", "SHARED_OR_ADAPTER", "DESKTOP_CONSUMER", "FIXTURE")
+    private val task18PromotedStatuses = mapOf(7 to "VERIFIED", 11 to "VERIFIED", 71 to "VERIFIED")
     private val task2ProvenanceStatuses =
         mapOf(9 to "VERIFIED", 10 to "VERIFIED", 11 to "WIRED", 12 to "VERIFIED", 16 to "SHARED", 17 to "SHARED", 19 to "WIRED", 22 to "SHARED")
     private val task2BehaviorMethods =
@@ -1921,7 +1922,7 @@ class DesktopProductCapabilityContractTest {
         val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
         task2ProvenanceStatuses.forEach { (id, expectedStatus) ->
             val item = items.getValue(id).jsonObject
-            val expectedCurrentStatus = task7Statuses[id] ?: expectedStatus
+            val expectedCurrentStatus = task18PromotedStatuses[id] ?: task7Statuses[id] ?: expectedStatus
             assertEquals(expectedCurrentStatus, requiredText(item, "status", id), "Later audited status must supersede Task 2")
             assertEquals(fixedOriginalMihonRef, requiredText(item, "upstreamRef", id))
             assertEquals(":app-desktop:task2ParityVerification", requiredText(item, "behaviorVerificationTask", id))
@@ -2044,7 +2045,7 @@ class DesktopProductCapabilityContractTest {
         val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
         task5ProvenanceStatuses.forEach { (id, expectedStatus) ->
             val item = items.getValue(id).jsonObject
-            val auditedStatus = task13Statuses[id] ?: expectedStatus
+            val auditedStatus = task18PromotedStatuses[id] ?: task13Statuses[id] ?: expectedStatus
             assertEquals(auditedStatus, requiredText(item, "status", id), "ID $id must retain its latest audited status")
             assertEquals(fixedOriginalMihonRef, requiredText(item, "upstreamRef", id))
             assertEquals(":app-desktop:task5ParityVerification", requiredText(item, "behaviorVerificationTask", id))
@@ -2054,6 +2055,12 @@ class DesktopProductCapabilityContractTest {
                 }
             val auditedBehaviorMethods =
                 when (id) {
+                    71 ->
+                        task5BehaviorMethods.getValue(id) +
+                            mapOf(
+                                "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCompatibilityTest.kt" to
+                                    setOf("fixed-main Android fixture crosses Desktop creator boundary and reencodes equivalently"),
+                            )
                     95 ->
                         item.getValue("statusDecision").jsonObject.getValue("behaviorMethods").jsonObject.mapValues { (_, methods) ->
                             methods.jsonArray.map { it.jsonPrimitive.content }.toSet()
@@ -2108,7 +2115,7 @@ class DesktopProductCapabilityContractTest {
 
         task6Statuses.forEach { (id, expectedStatus) ->
             val item = items.getValue(id).jsonObject
-            assertEquals(expectedStatus, requiredText(item, "status", id), "ID $id: Task 6 status decision")
+            assertEquals(task18PromotedStatuses[id] ?: expectedStatus, requiredText(item, "status", id), "ID $id: latest status after Task 6")
             assertEquals(fixedOriginalMihonRef, requiredText(item, "upstreamRef", id))
 
             val decision = statusDecisionForTask(item, id, "Task 6")
@@ -2479,7 +2486,7 @@ class DesktopProductCapabilityContractTest {
         assertEquals(task11Statuses.keys, task11DecisionIds, "Task 11 capability set")
         task11Statuses.forEach { (id, expectedStatus) ->
             val item = items.getValue(id).jsonObject
-            assertEquals(expectedStatus, requiredText(item, "status", id), "ID $id Task 11 status")
+            assertEquals(task18PromotedStatuses[id] ?: expectedStatus, requiredText(item, "status", id), "ID $id latest status after Task 11")
             validateRoleEvidence(item, repositoryRoot, inventory)
             val decision = statusDecisionForTask(item, id, "Task 11")
             assertEquals("Task 11", requiredText(decision, "task", id, "statusDecision"))
@@ -2544,9 +2551,10 @@ class DesktopProductCapabilityContractTest {
             "ID 71 must not treat generator source scanning as production behavior",
         )
         assertTrue(
-            "fixed-original artifact fixture" in requiredText(creator.getValue("statusDecision").jsonObject, "gap", 71, "statusDecision"),
-            "ID 71 gap must name the missing fixed-original artifact fixture",
+            "fixed-original artifact fixture" in requiredText(statusDecisionForTask(creator, 71, "Task 11"), "gap", 71, "statusDecision"),
+            "ID 71 historical Task 11 gap must name the missing fixed-original artifact fixture",
         )
+        assertEquals("NONE", requiredText(creator.getValue("statusDecision").jsonObject, "gap", 71, "statusDecision"))
         val schedulerGap = requiredText(items.getValue(73).jsonObject.getValue("statusDecision").jsonObject, "gap", 73, "statusDecision")
         assertTrue("exit" in schedulerGap && "periodic scheduling" in schedulerGap, "ID 73 gap must name the process-lifetime scheduling difference")
         val restoreGap = requiredText(items.getValue(72).jsonObject.getValue("statusDecision").jsonObject, "gap", 72, "statusDecision")
@@ -3072,6 +3080,59 @@ class DesktopProductCapabilityContractTest {
         setOf("ID 32", "ID 69", "ID 70", "ID 87", "READY_FOR_PROMOTION").forEach { marker ->
             assertTrue(marker in task17, "Task 17 return conclusion is missing `$marker`")
         }
+    }
+
+    @Tag("parity-governance")
+    @Test
+    fun `Task 18 owns every remaining gap without dangling completed follow ups`() {
+        val repositoryRoot = repositoryRoot()
+        val items = manifestItems(repositoryRoot).map { it.jsonObject }
+        val terminalOrReadyDecisions = setOf("PROMOTE_VERIFIED", "KEEP_VERIFIED", "KEEP_EXEMPT", "READY_FOR_PROMOTION")
+        val danglingProblems = mutableListOf<String>()
+
+        items.forEach { item ->
+            val id = validatedId(item)
+            val status = requiredText(item, "status", id)
+            val decision = item.getValue("statusDecision").jsonObject
+            val disposition = requiredText(decision, "decision", id, "statusDecision")
+            val followUp = requiredText(decision, "followUp", id, "statusDecision")
+            val gap = requiredText(decision, "gap", id, "statusDecision")
+
+            if (status in terminalStatuses || disposition in terminalOrReadyDecisions) {
+                if (followUp != "NONE") danglingProblems += "ID $id ready/terminal decision still follows `$followUp`"
+                if (gap != "NONE") danglingProblems += "ID $id ready/terminal decision still declares gap `$gap`"
+            } else {
+                if (requiredText(decision, "task", id, "statusDecision") != "Task 18") {
+                    danglingProblems += "ID $id unresolved gap is not owned by Task 18"
+                }
+                if (followUp != "NONE") danglingProblems += "ID $id unresolved gap still follows `$followUp`"
+                if (gap == "NONE") danglingProblems += "ID $id unresolved gap does not describe remaining work"
+            }
+        }
+
+        assertTrue(danglingProblems.isEmpty(), danglingProblems.joinToString("; "))
+    }
+
+    @Tag("parity-governance")
+    @Test
+    fun `Task 18 closes notification delivery as an explicit desktop platform adapter`() {
+        val repositoryRoot = repositoryRoot()
+        val item = manifestItems(repositoryRoot).single { validatedId(it.jsonObject) == 11 }.jsonObject
+        val current = item.getValue("statusDecision").jsonObject
+
+        statusDecisionForTask(item, 11, "Task 6")
+        assertEquals("VERIFIED", requiredText(item, "status", 11))
+        assertEquals("Task 18", requiredText(current, "task", 11, "statusDecision"))
+        assertEquals("PROMOTE_VERIFIED", requiredText(current, "decision", 11, "statusDecision"))
+        assertEquals("NONE", requiredText(current, "followUp", 11, "statusDecision"))
+        assertEquals("NONE", requiredText(current, "gap", 11, "statusDecision"))
+        assertTrue(requiredText(item, "desktopImplementation", 11).contains("in-app fallback"))
+        assertTrue(
+            item.getValue("deviations").jsonArray.any {
+                requiredText(it.jsonObject, "classification", 11, "deviations") == "PLATFORM_ADAPTER"
+            },
+        )
+        validateRoleEvidence(item, repositoryRoot, fixedMainPathInventory(repositoryRoot))
     }
 
     @Tag("parity-governance")
@@ -3693,7 +3754,7 @@ class DesktopProductCapabilityContractTest {
         assertEquals("READY_FOR_PROMOTION", requiredText(decision, "decision", 3))
         val childPlan = "docs/superpowers/plans/2026-07-24-task-16d-test-mode-scenario-closure.md"
         val productPlan = "docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md"
-        assertEquals("$productPlan#task-141-a1-id-3-shared-screen-state", requiredText(decision, "followUp", 3))
+        assertEquals("NONE", requiredText(decision, "followUp", 3))
         assertEquals("Task 18", requiredText(decision, "promotionFollowUp", 3))
         assertEquals(setOf("$productPlan#task-141-a1-id-3-shared-screen-state", "$productPlan#task-142-a2-id-3-desktop-screen-state-consumer"), decision.getValue("productClosureFollowUps").jsonArray.map { it.jsonPrimitive.content }.toSet())
         assertEquals("NONE", requiredText(decision, "coverageFollowUp", 3))

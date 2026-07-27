@@ -15,10 +15,46 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.nio.file.Files
+import java.nio.file.Path
 import java.security.MessageDigest
 import tachiyomi.data.backup.BackupCodec
 
 class DesktopBackupCompatibilityTest {
+    @Test
+    @Suppress("DEPRECATION")
+    fun `fixed-main Android fixture crosses Desktop creator boundary and reencodes equivalently`() {
+        val authorityRef = Files.readString(
+            repositoryRoot().resolve("data/src/commonTest/resources/backup/android-full.original-mihon-ref"),
+        ).trim()
+        assertEquals("6fbf6dfca203d99d6dd32137f2df97ced40c81b8", authorityRef)
+
+        val bytes = requireNotNull(javaClass.getResourceAsStream("/backup/android-full.tachibk")).readBytes()
+        assertEquals(
+            "43fa65a3469932f4da2794e8bdf69c7bef7d65d4e77fe894e1b1798ed1efad8d",
+            MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) },
+        )
+
+        val decoded = DesktopBackupCreator.decodeFromBytes(bytes)
+        val manga = decoded.backupManga.single()
+        assertEquals(101L, manga.source)
+        assertEquals("/manga", manga.url)
+        assertEquals("Canonical manga", manga.title)
+        assertEquals(13, manga.viewer)
+        assertEquals(17, manga.viewer_flags)
+        assertEquals(1, manga.chapters.size)
+        assertEquals(1, manga.history.size)
+        assertEquals(1, manga.tracking.size)
+        assertEquals(1, decoded.backupCategories.size)
+        assertEquals(1, decoded.backupSources.size)
+        assertEquals(1, decoded.backupPreferences.size)
+        assertEquals(1, decoded.backupSourcePreferences.size)
+        assertEquals(1, decoded.backupExtensionRepo.size)
+
+        val reencoded = DesktopBackupCreator.encodeToBytes(decoded)
+        assertEquals(decoded, DesktopBackupCreator.decodeFromBytes(reencoded))
+    }
+
     @Test
     fun `canonical writer preserves every Android backup section`() {
         val original = Backup(
@@ -83,4 +119,8 @@ class DesktopBackupCompatibilityTest {
         file.writeText("""{"backupManga":[{"source":1,"url":"/json"}]}""")
         assertNull(DesktopBackupCreator.readBackupFile(file))
     }
+
+    private fun repositoryRoot(): Path =
+        generateSequence(Path.of("").toAbsolutePath()) { it.parent }
+            .first { Files.isDirectory(it.resolve("app-desktop")) && Files.isDirectory(it.resolve("data")) }
 }

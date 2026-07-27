@@ -180,8 +180,9 @@ sealed class AndroidPreference<T>(
         private val deserializer: (String) -> T,
     ) : AndroidPreference<T>(preferences, keyFlow, key, defaultValue) {
         override fun read(preferences: SharedPreferences, key: String, defaultValue: T): T {
+            val serialized = preferences.getString(key, null) ?: return defaultValue
             return try {
-                preferences.getString(key, null)?.let(deserializer) ?: defaultValue
+                deserializer(serialized)
             } catch (e: Exception) {
                 defaultValue
             }
@@ -201,8 +202,10 @@ sealed class AndroidPreference<T>(
         private val deserializer: (Int) -> T,
     ) : AndroidPreference<T>(preferences, keyFlow, key, defaultValue) {
         override fun read(preferences: SharedPreferences, key: String, defaultValue: T): T {
+            if (!preferences.contains(key)) return defaultValue
+            val serialized = preferences.getInt(key, 0)
             return try {
-                if (preferences.contains(key)) preferences.getInt(key, 0).let(deserializer) else defaultValue
+                deserializer(serialized)
             } catch (e: Exception) {
                 defaultValue
             }

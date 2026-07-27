@@ -28,6 +28,8 @@ import mihon.desktop.backup.BackupRestoreScreenModelFactory
 import mihon.desktop.domain.LibraryUpdateScheduler
 import mihon.desktop.domain.LibraryUpdateChecker
 import mihon.desktop.domain.DesktopCustomCoverStore
+import mihon.desktop.domain.DesktopNotificationService
+import mihon.desktop.domain.DesktopSystemNotifier
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DefaultDownloadFileOperations
@@ -84,6 +86,7 @@ import mihon.domain.download.EnqueueDownload
 import mihon.domain.download.IsChapterDownloaded
 import mihon.domain.download.DownloadQueueStatus
 import mihon.domain.platform.SharePayload
+import mihon.domain.task.NotificationEvent
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -176,6 +179,24 @@ import okio.Buffer
 
 @Isolated
 class DesktopDiWiringTest {
+    @Test
+    fun `desktop DI routes task notifications through the registered in app fallback`(@TempDir tempDir: File) =
+        runBlocking {
+            val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+            try {
+                val service = Injekt.get<DesktopNotificationService>()
+                val notifier = Injekt.get<DesktopSystemNotifier>()
+                val posted = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(1_000) { service.notifications.first() } }
+
+                notifier.notify(NotificationEvent.Success("library", "Library updated", "3 new chapters"))
+
+                assertEquals("Library updated", posted.await().title)
+                assertEquals("3 new chapters", posted.await().message)
+            } finally {
+                context.closeAndJoin()
+            }
+        }
+
     @Test
     fun `desktop DI shares one OAuth broker and production tracker clients with UI`(@TempDir tempDir: File) = runBlocking {
         val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())

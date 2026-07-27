@@ -16,7 +16,7 @@
         "domain/src/commonTest/kotlin/mihon/domain/task/TaskStateTest.kt": ["任务状态表达进度结果失败与取消"]
       }
     }, {"task": "Task 14A", "decision": "KEEP_GAP", "followUp": "docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-141-a1-id-3-shared-screen-state", "gap": "Current Android SourcesScreenModel and Desktop state containers still lack one shared immutable screen-state/event production core and a cross-platform consumer contract."}],
-    "statusDecision": {"task": "Task 16D", "decision": "READY_FOR_PROMOTION", "followUp": "docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-141-a1-id-3-shared-screen-state", "productClosureFollowUps": ["docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-141-a1-id-3-shared-screen-state","docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-142-a2-id-3-desktop-screen-state-consumer"], "coverageFollowUp": "NONE", "promotionFollowUp": "Task 18", "gap": "NONE"},
+    "statusDecision": {"task": "Task 16D", "decision": "READY_FOR_PROMOTION", "followUp": "NONE", "productClosureFollowUps": ["docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-141-a1-id-3-shared-screen-state","docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-142-a2-id-3-desktop-screen-state-consumer"], "coverageFollowUp": "NONE", "promotionFollowUp": "Task 18", "gap": "NONE"},
     "testModeCoverageAudit": {"task":"Task 16D","inventory":"app-desktop/src/test/resources/parity/test-mode-coverage-inventory.json","families":13,"coveredFamilies":13,"gapFamilies":0,"permanentProtections":5,"mappedCapabilities":64,"unmappedCapabilities":0,"runtimeRunner":"PASSED","runtimeSourceCommit":"dbc02bb9ad53f26f570427cc70a574bcbadff5ac","runtimeVersion":"0.11.14.48.dbc02bb","childPlan":"docs/superpowers/plans/2026-07-24-task-16d-test-mode-scenario-closure.md"},
     "authoritativeImplementation": "Fixed-main original Mihon capability #3: SourcesScreenModel uses Voyager StateScreenModel, immutable State snapshots, Flow collection, and an explicit Event channel.",
     "desktopImplementation": "Current Android SourcesScreenModel and Desktop DesktopSourcesScreenModel both consume the shared SourceScreenReducer. BrowseSourceListScreen renders the Desktop state and exactly-once action feedback while retaining Desktop source grouping, filtering and local-source behavior.",
@@ -126,8 +126,8 @@
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "WIRED",
-    "statusDecision": {
+    "status": "VERIFIED",
+    "statusDecisionHistory": [{
       "task": "Task 6",
       "decision": "KEEP_GAP",
       "followUp": "Task 6 evidence gap: current Android PreferenceStore adapter behavior contract",
@@ -141,6 +141,27 @@
         "app-desktop/src/test/kotlin/mihon/desktop/settings/DesktopPreferenceMigrationTest.kt": [
           "legacy explicit dual-page enhancement remains enabled when current value is absent",
           "legacy explicit LTR reader direction remains enabled when current value is absent"
+        ]
+      }
+    }],
+    "statusDecision": {
+      "task": "Task 18",
+      "decision": "PROMOTE_VERIFIED",
+      "followUp": "NONE",
+      "gap": "NONE",
+      "behaviorMethods": {
+        "core/common/src/androidUnitTest/kotlin/tachiyomi/core/common/preference/AndroidPreferenceStoreTest.kt": [
+          "typed preferences use defaults and persist values in SharedPreferences",
+          "delete removes stored value and restores default",
+          "changes emits current value then external SharedPreferences update",
+          "primitive type mismatch returns default and deletes incompatible value",
+          "serialized object backing type mismatch returns default and deletes incompatible value",
+          "integer serialized object backing type mismatch returns default and deletes incompatible value",
+          "string deserializer ClassCastException returns default without deleting valid backing value",
+          "integer deserializer ClassCastException returns default without deleting valid backing value"
+        ],
+        "app/src/test/java/eu/kanade/tachiyomi/di/PreferenceModuleWiringTest.kt": [
+          "PreferenceModule resolves Android PreferenceStore"
         ]
       }
     },
@@ -162,14 +183,29 @@
       "core/common/src/jvmMain/kotlin/tachiyomi/core/common/preference/DesktopPreferenceStore.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt"
     ],
+    "roleEvidence": {
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "core/common/src/main/kotlin/tachiyomi/core/common/preference/AndroidPreferenceStore.kt", "symbol": "class AndroidPreferenceStore(", "line": 17}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/di/PreferenceModule.kt", "symbol": "AndroidPreferenceStore(app)", "line": 30}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "core/common/src/commonMain/kotlin/tachiyomi/core/common/preference/PreferenceStore.kt", "symbol": "interface PreferenceStore", "line": 3}],
+      "DESKTOP_CONSUMER": [{"path": "core/common/src/jvmMain/kotlin/tachiyomi/core/common/preference/DesktopPreferenceStore.kt", "symbol": "class DesktopPreferenceStore(", "line": 5}],
+      "FIXTURE": [
+        {"artifact": "core/common/src/androidUnitTest/kotlin/tachiyomi/core/common/preference/AndroidPreferenceStoreTest.kt#typed preferences use defaults and persist values in SharedPreferences", "productionMarkers": ["store.getString", "store.getInt", "store.getLong", "store.getFloat", "store.getBoolean", "store.getStringSet"]},
+        {"artifact": "core/common/src/androidUnitTest/kotlin/tachiyomi/core/common/preference/AndroidPreferenceStoreTest.kt#serialized object backing type mismatch returns default and deletes incompatible value", "productionMarkers": ["store.getObjectFromString"]},
+        {"artifact": "app/src/test/java/eu/kanade/tachiyomi/di/PreferenceModuleWiringTest.kt#PreferenceModule resolves Android PreferenceStore", "productionMarkers": ["PreferenceModule(application)", "Injekt.get<PreferenceStore>()"]},
+        {"artifact": "core/common/src/jvmTest/kotlin/tachiyomi/core/common/preference/DesktopPreferenceStoreTest.kt#getString persists and reads value", "productionMarkers": ["store.getString"]}
+      ]
+    },
     "deviations": [
       { "classification": "PLATFORM_ADAPTER", "description": "Desktop uses java.util.prefs because Android SharedPreferences is unavailable, while retaining the fixed-main typed PreferenceStore semantics." },
       { "classification": "MIGRATION_OUTPUT", "description": "Desktop startup migration preserves preferences written by earlier Desktop-specific storage." }
     ],
     "protectionTests": [
+      "core/common/src/androidUnitTest/kotlin/tachiyomi/core/common/preference/AndroidPreferenceStoreTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/di/PreferenceModuleWiringTest.kt",
       "core/common/src/jvmTest/kotlin/tachiyomi/core/common/preference/DesktopPreferenceStoreTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/settings/DesktopPreferenceMigrationTest.kt"
     ],
+    "verificationScope": "VERIFIED: fixed-main typed preference and SharedPreferences semantics, current Android PreferenceModule wiring, shared contract, Android mismatch cleanup, Desktop java.util.prefs adapter and startup migration all execute through production implementations.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -490,20 +526,32 @@
     "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/notification/Notifications.kt", "symbol": "Notifications"}],
     "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/task/BackgroundTask.kt"],
     "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/data/notification/Notifications.kt"],
-    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/domain/DesktopSystemNotifier.kt"],
+    "desktopConsumerAdapterPaths": [
+      "app-desktop/src/main/kotlin/mihon/desktop/domain/DesktopSystemNotifier.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/privacy/DesktopPrivacyCapabilities.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt"
+    ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/data/notification/Notifications.kt", "symbol": "Notifications", "line": 16}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/notification/Notifications.kt", "symbol": "object Notifications", "line": 16}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/task/BackgroundTask.kt", "symbol": "sealed interface NotificationEvent", "line": 161}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/domain/DesktopSystemNotifier.kt", "symbol": "class DesktopSystemNotifier", "line": 5}],
-      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopSystemNotifierTest.kt#falls back to in-app notification when system delivery is unavailable", "productionMarkers": ["DesktopSystemNotifier("]}]
+      "DESKTOP_CONSUMER": [
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/domain/DesktopSystemNotifier.kt", "symbol": "class DesktopSystemNotifier", "line": 5},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/privacy/DesktopPrivacyCapabilities.kt", "symbol": "val production = DesktopPrivacyCapabilities(", "line": 20},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)", "line": 872}
+      ],
+      "FIXTURE": [
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopSystemNotifierTest.kt#falls back to in-app notification when system delivery is unavailable", "productionMarkers": ["DesktopSystemNotifier("]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/privacy/DesktopPrivacyCapabilitiesTest.kt#production capabilities report only real desktop integrations", "productionMarkers": ["DesktopPrivacyCapabilities.production"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt#desktop DI routes task notifications through the registered in app fallback", "productionMarkers": ["initDesktopDIForTest", "Injekt.get<DesktopSystemNotifier>()", "notifier.notify"]}
+      ]
     },
     "group": "平台基础",
     "tags": [
       "PLATFORM-ADAPTER"
     ],
-    "status": "WIRED",
-    "statusDecision": {
+    "status": "VERIFIED",
+    "statusDecisionHistory": [{
       "task": "Task 6",
       "decision": "KEEP_GAP",
       "followUp": "Task 17",
@@ -517,16 +565,33 @@
           "real update emits progress and one terminal success event"
         ]
       }
+    }],
+    "statusDecision": {
+      "task": "Task 18",
+      "decision": "PROMOTE_VERIFIED",
+      "followUp": "NONE",
+      "gap": "NONE",
+      "behaviorMethods": {
+        "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt": [
+          "desktop DI routes task notifications through the registered in app fallback"
+        ]
+      }
     },
     "authoritativeImplementation": "Fixed-main original Mihon capability #11: Notifications defines Android notification channels and ownership.",
-    "desktopImplementation": "DesktopSystemNotifier maps shared NotificationEvent values to native delivery with an in-app fallback.",
+    "desktopImplementation": "Desktop declares native system notifications unsupported and routes shared NotificationEvent values through the tested in-app fallback; no Android notification channel or fork-only Android consumer is required on Desktop.",
+    "deviations": [
+      {"classification": "PLATFORM_ADAPTER", "description": "Fixed original Android owns OS notification channels. Current Desktop explicitly reports native delivery unsupported and preserves user-visible completion and failure feedback through the in-app notification service."}
+    ],
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/task/BackgroundTaskContractTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopSystemNotifierTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/privacy/DesktopPrivacyCapabilitiesTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
     ],
     "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopSystemNotifierTest.kt": ["falls back to in-app notification when system delivery is unavailable"]},
     "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
+    "verificationScope": "VERIFIED platform adapter: fixed Android notification ownership, current Android channel declaration, shared event semantics, explicit Desktop unsupported capability, in-app fallback and real update feedback are protected without inventing a Desktop OS notification success path.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -2628,9 +2693,9 @@
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "WIRED",
+    "status": "VERIFIED",
     "authoritativeImplementation": "Fixed-main original Mihon capability #71: BackupCreator assembles the manual backup sections and writes the original protobuf artifact.",
-    "desktopImplementation": "DesktopBackupCreator consumes the current shared wire schema and collects manga, chapter, category, history, tracking, preference, source, and extension-repository data.",
+    "desktopImplementation": "DesktopBackupCreator consumes the current shared wire schema, collects every fixed-original backup section, decodes the fixed-main Android artifact through its production boundary, and re-encodes it without semantic loss.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreator.kt", "symbol": "class BackupCreator"}],
     "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreator.kt"],
@@ -2641,13 +2706,25 @@
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreator.kt", "symbol": "BackupCodec.encode", "line": 160}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "data/src/commonMain/kotlin/tachiyomi/data/backup/BackupCodec.kt", "symbol": "object BackupCodec", "line": 13}],
       "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupCreator.kt", "symbol": "suspend fun createFromDatabase", "line": 103}],
-      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCreatorTest.kt#createFromDatabase collects tracking app preferences source preferences and extension repositories", "productionMarkers": ["DesktopBackupCreator.createFromDatabase("]}]
+      "FIXTURE": [
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCreatorTest.kt#createFromDatabase collects tracking app preferences source preferences and extension repositories", "productionMarkers": ["DesktopBackupCreator.createFromDatabase("]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCompatibilityTest.kt#fixed-main Android fixture crosses Desktop creator boundary and reencodes equivalently", "productionMarkers": ["DesktopBackupCreator.decodeFromBytes", "DesktopBackupCreator.encodeToBytes"]}
+      ]
     },
     "behaviorVerificationTask": ":app-desktop:task5ParityVerification",
-    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCreatorTest.kt": ["createFromDatabase collects tracking app preferences source preferences and extension repositories"]},
-    "statusDecision": {"task": "Task 11", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "The current Desktop creator production chain is executable, but no fixed-original artifact fixture executes through the current shared codec and creator compatibility boundary; generator source scanning is not completion evidence.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCreatorTest.kt": ["createFromDatabase collects tracking app preferences source preferences and extension repositories"]}},
-    "protectionTests": ["data/src/commonTest/kotlin/tachiyomi/data/backup/BackupCodecContractTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCreatorTest.kt"],
+    "behaviorMethods": {
+      "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCreatorTest.kt": ["createFromDatabase collects tracking app preferences source preferences and extension repositories"],
+      "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCompatibilityTest.kt": ["fixed-main Android fixture crosses Desktop creator boundary and reencodes equivalently"]
+    },
+    "statusDecisionHistory": [{"task": "Task 11", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "The current Desktop creator production chain is executable, but no fixed-original artifact fixture executes through the current shared codec and creator compatibility boundary; generator source scanning is not completion evidence.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCreatorTest.kt": ["createFromDatabase collects tracking app preferences source preferences and extension repositories"]}}],
+    "statusDecision": {"task": "Task 18", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE"},
+    "protectionTests": [
+      "data/src/commonTest/kotlin/tachiyomi/data/backup/BackupCodecContractTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCreatorTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCompatibilityTest.kt"
+    ],
     "deviations": [{"classification": "MIGRATION_OUTPUT", "description": "The fixed-main creator owns app-local model serialization; current Android and Desktop consume the fork-extracted common schema and BackupCodec without treating that migration output as fixed-main source."}],
+    "verificationScope": "VERIFIED: fixed-main artifact provenance, current Android creator, shared codec, Desktop production creator and byte-level fixed Android compatibility fixture all execute; Desktop re-encoding preserves every canonical section and legacy viewer field.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },

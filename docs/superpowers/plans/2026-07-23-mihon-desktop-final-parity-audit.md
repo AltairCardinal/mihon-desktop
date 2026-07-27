@@ -644,6 +644,41 @@ fail-closed、旧 health owner 拒绝、本轮 PID 绑定、轮询/teardown、�
 2. 收紧 contract：终态、固定 ref、准确行号、当前 Android/Desktop/shared-or-adapter、fixture/protection test、EXEMPT evidence 与可追溯用户批准记录均为强制；批准缺失必须失败，不得用默认值生成。
 3. 将 final parity gate 接入明确的 Gradle lifecycle 入口，不用普通 compile 成功替代。
 
+**Scope correction（2026-07-28）：** Task 17 回收后复核发现，26 个非终态项中有 11 个已完成
+repository-local 实现、只待逐项晋升，另有 15 个仍保留旧 Task 6/7/14/17 的当前 follow-up。
+这 15 项不能批量改状态：其中 6 项缺 production fixture，4 项存在真实共享语义分叉，5 项需要
+平台 adapter 终态裁决。Task 18 因此按下列有限批次执行；固定原版始终只取
+`main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`，当前 `app/` 只作为 fork 后 Android
+consumer，不冒充原版依据。
+
+- [ ] Task 18A：清除悬空 follow-up，并关闭 ID 11 的 Desktop notification adapter
+- [ ] Task 18B：补齐 production fixture（7、16、38、54、71、72）
+- [ ] Task 18C：关闭共享语义分叉（22、24、28、66）
+- [ ] Task 18D：关闭平台 adapter 终态证据（26、56、73、93）
+- [ ] Task 18E：移除 `UNCLASSIFIED_DEBT` / `TEMP-COMPAT` 分类矛盾并逐项晋升 64 项
+- [ ] Task 18F：运行 `finalParityAudit`、架构守卫、计划守卫与格式检查
+
+| 分类 | IDs | Task 18 处理方式 |
+| --- | --- | --- |
+| 已有证据、旧 gap 无效 | 11 | 明确 native notification 为 Desktop unsupported adapter，保留应用内反馈后晋升 |
+| fixture 缺口 | 7、16、38、54、71、72 | 测试必须执行真实 Android/Desktop production wiring，不接受源码扫描 |
+| 共享语义分叉 | 22、24、28、66 | 分别统一 library membership、chapter batch、source projection、statistics common core |
+| 平台 adapter | 26、56、73、93 | 保留 picker/storage/scheduler/maintenance 平台边界，补真实行为和失败反馈，不伪造 `EXEMPT` |
+
+**Task 18 执行进度：**
+
+- ID 11 已完成：Desktop 明确声明 native system notification unsupported，并以真实
+  `DesktopSystemNotifier`、privacy capability 与 library update fixture 保护应用内反馈；旧的
+  “当前 Android 必须消费 fork `NotificationEvent`”要求已判为错误扩张。
+- ID 71 已完成：固定原版生成的 `android-full.tachibk` 已穿过
+  `DesktopBackupCreator.decodeFromBytes` / `encodeToBytes` 生产边界，九类 section、legacy
+  `viewer` 与 canonical `viewer_flags` 均保持。
+- ID 7 已完成：Robolectric fixture 执行真实 `AndroidPreferenceStore` 与
+  `PreferenceModule` wiring；RED 发现并修复 object-as-string/int 遇到错误 backing type 时
+  未交给基类清理的缺陷，Desktop java.util.prefs adapter 与迁移证据继续保留。
+- 当前治理套件 24 项中仅“其余未决项仍有悬空 follow-up”这一预期 RED；16、22、24、26、
+  28、38、54、56、66、72、73、93 尚未关闭，因此 18A/18B 均保持未勾选。
+
 ### Task 19：运行全量测试、Windows/macOS 构建与运行验收
 
 **Risk axis:** final-runtime-validation

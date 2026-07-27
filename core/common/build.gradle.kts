@@ -41,6 +41,16 @@ kotlin {
                 implementation(libs.bundles.js.engine)
             }
         }
+        val androidUnitTest by getting {
+            dependencies {
+                implementation(libs.bundles.test)
+                implementation(kotlinx.coroutines.test)
+                implementation("junit:junit:4.13.2")
+                implementation("org.robolectric:robolectric:4.16.1")
+                runtimeOnly(libs.junit.platform.launcher)
+                runtimeOnly("org.junit.vintage:junit-vintage-engine:6.0.3")
+            }
+        }
         jvmMain {
             dependencies {
                 implementation(projects.i18n)
