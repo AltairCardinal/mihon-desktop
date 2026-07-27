@@ -14,6 +14,7 @@ param(
     [string]$ReviewFile,
     [string]$ProcessPolicyFixture,
     [string]$ActivationPolicyFixture,
+    [string]$CapturePriorityPolicyFixture,
     [string]$InstallerPolicyFixture,
     [switch]$ListCases
 )
@@ -237,12 +238,34 @@ using System;
 using System.Runtime.InteropServices;
 using System.Text;
 public static class Task151NativeWindow {
+    public static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+    public static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2);
     [StructLayout(LayoutKind.Sequential)]
     public struct Rect { public int Left; public int Top; public int Right; public int Bottom; }
     [DllImport("user32.dll")]
     public static extern bool GetWindowRect(IntPtr window, out Rect rect);
     [DllImport("user32.dll")]
     public static extern bool SetForegroundWindow(IntPtr window);
+    [DllImport("user32.dll")]
+    public static extern void SwitchToThisWindow(IntPtr window, bool altTab);
+    [DllImport("kernel32.dll")]
+    public static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll")]
+    public static extern bool AttachThreadInput(uint fromThread, uint toThread, bool attach);
+    [DllImport("user32.dll")]
+    public static extern bool BringWindowToTop(IntPtr window);
+    [DllImport("user32.dll")]
+    public static extern IntPtr SetFocus(IntPtr window);
+    [DllImport("user32.dll")]
+    public static extern bool SetWindowPos(
+        IntPtr window,
+        IntPtr insertAfter,
+        int x,
+        int y,
+        int width,
+        int height,
+        uint flags
+    );
     [DllImport("user32.dll")]
     public static extern bool ShowWindowAsync(IntPtr window, int command);
     [DllImport("user32.dll")]
@@ -313,6 +336,41 @@ function Activate-OwnedMihonWindow(
                 param([IntPtr]$Window)
                 [Task151NativeWindow]::SetForegroundWindow($Window)
             }
+            AppActivate = {
+                param([int]$ProcessId)
+                $shell = New-Object -ComObject WScript.Shell
+                try {
+                    [bool]$shell.AppActivate($ProcessId)
+                } finally {
+                    [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)
+                }
+            }
+            SwitchToWindow = {
+                param([IntPtr]$Window)
+                [Task151NativeWindow]::SwitchToThisWindow($Window, $true)
+                $true
+            }
+            GetCurrentThread = {
+                [Task151NativeWindow]::GetCurrentThreadId()
+            }
+            GetWindowThread = {
+                param([IntPtr]$Window)
+                [uint32]$processId = 0
+                $threadId = [Task151NativeWindow]::GetWindowThreadProcessId($Window, [ref]$processId)
+                [ordered]@{ threadId = $threadId; processId = $processId }
+            }
+            AttachThreads = {
+                param([uint32]$FromThread, [uint32]$ToThread, [bool]$Attach)
+                [Task151NativeWindow]::AttachThreadInput($FromThread, $ToThread, $Attach)
+            }
+            BringToTop = {
+                param([IntPtr]$Window)
+                [Task151NativeWindow]::BringWindowToTop($Window)
+            }
+            FocusWindow = {
+                param([IntPtr]$Window)
+                [Task151NativeWindow]::SetFocus($Window).ToInt64()
+            }
             GetForeground = {
                 $window = [Task151NativeWindow]::GetForegroundWindow()
                 [uint32]$processId = 0
@@ -346,6 +404,12 @@ function Activate-OwnedMihonWindow(
         automationFocusError = $null
         setForegroundWindow = $null
         setForegroundError = $null
+        appActivate = $null
+        appActivateError = $null
+        switchToThisWindow = $null
+        switchToThisWindowError = $null
+        inputAttachment = $null
+        inputAttachmentCleanupComplete = $null
         pollAttempts = 0
         finalForegroundHwnd = $null
         finalForegroundPid = $null
@@ -384,15 +448,116 @@ function Activate-OwnedMihonWindow(
         $diagnostics.setForegroundError = $_.Exception.Message
     }
 
-    $deadline = [DateTime]::UtcNow.AddMilliseconds([Math]::Max(0, $TimeoutMilliseconds))
-    do {
+    $observeForeground = {
         $foreground = & $Operations.GetForeground
         $diagnostics.pollAttempts = [int]$diagnostics.pollAttempts + 1
         $diagnostics.finalForegroundHwnd = [long]$foreground.handle
         $diagnostics.finalForegroundPid = [int]$foreground.processId
         $diagnostics.finalForegroundClass = [string]$foreground.className
-        if ($diagnostics.finalForegroundHwnd -eq $TargetHandle.ToInt64() -and
-            $diagnostics.finalForegroundPid -eq $TargetPid) {
+        $diagnostics.finalForegroundHwnd -eq $TargetHandle.ToInt64() -and
+            $diagnostics.finalForegroundPid -eq $TargetPid
+    }
+    if (& $observeForeground) {
+        $diagnostics.status = "PASS"
+        return $diagnostics
+    }
+
+    try {
+        $diagnostics.appActivate = [bool](& $Operations.AppActivate $TargetPid)
+    } catch {
+        $diagnostics.appActivate = $false
+        $diagnostics.appActivateError = $_.Exception.Message
+    }
+
+    $activationDelay = [Math]::Min(
+        250,
+        [Math]::Max($PollMilliseconds, [int]([Math]::Max(0, $TimeoutMilliseconds) / 4))
+    )
+    if ($activationDelay -gt 0) { Start-Sleep -Milliseconds $activationDelay }
+    if (& $observeForeground) {
+        $diagnostics.status = "PASS"
+        return $diagnostics
+    }
+
+    try {
+        $diagnostics.switchToThisWindow = [bool](& $Operations.SwitchToWindow $TargetHandle)
+    } catch {
+        $diagnostics.switchToThisWindow = $false
+        $diagnostics.switchToThisWindowError = $_.Exception.Message
+    }
+
+    if ($activationDelay -gt 0) { Start-Sleep -Milliseconds $activationDelay }
+    if (& $observeForeground) {
+        $diagnostics.status = "PASS"
+        return $diagnostics
+    }
+
+    $attachment = [ordered]@{
+        currentThreadId = $null
+        foregroundThreadId = $null
+        targetThreadId = $null
+        targetThreadProcessId = $null
+        attachedThreadIds = @()
+        detachedThreadIds = @()
+        detachErrors = @()
+        bringWindowToTop = $null
+        setForegroundWindow = $null
+        focusHandle = $null
+        error = $null
+    }
+    $attachedThreadIds = [Collections.Generic.List[uint32]]::new()
+    try {
+        $currentThreadId = [uint32](& $Operations.GetCurrentThread)
+        $foregroundThread = & $Operations.GetWindowThread ([IntPtr][long]$diagnostics.finalForegroundHwnd)
+        $targetThread = & $Operations.GetWindowThread $TargetHandle
+        $attachment.currentThreadId = $currentThreadId
+        $attachment.foregroundThreadId = [uint32]$foregroundThread.threadId
+        $attachment.targetThreadId = [uint32]$targetThread.threadId
+        $attachment.targetThreadProcessId = [int]$targetThread.processId
+        if ($attachment.targetThreadProcessId -ne $TargetPid) {
+            throw "Target HWND thread no longer belongs to the exact owned process"
+        }
+        foreach ($threadId in @($attachment.foregroundThreadId, $attachment.targetThreadId) | Select-Object -Unique) {
+            if ([uint32]$threadId -eq $currentThreadId) { continue }
+            if (-not [bool](& $Operations.AttachThreads $currentThreadId ([uint32]$threadId) $true)) {
+                throw "AttachThreadInput failed for thread $threadId"
+            }
+            [void]$attachedThreadIds.Add([uint32]$threadId)
+            $attachment.attachedThreadIds = @($attachedThreadIds)
+        }
+        $attachment.bringWindowToTop = [bool](& $Operations.BringToTop $TargetHandle)
+        $attachment.setForegroundWindow = [bool](& $Operations.SetForeground $TargetHandle)
+        $attachment.focusHandle = [long](& $Operations.FocusWindow $TargetHandle)
+    } catch {
+        $attachment.error = $_.Exception.Message
+    } finally {
+        $detachedThreadIds = [Collections.Generic.List[uint32]]::new()
+        $detachErrors = [Collections.Generic.List[string]]::new()
+        for ($index = $attachedThreadIds.Count - 1; $index -ge 0; $index--) {
+            $threadId = $attachedThreadIds[$index]
+            try {
+                if ([bool](& $Operations.AttachThreads ([uint32]$attachment.currentThreadId) $threadId $false)) {
+                    [void]$detachedThreadIds.Add($threadId)
+                } else {
+                    [void]$detachErrors.Add("AttachThreadInput detach returned false for thread $threadId")
+                }
+            } catch {
+                [void]$detachErrors.Add("AttachThreadInput detach threw for thread ${threadId}: $($_.Exception.Message)")
+            }
+        }
+        $attachment.detachedThreadIds = @($detachedThreadIds)
+        $attachment.detachErrors = @($detachErrors)
+        $diagnostics.inputAttachmentCleanupComplete =
+            $detachedThreadIds.Count -eq $attachedThreadIds.Count -and $detachErrors.Count -eq 0
+    }
+    $diagnostics.inputAttachment = $attachment
+    if ($attachment.error -or -not $diagnostics.inputAttachmentCleanupComplete) {
+        Throw-WindowActivationBlocked "Controlled foreground input attachment failed or did not detach cleanly" $diagnostics
+    }
+
+    $deadline = [DateTime]::UtcNow.AddMilliseconds([Math]::Max(0, $TimeoutMilliseconds))
+    do {
+        if (& $observeForeground) {
             $diagnostics.status = "PASS"
             return $diagnostics
         }
@@ -403,30 +568,201 @@ function Activate-OwnedMihonWindow(
     Throw-WindowActivationBlocked "Mihon window could not be activated as the exact owned foreground target" $diagnostics
 }
 
-function Capture-MihonWindow([Diagnostics.Process]$Process, [string]$Name) {
+function New-MihonWindowCaptureOperations {
+    @{
+        ResolveOwnedProcesses = {
+            param([int]$ProcessId)
+            @(Get-OwnedExactAppProcesses | Where-Object { [int]$_.ProcessId -eq $ProcessId })
+        }
+        GetWindowOwnerPid = {
+            param([IntPtr]$Window)
+            [uint32]$processId = 0
+            [Task151NativeWindow]::GetWindowThreadProcessId($Window, [ref]$processId) | Out-Null
+            [int]$processId
+        }
+        SetWindowPos = {
+            param([IntPtr]$Window, [IntPtr]$InsertAfter, [uint32]$Flags)
+            [Task151NativeWindow]::SetWindowPos($Window, $InsertAfter, 0, 0, 0, 0, $Flags)
+        }
+        StopOwnedProcesses = {
+            Stop-OwnedAppProcesses
+        }
+    }
+}
+
+function Assert-MihonWindowCaptureLease($Lease, $Operations) {
+    $owned = @(& $Operations.ResolveOwnedProcesses ([int]$Lease.processId))
+    if ($owned.Count -ne 1) { throw "Mihon capture target is not one exact owned process" }
+    $ownedPath = [IO.Path]::GetFullPath([string]$owned[0].ExecutablePath)
+    if (-not $ownedPath.Equals(
+        [IO.Path]::GetFullPath([string]$Lease.executablePath),
+        [StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw "Mihon capture target executable no longer matches the accepted artifact"
+    }
+    $windowOwnerPid = [int](& $Operations.GetWindowOwnerPid ([IntPtr]$Lease.windowHandle))
+    if ($windowOwnerPid -ne [int]$Lease.processId) {
+        throw "Mihon capture target HWND no longer belongs to the exact owned process"
+    }
+}
+
+function New-MihonWindowCaptureLease(
+    [int]$ProcessId,
+    [IntPtr]$WindowHandle,
+    [string]$ExpectedExecutable = $Executable,
+    $Operations = $null
+) {
+    Initialize-Task151NativeWindow
+    if ($WindowHandle -eq [IntPtr]::Zero) { throw "Mihon main window handle is unavailable" }
+    if ($null -eq $Operations) { $Operations = New-MihonWindowCaptureOperations }
+    $lease = [ordered]@{
+        processId = $ProcessId
+        windowHandle = $WindowHandle.ToInt64()
+        executablePath = [IO.Path]::GetFullPath($ExpectedExecutable)
+    }
+    Assert-MihonWindowCaptureLease $lease $Operations
+    $lease
+}
+
+function Set-MihonWindowCapturePriority($Lease, [bool]$Topmost, $Operations = $null) {
+    Initialize-Task151NativeWindow
+    if ($null -eq $Operations) { $Operations = New-MihonWindowCaptureOperations }
+    Assert-MihonWindowCaptureLease $Lease $Operations
+    $insertAfter = if ($Topmost) {
+        [Task151NativeWindow]::HWND_TOPMOST
+    } else {
+        [Task151NativeWindow]::HWND_NOTOPMOST
+    }
+    $flags = [uint32](0x0001 -bor 0x0002 -bor 0x0010 -bor 0x0040)
+    $updated = & $Operations.SetWindowPos ([IntPtr][long]$Lease.windowHandle) $insertAfter $flags
+    if (-not $updated) { throw "Unable to update exact owned Mihon window capture priority" }
+}
+
+function Exit-MihonWindowCapturePriority($Lease, $Operations = $null) {
+    if ($null -eq $Operations) { $Operations = New-MihonWindowCaptureOperations }
+    try {
+        Set-MihonWindowCapturePriority $Lease $false $Operations
+    } catch {
+        $releaseError = $_
+        try {
+            & $Operations.StopOwnedProcesses
+        } catch {
+            # Preserve the release error; the caller must remain blocked.
+        }
+        throw $releaseError
+    }
+}
+
+function Invoke-MihonWindowFeedbackCapture($Lease, [scriptblock]$CaptureFeedback, $Operations = $null) {
+    try {
+        & $CaptureFeedback
+    } finally {
+        Exit-MihonWindowCapturePriority $Lease $Operations
+    }
+}
+
+function Invoke-MihonWindowCapture(
+    $Lease,
+    [string]$Name,
+    [switch]$KeepTopmost,
+    $Operations = $null
+) {
     Add-Type -AssemblyName System.Drawing
     Initialize-Task151NativeWindow
-    $Process.Refresh()
-    if ($Process.MainWindowHandle -eq [IntPtr]::Zero) { throw "Mihon main window handle is unavailable" }
-    Activate-OwnedMihonWindow $Process.Id $Process.MainWindowHandle | Out-Null
-    $rect = [Task151NativeWindow+Rect]::new()
-    if (-not [Task151NativeWindow]::GetWindowRect($Process.MainWindowHandle, [ref]$rect)) {
-        throw "Unable to read Mihon window bounds"
+    if ($null -eq $Operations) {
+        $Operations = New-MihonWindowCaptureOperations
+        $Operations.GetWindowRect = {
+            param([IntPtr]$Window)
+            $rect = [Task151NativeWindow+Rect]::new()
+            if (-not [Task151NativeWindow]::GetWindowRect($Window, [ref]$rect)) {
+                throw "Unable to read Mihon window bounds"
+            }
+            $rect
+        }
+        $Operations.NewBitmap = {
+            param([int]$Width, [int]$Height)
+            [Drawing.Bitmap]::new($Width, $Height)
+        }
+        $Operations.NewGraphics = {
+            param($Bitmap)
+            [Drawing.Graphics]::FromImage($Bitmap)
+        }
+        $Operations.CopyWindow = {
+            param($Graphics, $Bitmap, $Rect)
+            $Graphics.CopyFromScreen($Rect.Left, $Rect.Top, 0, 0, $Bitmap.Size)
+        }
+        $Operations.SaveBitmap = {
+            param($Bitmap, [string]$Path)
+            $Bitmap.Save($Path, [Drawing.Imaging.ImageFormat]::Png)
+        }
+        $Operations.DisposeGraphics = {
+            param($Graphics)
+            $Graphics.Dispose()
+        }
+        $Operations.DisposeBitmap = {
+            param($Bitmap)
+            $Bitmap.Dispose()
+        }
     }
-    $width = $rect.Right - $rect.Left
-    $height = $rect.Bottom - $rect.Top
-    if ($width -le 0 -or $height -le 0) { throw "Invalid Mihon window bounds" }
-    $bitmap = [Drawing.Bitmap]::new($width, $height)
-    $graphics = [Drawing.Graphics]::FromImage($bitmap)
+    $bitmap = $null
+    $graphics = $null
     $path = Join-Path $EvidenceDir "$Name.png"
+    Set-MihonWindowCapturePriority $Lease $true $Operations
     try {
-        $graphics.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bitmap.Size)
-        $bitmap.Save($path, [Drawing.Imaging.ImageFormat]::Png)
+        $rect = & $Operations.GetWindowRect ([IntPtr][long]$Lease.windowHandle)
+        $width = $rect.Right - $rect.Left
+        $height = $rect.Bottom - $rect.Top
+        if ($width -le 0 -or $height -le 0) { throw "Invalid Mihon window bounds" }
+        $bitmap = & $Operations.NewBitmap $width $height
+        $graphics = & $Operations.NewGraphics $bitmap
+        & $Operations.CopyWindow $graphics $bitmap $rect
+        & $Operations.SaveBitmap $bitmap $path
     } finally {
-        $graphics.Dispose()
-        $bitmap.Dispose()
+        try {
+            if ($null -ne $graphics) { & $Operations.DisposeGraphics $graphics }
+        } finally {
+            try {
+                if ($null -ne $bitmap) { & $Operations.DisposeBitmap $bitmap }
+            } finally {
+                if (-not $KeepTopmost) {
+                    Exit-MihonWindowCapturePriority $Lease $Operations
+                }
+            }
+        }
     }
     $path
+}
+
+function Invoke-BoundedMihonWindowCapture(
+    $Lease,
+    [string]$Name,
+    [switch]$KeepTopmost,
+    $Operations = $null
+) {
+    try {
+        Invoke-MihonWindowCapture $Lease $Name -KeepTopmost:$KeepTopmost -Operations $Operations
+    } catch {
+        if ($KeepTopmost) {
+            try {
+                Exit-MihonWindowCapturePriority $Lease $Operations
+            } catch {
+                # Exit-MihonWindowCapturePriority already stopped the exact owned process tree.
+            }
+        }
+        throw
+    }
+}
+
+function Capture-MihonWindow(
+    [Diagnostics.Process]$Process,
+    [string]$Name,
+    [switch]$KeepTopmost
+) {
+    $Process.Refresh()
+    $lease = New-MihonWindowCaptureLease $Process.Id $Process.MainWindowHandle
+    Activate-OwnedMihonWindow $lease.processId ([IntPtr][long]$lease.windowHandle) | Out-Null
+    $path = Invoke-BoundedMihonWindowCapture $lease $Name -KeepTopmost:$KeepTopmost
+    [ordered]@{ path = $path; lease = $lease }
 }
 
 function New-PlatformProbe {
@@ -511,6 +847,7 @@ function Invoke-CaptureAcceptance {
     $original = (Invoke-PlatformProbe $probe @("preference", "get")).value
     $protectedScreenshot = $null
     $clearScreenshot = $null
+    $clearProcess = $null
     try {
         $adapter = Invoke-PlatformProbe $probe @("privacy")
         Set-SecureScreenProbePreference $probe "ALWAYS"
@@ -524,7 +861,8 @@ function Invoke-CaptureAcceptance {
             0x1 { "Limited" }
             default { throw "Product defect: protected Mihon window affinity is $($applied.affinity)" }
         }
-        $protectedScreenshot = Capture-MihonWindow $protectedProcess "task152-windows-capture-protected"
+        $protectedCapture = Capture-MihonWindow $protectedProcess "task152-windows-capture-protected"
+        $protectedScreenshot = $protectedCapture.path
         Stop-OwnedAppProcesses
 
         Set-SecureScreenProbePreference $probe "NEVER"
@@ -540,8 +878,16 @@ function Invoke-CaptureAcceptance {
             -Uri "http://127.0.0.1:$($Port + 1)/test/navigate/SecuritySettingsScreen" `
             -TimeoutSec 10 | Out-Null
         Start-Sleep -Milliseconds 500
-        $clearScreenshot = Capture-MihonWindow $clearProcess "task152-windows-capture-cleared"
-        $feedback = Capture-Screenshot ($Port + 1) "task152-windows-window-privacy-feedback"
+        $clearCapture = Capture-MihonWindow $clearProcess "task152-windows-capture-cleared" -KeepTopmost
+        $clearScreenshot = $clearCapture.path
+        $clearLease = $clearCapture.lease
+        try {
+            $feedback = Invoke-MihonWindowFeedbackCapture $clearLease {
+                Capture-Screenshot ($Port + 1) "task152-windows-window-privacy-feedback"
+            }
+        } finally {
+            $clearLease = $null
+        }
         $result = [ordered]@{
             status = "PENDING_REVIEW"
             os = "windows"
@@ -827,7 +1173,8 @@ function Invoke-UriCold {
     try {
         $screenshots = @()
         1..4 | ForEach-Object {
-            $screenshots += Capture-MihonWindow $window "task151-windows-uri-cold-$_"
+            $capture = Capture-MihonWindow $window "task151-windows-uri-cold-$_"
+            $screenshots += [string]$capture.path
             Start-Sleep -Milliseconds 350
         }
         [ordered]@{
@@ -874,7 +1221,8 @@ function Invoke-UriRunning {
             current = $afterPids
         } | Out-Null
         $window = Get-Process -Id (Wait-OwnedWindowProcessId) -ErrorAction Stop
-        $screenshotPath = Capture-MihonWindow $window "task151-windows-uri-running"
+        $capture = Capture-MihonWindow $window "task151-windows-uri-running"
+        $screenshotPath = [string]$capture.path
         [ordered]@{
             status = "PASS"
             uri = $uri
@@ -1003,6 +1351,144 @@ function Apply-CaptureReview([string]$ReviewPath) {
     if ($validated.decision -eq "PASS") { exit 0 } else { exit 1 }
 }
 
+if ($CapturePriorityPolicyFixture) {
+    $fixture = Get-Content -Raw -LiteralPath $CapturePriorityPolicyFixture | ConvertFrom-Json
+    $results = @(
+        foreach ($scenario in @($fixture.scenarios)) {
+            $events = [Collections.Generic.List[string]]::new()
+            $setWindowPosCalls = [Collections.Generic.List[object]]::new()
+            $windowOwnerPidCalls = [Collections.Generic.List[object]]::new()
+            $ownedProcesses = @($scenario.ownedProcesses)
+            $windowOwnerPid = [int]$scenario.windowOwnerPid
+            $windowOwnerPidSequence = @(
+                $scenario.windowOwnerPidSequence |
+                    Where-Object { $null -ne $_ }
+            )
+            $windowOwnerPidState = @{ index = 0 }
+            $releaseFailure = [bool]$scenario.releaseFailure
+            $failureStage = [string]$scenario.failureStage
+            $operations = @{
+                ResolveOwnedProcesses = {
+                    param([int]$ProcessId)
+                    @($ownedProcesses | Where-Object { [int]$_.ProcessId -eq $ProcessId })
+                }.GetNewClosure()
+                GetWindowOwnerPid = {
+                    param([IntPtr]$Window)
+                    $ownerPid = if ($windowOwnerPidSequence.Count -gt 0) {
+                        $index = [Math]::Min(
+                            [int]$windowOwnerPidState.index,
+                            $windowOwnerPidSequence.Count - 1
+                        )
+                        $windowOwnerPidState.index = [int]$windowOwnerPidState.index + 1
+                        [int]$windowOwnerPidSequence[$index]
+                    } else {
+                        $windowOwnerPid
+                    }
+                    [void]$windowOwnerPidCalls.Add(
+                        [ordered]@{ window = $Window.ToInt64(); processId = $ownerPid }
+                    )
+                    $ownerPid
+                }.GetNewClosure()
+                SetWindowPos = {
+                    param([IntPtr]$Window, [IntPtr]$InsertAfter, [uint32]$Flags)
+                    [void]$setWindowPosCalls.Add(
+                        [ordered]@{
+                            window = $Window.ToInt64()
+                            insertAfter = $InsertAfter.ToInt64()
+                            flags = $Flags
+                        }
+                    )
+                    [void]$events.Add("priority:$($InsertAfter.ToInt64()):$($Window.ToInt64())")
+                    if ($releaseFailure -and
+                        $InsertAfter -eq [Task151NativeWindow]::HWND_NOTOPMOST) {
+                        return $false
+                    }
+                    $true
+                }.GetNewClosure()
+                StopOwnedProcesses = {
+                    [void]$events.Add("stop-owned")
+                }.GetNewClosure()
+                GetWindowRect = {
+                    param([IntPtr]$Window)
+                    [void]$events.Add("bounds:$($Window.ToInt64())")
+                    if ($failureStage -eq "bounds") { throw "fixture bounds failure" }
+                    [pscustomobject]@{ Left = 0; Top = 0; Right = 8; Bottom = 8 }
+                }.GetNewClosure()
+                NewBitmap = {
+                    param([int]$Width, [int]$Height)
+                    [void]$events.Add("new-bitmap")
+                    [pscustomobject]@{ Size = [pscustomobject]@{ Width = $Width; Height = $Height } }
+                }.GetNewClosure()
+                NewGraphics = {
+                    param($Bitmap)
+                    [void]$events.Add("new-graphics")
+                    [pscustomobject]@{ fixture = "graphics" }
+                }.GetNewClosure()
+                CopyWindow = {
+                    param($Graphics, $Bitmap, $Rect)
+                    [void]$events.Add("copy")
+                    if ($failureStage -eq "copy") { throw "fixture copy failure" }
+                }.GetNewClosure()
+                SaveBitmap = {
+                    param($Bitmap, [string]$Path)
+                    [void]$events.Add("save")
+                    if ($failureStage -eq "save") { throw "fixture save failure" }
+                }.GetNewClosure()
+                DisposeGraphics = {
+                    param($Graphics)
+                    [void]$events.Add("dispose-graphics")
+                    if ($failureStage -eq "dispose-graphics") { throw "fixture graphics dispose failure" }
+                }.GetNewClosure()
+                DisposeBitmap = {
+                    param($Bitmap)
+                    [void]$events.Add("dispose-bitmap")
+                    if ($failureStage -eq "dispose-bitmap") { throw "fixture bitmap dispose failure" }
+                }.GetNewClosure()
+            }
+            try {
+                $lease = New-MihonWindowCaptureLease `
+                    -ProcessId ([int]$scenario.processId) `
+                    -WindowHandle ([IntPtr][long]$scenario.windowHandle) `
+                    -ExpectedExecutable ([string]$scenario.expectedExecutable) `
+                    -Operations $operations
+                if ([string]$scenario.action -eq "feedback") {
+                    Set-MihonWindowCapturePriority $lease $true $operations
+                    Invoke-MihonWindowFeedbackCapture $lease {
+                        [void]$events.Add("feedback")
+                        if ($failureStage -eq "feedback") { throw "fixture feedback failure" }
+                        "feedback-result"
+                    } $operations | Out-Null
+                } else {
+                    Invoke-BoundedMihonWindowCapture `
+                        $lease `
+                        "fixture-capture" `
+                        -KeepTopmost:([bool]$scenario.keepTopmost) `
+                        -Operations $operations | Out-Null
+                }
+                [ordered]@{
+                    name = [string]$scenario.name
+                    status = "PASS"
+                    events = @($events)
+                    setWindowPosCalls = @($setWindowPosCalls)
+                    windowOwnerPidCalls = @($windowOwnerPidCalls)
+                    error = $null
+                }
+            } catch {
+                [ordered]@{
+                    name = [string]$scenario.name
+                    status = "BLOCKED"
+                    events = @($events)
+                    setWindowPosCalls = @($setWindowPosCalls)
+                    windowOwnerPidCalls = @($windowOwnerPidCalls)
+                    error = $_.Exception.Message
+                }
+            }
+        }
+    )
+    [ordered]@{ results = $results } | ConvertTo-Json -Depth 10
+    exit 0
+}
+
 if ($ActivationPolicyFixture) {
     $fixture = Get-Content -Raw -LiteralPath $ActivationPolicyFixture | ConvertFrom-Json
     $results = @(
@@ -1013,6 +1499,27 @@ if ($ActivationPolicyFixture) {
             $showWindowResult = [bool]$scenario.showWindowResult
             $automationFocusResult = [bool]$scenario.automationFocusResult
             $setForegroundResult = [bool]$scenario.setForegroundResult
+            $appActivateResult = [bool]$scenario.appActivateResult
+            $switchToWindowResult = [bool]$scenario.switchToWindowResult
+            $currentThreadId = [uint32]$scenario.currentThreadId
+            $foregroundThreadId = [uint32]$scenario.foregroundThreadId
+            $targetThreadId = [uint32]$scenario.targetThreadId
+            $targetThreadProcessId = if ($null -ne $scenario.targetThreadProcessId) {
+                [int]$scenario.targetThreadProcessId
+            } else {
+                [int]$scenario.targetPid
+            }
+            $attachThreadResult = [bool]$scenario.attachThreadResult
+            $attachmentOutcomes = @($scenario.attachmentOutcomes)
+            $attachmentOutcomeState = @{ index = 0 }
+            $foregroundRequiresAttachment = [bool]$scenario.foregroundRequiresAttachment
+            $appActivateProcessIds = [Collections.Generic.List[int]]::new()
+            $switchToWindowHandles = [Collections.Generic.List[long]]::new()
+            $inputAttachmentCalls = [Collections.Generic.List[object]]::new()
+            $bringToTopHandles = [Collections.Generic.List[long]]::new()
+            $focusHandles = [Collections.Generic.List[long]]::new()
+            $inputFallbackEvents = [Collections.Generic.List[string]]::new()
+            $attachmentState = @{ attached = 0; detached = 0; completed = $false; started = $false }
             $operations = @{
                 ResolveOwnedProcesses = {
                     param([int]$ProcessId)
@@ -1031,12 +1538,87 @@ if ($ActivationPolicyFixture) {
                 }.GetNewClosure()
                 SetForeground = {
                     param([IntPtr]$Window)
+                    if ([bool]$attachmentState.started) {
+                        [void]$inputFallbackEvents.Add("foreground:$($Window.ToInt64())")
+                    }
                     $setForegroundResult
+                }.GetNewClosure()
+                AppActivate = {
+                    param([int]$ProcessId)
+                    [void]$appActivateProcessIds.Add($ProcessId)
+                    $appActivateResult
+                }.GetNewClosure()
+                SwitchToWindow = {
+                    param([IntPtr]$Window)
+                    [void]$switchToWindowHandles.Add($Window.ToInt64())
+                    $switchToWindowResult
+                }.GetNewClosure()
+                GetCurrentThread = {
+                    $currentThreadId
+                }.GetNewClosure()
+                GetWindowThread = {
+                    param([IntPtr]$Window)
+                    if ($Window.ToInt64() -eq [long]$scenario.targetHandle) {
+                        [ordered]@{ threadId = $targetThreadId; processId = $targetThreadProcessId }
+                    } else {
+                        [ordered]@{ threadId = $foregroundThreadId; processId = 780 }
+                    }
+                }.GetNewClosure()
+                AttachThreads = {
+                    param([uint32]$FromThread, [uint32]$ToThread, [bool]$Attach)
+                    [void]$inputAttachmentCalls.Add(
+                        [ordered]@{ from = $FromThread; to = $ToThread; attach = $Attach }
+                    )
+                    [void]$inputFallbackEvents.Add(
+                        "$(if ($Attach) { 'attach' } else { 'detach' }):$FromThread->$ToThread"
+                    )
+                    $outcome = if ([int]$attachmentOutcomeState.index -lt $attachmentOutcomes.Count) {
+                        $attachmentOutcomes[[int]$attachmentOutcomeState.index]
+                    } else {
+                        $null
+                    }
+                    $attachmentOutcomeState.index = [int]$attachmentOutcomeState.index + 1
+                    if ($null -ne $outcome -and [string]$outcome.throwMessage) {
+                        throw [string]$outcome.throwMessage
+                    }
+                    $result = if ($null -ne $outcome -and $null -ne $outcome.result) {
+                        [bool]$outcome.result
+                    } else {
+                        $attachThreadResult
+                    }
+                    if ($result -and $Attach) {
+                        $attachmentState.started = $true
+                        $attachmentState.attached = [int]$attachmentState.attached + 1
+                    } elseif ($result) {
+                        $attachmentState.detached = [int]$attachmentState.detached + 1
+                        if ([int]$attachmentState.attached -gt 0 -and
+                            [int]$attachmentState.detached -ge [int]$attachmentState.attached) {
+                            $attachmentState.completed = $true
+                        }
+                    }
+                    $result
+                }.GetNewClosure()
+                BringToTop = {
+                    param([IntPtr]$Window)
+                    [void]$bringToTopHandles.Add($Window.ToInt64())
+                    [void]$inputFallbackEvents.Add("bring:$($Window.ToInt64())")
+                    $true
+                }.GetNewClosure()
+                FocusWindow = {
+                    param([IntPtr]$Window)
+                    [void]$focusHandles.Add($Window.ToInt64())
+                    [void]$inputFallbackEvents.Add("focus:$($Window.ToInt64())")
+                    0
                 }.GetNewClosure()
                 GetForeground = {
                     if ($snapshots.Count -eq 0) { throw "Activation fixture requires a foreground snapshot" }
-                    $current = $snapshots[[Math]::Min([int]$snapshotState.index, $snapshots.Count - 1)]
-                    if ([int]$snapshotState.index -lt $snapshots.Count - 1) {
+                    $lastIndex = if ($foregroundRequiresAttachment -and -not [bool]$attachmentState.completed) {
+                        [Math]::Max(0, $snapshots.Count - 2)
+                    } else {
+                        $snapshots.Count - 1
+                    }
+                    $current = $snapshots[[Math]::Min([int]$snapshotState.index, $lastIndex)]
+                    if ([int]$snapshotState.index -lt $lastIndex) {
                         $snapshotState.index = [int]$snapshotState.index + 1
                     }
                     [ordered]@{
@@ -1058,6 +1640,12 @@ if ($ActivationPolicyFixture) {
                     name = [string]$scenario.name
                     status = "PASS"
                     activation = $activation
+                    appActivateProcessIds = @($appActivateProcessIds)
+                    switchToWindowHandles = @($switchToWindowHandles)
+                    inputAttachmentCalls = @($inputAttachmentCalls)
+                    bringToTopHandles = @($bringToTopHandles)
+                    focusHandles = @($focusHandles)
+                    inputFallbackEvents = @($inputFallbackEvents)
                     error = $null
                 }
             } catch {
@@ -1066,6 +1654,12 @@ if ($ActivationPolicyFixture) {
                     name = [string]$scenario.name
                     status = "BLOCKED"
                     activation = $activation
+                    appActivateProcessIds = @($appActivateProcessIds)
+                    switchToWindowHandles = @($switchToWindowHandles)
+                    inputAttachmentCalls = @($inputAttachmentCalls)
+                    bringToTopHandles = @($bringToTopHandles)
+                    focusHandles = @($focusHandles)
+                    inputFallbackEvents = @($inputFallbackEvents)
                     error = $_.Exception.Message
                 }
             }

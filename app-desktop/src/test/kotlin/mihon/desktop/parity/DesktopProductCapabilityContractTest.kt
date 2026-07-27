@@ -1280,11 +1280,7 @@ class DesktopProductCapabilityContractTest {
         )
     private val exactBatchOneSharedPaths =
         mapOf(
-            3 to
-                setOf(
-                    "domain/src/commonMain/kotlin/mihon/domain/error/AppError.kt",
-                    "domain/src/commonMain/kotlin/mihon/domain/task/TaskState.kt",
-                ),
+            3 to setOf("domain/src/commonMain/kotlin/mihon/domain/source/model/SourceScreenState.kt"),
             4 to emptySet<String>(),
             7 to
                 setOf(
@@ -1315,7 +1311,11 @@ class DesktopProductCapabilityContractTest {
         )
     private val exactBatchOneDesktopPaths =
         mapOf(
-            3 to setOf("app-desktop/src/main/kotlin/mihon/desktop/history/HistoryScreenModel.kt"),
+            3 to
+                setOf(
+                    "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourcesScreenModel.kt",
+                    "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/BrowseTab.kt",
+                ),
             4 to setOf("app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "app-desktop/src/main/kotlin/mihon/desktop/Main.kt"),
             7 to
                 setOf(

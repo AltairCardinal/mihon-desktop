@@ -961,18 +961,37 @@ class SourceSharedStateWiringTest {
                 }
                 val child = requireNotNull(coordinator.coordinatorFor(source.id))
                 val callbackCount = callbacks.size.also { lateFailure.set(lateError) }
+                val firstLoading = async(start = CoroutineStart.UNDISPATCHED) {
+                    coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Loading }
+                }
                 val firstRetry = async(start = CoroutineStart.UNDISPATCHED) { child.retry(source) }
-                withTimeout(2_000) { coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Loading } }
+                assertInstanceOf(SourceQueryState.Loading::class.java, child.state)
+                withTimeout(10_000) { firstLoading.await() }
+                val firstContent = async(start = CoroutineStart.UNDISPATCHED) {
+                    coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Content }
+                }
                 successGate.send(Unit)
                 firstRetry.await()
-                withTimeout(2_000) { coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Content } }
+                withTimeout(10_000) { firstContent.await() }
+                val secondFailure = async(start = CoroutineStart.UNDISPATCHED) {
+                    coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Failure }
+                }
                 child.load(source, 1, SourceQuery.Search("second", FilterList()))
-                withTimeout(2_000) { coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Failure } }
+                withTimeout(10_000) { secondFailure.await() }
+                val secondLoading = async(start = CoroutineStart.UNDISPATCHED) {
+                    coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Loading }
+                }
                 val secondRetry = async(start = CoroutineStart.UNDISPATCHED) { child.retry(source) }
-                withTimeout(2_000) { coordinator.states.first { it.queryStates[source.id] is SourceQueryState.Loading } }
+                assertInstanceOf(SourceQueryState.Loading::class.java, child.state)
+                withTimeout(10_000) { secondLoading.await() }
+                val secondContent = async(start = CoroutineStart.UNDISPATCHED) {
+                    coordinator.states.first {
+                        (it.queryStates[source.id] as? SourceQueryState.Content)?.items?.singleOrNull()?.url == "/second"
+                    }
+                }
                 successGate.send(Unit)
                 secondRetry.await()
-                withTimeout(2_000) { coordinator.states.first { (it.queryStates[source.id] as? SourceQueryState.Content)?.items?.singleOrNull()?.url == "/second" } }
+                withTimeout(10_000) { secondContent.await() }
                 assertEquals(callbackCount, callbacks.size)
                 assertTrue(child.subscriberCount > 0)
             } finally {

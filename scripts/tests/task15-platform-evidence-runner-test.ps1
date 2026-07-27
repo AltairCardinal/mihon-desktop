@@ -479,8 +479,143 @@ object AppVersion {
         throw "Windows runner did not generate a 256-bit lowercase hexadecimal acceptance token"
     }
 
-    $ActivationFixture = Join-Path $TempRoot "window-activation.json"
     $ActivationExecutable = Join-Path $TempRoot "Mihon Desktop.exe"
+    $CapturePriorityFixture = Join-Path $TempRoot "window-capture-priority.json"
+    $baseCaptureScenario = @{
+        processId = 601
+        windowHandle = 1601
+        expectedExecutable = $ActivationExecutable
+        windowOwnerPid = 601
+        ownedProcesses = @(@{ ProcessId = 601; ExecutablePath = $ActivationExecutable })
+        action = "capture"
+        failureStage = ""
+        releaseFailure = $false
+        keepTopmost = $false
+    }
+    $captureScenarios = @(
+        @{ name = "exact-capture" },
+        @{ name = "non-owned"; ownedProcesses = @() },
+        @{
+            name = "wrong-executable"
+            ownedProcesses = @(@{ ProcessId = 601; ExecutablePath = (Join-Path $TempRoot "Other.exe") })
+        },
+        @{ name = "hwnd-owner-mismatch"; windowOwnerPid = 999 },
+        @{ name = "bounds-failure"; failureStage = "bounds" },
+        @{ name = "copy-failure"; failureStage = "copy" },
+        @{ name = "save-failure"; failureStage = "save" },
+        @{ name = "graphics-dispose-failure"; failureStage = "dispose-graphics" },
+        @{ name = "bitmap-dispose-failure"; failureStage = "dispose-bitmap" },
+        @{
+            name = "owner-changes-before-release"
+            windowOwnerPidSequence = @(601, 601, 999)
+        },
+        @{ name = "release-failure"; releaseFailure = $true },
+        @{ name = "keep-bounds-failure"; keepTopmost = $true; failureStage = "bounds" },
+        @{ name = "keep-copy-failure"; keepTopmost = $true; failureStage = "copy" },
+        @{ name = "keep-save-failure"; keepTopmost = $true; failureStage = "save" },
+        @{
+            name = "keep-graphics-dispose-failure"
+            keepTopmost = $true
+            failureStage = "dispose-graphics"
+        },
+        @{
+            name = "keep-bitmap-dispose-failure"
+            keepTopmost = $true
+            failureStage = "dispose-bitmap"
+        },
+        @{ name = "feedback-success"; action = "feedback" },
+        @{ name = "feedback-failure"; action = "feedback"; failureStage = "feedback" }
+    ) | ForEach-Object {
+        $scenario = @{} + $baseCaptureScenario
+        foreach ($key in $_.Keys) { $scenario[$key] = $_[$key] }
+        $scenario
+    }
+    @{ scenarios = $captureScenarios } | ConvertTo-Json -Depth 8 |
+        Set-Content -LiteralPath $CapturePriorityFixture -Encoding utf8
+    $capturePriorityOutput = & $PowerShell -NoProfile -ExecutionPolicy Bypass -File $WindowsRunner `
+        -Case capture `
+        -EvidenceDir (Join-Path $TempRoot "capture-priority-runner") `
+        -Executable $ActivationExecutable `
+        -CapturePriorityPolicyFixture $CapturePriorityFixture
+    if ($LASTEXITCODE -ne 0) { throw "Windows runner capture-priority fixture failed" }
+    $capturePriority = ($capturePriorityOutput -join [Environment]::NewLine) | ConvertFrom-Json
+    $captureByName = @{}
+    foreach ($result in @($capturePriority.results)) {
+        $captureByName[$result.name] = $result
+    }
+    $exactCapture = $captureByName["exact-capture"]
+    if ($exactCapture.status -ne "PASS" -or
+        (@($exactCapture.events) -join "|") -ne
+            "priority:-1:1601|bounds:1601|new-bitmap|new-graphics|copy|save|dispose-graphics|dispose-bitmap|priority:-2:1601") {
+        $actual = $exactCapture | ConvertTo-Json -Depth 8 -Compress
+        throw "Exact capture did not keep one HWND through bounded topmost capture: $actual"
+    }
+    foreach ($name in @("non-owned", "wrong-executable", "hwnd-owner-mismatch")) {
+        $blocked = $captureByName[$name]
+        if ($blocked.status -ne "BLOCKED" -or @($blocked.setWindowPosCalls).Count -ne 0) {
+            throw "Unsafe capture scenario $name reached SetWindowPos"
+        }
+    }
+    foreach ($name in @(
+        "bounds-failure",
+        "copy-failure",
+        "save-failure",
+        "graphics-dispose-failure",
+        "bitmap-dispose-failure"
+    )) {
+        $blocked = $captureByName[$name]
+        $priorityCalls = @($blocked.setWindowPosCalls)
+        if ($blocked.status -ne "BLOCKED" -or
+            $priorityCalls.Count -ne 2 -or
+            $priorityCalls[0].window -ne 1601 -or $priorityCalls[0].insertAfter -ne -1 -or
+            $priorityCalls[1].window -ne 1601 -or $priorityCalls[1].insertAfter -ne -2) {
+            throw "Capture failure $name did not restore the same exact HWND"
+        }
+    }
+    $releaseFailure = $captureByName["release-failure"]
+    if ($releaseFailure.status -ne "BLOCKED" -or
+        (@($releaseFailure.events) -join "|") -notmatch "priority:-2:1601\\|stop-owned$") {
+        throw "NOTOPMOST failure did not stop the exact owned process tree"
+    }
+    $ownerChanged = $captureByName["owner-changes-before-release"]
+    $ownerChangedPriorityCalls = @($ownerChanged.setWindowPosCalls)
+    $ownerChangedChecks = @($ownerChanged.windowOwnerPidCalls)
+    if ($ownerChanged.status -ne "BLOCKED" -or
+        $ownerChangedPriorityCalls.Count -ne 1 -or
+        $ownerChangedPriorityCalls[0].insertAfter -ne -1 -or
+        $ownerChangedChecks.Count -ne 3 -or
+        $ownerChangedChecks[2].processId -ne 999 -or
+        (@($ownerChanged.events) -join "|") -notmatch "priority:-1:1601.*stop-owned$") {
+        throw "Changed HWND ownership was not revalidated before NOTOPMOST"
+    }
+    foreach ($name in @(
+        "keep-bounds-failure",
+        "keep-copy-failure",
+        "keep-save-failure",
+        "keep-graphics-dispose-failure",
+        "keep-bitmap-dispose-failure"
+    )) {
+        $blocked = $captureByName[$name]
+        $priorityCalls = @($blocked.setWindowPosCalls)
+        if ($blocked.status -ne "BLOCKED" -or
+            $priorityCalls.Count -ne 2 -or
+            $priorityCalls[0].window -ne 1601 -or $priorityCalls[0].insertAfter -ne -1 -or
+            $priorityCalls[1].window -ne 1601 -or $priorityCalls[1].insertAfter -ne -2) {
+            throw "KeepTopmost failure $name did not immediately restore the same exact HWND"
+        }
+    }
+    $feedbackSuccess = $captureByName["feedback-success"]
+    if ($feedbackSuccess.status -ne "PASS" -or
+        (@($feedbackSuccess.events) -join "|") -ne "priority:-1:1601|feedback|priority:-2:1601") {
+        throw "Successful feedback capture did not immediately restore window priority"
+    }
+    $feedbackFailure = $captureByName["feedback-failure"]
+    if ($feedbackFailure.status -ne "BLOCKED" -or
+        (@($feedbackFailure.events) -join "|") -ne "priority:-1:1601|feedback|priority:-2:1601") {
+        throw "Failed feedback capture did not immediately restore window priority"
+    }
+
+    $ActivationFixture = Join-Path $TempRoot "window-activation.json"
     @{
         scenarios = @(
             @{
@@ -491,6 +626,8 @@ object AppVersion {
                 showWindowResult = $true
                 automationFocusResult = $true
                 setForegroundResult = $false
+                appActivateResult = $true
+                switchToWindowResult = $true
                 foregroundSnapshots = @(
                     @{ handle = 2002; processId = 777; className = "OtherWindow" },
                     @{ handle = 1001; processId = 501; className = "SunAwtFrame" }
@@ -504,6 +641,12 @@ object AppVersion {
                 showWindowResult = $true
                 automationFocusResult = $true
                 setForegroundResult = $true
+                appActivateResult = $true
+                switchToWindowResult = $true
+                currentThreadId = 910
+                foregroundThreadId = 911
+                targetThreadId = 912
+                attachThreadResult = $true
                 foregroundSnapshots = @(
                     @{ handle = 2003; processId = 778; className = "OtherWindow" }
                 )
@@ -516,8 +659,93 @@ object AppVersion {
                 showWindowResult = $true
                 automationFocusResult = $true
                 setForegroundResult = $true
+                appActivateResult = $true
+                switchToWindowResult = $true
                 foregroundSnapshots = @(
                     @{ handle = 1003; processId = 503; className = "SunAwtFrame" }
+                )
+            },
+            @{
+                name = "wrong-executable-remains-blocked"
+                targetPid = 505
+                targetHandle = 1005
+                ownedProcesses = @(@{ ProcessId = 505; ExecutablePath = (Join-Path $TempRoot "Other.exe") })
+                showWindowResult = $true
+                automationFocusResult = $true
+                setForegroundResult = $true
+                appActivateResult = $true
+                switchToWindowResult = $true
+                foregroundSnapshots = @(
+                    @{ handle = 1005; processId = 505; className = "SunAwtFrame" }
+                )
+            },
+            @{
+                name = "switch-miss-attachment-recovers"
+                targetPid = 506
+                targetHandle = 1006
+                ownedProcesses = @(@{ ProcessId = 506; ExecutablePath = $ActivationExecutable })
+                showWindowResult = $true
+                automationFocusResult = $false
+                setForegroundResult = $false
+                appActivateResult = $true
+                switchToWindowResult = $true
+                currentThreadId = 900
+                foregroundThreadId = 901
+                targetThreadId = 902
+                attachThreadResult = $true
+                foregroundRequiresAttachment = $true
+                foregroundSnapshots = @(
+                    @{ handle = 2006; processId = 780; className = "LockedForeground" },
+                    @{ handle = 2006; processId = 780; className = "LockedForeground" },
+                    @{ handle = 2006; processId = 780; className = "LockedForeground" },
+                    @{ handle = 1006; processId = 506; className = "SunAwtFrame" }
+                )
+            },
+            @{
+                name = "detach-error-remains-blocked"
+                targetPid = 507
+                targetHandle = 1007
+                ownedProcesses = @(@{ ProcessId = 507; ExecutablePath = $ActivationExecutable })
+                showWindowResult = $true
+                automationFocusResult = $false
+                setForegroundResult = $false
+                appActivateResult = $true
+                switchToWindowResult = $true
+                currentThreadId = 920
+                foregroundThreadId = 921
+                targetThreadId = 922
+                attachThreadResult = $true
+                attachmentOutcomes = @(
+                    @{ result = $true },
+                    @{ result = $true },
+                    @{ throwMessage = "target detach failed" },
+                    @{ result = $true }
+                )
+                foregroundRequiresAttachment = $true
+                foregroundSnapshots = @(
+                    @{ handle = 2007; processId = 781; className = "LockedForeground" },
+                    @{ handle = 2007; processId = 781; className = "LockedForeground" },
+                    @{ handle = 2007; processId = 781; className = "LockedForeground" },
+                    @{ handle = 1007; processId = 507; className = "SunAwtFrame" }
+                )
+            },
+            @{
+                name = "target-hwnd-pid-mismatch-remains-blocked"
+                targetPid = 508
+                targetHandle = 1008
+                ownedProcesses = @(@{ ProcessId = 508; ExecutablePath = $ActivationExecutable })
+                showWindowResult = $true
+                automationFocusResult = $false
+                setForegroundResult = $false
+                appActivateResult = $true
+                switchToWindowResult = $true
+                currentThreadId = 930
+                foregroundThreadId = 931
+                targetThreadId = 932
+                targetThreadProcessId = 999
+                attachThreadResult = $true
+                foregroundSnapshots = @(
+                    @{ handle = 2008; processId = 782; className = "LockedForeground" }
                 )
             },
             @{
@@ -528,6 +756,8 @@ object AppVersion {
                 showWindowResult = $true
                 automationFocusResult = $true
                 setForegroundResult = $true
+                appActivateResult = $true
+                switchToWindowResult = $true
                 foregroundSnapshots = @(
                     @{ handle = 1004; processId = 504; className = "SunAwtFrame" }
                 )
@@ -547,34 +777,118 @@ object AppVersion {
     }
     if ($activationByName["initial-miss-then-exact"].status -ne "PASS" -or
         $activationByName["initial-miss-then-exact"].activation.setForegroundWindow -ne $false -or
+        $activationByName["initial-miss-then-exact"].activation.appActivate -ne $true -or
+        @($activationByName["initial-miss-then-exact"].appActivateProcessIds).Count -ne 1 -or
+        @($activationByName["initial-miss-then-exact"].appActivateProcessIds)[0] -ne 501 -or
+        @($activationByName["initial-miss-then-exact"].switchToWindowHandles).Count -ne 0 -or
         $activationByName["initial-miss-then-exact"].activation.pollAttempts -lt 2) {
         $actual = $activationByName["initial-miss-then-exact"] | ConvertTo-Json -Depth 8 -Compress
-        throw "Activation did not recover from an initial SetForegroundWindow miss by waiting for the exact target: $actual"
+        throw "Activation did not recover from an initial SetForegroundWindow miss through exact-PID AppActivate: $actual"
     }
-    foreach ($blocked in @("wrong-foreground-remains-blocked", "non-owned-target-remains-blocked")) {
+    $attachmentRecovery = $activationByName["switch-miss-attachment-recovers"]
+    $attachmentCalls = @($attachmentRecovery.inputAttachmentCalls)
+    $expectedAttachmentEvents = @(
+        "attach:900->901",
+        "attach:900->902",
+        "bring:1006",
+        "foreground:1006",
+        "focus:1006",
+        "detach:900->902",
+        "detach:900->901"
+    ) -join "|"
+    if ($attachmentRecovery.status -ne "PASS" -or
+        @($attachmentRecovery.appActivateProcessIds).Count -ne 1 -or
+        @($attachmentRecovery.appActivateProcessIds)[0] -ne 506 -or
+        @($attachmentRecovery.switchToWindowHandles).Count -ne 1 -or
+        @($attachmentRecovery.switchToWindowHandles)[0] -ne 1006 -or
+        $attachmentCalls.Count -ne 4 -or
+        $attachmentCalls[0].from -ne 900 -or $attachmentCalls[0].to -ne 901 -or $attachmentCalls[0].attach -ne $true -or
+        $attachmentCalls[1].from -ne 900 -or $attachmentCalls[1].to -ne 902 -or $attachmentCalls[1].attach -ne $true -or
+        $attachmentCalls[2].from -ne 900 -or $attachmentCalls[2].to -ne 902 -or $attachmentCalls[2].attach -ne $false -or
+        $attachmentCalls[3].from -ne 900 -or $attachmentCalls[3].to -ne 901 -or $attachmentCalls[3].attach -ne $false -or
+        @($attachmentRecovery.bringToTopHandles).Count -ne 1 -or @($attachmentRecovery.bringToTopHandles)[0] -ne 1006 -or
+        @($attachmentRecovery.focusHandles).Count -ne 1 -or @($attachmentRecovery.focusHandles)[0] -ne 1006 -or
+        (@($attachmentRecovery.inputFallbackEvents) -join "|") -ne $expectedAttachmentEvents -or
+        $attachmentRecovery.activation.inputAttachmentCleanupComplete -ne $true) {
+        $actual = $attachmentRecovery | ConvertTo-Json -Depth 10 -Compress
+        throw "Activation did not recover through bounded exact-HWND input attachment: $actual"
+    }
+    $detachFailure = $activationByName["detach-error-remains-blocked"]
+    if ($detachFailure.status -ne "BLOCKED" -or
+        $detachFailure.activation.inputAttachmentCleanupComplete -ne $false -or
+        @($detachFailure.inputAttachmentCalls).Count -ne 4 -or
+        @($detachFailure.inputAttachmentCalls)[2].to -ne 922 -or
+        @($detachFailure.inputAttachmentCalls)[2].attach -ne $false -or
+        @($detachFailure.inputAttachmentCalls)[3].to -ne 921 -or
+        @($detachFailure.inputAttachmentCalls)[3].attach -ne $false -or
+        @($detachFailure.activation.inputAttachment.detachErrors).Count -ne 1 -or
+        @($detachFailure.activation.inputAttachment.detachErrors)[0] -notmatch "922.*target detach failed") {
+        $actual = $detachFailure | ConvertTo-Json -Depth 10 -Compress
+        throw "Detach failure did not continue reverse cleanup and fail closed: $actual"
+    }
+    $targetMismatch = $activationByName["target-hwnd-pid-mismatch-remains-blocked"]
+    if ($targetMismatch.status -ne "BLOCKED" -or
+        $targetMismatch.activation.inputAttachment.targetThreadProcessId -ne 999 -or
+        @($targetMismatch.inputAttachmentCalls).Count -ne 0 -or
+        @($targetMismatch.bringToTopHandles).Count -ne 0 -or
+        @($targetMismatch.focusHandles).Count -ne 0) {
+        $actual = $targetMismatch | ConvertTo-Json -Depth 10 -Compress
+        throw "Target HWND PID mismatch did not block before attachment and focus: $actual"
+    }
+    foreach ($blocked in @("wrong-foreground-remains-blocked", "non-owned-target-remains-blocked", "wrong-executable-remains-blocked")) {
         if ($activationByName[$blocked].status -ne "BLOCKED") {
             throw "Activation fixture `$blocked` did not fail closed"
         }
     }
     if ($activationByName["wrong-foreground-remains-blocked"].activation.finalForegroundHwnd -ne 2003 -or
         $activationByName["wrong-foreground-remains-blocked"].activation.finalForegroundPid -ne 778 -or
-        $activationByName["wrong-foreground-remains-blocked"].activation.finalForegroundClass -ne "OtherWindow") {
+        $activationByName["wrong-foreground-remains-blocked"].activation.finalForegroundClass -ne "OtherWindow" -or
+        @($activationByName["wrong-foreground-remains-blocked"].appActivateProcessIds).Count -ne 1 -or
+        @($activationByName["wrong-foreground-remains-blocked"].appActivateProcessIds)[0] -ne 502 -or
+        @($activationByName["wrong-foreground-remains-blocked"].switchToWindowHandles).Count -ne 1 -or
+        @($activationByName["wrong-foreground-remains-blocked"].switchToWindowHandles)[0] -ne 1002 -or
+        $activationByName["wrong-foreground-remains-blocked"].activation.inputAttachmentCleanupComplete -ne $true) {
         throw "Blocked activation omitted the final foreground identity"
     }
     if ($activationByName["exact-target-passes"].status -ne "PASS" -or
-        $activationByName["exact-target-passes"].activation.finalForegroundHwnd -ne 1004) {
+        $activationByName["exact-target-passes"].activation.finalForegroundHwnd -ne 1004 -or
+        @($activationByName["exact-target-passes"].appActivateProcessIds).Count -ne 0 -or
+        @($activationByName["exact-target-passes"].switchToWindowHandles).Count -ne 0) {
         throw "Exact owned foreground target did not pass activation"
     }
+    foreach ($notActivated in @("non-owned-target-remains-blocked", "wrong-executable-remains-blocked")) {
+        if (@($activationByName[$notActivated].appActivateProcessIds).Count -ne 0 -or
+            @($activationByName[$notActivated].switchToWindowHandles).Count -ne 0 -or
+            @($activationByName[$notActivated].inputAttachmentCalls).Count -ne 0 -or
+            @($activationByName[$notActivated].bringToTopHandles).Count -ne 0 -or
+            @($activationByName[$notActivated].focusHandles).Count -ne 0 -or
+            @($activationByName[$notActivated].inputFallbackEvents).Count -ne 0) {
+            throw "Activation fixture `$notActivated` invoked a foreground fallback before ownership validation"
+        }
+    }
     $runnerSource = Get-Content -Raw -LiteralPath $WindowsRunner
+    if ($runnerSource -notmatch '\$screenshots\s*\+=\s*\[string\]\$capture\.path' -or
+        $runnerSource -notmatch '\$screenshotPath\s*=\s*\[string\]\$capture\.path') {
+        throw "URI evidence callers did not preserve absolute screenshot path strings"
+    }
     $activationSource = $runnerSource.Substring(
         $runnerSource.IndexOf("function Activate-OwnedMihonWindow"),
         $runnerSource.IndexOf("function Capture-MihonWindow") - $runnerSource.IndexOf("function Activate-OwnedMihonWindow")
     )
-    foreach ($required in @("ShowWindowAsync", "AutomationElement]::FromHandle", "SetForegroundWindow", "GetForegroundWindow")) {
-        if (-not $runnerSource.Contains($required)) { throw "Activation runner omitted $required" }
+    foreach ($required in @("ShowWindowAsync", "AutomationElement]::FromHandle", "SetForegroundWindow", "WScript.Shell", "AppActivate", "FinalReleaseComObject", "SwitchToThisWindow", "AttachThreadInput", "BringWindowToTop", "SetFocus", "GetForegroundWindow")) {
+        if ($activationSource.IndexOf($required, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
+            throw "Activation runner omitted $required"
+        }
     }
-    foreach ($forbidden in @("AttachThreadInput", "SendKeys", "explorer", "Start-Process")) {
-        if ($activationSource.Contains($forbidden)) { throw "Activation helper used forbidden mechanism $forbidden" }
+    foreach ($forbidden in @("SendKeys", "SendInput", "keybd_event", "mouse_event", "SetCursorPos", "explorer", "Start-Process")) {
+        if ($activationSource.IndexOf($forbidden, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+            throw "Activation helper used forbidden mechanism $forbidden"
+        }
+    }
+    foreach ($required in @("SetWindowPos", "HWND_TOPMOST", "HWND_NOTOPMOST")) {
+        if ($runnerSource.IndexOf($required, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
+            throw "Capture runner omitted owned-window Z-order primitive $required"
+        }
     }
 
     # Real source -> seal -> verify behavior.
