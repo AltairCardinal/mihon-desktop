@@ -134,6 +134,7 @@ WSL 具有 `DISPLAY=:0`、`WAYLAND_DISPLAY=wayland-0`、session DBus 和 `/usr/b
 ### 当前产物与 production 边界
 
 - Windows 隔离验收树没有 MSI。主工作树构建目录中存在 `app-desktop/tmp/mihon-dist/main/msi/Mihon Desktop-1.11.14.msi`，但 `Get-AuthenticodeSignature` 返回 `NotSigned`，且没有能绑定当前 commit/tree/productSource 的 Task 153 installer provenance sidecar；它不构成本轮签名产物证据。
+- 2026-07-27 在 Windows 重新核对发布前置：Windows SDK x64 `signtool.exe` 存在；`Cert:\LocalMachine\My` 没有发布证书，`Cert:\CurrentUser\My` 唯一带私钥证书为 `CN=localhost` 且仅含 Server Authentication EKU；环境也没有 release-controlled publisher/trust 输入。临时自签或把 localhost 证书加入信任不能构成 canonical Mihon 发布身份，因此没有启动必然产出不合格 unsigned/ad-hoc MSI 的构建。
 - macOS 隔离树及 `/tmp/mihon-dist` 没有 DMG。`/Applications/Mihon Desktop.app` 被 `/usr/bin/codesign` 判定为 `code object is not signed at all`，`spctl` 返回 rejected，来源为 `no usable signature`。
 - production `DesktopAppModule` 以默认空 `InstallerTrust` 创建 `DesktopUpdateInstaller`；即使文件名、checksum 与 size 正确，当前真实安装准备也只能诚实返回 manual-only，不能执行可信 handoff。
 

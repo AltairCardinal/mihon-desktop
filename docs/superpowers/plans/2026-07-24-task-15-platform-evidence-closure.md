@@ -191,6 +191,13 @@ runner 必须保存用户确认、取消、启动结果和 manual-only 反馈；
 
 **Execution evidence（验证工具完成，平台验收保持未勾选）：** 提交 `056dcb79db` 的只读产物盘点没有发现可绑定当前 commit/tree/productSource provenance 的 canonical signed MSI/DMG。Windows 隔离验收树没有 MSI；主工作树残留的 `Mihon Desktop-1.11.14.msi` 为 `NotSigned` 且没有 Task 153 installer provenance sidecar，不能冒充本轮产物。macOS 没有 DMG，当前部署 `.app` 被 `codesign` 判定为 `not signed at all`，`spctl` 拒绝并报告 `no usable signature`。production DI 又以默认空 `InstallerTrust` 创建 `DesktopUpdateInstaller`，真实行为只能返回 manual-only。验证 runner 已用 RED→GREEN 增加独立 trust identity、installer 自身签名、current commit/tree/productSource sidecar、canonical name/hash/size、production prepare/cancel/显式确认 handoff 的 fail-closed 合同；普通文本 MSI、第三方身份、伪 production 字段及错/缺 sidecar 均被拒绝。首审三项 P1 已关闭，修复复审又发现 Unix PASS 无条件返回 1；主代理按既有授权直接修正并以真实抽取函数 fixture 验证 PASS=0、BLOCKED≠0，未再增加审查轮次。Task 153 与 ID 86 保持 `CANDIDATE`；完整证据见 `docs/superpowers/reports/2026-07-26-task-15-platform-evidence-verify.md`。
 
+**Windows signer recheck（2026-07-27）：** Windows SDK 的 x64 `signtool.exe` 可用，但
+`Cert:\LocalMachine\My` 没有发布证书，`Cert:\CurrentUser\My` 唯一带私钥证书为
+`CN=localhost` 且 EKU 仅为 Server Authentication；环境中也没有 release-controlled
+publisher/trust 输入。该证书不能冒充 Mihon canonical code-signing identity。由于签名身份是
+不可替代的外部前置，本轮不生成必然不合格的无签名 MSI，也不临时创建并信任自签证书；
+Windows Task 153 保持 `BLOCKED`/未勾选，等待受控发布凭据和与之精确匹配的 publisher。
+
 **Production wiring follow-up：** 只读复核确认验证 runner 的 Unix PASS/BLOCKED 返回码与
 capture helper 已 `APPROVED`，但 composition root 的空 trust 是独立产品 wiring 缺口。
 按 `docs/superpowers/plans/2026-07-27-task-153-installer-trust-wiring.md` 先用 TDD 接入
