@@ -653,15 +653,19 @@
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/category/CategoryScreenModel.kt", "symbol": "private val createCategoryWithName", "line": 26}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/category/interactor/CreateCategoryWithName.kt", "symbol": "class CreateCategoryWithName", "line": 10}],
       "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "private val createCategory", "line": 75}],
-      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryCategoryBehaviorTest.kt#category dialog intents perform create rename reorder and delete through production DI", "productionMarkers": ["LibraryScreenModelFactory.create"]}]
+      "FIXTURE": [
+        {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/category/CategoryScreenModelBehaviorTest.kt#production interactors drive category CRUD ordering and preference cleanup", "productionMarkers": ["screenModel(repository)", "model.createCategory", "model.renameCategory", "model.changeOrder", "model.deleteCategory"]},
+        {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/category/CategoryScreenModelBehaviorTest.kt#each failed production mutation emits the explicit internal error boundary", "productionMarkers": ["model.createCategory", "model.renameCategory", "model.changeOrder", "model.deleteCategory"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryCategoryBehaviorTest.kt#category dialog intents perform create rename reorder and delete through production DI", "productionMarkers": ["LibraryScreenModelFactory.create"]}
+      ]
     },
     "group": "书库与详情",
     "tags": [
       "SHARE-DIRECT",
       "SHARE-EXTRACT"
     ],
-    "status": "SHARED",
-    "statusDecision": {
+    "status": "VERIFIED",
+    "statusDecisionHistory": [{
       "task": "Task 7",
       "decision": "KEEP_GAP",
       "followUp": "Task 7 evidence gap: category failure behavior and current Android contract",
@@ -669,15 +673,36 @@
       "behaviorMethods": {
         "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryCategoryBehaviorTest.kt": ["category dialog intents perform create rename reorder and delete through production DI"]
       }
+    }],
+    "statusDecision": {
+      "task": "Task 18",
+      "decision": "PROMOTE_VERIFIED",
+      "followUp": "NONE",
+      "gap": "NONE",
+      "behaviorMethods": {
+        "app/src/test/java/eu/kanade/tachiyomi/ui/category/CategoryScreenModelBehaviorTest.kt": [
+          "production interactors drive category CRUD ordering and preference cleanup",
+          "each failed production mutation emits the explicit internal error boundary"
+        ]
+      }
     },
     "authoritativeImplementation": "Fixed-main original Mihon capability #16: CategoryScreenModel owns category CRUD and ordering.",
     "desktopImplementation": "Android and Desktop screen models consume the current shared category interactors.",
     "protectionTests": [
+      "app/src/test/java/eu/kanade/tachiyomi/ui/category/CategoryScreenModelBehaviorTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryCategoryBehaviorTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
     ],
-    "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryCategoryBehaviorTest.kt": ["category dialog intents perform create rename reorder and delete through production DI"]},
+    "behaviorMethods": {
+      "app/src/test/java/eu/kanade/tachiyomi/ui/category/CategoryScreenModelBehaviorTest.kt": [
+        "production interactors drive category CRUD ordering and preference cleanup",
+        "each failed production mutation emits the explicit internal error boundary"
+      ],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryCategoryBehaviorTest.kt": ["category dialog intents perform create rename reorder and delete through production DI"]
+    },
     "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
+    "additionalBehaviorVerificationTask": ":app:testReleaseUnitTest --tests \"eu.kanade.tachiyomi.ui.category.CategoryScreenModelBehaviorTest\"",
+    "verificationScope": "VERIFIED: current Android executes the real CategoryScreenModel and production CRUD interactors for ordering, preference cleanup and all mutation failure events; Desktop retains its production DI CRUD fixture.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -1982,7 +2007,7 @@
     "tags": [
       "SHARE-DIRECT"
     ],
-    "status": "WIRED",
+    "status": "VERIFIED",
     "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderNavigation.kt 定义 read、filtered、duplicate 可组合跳过、当前章保留以及 Found/Boundary/InvalidCurrent 明确结果；app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt 的 getChapterList 以 sortedChapters、chapterId、skipPolicy、isFiltered 命名参数实际调用 filterAndroidReaderChapters",
     "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderNavigator.kt 消费共享 findAdjacentChapter，并保留 Desktop 章节引用与界面入口",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -1995,16 +2020,26 @@
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "symbol": "filterAndroidReaderChapters(", "line": 190}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderNavigation.kt", "symbol": "fun filterChaptersForReader", "line": 156}, {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderNavigation.kt", "symbol": "fun findAdjacentChapter", "line": 188}],
       "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderNavigator.kt", "symbol": "fun result", "line": 68}],
-      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderNavigatorTest.kt#reader navigator combines read filtered and duplicate skip flags", "productionMarkers": ["ReaderNavigator("]}]
+      "FIXTURE": [
+        {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt#current Android ReaderViewModel applies shared skip policy before exposing adjacent chapters", "productionMarkers": ["viewModel.init", "viewerChapters"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderNavigatorTest.kt#reader navigator combines read filtered and duplicate skip flags", "productionMarkers": ["ReaderNavigator("]}
+      ]
     },
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderNavigatorTest.kt"
     ],
-    "behaviorMethods": {"domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt": ["read filtered and duplicate skip rules can be combined"], "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderNavigatorTest.kt": ["reader navigator combines read filtered and duplicate skip flags"]},
-    "statusDecision": {"task": "Task 10", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Current Android ReaderViewModel.getChapterList to shared filter production wiring is evidenced only by source scan; disconnecting that production wiring does not fail an executable test.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderNavigatorTest.kt": ["reader navigator combines read filtered and duplicate skip flags"]}},
+    "behaviorMethods": {
+      "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt": ["read filtered and duplicate skip rules can be combined"],
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt": ["current Android ReaderViewModel applies shared skip policy before exposing adjacent chapters"],
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderNavigatorTest.kt": ["reader navigator combines read filtered and duplicate skip flags"]
+    },
+    "statusDecisionHistory": [{"task": "Task 10", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Current Android ReaderViewModel.getChapterList to shared filter production wiring is evidenced only by source scan; disconnecting that production wiring does not fail an executable test.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderNavigatorTest.kt": ["reader navigator combines read filtered and duplicate skip flags"]}}],
+    "statusDecision": {"task": "Task 18", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt": ["current Android ReaderViewModel applies shared skip policy before exposing adjacent chapters"]}},
     "behaviorVerificationTask": ":app-desktop:task4ParityVerification",
+    "additionalBehaviorVerificationTask": ":app:testReleaseUnitTest --tests \"eu.kanade.tachiyomi.ui.reader.ReaderSharedParityWiringTest\"",
+    "verificationScope": "VERIFIED: a production ReaderViewModel fixture observes shared skip semantics in adjacent chapter state; disconnecting filterAndroidReaderChapters makes that exact test fail, while the restored production wiring passes.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -2734,7 +2769,7 @@
     "tags": [
       "SHARE-EXTRACT"
     ],
-    "status": "WIRED",
+    "status": "VERIFIED",
     "authoritativeImplementation": "Fixed-main original Mihon capability #72: BackupRestorer validates the original artifact and restores categories, preferences, manga, sources, and repositories with progress.",
     "desktopImplementation": "DesktopBackupRestorer executes the current restore chain and BackupWorkflow preserves partial-failure and cancellation feedback.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -2747,16 +2782,32 @@
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorer.kt", "symbol": "suspend fun restore", "line": 48}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "data/src/commonMain/kotlin/tachiyomi/data/backup/BackupCodec.kt", "symbol": "fun <T> decode", "line": 25}],
       "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupRestorer.kt", "symbol": "suspend fun restore", "line": 54}],
-      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupRestorerTest.kt#first Desktop protobuf fixture follows the current restore chain", "productionMarkers": ["DesktopBackupRestorer("]}]
+      "FIXTURE": [
+        {"artifact": "app/src/test/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorerBehaviorTest.kt#current Android restorer sends fixed-main manga through production restore and progress", "productionMarkers": ["BackupRestorer(", "restorer.restore", "mangaRestorer.restore"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupRestorerTest.kt#fixed-main Android artifact restores every Desktop persistence boundary with progress", "productionMarkers": ["DesktopBackupRestorer(", ".restore(backup", "RestoreProgress"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupRestorerTest.kt#first Desktop protobuf fixture follows the current restore chain", "productionMarkers": ["DesktopBackupRestorer("]}
+      ]
     },
     "behaviorVerificationTask": ":app-desktop:task5ParityVerification",
     "behaviorMethods": {
-      "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupRestorerTest.kt": ["first Desktop protobuf fixture follows the current restore chain"],
+      "app/src/test/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorerBehaviorTest.kt": ["current Android restorer sends fixed-main manga through production restore and progress"],
+      "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupRestorerTest.kt": [
+        "first Desktop protobuf fixture follows the current restore chain",
+        "fixed-main Android artifact restores every Desktop persistence boundary with progress"
+      ],
       "app-desktop/src/test/kotlin/mihon/desktop/backup/BackupWorkflowIntegrationTest.kt": ["partial restore is reported as recoverable partial failure"]
     },
-    "statusDecision": {"task": "Task 11", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "The executable restore fixture is only the historical Desktop first-writer artifact; no fixed-original Android artifact executes through the Desktop restorer, and no production behavior test executes the current Android BackupRestorer.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupRestorerTest.kt": ["first Desktop protobuf fixture follows the current restore chain"], "app-desktop/src/test/kotlin/mihon/desktop/backup/BackupWorkflowIntegrationTest.kt": ["partial restore is reported as recoverable partial failure"]}},
-    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupRestorerTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/backup/BackupWorkflowIntegrationTest.kt"],
+    "statusDecisionHistory": [{"task": "Task 11", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "The executable restore fixture is only the historical Desktop first-writer artifact; no fixed-original Android artifact executes through the Desktop restorer, and no production behavior test executes the current Android BackupRestorer.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupRestorerTest.kt": ["first Desktop protobuf fixture follows the current restore chain"], "app-desktop/src/test/kotlin/mihon/desktop/backup/BackupWorkflowIntegrationTest.kt": ["partial restore is reported as recoverable partial failure"]}}],
+    "statusDecision": {"task": "Task 18", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"app/src/test/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorerBehaviorTest.kt": ["current Android restorer sends fixed-main manga through production restore and progress"], "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupRestorerTest.kt": ["fixed-main Android artifact restores every Desktop persistence boundary with progress"]}},
+    "protectionTests": [
+      "data/src/commonTest/kotlin/tachiyomi/data/backup/BackupCodecContractTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorerBehaviorTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupRestorerTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/backup/BackupWorkflowIntegrationTest.kt"
+    ],
+    "additionalBehaviorVerificationTask": ":app:testReleaseUnitTest --tests \"eu.kanade.tachiyomi.data.backup.restore.BackupRestorerBehaviorTest\"",
     "deviations": [{"classification": "PLATFORM_ADAPTER", "description": "Fixed-main restoration is an Android background job with notifications; Desktop uses a lifecycle-bound workflow and UI progress while retaining field-level restore behavior."}],
+    "verificationScope": "VERIFIED: the fixed-main schema artifact now follows original MangaBackupCreator category-order semantics; current Android executes its production BackupRestorer manga/progress path, and Desktop restores every persisted section and progress boundary without an ID fallback.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },

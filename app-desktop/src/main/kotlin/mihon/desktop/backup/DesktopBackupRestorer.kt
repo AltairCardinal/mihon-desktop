@@ -388,12 +388,12 @@ class DesktopBackupRestorer(
 
     private suspend fun restoreMangaCategories(
         mangaId: Long,
-        backupCategoryIndices: List<Long>,
+        backupCategoryOrders: List<Long>,
         backupCategories: List<BackupCategory>,
         categoryNameToId: Map<String, Long>,
     ) {
-        if (backupCategoryIndices.isEmpty()) return
-        val ids = resolveBackupCategoryIds(backupCategoryIndices, backupCategories, categoryNameToId)
+        if (backupCategoryOrders.isEmpty()) return
+        val ids = resolveBackupCategoryIds(backupCategoryOrders, backupCategories, categoryNameToId)
         if (ids.isNotEmpty()) {
             mangaRepository.setMangaCategories(mangaId, ids)
         }
@@ -429,20 +429,19 @@ class DesktopBackupRestorer(
         ): List<String> = (existingNames + backupCategories.map { it.name }).distinct()
 
         /**
-         * Resolves backup category indices → real DB category IDs using [categoryMap].
+         * Resolves backup category order values to real DB category IDs using [categoryMap].
          *
-         * The backup encodes category membership as 0-based indices into [backupCategories].
+         * Fixed-main writes each manga's category membership as [BackupCategory.order] values.
          * [categoryMap] maps category name → actual DB id.
          */
         fun resolveBackupCategoryIds(
-            backupCategoryIndices: List<Long>,
+            backupCategoryOrders: List<Long>,
             backupCategories: List<BackupCategory>,
             categoryMap: Map<String, Long>,
         ): List<Long> {
-            // Build index-to-BackupCategory map
-            val indexToCat = backupCategories.associateBy { it.order }
-            return backupCategoryIndices.mapNotNull { index ->
-                val catName = indexToCat[index]?.name ?: return@mapNotNull null
+            val categoryByOrder = backupCategories.associateBy { it.order }
+            return backupCategoryOrders.mapNotNull { order ->
+                val catName = categoryByOrder[order]?.name ?: return@mapNotNull null
                 categoryMap[catName]
             }
         }

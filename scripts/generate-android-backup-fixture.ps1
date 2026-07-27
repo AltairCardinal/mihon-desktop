@@ -101,7 +101,7 @@ fun main(args: Array<String>) {
         description = "Description", genre = listOf("Action", "Drama"), status = 1, thumbnailUrl = "https://example/cover.jpg",
         dateAdded = 11, viewer = 13, viewer_flags = 17, favorite = true, chapterFlags = 21,
         chapters = listOf(BackupChapter("/chapter", "Chapter 1", "Scanlator", true, true, 7, 12, 13, 1.5f, 2, 14, 3)),
-        categories = listOf(7),
+        categories = listOf(1),
         history = listOf(BackupHistory("/chapter", 18, 19)),
         tracking = listOf(BackupTracking(9, 10, 11, "https://tracking", "Tracked title", 2.5f, 20, 8.5f, 1, 22, 23, true, 15)),
         excludedScanlators = listOf("Excluded"), version = 4, notes = "Notes", initialized = true,

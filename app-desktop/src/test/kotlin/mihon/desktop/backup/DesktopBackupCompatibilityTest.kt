@@ -29,9 +29,11 @@ class DesktopBackupCompatibilityTest {
         ).trim()
         assertEquals("6fbf6dfca203d99d6dd32137f2df97ced40c81b8", authorityRef)
 
-        val bytes = requireNotNull(javaClass.getResourceAsStream("/backup/android-full.tachibk")).readBytes()
+        val bytes = Files.readAllBytes(
+            repositoryRoot().resolve("data/src/commonTest/resources/backup/android-full.tachibk"),
+        )
         assertEquals(
-            "43fa65a3469932f4da2794e8bdf69c7bef7d65d4e77fe894e1b1798ed1efad8d",
+            "f8ddfe8bea24ff9d428ce06058beef8194144542c8774b6ab25493528acd89a8",
             MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) },
         )
 

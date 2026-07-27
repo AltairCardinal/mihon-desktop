@@ -1,6 +1,8 @@
 package eu.kanade.tachiyomi.ui.reader
 
 import androidx.lifecycle.SavedStateHandle
+import eu.kanade.domain.base.BasePreferences
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
@@ -12,10 +14,13 @@ import eu.kanade.tachiyomi.ui.reader.viewer.navigation.KindlishNavigation
 import eu.kanade.tachiyomi.ui.reader.viewer.navigation.LNavigation
 import eu.kanade.tachiyomi.ui.reader.viewer.navigation.RightAndLeftNavigation
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagePairingAlgorithm
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -32,9 +37,12 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.download.service.DownloadPreferences
-import java.io.File
+import tachiyomi.domain.manga.interactor.GetManga
+import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.source.service.SourceManager
 
 class ReaderSharedParityWiringTest {
 
@@ -190,18 +198,70 @@ class ReaderSharedParityWiringTest {
     }
 
     @Test
-    fun `current Android consumer ReaderViewModel delegates the sorted chapter list to the shared skip filter`() {
-        val readerViewModel = productionSource("app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt")
-        val getChapterList = bracedBlock(readerViewModel, "private suspend fun getChapterList()")
+    fun `current Android ReaderViewModel applies shared skip policy before exposing adjacent chapters`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        try {
+            val manga = Manga.create().copy(
+                id = 1,
+                source = 7,
+                title = "Reader parity",
+                chapterFlags = Manga.CHAPTER_SORTING_NUMBER,
+            )
+            val chapters = listOf(
+                chapter(id = 1, number = 1.0, scanlator = "A", read = true),
+                chapter(id = 2, number = 2.0, scanlator = "A"),
+                chapter(id = 3, number = 3.0, scanlator = "A"),
+                chapter(id = 4, number = 4.0, scanlator = "A", read = true),
+            )
+            val source = mockk<Source>()
+            val sourceManager = mockk<SourceManager> {
+                every { isInitialized } returns MutableStateFlow(true)
+                every { getOrStub(manga.source) } returns source
+            }
+            val getManga = mockk<GetManga>()
+            coEvery { getManga.await(manga.id) } returns manga
+            val getChapters = mockk<GetChaptersByMangaId>()
+            coEvery { getChapters.await(manga.id, applyScanlatorFilter = true) } returns chapters
+            val readerPreferences = mockk<ReaderPreferences>(relaxed = true)
+            every { readerPreferences.skipRead().get() } returns true
+            every { readerPreferences.skipFiltered().get() } returns false
+            every { readerPreferences.skipDupe().get() } returns false
+            val basePreferences = mockk<BasePreferences>(relaxed = true)
+            every { basePreferences.downloadedOnly().get() } returns false
+            val downloadPreferences = mockk<DownloadPreferences>(relaxed = true)
+            every { downloadPreferences.autoDownloadWhileReading().get() } returns 0
+            val chapterLoader = mockk<eu.kanade.tachiyomi.ui.reader.loader.ChapterLoader>(relaxed = true)
+            val viewModel = ReaderViewModel(
+                savedState = SavedStateHandle(),
+                sourceManager = sourceManager,
+                downloadManager = mockk(relaxed = true),
+                downloadProvider = mockk(relaxed = true),
+                imageSaver = mockk(relaxed = true),
+                readerPreferences = readerPreferences,
+                basePreferences = basePreferences,
+                downloadPreferences = downloadPreferences,
+                trackPreferences = mockk(relaxed = true),
+                trackChapter = mockk(relaxed = true),
+                getManga = getManga,
+                getChaptersByMangaId = getChapters,
+                getNextChapters = mockk(relaxed = true),
+                upsertHistory = mockk(relaxed = true),
+                updateChapter = mockk(relaxed = true),
+                setMangaViewerFlags = mockk(relaxed = true),
+                getIncognitoState = mockk(relaxed = true),
+                libraryPreferences = mockk(relaxed = true),
+                chapterLoaderFactory = { _: Manga, _: Source -> chapterLoader },
+            )
 
-        assertEquals(1, occurrenceCount(getChapterList, "filterAndroidReaderChapters("))
-        val delegate = callBlock(getChapterList, "filterAndroidReaderChapters(")
-        assertTrue(delegate.contains("chapters = sortedChapters"))
-        assertTrue(delegate.contains("currentChapterId = chapterId"))
-        assertTrue(delegate.contains("skipPolicy = skipPolicy"))
-        assertTrue(
-            delegate.contains("isFiltered = { chapter -> skipPolicy.filtered && isChapterFiltered(manga, chapter) }"),
-        )
+            assertTrue(viewModel.init(manga.id, initialChapterId = 3).isSuccess)
+
+            val visible = requireNotNull(viewModel.state.value.viewerChapters)
+            assertEquals(3L, visible.currChapter.chapter.id)
+            assertEquals(2L, visible.prevChapter?.chapter?.id)
+            assertEquals(null, visible.nextChapter)
+        } finally {
+            Dispatchers.resetMain()
+        }
     }
 
     private fun chapter(
@@ -216,50 +276,4 @@ class ReaderSharedParityWiringTest {
         chapterNumber = number,
         scanlator = scanlator,
     )
-
-    private fun productionSource(path: String): String {
-        var current: File? = File(requireNotNull(System.getProperty("user.dir"))).absoluteFile
-        while (current != null && !current.resolve("settings.gradle.kts").isFile) current = current.parentFile
-        return requireNotNull(current) { "Repository root not found from ${System.getProperty("user.dir")}" }
-            .resolve(path)
-            .readText()
-    }
-
-    private fun bracedBlock(source: String, marker: String): String {
-        val start = source.indexOf(marker)
-        require(start >= 0) { "Missing production block: $marker" }
-        val open = source.indexOf('{', start)
-        var depth = 0
-        for (index in open until source.length) {
-            when (source[index]) {
-                '{' -> depth++
-                '}' -> {
-                    depth--
-                    if (depth == 0) return source.substring(start, index + 1)
-                }
-            }
-        }
-        error("Unclosed production block: $marker")
-    }
-
-    private fun callBlock(source: String, marker: String): String {
-        val start = source.indexOf(marker)
-        require(start >= 0) { "Missing production call: $marker" }
-        val open = source.indexOf('(', start)
-        var depth = 0
-        for (index in open until source.length) {
-            when (source[index]) {
-                '(' -> depth++
-                ')' -> {
-                    depth--
-                    if (depth == 0) return source.substring(start, index + 1)
-                }
-            }
-        }
-        error("Unclosed production call: $marker")
-    }
-
-    private fun occurrenceCount(source: String, marker: String): Int = Regex(
-        Regex.escape(marker),
-    ).findAll(source).count()
 }

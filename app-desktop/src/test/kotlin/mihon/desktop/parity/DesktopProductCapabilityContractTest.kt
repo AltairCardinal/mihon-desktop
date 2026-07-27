@@ -37,7 +37,8 @@ class DesktopProductCapabilityContractTest {
     private val terminalStatuses = setOf("VERIFIED", "EXEMPT")
     private val requiredTerminalEvidenceRoles =
         setOf("FIXED_ORIGINAL", "CURRENT_ANDROID", "SHARED_OR_ADAPTER", "DESKTOP_CONSUMER", "FIXTURE")
-    private val task18PromotedStatuses = mapOf(7 to "VERIFIED", 11 to "VERIFIED", 71 to "VERIFIED")
+    private val task18PromotedStatuses =
+        mapOf(7 to "VERIFIED", 11 to "VERIFIED", 16 to "VERIFIED", 54 to "VERIFIED", 71 to "VERIFIED", 72 to "VERIFIED")
     private val task2ProvenanceStatuses =
         mapOf(9 to "VERIFIED", 10 to "VERIFIED", 11 to "WIRED", 12 to "VERIFIED", 16 to "SHARED", 17 to "SHARED", 19 to "WIRED", 22 to "SHARED")
     private val task2BehaviorMethods =
@@ -1930,7 +1931,19 @@ class DesktopProductCapabilityContractTest {
                 item.getValue("behaviorMethods").jsonObject.mapValues { (_, methods) ->
                     methods.jsonArray.map { it.jsonPrimitive.content }.toSet()
                 }
-            val expectedBehaviorMethods = task7BehaviorMethods[id] ?: task2BehaviorMethods.getValue(id)
+            val expectedBehaviorMethods =
+                if (id == 16) {
+                    task7BehaviorMethods.getValue(id) +
+                        mapOf(
+                            "app/src/test/java/eu/kanade/tachiyomi/ui/category/CategoryScreenModelBehaviorTest.kt" to
+                                setOf(
+                                    "production interactors drive category CRUD ordering and preference cleanup",
+                                    "each failed production mutation emits the explicit internal error boundary",
+                                ),
+                        )
+                } else {
+                    task7BehaviorMethods[id] ?: task2BehaviorMethods.getValue(id)
+                }
             assertEquals(expectedBehaviorMethods, behaviorMethods, "ID $id behavior methods")
             task2BehaviorMethods.getValue(id).forEach { (path, methods) ->
                 val source = Files.readString(repositoryRoot.resolve(path))
@@ -2004,20 +2017,30 @@ class DesktopProductCapabilityContractTest {
         val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
         task4ProvenanceStatuses.forEach { (id, expectedStatus) ->
             val item = items.getValue(id).jsonObject
-            assertEquals(expectedStatus, requiredText(item, "status", id), "Task 4 must not change capability status")
+            assertEquals(task18PromotedStatuses[id] ?: expectedStatus, requiredText(item, "status", id), "Latest audited status must supersede Task 4")
             assertEquals(fixedOriginalMihonRef, requiredText(item, "upstreamRef", id))
             assertEquals(":app-desktop:task4ParityVerification", requiredText(item, "behaviorVerificationTask", id))
             val behaviorMethods =
                 item.getValue("behaviorMethods").jsonObject.mapValues { (_, methods) ->
                     methods.jsonArray.map { it.jsonPrimitive.content }.toSet()
                 }
-            assertEquals(task4BehaviorMethods.getValue(id), behaviorMethods, "ID $id behavior methods")
+            val expectedBehaviorMethods =
+                if (id == 54) {
+                    task4BehaviorMethods.getValue(id) +
+                        mapOf(
+                            "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt" to
+                                setOf("current Android ReaderViewModel applies shared skip policy before exposing adjacent chapters"),
+                        )
+                } else {
+                    task4BehaviorMethods.getValue(id)
+                }
+            assertEquals(expectedBehaviorMethods, behaviorMethods, "ID $id behavior methods")
             behaviorMethods.forEach { (path, methods) ->
                 val source = Files.readString(repositoryRoot.resolve(path))
                 methods.forEach { method ->
                     val methodSource = kotlinTestMethod(source, method, "ID $id behavior method $path#$method")
                     assertTrue(
-                        listOf("assert", " shouldBe ", ".shouldContain").any(methodSource::contains),
+                        listOf("assert", " shouldBe ", ".shouldContain", "verify(", "coVerify(").any(methodSource::contains),
                         "ID $id behavior method must execute assertions: $path#$method",
                     )
                 }
@@ -2061,6 +2084,17 @@ class DesktopProductCapabilityContractTest {
                                 "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupCompatibilityTest.kt" to
                                     setOf("fixed-main Android fixture crosses Desktop creator boundary and reencodes equivalently"),
                             )
+                    72 ->
+                        task5BehaviorMethods.getValue(id) +
+                            mapOf(
+                                "app/src/test/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorerBehaviorTest.kt" to
+                                    setOf("current Android restorer sends fixed-main manga through production restore and progress"),
+                                "app-desktop/src/test/kotlin/mihon/desktop/backup/DesktopBackupRestorerTest.kt" to
+                                    setOf(
+                                        "first Desktop protobuf fixture follows the current restore chain",
+                                        "fixed-main Android artifact restores every Desktop persistence boundary with progress",
+                                    ),
+                            )
                     95 ->
                         item.getValue("statusDecision").jsonObject.getValue("behaviorMethods").jsonObject.mapValues { (_, methods) ->
                             methods.jsonArray.map { it.jsonPrimitive.content }.toSet()
@@ -2079,7 +2113,7 @@ class DesktopProductCapabilityContractTest {
                 methods.forEach { method ->
                     val methodSource = kotlinTestMethod(source, method, "ID $id behavior method $path#$method")
                     assertTrue(
-                        listOf("assert", " shouldBe ", ".shouldContain").any(methodSource::contains),
+                        listOf("assert", " shouldBe ", ".shouldContain", "verify(", "coVerify(").any(methodSource::contains),
                         "ID $id behavior method must execute assertions: $path#$method",
                     )
                 }
@@ -2147,7 +2181,7 @@ class DesktopProductCapabilityContractTest {
                 methods.forEach { method ->
                     val methodSource = kotlinTestMethod(source, method, "ID $id Task 6 behavior method $path#$method")
                     assertTrue(
-                        listOf("assert", " shouldBe ", ".shouldContain").any(methodSource::contains),
+                        listOf("assert", " shouldBe ", ".shouldContain", "verify(", "coVerify(").any(methodSource::contains),
                         "ID $id Task 6 behavior method must execute assertions: $path#$method",
                     )
                 }
@@ -2191,16 +2225,16 @@ class DesktopProductCapabilityContractTest {
         )
         assertEquals(
             task7Statuses.keys,
-            items.filterValues { it.jsonObject["statusDecision"]?.jsonObject?.get("task")?.jsonPrimitive?.content == "Task 7" }.keys,
+            items.filterValues { statusDecisionTasks(it.jsonObject, validatedId(it.jsonObject)).contains("Task 7") }.keys,
             "Task 7 status decisions must belong only to its eight target IDs",
         )
 
         task7Statuses.forEach { (id, expectedStatus) ->
             val item = items.getValue(id).jsonObject
-            assertEquals(expectedStatus, requiredText(item, "status", id), "ID $id: Task 7 status decision")
+            assertEquals(task18PromotedStatuses[id] ?: expectedStatus, requiredText(item, "status", id), "ID $id: latest status after Task 7")
             assertEquals(fixedOriginalMihonRef, requiredText(item, "upstreamRef", id))
 
-            val decision = item.getValue("statusDecision").jsonObject
+            val decision = statusDecisionForTask(item, id, "Task 7")
             val expectedDecision =
                 when (id) {
                     17, 19, 29 -> "PROMOTE_VERIFIED"
@@ -2417,14 +2451,14 @@ class DesktopProductCapabilityContractTest {
         val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
         val task10DecisionIds =
             items.filterValues { item ->
-                item.jsonObject["statusDecision"]?.jsonObject?.get("task")?.jsonPrimitive?.content == "Task 10"
+                statusDecisionTasks(item.jsonObject, validatedId(item.jsonObject)).contains("Task 10")
             }.keys
         assertEquals(task10Statuses.keys, task10DecisionIds, "Task 10 capability set")
         task10Statuses.forEach { (id, expectedStatus) ->
             val item = items.getValue(id).jsonObject
-            assertEquals(expectedStatus, requiredText(item, "status", id), "ID $id Task 10 status")
+            assertEquals(task18PromotedStatuses[id] ?: expectedStatus, requiredText(item, "status", id), "ID $id latest status after Task 10")
             validateRoleEvidence(item, repositoryRoot, inventory)
-            val decision = item.getValue("statusDecision").jsonObject
+            val decision = statusDecisionForTask(item, id, "Task 10")
             assertEquals("Task 10", requiredText(decision, "task", id, "statusDecision"))
             val verified = id !in setOf(54, 56)
             assertEquals(if (verified) "PROMOTE_VERIFIED" else "KEEP_GAP", requiredText(decision, "decision", id, "statusDecision"))
@@ -2460,7 +2494,7 @@ class DesktopProductCapabilityContractTest {
             },
             "ID 56 sourceId projection must remain an explicit migration output",
         )
-        val navigationGap = requiredText(items.getValue(54).jsonObject.getValue("statusDecision").jsonObject, "gap", 54, "statusDecision")
+        val navigationGap = requiredText(statusDecisionForTask(items.getValue(54).jsonObject, 54, "Task 10"), "gap", 54, "statusDecision")
         assertTrue(
             "source scan" in navigationGap && "production wiring" in navigationGap,
             "ID 54 gap must name the non-killable current Android wiring evidence",
@@ -2557,7 +2591,7 @@ class DesktopProductCapabilityContractTest {
         assertEquals("NONE", requiredText(creator.getValue("statusDecision").jsonObject, "gap", 71, "statusDecision"))
         val schedulerGap = requiredText(items.getValue(73).jsonObject.getValue("statusDecision").jsonObject, "gap", 73, "statusDecision")
         assertTrue("exit" in schedulerGap && "periodic scheduling" in schedulerGap, "ID 73 gap must name the process-lifetime scheduling difference")
-        val restoreGap = requiredText(items.getValue(72).jsonObject.getValue("statusDecision").jsonObject, "gap", 72, "statusDecision")
+        val restoreGap = requiredText(statusDecisionForTask(items.getValue(72).jsonObject, 72, "Task 11"), "gap", 72, "statusDecision")
         assertTrue(
             "fixed-original Android artifact" in restoreGap && "current Android BackupRestorer" in restoreGap,
             "ID 72 gap must name both missing Android restore boundaries",
@@ -4774,7 +4808,7 @@ class DesktopProductCapabilityContractTest {
                     val methodSource =
                         kotlinTestMethod(Files.readString(repositoryRoot.resolve(path)), method, "ID $id FIXTURE artifact $artifact")
                     assertTrue(
-                        listOf("assert", " shouldBe ", ".shouldContain").any(methodSource::contains),
+                        listOf("assert", " shouldBe ", ".shouldContain", "verify(", "coVerify(").any(methodSource::contains),
                         "ID $id: FIXTURE artifact must execute assertions",
                     )
                     val productionMarkers = entry["productionMarkers"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()

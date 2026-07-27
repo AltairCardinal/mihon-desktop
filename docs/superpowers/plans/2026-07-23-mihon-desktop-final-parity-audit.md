@@ -670,14 +670,22 @@ consumer，不冒充原版依据。
 - ID 11 已完成：Desktop 明确声明 native system notification unsupported，并以真实
   `DesktopSystemNotifier`、privacy capability 与 library update fixture 保护应用内反馈；旧的
   “当前 Android 必须消费 fork `NotificationEvent`”要求已判为错误扩张。
-- ID 71 已完成：固定原版生成的 `android-full.tachibk` 已穿过
+- ID 71 已完成：由固定原版模型生成且遵循原版 creator 语义的 `android-full.tachibk` 已穿过
   `DesktopBackupCreator.decodeFromBytes` / `encodeToBytes` 生产边界，九类 section、legacy
   `viewer` 与 canonical `viewer_flags` 均保持。
 - ID 7 已完成：Robolectric fixture 执行真实 `AndroidPreferenceStore` 与
   `PreferenceModule` wiring；RED 发现并修复 object-as-string/int 遇到错误 backing type 时
   未交给基类清理的缺陷，Desktop java.util.prefs adapter 与迁移证据继续保留。
-- 当前治理套件 24 项中仅“其余未决项仍有悬空 follow-up”这一预期 RED；16、22、24、26、
-  28、38、54、56、66、72、73、93 尚未关闭，因此 18A/18B 均保持未勾选。
+- ID 16 已完成：Robolectric fixture 执行真实 `CategoryScreenModel`、五个 production
+  interactor 与 Android preferences，覆盖 CRUD、ordering、删除后的 preference cleanup
+  以及四类 mutation failure 的 `InternalError`。
+- ID 54 已完成：current Android `ReaderViewModel.init` 的真实行为 fixture 观察 shared skip
+  policy 处理后的相邻章节；临时断开 `filterAndroidReaderChapters` 后测试精确 RED，恢复后 GREEN。
+- ID 72 已完成：修正固定样本生成器把 category ID 当作 order 的错误，重新生成 fixture；
+  current Android `BackupRestorer` 与 Desktop `DesktopBackupRestorer` 均执行该样本，Desktop
+  无需增加偏离固定原版的 category-ID fallback。
+- 当前治理套件 24 项中仅“其余未决项仍有悬空 follow-up”这一预期 RED；22、24、26、28、
+  38、56、66、73、93 尚未关闭，因此 18A/18B 均保持未勾选。
 
 ### Task 19：运行全量测试、Windows/macOS 构建与运行验收
 

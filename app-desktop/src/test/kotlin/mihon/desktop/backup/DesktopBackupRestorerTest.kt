@@ -150,6 +150,85 @@ class DesktopBackupRestorerTest {
     }
 
     @Test
+    @Suppress("DEPRECATION")
+    fun `fixed-main Android artifact restores every Desktop persistence boundary with progress`() = runTest {
+        val authorityRef = repositoryFile(
+            "data/src/commonTest/resources/backup/android-full.original-mihon-ref",
+        ).readText().trim()
+        assertEquals("6fbf6dfca203d99d6dd32137f2df97ced40c81b8", authorityRef)
+        val backup = DesktopBackupCreator.decodeFromBytes(
+            repositoryFile("data/src/commonTest/resources/backup/android-full.tachibk").readBytes(),
+        )
+
+        val mangaRepository = FakeMangaRepository()
+        val chapterRepository = FakeChapterRepository()
+        val categoryRepository = FakeCategoryRepository()
+        val historyRepository = FakeHistoryRepository()
+        val tracks = mutableListOf<Track>()
+        val extensionRepos = mutableListOf<ExtensionRepo>()
+        val excludedScanlators = mutableListOf<Pair<Long, List<String>>>()
+        val sourceStoreRequests = mutableListOf<Long>()
+        val appNode = Preferences.userRoot().node("/mihon-test/fixed-android-app-${System.nanoTime()}")
+        val sourceNode = Preferences.userRoot().node("/mihon-test/fixed-android-source-${System.nanoTime()}")
+        val appStore = DesktopPreferenceStore(appNode)
+        val sourceStore = DesktopPreferenceStore(sourceNode)
+        val progress = mutableListOf<RestoreProgress>()
+        try {
+            val result = DesktopBackupRestorer(
+                mangaRepository = mangaRepository,
+                chapterRepository = chapterRepository,
+                categoryRepository = categoryRepository,
+                historyRepository = historyRepository,
+                setExcludedScanlatorsForManga = { mangaId, excluded ->
+                    excludedScanlators += mangaId to excluded
+                },
+                trackRepository = recordingTrackRepository(tracks),
+                preferenceStore = appStore,
+                sourcePreferenceStore = { sourceId ->
+                    sourceStoreRequests += sourceId
+                    sourceStore
+                },
+                extensionRepoRepository = recordingExtensionRepoRepository(extensionRepos),
+            ).restore(backup, progress::add)
+
+            assertEquals(1, result.successCount)
+            assertEquals(false, result.hasErrors)
+            assertEquals((1..6).map { RestoreProgress(it, 6) }, progress)
+
+            val category = categoryRepository.getAll().single()
+            assertEquals("Category", category.name)
+            assertEquals(1L, category.order)
+            assertEquals(2L, category.flags)
+            val manga = requireNotNull(mangaRepository.get(1L))
+            assertEquals(101L, manga.source)
+            assertEquals("/manga", manga.url)
+            assertEquals("Canonical manga", manga.title)
+            assertEquals(17L, manga.viewerFlags)
+            assertEquals(listOf(category.id), mangaRepository.getMangaCategoryIds(manga.id))
+            assertEquals(listOf("Excluded"), excludedScanlators.single().second)
+
+            val chapter = chapterRepository.getChapterByMangaId(manga.id).single()
+            assertEquals("/chapter", chapter.url)
+            assertEquals(true, chapter.read)
+            assertEquals(true, chapter.bookmark)
+            assertEquals(chapter.id, historyRepository.upserted.single().chapterId)
+            assertEquals(18L, historyRepository.upserted.single().readAt.time)
+            assertEquals(19L, historyRepository.upserted.single().sessionReadDuration)
+
+            assertEquals(9L, tracks.single().trackerId)
+            assertEquals(11L, tracks.single().remoteId)
+            assertEquals("dark", appStore.getString("theme").get())
+            assertEquals(listOf(101L), sourceStoreRequests)
+            assertEquals(3, sourceStore.getInt("quality").get())
+            assertEquals("https://repo", extensionRepos.single().baseUrl)
+            assertEquals("fingerprint", extensionRepos.single().signingKeyFingerprint)
+        } finally {
+            appNode.removeNode()
+            sourceNode.removeNode()
+        }
+    }
+
+    @Test
     fun `first Desktop protobuf fixture follows the current restore chain`() = runTest {
         val mangaRepository = FakeMangaRepository()
         val chapterRepository = FakeChapterRepository()
@@ -242,9 +321,9 @@ class DesktopBackupRestorerTest {
             BackupCategory(name = "Drama", order = 1),
         )
         // manga belongs to Action (order=0) and Drama (order=1)
-        val backupCategoryIndices = listOf(0L, 1L)
+        val backupCategoryOrders = listOf(0L, 1L)
         val ids = DesktopBackupRestorer.resolveBackupCategoryIds(
-            backupCategoryIndices = backupCategoryIndices,
+            backupCategoryOrders = backupCategoryOrders,
             backupCategories = backupCategoryOrder,
             categoryMap = categoryMap,
         )
@@ -448,6 +527,12 @@ class DesktopBackupRestorerTest {
         override suspend fun replaceRepo(newRepo: ExtensionRepo) { upsertRepo(newRepo) }
         override suspend fun deleteRepo(baseUrl: String) { target.removeAll { it.baseUrl == baseUrl } }
     }
+
+    private fun repositoryFile(relativePath: String): File =
+        generateSequence(File(requireNotNull(System.getProperty("user.dir"))).absoluteFile, File::getParentFile)
+            .map { it.resolve(relativePath) }
+            .firstOrNull(File::isFile)
+            ?: error("Repository file not found: $relativePath")
 
     @Test
     fun `restore preserves manga update metadata fields`() = runTest {

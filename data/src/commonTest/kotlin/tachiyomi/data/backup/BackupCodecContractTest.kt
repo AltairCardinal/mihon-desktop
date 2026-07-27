@@ -40,7 +40,7 @@ class BackupCodecContractTest {
     fun `fixed-main Android full fixture decodes and reencodes with canonical schema`() {
         val bytes = requireNotNull(javaClass.getResourceAsStream("/backup/android-full.tachibk")).readBytes()
         assertEquals(
-            "43fa65a3469932f4da2794e8bdf69c7bef7d65d4e77fe894e1b1798ed1efad8d",
+            "f8ddfe8bea24ff9d428ce06058beef8194144542c8774b6ab25493528acd89a8",
             MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) },
         )
         val decoded = BackupCodec.decode(Backup.serializer(), bytes)
@@ -67,7 +67,7 @@ class BackupCodecContractTest {
         assertEquals(17, manga.viewer_flags)
         assertTrue(manga.favorite)
         assertEquals(21, manga.chapterFlags)
-        assertEquals(listOf(7L), manga.categories)
+        assertEquals(listOf(1L), manga.categories)
         assertEquals(listOf("Excluded"), manga.excludedScanlators)
         assertEquals(4, manga.version)
         assertEquals("Notes", manga.notes)
