@@ -11,6 +11,12 @@ active-task: Task 17
 
 > 本计划是父路线图 Task 6 的唯一活动执行入口。父 Task 6 在本计划全部完成前保持未勾选。
 
+> **macOS 调度边界（用户指令，2026-07-27）：** 本计划中的 macOS 构建、SSH、
+> TCC/Keychain、GUI/capture、签名/公证、DMG 与 installer handoff 全部延后到项目迁移至
+> macOS 机器后执行。当前阶段不重试这些路径，继续 Windows/Linux/仓库内工作。延期不构成
+> `VERIFIED`、`EXEMPT` 或 Task 完成，Task 17、19 与父 Task 6 的对应 checkbox 仍须在迁移后
+> 取得真实证据才能勾选。
+
 ## 目标与固定事实
 
 目标不是把现有阶段状态批量改名，而是让 64 项能力中的每一项最终都有可复核的固定原版 provenance、当前 Android consumer、Desktop consumer、shared 实现或合法平台 adapter、production protection test，以及唯一终态 `VERIFIED` 或有完整证据的 `EXEMPT`。
@@ -512,6 +518,12 @@ active-task: Task 17
 
 **Steps:** 按 child plan 顺序执行；每次完成后回到本计划更新 status 与 evidence。14、15、16A–16D 任一 inventory 未完成或任一 child plan 未完成时，不得进入 Task 18。
 
+**当前恢复顺序（macOS 延期期间）：** 不再探测或重试 Task 151–153 的 macOS case；先完成
+Task 152 的 Windows 前台 capture，再完成 Task 153 的 canonical signed Windows MSI 与真实
+handoff；Linux 仅在真实桌面前置满足时执行。上述非 macOS 子证据完成后，Task 151–153、
+Task 17 仍保持未勾选，等待项目迁移至 macOS 后恢复保留的 macOS case；不得提前进入
+Task 18。
+
 **Child return progress:** Task 14 consolidated product child plan 的 14 个可独立验收批次均已提交、
 独立审查并勾选，child `status: completed`。Task 15 child 的 URI/share、credential/capture
 与 signed installer 验证工具和当前提交平台证据已提交；Task 151–153 因 macOS TCC/Keychain、
@@ -629,6 +641,10 @@ fail-closed、旧 health owner 拒绝、本轮 PID 绑定、轮询/teardown、�
 **Estimated scope:** 3 files, 300 lines
 
 **Verification:** Spotless、相关 shared/Android、`:app-desktop:jvmTest`、`:test-desktop:test`、补充 smoke、final parity gate 全绿；唯一 runtime 入口启动固定 EXE 并精确报告 13/13 场景族、5/5 永久保护、64 项零未映射；Windows/macOS 使用构建脚本产出同一版本并运行验收，Linux 边界诚实记录。
+
+**macOS 延期：** 当前 Windows 阶段只准备并执行可独立成立的非 macOS 验收；不得通过 SSH
+预跑或以旧 macOS 产物替代。Task 19 在迁移到 macOS 机器并完成同一待验收版本的构建与运行
+验收前保持未勾选。
 
 **Files:**
 - Create: `docs/superpowers/reports/2026-07-23-mihon-desktop-final-parity-verify.md`

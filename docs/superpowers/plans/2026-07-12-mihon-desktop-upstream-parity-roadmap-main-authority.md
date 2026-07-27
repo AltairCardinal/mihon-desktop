@@ -531,6 +531,12 @@ Windows `0.11.14.43.84e386c` 固定 EXE 与 macOS `0.11.14.44.84e386c` 部署应
 
 **Current mapping:** 本 Task 已拆分到 `docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md`。唯一恢复入口为该 child plan 的当前 `active-task`；本父 Task 在 child plan 的 64 项终态 gate、EXEMPT 用户批准链、compat/重复规则/架构/Test Mode 四项独立审计、固定 EXE 的 13/13 场景族与 5/5 Desktop 永久保护、全量构建验收和父 Task 0–5B 正文 checkbox 证据一致性全部通过前保持未勾选。child plan 使用仓库根目录 `TEST_COVERAGE_REPORT.md`，不创建本 Task 历史文件清单中并不存在的 `docs/automation/TEST_COVERAGE_REPORT.md`。
 
+**macOS 延期边界（用户指令，2026-07-27）：** 当前 Windows 工作阶段不再执行或重试计划中的
+macOS 构建、SSH、TCC/Keychain、GUI/capture、签名/公证、DMG 与 installer handoff。项目迁移到
+macOS 机器后，从最终审计计划保留的未完成 macOS case 恢复。延期不等于
+`VERIFIED`、`EXEMPT` 或完成证据；相关 checkbox、capability 状态与父 Task 6 在真实验收前
+保持未完成。当前阶段继续所有不依赖 macOS 的 Windows/Linux/仓库内工作。
+
 **Risk axis:** final-duplicate-implementation-audit
 
 **Platform boundary:** verification

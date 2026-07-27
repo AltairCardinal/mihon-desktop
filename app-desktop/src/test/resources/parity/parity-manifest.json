@@ -112,7 +112,7 @@
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/di/AppModule.kt", "symbol": "override fun InjektRegistrar.registerInjectables", "line": 52}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/domain/DomainModule.kt", "symbol": "override fun InjektRegistrar.registerInjectables", "line": 113}],
-      "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "fun initDesktopDI", "line": 183}],
+      "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "fun initDesktopDI", "line": 185}],
       "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt", "symbol": "initDesktopDI()", "line": 82}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt#reinitializing while scheduler runs joins old work and closes old database", "productionMarkers": ["initDesktopDIForTest", "Injekt.get"]}]
     },
@@ -2002,7 +2002,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt", "symbol": "filterChaptersForDownload.await(manga, newChapters)", "line": 268}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt", "symbol": "filterChaptersForDownload.await(manga, newChapters)", "line": 294}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/chapter/interactor/FilterChaptersForDownload.kt", "symbol": "class FilterChaptersForDownload", "line": 16}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "filterChaptersForDownload.await(manga, chapters)", "line": 885}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "filterChaptersForDownload.await(manga, chapters)", "line": 895}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/FilterChaptersForDownloadIntegrationTest.kt#开启后保留候选数量与上游排序且正确处理空列表", "productionMarkers": ["filter.await"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt#reinitializing test DI replaces every binding and scheduler context", "productionMarkers": ["Injekt.get<LibraryUpdateScheduler>().runNow().join()", "PersistentDownloadStore("]}]
     },
     "protectionTests": [
@@ -3199,7 +3199,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/build.gradle.kts", "symbol": "implementation(projects.domain)", "line": 178}],
       "CURRENT_ANDROID": [{"path": "app/build.gradle.kts", "symbol": "implementation(projects.domain)", "line": 186}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/build.gradle.kts", "symbol": "commonMain {", "line": 16}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/build.gradle.kts", "symbol": "implementation(projects.domain)", "line": 79}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/build.gradle.kts", "symbol": "implementation(projects.domain)", "line": 136}],
       "FIXTURE": [
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt#production library stream exposes only logged in tracker rows and reacts to login logout", "productionMarkers": ["GetLibraryManga(repository)", "model.libraryMangaFlow()"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt#desktop ui DI and repository debt does not grow beyond baseline", "productionMarkers": ["File(repoRoot, \"app-desktop/src/main/kotlin/mihon/desktop/ui\")"]}
@@ -3248,8 +3248,8 @@
         {"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/compat/AndroidCompat.kt", "symbol": "object AndroidCompat", "line": 15}
       ],
       "DESKTOP_CONSUMER": [
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "AndroidCompat.initialize", "line": 205},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "AndroidCompat.startApp", "line": 207},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "AndroidCompat.initialize", "line": 207},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "AndroidCompat.startApp", "line": 209},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt", "symbol": "apkConverter.convert", "line": 243},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt", "symbol": "ServiceLoader.load(Source::class.java", "line": 75}
       ],

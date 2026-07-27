@@ -12,13 +12,32 @@ status: planned
 
 本计划只补齐 IDs 81、82、83、84、86、92 缺失的真实 OS 或签名产物验收；ID 85 已有明确批准的 Widget 平台豁免，不在本计划重新裁决。测试 seam、旧构建或非交互 SSH 不能冒充当前提交的 GUI/安装验收。
 
-- Windows 与 macOS 必须从同一待验收提交用 `scripts/build-desktop.sh` 产出并记录版本、绝对路径和 hash；不得直接用 Gradle 构建 Desktop。
-- macOS 先使用 `ssh mbp`，连接失败一次才允许改用 `ssh mbp-lan`；在隔离 worktree 验收，不修改远端用户仓库。
+- **macOS 延期（用户指令，2026-07-27）：** 本计划所有 macOS 构建、SSH、TCC/Keychain、
+  GUI/capture、签名/公证、DMG 与 installer handoff 延后到项目迁移至 macOS 机器后执行。
+  当前阶段不得重试；已有 macOS 输出只保留为历史阻塞证据。
+- 延期不是 `VERIFIED`、`EXEMPT` 或完成证据。Task 151–153 与 IDs 81、82、83、84、86、92
+  在迁移后补齐对应 macOS case 前保持未完成/`CANDIDATE`。
+- 当前阶段继续 Windows 及满足真实桌面前置的 Linux case；macOS 恢复后，Windows 与 macOS
+  必须从同一待验收提交用 `scripts/build-desktop.sh` 产出并记录版本、绝对路径和 hash。
+  不得直接用 Gradle 构建 Desktop。
+- 迁移后执行 macOS 验收时直接在 macOS 机器的隔离 worktree 恢复；不再把当前 Windows
+  阶段的 SSH 审计链作为验收入口。
 - Linux 必须有真实桌面 session、Java、`xdg-open`、Secret Service 与适用 portal；WSL 缺少这些条件时只记录阻塞。
 - IDs 81、82、83、84、86、92 没有具体用户豁免批准，不得标记 `EXEMPT`。
 - 任一真实 probe 暴露产品缺陷时停止该 Task，先建立独立产品修复计划；本计划不把运行时缺陷改写成“环境限制”。
 
-每个平台的原始命令输出与 runner JSON 写入 `build/task15-platform-evidence/<os>/`（不提交），最终报告记录 `git rev-parse HEAD`、tree、产物绝对路径、SHA-256、版本、时间、case、退出码与可见反馈。只有各 OS 的 `git rev-parse 'HEAD^{tree}'` 相同，且产物 hash 与本轮记录一致时才可合并证据；Windows 用 `Get-FileHash -Algorithm SHA256`，macOS/Linux 用 `shasum -a 256`。若 runner 尚不存在，RED 必须先确认缺失，再把创建 `scripts/task15-platform-evidence-test.ps1`、`scripts/task15-platform-evidence-test.sh` 限定为验证文件；runner 不得绕过 production 入口。
+**当前恢复位置：** Task 151 的 Windows URI/share 已完成；继续 Task 152 的 Windows 前台
+capture，再执行 Task 153 的 canonical signed Windows MSI 与真实 handoff。完成这些非 macOS
+证据后保持 checkbox 未勾选，等待项目迁移至 macOS 后恢复各 Task 的 macOS case。
+
+每个平台的原始命令输出与 runner JSON 写入 `build/task15-platform-evidence/<os>/`（不提交），
+各平台结果可以独立生成、审查和记入现有证据账本；不得因 macOS 延期而丢弃已经成立的
+Windows/Linux 结果。最终报告记录 `git rev-parse HEAD`、tree、产物绝对路径、SHA-256、版本、
+时间、case、退出码与可见反馈。只有把各平台结果合并为跨平台终态时，才要求各 OS 的
+`git rev-parse 'HEAD^{tree}'` 相同且产物 hash 与本轮记录一致；Windows 用
+`Get-FileHash -Algorithm SHA256`，macOS/Linux 用 `shasum -a 256`。若 runner 尚不存在，
+RED 必须先确认缺失，再把创建 `scripts/task15-platform-evidence-test.ps1`、
+`scripts/task15-platform-evidence-test.sh` 限定为验证文件；runner 不得绕过 production 入口。
 
 ## Task 总览
 
