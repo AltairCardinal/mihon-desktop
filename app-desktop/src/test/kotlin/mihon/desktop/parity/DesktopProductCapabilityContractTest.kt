@@ -3046,14 +3046,34 @@ class DesktopProductCapabilityContractTest {
                 86 to "$childRelative#task-153-signed-artifact-and-installer-handoff",
                 92 to "$childRelative#task-152-credential-and-capture-os-matrix",
             )
-        val gapTerms =
+        val platformEvidenceTerms =
             mapOf(
-                81 to setOf("148594c", "BUILD 45", "cold", "running"),
-                82 to setOf("148594c", "host share", "non-interactive"),
-                83 to setOf("DPAPI", "Keychain", "Secret Service"),
-                84 to setOf("capture", "macOS", "Linux"),
-                86 to setOf("signed", "MSI", "DMG", "handoff"),
-                92 to setOf("credential", "capture", "Unsupported"),
+                81 to setOf("Windows cold/running URI PASS", "macOS running URI PASS", "macOS cold URI deferred", "Linux prerequisites missing"),
+                82 to setOf("Windows host-share PASS", "macOS host-share deferred", "Linux prerequisites missing"),
+                83 to setOf("Windows DPAPI PASS", "macOS Keychain deferred", "Linux Secret Service prerequisites missing"),
+                84 to
+                    setOf(
+                        "Windows capture PASS",
+                        "1d0d7d8f416e27a4399ea2687c6632d0095eb0f9",
+                        "protected=0f8a8252dfab9d3f1485b2fa438234adffca5995b1489f1924d1a3e2b705b8b1",
+                        "clear=542fd5579f6601f97fbe1d8eb648ef8fcf7f9f2e59a6fa4336985c6ac66ae8e8",
+                        "feedback=2e6d5ce438a05238c77f8dc0078202b0a8ee935395a62f9970faba3b436926ca",
+                        "macOS capture deferred",
+                        "Linux prerequisites missing",
+                    ),
+                86 to
+                    setOf(
+                        "Windows has no controlled code-signing certificate",
+                        "no canonical signed MSI",
+                        "macOS signed artifact/handoff deferred",
+                        "Linux manual-only",
+                    ),
+                92 to
+                    setOf(
+                        "Windows credential/capture PASS",
+                        "Unsupported capability feedback remains honest",
+                        "macOS/Linux not closed",
+                    ),
             )
         val problems = mutableListOf<String>()
         if (!Files.isRegularFile(childPath)) problems += "platform evidence child plan is missing"
@@ -3063,9 +3083,30 @@ class DesktopProductCapabilityContractTest {
             val decision = item.getValue("statusDecision").jsonObject
             if (requiredText(decision, "task", id, "statusDecision") != "Task 15") problems += "ID $id current decision is not Task 15"
             if (requiredText(decision, "followUp", id, "statusDecision") != expectedFollowUps.getValue(id)) problems += "ID $id follow-up is not finite"
+            if (id != 85) {
+                val evidence = requiredText(decision, "gap", id, "statusDecision") + " " + requiredText(item, "verificationScope", id)
+                platformEvidenceTerms.getValue(id).forEach { term ->
+                    if (term !in evidence) problems += "ID $id platform evidence is missing `$term`"
+                }
+                if ("macOS" in evidence && "deferred" !in evidence) problems += "ID $id must record the macOS deferral"
+            }
         }
         if (markdownFrontmatter(parent)["active-task"] !in setOf("Task 16A", "Task 16B", "Task 16C", "Task 16D", "Task 17")) problems += "parent active-task has not advanced to Task 16A or later"
         if (!Regex("""(?m)^- \[x] Task 15[：:]""").containsMatchIn(parent)) problems += "Task 15 is not checked"
+        val task17 = parent.substringAfter("### Task 17：").substringBefore("### Task 18：")
+        setOf(
+            "Windows capture PASS",
+            "Task 153 Windows signer is an external hard blocker",
+            "macOS deferred",
+            "Linux prerequisites missing",
+        ).forEach { term ->
+            if (term !in task17) problems += "Task 17 current recovery evidence is missing `$term`"
+        }
+        if ("先完成 Task 152 的 Windows 前台 capture" in task17 || "Windows capture 前台限制" in task17) {
+            problems += "Task 17 still treats completed Windows capture as pending"
+        }
+        if (!Regex("""(?m)^- \[ ] Task 17[：:]""").containsMatchIn(parent)) problems += "Task 17 must remain unchecked"
+        if (!Regex("""(?m)^- \[ ] Task 18[：:]""").containsMatchIn(parent)) problems += "Task 18 must remain blocked"
         assertTrue(problems.isEmpty(), problems.joinToString("; "))
 
         expectedStatuses.keys.forEach { id ->
@@ -3081,10 +3122,9 @@ class DesktopProductCapabilityContractTest {
                     requiredText(item.getValue("exemptionApproval").jsonObject, "approvalSource", id, "exemptionApproval"),
                 )
             } else {
+                assertTrue(requiredText(item, "status", id) !in setOf("VERIFIED", "EXEMPT"), "ID $id macOS deferral is not terminal evidence")
                 assertEquals("NONE", requiredText(item, "platformExemptionEvidence", id))
                 assertFalse("exemptionApproval" in item, "ID $id has no user-approved exemption")
-                val gap = requiredText(decision, "gap", id, "statusDecision")
-                gapTerms.getValue(id).forEach { term -> assertTrue(term in gap, "ID $id gap must record `$term`") }
             }
         }
 

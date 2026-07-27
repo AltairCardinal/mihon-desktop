@@ -518,17 +518,23 @@ active-task: Task 17
 
 **Steps:** 按 child plan 顺序执行；每次完成后回到本计划更新 status 与 evidence。14、15、16A–16D 任一 inventory 未完成或任一 child plan 未完成时，不得进入 Task 18。
 
-**当前恢复顺序（macOS 延期期间）：** 不再探测或重试 Task 151–153 的 macOS case；先完成
-Task 152 的 Windows 前台 capture，再完成 Task 153 的 canonical signed Windows MSI 与真实
-handoff；Linux 仅在真实桌面前置满足时执行。上述非 macOS 子证据完成后，Task 151–153、
-Task 17 仍保持未勾选，等待项目迁移至 macOS 后恢复保留的 macOS case；不得提前进入
-Task 18。
+**当前恢复顺序（macOS 延期期间）：** `Windows capture PASS` 已在提交 `1d0d7d8f4` 的
+evidence 产物上完成，protected/clear/feedback 观察均已绑定精确截图 hash，不再作为待办。
+当前非 macOS 首要边界是 `Task 153 Windows signer is an external hard blocker`：本机没有受控
+代码签名证书，也没有 canonical signed MSI，等待真实发布凭据和匹配 publisher。`macOS deferred`
+表示 Task 151–153 的 macOS case 按用户指令留到迁移后恢复，不是通过或豁免；
+`Linux prerequisites missing`：所需命令已补装，但默认 Secret Service collection 仍需 GUI
+创建/解锁，且统一构建脚本明确没有 Linux packaging 分支；仅在真实桌面、构建与 OS 前置满足后执行。Task 151–153
+与 Task 17 继续保持未勾选，不得提前进入 Task 18。
 
 **Child return progress:** Task 14 consolidated product child plan 的 14 个可独立验收批次均已提交、
 独立审查并勾选，child `status: completed`。Task 15 child 的 URI/share、credential/capture
-与 signed installer 验证工具和当前提交平台证据已提交；Task 151–153 因 macOS TCC/Keychain、
-Windows capture 前台限制、Linux 前置缺失及没有受信 MSI/DMG 保持未勾选和 `CANDIDATE`，
-所有不依赖这些外部条件的工作已完成且不重复失败路径。Task 153 的 repository-local
+与 signed installer 验证工具和当前提交平台证据已提交；Windows 冷/运行中 URI、host share、
+DPAPI credential 与 capture 均已 PASS，macOS running URI 也已 PASS。`Windows capture PASS`
+的 protected/clear/feedback 观察已绑定精确截图 hash。Task 151–153 因 `macOS deferred`、
+`Linux prerequisites missing`（Secret Service collection 未闭合且没有 Linux packaging），以及 `Task 153 Windows signer is an external hard blocker`
+（无受控代码签名证书、无 canonical signed MSI）保持未勾选和 `CANDIDATE`；所有不依赖这些
+外部条件的工作已完成且不重复失败路径。Task 153 的 repository-local
 production wiring follow-up 也已完成：release-controlled build-time trust 进入唯一
 `InstallerTrust` composition-root 实例，运行时属性不能覆盖，Gradle 增量输入与
 “空值→显式值→空值”同目录切换均受验证任务保护；唯一审查修复复审 `APPROVED`。这不替代

@@ -87,9 +87,9 @@ kTCCServiceAccessibility|/usr/local/Cellar/node/25.8.1_1/bin/node|2
 
 ## Linux / WSL 前置条件
 
-当前 WSL2 会话具有 `DISPLAY=:0`、`WAYLAND_DISPLAY=wayland-0` 和 session DBus，`org.freedesktop.secrets` 可响应 Ping；但 `java`、`xdg-open`、`secret-tool` 均缺失。该环境不满足 Task 151 规定的真实 Linux 桌面构建、协议入口和 host-share 验收前置条件。
+当前 WSL2 会话具有 `DISPLAY=:0`、`WAYLAND_DISPLAY=wayland-0` 和 session DBus。2026-07-27 已安装 OpenJDK 17、`xdg-open`、`secret-tool`、`xdotool` 与 ImageMagick，并启动 `gnome-keyring-daemon` 的 secrets component；但有界 `secret-tool store` 仍因当前 session 没有可非交互创建/解锁的默认 collection 而超时。旧的无回复 `dbus-send` Ping 只能证明消息已发送，不能证明 Secret Service roundtrip 可用。
 
-因此没有启动 Linux 构建，也没有把 WSLg/DBus 的存在外推为 Linux GUI 通过。
+更早的仓库前置同样阻止验收：在排除 Windows interop 后，`MIHON_HOST_OS=Linux scripts/build-desktop.sh evidence` 以退出码 1 明确报告 `Linux desktop packaging is not configured for this repository`；保留 `powershell.exe` 时只会转去构建 Windows。没有统一构建脚本产出的 Linux 当前提交应用，因此没有绕过脚本直接调用 Gradle，也没有把 WSLg/DBus 或已安装工具外推为 Linux GUI 通过。
 
 ## Task 152：credential 与 capture OS matrix
 
@@ -120,7 +120,7 @@ Windows 产物含 366 个文件、共 252,057,078 bytes，EXE SHA-256 为 `4aabd
 
 ### Linux / WSL
 
-WSL 具有 `DISPLAY=:0`、`WAYLAND_DISPLAY=wayland-0`、session DBus 和 `/usr/bin/dbus-send`，但缺少 `java`、`secret-tool`、`xdotool` 与 ImageMagick `import`。这不足以执行 production credential backend 或真实窗口 capture，因此没有启动 Linux 构建和 runner，也没有把 WSLg/DBus 的存在计为通过。
+WSL 具有 `DISPLAY=:0`、`WAYLAND_DISPLAY=wayland-0`、session DBus；OpenJDK 17、`xdg-open`、`secret-tool`、`xdotool` 与 ImageMagick 已于 2026-07-27 安装。`gnome-keyring-daemon` 虽已运行，默认 Secret Service collection 仍需要当前 GUI session 的创建/解锁交互，有界 store 超时，未形成 credential roundtrip。仓库构建脚本又明确拒绝 Linux packaging，无法生成可绑定当前提交 provenance 的 Linux 应用。因而 credential/capture runner 均未启动，工具存在不计为通过。
 
 ### Task 152 审查与状态
 
