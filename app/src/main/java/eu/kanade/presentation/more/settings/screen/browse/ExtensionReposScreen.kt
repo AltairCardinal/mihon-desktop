@@ -71,7 +71,7 @@ class ExtensionReposScreen(
             is RepoDialog.Conflict -> {
                 ExtensionRepoConflictDialog(
                     onDismissRequest = screenModel::dismissDialog,
-                    onMigrate = { screenModel.replaceRepo(dialog.newRepo) },
+                    onMigrate = { screenModel.replaceRepo(dialog.oldRepo, dialog.newRepo) },
                     oldRepo = dialog.oldRepo,
                     newRepo = dialog.newRepo,
                 )

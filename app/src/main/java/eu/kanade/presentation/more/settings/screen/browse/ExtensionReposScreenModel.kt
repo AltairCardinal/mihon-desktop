@@ -75,17 +75,13 @@ class ExtensionReposScreenModel(
     /**
      * Inserts a repo to the database, replace a matching repo with the same signing key fingerprint if found.
      *
+     * @param oldRepo The conflicting repo selected by the user
      * @param newRepo The repo to insert
      */
-    fun replaceRepo(newRepo: ExtensionRepo) {
+    fun replaceRepo(oldRepo: ExtensionRepo, newRepo: ExtensionRepo) {
         screenModelScope.launchIO {
             publish(ExtensionRepoActionResult.Pending(ExtensionRepoAction.REPLACE))
-            val oldRepo = ((state.value as? RepoScreenState.Success)?.dialog as? RepoDialog.Conflict)?.oldRepo
-            val result = oldRepo?.let { extensionRepoService.replace(it, newRepo, replaceExtensionRepo::await) }
-                ?: ExtensionRepoActionResult.Validation(
-                    ExtensionRepoAction.REPLACE,
-                    ExtensionRepoValidation.FINGERPRINT_CHANGED,
-                )
+            val result = extensionRepoService.replace(oldRepo, newRepo, replaceExtensionRepo::await)
             publishResult(result)
         }
     }

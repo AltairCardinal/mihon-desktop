@@ -1596,13 +1596,11 @@ class DesktopProductCapabilityContractTest {
                 mapOf(
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt" to
                         mapOf(
-                            "current Android consumer ReaderViewModel delegates the sorted chapter list to the shared skip filter" to
+                            "current Android ReaderViewModel applies shared skip policy before exposing adjacent chapters" to
                                 setOf(
-                                    "filterAndroidReaderChapters(",
-                                    "chapters = sortedChapters",
-                                    "currentChapterId = chapterId",
-                                    "skipPolicy = skipPolicy",
-                                    "isFiltered =",
+                                    "ReaderViewModel(",
+                                    "viewModel.init(",
+                                    "viewerChapters",
                                 ),
                             "current Android consumer chapter pipeline maps metadata before applying shared skip policy" to
                                 setOf("filterAndroidReaderChapters", "ChapterSkipPolicy"),
@@ -1786,20 +1784,20 @@ class DesktopProductCapabilityContractTest {
             29 to setOf("SHARE-DIRECT", "SHARE-EXTRACT"), 30 to setOf("SHARE-DIRECT"),
             32 to setOf("SHARE-DIRECT"), 33 to setOf("SHARE-EXTRACT", "PLATFORM-ADAPTER"),
             34 to setOf("PLATFORM-ADAPTER", "DESKTOP-PRODUCT"),
-            35 to setOf("PLATFORM-ADAPTER", "TEMP-COMPAT"), 36 to setOf("PLATFORM-ADAPTER"),
+            35 to setOf("PLATFORM-ADAPTER"), 36 to setOf("PLATFORM-ADAPTER"),
             37 to setOf("SHARE-EXTRACT"), 38 to setOf("SHARE-EXTRACT", "PLATFORM-ADAPTER"),
             39 to setOf("PLATFORM-ADAPTER"), 40 to setOf("PLATFORM-ADAPTER", "DESKTOP-PRODUCT"),
             43 to setOf("SHARE-EXTRACT", "DESKTOP-PRODUCT"), 44 to setOf("PLATFORM-ADAPTER"),
             45 to setOf("SHARE-EXTRACT"), 47 to setOf("SHARE-EXTRACT"),
             49 to setOf("SHARE-DIRECT", "DESKTOP-PRODUCT"), 51 to setOf("SHARE-EXTRACT", "PLATFORM-ADAPTER"),
-            53 to setOf("SHARE-DIRECT"), 54 to setOf("SHARE-DIRECT"), 56 to setOf("SHARE-EXTRACT"),
+            53 to setOf("SHARE-DIRECT"), 54 to setOf("SHARE-DIRECT"), 56 to setOf("SHARE-EXTRACT", "PLATFORM-ADAPTER"),
             57 to setOf("SHARE-EXTRACT"), 59 to setOf("SHARE-DIRECT", "PLATFORM-ADAPTER"),
             61 to setOf("SHARE-EXTRACT", "PLATFORM-ADAPTER"), 62 to setOf("SHARE-DIRECT"),
             64 to setOf("SHARE-DIRECT"), 66 to setOf("SHARE-DIRECT", "SHARE-EXTRACT"),
             67 to setOf("SHARE-DIRECT", "SHARE-EXTRACT"), 68 to setOf("SHARE-EXTRACT"),
             69 to setOf("SHARE-EXTRACT", "PLATFORM-ADAPTER"), 70 to setOf("SHARE-DIRECT"),
             71 to setOf("SHARE-EXTRACT"), 72 to setOf("SHARE-EXTRACT"), 73 to setOf("PLATFORM-ADAPTER"),
-            74 to setOf("SHARE-DIRECT", "TEMP-COMPAT"), 81 to setOf("PLATFORM-ADAPTER"),
+            74 to setOf("SHARE-DIRECT"), 81 to setOf("PLATFORM-ADAPTER"),
             82 to setOf("PLATFORM-ADAPTER"), 83 to setOf("PLATFORM-ADAPTER"),
             84 to setOf("PLATFORM-ADAPTER", "PLATFORM-EXEMPT"), 85 to setOf("PLATFORM-EXEMPT"),
             86 to setOf("PLATFORM-ADAPTER"), 87 to setOf("SHARE-DIRECT"),
@@ -1808,7 +1806,7 @@ class DesktopProductCapabilityContractTest {
             92 to setOf("SHARE-EXTRACT", "PLATFORM-ADAPTER"),
             93 to setOf("SHARE-EXTRACT", "PLATFORM-ADAPTER"),
             94 to setOf("SHARE-DIRECT", "PLATFORM-ADAPTER"), 95 to setOf("SHARE-EXTRACT"),
-            96 to setOf("PLATFORM-ADAPTER", "TEMP-COMPAT"),
+            96 to setOf("PLATFORM-ADAPTER"),
         )
 
     @Test
@@ -4031,7 +4029,7 @@ class DesktopProductCapabilityContractTest {
         )
         sourceExtensionParityStatuses.forEach { (id, status) ->
             val item = items.getValue(id).jsonObject
-            assertEquals(status, item.getValue("status").jsonPrimitive.content, "ID $id status")
+            assertEquals(task18PromotedStatuses[id] ?: status, item.getValue("status").jsonPrimitive.content, "ID $id status")
             if (status in setOf("SHARED", "WIRED", "VERIFIED")) {
                 assertTrue(item.getValue("protectionTests").jsonArray.isNotEmpty(), "ID $id needs production protection")
             }
@@ -4458,7 +4456,7 @@ class DesktopProductCapabilityContractTest {
             "domain/src/commonTest/kotlin/tachiyomi/domain/track/service/TrackerProviderContractTest.kt" in trackingTests,
         )
         assertEquals("VERIFIED", migration.getValue("status").jsonPrimitive.content)
-        assertEquals("CHARACTERIZED", tracking.getValue("status").jsonPrimitive.content)
+        assertEquals(task18PromotedStatuses.getValue(69), tracking.getValue("status").jsonPrimitive.content)
     }
 
     @Test
@@ -4484,7 +4482,7 @@ class DesktopProductCapabilityContractTest {
             "app-desktop/src/test/kotlin/mihon/desktop/extension/ExtensionIncognitoPreferenceWiringTest.kt" in tests,
         )
         assertTrue("app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt" in tests)
-        assertEquals("CHARACTERIZED", item.getValue("status").jsonPrimitive.content)
+        assertEquals(task18PromotedStatuses.getValue(70), item.getValue("status").jsonPrimitive.content)
     }
 
     @Test
@@ -4503,7 +4501,7 @@ class DesktopProductCapabilityContractTest {
 
         expectedStatuses.forEach { (id, expectedStatus) ->
             val item = items.getValue(id).jsonObject
-            assertEquals(expectedStatus, item.getValue("status").jsonPrimitive.content, "ID $id status")
+            assertEquals(task18PromotedStatuses[id] ?: expectedStatus, item.getValue("status").jsonPrimitive.content, "ID $id status")
             if (id in structuredProvenanceIds || item["roleEvidence"] != null) {
                 assertTrue(
                     item.getValue("sharedImplementationPaths").jsonArray.any {
@@ -4616,7 +4614,10 @@ class DesktopProductCapabilityContractTest {
 
         platformCapabilityEvidenceIds.forEach { id ->
             val item = items.getValue(id).jsonObject
-            assertEquals("CANDIDATE", requiredText(item, "status", id))
+            assertEquals(
+                task18PromotedStatuses[id] ?: if (id == 85) "EXEMPT" else "CANDIDATE",
+                requiredText(item, "status", id),
+            )
             assertEquals(fixedOriginalMihonRef, requiredText(item, "upstreamRef", id))
             val symbols = item.getValue("upstreamSymbols").jsonArray
             assertTrue(symbols.isNotEmpty(), "ID $id requires fixed-main path and symbol")
@@ -5209,7 +5210,7 @@ class DesktopProductCapabilityContractTest {
         assertEquals(fixedOriginalMihonRef, upstreamRef, "ID $id must use the exact fixed original Mihon ref")
         if (id in platformProvenanceBatchOneIds) {
             assertEquals(
-                platformProvenanceBatchOneStatuses.getValue(id),
+                task18PromotedStatuses[id] ?: platformProvenanceBatchOneStatuses.getValue(id),
                 requiredText(item, "status", id),
                 "ID $id must retain its exact evidence status",
             )

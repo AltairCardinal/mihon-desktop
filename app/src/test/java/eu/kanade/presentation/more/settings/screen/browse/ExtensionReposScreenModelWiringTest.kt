@@ -47,7 +47,7 @@ class ExtensionReposScreenModelWiringTest {
             val create = fixture.succeeds(ExtensionRepoAction.CREATE) { createRepo(replacement.baseUrl) }
             assertEquals(listOf(MR.strings.ext_pending, MR.strings.completed), create.map { it.stringRes })
             fixture.model.showDialog(RepoDialog.Conflict(old, replacement))
-            fixture.succeeds(ExtensionRepoAction.REPLACE) { replaceRepo(replacement) }
+            fixture.succeeds(ExtensionRepoAction.REPLACE) { replaceRepo(old, replacement) }
             fixture.succeeds(ExtensionRepoAction.DELETE) { deleteRepo(old.baseUrl) }
             listOf(
                 CreateExtensionRepo.Result.InvalidUrl to MR.strings.invalid_repo_name,
@@ -69,13 +69,13 @@ class ExtensionReposScreenModelWiringTest {
             assertEquals(RepoDialog.Conflict(old, replacement), dialog)
             fixture.model.showDialog(RepoDialog.Conflict(old, replacement.copy(signingKeyFingerprint = "OTHER")))
             val changed = replacement.copy(signingKeyFingerprint = "OTHER")
-            val validation = fixture.terminal { replaceRepo(changed) }
+            val validation = fixture.terminal { replaceRepo(old, changed) }
             assertEquals(ExtensionRepoValidation.FINGERPRINT_CHANGED, (validation.result as Validation).reason)
             assertEquals(MR.strings.action_replace_repo_title, validation.stringRes)
             coVerify(exactly = 0) { fixture.replace.await(match { it.signingKeyFingerprint == "OTHER" }) }
             coEvery { fixture.replace.await(any()) } throws IllegalStateException("replace")
             fixture.model.showDialog(RepoDialog.Conflict(old, replacement))
-            assertEquals(MR.strings.unknown_error, fixture.terminal { replaceRepo(replacement) }.stringRes)
+            assertEquals(MR.strings.unknown_error, fixture.terminal { replaceRepo(old, replacement) }.stringRes)
             coEvery { fixture.delete.await(any()) } throws IllegalStateException("delete")
             assertEquals(MR.strings.unknown_error, fixture.terminal { deleteRepo(old.baseUrl) }.stringRes)
             coVerify(exactly = 7) { fixture.create.await(any()) }
