@@ -106,9 +106,10 @@ Windows 产物含 366 个文件、共 252,057,078 bytes，EXE SHA-256 为 `4aabd
 ### Windows
 
 - `credential-roundtrip`：PASS。真实 production identity 为 `DesktopCredentialStore(backend=OsCredentialBackend)` 与 `OsCredentialBackend(platform=WINDOWS)`；服务名为 `mihon-desktop-tracker`，保存、读取、覆盖、再读取、删除与删除后缺失六项均为 true。秘密值没有进入 argv、JSON 或日志。
-- `capture`：BLOCKED。runner 在第一张受保护截图前无法把目标 Mihon HWND 激活为前台窗口，随后按合同停止；没有生成 protected/clear/feedback 三张截图，也没有人工 review JSON，因此不得把 affinity 或 adapter 返回值冒充真实 capture acceptance。
+- `capture`：PASS（2026-07-27 独立重验）。验收提交为 `1d0d7d8f416e27a4399ea2687c6632d0095eb0f9`，tree 为 `54e129eac0f3d236a301779912ce45b138413aba`，版本为 `0.11.14.49.1d0d7d8`；`scripts/build-desktop.sh evidence` 由协调器 key `task152-windows-evidence-build-49-topmost` 执行并终态 `PASSED`。产物 tree SHA-256 为 `a8848ca2c9bcd68801414b89d6d16b6d5bc8c33afac564a660533eab364aec57`，EXE SHA-256 为 `f9f159940d02e548ec9cf418c686e72b483dbf76c5bdeff48d17fac07ea04ed4`，production 输入摘要为 `38d54c17918da268286d09978568aea81f77e99a19e83ee7ef52add00413aa6f`。真实 adapter 的 attach/apply/query/clear 均报告 `Supported`，affinity 应用值为 `17`、清除后为 `0`。
+- capture review 与精确截图 hash 绑定：protected `0f8a8252dfab9d3f1485b2fa438234adffca5995b1489f1924d1a3e2b705b8b1` 显示 Mihon 被排除；clear `542fd5579f6601f97fbe1d8eb648ef8fcf7f9f2e59a6fa4336985c6ac66ae8e8` 显示 `Mihon Desktop 0.11.14.49.1d0d7d8` 隐私页；feedback `2e6d5ce438a05238c77f8dc0078202b0a8ee935395a62f9970faba3b436926ca` 显示同一隐私设置及明确的屏幕保护反馈。策略校验器接受观察值 `MihonExcluded / MihonVisible / Supported` 并将 `capture.json` 写为 `PASS`。
 
-原始证据位于 `D:\Shell\Github\mihon-task151-final\build\task15-platform-evidence\windows`。
+历史 credential 证据位于 `D:\Shell\Github\mihon-task151-final\build\task15-platform-evidence\windows`；当前 capture 证据位于 `D:\Shell\Github\mihon-task152-windows\build\task15-platform-evidence\windows`。
 
 ### macOS
 
@@ -125,7 +126,8 @@ WSL 具有 `DISPLAY=:0`、`WAYLAND_DISPLAY=wayland-0`、session DBus 和 `/usr/b
 
 - 首轮独立审查发现 capture 自我声明、macOS/Linux 静态写死 Unsupported、credential backend 自我声明三个高优先级问题；修复后 runner 改为 production adapter/backend identity，并要求精确截图 hash 与人工 review。
 - 修复复审发现 Bash `set -u` 下 `capture_native_window` 同一 `local` 声明引用新变量的问题；主代理最小修复后，直接执行抽取出的真实函数 fixture，联合 runner gate、PowerShell parser、`bash -n`、Python compile 与 `git diff --check` 均通过。由于约定的一轮修复复审预算已经用完，Task 152 没有获得额外独立批准，保持未完成。
-- Task 152 checkbox 不勾选；IDs 83、84、92 保持 `CANDIDATE`。相同前台窗口、Keychain/SSH 与缺工具路径不再重复执行。
+- 2026-07-27 的 Windows capture 修复又经过一轮独立审查和一轮修复复审；固定 HWND lease、每次 `SetWindowPos` 前复验 owner PID、异常解除置顶、旧 URI 调用方返回类型以及 `KeepTopmost` 失败清理均由行为 fixture 覆盖。复审末次发现的两个调用方/fixture 缺口由主代理修正后 focused runner gate 通过；未增加第三轮独立审查。
+- Windows credential/capture 已各自通过；Task 152 checkbox 仍不勾选，IDs 83、84、92 保持 `CANDIDATE`，因为 macOS 已按用户指令延后且 Linux 仍缺真实桌面前置。延期不是 `VERIFIED` 或 `EXEMPT`。
 
 ## Task 153：signed artifact 与 installer handoff
 

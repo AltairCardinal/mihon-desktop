@@ -26,8 +26,8 @@ status: planned
 - IDs 81、82、83、84、86、92 没有具体用户豁免批准，不得标记 `EXEMPT`。
 - 任一真实 probe 暴露产品缺陷时停止该 Task，先建立独立产品修复计划；本计划不把运行时缺陷改写成“环境限制”。
 
-**当前恢复位置：** Task 151 的 Windows URI/share 已完成；继续 Task 152 的 Windows 前台
-capture，再执行 Task 153 的 canonical signed Windows MSI 与真实 handoff。完成这些非 macOS
+**当前恢复位置：** Task 151 的 Windows URI/share 与 Task 152 的 Windows credential/capture
+已完成；继续 Task 153 的 canonical signed Windows MSI 与真实 handoff。完成这些非 macOS
 证据后保持 checkbox 未勾选，等待项目迁移至 macOS 后恢复各 Task 的 macOS case。
 
 每个平台的原始命令输出与 runner JSON 写入 `build/task15-platform-evidence/<os>/`（不提交），
@@ -142,7 +142,7 @@ macOS/Linux 的 credential case 必须实际完成保存、覆盖、读取、删
 
 **Feedback:** 凭据不可用/恢复说明，以及 Supported、Limited、Unsupported、Failed 的准确窗口隐私状态。
 
-**Execution evidence（部分完成，保持未勾选）：** 提交 `056dcb79db`、tree `e5d1466fd2` 的 Windows/macOS 产物均由 `scripts/build-desktop.sh evidence` 构建，版本同为 `0.11.14.47.056dcb7`，production 输入摘要同为 `e18589c4e42c`。Windows production `DesktopCredentialStore(backend=OsCredentialBackend)` 使用 DPAPI 完成保存、读取、覆盖、再读取、删除及删除后缺失六项往返，服务名为 `mihon-desktop-tracker`；真实 capture 在第一张受保护截图前因无法把目标 Mihon HWND 激活为前台窗口而写入 `BLOCKED`，未生成可供人工确认的截图，未宣称屏幕保护通过。macOS SSH 会话的 login keychain 返回 `User interaction is not allowed`，credential roundtrip 保持 `BLOCKED`；production `DesktopWindowPrivacy` 探针在建立可观察窗口时以 `IllegalArgumentException` 失败，且现有 SSH audit chain 仍受 Accessibility/TCC 限制，无法取得可信 capture 观察。WSL 有 DISPLAY/Wayland/session DBus 且 `dbus-send` 可用，但缺少 `java`、`secret-tool`、`xdotool` 与 `import`，因此未启动伪 Linux GUI 验收。完整证据见 `docs/superpowers/reports/2026-07-26-task-15-platform-evidence-verify.md`。Task 152 与 IDs 83/84/92 保持原状态；相同环境路径不再重跑。
+**Execution evidence（部分完成，保持未勾选）：** Windows credential 已由提交 `056dcb79db` 的真实 production `DesktopCredentialStore(backend=OsCredentialBackend)` 使用 DPAPI 完成保存、读取、覆盖、再读取、删除及删除后缺失六项往返，服务名为 `mihon-desktop-tracker`。Windows capture 已在提交 `1d0d7d8f416e27a4399ea2687c6632d0095eb0f9`、tree `54e129eac0f3d236a301779912ce45b138413aba`、版本 `0.11.14.49.1d0d7d8` 的 evidence 产物上独立完成；产物 tree SHA-256 为 `a8848ca2c9bcd68801414b89d6d16b6d5bc8c33afac564a660533eab364aec57`，production 输入摘要为 `38d54c17918da268286d09978568aea81f77e99a19e83ee7ef52add00413aa6f`。真实 adapter 的 apply/query/clear 均报告 `Supported`，affinity 应用值为 `17`、清除后为 `0`；人工审查绑定三张精确截图 hash，确认 protected 为 `MihonExcluded`、clear 为 `MihonVisible`、feedback 为 `Supported`，策略终态为 `PASS`。macOS credential/capture 按用户指令延后到项目迁移至 macOS 机器后执行，不是通过或豁免；Linux/WSL 仍缺少真实桌面验收前置。完整证据见 `docs/superpowers/reports/2026-07-26-task-15-platform-evidence-verify.md`。Task 152 与 IDs 83/84/92 因剩余平台仍保持原状态。
 
 ### Task 153 signed artifact and installer handoff
 
