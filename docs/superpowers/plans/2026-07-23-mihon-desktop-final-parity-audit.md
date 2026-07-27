@@ -539,6 +539,13 @@ URI、host share、DPAPI 与 capture 证据继续保留，macOS 只记录实际�
 正式签名发布物归 release operations；Linux 仅保留 fallback/Unsupported 边界，不进入剩余任务。
 六项 manifest 维持 `CANDIDATE`，以 `READY_FOR_PROMOTION`、`gap=NONE` 交给 Task 18。
 
+Task 14 consolidated product child 的回收状态已于 2026-07-27 复核：ID 32 的 shared
+extension-repository CRUD 与两端 production consumer、ID 69 的 provider-neutral tracking
+workflow、ID 70 的 shared delayed-sync queue，以及 ID 87 的 Desktop locale adapter/Appearance
+入口均已完成原计划的实现、TDD、mutation、独立审查及必要复审。四项保留原顶层非终态，当前决策统一为
+`READY_FOR_PROMOTION`、`gap=NONE`、`followUp=NONE`，由 Task 18 逐项晋升；旧 Task 14A
+`KEEP_GAP` 只保留在历史决策中，不再触发重复施工。
+
 Task 16B child 的 Task 161 已完成
 shared lifecycle RED→GREEN、三项 mutation、唯一审查修复与复审，固定原版只取消 RUNNING
 的语义已闭合；Task 162 已完成当前 Android WorkManager production consumer，真实 worker、

@@ -523,4 +523,8 @@ Snackbar host 保持在 key 外，切换后保留 Appearance 路由与状态。�
 
 ## 最终回收
 
-九个 Task 全部提交并通过各自独立审查后，把 hash、focused test 数量、mutation 证据和剩余边界交给父计划 Task 14C。Task 14C 才能更新 manifest 状态；本计划不得提前宣称 ID 3、32、69、70、87 已终态。
+全部 overview Task 已提交并通过各自独立审查，hash、focused test 数量、mutation 证据和剩余边界
+已交给父计划回收。2026-07-27 状态复核确认 ID 32、69、70、87 的产品缺口均由本计划关闭；
+manifest 保留 Task 14A 的 `KEEP_GAP` 为历史决策，当前决策由父 Task 17 改为
+`READY_FOR_PROMOTION`、`gap=NONE`，最终终态仍只由 Task 18 晋升。ID 3 已由 Task 16D
+按同一原则回收。本计划不重复施工，也不提前把这些项目写成 `VERIFIED`。

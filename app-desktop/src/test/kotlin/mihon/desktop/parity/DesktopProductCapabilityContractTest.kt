@@ -2800,9 +2800,16 @@ class DesktopProductCapabilityContractTest {
         decisions.forEach { (id, expectedDecision) ->
             val item = items.getValue(id).jsonObject
             assertFalse("task14StatusDecision" in item, "ID $id must not retain a second Task 14 decision authority")
-            assertEquals(if (id == 3) "Task 16D" else "Task 14A", requiredText(item.getValue("statusDecision").jsonObject, "task", id, "statusDecision"))
+            val currentTask =
+                when (id) {
+                    3 -> "Task 16D"
+                    32, 69, 70, 87 -> "Task 17"
+                    else -> "Task 14A"
+                }
+            assertEquals(currentTask, requiredText(item.getValue("statusDecision").jsonObject, "task", id, "statusDecision"))
             assertEquals(
-                setOf("Task ${mapOf(3 to 6, 4 to 6, 32 to 8, 39 to 9, 69 to 11, 70 to 11, 87 to 12, 88 to 13).getValue(id)}") + if (id == 3) setOf("Task 14A") else emptySet(),
+                setOf("Task ${mapOf(3 to 6, 4 to 6, 32 to 8, 39 to 9, 69 to 11, 70 to 11, 87 to 12, 88 to 13).getValue(id)}") +
+                    if (id == 3 || id in setOf(32, 69, 70, 87)) setOf("Task 14A") else emptySet(),
                 item.getValue("statusDecisionHistory").jsonArray
                     .map { requiredText(it.jsonObject, "task", id, "statusDecisionHistory") }
                     .toSet(),
@@ -2856,12 +2863,7 @@ class DesktopProductCapabilityContractTest {
         productStatuses.forEach { (id, status) ->
             val item = items.getValue(id).jsonObject
             assertEquals(status, requiredText(item, "status", id))
-            val statusDecision =
-                if (id == 3) {
-                    statusDecisionForTask(item, id, "Task 14A")
-                } else {
-                    item.getValue("statusDecision").jsonObject
-                }
+            val statusDecision = statusDecisionForTask(item, id, "Task 14A")
             assertEquals("KEEP_GAP", requiredText(statusDecision, "decision", id, "statusDecision"))
             assertTrue(
                 requiredText(statusDecision, "followUp", id, "statusDecision")
@@ -2895,7 +2897,8 @@ class DesktopProductCapabilityContractTest {
         val handoffProblems = mutableListOf<String>()
         if (!Files.isRegularFile(childPath)) handoffProblems += "consolidated child plan is missing"
         followUps.forEach { (id, expected) ->
-            val actual = requiredText(items.getValue(id).jsonObject.getValue("statusDecision").jsonObject, "followUp", id, "statusDecision")
+            val item = items.getValue(id).jsonObject
+            val actual = requiredText(statusDecisionForTask(item, id, "Task 14A"), "followUp", id, "statusDecision")
             if (actual != expected) handoffProblems += "ID $id followUp is still `$actual`"
         }
         if (markdownFrontmatter(parent)["active-task"] !in setOf("Task 14C", "Task 15", "Task 16A", "Task 16B", "Task 16C", "Task 16D", "Task 17", "Task 18")) handoffProblems += "parent active-task has not advanced to Task 14C or later"
@@ -2995,11 +2998,12 @@ class DesktopProductCapabilityContractTest {
                 .filter { validatedId(it) in task14Ids }
                 .associate { item ->
                     val id = validatedId(item)
+                    val task14Decision = statusDecisionForTask(item, id, "Task 14A")
                     id to
                         Triple(
                             requiredText(item.getValue("unclassifiedDebtResolution").jsonObject, "decision", id, "unclassifiedDebtResolution"),
                             requiredText(item, "status", id),
-                            requiredText(item.getValue("statusDecision").jsonObject, "followUp", id, "statusDecision"),
+                            requiredText(task14Decision, "followUp", id, "statusDecision"),
                         )
                 }
         assertEquals(task14Ids, expected.keys, "Task 14 manifest ID set must stay exact")
@@ -3024,6 +3028,50 @@ class DesktopProductCapabilityContractTest {
         val rows = rowEntries.toMap()
         assertEquals(expected, rows, "Task 14 governance decisions must be unique and exact")
         assertTrue(Regex("""(?m)^- \[[x ]\] Task 15[：:]""").containsMatchIn(parent), "Task 15 remains tracked")
+    }
+
+    @Tag("parity-governance")
+    @Test
+    fun `completed Task 14 product child returns every capability to Task 18 promotion`() {
+        val repositoryRoot = repositoryRoot()
+        val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
+        val child = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md"))
+        val parent = Files.readString(repositoryRoot.resolve("docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md"))
+        val expectedStatuses = mapOf(32 to "WIRED", 69 to "CHARACTERIZED", 70 to "CHARACTERIZED", 87 to "SHARED")
+
+        assertEquals("completed", markdownFrontmatter(child)["status"])
+        val completedChildTasks =
+            Regex("""(?m)^- \[x] Task ([0-9A-Z]+)[：:]""")
+                .findAll(child)
+                .map { it.groupValues[1] }
+                .toSet()
+        assertTrue(
+            completedChildTasks.containsAll(
+                setOf("143", "144", "145A", "145B1", "145B2", "146A", "146B", "146C", "146D", "147", "148", "149"),
+            ),
+            "Task 14 child must complete every ID 32/69/70/87 implementation task",
+        )
+
+        expectedStatuses.forEach { (id, expectedStatus) ->
+            val item = items.getValue(id).jsonObject
+            assertEquals(expectedStatus, requiredText(item, "status", id), "Task 18 performs the terminal promotion")
+            val historicalDecision = statusDecisionForTask(item, id, "Task 14A")
+            assertEquals("KEEP_GAP", requiredText(historicalDecision, "decision", id, "statusDecision"))
+            val currentDecision = item.getValue("statusDecision").jsonObject
+            assertEquals("Task 17", requiredText(currentDecision, "task", id, "statusDecision"))
+            assertEquals("READY_FOR_PROMOTION", requiredText(currentDecision, "decision", id, "statusDecision"))
+            assertEquals("NONE", requiredText(currentDecision, "followUp", id, "statusDecision"))
+            assertEquals("NONE", requiredText(currentDecision, "gap", id, "statusDecision"))
+            assertEquals("Task 18", requiredText(currentDecision, "promotionFollowUp", id, "statusDecision"))
+            assertTrue(requiredText(item, "verificationScope", id).contains("Task 18"))
+            assertEquals("NONE", requiredText(item, "platformExemptionEvidence", id))
+            validateRoleEvidence(item, repositoryRoot, fixedMainPathInventory(repositoryRoot))
+        }
+
+        val task17 = parent.substringAfter("### Task 17：").substringBefore("### Task 18：")
+        setOf("ID 32", "ID 69", "ID 70", "ID 87", "READY_FOR_PROMOTION").forEach { marker ->
+            assertTrue(marker in task17, "Task 17 return conclusion is missing `$marker`")
+        }
     }
 
     @Tag("parity-governance")
