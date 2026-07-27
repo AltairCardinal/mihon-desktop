@@ -37,6 +37,8 @@ import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.preference.SharedPreferencesDataStore
 import eu.kanade.tachiyomi.source.ConfigurableSource
+import eu.kanade.tachiyomi.source.SourcePreferenceScreenSetup
+import eu.kanade.tachiyomi.source.setupSourcePreferenceScreen
 import eu.kanade.tachiyomi.source.sourcePreferences
 import eu.kanade.tachiyomi.widget.TachiyomiTextInputEditText.Companion.setIncognito
 import tachiyomi.domain.source.service.SourceManager
@@ -44,6 +46,8 @@ import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.screens.LoadingScreen
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import eu.kanade.tachiyomi.source.PreferenceScreen as SourcePreferenceScreen
+import eu.kanade.tachiyomi.source.Source as TachiyomiSource
 
 class SourcePreferencesScreen(val sourceId: Long) : Screen() {
 
@@ -118,7 +122,7 @@ class SourcePreferencesScreen(val sourceId: Long) : Screen() {
     }
 }
 
-class SourcePreferencesFragment : PreferenceFragmentCompat() {
+open class SourcePreferencesFragment : PreferenceFragmentCompat() {
 
     override fun getContext(): Context? {
         val superCtx = super.getContext() ?: return null
@@ -139,9 +143,13 @@ class SourcePreferencesFragment : PreferenceFragmentCompat() {
         if (source is ConfigurableSource) {
             val dataStore = SharedPreferencesDataStore(source.sourcePreferences())
             preferenceManager.preferenceDataStore = dataStore
+        }
 
-            source.setupPreferenceScreen(sourceScreen)
-            sourceScreen.forEach { pref ->
+        when (val setup = AndroidSourcePreferencesAdapter.setupPreferenceScreen(source, sourceScreen)) {
+            SourcePreferenceScreenSetup.Missing,
+            SourcePreferenceScreenSetup.NonConfigurable,
+            -> Unit
+            SourcePreferenceScreenSetup.Success -> sourceScreen.forEach { pref ->
                 pref.isIconSpaceReserved = false
                 pref.isSingleLineTitle = false
                 if (pref is DialogPreference && pref.dialogTitle.isNullOrEmpty()) {
@@ -157,6 +165,7 @@ class SourcePreferencesFragment : PreferenceFragmentCompat() {
                     }
                 }
             }
+            is SourcePreferenceScreenSetup.Failure -> throw setup.error
         }
 
         return sourceScreen
@@ -171,4 +180,11 @@ class SourcePreferencesFragment : PreferenceFragmentCompat() {
             }
         }
     }
+}
+
+internal object AndroidSourcePreferencesAdapter {
+    fun setupPreferenceScreen(
+        source: TachiyomiSource?,
+        screen: SourcePreferenceScreen,
+    ): SourcePreferenceScreenSetup = setupSourcePreferenceScreen(source, screen)
 }

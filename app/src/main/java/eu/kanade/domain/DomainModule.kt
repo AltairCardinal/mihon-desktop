@@ -59,6 +59,7 @@ import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.interactor.SetSortModeForCategory
 import tachiyomi.domain.category.interactor.UpdateCategory
 import tachiyomi.domain.category.repository.CategoryRepository
+import tachiyomi.domain.chapter.interactor.BatchUpdateChapters
 import tachiyomi.domain.chapter.interactor.GetBookmarkedChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.GetChapter
 import tachiyomi.domain.chapter.interactor.GetChapterByUrlAndMangaId
@@ -85,6 +86,7 @@ import tachiyomi.domain.manga.interactor.GetMangaWithChapters
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.interactor.ResetViewerFlags
 import tachiyomi.domain.manga.interactor.SetMangaChapterFlags
+import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
 import tachiyomi.domain.manga.interactor.UpdateMangaNotes
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.release.interactor.GetApplicationRelease
@@ -141,6 +143,7 @@ class DomainModule : InjektModule {
         addFactory { SetMangaViewerFlags(get()) }
         addFactory { NetworkToLocalManga(get()) }
         addFactory { UpdateManga(get(), get()) }
+        addFactory { UpdateLibraryMembership(get<MangaRepository>()) }
         addFactory { UpdateMangaNotes(get()) }
         addFactory { SetMangaCategories(get()) }
         addFactory { GetExcludedScanlators(get()) }
@@ -172,6 +175,7 @@ class DomainModule : InjektModule {
         addFactory { GetBookmarkedChaptersByMangaId(get()) }
         addFactory { GetChapterByUrlAndMangaId(get()) }
         addFactory { UpdateChapter(get()) }
+        addFactory { BatchUpdateChapters() }
         addFactory { SetReadStatus(get(), get(), get(), get()) }
         addFactory { ShouldUpdateDbChapter() }
         addFactory { SyncChaptersWithSource(get(), get(), get(), get(), get(), get(), get(), get(), get()) }

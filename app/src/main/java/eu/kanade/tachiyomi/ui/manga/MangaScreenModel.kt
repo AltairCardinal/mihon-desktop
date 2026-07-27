@@ -44,6 +44,7 @@ import eu.kanade.tachiyomi.util.removeCovers
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.catch
@@ -68,6 +69,7 @@ import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
+import tachiyomi.domain.chapter.interactor.BatchUpdateChapters
 import tachiyomi.domain.chapter.interactor.SetMangaDefaultChapterFlags
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.Chapter
@@ -78,7 +80,9 @@ import tachiyomi.domain.chapter.service.getChapterSort
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga
 import tachiyomi.domain.manga.interactor.GetMangaWithChapters
+import tachiyomi.domain.manga.interactor.LibraryMembershipResult
 import tachiyomi.domain.manga.interactor.SetMangaChapterFlags
+import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaWithChapterCount
 import tachiyomi.domain.manga.model.applyFilter
@@ -113,6 +117,8 @@ class MangaScreenModel(
     private val setReadStatus: SetReadStatus = Injekt.get(),
     private val updateChapter: UpdateChapter = Injekt.get(),
     private val updateManga: UpdateManga = Injekt.get(),
+    private val updateLibraryMembership: UpdateLibraryMembership = Injekt.get(),
+    private val batchUpdateChapters: BatchUpdateChapters = Injekt.get(),
     private val syncChaptersWithSource: SyncChaptersWithSource = Injekt.get(),
     private val getCategories: GetCategories = Injekt.get(),
     private val getTracks: GetTracks = Injekt.get(),
@@ -317,7 +323,7 @@ class MangaScreenModel(
 
             if (isFavorited) {
                 // Remove from library
-                if (updateManga.awaitUpdateFavorite(manga.id, false)) {
+                if (updateLibraryMembership.await(manga, favorite = false) is LibraryMembershipResult.Success) {
                     // Remove covers and update last modified in db
                     if (manga.removeCovers() != manga) {
                         updateManga.awaitUpdateCoverLastModified(manga.id)
@@ -343,16 +349,18 @@ class MangaScreenModel(
                 when {
                     // Default category set
                     defaultCategory != null -> {
-                        val result = updateManga.awaitUpdateFavorite(manga.id, true)
-                        if (!result) return@launchIO
-                        moveMangaToCategory(defaultCategory)
+                        val result = updateLibraryMembership.await(
+                            manga = manga,
+                            favorite = true,
+                            categoryIds = listOf(defaultCategory.id),
+                        )
+                        if (result !is LibraryMembershipResult.Success) return@launchIO
                     }
 
                     // Automatic 'Default' or no categories
                     defaultCategoryId == 0L || categories.isEmpty() -> {
-                        val result = updateManga.awaitUpdateFavorite(manga.id, true)
-                        if (!result) return@launchIO
-                        moveMangaToCategory(null)
+                        val result = updateLibraryMembership.await(manga, favorite = true)
+                        if (result !is LibraryMembershipResult.Success) return@launchIO
                     }
 
                     // Choose a category
@@ -439,11 +447,17 @@ class MangaScreenModel(
     }
 
     fun moveMangaToCategoriesAndAddToLibrary(manga: Manga, categories: List<Long>) {
-        moveMangaToCategory(categories)
-        if (manga.favorite) return
+        if (manga.favorite) {
+            moveMangaToCategory(categories)
+            return
+        }
 
         screenModelScope.launchIO {
-            updateManga.awaitUpdateFavorite(manga.id, true)
+            updateLibraryMembership.await(
+                manga = manga,
+                favorite = true,
+                categoryIds = categories,
+            )
         }
     }
 
@@ -821,14 +835,25 @@ class MangaScreenModel(
      * Bookmarks the given list of chapters.
      * @param chapters the list of chapters to bookmark.
      */
-    fun bookmarkChapters(chapters: List<Chapter>, bookmarked: Boolean) {
-        screenModelScope.launchIO {
-            chapters
-                .filterNot { it.bookmark == bookmarked }
-                .map { ChapterUpdate(id = it.id, bookmark = bookmarked) }
-                .let { updateChapter.awaitAll(it) }
+    fun bookmarkChapters(chapters: List<Chapter>, bookmarked: Boolean): Job {
+        val mutation = screenModelScope.launchIO {
+            val result = batchUpdateChapters.await(
+                chapters = chapters.filterNot { it.bookmark == bookmarked },
+            ) { chapter ->
+                updateChapter.awaitOrThrow(ChapterUpdate(id = chapter.id, bookmark = bookmarked))
+            }
+            if (result.failures.isNotEmpty()) {
+                snackbarHostState.showSnackbar(
+                    message = context.stringResource(
+                        MR.strings.chapter_batch_update_result,
+                        result.succeededIds.size,
+                        result.failures.size,
+                    ),
+                )
+            }
         }
         toggleAllSelection(false)
+        return mutation
     }
 
     /**

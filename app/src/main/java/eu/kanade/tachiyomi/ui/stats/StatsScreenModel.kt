@@ -13,6 +13,7 @@ import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.flow.update
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.domain.history.interactor.GetTotalReadDuration
+import tachiyomi.domain.library.interactor.AggregateLibraryStats
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.library.service.LibraryPreferences.Companion.MANGA_HAS_UNREAD
@@ -32,6 +33,7 @@ class StatsScreenModel(
     private val getTracks: GetTracks = Injekt.get(),
     private val preferences: LibraryPreferences = Injekt.get(),
     private val trackerManager: TrackerManager = Injekt.get(),
+    private val aggregateLibraryStats: AggregateLibraryStats = AggregateLibraryStats(),
 ) : StateScreenModel<StatsScreenState>(StatsScreenState.Loading) {
 
     private val loggedInTrackers by lazy { trackerManager.loggedInTrackers() }
@@ -41,6 +43,7 @@ class StatsScreenModel(
             val libraryManga = getLibraryManga.await()
 
             val distinctLibraryManga = libraryManga.fastDistinctBy { it.id }
+            val aggregateStats = aggregateLibraryStats(libraryManga)
 
             val mangaTrackMap = getMangaTrackMap(distinctLibraryManga)
             val scoredMangaTrackerMap = getScoredMangaTrackMap(mangaTrackMap)
@@ -48,7 +51,7 @@ class StatsScreenModel(
             val meanScore = getTrackMeanScore(scoredMangaTrackerMap)
 
             val overviewStatData = StatsData.Overview(
-                libraryMangaCount = distinctLibraryManga.size,
+                libraryMangaCount = aggregateStats.mangaCount,
                 completedMangaCount = distinctLibraryManga.count {
                     it.manga.status.toInt() == SManga.COMPLETED && it.unreadCount == 0L
                 },
@@ -57,13 +60,13 @@ class StatsScreenModel(
 
             val titlesStatData = StatsData.Titles(
                 globalUpdateItemCount = getGlobalUpdateItemCount(libraryManga),
-                startedMangaCount = distinctLibraryManga.count { it.hasStarted },
+                startedMangaCount = aggregateStats.startedCount,
                 localMangaCount = distinctLibraryManga.count { it.manga.isLocal() },
             )
 
             val chaptersStatData = StatsData.Chapters(
-                totalChapterCount = distinctLibraryManga.sumOf { it.totalChapters }.toInt(),
-                readChapterCount = distinctLibraryManga.sumOf { it.readCount }.toInt(),
+                totalChapterCount = aggregateStats.totalChapters.toInt(),
+                readChapterCount = aggregateStats.readChapters.toInt(),
                 downloadCount = downloadManager.getDownloadCount(),
             )
 

@@ -252,9 +252,10 @@ internal fun MangaHeader(
 @Composable
 internal fun MangaCategoryDialog(
     mangaId: Long,
+    title: String = "Edit categories",
     loadCategories: suspend () -> List<Category>,
     loadCategoryIds: suspend (Long) -> Set<Long>,
-    setCategories: suspend (Long, List<Long>) -> Unit,
+    onConfirm: suspend (List<Long>) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var categories by remember { mutableStateOf<List<Category>>(emptyList()) }
@@ -272,7 +273,7 @@ internal fun MangaCategoryDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Edit categories") },
+        title = { Text(title) },
         text = {
             if (categories.isEmpty()) {
                 Text("No categories. Create categories from Library first.")
@@ -304,9 +305,9 @@ internal fun MangaCategoryDialog(
             TextButton(
                 onClick = {
                     scope.launch {
-                        setCategories(mangaId, checkedIds.toList())
+                        onConfirm(checkedIds.toList())
+                        onDismiss()
                     }
-                    onDismiss()
                 },
             ) {
                 Text("OK")
@@ -315,6 +316,42 @@ internal fun MangaCategoryDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
         },
+    )
+}
+
+internal enum class MangaCategoryDialogMode {
+    ADD_TO_LIBRARY,
+    EDIT_CATEGORIES,
+}
+
+@Composable
+internal fun MangaDetailLibraryCategoryDialog(
+    manga: Manga,
+    mode: MangaCategoryDialogMode,
+    model: MangaDetailScreenModel,
+    onDismiss: () -> Unit,
+) {
+    MangaCategoryDialog(
+        mangaId = manga.id,
+        title = when (mode) {
+            MangaCategoryDialogMode.ADD_TO_LIBRARY -> "Add to library"
+            MangaCategoryDialogMode.EDIT_CATEGORIES -> "Edit categories"
+        },
+        loadCategories = model::categories,
+        loadCategoryIds = model::categoryIdsForManga,
+        onConfirm = { categoryIds ->
+            when (mode) {
+                MangaCategoryDialogMode.ADD_TO_LIBRARY -> model.toggleLibrary(
+                    manga = manga,
+                    categoryIds = categoryIds,
+                )
+                MangaCategoryDialogMode.EDIT_CATEGORIES -> model.setCategoriesForManga(
+                    mangaId = manga.id,
+                    categoryIds = categoryIds,
+                )
+            }
+        },
+        onDismiss = onDismiss,
     )
 }
 

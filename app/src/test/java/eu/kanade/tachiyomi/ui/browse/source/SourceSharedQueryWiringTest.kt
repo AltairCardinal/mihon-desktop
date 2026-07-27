@@ -11,9 +11,13 @@ import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test
+import tachiyomi.data.DatabaseHandler
+import tachiyomi.domain.chapter.interactor.BatchUpdateChapters
+import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.InjektScope
+import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.registry.default.DefaultRegistrar
 import java.util.concurrent.Executor
@@ -26,6 +30,17 @@ class SourceSharedQueryWiringTest {
             Injekt.importModule(DomainModule())
 
             assertNotNull(Injekt.get<SourceMangaSearchService>())
+        }
+    }
+
+    @Test
+    fun `Android domain DI resolves shared membership and chapter batch use cases`() {
+        withIsolatedInjekt {
+            Injekt.addSingleton<DatabaseHandler>(mockk(relaxed = true))
+            Injekt.importModule(DomainModule())
+
+            assertNotNull(Injekt.get<UpdateLibraryMembership>())
+            assertNotNull(Injekt.get<BatchUpdateChapters>())
         }
     }
 

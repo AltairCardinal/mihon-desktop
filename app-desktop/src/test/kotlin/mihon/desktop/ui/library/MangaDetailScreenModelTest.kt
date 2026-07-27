@@ -546,6 +546,26 @@ class MangaDetailScreenModelTest {
     }
 
     @Test
+    fun `toggleLibrary adds favorite and selected categories atomically`() = runTest {
+        val mangaRepository = FakeMangaRepository()
+        mangaRepository.seed(createFakeManga(id = 1L).copy(favorite = false, dateAdded = 0L))
+        val model = MangaDetailScreenModel(
+            mangaId = 1L,
+            updateLibraryMembership = UpdateLibraryMembership(mangaRepository),
+        )
+
+        model.toggleLibrary(
+            manga = mangaRepository.get(1L)!!,
+            categoryIds = listOf(7L, 7L, 9L),
+            nowMillis = 123L,
+        )
+
+        assertTrue(mangaRepository.get(1L)!!.favorite)
+        assertEquals(123L, mangaRepository.get(1L)!!.dateAdded)
+        assertEquals(listOf(7L, 9L), mangaRepository.getMangaCategoryIds(1L))
+    }
+
+    @Test
     fun `chapter sort and display persist through chapter flags use case`() = runTest {
         val genericRepository = FakeMangaRepository()
         val flagsRepository = FakeMangaRepository()

@@ -262,9 +262,18 @@ class MangaDetailScreenModel(
             .awaitOrThrow(chapter, read = !chapter.read)
     }
 
-    suspend fun toggleLibrary(manga: Manga, nowMillis: Long = System.currentTimeMillis()): LibraryMembershipResult {
+    suspend fun toggleLibrary(
+        manga: Manga,
+        categoryIds: List<Long> = emptyList(),
+        nowMillis: Long = System.currentTimeMillis(),
+    ): LibraryMembershipResult {
         return requireNotNull(updateLibraryMembership) { "UpdateLibraryMembership is required" }
-            .await(manga, favorite = !manga.favorite, nowMillis = nowMillis)
+            .await(
+                manga = manga,
+                favorite = !manga.favorite,
+                categoryIds = categoryIds,
+                nowMillis = nowMillis,
+            )
     }
 
     suspend fun chooseCustomCover() {

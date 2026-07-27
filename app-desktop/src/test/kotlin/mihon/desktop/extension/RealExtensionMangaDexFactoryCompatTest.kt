@@ -5,17 +5,22 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.widget.EditText
 import androidx.preference.EditTextPreference
+import eu.kanade.tachiyomi.source.ConfigurableSource
+import eu.kanade.tachiyomi.source.PreferenceScreen
+import eu.kanade.tachiyomi.source.SourcePreferenceScreenSetup
 import eu.kanade.tachiyomi.source.preference.JvmPreferenceItem
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import mihon.desktop.di.initDesktopDIForTest
+import mihon.desktop.ui.extension.DesktopAndroidPreferenceAdapter
 import mihon.desktop.ui.extension.SourcePreferencesState
 import mihon.desktop.ui.extension.resolveSourcePreferencesState
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -65,6 +70,32 @@ class RealExtensionMangaDexFactoryCompatTest {
                     assertTrue(loader.diagnostics.isEmpty(), "MangaDex loader diagnostics: ${loader.diagnostics}")
                     val english = loaded.single { it.source.lang == "en" }
                     assertEquals("MangaDex", english.source.name)
+
+                    val descriptorScreen = PreferenceScreen()
+                    assertTrue(
+                        DesktopAndroidPreferenceAdapter.setupPreferenceScreen(
+                            english.source,
+                            descriptorScreen,
+                        ) is SourcePreferenceScreenSetup.Success,
+                    )
+                    assertEquals(12, descriptorScreen.preferences.size)
+                    assertTrue(
+                        DesktopAndroidPreferenceAdapter.setupPreferenceScreen(
+                            null,
+                            PreferenceScreen(),
+                        ) is SourcePreferenceScreenSetup.Missing,
+                    )
+                    val setupFailure = IllegalStateException("fixture setup boundary")
+                    val failingSource = object : ConfigurableSource by (english.source as ConfigurableSource) {
+                        override fun setupPreferenceScreen(screen: PreferenceScreen) {
+                            throw setupFailure
+                        }
+                    }
+                    val failureResult = DesktopAndroidPreferenceAdapter.setupPreferenceScreen(
+                        failingSource,
+                        PreferenceScreen(),
+                    )
+                    assertSame(setupFailure, (failureResult as SourcePreferenceScreenSetup.Failure).error)
 
                     val preferenceState = resolveSourcePreferencesState(english.source)
                     assertTrue(preferenceState is SourcePreferencesState.Content) {

@@ -43,6 +43,7 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.PreferenceScreen
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.SourcePreferenceScreenSetup
 import eu.kanade.tachiyomi.source.preference.CheckBoxPreference
 import eu.kanade.tachiyomi.source.preference.EditTextPreference
 import eu.kanade.tachiyomi.source.preference.JvmPreferenceItem
@@ -79,15 +80,13 @@ internal fun resolveSourcePreferencesState(
         } catch (_: LinkageError) {
             // Missing optional Android compatibility classes must not block JVM descriptors.
         }
-        try {
-            DesktopAndroidPreferenceAdapter.setupPreferenceScreen(source, screen)
-            screen.preferences.takeIf { it.isNotEmpty() }
+        when (val setup = DesktopAndroidPreferenceAdapter.setupPreferenceScreen(source, screen)) {
+            SourcePreferenceScreenSetup.Success -> screen.preferences.takeIf { it.isNotEmpty() }
                 ?.let(SourcePreferencesState::Content)
                 ?: SourcePreferencesState.Empty
-        } catch (error: Exception) {
-            SourcePreferencesState.SetupFailure(error)
-        } catch (error: LinkageError) {
-            SourcePreferencesState.SetupFailure(error)
+            is SourcePreferenceScreenSetup.Failure -> SourcePreferencesState.SetupFailure(setup.error)
+            SourcePreferenceScreenSetup.Missing -> SourcePreferencesState.Missing
+            SourcePreferenceScreenSetup.NonConfigurable -> SourcePreferencesState.NonConfigurable
         }
     }
 }

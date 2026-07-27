@@ -652,7 +652,7 @@ repository-local 实现、只待逐项晋升，另有 15 个仍保留旧 Task 6/
 consumer，不冒充原版依据。
 
 - [ ] Task 18A：清除悬空 follow-up，并关闭 ID 11 的 Desktop notification adapter
-- [ ] Task 18B：补齐 production fixture（7、16、38、54、71、72）
+- [x] Task 18B：补齐 production fixture（7、16、38、54、71、72）
 - [ ] Task 18C：关闭共享语义分叉（22、24、28、66）
 - [ ] Task 18D：关闭平台 adapter 终态证据（26、56、73、93）
 - [ ] Task 18E：移除 `UNCLASSIFIED_DEBT` / `TEMP-COMPAT` 分类矛盾并逐项晋升 64 项
@@ -684,8 +684,20 @@ consumer，不冒充原版依据。
 - ID 72 已完成：修正固定样本生成器把 category ID 当作 order 的错误，重新生成 fixture；
   current Android `BackupRestorer` 与 Desktop `DesktopBackupRestorer` 均执行该样本，Desktop
   无需增加偏离固定原版的 category-ID fallback。
-- 当前治理套件 24 项中仅“其余未决项仍有悬空 follow-up”这一预期 RED；22、24、26、28、
-  38、56、66、73、93 尚未关闭，因此 18A/18B 均保持未勾选。
+- ID 38 已完成：Android 与 Desktop 均通过共享 `SourcePreferenceScreenSetup` 执行
+  `ConfigurableSource.setupPreferenceScreen`；Robolectric fixture 穿过真实 Fragment lifecycle
+  与 DI SourceManager，并现场校验固定 MangaDex APK 的 SHA/大小及不可变 schema provenance；
+  Desktop 的固定 MangaDex APK fixture 继续保护真实加载后的 12 项 schema。
+- ID 22/24 已完成：current Android 详情页接入共享原子 library membership 与 chapter batch
+  use case，mounted Desktop `MangaDetailScreen` 的真实 Add to library 入口打开分类对话框并把
+  所选 category IDs 交给同一 membership 边界；Android bookmark 批量失败沿现有
+  `MangaScreenModel` 模式直接把本地化成功/失败计数写入页面 `SnackbarHostState`，不再依赖
+  额外 Screen 订阅或易丢失的一次性事件。
+- ID 66 已完成：current Android statistics production model 消费共享
+  `AggregateLibraryStats` 的 title/chapter 汇总，Android 独有 tracker、download、duration 与
+  update-time 统计继续保留；fixture 会在绕过共享 aggregate 时失败。
+- 当前治理套件的全局 dangling 门禁仍按设计 RED；26、28、56、73、93 尚未关闭，因此
+  18A/18C 继续保持未勾选。
 
 ### Task 19：运行全量测试、Windows/macOS 构建与运行验收
 

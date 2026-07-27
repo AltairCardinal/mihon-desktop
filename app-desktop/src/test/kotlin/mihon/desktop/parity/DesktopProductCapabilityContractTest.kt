@@ -38,7 +38,18 @@ class DesktopProductCapabilityContractTest {
     private val requiredTerminalEvidenceRoles =
         setOf("FIXED_ORIGINAL", "CURRENT_ANDROID", "SHARED_OR_ADAPTER", "DESKTOP_CONSUMER", "FIXTURE")
     private val task18PromotedStatuses =
-        mapOf(7 to "VERIFIED", 11 to "VERIFIED", 16 to "VERIFIED", 54 to "VERIFIED", 71 to "VERIFIED", 72 to "VERIFIED")
+        mapOf(
+            7 to "VERIFIED",
+            11 to "VERIFIED",
+            16 to "VERIFIED",
+            22 to "VERIFIED",
+            24 to "VERIFIED",
+            38 to "VERIFIED",
+            54 to "VERIFIED",
+            66 to "VERIFIED",
+            71 to "VERIFIED",
+            72 to "VERIFIED",
+        )
     private val task2ProvenanceStatuses =
         mapOf(9 to "VERIFIED", 10 to "VERIFIED", 11 to "WIRED", 12 to "VERIFIED", 16 to "SHARED", 17 to "SHARED", 19 to "WIRED", 22 to "SHARED")
     private val task2BehaviorMethods =
@@ -1932,17 +1943,33 @@ class DesktopProductCapabilityContractTest {
                     methods.jsonArray.map { it.jsonPrimitive.content }.toSet()
                 }
             val expectedBehaviorMethods =
-                if (id == 16) {
-                    task7BehaviorMethods.getValue(id) +
-                        mapOf(
-                            "app/src/test/java/eu/kanade/tachiyomi/ui/category/CategoryScreenModelBehaviorTest.kt" to
-                                setOf(
-                                    "production interactors drive category CRUD ordering and preference cleanup",
-                                    "each failed production mutation emits the explicit internal error boundary",
-                                ),
-                        )
-                } else {
-                    task7BehaviorMethods[id] ?: task2BehaviorMethods.getValue(id)
+                when (id) {
+                    16 ->
+                        task7BehaviorMethods.getValue(id) +
+                            mapOf(
+                                "app/src/test/java/eu/kanade/tachiyomi/ui/category/CategoryScreenModelBehaviorTest.kt" to
+                                    setOf(
+                                        "production interactors drive category CRUD ordering and preference cleanup",
+                                        "each failed production mutation emits the explicit internal error boundary",
+                                    ),
+                            )
+                    22 ->
+                        task7BehaviorMethods.getValue(id) +
+                            mapOf(
+                                "app/src/test/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModelSharedMutationWiringTest.kt" to
+                                    setOf("Android add with categories delegates one atomic shared membership request"),
+                                "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt" to
+                                    setOf(
+                                        "toggleLibrary adds favorite and selected categories atomically",
+                                        "toggleLibrary clears favorite date and categories when removing",
+                                    ),
+                                "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailLibraryEntryWiringTest.kt" to
+                                    setOf(
+                                        "real MangaDetailScreen add action mounts category dialog and commits selection",
+                                        "add to library dialog passes selected category ids through the production caller",
+                                    ),
+                            )
+                    else -> task7BehaviorMethods[id] ?: task2BehaviorMethods.getValue(id)
                 }
             assertEquals(expectedBehaviorMethods, behaviorMethods, "ID $id behavior methods")
             task2BehaviorMethods.getValue(id).forEach { (path, methods) ->
@@ -1977,14 +2004,29 @@ class DesktopProductCapabilityContractTest {
         val items = manifestItems(repositoryRoot).associateBy { validatedId(it.jsonObject) }
         task3ProvenanceStatuses.forEach { (id, expectedStatus) ->
             val item = items.getValue(id).jsonObject
-            assertEquals(expectedStatus, requiredText(item, "status", id), "Task 3 must not change capability status")
+            assertEquals(task18PromotedStatuses[id] ?: expectedStatus, requiredText(item, "status", id), "Latest audited status must supersede Task 3")
             assertEquals(fixedOriginalMihonRef, requiredText(item, "upstreamRef", id))
             assertEquals(":app-desktop:task3ParityVerification", requiredText(item, "behaviorVerificationTask", id))
             val behaviorMethods =
                 item.getValue("behaviorMethods").jsonObject.mapValues { (_, methods) ->
                     methods.jsonArray.map { it.jsonPrimitive.content }.toSet()
                 }
-            assertEquals(task3BehaviorMethods.getValue(id), behaviorMethods, "ID $id behavior methods")
+            val expectedBehaviorMethods =
+                if (id == 24) {
+                    task3BehaviorMethods.getValue(id) +
+                        mapOf(
+                            "app/src/test/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModelSharedMutationWiringTest.kt" to
+                                setOf("Android bookmark batch continues after write failure and shows localized result"),
+                            "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt" to
+                                setOf(
+                                    "selected read action exposes partial failure in state",
+                                    "markSelectedBookmark uses true when any selected chapter is not bookmarked",
+                                ),
+                        )
+                } else {
+                    task3BehaviorMethods.getValue(id)
+                }
+            assertEquals(expectedBehaviorMethods, behaviorMethods, "ID $id behavior methods")
             behaviorMethods.forEach { (path, methods) ->
                 val source = Files.readString(repositoryRoot.resolve(path))
                 methods.forEach { method ->
@@ -2025,14 +2067,20 @@ class DesktopProductCapabilityContractTest {
                     methods.jsonArray.map { it.jsonPrimitive.content }.toSet()
                 }
             val expectedBehaviorMethods =
-                if (id == 54) {
-                    task4BehaviorMethods.getValue(id) +
-                        mapOf(
-                            "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt" to
-                                setOf("current Android ReaderViewModel applies shared skip policy before exposing adjacent chapters"),
-                        )
-                } else {
-                    task4BehaviorMethods.getValue(id)
+                when (id) {
+                    54 ->
+                        task4BehaviorMethods.getValue(id) +
+                            mapOf(
+                                "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt" to
+                                    setOf("current Android ReaderViewModel applies shared skip policy before exposing adjacent chapters"),
+                            )
+                    66 ->
+                        task4BehaviorMethods.getValue(id) +
+                            mapOf(
+                                "app/src/test/java/eu/kanade/tachiyomi/ui/stats/StatsScreenModelSharedAggregationTest.kt" to
+                                    setOf("current Android stats screen consumes shared title and chapter aggregation"),
+                            )
+                    else -> task4BehaviorMethods.getValue(id)
                 }
             assertEquals(expectedBehaviorMethods, behaviorMethods, "ID $id behavior methods")
             behaviorMethods.forEach { (path, methods) ->
@@ -2315,7 +2363,7 @@ class DesktopProductCapabilityContractTest {
         assertEquals(task8Statuses.keys, task8DecisionIds, "Task 8 capability set")
         task8Statuses.forEach { (id, expectedStatus) ->
             val item = items.getValue(id).jsonObject
-            assertEquals(expectedStatus, requiredText(item, "status", id), "ID $id Task 8 status")
+            assertEquals(task18PromotedStatuses[id] ?: expectedStatus, requiredText(item, "status", id), "ID $id latest status after Task 8")
             val decision = statusDecisionForTask(item, id, "Task 8")
             assertEquals("Task 8", requiredText(decision, "task", id, "statusDecision"))
             val verified = id in setOf(30, 33, 34, 36, 37)
@@ -2575,7 +2623,7 @@ class DesktopProductCapabilityContractTest {
             "bounded retry",
             "queue cleanup",
         ).forEach { term -> assertTrue(term in triggerGap, "ID 70 gap must preserve `$term`") }
-        val statsGap = requiredText(items.getValue(66).jsonObject.getValue("statusDecision").jsonObject, "gap", 66, "statusDecision")
+        val statsGap = requiredText(statusDecisionForTask(items.getValue(66).jsonObject, 66, "Task 11"), "gap", 66, "statusDecision")
         assertTrue("current Android" in statsGap && "production behavior" in statsGap, "ID 66 gap must name the unprotected Android aggregation")
         val creator = items.getValue(71).jsonObject
         assertTrue(

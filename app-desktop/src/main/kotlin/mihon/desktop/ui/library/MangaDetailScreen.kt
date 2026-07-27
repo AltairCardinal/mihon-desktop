@@ -90,7 +90,6 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.launch
-import mihon.desktop.library.MangaDetailScreenModelFactory
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.externalChapterUrlOrNull
 import mihon.desktop.reader.readingModeFromViewerFlags
@@ -127,7 +126,8 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
             }
         }
 
-        val model = rememberScreenModel { MangaDetailScreenModelFactory.create(mangaId) }
+        val screenModelFactory = LocalMangaDetailScreenModelFactory.current
+        val model = rememberScreenModel { screenModelFactory(mangaId) }
         val state by model.state.collectAsState()
         val downloadQueue by model.downloadQueueFlow().collectAsState()
         val dependencies = LocalDesktopUiDependencies.current
@@ -158,7 +158,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         val chapterSortAscending = state.chapterSortAscending
         val availableScanlators = state.availableScanlators
         val excludedScanlators = state.excludedScanlators
-        var showCategoryDialog by remember { mutableStateOf(false) }
+        var categoryDialogMode by remember { mutableStateOf<MangaCategoryDialogMode?>(null) }
         var showFetchIntervalDialog by remember { mutableStateOf(false) }
         var downloadMenuExpanded by remember { mutableStateOf(false) }
 
@@ -566,13 +566,13 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
             }
 
             val categoryManga = manga
-            if (showCategoryDialog && categoryManga != null) {
-                MangaCategoryDialog(
-                    mangaId = categoryManga.id,
-                    loadCategories = model::categories,
-                    loadCategoryIds = model::categoryIdsForManga,
-                    setCategories = model::setCategoriesForManga,
-                    onDismiss = { showCategoryDialog = false },
+            val activeCategoryDialogMode = categoryDialogMode
+            if (activeCategoryDialogMode != null && categoryManga != null) {
+                MangaDetailLibraryCategoryDialog(
+                    manga = categoryManga,
+                    mode = activeCategoryDialogMode,
+                    model = model,
+                    onDismiss = { categoryDialogMode = null },
                 )
             }
 
@@ -765,11 +765,17 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         hasUnreadChapters = nextUnread != null,
                         onToggleLibrary = {
                             val current = manga ?: return@MangaDetailActionRow
-                            scope.launch {
-                                model.toggleLibrary(current)
+                            if (current.favorite) {
+                                scope.launch {
+                                    model.toggleLibrary(current)
+                                }
+                            } else {
+                                categoryDialogMode = MangaCategoryDialogMode.ADD_TO_LIBRARY
                             }
                         },
-                        onEditCategories = { showCategoryDialog = true },
+                        onEditCategories = {
+                            categoryDialogMode = MangaCategoryDialogMode.EDIT_CATEGORIES
+                        },
                         onEditFetchInterval = { showFetchIntervalDialog = true },
                         onTracking = {
                             onTracking(navigator, manga!!.title, chapters.size.toLong())

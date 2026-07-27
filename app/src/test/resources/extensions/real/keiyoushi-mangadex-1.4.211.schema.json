@@ -1,0 +1,22 @@
+{
+  "authorityRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+  "repositoryCommit": "7d5052fb895d086ae2ec6e3cca861146ee3ea0ec",
+  "artifactPath": "app-desktop/src/test/resources/extensions/real/keiyoushi-mangadex-1.4.211.apk",
+  "artifactSha256": "eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236",
+  "artifactSizeBytes": 111390,
+  "sourceName": "MangaDex",
+  "sourceLanguage": "en",
+  "schemaPreferenceCount": 12,
+  "verifiedPreferences": [
+    {
+      "type": "list",
+      "key": "thumbnailQuality_en",
+      "title": "Cover quality"
+    },
+    {
+      "type": "editText",
+      "key": "blockedGroups_en",
+      "title": "Block groups by UUID"
+    }
+  ]
+}
