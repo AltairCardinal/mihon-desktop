@@ -6,6 +6,7 @@ import org.objectweb.asm.ClassWriter
 import org.objectweb.asm.MethodVisitor
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.Type
+import org.objectweb.asm.tree.ClassNode
 import java.io.File
 import java.util.jar.JarFile
 import java.util.jar.JarOutputStream
@@ -50,16 +51,18 @@ object BytecodeEditor {
      */
     fun fixBytecode(inputJar: File, outputJar: File) {
         JarFile(inputJar).use { jar ->
-            val inputClassNames = jar.entries().asSequence()
-                .filter { it.name.endsWith(".class") }
-                .map { it.name.removeSuffix(".class") }
-                .toSet()
-            val methodNameResolver = HostMethodNameResolver(inputClassNames)
+            val entries = jar.entries().asSequence().toList()
+            val entryBytes = entries.associate { entry -> entry.name to jar.getInputStream(entry).readBytes() }
+            val inputClasses = entryBytes
+                .filterKeys { it.endsWith(".class") }
+                .mapKeys { (name) -> name.removeSuffix(".class") }
+            val methodNameResolver = HostMethodNameResolver(inputClasses.keys)
+            val erasedAllocationRepair = Dex2JarErasedAllocationRepair(inputClasses)
             JarOutputStream(outputJar.outputStream()).use { out ->
-                jar.entries().asSequence().forEach { entry ->
-                    val inputBytes = jar.getInputStream(entry).readBytes()
+                entries.forEach { entry ->
+                    val inputBytes = entryBytes.getValue(entry.name)
                     val outputBytes = if (entry.name.endsWith(".class")) {
-                        fixClass(inputBytes, methodNameResolver)
+                        fixClass(inputBytes, methodNameResolver, erasedAllocationRepair)
                     } else {
                         inputBytes
                     }
@@ -76,13 +79,20 @@ object BytecodeEditor {
     // Internal
     // ──────────────────────────────────────────────────────────────
 
-    private fun fixClass(bytes: ByteArray, methodNameResolver: HostMethodNameResolver): ByteArray {
+    private fun fixClass(
+        bytes: ByteArray,
+        methodNameResolver: HostMethodNameResolver,
+        erasedAllocationRepair: Dex2JarErasedAllocationRepair,
+    ): ByteArray {
         return try {
             val reader = ClassReader(bytes)
+            val classNode = ClassNode(Opcodes.ASM9)
+            reader.accept(classNode, ClassReader.SKIP_FRAMES)
+            erasedAllocationRepair.repair(classNode)
             val writer = LenientClassWriter(reader, ClassWriter.COMPUTE_FRAMES)
             val visitor = MethodCallRepairingClassVisitor(writer, methodNameResolver)
-            // SKIP_FRAMES: don't validate existing frames — let COMPUTE_FRAMES redo them
-            reader.accept(visitor, ClassReader.SKIP_FRAMES)
+            // Existing frames were skipped while reading; let COMPUTE_FRAMES redo them.
+            classNode.accept(visitor)
             writer.toByteArray()
         } catch (_: Exception) {
             // If ASM fails (e.g. malformed class), keep the original bytes so the

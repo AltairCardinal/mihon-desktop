@@ -1,9 +1,18 @@
 package mihon.desktop.extension
 
+import kotlinx.coroutines.runBlocking
+import mihon.desktop.di.initDesktopDIForTest
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.parallel.Isolated
+import tachiyomi.core.common.preference.DesktopPreferenceStore
+import uy.kohesive.injekt.Injekt
 import java.io.File
+import java.lang.reflect.Modifier
+import java.nio.file.Path
+import java.util.jar.JarFile
 
 /**
  * Stage 27.0 — Live extension compatibility baseline.
@@ -18,16 +27,19 @@ import java.io.File
  *  - Failure breakdown by category (STUB_MISSING vs DI_FAILURE vs LOAD_ERROR)
  *  - List of missing stub classes
  *
- * Note: This test does NOT call initDesktopDI() so DI_FAILURE results correctly
- * identify sources that depend on Injekt bindings at construction time.
- * A follow-up test with DI initialized would isolate pure compat failures.
+ * The compatibility gate initializes production Desktop DI before loading. A
+ * separate diagnostic test intentionally runs without DI to categorize missing
+ * bindings without weakening the production-path assertion.
  */
+@Isolated
 class ExtensionLiveCompatibilityTest {
 
     private val extensionsDir = File(System.getProperty("user.home"), ".mihon/extensions")
 
     @Test
-    fun `report extension compatibility without DI`() {
+    fun `report extension compatibility with production DI`(
+        @TempDir tempDir: Path,
+    ) = runBlocking {
         val jarFiles = extensionsDir.listFiles { f -> f.isFile && f.extension == "jar" }
             ?: emptyArray()
 
@@ -36,21 +48,32 @@ class ExtensionLiveCompatibilityTest {
             "No JAR files found in ${extensionsDir.absolutePath} — test skipped (expected in CI)",
         )
 
-        val loader = DesktopExtensionLoader(extensionsDir)
-        val report = CompatibilityReport()
+        val previousInjekt = Injekt
+        val diContext = initDesktopDIForTest(
+            appDir = tempDir.resolve("app").toFile(),
+            preferenceStore = DesktopPreferenceStore(),
+        )
+        try {
+            val loader = DesktopExtensionLoader(extensionsDir)
+            val report = CompatibilityReport()
 
-        for (jar in jarFiles.sorted()) {
-            val (category, error) = tryLoad(loader, jar)
-            report.record(jar.name, category, error)
+            for (jar in jarFiles.sorted()) {
+                val (category, error) = tryLoad(loader, jar)
+                report.record(jar.name, category, error)
+            }
+
+            println("\n=== Extension Compatibility Report (production DI) ===")
+            println(report.fullReport())
+            println("========================================================\n")
+
+            assertTrue(
+                report.okCount > 0,
+                "At least one live extension must load successfully:\n${report.fullReport()}",
+            )
+        } finally {
+            diContext.closeAndJoin()
+            Injekt = previousInjekt
         }
-
-        println("\n=== Extension Compatibility Report (no DI) ===")
-        println(report.fullReport())
-        println("=================================================\n")
-
-        // Soft assertion: at least measure the baseline, don't enforce a number
-        // (the purpose of this test is to produce a report, not to gate on a threshold)
-        assertTrue(report.total > 0, "Should have loaded at least one extension")
     }
 
     @Test
@@ -105,11 +128,41 @@ class ExtensionLiveCompatibilityTest {
             if (results.isNotEmpty()) {
                 ExtensionFailureCategory.LOAD_OK to null
             } else {
-                // No sources found — treat as load error (no specific exception)
-                ExtensionFailureCategory.LOAD_ERROR to RuntimeException("No sources found in ${jar.name}")
+                val error = directSourceInstantiationFailure(jar)
+                    ?: RuntimeException("No sources found in ${jar.name}")
+                ExtensionFailureCategory.from(error) to error
             }
         } catch (t: Throwable) {
             ExtensionFailureCategory.from(t) to t
         }
+    }
+
+    private fun directSourceInstantiationFailure(jar: File): Throwable? {
+        ExtensionClassLoader(jar.toURI().toURL(), javaClass.classLoader).use { classLoader ->
+            JarFile(jar).use { archive ->
+                archive.entries().asSequence()
+                    .filter { !it.isDirectory && it.name.endsWith(".class") && '$' !in it.name }
+                    .forEach { entry ->
+                        val className = entry.name.removeSuffix(".class").replace('/', '.')
+                        val candidate = try {
+                            classLoader.loadClass(className)
+                        } catch (_: Throwable) {
+                            return@forEach
+                        }
+                        if (!eu.kanade.tachiyomi.source.Source::class.java.isAssignableFrom(candidate) ||
+                            candidate.isInterface ||
+                            Modifier.isAbstract(candidate.modifiers)
+                        ) {
+                            return@forEach
+                        }
+                        try {
+                            candidate.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
+                        } catch (error: Throwable) {
+                            return generateSequence(error) { it.cause }.last()
+                        }
+                    }
+            }
+        }
+        return null
     }
 }

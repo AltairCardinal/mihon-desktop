@@ -220,6 +220,27 @@ class BytecodeEditorTest {
         }
     }
 
+    @Test
+    fun `fixBytecode restores uniquely typed erased allocations without rewriting real Objects`() {
+        val input = buildJar(
+            "SharedPreferencesLazy.class" to buildErasedLazySupplier(
+                "SharedPreferencesLazy",
+                "android/content/SharedPreferences",
+            ),
+            "ErasedSupplier.class" to buildErasedFunctionSupplier("ErasedSupplier"),
+            "RealObject.class" to buildRealObjectHolder("RealObject"),
+        )
+        val output = File(tempDir, "output.jar")
+
+        BytecodeEditor.fixBytecode(input, output)
+
+        newTypes(output, "SharedPreferencesLazy") shouldBe listOf("ErasedSupplier")
+        newTypes(output, "RealObject") shouldBe listOf("java/lang/Object")
+        java.net.URLClassLoader(arrayOf(output.toURI().toURL()), javaClass.classLoader).use { loader ->
+            loader.loadClass("SharedPreferencesLazy").getDeclaredConstructor().newInstance()
+        }
+    }
+
     private fun buildCaller(className: String, owner: String, name: String, descriptor: String): ByteArray {
         val writer = ClassWriter(ClassWriter.COMPUTE_FRAMES)
         writer.visit(Opcodes.V11, Opcodes.ACC_PUBLIC, className, null, "java/lang/Object", null)
@@ -261,6 +282,96 @@ class BytecodeEditorTest {
         return writer.toByteArray()
     }
 
+    private fun buildErasedLazySupplier(className: String, valueType: String): ByteArray {
+        val writer = ClassWriter(ClassWriter.COMPUTE_FRAMES)
+        writer.visit(Opcodes.V11, Opcodes.ACC_PUBLIC, className, null, "java/lang/Object", null)
+        writer.visitField(Opcodes.ACC_PRIVATE, "value", "Lkotlin/Lazy;", null, null).visitEnd()
+
+        writer.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null).apply {
+            visitCode()
+            visitVarInsn(Opcodes.ALOAD, 0)
+            visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false)
+            visitTypeInsn(Opcodes.NEW, "java/lang/Object")
+            visitInsn(Opcodes.DUP)
+            visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false)
+            visitMethodInsn(
+                Opcodes.INVOKESTATIC,
+                "kotlin/LazyKt",
+                "lazy",
+                "(Lkotlin/jvm/functions/Function0;)Lkotlin/Lazy;",
+                false,
+            )
+            visitVarInsn(Opcodes.ASTORE, 1)
+            visitVarInsn(Opcodes.ALOAD, 0)
+            visitVarInsn(Opcodes.ALOAD, 1)
+            visitFieldInsn(Opcodes.PUTFIELD, className, "value", "Lkotlin/Lazy;")
+            visitInsn(Opcodes.RETURN)
+            visitMaxs(0, 0)
+            visitEnd()
+        }
+
+        writer.visitMethod(Opcodes.ACC_PUBLIC, "value", "()Ljava/lang/Object;", null, null).apply {
+            visitCode()
+            visitVarInsn(Opcodes.ALOAD, 0)
+            visitFieldInsn(Opcodes.GETFIELD, className, "value", "Lkotlin/Lazy;")
+            visitMethodInsn(
+                Opcodes.INVOKEINTERFACE,
+                "kotlin/Lazy",
+                "getValue",
+                "()Ljava/lang/Object;",
+                true,
+            )
+            visitTypeInsn(Opcodes.CHECKCAST, valueType)
+            visitInsn(Opcodes.ARETURN)
+            visitMaxs(0, 0)
+            visitEnd()
+        }
+        writer.visitEnd()
+        return writer.toByteArray()
+    }
+
+    private fun buildErasedFunctionSupplier(className: String): ByteArray {
+        val writer = ClassWriter(ClassWriter.COMPUTE_FRAMES)
+        writer.visit(
+            Opcodes.V11,
+            Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL,
+            className,
+            null,
+            "java/lang/Object",
+            arrayOf("kotlin/jvm/functions/Function0"),
+        )
+        writer.visitMethod(Opcodes.ACC_PUBLIC, "invoke", "()Ljava/lang/Object;", null, null).apply {
+            visitCode()
+            visitInsn(Opcodes.ACONST_NULL)
+            visitInsn(Opcodes.ARETURN)
+            visitMaxs(0, 0)
+            visitEnd()
+        }
+        writer.visitEnd()
+        return writer.toByteArray()
+    }
+
+    private fun buildRealObjectHolder(className: String): ByteArray {
+        val writer = ClassWriter(ClassWriter.COMPUTE_FRAMES)
+        writer.visit(Opcodes.V11, Opcodes.ACC_PUBLIC, className, null, "java/lang/Object", null)
+        writer.visitField(Opcodes.ACC_PRIVATE, "value", "Ljava/lang/Object;", null, null).visitEnd()
+        writer.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null).apply {
+            visitCode()
+            visitVarInsn(Opcodes.ALOAD, 0)
+            visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false)
+            visitVarInsn(Opcodes.ALOAD, 0)
+            visitTypeInsn(Opcodes.NEW, "java/lang/Object")
+            visitInsn(Opcodes.DUP)
+            visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false)
+            visitFieldInsn(Opcodes.PUTFIELD, className, "value", "Ljava/lang/Object;")
+            visitInsn(Opcodes.RETURN)
+            visitMaxs(0, 0)
+            visitEnd()
+        }
+        writer.visitEnd()
+        return writer.toByteArray()
+    }
+
     private fun methodCalls(jar: File, className: String): List<MethodCall> {
         val calls = mutableListOf<MethodCall>()
         JarFile(jar).use { input ->
@@ -288,6 +399,29 @@ class BytecodeEditorTest {
             )
         }
         return calls
+    }
+
+    private fun newTypes(jar: File, className: String): List<String> {
+        val types = mutableListOf<String>()
+        JarFile(jar).use { input ->
+            ClassReader(input.getInputStream(input.getJarEntry("$className.class"))).accept(
+                object : ClassVisitor(Opcodes.ASM9) {
+                    override fun visitMethod(
+                        access: Int,
+                        name: String?,
+                        descriptor: String?,
+                        signature: String?,
+                        exceptions: Array<out String>?,
+                    ): MethodVisitor = object : MethodVisitor(Opcodes.ASM9) {
+                        override fun visitTypeInsn(opcode: Int, type: String) {
+                            if (opcode == Opcodes.NEW) types += type
+                        }
+                    }
+                },
+                0,
+            )
+        }
+        return types
     }
 
     private data class MethodCall(val owner: String, val name: String, val descriptor: String)
