@@ -13,10 +13,11 @@ import org.objectweb.asm.tree.TypeInsnNode
 import org.objectweb.asm.tree.VarInsnNode
 
 /**
- * Restores concrete allocations that dex2jar emits as `new Object()` for
- * R8-created no-capture objects. Repairs are accepted only when JVM bytecode
- * supplies one unambiguous expected type and the input JAR contains exactly one
- * matching concrete class whose constructor was erased.
+ * Restores concrete allocations that dex2jar emits as `new` of an erased
+ * superclass for R8-created no-capture objects. This includes `Object`, Kotlin
+ * `Lambda`, and `Enum`. Repairs are accepted only when JVM bytecode supplies
+ * one unambiguous expected type and the input JAR contains exactly one matching
+ * concrete direct subclass whose constructor was erased.
  */
 internal class Dex2JarErasedAllocationRepair(inputClasses: Map<String, ByteArray>) {
 
@@ -32,20 +33,51 @@ internal class Dex2JarErasedAllocationRepair(inputClasses: Map<String, ByteArray
             superName = node.superName,
             interfaces = node.interfaces.toSet(),
             access = node.access,
-            constructors = node.methods.filter { it.name == "<init>" }.map { it.desc }.toSet(),
+            constructors = node.methods
+                .filter { it.name == "<init>" }
+                .associate { it.desc to it.access },
         )
     }
-    private val allocationTargets = classNodes.values
+    private val allocationRepairs = classNodes.values
         .flatMap(::inferRepairs)
-        .mapTo(mutableSetOf()) { it.target }
+    private val constructorOwnerRepairs = classNodes.values
+        .flatMap(::inferConstructorOwnerRepairs)
+    private val skippedSuperConstructorRepairs = classNodes.values
+        .flatMap(::inferSkippedSuperConstructorRepairs)
 
     fun repair(classNode: ClassNode) {
-        inferRepairs(classNode).forEach { repair ->
+        val classAllocationRepairs = inferRepairs(classNode)
+        val classConstructorOwnerRepairs = inferConstructorOwnerRepairs(classNode)
+        val classSkippedSuperConstructorRepairs = inferSkippedSuperConstructorRepairs(classNode)
+        classAllocationRepairs.forEach { repair ->
             repair.newObject.desc = repair.target
             repair.constructor.owner = repair.target
         }
-        if (classNode.name in allocationTargets && classNode.methods.none { it.name == "<init>" }) {
-            classNode.addDefaultConstructor()
+        classConstructorOwnerRepairs.forEach { repair ->
+            repair.constructor.owner = repair.target
+        }
+        classSkippedSuperConstructorRepairs.forEach { repair ->
+            repair.constructor.owner = repair.target
+        }
+        (allocationRepairs.map(AllocationRepair::forwardingConstructor) +
+            constructorOwnerRepairs.map(ConstructorOwnerRepair::forwardingConstructor) +
+            skippedSuperConstructorRepairs.map(SkippedSuperConstructorRepair::forwardingConstructor))
+            .filter { it.target == classNode.name }
+            .distinctBy(ForwardingConstructor::descriptor)
+            .filterNot { constructor ->
+                classNode.methods.any { it.name == "<init>" && it.desc == constructor.descriptor }
+            }
+            .forEach { constructor ->
+                classNode.addForwardingConstructor(
+                    superOwner = constructor.erasedOwner,
+                    descriptor = constructor.descriptor,
+                )
+            }
+        if (classNode.canReceiveImplicitZeroArgConstructor()) {
+            classNode.addForwardingConstructor(
+                superOwner = classNode.superName,
+                descriptor = ZERO_ARG_CONSTRUCTOR,
+            )
         }
     }
 
@@ -53,27 +85,117 @@ internal class Dex2JarErasedAllocationRepair(inputClasses: Map<String, ByteArray
         classNode.methods.flatMap { method ->
             method.instructions.iterator().asSequence()
                 .filterIsInstance<TypeInsnNode>()
-                .filter { it.opcode == Opcodes.NEW && it.desc == OBJECT_OWNER }
-                .mapNotNull { newObject -> inferRepair(method, newObject) }
+                .filter { it.opcode == Opcodes.NEW }
+                .mapNotNull { newObject -> inferRepair(classNode, method, newObject) }
                 .toList()
         }
 
-    private fun inferRepair(method: MethodNode, newObject: TypeInsnNode): AllocationRepair? {
-        val duplicate = newObject.nextInstruction() as? InsnNode ?: return null
-        val constructor = duplicate.nextInstruction() as? MethodInsnNode ?: return null
-        if (duplicate.opcode != Opcodes.DUP || !constructor.isObjectConstructor()) return null
+    private fun inferSkippedSuperConstructorRepairs(classNode: ClassNode): List<SkippedSuperConstructorRepair> {
+        val directSuper = classNode.superName
+        val directSuperInfo = classInfo[directSuper] ?: return emptyList()
+        return classNode.methods.asSequence()
+            .filter { it.name == "<init>" }
+            .flatMap { method -> method.instructions.iterator().asSequence() }
+            .filterIsInstance<MethodInsnNode>()
+            .filter { constructor ->
+                constructor.opcode == Opcodes.INVOKESPECIAL &&
+                    constructor.name == "<init>" &&
+                    constructor.desc == ZERO_ARG_CONSTRUCTOR &&
+                    constructor.owner == directSuperInfo.superName &&
+                    constructor.previousInstruction().isThisReference()
+            }
+            .map { constructor ->
+                SkippedSuperConstructorRepair(
+                    constructor = constructor,
+                    target = directSuper,
+                    erasedOwner = constructor.owner,
+                )
+            }
+            .toList()
+    }
 
-        val expectedDescriptors = when (val consumer = constructor.nextInstruction()) {
-            is MethodInsnNode -> listOfNotNull(consumer.lastReferenceArgument())
-            is FieldInsnNode -> listOfNotNull(consumer.staticStoredType())
+    private fun inferConstructorOwnerRepairs(classNode: ClassNode): List<ConstructorOwnerRepair> =
+        classNode.methods.flatMap { method ->
+            method.instructions.iterator().asSequence()
+                .filterIsInstance<TypeInsnNode>()
+                .filter { it.opcode == Opcodes.NEW }
+                .mapNotNull(::inferConstructorOwnerRepair)
+                .toList()
+        }
+
+    private fun inferConstructorOwnerRepair(newObject: TypeInsnNode): ConstructorOwnerRepair? {
+        val target = newObject.desc
+        val targetInfo = classInfo[target] ?: return null
+        if (targetInfo.access and (Opcodes.ACC_INTERFACE or Opcodes.ACC_ABSTRACT) != 0) return null
+        val erasedOwner = targetInfo.superName
+        val next = newObject.nextInstruction() ?: return null
+        val constructor = when (next.opcode) {
+            Opcodes.DUP -> next.findConstructor(erasedOwner)
+            Opcodes.ASTORE -> {
+                val store = next as VarInsnNode
+                generateSequence(store.nextInstruction()) { it.nextInstruction() }
+                    .filterIsInstance<VarInsnNode>()
+                    .filter { it.opcode == Opcodes.ALOAD && it.`var` == store.`var` }
+                    .mapNotNull { it.findConstructor(erasedOwner) }
+                    .firstOrNull()
+            }
+            else -> null
+        } ?: return null
+        if (!targetInfo.canReceiveErasedConstructor(erasedOwner, constructor.desc)) return null
+        return ConstructorOwnerRepair(
+            constructor = constructor,
+            target = target,
+            erasedOwner = erasedOwner,
+        )
+    }
+
+    private fun inferRepair(
+        classNode: ClassNode,
+        method: MethodNode,
+        newObject: TypeInsnNode,
+    ): AllocationRepair? {
+        val duplicate = newObject.nextInstruction() as? InsnNode ?: return null
+        if (duplicate.opcode != Opcodes.DUP) return null
+        val constructor = generateSequence(duplicate.nextInstruction()) { it.nextInstruction() }
+            .take(MAX_CONSTRUCTOR_SEARCH)
+            .filterIsInstance<MethodInsnNode>()
+            .firstOrNull { it.isConstructorFor(newObject.desc) }
+            ?: return null
+
+        val consumer = constructor.findValueConsumer()
+        val consumerDescriptors = when (consumer) {
+            is MethodInsnNode -> consumer.referenceArgumentsAndReceiver()
+            is FieldInsnNode -> listOfNotNull(consumer.storedType())
             is VarInsnNode -> {
                 if (consumer.opcode != Opcodes.ASTORE) return null
                 inferStoredExpectedTypes(consumer)
             }
             else -> emptyList()
         }
-        val targets = expectedDescriptors.mapNotNull(::resolveAllocationTarget).distinct()
-        return targets.singleOrNull()?.let { AllocationRepair(newObject, constructor, it) }
+        val enclosingClassDescriptor = "L${classNode.name};".takeIf {
+            consumerDescriptors.isEmpty() &&
+            method.name == "<clinit>" &&
+                classInfo[classNode.name]?.canReceiveErasedConstructor(
+                    erasedOwner = newObject.desc,
+                    constructorDescriptor = constructor.desc,
+                ) == true
+        }
+        val expectedDescriptors = (consumerDescriptors + listOfNotNull(enclosingClassDescriptor)).distinct()
+        val targets = expectedDescriptors.mapNotNull { descriptor ->
+            resolveAllocationTarget(
+                descriptor = descriptor,
+                erasedOwner = newObject.desc,
+                constructorDescriptor = constructor.desc,
+            )
+        }.distinct()
+        return targets.singleOrNull()?.let {
+            AllocationRepair(
+                newObject = newObject,
+                constructor = constructor,
+                target = it,
+                erasedOwner = newObject.desc,
+            )
+        }
     }
 
     private fun inferStoredExpectedTypes(store: VarInsnNode): List<String> {
@@ -84,13 +206,12 @@ internal class Dex2JarErasedAllocationRepair(inputClasses: Map<String, ByteArray
             .forEach { load ->
                 when (val next = load.nextInstruction()) {
                     is FieldInsnNode -> {
-                        if (next.opcode == Opcodes.PUTSTATIC) next.staticStoredType()?.let(expected::add)
+                        if (next.opcode == Opcodes.PUTSTATIC) next.storedType()?.let(expected::add)
                         if (next.opcode == Opcodes.PUTFIELD) Type.getType(next.desc).referenceDescriptor()
                             ?.let(expected::add)
                     }
                     is MethodInsnNode -> {
-                        next.lastReferenceArgument()?.let(expected::add)
-                            ?: next.receiverType()?.let(expected::add)
+                        next.referenceArgumentsAndReceiver().forEach(expected::add)
                     }
                 }
 
@@ -109,16 +230,20 @@ internal class Dex2JarErasedAllocationRepair(inputClasses: Map<String, ByteArray
         return expected.distinct()
     }
 
-    private fun resolveAllocationTarget(descriptor: String): String? {
+    private fun resolveAllocationTarget(
+        descriptor: String,
+        erasedOwner: String,
+        constructorDescriptor: String,
+    ): String? {
         val expected = Type.getType(descriptor)
         if (expected.sort != Type.OBJECT) return null
         val expectedName = expected.internalName
 
         classInfo[expectedName]?.let { exact ->
-            if (exact.canReceiveErasedConstructor()) return expectedName
+            if (exact.canReceiveErasedConstructor(erasedOwner, constructorDescriptor)) return expectedName
         }
         return classInfo.asSequence()
-            .filter { (_, info) -> info.canReceiveErasedConstructor() }
+            .filter { (_, info) -> info.canReceiveErasedConstructor(erasedOwner, constructorDescriptor) }
             .map { (name) -> name }
             .filter { candidate -> isAssignableTo(candidate, expectedName) }
             .distinct()
@@ -134,35 +259,71 @@ internal class Dex2JarErasedAllocationRepair(inputClasses: Map<String, ByteArray
             isAssignableTo(info.superName, expected, visited)
     }
 
-    private fun ClassInfo.canReceiveErasedConstructor(): Boolean =
+    private fun ClassInfo.canReceiveErasedConstructor(
+        erasedOwner: String,
+        constructorDescriptor: String,
+    ): Boolean =
         access and (Opcodes.ACC_INTERFACE or Opcodes.ACC_ABSTRACT) == 0 &&
-            constructors.isEmpty() &&
-            superName == OBJECT_OWNER
+            (constructors.isEmpty() || constructorDescriptor in constructors) &&
+            superName == erasedOwner
 
-    private fun ClassNode.addDefaultConstructor() {
-        methods.add(MethodNode(Opcodes.ASM9, Opcodes.ACC_PUBLIC, "<init>", "()V", null, null).apply {
+    private fun ClassNode.addForwardingConstructor(
+        superOwner: String,
+        descriptor: String,
+    ) {
+        val arguments = Type.getArgumentTypes(descriptor)
+        val access = if (access and Opcodes.ACC_ENUM != 0) Opcodes.ACC_PRIVATE else Opcodes.ACC_PUBLIC
+        methods.add(MethodNode(Opcodes.ASM9, access, "<init>", descriptor, null, null).apply {
             instructions.add(VarInsnNode(Opcodes.ALOAD, 0))
-            instructions.add(MethodInsnNode(Opcodes.INVOKESPECIAL, superName, "<init>", "()V", false))
+            var localIndex = 1
+            arguments.forEach { argument ->
+                instructions.add(VarInsnNode(argument.getOpcode(Opcodes.ILOAD), localIndex))
+                localIndex += argument.size
+            }
+            instructions.add(
+                MethodInsnNode(
+                    Opcodes.INVOKESPECIAL,
+                    superOwner,
+                    "<init>",
+                    descriptor,
+                    false,
+                ),
+            )
             instructions.add(InsnNode(Opcodes.RETURN))
-            maxStack = 1
-            maxLocals = 1
+            maxStack = localIndex
+            maxLocals = localIndex
         })
     }
 
-    private fun MethodInsnNode.isObjectConstructor(): Boolean =
+    private fun ClassNode.canReceiveImplicitZeroArgConstructor(): Boolean {
+        if (access and (Opcodes.ACC_INTERFACE or Opcodes.ACC_ABSTRACT) != 0) return false
+        if (methods.any { it.name == "<init>" }) return false
+        val superInfo = classInfo[superName] ?: return false
+        val superConstructorAccess = superInfo.constructors[ZERO_ARG_CONSTRUCTOR] ?: return false
+        return when {
+            superConstructorAccess and Opcodes.ACC_PRIVATE != 0 -> false
+            superConstructorAccess and (Opcodes.ACC_PUBLIC or Opcodes.ACC_PROTECTED) != 0 -> true
+            else -> name.substringBeforeLast('/', "") == superName.substringBeforeLast('/', "")
+        }
+    }
+
+    private fun MethodInsnNode.isConstructorFor(ownerName: String): Boolean =
         opcode == Opcodes.INVOKESPECIAL &&
-            owner == OBJECT_OWNER &&
-            name == "<init>" &&
-            desc == "()V"
+            owner == ownerName &&
+            name == "<init>"
 
-    private fun MethodInsnNode.lastReferenceArgument(): String? =
-        Type.getArgumentTypes(desc).lastOrNull()?.referenceDescriptor()
+    private fun MethodInsnNode.referenceArgumentsAndReceiver(): List<String> =
+        buildList {
+            if (opcode != Opcodes.INVOKESTATIC) add("L$owner;")
+            Type.getArgumentTypes(desc).mapNotNullTo(this) { it.referenceDescriptor() }
+        }
 
-    private fun MethodInsnNode.receiverType(): String? =
-        if (opcode == Opcodes.INVOKESTATIC) null else "L$owner;"
-
-    private fun FieldInsnNode.staticStoredType(): String? =
-        if (opcode == Opcodes.PUTSTATIC) Type.getType(desc).referenceDescriptor() else null
+    private fun FieldInsnNode.storedType(): String? =
+        if (opcode == Opcodes.PUTSTATIC || opcode == Opcodes.PUTFIELD) {
+            Type.getType(desc).referenceDescriptor()
+        } else {
+            null
+        }
 
     private fun Type.referenceDescriptor(): String? =
         descriptor.takeIf { sort == Type.OBJECT || sort == Type.ARRAY }
@@ -183,23 +344,74 @@ internal class Dex2JarErasedAllocationRepair(inputClasses: Map<String, ByteArray
             }
         }.take(6)
 
+    private fun AbstractInsnNode.findConstructor(owner: String): MethodInsnNode? =
+        generateSequence(nextInstruction()) { it.nextInstruction() }
+            .take(MAX_CONSTRUCTOR_SEARCH)
+            .filterIsInstance<MethodInsnNode>()
+            .firstOrNull { it.isConstructorFor(owner) }
+
+    private fun MethodInsnNode.findValueConsumer(): AbstractInsnNode? =
+        generateSequence(nextInstruction()) { it.nextInstruction() }
+            .take(MAX_VALUE_CONSUMER_SEARCH)
+            .firstOrNull { instruction ->
+                instruction is MethodInsnNode ||
+                    instruction is FieldInsnNode ||
+                    instruction is VarInsnNode && instruction.opcode == Opcodes.ASTORE
+            }
+
     private fun AbstractInsnNode.nextInstruction(): AbstractInsnNode? =
         generateSequence(next) { it.next }.firstOrNull { it.opcode >= 0 }
+
+    private fun AbstractInsnNode.previousInstruction(): AbstractInsnNode? =
+        generateSequence(previous) { it.previous }.firstOrNull { it.opcode >= 0 }
+
+    private fun AbstractInsnNode?.isThisReference(): Boolean =
+        this is VarInsnNode && opcode == Opcodes.ALOAD && `var` == 0
 
     private data class AllocationRepair(
         val newObject: TypeInsnNode,
         val constructor: MethodInsnNode,
         val target: String,
+        val erasedOwner: String,
+    ) {
+        val forwardingConstructor: ForwardingConstructor
+            get() = ForwardingConstructor(target, erasedOwner, constructor.desc)
+    }
+
+    private data class ConstructorOwnerRepair(
+        val constructor: MethodInsnNode,
+        val target: String,
+        val erasedOwner: String,
+    ) {
+        val forwardingConstructor: ForwardingConstructor
+            get() = ForwardingConstructor(target, erasedOwner, constructor.desc)
+    }
+
+    private data class SkippedSuperConstructorRepair(
+        val constructor: MethodInsnNode,
+        val target: String,
+        val erasedOwner: String,
+    ) {
+        val forwardingConstructor: ForwardingConstructor
+            get() = ForwardingConstructor(target, erasedOwner, constructor.desc)
+    }
+
+    private data class ForwardingConstructor(
+        val target: String,
+        val erasedOwner: String,
+        val descriptor: String,
     )
 
     private data class ClassInfo(
         val superName: String,
         val interfaces: Set<String>,
         val access: Int,
-        val constructors: Set<String>,
+        val constructors: Map<String, Int>,
     )
 
     private companion object {
-        const val OBJECT_OWNER = "java/lang/Object"
+        const val MAX_CONSTRUCTOR_SEARCH = 16
+        const val MAX_VALUE_CONSUMER_SEARCH = 12
+        const val ZERO_ARG_CONSTRUCTOR = "()V"
     }
 }

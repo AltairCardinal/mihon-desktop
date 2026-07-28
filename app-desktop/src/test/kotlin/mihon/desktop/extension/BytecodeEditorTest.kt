@@ -241,6 +241,128 @@ class BytecodeEditorTest {
         }
     }
 
+    @Test
+    fun `fixBytecode restores erased Lambda singleton allocation and forwarding constructor`() {
+        val input = buildJar(
+            "ErasedLambda.class" to buildErasedLambdaSingleton("ErasedLambda"),
+        )
+        val output = File(tempDir, "output.jar")
+
+        BytecodeEditor.fixBytecode(input, output)
+
+        java.net.URLClassLoader(arrayOf(output.toURI().toURL()), javaClass.classLoader).use { loader ->
+            val type = loader.loadClass("ErasedLambda")
+            val instance = type.getField("INSTANCE").get(null)
+            instance.javaClass shouldBe type
+        }
+    }
+
+    @Test
+    fun `fixBytecode restores erased Enum allocations staged through locals`() {
+        val input = buildJar(
+            "ErasedEnum.class" to buildErasedEnumValues("ErasedEnum"),
+        )
+        val output = File(tempDir, "output.jar")
+
+        BytecodeEditor.fixBytecode(input, output)
+
+        java.net.URLClassLoader(arrayOf(output.toURI().toURL()), javaClass.classLoader).use { loader ->
+            val type = loader.loadClass("ErasedEnum")
+            val values = type.getField("\$VALUES").get(null) as Array<*>
+            values.single()?.javaClass shouldBe type
+        }
+    }
+
+    @Test
+    fun `fixBytecode restores erased superclass allocation when target constructor exists`() {
+        val input = buildJar(
+            "ConcreteMap.class" to buildConcreteMap("ConcreteMap"),
+            "MapHolder.class" to buildErasedMapHolder("MapHolder", "ConcreteMap"),
+        )
+        val output = File(tempDir, "output.jar")
+
+        BytecodeEditor.fixBytecode(input, output)
+
+        java.net.URLClassLoader(arrayOf(output.toURI().toURL()), javaClass.classLoader).use { loader ->
+            val holder = loader.loadClass("MapHolder").getDeclaredConstructor().newInstance()
+            val value = holder.javaClass.getField("value").get(holder)
+            value.javaClass.name shouldBe "ConcreteMap"
+        }
+    }
+
+    @Test
+    fun `fixBytecode restores erased constructor owner after uninitialized local staging`() {
+        val input = buildJar(
+            "ErasedAction.class" to buildErasedAction("ErasedAction"),
+            "ActionHolder.class" to buildStagedErasedConstructorHolder("ActionHolder", "ErasedAction"),
+        )
+        val output = File(tempDir, "output.jar")
+
+        BytecodeEditor.fixBytecode(input, output)
+
+        java.net.URLClassLoader(arrayOf(output.toURI().toURL()), javaClass.classLoader).use { loader ->
+            val holder = loader.loadClass("ActionHolder")
+            val instance = holder.getField("INSTANCE").get(null)
+            instance.javaClass.name shouldBe "ErasedAction"
+        }
+    }
+
+    @Test
+    fun `fixBytecode restores missing constructor on concrete subclass with zero arg super`() {
+        val input = buildJar(
+            "AbstractBase.class" to buildAbstractBase("AbstractBase"),
+            "ConcreteChild.class" to buildConstructorlessChild("ConcreteChild", "AbstractBase"),
+        )
+        val output = File(tempDir, "output.jar")
+
+        BytecodeEditor.fixBytecode(input, output)
+
+        java.net.URLClassLoader(arrayOf(output.toURI().toURL()), javaClass.classLoader).use { loader ->
+            loader.loadClass("ConcreteChild").getDeclaredConstructor().newInstance()
+        }
+    }
+
+    @Test
+    fun `fixBytecode restores skipped abstract superclass constructor`() {
+        val input = buildJar(
+            "ErasedAbstractBase.class" to buildConstructorlessAbstractClass(
+                "ErasedAbstractBase",
+                "java/lang/Object",
+            ),
+            "ConcreteDto.class" to buildConstructorCallingErasedAncestor(
+                "ConcreteDto",
+                "ErasedAbstractBase",
+                "java/lang/Object",
+            ),
+        )
+        val output = File(tempDir, "output.jar")
+
+        BytecodeEditor.fixBytecode(input, output)
+
+        java.net.URLClassLoader(arrayOf(output.toURI().toURL()), javaClass.classLoader).use { loader ->
+            loader.loadClass("ConcreteDto").getDeclaredConstructor().newInstance()
+        }
+    }
+
+    @Test
+    fun `fixBytecode infers erased allocation before trailing scalar method arguments`() {
+        val input = buildJar(
+            "TrailingFunction.class" to buildErasedFunctionOne("TrailingFunction"),
+            "TrailingArgumentHolder.class" to buildTrailingArgumentHolder(
+                "TrailingArgumentHolder",
+                "TrailingFunction",
+            ),
+        )
+        val output = File(tempDir, "output.jar")
+
+        BytecodeEditor.fixBytecode(input, output)
+
+        java.net.URLClassLoader(arrayOf(output.toURI().toURL()), javaClass.classLoader).use { loader ->
+            val holder = loader.loadClass("TrailingArgumentHolder")
+            holder.getField("RECEIVED").get(null).javaClass.name shouldBe "TrailingFunction"
+        }
+    }
+
     private fun buildCaller(className: String, owner: String, name: String, descriptor: String): ByteArray {
         val writer = ClassWriter(ClassWriter.COMPUTE_FRAMES)
         writer.visit(Opcodes.V11, Opcodes.ACC_PUBLIC, className, null, "java/lang/Object", null)
@@ -366,6 +488,345 @@ class BytecodeEditorTest {
             visitFieldInsn(Opcodes.PUTFIELD, className, "value", "Ljava/lang/Object;")
             visitInsn(Opcodes.RETURN)
             visitMaxs(0, 0)
+            visitEnd()
+        }
+        writer.visitEnd()
+        return writer.toByteArray()
+    }
+
+    private fun buildErasedLambdaSingleton(className: String): ByteArray {
+        val writer = ClassWriter(0)
+        writer.visit(
+            Opcodes.V11,
+            Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL,
+            className,
+            null,
+            "kotlin/jvm/internal/Lambda",
+            arrayOf("kotlin/jvm/functions/Function0"),
+        )
+        writer.visitField(
+            Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC or Opcodes.ACC_FINAL,
+            "INSTANCE",
+            "L$className;",
+            null,
+            null,
+        ).visitEnd()
+        writer.visitMethod(
+            Opcodes.ACC_STATIC,
+            "<clinit>",
+            "()V",
+            null,
+            null,
+        ).apply {
+            visitCode()
+            visitTypeInsn(Opcodes.NEW, "kotlin/jvm/internal/Lambda")
+            visitInsn(Opcodes.DUP)
+            visitInsn(Opcodes.ICONST_0)
+            visitMethodInsn(
+                Opcodes.INVOKESPECIAL,
+                "kotlin/jvm/internal/Lambda",
+                "<init>",
+                "(I)V",
+                false,
+            )
+            visitFieldInsn(Opcodes.PUTSTATIC, className, "INSTANCE", "L$className;")
+            visitInsn(Opcodes.RETURN)
+            visitMaxs(3, 0)
+            visitEnd()
+        }
+        writer.visitMethod(
+            Opcodes.ACC_PUBLIC,
+            "invoke",
+            "()Ljava/lang/Object;",
+            null,
+            null,
+        ).apply {
+            visitCode()
+            visitInsn(Opcodes.ACONST_NULL)
+            visitInsn(Opcodes.ARETURN)
+            visitMaxs(1, 1)
+            visitEnd()
+        }
+        writer.visitEnd()
+        return writer.toByteArray()
+    }
+
+    private fun buildErasedEnumValues(className: String): ByteArray {
+        val writer = ClassWriter(0)
+        writer.visit(
+            Opcodes.V11,
+            Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL or Opcodes.ACC_ENUM,
+            className,
+            null,
+            "java/lang/Enum",
+            null,
+        )
+        writer.visitField(
+            Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC or Opcodes.ACC_FINAL or Opcodes.ACC_SYNTHETIC,
+            "\$VALUES",
+            "[L$className;",
+            null,
+            null,
+        ).visitEnd()
+        writer.visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null).apply {
+            visitCode()
+            visitTypeInsn(Opcodes.NEW, "java/lang/Enum")
+            visitInsn(Opcodes.DUP)
+            visitLdcInsn("ONE")
+            visitInsn(Opcodes.ICONST_0)
+            visitMethodInsn(
+                Opcodes.INVOKESPECIAL,
+                "java/lang/Enum",
+                "<init>",
+                "(Ljava/lang/String;I)V",
+                false,
+            )
+            visitVarInsn(Opcodes.ASTORE, 0)
+            visitInsn(Opcodes.ICONST_1)
+            visitTypeInsn(Opcodes.ANEWARRAY, className)
+            visitInsn(Opcodes.DUP)
+            visitInsn(Opcodes.ICONST_0)
+            visitVarInsn(Opcodes.ALOAD, 0)
+            visitInsn(Opcodes.AASTORE)
+            visitFieldInsn(Opcodes.PUTSTATIC, className, "\$VALUES", "[L$className;")
+            visitInsn(Opcodes.RETURN)
+            visitMaxs(4, 1)
+            visitEnd()
+        }
+        writer.visitEnd()
+        return writer.toByteArray()
+    }
+
+    private fun buildConcreteMap(className: String): ByteArray {
+        val writer = ClassWriter(ClassWriter.COMPUTE_FRAMES)
+        writer.visit(Opcodes.V11, Opcodes.ACC_PUBLIC, className, null, "java/util/LinkedHashMap", null)
+        writer.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null).apply {
+            visitCode()
+            visitVarInsn(Opcodes.ALOAD, 0)
+            visitMethodInsn(
+                Opcodes.INVOKESPECIAL,
+                "java/util/LinkedHashMap",
+                "<init>",
+                "()V",
+                false,
+            )
+            visitInsn(Opcodes.RETURN)
+            visitMaxs(1, 1)
+            visitEnd()
+        }
+        writer.visitEnd()
+        return writer.toByteArray()
+    }
+
+    private fun buildErasedMapHolder(
+        className: String,
+        mapClassName: String,
+    ): ByteArray {
+        val writer = ClassWriter(0)
+        writer.visit(Opcodes.V11, Opcodes.ACC_PUBLIC, className, null, "java/lang/Object", null)
+        writer.visitField(Opcodes.ACC_PUBLIC, "value", "L$mapClassName;", null, null).visitEnd()
+        writer.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null).apply {
+            visitCode()
+            visitVarInsn(Opcodes.ALOAD, 0)
+            visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false)
+            visitVarInsn(Opcodes.ALOAD, 0)
+            visitTypeInsn(Opcodes.NEW, "java/util/LinkedHashMap")
+            visitInsn(Opcodes.DUP)
+            visitMethodInsn(Opcodes.INVOKESPECIAL, "java/util/LinkedHashMap", "<init>", "()V", false)
+            visitFieldInsn(Opcodes.PUTFIELD, className, "value", "L$mapClassName;")
+            visitInsn(Opcodes.RETURN)
+            visitMaxs(3, 1)
+            visitEnd()
+        }
+        writer.visitEnd()
+        return writer.toByteArray()
+    }
+
+    private fun buildErasedAction(className: String): ByteArray {
+        val writer = ClassWriter(0)
+        writer.visit(
+            Opcodes.V11,
+            Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL,
+            className,
+            null,
+            "java/lang/Object",
+            arrayOf("java/lang/Runnable"),
+        )
+        writer.visitMethod(Opcodes.ACC_PUBLIC, "run", "()V", null, null).apply {
+            visitCode()
+            visitInsn(Opcodes.RETURN)
+            visitMaxs(0, 1)
+            visitEnd()
+        }
+        writer.visitEnd()
+        return writer.toByteArray()
+    }
+
+    private fun buildStagedErasedConstructorHolder(
+        className: String,
+        actionClassName: String,
+    ): ByteArray {
+        val writer = ClassWriter(0)
+        writer.visit(Opcodes.V11, Opcodes.ACC_PUBLIC, className, null, "java/lang/Object", null)
+        writer.visitField(
+            Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC or Opcodes.ACC_FINAL,
+            "INSTANCE",
+            "L$actionClassName;",
+            null,
+            null,
+        ).visitEnd()
+        writer.visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null).apply {
+            visitCode()
+            visitTypeInsn(Opcodes.NEW, actionClassName)
+            visitVarInsn(Opcodes.ASTORE, 0)
+            visitVarInsn(Opcodes.ALOAD, 0)
+            visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false)
+            visitVarInsn(Opcodes.ALOAD, 0)
+            visitFieldInsn(Opcodes.PUTSTATIC, className, "INSTANCE", "L$actionClassName;")
+            visitInsn(Opcodes.RETURN)
+            visitMaxs(1, 1)
+            visitEnd()
+        }
+        writer.visitEnd()
+        return writer.toByteArray()
+    }
+
+    private fun buildAbstractBase(className: String): ByteArray {
+        val writer = ClassWriter(ClassWriter.COMPUTE_FRAMES)
+        writer.visit(
+            Opcodes.V11,
+            Opcodes.ACC_PUBLIC or Opcodes.ACC_ABSTRACT,
+            className,
+            null,
+            "java/lang/Object",
+            null,
+        )
+        writer.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null).apply {
+            visitCode()
+            visitVarInsn(Opcodes.ALOAD, 0)
+            visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false)
+            visitInsn(Opcodes.RETURN)
+            visitMaxs(1, 1)
+            visitEnd()
+        }
+        writer.visitEnd()
+        return writer.toByteArray()
+    }
+
+    private fun buildConstructorlessChild(
+        className: String,
+        superName: String,
+    ): ByteArray {
+        val writer = ClassWriter(0)
+        writer.visit(Opcodes.V11, Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL, className, null, superName, null)
+        writer.visitEnd()
+        return writer.toByteArray()
+    }
+
+    private fun buildConstructorlessAbstractClass(
+        className: String,
+        superName: String,
+    ): ByteArray {
+        val writer = ClassWriter(0)
+        writer.visit(Opcodes.V11, Opcodes.ACC_PUBLIC or Opcodes.ACC_ABSTRACT, className, null, superName, null)
+        writer.visitEnd()
+        return writer.toByteArray()
+    }
+
+    private fun buildConstructorCallingErasedAncestor(
+        className: String,
+        superName: String,
+        erasedAncestor: String,
+    ): ByteArray {
+        val writer = ClassWriter(0)
+        writer.visit(Opcodes.V11, Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL, className, null, superName, null)
+        writer.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null).apply {
+            visitCode()
+            visitVarInsn(Opcodes.ALOAD, 0)
+            visitMethodInsn(Opcodes.INVOKESPECIAL, erasedAncestor, "<init>", "()V", false)
+            visitInsn(Opcodes.RETURN)
+            visitMaxs(1, 1)
+            visitEnd()
+        }
+        writer.visitEnd()
+        return writer.toByteArray()
+    }
+
+    private fun buildErasedFunctionOne(className: String): ByteArray {
+        val writer = ClassWriter(0)
+        writer.visit(
+            Opcodes.V11,
+            Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL,
+            className,
+            null,
+            "java/lang/Object",
+            arrayOf("kotlin/jvm/functions/Function1"),
+        )
+        writer.visitMethod(
+            Opcodes.ACC_PUBLIC,
+            "invoke",
+            "(Ljava/lang/Object;)Ljava/lang/Object;",
+            null,
+            null,
+        ).apply {
+            visitCode()
+            visitInsn(Opcodes.ACONST_NULL)
+            visitInsn(Opcodes.ARETURN)
+            visitMaxs(1, 2)
+            visitEnd()
+        }
+        writer.visitEnd()
+        return writer.toByteArray()
+    }
+
+    private fun buildTrailingArgumentHolder(
+        className: String,
+        functionClassName: String,
+    ): ByteArray {
+        val writer = ClassWriter(0)
+        writer.visit(Opcodes.V11, Opcodes.ACC_PUBLIC, className, null, "java/lang/Object", null)
+        writer.visitField(
+            Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC,
+            "RECEIVED",
+            "Lkotlin/jvm/functions/Function1;",
+            null,
+            null,
+        ).visitEnd()
+        writer.visitMethod(
+            Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC,
+            "accept",
+            "(Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V",
+            null,
+            null,
+        ).apply {
+            visitCode()
+            visitVarInsn(Opcodes.ALOAD, 0)
+            visitFieldInsn(
+                Opcodes.PUTSTATIC,
+                className,
+                "RECEIVED",
+                "Lkotlin/jvm/functions/Function1;",
+            )
+            visitInsn(Opcodes.RETURN)
+            visitMaxs(1, 3)
+            visitEnd()
+        }
+        writer.visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null).apply {
+            visitCode()
+            visitTypeInsn(Opcodes.NEW, "java/lang/Object")
+            visitInsn(Opcodes.DUP)
+            visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false)
+            visitInsn(Opcodes.ICONST_1)
+            visitInsn(Opcodes.ACONST_NULL)
+            visitMethodInsn(
+                Opcodes.INVOKESTATIC,
+                className,
+                "accept",
+                "(Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V",
+                false,
+            )
+            visitInsn(Opcodes.RETURN)
+            visitMaxs(3, 0)
             visitEnd()
         }
         writer.visitEnd()
