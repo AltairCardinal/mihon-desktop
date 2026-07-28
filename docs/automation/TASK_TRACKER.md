@@ -1,49 +1,71 @@
 # Desktop Automation Task Tracker
 
-## 当前完成
+## 最终状态
 
-- 测试模式启动参数：`--test-mode`、`--test-http-port`、`--headless`、`--screenshot-dir`
-- Ktor HTTP server：health/state/screens/navigate/action/reader/reset/history/screenshot
-- 导航 pending 状态拆分：tab、screen、reader、pop 独立消费
-- JSON body 标准解析：支持 URL、冒号、逗号
-- Robot 客户端模块：`test-desktop`
-- 回归测试：`TestNavigationControllerTest`、`TestHttpServerJsonTest`
+Mihon Desktop parity 自动化已完成。本文件只记录维护边界；64 项 capability 状态仍以
+`app-desktop/src/test/resources/parity/parity-manifest.json` 为唯一机器权威。
 
-## 待办
-
-| 优先级 | 项目 | 验收 |
+| 范围 | 状态 | 验收 |
 |---|---|---|
-| P0 | 移除所有宽松 smoke 断言 | 不再出现“成功或失败都有效”的测试 |
-| P0 | `/test/state` 接入真实 UI 状态 | 导航后状态与当前屏幕一致 |
-| P1 | 为 `/test/navigate` 增加 route-level 测试 | tab、嵌套 screen、未知 screen 均覆盖 |
-| P1 | Reader Robot 端到端场景 | 打开章节、翻页、关闭均验证状态 |
-| P2 | 截图测试稳定化 | 截图失败时返回明确错误，不假成功 |
-| P2 | CI artifact 归档截图 | 截图不提交仓库，仅上传 artifact |
+| Test Mode lifecycle | 完成 | `--test-mode`、端口、headless、owner/close/reset |
+| HTTP production wiring | 完成 | state/navigation/actions 与真实 ScreenModel/controller/DI owner 对接 |
+| 错误与生命周期 | 完成 | unknown/stale/unavailable/partial/cancel/closed 与 typed feedback |
+| Robot/client contracts | 完成 | `test-desktop:test` 28/28 |
+| 场景族 | 完成 | 13/13 |
+| Desktop 永久保护 | 完成 | 5/5 |
+| Capability mapping | 完成 | 64/64，`unmapped=0` |
+| Windows runtime | 完成 | 固定未打包 EXE，版本 `0.11.14.51.19a55d7` |
+| macOS runtime | 完成 | 本轮生成 app bundle，同版本 `0.11.14.51.19a55d7` |
 
-## Desktop 对齐 Test Mode 计划
+## 13 个场景族
 
-以下均为规划状态，不代表已经实现。单项只有在对应 API、真实 UI 状态断言和失败路径测试完成后，才能在 parity manifest 中进入 `VERIFIED`。
+- library；
+- manga detail；
+- browse/global search/source login；
+- extensions；
+- reader；
+- downloads；
+- updates/upcoming；
+- history；
+- migration；
+- backup/restore；
+- settings/platform；
+- tracking；
+- about。
 
-| 阶段 | 计划场景 | Test Mode 验收边界 | 状态 |
-|---|---|---|---|
-| 行为刻画 | 书库、浏览、阅读器、下载、更新、备份关键入口 | 导航后 `/test/state` 与真实 UI 一致，并覆盖空、加载、错误状态 | 计划中 |
-| 共享实现 | 共享 use case/repository 替换 Desktop 重复业务 | 同一 fixture 在共享层与 Desktop wiring 得到一致结果 | 计划中 |
-| UI Wiring | 导航、DI、HTTP、数据库、后台任务接点 | route/action 成功与未知输入、权限缺失、数据缺失均有明确响应 | 计划中 |
-| Desktop 产品保护 | 作者、Upcoming、双页、自动滚动、APK 转换 | 现有能力可从用户入口触发，重构后行为不回退 | 计划中 |
-| 端到端验证 | 代表性用户旅程与恢复场景 | 重启/重试后状态可解释，截图只作为辅助证据而非宽松断言 | 计划中 |
+五项永久保护为 Authors entry、Upcoming、dual-page、auto-scroll、APK-to-JAR。它们保持
+Desktop 产品零回退，但不冒充 64 项中的普通 capability evidence。
 
-## 不再入库
+## Final parity runner
 
-- `docs/automation/screenshots/`
-- 一次性验证报告
-- agent 中间状态文件
-- 本机构建产物
-
-## Final parity runner 状态
-
-- Task 171 fixed-EXE runner：已完成。
 - 入口：`./scripts/desktop-final-parity-test.sh`。
-- 产物边界：只接受 `scripts/build-desktop.sh evidence` 的固定未打包 EXE 与 Task151 provenance sidecar；当前 source identity 或应用哈希不匹配时在启动前 fail-closed。
-- 运行边界：仅 headless Test Mode；启动前拒绝已有 health owner，启动后同时验证 health 与本次 PID，并精确 teardown。
-- 汇总边界：`test-desktop` 汇总对照既有 coverage inventory，必须报告 13/13 families、5/5 permanent protections、64/64 capability IDs 且 `unmapped=0`。
-- 场景 wiring gap 仍由 Task 172–177 负责；Task 171 不会把这些 gap 误标为已完成。
+- provenance：只接受 `scripts/build-desktop.sh evidence` 生成并封存的产物；source identity
+  或 artifact tree 不匹配时在启动前 fail-closed。
+- Windows：启动固定未打包 EXE。
+- macOS：通过 `MIHON_FINAL_PARITY_EXE` 指向 app bundle 内可执行文件，并以
+  `MIHON_FINAL_PARITY_PROVENANCE_COMMAND` 验证整个 bundle provenance。
+- lifecycle：启动前拒绝已有 health owner；启动后同时验证 health 与本次 PID；结束时精确
+  teardown。
+- 汇总：必须精确报告 13/13 families、5/5 permanent protections、64/64 capability IDs、
+  `unmapped=0`，任一 FAIL 均使 runner 非零退出。
+
+## 截图权限边界
+
+Test Mode 仍暴露 `POST /test/screenshot`，由 `ScreenshotService` 使用 AWT Robot 捕获屏幕。
+macOS 实测中，普通 `--headless` 只预检输入监听，`--test-mode --headless` 会额外预检
+ScreenCapture 权限，即使 final parity 客户端未调用截图端点。仓库没有麦克风或系统音频采集
+实现；macOS 的“屏幕与系统音频录制”是权限类别名称。
+
+最终 Windows/macOS 场景不依赖截图；macOS 在权限拒绝时仍 13/13、5/5、64/64。用户已明确
+认为产品不应请求或保留该能力，因此维护者不得把授权录屏加入正常启动要求，也不得用截图成功
+替代 production state/action 断言。本轮 parity closure 只记录该边界，不新增 roadmap 外任务。
+
+## 不入库
+
+- `docs/automation/screenshots/`；
+- 本机构建产物或一次性截图；
+- agent 中间状态文件；
+- 本机 TCC 数据库或权限授予状态。
+
+完整版本、测试计数、产物哈希与环境限制见
+`docs/superpowers/reports/2026-07-23-mihon-desktop-final-parity-verify.md`。

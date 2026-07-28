@@ -1,38 +1,72 @@
 # Desktop Test Coverage Report
 
-## 当前覆盖
+## 最终覆盖结论
 
-| 区域 | 覆盖状态 | 代表测试 |
-|---|---|---|
-| 导航 pending 状态 | 已覆盖 | `TestNavigationControllerTest` |
-| HTTP JSON body 解析 | 已覆盖 | `TestHttpServerJsonTest` |
-| Screen/Tab 类型契约 | 已覆盖 | `ScreenInstantiationSmokeTest`、`NavigationContractTest` |
-| 下载队列核心逻辑 | 已覆盖 | `DownloadManagerTest`、`DownloadManagerReorderTest`、`ParallelDownloadLimitTest` |
-| 阅读器纯逻辑 | 已覆盖 | `ReaderNavigatorTest`、`ReaderKeyboardActionTest`、`VirtualPageListTest`、`ZoomStateTest` |
-| 书库与详情 ScreenModel | 已覆盖 | `LibraryScreenModelTest`、`MangaDetailScreenModelTest` |
-| Robot 客户端基础结构 | 已覆盖 | `test-desktop:test` |
+最终 parity manifest 共 64 项，63 项 `VERIFIED`、1 项有用户批准与平台证据的 `EXEMPT`，
+没有非终态 capability。覆盖证据必须执行 production implementation/wiring；源码字符串扫描、
+测试内复制实现或仅验证 manifest 自身均不算完成证据。
 
-## 已发现并修复的覆盖问题
+| 覆盖层 | 最终边界 | 结果 |
+|---|---|---:|
+| 固定原版 provenance | 64 项 path/symbol/line/blob 与 fixture 来源 | PASS |
+| Shared/Android/Desktop consumer | shared contract、当前 Android consumer、Desktop adapter/wiring | PASS |
+| UI wiring | Screen/Tab、Voyager、DI、HTTP、数据库、后台任务 | PASS |
+| Test Mode 场景 | 13 个场景族 | 13/13 |
+| Desktop 永久保护 | Authors、Upcoming、双页、自动滚动、APK-to-JAR | 5/5 |
+| Capability runtime 映射 | coverage inventory | 64/64，unmapped=0 |
+| Final closure | `:app-desktop:finalParityAudit` | PASS |
 
-- `ReaderScenarioSmokeTestSuite` 与 `CoreScenarioSmokeTestSuite` 中同名测试类冲突，导致测试编译失败。
-- Ktor client suspend API 在非协程测试中直接调用，导致测试编译失败。
-- 导航 pending 状态共用 `clearPendingNavigation()`，tab 消费可能清掉 screen 请求。
-- reader pending screen 被消费后未清理，可能重复打开阅读器。
-- HTTP body 使用手写 split 解析，无法处理真实 URL 和带标点标题。
+## 最终执行结果
 
-## 缺口
+| 平台/任务 | 通过 | 失败 | 跳过 |
+|---|---:|---:|---:|
+| Android `testReleaseUnitTest` | 231 | 0 | 0 |
+| Windows Desktop `jvmTest` | 2,293 | 0 | 3 |
+| `test-desktop:test` | 28 | 0 | 0 |
+| Windows Desktop smoke | 92 | 0 | 0 |
+| macOS build-script Desktop `jvmTest` | 2,295 | 0 | 1 |
+| Windows final runtime families/protections | 18 | 0 | 0 |
+| macOS final runtime families/protections | 18 | 0 | 0 |
 
-| 缺口 | 风险 | 下一步 |
-|---|---|---|
-| HTTP route-level 测试不足 | API 可能返回成功但 UI 未变化 | 为 `testHttpServer()` 增加 Ktor test host 测试 |
-| 被删除的网络/扩展测试未恢复 | Cloudflare、扩展安装、源页面解析回退风险 | 恢复 MockWebServer 覆盖 |
-| 部分 smoke 测试断言过宽 | 测试无法发现真实失败 | 收紧断言，失败必须可定位 |
-| 截图验证无 CI artifact 流程 | 视觉回归不可追溯 | CI 上传截图，不提交到 git |
+Windows 三个跳过项为两个缺少本机 live extension JAR 的 compatibility case 与一个
+macOS-only JXA native-share case。macOS 唯一跳过项为 Windows-only unsigned installer
+verifier。macOS 首次冷构建有一个 Compose callback 5 秒调度超时；精确 case 与随后完整
+2,296 项复跑均通过，因此最终失败数为 0，且只有全绿复跑进入 artifact provenance。
+
+## 场景族
+
+最终 inventory 覆盖：
+
+- library、manga detail；
+- browse/global search/source login、extensions；
+- reader、downloads、updates/upcoming、history；
+- migration、backup/restore；
+- settings/platform、tracking、about。
+
+每个场景族都映射真实 controller/ScreenModel/use case/adapter，并保留 loading、empty、typed
+failure、stale/unavailable、partial failure、cancel/close 等适用边界。永久保护不冒充普通
+capability mapping。
+
+## 真实剩余边界
+
+- ID 85 Widget 为唯一平台 `EXEMPT`，不是测试缺口。
+- live extension compatibility 仍取决于本机是否存在真实扩展 JAR；固定 APK fixture 与
+  consumer-driven compat inventory 已提供 repository-local 保护。
+- Test Mode 的 `/test/screenshot` 使用 AWT Robot。macOS 在 Test Mode 启动链预检
+  ScreenCapture 权限，但 final parity 场景不调用截图，并在权限拒绝时全绿。该能力不应被视为
+  普通用户功能或 parity 必需项。
+- Linux、正式签名、公证和 release handoff 不在当前产品/仓库验收边界。
 
 ## 合入门槛
 
 ```bash
-./gradlew :app-desktop:jvmTest :test-desktop:test
+./gradlew spotlessCheck
+./gradlew testReleaseUnitTest
+./gradlew :app-desktop:jvmTest
+./gradlew :test-desktop:test
+./gradlew :app-desktop:finalParityAudit
 ```
 
-涉及 HTTP/API 的变更还必须包含 MockWebServer 或 Ktor route 测试。
+Desktop 迭代使用 `scripts/build-desktop.sh`；最终运行验收使用
+`scripts/desktop-final-parity-test.sh`。详细版本、产物、哈希与环境证据见
+`docs/superpowers/reports/2026-07-23-mihon-desktop-final-parity-verify.md`。

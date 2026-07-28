@@ -4,7 +4,7 @@ parent-task: 6
 task-base: 12a7445580123e719638830af587a8dfa41d4e0f
 original-ref: 6fbf6dfca203d99d6dd32137f2df97ced40c81b8
 status-source: this-file
-active-task: Task 19
+active-task: none
 ---
 
 # Mihon Desktop 最终 parity 审计实施计划
@@ -70,8 +70,8 @@ active-task: Task 19
 - [x] Task 16D：盘点并约束最终 Test Mode 全场景入口
 - [x] Task 17：执行并回收真实产品缺口 child plan
 - [x] Task 18：让 64 项最终 closure 与架构 gate 变绿
-- [ ] Task 19：运行全量测试、Windows/macOS 构建与运行验收
-- [ ] Task 20：收口维护文档与父子 checkbox
+- [x] Task 19：运行全量测试、Windows/macOS 构建与运行验收
+- [x] Task 20：收口维护文档与父子 checkbox
 
 ### Task 1：建立可独立触发的最终 closure RED gate
 
@@ -729,9 +729,9 @@ authority、Android/domain/Desktop focused tests、独立审查与一次修复�
 
 **Verification:** 最终一次运行 Spotless、相关 shared/Android、`:app-desktop:jvmTest`、`:test-desktop:test`、补充 smoke 与 final parity gate；唯一 runtime 入口启动固定 EXE 并精确报告 13/13 场景族、5/5 永久保护、64 项零未映射；Windows/macOS 使用构建脚本产出同一版本并运行最终一次验收。
 
-**macOS 延期：** 当前 Windows 阶段只准备并执行可独立成立的非 macOS 验收；不得通过 SSH
-预跑或以旧 macOS 产物替代。Task 19 在迁移到 macOS 机器并完成同一待验收版本的构建与运行
-验收前保持未勾选。
+**macOS 延期已关闭：** 2026-07-28 在 macOS 本机检出与 Windows 相同的 source commit，
+用项目构建脚本重新生成同版本 app bundle，并完成真实 Test Mode 运行验收；没有使用旧产物、
+SSH 探测或历史 Task 15 证据代替。
 
 **Files:**
 - Create: `docs/superpowers/reports/2026-07-23-mihon-desktop-final-parity-verify.md`
@@ -753,8 +753,20 @@ headless Test Mode 为 13/13 families、5/5 permanent protections、64/64 capabi
 0 unmapped。完整 provenance、artifact hash、命令和环境边界见
 `docs/superpowers/reports/2026-07-23-mihon-desktop-final-parity-verify.md`。
 
-macOS 仍按延期决定保持未执行；Task 19 因此不勾选。迁移到 macOS 后必须检出同一 source
-commit，并对同一版本完成 app bundle 构建与真实运行验收，不得使用旧产物或历史探测代替。
+**macOS 阶段证据（已完成）：** detached worktree 精确检出
+`19a55d7c27e854a9a5b8baa27871b6d8e1c3608c`，版本
+`0.11.14.51.19a55d7`。`bash scripts/build-desktop.sh evidence` 重新生成并部署
+`/Applications/Mihon Desktop.app`，provenance 绑定同一 source tree `de17112f...`、
+1,703 个 production inputs 与 Windows 相同 digest；bundle 为 327 files / 264,649,870
+bytes / SHA-256 `8e3edc6a...`。构建脚本内置 Desktop 测试最终为 2,295 passed / 0 failed /
+1 Windows-only skipped；首次冷构建的单个 Compose 调度超时经 focused 与完整复跑排除。
+固定 bundle 可执行文件在 `127.0.0.1:18080` 真实启动 Test Mode，结果为 13/13 families、
+5/5 permanent protections、64/64 capabilities、0 unmapped、0 failure。
+
+macOS TCC 同时暴露一个不阻塞 parity 的真实边界：普通 headless 预检 ListenEvent，Test Mode
+还预检 ScreenCapture；唯一屏幕读取实现是 Test Mode `/test/screenshot` 的 AWT Robot，仓库
+没有音频捕获。权限拒绝时最终场景仍全绿；用户认为产品不应请求或保留该能力，本 Task 只记录
+诊断，不扩张到 roadmap 外实现。完整命令、路径、哈希和环境限制见最终验证报告。
 
 ### Task 20：收口维护文档与父子 checkbox
 
@@ -783,6 +795,16 @@ commit，并对同一版本完成 app bundle 构建与真实运行验收，不�
    - `bash scripts/comet-project-guard.sh plan docs/superpowers/plans/2026-07-23-mihon-desktop-final-parity-audit.md`
    - `bash scripts/comet-project-guard.sh plan docs/superpowers/plans/2026-07-12-mihon-desktop-upstream-parity-roadmap-main-authority.md`
    - `git diff --check`
+
+**Execution evidence（已完成）：** tracker 已写入 63 `VERIFIED` / 1 `EXEMPT` 的 manifest
+派生摘要；历史比较报告已替换为固定原版、跨平台修正、Desktop deviation 与唯一 EXEMPT 的
+最终口径；根 coverage report 和 automation tracker 已删除关闭的规划 gap，并保留 macOS
+Test Mode Screenshot 权限这一真实非 parity 边界。父 roadmap 的 overview 与 Task 0–6
+正文 checkbox 已按 child plan、提交和验证报告回填，Task 6 已关闭，`active-child-plan`
+为 `none`。两份 `comet-project-guard.sh plan` 均报告 0 个待办 Task 并 PASS；Gradle
+coordinator key `task20-final-gates` 串行执行 `spotlessCheck` 与
+`:app-desktop:finalParityAudit`，exit 0；`git diff --check` PASS。以上文档收口与验证报告
+合并为本 Task 的单一内聚提交。
 
 ## 任务交付物与过程产物
 

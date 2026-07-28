@@ -50,6 +50,24 @@
 | 87 | `adapter` | `SHARED` | `docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-149-c1-id-87-desktop-language` |
 | 88 | `adapter` | `VERIFIED` | `NONE` |
 
+## 最终终态摘要（2026-07-28）
+
+`parity-manifest.json` 的最终机器结果为 64/64 terminal：
+
+- `VERIFIED`：63；
+- `EXEMPT`：1（ID 85 Android Widget）；
+- `NOT_STARTED | CHARACTERIZED | SHARED | WIRED`：0；
+- `UNCLASSIFIED_DEBT | TEMP-COMPAT` 终态分类：0。
+
+每项都绑定固定原版 `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`、当前 Android
+consumer、shared 或平台 adapter、Desktop consumer 与 production protection fixture。
+最终 `finalParityAudit` 及 manifest governance contract 通过；Windows/macOS 同一版本
+`0.11.14.51.19a55d7` 的运行验收均为 13/13 场景族、5/5 永久保护、64/64 capability、
+`unmapped=0`。完整命令、产物哈希、失败/跳过和环境限制见
+`docs/superpowers/reports/2026-07-23-mihon-desktop-final-parity-verify.md`。
+
+Task 14 表仅保留历史交接含义，不表示当前状态；任何终态查询必须读取 manifest。
+
 ## 维护方式
 
 机器状态与 production protection evidence 始终以 manifest 为准；本文件只维护治理规则和带明确收口时点的有限快照。原版 Mihon 仅指固定 `main@6fbf6dfc…`，current Android/shared/Desktop 都只是消费者、迁移输出或平台适配。
