@@ -27,6 +27,9 @@ open class Context {
     open fun getCacheDir(): java.io.File =
         java.io.File(System.getProperty("user.home"), ".mihon/cache").also { it.mkdirs() }
 
+    open fun getExternalCacheDir(): java.io.File =
+        java.io.File(System.getProperty("user.home"), ".mihon/cache/external").also { it.mkdirs() }
+
     open fun getDir(name: String, mode: Int): java.io.File =
         java.io.File(System.getProperty("user.home"), ".mihon/$name").also { it.mkdirs() }
 

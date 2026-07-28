@@ -33,6 +33,9 @@ open class ContextWrapper(private var mBase: Context?) : Context() {
     override fun getCacheDir(): java.io.File = mBase?.getCacheDir()
         ?: java.io.File(System.getProperty("user.home"), ".mihon/cache").also { it.mkdirs() }
 
+    override fun getExternalCacheDir(): java.io.File = mBase?.getExternalCacheDir()
+        ?: java.io.File(System.getProperty("user.home"), ".mihon/cache/external").also { it.mkdirs() }
+
     override fun getDir(name: String, mode: Int): java.io.File =
         mBase?.getDir(name, mode)
             ?: java.io.File(System.getProperty("user.home"), ".mihon/$name").also { it.mkdirs() }

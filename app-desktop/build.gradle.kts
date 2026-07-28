@@ -144,6 +144,7 @@ kotlin {
                 implementation(libs.okhttp.logging)
                 implementation(libs.okhttp.brotli)
                 implementation(libs.okhttp.dnsoverhttps)
+                implementation(libs.okhttp.zstd)
 
                 // Database
                 implementation(libs.sqldelight.jvm.driver)

@@ -49,6 +49,19 @@ class DesktopNetworkHelperTest {
     }
 
     @Test
+    fun `default client leaves content decoding to OkHttp and source specific configuration`() {
+        val helper = DesktopNetworkHelper(cacheDir = createTempCacheDir())
+
+        assertTrue(
+            helper.client.networkInterceptors.none {
+                it.javaClass.simpleName == "IgnoreGzipInterceptor" ||
+                    it.javaClass.simpleName == "BrotliInterceptor"
+            },
+        )
+        helper.close()
+    }
+
+    @Test
     fun `cookieJar is available`() {
         val helper = DesktopNetworkHelper(cacheDir = createTempCacheDir())
         assertNotNull(helper.cookieJar)

@@ -1,7 +1,6 @@
 package mihon.desktop.platform
 
 import eu.kanade.tachiyomi.network.DesktopCookieJar
-import eu.kanade.tachiyomi.network.interceptor.IgnoreGzipInterceptor
 import eu.kanade.tachiyomi.network.interceptor.UncaughtExceptionInterceptor
 import eu.kanade.tachiyomi.network.interceptor.UserAgentInterceptor
 import mihon.desktop.network.CloudflareChallengeManager
@@ -20,7 +19,6 @@ import okhttp3.Cache
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
-import okhttp3.brotli.BrotliInterceptor
 import okhttp3.dnsoverhttps.DnsOverHttps
 import java.io.File
 import java.net.URI
@@ -57,8 +55,6 @@ class DesktopNetworkHelper(
                 addNetworkInterceptor(DesktopCloudflareCredentialInterceptor(it))
             }
         }
-        .addNetworkInterceptor(IgnoreGzipInterceptor())
-        .addNetworkInterceptor(BrotliInterceptor)
         .build()
 
     val client: OkHttpClient = if (dohProvider == DohProvider.OFF) {

@@ -10,6 +10,7 @@ object Build {
     const val BRAND = "mihon"
     const val DEVICE = "desktop"
     const val PRODUCT = "mihon_desktop"
+    const val ID = "MIHON_DESKTOP"
 
     object VERSION {
         const val SDK_INT = 28
